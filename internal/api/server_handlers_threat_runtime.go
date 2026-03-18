@@ -158,6 +158,73 @@ func (s *Server) listResponsePolicies(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, s.app.RuntimeRespond.ListPolicies())
 }
 
+func (s *Server) listRuntimeExecutions(w http.ResponseWriter, r *http.Request) {
+	if s.app.RuntimeRespond == nil {
+		s.error(w, http.StatusServiceUnavailable, "runtime response not initialized")
+		return
+	}
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	executions := s.app.RuntimeRespond.ListExecutions(limit)
+	s.json(w, http.StatusOK, map[string]any{
+		"executions": executions,
+		"count":      len(executions),
+	})
+}
+
+func (s *Server) approveRuntimeExecution(w http.ResponseWriter, r *http.Request) {
+	if s.app.RuntimeRespond == nil {
+		s.error(w, http.StatusServiceUnavailable, "runtime response not initialized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var req struct {
+		ApproverID string `json:"approver_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if req.ApproverID == "" {
+		s.error(w, http.StatusBadRequest, "approver_id is required")
+		return
+	}
+	if err := s.app.RuntimeRespond.ApproveExecution(r.Context(), id, req.ApproverID); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "approved"})
+}
+
+func (s *Server) rejectRuntimeExecution(w http.ResponseWriter, r *http.Request) {
+	if s.app.RuntimeRespond == nil {
+		s.error(w, http.StatusServiceUnavailable, "runtime response not initialized")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var req struct {
+		RejecterID string `json:"rejecter_id"`
+		Reason     string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if req.RejecterID == "" {
+		s.error(w, http.StatusBadRequest, "rejecter_id is required")
+		return
+	}
+	if err := s.app.RuntimeRespond.RejectExecution(id, req.RejecterID, req.Reason); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.json(w, http.StatusOK, map[string]string{"status": "rejected"})
+}
+
 func (s *Server) enableResponsePolicy(w http.ResponseWriter, r *http.Request) {
 	if s.app.RuntimeRespond == nil {
 		s.error(w, http.StatusServiceUnavailable, "runtime response not initialized")

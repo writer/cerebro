@@ -102,6 +102,11 @@ func MaterializeRunsIntoGraph(g *graph.Graph, runs []RunRecord, now time.Time) G
 	for i := range runs {
 		run := runs[i]
 		result.RunsConsidered++
+		if run.DryRun {
+			result.RunsSkipped++
+			result.SkippedIncompleteRuns++
+			continue
+		}
 		if run.Status != RunStatusSucceeded {
 			result.RunsSkipped++
 			result.SkippedIncompleteRuns++
@@ -256,21 +261,8 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 	}
 
 	for _, pkgAgg := range packages {
-		pkgMeta := graph.NormalizeWriteMetadata(
-			seenAt,
-			validFrom,
-			nil,
-			graphMaterializationSourceSystem,
-			fmt.Sprintf("%s:package:%s", sourceEventID, packageKey(pkgAgg.record)),
-			1.0,
-			graph.WriteMetadataDefaults{
-				Now:             now,
-				RecordedAt:      seenAt,
-				TransactionFrom: seenAt,
-				SourceSystem:    graphMaterializationSourceSystem,
-			},
-		)
-		pkgNode := buildPackageNode(pkgAgg.record, target, pkgMeta)
+		pkgNode := buildPackageNode(pkgAgg.record, seenAt)
+		mergeStableNodeTimestamps(g, pkgNode)
 		g.AddNode(pkgNode)
 		result.PackageNodesUpserted++
 		if addEdgeIfMissing(g, &graph.Edge{
@@ -287,21 +279,8 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 	}
 
 	for _, vulnAgg := range vulns {
-		vulnMeta := graph.NormalizeWriteMetadata(
-			seenAt,
-			validFrom,
-			nil,
-			graphMaterializationSourceSystem,
-			fmt.Sprintf("%s:vulnerability:%s", sourceEventID, vulnerabilityKey(vulnAgg.record)),
-			1.0,
-			graph.WriteMetadataDefaults{
-				Now:             now,
-				RecordedAt:      seenAt,
-				TransactionFrom: seenAt,
-				SourceSystem:    graphMaterializationSourceSystem,
-			},
-		)
-		vulnNode := buildVulnerabilityNode(vulnAgg.record, target, vulnMeta)
+		vulnNode := buildVulnerabilityNode(vulnAgg.record, seenAt)
+		mergeStableNodeTimestamps(g, vulnNode)
 		g.AddNode(vulnNode)
 		result.VulnNodesUpserted++
 		if addEdgeIfMissing(g, &graph.Edge{
@@ -320,7 +299,7 @@ func materializeOneRun(g *graph.Graph, target *graph.Node, run RunRecord, validT
 	for _, relation := range relations {
 		pkgID := packageNodeID(relation.pkg)
 		vulnID := vulnerabilityNodeID(relation.vuln)
-		if addEdgeIfMissing(g, &graph.Edge{
+		if upsertEdgeIfNewer(g, &graph.Edge{
 			ID:     packageVulnerabilityEdgeID(pkgID, vulnID),
 			Source: pkgID,
 			Target: vulnID,
@@ -520,7 +499,7 @@ func summarizeRun(run RunRecord) (scanSummary, map[string]configAggregate, map[s
 				vulns[id] = vulnerabilityAggregate{record: vuln}
 			}
 			for _, pkg := range catalog.Packages {
-				if !strings.EqualFold(strings.TrimSpace(pkg.Name), strings.TrimSpace(vuln.Package)) {
+				if !packageMatchesVulnerability(pkg, vuln) {
 					continue
 				}
 				key := packageVulnerabilityKey(pkg, vuln)
@@ -596,28 +575,27 @@ func mergeVulnerabilityRecord(existing, incoming scanner.ImageVulnerability) sca
 	return merged
 }
 
-func buildPackageNode(pkg filesystemanalyzer.PackageRecord, target *graph.Node, metadata graph.WriteMetadata) *graph.Node {
+func buildPackageNode(pkg filesystemanalyzer.PackageRecord, observedAt time.Time) *graph.Node {
 	properties := map[string]any{
-		"package_name": pkg.Name,
-		"version":      pkg.Version,
-		"ecosystem":    firstNonEmpty(pkg.Ecosystem, "unknown"),
-		"manager":      strings.TrimSpace(pkg.Manager),
-		"purl":         strings.TrimSpace(pkg.PURL),
+		"package_name":  pkg.Name,
+		"version":       pkg.Version,
+		"ecosystem":     firstNonEmpty(pkg.Ecosystem, "unknown"),
+		"manager":       strings.TrimSpace(pkg.Manager),
+		"purl":          strings.TrimSpace(pkg.PURL),
+		"source_system": graphMaterializationSourceSystem,
 	}
-	metadata.ApplyTo(properties)
 	return &graph.Node{
 		ID:         packageNodeID(pkg),
 		Kind:       graph.NodeKindPackage,
 		Name:       firstNonEmpty(strings.TrimSpace(pkg.Name), packageNodeID(pkg)),
-		Provider:   target.Provider,
-		Account:    target.Account,
-		Region:     target.Region,
 		Risk:       graph.RiskNone,
+		CreatedAt:  observedAt.UTC(),
+		UpdatedAt:  observedAt.UTC(),
 		Properties: properties,
 	}
 }
 
-func buildVulnerabilityNode(vuln scanner.ImageVulnerability, target *graph.Node, metadata graph.WriteMetadata) *graph.Node {
+func buildVulnerabilityNode(vuln scanner.ImageVulnerability, observedAt time.Time) *graph.Node {
 	properties := map[string]any{
 		"vulnerability_id": firstNonEmpty(strings.TrimSpace(vuln.CVE), strings.TrimSpace(vuln.ID)),
 		"cve_id":           strings.TrimSpace(vuln.CVE),
@@ -626,19 +604,18 @@ func buildVulnerabilityNode(vuln scanner.ImageVulnerability, target *graph.Node,
 		"known_exploited":  vuln.InKEV,
 		"exploitable":      vuln.Exploitable,
 		"fixed_version":    strings.TrimSpace(vuln.FixedVersion),
+		"source_system":    graphMaterializationSourceSystem,
 	}
 	if !vuln.Published.IsZero() {
 		properties["published_at"] = vuln.Published.UTC().Format(time.RFC3339)
 	}
-	metadata.ApplyTo(properties)
 	return &graph.Node{
 		ID:         vulnerabilityNodeID(vuln),
 		Kind:       graph.NodeKindVulnerability,
 		Name:       firstNonEmpty(strings.TrimSpace(vuln.CVE), strings.TrimSpace(vuln.ID), strings.TrimSpace(vuln.Package)),
-		Provider:   target.Provider,
-		Account:    target.Account,
-		Region:     target.Region,
 		Risk:       severityToRisk(vuln.Severity, vuln.InKEV),
+		CreatedAt:  observedAt.UTC(),
+		UpdatedAt:  observedAt.UTC(),
 		Properties: properties,
 	}
 }
@@ -745,16 +722,19 @@ func packageVulnerabilityEdgeID(pkgID, vulnID string) string {
 	return fmt.Sprintf("edge:%s:%s:%s", slugify(pkgID), slugify(string(graph.EdgeKindAffectedBy)), slugify(vulnID))
 }
 
-func packageKey(pkg filesystemanalyzer.PackageRecord) string {
-	return slugify(firstNonEmpty(pkg.PURL, fmt.Sprintf("%s:%s:%s", pkg.Ecosystem, pkg.Name, pkg.Version)))
-}
-
-func vulnerabilityKey(vuln scanner.ImageVulnerability) string {
-	return slugify(firstNonEmpty(vuln.CVE, vuln.ID, fmt.Sprintf("%s:%s", vuln.Package, vuln.FixedVersion)))
-}
-
 func packageVulnerabilityKey(pkg filesystemanalyzer.PackageRecord, vuln scanner.ImageVulnerability) string {
 	return slugify(fmt.Sprintf("%s|%s|%s", packageNodeID(pkg), vulnerabilityNodeID(vuln), firstNonEmpty(vuln.FixedVersion, "none")))
+}
+
+func packageMatchesVulnerability(pkg filesystemanalyzer.PackageRecord, vuln scanner.ImageVulnerability) bool {
+	if !strings.EqualFold(strings.TrimSpace(pkg.Name), strings.TrimSpace(vuln.Package)) {
+		return false
+	}
+	installedVersion := strings.TrimSpace(vuln.InstalledVersion)
+	if installedVersion == "" {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(pkg.Version), installedVersion)
 }
 
 func syntheticRunKey(run RunRecord) string {
@@ -855,6 +835,74 @@ func addEdgeIfMissing(g *graph.Graph, edge *graph.Edge) bool {
 	}
 	g.AddEdge(edge)
 	return true
+}
+
+func upsertEdgeIfNewer(g *graph.Graph, edge *graph.Edge) bool {
+	if g == nil || edge == nil {
+		return false
+	}
+	for _, existing := range g.GetOutEdges(edge.Source) {
+		if existing == nil {
+			continue
+		}
+		if existing.ID == edge.ID || (existing.Target == edge.Target && existing.Kind == edge.Kind) {
+			if shouldRefreshMaterializedEdge(existing, edge) {
+				existing.Properties = cloneWorkloadAnyMap(edge.Properties)
+				existing.Effect = edge.Effect
+				existing.Priority = edge.Priority
+				existing.Risk = edge.Risk
+			}
+			return false
+		}
+	}
+	g.AddEdge(edge)
+	return true
+}
+
+func shouldRefreshMaterializedEdge(existing, incoming *graph.Edge) bool {
+	if existing == nil || incoming == nil {
+		return false
+	}
+	existingObservedAt := parseMaterializedEdgeTime(existing.Properties, "observed_at")
+	incomingObservedAt := parseMaterializedEdgeTime(incoming.Properties, "observed_at")
+	if incomingObservedAt.After(existingObservedAt) {
+		return true
+	}
+	if existingObservedAt.After(incomingObservedAt) {
+		return false
+	}
+	if readString(existing.Properties, "fixed_version") == "" && readString(incoming.Properties, "fixed_version") != "" {
+		return true
+	}
+	return vulnerabilitySeverityRank(readString(incoming.Properties, "severity")) > vulnerabilitySeverityRank(readString(existing.Properties, "severity"))
+}
+
+func parseMaterializedEdgeTime(values map[string]any, key string) time.Time {
+	value := readString(values, key)
+	if value == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed.UTC()
+}
+
+func mergeStableNodeTimestamps(g *graph.Graph, node *graph.Node) {
+	if g == nil || node == nil {
+		return
+	}
+	existing, ok := g.GetNode(node.ID)
+	if !ok || existing == nil {
+		return
+	}
+	if !existing.CreatedAt.IsZero() && (node.CreatedAt.IsZero() || existing.CreatedAt.Before(node.CreatedAt)) {
+		node.CreatedAt = existing.CreatedAt
+	}
+	if existing.UpdatedAt.After(node.UpdatedAt) {
+		node.UpdatedAt = existing.UpdatedAt
+	}
 }
 
 func cloneWorkloadAnyMap(values map[string]any) map[string]any {

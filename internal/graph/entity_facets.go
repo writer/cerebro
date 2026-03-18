@@ -728,9 +728,13 @@ func materializeWorkloadSecurityFacet(g *Graph, node *Node, validAt, recordedAt 
 		lastScannedAt, _ = temporalPropertyTime(scanNode.Properties, "observed_at")
 	}
 
-	blast := BlastRadius(g, node.ID, 3)
-	cascade := CascadingBlastRadius(g, node.ID, 4)
-	internetExposed := entityHasInternetExposureAt(g, node.ID, validAt, recordedAt)
+	view := g.SubgraphBitemporal(validAt, recordedAt)
+	if view == nil {
+		view = g
+	}
+	blast := BlastRadius(view, node.ID, 3)
+	cascade := CascadingBlastRadius(view, node.ID, 4)
+	internetExposed := entityHasInternetExposureAt(view, node.ID, validAt, recordedAt)
 	adminReachable := 0
 	for _, reachable := range blast.ReachableNodes {
 		if reachable == nil {

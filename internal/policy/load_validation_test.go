@@ -244,3 +244,51 @@ func TestEngineLoadPolicies_RejectsInvalidCELCondition(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestEngineLoadPolicies_InfersCELConditionFormatWhenOmitted(t *testing.T) {
+	dir := t.TempDir()
+
+	writePolicyFile(t, dir, "policy.json", `{
+		"id": "inferred-cel",
+		"name": "Inferred CEL",
+		"description": "test",
+		"severity": "high",
+		"resource": "aws::s3::bucket",
+		"conditions": ["resource.public == true"]
+	}`)
+
+	engine := NewEngine()
+	if err := engine.LoadPolicies(dir); err != nil {
+		t.Fatalf("LoadPolicies failed: %v", err)
+	}
+
+	p, ok := engine.GetPolicy("inferred-cel")
+	if !ok {
+		t.Fatal("expected policy to load")
+	}
+	if p.ConditionFormat != ConditionFormatCEL {
+		t.Fatalf("expected inferred CEL condition format, got %q", p.ConditionFormat)
+	}
+}
+
+func TestEngineLoadPolicies_RejectsInvalidImplicitCELCondition(t *testing.T) {
+	dir := t.TempDir()
+
+	writePolicyFile(t, dir, "policy.json", `{
+		"id": "invalid-implicit-cel",
+		"name": "Invalid implicit CEL",
+		"description": "test",
+		"severity": "high",
+		"resource": "aws::s3::bucket",
+		"conditions": ["resource.public =="]
+	}`)
+
+	engine := NewEngine()
+	err := engine.LoadPolicies(dir)
+	if err == nil {
+		t.Fatal("expected invalid implicit CEL condition error")
+	}
+	if !strings.Contains(err.Error(), "invalid CEL condition") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

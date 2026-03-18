@@ -4030,6 +4030,106 @@ paths:
             type: integer
             default: 100
           description: Maximum result size
+  /api/v1/runtime/executions:
+    get:
+      tags:
+        - Runtime
+      summary: List runtime executions
+      description: List recent runtime response executions.
+      responses:
+        '200':
+          description: Runtime executions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeExecutionsResponse'
+        '503':
+          description: Runtime response unavailable
+          content: *id001
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+          description: Maximum result size
+  /api/v1/runtime/executions/{id}/approve:
+    post:
+      tags:
+        - Runtime
+      summary: Approve runtime execution
+      description: Approve a runtime response execution that is awaiting approval.
+      responses:
+        '200':
+          description: Execution approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '400':
+          description: Invalid approval request
+          content: *id001
+        '503':
+          description: Runtime response unavailable
+          content: *id001
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Runtime execution ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - approver_id
+              properties:
+                approver_id:
+                  type: string
+  /api/v1/runtime/executions/{id}/reject:
+    post:
+      tags:
+        - Runtime
+      summary: Reject runtime execution
+      description: Reject a runtime response execution that is awaiting approval.
+      responses:
+        '200':
+          description: Execution rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '400':
+          description: Invalid rejection request
+          content: *id001
+        '503':
+          description: Runtime response unavailable
+          content: *id001
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Runtime execution ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rejecter_id
+              properties:
+                rejecter_id:
+                  type: string
+                reason:
+                  type: string
   /api/v1/runtime/responses:
     get:
       tags:
@@ -10736,6 +10836,16 @@ components:
       type: object
       properties:
         findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        count:
+          type: integer
+    RuntimeExecutionsResponse:
+      type: object
+      properties:
+        executions:
           type: array
           items:
             type: object

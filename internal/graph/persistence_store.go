@@ -245,6 +245,37 @@ func (s *GraphPersistenceStore) DiffByTime(t1, t2 time.Time) (*GraphDiff, error)
 	return DiffSnapshots(before, after), nil
 }
 
+func (s *GraphPersistenceStore) DiffByTimeForTenant(t1, t2 time.Time, tenantID string) (*GraphDiff, error) {
+	if s == nil {
+		return nil, fmt.Errorf("graph persistence store not configured")
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return s.DiffByTime(t1, t2)
+	}
+	if s.local != nil {
+		diff, err := s.local.DiffByTimeForTenant(t1, t2, tenantID)
+		if err == nil {
+			return diff, nil
+		}
+		if s.replica == nil {
+			return nil, err
+		}
+	}
+	if s.replica == nil {
+		return nil, fmt.Errorf("graph persistence replica not configured")
+	}
+	before, err := s.loadClosestSnapshotAtReplica(context.Background(), t1)
+	if err != nil {
+		return nil, err
+	}
+	after, err := s.loadClosestSnapshotAtReplica(context.Background(), t2)
+	if err != nil {
+		return nil, err
+	}
+	return diffSnapshotsForTenant(before, after, tenantID), nil
+}
+
 func (s *GraphPersistenceStore) syncReplica(ctx context.Context) error {
 	index, err := s.local.loadOrRebuildSnapshotIndex()
 	if err != nil {

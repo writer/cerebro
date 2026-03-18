@@ -51,14 +51,26 @@ func List(ctx context.Context, store executionstore.Store, opts ListOptions) ([]
 	if store == nil {
 		return nil, nil
 	}
-	envs, err := store.ListAllRuns(ctx, executionstore.RunListOptions{
+	query := executionstore.RunListOptions{
 		Namespaces:         opts.Namespaces,
 		Statuses:           opts.Statuses,
 		ExcludeStatuses:    opts.ExcludeStatuses,
 		Limit:              opts.Limit,
 		Offset:             opts.Offset,
 		OrderBySubmittedAt: opts.OrderBySubmittedAt,
-	})
+	}
+	applyPaginationAfterFilter := false
+	if strings.TrimSpace(opts.ReportID) != "" {
+		reportNamespaces, ok := reportFilterNamespaces(opts.Namespaces)
+		if !ok {
+			return nil, nil
+		}
+		query.Namespaces = reportNamespaces
+		query.Limit = 0
+		query.Offset = 0
+		applyPaginationAfterFilter = true
+	}
+	envs, err := store.ListAllRuns(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +97,36 @@ func List(ctx context.Context, store executionstore.Store, opts ListOptions) ([]
 		}
 		return summaries[i].UpdatedAt.After(summaries[j].UpdatedAt)
 	})
+	if applyPaginationAfterFilter {
+		summaries = paginateSummaries(summaries, opts.Offset, opts.Limit)
+	}
 	return summaries, nil
+}
+
+func reportFilterNamespaces(namespaces []string) ([]string, bool) {
+	if len(namespaces) == 0 {
+		return []string{executionstore.NamespacePlatformReportRun}, true
+	}
+	for _, namespace := range namespaces {
+		if strings.TrimSpace(namespace) == executionstore.NamespacePlatformReportRun {
+			return []string{executionstore.NamespacePlatformReportRun}, true
+		}
+	}
+	return nil, false
+}
+
+func paginateSummaries(summaries []Summary, offset, limit int) []Summary {
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(summaries) {
+		return nil
+	}
+	end := len(summaries)
+	if limit > 0 && offset+limit < end {
+		end = offset + limit
+	}
+	return summaries[offset:end]
 }
 
 func summarizeEnvelope(env executionstore.RunEnvelope, opts ListOptions) (Summary, bool, error) {

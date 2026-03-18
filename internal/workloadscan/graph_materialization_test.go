@@ -78,6 +78,31 @@ func TestMaterializeRunsIntoGraphClosesOlderScans(t *testing.T) {
 	}
 }
 
+func TestMaterializeRunsIntoGraphSkipsDryRunExecutions(t *testing.T) {
+	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-abc123",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+	})
+	g.BuildIndex()
+
+	run := buildGraphMaterializationTestRun("workload_scan:dry-run", now.Add(-2*time.Hour), 1)
+	run.DryRun = true
+
+	summary := MaterializeRunsIntoGraph(g, []RunRecord{run}, now)
+	if summary.RunsMaterialized != 0 {
+		t.Fatalf("expected no materialized dry runs, got %#v", summary)
+	}
+	if _, ok := g.GetNode(run.ID); ok {
+		t.Fatalf("expected dry-run workload scan node %q to be skipped", run.ID)
+	}
+}
+
 func TestMaterializeRunsIntoGraphDedupesVulnerabilitiesAcrossVolumes(t *testing.T) {
 	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
 	g := graph.New()
@@ -146,6 +171,147 @@ func TestMaterializeRunsIntoGraphDedupesVulnerabilitiesAcrossVolumes(t *testing.
 	}
 	if got := graphValueInt(scanNode.Properties["fixable_vulnerability_count"]); got != 1 {
 		t.Fatalf("expected deduped fixable_vulnerability_count=1, got %d", got)
+	}
+}
+
+func TestMaterializeRunsIntoGraphKeepsSharedPackageAndVulnerabilityNodesGlobal(t *testing.T) {
+	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-abc123",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+	})
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-west-2:210987654321:instance/i-def456",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-def456",
+		Provider: "aws",
+		Account:  "210987654321",
+		Region:   "us-west-2",
+	})
+	g.BuildIndex()
+
+	first := buildGraphMaterializationTestRun("workload_scan:global-a", now.Add(-2*time.Hour), 1)
+	second := buildGraphMaterializationTestRun("workload_scan:global-b", now.Add(-1*time.Hour), 1)
+	second.Target.AccountID = "210987654321"
+	second.Target.Region = "us-west-2"
+	second.Target.InstanceID = "i-def456"
+
+	MaterializeRunsIntoGraph(g, []RunRecord{first, second}, now)
+
+	pkgNode, ok := g.GetNode(packageNodeID(first.Volumes[0].Analysis.Catalog.Packages[0]))
+	if !ok {
+		t.Fatal("expected shared package node")
+	}
+	if pkgNode.Provider != "" || pkgNode.Account != "" || pkgNode.Region != "" {
+		t.Fatalf("expected package node to remain global, got provider=%q account=%q region=%q", pkgNode.Provider, pkgNode.Account, pkgNode.Region)
+	}
+	if _, ok := pkgNode.Properties["valid_from"]; ok {
+		t.Fatalf("expected package node to avoid scan-scoped temporal metadata, got %#v", pkgNode.Properties)
+	}
+
+	vulnNode, ok := g.GetNode(vulnerabilityNodeID(first.Volumes[0].Analysis.Catalog.Vulnerabilities[0]))
+	if !ok {
+		t.Fatal("expected shared vulnerability node")
+	}
+	if vulnNode.Provider != "" || vulnNode.Account != "" || vulnNode.Region != "" {
+		t.Fatalf("expected vulnerability node to remain global, got provider=%q account=%q region=%q", vulnNode.Provider, vulnNode.Account, vulnNode.Region)
+	}
+	if _, ok := vulnNode.Properties["observed_at"]; ok {
+		t.Fatalf("expected vulnerability node to avoid scan-scoped temporal metadata, got %#v", vulnNode.Properties)
+	}
+}
+
+func TestMaterializeRunsIntoGraphMatchesPackageVulnerabilityByInstalledVersion(t *testing.T) {
+	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-abc123",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+	})
+	g.BuildIndex()
+
+	run := buildGraphMaterializationTestRun("workload_scan:package-match", now.Add(-2*time.Hour), 1)
+	run.Volumes[0].Analysis.Catalog.Packages = []filesystemanalyzer.PackageRecord{
+		{Ecosystem: "deb", Name: "openssl", Version: "1.0.0", PURL: "pkg:deb/ubuntu/openssl@1.0.0"},
+		{Ecosystem: "deb", Name: "openssl", Version: "2.0.0", PURL: "pkg:deb/ubuntu/openssl@2.0.0"},
+	}
+	run.Volumes[0].Analysis.Catalog.Vulnerabilities = []scanner.ImageVulnerability{{
+		CVE:              "CVE-2026-1000",
+		Severity:         "HIGH",
+		Package:          "openssl",
+		InstalledVersion: "2.0.0",
+		FixedVersion:     "2.0.1",
+	}}
+
+	MaterializeRunsIntoGraph(g, []RunRecord{run}, now)
+
+	vulnID := vulnerabilityNodeID(run.Volumes[0].Analysis.Catalog.Vulnerabilities[0])
+	if edge := findOutEdge(g, packageNodeID(run.Volumes[0].Analysis.Catalog.Packages[0]), graph.EdgeKindAffectedBy, vulnID); edge != nil {
+		t.Fatalf("expected first package version to remain unmatched, got %#v", edge)
+	}
+	edge := findOutEdge(g, packageNodeID(run.Volumes[0].Analysis.Catalog.Packages[1]), graph.EdgeKindAffectedBy, vulnID)
+	if edge == nil {
+		t.Fatal("expected matching package version to receive affected_by edge")
+	}
+	if got := graphValueString(edge.Properties["installed_version"]); got != "2.0.0" {
+		t.Fatalf("installed_version = %q, want 2.0.0", got)
+	}
+}
+
+func TestMaterializeRunsIntoGraphRefreshesPackageVulnerabilityEdgeProperties(t *testing.T) {
+	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-abc123",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+	})
+	g.BuildIndex()
+
+	first := buildGraphMaterializationTestRun("workload_scan:edge-refresh-a", now.Add(-2*time.Hour), 1)
+	first.Volumes[0].Analysis.Catalog.Vulnerabilities[0].Severity = "medium"
+	first.Volumes[0].Analysis.Catalog.Vulnerabilities[0].FixedVersion = "3.0.2-0ubuntu1.11"
+	second := buildGraphMaterializationTestRun("workload_scan:edge-refresh-b", now.Add(-1*time.Hour), 1)
+	second.Volumes[0].Analysis.Catalog.Vulnerabilities[0].Severity = "critical"
+	second.Volumes[0].Analysis.Catalog.Vulnerabilities[0].FixedVersion = "3.0.2-0ubuntu1.12"
+
+	MaterializeRunsIntoGraph(g, []RunRecord{first, second}, now)
+
+	pkgID := packageNodeID(first.Volumes[0].Analysis.Catalog.Packages[0])
+	vulnID := vulnerabilityNodeID(first.Volumes[0].Analysis.Catalog.Vulnerabilities[0])
+	edge := findOutEdge(g, pkgID, graph.EdgeKindAffectedBy, vulnID)
+	if edge == nil {
+		t.Fatal("expected affected_by edge")
+	}
+	if got := graphValueString(edge.Properties["fixed_version"]); got != "3.0.2-0ubuntu1.12" {
+		t.Fatalf("fixed_version = %q, want latest value", got)
+	}
+	if got := graphValueString(edge.Properties["severity"]); got != "critical" {
+		t.Fatalf("severity = %q, want critical", got)
+	}
+	if got := graphValueString(edge.Properties["observed_at"]); got != second.CompletedAt.UTC().Format(time.RFC3339) {
+		t.Fatalf("observed_at = %q, want %q", got, second.CompletedAt.UTC().Format(time.RFC3339))
+	}
+	count := 0
+	for _, candidate := range g.GetOutEdges(pkgID) {
+		if candidate != nil && candidate.Kind == graph.EdgeKindAffectedBy && candidate.Target == vulnID {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected one refreshed affected_by edge, got %d", count)
 	}
 }
 

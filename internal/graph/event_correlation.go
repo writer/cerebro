@@ -277,7 +277,7 @@ func QueryEventCorrelations(g *Graph, now time.Time, query EventCorrelationQuery
 	result.Summary.PatternCount = len(filteredPatterns)
 
 	filtered := collectEventCorrelationRecords(g, filteredPatterns)
-	allowedEventIDs, allowedContextIDs := correlationNeighborhoodFilters(g, query)
+	allowedEventIDs, allowedContextIDs := correlationNeighborhoodFilters(g, query, filteredPatterns)
 	if (query.EventID != "" || query.EntityID != "") && len(allowedEventIDs) == 0 && len(allowedContextIDs) == 0 {
 		return result
 	}
@@ -298,7 +298,7 @@ func QueryEventCorrelations(g *Graph, now time.Time, query EventCorrelationQuery
 	result.Summary.CorrelationCount = len(filtered)
 
 	if query.IncludeAnomalies && len(allowedContextIDs) > 0 {
-		anomalies := detectEventAnomalies(g, now, allowedContextIDs)
+		anomalies := detectEventAnomalies(g, now, allowedContextIDs, filteredPatterns)
 		if len(anomalies) > query.Limit {
 			anomalies = anomalies[:query.Limit]
 		}
@@ -349,6 +349,10 @@ func materializeEventCorrelationRule(g *Graph, rule eventCorrelationRule, candid
 		if !eventCorrelationCandidateAllowed(cause, rule.causeAllowedStatus) {
 			continue
 		}
+		cause.contextIDs = eventCorrelationContextIDsForKinds(g, cause.node, rule.definition.SharedTargetKinds)
+		if len(cause.contextIDs) == 0 {
+			continue
+		}
 		for _, contextID := range cause.contextIDs {
 			causesByContext[contextID] = append(causesByContext[contextID], cause)
 		}
@@ -372,6 +376,10 @@ func materializeEventCorrelationRule(g *Graph, rule eventCorrelationRule, candid
 	created := 0
 	for _, effect := range effects {
 		if !eventCorrelationCandidateAllowed(effect, rule.effectAllowedStatus) {
+			continue
+		}
+		effect.contextIDs = eventCorrelationContextIDsForKinds(g, effect.node, rule.definition.SharedTargetKinds)
+		if len(effect.contextIDs) == 0 {
 			continue
 		}
 		cause, sharedTargetIDs, gap := selectBestEventCorrelationCause(effect, causesByContext, rule.maxGap)
@@ -539,19 +547,20 @@ func filterEventCorrelationRecords(records []EventCorrelationRecord, query Event
 	return filtered
 }
 
-func correlationNeighborhoodFilters(g *Graph, query EventCorrelationQuery) (map[string]struct{}, map[string]struct{}) {
+func correlationNeighborhoodFilters(g *Graph, query EventCorrelationQuery, patterns []EventCorrelationPatternDefinition) (map[string]struct{}, map[string]struct{}) {
 	eventIDs := make(map[string]struct{})
 	contextIDs := make(map[string]struct{})
 	if g == nil {
 		return eventIDs, contextIDs
 	}
+	allowedTargetKinds := eventCorrelationSharedTargetKinds(patterns)
 
 	if query.EventID != "" {
 		for id := range expandCorrelationNeighborhood(g, []string{query.EventID}) {
 			eventIDs[id] = struct{}{}
 		}
 		if node, ok := g.GetNode(query.EventID); ok && node != nil {
-			for _, contextID := range eventCorrelationContextIDs(g, node) {
+			for _, contextID := range eventCorrelationContextIDsForKinds(g, node, allowedTargetKinds) {
 				contextIDs[contextID] = struct{}{}
 			}
 		}
@@ -565,7 +574,7 @@ func correlationNeighborhoodFilters(g *Graph, query EventCorrelationQuery) (map[
 			if node == nil || !IsEventCorrelationNodeKind(node.Kind) {
 				continue
 			}
-			contextIDsForNode := eventCorrelationContextIDs(g, node)
+			contextIDsForNode := eventCorrelationContextIDsForKinds(g, node, allowedTargetKinds)
 			for _, contextID := range contextIDsForNode {
 				if contextID == entityID {
 					seedEvents = append(seedEvents, node.ID)
@@ -621,10 +630,12 @@ func expandCorrelationNeighborhood(g *Graph, seeds []string) map[string]struct{}
 	return visited
 }
 
-func detectEventAnomalies(g *Graph, now time.Time, allowedContextIDs map[string]struct{}) []EventAnomaly {
-	if g == nil {
+func detectEventAnomalies(g *Graph, now time.Time, allowedContextIDs map[string]struct{}, patterns []EventCorrelationPatternDefinition) []EventAnomaly {
+	if g == nil || len(patterns) == 0 {
 		return nil
 	}
+	allowedEventKinds := eventCorrelationPatternEventKinds(patterns)
+	allowedTargetKinds := eventCorrelationSharedTargetKinds(patterns)
 	currentStart := now.Add(-eventCorrelationCurrentWindow)
 	baselineStart := currentStart.Add(-eventCorrelationBaselineWindow)
 	historyStart := now.Add(-eventCorrelationIncidentHistoryWindow)
@@ -635,12 +646,17 @@ func detectEventAnomalies(g *Graph, now time.Time, allowedContextIDs map[string]
 		if node == nil || !IsEventCorrelationNodeKind(node.Kind) {
 			continue
 		}
+		if len(allowedEventKinds) > 0 {
+			if _, ok := allowedEventKinds[node.Kind]; !ok {
+				continue
+			}
+		}
 		observedAt, ok := graphObservedAt(node)
 		if !ok || observedAt.IsZero() {
 			continue
 		}
 		status := normalizeEventStatus(node)
-		contextIDs := eventCorrelationContextIDs(g, node)
+		contextIDs := eventCorrelationContextIDsForKinds(g, node, allowedTargetKinds)
 		if len(contextIDs) == 0 {
 			contextIDs = []string{strings.TrimSpace(stringProperty(node.Properties, "source_system"))}
 		}
@@ -821,9 +837,58 @@ func eventCorrelationCandidateAllowed(candidate eventCorrelationCandidate, allow
 	return false
 }
 
-func eventCorrelationContextIDs(g *Graph, node *Node) []string {
-	if node == nil {
+func eventCorrelationPatternEventKinds(patterns []EventCorrelationPatternDefinition) map[NodeKind]struct{} {
+	if len(patterns) == 0 {
 		return nil
+	}
+	kinds := make(map[NodeKind]struct{}, len(patterns)*2)
+	for _, pattern := range patterns {
+		if pattern.CauseKind != "" {
+			kinds[pattern.CauseKind] = struct{}{}
+		}
+		if pattern.EffectKind != "" {
+			kinds[pattern.EffectKind] = struct{}{}
+		}
+	}
+	return kinds
+}
+
+func eventCorrelationSharedTargetKinds(patterns []EventCorrelationPatternDefinition) []NodeKind {
+	if len(patterns) == 0 {
+		return nil
+	}
+	seen := make(map[NodeKind]struct{})
+	kinds := make([]NodeKind, 0)
+	for _, pattern := range patterns {
+		for _, kind := range pattern.SharedTargetKinds {
+			if _, ok := seen[kind]; ok {
+				continue
+			}
+			seen[kind] = struct{}{}
+			kinds = append(kinds, kind)
+		}
+	}
+	return kinds
+}
+
+func eventCorrelationContextIDs(g *Graph, node *Node) []string {
+	return eventCorrelationContextIDsForKinds(g, node, nil)
+}
+
+func eventCorrelationContextIDsForKinds(g *Graph, node *Node, allowedKinds []NodeKind) []string {
+	if node == nil || g == nil {
+		return nil
+	}
+	allowed := make(map[NodeKind]struct{}, len(allowedKinds))
+	for _, kind := range allowedKinds {
+		allowed[kind] = struct{}{}
+	}
+	kindAllowed := func(kind NodeKind) bool {
+		if len(allowed) == 0 {
+			return true
+		}
+		_, ok := allowed[kind]
+		return ok
 	}
 	set := make(map[string]struct{})
 	for _, edge := range g.GetOutEdges(node.ID) {
@@ -834,9 +899,18 @@ func eventCorrelationContextIDs(g *Graph, node *Node) []string {
 		if targetID == "" {
 			continue
 		}
+		if len(allowed) > 0 {
+			target, ok := g.GetNode(targetID)
+			if !ok || target == nil || !kindAllowed(target.Kind) {
+				continue
+			}
+		}
 		set[targetID] = struct{}{}
 	}
 	if serviceID := strings.TrimSpace(stringProperty(node.Properties, "service_id")); serviceID != "" {
+		if !kindAllowed(NodeKindService) {
+			return sortedStringSet(set)
+		}
 		if strings.Contains(serviceID, ":") {
 			set[serviceID] = struct{}{}
 		} else {

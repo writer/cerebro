@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -114,6 +116,53 @@ func TestGraphIntelligenceHandlersUseTenantScopedGraph(t *testing.T) {
 	}
 }
 
+func TestGraphIntelligenceInsightsUseTenantScopedTemporalDiff(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
+	s := newTestServer(t)
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+
+	current := s.app.SecurityGraph
+	current.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"})
+	current.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
+	current.AddNode(&graph.Node{ID: "db:tenant-b", Kind: graph.NodeKindDatabase, Name: "Tenant B DB", TenantID: "tenant-b", Risk: graph.RiskHigh})
+
+	saveSnapshot := func(createdAt time.Time, nodes []*graph.Node, edges []*graph.Edge) {
+		t.Helper()
+		snapshot := &graph.Snapshot{Version: "1.0", CreatedAt: createdAt, Nodes: nodes, Edges: edges}
+		path := filepath.Join(dir, fmt.Sprintf("graph-%s.json.gz", createdAt.Format("20060102-150405.000000000")))
+		if err := snapshot.SaveToFile(path); err != nil {
+			t.Fatalf("SaveToFile: %v", err)
+		}
+	}
+	saveSnapshot(base, []*graph.Node{
+		{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"},
+		{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"},
+	}, nil)
+	saveSnapshot(base.Add(1*time.Hour), []*graph.Node{
+		{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"},
+		{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"},
+		{ID: "db:tenant-b", Kind: graph.NodeKindDatabase, Name: "Tenant B DB", TenantID: "tenant-b"},
+	}, []*graph.Edge{{ID: "tenant-b-db", Source: "service:tenant-b", Target: "db:tenant-b", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow}})
+
+	query := fmt.Sprintf("/api/v1/platform/intelligence/insights?from=%s&to=%s&max_insights=10", base.Add(5*time.Minute).Format(time.RFC3339), base.Add(65*time.Minute).Format(time.RFC3339))
+	global := do(t, s, http.MethodGet, query, nil)
+	if global.Code != http.StatusOK {
+		t.Fatalf("expected global insights 200, got %d: %s", global.Code, global.Body.String())
+	}
+	if !containsInsightID(decodeJSON(t, global), "graph-temporal-drift") {
+		t.Fatalf("expected global insights to include temporal drift, got %s", global.Body.String())
+	}
+
+	tenant := doWithTenantContext(t, s, http.MethodGet, query, nil, "tenant-a")
+	if tenant.Code != http.StatusOK {
+		t.Fatalf("expected tenant insights 200, got %d: %s", tenant.Code, tenant.Body.String())
+	}
+	if containsInsightID(decodeJSON(t, tenant), "graph-temporal-drift") {
+		t.Fatalf("expected tenant-scoped insights to exclude foreign-tenant temporal drift, got %s", tenant.Body.String())
+	}
+}
+
 func TestCrossTenantReadOperationsEmitAuditAndMetrics(t *testing.T) {
 	s := newTestServer(t)
 	s.auditLogger = &captureAuditLogger{}
@@ -216,4 +265,21 @@ func TestRiskReportPersistsOnlyForGlobalRequests(t *testing.T) {
 	if afterTenant.GetCounter().GetValue() != afterGlobal.GetCounter().GetValue() {
 		t.Fatalf("expected tenant-scoped risk report to skip persistence, global=%f tenant=%f", afterGlobal.GetCounter().GetValue(), afterTenant.GetCounter().GetValue())
 	}
+}
+
+func containsInsightID(body map[string]any, id string) bool {
+	insights, ok := body["insights"].([]any)
+	if !ok {
+		return false
+	}
+	for _, raw := range insights {
+		insight, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if insight["id"] == id {
+			return true
+		}
+	}
+	return false
 }

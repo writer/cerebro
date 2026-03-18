@@ -83,7 +83,7 @@ func (e *Executor) NewExecution(playbook Playbook, signal Signal) *Execution {
 		ResourceType: signal.ResourceType,
 		TriggerData:  triggerData,
 		Results:      make([]ActionResult, 0, len(playbook.Steps)),
-		StartedAt:    now,
+		SubmittedAt:  now,
 	}
 	e.persist(context.Background(), execution)
 	e.appendEvent(context.Background(), Event{
@@ -106,12 +106,13 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 	if runner == nil {
 		return fmt.Errorf("step runner is nil")
 	}
-	if execution.StartedAt.IsZero() {
-		execution.StartedAt = e.now()
+	if execution.SubmittedAt.IsZero() {
+		execution.SubmittedAt = e.now()
 	}
 	if e.RequiresApproval(playbook) && execution.ApprovedAt == nil {
 		execution.Status = StatusAwaitingApproval
 		execution.Error = ""
+		execution.CompletedAt = nil
 		now := e.now()
 		e.persist(ctx, execution)
 		e.appendEvent(ctx, Event{
@@ -125,8 +126,12 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 		})
 		return nil
 	}
+	if execution.StartedAt.IsZero() {
+		execution.StartedAt = e.now()
+	}
 	execution.Status = StatusRunning
 	execution.Error = ""
+	execution.CompletedAt = nil
 	e.persist(ctx, execution)
 	e.appendEvent(ctx, Event{
 		Type:        "execution.started",
@@ -173,10 +178,6 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 			result.Status = StatusFailed
 			result.Error = err.Error()
 			execution.Results = append(execution.Results, result)
-			execution.Status = StatusFailed
-			execution.Error = err.Error()
-			execution.CompletedAt = &completedAt
-			e.persist(ctx, execution)
 			e.appendEvent(ctx, Event{
 				Type:        "step.failed",
 				ExecutionID: execution.ID,
@@ -188,6 +189,10 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 				},
 			})
 			if step.OnFailure != FailurePolicyContinue {
+				execution.Status = StatusFailed
+				execution.Error = err.Error()
+				execution.CompletedAt = &completedAt
+				e.persist(ctx, execution)
 				e.appendEvent(ctx, Event{
 					Type:        "execution.failed",
 					ExecutionID: execution.ID,
@@ -200,10 +205,17 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 				})
 				return err
 			}
+			execution.Status = StatusRunning
+			execution.Error = err.Error()
+			execution.CompletedAt = nil
+			e.persist(ctx, execution)
 		} else {
 			result.Status = StatusCompleted
 			result.Output = output
 			execution.Results = append(execution.Results, result)
+			execution.Status = StatusRunning
+			execution.CompletedAt = nil
+			e.persist(ctx, execution)
 			e.appendEvent(ctx, Event{
 				Type:        "step.completed",
 				ExecutionID: execution.ID,

@@ -141,7 +141,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 		}()
 		defer cancel()
 
-		candidate, _, err := a.SecurityGraphBuilder.BuildCandidate(checkCtx)
+		candidate, err := a.buildGraphConsistencyCandidate(checkCtx)
 		if err != nil {
 			a.Logger.Warn("graph consistency check failed to build candidate",
 				"trigger", trigger,
@@ -187,6 +187,23 @@ func graphDiffHasChanges(diff *graph.GraphDiff) bool {
 		len(diff.NodesModified) > 0 ||
 		len(diff.EdgesAdded) > 0 ||
 		len(diff.EdgesRemoved) > 0
+}
+
+func (a *App) buildGraphConsistencyCandidate(ctx context.Context) (*graph.Graph, error) {
+	if a == nil || a.SecurityGraphBuilder == nil {
+		return nil, nil
+	}
+	candidate, _, err := a.SecurityGraphBuilder.BuildCandidate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if candidate == nil {
+		return nil, nil
+	}
+	if _, err := a.materializePersistedWorkloadScans(ctx, candidate); err != nil {
+		return nil, err
+	}
+	return candidate, nil
 }
 
 func errGraphNotInitialized() error {

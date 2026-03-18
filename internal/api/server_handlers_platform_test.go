@@ -141,6 +141,72 @@ func TestPlatformExecutionsListsSharedExecutionStoreRuns(t *testing.T) {
 	if got := int(filteredBody["count"].(float64)); got != 1 {
 		t.Fatalf("expected one filtered execution, got %#v", filteredBody)
 	}
+
+	reportRunTwo := &reports.ReportRun{
+		ID:            "report_run:quality-filtered",
+		ReportID:      "quality",
+		Status:        reports.ReportRunStatusSucceeded,
+		ExecutionMode: reports.ReportExecutionModeSync,
+		SubmittedAt:   reportRun.SubmittedAt.Add(-2 * time.Hour),
+	}
+	reportRunTwoUpdatedAt := reportRun.SubmittedAt.Add(-2 * time.Hour)
+	reportPayloadTwo, err := json.Marshal(map[string]any{"run": reportRunTwo})
+	if err != nil {
+		t.Fatalf("marshal second report payload: %v", err)
+	}
+	if err := sharedStore.UpsertRun(t.Context(), executionstore.RunEnvelope{
+		Namespace:   executionstore.NamespacePlatformReportRun,
+		RunID:       reportRunTwo.ID,
+		Kind:        reportRunTwo.ReportID,
+		Status:      string(reportRunTwo.Status),
+		Stage:       string(reportRunTwo.Status),
+		SubmittedAt: reportRunTwo.SubmittedAt,
+		UpdatedAt:   reportRunTwoUpdatedAt,
+		Payload:     reportPayloadTwo,
+	}); err != nil {
+		t.Fatalf("UpsertRun second report: %v", err)
+	}
+
+	nonMatching := &reports.ReportRun{
+		ID:            "report_run:non-matching-filtered",
+		ReportID:      "drift",
+		Status:        reports.ReportRunStatusSucceeded,
+		ExecutionMode: reports.ReportExecutionModeSync,
+		SubmittedAt:   reportRun.SubmittedAt.Add(2 * time.Hour),
+	}
+	nonMatchingUpdatedAt := reportRun.SubmittedAt.Add(2 * time.Hour)
+	nonMatchingPayload, err := json.Marshal(map[string]any{"run": nonMatching})
+	if err != nil {
+		t.Fatalf("marshal non-matching report payload: %v", err)
+	}
+	if err := sharedStore.UpsertRun(t.Context(), executionstore.RunEnvelope{
+		Namespace:   executionstore.NamespacePlatformReportRun,
+		RunID:       nonMatching.ID,
+		Kind:        nonMatching.ReportID,
+		Status:      string(nonMatching.Status),
+		Stage:       string(nonMatching.Status),
+		SubmittedAt: nonMatching.SubmittedAt,
+		UpdatedAt:   nonMatchingUpdatedAt,
+		Payload:     nonMatchingPayload,
+	}); err != nil {
+		t.Fatalf("UpsertRun non-matching report: %v", err)
+	}
+
+	limitedFiltered := do(t, s, http.MethodGet, "/api/v1/platform/executions?report_id=quality&limit=1", nil)
+	if limitedFiltered.Code != http.StatusOK {
+		t.Fatalf("expected 200 for limited report filter, got %d: %s", limitedFiltered.Code, limitedFiltered.Body.String())
+	}
+	limitedBody := decodeJSON(t, limitedFiltered)
+	if got := int(limitedBody["count"].(float64)); got != 1 {
+		t.Fatalf("expected one limited filtered execution, got %#v", limitedBody)
+	}
+	items, ok := limitedBody["executions"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one filtered execution item, got %#v", limitedBody["executions"])
+	}
+	if got := items[0].(map[string]any)["scope_id"]; got != "quality" {
+		t.Fatalf("expected quality report execution despite newer unrelated run, got %#v", items[0])
+	}
 }
 
 func TestPlatformGraphSnapshotRecordsIncludePersistedReportRuns(t *testing.T) {

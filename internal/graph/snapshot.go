@@ -385,6 +385,34 @@ func (s *SnapshotStore) DiffByTime(t1, t2 time.Time) (*GraphDiff, error) {
 	return DiffSnapshots(before, after), nil
 }
 
+// DiffByTimeForTenant loads snapshots nearest to the provided timestamps,
+// scopes both graphs to one tenant, and computes a structural diff.
+func (s *SnapshotStore) DiffByTimeForTenant(t1, t2 time.Time, tenantID string) (*GraphDiff, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return s.DiffByTime(t1, t2)
+	}
+	if t1.IsZero() || t2.IsZero() {
+		return nil, fmt.Errorf("both timestamps are required")
+	}
+	from := t1
+	to := t2
+	if from.After(to) {
+		from, to = to, from
+	}
+
+	before, err := s.loadClosestSnapshotAt(from)
+	if err != nil {
+		return nil, err
+	}
+	after, err := s.loadClosestSnapshotAt(to)
+	if err != nil {
+		return nil, err
+	}
+
+	return diffSnapshotsForTenant(before, after, tenantID), nil
+}
+
 func (s *SnapshotStore) loadClosestSnapshotAt(ts time.Time) (*Snapshot, error) {
 	files, err := filepath.Glob(filepath.Join(s.basePath, "graph-*.json.gz"))
 	if err != nil {
@@ -427,6 +455,25 @@ func (s *SnapshotStore) loadClosestSnapshotAt(ts time.Time) (*Snapshot, error) {
 		return closestAfter, nil
 	}
 	return nil, fmt.Errorf("no readable snapshots found")
+}
+
+func diffSnapshotsForTenant(before, after *Snapshot, tenantID string) *GraphDiff {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return DiffSnapshots(before, after)
+	}
+	beforeGraph := GraphViewFromSnapshot(before)
+	afterGraph := GraphViewFromSnapshot(after)
+	if beforeGraph == nil {
+		beforeGraph = New()
+	}
+	if afterGraph == nil {
+		afterGraph = New()
+	}
+	return DiffSnapshots(
+		CreateSnapshot(beforeGraph.SubgraphForTenant(tenantID)),
+		CreateSnapshot(afterGraph.SubgraphForTenant(tenantID)),
+	)
 }
 
 func (s *SnapshotStore) cleanup() error {

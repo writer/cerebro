@@ -208,21 +208,21 @@ func (h *DefaultActionHandler) RevokeCredentials(ctx context.Context, principalI
 
 func (h *DefaultActionHandler) ScaleDown(ctx context.Context, resourceID string, replicas int) error {
 	resourceID = strings.TrimSpace(resourceID)
-	if replicas < 0 {
-		return fmt.Errorf("replicas must be non-negative")
-	}
-	if err := authorizeActuation(ctx, ActionScaleDown, map[string]any{
-		"resource_id": resourceID,
-		"replicas":    replicas,
-	}); err != nil {
-		return err
-	}
 	replicas32, err := runtimeScaleReplicas32(replicas)
 	if err != nil {
 		return err
 	}
-	target, err := ParseWorkloadTarget(resourceID)
-	if err == nil && h.workloadScaler != nil {
+	target, parseErr := ParseWorkloadTarget(resourceID)
+	if parseErr == nil {
+		resourceID = target.String()
+		if err := authorizeActuation(ctx, ActionScaleDown, map[string]any{
+			"resource_id": resourceID,
+			"replicas":    replicas,
+		}); err != nil {
+			return err
+		}
+	}
+	if parseErr == nil && h.workloadScaler != nil {
 		if scaleErr := h.workloadScaler.ScaleDown(ctx, target, replicas32); scaleErr == nil {
 			return nil
 		} else {
@@ -237,6 +237,9 @@ func (h *DefaultActionHandler) ScaleDown(ctx context.Context, resourceID string,
 	}
 	if err != nil {
 		return err
+	}
+	if parseErr != nil {
+		return parseErr
 	}
 	return &ActionCapabilityError{
 		Action:  ActionScaleDown,
@@ -316,7 +319,8 @@ func authorizeActuation(ctx context.Context, action ResponseActionType, payload 
 			return unauthorizedRuntimeTargetError(action)
 		}
 	case ActionScaleDown:
-		if !scopeAllows(scope.AllowedWorkloadTargets, runtimeMapValueToString(payload, "resource_id")) {
+		candidate := runtimeMapValueToString(payload, "resource_id")
+		if !scopeAllows(scope.AllowedWorkloadTargets, candidate) && !scopeAllows(scope.AllowedResourceIDs, candidate) {
 			return unauthorizedRuntimeTargetError(action)
 		}
 	case ActionBlockIP, ActionBlockDomain:
@@ -346,6 +350,64 @@ func scopeAllows(values []string, candidate string) bool {
 		}
 	}
 	return false
+}
+
+func withDerivedTrustedActuationScope(ctx context.Context, finding *RuntimeFinding) context.Context {
+	if _, ok := TrustedActuationScopeFromContext(ctx); ok {
+		return ctx
+	}
+	scope := trustedActuationScopeForFinding(finding)
+	if trustedActuationScopeEmpty(scope) {
+		return ctx
+	}
+	return WithTrustedActuationScope(ctx, scope)
+}
+
+func trustedActuationScopeForFinding(finding *RuntimeFinding) TrustedActuationScope {
+	if finding == nil {
+		return TrustedActuationScope{}
+	}
+	scope := TrustedActuationScope{}
+	appendUnique := func(values []string, candidate string) []string {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			return values
+		}
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), candidate) {
+				return values
+			}
+		}
+		return append(values, candidate)
+	}
+
+	scope.AllowedResourceIDs = appendUnique(scope.AllowedResourceIDs, finding.ResourceID)
+	if target, err := ParseWorkloadTarget(finding.ResourceID); err == nil {
+		scope.AllowedWorkloadTargets = appendUnique(scope.AllowedWorkloadTargets, target.String())
+	}
+	if finding.Event != nil {
+		if finding.Event.Network != nil {
+			scope.AllowNetworkContainment = true
+		}
+		if finding.Event.Container != nil {
+			scope.AllowedContainerIDs = appendUnique(scope.AllowedContainerIDs, finding.Event.Container.ContainerID)
+			scope.AllowedNamespaces = appendUnique(scope.AllowedNamespaces, finding.Event.Container.Namespace)
+		}
+		scope.AllowedNamespaces = appendUnique(scope.AllowedNamespaces, runtimeMapValueToString(finding.Event.Metadata, "namespace"))
+		scope.AllowedNamespaces = appendUnique(scope.AllowedNamespaces, runtimeMapValueToString(finding.Event.Metadata, "kubernetes_namespace"))
+	}
+	scope.AllowedPrincipalIDs = appendUnique(scope.AllowedPrincipalIDs, runtimePrincipalIDFromFinding(finding))
+	scope.AllowedWorkloadTargets = appendUnique(scope.AllowedWorkloadTargets, runtimeScaleDownTargetFromFinding(finding))
+	return scope
+}
+
+func trustedActuationScopeEmpty(scope TrustedActuationScope) bool {
+	return len(scope.AllowedResourceIDs) == 0 &&
+		len(scope.AllowedContainerIDs) == 0 &&
+		len(scope.AllowedNamespaces) == 0 &&
+		len(scope.AllowedWorkloadTargets) == 0 &&
+		len(scope.AllowedPrincipalIDs) == 0 &&
+		!scope.AllowNetworkContainment
 }
 
 func runtimeScaleReplicas32(replicas int) (int32, error) {
@@ -520,20 +582,22 @@ func runtimeScaleDownTargetFromFinding(finding *RuntimeFinding) string {
 	return WorkloadTarget{Kind: kind, Namespace: namespace, Name: name}.String()
 }
 
-func runtimeScaleDownReplicas(action PolicyAction) int {
-	replicas := 0
+func runtimeScaleDownReplicas(action PolicyAction) (int, error) {
 	if action.Parameters == nil {
-		return replicas
+		return 0, fmt.Errorf("scale_down requires replicas parameter")
 	}
 	value := strings.TrimSpace(action.Parameters["replicas"])
 	if value == "" {
-		return replicas
+		return 0, fmt.Errorf("scale_down requires replicas parameter")
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil {
-		return replicas
+		return 0, fmt.Errorf("invalid replicas value %q: %w", value, err)
 	}
-	return parsed
+	if _, err := runtimeScaleReplicas32(parsed); err != nil {
+		return 0, err
+	}
+	return parsed, nil
 }
 
 func runtimeProviderFromFinding(finding *RuntimeFinding) string {

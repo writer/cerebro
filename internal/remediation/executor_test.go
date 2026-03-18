@@ -2,11 +2,32 @@ package remediation
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/writer/cerebro/internal/testutil"
 )
+
+type blockingRemoteCaller struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (c *blockingRemoteCaller) CallTool(ctx context.Context, _ string, _ json.RawMessage, _ time.Duration) (string, error) {
+	c.once.Do(func() {
+		close(c.started)
+	})
+	select {
+	case <-c.release:
+		return `{"ok":true}`, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
 
 func TestExecutor_ApproveBypassesApprovalGate(t *testing.T) {
 	engine := NewEngine(testutil.Logger())
@@ -157,5 +178,67 @@ func TestExecutor_SendCustomerCommRequiresApprovalByDefault(t *testing.T) {
 	}
 	if len(caller.calls) == 0 {
 		t.Fatal("expected remote call after approval")
+	}
+}
+
+func TestExecutor_ApprovePreventsConcurrentReject(t *testing.T) {
+	engine := NewEngine(testutil.Logger())
+	rule := Rule{
+		ID:      "approval-race",
+		Name:    "Approval Race",
+		Enabled: true,
+		Trigger: Trigger{Type: TriggerManual},
+		Actions: []Action{{Type: ActionSendCustomerComm}},
+	}
+	if err := engine.AddRule(rule); err != nil {
+		t.Fatalf("add rule: %v", err)
+	}
+
+	executions, err := engine.Evaluate(context.Background(), Event{Type: TriggerManual})
+	if err != nil {
+		t.Fatalf("evaluate: %v", err)
+	}
+	if len(executions) == 0 {
+		t.Fatal("expected execution")
+	}
+	execution := executions[0]
+	caller := &blockingRemoteCaller{started: make(chan struct{}), release: make(chan struct{})}
+	executor := NewExecutor(engine, nil, nil, nil, nil)
+	executor.SetRemoteCaller(caller)
+
+	if err := executor.Execute(context.Background(), execution); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if execution.Status != ExecutionApproval {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionApproval)
+	}
+
+	approveDone := make(chan error, 1)
+	go func() {
+		approveDone <- executor.Approve(context.Background(), execution.ID, "alice")
+	}()
+
+	select {
+	case <-caller.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("approve did not begin remote execution")
+	}
+
+	if err := executor.Reject(context.Background(), execution.ID, "bob", "no longer allowed"); err == nil {
+		t.Fatal("expected reject to fail once approval is in progress")
+	}
+
+	close(caller.release)
+	select {
+	case err := <-approveDone:
+		if err != nil {
+			t.Fatalf("approve: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("approve did not finish")
+	}
+
+	if execution.Status != ExecutionCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, ExecutionCompleted)
 	}
 }

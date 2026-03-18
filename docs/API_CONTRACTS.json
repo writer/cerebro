@@ -2,7 +2,7 @@
   "api_version": "devex.cerebro/v1alpha1",
   "kind": "HTTPAPIContractCatalog",
   "generated_at": "0001-01-01T00:00:00Z",
-  "endpoint_count": 297,
+  "endpoint_count": 300,
   "endpoints": [
     {
       "id": "DELETE /api/v1/findings/{id}",
@@ -25803,6 +25803,40 @@
       ]
     },
     {
+      "id": "GET /api/v1/runtime/executions",
+      "path": "/api/v1/runtime/executions",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "limit",
+          "required": false,
+          "schema_type": "integer"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "count",
+              "type": "integer"
+            },
+            {
+              "path": "executions",
+              "type": "array"
+            },
+            {
+              "path": "executions[]",
+              "type": "object"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "GET /api/v1/runtime/findings",
       "path": "/api/v1/runtime/findings",
       "method": "GET",
@@ -35077,6 +35111,66 @@
             {
               "path": "processed",
               "type": "boolean"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "POST /api/v1/runtime/executions/{id}/approve",
+      "path": "/api/v1/runtime/executions/{id}/approve",
+      "method": "POST",
+      "request": {
+        "content_types": [
+          "application/json"
+        ],
+        "required_fields": [
+          {
+            "path": "approver_id",
+            "type": "string"
+          }
+        ]
+      },
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "status",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "POST /api/v1/runtime/executions/{id}/reject",
+      "path": "/api/v1/runtime/executions/{id}/reject",
+      "method": "POST",
+      "request": {
+        "content_types": [
+          "application/json"
+        ],
+        "required_fields": [
+          {
+            "path": "rejecter_id",
+            "type": "string"
+          }
+        ]
+      },
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "status",
+              "type": "string"
             }
           ]
         }

@@ -4,7 +4,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 
 - Catalog API version: **devex.cerebro/v1alpha1**
 - Catalog kind: **HTTPAPIContractCatalog**
-- Endpoints: **297**
+- Endpoints: **300**
 
 ## Endpoint Summary
 
@@ -175,6 +175,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/reports/executive-summary` | 0 | 0 | `200` |
 | `GET /api/v1/reports/risk-summary` | 0 | 0 | `200` |
 | `GET /api/v1/runtime/detections` | 0 | 0 | `200` |
+| `GET /api/v1/runtime/executions` | 1 | 0 | `200` |
 | `GET /api/v1/runtime/findings` | 1 | 0 | `200` |
 | `GET /api/v1/runtime/responses` | 0 | 0 | `200` |
 | `GET /api/v1/scan/coverage` | 0 | 0 | `200` |
@@ -280,6 +281,8 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `POST /api/v1/remediation/rules/{id}/disable` | 0 | 0 | `200` |
 | `POST /api/v1/remediation/rules/{id}/enable` | 0 | 0 | `200` |
 | `POST /api/v1/runtime/events` | 0 | 0 | `200` |
+| `POST /api/v1/runtime/executions/{id}/approve` | 0 | 1 | `200` |
+| `POST /api/v1/runtime/executions/{id}/reject` | 0 | 1 | `200` |
 | `POST /api/v1/runtime/responses/{id}/disable` | 0 | 0 | `200` |
 | `POST /api/v1/runtime/responses/{id}/enable` | 0 | 0 | `200` |
 | `POST /api/v1/scheduler/jobs/{name}/disable` | 0 | 0 | `200` |

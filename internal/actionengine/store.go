@@ -65,7 +65,7 @@ func (s *SQLiteStore) SaveExecution(ctx context.Context, execution *Execution) e
 		Kind:        "action_execution",
 		Status:      string(execution.Status),
 		Stage:       executionStage(execution),
-		SubmittedAt: execution.StartedAt.UTC(),
+		SubmittedAt: executionSubmittedAt(execution),
 		StartedAt:   timePointer(execution.StartedAt),
 		CompletedAt: execution.CompletedAt,
 		UpdatedAt:   executionUpdatedAt(execution),
@@ -179,9 +179,22 @@ func executionUpdatedAt(execution *Execution) time.Time {
 		return execution.ApprovedAt.UTC()
 	}
 	if execution.StartedAt.IsZero() {
-		return time.Now().UTC()
+		return executionSubmittedAt(execution)
 	}
 	return execution.StartedAt.UTC()
+}
+
+func executionSubmittedAt(execution *Execution) time.Time {
+	if execution == nil {
+		return time.Now().UTC()
+	}
+	if !execution.SubmittedAt.IsZero() {
+		return execution.SubmittedAt.UTC()
+	}
+	if !execution.StartedAt.IsZero() {
+		return execution.StartedAt.UTC()
+	}
+	return time.Now().UTC()
 }
 
 func timePointer(value time.Time) *time.Time {

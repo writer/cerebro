@@ -41,6 +41,86 @@ func validConditionFormat(format string) bool {
 	}
 }
 
+func canonicalizePolicyConditionFormat(p *Policy) error {
+	if p == nil {
+		return nil
+	}
+	rawFormat := strings.TrimSpace(p.ConditionFormat)
+	p.ConditionFormat = normalizeConditionFormat(rawFormat)
+	if rawFormat != "" || len(p.Conditions) == 0 {
+		return nil
+	}
+	if !policyConditionsLikelyCEL(p.Conditions) {
+		env, err := newPolicyConditionEnv()
+		if err != nil {
+			return fmt.Errorf("initialize CEL environment: %w", err)
+		}
+		if !policyConditionsCompileAsCEL(env, p.Conditions) {
+			return nil
+		}
+		p.ConditionFormat = ConditionFormatCEL
+		return nil
+	}
+	env, err := newPolicyConditionEnv()
+	if err != nil {
+		return fmt.Errorf("initialize CEL environment: %w", err)
+	}
+	copy := clonePolicy(p)
+	copy.ConditionFormat = ConditionFormatCEL
+	if err := validatePolicyConditionProgramsWithEnv(env, copy); err != nil {
+		return err
+	}
+	p.ConditionFormat = ConditionFormatCEL
+	return nil
+}
+
+func policyConditionsLikelyCEL(conditions []string) bool {
+	for _, condition := range conditions {
+		trimmed := strings.TrimSpace(condition)
+		if trimmed == "" {
+			continue
+		}
+		if strings.Contains(trimmed, "resource.") ||
+			strings.Contains(trimmed, "resource[") ||
+			strings.Contains(trimmed, "exists_path(") ||
+			strings.Contains(trimmed, "contains_value(") ||
+			strings.Contains(trimmed, "path(") ||
+			strings.Contains(trimmed, ".contains(") ||
+			strings.Contains(trimmed, ".startsWith(") ||
+			strings.Contains(trimmed, ".endsWith(") ||
+			strings.Contains(trimmed, ".matches(") {
+			return true
+		}
+	}
+	return false
+}
+
+func policyConditionsCompileAsCEL(env *cel.Env, conditions []string) bool {
+	if env == nil || len(conditions) == 0 {
+		return false
+	}
+	for _, condition := range conditions {
+		trimmed := strings.TrimSpace(condition)
+		if trimmed == "" {
+			return false
+		}
+		ast, issues := env.Compile(trimmed)
+		if issues != nil && issues.Err() != nil {
+			return false
+		}
+		if ast == nil {
+			return false
+		}
+		if _, err := env.Program(ast, cel.EvalOptions(cel.OptOptimize)); err != nil {
+			return false
+		}
+		if ast.OutputType() != cel.BoolType {
+			return false
+		}
+	}
+	return true
+}
+
 func (e *Engine) ensureConditionEnvLocked() error {
 	if e.celEnv != nil {
 		return nil

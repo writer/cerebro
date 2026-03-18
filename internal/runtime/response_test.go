@@ -146,6 +146,56 @@ func TestExecuteActionUnsupportedType(t *testing.T) {
 	}
 }
 
+func TestProcessFindingDerivesTrustedActuationScope(t *testing.T) {
+	engine := NewResponseEngine()
+	engine.SetActionHandler(NewDefaultActionHandler(DefaultActionHandlerOptions{
+		Blocklist: engine.Blocklist(),
+	}))
+	engine.policies = map[string]*ResponsePolicy{
+		"auto-block-ip": {
+			ID:      "auto-block-ip",
+			Name:    "Auto Block IP",
+			Enabled: true,
+			Triggers: []PolicyTrigger{
+				{Type: "finding", Category: CategoryReverseShell, Severity: "high"},
+			},
+			Actions: []PolicyAction{
+				{Type: ActionBlockIP, Parameters: map[string]string{"target": "destination"}},
+			},
+		},
+	}
+
+	execution, err := engine.ProcessFinding(context.Background(), &RuntimeFinding{
+		ID:           "finding-auto-scope",
+		RuleID:       "reverse-shell",
+		Category:     CategoryReverseShell,
+		Severity:     "critical",
+		ResourceID:   "pod-1",
+		ResourceType: "pod",
+		Event: &RuntimeEvent{
+			ID:           "event-auto-scope",
+			ResourceID:   "pod-1",
+			ResourceType: "pod",
+			Network: &NetworkEvent{
+				SrcIP: "10.0.0.5",
+				DstIP: "203.0.113.10",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessFinding: %v", err)
+	}
+	if execution == nil {
+		t.Fatal("expected execution")
+	}
+	if execution.Status != StatusCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, StatusCompleted)
+	}
+	if !engine.Blocklist().IsBlocked("203.0.113.10", "ip") {
+		t.Fatal("expected destination IP to be added to blocklist")
+	}
+}
+
 func TestApproveExecutionReusesStoredFindingContext(t *testing.T) {
 	engine := NewResponseEngine()
 	handler := &recordingActionHandler{}
@@ -205,6 +255,80 @@ func TestApproveExecutionReusesStoredFindingContext(t *testing.T) {
 	}
 	if len(handler.blockedIPs) != 1 || handler.blockedIPs[0] != "203.0.113.10" {
 		t.Fatalf("blocked IPs = %v, want [203.0.113.10]", handler.blockedIPs)
+	}
+}
+
+func TestApproveExecutionDerivesTrustedActuationScope(t *testing.T) {
+	engine := NewResponseEngine()
+	engine.SetActionHandler(NewDefaultActionHandler(DefaultActionHandlerOptions{
+		Blocklist: engine.Blocklist(),
+	}))
+	engine.policies = map[string]*ResponsePolicy{
+		"approve-block-ip": {
+			ID:              "approve-block-ip",
+			Name:            "Approve Block IP",
+			Enabled:         true,
+			RequireApproval: true,
+			Triggers: []PolicyTrigger{
+				{Type: "finding", Category: CategoryReverseShell, Severity: "high"},
+			},
+			Actions: []PolicyAction{
+				{Type: ActionBlockIP, Parameters: map[string]string{"target": "destination"}},
+			},
+		},
+	}
+
+	execution, err := engine.ProcessFinding(context.Background(), &RuntimeFinding{
+		ID:           "finding-approve-scope",
+		RuleID:       "reverse-shell",
+		Category:     CategoryReverseShell,
+		Severity:     "critical",
+		ResourceID:   "pod-1",
+		ResourceType: "pod",
+		Event: &RuntimeEvent{
+			ID:           "event-approve-scope",
+			ResourceID:   "pod-1",
+			ResourceType: "pod",
+			Network: &NetworkEvent{
+				SrcIP: "10.0.0.5",
+				DstIP: "203.0.113.11",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessFinding: %v", err)
+	}
+	if execution == nil {
+		t.Fatal("expected execution")
+	}
+	if execution.Status != StatusApproval {
+		t.Fatalf("status = %s, want %s", execution.Status, StatusApproval)
+	}
+
+	if err := engine.ApproveExecution(context.Background(), execution.ID, "alice"); err != nil {
+		t.Fatalf("ApproveExecution: %v", err)
+	}
+	if execution.Status != StatusCompleted {
+		t.Fatalf("status = %s, want %s", execution.Status, StatusCompleted)
+	}
+	if !engine.Blocklist().IsBlocked("203.0.113.11", "ip") {
+		t.Fatal("expected approved execution to block the destination IP")
+	}
+}
+
+func TestCreatePolicyRejectsInvalidScaleDownReplicas(t *testing.T) {
+	engine := NewResponseEngine()
+	err := engine.CreatePolicy(&ResponsePolicy{
+		ID:      "invalid-scale-down",
+		Name:    "Invalid Scale Down",
+		Enabled: true,
+		Actions: []PolicyAction{{Type: ActionScaleDown, Parameters: map[string]string{"replicas": "invalid"}}},
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if err.Error() == "" {
+		t.Fatalf("expected validation error, got %v", err)
 	}
 }
 

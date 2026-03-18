@@ -235,7 +235,13 @@ func (s *Server) graphIntelligenceInsights(w http.ResponseWriter, r *http.Reques
 			s.error(w, http.StatusNotFound, "graph snapshot store not configured")
 			return
 		}
-		diff, err := store.DiffByTime(from, to)
+		var diff *graph.GraphDiff
+		tenantID := currentTenantScopeID(r.Context())
+		if tenantID != "" {
+			diff, err = store.DiffByTimeForTenant(from, to, tenantID)
+		} else {
+			diff, err = store.DiffByTime(from, to)
+		}
 		if err != nil {
 			status := http.StatusInternalServerError
 			if strings.Contains(err.Error(), "no snapshots") {

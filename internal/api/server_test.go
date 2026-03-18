@@ -599,6 +599,47 @@ func TestCreatePolicy_RejectsInvalidCELCondition(t *testing.T) {
 	}
 }
 
+func TestCreatePolicy_InfersCELConditionFormatWhenOmitted(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
+		ID:          "implicit-cel",
+		Name:        "Implicit CEL",
+		Description: "test",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"resource.public == true"},
+		Severity:    "high",
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if body["condition_format"] != policy.ConditionFormatCEL {
+		t.Fatalf("expected inferred CEL condition format, got %#v", body["condition_format"])
+	}
+}
+
+func TestCreatePolicy_RejectsInvalidImplicitCELCondition(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
+		ID:          "invalid-implicit-cel",
+		Name:        "Invalid implicit CEL",
+		Description: "test",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions:  []string{"resource.public =="},
+		Severity:    "high",
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invalid CEL condition") {
+		t.Fatalf("expected implicit CEL validation error, got %s", w.Body.String())
+	}
+}
+
 func TestPolicyVersionsAndRollback(t *testing.T) {
 	s := newTestServer(t)
 

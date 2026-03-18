@@ -96,6 +96,7 @@ type Execution struct {
 	ResourceType string         `json:"resource_type,omitempty"`
 	TriggerData  map[string]any `json:"trigger_data,omitempty"`
 	Results      []ActionResult `json:"results"`
+	SubmittedAt  time.Time      `json:"submitted_at"`
 	ApprovedBy   string         `json:"approved_by,omitempty"`
 	ApprovedAt   *time.Time     `json:"approved_at,omitempty"`
 	StartedAt    time.Time      `json:"started_at"`

@@ -393,6 +393,7 @@ func (e *ResponseEngine) executeAction(ctx context.Context, action PolicyAction,
 	if e.actionHandler == nil {
 		return fmt.Errorf("no action handler configured")
 	}
+	ctx = withDerivedTrustedActuationScope(ctx, finding)
 
 	switch action.Type {
 	case ActionKillProcess:
@@ -433,7 +434,11 @@ func (e *ResponseEngine) executeAction(ctx context.Context, action PolicyAction,
 		return e.actionHandler.RevokeCredentials(ctx, runtimePrincipalIDFromFinding(finding), runtimeProviderFromFinding(finding))
 
 	case ActionScaleDown:
-		return e.actionHandler.ScaleDown(ctx, runtimeScaleDownTargetFromFinding(finding), runtimeScaleDownReplicas(action))
+		replicas, err := runtimeScaleDownReplicas(action)
+		if err != nil {
+			return err
+		}
+		return e.actionHandler.ScaleDown(ctx, runtimeScaleDownTargetFromFinding(finding), replicas)
 
 	case ActionAlert:
 		// Alert is handled separately by notification system
@@ -448,6 +453,38 @@ func (e *ResponseEngine) executeAction(ctx context.Context, action PolicyAction,
 	}
 
 	return nil
+}
+
+func validateResponsePolicy(policy *ResponsePolicy) error {
+	if policy == nil {
+		return fmt.Errorf("policy is required")
+	}
+	for _, action := range policy.Actions {
+		if err := validateResponseAction(action); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateResponseAction(action PolicyAction) error {
+	switch action.Type {
+	case ActionKillProcess,
+		ActionIsolateContainer,
+		ActionIsolateHost,
+		ActionQuarantineFile,
+		ActionBlockIP,
+		ActionBlockDomain,
+		ActionRevokeCredentials,
+		ActionAlert,
+		ActionCreateTicket:
+		return nil
+	case ActionScaleDown:
+		_, err := runtimeScaleDownReplicas(action)
+		return err
+	default:
+		return unsupportedResponseActionError(action.Type, supportedResponseActions)
+	}
 }
 
 type runtimeStepRunner struct {
@@ -1003,6 +1040,9 @@ func (e *ResponseEngine) CreatePolicy(policy *ResponsePolicy) error {
 
 	if policy.ID == "" {
 		return fmt.Errorf("policy ID required")
+	}
+	if err := validateResponsePolicy(policy); err != nil {
+		return err
 	}
 
 	policy.CreatedAt = time.Now()

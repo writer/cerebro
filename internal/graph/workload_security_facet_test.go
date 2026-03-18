@@ -84,6 +84,101 @@ func TestWorkloadSecurityFacetUsesLatestVisibleScan(t *testing.T) {
 	}
 }
 
+func TestWorkloadSecurityFacetUsesBitemporalAttackPathContext(t *testing.T) {
+	now := time.Date(2026, 3, 12, 18, 0, 0, 0, time.UTC)
+	baseCreatedAt := time.Date(2026, 3, 9, 8, 0, 0, 0, time.UTC)
+	adminReachableAt := time.Date(2026, 3, 11, 9, 0, 0, 0, time.UTC)
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet", CreatedAt: baseCreatedAt, UpdatedAt: baseCreatedAt})
+	g.AddNode(&Node{
+		ID:        "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Kind:      NodeKindInstance,
+		Name:      "i-abc123",
+		Provider:  "aws",
+		Account:   "123456789012",
+		Region:    "us-east-1",
+		CreatedAt: baseCreatedAt,
+		UpdatedAt: baseCreatedAt,
+	})
+	g.AddNode(&Node{ID: "arn:aws:iam::123456789012:role/admin", Kind: NodeKindRole, Name: "admin", Provider: "aws", Account: "123456789012", CreatedAt: baseCreatedAt, UpdatedAt: baseCreatedAt})
+	g.AddNode(&Node{
+		ID:       "arn:aws:rds:us-east-1:123456789012:db:prod",
+		Kind:     NodeKindDatabase,
+		Name:     "prod",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+		Properties: map[string]any{
+			"contains_pii": true,
+		},
+		CreatedAt: baseCreatedAt,
+		UpdatedAt: baseCreatedAt,
+	})
+	g.AddEdge(&Edge{ID: "internet->instance", Source: "internet", Target: "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123", Kind: EdgeKindExposedTo, Effect: EdgeEffectAllow, CreatedAt: baseCreatedAt})
+	g.AddEdge(&Edge{
+		ID:        "instance->role",
+		Source:    "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123",
+		Target:    "arn:aws:iam::123456789012:role/admin",
+		Kind:      EdgeKindCanAssume,
+		Effect:    EdgeEffectAllow,
+		CreatedAt: adminReachableAt,
+		Properties: map[string]any{
+			"valid_from":       adminReachableAt.Format(time.RFC3339),
+			"recorded_at":      adminReachableAt.Format(time.RFC3339),
+			"transaction_from": adminReachableAt.Format(time.RFC3339),
+		},
+	})
+	g.AddEdge(&Edge{
+		ID:        "role->db",
+		Source:    "arn:aws:iam::123456789012:role/admin",
+		Target:    "arn:aws:rds:us-east-1:123456789012:db:prod",
+		Kind:      EdgeKindCanAdmin,
+		Effect:    EdgeEffectAllow,
+		CreatedAt: adminReachableAt,
+		Properties: map[string]any{
+			"valid_from":       adminReachableAt.Format(time.RFC3339),
+			"recorded_at":      adminReachableAt.Format(time.RFC3339),
+			"transaction_from": adminReachableAt.Format(time.RFC3339),
+		},
+	})
+
+	firstCompleted := time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC)
+	secondCompleted := time.Date(2026, 3, 11, 10, 0, 0, 0, time.UTC)
+	addWorkloadScanFixture(g, "workload_scan:first", "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123", firstCompleted, &secondCompleted, 1, 1, 1)
+	addWorkloadScanFixture(g, "workload_scan:second", "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123", secondCompleted, nil, 0, 0, 0)
+	g.BuildIndex()
+
+	historical, ok := GetEntityRecord(g, "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123", firstCompleted.Add(30*time.Minute), now)
+	if !ok {
+		t.Fatal("expected historical entity record")
+	}
+	historicalFacet := findFacetByID(historical.Facets, "workload_security")
+	if historicalFacet == nil {
+		t.Fatalf("expected historical workload_security facet, got %#v", historical.Facets)
+	}
+	if got := readInt(historicalFacet.Fields, "admin_reachable_count"); got != 0 {
+		t.Fatalf("expected no historical admin reachability before future edge activation, got %d", got)
+	}
+	if got := readInt(historicalFacet.Fields, "sensitive_data_path_count"); got != 0 {
+		t.Fatalf("expected no historical sensitive data paths before future edge activation, got %d", got)
+	}
+
+	current, ok := GetEntityRecord(g, "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123", now, now)
+	if !ok {
+		t.Fatal("expected current entity record")
+	}
+	currentFacet := findFacetByID(current.Facets, "workload_security")
+	if currentFacet == nil {
+		t.Fatalf("expected current workload_security facet, got %#v", current.Facets)
+	}
+	if got := readInt(currentFacet.Fields, "admin_reachable_count"); got < 1 {
+		t.Fatalf("expected current admin reachability after future edge activation, got %d", got)
+	}
+	if got := readInt(currentFacet.Fields, "sensitive_data_path_count"); got < 1 {
+		t.Fatalf("expected current sensitive data path count after future edge activation, got %d", got)
+	}
+}
+
 func addWorkloadScanFixture(g *Graph, scanID, targetID string, completedAt time.Time, validTo *time.Time, vulnerabilityCount, criticalCount, kevCount int) {
 	metadata := NormalizeWriteMetadata(
 		completedAt,

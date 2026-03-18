@@ -841,28 +841,34 @@ func (ex *Executor) emitApprovalRequested(ctx context.Context, execution *Execut
 
 // Approve approves a pending execution
 func (ex *Executor) Approve(ctx context.Context, executionID, approverID string) error {
-	execution, ok := ex.engine.GetExecution(executionID)
+	ex.engine.mu.Lock()
+	execution, ok := ex.engine.executions[executionID]
 	if !ok {
+		ex.engine.mu.Unlock()
 		return fmt.Errorf("execution not found: %s", executionID)
 	}
 
 	if execution.Status != ExecutionApproval {
+		ex.engine.mu.Unlock()
 		return fmt.Errorf("execution is not awaiting approval")
 	}
 
 	if execution.TriggerData == nil {
 		execution.TriggerData = make(map[string]any)
 	}
+	approvedAt := time.Now().UTC()
+	execution.Status = ExecutionRunning
+	execution.Error = ""
+	execution.CompletedAt = nil
 	execution.TriggerData["_approval_granted"] = true
 	execution.TriggerData["approved_by"] = approverID
-	execution.TriggerData["approved_at"] = time.Now().UTC().Format(time.RFC3339Nano)
+	execution.TriggerData["approved_at"] = approvedAt.Format(time.RFC3339Nano)
+	ex.engine.mu.Unlock()
 
 	if rule, ok := ex.engine.GetRule(execution.RuleID); ok {
 		sharedExecution := remediationExecutionToShared(execution)
 		sharedExecution.ApprovedBy = approverID
-		if approvedAt, _ := time.Parse(time.RFC3339Nano, remediationMapValueToString(execution.TriggerData, "approved_at")); !approvedAt.IsZero() {
-			sharedExecution.ApprovedAt = &approvedAt
-		}
+		sharedExecution.ApprovedAt = &approvedAt
 		playbook := remediationPlaybookFromRule(*rule, ex)
 		signal := remediationSignalFromTriggerData(execution.TriggerData)
 		err := ex.shared.Approve(ctx, sharedExecution, approverID, playbook, signal, remediationStepRunner{executor: ex})

@@ -308,7 +308,9 @@ func validateLoadedPolicy(policyDef *Policy, path string) error {
 	policyDef.Resource = strings.TrimSpace(policyDef.Resource)
 	policyDef.Query = strings.TrimSpace(policyDef.Query)
 	policyDef.Severity = normalizeSeverity(policyDef.Severity)
-	policyDef.ConditionFormat = normalizeConditionFormat(policyDef.ConditionFormat)
+	if err := canonicalizePolicyConditionFormat(policyDef); err != nil {
+		return fmt.Errorf("invalid policy %s (%s): %w", path, policyDef.ID, err)
+	}
 
 	missing := make([]string, 0, 4)
 	if policyDef.ID == "" {
@@ -390,7 +392,9 @@ func (e *Engine) AddPolicy(p *Policy) {
 	stored := clonePolicy(p)
 	stored.ID = policyID
 	stored.LastModified = now
-	stored.ConditionFormat = normalizeConditionFormat(stored.ConditionFormat)
+	if err := canonicalizePolicyConditionFormat(stored); err != nil {
+		return
+	}
 
 	if existing, ok := e.policies[policyID]; ok {
 		stored.Version = existing.Version + 1
@@ -426,7 +430,9 @@ func (e *Engine) UpdatePolicy(id string, p *Policy) bool {
 	stored.Version = e.nextPolicyVersionLocked(id)
 	stored.LastModified = now
 	stored.PinnedVersion = 0
-	stored.ConditionFormat = normalizeConditionFormat(stored.ConditionFormat)
+	if err := canonicalizePolicyConditionFormat(stored); err != nil {
+		return false
+	}
 	if err := e.syncConditionProgramsLocked(stored); err != nil {
 		return false
 	}
