@@ -65,6 +65,7 @@ type SecurityServices struct {
 	Remediation         *remediation.Engine
 	RemediationExecutor *remediation.Executor
 	RuntimeDetect       *runtime.DetectionEngine
+	RuntimeIngest       runtime.IngestStore
 	RuntimeRespond      *runtime.ResponseEngine
 	SecurityGraph       *graph.Graph
 	GraphBuilder        *builders.Builder
@@ -121,6 +122,7 @@ func (a *App) SecurityServices() SecurityServices {
 		Remediation:         a.Remediation,
 		RemediationExecutor: a.RemediationExecutor,
 		RuntimeDetect:       a.RuntimeDetect,
+		RuntimeIngest:       a.RuntimeIngest,
 		RuntimeRespond:      a.RuntimeRespond,
 		SecurityGraph:       a.CurrentSecurityGraph(),
 		GraphBuilder:        a.SecurityGraphBuilder,

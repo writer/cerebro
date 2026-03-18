@@ -452,6 +452,9 @@ func (a *App) initRemediation() {
 
 func (a *App) initRuntime() {
 	a.RuntimeDetect = runtime.NewDetectionEngine()
+	if a.ExecutionStore != nil {
+		a.RuntimeIngest = runtime.NewSQLiteIngestStoreWithExecutionStore(a.ExecutionStore)
+	}
 	a.RuntimeRespond = runtime.NewResponseEngine()
 	a.RuntimeRespond.SetSharedExecutor(a.newSharedActionExecutor())
 	a.RuntimeRespond.SetActionHandler(runtime.NewDefaultActionHandler(runtime.DefaultActionHandlerOptions{
@@ -459,6 +462,9 @@ func (a *App) initRuntime() {
 		RemoteCaller: a.RemoteTools,
 	}))
 	a.Logger.Info("runtime detection initialized", "rules", len(a.RuntimeDetect.ListRules()))
+	if a.RuntimeIngest != nil {
+		a.Logger.Info("runtime ingest initialized", "store", "executionstore")
+	}
 	a.Logger.Info("runtime response initialized", "policies", len(a.RuntimeRespond.ListPolicies()))
 }
 

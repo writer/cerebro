@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
+	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/graph/builders"
@@ -69,12 +70,13 @@ type serverDependencies struct {
 	Config *app.Config
 	Logger *slog.Logger
 
-	Snowflake *snowflake.Client
-	Warehouse warehouse.DataWarehouse
-	Policy    *policy.Engine
-	Findings  findings.FindingStore
-	Scanner   *scanner.Scanner
-	Cache     *cache.PolicyCache
+	Snowflake      *snowflake.Client
+	Warehouse      warehouse.DataWarehouse
+	Policy         *policy.Engine
+	Findings       findings.FindingStore
+	Scanner        *scanner.Scanner
+	Cache          *cache.PolicyCache
+	ExecutionStore executionstore.Store
 
 	Agents         *agents.AgentRegistry
 	Ticketing      *ticketing.Service
@@ -97,6 +99,7 @@ type serverDependencies struct {
 	Lineage        *lineage.LineageMapper
 	Remediation    *remediation.Engine
 	RuntimeDetect  *runtime.DetectionEngine
+	RuntimeIngest  runtime.IngestStore
 	RuntimeRespond *runtime.ResponseEngine
 
 	RemediationExecutor *remediation.Executor
@@ -135,6 +138,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		Findings:             application.Findings,
 		Scanner:              application.Scanner,
 		Cache:                application.Cache,
+		ExecutionStore:       application.ExecutionStore,
 		Agents:               application.Agents,
 		Ticketing:            application.Ticketing,
 		Identity:             application.Identity,
@@ -155,6 +159,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		Remediation:          application.Remediation,
 		RemediationExecutor:  application.RemediationExecutor,
 		RuntimeDetect:        application.RuntimeDetect,
+		RuntimeIngest:        application.RuntimeIngest,
 		RuntimeRespond:       application.RuntimeRespond,
 		SecurityGraph:        application.SecurityGraph,
 		SecurityGraphBuilder: application.SecurityGraphBuilder,
