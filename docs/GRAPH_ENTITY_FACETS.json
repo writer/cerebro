@@ -262,7 +262,7 @@
     },
     {
       "id": "workload_security",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "title": "Workload Security",
       "description": "Latest workload scan posture with vulnerability depth and attack-path context.",
       "schema_name": "PlatformWorkloadSecurityFacet",
@@ -306,7 +306,15 @@
           "value_type": "integer"
         },
         {
+          "key": "reachable_vulnerability_count",
+          "value_type": "integer"
+        },
+        {
           "key": "critical_vulnerability_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "reachable_critical_vulnerability_count",
           "value_type": "integer"
         },
         {
@@ -314,7 +322,19 @@
           "value_type": "integer"
         },
         {
+          "key": "reachable_high_vulnerability_count",
+          "value_type": "integer"
+        },
+        {
           "key": "known_exploited_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "reachable_known_exploited_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "direct_reachable_vulnerability_count",
           "value_type": "integer"
         },
         {

@@ -820,3 +820,44 @@ func workloadHistogramCount(t *testing.T, histogram *prometheus.HistogramVec, la
 	}
 	return dtoMetric.GetHistogram().GetSampleCount()
 }
+
+func TestValidateRequestRequiresProviderSpecificScannerCoordinates(t *testing.T) {
+	t.Run("gcp requires target and scanner zones", func(t *testing.T) {
+		err := validateRequest(ScanRequest{
+			Target: VMTarget{
+				Provider:     ProviderGCP,
+				ProjectID:    "project-a",
+				Region:       "us-central1",
+				InstanceName: "vm-a",
+			},
+			ScannerHost: ScannerHost{
+				HostID:    "scanner-a",
+				Region:    "us-central1",
+				Zone:      "",
+				ProjectID: "project-a",
+			},
+		})
+		if err == nil {
+			t.Fatal("expected gcp validation error")
+		}
+	})
+
+	t.Run("azure requires scanner resource group", func(t *testing.T) {
+		err := validateRequest(ScanRequest{
+			Target: VMTarget{
+				Provider:       ProviderAzure,
+				SubscriptionID: "sub-a",
+				ResourceGroup:  "rg-target",
+				Region:         "eastus",
+				InstanceName:   "vm-a",
+			},
+			ScannerHost: ScannerHost{
+				HostID: "scanner-a",
+				Region: "eastus",
+			},
+		})
+		if err == nil {
+			t.Fatal("expected azure validation error")
+		}
+	})
+}
