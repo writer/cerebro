@@ -57,16 +57,24 @@ func CreateSnapshot(g *Graph) *Snapshot {
 // RestoreFromSnapshot restores a graph from a snapshot
 func RestoreFromSnapshot(snapshot *Snapshot) *Graph {
 	g := New()
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	for _, node := range snapshot.Nodes {
-		g.AddNode(node)
+		if node == nil || node.ID == "" {
+			continue
+		}
+		g.addNodeLocked(node)
 	}
 
 	for _, edge := range snapshot.Edges {
-		g.AddEdge(edge)
+		if edge == nil || edge.Source == "" || edge.Target == "" {
+			continue
+		}
+		g.addEdgeLocked(edge)
 	}
 
-	g.SetMetadata(snapshot.Metadata)
+	g.metadata = snapshot.Metadata
 
 	return g
 }
