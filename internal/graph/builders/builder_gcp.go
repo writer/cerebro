@@ -143,6 +143,7 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 	}
 
 	b.runNodeQueries(ctx, queries)
+	b.enrichGCPIAMServiceAccounts(ctx)
 }
 
 func (b *Builder) buildGCPEdges(ctx context.Context) {

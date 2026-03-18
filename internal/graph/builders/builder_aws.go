@@ -177,6 +177,7 @@ func (b *Builder) buildAWSNodes(ctx context.Context) {
 	}
 
 	b.runNodeQueries(ctx, queries)
+	b.enrichAWSIAMUserCredentials(ctx)
 }
 
 // runNodeQueries fires all node queries in parallel and batch-adds the results.

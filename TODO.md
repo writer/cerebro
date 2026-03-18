@@ -5,6 +5,233 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 79 - Filesystem IaC Detection During Workload Scans (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#228` was still leaving obvious filesystem-level IaC and config evidence on the floor even though the workload scan walk already touches those files.
+- [x] Gap: waiting for a separate `trivy config` parser would unnecessarily block a first shippable cut because the existing analyzer already has deterministic content and file-type heuristics available locally.
+- [x] Gap: the scan graph still had no first-class representation for IaC findings, so scan nodes could report misconfiguration counts without any durable graph object to inspect.
+- [x] Gap: IaC-only scans could still collapse to `risk:none` because workload-scan risk was driven primarily by vulnerability aggregates.
+
+### Execution plan
+- [x] Extend filesystem analyzer outputs with typed IaC artifact inventory:
+  - [x] add `iac_artifacts` to analyzer reports
+  - [x] track `iac_artifact_count` in scan summaries
+- [x] Detect common IaC/config surfaces during the existing filesystem walk:
+  - [x] Terraform and Terraform state
+  - [x] CloudFormation and Kubernetes manifests
+  - [x] Helm, Docker, Ansible, `.env`, and common app-config files
+- [x] Add deterministic IaC/config findings without a new scan pipeline:
+  - [x] flag Terraform state files as high severity
+  - [x] flag public exposure patterns such as `0.0.0.0/0`
+  - [x] flag public storage principals / ACLs
+  - [x] flag bucket definitions missing explicit encryption settings
+- [x] Materialize IaC findings into the graph:
+  - [x] create `observation` nodes with `workload_iac_finding`
+  - [x] link findings to the workload-scan node with `targets`
+  - [x] surface `iac_artifact_count` on workload-scan nodes
+- [x] Fix risk semantics so IaC-only findings raise workload-scan risk appropriately.
+- [x] Add regression coverage for analyzer detection and graph materialization.
+
+### Review findings
+- [x] Gap: issue `#252` was still compliance-by-findings, even though the graph already held the stronger substrate for many control questions: bucket encryption, public exposure, logging, versioning, sensitive-data posture, database exposure, and parts of GCP IAM.
+- [x] Gap: leaving compliance on the findings path created a split-brain model: the graph could answer the control question, but exports and pre-audit checks still only knew how to count policy violations.
+- [x] Gap: the right first cut is graph-first with explicit fallback, not a fake “all controls are graph-native now” rewrite. Unsupported controls should stay visible as findings-backed until the graph substrate actually earns the migration.
+- [x] Gap: upstream graph/security platforms converge on the same lesson:
+  - [x] `cartography-cncf/cartography` gets leverage when inventory relationships become reusable compliance evidence instead of remaining isolated snapshots.
+  - [x] `cloudquery/cloudquery` reinforces that control logic becomes composable when it runs over normalized resource state rather than one-off scan outputs.
+  - [x] `stackrox/stackrox` and similar posture systems keep the strongest checks close to the resource graph and use exported evidence as a downstream view, not the source of truth.
+
+### Execution plan
+- [x] Add a typed graph-backed compliance evaluator:
+  - [x] evaluate per-control status as `passing|failing|partial|not_applicable|unknown`
+  - [x] attach structured evidence entities, policy IDs, reasons, and evaluation source
+  - [x] cache entity materialization per provider/kind slice instead of embedding logic in API handlers
+- [x] Support the first graph-native control tranche:
+  - [x] AWS S3 encryption, public access, policy public exposure, logging, and versioning
+  - [x] AWS RDS encryption and public exposure
+  - [x] DSPM sensitive-data public/unencrypted posture
+  - [x] GCP service-account admin privilege, key rotation, and user-managed-key minimization
+  - [x] GCP storage public-access checks
+- [x] Keep findings fallback explicit where graph support is not yet real:
+  - [x] unsupported policies remain findings-backed
+  - [x] mixed controls are labeled `hybrid` when graph + fallback are both involved
+- [x] Rewire existing compliance surfaces onto the evaluator:
+  - [x] `/api/v1/compliance/frameworks/{id}/report`
+  - [x] `/api/v1/compliance/frameworks/{id}/pre-audit`
+  - [x] `/api/v1/compliance/frameworks/{id}/export`
+  - [x] legacy `/api/v1/reports/compliance/{framework}` compatibility view
+- [x] Tighten exported evidence:
+  - [x] carry control evidence into audit-package ZIP exports
+  - [x] preserve evaluation source and last-evaluated timestamps
+- [x] Add regression coverage:
+  - [x] mixed graph + findings-fallback control evaluation
+  - [x] DSPM + GCP graph-backed control evaluation
+  - [x] API test proving compliance report/export can fail from graph state without findings
+- [ ] Next compliance depth cuts after this slice:
+  - [ ] persist control-evaluation history on graph rebuilds instead of evaluating only at request time
+  - [ ] add control-detail and history endpoints (`/status`, `/controls/{id}`, `/history`)
+  - [ ] emit control-status-change events for alert routing and report drift
+  - [ ] replace remaining findings fallbacks by deepening graph coverage for IAM MFA, CloudTrail/Config, flow logs, and Cloud SQL/Secrets posture
+
+## Deep Review Cycle 77 - Autonomous Credential Exposure Workflow Demo (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#219` did not need a speculative orchestration framework first; Cerebro already had the core substrate pieces for one real autonomous loop:
+  - [x] workload-secret detection and credential pivot edges
+  - [x] first-class observation / claim / decision / outcome writes
+  - [x] durable action execution with approval gates
+  - [x] shared execution-store infrastructure
+- [x] Gap: there was still no durable autonomous workflow resource tying those pieces together into one inspectable run with status, events, and approval continuation.
+- [x] Gap: the first workflow should prove graph leverage, not just generic automation. Credential exposure response was the right entry cut because the graph can already trace secret -> principal -> impacted targets.
+- [x] Gap: upstream patterns reinforce the same shape:
+  - [x] `argoproj/argo-workflows` keeps workflow state and approval continuation as durable execution resources rather than implicit handler-local state.
+  - [x] `StackStorm/st2` shows the value of explicit execution records and audit trails around automated action chains.
+  - [x] `smithy-security/smithy` and `turbot/flowpipe` reinforce that security workflows get differentiated by graph/context-rich decisioning, not just generic task runners.
+
+### Execution plan
+- [x] Add a durable autonomous workflow substrate:
+  - [x] add `autonomous_workflow` execution-store namespace
+  - [x] add typed run + event records for autonomous workflows
+  - [x] add durable run store on top of the shared execution store
+- [x] Implement the first end-to-end workflow:
+  - [x] add `credential_exposure_response` workflow ID
+  - [x] analyze discovered secret nodes through `has_credential_for` pivots
+  - [x] persist workflow run summary, impacted targets, and linked action execution
+- [x] Stitch graph evidence trail into the workflow:
+  - [x] write detection observation
+  - [x] write detection claim
+  - [x] write decision node
+  - [x] on success, write remediation claim + outcome
+- [x] Add tool surfaces for the demo loop:
+  - [x] `cerebro.autonomous_credential_response`
+  - [x] `cerebro.autonomous_workflow_approve`
+  - [x] `cerebro.autonomous_workflow_status`
+- [x] Reuse the configured runtime action handler when present:
+  - [x] add `ResponseEngine.ActionHandler()` getter
+  - [x] make autonomous workflow execution use the app-configured runtime handler before falling back to a default handler
+  - [x] keep approval/execution durable under the shared action engine
+- [x] Add regression coverage:
+  - [x] start workflow -> awaiting approval -> durable run/action persistence
+  - [x] approve workflow -> revoke credentials -> remediation claim/outcome persistence
+  - [x] status tool returns workflow and action events
+- [x] Keep generated SDK contracts in sync:
+  - [x] regenerate Agent SDK docs/contracts/packages for the three new autonomous tools
+- [ ] Next autonomous depth cuts after this slice:
+  - [ ] add the second demo workflow: CVE response with blast-radius prioritization
+  - [ ] add Slack/notification approval routing instead of tool-only approval continuation
+  - [ ] add post-remediation validation step and explicit validation-stage run semantics
+  - [ ] surface autonomous workflow runs through platform execution/report APIs, not only tools
+
+## Deep Review Cycle 76 - Durable Graph-Powered Access Review Campaigns (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#253` was not blocked on another identity microservice; the repo already had graph access-review generation, identity review APIs, stale-access analytics, and effective-permissions calculation, but they lived in two disconnected implementations.
+- [x] Gap: the graph access-review handlers still stored campaigns in a process-local map, which breaks restart durability and contradicts the shared execution-store direction already established for reports, scans, and action execution.
+- [x] Gap: existing review items were under-enriched for real certification workflows: they lacked stable reviewer candidates, recommendation metadata, last-activity context, and graph risk signals such as toxic-combination involvement.
+- [x] Gap: upstream authorization/identity projects converged on the same structural lesson:
+  - [x] `openfga/openfga` keeps relationship state explicit and queryable rather than burying access decisions in application-local handlers.
+  - [x] `infrahq/infra` and `gravitational/teleport` both reinforce that reviewability needs durable execution state and owner-aware access context, not just raw permission lists.
+
+### Execution plan
+- [x] Collapse duplicate access-review implementations onto one shared service:
+  - [x] keep one identity review service as the durable workflow entry point
+  - [x] route graph access-review endpoints through that same service instead of a local map
+  - [x] move campaign persistence to the shared execution store namespace
+- [x] Deepen review campaign data model:
+  - [x] add scope mode support for `all`, `account`, `principal`, `resource`, `high_risk`, `cross_account`, and `privilege_creep`
+  - [x] persist review events for `created`, `started`, `item_decided`, and `completed`
+  - [x] add item-level recommendations, reviewer candidates, path context, and metadata
+- [x] Generate graph-powered review items from existing substrate:
+  - [x] reuse graph access-review generation and blast-radius caching
+  - [x] enrich items with effective-permission grants, last-activity signals, and resource owners
+  - [x] attach toxic-combination/attack-path context for risk-based prioritization
+- [x] Eliminate ephemeral tool/API seams:
+  - [x] make `/api/v1/graph/access-reviews/*` delegate to the shared identity service
+  - [x] make the `cerebro.access_review` tool create durable campaigns instead of ad hoc graph payloads
+- [x] Add regression coverage:
+  - [x] graph-generated campaign enrichment and recommendation tests
+  - [x] shared execution-store persistence tests for review state and events
+  - [x] API test proving graph access-review routes use the shared durable service
+- [ ] Next access-governance depth cuts after this slice:
+  - [ ] resource-owner auto-assignment and overdue escalation scheduling
+  - [ ] compliance evidence export from completed access reviews
+  - [ ] auto-remediation handoff for approved revocation/reduction actions
+  - [ ] provider-specific last-used evidence (AWS, GCP, Azure, SaaS) beyond principal-level activity
+
+## Deep Review Cycle 75 - GCP Hierarchy and Inherited IAM Foundations (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#245` is broader than one inventory backlog, but the first enterprise-grade credibility seam is still structural: Cerebro had GCP resources and project IAM, yet no first-class `organization`, `folder`, or `project` graph nodes to anchor inheritance.
+- [x] Gap: org/folder/project hierarchy was already partially present in raw sync context (`runGCPOrgSync`, Cloud Asset `parent_full_name`, org policy parent references), but it was not normalized into reusable platform nodes and `located_in` edges.
+- [x] Gap: GCP IAM inheritance above the project was absent, so the graph systematically understated permissions that actually apply at folder or organization scope.
+- [x] Gap: upstream patterns converged on the same structural lesson:
+  - [x] `cartography-cncf/cartography` models GCP CRM resources explicitly and treats org, folder, and project hierarchy as first-class graph structure instead of implicit provider metadata.
+  - [x] `forseti-security/forseti-security` split hierarchy/IAM analysis from project-local checks, reinforcing that inherited policy scope has to be queryable as graph material, not reconstructed ad hoc later.
+
+### Execution plan
+- [x] Add first-class hierarchy ontology kinds:
+  - [x] add `organization`, `folder`, and `project` node kinds
+  - [x] register schema definitions so hierarchy nodes can emit `located_in`
+- [x] Sync GCP Resource Manager hierarchy metadata per project:
+  - [x] add native tables for projects, folders, and organizations
+  - [x] resolve project ancestry with Resource Manager APIs instead of guessing from one project row
+  - [x] preserve ancestor path and folder IDs for downstream reasoning
+- [x] Sync inherited IAM policy scopes:
+  - [x] add folder-level IAM policy table
+  - [x] add organization-level IAM policy table
+  - [x] preserve binding conditions and hierarchy provenance in stored rows
+- [x] Materialize hierarchy and inherited permissions in the graph:
+  - [x] create `organization` / `folder` / `project` nodes
+  - [x] add `located_in` hierarchy edges
+  - [x] fan folder/org IAM bindings out to descendant project resources with `hierarchy_policy` provenance
+- [x] Add regression coverage:
+  - [x] lineage ordering and ancestor-path tests for Resource Manager fetch helpers
+  - [x] builder tests for hierarchy nodes/edges
+  - [x] builder tests for inherited folder/org IAM edge materialization
+- [ ] Next GCP enterprise-depth cuts after this slice:
+  - [ ] Secret Manager nodes + access controls
+  - [ ] Pub/Sub and KMS resource-level IAM edges
+  - [ ] service-account impersonation chain modeling (`iam.serviceAccounts.actAs`, `iam.serviceAccountTokenCreator`)
+  - [ ] Workload Identity Federation trust edges
+  - [ ] billing-account and service-enablement modeling
+
+>>>>>>> bf45aad98 (Detect IaC artifacts during workload filesystem scans (#271))
+## Deep Review Cycle 74 - Credential Pivot Graph Materialization (2026-03-13)
+
+### Review findings
+- [x] Gap: issue `#243` is not fundamentally a scan-engine problem; Cerebro already detects secrets during workload scans, but it stops at findings instead of turning those discoveries into graph pivots.
+- [x] Gap: attack-path and toxic-combination logic can already reason over arbitrary graph edges, so the missing substrate is credential-to-target materialization, not another standalone lateral-movement detector.
+- [x] Gap: AWS and GCP identity nodes were still under-modeled for this use case because key metadata existed in synced tables but not on the graph identities that should be reachable from discovered credentials.
+- [x] Gap: upstream patterns align on the same lesson:
+  - [x] `trufflesecurity/trufflehog` treats credential detection as typed signal extraction, not just regex-only findings.
+  - [x] `cartography-cncf/cartography` gets leverage by mapping cloud identity artifacts into graph-reachable relationships instead of leaving them as isolated inventory facts.
+  - [x] `stackrox/stackrox` and `falcosecurity/falco` both reinforce that runtime/security value compounds when credential evidence is connected to reachable resources, not just reported.
+
+### Execution plan
+- [x] Deepen secret scan output so findings can drive graph resolution:
+  - [x] add typed secret references for cloud identities and database connections
+  - [x] extract AWS access-key IDs, GCP service-account key identities, and database connection targets without persisting raw secrets
+- [x] Materialize discovered secret artifacts into the workload graph:
+  - [x] add secret nodes derived from workload scans
+  - [x] link scan nodes to discovered secret artifacts
+  - [x] link secret artifacts to matched graph principals/resources
+- [x] Add first-class credential pivot edges:
+  - [x] add `has_credential_for` graph edges from compromised workloads to resolved targets
+  - [x] resolve cloud-identity credentials through blast radius so keys expand to concrete reachable resources
+  - [x] map database connection strings directly to database nodes
+- [x] Enrich cloud identity nodes with key metadata needed for pivot resolution:
+  - [x] hydrate AWS IAM users from `aws_iam_user_access_keys`
+  - [x] hydrate GCP service accounts with synced key metadata and privilege signals
+- [x] Fold pivots into existing security reasoning:
+  - [x] teach lateral-movement detection to recognize `has_credential_for`
+  - [x] verify attack-path simulation traverses credential pivots
+- [ ] Next credential depth cuts after this slice:
+  - [ ] SSH private-key to `authorized_keys` matching across scanned workloads
+  - [ ] Azure service-principal secret and connection-string pivot resolution
+  - [ ] SaaS token pivots where the graph already models the target system
+  - [ ] confidence scoring for weak/ambiguous target matches
+
 ## Deep Review Cycle 73 - GCP IAM Binding Fidelity + Bucket Resource Policies (2026-03-13)
 
 ### Review findings
