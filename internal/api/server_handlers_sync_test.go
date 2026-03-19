@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/evalops/cerebro/internal/app"
 	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/graph/builders"
 	"github.com/evalops/cerebro/internal/snowflake"
@@ -602,6 +603,127 @@ func TestSyncAWS_FullRebuildFallbackReportsAppliedStatus(t *testing.T) {
 	}
 	if summary["mode"] != graph.GraphMutationModeFullRebuild {
 		t.Fatalf("expected full rebuild summary mode, got %#v", summary["mode"])
+	}
+}
+
+func TestSyncAWS_AppliesGraphUpdateUsingRuntimeWithoutLocalBuilder(t *testing.T) {
+	application := newTestApp(t)
+	application.Snowflake = &snowflake.Client{}
+
+	deps := newServerDependenciesFromApp(application)
+	deps.SecurityGraph = nil
+	deps.SecurityGraphBuilder = nil
+	deps.graphRuntime = stubGraphRuntime{
+		tryApply: func(_ context.Context, trigger string) (graph.GraphMutationSummary, bool, error) {
+			if trigger != "sync_aws" {
+				t.Fatalf("expected sync_aws trigger, got %q", trigger)
+			}
+			return graph.GraphMutationSummary{
+				Mode:            graph.GraphMutationModeIncremental,
+				Tables:          []string{"aws_s3_buckets"},
+				EventsProcessed: 1,
+				NodesAdded:      1,
+			}, true, nil
+		},
+	}
+
+	s := NewServerWithDependencies(deps)
+	t.Cleanup(func() { s.Close() })
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+		return &awsSyncOutcome{
+			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region": "us-east-1",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	graphUpdate, ok := body["graph_update"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected graph_update payload, got %#v", body["graph_update"])
+	}
+	if graphUpdate["status"] != "applied" {
+		t.Fatalf("expected graph update status applied, got %#v", graphUpdate)
+	}
+	summary, ok := graphUpdate["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected graph update summary, got %#v", graphUpdate["summary"])
+	}
+	if summary["trigger"] != "sync_aws" {
+		t.Fatalf("expected summary trigger sync_aws, got %#v", summary["trigger"])
+	}
+}
+
+func TestSyncAWS_SkipsGraphUpdateWithoutRuntimeOrLocalBuilder(t *testing.T) {
+	application := newTestApp(t)
+	application.Snowflake = &snowflake.Client{}
+
+	deps := newServerDependenciesFromApp(application)
+	deps.SecurityGraph = nil
+	deps.SecurityGraphBuilder = nil
+	deps.graphRuntime = nil
+
+	s := NewServerWithDependencies(deps)
+	t.Cleanup(func() { s.Close() })
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+		return &awsSyncOutcome{
+			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region": "us-east-1",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if _, ok := body["graph_update"]; ok {
+		t.Fatalf("expected graph_update to be omitted, got %#v", body["graph_update"])
+	}
+}
+
+func TestSyncAWS_SkipsGraphUpdateWhenRuntimeAdapterHasNoApplyCapability(t *testing.T) {
+	application := &app.App{
+		Config:    &app.Config{},
+		Snowflake: &snowflake.Client{},
+	}
+
+	deps := newServerDependenciesFromApp(application)
+
+	s := NewServerWithDependencies(deps)
+	t.Cleanup(func() { s.Close() })
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+		return &awsSyncOutcome{
+			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region": "us-east-1",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if _, ok := body["graph_update"]; ok {
+		t.Fatalf("expected graph_update to be omitted, got %#v", body["graph_update"])
 	}
 }
 

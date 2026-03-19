@@ -41,6 +41,18 @@ Status: executed end-to-end via PR workflow
 - [x] Route `currentPlatformGraphSnapshotRecord()` through that resolver while preserving the fallback from a live graph with no current record to a store snapshot.
 - [x] Add focused resolver tests for live-record preference, store fallback, and unavailable-source behavior, then rerun API validation before opening the PR.
 
+## Deep Review Cycle 212 - Post-Sync Graph Runtime Apply Path (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left post-sync graph updates gated on the legacy in-memory `SecurityGraphBuilder` field, even though the actual apply path already runs through `TryApplySecurityGraphChanges(...)` on the graph runtime abstraction.
+- [x] Gap: that builder-only check meant a runtime-backed server could finish a sync successfully but silently skip the post-sync graph apply step once the local builder pointer is absent.
+- [x] Gap: there was no regression proving the sync endpoints still emit `graph_update` payloads when the runtime can apply graph changes without exposing a local builder.
+
+### Execution plan
+- [x] Add a dependency-level capability check for post-sync graph apply support that prefers the runtime abstraction over the raw builder field.
+- [x] Route the sync service gate through that capability check instead of `SecurityGraphBuilder != nil`.
+- [x] Add focused sync handler regressions for runtime-only apply support and the no-runtime/no-builder skip path, then rerun API validation before opening the PR.
+
 ## Deep Review Cycle 211 - Organizational Policy Assignee Roster (2026-03-18)
 
 ### Review findings

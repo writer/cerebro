@@ -200,7 +200,7 @@ func (s serverSyncHandlerService) logger() *slog.Logger {
 }
 
 func (s serverSyncHandlerService) applySecurityGraphUpdateAfterSync(ctx context.Context, provider string, validate bool) map[string]any {
-	if validate || s.deps == nil || s.deps.SecurityGraphBuilder == nil {
+	if validate || s.deps == nil || !s.deps.CanApplySecurityGraphChanges() {
 		return nil
 	}
 

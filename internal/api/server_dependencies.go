@@ -51,6 +51,10 @@ type graphRuntimeService interface {
 	TryApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, bool, error)
 }
 
+type graphChangeApplyCapability interface {
+	CanApplySecurityGraphChanges() bool
+}
+
 type apiCredentialService interface {
 	APICredentialsSnapshot() map[string]apiauth.Credential
 	APIKeysSnapshot() map[string]string
@@ -271,6 +275,16 @@ func (d serverDependencies) RebuildSecurityGraph(ctx context.Context) error {
 	return d.graphRuntime.RebuildSecurityGraph(ctx)
 }
 
+func (d serverDependencies) CanApplySecurityGraphChanges() bool {
+	if capable, ok := d.graphRuntime.(graphChangeApplyCapability); ok {
+		return capable.CanApplySecurityGraphChanges()
+	}
+	if d.graphRuntime != nil {
+		return true
+	}
+	return d.SecurityGraphBuilder != nil
+}
+
 func (d serverDependencies) TryApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, bool, error) {
 	if d.graphRuntime == nil {
 		return graph.GraphMutationSummary{}, false, errors.New("security graph runtime not configured")
@@ -372,7 +386,13 @@ func (r *graphRuntimeAdapter) useLocalGraph() bool {
 	if r == nil || r.deps == nil {
 		return false
 	}
-	return r.deps.SecurityGraph != r.originalGraph || r.deps.SecurityGraphBuilder != r.originalBuilder
+	if r.deps.SecurityGraphBuilder != nil {
+		return true
+	}
+	if r.fallback != nil {
+		return false
+	}
+	return r.deps.SecurityGraph != nil
 }
 
 func (r *graphRuntimeAdapter) CurrentSecurityGraph() *graph.Graph {
@@ -511,6 +531,19 @@ func (r *graphRuntimeAdapter) RebuildSecurityGraph(ctx context.Context) error {
 	}
 	r.setSnapshot(app.GraphBuildSuccess, builtAt, nil)
 	return nil
+}
+
+func (r *graphRuntimeAdapter) CanApplySecurityGraphChanges() bool {
+	if r == nil {
+		return false
+	}
+	if r.useLocalGraph() {
+		return r.localBuilder() != nil
+	}
+	if capable, ok := r.fallback.(graphChangeApplyCapability); ok {
+		return capable.CanApplySecurityGraphChanges()
+	}
+	return r.originalBuilder != nil
 }
 
 func (r *graphRuntimeAdapter) TryApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, bool, error) {
