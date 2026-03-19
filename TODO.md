@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 213 - App Graph View Snapshot Fallback (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left app-layer read flows like `evaluate_policy` proposed-change analysis and org-topology policy scans hard-bound to `CurrentSecurityGraph()`, so they silently failed once the app was running from persisted graph snapshots without a live in-memory graph pointer.
+- [x] Gap: there was no shared app-level helper for "live graph or latest persisted snapshot" reads, which meant each remaining app consumer would otherwise re-implement its own fallback logic.
+- [x] Gap: there was no regression proving those app policy flows keep working with `SecurityGraph == nil` as long as `GraphSnapshots` can hydrate a read-only view.
+
+### Execution plan
+- [x] Add a shared app-level resolver for current live graph or latest persisted snapshot views.
+- [x] Route `toolCerebroEvaluatePolicy(...)` proposed-change analysis and `ScanOrgTopologyPolicies(...)` through that resolver while preserving the current no-source behavior.
+- [x] Add focused persisted-snapshot regressions for both callers, then rerun targeted app validation before opening the PR.
+
 ## Deep Review Cycle 212 - Platform Knowledge Graph Mutation Runtime Path (2026-03-18)
 
 ### Review findings

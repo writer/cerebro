@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -893,6 +894,131 @@ func TestCerebroEvaluatePolicyTool(t *testing.T) {
 	}
 	if _, ok := payload["matched_policies"].([]any); !ok {
 		t.Fatalf("expected matched_policies array, got %#v", payload["matched_policies"])
+	}
+}
+
+func TestCerebroEvaluatePolicyToolUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    filepath.Join(t.TempDir(), "graph-snapshots"),
+		MaxSnapshots: 4,
+	})
+	if err != nil {
+		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
+	}
+	if _, err := store.SaveGraph(graph.New()); err != nil {
+		t.Fatalf("SaveGraph() error = %v", err)
+	}
+
+	application := &App{
+		Policy:         policy.NewEngine(),
+		GraphSnapshots: store,
+	}
+	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
+	if tool == nil {
+		t.Fatal("expected evaluate_policy tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"principal": {"id":"agent:sales-assistant"},
+		"action":"refund.create",
+		"resource":{"type":"refund","id":"refund:123"},
+		"proposed_change":{
+			"id":"chg-1",
+			"source":"tool",
+			"reason":"test snapshot fallback",
+			"nodes":[{"action":"add","node":{"id":"service:payments","kind":"service","name":"payments"}}]
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("evaluate_policy returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if payload["decision"] != "allow" {
+		t.Fatalf("expected allow decision, got %#v", payload["decision"])
+	}
+	if _, ok := payload["propagation"].(map[string]any); !ok {
+		t.Fatalf("expected propagation payload, got %#v", payload["propagation"])
+	}
+}
+
+func TestCerebroEvaluatePolicyToolRequiresGraphSourceForProposedChange(t *testing.T) {
+	application := &App{Policy: policy.NewEngine()}
+	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
+	if tool == nil {
+		t.Fatal("expected evaluate_policy tool")
+	}
+
+	_, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"principal": {"id":"agent:sales-assistant"},
+		"action":"refund.create",
+		"resource":{"type":"refund","id":"refund:123"},
+		"proposed_change":{
+			"id":"chg-1",
+			"source":"tool",
+			"reason":"test missing graph",
+			"nodes":[{"action":"add","node":{"id":"service:payments","kind":"service","name":"payments"}}]
+		}
+	}`))
+	if err == nil || !strings.Contains(err.Error(), "graph platform not initialized") {
+		t.Fatalf("expected missing graph error, got %v", err)
+	}
+}
+
+func TestCerebroEvaluatePolicyToolSanitizesSnapshotLoadErrors(t *testing.T) {
+	basePath := filepath.Join(t.TempDir(), "graph-snapshots")
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    basePath,
+		MaxSnapshots: 4,
+	})
+	if err != nil {
+		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
+	}
+	if _, err := store.SaveGraph(graph.New()); err != nil {
+		t.Fatalf("SaveGraph() error = %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(basePath, "graph-*.json.gz"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected one snapshot artifact, got %v", matches)
+	}
+	if err := os.WriteFile(matches[0], []byte("not-a-gzip-snapshot"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	application := &App{
+		Policy:         policy.NewEngine(),
+		GraphSnapshots: store,
+	}
+	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
+	if tool == nil {
+		t.Fatal("expected evaluate_policy tool")
+	}
+
+	_, err = tool.Handler(context.Background(), json.RawMessage(`{
+		"principal": {"id":"agent:sales-assistant"},
+		"action":"refund.create",
+		"resource":{"type":"refund","id":"refund:123"},
+		"proposed_change":{
+			"id":"chg-1",
+			"source":"tool",
+			"reason":"test snapshot load failure",
+			"nodes":[{"action":"add","node":{"id":"service:payments","kind":"service","name":"payments"}}]
+		}
+	}`))
+	if err == nil {
+		t.Fatal("expected snapshot load error")
+	}
+	if !strings.Contains(err.Error(), "graph platform not initialized") {
+		t.Fatalf("expected sanitized graph error, got %v", err)
+	}
+	if strings.Contains(err.Error(), basePath) {
+		t.Fatalf("expected sanitized error without filesystem path, got %v", err)
 	}
 }
 

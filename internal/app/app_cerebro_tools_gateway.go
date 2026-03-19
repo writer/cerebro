@@ -62,7 +62,13 @@ func (a *App) toolCerebroEvaluatePolicy(ctx context.Context, args json.RawMessag
 
 	var propagationResult *graph.PropagationResult
 	if decision != "deny" && req.ProposedChange != nil {
-		securityGraph := a.CurrentSecurityGraph()
+		securityGraph, err := a.currentOrStoredSecurityGraphView()
+		if err != nil {
+			if a.Logger != nil {
+				a.Logger.Warn("failed to resolve security graph for evaluate_policy", "error", err)
+			}
+			return "", fmt.Errorf("graph platform not initialized")
+		}
 		if securityGraph == nil {
 			return "", fmt.Errorf("graph platform not initialized")
 		}
