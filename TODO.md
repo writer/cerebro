@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 216 - App Temporal Snapshot Current Record Fallback (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left app temporal graph changelog reads deriving the synthetic current snapshot record from `CurrentSecurityGraph()` only.
+- [x] Gap: when a live graph pointer existed without usable snapshot metadata, the temporal tools stopped marking the newest persisted snapshot as current even though a persisted snapshot was available.
+- [x] Gap: there was no regression proving `cerebro.graph_changelog` preserves the current-snapshot marker from persisted storage.
+
+### Execution plan
+- [x] Add a passive app helper that resolves the current snapshot record from either the live graph or the latest persisted snapshot.
+- [x] Route temporal snapshot-record collection through that helper without introducing recovery side effects.
+- [x] Extend graph changelog tool coverage to assert the persisted latest snapshot remains current when the live graph cannot supply a current record.
+
 ## Deep Review Cycle 215 - App Graph Mutation Snapshot Base (2026-03-18)
 
 ### Review findings

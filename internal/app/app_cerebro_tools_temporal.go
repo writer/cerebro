@@ -303,10 +303,10 @@ func (a *App) platformGraphSnapshotDiffByIDForTool(diffID string) (*graph.GraphS
 
 func (a *App) platformGraphSnapshotRecordsForTool(now time.Time) []graph.GraphSnapshotRecord {
 	records := map[string]*graph.GraphSnapshotRecord{}
-	if g := a.CurrentSecurityGraph(); g != nil {
-		if current := graph.CurrentGraphSnapshotRecord(g); current != nil {
-			records[current.ID] = current
-		}
+	if current, err := a.currentOrStoredPassiveGraphSnapshotRecord(); err == nil && current != nil {
+		records[current.ID] = current
+	} else if err != nil && a != nil && a.Logger != nil {
+		a.Logger.Warn("failed to resolve current graph snapshot record for tool", "error", err)
 	}
 
 	store := a.platformGraphSnapshotStoreForTool()
