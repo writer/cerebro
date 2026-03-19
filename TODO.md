@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 232 - Graph Simulation Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left `POST /api/v1/graph/simulate` and `POST /api/v1/org/reorg-simulations` parsing requests in the HTTP layer and then reaching directly into graph-view helpers plus graph package simulation functions.
+- [x] Gap: those two endpoints form a compact simulation family with stable validation and response semantics, making them a low-risk seam that does not overlap the graph advisory or entity-impact slices.
+- [x] Gap: there was no constructor-level regression proving both handlers can execute through `NewServerWithDependencies(...)` with only a narrow typed simulation stub and no concrete graph wiring.
+
+### Execution plan
+- [x] Add a dedicated `graphSimulationService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route graph simulate and reorg simulate handlers through that service while preserving validation and store-unavailable behavior.
+- [x] Add focused service-stub regressions and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 231 - Platform Workload Scan Handler Service Seam (2026-03-19)
 
 ### Review findings

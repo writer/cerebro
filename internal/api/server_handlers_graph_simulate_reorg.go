@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/evalops/cerebro/internal/graph"
@@ -12,16 +13,6 @@ type graphSimulateReorgRequest struct {
 }
 
 func (s *Server) simulateReorg(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphView(r.Context())
-	if err != nil {
-		s.errorFromErr(w, err)
-		return
-	}
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	var req graphSimulateReorgRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request body")
@@ -32,8 +23,12 @@ func (s *Server) simulateReorg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	impact, err := graph.SimulateReorg(g, req.Changes)
+	impact, err := s.graphSimulation.SimulateReorg(r.Context(), req.Changes)
 	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			s.errorFromErr(w, err)
+			return
+		}
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}

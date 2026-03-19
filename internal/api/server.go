@@ -30,6 +30,7 @@ type Server struct {
 	app                      *serverDependencies
 	findingsCompliance       findingsComplianceService
 	entitiesImpact           entitiesImpactService
+	graphSimulation          graphSimulationService
 	graphRisk                graphRiskService
 	graphIntelligence        graphIntelligenceService
 	graphWriteback           graphWritebackService
@@ -150,6 +151,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if platformWorkloadScan == nil {
 		platformWorkloadScan = newPlatformWorkloadScanService(&deps)
 	}
+	graphSimulation := deps.graphSimulation
+	if graphSimulation == nil {
+		graphSimulation = newGraphSimulationService(&deps)
+	}
 	threatRuntime := deps.threatRuntime
 	if threatRuntime == nil {
 		threatRuntime = newThreatRuntimeService(&deps)
@@ -164,6 +169,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		agentSDKAdmin:          agentSDKAdmin,
 		entitiesImpact:         entitiesImpact,
 		findingsCompliance:     newFindingsComplianceService(&deps),
+		graphSimulation:        graphSimulation,
 		graphIntelligence:      newGraphIntelligenceService(&deps),
 		lineage:                lineage,
 		orgAnalysis:            orgAnalysis,
