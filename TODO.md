@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 220 - App Event Routing Snapshot Fallback (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#392` still left app event alert routing bound to `CurrentSecurityGraph()` only, so alert enrichment silently lost graph context whenever the app was serving from persisted snapshots without a live in-memory graph pointer.
+- [x] Gap: alert routing is read-only and should use the passive persisted/live graph helper, not trigger its own live-only resolution path.
+- [x] Gap: there was no focused regression proving event routing prefers the live graph when present and otherwise falls back to the persisted snapshot.
+
+### Execution plan
+- [x] Route the alert-routing graph resolver through the passive persisted/live graph helper.
+- [x] Preserve the existing nil-on-unavailable behavior so router startup semantics do not widen unexpectedly.
+- [x] Add focused app regressions for persisted-snapshot fallback and live-graph preference before pushing the branch.
+
 ## Deep Review Cycle 219 - App DSPM Snapshot Mutation Base (2026-03-19)
 
 ### Review findings
