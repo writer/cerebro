@@ -92,6 +92,61 @@ func TestCerebroEntityHistoryTool(t *testing.T) {
 	}
 }
 
+func TestCerebroEntityHistoryToolUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "service:payments",
+		Kind:     graph.NodeKindService,
+		Name:     "Payments",
+		Provider: "aws",
+		Properties: map[string]any{
+			"status":           "degraded",
+			"owner":            "team-payments",
+			"observed_at":      base.Add(2 * time.Hour).Format(time.RFC3339),
+			"valid_from":       base.Format(time.RFC3339),
+			"recorded_at":      base.Format(time.RFC3339),
+			"transaction_from": base.Format(time.RFC3339),
+		},
+	})
+	node, ok := g.GetNode("service:payments")
+	if !ok || node == nil {
+		t.Fatal("expected seeded service node")
+	}
+	node.PropertyHistory = map[string][]graph.PropertySnapshot{
+		"status": {
+			{Timestamp: base, Value: "healthy"},
+			{Timestamp: base.Add(2 * time.Hour), Value: "degraded"},
+		},
+	}
+
+	application := &App{
+		GraphSnapshots: mustPersistToolGraph(t, g),
+		Config:         &Config{},
+	}
+	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.entity_history")
+	if tool == nil {
+		t.Fatal("expected cerebro.entity_history tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"entity_id":"service:payments",
+		"timestamp":"2026-03-10T09:30:00Z"
+	}`))
+	if err != nil {
+		t.Fatalf("entity_history returned error: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode entity_history payload: %v", err)
+	}
+	entity := payload["entity"].(map[string]any)
+	properties := entity["properties"].(map[string]any)
+	if got := properties["status"]; got != "healthy" {
+		t.Fatalf("expected reconstructed status healthy, got %#v", got)
+	}
+}
+
 func TestCerebroGraphChangelogTool(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)

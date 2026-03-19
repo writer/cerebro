@@ -815,3 +815,15 @@ Status: executed end-to-end via PR workflow
 - [x] Route identity calibration through the shared `currentOrStoredGraphView(...)` resolver and preserve the existing unavailable error contract.
 - [x] Add focused HTTP regressions for store-backed success, live-graph preference, and missing-source `503`.
 - [x] Re-run focused API tests, package tests, lint, and changed-file validation before pushing the branch.
+
+## Deep Review Cycle 215 - App Analysis Tool Snapshot Fallback (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left several read-only app tools tied to `CurrentSecurityGraph()` through `requireSecurityGraph()`, so those tools failed whenever only persisted snapshots were available.
+- [x] Gap: the prior app-layer slice added `currentOrStoredSecurityGraphView()`, but the read-only analysis tools and `entity_history` path were still bypassing it.
+- [x] Gap: there was no regression proving those app tools continue to work from a persisted snapshot when the live graph pointer is absent.
+
+### Execution plan
+- [x] Add a read-only app graph helper that requires either the live graph or the latest persisted snapshot.
+- [x] Route the read-only analysis tools and `entity_history` through that helper without widening the write-path behavior.
+- [x] Add focused persisted-snapshot regressions and rerun app/package validation before pushing.

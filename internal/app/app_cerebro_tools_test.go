@@ -210,6 +210,231 @@ func TestCerebroBlastRadiusTool(t *testing.T) {
 	}
 }
 
+func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
+	g.AddNode(&graph.Node{ID: "role:ops", Kind: graph.NodeKindRole, Name: "Ops"})
+	g.AddNode(&graph.Node{ID: "db:prod", Kind: graph.NodeKindDatabase, Name: "Prod DB", Risk: graph.RiskCritical})
+	g.AddNode(&graph.Node{
+		ID:   "person:alice@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Alice",
+		Properties: map[string]any{
+			"email":       "alice@example.com",
+			"observed_at": base.Add(-1 * time.Hour).Format(time.RFC3339),
+			"valid_from":  base.Add(-1 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "identity_alias:github:alice",
+		Kind: graph.NodeKindIdentityAlias,
+		Name: "alice",
+		Properties: map[string]any{
+			"source_system": "github",
+			"external_id":   "alice",
+			"email":         "alice@example.com",
+			"observed_at":   base.Add(-1 * time.Hour).Format(time.RFC3339),
+			"valid_from":    base.Add(-1 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{ID: "svc:payments", Kind: graph.NodeKindApplication, Name: "Payments"})
+	g.AddNode(&graph.Node{
+		ID:   "customer:acme",
+		Kind: graph.NodeKindCustomer,
+		Name: "Acme",
+		Properties: map[string]any{
+			"arr":             500000.0,
+			"usage_declining": true,
+			"nps_score":       22,
+		},
+	})
+	g.AddEdge(&graph.Edge{ID: "alice-role", Source: "user:alice", Target: "role:ops", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "role-db", Source: "role:ops", Target: "db:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "alias-link", Source: "identity_alias:github:alice", Target: "person:alice@example.com", Kind: graph.EdgeKindAliasOf, Effect: graph.EdgeEffectAllow, Properties: map[string]any{
+		"observed_at": base.Add(-1 * time.Hour).Format(time.RFC3339),
+		"valid_from":  base.Add(-1 * time.Hour).Format(time.RFC3339),
+	}})
+	g.AddEdge(&graph.Edge{ID: "alice-customer", Source: "person:alice@example.com", Target: "customer:acme", Kind: graph.EdgeKindInteractedWith, Effect: graph.EdgeEffectAllow, Properties: map[string]any{
+		"last_seen": base.Format(time.RFC3339),
+	}})
+	g.AddEdge(&graph.Edge{ID: "svc-customer", Source: "svc:payments", Target: "customer:acme", Kind: graph.EdgeKindOwns, Effect: graph.EdgeEffectAllow})
+	g.BuildIndex()
+
+	application := &App{GraphSnapshots: mustPersistToolGraph(t, g)}
+	tests := []struct {
+		name   string
+		tool   string
+		args   string
+		assert func(*testing.T, map[string]any)
+	}{
+		{
+			name: "blast radius",
+			tool: "cerebro.blast_radius",
+			args: `{"principal_id":"user:alice","max_depth":3}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["principal_id"] != "user:alice" {
+					t.Fatalf("expected principal_id user:alice, got %#v", payload["principal_id"])
+				}
+				if total, ok := payload["total_count"].(float64); !ok || total < 1 {
+					t.Fatalf("expected reachable nodes, got %#v", payload["total_count"])
+				}
+			},
+		},
+		{
+			name: "graph query",
+			tool: "cerebro.graph_query",
+			args: `{"mode":"paths","node_id":"user:alice","target_id":"db:prod","k":2,"max_depth":6}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["mode"] != "paths" {
+					t.Fatalf("expected paths mode, got %#v", payload["mode"])
+				}
+				if count, ok := payload["count"].(float64); !ok || count < 1 {
+					t.Fatalf("expected at least one path, got %#v", payload["count"])
+				}
+			},
+		},
+		{
+			name: "intelligence report",
+			tool: "cerebro.intelligence_report",
+			args: `{"entity_id":"db:prod","include_counterfactual":false}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if _, ok := payload["risk_score"].(float64); !ok {
+					t.Fatalf("expected risk_score, got %#v", payload["risk_score"])
+				}
+				if insights, ok := payload["insights"].([]any); !ok || len(insights) == 0 {
+					t.Fatalf("expected insights, got %#v", payload["insights"])
+				}
+			},
+		},
+		{
+			name: "graph quality report",
+			tool: "cerebro.graph_quality_report",
+			args: `{"history_limit":10,"stale_after_hours":24}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				summary, ok := payload["summary"].(map[string]any)
+				if !ok {
+					t.Fatalf("expected summary object, got %#v", payload["summary"])
+				}
+				if _, ok := summary["maturity_score"].(float64); !ok {
+					t.Fatalf("expected maturity_score, got %#v", summary["maturity_score"])
+				}
+			},
+		},
+		{
+			name: "graph leverage report",
+			tool: "cerebro.graph_leverage_report",
+			args: `{"recent_window_hours":24}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				summary, ok := payload["summary"].(map[string]any)
+				if !ok {
+					t.Fatalf("expected summary object, got %#v", payload["summary"])
+				}
+				if _, ok := summary["leverage_score"].(float64); !ok {
+					t.Fatalf("expected leverage score, got %#v", summary["leverage_score"])
+				}
+			},
+		},
+		{
+			name: "scenario simulate",
+			tool: "simulate",
+			args: `{"scenario":"customer_churn","target":"customer:acme","parameters":{"include_cascade":true,"depth":3}}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["scenario"] != "customer_churn" {
+					t.Fatalf("expected customer_churn, got %#v", payload["scenario"])
+				}
+				if strings.TrimSpace(stringValue(payload["recommendation"])) == "" {
+					t.Fatalf("expected recommendation, got %#v", payload["recommendation"])
+				}
+			},
+		},
+		{
+			name: "insight card",
+			tool: "insight_card",
+			args: `{"entity":"customer:acme"}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["entity_id"] != "customer:acme" {
+					t.Fatalf("expected customer:acme, got %#v", payload["entity_id"])
+				}
+				if _, ok := payload["risk_score"]; !ok {
+					t.Fatalf("expected risk_score, got %#v", payload)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tool := findCerebroTool(application.cerebroTools(), tc.tool)
+			if tool == nil {
+				t.Fatalf("expected %s tool", tc.tool)
+			}
+			result, err := tool.Handler(context.Background(), json.RawMessage(tc.args))
+			if err != nil {
+				t.Fatalf("tool returned error: %v", err)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(result), &payload); err != nil {
+				t.Fatalf("decode tool payload: %v", err)
+			}
+			tc.assert(t, payload)
+		})
+	}
+}
+
+func TestCerebroAnalysisToolsSanitizeSnapshotLoadErrors(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
+	g.AddNode(&graph.Node{ID: "bucket:prod", Kind: graph.NodeKindBucket, Name: "Prod Bucket", Risk: graph.RiskHigh})
+	g.AddEdge(&graph.Edge{ID: "alice-bucket", Source: "user:alice", Target: "bucket:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+
+	basePath := filepath.Join(t.TempDir(), "graph-snapshots")
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    basePath,
+		MaxSnapshots: 4,
+	})
+	if err != nil {
+		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
+	}
+	if _, err := store.SaveGraph(g); err != nil {
+		t.Fatalf("SaveGraph() error = %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(basePath, "graph-*.json.gz"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected one snapshot artifact, got %v", matches)
+	}
+	if err := os.WriteFile(matches[0], []byte("not-a-valid-snapshot"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	application := &App{GraphSnapshots: store}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.blast_radius")
+	if tool == nil {
+		t.Fatal("expected blast radius tool")
+	}
+
+	_, err = tool.Handler(context.Background(), json.RawMessage(`{"principal_id":"user:alice","max_depth":3}`))
+	if err == nil {
+		t.Fatal("expected snapshot load error")
+	}
+	if !strings.Contains(err.Error(), "security graph not initialized") {
+		t.Fatalf("expected sanitized graph error, got %v", err)
+	}
+	if strings.Contains(err.Error(), basePath) {
+		t.Fatalf("expected sanitized error without snapshot path, got %v", err)
+	}
+}
+
 func TestCerebroGraphQueryPathsTool(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
@@ -1713,6 +1938,21 @@ func TestCerebroInsightCardTool_EntityNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected not found error")
 	}
+}
+
+func mustPersistToolGraph(t *testing.T, g *graph.Graph) *graph.GraphPersistenceStore {
+	t.Helper()
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    filepath.Join(t.TempDir(), "graph-snapshots"),
+		MaxSnapshots: 4,
+	})
+	if err != nil {
+		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
+	}
+	if _, err := store.SaveGraph(g); err != nil {
+		t.Fatalf("SaveGraph() error = %v", err)
+	}
+	return store
 }
 
 func findCerebroTool(tools []agents.Tool, name string) *agents.Tool {

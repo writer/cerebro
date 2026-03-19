@@ -781,7 +781,7 @@ func (a *App) toolCerebroSimulate(_ context.Context, args json.RawMessage) (stri
 }
 
 func (a *App) toolCerebroScenarioSimulate(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -858,7 +858,7 @@ func (a *App) toolCerebroScenarioSimulate(_ context.Context, args json.RawMessag
 }
 
 func (a *App) toolCerebroInsightCard(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -917,7 +917,7 @@ func (a *App) toolCerebroInsightCard(_ context.Context, args json.RawMessage) (s
 }
 
 func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -953,7 +953,7 @@ func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMess
 }
 
 func (a *App) toolCerebroGraphQualityReport(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -983,7 +983,7 @@ func (a *App) toolCerebroGraphQualityReport(_ context.Context, args json.RawMess
 }
 
 func (a *App) toolCerebroGraphLeverageReport(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -1544,7 +1544,7 @@ func simulationRecommendation(result *graph.GraphSimulationResult) string {
 }
 
 func (a *App) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -1600,7 +1600,7 @@ func (a *App) toolCerebroRiskScore(_ context.Context, args json.RawMessage) (str
 }
 
 func (a *App) toolCerebroGraphQuery(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}

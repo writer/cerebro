@@ -19,7 +19,7 @@ type cerebroCorrelateEventsRequest struct {
 }
 
 func (a *App) toolCerebroCorrelateEvents(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}

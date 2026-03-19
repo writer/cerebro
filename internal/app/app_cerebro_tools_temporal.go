@@ -72,7 +72,7 @@ func (a *App) toolCerebroEntityHistory(_ context.Context, args json.RawMessage) 
 		return "", err
 	}
 
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
