@@ -44,6 +44,7 @@ type Server struct {
 	remediationOperations    remediationOperationsService
 	schedulerOperations      schedulerOperationsService
 	syncHandlers             syncHandlerService
+	ticketingOps             ticketingService
 	threatRuntime            threatRuntimeService
 	router                   *chi.Mux
 	auditLogger              auditLogWriter
@@ -155,6 +156,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if graphSimulation == nil {
 		graphSimulation = newGraphSimulationService(&deps)
 	}
+	ticketingOps := deps.ticketingOps
+	if ticketingOps == nil {
+		ticketingOps = newTicketingService(&deps)
+	}
 	threatRuntime := deps.threatRuntime
 	if threatRuntime == nil {
 		threatRuntime = newThreatRuntimeService(&deps)
@@ -180,6 +185,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		remediationOperations:  remediationOperations,
 		schedulerOperations:    schedulerOperations,
 		syncHandlers:           syncHandlers,
+		ticketingOps:           ticketingOps,
 		threatRuntime:          threatRuntime,
 		router:                 chi.NewRouter(),
 		auditLogger:            deps.AuditRepo,

@@ -134,6 +134,7 @@ type serverDependencies struct {
 	remediationOperations remediationOperationsService
 	schedulerOperations   schedulerOperationsService
 	syncHandlers          syncHandlerService
+	ticketingOps          ticketingService
 	threatRuntime         threatRuntimeService
 }
 
