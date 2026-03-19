@@ -947,3 +947,14 @@ Status: executed end-to-end via PR workflow
 - [x] Add a scheduled-scan graph resolver that preserves live-graph wait semantics and falls back to persisted snapshots only when no live graph is present.
 - [x] Refactor the graph-analysis portion of `runScheduledScan()` through that resolver.
 - [x] Add focused app regressions for snapshot-only scheduled scans and the preserved live-wait contract, then rerun focused app validation before pushing.
+## Deep Review Cycle 219 - Event Remediation Snapshot Propagation (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#392` still left remediation propagation gating tied to the live graph pointer, so restart paths skipped propagation review whenever only a persisted snapshot was available.
+- [x] Gap: the app already had a passive persisted/live graph resolver, but `propagationEngine()` was bypassing it and returning `nil` whenever `SecurityGraph` was unset.
+- [x] Gap: existing remediation coverage only proved propagation gating with an in-memory live graph; it did not cover the snapshot-only runtime path.
+
+### Execution plan
+- [x] Route remediation propagation evaluation through the passive persisted graph resolver when no live graph is loaded.
+- [x] Preserve the existing cached live-graph engine behavior once a live graph exists.
+- [x] Add a snapshot-backed remediation regression and rerun focused app validation before pushing.
