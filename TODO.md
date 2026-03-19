@@ -887,3 +887,15 @@ Status: executed end-to-end via PR workflow
 - [x] Add a read-only app graph helper that requires either the live graph or the latest persisted snapshot.
 - [x] Route the read-only analysis tools and `entity_history` through that helper without widening the write-path behavior.
 - [x] Add focused persisted-snapshot regressions and rerun app/package validation before pushing.
+
+## Deep Review Cycle 218 - App Scheduled Scan Snapshot Fallback (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left scheduled graph analyses in `runScheduledScan()` gated on `CurrentSecurityGraph()`, so attack-path analysis and org-topology policy evaluation were skipped whenever only persisted snapshots were available.
+- [x] Gap: the app already had a persisted-snapshot graph-view helper, but the scheduled scan path still bypassed it and therefore diverged from the newer app-tool snapshot behavior.
+- [x] Gap: there was no regression proving scheduled graph analyses use a persisted snapshot when no live graph is loaded, while still preserving the existing live-graph wait behavior during startup.
+
+### Execution plan
+- [x] Add a scheduled-scan graph resolver that preserves live-graph wait semantics and falls back to persisted snapshots only when no live graph is present.
+- [x] Refactor the graph-analysis portion of `runScheduledScan()` through that resolver.
+- [x] Add focused app regressions for snapshot-only scheduled scans and the preserved live-wait contract, then rerun focused app validation before pushing.

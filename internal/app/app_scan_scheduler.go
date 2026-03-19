@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/evalops/cerebro/internal/findings"
+	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/notifications"
 	"github.com/evalops/cerebro/internal/scanner"
 	"github.com/evalops/cerebro/internal/scheduler"
@@ -178,6 +179,80 @@ func (a *App) runRetentionCleanup(ctx context.Context) error {
 	)
 
 	return nil
+}
+
+type scheduledGraphAnalysisSummary struct {
+	graphToxicCount         int
+	graphPaths              int
+	orgTopologyFindingCount int
+	orgTopologyErrorCount   int
+}
+
+func (a *App) currentOrStoredScheduledScanGraphView(ctx context.Context, tuning ScanTuning) *graph.Graph {
+	if a == nil {
+		return nil
+	}
+
+	if a.CurrentSecurityGraph() != nil {
+		graphCtx := ctx
+		cancel := func() {}
+		if tuning.GraphWaitTimeout > 0 {
+			graphCtx, cancel = context.WithTimeout(ctx, tuning.GraphWaitTimeout)
+		}
+		graphReady := a.WaitForGraph(graphCtx)
+		cancel()
+		if !graphReady {
+			return nil
+		}
+		return a.CurrentSecurityGraph()
+	}
+
+	securityGraph, err := a.currentOrStoredSecurityGraphView()
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("scheduled scan graph resolution failed", "error", err)
+		}
+		return nil
+	}
+	return securityGraph
+}
+
+func (a *App) runScheduledGraphAnalyses(ctx context.Context, tuning ScanTuning, sqlToxicRiskSets map[string][]map[string]bool) scheduledGraphAnalysisSummary {
+	summary := scheduledGraphAnalysisSummary{}
+	securityGraph := a.currentOrStoredScheduledScanGraphView(ctx, tuning)
+	if securityGraph == nil {
+		return summary
+	}
+
+	if a.Scanner != nil {
+		graphResult := a.Scanner.AnalyzeGraph(ctx, securityGraph)
+		if graphResult != nil {
+			summary.graphPaths = graphResult.AttackPathStats.TotalPaths
+			for _, f := range graphResult.ToxicCombinations {
+				resourceID := scanner.NormalizeResourceID(f.ResourceID)
+				graphRiskSet := scanner.CanonicalizeRiskCategories(f.RiskCategories)
+				if scanner.ShouldSkipGraphToxicCombination(resourceID, graphRiskSet, sqlToxicRiskSets) {
+					continue
+				}
+				a.upsertFindingAndRemediate(ctx, f)
+				summary.graphToxicCount++
+			}
+		}
+	}
+
+	orgTopologyResult := a.ScanOrgTopologyPolicies(ctx)
+	summary.orgTopologyFindingCount = len(orgTopologyResult.Findings)
+	summary.orgTopologyErrorCount = len(orgTopologyResult.Errors)
+	for _, errMsg := range orgTopologyResult.Errors {
+		if a.Logger != nil {
+			a.Logger.Warn("org topology policy execution failed", "error", errMsg)
+		}
+	}
+	for _, finding := range orgTopologyResult.Findings {
+		a.upsertFindingAndRemediate(ctx, finding)
+	}
+
+	return summary
 }
 
 func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
@@ -426,42 +501,11 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		}
 	}
 
-	if a.CurrentSecurityGraph() != nil {
-		graphCtx := ctx
-		cancel := func() {}
-		if tuning.GraphWaitTimeout > 0 {
-			graphCtx, cancel = context.WithTimeout(ctx, tuning.GraphWaitTimeout)
-		}
-		graphReady := a.WaitForGraph(graphCtx)
-		cancel()
-		if graphReady {
-			if securityGraph := a.CurrentSecurityGraph(); securityGraph != nil {
-				graphResult := a.Scanner.AnalyzeGraph(ctx, securityGraph)
-				if graphResult != nil {
-					graphPaths = graphResult.AttackPathStats.TotalPaths
-					for _, f := range graphResult.ToxicCombinations {
-						resourceID := scanner.NormalizeResourceID(f.ResourceID)
-						graphRiskSet := scanner.CanonicalizeRiskCategories(f.RiskCategories)
-						if scanner.ShouldSkipGraphToxicCombination(resourceID, graphRiskSet, sqlToxicRiskSets) {
-							continue
-						}
-						a.upsertFindingAndRemediate(ctx, f)
-						graphToxicCount++
-					}
-				}
-			}
-
-			orgTopologyResult := a.ScanOrgTopologyPolicies(ctx)
-			orgTopologyFindingCount = len(orgTopologyResult.Findings)
-			orgTopologyErrorCount = len(orgTopologyResult.Errors)
-			for _, errMsg := range orgTopologyResult.Errors {
-				a.Logger.Warn("org topology policy execution failed", "error", errMsg)
-			}
-			for _, finding := range orgTopologyResult.Findings {
-				a.upsertFindingAndRemediate(ctx, finding)
-			}
-		}
-	}
+	graphSummary := a.runScheduledGraphAnalyses(ctx, tuning, sqlToxicRiskSets)
+	graphToxicCount = graphSummary.graphToxicCount
+	graphPaths = graphSummary.graphPaths
+	orgTopologyFindingCount = graphSummary.orgTopologyFindingCount
+	orgTopologyErrorCount = graphSummary.orgTopologyErrorCount
 	if graphToxicCount > 0 {
 		totalViolations += int64(graphToxicCount)
 	}
