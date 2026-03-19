@@ -1,12 +1,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/evalops/cerebro/internal/executions"
-	"github.com/evalops/cerebro/internal/executionstore"
 )
 
 type platformExecutionCollection struct {
@@ -15,19 +15,9 @@ type platformExecutionCollection struct {
 }
 
 func (s *Server) listPlatformExecutions(w http.ResponseWriter, r *http.Request) {
-	if s == nil || s.app == nil || s.app.Config == nil {
+	if s == nil || s.platformExecutions == nil {
 		s.error(w, http.StatusInternalServerError, "platform execution store not configured")
 		return
-	}
-	store := s.app.ExecutionStore
-	if store == nil {
-		var err error
-		store, err = executionstore.NewSQLiteStore(s.app.Config.ExecutionStoreFile)
-		if err != nil {
-			s.error(w, http.StatusInternalServerError, "platform execution store unavailable")
-			return
-		}
-		defer func() { _ = store.Close() }()
 	}
 	limit := 50
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
@@ -57,9 +47,16 @@ func (s *Server) listPlatformExecutions(w http.ResponseWriter, r *http.Request) 
 		Offset:             offset,
 		OrderBySubmittedAt: orderBySubmittedAt,
 	}
-	summaries, err := executions.List(r.Context(), store, opts)
+	summaries, err := s.platformExecutions.ListExecutions(r.Context(), opts)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, "failed to list platform executions")
+		switch {
+		case errors.Is(err, errPlatformExecutionStoreNotConfigured):
+			s.error(w, http.StatusInternalServerError, "platform execution store not configured")
+		case errors.Is(err, errPlatformExecutionStoreUnavailable):
+			s.error(w, http.StatusInternalServerError, "platform execution store unavailable")
+		default:
+			s.error(w, http.StatusInternalServerError, "failed to list platform executions")
+		}
 		return
 	}
 	s.json(w, http.StatusOK, platformExecutionCollection{

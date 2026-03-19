@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 230 - Platform Execution Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left `/api/v1/platform/executions` reaching directly into `s.app.Config` and `s.app.ExecutionStore`, so that handler could not be exercised through `NewServerWithDependencies(...)` with only a narrow stub.
+- [x] Gap: execution listing already sits on a small dependency surface, which makes it a low-risk extraction seam that preserves the existing query validation and execution-store fallback behavior.
+- [x] Gap: there was no constructor-level regression proving the handler can execute with a typed execution-listing service and no concrete execution store on `*app.App`.
+
+### Execution plan
+- [x] Add a dedicated `platformExecutionService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route `/api/v1/platform/executions` through that service while preserving not-configured, unavailable, and list-failure semantics.
+- [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 228 - Scheduler Operations Handler Service Seam (2026-03-19)
 
 ### Review findings

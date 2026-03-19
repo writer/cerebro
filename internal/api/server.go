@@ -35,6 +35,7 @@ type Server struct {
 	agentSDKAdmin            agentSDKAdminService
 	lineage                  lineageService
 	orgAnalysis              orgAnalysisService
+	platformExecutions       platformExecutionService
 	platformKnowledge        platformKnowledgeService
 	rbacAdmin                rbacAdminService
 	remediationOperations    remediationOperationsService
@@ -135,6 +136,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if orgAnalysis == nil {
 		orgAnalysis = newOrgAnalysisService(&deps)
 	}
+	platformExecutions := deps.platformExecutions
+	if platformExecutions == nil {
+		platformExecutions = newPlatformExecutionService(&deps)
+	}
 	threatRuntime := deps.threatRuntime
 	if threatRuntime == nil {
 		threatRuntime = newThreatRuntimeService(&deps)
@@ -151,6 +156,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		graphIntelligence:      newGraphIntelligenceService(&deps),
 		lineage:                lineage,
 		orgAnalysis:            orgAnalysis,
+		platformExecutions:     platformExecutions,
 		platformKnowledge:      platformKnowledge,
 		rbacAdmin:              rbacAdmin,
 		remediationOperations:  remediationOperations,

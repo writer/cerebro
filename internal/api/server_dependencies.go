@@ -125,6 +125,7 @@ type serverDependencies struct {
 	graphWriteback        graphWritebackService
 	lineage               lineageService
 	orgAnalysis           orgAnalysisService
+	platformExecutions    platformExecutionService
 	platformKnowledge     platformKnowledgeService
 	rbacAdmin             rbacAdminService
 	remediationOperations remediationOperationsService
