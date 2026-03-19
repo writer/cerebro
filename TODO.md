@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Keep snapshot-backed writes read-only and add focused regressions for both unscoped and tenant-scoped fallback behavior.
 - [x] Re-run focused app validation and changed-file gates before opening the PR.
 
+## Deep Review Cycle 223 - Org Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left the org analysis handlers wired directly to graph package helpers, so that family was not testable through `NewServerWithDependencies(...)` with a narrow typed stub.
+- [x] Gap: the org information-flow, meeting-insights, and onboarding endpoints had already converged on the tenant graph-view resolver, which made them a clean handler-family seam without widening behavior.
+- [x] Gap: there was no constructor-level regression proving those org handlers can execute against a dedicated service interface with no live `*app.App` graph wiring.
+
+### Execution plan
+- [x] Add a dedicated `orgAnalysisService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route the org information-flow, meeting-insights, and onboarding handlers through that service without changing request validation or not-found semantics.
+- [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 222 - CLI Readable Graph Snapshot Fallback (2026-03-19)
 
 ### Review findings
