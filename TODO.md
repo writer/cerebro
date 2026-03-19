@@ -351,6 +351,17 @@ Status: executed end-to-end via PR workflow
 - [x] Add a policy-scoped reminder helper that returns pending and stale reminder candidates for the current policy version.
 - [x] Include assignment scope and acknowledgment metadata in the candidate records so future automation can render actionable notifications.
 - [x] Add focused graph tests for pending reminders, stale reminders, direct assignments, and invalid policy input, then rerun graph validation.
+## Deep Review Cycle 206 - Organizational Policy Review Schedule (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` already stored `review_cycle_days` on policy nodes, but there was no graph helper to tell which policies were current, due, or overdue for review.
+- [x] Gap: once version history landed, the review schedule needed to follow the latest policy revision timestamp instead of the original creation timestamp, otherwise updated policies would still appear overdue.
+- [x] Gap: future policy-management surfaces need a deterministic schedule view from the graph layer so they do not each reimplement review-date math.
+
+### Execution plan
+- [x] Add a graph helper that computes review schedule status from policy review cadence and the latest policy revision timestamp.
+- [x] Classify policies as current, due, or overdue and expose deterministic next-review metadata per policy.
+- [x] Add focused graph tests for cadence filtering, due/overdue classification, version-history timestamps, and nil-graph input, then rerun graph validation.
 
 ## Deep Review Cycle 206 - Organizational Policy Person Status (2026-03-18)
 
