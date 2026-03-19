@@ -864,6 +864,18 @@ Status: executed end-to-end via PR workflow
 - [x] Route `initIdentity()` through the persisted/live helper for both tenant-scoped and cross-tenant graph resolution.
 - [x] Add a store-only tenant-scope regression and rerun focused app validation before pushing.
 
+## Deep Review Cycle 218 - App Status Snapshot Fallback (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the app status helpers tied to `CurrentSecurityGraph()`, so build status and freshness silently fell back to empty/live-only behavior when only persisted snapshots were available.
+- [x] Gap: the app already had a shared persisted graph-view helper, but `GraphBuildSnapshot()` and `GraphFreshnessStatusSnapshot()` were bypassing it.
+- [x] Gap: there was no regression proving the app status surface reports node counts and freshness breaches from persisted snapshots.
+
+### Execution plan
+- [x] Route app build-status and freshness snapshots through the persisted/live graph helper.
+- [x] Keep failure behavior non-fatal by preserving the existing empty-status fallback when no graph can be resolved.
+- [x] Add focused persisted-snapshot regressions and rerun app validation before pushing.
+
 ## Deep Review Cycle 215 - App Analysis Tool Snapshot Fallback (2026-03-18)
 
 ### Review findings

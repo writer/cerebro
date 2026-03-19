@@ -355,6 +355,69 @@ func TestGraphBuildSnapshotIncludesNodeCountWithoutHoldingBuildLock(t *testing.T
 	}
 }
 
+func TestGraphBuildSnapshotUsesPersistedSnapshotNodeCountWhenLiveGraphUnavailable(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+	persisted.AddNode(&graph.Node{ID: "service:billing", Kind: graph.NodeKindService, Name: "billing"})
+	store := mustPersistToolGraph(t, persisted)
+
+	application := &App{
+		Config:         &Config{},
+		GraphSnapshots: store,
+	}
+	application.setGraphBuildState(GraphBuildSuccess, time.Now().UTC(), nil)
+
+	snapshot := application.GraphBuildSnapshot()
+	if snapshot.State != GraphBuildSuccess {
+		t.Fatalf("expected graph build state success, got %#v", snapshot)
+	}
+	if snapshot.NodeCount != 2 {
+		t.Fatalf("expected persisted graph node count 2, got %d", snapshot.NodeCount)
+	}
+	if status := store.Status(); status.LastRecoveredAt != nil {
+		t.Fatalf("expected build snapshot read to avoid recovery bookkeeping, got %#v", status)
+	}
+}
+
+func TestGraphFreshnessStatusSnapshotUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	now := time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC)
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{
+		ID:       "service:payments",
+		Kind:     graph.NodeKindService,
+		Name:     "payments",
+		Provider: "aws",
+		Properties: map[string]any{
+			"observed_at": now.Add(-12 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	store := mustPersistToolGraph(t, persisted)
+
+	application := &App{
+		Config: &Config{
+			GraphFreshnessDefaultSLA: 6 * time.Hour,
+		},
+		GraphSnapshots: store,
+	}
+
+	status := application.GraphFreshnessStatusSnapshot(now)
+	if status.Healthy {
+		t.Fatalf("expected persisted snapshot freshness breach, got %#v", status)
+	}
+	if len(status.Breaches) != 1 {
+		t.Fatalf("expected one freshness breach, got %#v", status.Breaches)
+	}
+	if got := status.Breaches[0].Provider; got != "aws" {
+		t.Fatalf("expected aws freshness breach, got %#v", got)
+	}
+	if len(status.Breakdown.Providers) != 1 {
+		t.Fatalf("expected one provider freshness scope, got %#v", status.Breakdown.Providers)
+	}
+	if persistence := store.Status(); persistence.LastRecoveredAt != nil {
+		t.Fatalf("expected freshness status read to avoid recovery bookkeeping, got %#v", persistence)
+	}
+}
+
 func TestMutateSecurityGraphSwapsCloneAfterMutationCompletes(t *testing.T) {
 	liveGraph := graph.New()
 	liveGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})

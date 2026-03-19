@@ -132,6 +132,49 @@ func TestGraphPersistenceStoreSaveGraphReturnsRecordWhenReplicaSyncFails(t *test
 	}
 }
 
+func TestGraphPersistenceStorePeekLatestSnapshotDoesNotRecordRecovery(t *testing.T) {
+	localDir := t.TempDir()
+	store, err := NewGraphPersistenceStore(GraphPersistenceOptions{
+		LocalPath:    localDir,
+		MaxSnapshots: 4,
+	})
+	if err != nil {
+		t.Fatalf("new graph persistence store: %v", err)
+	}
+
+	g := New()
+	g.AddNode(&Node{ID: "service:payments", Kind: NodeKindService, Name: "payments"})
+	g.SetMetadata(Metadata{
+		BuiltAt:       time.Date(2026, 3, 19, 5, 0, 0, 0, time.UTC),
+		NodeCount:     1,
+		EdgeCount:     0,
+		Providers:     []string{"aws"},
+		Accounts:      []string{"prod"},
+		BuildDuration: time.Second,
+	})
+	record, err := store.SaveGraph(g)
+	if err != nil {
+		t.Fatalf("save graph snapshot: %v", err)
+	}
+
+	snapshot, recoveredRecord, source, err := store.PeekLatestSnapshot()
+	if err != nil {
+		t.Fatalf("peek latest snapshot: %v", err)
+	}
+	if source != graphRecoverySourceLocal {
+		t.Fatalf("expected local recovery source, got %q", source)
+	}
+	if recoveredRecord == nil || recoveredRecord.ID != record.ID {
+		t.Fatalf("expected peek record %q, got %#v", record.ID, recoveredRecord)
+	}
+	if snapshot == nil || len(snapshot.Nodes) != 1 {
+		t.Fatalf("expected one-node snapshot, got %#v", snapshot)
+	}
+	if status := store.Status(); status.LastRecoveredAt != nil || status.LastRecoveredSnapshot != "" || status.LastRecoverySource != "" {
+		t.Fatalf("expected peek to avoid recovery bookkeeping, got %#v", status)
+	}
+}
+
 func TestGraphPersistenceStoreRejectsTraversalArtifactPathFromReplicaIndex(t *testing.T) {
 	localDir := t.TempDir()
 	replicaDir := t.TempDir()

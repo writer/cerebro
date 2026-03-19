@@ -8,16 +8,30 @@ import (
 )
 
 func (a *App) currentOrStoredSecurityGraphView() (*graph.Graph, error) {
+	return a.currentOrStoredSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error) {
+		snapshot, _, _, err := store.LoadLatestSnapshot()
+		return snapshot, err
+	})
+}
+
+func (a *App) currentOrStoredPassiveSecurityGraphView() (*graph.Graph, error) {
+	return a.currentOrStoredSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error) {
+		snapshot, _, _, err := store.PeekLatestSnapshot()
+		return snapshot, err
+	})
+}
+
+func (a *App) currentOrStoredSecurityGraphViewWithSnapshotLoader(loadSnapshot func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error)) (*graph.Graph, error) {
 	if a == nil {
 		return nil, nil
 	}
 	if current := a.CurrentSecurityGraph(); current != nil {
 		return current, nil
 	}
-	if a.GraphSnapshots == nil {
+	if a.GraphSnapshots == nil || loadSnapshot == nil {
 		return nil, nil
 	}
-	snapshot, _, _, err := a.GraphSnapshots.LoadLatestSnapshot()
+	snapshot, err := loadSnapshot(a.GraphSnapshots)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
 			return nil, nil

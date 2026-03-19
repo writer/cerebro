@@ -115,7 +115,11 @@ func (a *App) GraphBuildSnapshot() GraphBuildSnapshot {
 	}
 	a.graphBuildMu.RUnlock()
 
-	if securityGraph := a.CurrentSecurityGraph(); securityGraph != nil {
+	securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
+	if err != nil && a != nil && a.Logger != nil {
+		a.Logger.Warn("failed to resolve security graph for build snapshot", "error", err)
+	}
+	if securityGraph != nil {
 		snapshot.NodeCount = securityGraph.NodeCount()
 	}
 	return snapshot
