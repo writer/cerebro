@@ -828,6 +828,18 @@ Status: executed end-to-end via PR workflow
 - [x] Extend the existing persisted-snapshot app-tool regression to cover both tools.
 - [x] Re-run app package tests, lint, and changed-file validation against the stacked base before pushing.
 
+## Deep Review Cycle 217 - App Identity Resolver Snapshot Fallback (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the app-level identity service bound to `CurrentSecurityGraph()` only, so tenant-scoped identity flows failed when only persisted snapshots were available.
+- [x] Gap: the app already had persisted graph-view helpers for tools, but `initIdentity()` was still bypassing them.
+- [x] Gap: existing coverage only proved tenant scoping with a live graph; it did not prove store-backed tenant scoping.
+
+### Execution plan
+- [x] Add a tenant-aware persisted graph-view helper in the app layer.
+- [x] Route `initIdentity()` through the persisted/live helper for both tenant-scoped and cross-tenant graph resolution.
+- [x] Add a store-only tenant-scope regression and rerun focused app validation before pushing.
+
 ## Deep Review Cycle 215 - App Analysis Tool Snapshot Fallback (2026-03-18)
 
 ### Review findings

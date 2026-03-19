@@ -30,6 +30,24 @@ func (a *App) currentOrStoredSecurityGraphView() (*graph.Graph, error) {
 	return graph.GraphViewFromSnapshot(snapshot), nil
 }
 
+func (a *App) currentOrStoredSecurityGraphViewForTenant(tenantID string) (*graph.Graph, error) {
+	if a == nil {
+		return nil, nil
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return a.currentOrStoredSecurityGraphView()
+	}
+	if current := a.CurrentSecurityGraph(); current != nil {
+		return a.CurrentSecurityGraphForTenant(tenantID), nil
+	}
+	view, err := a.currentOrStoredSecurityGraphView()
+	if err != nil || view == nil {
+		return view, err
+	}
+	return view.SubgraphForTenant(tenantID), nil
+}
+
 func (a *App) requireReadableSecurityGraph() (*graph.Graph, error) {
 	if a == nil {
 		return nil, fmt.Errorf("security graph not initialized")

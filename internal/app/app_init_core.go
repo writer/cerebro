@@ -314,9 +314,17 @@ func (a *App) initIdentity() {
 		identity.WithExecutionStore(a.ExecutionStore),
 		identity.WithGraphResolver(func(ctx context.Context) *graph.Graph {
 			if scope, ok := graph.TenantReadScopeFromContext(ctx); ok && !scope.CrossTenant && len(scope.TenantIDs) == 1 {
-				return a.CurrentSecurityGraphForTenant(scope.TenantIDs[0])
+				view, err := a.currentOrStoredSecurityGraphViewForTenant(scope.TenantIDs[0])
+				if err != nil {
+					return nil
+				}
+				return view
 			}
-			return a.CurrentSecurityGraph()
+			view, err := a.currentOrStoredSecurityGraphView()
+			if err != nil {
+				return nil
+			}
+			return view
 		}),
 	)
 }

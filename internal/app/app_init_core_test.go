@@ -214,3 +214,71 @@ func TestInitIdentityGraphResolverUsesTenantReadScope(t *testing.T) {
 		t.Fatalf("expected tenant-a resource only, got %#v", got)
 	}
 }
+
+func TestInitIdentityGraphResolverUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	a := &App{
+		Config: &Config{
+			GraphTenantShardIdleTTL:         10 * time.Minute,
+			GraphTenantWarmShardTTL:         time.Hour,
+			GraphTenantWarmShardMaxRetained: 1,
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	now := time.Now().UTC()
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:        "user:alice",
+		Kind:      graph.NodeKindUser,
+		Name:      "alice@example.com",
+		Provider:  "aws",
+		Account:   "123456789012",
+		CreatedAt: now.Add(-24 * time.Hour),
+		Properties: map[string]any{
+			"email": "alice@example.com",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:        "bucket:tenant-a",
+		Kind:      graph.NodeKindBucket,
+		Name:      "tenant-a",
+		Provider:  "aws",
+		Account:   "123456789012",
+		TenantID:  "tenant-a",
+		Risk:      graph.RiskHigh,
+		CreatedAt: now.Add(-48 * time.Hour),
+	})
+	g.AddNode(&graph.Node{
+		ID:        "bucket:tenant-b",
+		Kind:      graph.NodeKindBucket,
+		Name:      "tenant-b",
+		Provider:  "aws",
+		Account:   "123456789012",
+		TenantID:  "tenant-b",
+		Risk:      graph.RiskHigh,
+		CreatedAt: now.Add(-48 * time.Hour),
+	})
+	g.AddEdge(&graph.Edge{ID: "alice-tenant-a", Source: "user:alice", Target: "bucket:tenant-a", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "alice-tenant-b", Source: "user:alice", Target: "bucket:tenant-b", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	a.GraphSnapshots = mustPersistToolGraph(t, g)
+	a.initIdentity()
+
+	if a.CurrentSecurityGraph() != nil {
+		t.Fatalf("expected no live security graph, got %p", a.CurrentSecurityGraph())
+	}
+
+	review, err := a.Identity.CreateReview(graph.WithTenantScope(context.Background(), "tenant-a"), &identity.AccessReview{
+		Name:             "Tenant scoped review",
+		CreatedBy:        "secops@example.com",
+		GenerationSource: "graph",
+	})
+	if err != nil {
+		t.Fatalf("CreateReview failed: %v", err)
+	}
+	if len(review.Items) != 1 {
+		t.Fatalf("expected one tenant-scoped item, got %d", len(review.Items))
+	}
+	if got := review.Items[0].Metadata["resource_id"]; got != "bucket:tenant-a" {
+		t.Fatalf("expected tenant-a resource only, got %#v", got)
+	}
+}
