@@ -208,6 +208,17 @@ Status: executed end-to-end via PR workflow
 - [x] Add a dependency-level capability check for post-sync graph apply support that prefers the runtime abstraction over the raw builder field.
 - [x] Route the sync service gate through that capability check instead of `SecurityGraphBuilder != nil`.
 - [x] Add focused sync handler regressions for runtime-only apply support and the no-runtime/no-builder skip path, then rerun API validation before opening the PR.
+## Deep Review Cycle 215 - Organizational Policy Assignee Acknowledgment Sync (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still had no policy-scoped graph helper to record one acknowledgment event across the people who currently owe a policy, so LMS import flows had to fan out one write call per assignee.
+- [x] Gap: the graph already had a policy assignee roster and a single-person acknowledgment write path, but there was no reusable helper that combined those two seams and treated already-current assignees as no-ops.
+- [x] Gap: there was no focused regression proving a policy-scoped acknowledgment sync upgrades stale assignees to the current version, acknowledges pending assignees, and rejects people who are not currently assigned to the policy.
+
+### Execution plan
+- [x] Add a policy-scoped acknowledgment sync helper that can acknowledge all current assignees or a caller-specified subset of those assignees.
+- [x] Reuse the existing assignee-roster and single-policy acknowledgment helpers so status semantics stay consistent.
+- [x] Add focused graph tests for pending, stale, already-current, subset, and invalid-target behavior, then rerun graph validation before opening the PR.
 
 ## Deep Review Cycle 211 - Organizational Policy Assignee Roster (2026-03-18)
 
