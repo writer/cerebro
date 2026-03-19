@@ -124,6 +124,18 @@ Status: executed end-to-end via PR workflow
 - [x] Include assignment scope and acknowledgment metadata in the candidate records so future automation can render actionable notifications.
 - [x] Add focused graph tests for pending reminders, stale reminders, direct assignments, and invalid policy input, then rerun graph validation.
 
+## Deep Review Cycle 206 - Organizational Policy Person Status (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still had no reusable graph helper to answer which policies a specific person currently owes, which blocked reminder and new-hire onboarding flows from reusing the existing policy assignment graph.
+- [x] Gap: stale acknowledgments after a policy version update were only visible from policy-centric rollups, not from the person-centric view needed for employee follow-up.
+- [x] Gap: direct person assignments and department-scoped assignments needed to be merged into one deterministic person report so future API slices would not reimplement graph joins in handlers.
+
+### Execution plan
+- [x] Add a person-scoped organizational policy acknowledgment report that combines direct assignments, department assignments, and current-vs-stale acknowledgment state.
+- [x] Add focused graph tests covering direct assignments, department assignments, acknowledged policies, stale policies, and invalid person input.
+- [x] Re-run graph tests, lint, and changed-file validation before opening the next `#256` slice.
+
 ## Deep Review Cycle 205 - Graph Store Compliance Evaluation Paths (2026-03-18)
 
 ### Review findings
