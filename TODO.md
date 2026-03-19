@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Include current acknowledgment status plus direct-assignment and department-assignment provenance on each assignee record.
 - [x] Add focused graph tests for mixed assignment scope, stale acknowledgments after a version change, and invalid policy input, then rerun graph validation before opening the PR.
 
+## Deep Review Cycle 211 - Organizational Policy Program Reminder Queue (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` had a per-policy reminder helper and emerging person/department rollups, but no single graph-layer queue that emitted every outstanding person-policy reminder across the whole policy program.
+- [x] Gap: reminder automation needs one actionable backlog for batch jobs and dashboards, not a separate policy-by-policy scan in every caller.
+- [x] Gap: framework-scoped compliance operations need to narrow reminder work to one mapped framework family without reimplementing policy filtering in the API layer.
+
+### Execution plan
+- [x] Add a program-wide reminder queue helper that emits one row per pending or stale person-policy obligation.
+- [x] Preserve direct-assignment and department-assignment context on each row so reminder workflows can explain why the person owes the policy.
+- [x] Add focused graph tests for aggregate counts, framework filtering, assignment context preservation, and nil-graph validation, then rerun graph validation before opening the PR.
+
 ## Deep Review Cycle 209 - Platform Snapshot Catalog Context Propagation (2026-03-18)
 
 ### Review findings
