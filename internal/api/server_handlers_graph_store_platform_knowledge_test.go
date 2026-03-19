@@ -1,12 +1,32 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/evalops/cerebro/internal/app"
 	"github.com/evalops/cerebro/internal/graph"
 )
+
+type stubGraphMutator struct {
+	graph *graph.Graph
+	err   error
+}
+
+func (s stubGraphMutator) MutateSecurityGraph(_ context.Context, mutate func(*graph.Graph) error) (*graph.Graph, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.graph == nil {
+		return nil, errPlatformKnowledgeUnavailable
+	}
+	if err := mutate(s.graph); err != nil {
+		return nil, err
+	}
+	return s.graph, nil
+}
 
 type platformKnowledgeStoreFixture struct {
 	graph         *graph.Graph
@@ -93,5 +113,46 @@ func TestPlatformKnowledgeReadHandlersPreferLiveGraphOverSnapshotWhenAvailable(t
 	resp := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/claims?subject_id=service:payments&predicate=owner&include_resolved=true", nil)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected claim list 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestPlatformKnowledgeAdjudicationUsesGraphMutatorWhenRawGraphUnavailable(t *testing.T) {
+	fixture := buildGraphStorePlatformKnowledgeFixture(t)
+	s := NewServerWithDependencies(serverDependencies{
+		Config:       &app.Config{},
+		graphRuntime: stubGraphRuntime{store: fixture.graph},
+		graphMutator: stubGraphMutator{graph: fixture.graph},
+	})
+	t.Cleanup(func() { s.Close() })
+
+	if s.app.SecurityGraph != nil {
+		t.Fatalf("expected dependency bundle to start without a direct security graph, got %p", s.app.SecurityGraph)
+	}
+
+	base := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+	resp := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/claim-groups/claim_group:service-payments:owner/adjudications", map[string]any{
+		"action":                 "accept_existing",
+		"authoritative_claim_id": fixture.aliceClaimID,
+		"actor":                  "reviewer:alice",
+		"rationale":              "authoritative source",
+		"source_system":          "api",
+		"source_event_id":        "adj-001",
+		"observed_at":            base.Format(time.RFC3339),
+		"valid_from":             base.Format(time.RFC3339),
+		"recorded_at":            base.Format(time.RFC3339),
+		"transaction_from":       base.Format(time.RFC3339),
+	})
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("expected adjudication 201, got %d: %s", resp.Code, resp.Body.String())
+	}
+
+	body := decodeJSON(t, resp)
+	createdClaimID, _ := body["created_claim_id"].(string)
+	if createdClaimID == "" {
+		t.Fatalf("expected created claim id from store-backed adjudication, got %#v", body)
+	}
+	node, ok := fixture.graph.GetNode(createdClaimID)
+	if !ok || node == nil || node.Kind != graph.NodeKindClaim {
+		t.Fatalf("expected adjudication to mutate graph through graph mutator, got %#v", node)
 	}
 }

@@ -174,10 +174,6 @@ func (s serverPlatformKnowledgeService) DiffKnowledge(ctx context.Context, opts 
 }
 
 func (s serverPlatformKnowledgeService) AdjudicateClaimGroup(ctx context.Context, req knowledge.ClaimAdjudicationWriteRequest) (knowledge.ClaimAdjudicationWriteResult, error) {
-	g, err := s.writableGraph()
-	if err != nil {
-		return knowledge.ClaimAdjudicationWriteResult{}, err
-	}
 	req.GroupID = strings.TrimSpace(req.GroupID)
 	if tenantID := currentTenantScopeID(ctx); tenantID != "" {
 		scoped, err := s.tenantGraph(ctx)
@@ -188,7 +184,18 @@ func (s serverPlatformKnowledgeService) AdjudicateClaimGroup(ctx context.Context
 			return knowledge.ClaimAdjudicationWriteResult{}, errors.New("claim group not found")
 		}
 	}
-	return knowledge.AdjudicateClaimGroup(g, req)
+	var result knowledge.ClaimAdjudicationWriteResult
+	if _, err := s.mutate(ctx, func(g *graph.Graph) error {
+		writeResult, err := knowledge.AdjudicateClaimGroup(g, req)
+		if err != nil {
+			return err
+		}
+		result = writeResult
+		return nil
+	}); err != nil {
+		return knowledge.ClaimAdjudicationWriteResult{}, err
+	}
+	return result, nil
 }
 
 func (s serverPlatformKnowledgeService) tenantGraph(ctx context.Context) (*graph.Graph, error) {
@@ -203,22 +210,18 @@ func (s serverPlatformKnowledgeService) tenantGraph(ctx context.Context) (*graph
 	return view, nil
 }
 
-func (s serverPlatformKnowledgeService) writableGraph() (*graph.Graph, error) {
-	if s.deps == nil {
-		return nil, errPlatformKnowledgeUnavailable
-	}
-	g := s.deps.CurrentSecurityGraph()
-	if g == nil {
-		return nil, errPlatformKnowledgeUnavailable
-	}
-	return g, nil
-}
-
 func (s serverPlatformKnowledgeService) snapshotStore() *graph.GraphPersistenceStore {
 	if s.deps == nil {
 		return nil
 	}
 	return s.deps.PlatformGraphSnapshotStore()
+}
+
+func (s serverPlatformKnowledgeService) mutate(ctx context.Context, mutate func(*graph.Graph) error) (*graph.Graph, error) {
+	if s.deps == nil || s.deps.graphMutator == nil {
+		return nil, errPlatformKnowledgeUnavailable
+	}
+	return s.deps.MutateSecurityGraph(ctx, mutate)
 }
 
 func (s serverPlatformKnowledgeService) scopeGraph(ctx context.Context, g *graph.Graph) *graph.Graph {

@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 212 - Platform Knowledge Graph Mutation Runtime Path (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left platform knowledge adjudication bound to `CurrentSecurityGraph()`, so the write path failed when the server was running against the graph runtime/store abstraction without a populated raw graph field.
+- [x] Gap: the read side of platform knowledge already used the store/runtime resolver, but adjudication still bypassed the shared mutation seam and therefore blocked managed-graph migration for that workflow.
+- [x] Gap: there was no regression proving claim-group adjudication can succeed with `SecurityGraph == nil` as long as the runtime/store path and graph mutator are configured.
+
+### Execution plan
+- [x] Route platform knowledge adjudication through `MutateSecurityGraph(...)` instead of the raw current-graph field.
+- [x] Preserve the existing tenant-scoped read validation before mutation so wrong-tenant group IDs still fail cleanly.
+- [x] Add a store/runtime-backed HTTP regression for adjudication with no direct graph pointer, then rerun focused API validation before opening the PR.
+
 ## Deep Review Cycle 211 - Organizational Policy Assignee Roster (2026-03-18)
 
 ### Review findings
