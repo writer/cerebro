@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Preserve the existing nil-on-unavailable behavior so router startup semantics do not widen unexpectedly.
 - [x] Add focused app regressions for persisted-snapshot fallback and live-graph preference before pushing the branch.
 
+## Deep Review Cycle 221 - App Health Snapshot Fallback (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#392` still left the app health checks for graph freshness and ontology SLO hard-gated on `CurrentSecurityGraph()`, so they incorrectly returned `unknown` whenever the app was serving only from persisted snapshots.
+- [x] Gap: both checks are read-only and the underlying app freshness/status helpers already support passive persisted-snapshot reads without recovery side effects.
+- [x] Gap: there was no focused regression proving either health check continues to work from persisted snapshots while preserving the existing `unknown` result when no graph source exists.
+
+### Execution plan
+- [x] Route the graph freshness and ontology SLO health checks through the passive persisted/live graph resolver.
+- [x] Preserve the existing `unknown` result when neither a live graph nor a persisted snapshot can be resolved.
+- [x] Add focused persisted-snapshot regressions for both health checks, then rerun targeted app validation before pushing the branch.
+
 ## Deep Review Cycle 219 - App DSPM Snapshot Mutation Base (2026-03-19)
 
 ### Review findings

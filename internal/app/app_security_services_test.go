@@ -121,6 +121,40 @@ func TestGraphOntologySLOHealthCheckWithoutGraph(t *testing.T) {
 	}
 }
 
+func TestGraphOntologySLOHealthCheckUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	g := graph.New()
+	now := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+	g.AddNode(&graph.Node{
+		ID:   "activity:test",
+		Kind: graph.NodeKindActivity,
+		Name: "Legacy Activity",
+		Properties: map[string]any{
+			"source_system": "github",
+			"observed_at":   now.Format(time.RFC3339),
+			"valid_from":    now.Format(time.RFC3339),
+		},
+	})
+	g.BuildIndex()
+
+	application := &App{
+		Config: &Config{
+			GraphOntologyFallbackWarnPct:        10,
+			GraphOntologyFallbackCriticalPct:    50,
+			GraphOntologySchemaValidWarnPct:     98,
+			GraphOntologySchemaValidCriticalPct: 92,
+		},
+		GraphSnapshots: mustPersistToolGraph(t, g),
+	}
+
+	result := application.graphOntologySLOHealthCheck()(context.Background())
+	if result.Status != health.StatusUnhealthy {
+		t.Fatalf("expected unhealthy status from persisted snapshot fallback activity, got %s (%s)", result.Status, result.Message)
+	}
+	if !strings.Contains(result.Message, "fallback_activity_percent") {
+		t.Fatalf("expected fallback issue in message, got %q", result.Message)
+	}
+}
+
 func TestInitHealthRegistersGraphBuildCheck(t *testing.T) {
 	application := &App{
 		Config:    &Config{},
@@ -415,6 +449,46 @@ func TestGraphFreshnessStatusSnapshotUsesPersistedSnapshotWhenLiveGraphUnavailab
 	}
 	if persistence := store.Status(); persistence.LastRecoveredAt != nil {
 		t.Fatalf("expected freshness status read to avoid recovery bookkeeping, got %#v", persistence)
+	}
+}
+
+func TestInitHealthRegistersGraphFreshnessCheckUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	now := time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC)
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{
+		ID:       "service:payments",
+		Kind:     graph.NodeKindService,
+		Name:     "payments",
+		Provider: "aws",
+		Properties: map[string]any{
+			"observed_at": now.Add(-12 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	store := mustPersistToolGraph(t, persisted)
+
+	application := &App{
+		Config: &Config{
+			GraphFreshnessDefaultSLA: 6 * time.Hour,
+		},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse:      &warehouse.MemoryWarehouse{},
+		GraphSnapshots: store,
+	}
+	application.initHealth()
+
+	results := application.Health.RunAll(context.Background())
+	check, ok := results["graph_freshness"]
+	if !ok {
+		t.Fatal("expected graph_freshness health check to be registered")
+	}
+	if check.Status != health.StatusUnhealthy {
+		t.Fatalf("expected unhealthy persisted graph freshness check, got %s (%s)", check.Status, check.Message)
+	}
+	if !strings.Contains(check.Message, "aws") {
+		t.Fatalf("expected persisted provider breach in message, got %q", check.Message)
+	}
+	if persistence := store.Status(); persistence.LastRecoveredAt != nil {
+		t.Fatalf("expected graph freshness health check to avoid recovery bookkeeping, got %#v", persistence)
 	}
 }
 

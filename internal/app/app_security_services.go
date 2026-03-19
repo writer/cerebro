@@ -211,7 +211,11 @@ func (a *App) initHealth() {
 			Name:      "graph_freshness",
 			Timestamp: start,
 		}
-		if a.CurrentSecurityGraph() == nil {
+		securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
+		if err != nil && a != nil && a.Logger != nil {
+			a.Logger.Warn("failed to resolve security graph for graph freshness health check", "error", err)
+		}
+		if securityGraph == nil {
 			result.Status = health.StatusUnknown
 			result.Message = "graph not initialized"
 			result.Latency = time.Since(start)
@@ -362,7 +366,10 @@ func (a *App) graphOntologySLOHealthCheck() health.Checker {
 			result.Latency = time.Since(start)
 			return result
 		}
-		securityGraph := a.CurrentSecurityGraph()
+		securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
+		if err != nil && a.Logger != nil {
+			a.Logger.Warn("failed to resolve security graph for ontology slo health check", "error", err)
+		}
 		if securityGraph == nil {
 			result.Status = health.StatusUnknown
 			result.Message = "security graph not initialized"
