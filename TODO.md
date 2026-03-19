@@ -352,6 +352,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add focused graph tests covering direct assignments, department assignments, acknowledged policies, stale policies, and invalid person input.
 - [x] Re-run graph tests, lint, and changed-file validation before opening the next `#256` slice.
 
+## Deep Review Cycle 206 - Organizational Policy Department Status (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still had no department-scoped acknowledgment report, even though the graph already models department membership and policy assignment edges.
+- [x] Gap: department leads need a policy-by-policy view of current gaps for their team, not just the policy-centric rollup already exposed by the graph helper.
+- [x] Gap: there was no regression proving direct department assignments, direct person assignments for department members, and stale acknowledgments all show up correctly in one department report.
+
+### Execution plan
+- [x] Add a graph helper that returns all policies currently owed by one department, including direct department assignments and direct assignments for current members.
+- [x] Surface per-policy counts, pending people, and whether the policy came from a direct department assignment.
+- [x] Add focused graph tests for mixed assignment sources, stale acknowledgments, and invalid department input.
+
 ## Deep Review Cycle 205 - Graph Store Compliance Evaluation Paths (2026-03-18)
 
 ### Review findings
