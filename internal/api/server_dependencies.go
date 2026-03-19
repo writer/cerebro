@@ -127,6 +127,7 @@ type serverDependencies struct {
 	orgAnalysis           orgAnalysisService
 	platformExecutions    platformExecutionService
 	platformKnowledge     platformKnowledgeService
+	platformWorkloadScan  platformWorkloadScanService
 	rbacAdmin             rbacAdminService
 	remediationOperations remediationOperationsService
 	schedulerOperations   schedulerOperationsService

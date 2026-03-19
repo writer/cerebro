@@ -37,6 +37,7 @@ type Server struct {
 	orgAnalysis              orgAnalysisService
 	platformExecutions       platformExecutionService
 	platformKnowledge        platformKnowledgeService
+	platformWorkloadScan     platformWorkloadScanService
 	rbacAdmin                rbacAdminService
 	remediationOperations    remediationOperationsService
 	schedulerOperations      schedulerOperationsService
@@ -140,6 +141,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if platformExecutions == nil {
 		platformExecutions = newPlatformExecutionService(&deps)
 	}
+	platformWorkloadScan := deps.platformWorkloadScan
+	if platformWorkloadScan == nil {
+		platformWorkloadScan = newPlatformWorkloadScanService(&deps)
+	}
 	threatRuntime := deps.threatRuntime
 	if threatRuntime == nil {
 		threatRuntime = newThreatRuntimeService(&deps)
@@ -158,6 +163,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		orgAnalysis:            orgAnalysis,
 		platformExecutions:     platformExecutions,
 		platformKnowledge:      platformKnowledge,
+		platformWorkloadScan:   platformWorkloadScan,
 		rbacAdmin:              rbacAdmin,
 		remediationOperations:  remediationOperations,
 		schedulerOperations:    schedulerOperations,

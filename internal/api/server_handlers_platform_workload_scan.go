@@ -1,10 +1,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/workloadscan"
 )
 
@@ -15,17 +17,8 @@ type platformWorkloadScanTargetCollection struct {
 }
 
 func (s *Server) listPlatformWorkloadScanTargets(w http.ResponseWriter, r *http.Request) {
-	if s == nil || s.app == nil {
+	if s == nil || s.platformWorkloadScan == nil {
 		s.error(w, http.StatusServiceUnavailable, "platform not initialized")
-		return
-	}
-	g, err := s.currentTenantSecurityGraphView(r.Context())
-	if err != nil {
-		s.errorFromErr(w, err)
-		return
-	}
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
 	limit, err := parseOptionalIntQuery(r, "limit", 50, 1, 200)
@@ -43,22 +36,23 @@ func (s *Server) listPlatformWorkloadScanTargets(w http.ResponseWriter, r *http.
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	store, closeStore, err := s.platformWorkloadScanRunStore()
-	if err != nil {
-		s.error(w, http.StatusInternalServerError, "workload scan state unavailable")
-		return
-	}
-	if closeStore != nil {
-		defer closeStore()
-	}
-	targets, err := workloadscan.PrioritizeTargets(r.Context(), g, store, workloadscan.PrioritizationOptions{
+	targets, err := s.platformWorkloadScan.PrioritizeTargets(r.Context(), workloadscan.PrioritizationOptions{
 		Providers:       providers,
 		IncludeDeferred: includeDeferred,
 		Limit:           limit,
-		Now:             func() time.Time { return time.Now().UTC() },
+		Now:             currentUTC,
 	})
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, "failed to prioritize workload scan targets")
+		switch {
+		case errors.Is(err, errPlatformWorkloadScanStateUnavailable):
+			s.error(w, http.StatusInternalServerError, "workload scan state unavailable")
+		case errors.Is(err, errPlatformWorkloadScanPrioritizeFailed):
+			s.error(w, http.StatusInternalServerError, "failed to prioritize workload scan targets")
+		case errors.Is(err, graph.ErrStoreUnavailable):
+			s.errorFromErr(w, err)
+		default:
+			s.errorFromErr(w, err)
+		}
 		return
 	}
 	s.json(w, http.StatusOK, platformWorkloadScanTargetCollection{
@@ -66,24 +60,6 @@ func (s *Server) listPlatformWorkloadScanTargets(w http.ResponseWriter, r *http.
 		Count:       len(targets),
 		Targets:     targets,
 	})
-}
-
-func (s *Server) platformWorkloadScanRunStore() (workloadscan.RunStore, func(), error) {
-	if s == nil || s.app == nil || s.app.Config == nil {
-		return nil, nil, nil
-	}
-	if s.app.ExecutionStore != nil {
-		return workloadscan.NewSQLiteRunStoreWithExecutionStore(s.app.ExecutionStore), nil, nil
-	}
-	path := strings.TrimSpace(s.app.Config.WorkloadScanStateFile)
-	if path == "" {
-		return nil, nil, nil
-	}
-	store, err := workloadscan.NewSQLiteRunStore(path)
-	if err != nil {
-		return nil, nil, err
-	}
-	return store, func() { _ = store.Close() }, nil
 }
 
 func parseWorkloadProviders(values []string) ([]workloadscan.ProviderKind, error) {

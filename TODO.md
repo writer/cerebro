@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 231 - Platform Workload Scan Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left `/api/v1/platform/workload-scan/targets` reaching directly into the shared graph view plus `s.app.ExecutionStore` and `s.app.Config`, so that endpoint could not be exercised through `NewServerWithDependencies(...)` with only a narrow stub.
+- [x] Gap: workload-scan target prioritization already sits behind a compact dependency surface, which makes it a clean extraction seam without dragging the larger platform report handlers into the same PR.
+- [x] Gap: there was no constructor-level regression proving the endpoint can execute with only a typed workload-scan service and no concrete execution store or graph wiring on `*app.App`.
+
+### Execution plan
+- [x] Add a dedicated `platformWorkloadScanService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route `/api/v1/platform/workload-scan/targets` through that service while preserving request validation and error semantics.
+- [x] Add focused service-stub regressions and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 230 - Platform Execution Handler Service Seam (2026-03-19)
 
 ### Review findings
