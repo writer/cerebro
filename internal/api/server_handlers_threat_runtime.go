@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -16,49 +17,43 @@ import (
 )
 
 func (s *Server) listThreatFeeds(w http.ResponseWriter, r *http.Request) {
-	if s.app.ThreatIntel == nil {
-		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+	feeds, err := s.threatRuntime.ListThreatFeeds()
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, s.app.ThreatIntel.ListFeeds())
+	s.json(w, http.StatusOK, feeds)
 }
 
 func (s *Server) syncThreatFeed(w http.ResponseWriter, r *http.Request) {
-	if s.app.ThreatIntel == nil {
-		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
-		return
-	}
 	id := chi.URLParam(r, "id")
-	if err := s.app.ThreatIntel.SyncFeed(r.Context(), id); err != nil {
+	if err := s.threatRuntime.SyncThreatFeed(r.Context(), id, GetUserID(r.Context())); err != nil {
+		if errors.Is(err, errThreatIntelUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
-	}
-	if s.app.Webhooks != nil {
-		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventThreatIntelSynced, map[string]interface{}{
-			"feed_id":      id,
-			"triggered_by": GetUserID(r.Context()),
-		}); err != nil {
-			s.app.Logger.Warn("failed to emit threat intel sync event", "feed_id", id, "error", err)
-		}
 	}
 	s.json(w, http.StatusOK, map[string]string{"status": "synced"})
 }
 
 func (s *Server) threatIntelStats(w http.ResponseWriter, r *http.Request) {
-	if s.app.ThreatIntel == nil {
-		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+	stats, err := s.threatRuntime.ThreatIntelStats()
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, s.app.ThreatIntel.Stats())
+	s.json(w, http.StatusOK, stats)
 }
 
 func (s *Server) lookupIP(w http.ResponseWriter, r *http.Request) {
-	if s.app.ThreatIntel == nil {
-		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+	ip := chi.URLParam(r, "ip")
+	ind, found, err := s.threatRuntime.LookupIP(ip)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	ip := chi.URLParam(r, "ip")
-	ind, found := s.app.ThreatIntel.LookupIP(ip)
 	if !found {
 		s.json(w, http.StatusOK, map[string]interface{}{"found": false, "ip": ip})
 		return
@@ -67,12 +62,12 @@ func (s *Server) lookupIP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) lookupDomain(w http.ResponseWriter, r *http.Request) {
-	if s.app.ThreatIntel == nil {
-		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+	domain := chi.URLParam(r, "domain")
+	ind, found, err := s.threatRuntime.LookupDomain(domain)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	domain := chi.URLParam(r, "domain")
-	ind, found := s.app.ThreatIntel.LookupDomain(domain)
 	if !found {
 		s.json(w, http.StatusOK, map[string]interface{}{"found": false, "domain": domain})
 		return
@@ -81,13 +76,12 @@ func (s *Server) lookupDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) lookupCVE(w http.ResponseWriter, r *http.Request) {
-	if s.app.ThreatIntel == nil {
-		s.error(w, http.StatusServiceUnavailable, "threat intel not initialized")
+	cve := chi.URLParam(r, "cve")
+	ind, found, isKEV, err := s.threatRuntime.LookupCVE(cve)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	cve := chi.URLParam(r, "cve")
-	ind, found := s.app.ThreatIntel.LookupCVE(cve)
-	isKEV := s.app.ThreatIntel.IsKEV(cve)
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"found":     found,
 		"cve":       cve,
@@ -97,11 +91,12 @@ func (s *Server) lookupCVE(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listDetectionRules(w http.ResponseWriter, r *http.Request) {
-	if s.app.RuntimeDetect == nil {
-		s.error(w, http.StatusServiceUnavailable, "runtime detection not initialized")
+	rules, err := s.threatRuntime.ListDetectionRules()
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, s.app.RuntimeDetect.ListRules())
+	s.json(w, http.StatusOK, rules)
 }
 
 func (s *Server) ingestRuntimeEvent(w http.ResponseWriter, r *http.Request) {
@@ -260,7 +255,11 @@ func (s *Server) listRuntimeFindings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	findings := s.app.RuntimeDetect.RecentFindings(limit)
+	findings, err := s.threatRuntime.RecentRuntimeFindings(limit)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"findings": findings,
 		"count":    len(findings),
@@ -268,20 +267,21 @@ func (s *Server) listRuntimeFindings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listResponsePolicies(w http.ResponseWriter, r *http.Request) {
-	if s.app.RuntimeRespond == nil {
-		s.error(w, http.StatusServiceUnavailable, "runtime response not initialized")
+	policies, err := s.threatRuntime.ListResponsePolicies()
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, s.app.RuntimeRespond.ListPolicies())
+	s.json(w, http.StatusOK, policies)
 }
 
 func (s *Server) enableResponsePolicy(w http.ResponseWriter, r *http.Request) {
-	if s.app.RuntimeRespond == nil {
-		s.error(w, http.StatusServiceUnavailable, "runtime response not initialized")
-		return
-	}
 	id := chi.URLParam(r, "id")
-	if err := s.app.RuntimeRespond.EnablePolicy(id); err != nil {
+	if err := s.threatRuntime.EnableResponsePolicy(id); err != nil {
+		if errors.Is(err, errRuntimeResponseUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -289,12 +289,12 @@ func (s *Server) enableResponsePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) disableResponsePolicy(w http.ResponseWriter, r *http.Request) {
-	if s.app.RuntimeRespond == nil {
-		s.error(w, http.StatusServiceUnavailable, "runtime response not initialized")
-		return
-	}
 	id := chi.URLParam(r, "id")
-	if err := s.app.RuntimeRespond.DisablePolicy(id); err != nil {
+	if err := s.threatRuntime.DisableResponsePolicy(id); err != nil {
+		if errors.Is(err, errRuntimeResponseUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}

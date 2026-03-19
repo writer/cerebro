@@ -125,6 +125,7 @@ type serverDependencies struct {
 	orgAnalysis        orgAnalysisService
 	platformKnowledge  platformKnowledgeService
 	syncHandlers       syncHandlerService
+	threatRuntime      threatRuntimeService
 }
 
 type graphRuntimeAdapter struct {

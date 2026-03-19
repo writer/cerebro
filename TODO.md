@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 224 - Threat Runtime Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left the threat-intel and runtime list/control handlers reaching through `s.app` directly, so that handler family could not be exercised through `NewServerWithDependencies(...)` using a narrow stub.
+- [x] Gap: the threat-runtime ingest hot path is substantially larger and more stateful, but the feed lookup/sync and runtime list/policy endpoints are a clean sub-family with stable request normalization.
+- [x] Gap: there was no constructor-level regression proving those handlers can execute with only a typed service dependency and no concrete threat-intel or runtime engines wired into `*app.App`.
+
+### Execution plan
+- [x] Add a dedicated `threatRuntimeService` in `internal/api/` for the threat-intel and runtime list/control endpoints.
+- [x] Route those handlers through the new service without widening ingest-path behavior or changing unavailable/error contracts.
+- [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 229 - App Graph Store Snapshot Fallback (2026-03-19)
 
 ### Review findings

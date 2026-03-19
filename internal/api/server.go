@@ -35,6 +35,7 @@ type Server struct {
 	orgAnalysis              orgAnalysisService
 	platformKnowledge        platformKnowledgeService
 	syncHandlers             syncHandlerService
+	threatRuntime            threatRuntimeService
 	router                   *chi.Mux
 	auditLogger              auditLogWriter
 	rateLimiter              *RateLimiter
@@ -109,6 +110,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if orgAnalysis == nil {
 		orgAnalysis = newOrgAnalysisService(&deps)
 	}
+	threatRuntime := deps.threatRuntime
+	if threatRuntime == nil {
+		threatRuntime = newThreatRuntimeService(&deps)
+	}
 	syncHandlers := deps.syncHandlers
 	if syncHandlers == nil {
 		syncHandlers = newSyncHandlerService(&deps)
@@ -121,6 +126,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		orgAnalysis:            orgAnalysis,
 		platformKnowledge:      platformKnowledge,
 		syncHandlers:           syncHandlers,
+		threatRuntime:          threatRuntime,
 		router:                 chi.NewRouter(),
 		auditLogger:            deps.AuditRepo,
 		crossTenantReplay:      make(map[string]time.Time),
