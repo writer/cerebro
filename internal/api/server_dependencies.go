@@ -117,15 +117,16 @@ type serverDependencies struct {
 	SecurityGraph        *graph.Graph
 	SecurityGraphBuilder *builders.Builder
 
-	graphRuntime       graphRuntimeService
-	graphMutator       graphMutationService
-	apiCredentials     apiCredentialService
-	agentSDKToolSource agentSDKToolService
-	graphWriteback     graphWritebackService
-	orgAnalysis        orgAnalysisService
-	platformKnowledge  platformKnowledgeService
-	syncHandlers       syncHandlerService
-	threatRuntime      threatRuntimeService
+	graphRuntime          graphRuntimeService
+	graphMutator          graphMutationService
+	apiCredentials        apiCredentialService
+	agentSDKToolSource    agentSDKToolService
+	graphWriteback        graphWritebackService
+	orgAnalysis           orgAnalysisService
+	platformKnowledge     platformKnowledgeService
+	remediationOperations remediationOperationsService
+	syncHandlers          syncHandlerService
+	threatRuntime         threatRuntimeService
 }
 
 type graphRuntimeAdapter struct {

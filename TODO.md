@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 225 - Remediation Operations Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left the remediation rule and execution handlers reaching directly into `s.app.Remediation` and `s.app.RemediationExecutor`, so that handler family could not be exercised through `NewServerWithDependencies(...)` with a narrow stub.
+- [x] Gap: the remediation CRUD and approval endpoints already form a coherent handler family with stable request normalization and existing status semantics, which makes them a good next extraction seam.
+- [x] Gap: there was no constructor-level regression proving those remediation handlers can run with only a typed service dependency and without a concrete remediation engine on `*app.App`.
+
+### Execution plan
+- [x] Add a dedicated `remediationOperationsService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route remediation rule and execution handlers through that service without widening unavailable/not-found/error behavior.
+- [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 224 - Threat Runtime Handler Service Seam (2026-03-19)
 
 ### Review findings

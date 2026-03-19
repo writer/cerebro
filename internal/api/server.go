@@ -34,6 +34,7 @@ type Server struct {
 	graphWriteback           graphWritebackService
 	orgAnalysis              orgAnalysisService
 	platformKnowledge        platformKnowledgeService
+	remediationOperations    remediationOperationsService
 	syncHandlers             syncHandlerService
 	threatRuntime            threatRuntimeService
 	router                   *chi.Mux
@@ -106,6 +107,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if platformKnowledge == nil {
 		platformKnowledge = newPlatformKnowledgeService(&deps)
 	}
+	remediationOperations := deps.remediationOperations
+	if remediationOperations == nil {
+		remediationOperations = newRemediationOperationsService(&deps)
+	}
 	orgAnalysis := deps.orgAnalysis
 	if orgAnalysis == nil {
 		orgAnalysis = newOrgAnalysisService(&deps)
@@ -125,6 +130,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		graphIntelligence:      newGraphIntelligenceService(&deps),
 		orgAnalysis:            orgAnalysis,
 		platformKnowledge:      platformKnowledge,
+		remediationOperations:  remediationOperations,
 		syncHandlers:           syncHandlers,
 		threatRuntime:          threatRuntime,
 		router:                 chi.NewRouter(),
