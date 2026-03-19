@@ -211,6 +211,18 @@ Status: executed end-to-end via PR workflow
 
 ## Deep Review Cycle 211 - Organizational Policy Assignee Roster (2026-03-18)
 
+## Deep Review Cycle 212 - Organizational Policy Direct Person Assignment Sync (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still had no narrow graph helper to change direct person assignments on an existing policy, so onboarding and HR-sync flows had to resend the full policy registry payload just to add or remove one employee.
+- [x] Gap: `WriteOrganizationalPolicy(...)` correctly tracked required-person history, but that logic was only reachable through a full policy rewrite path, which made direct assignment maintenance more error-prone than the rest of the policy graph surface.
+- [x] Gap: there was no focused regression proving direct person-assignment updates preserve department assignment scope and only append policy history when the effective direct-assignee set actually changes.
+
+### Execution plan
+- [x] Add a graph helper that updates only direct person assignments for an existing policy while preserving department assignments and policy metadata.
+- [x] Reuse the existing policy version-history machinery so direct-assignment changes are tracked as `required_person_ids` diffs without duplicating the policy write path.
+- [x] Add focused graph tests for mixed add/remove updates, no-op rewrites, and invalid input, then rerun graph validation before opening the PR.
+
 ### Review findings
 - [x] Gap: issue `#256` still had no policy-centered assignee roster, so callers could see aggregate acknowledgment gaps and reminder candidates but not the full assigned employee set with current status in one graph query.
 - [x] Gap: direct person assignments and department-derived assignments were only exposed through separate helpers, which made it awkward to answer the core operational question: who owes this policy right now, and why?
