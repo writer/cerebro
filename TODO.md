@@ -246,6 +246,18 @@ Status: executed end-to-end via PR workflow
 - [x] Reuse the direct-assignment mutation infrastructure so both write paths share the same history and edge-rewrite semantics.
 - [x] Add focused graph tests for mixed add/remove updates, no-op rewrites, and invalid input, then rerun graph validation before opening the PR.
 
+## Deep Review Cycle 214 - Organizational Policy Person Acknowledgment Sync (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still had no person-scoped graph helper to record one explicit acknowledgment event across all currently assigned policies, so LMS or onboarding flows had to fan out one write call per policy.
+- [x] Gap: stale and pending policy requirements were already visible through the person-status helper, but there was no corresponding mutation helper that reused that report to acknowledge only the policies the person currently owes.
+- [x] Gap: there was no focused regression proving a person-scoped sync treats already-current acknowledgments as no-ops, upgrades stale acknowledgments to the new policy version, and rejects unassigned policy targets.
+
+### Execution plan
+- [x] Add a person-scoped acknowledgment sync helper that can acknowledge all currently assigned policies or a caller-specified subset of those assignments.
+- [x] Reuse the existing single-policy acknowledgment path so current-version semantics and edge metadata stay consistent.
+- [x] Add focused graph tests for pending, stale, already-current, subset, and invalid-target behavior, then rerun graph validation before opening the PR.
+
 ### Review findings
 - [x] Gap: issue `#256` still had no policy-centered assignee roster, so callers could see aggregate acknowledgment gaps and reminder candidates but not the full assigned employee set with current status in one graph query.
 - [x] Gap: direct person assignments and department-derived assignments were only exposed through separate helpers, which made it awkward to answer the core operational question: who owes this policy right now, and why?
