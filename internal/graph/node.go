@@ -59,6 +59,7 @@ const (
 	// Policy nodes
 	NodeKindSCP                NodeKind = "scp"                 // Service Control Policy
 	NodeKindPermissionBoundary NodeKind = "permission_boundary" // AWS Permission Boundary
+	NodeKindPolicy             NodeKind = "policy"
 
 	// Business entities
 	NodeKindCustomer      NodeKind = "customer"
