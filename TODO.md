@@ -1,9 +1,21 @@
 # Cerebro Intelligence Layer Execution TODO
 
-Last updated: 2026-03-18 (America/Los_Angeles)
+Last updated: 2026-03-19 (America/Los_Angeles)
 Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
+
+## Deep Review Cycle 219 - App DSPM Snapshot Mutation Base (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#392` still left DSPM graph enrichment gated on `CurrentSecurityGraph()`, so scan results were dropped entirely whenever the app was serving from persisted snapshots without a live in-memory graph pointer.
+- [x] Gap: the app mutation seam already knows how to seed writes from the latest persisted snapshot, but `enrichSecurityGraphWithDSPMResult(...)` was bypassing it and therefore diverged from the newer snapshot-backed app mutation behavior.
+- [x] Gap: there was no regression proving DSPM enrichment can hydrate a live graph from persisted snapshots while preserving the existing copy-on-write live-graph behavior.
+
+### Execution plan
+- [x] Remove the unnecessary live-graph gate so DSPM enrichment can reuse `MutateSecurityGraphMaybe(...)` whenever there is no builder graph to update directly.
+- [x] Preserve the existing builder-only mutation path so in-progress builder graphs keep their current update semantics.
+- [x] Add a focused persisted-snapshot regression and rerun targeted app validation before pushing the branch.
 
 ## Deep Review Cycle 216 - App Temporal Snapshot Current Record Fallback (2026-03-18)
 

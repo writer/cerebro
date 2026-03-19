@@ -39,7 +39,7 @@ func (a *App) enrichSecurityGraphWithDSPMResult(target *dspm.ScanTarget, result 
 		builderSecurityGraph = a.SecurityGraphBuilder.Graph()
 	}
 
-	if current != nil {
+	if current != nil || builderSecurityGraph == nil {
 		candidate, err := a.MutateSecurityGraphMaybe(context.Background(), func(g *graph.Graph) (bool, error) {
 			return applyDSPMPropertiesToGraph(g, target, exactNodeIDs, fallbackNames, props), nil
 		})

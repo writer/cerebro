@@ -85,6 +85,67 @@ func TestEnrichSecurityGraphWithDSPMResult_UsesCopyOnWriteForLiveGraph(t *testin
 	}
 }
 
+func TestEnrichSecurityGraphWithDSPMResult_UsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	logger := testutil.Logger()
+	nodeID := "arn:aws:s3:::customer-card-bucket"
+
+	base := graph.New()
+	base.AddNode(&graph.Node{
+		ID:       nodeID,
+		Kind:     graph.NodeKindBucket,
+		Name:     "customer-card-bucket",
+		Provider: "aws",
+		Account:  "acct-a",
+		Region:   "us-west-2",
+	})
+	base.BuildIndex()
+
+	app := &App{
+		Logger:         logger,
+		DSPM:           dspm.NewScanner(nil, logger, dspm.DefaultScannerConfig()),
+		GraphSnapshots: mustPersistToolGraph(t, base),
+	}
+
+	app.enrichSecurityGraphWithDSPMResult(&dspm.ScanTarget{
+		Provider: "aws",
+		Account:  "acct-a",
+		Region:   "us-west-2",
+		Name:     "customer-card-bucket",
+		ARN:      nodeID,
+	}, &dspm.ScanResult{
+		Classification: dspm.ClassificationRestricted,
+		RiskScore:      92,
+		Findings: []dspm.SensitiveDataFinding{
+			{DataType: dspm.DataTypeEmail},
+			{DataType: dspm.DataTypeCreditCard},
+		},
+	})
+
+	current := app.CurrentSecurityGraph()
+	if current == nil {
+		t.Fatal("expected persisted snapshot base to hydrate a live graph during DSPM enrichment")
+	}
+	if !current.IsIndexBuilt() {
+		t.Fatal("expected enriched live graph index to be rebuilt")
+	}
+
+	node, ok := current.GetNode(nodeID)
+	if !ok || node == nil {
+		t.Fatalf("expected hydrated live graph node %q to exist", nodeID)
+	}
+	if scanned, _ := node.Properties["dspm_scanned"].(bool); !scanned {
+		t.Fatal("expected hydrated live graph node to be marked as DSPM scanned")
+	}
+
+	baseNode, ok := base.GetNode(nodeID)
+	if !ok || baseNode == nil {
+		t.Fatalf("expected original base node %q to exist", nodeID)
+	}
+	if _, exists := baseNode.Properties["dspm_scanned"]; exists {
+		t.Fatal("expected persisted base graph value to remain unchanged in memory")
+	}
+}
+
 func TestScopedDSPMGraphNodeNameMatch_DoesNotCaseFoldNodeID(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{
