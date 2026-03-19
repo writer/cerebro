@@ -1771,6 +1771,7 @@ func TestAttachPlatformReportRunJobCancelsLateAttachedJobForCanceledRun(t *testi
 	}
 	if stored == nil {
 		t.Fatal("expected updated run snapshot after attaching job")
+		return
 	}
 	if !cancelJob {
 		t.Fatal("expected canceled run to request immediate job cancellation")

@@ -664,6 +664,7 @@ func TestPlatformGraphDiffLookupByIDUsesExplicitParentSnapshotLineage(t *testing
 	)
 	if expected == nil {
 		t.Fatal("expected diff id")
+		return
 	}
 
 	s := newTestServer(t)
