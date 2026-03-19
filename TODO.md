@@ -779,3 +779,15 @@ Status: executed end-to-end via PR workflow
 - [x] Route the platform entity read handlers through the tenant graph view helper so they restore from `GraphStore.Snapshot()` when needed.
 - [x] Add store-only API regressions covering list, search, suggest, detail, point-in-time reconstruction, and diff.
 - [x] Re-run focused and changed-file API validation before pushing the branch.
+
+## Deep Review Cycle 214 - Graph Store Identity Calibration Path (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `GET /api/v1/graph/identity/calibration` tied directly to the raw in-memory graph pointer through `serverGraphWritebackService.IdentityCalibration`, so the endpoint failed whenever the runtime exposed only a graph store.
+- [x] Gap: identity calibration is a read-only report and only needs the same live-or-store graph view resolver already used by the other graph-store API migrations.
+- [x] Gap: there was no regression proving the calibration endpoint still works from a store-only runtime, still prefers the live graph when present, and still returns `503` when neither source exists.
+
+### Execution plan
+- [x] Route identity calibration through the shared `currentOrStoredGraphView(...)` resolver and preserve the existing unavailable error contract.
+- [x] Add focused HTTP regressions for store-backed success, live-graph preference, and missing-source `503`.
+- [x] Re-run focused API tests, package tests, lint, and changed-file validation before pushing the branch.

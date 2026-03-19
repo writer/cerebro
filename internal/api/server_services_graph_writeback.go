@@ -480,9 +480,9 @@ func (s serverGraphWritebackService) ReviewIdentity(ctx context.Context, req gra
 	return &record, nil
 }
 
-func (s serverGraphWritebackService) IdentityCalibration(_ context.Context, opts graph.IdentityCalibrationOptions) (*graph.IdentityCalibrationReport, error) {
-	g := s.currentGraph()
-	if g == nil {
+func (s serverGraphWritebackService) IdentityCalibration(ctx context.Context, opts graph.IdentityCalibrationOptions) (*graph.IdentityCalibrationReport, error) {
+	g, err := currentOrStoredGraphView(ctx, s.currentGraph(), s.currentStore())
+	if err != nil {
 		return nil, errGraphWritebackUnavailable
 	}
 	report := graph.BuildIdentityCalibrationReport(g, opts)
@@ -552,6 +552,13 @@ func (s serverGraphWritebackService) currentGraph() *graph.Graph {
 		return nil
 	}
 	return s.deps.CurrentSecurityGraph()
+}
+
+func (s serverGraphWritebackService) currentStore() graph.GraphStore {
+	if s.deps == nil {
+		return nil
+	}
+	return s.deps.CurrentSecurityGraphStore()
 }
 
 func (s serverGraphWritebackService) emitPlatformLifecycleEvent(ctx context.Context, eventType webhooks.EventType, data map[string]any) {
