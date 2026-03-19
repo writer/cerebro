@@ -32,6 +32,7 @@ type Server struct {
 	graphRisk                graphRiskService
 	graphIntelligence        graphIntelligenceService
 	graphWriteback           graphWritebackService
+	agentSDKAdmin            agentSDKAdminService
 	orgAnalysis              orgAnalysisService
 	platformKnowledge        platformKnowledgeService
 	remediationOperations    remediationOperationsService
@@ -107,6 +108,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if platformKnowledge == nil {
 		platformKnowledge = newPlatformKnowledgeService(&deps)
 	}
+	agentSDKAdmin := deps.agentSDKAdmin
+	if agentSDKAdmin == nil {
+		agentSDKAdmin = newAgentSDKAdminService(&deps)
+	}
 	remediationOperations := deps.remediationOperations
 	if remediationOperations == nil {
 		remediationOperations = newRemediationOperationsService(&deps)
@@ -126,6 +131,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	graphWriteback := deps.graphWriteback
 	s := &Server{
 		app:                    &deps,
+		agentSDKAdmin:          agentSDKAdmin,
 		findingsCompliance:     newFindingsComplianceService(&deps),
 		graphIntelligence:      newGraphIntelligenceService(&deps),
 		orgAnalysis:            orgAnalysis,

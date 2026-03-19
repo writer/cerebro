@@ -121,6 +121,7 @@ type serverDependencies struct {
 	graphMutator          graphMutationService
 	apiCredentials        apiCredentialService
 	agentSDKToolSource    agentSDKToolService
+	agentSDKAdmin         agentSDKAdminService
 	graphWriteback        graphWritebackService
 	orgAnalysis           orgAnalysisService
 	platformKnowledge     platformKnowledgeService

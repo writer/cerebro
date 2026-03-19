@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 226 - Agent SDK Admin Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left the protected-resource metadata and admin credential handlers reaching directly into `s.app.Config`, `s.app.RBAC`, and managed API credential methods, so that family could not be exercised through `NewServerWithDependencies(...)` with a narrow stub.
+- [x] Gap: the admin Agent SDK credential endpoints already sit on top of a smaller dependency surface for credentials and RBAC scope discovery, which makes them a clean extraction seam without touching the broader Agent SDK tool/runtime paths.
+- [x] Gap: there was no constructor-level regression proving those handlers can execute using only a typed service dependency and no concrete managed-credential store or RBAC engine on `*app.App`.
+
+### Execution plan
+- [x] Add a dedicated `agentSDKAdminService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route the protected-resource metadata and admin credential handlers through that service without changing validation or error semantics.
+- [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 225 - Remediation Operations Handler Service Seam (2026-03-19)
 
 ### Review findings

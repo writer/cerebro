@@ -82,14 +82,10 @@ type adminAgentSDKCredentialSecretResponse struct {
 
 func (s *Server) agentSDKProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {
 	baseURL := requestBaseURL(r)
-	authorizationServers := []string(nil)
-	if s != nil && s.app != nil && s.app.Config != nil {
-		authorizationServers = append([]string(nil), s.app.Config.APIAuthorizationServers...)
-	}
 	metadata := protectedResourceMetadata{
 		Resource:               baseURL,
-		AuthorizationServers:   authorizationServers,
-		ScopesSupported:        supportedAgentSDKScopes(s),
+		AuthorizationServers:   s.agentSDKAdmin.AuthorizationServers(),
+		ScopesSupported:        s.agentSDKAdmin.SupportedScopes(),
 		BearerMethodsSupported: []string{"header"},
 		ResourceDocumentation:  baseURL + "/docs",
 		AgentSDKEndpoint:       baseURL + "/api/v1/agent-sdk",
@@ -100,7 +96,7 @@ func (s *Server) agentSDKProtectedResourceMetadata(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) listAdminAgentSDKCredentials(w http.ResponseWriter, _ *http.Request) {
-	credentials := s.adminAgentSDKCredentialCollection()
+	credentials := s.agentSDKAdmin.ListCredentials()
 	s.json(w, http.StatusOK, adminAgentSDKCredentialCollection{
 		Count:       len(credentials),
 		Credentials: credentials,
@@ -113,13 +109,12 @@ func (s *Server) getAdminAgentSDKCredential(w http.ResponseWriter, r *http.Reque
 		s.error(w, http.StatusBadRequest, "credential id required")
 		return
 	}
-	for _, credential := range s.adminAgentSDKCredentialCollection() {
-		if credential.ID == credentialID {
-			s.json(w, http.StatusOK, credential)
-			return
-		}
+	credential, ok := s.agentSDKAdmin.GetCredential(credentialID)
+	if !ok {
+		s.error(w, http.StatusNotFound, "credential not found")
+		return
 	}
-	s.error(w, http.StatusNotFound, "credential not found")
+	s.json(w, http.StatusOK, credential)
 }
 
 func (s *Server) createAdminAgentSDKCredential(w http.ResponseWriter, r *http.Request) {
@@ -128,12 +123,12 @@ func (s *Server) createAdminAgentSDKCredential(w http.ResponseWriter, r *http.Re
 		s.error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	scopes, err := validateManagedAgentSDKScopes(supportedAgentSDKScopes(s), req.Scopes)
+	scopes, err := validateManagedAgentSDKScopes(s.agentSDKAdmin.SupportedScopes(), req.Scopes)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	record, secret, err := s.app.CreateManagedAPICredential(apiauth.ManagedCredentialSpec{
+	record, secret, err := s.agentSDKAdmin.CreateCredential(apiauth.ManagedCredentialSpec{
 		ID:              req.ID,
 		Name:            req.Name,
 		UserID:          req.UserID,
@@ -151,7 +146,7 @@ func (s *Server) createAdminAgentSDKCredential(w http.ResponseWriter, r *http.Re
 		return
 	}
 	s.json(w, http.StatusCreated, adminAgentSDKCredentialSecretResponse{
-		Credential: adminAgentSDKCredentialFromManaged(record),
+		Credential: record,
 		APIKey:     secret,
 	})
 }
@@ -167,7 +162,7 @@ func (s *Server) rotateAdminAgentSDKCredential(w http.ResponseWriter, r *http.Re
 		s.error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	record, secret, err := s.app.RotateManagedAPICredential(credentialID, time.Now().UTC())
+	record, secret, err := s.agentSDKAdmin.RotateCredential(credentialID, time.Now().UTC())
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			s.error(w, http.StatusNotFound, err.Error())
@@ -177,7 +172,7 @@ func (s *Server) rotateAdminAgentSDKCredential(w http.ResponseWriter, r *http.Re
 		return
 	}
 	s.json(w, http.StatusOK, adminAgentSDKCredentialSecretResponse{
-		Credential: adminAgentSDKCredentialFromManaged(record),
+		Credential: record,
 		APIKey:     secret,
 	})
 }
@@ -193,7 +188,7 @@ func (s *Server) revokeAdminAgentSDKCredential(w http.ResponseWriter, r *http.Re
 		s.error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	record, err := s.app.RevokeManagedAPICredential(credentialID, req.Reason, time.Now().UTC())
+	record, err := s.agentSDKAdmin.RevokeCredential(credentialID, req.Reason, time.Now().UTC())
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			s.error(w, http.StatusNotFound, err.Error())
@@ -202,38 +197,7 @@ func (s *Server) revokeAdminAgentSDKCredential(w http.ResponseWriter, r *http.Re
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, adminAgentSDKCredentialFromManaged(record))
-}
-
-func (s *Server) adminAgentSDKCredentialCollection() []adminAgentSDKCredentialResponse {
-	staticCredentials := s.app.APICredentialsSnapshot()
-	managedCredentials := s.app.ManagedAPICredentials()
-
-	credentials := make([]adminAgentSDKCredentialResponse, 0, len(staticCredentials)+len(managedCredentials))
-	for _, key := range apiauth.SortedKeys(staticCredentials) {
-		credentials = append(credentials, adminAgentSDKCredentialResponse{
-			ID:              staticCredentials[key].ID,
-			Name:            staticCredentials[key].Name,
-			UserID:          staticCredentials[key].UserID,
-			Kind:            staticCredentials[key].Kind,
-			Surface:         staticCredentials[key].Surface,
-			ClientID:        staticCredentials[key].ClientID,
-			Scopes:          append([]string(nil), staticCredentials[key].Scopes...),
-			RateLimitBucket: staticCredentials[key].RateLimitBucket,
-			TenantID:        staticCredentials[key].TenantID,
-			Enabled:         staticCredentials[key].Enabled,
-			Metadata:        cloneStringStringMap(staticCredentials[key].Metadata),
-			Managed:         false,
-			Mutable:         false,
-		})
-	}
-	for _, record := range managedCredentials {
-		credentials = append(credentials, adminAgentSDKCredentialFromManaged(record))
-	}
-	sort.Slice(credentials, func(i, j int) bool {
-		return credentials[i].ID < credentials[j].ID
-	})
-	return credentials
+	s.json(w, http.StatusOK, record)
 }
 
 func adminAgentSDKCredentialFromManaged(record apiauth.ManagedCredentialRecord) adminAgentSDKCredentialResponse {
@@ -259,30 +223,6 @@ func adminAgentSDKCredentialFromManaged(record apiauth.ManagedCredentialRecord) 
 		SecretPreview:    record.SecretPrefix,
 	}
 	return response
-}
-
-func supportedAgentSDKScopes(s *Server) []string {
-	if s != nil && s.app != nil && s.app.RBAC != nil {
-		values := s.app.RBAC.ListPermissionIDs()
-		scopes := make([]string, 0, len(values))
-		for _, value := range values {
-			if strings.HasPrefix(value, "sdk.") {
-				scopes = append(scopes, value)
-			}
-		}
-		if len(scopes) > 0 {
-			sort.Strings(scopes)
-			return scopes
-		}
-	}
-	return []string{
-		"sdk.admin",
-		"sdk.context.read",
-		"sdk.enforcement.run",
-		"sdk.invoke",
-		"sdk.schema.read",
-		"sdk.worldmodel.write",
-	}
 }
 
 func validateManagedAgentSDKScopes(supported, requested []string) ([]string, error) {
