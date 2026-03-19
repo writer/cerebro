@@ -269,6 +269,18 @@ Status: executed end-to-end via PR workflow
 - [x] Update the non-tenant handlers that rely on the cached risk engine to pass `r.Context()`.
 - [x] Add a blocking-store cancellation regression, then rerun focused API tests, lint, and changed-file validation before opening the PR.
 
+## Deep Review Cycle 210 - Organizational Policy Program Status Rollup (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` had per-policy acknowledgment rollups, templates, and reminder helpers, but no single graph-layer report for the overall policy program.
+- [x] Gap: compliance and HR follow-on flows need one place to answer "which policies still have gaps?" without iterating policy-by-policy in every caller.
+- [x] Gap: framework-specific reporting needs to filter the policy registry by mapped framework family so SOC 2 and HIPAA views can be generated from the same graph substrate.
+
+### Execution plan
+- [x] Add an organization-wide policy program status helper with optional framework filtering.
+- [x] Surface per-policy coverage, pending counts, and department gap IDs in a stable rollup shape.
+- [x] Add focused graph tests for aggregate coverage, framework filtering, and nil-graph validation, then rerun graph validation before opening the PR.
+
 ## Deep Review Cycle 207 - Graph Runtime Snapshot Catalog Paths (2026-03-18)
 
 ### Review findings
