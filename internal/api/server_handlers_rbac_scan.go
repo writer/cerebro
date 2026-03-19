@@ -2,73 +2,62 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/evalops/cerebro/internal/auth"
-	"github.com/evalops/cerebro/internal/webhooks"
 )
 
 func (s *Server) listRoles(w http.ResponseWriter, r *http.Request) {
-	if s.app.RBAC == nil {
-		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+	roles, err := s.rbacAdmin.ListRoles(r.Context())
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, s.app.RBAC.ListRoles())
+	s.json(w, http.StatusOK, roles)
 }
 
 func (s *Server) listPermissions(w http.ResponseWriter, r *http.Request) {
-	if s.app.RBAC == nil {
-		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+	permissions, err := s.rbacAdmin.ListPermissions(r.Context())
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, s.app.RBAC.ListPermissionIDs())
+	s.json(w, http.StatusOK, permissions)
 }
 
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
-	if s.app.RBAC == nil {
-		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
-		return
-	}
-
-	userID := GetUserID(r.Context())
-	if !s.app.RBAC.HasPermission(r.Context(), userID, "admin.rbac.users.manage") {
-		s.error(w, http.StatusForbidden, "permission denied: admin.rbac.users.manage required")
-		return
-	}
-
 	var user auth.User
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid user")
 		return
 	}
 
-	if err := s.app.RBAC.CreateUser(&user); err != nil {
-		s.error(w, http.StatusBadRequest, err.Error())
+	created, err := s.rbacAdmin.CreateUser(r.Context(), GetUserID(r.Context()), user)
+	if err != nil {
+		switch {
+		case errors.Is(err, errRBACUnavailable):
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+		case errors.Is(err, errRBACUsersManageRequired):
+			s.error(w, http.StatusForbidden, err.Error())
+		default:
+			s.error(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 
-	if s.app.Webhooks != nil {
-		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventRbacUserCreated, map[string]interface{}{
-			"user_id":    user.ID,
-			"tenant_id":  user.TenantID,
-			"created_by": userID,
-		}); err != nil {
-			s.app.Logger.Warn("failed to emit RBAC user event", "user_id", user.ID, "error", err)
-		}
-	}
-
-	s.json(w, http.StatusCreated, user)
+	s.json(w, http.StatusCreated, created)
 }
 
 func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {
-	if s.app.RBAC == nil {
-		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+	id := chi.URLParam(r, "id")
+	user, found, err := s.rbacAdmin.GetUser(r.Context(), id)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	id := chi.URLParam(r, "id")
-	user, found := s.app.RBAC.GetUser(id)
 	if !found {
 		s.error(w, http.StatusNotFound, "user not found")
 		return
@@ -77,17 +66,6 @@ func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) assignRole(w http.ResponseWriter, r *http.Request) {
-	if s.app.RBAC == nil {
-		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
-		return
-	}
-
-	currentUserID := GetUserID(r.Context())
-	if !s.app.RBAC.HasPermission(r.Context(), currentUserID, "admin.rbac.roles.manage") {
-		s.error(w, http.StatusForbidden, "permission denied: admin.rbac.roles.manage required")
-		return
-	}
-
 	targetUserID := chi.URLParam(r, "id")
 
 	var req struct {
@@ -98,65 +76,51 @@ func (s *Server) assignRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.app.RBAC.AssignRole(targetUserID, req.RoleID); err != nil {
-		s.error(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if s.app.Webhooks != nil {
-		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventRbacRoleAssigned, map[string]interface{}{
-			"target_user_id": targetUserID,
-			"role_id":        req.RoleID,
-			"assigned_by":    currentUserID,
-		}); err != nil {
-			s.app.Logger.Warn("failed to emit RBAC role assignment event", "target_user_id", targetUserID, "role_id", req.RoleID, "error", err)
+	if err := s.rbacAdmin.AssignRole(r.Context(), GetUserID(r.Context()), targetUserID, req.RoleID); err != nil {
+		switch {
+		case errors.Is(err, errRBACUnavailable):
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+		case errors.Is(err, errRBACRolesManageRequired):
+			s.error(w, http.StatusForbidden, err.Error())
+		default:
+			s.error(w, http.StatusBadRequest, err.Error())
 		}
+		return
 	}
 
 	s.json(w, http.StatusOK, map[string]string{"status": "assigned"})
 }
 
 func (s *Server) listTenants(w http.ResponseWriter, r *http.Request) {
-	if s.app.RBAC == nil {
-		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
+	tenants, err := s.rbacAdmin.ListTenants(r.Context())
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, s.app.RBAC.ListTenants())
+	s.json(w, http.StatusOK, tenants)
 }
 
 func (s *Server) createTenant(w http.ResponseWriter, r *http.Request) {
-	if s.app.RBAC == nil {
-		s.error(w, http.StatusServiceUnavailable, "rbac not initialized")
-		return
-	}
-
-	userID := GetUserID(r.Context())
-	if !s.app.RBAC.HasPermission(r.Context(), userID, "admin.rbac.users.manage") {
-		s.error(w, http.StatusForbidden, "permission denied: admin.rbac.users.manage required")
-		return
-	}
-
 	var tenant auth.Tenant
 	if err := json.NewDecoder(r.Body).Decode(&tenant); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid tenant")
 		return
 	}
 
-	if err := s.app.RBAC.CreateTenant(&tenant); err != nil {
-		s.error(w, http.StatusBadRequest, err.Error())
+	created, err := s.rbacAdmin.CreateTenant(r.Context(), GetUserID(r.Context()), tenant)
+	if err != nil {
+		switch {
+		case errors.Is(err, errRBACUnavailable):
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+		case errors.Is(err, errRBACUsersManageRequired):
+			s.error(w, http.StatusForbidden, err.Error())
+		default:
+			s.error(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 
-	if s.app.Webhooks != nil {
-		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventRbacTenantCreated, map[string]interface{}{
-			"tenant_id":  tenant.ID,
-			"created_by": userID,
-		}); err != nil {
-			s.app.Logger.Warn("failed to emit RBAC tenant event", "tenant_id", tenant.ID, "error", err)
-		}
-	}
-
-	s.json(w, http.StatusCreated, tenant)
+	s.json(w, http.StatusCreated, created)
 }
 
 func (s *Server) getScanWatermarks(w http.ResponseWriter, r *http.Request) {

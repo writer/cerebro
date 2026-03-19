@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 227 - RBAC Admin Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left the `/rbac` admin handlers reaching directly into `s.app.RBAC` and `s.app.Webhooks`, so that family could not be exercised through `NewServerWithDependencies(...)` with only a narrow stub.
+- [x] Gap: the `/rbac` routes form a coherent handler family with stable request normalization and permission checks, which makes them a clean extraction seam without touching the separate `/scan` admin endpoints.
+- [x] Gap: there was no constructor-level regression proving the RBAC list/create/assign handlers can execute with only a typed service dependency and no concrete RBAC engine on `*app.App`.
+
+### Execution plan
+- [x] Add a dedicated `rbacAdminService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route the `/rbac` handlers through that service while preserving unavailable, forbidden, not-found, and bad-request behavior.
+- [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 226 - Agent SDK Admin Handler Service Seam (2026-03-19)
 
 ### Review findings
