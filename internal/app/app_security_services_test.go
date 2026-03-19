@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -402,6 +403,45 @@ func TestMutateSecurityGraphSwapsCloneAfterMutationCompletes(t *testing.T) {
 	}
 	if got := liveGraph.NodeCount(); got != 1 {
 		t.Fatalf("expected original graph to remain unchanged after swap, got %d", got)
+	}
+}
+
+func TestMutateSecurityGraphUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	base := graph.New()
+	base.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+	base.AddNode(&graph.Node{ID: "bucket:prod", Kind: graph.NodeKindBucket, Name: "prod"})
+	base.AddEdge(&graph.Edge{ID: "payments-prod", Source: "service:payments", Target: "bucket:prod", Kind: graph.EdgeKindOwns, Effect: graph.EdgeEffectAllow})
+	base.BuildIndex()
+
+	application := &App{
+		Config:         &Config{},
+		GraphSnapshots: mustPersistToolGraph(t, base),
+	}
+
+	mutated, err := application.MutateSecurityGraph(context.Background(), func(candidate *graph.Graph) error {
+		if _, ok := candidate.GetNode("service:payments"); !ok {
+			return fmt.Errorf("persisted base node missing")
+		}
+		if _, ok := candidate.GetNode("bucket:prod"); !ok {
+			return fmt.Errorf("persisted base resource missing")
+		}
+		candidate.AddNode(&graph.Node{ID: "service:billing", Kind: graph.NodeKindService, Name: "billing"})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("MutateSecurityGraph() error = %v", err)
+	}
+	if _, ok := mutated.GetNode("service:payments"); !ok {
+		t.Fatal("expected persisted base node to be preserved")
+	}
+	if _, ok := mutated.GetNode("bucket:prod"); !ok {
+		t.Fatal("expected persisted base resource to be preserved")
+	}
+	if _, ok := mutated.GetNode("service:billing"); !ok {
+		t.Fatal("expected new node to be added on top of persisted base")
+	}
+	if got := application.CurrentSecurityGraph(); got != mutated {
+		t.Fatal("expected mutated graph to become the live graph")
 	}
 }
 

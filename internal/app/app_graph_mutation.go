@@ -38,10 +38,9 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 	a.graphUpdateMu.Lock()
 	defer a.graphUpdateMu.Unlock()
 
-	current := a.CurrentSecurityGraph()
-	if current == nil {
-		current = graph.New()
-		a.configureGraphRuntimeBehavior(current)
+	current, err := a.currentMutableSecurityGraphBase()
+	if err != nil {
+		return nil, err
 	}
 	beforeNodeCount := current.NodeCount()
 	beforeEdgeCount := current.EdgeCount()
@@ -107,6 +106,30 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 		attribute.Int("cerebro.graph.mutation_count", mutationCount),
 	)
 	return candidate, nil
+}
+
+func (a *App) currentMutableSecurityGraphBase() (*graph.Graph, error) {
+	if a == nil {
+		return nil, fmt.Errorf("security graph not initialized")
+	}
+	if current := a.CurrentSecurityGraph(); current != nil {
+		return current, nil
+	}
+	stored, err := a.currentOrStoredSecurityGraphView()
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("failed to resolve mutable security graph base", "error", err)
+		}
+		return nil, fmt.Errorf("security graph not initialized")
+	}
+	if stored != nil {
+		a.configureGraphRuntimeBehavior(stored)
+		return stored, nil
+	}
+
+	empty := graph.New()
+	a.configureGraphRuntimeBehavior(empty)
+	return empty, nil
 }
 
 func absInt(value int) int {

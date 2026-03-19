@@ -26,7 +26,7 @@ type autonomousCredentialAnalysis struct {
 }
 
 func (a *App) toolCerebroAutonomousCredentialResponse(ctx context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}

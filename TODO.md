@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 215 - App Graph Mutation Snapshot Base (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `MutateSecurityGraphMaybe(...)` seeding writes from `graph.New()` whenever the live graph pointer was absent, so app write flows could silently mutate a blank graph even when a persisted snapshot was available.
+- [x] Gap: `cerebro.autonomous_credential_response` was the last app tool still calling `requireSecurityGraph()`, so it could not even begin its analysis path on persisted-snapshot runtimes.
+- [x] Gap: there was no regression proving app mutations preserve persisted graph context before appending new workflow artifacts.
+
+### Execution plan
+- [x] Teach `MutateSecurityGraphMaybe(...)` to hydrate its mutation base from the current persisted snapshot before falling back to an empty graph.
+- [x] Route `cerebro.autonomous_credential_response` through the readable graph helper so its analysis path works without a live pointer.
+- [x] Add focused regressions for both direct graph mutation and the autonomous credential workflow, then rerun targeted app validation before opening the PR.
+
 ## Deep Review Cycle 214 - App Identity Tool Snapshot Fallback (2026-03-18)
 
 ### Review findings

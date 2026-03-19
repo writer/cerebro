@@ -1587,6 +1587,74 @@ func TestCerebroAutonomousCredentialResponseTool_AwaitingApproval(t *testing.T) 
 	}
 }
 
+func TestCerebroAutonomousCredentialResponseTool_UsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	dir := t.TempDir()
+	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	application := &App{
+		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
+		ExecutionStore: store,
+		GraphSnapshots: mustPersistToolGraph(t, autonomousCredentialWorkflowGraph()),
+	}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
+	if tool == nil {
+		t.Fatal("expected autonomous credential response tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"secret_node_id":"secret:public-repo:1",
+		"require_approval":true
+	}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(result), &body); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if body["status"] != string(autonomous.RunStatusAwaitingApproval) {
+		t.Fatalf("expected awaiting approval status, got %#v", body["status"])
+	}
+	runID, ok := body["run_id"].(string)
+	if !ok || strings.TrimSpace(runID) == "" {
+		t.Fatalf("expected run_id, got %#v", body["run_id"])
+	}
+
+	runStore := autonomous.NewSQLiteRunStoreWithExecutionStore(store)
+	run, err := runStore.LoadRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("LoadRun: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected persisted autonomous run")
+	}
+	if run.ActionExecutionID == "" || run.ObservationID == "" || run.DetectionClaimID == "" || run.DecisionID == "" {
+		t.Fatalf("expected workflow artifacts to be persisted, got %#v", run)
+	}
+
+	current := application.CurrentSecurityGraph()
+	if current == nil {
+		t.Fatal("expected persisted snapshot base to hydrate a live graph during mutation")
+	}
+	if _, ok := current.GetNode("secret:public-repo:1"); !ok {
+		t.Fatal("expected original persisted secret node to remain present")
+	}
+	if _, ok := current.GetNode(run.ObservationID); !ok {
+		t.Fatalf("expected observation node %q", run.ObservationID)
+	}
+	if _, ok := current.GetNode(run.DetectionClaimID); !ok {
+		t.Fatalf("expected detection claim node %q", run.DetectionClaimID)
+	}
+	if _, ok := current.GetNode(run.DecisionID); !ok {
+		t.Fatalf("expected decision node %q", run.DecisionID)
+	}
+}
+
 func TestCerebroAutonomousCredentialResponseTool_IgnoresCallerApprovalPreference(t *testing.T) {
 	dir := t.TempDir()
 	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
