@@ -816,6 +816,18 @@ Status: executed end-to-end via PR workflow
 - [x] Add focused HTTP regressions for store-backed success, live-graph preference, and missing-source `503`.
 - [x] Re-run focused API tests, package tests, lint, and changed-file validation before pushing the branch.
 
+## Deep Review Cycle 216 - App Simulate And Risk Snapshot Fallback (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the read-only `cerebro.simulate` and `cerebro.risk_score` app tools tied to `requireSecurityGraph()`, so they failed when only persisted snapshots were available.
+- [x] Gap: the prior app-tool slice already introduced `requireReadableSecurityGraph()`, but these two tools were still bypassing it.
+- [x] Gap: the shared persisted-snapshot regression did not cover low-level graph simulation or risk-score reporting.
+
+### Execution plan
+- [x] Route `cerebro.simulate` and `cerebro.risk_score` through the read-only app graph helper.
+- [x] Extend the existing persisted-snapshot app-tool regression to cover both tools.
+- [x] Re-run app package tests, lint, and changed-file validation against the stacked base before pushing.
+
 ## Deep Review Cycle 215 - App Analysis Tool Snapshot Fallback (2026-03-18)
 
 ### Review findings

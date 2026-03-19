@@ -743,7 +743,7 @@ type cerebroGraphQueryRequest struct {
 }
 
 func (a *App) toolCerebroSimulate(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -1567,7 +1567,7 @@ func (a *App) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (s
 }
 
 func (a *App) toolCerebroRiskScore(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}

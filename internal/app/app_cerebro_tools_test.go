@@ -283,6 +283,21 @@ func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *tes
 			},
 		},
 		{
+			name: "simulate delta",
+			tool: "cerebro.simulate",
+			args: `{"nodes":[{"action":"add","node":{"id":"bucket:backup","kind":"bucket","name":"Backup Bucket"}}]}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				after, ok := payload["after"].(map[string]any)
+				if !ok {
+					t.Fatalf("expected after map, got %#v", payload["after"])
+				}
+				if _, ok := after["risk_score"].(float64); !ok {
+					t.Fatalf("expected after.risk_score, got %#v", after["risk_score"])
+				}
+			},
+		},
+		{
 			name: "graph query",
 			tool: "cerebro.graph_query",
 			args: `{"mode":"paths","node_id":"user:alice","target_id":"db:prod","k":2,"max_depth":6}`,
@@ -293,6 +308,20 @@ func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *tes
 				}
 				if count, ok := payload["count"].(float64); !ok || count < 1 {
 					t.Fatalf("expected at least one path, got %#v", payload["count"])
+				}
+			},
+		},
+		{
+			name: "risk score",
+			tool: "cerebro.risk_score",
+			args: `{"entity_id":"db:prod","include_overall":true}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if _, ok := payload["entity_risk"].(map[string]any); !ok {
+					t.Fatalf("expected entity_risk, got %#v", payload["entity_risk"])
+				}
+				if _, ok := payload["overall_risk_score"].(float64); !ok {
+					t.Fatalf("expected overall_risk_score, got %#v", payload["overall_risk_score"])
 				}
 			},
 		},
@@ -434,7 +463,6 @@ func TestCerebroAnalysisToolsSanitizeSnapshotLoadErrors(t *testing.T) {
 		t.Fatalf("expected sanitized error without snapshot path, got %v", err)
 	}
 }
-
 func TestCerebroGraphQueryPathsTool(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
