@@ -18,6 +18,7 @@ import (
 	"github.com/evalops/cerebro/internal/executionstore"
 	"github.com/evalops/cerebro/internal/findings"
 	"github.com/evalops/cerebro/internal/graph"
+	"github.com/evalops/cerebro/internal/identity"
 	"github.com/evalops/cerebro/internal/imagescan"
 	"github.com/evalops/cerebro/internal/policy"
 	"github.com/evalops/cerebro/internal/runtime"
@@ -261,13 +262,30 @@ func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *tes
 	g.AddEdge(&graph.Edge{ID: "svc-customer", Source: "svc:payments", Target: "customer:acme", Kind: graph.EdgeKindOwns, Effect: graph.EdgeEffectAllow})
 	g.BuildIndex()
 
-	application := &App{GraphSnapshots: mustPersistToolGraph(t, g)}
+	application := &App{
+		GraphSnapshots: mustPersistToolGraph(t, g),
+		Identity:       identity.NewService(identity.WithGraphResolver(func(context.Context) *graph.Graph { return nil })),
+	}
 	tests := []struct {
 		name   string
 		tool   string
 		args   string
 		assert func(*testing.T, map[string]any)
 	}{
+		{
+			name: "access review",
+			tool: "cerebro.access_review",
+			args: `{"identity_id":"user:alice"}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["status"] != "pending" {
+					t.Fatalf("expected pending status, got %#v", payload["status"])
+				}
+				if payload["created_by"] != "ensemble" {
+					t.Fatalf("expected created_by ensemble, got %#v", payload["created_by"])
+				}
+			},
+		},
 		{
 			name: "blast radius",
 			tool: "cerebro.blast_radius",
@@ -322,6 +340,17 @@ func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *tes
 				}
 				if _, ok := payload["overall_risk_score"].(float64); !ok {
 					t.Fatalf("expected overall_risk_score, got %#v", payload["overall_risk_score"])
+				}
+			},
+		},
+		{
+			name: "identity calibration",
+			tool: "cerebro.identity_calibration",
+			args: `{"include_queue":true}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if aliasNodes, ok := payload["alias_nodes"].(float64); !ok || aliasNodes < 1 {
+					t.Fatalf("expected alias_nodes >= 1, got %#v", payload["alias_nodes"])
 				}
 			},
 		},
@@ -1434,6 +1463,43 @@ func TestCerebroAccessReviewTool(t *testing.T) {
 	}
 	if payload["created_by"] != "ensemble" {
 		t.Fatalf("expected created_by ensemble, got %#v", payload["created_by"])
+	}
+}
+
+func TestCerebroAccessReviewToolUsesTenantScopedPersistedSnapshot(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
+	g.AddNode(&graph.Node{ID: "bucket:tenant-a", Kind: graph.NodeKindBucket, Name: "Tenant A Bucket", TenantID: "tenant-a", Risk: graph.RiskHigh})
+	g.AddNode(&graph.Node{ID: "bucket:tenant-b", Kind: graph.NodeKindBucket, Name: "Tenant B Bucket", TenantID: "tenant-b", Risk: graph.RiskHigh})
+	g.AddEdge(&graph.Edge{ID: "alice-tenant-a", Source: "user:alice", Target: "bucket:tenant-a", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "alice-tenant-b", Source: "user:alice", Target: "bucket:tenant-b", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+
+	application := &App{GraphSnapshots: mustPersistToolGraph(t, g)}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.access_review")
+	if tool == nil {
+		t.Fatal("expected access_review tool")
+	}
+
+	result, err := tool.Handler(graph.WithTenantScope(context.Background(), "tenant-a"), json.RawMessage(`{"identity_id":"user:alice"}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	items, ok := payload["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one tenant-scoped review item, got %#v", payload["items"])
+	}
+	item := items[0].(map[string]any)
+	metadata, ok := item["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected review item metadata, got %#v", item["metadata"])
+	}
+	if got := metadata["resource_id"]; got != "bucket:tenant-a" {
+		t.Fatalf("expected tenant-a resource only, got %#v", got)
 	}
 }
 

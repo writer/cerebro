@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 214 - App Identity Tool Snapshot Fallback (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left the app-level `cerebro.access_review` and `cerebro.identity_calibration` tools hard-bound to `requireSecurityGraph()`, so those read-heavy identity workflows failed whenever the app was serving from persisted snapshots without a live in-memory graph pointer.
+- [x] Gap: `cerebro.access_review` also delegated to the default `Identity` service, whose app wiring still resolves only `CurrentSecurityGraph()`, so simply swapping the tool's initial graph lookup would not have fixed the end-to-end path.
+- [x] Gap: there was no persisted-snapshot regression covering either tool, so the app-level `#392` migration still had an untested hole in the identity tool surface.
+
+### Execution plan
+- [x] Route `cerebro.access_review` and `cerebro.identity_calibration` through `requireReadableSecurityGraph()`.
+- [x] Build snapshot-aware access-review service resolution so the tool still uses the readable graph view even when the default app `Identity` service is wired to live graph state only.
+- [x] Extend the persisted-snapshot app tool regression coverage for both identity tools, then rerun focused app validation before opening the PR.
+
 ## Deep Review Cycle 213 - App Graph View Snapshot Fallback (2026-03-18)
 
 ### Review findings

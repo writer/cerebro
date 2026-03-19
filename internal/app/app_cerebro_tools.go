@@ -1847,7 +1847,7 @@ func (a *App) toolCerebroFindings(_ context.Context, args json.RawMessage) (stri
 }
 
 func (a *App) toolCerebroAccessReview(ctx context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -1873,10 +1873,7 @@ func (a *App) toolCerebroAccessReview(ctx context.Context, args json.RawMessage)
 		name = "Identity access review: " + req.IdentityID
 	}
 
-	reviewService := a.Identity
-	if reviewService == nil {
-		reviewService = identity.NewService(identity.WithGraphResolver(func(context.Context) *graph.Graph { return g }))
-	}
+	reviewService := a.cerebroAccessReviewService(g)
 
 	review, err := reviewService.CreateReview(ctx, &identity.AccessReview{
 		Name:        name,
@@ -1913,6 +1910,25 @@ func (a *App) toolCerebroAccessReview(ctx context.Context, args json.RawMessage)
 		payload["status"] = "pending"
 	}
 	return marshalToolResponse(payload)
+}
+
+func (a *App) cerebroAccessReviewService(g *graph.Graph) *identity.Service {
+	if a != nil && a.Identity != nil && a.CurrentSecurityGraph() != nil {
+		return a.Identity
+	}
+
+	opts := []identity.ServiceOption{
+		identity.WithGraphResolver(func(ctx context.Context) *graph.Graph {
+			if scope, ok := graph.TenantReadScopeFromContext(ctx); ok && !scope.CrossTenant && len(scope.TenantIDs) == 1 {
+				return g.SubgraphForTenant(scope.TenantIDs[0])
+			}
+			return g
+		}),
+	}
+	if a != nil && a.ExecutionStore != nil {
+		opts = append(opts, identity.WithExecutionStore(a.ExecutionStore))
+	}
+	return identity.NewService(opts...)
 }
 
 func toolDurableActorID(_ context.Context) string {

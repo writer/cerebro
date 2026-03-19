@@ -545,7 +545,7 @@ func (a *App) toolCerebroIdentityReview(ctx context.Context, args json.RawMessag
 }
 
 func (a *App) toolCerebroIdentityCalibration(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
