@@ -12,7 +12,6 @@ import (
 func TestPlatformKnowledgeObservationAndClaimAnalysisEndpoints(t *testing.T) {
 	s := newTestServer(t)
 	baseAt, aliceClaimID, bobClaimID, seedObservationID := seedPlatformKnowledgeScenario(t, s)
-	g := s.app.SecurityGraph
 
 	create := do(t, s, http.MethodPost, "/api/v1/platform/knowledge/observations", map[string]any{
 		"subject_id":       "service:payments",
@@ -28,7 +27,7 @@ func TestPlatformKnowledgeObservationAndClaimAnalysisEndpoints(t *testing.T) {
 	if createdObservationID == "" {
 		t.Fatalf("expected observation_id, got %#v", createBody)
 	}
-	if node, ok := g.GetNode(createdObservationID); !ok || node == nil || node.Kind != graph.NodeKindObservation {
+	if node, ok := s.app.CurrentSecurityGraph().GetNode(createdObservationID); !ok || node == nil || node.Kind != graph.NodeKindObservation {
 		t.Fatalf("expected observation node %q, got %#v", createdObservationID, node)
 	}
 

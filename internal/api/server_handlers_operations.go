@@ -259,7 +259,12 @@ func (s *Server) listRemediationExecutions(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	executions := s.app.Remediation.ListExecutions(limit)
+	var executions []*remediation.Execution
+	if s.app.RemediationExecutor != nil {
+		executions = s.app.RemediationExecutor.ListExecutions(r.Context(), limit)
+	} else if s.app.Remediation != nil {
+		executions = s.app.Remediation.ListExecutions(limit)
+	}
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"executions": executions,
 		"count":      len(executions),
@@ -268,7 +273,15 @@ func (s *Server) listRemediationExecutions(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) getRemediationExecution(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	execution, ok := s.app.Remediation.GetExecution(id)
+	var (
+		execution *remediation.Execution
+		ok        bool
+	)
+	if s.app.RemediationExecutor != nil {
+		execution, ok = s.app.RemediationExecutor.GetExecution(r.Context(), id)
+	} else if s.app.Remediation != nil {
+		execution, ok = s.app.Remediation.GetExecution(id)
+	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "execution not found")
 		return

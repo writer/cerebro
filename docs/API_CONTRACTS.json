@@ -2,7 +2,7 @@
   "api_version": "devex.cerebro/v1alpha1",
   "kind": "HTTPAPIContractCatalog",
   "generated_at": "0001-01-01T00:00:00Z",
-  "endpoint_count": 293,
+  "endpoint_count": 300,
   "endpoints": [
     {
       "id": "DELETE /api/v1/findings/{id}",
@@ -8479,6 +8479,142 @@
       ]
     },
     {
+      "id": "GET /api/v1/platform/executions",
+      "path": "/api/v1/platform/executions",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "exclude_status",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema_type": "integer"
+        },
+        {
+          "name": "namespace",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "offset",
+          "required": false,
+          "schema_type": "integer"
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "report_id",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "status",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "count",
+              "type": "integer"
+            },
+            {
+              "path": "executions",
+              "type": "array"
+            },
+            {
+              "path": "executions[]",
+              "type": "object"
+            },
+            {
+              "path": "executions[].completed_at",
+              "type": "string"
+            },
+            {
+              "path": "executions[].display_name",
+              "type": "string"
+            },
+            {
+              "path": "executions[].error",
+              "type": "string"
+            },
+            {
+              "path": "executions[].execution_mode",
+              "type": "string"
+            },
+            {
+              "path": "executions[].job_id",
+              "type": "string"
+            },
+            {
+              "path": "executions[].kind",
+              "type": "string"
+            },
+            {
+              "path": "executions[].namespace",
+              "type": "string"
+            },
+            {
+              "path": "executions[].provider",
+              "type": "string"
+            },
+            {
+              "path": "executions[].requested_by",
+              "type": "string"
+            },
+            {
+              "path": "executions[].run_id",
+              "type": "string"
+            },
+            {
+              "path": "executions[].scope_id",
+              "type": "string"
+            },
+            {
+              "path": "executions[].stage",
+              "type": "string"
+            },
+            {
+              "path": "executions[].started_at",
+              "type": "string"
+            },
+            {
+              "path": "executions[].status",
+              "type": "string"
+            },
+            {
+              "path": "executions[].status_url",
+              "type": "string"
+            },
+            {
+              "path": "executions[].submitted_at",
+              "type": "string"
+            },
+            {
+              "path": "executions[].target",
+              "type": "string"
+            },
+            {
+              "path": "executions[].updated_at",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "GET /api/v1/platform/graph/changelog",
       "path": "/api/v1/platform/graph/changelog",
       "method": "GET",
@@ -12428,6 +12564,542 @@
             },
             {
               "path": "valid_at",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/platform/intelligence/event-anomalies",
+      "path": "/api/v1/platform/intelligence/event-anomalies",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "entity_id",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "event_id",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema_type": "integer"
+        },
+        {
+          "name": "pattern_id",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "anomalies",
+              "type": "array"
+            },
+            {
+              "path": "anomalies[]",
+              "type": "object"
+            },
+            {
+              "path": "anomalies[].baseline_average",
+              "type": "number"
+            },
+            {
+              "path": "anomalies[].baseline_count",
+              "type": "integer"
+            },
+            {
+              "path": "anomalies[].baseline_window_end",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].baseline_window_start",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].classification",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].current_count",
+              "type": "integer"
+            },
+            {
+              "path": "anomalies[].current_window_end",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].current_window_start",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].deviation_ratio",
+              "type": "number"
+            },
+            {
+              "path": "anomalies[].entity_id",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].event_kind",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].id",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].severity",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].source_system",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].status",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].summary",
+              "type": "string"
+            },
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "query",
+              "type": "object"
+            },
+            {
+              "path": "query.entity_id",
+              "type": "string"
+            },
+            {
+              "path": "query.event_id",
+              "type": "string"
+            },
+            {
+              "path": "query.include_anomalies",
+              "type": "boolean"
+            },
+            {
+              "path": "query.limit",
+              "type": "integer"
+            },
+            {
+              "path": "query.pattern_id",
+              "type": "string"
+            },
+            {
+              "path": "query.since",
+              "type": "string"
+            },
+            {
+              "path": "query.until",
+              "type": "string"
+            },
+            {
+              "path": "summary",
+              "type": "object"
+            },
+            {
+              "path": "summary.anomaly_count",
+              "type": "integer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/platform/intelligence/event-correlations",
+      "path": "/api/v1/platform/intelligence/event-correlations",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "entity_id",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "event_id",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "include_anomalies",
+          "required": false,
+          "schema_type": "boolean"
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema_type": "integer"
+        },
+        {
+          "name": "pattern_id",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "since",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "until",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "anomalies",
+              "type": "array"
+            },
+            {
+              "path": "anomalies[]",
+              "type": "object"
+            },
+            {
+              "path": "anomalies[].baseline_average",
+              "type": "number"
+            },
+            {
+              "path": "anomalies[].baseline_count",
+              "type": "integer"
+            },
+            {
+              "path": "anomalies[].baseline_window_end",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].baseline_window_start",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].classification",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].current_count",
+              "type": "integer"
+            },
+            {
+              "path": "anomalies[].current_window_end",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].current_window_start",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].deviation_ratio",
+              "type": "number"
+            },
+            {
+              "path": "anomalies[].entity_id",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].event_kind",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].id",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].severity",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].source_system",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].status",
+              "type": "string"
+            },
+            {
+              "path": "anomalies[].summary",
+              "type": "string"
+            },
+            {
+              "path": "correlations",
+              "type": "array"
+            },
+            {
+              "path": "correlations[]",
+              "type": "object"
+            },
+            {
+              "path": "correlations[].cause",
+              "type": "object"
+            },
+            {
+              "path": "correlations[].cause.account",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].cause.id",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].cause.kind",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].cause.name",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].cause.observed_at",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].cause.provider",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].cause.service_id",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].cause.source_system",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].cause.status",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].cause.valid_from",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].description",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].edge_kind",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].effect",
+              "type": "object"
+            },
+            {
+              "path": "correlations[].effect.account",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].effect.id",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].effect.kind",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].effect.name",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].effect.observed_at",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].effect.provider",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].effect.service_id",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].effect.source_system",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].effect.status",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].effect.valid_from",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].gap_seconds",
+              "type": "integer"
+            },
+            {
+              "path": "correlations[].id",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].pattern_id",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].pattern_name",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].score",
+              "type": "number"
+            },
+            {
+              "path": "correlations[].shared_target_ids",
+              "type": "array"
+            },
+            {
+              "path": "correlations[].shared_target_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "correlations[].window_seconds",
+              "type": "integer"
+            },
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "query",
+              "type": "object"
+            },
+            {
+              "path": "query.entity_id",
+              "type": "string"
+            },
+            {
+              "path": "query.event_id",
+              "type": "string"
+            },
+            {
+              "path": "query.include_anomalies",
+              "type": "boolean"
+            },
+            {
+              "path": "query.limit",
+              "type": "integer"
+            },
+            {
+              "path": "query.pattern_id",
+              "type": "string"
+            },
+            {
+              "path": "query.since",
+              "type": "string"
+            },
+            {
+              "path": "query.until",
+              "type": "string"
+            },
+            {
+              "path": "summary",
+              "type": "object"
+            },
+            {
+              "path": "summary.anomaly_count",
+              "type": "integer"
+            },
+            {
+              "path": "summary.correlation_count",
+              "type": "integer"
+            },
+            {
+              "path": "summary.pattern_count",
+              "type": "integer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/platform/intelligence/event-patterns",
+      "path": "/api/v1/platform/intelligence/event-patterns",
+      "method": "GET",
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "patterns",
+              "type": "array"
+            },
+            {
+              "path": "patterns[]",
+              "type": "object"
+            },
+            {
+              "path": "patterns[].cause_kind",
+              "type": "string"
+            },
+            {
+              "path": "patterns[].description",
+              "type": "string"
+            },
+            {
+              "path": "patterns[].edge_kind",
+              "type": "string"
+            },
+            {
+              "path": "patterns[].effect_kind",
+              "type": "string"
+            },
+            {
+              "path": "patterns[].id",
+              "type": "string"
+            },
+            {
+              "path": "patterns[].max_gap",
+              "type": "string"
+            },
+            {
+              "path": "patterns[].max_gap_seconds",
+              "type": "integer"
+            },
+            {
+              "path": "patterns[].name",
+              "type": "string"
+            },
+            {
+              "path": "patterns[].severity",
+              "type": "string"
+            },
+            {
+              "path": "patterns[].shared_target_kinds",
+              "type": "array"
+            },
+            {
+              "path": "patterns[].shared_target_kinds[]",
               "type": "string"
             }
           ]
@@ -24616,6 +25288,10 @@
               "type": "object"
             },
             {
+              "path": "policies[].condition_format",
+              "type": "string"
+            },
+            {
               "path": "policies[].conditions",
               "type": "array"
             },
@@ -24670,6 +25346,10 @@
             "application/json"
           ],
           "fields": [
+            {
+              "path": "condition_format",
+              "type": "string"
+            },
             {
               "path": "conditions",
               "type": "array"
@@ -25116,6 +25796,40 @@
           "fields": [
             {
               "path": "[]",
+              "type": "object"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/runtime/executions",
+      "path": "/api/v1/runtime/executions",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "limit",
+          "required": false,
+          "schema_type": "integer"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "count",
+              "type": "integer"
+            },
+            {
+              "path": "executions",
+              "type": "array"
+            },
+            {
+              "path": "executions[]",
               "type": "object"
             }
           ]
@@ -33781,6 +34495,10 @@
           ],
           "fields": [
             {
+              "path": "condition_format",
+              "type": "string"
+            },
+            {
               "path": "conditions",
               "type": "array"
             },
@@ -33934,6 +34652,10 @@
             "application/json"
           ],
           "fields": [
+            {
+              "path": "condition_format",
+              "type": "string"
+            },
             {
               "path": "conditions",
               "type": "array"
@@ -34389,6 +35111,66 @@
             {
               "path": "processed",
               "type": "boolean"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "POST /api/v1/runtime/executions/{id}/approve",
+      "path": "/api/v1/runtime/executions/{id}/approve",
+      "method": "POST",
+      "request": {
+        "content_types": [
+          "application/json"
+        ],
+        "required_fields": [
+          {
+            "path": "approver_id",
+            "type": "string"
+          }
+        ]
+      },
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "status",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "POST /api/v1/runtime/executions/{id}/reject",
+      "path": "/api/v1/runtime/executions/{id}/reject",
+      "method": "POST",
+      "request": {
+        "content_types": [
+          "application/json"
+        ],
+        "required_fields": [
+          {
+            "path": "rejecter_id",
+            "type": "string"
+          }
+        ]
+      },
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "status",
+              "type": "string"
             }
           ]
         }
@@ -36186,6 +36968,10 @@
             "application/json"
           ],
           "fields": [
+            {
+              "path": "condition_format",
+              "type": "string"
+            },
             {
               "path": "conditions",
               "type": "array"

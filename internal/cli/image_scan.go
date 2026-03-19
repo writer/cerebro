@@ -200,12 +200,17 @@ func runImageScan(parent context.Context, target imagescan.ScanTarget, client sc
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveImageScanTrivyBinary(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = vulnDBCloser.Close() }()
 
 	runner := imagescan.NewRunner(imagescan.RunnerOptions{
 		Store:          store,
 		Registries:     []scanner.RegistryClient{client},
 		Materializer:   imagescan.NewLocalMaterializer(resolveImageScanRootFSBasePath(cfg)),
-		Analyzer:       imagescan.FilesystemAnalyzer{Scanner: scanner.NewTrivyFilesystemScanner(resolveImageScanTrivyBinary(cfg))},
+		Analyzer:       imagescan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
 		Events:         emitter,
 		CleanupTimeout: resolveImageScanCleanupTimeout(cfg),
 	})

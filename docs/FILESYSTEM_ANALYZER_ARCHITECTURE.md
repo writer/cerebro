@@ -7,7 +7,7 @@ Cerebro's workload filesystem analyzer is now the shared catalog-and-finding sub
 - Inspect one mounted or materialized filesystem and emit one typed analysis report.
 - Separate execution orchestration from filesystem cataloging.
 - Keep package inventory, secret detection, misconfiguration analysis, and SBOM generation under one contract.
-- Treat vulnerability matching as a pluggable layer so the current Trivy bridge can later be replaced or enriched by the vulnerability knowledge pipeline from issue `#181`.
+- Treat vulnerability matching as a pluggable layer so the analyzer can use the persisted vulnerability knowledge pipeline from issue `#181` without hard-coding one scanner backend.
 - Keep scan runtimes on one shared execution-store schema instead of growing per-runtime persistence silos.
 
 ## Current Contract
@@ -48,7 +48,9 @@ Current analyzer responsibilities:
   - SUID binaries
   - Docker socket exposure
 - CycloneDX-style SBOM component generation
-- optional vulnerability bridge through `scanner.FilesystemScanner`
+- optional vulnerability bridge through either:
+  - native `internal/vulndb` package matching
+  - `scanner.FilesystemScanner` fallback
 - optional malware bridge through `scanner.MalwareScanner`
 
 ## Runtime Integration
@@ -121,14 +123,14 @@ Cerebro should keep those stages separate.
 ## Known Limits
 
 - RPM package parsing is not yet implemented; current package inventory is strongest on Debian/Alpine plus language ecosystems.
-- The vulnerability layer is still bridged through Trivy FS today instead of the future native advisory pipeline.
+- Native advisory matching now exists through `internal/vulndb`, but source breadth and ecosystem-specific version comparators are still incomplete.
 - Malware detection is optional and depends on an injected engine/threat-intel backend.
 - Windows registry hive parsing is not implemented yet.
 - SBOMs are generated as typed in-run documents today, not yet persisted as first-class graph knowledge artifacts.
 
 ## Next Steps
 
-1. Issue `#181`: replace or augment the Trivy vulnerability bridge with a first-class advisory knowledge pipeline.
-2. Issue `#182`: project scan packages/vulnerabilities/SBOM coverage into the security graph and attack-path context.
+1. Extend the vulnerability database with NVD, GitHub Advisory, and distro feeds.
+2. Extend the now-landed workload scan graph projection from issue `#182` to image/function scan families and richer claim/evidence projection.
 3. Extend package coverage for RPM, Ruby gems, and .NET `.deps.json`.
-4. Move execution resources onto a multi-worker backend if SQLite becomes the scaling bottleneck.
+4. Move execution resources and vuln sync jobs onto a multi-worker backend if SQLite becomes the scaling bottleneck.

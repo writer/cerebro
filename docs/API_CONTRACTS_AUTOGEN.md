@@ -4,7 +4,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 
 - Catalog API version: **devex.cerebro/v1alpha1**
 - Catalog kind: **HTTPAPIContractCatalog**
-- Endpoints: **293**
+- Endpoints: **300**
 
 ## Endpoint Summary
 
@@ -105,6 +105,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/platform/entities/{entity_id}` | 2 | 0 | `200` |
 | `GET /api/v1/platform/entities/{entity_id}/at` | 2 | 0 | `200` |
 | `GET /api/v1/platform/entities/{entity_id}/diff` | 3 | 0 | `200` |
+| `GET /api/v1/platform/executions` | 7 | 0 | `200` |
 | `GET /api/v1/platform/graph/changelog` | 7 | 0 | `200` |
 | `GET /api/v1/platform/graph/diffs/{diff_id}` | 0 | 0 | `200` |
 | `GET /api/v1/platform/graph/diffs/{diff_id}/details` | 3 | 0 | `200` |
@@ -121,6 +122,9 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/platform/intelligence/checks` | 0 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/claim-conflicts` | 5 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/entity-summary` | 4 | 0 | `200` |
+| `GET /api/v1/platform/intelligence/event-anomalies` | 4 | 0 | `200` |
+| `GET /api/v1/platform/intelligence/event-correlations` | 7 | 0 | `200` |
+| `GET /api/v1/platform/intelligence/event-patterns` | 0 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/insights` | 8 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/leverage` | 7 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/measures` | 0 | 0 | `200` |
@@ -171,6 +175,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/reports/executive-summary` | 0 | 0 | `200` |
 | `GET /api/v1/reports/risk-summary` | 0 | 0 | `200` |
 | `GET /api/v1/runtime/detections` | 0 | 0 | `200` |
+| `GET /api/v1/runtime/executions` | 1 | 0 | `200` |
 | `GET /api/v1/runtime/findings` | 1 | 0 | `200` |
 | `GET /api/v1/runtime/responses` | 0 | 0 | `200` |
 | `GET /api/v1/scan/coverage` | 0 | 0 | `200` |
@@ -276,6 +281,8 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `POST /api/v1/remediation/rules/{id}/disable` | 0 | 0 | `200` |
 | `POST /api/v1/remediation/rules/{id}/enable` | 0 | 0 | `200` |
 | `POST /api/v1/runtime/events` | 0 | 0 | `200` |
+| `POST /api/v1/runtime/executions/{id}/approve` | 0 | 1 | `200` |
+| `POST /api/v1/runtime/executions/{id}/reject` | 0 | 1 | `200` |
 | `POST /api/v1/runtime/responses/{id}/disable` | 0 | 0 | `200` |
 | `POST /api/v1/runtime/responses/{id}/enable` | 0 | 0 | `200` |
 | `POST /api/v1/scheduler/jobs/{name}/disable` | 0 | 0 | `200` |

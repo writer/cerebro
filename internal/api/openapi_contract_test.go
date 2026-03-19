@@ -25,6 +25,8 @@ type openAPIContractCase struct {
 func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 	spec := loadOpenAPISpec(t)
 	s := newTestServer(t)
+	runtimeApproveExecution := seedRuntimeApprovalExecution(t, s, "openapi-runtime-approve", "203.0.113.61")
+	runtimeRejectExecution := seedRuntimeApprovalExecution(t, s, "openapi-runtime-reject", "203.0.113.62")
 
 	cases := []openAPIContractCase{
 		{
@@ -159,7 +161,7 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			method:         http.MethodPost,
 			pathTemplate:   "/api/v1/policies",
 			requestPath:    "/api/v1/policies/",
-			body:           map[string]interface{}{"id": "openapi-policy", "name": "OpenAPI Policy", "effect": "forbid", "resource": "aws::s3::bucket", "conditions": []string{"public == true"}, "severity": "high"},
+			body:           map[string]interface{}{"id": "openapi-policy", "name": "OpenAPI Policy", "description": "OpenAPI policy contract", "effect": "forbid", "resource": "aws::s3::bucket", "conditions": []string{"public == true"}, "severity": "high"},
 			expectedStatus: http.StatusCreated,
 		},
 		{
@@ -254,6 +256,29 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			method:         http.MethodGet,
 			pathTemplate:   "/api/v1/runtime/responses",
 			requestPath:    "/api/v1/runtime/responses",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "runtime executions list contract",
+			method:         http.MethodGet,
+			pathTemplate:   "/api/v1/runtime/executions",
+			requestPath:    "/api/v1/runtime/executions?limit=1",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "runtime execution approve contract",
+			method:         http.MethodPost,
+			pathTemplate:   "/api/v1/runtime/executions/{id}/approve",
+			requestPath:    "/api/v1/runtime/executions/" + runtimeApproveExecution.ID + "/approve",
+			body:           map[string]interface{}{"approver_id": "openapi-user"},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "runtime execution reject contract",
+			method:         http.MethodPost,
+			pathTemplate:   "/api/v1/runtime/executions/{id}/reject",
+			requestPath:    "/api/v1/runtime/executions/" + runtimeRejectExecution.ID + "/reject",
+			body:           map[string]interface{}{"rejecter_id": "openapi-user", "reason": "contract test"},
 			expectedStatus: http.StatusOK,
 		},
 		{

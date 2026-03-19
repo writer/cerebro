@@ -19,7 +19,7 @@ func TestPlatformGraphSnapshotAncestryAndDiffEndpoints(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
 
-	base := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Minute)
 	older := &graph.Snapshot{
 		Version:   "1.0",
 		CreatedAt: base.Add(5 * time.Minute),
@@ -395,7 +395,7 @@ func TestPlatformGraphChangelogAndDiffDetailsEndpoints(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
 
-	base := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Minute)
 	older := &graph.Snapshot{
 		Version:   "1.0",
 		CreatedAt: base.Add(5 * time.Minute),
@@ -530,7 +530,7 @@ func TestPlatformGraphChangelogUsesExplicitParentSnapshotLineage(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
 
-	base := time.Date(2026, 3, 7, 7, 0, 0, 0, time.UTC)
+	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Minute)
 	root := &graph.Snapshot{
 		Version:   "1.0",
 		CreatedAt: base.Add(5 * time.Minute),
@@ -664,6 +664,7 @@ func TestPlatformGraphDiffLookupByIDUsesExplicitParentSnapshotLineage(t *testing
 	)
 	if expected == nil {
 		t.Fatal("expected diff id")
+		return
 	}
 
 	s := newTestServer(t)

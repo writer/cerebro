@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"bufio"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -115,28 +116,32 @@ func (s *Snapshot) SaveToFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
-	defer func() { _ = f.Close() }()
 
-	gw := gzip.NewWriter(f)
-	defer func() { _ = gw.Close() }()
-
-	encoder := json.NewEncoder(gw)
-	if err := encoder.Encode(s); err != nil {
-		return fmt.Errorf("encode snapshot: %w", err)
+	if err := s.writeCompressed(f); err != nil {
+		_ = f.Close()
+		return err
 	}
-
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close snapshot file: %w", err)
+	}
 	return nil
 }
 
-// LoadSnapshotFromFile loads a snapshot from a compressed file
-func LoadSnapshotFromFile(path string) (*Snapshot, error) {
-	f, err := os.Open(path) // #nosec G304 -- snapshot path is controlled by caller-facing API and intentionally file-system based
-	if err != nil {
-		return nil, fmt.Errorf("open file: %w", err)
+func (s *Snapshot) writeCompressed(w io.Writer) error {
+	gw := gzip.NewWriter(w)
+	encoder := json.NewEncoder(gw)
+	if err := encoder.Encode(s); err != nil {
+		_ = gw.Close()
+		return fmt.Errorf("encode snapshot: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	if err := gw.Close(); err != nil {
+		return fmt.Errorf("close compressed snapshot: %w", err)
+	}
+	return nil
+}
 
-	gr, err := gzip.NewReader(f)
+func loadSnapshotFromCompressedReader(r io.Reader) (*Snapshot, error) {
+	gr, err := gzip.NewReader(bufio.NewReader(r))
 	if err != nil {
 		return nil, fmt.Errorf("create gzip reader: %w", err)
 	}
@@ -153,6 +158,17 @@ func LoadSnapshotFromFile(path string) (*Snapshot, error) {
 	}
 
 	return &snapshot, nil
+}
+
+// LoadSnapshotFromFile loads a snapshot from a compressed file
+func LoadSnapshotFromFile(path string) (*Snapshot, error) {
+	f, err := os.Open(path) // #nosec G304 -- snapshot path is controlled by caller-facing API and intentionally file-system based
+	if err != nil {
+		return nil, fmt.Errorf("open file: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	return loadSnapshotFromCompressedReader(f)
 }
 
 // SnapshotStore manages graph snapshots
@@ -174,47 +190,74 @@ func NewSnapshotStore(basePath string, maxSnapshots int) *SnapshotStore {
 
 // Save saves a graph snapshot
 func (s *SnapshotStore) Save(g *Graph) error {
+	_, _, err := s.SaveGraph(g)
+	return err
+}
+
+// SaveGraph saves a graph snapshot and returns the typed snapshot record and
+// manifest generated for the newest retained artifact.
+func (s *SnapshotStore) SaveGraph(g *Graph) (*GraphSnapshotRecord, *GraphSnapshotManifest, error) {
 	snapshot := CreateSnapshot(g)
 	filename := fmt.Sprintf("graph-%s.json.gz", snapshot.CreatedAt.Format("20060102-150405.000000000"))
 	path := filepath.Join(s.basePath, filename)
 
 	if err := snapshot.SaveToFile(path); err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	// Clean up old snapshots
 	if err := s.cleanup(); err != nil {
-		return err
+		return nil, nil, err
 	}
-	_, err := s.rebuildSnapshotIndex(nil)
-	return err
+	index, err := s.rebuildSnapshotIndex(nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if index == nil || len(index.Snapshots) == 0 {
+		return nil, nil, fmt.Errorf("snapshot index missing saved record")
+	}
+	manifest := index.Snapshots[len(index.Snapshots)-1]
+	record := manifest.Record
+	return &record, &manifest, nil
 }
 
 // LoadLatest loads the most recent snapshot
 func (s *SnapshotStore) LoadLatest() (*Graph, error) {
-	files, err := filepath.Glob(filepath.Join(s.basePath, "graph-*.json.gz"))
-	if err != nil {
-		return nil, fmt.Errorf("glob snapshots: %w", err)
-	}
-
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no snapshots found")
-	}
-
-	// Find most recent by filename (sorted by timestamp)
-	var latest string
-	for _, f := range files {
-		if f > latest {
-			latest = f
-		}
-	}
-
-	snapshot, err := LoadSnapshotFromFile(latest)
+	snapshot, _, err := s.LoadLatestSnapshot()
 	if err != nil {
 		return nil, err
 	}
 
 	return RestoreFromSnapshot(snapshot), nil
+}
+
+// LoadLatestSnapshot loads the newest retained snapshot and its typed record.
+func (s *SnapshotStore) LoadLatestSnapshot() (*Snapshot, *GraphSnapshotRecord, error) {
+	index, err := s.loadOrRebuildSnapshotIndex()
+	if err != nil {
+		return nil, nil, err
+	}
+	if index == nil || len(index.Snapshots) == 0 {
+		return nil, nil, fmt.Errorf("no snapshots found")
+	}
+	manifest := index.Snapshots[len(index.Snapshots)-1]
+	path := manifest.ArtifactPath
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(s.basePath, path)
+	}
+	snapshot, err := LoadSnapshotFromFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	record := manifest.Record
+	return snapshot, &record, nil
+}
+
+func (s *SnapshotStore) BasePath() string {
+	if s == nil {
+		return ""
+	}
+	return s.basePath
 }
 
 // List returns all available snapshots
@@ -342,6 +385,34 @@ func (s *SnapshotStore) DiffByTime(t1, t2 time.Time) (*GraphDiff, error) {
 	return DiffSnapshots(before, after), nil
 }
 
+// DiffByTimeForTenant loads snapshots nearest to the provided timestamps,
+// scopes both graphs to one tenant, and computes a structural diff.
+func (s *SnapshotStore) DiffByTimeForTenant(t1, t2 time.Time, tenantID string) (*GraphDiff, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return s.DiffByTime(t1, t2)
+	}
+	if t1.IsZero() || t2.IsZero() {
+		return nil, fmt.Errorf("both timestamps are required")
+	}
+	from := t1
+	to := t2
+	if from.After(to) {
+		from, to = to, from
+	}
+
+	before, err := s.loadClosestSnapshotAt(from)
+	if err != nil {
+		return nil, err
+	}
+	after, err := s.loadClosestSnapshotAt(to)
+	if err != nil {
+		return nil, err
+	}
+
+	return diffSnapshotsForTenant(before, after, tenantID), nil
+}
+
 func (s *SnapshotStore) loadClosestSnapshotAt(ts time.Time) (*Snapshot, error) {
 	files, err := filepath.Glob(filepath.Join(s.basePath, "graph-*.json.gz"))
 	if err != nil {
@@ -384,6 +455,25 @@ func (s *SnapshotStore) loadClosestSnapshotAt(ts time.Time) (*Snapshot, error) {
 		return closestAfter, nil
 	}
 	return nil, fmt.Errorf("no readable snapshots found")
+}
+
+func diffSnapshotsForTenant(before, after *Snapshot, tenantID string) *GraphDiff {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return DiffSnapshots(before, after)
+	}
+	beforeGraph := GraphViewFromSnapshot(before)
+	afterGraph := GraphViewFromSnapshot(after)
+	if beforeGraph == nil {
+		beforeGraph = New()
+	}
+	if afterGraph == nil {
+		afterGraph = New()
+	}
+	return DiffSnapshots(
+		CreateSnapshot(beforeGraph.SubgraphForTenant(tenantID)),
+		CreateSnapshot(afterGraph.SubgraphForTenant(tenantID)),
+	)
 }
 
 func (s *SnapshotStore) cleanup() error {

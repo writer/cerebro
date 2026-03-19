@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/builders"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -23,7 +24,7 @@ func newSchedulerGraphSource() *schedulerGraphSource {
 	return &schedulerGraphSource{queryCounts: make(map[string]int)}
 }
 
-func (s *schedulerGraphSource) Query(ctx context.Context, query string, args ...any) (*graph.QueryResult, error) {
+func (s *schedulerGraphSource) Query(ctx context.Context, query string, args ...any) (*builders.DataQueryResult, error) {
 	_ = ctx
 	_ = args
 	lower := strings.ToLower(query)
@@ -34,9 +35,9 @@ func (s *schedulerGraphSource) Query(ctx context.Context, query string, args ...
 	if strings.Contains(lower, "select event_time") && strings.Contains(lower, "from cdc_events") && strings.Contains(lower, "limit 1") {
 		s.queryCounts["has_changes"]++
 		if s.latest.IsZero() {
-			return &graph.QueryResult{Rows: []map[string]any{}}, nil
+			return &builders.DataQueryResult{Rows: []map[string]any{}}, nil
 		}
-		return &graph.QueryResult{Rows: []map[string]any{{"event_time": s.latest, "ingested_at": s.latest, "event_id": "evt-latest"}}, Count: 1}, nil
+		return &builders.DataQueryResult{Rows: []map[string]any{{"event_time": s.latest, "ingested_at": s.latest, "event_id": "evt-latest"}}, Count: 1}, nil
 	}
 	if strings.Contains(lower, "select event_id") && strings.Contains(lower, "from cdc_events") {
 		s.queryCounts["cdc_events"]++
@@ -45,10 +46,10 @@ func (s *schedulerGraphSource) Query(ctx context.Context, query string, args ...
 		}
 		rows := make([]map[string]any, 0, len(s.events))
 		rows = append(rows, s.events...)
-		return &graph.QueryResult{Rows: rows, Count: len(rows)}, nil
+		return &builders.DataQueryResult{Rows: rows, Count: len(rows)}, nil
 	}
 
-	return &graph.QueryResult{Rows: []map[string]any{}}, nil
+	return &builders.DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
 func (s *schedulerGraphSource) setLatest(ts time.Time) {
@@ -101,7 +102,7 @@ func (c *captureEventPublisher) all() []webhooks.Event {
 
 func TestInitScheduler_GraphRebuildSkipsWhenNoChanges(t *testing.T) {
 	source := newSchedulerGraphSource()
-	builder := graph.NewBuilder(source, schedulerDigestTestLogger())
+	builder := builders.NewBuilder(source, schedulerDigestTestLogger())
 	if err := builder.Build(context.Background()); err != nil {
 		t.Fatalf("initial build failed: %v", err)
 	}
@@ -148,7 +149,7 @@ func TestInitScheduler_GraphRebuildSkipsWhenNoChanges(t *testing.T) {
 
 func TestInitScheduler_GraphRebuildAppliesIncrementalChangesAndEmitsMutation(t *testing.T) {
 	source := newSchedulerGraphSource()
-	builder := graph.NewBuilder(source, schedulerDigestTestLogger())
+	builder := builders.NewBuilder(source, schedulerDigestTestLogger())
 	if err := builder.Build(context.Background()); err != nil {
 		t.Fatalf("initial build failed: %v", err)
 	}
@@ -230,7 +231,7 @@ func TestInitScheduler_GraphRebuildAppliesIncrementalChangesAndEmitsMutation(t *
 
 func TestRebuildSecurityGraphUpdatesGraphBuildState(t *testing.T) {
 	source := newSchedulerGraphSource()
-	builder := graph.NewBuilder(source, schedulerDigestTestLogger())
+	builder := builders.NewBuilder(source, schedulerDigestTestLogger())
 	if err := builder.Build(context.Background()); err != nil {
 		t.Fatalf("initial build failed: %v", err)
 	}

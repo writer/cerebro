@@ -4,11 +4,14 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/warehouse"
 )
@@ -21,7 +24,7 @@ func TestEvaluateGraphOntologySLOStatus(t *testing.T) {
 		SchemaValidCritical: 92,
 	}
 
-	healthyStatus, _ := evaluateGraphOntologySLOStatus(graph.GraphOntologySLO{
+	healthyStatus, _ := evaluateGraphOntologySLOStatus(reports.GraphOntologySLO{
 		FallbackActivityPercent: 4,
 		SchemaValidWritePercent: 99.5,
 	}, thresholds)
@@ -29,7 +32,7 @@ func TestEvaluateGraphOntologySLOStatus(t *testing.T) {
 		t.Fatalf("expected healthy status, got %s", healthyStatus)
 	}
 
-	degradedStatus, degradedMsg := evaluateGraphOntologySLOStatus(graph.GraphOntologySLO{
+	degradedStatus, degradedMsg := evaluateGraphOntologySLOStatus(reports.GraphOntologySLO{
 		FallbackActivityPercent: 15,
 		SchemaValidWritePercent: 99.5,
 	}, thresholds)
@@ -40,7 +43,7 @@ func TestEvaluateGraphOntologySLOStatus(t *testing.T) {
 		t.Fatalf("expected fallback degradation message, got %q", degradedMsg)
 	}
 
-	unhealthyStatus, unhealthyMsg := evaluateGraphOntologySLOStatus(graph.GraphOntologySLO{
+	unhealthyStatus, unhealthyMsg := evaluateGraphOntologySLOStatus(reports.GraphOntologySLO{
 		FallbackActivityPercent: 10,
 		SchemaValidWritePercent: 90,
 	}, thresholds)
@@ -59,10 +62,10 @@ func TestEvaluateGraphOntologySLOStatus_BurnRateDegraded(t *testing.T) {
 		SchemaValidWarn:     98,
 		SchemaValidCritical: 92,
 	}
-	status, msg := evaluateGraphOntologySLOStatus(graph.GraphOntologySLO{
+	status, msg := evaluateGraphOntologySLOStatus(reports.GraphOntologySLO{
 		FallbackActivityPercent: 10,
 		SchemaValidWritePercent: 99,
-		Trend: []graph.GraphOntologySLOPoint{
+		Trend: []reports.GraphOntologySLOPoint{
 			{Date: "2026-03-07", FallbackActivityPercent: 24, SchemaValidWritePercent: 99, Samples: 20},
 			{Date: "2026-03-08", FallbackActivityPercent: 24, SchemaValidWritePercent: 99, Samples: 20},
 			{Date: "2026-03-09", FallbackActivityPercent: 24, SchemaValidWritePercent: 99, Samples: 20},
@@ -139,6 +142,132 @@ func TestInitHealthRegistersGraphBuildCheck(t *testing.T) {
 	}
 }
 
+func TestInitHealthRegistersGraphPersistenceCheck(t *testing.T) {
+	dir := t.TempDir()
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath: dir,
+	})
+	if err != nil {
+		t.Fatalf("new graph persistence store: %v", err)
+	}
+
+	application := &App{
+		Config:         &Config{},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse:      &warehouse.MemoryWarehouse{},
+		GraphSnapshots: store,
+	}
+	application.initHealth()
+
+	results := application.Health.RunAll(context.Background())
+	check, ok := results["graph_persistence"]
+	if !ok {
+		t.Fatal("expected graph_persistence health check to be registered")
+	}
+	if check.Status != health.StatusHealthy {
+		t.Fatalf("expected graph_persistence health to be healthy, got %#v", check)
+	}
+}
+
+func TestGraphPersistenceHealthDegradesOnReplicaSyncFailure(t *testing.T) {
+	localDir := t.TempDir()
+	badReplicaBase := filepath.Join(t.TempDir(), "replica-file")
+	if err := os.WriteFile(badReplicaBase, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("seed bad replica path: %v", err)
+	}
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    localDir,
+		MaxSnapshots: 4,
+		ReplicaURI:   badReplicaBase,
+	})
+	if err != nil {
+		t.Fatalf("new graph persistence store: %v", err)
+	}
+
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+	g.SetMetadata(graph.Metadata{
+		BuiltAt:       time.Date(2026, 3, 12, 23, 5, 0, 0, time.UTC),
+		NodeCount:     1,
+		EdgeCount:     0,
+		Providers:     []string{"aws"},
+		Accounts:      []string{"prod"},
+		BuildDuration: time.Second,
+	})
+	if _, err := store.SaveGraph(g); err == nil {
+		t.Fatal("expected replica sync failure")
+	}
+
+	application := &App{
+		Config:         &Config{},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse:      &warehouse.MemoryWarehouse{},
+		GraphSnapshots: store,
+	}
+	application.initHealth()
+
+	results := application.Health.RunAll(context.Background())
+	check := results["graph_persistence"]
+	if check.Status != health.StatusDegraded {
+		t.Fatalf("expected degraded graph persistence health, got %#v", check)
+	}
+	if check.Message != "local snapshot persistence healthy; replica sync failing" {
+		t.Fatalf("expected replica sync message, got %#v", check)
+	}
+	if strings.Contains(check.Message, badReplicaBase) || strings.Contains(strings.ToLower(check.Message), "not a directory") {
+		t.Fatalf("expected sanitized replica failure message, got %#v", check)
+	}
+}
+
+func TestGraphPersistenceHealthDoesNotDegradeWhenReplicaAlreadySeeded(t *testing.T) {
+	localDir := t.TempDir()
+	replicaDir := t.TempDir()
+	seedStore, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    localDir,
+		MaxSnapshots: 4,
+		ReplicaURI:   replicaDir,
+	})
+	if err != nil {
+		t.Fatalf("new seed graph persistence store: %v", err)
+	}
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "service:seeded", Kind: graph.NodeKindService, Name: "seeded"})
+	g.SetMetadata(graph.Metadata{
+		BuiltAt:       time.Date(2026, 3, 12, 23, 10, 0, 0, time.UTC),
+		NodeCount:     1,
+		EdgeCount:     0,
+		Providers:     []string{"aws"},
+		Accounts:      []string{"prod"},
+		BuildDuration: time.Second,
+	})
+	if _, err := seedStore.SaveGraph(g); err != nil {
+		t.Fatalf("seed graph snapshot: %v", err)
+	}
+
+	restartedStore, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    localDir,
+		MaxSnapshots: 4,
+		ReplicaURI:   replicaDir,
+	})
+	if err != nil {
+		t.Fatalf("new restarted graph persistence store: %v", err)
+	}
+
+	application := &App{
+		Config:         &Config{},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse:      &warehouse.MemoryWarehouse{},
+		GraphSnapshots: restartedStore,
+	}
+	application.initHealth()
+
+	results := application.Health.RunAll(context.Background())
+	check := results["graph_persistence"]
+	if check.Status != health.StatusHealthy {
+		t.Fatalf("expected healthy graph persistence health, got %#v", check)
+	}
+}
+
 func TestActivateBuiltSecurityGraphDoesNotReplaceLiveGraphWithNil(t *testing.T) {
 	liveGraph := graph.New()
 	liveGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
@@ -148,7 +277,7 @@ func TestActivateBuiltSecurityGraphDoesNotReplaceLiveGraphWithNil(t *testing.T) 
 		SecurityGraph: liveGraph,
 	}
 
-	if _, err := application.activateBuiltSecurityGraph(nil); err == nil {
+	if _, err := application.activateBuiltSecurityGraph(context.Background(), nil); err == nil {
 		t.Fatal("expected nil built graph to return an error")
 	}
 	if got := application.CurrentSecurityGraph(); got != liveGraph {
@@ -156,6 +285,52 @@ func TestActivateBuiltSecurityGraphDoesNotReplaceLiveGraphWithNil(t *testing.T) 
 	}
 	if snapshot := application.GraphBuildSnapshot(); snapshot.State != GraphBuildFailed {
 		t.Fatalf("expected graph build state failed, got %#v", snapshot)
+	}
+}
+
+func TestActivateBuiltSecurityGraphPersistsSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    dir,
+		MaxSnapshots: 4,
+	})
+	if err != nil {
+		t.Fatalf("new graph persistence store: %v", err)
+	}
+
+	builtGraph := graph.New()
+	builtGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+	builtGraph.SetMetadata(graph.Metadata{
+		BuiltAt:       time.Date(2026, 3, 12, 22, 5, 0, 0, time.UTC),
+		NodeCount:     1,
+		EdgeCount:     0,
+		Providers:     []string{"aws"},
+		Accounts:      []string{"prod"},
+		BuildDuration: 1500 * time.Millisecond,
+	})
+
+	application := &App{
+		Config:         &Config{GraphSnapshotPath: dir, GraphSnapshotMaxRetained: 4},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		GraphSnapshots: store,
+	}
+
+	if _, err := application.activateBuiltSecurityGraph(context.Background(), builtGraph); err != nil {
+		t.Fatalf("activateBuiltSecurityGraph failed: %v", err)
+	}
+
+	records, err := store.ListGraphSnapshotRecords()
+	if err != nil {
+		t.Fatalf("list persisted graph snapshots: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected one persisted graph snapshot, got %#v", records)
+	}
+	if records[0].ID == "" {
+		t.Fatalf("expected persisted graph snapshot id, got %#v", records[0])
+	}
+	if status := store.Status(); status.LastPersistedSnapshot == "" {
+		t.Fatalf("expected persistence status to track last persisted snapshot, got %#v", status)
 	}
 }
 
@@ -179,8 +354,111 @@ func TestGraphBuildSnapshotIncludesNodeCountWithoutHoldingBuildLock(t *testing.T
 	}
 }
 
+func TestMutateSecurityGraphSwapsCloneAfterMutationCompletes(t *testing.T) {
+	liveGraph := graph.New()
+	liveGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	application := &App{
+		Config:        &Config{},
+		SecurityGraph: liveGraph,
+	}
+
+	started := make(chan *graph.Graph, 1)
+	release := make(chan struct{})
+	errCh := make(chan error, 1)
+
+	go func() {
+		_, err := application.MutateSecurityGraph(context.Background(), func(candidate *graph.Graph) error {
+			started <- candidate
+			<-release
+			candidate.AddNode(&graph.Node{ID: "service:billing", Kind: graph.NodeKindService, Name: "billing"})
+			return nil
+		})
+		errCh <- err
+	}()
+
+	candidate := <-started
+	if candidate == liveGraph {
+		t.Fatal("expected mutation to operate on a cloned graph")
+	}
+	if got := application.CurrentSecurityGraph(); got != liveGraph {
+		t.Fatal("expected live graph pointer to remain unchanged until swap")
+	}
+	if got := liveGraph.NodeCount(); got != 1 {
+		t.Fatalf("expected original live graph node count 1 during in-flight mutation, got %d", got)
+	}
+
+	close(release)
+	if err := <-errCh; err != nil {
+		t.Fatalf("mutateSecurityGraph failed: %v", err)
+	}
+
+	current := application.CurrentSecurityGraph()
+	if current == liveGraph {
+		t.Fatal("expected live graph pointer to swap after mutation")
+	}
+	if got := current.NodeCount(); got != 2 {
+		t.Fatalf("expected swapped graph node count 2, got %d", got)
+	}
+	if got := liveGraph.NodeCount(); got != 1 {
+		t.Fatalf("expected original graph to remain unchanged after swap, got %d", got)
+	}
+}
+
+func TestRefreshCurrentEventCorrelationsSwapsGraphInsteadOfMutatingLiveInstance(t *testing.T) {
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+	liveGraph := graph.New()
+	liveGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+	liveGraph.AddNode(&graph.Node{
+		ID:   "pull_request:payments:42",
+		Kind: graph.NodeKindPullRequest,
+		Name: "payments pr",
+		Properties: map[string]any{
+			"state":       "merged",
+			"observed_at": base.Format(time.RFC3339),
+			"valid_from":  base.Format(time.RFC3339),
+		},
+	})
+	liveGraph.AddNode(&graph.Node{
+		ID:   "deployment:payments:deploy-1",
+		Kind: graph.NodeKindDeploymentRun,
+		Name: "deploy-1",
+		Properties: map[string]any{
+			"service_id":  "payments",
+			"status":      "succeeded",
+			"observed_at": base.Add(5 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(5 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	liveGraph.AddEdge(&graph.Edge{ID: "pr->service", Source: "pull_request:payments:42", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	liveGraph.AddEdge(&graph.Edge{ID: "deploy->service", Source: "deployment:payments:deploy-1", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+
+	application := &App{
+		Config:        &Config{},
+		SecurityGraph: liveGraph,
+		graphCtx:      context.Background(),
+	}
+
+	if graphEdgeExists(liveGraph.GetOutEdges("deployment:payments:deploy-1"), graph.EdgeKindTriggeredBy, "pull_request:payments:42") {
+		t.Fatal("expected no correlation edge on original live graph before refresh")
+	}
+
+	application.refreshCurrentEventCorrelations("test")
+
+	current := application.CurrentSecurityGraph()
+	if current == liveGraph {
+		t.Fatal("expected live graph pointer to swap after correlation refresh")
+	}
+	if graphEdgeExists(liveGraph.GetOutEdges("deployment:payments:deploy-1"), graph.EdgeKindTriggeredBy, "pull_request:payments:42") {
+		t.Fatal("expected original live graph to remain unchanged after refresh")
+	}
+	if !graphEdgeExists(current.GetOutEdges("deployment:payments:deploy-1"), graph.EdgeKindTriggeredBy, "pull_request:payments:42") {
+		t.Fatal("expected swapped graph to include correlated deployment edge")
+	}
+}
+
 func TestBurnRatesFastWindowUsesCurrentSnapshot(t *testing.T) {
-	trend := []graph.GraphOntologySLOPoint{
+	trend := []reports.GraphOntologySLOPoint{
 		{Date: "2026-03-08", FallbackActivityPercent: 12, SchemaValidWritePercent: 97, Samples: 20},
 		{Date: "2026-03-09", FallbackActivityPercent: 12, SchemaValidWritePercent: 97, Samples: 20},
 	}

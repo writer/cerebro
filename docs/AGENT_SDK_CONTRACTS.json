@@ -467,6 +467,51 @@
       "execution_kind": "direct_tool"
     },
     {
+      "id": "cerebro_correlate_events",
+      "version": "1.0.0",
+      "tool_name": "cerebro.correlate_events",
+      "sdk_method": "correlate_events",
+      "title": "Correlate Events",
+      "description": "Find temporal causal chains and anomaly signals around one event or entity",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "entity_id": {
+            "description": "Optional entity ID (for example service:payments) to scope correlated events.",
+            "type": "string"
+          },
+          "event_id": {
+            "description": "Optional event node ID to expand into the local causal neighborhood.",
+            "type": "string"
+          },
+          "include_anomalies": {
+            "default": false,
+            "description": "Include anomaly summaries for the same event/entity context.",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 25,
+            "description": "Maximum number of correlations/anomalies to return (1-200).",
+            "type": "integer"
+          },
+          "pattern_id": {
+            "description": "Optional built-in correlation pattern filter applied after event_id/entity_id scoping.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "entity_id": "service:payments",
+        "event_id": "event_id",
+        "include_anomalies": false,
+        "limit": 25,
+        "pattern_id": "pattern_id"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
       "id": "cerebro_decide",
       "version": "1.0.0",
       "tool_name": "cerebro.record_decision",
@@ -598,6 +643,71 @@
         "recorded_at": "recorded_at",
         "timestamp": "timestamp",
         "to": "to"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_execution_status",
+      "version": "1.1.0",
+      "tool_name": "cerebro.execution_status",
+      "sdk_method": "execution_status",
+      "title": "Execution Status",
+      "description": "List recent shared-platform executions across report runs, scans, and action workflows",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "default": 20,
+            "description": "Maximum executions to return (1-100).",
+            "type": "integer"
+          },
+          "namespace": {
+            "description": "Optional execution namespaces to filter, for example report_run, workload_scan, image_scan, function_scan, action_engine.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Pagination offset for execution history (0 or greater).",
+            "type": "integer"
+          },
+          "order": {
+            "default": "updated",
+            "description": "Sort order: updated or submitted.",
+            "enum": [
+              "updated",
+              "submitted"
+            ],
+            "type": "string"
+          },
+          "report_id": {
+            "description": "Optional report definition ID filter for report executions.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Optional execution statuses to include.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "limit": 20,
+        "namespace": [
+          "namespace"
+        ],
+        "offset": 0,
+        "order": "updated",
+        "report_id": "insights",
+        "status": [
+          "status"
+        ]
       },
       "execution_kind": "direct_tool"
     },

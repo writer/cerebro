@@ -24,9 +24,10 @@ A world-model graph should be able to answer, for any important fact:
 Durable world objects and actors:
 
 - identities: `person`, `user`, `role`, `group`, `service_account`, `identity_alias`
-- systems and resources: `service`, `workload`, `database`, `bucket`, `application`, `network`
+- systems and resources: `organization`, `folder`, `project`, `service`, `workload`, `database`, `bucket`, `application`, `network`
 - operational domains: `pull_request`, `deployment_run`, `pipeline_run`, `check_run`, `meeting`, `document`, `communication_thread`, `incident`
 - decision loop: `decision`, `action`, `outcome`
+- workload-security projection: `workload_scan`, `package`, `vulnerability`
 
 ### 2) Knowledge Layer
 
@@ -92,7 +93,9 @@ This cycle adds the minimum viable world-model substrate:
 - promoted asset support subresources (`bucket_policy_statement`, `bucket_public_access_block`, `bucket_encryption_config`, `bucket_logging_config`, `bucket_versioning_config`) linked to parent assets through `configures`
 - normalized bucket posture claims derived from promoted support modules instead of only read-time interpretation of raw properties
 - normalized entity posture summaries derived from posture/support claims attached to the entity
-- report-level asset views through `graph.BuildEntitySummaryReport(...)` and `GET /api/v1/platform/intelligence/entity-summary`
+- persisted workload scan projection through `workload_scan`, `package`, and `vulnerability` nodes plus `has_scan`, `contains_package`, `found_vulnerability`, and `affected_by` edges
+- workload-aware entity posture through the `workload_security` facet, which combines latest scan counts with exposure, blast-radius, and sensitive-data path context
+- report-level asset views through `reports.BuildEntitySummaryReport(...)` and `GET /api/v1/platform/intelligence/entity-summary`
 - claim contradiction reporting through `BuildClaimConflictReport(...)` and `GET /api/v1/platform/intelligence/claim-conflicts`
 - derived claim state surfaced as typed fields (`supported`, `source_backed`, `sourceless`, `conflicted`, `superseded`) instead of forcing every consumer to traverse raw graph links
 - entity support state surfaced as typed fields (`relationships`, `claim_count`, `supported_claim_count`, `conflicted_claim_count`, `evidence_count`, `observation_count`, `facets`, `subresources`, `posture`) instead of leaving asset context trapped in raw table rows or one-off reports

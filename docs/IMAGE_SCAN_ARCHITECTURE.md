@@ -99,12 +99,12 @@ The current implementation intentionally borrows shape from a few mature project
 
 - SQLite is durable, but still single-node.
 - The rootfs materializer is local-disk based, not yet remote-worker aware.
-- The analyzer still relies on Trivy FS for vulnerability bridging; the native vulnerability knowledge pipeline belongs in issue `#181`.
+- The analyzer can now use the persisted vulnerability knowledge pipeline from issue `#181`, but broader source coverage and distro-specific matching are still incomplete.
 - Running-workload correlation and graph contextualization are later issues (`#179` / `#182`).
 
 ## Next Steps
 
-1. Feed image scan outputs into the vulnerability knowledge pipeline (`#181`).
-2. Link image scan runs, packages, and vulnerabilities into the temporal security graph (`#182`).
-3. Extend package inventory coverage beyond the current curated ecosystem set.
+1. Link image scan runs, packages, and vulnerabilities into the temporal security graph (`#182`).
+2. Extend package inventory coverage beyond the current curated ecosystem set.
+3. Expand the vulnerability database with richer distro and advisory sources.
 4. Expose execution resources over platform APIs instead of CLI-only surfaces.

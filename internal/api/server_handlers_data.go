@@ -288,6 +288,10 @@ func (s *Server) createPolicy(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "invalid request")
 		return
 	}
+	if err := s.app.Policy.ValidatePolicyDefinition(&p); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	s.app.Policy.AddPolicy(&p)
 
 	persisted, ok := s.app.Policy.GetPolicy(strings.TrimSpace(p.ID))
@@ -320,6 +324,10 @@ func (s *Server) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p.ID = id
+	if err := s.app.Policy.ValidatePolicyDefinition(&p); err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if ok := s.app.Policy.UpdatePolicy(id, &p); !ok {
 		s.error(w, http.StatusNotFound, "policy not found")
 		return

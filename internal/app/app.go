@@ -51,8 +51,10 @@ import (
 	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/dspm"
 	"github.com/writer/cerebro/internal/events"
+	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/builders"
 	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/identity"
@@ -89,13 +91,15 @@ type App struct {
 	Logger *slog.Logger
 
 	// Core services
-	Snowflake *snowflake.Client
-	Warehouse warehouse.DataWarehouse
-	Policy    *policy.Engine
-	Findings  findings.FindingStore
-	Scanner   *scanner.Scanner
-	DSPM      *dspm.Scanner
-	Cache     *cache.PolicyCache
+	Snowflake      *snowflake.Client
+	Warehouse      warehouse.DataWarehouse
+	Policy         *policy.Engine
+	Findings       findings.FindingStore
+	Scanner        *scanner.Scanner
+	DSPM           *dspm.Scanner
+	Cache          *cache.PolicyCache
+	GraphSnapshots *graph.GraphPersistenceStore
+	ExecutionStore executionstore.Store
 
 	// Feature services
 	Agents         *agents.AgentRegistry
@@ -138,35 +142,40 @@ type App struct {
 	RuntimeRespond      *runtime.ResponseEngine
 
 	// Security Graph
-	SecurityGraph          *graph.Graph
-	SecurityGraphBuilder   *graph.Builder
-	Propagation            *graph.PropagationEngine
-	graphReady             chan struct{} // closed when initial graph build completes
-	graphCtx               context.Context
-	graphCancel            context.CancelFunc
-	graphUpdateMu          sync.Mutex
-	graphBuildMu           sync.RWMutex
-	graphBuildState        GraphBuildState
-	graphBuildLastAt       time.Time
-	graphBuildErr          string
-	graphConsistencyMu     sync.Mutex
-	graphConsistencyLast   time.Time
-	graphConsistencyRun    bool
-	graphConsistencyCancel context.CancelFunc
-	graphConsistencyWG     sync.WaitGroup
-	threatIntelSyncCancel  context.CancelFunc
-	threatIntelSyncWG      sync.WaitGroup
-	traceShutdown          func(context.Context) error
-	secretsReloadCancel    context.CancelFunc
-	secretsReloadWG        sync.WaitGroup
-	tapMapperOnce          sync.Once
-	tapMapperErr           error
-	securityGraphInitMu    sync.RWMutex
-	reloadMu               sync.Mutex
-	apiKeys                atomic.Value // map[string]string
-	apiCredentials         atomic.Value // map[string]apiauth.Credential
-	apiCredentialStore     *apiauth.ManagedCredentialStore
-	secretsLoader          secretsLoader
+	SecurityGraph                 *graph.Graph
+	SecurityGraphBuilder          *builders.Builder
+	Propagation                   *graph.PropagationEngine
+	graphReady                    chan struct{} // closed when initial graph build completes
+	graphCtx                      context.Context
+	graphCancel                   context.CancelFunc
+	graphUpdateMu                 sync.Mutex
+	graphBuildMu                  sync.RWMutex
+	graphBuildState               GraphBuildState
+	graphBuildLastAt              time.Time
+	graphBuildErr                 string
+	graphConsistencyMu            sync.Mutex
+	graphConsistencyLast          time.Time
+	graphConsistencyRun           bool
+	graphConsistencyCancel        context.CancelFunc
+	graphConsistencyWG            sync.WaitGroup
+	eventCorrelationRefreshCh     chan string
+	eventCorrelationRefreshCancel context.CancelFunc
+	eventCorrelationRefreshWG     sync.WaitGroup
+	threatIntelSyncCancel         context.CancelFunc
+	threatIntelSyncWG             sync.WaitGroup
+	traceShutdown                 func(context.Context) error
+	secretsReloadCancel           context.CancelFunc
+	secretsReloadWG               sync.WaitGroup
+	tapMapperOnce                 sync.Once
+	tapMapperErr                  error
+	tapResolveGraphMu             sync.RWMutex
+	tapResolveGraph               *graph.Graph
+	securityGraphInitMu           sync.RWMutex
+	reloadMu                      sync.Mutex
+	apiKeys                       atomic.Value // map[string]string
+	apiCredentials                atomic.Value // map[string]apiauth.Credential
+	apiCredentialStore            *apiauth.ManagedCredentialStore
+	secretsLoader                 secretsLoader
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string

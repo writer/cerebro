@@ -37,7 +37,7 @@ func TestGraphWriteObservationAndAnnotation(t *testing.T) {
 	if observationID == "" {
 		t.Fatalf("expected observation_id, got %+v", observationBody)
 	}
-	observationNode, ok := g.GetNode(observationID)
+	observationNode, ok := s.app.CurrentSecurityGraph().GetNode(observationID)
 	if !ok || observationNode == nil {
 		t.Fatalf("expected observation node %q to exist", observationID)
 	}
@@ -54,7 +54,7 @@ func TestGraphWriteObservationAndAnnotation(t *testing.T) {
 	if annotation.Code != http.StatusCreated {
 		t.Fatalf("expected 201 for annotation, got %d: %s", annotation.Code, annotation.Body.String())
 	}
-	annotatedNode, ok := g.GetNode("service:payments")
+	annotatedNode, ok := s.app.CurrentSecurityGraph().GetNode("service:payments")
 	if !ok || annotatedNode == nil {
 		t.Fatal("expected annotated node")
 	}
@@ -121,7 +121,7 @@ func TestGraphWriteDecisionOutcomeAndIdentity(t *testing.T) {
 	if decisionID == "" {
 		t.Fatalf("expected decision_id, got %+v", decisionBody)
 	}
-	if node, ok := g.GetNode(decisionID); !ok || node == nil || node.Kind != graph.NodeKindDecision {
+	if node, ok := s.app.CurrentSecurityGraph().GetNode(decisionID); !ok || node == nil || node.Kind != graph.NodeKindDecision {
 		t.Fatalf("expected decision node %q to exist, got %#v", decisionID, node)
 	}
 
@@ -141,7 +141,7 @@ func TestGraphWriteDecisionOutcomeAndIdentity(t *testing.T) {
 	if outcomeID == "" {
 		t.Fatalf("expected outcome_id, got %+v", outcomeBody)
 	}
-	if node, ok := g.GetNode(outcomeID); !ok || node == nil || node.Kind != graph.NodeKindOutcome {
+	if node, ok := s.app.CurrentSecurityGraph().GetNode(outcomeID); !ok || node == nil || node.Kind != graph.NodeKindOutcome {
 		t.Fatalf("expected outcome node %q to exist, got %#v", outcomeID, node)
 	}
 
@@ -216,14 +216,14 @@ func TestGraphWriteClaim(t *testing.T) {
 	if claimID == "" {
 		t.Fatalf("expected claim_id, got %#v", body)
 	}
-	if node, ok := g.GetNode(claimID); !ok || node == nil || node.Kind != graph.NodeKindClaim {
+	if node, ok := s.app.CurrentSecurityGraph().GetNode(claimID); !ok || node == nil || node.Kind != graph.NodeKindClaim {
 		t.Fatalf("expected claim node %q, got %#v", claimID, node)
 	}
 	sourceID, _ := body["source_id"].(string)
 	if sourceID == "" {
 		t.Fatalf("expected source_id, got %#v", body)
 	}
-	if node, ok := g.GetNode(sourceID); !ok || node == nil || node.Kind != graph.NodeKindSource {
+	if node, ok := s.app.CurrentSecurityGraph().GetNode(sourceID); !ok || node == nil || node.Kind != graph.NodeKindSource {
 		t.Fatalf("expected source node %q, got %#v", sourceID, node)
 	}
 	if got := w.Header().Get("Deprecation"); got != "" {
@@ -362,7 +362,7 @@ func TestGraphActuateRecommendationEndpoint(t *testing.T) {
 	if actionID == "" {
 		t.Fatalf("expected action_id, got %#v", body)
 	}
-	if node, ok := g.GetNode(actionID); !ok || node == nil || node.Kind != graph.NodeKindAction {
+	if node, ok := s.app.CurrentSecurityGraph().GetNode(actionID); !ok || node == nil || node.Kind != graph.NodeKindAction {
 		t.Fatalf("expected action node %q to exist, got %#v", actionID, node)
 	}
 

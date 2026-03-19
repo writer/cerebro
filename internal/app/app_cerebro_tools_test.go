@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/agents"
+	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/imagescan"
 	"github.com/writer/cerebro/internal/policy"
 )
 
@@ -106,6 +109,82 @@ func TestCerebroGraphQueryPathsTool(t *testing.T) {
 	}
 	if count, ok := payload["count"].(float64); !ok || count < 1 {
 		t.Fatalf("expected at least one path, got %#v", payload["count"])
+	}
+}
+
+func TestCerebroCorrelateEventsTool(t *testing.T) {
+	g := graph.New()
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments"})
+	g.AddNode(&graph.Node{
+		ID:   "pull_request:payments:42",
+		Kind: graph.NodeKindPullRequest,
+		Name: "payments pr",
+		Properties: map[string]any{
+			"repository":  "payments",
+			"number":      "42",
+			"state":       "merged",
+			"observed_at": base.Format(time.RFC3339),
+			"valid_from":  base.Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "deployment:payments:deploy-1",
+		Kind: graph.NodeKindDeploymentRun,
+		Name: "deploy-1",
+		Properties: map[string]any{
+			"deploy_id":   "deploy-1",
+			"service_id":  "payments",
+			"environment": "prod",
+			"status":      "succeeded",
+			"observed_at": base.Add(5 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(5 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "incident:inc-1",
+		Kind: graph.NodeKindIncident,
+		Name: "inc-1",
+		Properties: map[string]any{
+			"incident_id": "inc-1",
+			"status":      "open",
+			"severity":    "high",
+			"service_id":  "payments",
+			"observed_at": base.Add(7 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(7 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	g.AddEdge(&graph.Edge{ID: "pr->service", Source: "pull_request:payments:42", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "deploy->service", Source: "deployment:payments:deploy-1", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "incident->service", Source: "incident:inc-1", Target: "service:payments", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	graph.MaterializeEventCorrelations(g, base.Add(10*time.Minute))
+
+	application := &App{SecurityGraph: g}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.correlate_events")
+	if tool == nil {
+		t.Fatal("expected correlate_events tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"event_id":"incident:inc-1","limit":10}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	summary, ok := payload["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", payload["summary"])
+	}
+	if got, ok := summary["correlation_count"].(float64); !ok || int(got) != 2 {
+		t.Fatalf("expected 2 correlations, got %#v", payload)
+	}
+
+	if _, err := tool.Handler(context.Background(), json.RawMessage(`{"pattern_id":"pr_deploy_chain"}`)); err == nil {
+		t.Fatal("expected scope validation error for correlate_events without event_id or entity_id")
 	}
 }
 
@@ -385,7 +464,7 @@ func TestCerebroIdentityReviewCalibrationAndActuationTools(t *testing.T) {
 	if actionID == "" {
 		t.Fatalf("expected action_id, got %#v", actuationPayload)
 	}
-	if node, ok := g.GetNode(actionID); !ok || node == nil || node.Kind != graph.NodeKindAction {
+	if node, ok := application.CurrentSecurityGraph().GetNode(actionID); !ok || node == nil || node.Kind != graph.NodeKindAction {
 		t.Fatalf("expected action node to exist, got %#v", node)
 	}
 }
@@ -444,7 +523,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if observationID == "" {
 		t.Fatalf("expected observation_id, got %#v", observationBody)
 	}
-	observationNode, ok := g.GetNode(observationID)
+	observationNode, ok := application.CurrentSecurityGraph().GetNode(observationID)
 	if !ok || observationNode == nil {
 		t.Fatalf("expected observation node %q", observationID)
 	}
@@ -467,7 +546,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	}`)); err != nil {
 		t.Fatalf("annotate_entity returned error: %v", err)
 	}
-	serviceNode, _ := g.GetNode("service:payments")
+	serviceNode, _ := application.CurrentSecurityGraph().GetNode("service:payments")
 	if serviceNode == nil {
 		t.Fatal("expected service node")
 	}
@@ -505,7 +584,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if decisionID == "" {
 		t.Fatalf("expected decision_id, got %#v", decisionBody)
 	}
-	if decisionNode, ok := g.GetNode(decisionID); !ok || decisionNode == nil {
+	if decisionNode, ok := application.CurrentSecurityGraph().GetNode(decisionID); !ok || decisionNode == nil {
 		t.Fatalf("expected decision node %q", decisionID)
 	}
 
@@ -531,7 +610,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if outcomeID == "" {
 		t.Fatalf("expected outcome_id, got %#v", outcomeBody)
 	}
-	if outcomeNode, ok := g.GetNode(outcomeID); !ok || outcomeNode == nil || outcomeNode.Kind != graph.NodeKindOutcome {
+	if outcomeNode, ok := application.CurrentSecurityGraph().GetNode(outcomeID); !ok || outcomeNode == nil || outcomeNode.Kind != graph.NodeKindOutcome {
 		t.Fatalf("expected outcome node %q, got %#v", outcomeID, outcomeNode)
 	}
 
@@ -556,7 +635,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if aliasID == "" {
 		t.Fatalf("expected alias_node_id, got %#v", resolveBody)
 	}
-	if aliasNode, ok := g.GetNode(aliasID); !ok || aliasNode == nil || aliasNode.Kind != graph.NodeKindIdentityAlias {
+	if aliasNode, ok := application.CurrentSecurityGraph().GetNode(aliasID); !ok || aliasNode == nil || aliasNode.Kind != graph.NodeKindIdentityAlias {
 		t.Fatalf("expected identity_alias node %q, got %#v", aliasID, aliasNode)
 	}
 
@@ -732,6 +811,137 @@ func TestCerebroWriteClaimTool(t *testing.T) {
 	conflicts, ok := payload["conflicts_detected"].([]any)
 	if !ok || len(conflicts) == 0 {
 		t.Fatalf("expected conflicts_detected, got %#v", payload["conflicts_detected"])
+	}
+}
+
+func TestCerebroExecutionStatusTool(t *testing.T) {
+	dir := t.TempDir()
+	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	run := imagescan.RunRecord{
+		ID:          "image_scan:test-tool",
+		Registry:    imagescan.RegistryECR,
+		Status:      imagescan.RunStatusRunning,
+		Stage:       imagescan.RunStageAnalyze,
+		Target:      imagescan.ScanTarget{Registry: imagescan.RegistryECR, Repository: "payments/app", Tag: "latest"},
+		RequestedBy: "alice",
+		SubmittedAt: time.Date(2026, 3, 12, 8, 0, 0, 0, time.UTC),
+		UpdatedAt:   time.Date(2026, 3, 12, 8, 1, 0, 0, time.UTC),
+	}
+	payload, err := json.Marshal(run)
+	if err != nil {
+		t.Fatalf("marshal image run: %v", err)
+	}
+	if err := store.UpsertRun(context.Background(), executionstore.RunEnvelope{
+		Namespace:   executionstore.NamespaceImageScan,
+		RunID:       run.ID,
+		Kind:        string(run.Registry),
+		Status:      string(run.Status),
+		Stage:       string(run.Stage),
+		SubmittedAt: run.SubmittedAt,
+		UpdatedAt:   run.UpdatedAt,
+		Payload:     payload,
+	}); err != nil {
+		t.Fatalf("UpsertRun: %v", err)
+	}
+
+	application := &App{
+		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
+		ExecutionStore: store,
+	}
+	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.execution_status")
+	if tool == nil {
+		t.Fatal("expected cerebro.execution_status tool")
+	}
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"namespace":["image_scan"],"limit":5}`))
+	if err != nil {
+		t.Fatalf("execution_status returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(result), &body); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if got := int(body["count"].(float64)); got != 1 {
+		t.Fatalf("expected one execution, got %#v", body)
+	}
+	execs, ok := body["executions"].([]any)
+	if !ok || len(execs) != 1 {
+		t.Fatalf("expected executions array, got %#v", body["executions"])
+	}
+	entry := execs[0].(map[string]any)
+	if entry["namespace"] != executionstore.NamespaceImageScan {
+		t.Fatalf("expected image_scan namespace, got %#v", entry)
+	}
+}
+
+func TestCerebroExecutionStatusToolSupportsOffset(t *testing.T) {
+	dir := t.TempDir()
+	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	for idx, updatedAt := range []time.Time{
+		time.Date(2026, 3, 12, 9, 2, 0, 0, time.UTC),
+		time.Date(2026, 3, 12, 9, 1, 0, 0, time.UTC),
+	} {
+		run := imagescan.RunRecord{
+			ID:          fmt.Sprintf("image_scan:offset-%d", idx+1),
+			Registry:    imagescan.RegistryECR,
+			Status:      imagescan.RunStatusRunning,
+			Stage:       imagescan.RunStageAnalyze,
+			Target:      imagescan.ScanTarget{Registry: imagescan.RegistryECR, Repository: "payments/app", Tag: fmt.Sprintf("%d", idx+1)},
+			RequestedBy: "alice",
+			SubmittedAt: updatedAt.Add(-1 * time.Minute),
+			UpdatedAt:   updatedAt,
+		}
+		payload, err := json.Marshal(run)
+		if err != nil {
+			t.Fatalf("marshal image run: %v", err)
+		}
+		if err := store.UpsertRun(context.Background(), executionstore.RunEnvelope{
+			Namespace:   executionstore.NamespaceImageScan,
+			RunID:       run.ID,
+			Kind:        string(run.Registry),
+			Status:      string(run.Status),
+			Stage:       string(run.Stage),
+			SubmittedAt: run.SubmittedAt,
+			UpdatedAt:   run.UpdatedAt,
+			Payload:     payload,
+		}); err != nil {
+			t.Fatalf("UpsertRun: %v", err)
+		}
+	}
+
+	application := &App{
+		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
+		ExecutionStore: store,
+	}
+	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.execution_status")
+	if tool == nil {
+		t.Fatal("expected cerebro.execution_status tool")
+	}
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"namespace":["image_scan"],"limit":1,"offset":1}`))
+	if err != nil {
+		t.Fatalf("execution_status with offset returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(result), &body); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	execs, ok := body["executions"].([]any)
+	if !ok || len(execs) != 1 {
+		t.Fatalf("expected one paginated execution, got %#v", body["executions"])
+	}
+	if got := execs[0].(map[string]any)["run_id"]; got != "image_scan:offset-2" {
+		t.Fatalf("expected offset to skip newest execution, got %#v", got)
 	}
 }
 

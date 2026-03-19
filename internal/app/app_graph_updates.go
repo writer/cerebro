@@ -51,7 +51,7 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 		}
 
 		securityGraph := a.SecurityGraphBuilder.Graph()
-		meta, activateErr := a.activateBuiltSecurityGraph(securityGraph)
+		meta, activateErr := a.activateBuiltSecurityGraph(ctx, securityGraph)
 		if activateErr != nil {
 			return graph.GraphMutationSummary{}, activateErr
 		}
@@ -79,7 +79,7 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 	}
 
 	securityGraph := a.SecurityGraphBuilder.Graph()
-	meta, activateErr := a.activateBuiltSecurityGraph(securityGraph)
+	meta, activateErr := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if activateErr != nil {
 		return graph.GraphMutationSummary{}, activateErr
 	}
@@ -126,11 +126,12 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 	if baseCtx == nil {
 		baseCtx = context.Background()
 	}
+	// #nosec G118 -- cancel is stored for shutdown coordination and also deferred inside the check goroutine.
 	checkCtx, cancel := context.WithTimeout(baseCtx, 30*time.Minute)
 	a.graphConsistencyCancel = cancel
 	a.graphConsistencyMu.Unlock()
 
-	go func() {
+	go func(checkCtx context.Context, cancel context.CancelFunc) {
 		defer a.graphConsistencyWG.Done()
 		defer func() {
 			a.graphConsistencyMu.Lock()
@@ -140,7 +141,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 		}()
 		defer cancel()
 
-		candidate, _, err := a.SecurityGraphBuilder.BuildCandidate(checkCtx)
+		candidate, err := a.buildGraphConsistencyCandidate(checkCtx)
 		if err != nil {
 			a.Logger.Warn("graph consistency check failed to build candidate",
 				"trigger", trigger,
@@ -174,7 +175,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 			"edges_added", len(diff.EdgesAdded),
 			"edges_removed", len(diff.EdgesRemoved),
 		)
-	}()
+	}(checkCtx, cancel)
 }
 
 func graphDiffHasChanges(diff *graph.GraphDiff) bool {
@@ -186,6 +187,23 @@ func graphDiffHasChanges(diff *graph.GraphDiff) bool {
 		len(diff.NodesModified) > 0 ||
 		len(diff.EdgesAdded) > 0 ||
 		len(diff.EdgesRemoved) > 0
+}
+
+func (a *App) buildGraphConsistencyCandidate(ctx context.Context) (*graph.Graph, error) {
+	if a == nil || a.SecurityGraphBuilder == nil {
+		return nil, nil
+	}
+	candidate, _, err := a.SecurityGraphBuilder.BuildCandidate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if candidate == nil {
+		return nil, nil
+	}
+	if _, err := a.materializePersistedWorkloadScans(ctx, candidate); err != nil {
+		return nil, err
+	}
+	return candidate, nil
 }
 
 func errGraphNotInitialized() error {

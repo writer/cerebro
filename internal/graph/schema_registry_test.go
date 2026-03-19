@@ -44,10 +44,16 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		NodeKindBucketEncryptionConfig,
 		NodeKindBucketLoggingConfig,
 		NodeKindBucketVersioningConfig,
+		NodeKindOrganization,
+		NodeKindFolder,
+		NodeKindProject,
 		NodeKindPullRequest,
 		NodeKindDeploymentRun,
 		NodeKindPipelineRun,
 		NodeKindCheckRun,
+		NodeKindWorkloadScan,
+		NodeKindPackage,
+		NodeKindVulnerability,
 		NodeKindMeeting,
 		NodeKindDocument,
 		NodeKindThread,
@@ -75,11 +81,17 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		EdgeKindBasedOn,
 		EdgeKindExecutedBy,
 		EdgeKindEvaluates,
+		EdgeKindHasScan,
+		EdgeKindFoundVuln,
+		EdgeKindContainsPkg,
+		EdgeKindAffectedBy,
 		EdgeKindAssertedBy,
 		EdgeKindSupports,
 		EdgeKindRefutes,
 		EdgeKindSupersedes,
 		EdgeKindContradicts,
+		EdgeKindTriggeredBy,
+		EdgeKindCausedBy,
 	}
 	for _, kind := range requiredEdgeKinds {
 		if !reg.IsEdgeKindRegistered(kind) {
@@ -125,9 +137,19 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 			t.Fatalf("expected incident required property %q, got %#v", property, incidentDef.RequiredProperties)
 		}
 	}
-	for _, relationship := range []EdgeKind{EdgeKindTargets, EdgeKindBasedOn} {
+	for _, relationship := range []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindCausedBy} {
 		if !containsEdgeKind(incidentDef.Relationships, relationship) {
 			t.Fatalf("expected incident relationship %q, got %#v", relationship, incidentDef.Relationships)
+		}
+	}
+
+	deploymentDef, ok := defByKind[NodeKindDeploymentRun]
+	if !ok {
+		t.Fatal("expected deployment_run definition")
+	}
+	for _, relationship := range []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindDependsOn, EdgeKindTriggeredBy} {
+		if !containsEdgeKind(deploymentDef.Relationships, relationship) {
+			t.Fatalf("expected deployment_run relationship %q, got %#v", relationship, deploymentDef.Relationships)
 		}
 	}
 
@@ -159,6 +181,49 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		if !containsEdgeKind(checkRunDef.Relationships, relationship) {
 			t.Fatalf("expected check_run relationship %q, got %#v", relationship, checkRunDef.Relationships)
 		}
+	}
+
+	workloadScanDef, ok := defByKind[NodeKindWorkloadScan]
+	if !ok {
+		t.Fatal("expected workload_scan definition")
+	}
+	for _, property := range []string{"scan_id", "target_id", "target_kind", "status", "observed_at", "valid_from", "recorded_at", "transaction_from"} {
+		if !containsRequiredProperty(workloadScanDef.RequiredProperties, property) {
+			t.Fatalf("expected workload_scan required property %q, got %#v", property, workloadScanDef.RequiredProperties)
+		}
+	}
+	for _, relationship := range []EdgeKind{EdgeKindTargets, EdgeKindHasScan, EdgeKindContainsPkg, EdgeKindFoundVuln} {
+		if !containsEdgeKind(workloadScanDef.Relationships, relationship) {
+			t.Fatalf("expected workload_scan relationship %q, got %#v", relationship, workloadScanDef.Relationships)
+		}
+	}
+
+	packageDef, ok := defByKind[NodeKindPackage]
+	if !ok {
+		t.Fatal("expected package definition")
+	}
+	for _, property := range []string{"package_name", "version", "ecosystem", "observed_at", "valid_from", "recorded_at", "transaction_from"} {
+		if !containsRequiredProperty(packageDef.RequiredProperties, property) {
+			t.Fatalf("expected package required property %q, got %#v", property, packageDef.RequiredProperties)
+		}
+	}
+	for _, relationship := range []EdgeKind{EdgeKindAffectedBy, EdgeKindBasedOn} {
+		if !containsEdgeKind(packageDef.Relationships, relationship) {
+			t.Fatalf("expected package relationship %q, got %#v", relationship, packageDef.Relationships)
+		}
+	}
+
+	vulnerabilityDef, ok := defByKind[NodeKindVulnerability]
+	if !ok {
+		t.Fatal("expected vulnerability definition")
+	}
+	for _, property := range []string{"vulnerability_id", "severity", "observed_at", "valid_from", "recorded_at", "transaction_from"} {
+		if !containsRequiredProperty(vulnerabilityDef.RequiredProperties, property) {
+			t.Fatalf("expected vulnerability required property %q, got %#v", property, vulnerabilityDef.RequiredProperties)
+		}
+	}
+	if !containsEdgeKind(vulnerabilityDef.Relationships, EdgeKindBasedOn) {
+		t.Fatalf("expected vulnerability relationship %q, got %#v", EdgeKindBasedOn, vulnerabilityDef.Relationships)
 	}
 
 	evidenceDef, ok := defByKind[NodeKindEvidence]

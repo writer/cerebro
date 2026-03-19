@@ -4030,6 +4030,106 @@ paths:
             type: integer
             default: 100
           description: Maximum result size
+  /api/v1/runtime/executions:
+    get:
+      tags:
+        - Runtime
+      summary: List runtime executions
+      description: List recent runtime response executions.
+      responses:
+        '200':
+          description: Runtime executions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeExecutionsResponse'
+        '503':
+          description: Runtime response unavailable
+          content: *id001
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+          description: Maximum result size
+  /api/v1/runtime/executions/{id}/approve:
+    post:
+      tags:
+        - Runtime
+      summary: Approve runtime execution
+      description: Approve a runtime response execution that is awaiting approval.
+      responses:
+        '200':
+          description: Execution approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '400':
+          description: Invalid approval request
+          content: *id001
+        '503':
+          description: Runtime response unavailable
+          content: *id001
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Runtime execution ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - approver_id
+              properties:
+                approver_id:
+                  type: string
+  /api/v1/runtime/executions/{id}/reject:
+    post:
+      tags:
+        - Runtime
+      summary: Reject runtime execution
+      description: Reject a runtime response execution that is awaiting approval.
+      responses:
+        '200':
+          description: Execution rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '400':
+          description: Invalid rejection request
+          content: *id001
+        '503':
+          description: Runtime response unavailable
+          content: *id001
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Runtime execution ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rejecter_id
+              properties:
+                rejecter_id:
+                  type: string
+                reason:
+                  type: string
   /api/v1/runtime/responses:
     get:
       tags:
@@ -6378,6 +6478,144 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/event-patterns:
+    get:
+      tags:
+        - Platform
+      summary: List built-in event correlation patterns
+      description: Returns the typed temporal-correlation patterns used to materialize `triggered_by` and `caused_by` edges on the graph.
+      responses:
+        '200':
+          description: Event correlation pattern catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventCorrelationPatternCatalog'
+  /api/v1/platform/intelligence/event-correlations:
+    get:
+      tags:
+        - Platform
+      summary: Query derived event correlation chains
+      description: Returns materialized causal event links for one event or entity neighborhood, with optional scoped anomaly summaries.
+      parameters:
+        - name: event_id
+          in: query
+          required: false
+          description: Event node ID seed for expanding a local causal neighborhood. Either `event_id` or `entity_id` is required.
+          schema:
+            type: string
+        - name: entity_id
+          in: query
+          required: false
+          description: Entity ID scope (for example `service:payments`) used to find related events. Either `event_id` or `entity_id` is required.
+          schema:
+            type: string
+        - name: pattern_id
+          in: query
+          required: false
+          description: Optional built-in correlation pattern filter applied after event or entity scoping.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of correlations and anomalies to return (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: include_anomalies
+          in: query
+          required: false
+          description: Include anomaly summaries in the response. Defaults to false to avoid broad read-path scans.
+          schema:
+            type: boolean
+            default: false
+        - name: since
+          in: query
+          required: false
+          description: Optional RFC3339 lower bound for effect event time.
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          required: false
+          description: Optional RFC3339 upper bound for effect event time.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Correlated event chains
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventCorrelationResult'
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/event-anomalies:
+    get:
+      tags:
+        - Platform
+      summary: Query event anomaly summaries
+      description: Returns baseline deviations for event frequency in one event or entity context. `event_id` or `entity_id` is required.
+      parameters:
+        - name: event_id
+          in: query
+          required: false
+          description: Event node ID seed for scoping anomalies. Either `event_id` or `entity_id` is required.
+          schema:
+            type: string
+        - name: entity_id
+          in: query
+          required: false
+          description: Entity ID scope (for example `service:payments`) used to filter anomalies. Either `event_id` or `entity_id` is required.
+          schema:
+            type: string
+        - name: pattern_id
+          in: query
+          required: false
+          description: Optional built-in correlation pattern filter applied after event or entity scoping.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of anomaly records to return (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: Event anomaly summaries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventAnomalyCollection'
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/intelligence/insights:
     get:
       tags:
@@ -6807,6 +7045,76 @@ paths:
                 $ref: '#/components/schemas/Error'
         '503':
           description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/executions:
+    get:
+      tags:
+        - Platform
+      summary: List shared platform executions across reports, scans, and action workflows
+      parameters:
+        - name: namespace
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated execution namespaces.
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated statuses to include.
+        - name: exclude_status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated statuses to exclude.
+        - name: report_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional report definition filter for report executions.
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - updated
+              - submitted
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Shared execution listing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformExecutionCollection'
+        '400':
+          description: Invalid execution listing parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to load shared execution state
           content:
             application/json:
               schema:
@@ -9425,6 +9733,11 @@ components:
             - forbid
         resource:
           type: string
+        condition_format:
+          type: string
+          enum:
+            - legacy
+            - cel
         conditions:
           type: array
           items:
@@ -10523,6 +10836,16 @@ components:
       type: object
       properties:
         findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        count:
+          type: integer
+    RuntimeExecutionsResponse:
+      type: object
+      properties:
+        executions:
           type: array
           items:
             type: object
@@ -13045,6 +13368,206 @@ components:
           type: integer
         source_count:
           type: integer
+    EventCorrelationPatternCatalog:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        patterns:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventCorrelationPattern'
+    EventCorrelationPattern:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        cause_kind:
+          type: string
+        effect_kind:
+          type: string
+        edge_kind:
+          type: string
+        max_gap:
+          type: string
+        max_gap_seconds:
+          type: integer
+        shared_target_kinds:
+          type: array
+          items:
+            type: string
+        severity:
+          type: string
+    EventCorrelationQuery:
+      type: object
+      additionalProperties: false
+      properties:
+        event_id:
+          type: string
+        entity_id:
+          type: string
+        pattern_id:
+          type: string
+        limit:
+          type: integer
+        since:
+          type: string
+          format: date-time
+        until:
+          type: string
+          format: date-time
+        include_anomalies:
+          type: boolean
+          default: false
+    EventCorrelationSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        pattern_count:
+          type: integer
+        correlation_count:
+          type: integer
+        anomaly_count:
+          type: integer
+    EventReference:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        provider:
+          type: string
+        account:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date-time
+        service_id:
+          type: string
+        status:
+          type: string
+        source_system:
+          type: string
+    EventCorrelationRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        pattern_id:
+          type: string
+        pattern_name:
+          type: string
+        description:
+          type: string
+        edge_kind:
+          type: string
+        cause:
+          $ref: '#/components/schemas/EventReference'
+        effect:
+          $ref: '#/components/schemas/EventReference'
+        shared_target_ids:
+          type: array
+          items:
+            type: string
+        gap_seconds:
+          type: integer
+        window_seconds:
+          type: integer
+        score:
+          type: number
+    EventAnomaly:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        classification:
+          type: string
+        severity:
+          type: string
+        event_kind:
+          type: string
+        entity_id:
+          type: string
+        source_system:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        current_window_start:
+          type: string
+          format: date-time
+        current_window_end:
+          type: string
+          format: date-time
+        baseline_window_start:
+          type: string
+          format: date-time
+        baseline_window_end:
+          type: string
+          format: date-time
+        current_count:
+          type: integer
+        baseline_count:
+          type: integer
+        baseline_average:
+          type: number
+        deviation_ratio:
+          type: number
+    EventCorrelationResult:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        query:
+          $ref: '#/components/schemas/EventCorrelationQuery'
+        summary:
+          $ref: '#/components/schemas/EventCorrelationSummary'
+        correlations:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventCorrelationRecord'
+        anomalies:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventAnomaly'
+    EventAnomalyCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        query:
+          $ref: '#/components/schemas/EventCorrelationQuery'
+        summary:
+          type: object
+          additionalProperties: false
+          properties:
+            anomaly_count:
+              type: integer
+        anomalies:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventAnomaly'
     PlatformEntitySummaryReport:
       type: object
       additionalProperties: false
@@ -13992,6 +14515,71 @@ components:
           type: string
         status_url:
           type: string
+    PlatformExecutionSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        namespace:
+          type: string
+        run_id:
+          type: string
+        kind:
+          type: string
+        status:
+          type: string
+        stage:
+          type: string
+        submitted_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        display_name:
+          type: string
+        scope_id:
+          type: string
+        requested_by:
+          type: string
+        execution_mode:
+          type: string
+        status_url:
+          type: string
+        job_id:
+          type: string
+        error:
+          type: string
+        provider:
+          type: string
+        target:
+          type: string
+      required:
+        - namespace
+        - run_id
+        - kind
+        - status
+        - stage
+        - submitted_at
+        - updated_at
+    PlatformExecutionCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        count:
+          type: integer
+        executions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformExecutionSummary'
+      required:
+        - count
+        - executions
     PlatformReportRunRequest:
       type: object
       additionalProperties: false

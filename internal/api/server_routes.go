@@ -280,6 +280,9 @@ func (s *Server) setupRoutes() {
 			r.Get("/detections", s.listDetectionRules)
 			r.Post("/events", s.ingestRuntimeEvent)
 			r.Get("/findings", s.listRuntimeFindings)
+			r.Get("/executions", s.listRuntimeExecutions)
+			r.Post("/executions/{id}/approve", s.approveRuntimeExecution)
+			r.Post("/executions/{id}/reject", s.rejectRuntimeExecution)
 			r.Get("/responses", s.listResponsePolicies)
 			r.Post("/responses/{id}/enable", s.enableResponsePolicy)
 			r.Post("/responses/{id}/disable", s.disableResponsePolicy)
@@ -351,6 +354,7 @@ func (s *Server) setupRoutes() {
 
 		// Shared platform primitives
 		r.Route("/platform", func(r chi.Router) {
+			r.Get("/executions", s.listPlatformExecutions)
 			r.Get("/entities", s.listPlatformEntities)
 			r.Get("/entities/search", s.searchPlatformEntities)
 			r.Get("/entities/suggest", s.suggestPlatformEntities)
@@ -395,6 +399,9 @@ func (s *Server) setupRoutes() {
 				r.Get("/reports/{id}/runs/report_run:{run_id:[A-Za-z0-9-]+}/attempts", s.listPlatformIntelligenceReportRunAttempts)
 				r.Get("/reports/{id}/runs/report_run:{run_id:[A-Za-z0-9-]+}/events", s.listPlatformIntelligenceReportRunEvents)
 				r.Get("/reports/{id}/runs/report_run:{run_id:[A-Za-z0-9-]+}/stream", s.streamPlatformIntelligenceReportRun)
+				r.Get("/event-patterns", s.graphIntelligenceEventPatterns)
+				r.Get("/event-correlations", s.graphIntelligenceEventCorrelations)
+				r.Get("/event-anomalies", s.graphIntelligenceEventAnomalies)
 				r.Get("/insights", s.graphIntelligenceInsights)
 				r.Get("/quality", s.graphIntelligenceQuality)
 				r.Get("/metadata-quality", s.graphIntelligenceMetadataQuality)

@@ -109,6 +109,47 @@ func TestSnapshotStore_DiffByTime_SelectsClosestSnapshots(t *testing.T) {
 	}
 }
 
+func TestSnapshotStore_DiffByTimeForTenantFiltersForeignTenantChanges(t *testing.T) {
+	dir := t.TempDir()
+	base := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
+
+	mustSaveSnapshot(t, dir, &Snapshot{
+		Version:   snapshotVersion,
+		CreatedAt: base,
+		Nodes: []*Node{
+			{ID: "service:tenant-a", Kind: NodeKindService, Name: "tenant-a", TenantID: "tenant-a"},
+			{ID: "service:tenant-b", Kind: NodeKindService, Name: "tenant-b", TenantID: "tenant-b"},
+		},
+	})
+	mustSaveSnapshot(t, dir, &Snapshot{
+		Version:   snapshotVersion,
+		CreatedAt: base.Add(1 * time.Hour),
+		Nodes: []*Node{
+			{ID: "service:tenant-a", Kind: NodeKindService, Name: "tenant-a", TenantID: "tenant-a"},
+			{ID: "service:tenant-b", Kind: NodeKindService, Name: "tenant-b", TenantID: "tenant-b"},
+			{ID: "db:tenant-b", Kind: NodeKindDatabase, Name: "tenant-b-db", TenantID: "tenant-b"},
+		},
+		Edges: []*Edge{{ID: "tenant-b-edge", Source: "service:tenant-b", Target: "db:tenant-b", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow}},
+	})
+
+	store := NewSnapshotStore(dir, 10)
+	diff, err := store.DiffByTimeForTenant(base.Add(5*time.Minute), base.Add(65*time.Minute), "tenant-a")
+	if err != nil {
+		t.Fatalf("DiffByTimeForTenant failed: %v", err)
+	}
+	if len(diff.NodesAdded) != 0 || len(diff.EdgesAdded) != 0 || len(diff.NodesRemoved) != 0 || len(diff.EdgesRemoved) != 0 {
+		t.Fatalf("expected tenant-a diff to exclude tenant-b changes, got %+v", diff)
+	}
+
+	tenantBDiff, err := store.DiffByTimeForTenant(base.Add(5*time.Minute), base.Add(65*time.Minute), "tenant-b")
+	if err != nil {
+		t.Fatalf("DiffByTimeForTenant tenant-b failed: %v", err)
+	}
+	if len(tenantBDiff.NodesAdded) != 1 || tenantBDiff.NodesAdded[0].ID != "db:tenant-b" {
+		t.Fatalf("expected tenant-b diff to include tenant-b database, got %+v", tenantBDiff.NodesAdded)
+	}
+}
+
 func TestSnapshotStore_LoadSnapshotByRecordID(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)

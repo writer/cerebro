@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/writer/cerebro/internal/graph"
+	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -35,18 +36,18 @@ type platformGraphQueryRequest struct {
 }
 
 type platformReportRunRequest struct {
-	ExecutionMode     string                       `json:"execution_mode,omitempty"`
-	MaterializeResult *bool                        `json:"materialize_result,omitempty"`
-	Parameters        []graph.ReportParameterValue `json:"parameters,omitempty"`
-	RetryPolicy       *graph.ReportRetryPolicy     `json:"retry_policy,omitempty"`
+	ExecutionMode     string                         `json:"execution_mode,omitempty"`
+	MaterializeResult *bool                          `json:"materialize_result,omitempty"`
+	Parameters        []reports.ReportParameterValue `json:"parameters,omitempty"`
+	RetryPolicy       *reports.ReportRetryPolicy     `json:"retry_policy,omitempty"`
 }
 
 type platformReportRetryRequest struct {
-	ExecutionMode     string                       `json:"execution_mode,omitempty"`
-	MaterializeResult *bool                        `json:"materialize_result,omitempty"`
-	Parameters        []graph.ReportParameterValue `json:"parameters,omitempty"`
-	RetryPolicy       *graph.ReportRetryPolicy     `json:"retry_policy,omitempty"`
-	Reason            string                       `json:"reason,omitempty"`
+	ExecutionMode     string                         `json:"execution_mode,omitempty"`
+	MaterializeResult *bool                          `json:"materialize_result,omitempty"`
+	Parameters        []reports.ReportParameterValue `json:"parameters,omitempty"`
+	RetryPolicy       *reports.ReportRetryPolicy     `json:"retry_policy,omitempty"`
+	Reason            string                         `json:"reason,omitempty"`
 }
 
 type platformReportCancelRequest struct {
@@ -239,7 +240,7 @@ func (s *Server) getPlatformJob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listPlatformIntelligenceReports(w http.ResponseWriter, _ *http.Request) {
-	s.json(w, http.StatusOK, graph.ReportCatalogSnapshot(time.Now().UTC()))
+	s.json(w, http.StatusOK, reports.ReportCatalogSnapshot(time.Now().UTC()))
 }
 
 func (s *Server) getPlatformIntelligenceReport(w http.ResponseWriter, r *http.Request) {
@@ -248,7 +249,7 @@ func (s *Server) getPlatformIntelligenceReport(w http.ResponseWriter, r *http.Re
 		s.error(w, http.StatusBadRequest, "report id required")
 		return
 	}
-	report, ok := graph.GetReportDefinition(reportID)
+	report, ok := reports.GetReportDefinition(reportID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "report definition not found")
 		return
@@ -257,15 +258,15 @@ func (s *Server) getPlatformIntelligenceReport(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) listPlatformIntelligenceMeasures(w http.ResponseWriter, _ *http.Request) {
-	s.json(w, http.StatusOK, graph.ReportMeasureCatalogSnapshot(time.Now().UTC()))
+	s.json(w, http.StatusOK, reports.ReportMeasureCatalogSnapshot(time.Now().UTC()))
 }
 
 func (s *Server) listPlatformIntelligenceChecks(w http.ResponseWriter, _ *http.Request) {
-	s.json(w, http.StatusOK, graph.ReportCheckCatalogSnapshot(time.Now().UTC()))
+	s.json(w, http.StatusOK, reports.ReportCheckCatalogSnapshot(time.Now().UTC()))
 }
 
 func (s *Server) listPlatformIntelligenceSectionEnvelopes(w http.ResponseWriter, _ *http.Request) {
-	s.json(w, http.StatusOK, graph.ReportSectionEnvelopeCatalogSnapshot(time.Now().UTC()))
+	s.json(w, http.StatusOK, reports.ReportSectionEnvelopeCatalogSnapshot(time.Now().UTC()))
 }
 
 func (s *Server) getPlatformIntelligenceSectionEnvelope(w http.ResponseWriter, r *http.Request) {
@@ -274,7 +275,7 @@ func (s *Server) getPlatformIntelligenceSectionEnvelope(w http.ResponseWriter, r
 		s.error(w, http.StatusBadRequest, "envelope id required")
 		return
 	}
-	envelope, ok := graph.GetReportSectionEnvelopeDefinition(envelopeID)
+	envelope, ok := reports.GetReportSectionEnvelopeDefinition(envelopeID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "section envelope definition not found")
 		return
@@ -283,7 +284,7 @@ func (s *Server) getPlatformIntelligenceSectionEnvelope(w http.ResponseWriter, r
 }
 
 func (s *Server) listPlatformIntelligenceSectionFragments(w http.ResponseWriter, _ *http.Request) {
-	s.json(w, http.StatusOK, graph.ReportSectionFragmentCatalogSnapshot(time.Now().UTC()))
+	s.json(w, http.StatusOK, reports.ReportSectionFragmentCatalogSnapshot(time.Now().UTC()))
 }
 
 func (s *Server) getPlatformIntelligenceSectionFragment(w http.ResponseWriter, r *http.Request) {
@@ -292,7 +293,7 @@ func (s *Server) getPlatformIntelligenceSectionFragment(w http.ResponseWriter, r
 		s.error(w, http.StatusBadRequest, "fragment id required")
 		return
 	}
-	fragment, ok := graph.GetReportSectionFragmentDefinition(fragmentID)
+	fragment, ok := reports.GetReportSectionFragmentDefinition(fragmentID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "section fragment definition not found")
 		return
@@ -301,7 +302,7 @@ func (s *Server) getPlatformIntelligenceSectionFragment(w http.ResponseWriter, r
 }
 
 func (s *Server) listPlatformIntelligenceBenchmarkPacks(w http.ResponseWriter, _ *http.Request) {
-	s.json(w, http.StatusOK, graph.BenchmarkPackCatalogSnapshot(time.Now().UTC()))
+	s.json(w, http.StatusOK, reports.BenchmarkPackCatalogSnapshot(time.Now().UTC()))
 }
 
 func (s *Server) getPlatformIntelligenceBenchmarkPack(w http.ResponseWriter, r *http.Request) {
@@ -310,7 +311,7 @@ func (s *Server) getPlatformIntelligenceBenchmarkPack(w http.ResponseWriter, r *
 		s.error(w, http.StatusBadRequest, "benchmark pack id required")
 		return
 	}
-	pack, ok := graph.GetBenchmarkPack(packID)
+	pack, ok := reports.GetBenchmarkPack(packID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "benchmark pack not found")
 		return
@@ -324,12 +325,12 @@ func (s *Server) listPlatformIntelligenceReportRuns(w http.ResponseWriter, r *ht
 		s.error(w, http.StatusBadRequest, "report id required")
 		return
 	}
-	if _, ok := graph.GetReportDefinition(reportID); !ok {
+	if _, ok := reports.GetReportDefinition(reportID); !ok {
 		s.error(w, http.StatusNotFound, "report definition not found")
 		return
 	}
 	runs := s.platformReportRunSummaries(reportID)
-	s.json(w, http.StatusOK, graph.ReportRunCollection{
+	s.json(w, http.StatusOK, reports.ReportRunCollection{
 		ReportID: reportID,
 		Count:    len(runs),
 		Runs:     runs,
@@ -365,61 +366,61 @@ func (s *Server) createPlatformIntelligenceReportRun(w http.ResponseWriter, r *h
 	s.json(w, status, run)
 }
 
-func (s *Server) startPlatformReportRun(ctx context.Context, reportID string, req platformReportRunRequest, requestedBy, triggerSurface string) (*graph.ReportRun, int, error) {
-	definition, ok := graph.GetReportDefinition(reportID)
+func (s *Server) startPlatformReportRun(ctx context.Context, reportID string, req platformReportRunRequest, requestedBy, triggerSurface string) (*reports.ReportRun, int, error) {
+	definition, ok := reports.GetReportDefinition(reportID)
 	if !ok {
 		return nil, http.StatusNotFound, fmt.Errorf("report definition not found")
 	}
-	if err := graph.ValidateReportParameterValues(definition, req.Parameters); err != nil {
+	if err := reports.ValidateReportParameterValues(definition, req.Parameters); err != nil {
 		return nil, http.StatusBadRequest, err
 	}
 
 	executionMode := strings.ToLower(strings.TrimSpace(req.ExecutionMode))
 	if executionMode == "" {
-		executionMode = graph.ReportExecutionModeSync
+		executionMode = reports.ReportExecutionModeSync
 	}
-	if executionMode != graph.ReportExecutionModeSync && executionMode != graph.ReportExecutionModeAsync {
+	if executionMode != reports.ReportExecutionModeSync && executionMode != reports.ReportExecutionModeAsync {
 		return nil, http.StatusBadRequest, fmt.Errorf("execution_mode must be one of sync, async")
 	}
 	materializeResult := true
 	if req.MaterializeResult != nil {
 		materializeResult = *req.MaterializeResult
 	}
-	retryPolicy := graph.ReportRetryPolicy{}
+	retryPolicy := reports.ReportRetryPolicy{}
 	if req.RetryPolicy != nil {
 		retryPolicy = *req.RetryPolicy
 	}
-	retryPolicy = graph.NormalizeReportRetryPolicy(retryPolicy)
+	retryPolicy = reports.NormalizeReportRetryPolicy(retryPolicy)
 
-	cacheKey, err := graph.BuildReportRunCacheKey(reportID, req.Parameters)
+	cacheKey, err := reports.BuildReportRunCacheKey(reportID, req.Parameters)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
 
 	now := time.Now().UTC()
-	lineage := graph.BuildReportLineage(s.app.SecurityGraph, definition)
-	storagePolicy := graph.BuildReportStoragePolicy(materializeResult, false)
+	lineage := reports.BuildReportLineage(s.app.SecurityGraph, definition)
+	storagePolicy := reports.BuildReportStoragePolicy(materializeResult, false)
 	cacheSource := s.reusablePlatformReportRun(reportID, cacheKey, lineage, "")
 	if strings.TrimSpace(requestedBy) == "" {
 		requestedBy = strings.TrimSpace(GetUserID(ctx))
 	}
-	run := &graph.ReportRun{
+	run := &reports.ReportRun{
 		ID:            "report_run:" + uuid.NewString(),
 		ReportID:      reportID,
-		Status:        graph.ReportRunStatusQueued,
+		Status:        reports.ReportRunStatusQueued,
 		ExecutionMode: executionMode,
 		SubmittedAt:   now,
 		RequestedBy:   strings.TrimSpace(requestedBy),
-		Parameters:    graph.CloneReportParameterValues(req.Parameters),
-		TimeSlice:     graph.ExtractReportTimeSlice(req.Parameters),
+		Parameters:    reports.CloneReportParameterValues(req.Parameters),
+		TimeSlice:     reports.ExtractReportTimeSlice(req.Parameters),
 		CacheKey:      cacheKey,
-		CacheStatus:   graph.ReportCacheStatusMiss,
+		CacheStatus:   reports.ReportCacheStatusMiss,
 		RetryPolicy:   retryPolicy,
 		Lineage:       lineage,
 		Storage:       storagePolicy,
 	}
 	if cacheSource != nil {
-		run.CacheStatus = graph.ReportCacheStatusHit
+		run.CacheStatus = reports.ReportCacheStatusHit
 		run.CacheSourceRunID = cacheSource.ID
 	}
 	run.StatusURL = "/api/v1/platform/intelligence/reports/" + reportID + "/runs/" + run.ID
@@ -427,12 +428,12 @@ func (s *Server) startPlatformReportRun(ctx context.Context, reportID string, re
 		triggerSurface = "api.request"
 	}
 	executionSurface := reportExecutionSurface(executionMode)
-	run.Attempts = []graph.ReportRunAttempt{
-		graph.NewReportRunAttempt(run.ID, 1, graph.ReportAttemptStatusQueued, triggerSurface, executionSurface, platformExecutionHost(), run.RequestedBy, "", now),
+	run.Attempts = []reports.ReportRunAttempt{
+		reports.NewReportRunAttempt(run.ID, 1, reports.ReportAttemptStatusQueued, triggerSurface, executionSurface, platformExecutionHost(), run.RequestedBy, "", now),
 	}
 	run.LatestAttemptID = run.Attempts[0].ID
 	run.AttemptCount = len(run.Attempts)
-	graph.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunQueued), run.Status, triggerSurface, run.RequestedBy, now, map[string]any{
+	reports.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunQueued), run.Status, triggerSurface, run.RequestedBy, now, map[string]any{
 		"report_id":           reportID,
 		"execution_mode":      executionMode,
 		"execution_surface":   executionSurface,
@@ -446,7 +447,7 @@ func (s *Server) startPlatformReportRun(ctx context.Context, reportID string, re
 	run.EventCount = len(run.Events)
 	s.bindAgentSDKReportProgress(run.ID, ctx)
 
-	if executionMode == graph.ReportExecutionModeAsync {
+	if executionMode == reports.ReportExecutionModeAsync {
 		job := s.newPlatformJob(ctx, "platform.report_run", map[string]any{
 			"report_id":       reportID,
 			"run_id":          run.ID,
@@ -470,7 +471,7 @@ func (s *Server) startPlatformReportRun(ctx context.Context, reportID string, re
 			if !ok {
 				return nil, fmt.Errorf("report run %q disappeared during execution", run.ID)
 			}
-			return graph.SummarizeReportRun(*stored), nil
+			return reports.SummarizeReportRun(*stored), nil
 		})
 		return run, http.StatusAccepted, nil
 	}
@@ -520,7 +521,7 @@ func (s *Server) listPlatformIntelligenceReportRunAttempts(w http.ResponseWriter
 		s.error(w, http.StatusNotFound, "report run not found")
 		return
 	}
-	s.json(w, http.StatusOK, graph.ReportRunAttemptCollectionSnapshot(reportID, runID, run.Attempts))
+	s.json(w, http.StatusOK, reports.ReportRunAttemptCollectionSnapshot(reportID, runID, run.Attempts))
 }
 
 func (s *Server) listPlatformIntelligenceReportRunEvents(w http.ResponseWriter, r *http.Request) {
@@ -535,7 +536,7 @@ func (s *Server) listPlatformIntelligenceReportRunEvents(w http.ResponseWriter, 
 		s.error(w, http.StatusNotFound, "report run not found")
 		return
 	}
-	s.json(w, http.StatusOK, graph.ReportRunEventCollectionSnapshot(reportID, runID, run.Events))
+	s.json(w, http.StatusOK, reports.ReportRunEventCollectionSnapshot(reportID, runID, run.Events))
 }
 
 func (s *Server) getPlatformIntelligenceReportRunControl(w http.ResponseWriter, r *http.Request) {
@@ -550,7 +551,7 @@ func (s *Server) getPlatformIntelligenceReportRunControl(w http.ResponseWriter, 
 		s.error(w, http.StatusNotFound, "report run not found")
 		return
 	}
-	s.json(w, http.StatusOK, graph.ReportRunControlSnapshot(reportID, run))
+	s.json(w, http.StatusOK, reports.ReportRunControlSnapshot(reportID, run))
 }
 
 func (s *Server) getPlatformIntelligenceReportRunRetryPolicy(w http.ResponseWriter, r *http.Request) {
@@ -565,7 +566,7 @@ func (s *Server) getPlatformIntelligenceReportRunRetryPolicy(w http.ResponseWrit
 		s.error(w, http.StatusNotFound, "report run not found")
 		return
 	}
-	s.json(w, http.StatusOK, graph.ReportRunRetryPolicyStateSnapshot(reportID, run))
+	s.json(w, http.StatusOK, reports.ReportRunRetryPolicyStateSnapshot(reportID, run))
 }
 
 func (s *Server) updatePlatformIntelligenceReportRunRetryPolicy(w http.ResponseWriter, r *http.Request) {
@@ -575,7 +576,7 @@ func (s *Server) updatePlatformIntelligenceReportRunRetryPolicy(w http.ResponseW
 		s.error(w, http.StatusBadRequest, "report id and run id are required")
 		return
 	}
-	if _, ok := graph.GetReportDefinition(reportID); !ok {
+	if _, ok := reports.GetReportDefinition(reportID); !ok {
 		s.error(w, http.StatusNotFound, "report definition not found")
 		return
 	}
@@ -583,13 +584,13 @@ func (s *Server) updatePlatformIntelligenceReportRunRetryPolicy(w http.ResponseW
 		s.error(w, http.StatusNotFound, "report run not found")
 		return
 	}
-	var policy graph.ReportRetryPolicy
+	var policy reports.ReportRetryPolicy
 	if err := json.NewDecoder(r.Body).Decode(&policy); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	policy = graph.NormalizeReportRetryPolicy(policy)
-	stored, err := s.updatePlatformReportRunSnapshot(runID, func(updated *graph.ReportRun) {
+	policy = reports.NormalizeReportRetryPolicy(policy)
+	stored, err := s.updatePlatformReportRunSnapshot(runID, func(updated *reports.ReportRun) {
 		updated.RetryPolicy = policy
 	})
 	if err != nil {
@@ -600,7 +601,7 @@ func (s *Server) updatePlatformIntelligenceReportRunRetryPolicy(w http.ResponseW
 		s.error(w, http.StatusInternalServerError, "report run disappeared after retry policy update")
 		return
 	}
-	s.json(w, http.StatusOK, graph.ReportRunRetryPolicyStateSnapshot(reportID, stored))
+	s.json(w, http.StatusOK, reports.ReportRunRetryPolicyStateSnapshot(reportID, stored))
 }
 
 func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *http.Request) {
@@ -610,7 +611,7 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 		s.error(w, http.StatusBadRequest, "report id and run id are required")
 		return
 	}
-	definition, ok := graph.GetReportDefinition(reportID)
+	definition, ok := reports.GetReportDefinition(reportID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "report definition not found")
 		return
@@ -620,7 +621,7 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 		s.error(w, http.StatusNotFound, "report run not found")
 		return
 	}
-	if run.Status != graph.ReportRunStatusFailed && run.Status != graph.ReportRunStatusCanceled {
+	if run.Status != reports.ReportRunStatusFailed && run.Status != reports.ReportRunStatusCanceled {
 		s.error(w, http.StatusConflict, "only failed or canceled report runs can be retried")
 		return
 	}
@@ -635,7 +636,7 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 	if executionMode == "" {
 		executionMode = run.ExecutionMode
 	}
-	if executionMode != graph.ReportExecutionModeSync && executionMode != graph.ReportExecutionModeAsync {
+	if executionMode != reports.ReportExecutionModeSync && executionMode != reports.ReportExecutionModeAsync {
 		s.error(w, http.StatusBadRequest, "execution_mode must be one of sync, async")
 		return
 	}
@@ -643,15 +644,15 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 	if req.MaterializeResult != nil {
 		materializeResult = *req.MaterializeResult
 	}
-	parameters := graph.CloneReportParameterValues(run.Parameters)
+	parameters := reports.CloneReportParameterValues(run.Parameters)
 	if len(req.Parameters) > 0 {
-		parameters = graph.CloneReportParameterValues(req.Parameters)
+		parameters = reports.CloneReportParameterValues(req.Parameters)
 	}
-	if err := graph.ValidateReportParameterValues(definition, parameters); err != nil {
+	if err := reports.ValidateReportParameterValues(definition, parameters); err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	cacheKey, err := graph.BuildReportRunCacheKey(reportID, parameters)
+	cacheKey, err := reports.BuildReportRunCacheKey(reportID, parameters)
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
@@ -660,8 +661,8 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 	if req.RetryPolicy != nil {
 		retryPolicy = *req.RetryPolicy
 	}
-	retryPolicy = graph.NormalizeReportRetryPolicy(retryPolicy)
-	lineage := graph.BuildReportLineage(s.app.SecurityGraph, definition)
+	retryPolicy = reports.NormalizeReportRetryPolicy(retryPolicy)
+	lineage := reports.BuildReportLineage(s.app.SecurityGraph, definition)
 	cacheSource := s.reusablePlatformReportRun(reportID, cacheKey, lineage, runID)
 
 	now := time.Now().UTC()
@@ -678,32 +679,32 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 	}
 
 	maxAttemptsExceeded := false
-	if err := s.updatePlatformReportRun(runID, func(stored *graph.ReportRun) {
+	if err := s.updatePlatformReportRun(runID, func(stored *reports.ReportRun) {
 		if stored.AttemptCount >= retryPolicy.MaxAttempts {
 			maxAttemptsExceeded = true
 			return
 		}
 		nextAttemptNumber = len(stored.Attempts) + 1
-		if executionMode == graph.ReportExecutionModeAsync {
-			backoff = graph.ReportRetryBackoff(retryPolicy, nextAttemptNumber)
+		if executionMode == reports.ReportExecutionModeAsync {
+			backoff = reports.ReportRetryBackoff(retryPolicy, nextAttemptNumber)
 		}
-		if attempt := graph.LatestReportRunAttempt(stored); attempt != nil {
+		if attempt := reports.LatestReportRunAttempt(stored); attempt != nil {
 			previousAttemptID = attempt.ID
 		}
-		attempt := graph.NewReportRunAttempt(stored.ID, nextAttemptNumber, graph.ReportRunStatusQueued, "api.retry", reportExecutionSurface(executionMode), platformExecutionHost(), retriedBy, "", now)
+		attempt := reports.NewReportRunAttempt(stored.ID, nextAttemptNumber, reports.ReportRunStatusQueued, "api.retry", reportExecutionSurface(executionMode), platformExecutionHost(), retriedBy, "", now)
 		attempt.RetryOfAttemptID = previousAttemptID
 		attempt.RetryReason = retryReason
 		attempt.RetryBackoffMS = backoff.Milliseconds()
-		stored.Status = graph.ReportRunStatusQueued
+		stored.Status = reports.ReportRunStatusQueued
 		stored.ExecutionMode = executionMode
 		stored.RequestedBy = retriedBy
 		stored.Parameters = parameters
-		stored.TimeSlice = graph.ExtractReportTimeSlice(parameters)
+		stored.TimeSlice = reports.ExtractReportTimeSlice(parameters)
 		stored.CacheKey = cacheKey
-		stored.CacheStatus = graph.ReportCacheStatusMiss
+		stored.CacheStatus = reports.ReportCacheStatusMiss
 		stored.CacheSourceRunID = ""
 		if cacheSource != nil {
-			stored.CacheStatus = graph.ReportCacheStatusHit
+			stored.CacheStatus = reports.ReportCacheStatusHit
 			stored.CacheSourceRunID = cacheSource.ID
 		}
 		stored.JobID = ""
@@ -717,15 +718,15 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 		stored.Sections = nil
 		stored.Snapshot = nil
 		stored.Result = nil
-		stored.Storage = graph.BuildReportStoragePolicy(materializeResult, false)
+		stored.Storage = reports.BuildReportStoragePolicy(materializeResult, false)
 		stored.RetryPolicy = retryPolicy
 		stored.Lineage = lineage
 		stored.Attempts = append(stored.Attempts, attempt)
 		stored.LatestAttemptID = attempt.ID
 		if backoff > 0 {
-			graph.ScheduleLatestReportRunAttempt(stored, now.Add(backoff))
+			reports.ScheduleLatestReportRunAttempt(stored, now.Add(backoff))
 		}
-		graph.AppendReportRunEvent(stored, string(webhooks.EventPlatformReportRunQueued), stored.Status, "api.retry", retriedBy, now, map[string]any{
+		reports.AppendReportRunEvent(stored, string(webhooks.EventPlatformReportRunQueued), stored.Status, "api.retry", retriedBy, now, map[string]any{
 			"report_id":           stored.ReportID,
 			"execution_mode":      executionMode,
 			"execution_surface":   reportExecutionSurface(executionMode),
@@ -754,7 +755,7 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 	}
 
 	s.emitPlatformReportRunLifecycleEvent(r.Context(), webhooks.EventPlatformReportRunQueued, reportID, runID)
-	if executionMode == graph.ReportExecutionModeAsync {
+	if executionMode == reports.ReportExecutionModeAsync {
 		job := s.newPlatformJob(r.Context(), "platform.report_run", map[string]any{
 			"report_id":        reportID,
 			"run_id":           runID,
@@ -791,7 +792,7 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 				if !ok {
 					return nil, fmt.Errorf("report run %q disappeared during retry", runID)
 				}
-				return graph.SummarizeReportRun(*stored), nil
+				return reports.SummarizeReportRun(*stored), nil
 			})
 		}
 		if stored == nil {
@@ -834,7 +835,7 @@ func (s *Server) cancelPlatformIntelligenceReportRun(w http.ResponseWriter, r *h
 		s.error(w, http.StatusNotFound, "report run not found")
 		return
 	}
-	if run.Status != graph.ReportRunStatusQueued && run.Status != graph.ReportRunStatusRunning {
+	if run.Status != reports.ReportRunStatusQueued && run.Status != reports.ReportRunStatusRunning {
 		s.error(w, http.StatusConflict, "only queued or running report runs can be canceled")
 		return
 	}
@@ -856,20 +857,20 @@ func (s *Server) cancelPlatformIntelligenceReportRun(w http.ResponseWriter, r *h
 	cancelAccepted := false
 	cancelRejected := false
 
-	stored, err := s.updatePlatformReportRunSnapshot(runID, func(stored *graph.ReportRun) {
-		if stored.Status != graph.ReportRunStatusQueued && stored.Status != graph.ReportRunStatusRunning {
+	stored, err := s.updatePlatformReportRunSnapshot(runID, func(stored *reports.ReportRun) {
+		if stored.Status != reports.ReportRunStatusQueued && stored.Status != reports.ReportRunStatusRunning {
 			cancelRejected = true
 			return
 		}
-		cancelAccepted = stored.Status == graph.ReportRunStatusRunning
+		cancelAccepted = stored.Status == reports.ReportRunStatusRunning
 		stored.CancelRequestedAt = &canceledAt
 		stored.CancelRequestedBy = actor
 		stored.CancelReason = cancelReason
-		stored.Status = graph.ReportRunStatusCanceled
+		stored.Status = reports.ReportRunStatusCanceled
 		stored.CompletedAt = &canceledAt
 		stored.Error = cancelReason
-		graph.CompleteLatestReportRunAttempt(stored, stored.Status, canceledAt, cancelReason, graph.ReportAttemptClassCancelled)
-		graph.AppendReportRunEvent(stored, string(webhooks.EventPlatformReportRunCanceled), stored.Status, "api.cancel", actor, canceledAt, map[string]any{
+		reports.CompleteLatestReportRunAttempt(stored, stored.Status, canceledAt, cancelReason, reports.ReportAttemptClassCancelled)
+		reports.AppendReportRunEvent(stored, string(webhooks.EventPlatformReportRunCanceled), stored.Status, "api.cancel", actor, canceledAt, map[string]any{
 			"report_id":     stored.ReportID,
 			"cancel_reason": cancelReason,
 		})
@@ -901,19 +902,19 @@ func (s *Server) cancelPlatformIntelligenceReportRun(w http.ResponseWriter, r *h
 	s.json(w, http.StatusOK, stored)
 }
 
-func (s *Server) executePlatformReportRun(ctx context.Context, runID string, definition graph.ReportDefinition, parameters []graph.ReportParameterValue, materializeResult bool) error {
+func (s *Server) executePlatformReportRun(ctx context.Context, runID string, definition reports.ReportDefinition, parameters []reports.ReportParameterValue, materializeResult bool) error {
 	startedAt := time.Now().UTC()
 	canceledBeforeStart := false
-	if err := s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
-		if run.Status == graph.ReportRunStatusCanceled {
+	if err := s.updatePlatformReportRun(runID, func(run *reports.ReportRun) {
+		if run.Status == reports.ReportRunStatusCanceled {
 			canceledBeforeStart = true
 			return
 		}
-		run.Status = graph.ReportRunStatusRunning
+		run.Status = reports.ReportRunStatusRunning
 		run.StartedAt = &startedAt
 		run.Error = ""
-		graph.StartLatestReportRunAttempt(run, startedAt)
-		graph.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunStarted), run.Status, platformReportTriggerSurface(run), run.RequestedBy, startedAt, map[string]any{
+		reports.StartLatestReportRunAttempt(run, startedAt)
+		reports.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunStarted), run.Status, platformReportTriggerSurface(run), run.RequestedBy, startedAt, map[string]any{
 			"report_id":         run.ReportID,
 			"execution_mode":    run.ExecutionMode,
 			"execution_surface": reportExecutionSurface(run.ExecutionMode),
@@ -954,19 +955,19 @@ func (s *Server) executePlatformReportRun(ctx context.Context, runID string, def
 		if errors.Is(err, context.Canceled) {
 			alreadyCanceled := false
 			cancelReason := err.Error()
-			if updateErr := s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
-				if run.Status == graph.ReportRunStatusCanceled {
+			if updateErr := s.updatePlatformReportRun(runID, func(run *reports.ReportRun) {
+				if run.Status == reports.ReportRunStatusCanceled {
 					alreadyCanceled = true
 					return
 				}
 				if strings.TrimSpace(run.CancelReason) != "" {
 					cancelReason = strings.TrimSpace(run.CancelReason)
 				}
-				run.Status = graph.ReportRunStatusCanceled
+				run.Status = reports.ReportRunStatusCanceled
 				run.CompletedAt = &completedAt
 				run.Error = cancelReason
-				graph.CompleteLatestReportRunAttempt(run, run.Status, completedAt, cancelReason, graph.ReportAttemptClassCancelled)
-				graph.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunCanceled), run.Status, platformReportTriggerSurface(run), run.RequestedBy, completedAt, map[string]any{
+				reports.CompleteLatestReportRunAttempt(run, run.Status, completedAt, cancelReason, reports.ReportAttemptClassCancelled)
+				reports.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunCanceled), run.Status, platformReportTriggerSurface(run), run.RequestedBy, completedAt, map[string]any{
 					"report_id":     run.ReportID,
 					"cancel_reason": cancelReason,
 				})
@@ -981,12 +982,12 @@ func (s *Server) executePlatformReportRun(ctx context.Context, runID string, def
 			return err
 		}
 		classification := platformReportAttemptClassification(err)
-		if updateErr := s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
-			run.Status = graph.ReportRunStatusFailed
+		if updateErr := s.updatePlatformReportRun(runID, func(run *reports.ReportRun) {
+			run.Status = reports.ReportRunStatusFailed
 			run.CompletedAt = &completedAt
 			run.Error = err.Error()
-			graph.CompleteLatestReportRunAttempt(run, run.Status, completedAt, err.Error(), classification)
-			graph.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunFailed), run.Status, platformReportTriggerSurface(run), run.RequestedBy, completedAt, map[string]any{
+			reports.CompleteLatestReportRunAttempt(run, run.Status, completedAt, err.Error(), classification)
+			reports.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunFailed), run.Status, platformReportTriggerSurface(run), run.RequestedBy, completedAt, map[string]any{
 				"report_id":              run.ReportID,
 				"error":                  err.Error(),
 				"attempt_classification": classification,
@@ -1007,12 +1008,12 @@ func (s *Server) executePlatformReportRun(ctx context.Context, runID string, def
 	sections, sectionEmissions, snapshot, err := s.buildPlatformReportArtifacts(artifactRun, runID, definition, result, materializeResult, completedAt)
 	if err != nil {
 		classification := platformReportAttemptClassification(err)
-		if updateErr := s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
-			run.Status = graph.ReportRunStatusFailed
+		if updateErr := s.updatePlatformReportRun(runID, func(run *reports.ReportRun) {
+			run.Status = reports.ReportRunStatusFailed
 			run.CompletedAt = &completedAt
 			run.Error = err.Error()
-			graph.CompleteLatestReportRunAttempt(run, run.Status, completedAt, err.Error(), classification)
-			graph.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunFailed), run.Status, platformReportTriggerSurface(run), run.RequestedBy, completedAt, map[string]any{
+			reports.CompleteLatestReportRunAttempt(run, run.Status, completedAt, err.Error(), classification)
+			reports.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunFailed), run.Status, platformReportTriggerSurface(run), run.RequestedBy, completedAt, map[string]any{
 				"report_id":              run.ReportID,
 				"error":                  err.Error(),
 				"attempt_classification": classification,
@@ -1027,22 +1028,22 @@ func (s *Server) executePlatformReportRun(ctx context.Context, runID string, def
 	}
 
 	canceledBeforeCommit := false
-	if err := s.updatePlatformReportRun(runID, func(run *graph.ReportRun) {
-		if run.Status == graph.ReportRunStatusCanceled {
+	if err := s.updatePlatformReportRun(runID, func(run *reports.ReportRun) {
+		if run.Status == reports.ReportRunStatusCanceled {
 			canceledBeforeCommit = true
 			return
 		}
-		run.Status = graph.ReportRunStatusSucceeded
+		run.Status = reports.ReportRunStatusSucceeded
 		run.CompletedAt = &completedAt
-		run.Sections = graph.CloneReportSectionResults(sections)
+		run.Sections = reports.CloneReportSectionResults(sections)
 		run.Snapshot = snapshot
 		run.Result = cloneJSONObject(result)
-		run.Storage = graph.BuildReportStoragePolicy(snapshot != nil, false)
-		graph.CompleteLatestReportRunAttempt(run, run.Status, completedAt, "", "")
+		run.Storage = reports.BuildReportStoragePolicy(snapshot != nil, false)
+		reports.CompleteLatestReportRunAttempt(run, run.Status, completedAt, "", "")
 		if snapshot != nil {
-			snapshot.Lineage = graph.CloneReportLineage(run.Lineage)
-			snapshot.Storage = graph.BuildReportStoragePolicy(true, false)
-			graph.AppendReportRunEvent(run, string(webhooks.EventPlatformReportSnapshotMaterialized), run.Status, platformReportTriggerSurface(run), run.RequestedBy, completedAt, map[string]any{
+			snapshot.Lineage = reports.CloneReportLineage(run.Lineage)
+			snapshot.Storage = reports.BuildReportStoragePolicy(true, false)
+			reports.AppendReportRunEvent(run, string(webhooks.EventPlatformReportSnapshotMaterialized), run.Status, platformReportTriggerSurface(run), run.RequestedBy, completedAt, map[string]any{
 				"report_id":   run.ReportID,
 				"snapshot_id": snapshot.ID,
 			})
@@ -1067,9 +1068,9 @@ func (s *Server) executePlatformReportRun(ctx context.Context, runID string, def
 			if snapshot != nil {
 				eventData["snapshot_id"] = snapshot.ID
 			}
-			graph.AppendReportRunEvent(run, string(webhooks.EventPlatformReportSectionEmitted), run.Status, platformReportTriggerSurface(run), run.RequestedBy, emission.EmittedAt, eventData)
+			reports.AppendReportRunEvent(run, string(webhooks.EventPlatformReportSectionEmitted), run.Status, platformReportTriggerSurface(run), run.RequestedBy, emission.EmittedAt, eventData)
 		}
-		graph.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunCompleted), run.Status, platformReportTriggerSurface(run), run.RequestedBy, completedAt, map[string]any{
+		reports.AppendReportRunEvent(run, string(webhooks.EventPlatformReportRunCompleted), run.Status, platformReportTriggerSurface(run), run.RequestedBy, completedAt, map[string]any{
 			"report_id":           run.ReportID,
 			"materialized_result": snapshot != nil,
 		})
@@ -1095,8 +1096,8 @@ func (s *Server) executePlatformReportRun(ctx context.Context, runID string, def
 	return nil
 }
 
-func (s *Server) executePlatformReport(ctx context.Context, reportID string, parameters []graph.ReportParameterValue) (map[string]any, error) {
-	definition, ok := graph.GetReportDefinition(reportID)
+func (s *Server) executePlatformReport(ctx context.Context, reportID string, parameters []reports.ReportParameterValue) (map[string]any, error) {
+	definition, ok := reports.GetReportDefinition(reportID)
 	if !ok {
 		return nil, fmt.Errorf("report definition not found: %s", reportID)
 	}
@@ -1144,7 +1145,7 @@ func (s *Server) platformReportHandler(reportID string) (http.HandlerFunc, bool)
 	return nil, false
 }
 
-func reportParameterValuesToQuery(values []graph.ReportParameterValue) (url.Values, error) {
+func reportParameterValuesToQuery(values []reports.ReportParameterValue) (url.Values, error) {
 	query := url.Values{}
 	for _, value := range values {
 		encoded, err := value.QueryValue()
@@ -1196,23 +1197,23 @@ func platformReportAttemptClassification(err error) string {
 		return ""
 	}
 	if errors.Is(err, context.Canceled) {
-		return graph.ReportAttemptClassCancelled
+		return reports.ReportAttemptClassCancelled
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		return graph.ReportAttemptClassTransient
+		return reports.ReportAttemptClassTransient
 	}
 	var executionErr reportExecutionError
 	if errors.As(err, &executionErr) {
 		switch executionErr.StatusCode {
 		case http.StatusTooManyRequests, http.StatusRequestTimeout, http.StatusConflict:
-			return graph.ReportAttemptClassTransient
+			return reports.ReportAttemptClassTransient
 		}
 		if executionErr.StatusCode >= 500 {
-			return graph.ReportAttemptClassTransient
+			return reports.ReportAttemptClassTransient
 		}
-		return graph.ReportAttemptClassDeterministic
+		return reports.ReportAttemptClassDeterministic
 	}
-	return graph.ReportAttemptClassDeterministic
+	return reports.ReportAttemptClassDeterministic
 }
 
 func cloneJSONObject(value map[string]any) map[string]any {
@@ -1262,7 +1263,7 @@ func (s *Server) runPlatformJob(jobID string, runner func(context.Context) (any,
 	s.platformJobMu.Lock()
 	job, ok := s.platformJobs[jobID]
 	if ok {
-		if job.Status == graph.ReportRunStatusCanceled || job.Status == "canceled" {
+		if job.Status == reports.ReportRunStatusCanceled || job.Status == "canceled" {
 			if job.CompletedAt == nil {
 				job.CompletedAt = &now
 			}
@@ -1378,13 +1379,13 @@ func (s *Server) cancelPlatformJob(jobID, reason string) bool {
 // attachPlatformReportRunJob links a platform job to the latest persisted run state.
 // If a cancellation won the race before the job was attached, the caller should cancel
 // the newly created job immediately so the run and job do not drift.
-func (s *Server) attachPlatformReportRunJob(runID string, job *platformJob) (*graph.ReportRun, bool, string, error) {
+func (s *Server) attachPlatformReportRunJob(runID string, job *platformJob) (*reports.ReportRun, bool, string, error) {
 	if job == nil {
 		return nil, false, "", fmt.Errorf("platform job is required")
 	}
 	cancelJob := false
 	cancelReason := ""
-	stored, err := s.updatePlatformReportRunSnapshot(runID, func(updated *graph.ReportRun) {
+	stored, err := s.updatePlatformReportRunSnapshot(runID, func(updated *reports.ReportRun) {
 		updated.JobID = job.ID
 		updated.JobStatusURL = job.StatusURL
 		for i := len(updated.Attempts) - 1; i >= 0; i-- {
@@ -1393,7 +1394,7 @@ func (s *Server) attachPlatformReportRunJob(runID string, job *platformJob) (*gr
 				break
 			}
 		}
-		if updated.Status == graph.ReportRunStatusCanceled {
+		if updated.Status == reports.ReportRunStatusCanceled {
 			cancelJob = true
 			cancelReason = strings.TrimSpace(updated.Error)
 			if cancelReason == "" {
@@ -1436,66 +1437,78 @@ func cloneJSONValue(value any) any {
 	return decoded
 }
 
-func (s *Server) storePlatformReportRun(run *graph.ReportRun) error {
+func (s *Server) storePlatformReportRun(run *reports.ReportRun) error {
 	if run == nil {
 		return nil
 	}
 	s.platformReportSaveMu.Lock()
 	defer s.platformReportSaveMu.Unlock()
-	s.platformReportRunMu.Lock()
-	snapshot := s.clonePlatformReportRunsLocked()
-	s.platformReportRunMu.Unlock()
-	snapshot[run.ID] = graph.CloneReportRun(run)
-	if err := s.persistPlatformReportRuns(snapshot); err != nil {
-		return fmt.Errorf("persist report run %q: %w", run.ID, err)
+	if s.platformReportStore != nil {
+		if err := s.platformReportStore.SaveRun(run); err != nil {
+			return fmt.Errorf("persist report run %q: %w", run.ID, err)
+		}
 	}
 	s.syncPlatformJobWithReportRun(run)
-	s.platformReportRunMu.Lock()
-	s.platformReportRuns[run.ID] = graph.CloneReportRun(run)
-	s.platformReportRunMu.Unlock()
+	s.cachePlatformReportRun(run)
 	return nil
 }
 
-func (s *Server) updatePlatformReportRun(runID string, apply func(*graph.ReportRun)) error {
+func (s *Server) updatePlatformReportRun(runID string, apply func(*reports.ReportRun)) error {
 	_, err := s.updatePlatformReportRunSnapshot(runID, apply)
 	return err
 }
 
-func (s *Server) updatePlatformReportRunSnapshot(runID string, apply func(*graph.ReportRun)) (*graph.ReportRun, error) {
+func (s *Server) updatePlatformReportRunSnapshot(runID string, apply func(*reports.ReportRun)) (*reports.ReportRun, error) {
 	s.platformReportSaveMu.Lock()
 	defer s.platformReportSaveMu.Unlock()
-	s.platformReportRunMu.Lock()
-	run, ok := s.platformReportRuns[runID]
-	if !ok {
-		s.platformReportRunMu.Unlock()
+	var (
+		run *reports.ReportRun
+		err error
+	)
+	if s.platformReportStore != nil {
+		run, err = s.platformReportStore.LoadRun(runID)
+		if err != nil {
+			return nil, fmt.Errorf("load report run %q: %w", runID, err)
+		}
+	}
+	if run == nil {
+		s.platformReportRunMu.RLock()
+		run = reports.CloneReportRun(s.platformReportRuns[runID])
+		s.platformReportRunMu.RUnlock()
+	}
+	if run == nil {
 		return nil, fmt.Errorf("report run not found: %s", runID)
 	}
-	updated := graph.CloneReportRun(run)
+	updated := reports.CloneReportRun(run)
 	apply(updated)
-	snapshot := s.clonePlatformReportRunsLocked()
-	s.platformReportRunMu.Unlock()
-	snapshot[runID] = graph.CloneReportRun(updated)
-	if err := s.persistPlatformReportRuns(snapshot); err != nil {
-		return nil, fmt.Errorf("persist report run %q: %w", runID, err)
+	if s.platformReportStore != nil {
+		if err := s.platformReportStore.SaveRun(updated); err != nil {
+			return nil, fmt.Errorf("persist report run %q: %w", runID, err)
+		}
 	}
 	s.syncPlatformJobWithReportRun(updated)
-	s.platformReportRunMu.Lock()
-	s.platformReportRuns[runID] = graph.CloneReportRun(updated)
-	s.platformReportRunMu.Unlock()
-	return graph.CloneReportRun(updated), nil
+	s.cachePlatformReportRun(updated)
+	return reports.CloneReportRun(updated), nil
 }
 
-func (s *Server) platformReportRunSnapshot(reportID, runID string) (*graph.ReportRun, bool) {
+func (s *Server) platformReportRunSnapshot(reportID, runID string) (*reports.ReportRun, bool) {
+	if s.platformReportStore != nil {
+		run, err := s.platformReportStore.LoadRun(runID)
+		if err == nil && run != nil && run.ReportID == reportID {
+			s.cachePlatformReportRun(run)
+			return reports.CloneReportRun(run), true
+		}
+	}
 	s.platformReportRunMu.RLock()
 	defer s.platformReportRunMu.RUnlock()
 	run, ok := s.platformReportRuns[runID]
 	if !ok || run.ReportID != reportID {
 		return nil, false
 	}
-	return graph.CloneReportRun(run), true
+	return reports.CloneReportRun(run), true
 }
 
-func (s *Server) syncPlatformJobWithReportRun(run *graph.ReportRun) {
+func (s *Server) syncPlatformJobWithReportRun(run *reports.ReportRun) {
 	if run == nil {
 		return
 	}
@@ -1517,28 +1530,28 @@ func (s *Server) syncPlatformJobWithReportRun(run *graph.ReportRun) {
 		job.CancelReason = reason
 	}
 	switch run.Status {
-	case graph.ReportRunStatusRunning:
+	case reports.ReportRunStatusRunning:
 		job.Status = "running"
 		if run.StartedAt != nil {
 			startedAt := *run.StartedAt
 			job.StartedAt = &startedAt
 		}
-	case graph.ReportRunStatusSucceeded:
+	case reports.ReportRunStatusSucceeded:
 		job.Status = "succeeded"
 		if run.CompletedAt != nil {
 			completedAt := *run.CompletedAt
 			job.CompletedAt = &completedAt
 		}
 		job.Error = ""
-		job.Result = cloneJSONValue(graph.SummarizeReportRun(*run))
-	case graph.ReportRunStatusFailed:
+		job.Result = cloneJSONValue(reports.SummarizeReportRun(*run))
+	case reports.ReportRunStatusFailed:
 		job.Status = "failed"
 		if run.CompletedAt != nil {
 			completedAt := *run.CompletedAt
 			job.CompletedAt = &completedAt
 		}
 		job.Error = run.Error
-	case graph.ReportRunStatusCanceled:
+	case reports.ReportRunStatusCanceled:
 		// Preserve cancellation metadata immediately, but do not flip an active
 		// job to terminal canceled until the job-owned cancel func has been
 		// invoked. Otherwise handlers that are waiting on request context
@@ -1556,15 +1569,35 @@ func (s *Server) syncPlatformJobWithReportRun(run *graph.ReportRun) {
 	}
 }
 
-func (s *Server) platformReportRunSummaries(reportID string) []graph.ReportRunSummary {
+func (s *Server) platformReportRunSummaries(reportID string) []reports.ReportRunSummary {
+	if s.platformReportStore != nil {
+		runs, err := s.platformReportStore.ListRuns(reportID)
+		if err == nil {
+			s.cachePlatformReportRuns(runs)
+			summaries := make([]reports.ReportRunSummary, 0, len(runs))
+			for _, run := range runs {
+				if run == nil {
+					continue
+				}
+				summaries = append(summaries, reports.SummarizeReportRun(*run))
+			}
+			sort.Slice(summaries, func(i, j int) bool {
+				if summaries[i].SubmittedAt.Equal(summaries[j].SubmittedAt) {
+					return summaries[i].ID > summaries[j].ID
+				}
+				return summaries[i].SubmittedAt.After(summaries[j].SubmittedAt)
+			})
+			return summaries
+		}
+	}
 	s.platformReportRunMu.RLock()
 	defer s.platformReportRunMu.RUnlock()
-	runs := make([]graph.ReportRunSummary, 0)
+	runs := make([]reports.ReportRunSummary, 0)
 	for _, run := range s.platformReportRuns {
 		if run.ReportID != reportID {
 			continue
 		}
-		runs = append(runs, graph.SummarizeReportRun(*run))
+		runs = append(runs, reports.SummarizeReportRun(*run))
 	}
 	sort.Slice(runs, func(i, j int) bool {
 		if runs[i].SubmittedAt.Equal(runs[j].SubmittedAt) {
@@ -1575,25 +1608,36 @@ func (s *Server) platformReportRunSummaries(reportID string) []graph.ReportRunSu
 	return runs
 }
 
-func (s *Server) reusablePlatformReportRun(reportID, cacheKey string, lineage graph.ReportLineage, excludeRunID string) *graph.ReportRun {
+func (s *Server) reusablePlatformReportRun(reportID, cacheKey string, lineage reports.ReportLineage, excludeRunID string) *reports.ReportRun {
 	reportID = strings.TrimSpace(reportID)
 	cacheKey = strings.TrimSpace(cacheKey)
 	excludeRunID = strings.TrimSpace(excludeRunID)
 	if reportID == "" || cacheKey == "" {
 		return nil
 	}
-	s.platformReportRunMu.RLock()
-	defer s.platformReportRunMu.RUnlock()
-
-	var best *graph.ReportRun
-	for _, candidate := range s.platformReportRuns {
+	candidates := make([]*reports.ReportRun, 0)
+	if s.platformReportStore != nil {
+		if storedRuns, err := s.platformReportStore.ListRuns(reportID); err == nil {
+			s.cachePlatformReportRuns(storedRuns)
+			candidates = append(candidates, storedRuns...)
+		}
+	}
+	if len(candidates) == 0 {
+		s.platformReportRunMu.RLock()
+		for _, candidate := range s.platformReportRuns {
+			candidates = append(candidates, reports.CloneReportRun(candidate))
+		}
+		s.platformReportRunMu.RUnlock()
+	}
+	var best *reports.ReportRun
+	for _, candidate := range candidates {
 		if candidate == nil {
 			continue
 		}
 		if strings.TrimSpace(candidate.ID) == excludeRunID {
 			continue
 		}
-		if candidate.ReportID != reportID || candidate.Status != graph.ReportRunStatusSucceeded {
+		if candidate.ReportID != reportID || candidate.Status != reports.ReportRunStatusSucceeded {
 			continue
 		}
 		if strings.TrimSpace(candidate.CacheKey) != cacheKey {
@@ -1606,27 +1650,27 @@ func (s *Server) reusablePlatformReportRun(reportID, cacheKey string, lineage gr
 			continue
 		}
 		if best == nil || platformReportRunCompletedAt(candidate).After(platformReportRunCompletedAt(best)) {
-			best = graph.CloneReportRun(candidate)
+			best = reports.CloneReportRun(candidate)
 		}
 	}
 	return best
 }
 
-func (s *Server) refreshPlatformReportRunCacheBinding(runID string, run *graph.ReportRun) (*graph.ReportRun, error) {
+func (s *Server) refreshPlatformReportRunCacheBinding(runID string, run *reports.ReportRun) (*reports.ReportRun, error) {
 	if run == nil {
 		return nil, nil
 	}
 	cacheSource := s.selectPlatformReportCacheSource(run)
-	cacheStatus := graph.ReportCacheStatusMiss
+	cacheStatus := reports.ReportCacheStatusMiss
 	cacheSourceRunID := ""
 	if cacheSource != nil {
-		cacheStatus = graph.ReportCacheStatusHit
+		cacheStatus = reports.ReportCacheStatusHit
 		cacheSourceRunID = cacheSource.ID
 	}
 	if strings.TrimSpace(run.CacheStatus) == cacheStatus && strings.TrimSpace(run.CacheSourceRunID) == cacheSourceRunID {
 		return cacheSource, nil
 	}
-	if err := s.updatePlatformReportRun(runID, func(updated *graph.ReportRun) {
+	if err := s.updatePlatformReportRun(runID, func(updated *reports.ReportRun) {
 		updated.CacheStatus = cacheStatus
 		updated.CacheSourceRunID = cacheSourceRunID
 	}); err != nil {
@@ -1635,7 +1679,7 @@ func (s *Server) refreshPlatformReportRunCacheBinding(runID string, run *graph.R
 	return cacheSource, nil
 }
 
-func (s *Server) selectPlatformReportCacheSource(run *graph.ReportRun) *graph.ReportRun {
+func (s *Server) selectPlatformReportCacheSource(run *reports.ReportRun) *reports.ReportRun {
 	if run == nil {
 		return nil
 	}
@@ -1647,14 +1691,14 @@ func (s *Server) selectPlatformReportCacheSource(run *graph.ReportRun) *graph.Re
 	return s.reusablePlatformReportRun(run.ReportID, run.CacheKey, run.Lineage, run.ID)
 }
 
-func (s *Server) buildPlatformReportArtifacts(run *graph.ReportRun, runID string, definition graph.ReportDefinition, result map[string]any, materializeResult bool, completedAt time.Time) ([]graph.ReportSectionResult, []graph.ReportSectionEmission, *graph.ReportSnapshot, error) {
+func (s *Server) buildPlatformReportArtifacts(run *reports.ReportRun, runID string, definition reports.ReportDefinition, result map[string]any, materializeResult bool, completedAt time.Time) ([]reports.ReportSectionResult, []reports.ReportSectionEmission, *reports.ReportSnapshot, error) {
 	options := s.platformReportSectionBuildOptions(run)
-	sections := graph.BuildReportSectionResultsWithOptions(definition, result, options)
-	sectionEmissions := graph.BuildReportSectionEmissionsFromResults(sections, result, completedAt)
-	var snapshot *graph.ReportSnapshot
+	sections := reports.BuildReportSectionResultsWithOptions(definition, result, options)
+	sectionEmissions := reports.BuildReportSectionEmissionsFromResults(sections, result, completedAt)
+	var snapshot *reports.ReportSnapshot
 	if materializeResult {
 		var err error
-		snapshot, err = graph.BuildReportSnapshot(runID, definition, result, true, completedAt)
+		snapshot, err = reports.BuildReportSnapshot(runID, definition, result, true, completedAt)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -1662,27 +1706,27 @@ func (s *Server) buildPlatformReportArtifacts(run *graph.ReportRun, runID string
 	return sections, sectionEmissions, snapshot, nil
 }
 
-func (s *Server) platformReportSectionBuildOptions(run *graph.ReportRun) *graph.ReportSectionBuildOptions {
+func (s *Server) platformReportSectionBuildOptions(run *reports.ReportRun) *reports.ReportSectionBuildOptions {
 	if run == nil {
 		return nil
 	}
-	options := &graph.ReportSectionBuildOptions{
+	options := &reports.ReportSectionBuildOptions{
 		Graph:            s.app.SecurityGraph,
 		TimeSlice:        run.TimeSlice,
 		CacheStatus:      run.CacheStatus,
 		CacheSourceRunID: run.CacheSourceRunID,
 	}
-	if attempt := graph.LatestReportRunAttempt(run); attempt != nil {
+	if attempt := reports.LatestReportRunAttempt(run); attempt != nil {
 		options.RetryBackoffMS = attempt.RetryBackoffMS
 	}
 	return options
 }
 
-func platformReportRunReusableFor(source, run *graph.ReportRun) bool {
+func platformReportRunReusableFor(source, run *reports.ReportRun) bool {
 	if source == nil || run == nil {
 		return false
 	}
-	if source.ReportID != run.ReportID || source.Status != graph.ReportRunStatusSucceeded {
+	if source.ReportID != run.ReportID || source.Status != reports.ReportRunStatusSucceeded {
 		return false
 	}
 	if strings.TrimSpace(source.CacheKey) == "" || strings.TrimSpace(source.CacheKey) != strings.TrimSpace(run.CacheKey) {
@@ -1694,7 +1738,7 @@ func platformReportRunReusableFor(source, run *graph.ReportRun) bool {
 	return platformReportLineageCompatible(source.Lineage, run.Lineage)
 }
 
-func platformReportLineageCompatible(left, right graph.ReportLineage) bool {
+func platformReportLineageCompatible(left, right reports.ReportLineage) bool {
 	if left.GraphSnapshotID != "" || right.GraphSnapshotID != "" {
 		if strings.TrimSpace(left.GraphSnapshotID) != strings.TrimSpace(right.GraphSnapshotID) {
 			return false
@@ -1705,7 +1749,7 @@ func platformReportLineageCompatible(left, right graph.ReportLineage) bool {
 		strings.TrimSpace(left.ReportDefinitionVersion) == strings.TrimSpace(right.ReportDefinitionVersion)
 }
 
-func platformReportRunCompletedAt(run *graph.ReportRun) time.Time {
+func platformReportRunCompletedAt(run *reports.ReportRun) time.Time {
 	if run == nil {
 		return time.Time{}
 	}
@@ -1715,10 +1759,10 @@ func platformReportRunCompletedAt(run *graph.ReportRun) time.Time {
 	return run.SubmittedAt.UTC()
 }
 
-func (s *Server) clonePlatformReportRunsLocked() map[string]*graph.ReportRun {
-	cloned := make(map[string]*graph.ReportRun, len(s.platformReportRuns))
+func (s *Server) clonePlatformReportRunsLocked() map[string]*reports.ReportRun {
+	cloned := make(map[string]*reports.ReportRun, len(s.platformReportRuns))
 	for id, run := range s.platformReportRuns {
-		cloned[id] = graph.CloneReportRun(run)
+		cloned[id] = reports.CloneReportRun(run)
 	}
 	return cloned
 }
@@ -1734,13 +1778,6 @@ func (s *Server) platformGraphSnapshot(snapshotID string) (*graph.GraphSnapshotR
 	}
 	snapshot := *record
 	return &snapshot, true
-}
-
-func (s *Server) persistPlatformReportRuns(runs map[string]*graph.ReportRun) error {
-	if s == nil || s.platformReportStore == nil {
-		return nil
-	}
-	return s.platformReportStore.SaveAll(runs)
 }
 
 func (s *Server) emitPlatformReportRunLifecycleEvent(ctx context.Context, eventType webhooks.EventType, reportID, runID string) {
@@ -1761,7 +1798,7 @@ func (s *Server) emitPlatformReportSnapshotLifecycleEvent(ctx context.Context, r
 	s.emitPlatformLifecycleEvent(ctx, webhooks.EventPlatformReportSnapshotMaterialized, platformReportSnapshotEventPayload(run))
 }
 
-func (s *Server) emitPlatformReportSectionLifecycleEvent(ctx context.Context, run *graph.ReportRun, section graph.ReportSectionEmission) {
+func (s *Server) emitPlatformReportSectionLifecycleEvent(ctx context.Context, run *reports.ReportRun, section reports.ReportSectionEmission) {
 	if run == nil {
 		return
 	}
@@ -1770,7 +1807,7 @@ func (s *Server) emitPlatformReportSectionLifecycleEvent(ctx context.Context, ru
 	s.emitAgentSDKReportSection(run, section)
 }
 
-func platformReportRunEventPayload(run *graph.ReportRun) map[string]any {
+func platformReportRunEventPayload(run *reports.ReportRun) map[string]any {
 	if run == nil {
 		return nil
 	}
@@ -1822,7 +1859,7 @@ func platformReportRunEventPayload(run *graph.ReportRun) map[string]any {
 	}
 	if run.Error != "" {
 		payload["error"] = run.Error
-		if run.Status == graph.ReportRunStatusCanceled {
+		if run.Status == reports.ReportRunStatusCanceled {
 			payload["cancel_reason"] = run.Error
 		}
 	}
@@ -1847,7 +1884,7 @@ func platformReportRunEventPayload(run *graph.ReportRun) map[string]any {
 		payload["result_schema"] = run.Snapshot.ResultSchema
 		payload["section_count"] = run.Snapshot.SectionCount
 	}
-	if attempt := graph.LatestReportRunAttempt(run); attempt != nil {
+	if attempt := reports.LatestReportRunAttempt(run); attempt != nil {
 		if attempt.TriggerSurface != "" {
 			payload["trigger_surface"] = attempt.TriggerSurface
 		}
@@ -1879,7 +1916,7 @@ func platformReportRunEventPayload(run *graph.ReportRun) map[string]any {
 	return payload
 }
 
-func platformReportSnapshotEventPayload(run *graph.ReportRun) map[string]any {
+func platformReportSnapshotEventPayload(run *reports.ReportRun) map[string]any {
 	if run == nil || run.Snapshot == nil {
 		return nil
 	}
@@ -1919,11 +1956,11 @@ func platformReportSnapshotEventPayload(run *graph.ReportRun) map[string]any {
 	return payload
 }
 
-func platformReportSectionEventPayload(run *graph.ReportRun, section graph.ReportSectionEmission) map[string]any {
+func platformReportSectionEventPayload(run *reports.ReportRun, section reports.ReportSectionEmission) map[string]any {
 	if run == nil {
 		return nil
 	}
-	emission := graph.CloneReportSectionEmissions([]graph.ReportSectionEmission{section})[0]
+	emission := reports.CloneReportSectionEmissions([]reports.ReportSectionEmission{section})[0]
 	payload := map[string]any{
 		"run_id":           run.ID,
 		"report_id":        run.ReportID,
@@ -1954,7 +1991,7 @@ func platformReportSectionEventPayload(run *graph.ReportRun, section graph.Repor
 	return payload
 }
 
-func platformReportSectionMetadataPayload(section graph.ReportSectionResult) map[string]any {
+func platformReportSectionMetadataPayload(section reports.ReportSectionResult) map[string]any {
 	payload := make(map[string]any)
 	if section.Lineage != nil {
 		lineage := map[string]any{
@@ -2032,28 +2069,51 @@ func platformExecutionHost() string {
 	return strings.TrimSpace(host)
 }
 
-func platformReportCancellationRequested(run *graph.ReportRun) bool {
+func platformReportCancellationRequested(run *reports.ReportRun) bool {
 	if run == nil {
 		return false
 	}
-	return run.CancelRequestedAt != nil || strings.TrimSpace(run.Status) == graph.ReportRunStatusCanceled
+	return run.CancelRequestedAt != nil || strings.TrimSpace(run.Status) == reports.ReportRunStatusCanceled
 }
 
 func reportExecutionSurface(executionMode string) string {
 	switch strings.TrimSpace(executionMode) {
-	case graph.ReportExecutionModeAsync:
+	case reports.ReportExecutionModeAsync:
 		return "platform.job"
 	default:
 		return "platform.inline"
 	}
 }
 
-func platformReportTriggerSurface(run *graph.ReportRun) string {
+func platformReportTriggerSurface(run *reports.ReportRun) string {
 	if run == nil {
 		return ""
 	}
-	if attempt := graph.LatestReportRunAttempt(run); attempt != nil && strings.TrimSpace(attempt.TriggerSurface) != "" {
+	if attempt := reports.LatestReportRunAttempt(run); attempt != nil && strings.TrimSpace(attempt.TriggerSurface) != "" {
 		return strings.TrimSpace(attempt.TriggerSurface)
 	}
 	return "api.request"
+}
+
+func (s *Server) cachePlatformReportRun(run *reports.ReportRun) {
+	if s == nil || run == nil || strings.TrimSpace(run.ID) == "" {
+		return
+	}
+	s.platformReportRunMu.Lock()
+	s.platformReportRuns[run.ID] = reports.CloneReportRun(run)
+	s.platformReportRunMu.Unlock()
+}
+
+func (s *Server) cachePlatformReportRuns(runs []*reports.ReportRun) {
+	if s == nil || len(runs) == 0 {
+		return
+	}
+	s.platformReportRunMu.Lock()
+	defer s.platformReportRunMu.Unlock()
+	for _, run := range runs {
+		if run == nil || strings.TrimSpace(run.ID) == "" {
+			continue
+		}
+		s.platformReportRuns[run.ID] = reports.CloneReportRun(run)
+	}
 }

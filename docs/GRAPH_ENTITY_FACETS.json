@@ -259,6 +259,89 @@
           "value_type": "array[string]"
         }
       ]
+    },
+    {
+      "id": "workload_security",
+      "version": "1.0.0",
+      "title": "Workload Security",
+      "description": "Latest workload scan posture with vulnerability depth and attack-path context.",
+      "schema_name": "PlatformWorkloadSecurityFacet",
+      "schema_url": "urn:cerebro:entity-facet:workload-security:v1",
+      "applicable_kinds": [
+        "instance",
+        "function",
+        "workload"
+      ],
+      "fields": [
+        {
+          "key": "last_scan_id",
+          "value_type": "string"
+        },
+        {
+          "key": "last_scanned_at",
+          "value_type": "string"
+        },
+        {
+          "key": "stale",
+          "value_type": "boolean"
+        },
+        {
+          "key": "os_name",
+          "value_type": "string"
+        },
+        {
+          "key": "os_version",
+          "value_type": "string"
+        },
+        {
+          "key": "os_architecture",
+          "value_type": "string"
+        },
+        {
+          "key": "package_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "vulnerability_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "critical_vulnerability_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "high_vulnerability_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "known_exploited_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "fixable_vulnerability_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "internet_exposed",
+          "value_type": "boolean"
+        },
+        {
+          "key": "admin_reachable_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "sensitive_data_path_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "cross_account_risk",
+          "value_type": "boolean"
+        },
+        {
+          "key": "prioritized_risk",
+          "value_type": "string"
+        }
+      ]
     }
   ]
 }

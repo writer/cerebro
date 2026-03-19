@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"net"
 	"net/url"
 	"os"
 	"path"
@@ -40,10 +41,12 @@ var (
 	privateKeyPattern   = regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----`)
 	inlineSecretPattern = regexp.MustCompile(`(?i)(password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|connection[_-]?string)\s*[:=]`)
 	secretTokenPattern  = regexp.MustCompile(`[A-Za-z0-9+/=_-]{20,}`)
+	databaseURLPattern  = regexp.MustCompile(`(?i)(?:jdbc:sqlserver://[^\s'"]+|(?:jdbc:)?(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|sqlserver)://[^\s'"]+)`)
 )
 
 type Analyzer struct {
 	vulnerabilityScanner scanner.FilesystemScanner
+	vulnerabilityMatcher PackageVulnerabilityMatcher
 	malwareScanner       MalwareScanner
 	now                  func() time.Time
 	maxWalkEntries       int
@@ -75,6 +78,7 @@ func New(opts Options) *Analyzer {
 	}
 	return &Analyzer{
 		vulnerabilityScanner: opts.VulnerabilityScanner,
+		vulnerabilityMatcher: opts.VulnerabilityMatcher,
 		malwareScanner:       opts.MalwareScanner,
 		now:                  now,
 		maxWalkEntries:       maxWalk,
@@ -201,6 +205,15 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 				inv.metadataErrors = append(inv.metadataErrors, err.Error())
 			}
 		}
+		if shouldInspectIaCFile(filePath, info.Mode(), info.Size(), a.maxSecretFileBytes) {
+			if data, ok, err := readLimitedFile(root, filePath, a.maxSecretFileBytes); err == nil && ok {
+				artifacts, findings := inspectIaCFile(filePath, data)
+				inv.addIaCArtifacts(artifacts...)
+				inv.addConfigs(findings...)
+			} else if err != nil {
+				inv.metadataErrors = append(inv.metadataErrors, err.Error())
+			}
+		}
 		if shouldSecretScan(filePath, info.Mode(), info.Size(), a.maxSecretFileBytes) {
 			if data, ok, err := readLimitedFile(root, filePath, a.maxSecretFileBytes); err == nil && ok {
 				inv.addSecrets(scanSecrets(filePath, data)...)
@@ -238,8 +251,18 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 	mergeOSInfo(&report.OS, inv.os)
 	report.OS.EOL = isLikelyEOL(report.OS)
 	report.Packages = inv.sortedPackages()
+	if a.vulnerabilityMatcher != nil && len(report.Packages) > 0 {
+		matchedVulns, err := a.vulnerabilityMatcher.MatchPackages(ctx, report.OS, report.Packages)
+		if err != nil {
+			report.Metadata["vulnerability_match_error"] = err.Error()
+		} else {
+			report.Vulnerabilities = dedupeVulnerabilities(append(report.Vulnerabilities, matchedVulns...))
+			report.Findings = append(report.Findings, buildVulnerabilityFindings(matchedVulns)...)
+		}
+	}
 	report.Secrets = inv.secrets
 	report.Misconfigurations = inv.configs
+	report.IaCArtifacts = inv.iacArtifacts
 	report.Malware = inv.malware
 	report.SBOM = buildSBOM(report.GeneratedAt, report.Packages)
 	report.Findings = dedupeFindings(append(report.Findings, inv.findings...))
@@ -248,6 +271,7 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 		VulnerabilityCount:    len(report.Vulnerabilities),
 		SecretCount:           len(report.Secrets),
 		MisconfigurationCount: len(report.Misconfigurations),
+		IaCArtifactCount:      len(report.IaCArtifacts),
 		MalwareCount:          len(report.Malware),
 		Truncated:             inv.truncated,
 	}
@@ -265,8 +289,10 @@ type inventory struct {
 	generatedAt    time.Time
 	os             OSInfo
 	packages       map[string]PackageRecord
+	iacArtifactIDs map[string]struct{}
 	secrets        []SecretFinding
 	configs        []ConfigFinding
+	iacArtifacts   []IaCArtifact
 	malware        []MalwareFinding
 	findings       []scanner.ContainerFinding
 	entriesVisited int
@@ -276,8 +302,9 @@ type inventory struct {
 
 func newInventory(now time.Time) *inventory {
 	return &inventory{
-		generatedAt: now,
-		packages:    make(map[string]PackageRecord),
+		generatedAt:    now,
+		packages:       make(map[string]PackageRecord),
+		iacArtifactIDs: make(map[string]struct{}),
 	}
 }
 
@@ -325,6 +352,22 @@ func (i *inventory) addConfig(finding ConfigFinding) {
 func (i *inventory) addConfigs(findings ...ConfigFinding) {
 	for _, finding := range findings {
 		i.addConfig(finding)
+	}
+}
+
+func (i *inventory) addIaCArtifacts(artifacts ...IaCArtifact) {
+	for _, artifact := range artifacts {
+		artifact.ID = strings.TrimSpace(artifact.ID)
+		artifact.Type = strings.TrimSpace(artifact.Type)
+		artifact.Path = strings.TrimSpace(artifact.Path)
+		if artifact.ID == "" || artifact.Type == "" || artifact.Path == "" {
+			continue
+		}
+		if _, exists := i.iacArtifactIDs[artifact.ID]; exists {
+			continue
+		}
+		i.iacArtifactIDs[artifact.ID] = struct{}{}
+		i.iacArtifacts = append(i.iacArtifacts, artifact)
 	}
 }
 
@@ -446,6 +489,38 @@ func shouldParseConfigFile(filePath string) bool {
 		return true
 	}
 	return false
+}
+
+func shouldInspectIaCFile(filePath string, mode fs.FileMode, size int64, maxBytes int64) bool {
+	if mode&fs.ModeSymlink != 0 || mode.IsDir() || size <= 0 || size > maxBytes {
+		return false
+	}
+	if strings.Contains(filePath, "/testdata/") || strings.Contains(filePath, "/fixtures/") || strings.Contains(filePath, "/examples/") {
+		return false
+	}
+	lowerPath := strings.ToLower(strings.TrimSpace(filePath))
+	base := path.Base(lowerPath)
+	switch {
+	case strings.HasSuffix(lowerPath, ".tf"),
+		strings.HasSuffix(lowerPath, ".tfvars"),
+		strings.HasSuffix(lowerPath, ".tfstate"),
+		strings.HasSuffix(lowerPath, ".tfstate.backup"),
+		strings.HasSuffix(lowerPath, ".template"):
+		return true
+	}
+	switch base {
+	case "dockerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml",
+		"chart.yaml", "values.yaml", "playbook.yml", "playbook.yaml", "site.yml", "site.yaml",
+		"inventory", ".env", "config.json", "application.properties", "ansible.cfg":
+		return true
+	}
+	ext := strings.ToLower(path.Ext(lowerPath))
+	switch ext {
+	case ".yaml", ".yml", ".json":
+		return true
+	default:
+		return false
+	}
 }
 
 func shouldSecretScan(filePath string, mode fs.FileMode, size int64, maxBytes int64) bool {
@@ -840,12 +915,269 @@ func parseConfigFindings(filePath string, data []byte) []ConfigFinding {
 	return findings
 }
 
+func inspectIaCFile(filePath string, data []byte) ([]IaCArtifact, []ConfigFinding) {
+	if looksBinary(data) {
+		return nil, nil
+	}
+	artifacts := detectIaCArtifacts(filePath, data)
+	findings := parseIaCFindings(filePath, data, artifacts)
+	return artifacts, findings
+}
+
+func detectIaCArtifacts(filePath string, data []byte) []IaCArtifact {
+	lowerPath := strings.ToLower(strings.TrimSpace(filePath))
+	base := path.Base(lowerPath)
+	ext := strings.ToLower(path.Ext(lowerPath))
+	format := "text"
+	switch ext {
+	case ".tf", ".tfvars":
+		format = "hcl"
+	case ".yaml", ".yml", ".template":
+		format = "yaml"
+	case ".json", ".tfstate", ".backup":
+		format = "json"
+	case ".properties":
+		format = "properties"
+	}
+
+	artifacts := make([]IaCArtifact, 0, 1)
+	appendArtifact := func(kind, artifactFormat, resourceType string) {
+		kind = strings.TrimSpace(kind)
+		if kind == "" {
+			return
+		}
+		if artifactFormat == "" {
+			artifactFormat = format
+		}
+		artifacts = append(artifacts, IaCArtifact{
+			ID:           findingID("iac_artifact", kind+":"+filePath),
+			Type:         kind,
+			Path:         filePath,
+			Format:       artifactFormat,
+			ResourceType: strings.TrimSpace(resourceType),
+		})
+	}
+
+	switch {
+	case strings.HasSuffix(lowerPath, ".tf"):
+		appendArtifact("terraform", "hcl", inferIaCResourceType(lowerPath, string(data)))
+	case strings.HasSuffix(lowerPath, ".tfvars"):
+		appendArtifact("terraform_variables", "hcl", "")
+	case strings.HasSuffix(lowerPath, ".tfstate"), strings.HasSuffix(lowerPath, ".tfstate.backup"):
+		appendArtifact("terraform_state", "json", "terraform_state")
+	case base == "dockerfile":
+		appendArtifact("dockerfile", "dockerfile", "container_image")
+	case base == "docker-compose.yml" || base == "docker-compose.yaml" || base == "compose.yml" || base == "compose.yaml":
+		appendArtifact("docker_compose", "yaml", "container_service")
+	case base == "chart.yaml":
+		appendArtifact("helm_chart", "yaml", "helm_chart")
+	case base == "values.yaml":
+		appendArtifact("helm_values", "yaml", "")
+	case base == "playbook.yml" || base == "playbook.yaml" || base == "site.yml" || base == "site.yaml" || base == "inventory" || base == "ansible.cfg" || strings.Contains(lowerPath, "/roles/"):
+		appendArtifact("ansible", format, "configuration")
+	case base == ".env":
+		appendArtifact("environment_file", "env", "configuration")
+	case base == "config.json":
+		appendArtifact("json_config", "json", "configuration")
+	case base == "application.properties":
+		appendArtifact("application_properties", "properties", "configuration")
+	default:
+		text := string(data)
+		lowerText := strings.ToLower(text)
+		switch {
+		case strings.Contains(text, "AWSTemplateFormatVersion"):
+			appendArtifact("cloudformation", format, inferIaCResourceType(lowerPath, text))
+		case strings.Contains(text, "apiVersion:") && strings.Contains(text, "kind:"):
+			appendArtifact("kubernetes_manifest", format, inferIaCResourceType(lowerPath, text))
+		case strings.Contains(lowerPath, "/templates/") && (ext == ".yaml" || ext == ".yml"):
+			appendArtifact("helm_template", "yaml", inferIaCResourceType(lowerPath, text))
+		case ext == ".json" && (strings.Contains(lowerText, "\"resources\"") || strings.Contains(lowerText, "\"terraform_version\"")):
+			appendArtifact("terraform_json", "json", inferIaCResourceType(lowerPath, text))
+		}
+	}
+	return artifacts
+}
+
+func parseIaCFindings(filePath string, data []byte, artifacts []IaCArtifact) []ConfigFinding {
+	if len(artifacts) == 0 {
+		return nil
+	}
+	text := string(data)
+	lowerText := strings.ToLower(text)
+	resourceType := ""
+	artifactType := ""
+	format := ""
+	for _, artifact := range artifacts {
+		resourceType = firstNonEmpty(resourceType, artifact.ResourceType)
+		artifactType = firstNonEmpty(artifactType, artifact.Type)
+		format = firstNonEmpty(format, artifact.Format)
+	}
+
+	findings := make([]ConfigFinding, 0, 3)
+	appendFinding := func(kind, severity, title, description, remediation, findingResourceType string) {
+		findings = append(findings, ConfigFinding{
+			ID:           findingID(kind, filePath),
+			Type:         kind,
+			Severity:     severity,
+			Path:         filePath,
+			Title:        title,
+			Description:  description,
+			Remediation:  remediation,
+			ResourceType: firstNonEmpty(findingResourceType, resourceType),
+			ArtifactType: artifactType,
+			Format:       format,
+		})
+	}
+
+	if artifactType == "terraform_state" {
+		appendFinding(
+			"terraform_state",
+			"high",
+			"Terraform state file detected",
+			"Terraform state frequently persists provider credentials, infrastructure metadata, and plaintext secrets.",
+			"Remove state files from deployed artifacts and store state only in encrypted remote backends with access controls.",
+			"terraform_state",
+		)
+	}
+
+	if hasIaCPublicExposure(lowerText) {
+		appendFinding(
+			"iac_public_exposure",
+			"high",
+			"Public network exposure in IaC or config",
+			"IaC or configuration content allows unrestricted ingress or public exposure.",
+			"Replace public CIDRs or principals with scoped identities, private networking, or tightly bounded ranges.",
+			firstNonEmpty(inferPublicExposureResourceType(lowerText), resourceType),
+		)
+	}
+
+	if hasPublicStorageExposure(lowerText) {
+		appendFinding(
+			"iac_public_storage",
+			"high",
+			"Public storage access configured",
+			"Template or configuration grants public read access to storage resources.",
+			"Remove public principals and ACLs, then require authenticated access through scoped identities or signed requests.",
+			"bucket",
+		)
+	}
+
+	if supportsBucketEncryptionCheck(artifactType) && missingBucketEncryption(lowerText) {
+		appendFinding(
+			"iac_missing_bucket_encryption",
+			"medium",
+			"Bucket definition missing encryption setting",
+			"Storage bucket configuration is present without an explicit encryption setting.",
+			"Enable provider-managed encryption or a customer-managed KMS key in the IaC definition.",
+			"bucket",
+		)
+	}
+
+	return findings
+}
+
+func supportsBucketEncryptionCheck(artifactType string) bool {
+	switch strings.TrimSpace(artifactType) {
+	case "terraform", "terraform_json", "cloudformation":
+		return true
+	default:
+		return false
+	}
+}
+
+func inferIaCResourceType(filePath, text string) string {
+	lowerText := strings.ToLower(text)
+	switch {
+	case strings.Contains(lowerText, "aws_security_group"), strings.Contains(lowerText, "google_compute_firewall"), strings.Contains(lowerText, "networksecuritygroup"):
+		return "firewall_rule"
+	case strings.Contains(lowerText, "aws_s3_bucket"), strings.Contains(lowerText, "google_storage_bucket"), strings.Contains(lowerText, "azurerm_storage_account"), strings.Contains(lowerText, "aws::s3::bucket"):
+		return "bucket"
+	case strings.Contains(lowerText, "kind: service"), strings.Contains(lowerText, "kind: ingress"), strings.Contains(lowerText, "kind: networkpolicy"):
+		return "kubernetes_network"
+	case strings.Contains(strings.ToLower(filePath), "dockerfile"), strings.Contains(lowerText, "services:"):
+		return "container_service"
+	default:
+		return ""
+	}
+}
+
+func hasIaCPublicExposure(lowerText string) bool {
+	return strings.Contains(lowerText, "0.0.0.0/0") ||
+		strings.Contains(lowerText, "::/0") ||
+		strings.Contains(lowerText, "\"cidr\": \"0.0.0.0/0\"") ||
+		strings.Contains(lowerText, "host: 0.0.0.0") ||
+		strings.Contains(lowerText, "listen_address=0.0.0.0") ||
+		strings.Contains(lowerText, "source_ranges") && strings.Contains(lowerText, "0.0.0.0/0")
+}
+
+func hasPublicStorageExposure(lowerText string) bool {
+	return strings.Contains(lowerText, "allusers") ||
+		strings.Contains(lowerText, "allauthenticatedusers") ||
+		strings.Contains(lowerText, "public-read") ||
+		strings.Contains(lowerText, "\"principal\": \"*\"") && strings.Contains(lowerText, "s3:getobject")
+}
+
+func inferPublicExposureResourceType(lowerText string) string {
+	switch {
+	case strings.Contains(lowerText, "aws_security_group"), strings.Contains(lowerText, "google_compute_firewall"), strings.Contains(lowerText, "networksecuritygroup"), strings.Contains(lowerText, "source_ranges"):
+		return "firewall_rule"
+	case strings.Contains(lowerText, "kind: service"), strings.Contains(lowerText, "kind: ingress"):
+		return "kubernetes_service"
+	default:
+		return ""
+	}
+}
+
+func missingBucketEncryption(lowerText string) bool {
+	hasBucket := strings.Contains(lowerText, "aws_s3_bucket") ||
+		strings.Contains(lowerText, "google_storage_bucket") ||
+		strings.Contains(lowerText, "aws::s3::bucket")
+	if !hasBucket {
+		return false
+	}
+	return !strings.Contains(lowerText, "server_side_encryption_configuration") &&
+		!strings.Contains(lowerText, "bucketencryption") &&
+		!strings.Contains(lowerText, "default_kms_key_name") &&
+		!strings.Contains(lowerText, "kms_key_name") &&
+		!strings.Contains(lowerText, "encryption")
+}
+
 func scanSecrets(filePath string, data []byte) []SecretFinding {
 	if looksBinary(data) {
 		return nil
 	}
 	findings := make([]SecretFinding, 0)
 	seen := make(map[string]struct{})
+	appendFinding := func(kind, severity, match, description string, lineNo int, refs ...SecretReference) {
+		id := findingID(kind, fmt.Sprintf("%s:%d:%s", filePath, lineNo, match))
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		finding := SecretFinding{
+			ID:          id,
+			Type:        kind,
+			Severity:    severity,
+			Path:        filePath,
+			Line:        lineNo,
+			Match:       match,
+			Description: description,
+		}
+		if len(refs) > 0 {
+			finding.References = append([]SecretReference(nil), refs...)
+		}
+		findings = append(findings, finding)
+	}
+	if ref, ok := gcpServiceAccountKeyReference(data); ok {
+		appendFinding(
+			"gcp_service_account_key",
+			"critical",
+			fingerprintSecretMatch(ref.Identifier+"|"+ref.Attributes["private_key_id"]),
+			"Potential GCP service account key detected.",
+			1,
+			ref,
+		)
+	}
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	lineNo := 0
 	for scanner.Scan() {
@@ -855,32 +1187,163 @@ func scanSecrets(filePath string, data []byte) []SecretFinding {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		appendFinding := func(kind, severity, match, description string) {
-			id := findingID(kind, fmt.Sprintf("%s:%d:%s", filePath, lineNo, match))
-			if _, ok := seen[id]; ok {
-				return
-			}
-			seen[id] = struct{}{}
-			findings = append(findings, SecretFinding{ID: id, Type: kind, Severity: severity, Path: filePath, Line: lineNo, Match: match, Description: description})
-		}
 		switch {
 		case awsAccessKeyPattern.MatchString(line):
-			appendFinding("aws_access_key", "critical", fingerprintSecretMatch(awsAccessKeyPattern.FindString(line)), "Potential AWS access key detected.")
+			match := awsAccessKeyPattern.FindString(line)
+			appendFinding(
+				"aws_access_key",
+				"critical",
+				fingerprintSecretMatch(match),
+				"Potential AWS access key detected.",
+				lineNo,
+				SecretReference{Kind: "cloud_identity", Provider: "aws", Identifier: strings.TrimSpace(match)},
+			)
 		case githubTokenPattern.MatchString(line):
-			appendFinding("github_token", "high", fingerprintSecretMatch(githubTokenPattern.FindString(line)), "Potential GitHub token detected.")
+			appendFinding("github_token", "high", fingerprintSecretMatch(githubTokenPattern.FindString(line)), "Potential GitHub token detected.", lineNo)
 		case slackTokenPattern.MatchString(line):
-			appendFinding("slack_token", "high", fingerprintSecretMatch(slackTokenPattern.FindString(line)), "Potential Slack token detected.")
+			appendFinding("slack_token", "high", fingerprintSecretMatch(slackTokenPattern.FindString(line)), "Potential Slack token detected.", lineNo)
 		case privateKeyPattern.MatchString(line):
-			appendFinding("private_key", "critical", "private_key", "Private key material detected.")
+			appendFinding("private_key", "critical", "private_key", "Private key material detected.", lineNo)
+		case databaseURLPattern.MatchString(line):
+			match := databaseURLPattern.FindString(line)
+			if ref, ok := parseDatabaseConnectionReference(match); ok {
+				appendFinding(
+					"database_connection_string",
+					"critical",
+					fingerprintSecretMatch(match),
+					"Potential database connection string detected.",
+					lineNo,
+					ref,
+				)
+			} else {
+				appendFinding("database_connection_string", "critical", fingerprintSecretMatch(match), "Potential database connection string detected.", lineNo)
+			}
 		case inlineSecretPattern.MatchString(line):
-			appendFinding("inline_secret", "high", fingerprintSecretMatch(line), "Inline secret-like assignment detected.")
+			appendFinding("inline_secret", "high", fingerprintSecretMatch(line), "Inline secret-like assignment detected.", lineNo)
 		default:
 			if token := entropySecretToken(line); token != "" {
-				appendFinding("high_entropy_token", "medium", fingerprintSecretMatch(token), "High-entropy token detected in text content.")
+				appendFinding("high_entropy_token", "medium", fingerprintSecretMatch(token), "High-entropy token detected in text content.", lineNo)
 			}
 		}
 	}
 	return findings
+}
+
+func gcpServiceAccountKeyReference(data []byte) (SecretReference, bool) {
+	var payload struct {
+		Type         string `json:"type"`
+		ClientEmail  string `json:"client_email"`
+		PrivateKeyID string `json:"private_key_id"`
+		TokenURI     string `json:"token_uri"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return SecretReference{}, false
+	}
+	if !strings.EqualFold(strings.TrimSpace(payload.Type), "service_account") {
+		return SecretReference{}, false
+	}
+	email := strings.ToLower(strings.TrimSpace(payload.ClientEmail))
+	if email == "" {
+		return SecretReference{}, false
+	}
+	attributes := map[string]string{
+		"credential_format": "json",
+	}
+	if strings.TrimSpace(payload.PrivateKeyID) != "" {
+		attributes["private_key_id"] = strings.TrimSpace(payload.PrivateKeyID)
+	}
+	if strings.TrimSpace(payload.TokenURI) != "" {
+		attributes["token_uri"] = strings.TrimSpace(payload.TokenURI)
+	}
+	return SecretReference{
+		Kind:       "cloud_identity",
+		Provider:   "gcp",
+		Identifier: email,
+		Attributes: attributes,
+	}, true
+}
+
+func parseDatabaseConnectionReference(raw string) (SecretReference, bool) {
+	raw = strings.TrimSpace(strings.Trim(raw, `"'`))
+	if raw == "" {
+		return SecretReference{}, false
+	}
+	if strings.HasPrefix(strings.ToLower(raw), "jdbc:sqlserver://") {
+		return parseJDBCSQLServerReference(raw)
+	}
+	normalized := strings.TrimPrefix(raw, "jdbc:")
+	parsed, err := url.Parse(normalized)
+	if err != nil || parsed == nil {
+		return SecretReference{}, false
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return SecretReference{}, false
+	}
+	port, _ := strconv.Atoi(strings.TrimSpace(parsed.Port()))
+	database := strings.Trim(strings.TrimSpace(parsed.Path), "/")
+	if database == "" {
+		if db := strings.TrimSpace(parsed.Query().Get("database")); db != "" {
+			database = db
+		}
+		if db := strings.TrimSpace(parsed.Query().Get("databaseName")); db != "" {
+			database = db
+		}
+	}
+	scheme := strings.ToLower(strings.TrimSpace(parsed.Scheme))
+	if scheme == "" {
+		scheme = "unknown"
+	}
+	return SecretReference{
+		Kind:       "database",
+		Identifier: host,
+		Host:       host,
+		Port:       port,
+		Database:   database,
+		Attributes: map[string]string{"scheme": scheme},
+	}, true
+}
+
+func parseJDBCSQLServerReference(raw string) (SecretReference, bool) {
+	raw = strings.TrimPrefix(strings.TrimSpace(raw), "jdbc:sqlserver://")
+	hostPort, _, _ := strings.Cut(raw, ";")
+	hostPort = strings.TrimSpace(hostPort)
+	if hostPort == "" {
+		return SecretReference{}, false
+	}
+	host := hostPort
+	port := 0
+	if strings.Contains(hostPort, ":") {
+		if parsedHost, parsedPort, err := net.SplitHostPort(hostPort); err == nil {
+			host = parsedHost
+			port, _ = strconv.Atoi(parsedPort)
+		} else {
+			host, _, _ = strings.Cut(hostPort, ":")
+		}
+	}
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return SecretReference{}, false
+	}
+	database := ""
+	for _, segment := range strings.Split(raw, ";") {
+		key, value, ok := strings.Cut(segment, "=")
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "databasename", "database":
+			database = strings.TrimSpace(value)
+		}
+	}
+	return SecretReference{
+		Kind:       "database",
+		Identifier: host,
+		Host:       host,
+		Port:       port,
+		Database:   database,
+		Attributes: map[string]string{"scheme": "sqlserver"},
+	}, true
 }
 
 func buildSBOM(generatedAt time.Time, packages []PackageRecord) SBOMDocument {
@@ -922,6 +1385,93 @@ func dedupeFindings(findings []scanner.ContainerFinding) []scanner.ContainerFind
 		out = append(out, finding)
 	}
 	return out
+}
+
+func dedupeVulnerabilities(vulns []scanner.ImageVulnerability) []scanner.ImageVulnerability {
+	if len(vulns) == 0 {
+		return nil
+	}
+	seen := make(map[string]int, len(vulns))
+	out := make([]scanner.ImageVulnerability, 0, len(vulns))
+	for _, vuln := range vulns {
+		identifier := strings.TrimSpace(vuln.CVE)
+		if identifier == "" {
+			identifier = firstNonEmpty(strings.TrimSpace(vuln.ID), strings.TrimSpace(vuln.Description))
+		}
+		key := identifier + "|" + strings.TrimSpace(vuln.Package) + "|" + strings.TrimSpace(vuln.InstalledVersion)
+		if key == "||" {
+			key = strings.TrimSpace(vuln.FixedVersion) + "|" + strings.TrimSpace(vuln.Severity)
+		}
+		if idx, ok := seen[key]; ok {
+			out[idx] = mergeImageVulnerability(out[idx], vuln)
+			continue
+		}
+		seen[key] = len(out)
+		out = append(out, vuln)
+	}
+	return out
+}
+
+func mergeImageVulnerability(existing, incoming scanner.ImageVulnerability) scanner.ImageVulnerability {
+	merged := existing
+	if strings.TrimSpace(merged.ID) == "" {
+		merged.ID = strings.TrimSpace(incoming.ID)
+	}
+	if strings.TrimSpace(merged.CVE) == "" {
+		merged.CVE = strings.TrimSpace(incoming.CVE)
+	}
+	if strings.TrimSpace(merged.Severity) == "" || strings.EqualFold(strings.TrimSpace(merged.Severity), "unknown") {
+		merged.Severity = strings.TrimSpace(incoming.Severity)
+	}
+	if strings.TrimSpace(merged.FixedVersion) == "" {
+		merged.FixedVersion = strings.TrimSpace(incoming.FixedVersion)
+	}
+	if strings.TrimSpace(merged.Description) == "" {
+		merged.Description = strings.TrimSpace(incoming.Description)
+	}
+	if merged.CVSS == 0 {
+		merged.CVSS = incoming.CVSS
+	}
+	if merged.Published.IsZero() {
+		merged.Published = incoming.Published
+	}
+	merged.Exploitable = merged.Exploitable || incoming.Exploitable
+	merged.InKEV = merged.InKEV || incoming.InKEV
+	merged.References = dedupeStrings(append(append([]string{}, merged.References...), incoming.References...))
+	return merged
+}
+
+func buildVulnerabilityFindings(vulns []scanner.ImageVulnerability) []scanner.ContainerFinding {
+	if len(vulns) == 0 {
+		return nil
+	}
+	findings := make([]scanner.ContainerFinding, 0, len(vulns))
+	for _, vuln := range vulns {
+		severity := strings.ToLower(strings.TrimSpace(vuln.Severity))
+		if severity != "critical" && severity != "high" && !vuln.InKEV {
+			continue
+		}
+		title := fmt.Sprintf("%s in %s", firstNonEmpty(vuln.CVE, vuln.ID, "unknown-vulnerability"), vuln.Package)
+		if vuln.InKEV {
+			title = "[KEV] " + title
+			severity = "critical"
+		}
+		remediation := "No fix available. Consider using an alternative package or mitigating controls."
+		if strings.TrimSpace(vuln.FixedVersion) != "" {
+			remediation = fmt.Sprintf("Update %s to version %s", vuln.Package, vuln.FixedVersion)
+		}
+		findings = append(findings, scanner.ContainerFinding{
+			ID:          findingID("pkg_vuln", firstNonEmpty(vuln.CVE, vuln.ID)+"|"+vuln.Package+"|"+vuln.InstalledVersion),
+			Type:        "vulnerability",
+			Severity:    severity,
+			Title:       title,
+			Description: vuln.Description,
+			Remediation: remediation,
+			CVE:         firstNonEmpty(vuln.CVE, vuln.ID),
+			Package:     vuln.Package,
+		})
+	}
+	return findings
 }
 
 func buildPURL(pkg PackageRecord) string {

@@ -192,6 +192,14 @@ func (g *Graph) RemoveEdgesByNode(nodeID string) {
 	}
 }
 
+// CompactDeletedEdges removes soft-deleted edges from adjacency slices to keep
+// long-lived graphs from accumulating tombstoned edge pointers.
+func (g *Graph) CompactDeletedEdges() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.compactDeletedEdgesLocked()
+}
+
 // SetNodeProperty sets or updates a single property on a node.
 func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 	g.mu.Lock()
@@ -783,6 +791,7 @@ func (g *Graph) GetResourceNodesByARNPrefix(prefix string) []*Node {
 }
 
 func (g *Graph) addNodeLocked(node *Node) bool {
+	normalizeNodeTenantID(node)
 	if !g.applyNodeSchemaValidationLocked(node) {
 		return false
 	}
@@ -869,6 +878,37 @@ func (g *Graph) activeEdgeLocked(edge *Edge) bool {
 		return false
 	}
 	return true
+}
+
+func (g *Graph) compactDeletedEdgesLocked() {
+	for source, edges := range g.outEdges {
+		compacted := edges[:0]
+		for _, edge := range edges {
+			if edge == nil || edge.DeletedAt != nil {
+				continue
+			}
+			compacted = append(compacted, edge)
+		}
+		if len(compacted) == 0 {
+			delete(g.outEdges, source)
+			continue
+		}
+		g.outEdges[source] = compacted
+	}
+	for target, edges := range g.inEdges {
+		compacted := edges[:0]
+		for _, edge := range edges {
+			if edge == nil || edge.DeletedAt != nil {
+				continue
+			}
+			compacted = append(compacted, edge)
+		}
+		if len(compacted) == 0 {
+			delete(g.inEdges, target)
+			continue
+		}
+		g.inEdges[target] = compacted
+	}
 }
 
 func (g *Graph) removeEdgesByNodeLocked(nodeID string) bool {

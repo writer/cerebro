@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
@@ -156,28 +157,30 @@ func (c *EffectivePermissionsCalculator) collectDirectPermissions(ep *EffectiveP
 			continue
 		}
 
-		actions := edgeKindToActions(edge.Kind)
-		if existingActions, ok := edge.Properties["actions"].([]string); ok {
-			actions = existingActions
+		actions := permissionActionsForEdge(edge)
+		conditions := permissionConditionsForEdge(edge)
+		source := permissionSourceForEdge(edge, principalID, ep.PrincipalName, "direct", "allow")
+
+		if existing, ok := ep.Resources[edge.Target]; ok {
+			existing.Actions = mergeActions(existing.Actions, actions)
+			existing.Sources = mergeActions(existing.Sources, []string{source.SourceID})
+			existing.Conditions = mergeActions(existing.Conditions, conditions)
+			existing.IsDirect = true
+		} else {
+			ep.Resources[edge.Target] = &ResourceAccess{
+				ResourceID:   edge.Target,
+				ResourceName: targetNode.Name,
+				ResourceType: targetNode.Kind,
+				Actions:      actions,
+				Effect:       EdgeEffectAllow,
+				Sources:      []string{source.SourceID},
+				Path:         []string{principalID, edge.Target},
+				IsDirect:     true,
+				Conditions:   conditions,
+			}
 		}
 
-		ep.Resources[edge.Target] = &ResourceAccess{
-			ResourceID:   edge.Target,
-			ResourceName: targetNode.Name,
-			ResourceType: targetNode.Kind,
-			Actions:      actions,
-			Effect:       EdgeEffectAllow,
-			Sources:      []string{principalID},
-			Path:         []string{principalID, edge.Target},
-			IsDirect:     true,
-		}
-
-		ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
-			Type:       "direct",
-			SourceID:   principalID,
-			SourceName: ep.PrincipalName,
-			Effect:     "allow",
-		})
+		ep.InheritanceChain = append(ep.InheritanceChain, source)
 	}
 }
 
@@ -204,12 +207,14 @@ func (c *EffectivePermissionsCalculator) collectGroupPermissions(ep *EffectivePe
 				continue
 			}
 
-			actions := edgeKindToActions(groupEdge.Kind)
+			actions := permissionActionsForEdge(groupEdge)
+			conditions := permissionConditionsForEdge(groupEdge)
 
 			// Merge with existing or create new
 			if existing, ok := ep.Resources[groupEdge.Target]; ok {
 				existing.Actions = mergeActions(existing.Actions, actions)
 				existing.Sources = append(existing.Sources, groupNode.ID)
+				existing.Conditions = mergeActions(existing.Conditions, conditions)
 			} else {
 				ep.Resources[groupEdge.Target] = &ResourceAccess{
 					ResourceID:   groupEdge.Target,
@@ -220,6 +225,7 @@ func (c *EffectivePermissionsCalculator) collectGroupPermissions(ep *EffectivePe
 					Sources:      []string{groupNode.ID},
 					Path:         []string{principalID, groupNode.ID, groupEdge.Target},
 					IsInherited:  true,
+					Conditions:   conditions,
 				}
 			}
 
@@ -281,13 +287,15 @@ func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
 				continue
 			}
 
-			actions := edgeKindToActions(roleEdge.Kind)
+			actions := permissionActionsForEdge(roleEdge)
+			conditions := permissionConditionsForEdge(roleEdge)
 			resourcePath := append([]string{}, newPath...)
 			resourcePath = append(resourcePath, roleEdge.Target)
 
 			if existing, ok := ep.Resources[roleEdge.Target]; ok {
 				existing.Actions = mergeActions(existing.Actions, actions)
 				existing.Sources = append(existing.Sources, roleNode.ID)
+				existing.Conditions = mergeActions(existing.Conditions, conditions)
 			} else {
 				ep.Resources[roleEdge.Target] = &ResourceAccess{
 					ResourceID:   roleEdge.Target,
@@ -298,6 +306,7 @@ func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
 					Sources:      []string{roleNode.ID},
 					Path:         resourcePath,
 					IsInherited:  true,
+					Conditions:   conditions,
 				}
 			}
 
@@ -325,15 +334,10 @@ func (c *EffectivePermissionsCalculator) applyDenyRules(ep *EffectivePermissions
 		if !ok || !targetNode.IsResource() {
 			continue
 		}
-		actions := edgeKindToActions(edge.Kind)
+		actions := permissionActionsForEdge(edge)
 		denies[edge.Target] = append(denies[edge.Target], actions...)
 
-		ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
-			Type:       "direct_deny",
-			SourceID:   principalID,
-			SourceName: ep.PrincipalName,
-			Effect:     "deny",
-		})
+		ep.InheritanceChain = append(ep.InheritanceChain, permissionSourceForEdge(edge, principalID, ep.PrincipalName, "direct_deny", "deny"))
 	}
 
 	// 2. Group denies - check all groups the principal is a member of
@@ -357,7 +361,7 @@ func (c *EffectivePermissionsCalculator) applyDenyRules(ep *EffectivePermissions
 				continue
 			}
 
-			actions := edgeKindToActions(groupEdge.Kind)
+			actions := permissionActionsForEdge(groupEdge)
 			denies[groupEdge.Target] = append(denies[groupEdge.Target], actions...)
 
 			ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
@@ -428,7 +432,7 @@ func (c *EffectivePermissionsCalculator) collectRoleDenies(
 				continue
 			}
 
-			actions := edgeKindToActions(roleEdge.Kind)
+			actions := permissionActionsForEdge(roleEdge)
 			denies[roleEdge.Target] = append(denies[roleEdge.Target], actions...)
 
 			ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
@@ -865,6 +869,55 @@ func edgeKindToActions(kind EdgeKind) []string {
 		return []string{"*"}
 	default:
 		return []string{string(kind)}
+	}
+}
+
+func permissionActionsForEdge(edge *Edge) []string {
+	if edge != nil {
+		if actions := stringSliceFromValue(edge.Properties["actions"]); len(actions) > 0 {
+			return actions
+		}
+	}
+	return edgeKindToActions(edge.Kind)
+}
+
+func permissionConditionsForEdge(edge *Edge) []string {
+	if edge == nil || edge.Properties == nil {
+		return nil
+	}
+	raw, ok := edge.Properties["conditions"]
+	if !ok || raw == nil {
+		return nil
+	}
+	payload, err := json.Marshal(raw)
+	if err != nil {
+		value := strings.TrimSpace(toString(raw))
+		if value == "" {
+			return nil
+		}
+		return []string{value}
+	}
+	return []string{string(payload)}
+}
+
+func permissionSourceForEdge(edge *Edge, fallbackID, fallbackName, fallbackType, effect string) *PermissionSource {
+	sourceID := fallbackID
+	sourceName := fallbackName
+	sourceType := fallbackType
+	if edge != nil && edge.Properties != nil {
+		if via := strings.TrimSpace(toString(edge.Properties["via"])); via != "" {
+			sourceID = via
+			sourceName = via
+		}
+		if strings.EqualFold(strings.TrimSpace(toString(edge.Properties["mechanism"])), "resource_policy") {
+			sourceType = "resource_policy"
+		}
+	}
+	return &PermissionSource{
+		Type:       sourceType,
+		SourceID:   sourceID,
+		SourceName: sourceName,
+		Effect:     effect,
 	}
 }
 

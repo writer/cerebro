@@ -232,6 +232,7 @@ func (a *App) Close() error {
 	if a.graphCancel != nil {
 		a.graphCancel()
 	}
+	a.stopEventCorrelationRefreshLoop()
 	a.graphConsistencyMu.Lock()
 	if a.graphConsistencyCancel != nil {
 		a.graphConsistencyCancel()
@@ -291,6 +292,11 @@ func (a *App) Close() error {
 	if a.AlertRouter != nil {
 		if err := a.AlertRouter.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("alert router: %w", err))
+		}
+	}
+	if a.ExecutionStore != nil {
+		if err := a.ExecutionStore.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("execution store: %w", err))
 		}
 	}
 

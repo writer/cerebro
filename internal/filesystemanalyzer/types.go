@@ -11,8 +11,13 @@ type MalwareScanner interface {
 	ScanData(ctx context.Context, data []byte, filename string) (*scanner.MalwareScanResult, error)
 }
 
+type PackageVulnerabilityMatcher interface {
+	MatchPackages(ctx context.Context, os OSInfo, packages []PackageRecord) ([]scanner.ImageVulnerability, error)
+}
+
 type Options struct {
 	VulnerabilityScanner scanner.FilesystemScanner
+	VulnerabilityMatcher PackageVulnerabilityMatcher
 	MalwareScanner       MalwareScanner
 	Now                  func() time.Time
 	MaxWalkEntries       int
@@ -42,23 +47,45 @@ type PackageRecord struct {
 }
 
 type SecretFinding struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	Severity    string `json:"severity"`
-	Path        string `json:"path"`
-	Line        int    `json:"line,omitempty"`
-	Match       string `json:"match,omitempty"`
-	Description string `json:"description,omitempty"`
+	ID          string            `json:"id"`
+	Type        string            `json:"type"`
+	Severity    string            `json:"severity"`
+	Path        string            `json:"path"`
+	Line        int               `json:"line,omitempty"`
+	Match       string            `json:"match,omitempty"`
+	Description string            `json:"description,omitempty"`
+	References  []SecretReference `json:"references,omitempty"`
+}
+
+type SecretReference struct {
+	Kind       string            `json:"kind"`
+	Provider   string            `json:"provider,omitempty"`
+	Identifier string            `json:"identifier,omitempty"`
+	Host       string            `json:"host,omitempty"`
+	Port       int               `json:"port,omitempty"`
+	Database   string            `json:"database,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 type ConfigFinding struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	Severity    string `json:"severity"`
-	Path        string `json:"path"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	Remediation string `json:"remediation,omitempty"`
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	Severity     string `json:"severity"`
+	Path         string `json:"path"`
+	Title        string `json:"title"`
+	Description  string `json:"description,omitempty"`
+	Remediation  string `json:"remediation,omitempty"`
+	ResourceType string `json:"resource_type,omitempty"`
+	ArtifactType string `json:"artifact_type,omitempty"`
+	Format       string `json:"format,omitempty"`
+}
+
+type IaCArtifact struct {
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	Path         string `json:"path"`
+	Format       string `json:"format,omitempty"`
+	ResourceType string `json:"resource_type,omitempty"`
 }
 
 type MalwareFinding struct {
@@ -94,6 +121,7 @@ type Summary struct {
 	VulnerabilityCount    int  `json:"vulnerability_count"`
 	SecretCount           int  `json:"secret_count"`
 	MisconfigurationCount int  `json:"misconfiguration_count"`
+	IaCArtifactCount      int  `json:"iac_artifact_count"`
 	MalwareCount          int  `json:"malware_count"`
 	Truncated             bool `json:"truncated,omitempty"`
 }
@@ -107,6 +135,7 @@ type Report struct {
 	Findings          []scanner.ContainerFinding   `json:"findings,omitempty"`
 	Secrets           []SecretFinding              `json:"secrets,omitempty"`
 	Misconfigurations []ConfigFinding              `json:"misconfigurations,omitempty"`
+	IaCArtifacts      []IaCArtifact                `json:"iac_artifacts,omitempty"`
 	Malware           []MalwareFinding             `json:"malware,omitempty"`
 	SBOM              SBOMDocument                 `json:"sbom"`
 	Summary           Summary                      `json:"summary"`

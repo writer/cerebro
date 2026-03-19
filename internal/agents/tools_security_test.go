@@ -42,6 +42,7 @@ func TestCloudInspectTools_DefaultDisabled(t *testing.T) {
 			tool := findToolByName(st.GetTools(), name)
 			if tool == nil {
 				t.Fatalf("tool %s not found", name)
+				return
 			}
 
 			_, err := tool.Handler(context.Background(), json.RawMessage(`{}`))
