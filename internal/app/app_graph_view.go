@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -106,4 +107,39 @@ func (a *App) requireReadableSecurityGraph() (*graph.Graph, error) {
 		return nil, fmt.Errorf("security graph not initialized")
 	}
 	return g, nil
+}
+
+func (a *App) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph {
+	if a == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if current := a.CurrentSecurityGraph(); current != nil {
+		if a.graphReady == nil {
+			if current.NodeCount() == 0 {
+				return nil
+			}
+			return current
+		}
+		if !a.WaitForGraph(ctx) {
+			if current.NodeCount() == 0 {
+				return nil
+			}
+			return current
+		}
+		return a.CurrentSecurityGraph()
+	}
+	securityGraph, err := a.currentOrStoredSecurityGraphView()
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("failed to resolve readable security graph", "error", err)
+		}
+		return nil
+	}
+	if securityGraph == nil || securityGraph.NodeCount() == 0 {
+		return nil
+	}
+	return securityGraph
 }

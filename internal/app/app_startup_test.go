@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/evalops/cerebro/internal/graph"
 )
 
 func TestRunInitStep_RecoversPanic(t *testing.T) {
@@ -113,6 +115,54 @@ func TestWaitForGraph_ContextCanceled(t *testing.T) {
 
 	if a.WaitForGraph(ctx) {
 		t.Fatal("expected WaitForGraph to return false on context cancellation")
+	}
+}
+
+func TestWaitForReadableSecurityGraphUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	a := &App{
+		GraphSnapshots: mustPersistToolGraph(t, persisted),
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	resolved := a.WaitForReadableSecurityGraph(context.Background())
+	if resolved == nil {
+		t.Fatal("expected persisted snapshot graph")
+	}
+	if _, ok := resolved.GetNode("service:payments"); !ok {
+		t.Fatal("expected persisted snapshot node in readable graph")
+	}
+}
+
+func TestWaitForReadableSecurityGraphUsesReadyLiveGraphWithoutWaitChannel(t *testing.T) {
+	live := graph.New()
+	live.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	a := &App{SecurityGraph: live}
+
+	resolved := a.WaitForReadableSecurityGraph(context.Background())
+	if resolved != live {
+		t.Fatalf("expected live graph, got %p want %p", resolved, live)
+	}
+}
+
+func TestWaitForReadableSecurityGraphReturnsCurrentGraphWhenWaitTimesOut(t *testing.T) {
+	live := graph.New()
+	live.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	a := &App{
+		SecurityGraph: live,
+		graphReady:    make(chan struct{}),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+
+	resolved := a.WaitForReadableSecurityGraph(ctx)
+	if resolved != live {
+		t.Fatalf("expected current live graph after timeout, got %p want %p", resolved, live)
 	}
 }
 

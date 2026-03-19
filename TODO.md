@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 222 - CLI Readable Graph Snapshot Fallback (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#392` still left the CLI `scan` and `sync` graph-analysis paths gated on the live `SecurityGraph` pointer, so they silently skipped graph analysis whenever only persisted snapshots were available.
+- [x] Gap: the app layer already had the persisted/live graph resolution primitives, but the CLI had no exported "wait for a usable graph view" seam and therefore kept dereferencing the live graph directly.
+- [x] Gap: there was no focused regression proving the app can hand CLI callers a readable persisted snapshot when no live graph has been materialized yet.
+
+### Execution plan
+- [x] Add an app-level helper that returns a readable graph view from either the ready live graph or the latest persisted snapshot.
+- [x] Route the CLI `scan` and `sync` graph-analysis paths through that helper without widening the write-path behavior.
+- [x] Add focused app regressions for the new readable-graph helper and rerun targeted app/CLI validation before opening the PR.
+
 ## Deep Review Cycle 220 - App Event Routing Snapshot Fallback (2026-03-19)
 
 ### Review findings

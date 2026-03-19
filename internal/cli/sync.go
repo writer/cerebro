@@ -1190,16 +1190,16 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 
 	graphToxicCount := 0
 	graphPaths := 0
-	if application.SecurityGraph != nil {
+	if application.Scanner != nil {
 		graphCtx := ctx
 		cancel := func() {}
 		if tuning.GraphWaitTimeout > 0 {
 			graphCtx, cancel = context.WithTimeout(ctx, tuning.GraphWaitTimeout)
 		}
-		graphReady := application.WaitForGraph(graphCtx)
+		securityGraph := application.WaitForReadableSecurityGraph(graphCtx)
 		cancel()
-		if graphReady {
-			graphResult := application.Scanner.AnalyzeGraph(ctx, application.SecurityGraph)
+		if securityGraph != nil {
+			graphResult := application.Scanner.AnalyzeGraph(ctx, securityGraph)
 			if graphResult != nil {
 				graphPaths = graphResult.AttackPathStats.TotalPaths
 				for _, f := range graphResult.ToxicCombinations {
