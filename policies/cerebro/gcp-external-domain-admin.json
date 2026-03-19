@@ -1,16 +1,18 @@
 {
   "id": "gcp-external-domain-admin",
-  "control_id": "wc-id-1830",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "User account with non organizational domain (gmail) and high/admin access in GCP",
   "description": "A personal email account (non-organizational) has high or admin access to GCP resources",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::iam::member",
   "conditions": [
-    "email MATCHES '.*@gmail.com$|.*@outlook.com$|.*@yahoo.com$|.*@hotmail.com$'",
-    "has_high_privilege == true OR has_admin_role == true"
+    "matches_value(path(resource, \"email\"), \".*@gmail.com$|.*@outlook.com$|.*@yahoo.com$|.*@hotmail.com$\")",
+    "(cmp_eq(path(resource, \"has_high_privilege\"), true)) || (cmp_eq(path(resource, \"has_admin_role\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Replace personal accounts with organizational accounts. Remove high privileges from personal accounts immediately.",
   "tags": [
     "wiz",
     "gcp",
@@ -18,6 +20,8 @@
     "external-domain",
     "admin"
   ],
+  "control_id": "wc-id-1830",
+  "remediation": "Replace personal accounts with organizational accounts. Remove high privileges from personal accounts immediately.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

@@ -13,6 +13,7 @@ import (
 const DefaultNamespace = "action_engine"
 
 type Store interface {
+	Close() error
 	SaveExecution(ctx context.Context, execution *Execution) error
 	LoadExecution(ctx context.Context, executionID string) (*Execution, error)
 	ListExecutions(ctx context.Context, limit int) ([]Execution, error)
@@ -65,7 +66,7 @@ func (s *SQLiteStore) SaveExecution(ctx context.Context, execution *Execution) e
 		Kind:        "action_execution",
 		Status:      string(execution.Status),
 		Stage:       executionStage(execution),
-		SubmittedAt: executionSubmittedAt(execution),
+		SubmittedAt: execution.StartedAt.UTC(),
 		StartedAt:   timePointer(execution.StartedAt),
 		CompletedAt: execution.CompletedAt,
 		UpdatedAt:   executionUpdatedAt(execution),
@@ -155,6 +156,72 @@ func (s *SQLiteStore) LoadEvents(ctx context.Context, executionID string) ([]Eve
 	return events, nil
 }
 
+func (s *SQLiteStore) ClaimApproval(ctx context.Context, executionID, approver string, approvedAt time.Time) (*Execution, bool, error) {
+	if s == nil || s.store == nil {
+		return nil, false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	executionID = strings.TrimSpace(executionID)
+	approver = strings.TrimSpace(approver)
+	if executionID == "" {
+		return nil, false, fmt.Errorf("execution id is required")
+	}
+	if approver == "" {
+		return nil, false, fmt.Errorf("approver is required")
+	}
+	if approvedAt.IsZero() {
+		approvedAt = time.Now().UTC()
+	} else {
+		approvedAt = approvedAt.UTC()
+	}
+
+	currentEnv, err := s.store.LoadRun(ctx, s.namespace, executionID)
+	if err != nil {
+		return nil, false, err
+	}
+	if currentEnv == nil {
+		return nil, false, nil
+	}
+
+	var execution Execution
+	if err := json.Unmarshal(currentEnv.Payload, &execution); err != nil {
+		return nil, false, fmt.Errorf("unmarshal action execution: %w", err)
+	}
+	if execution.Status != StatusAwaitingApproval || execution.CompletedAt != nil {
+		return &execution, false, nil
+	}
+
+	execution.Status = StatusRunning
+	execution.Error = ""
+	execution.ApprovedBy = approver
+	execution.ApprovedAt = &approvedAt
+
+	payload, err := json.Marshal(&execution)
+	if err != nil {
+		return nil, false, fmt.Errorf("marshal claimed action execution: %w", err)
+	}
+	nextEnv := *currentEnv
+	nextEnv.Status = string(execution.Status)
+	nextEnv.Stage = executionStage(&execution)
+	nextEnv.UpdatedAt = executionUpdatedAt(&execution)
+	nextEnv.Payload = payload
+
+	swapped, err := s.store.CompareAndSwapRun(ctx, *currentEnv, nextEnv)
+	if err != nil {
+		return nil, false, err
+	}
+	if !swapped {
+		latest, err := s.LoadExecution(ctx, executionID)
+		if err != nil {
+			return nil, false, err
+		}
+		return latest, false, nil
+	}
+	return &execution, true, nil
+}
+
 func executionStage(execution *Execution) string {
 	switch execution.Status {
 	case StatusAwaitingApproval:
@@ -179,22 +246,9 @@ func executionUpdatedAt(execution *Execution) time.Time {
 		return execution.ApprovedAt.UTC()
 	}
 	if execution.StartedAt.IsZero() {
-		return executionSubmittedAt(execution)
-	}
-	return execution.StartedAt.UTC()
-}
-
-func executionSubmittedAt(execution *Execution) time.Time {
-	if execution == nil {
 		return time.Now().UTC()
 	}
-	if !execution.SubmittedAt.IsZero() {
-		return execution.SubmittedAt.UTC()
-	}
-	if !execution.StartedAt.IsZero() {
-		return execution.StartedAt.UTC()
-	}
-	return time.Now().UTC()
+	return execution.StartedAt.UTC()
 }
 
 func timePointer(value time.Time) *time.Time {

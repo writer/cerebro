@@ -1,20 +1,24 @@
 {
   "id": "gcp-cloudsql-no-public-ip",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Cloud SQL Public IP",
   "description": "Cloud SQL instances should not have public IP addresses",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::sql::database_instance",
   "conditions": [
-    "ip_addresses.type == 'PRIMARY'"
+    "cmp_eq(path(resource, \"ip_addresses.type\"), \"PRIMARY\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Configure Cloud SQL to use private IP only. Use Cloud SQL Proxy for secure connections.",
   "tags": [
     "cis-gcp-6.2",
     "cloudsql",
     "database",
     "network"
   ],
+  "remediation": "Configure Cloud SQL to use private IP only. Use Cloud SQL Proxy for secure connections.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

@@ -68,20 +68,20 @@ var (
 	syncGCPProjectTimeout          string
 	syncMultiRegion                bool
 	syncRegion                     string
-	syncUseAssetAPI                bool   // use Cloud Asset Inventory API
-	syncSecurity                   bool   // sync security data (vulnerabilities, SCC findings)
+	syncUseAssetAPI                bool // use Cloud Asset Inventory API
+	syncSecurity                   bool // sync security data (vulnerabilities, SCC findings)
+	syncPermissionLookback         int
+	syncPermissionRemovalThreshold int
 	syncK8s                        bool   // sync Kubernetes resources
 	syncK8sKubeconfig              string // kubeconfig path
 	syncK8sContext                 string // kubeconfig context
 	syncK8sNamespace               string // namespace to sync
 	syncAzure                      bool   // sync Azure resources
 	syncAzureSubscription          string // Azure subscription ID
+	syncAzureSubscriptions         string // comma-separated Azure subscription IDs
+	syncAzureMgmtGroup             string // Azure management group ID
+	syncAzureSubConcurrency        int
 	syncConcurrency                int
-	syncPermissionLookback         int
-	syncGCPIAMGroups               string
-	syncPermissionRemovalThreshold int
-	syncAWSPSInclude               string
-	syncAWSPSExclude               string
 	syncTable                      string
 	syncOutput                     string
 	syncReportFile                 string
@@ -113,6 +113,9 @@ var (
 	syncAWSOrgInclude              string
 	syncAWSOrgExclude              string
 	syncAWSOrgConcurrency          int
+	syncAWSPSInclude               string
+	syncAWSPSExclude               string
+	syncGCPIAMGroups               string
 	syncBackfillBatchSize          int
 )
 
@@ -141,18 +144,18 @@ func init() {
 	syncCmd.Flags().StringVarP(&syncRegion, "region", "r", "", "AWS region to sync when --multi-region is false")
 	syncCmd.Flags().BoolVar(&syncUseAssetAPI, "asset-api", false, "Use GCP Cloud Asset Inventory API for efficient bulk fetching")
 	syncCmd.Flags().BoolVar(&syncSecurity, "security", false, "Sync security data (Container Analysis vulnerabilities, SCC findings, Artifact Registry)")
+	syncCmd.Flags().IntVar(&syncPermissionLookback, "permission-usage-lookback-days", 90, "Lookback window in days for permission usage evidence")
+	syncCmd.Flags().IntVar(&syncPermissionRemovalThreshold, "permission-removal-threshold-days", 180, "Age threshold in days before unused permission usage evidence is removed")
 	syncCmd.Flags().BoolVar(&syncK8s, "k8s", false, "Sync Kubernetes resources")
 	syncCmd.Flags().StringVar(&syncK8sKubeconfig, "kubeconfig", "", "Path to kubeconfig file (defaults to KUBECONFIG)")
 	syncCmd.Flags().StringVar(&syncK8sContext, "kube-context", "", "Kubernetes context name")
 	syncCmd.Flags().StringVar(&syncK8sNamespace, "k8s-namespace", "", "Kubernetes namespace to sync (defaults to all)")
 	syncCmd.Flags().BoolVar(&syncAzure, "azure", false, "Sync Azure resources")
-	syncCmd.Flags().StringVar(&syncAzureSubscription, "azure-subscription", "", "Azure subscription ID (optional, will auto-discover if not set)")
+	syncCmd.Flags().StringVar(&syncAzureSubscription, "azure-subscription", "", "Azure subscription ID")
+	syncCmd.Flags().StringVar(&syncAzureSubscriptions, "azure-subscriptions", "", "Comma-separated Azure subscription IDs")
+	syncCmd.Flags().StringVar(&syncAzureMgmtGroup, "azure-management-group", "", "Azure management group ID for recursive subscription discovery")
+	syncCmd.Flags().IntVar(&syncAzureSubConcurrency, "azure-subscription-concurrency", 4, "Max concurrent Azure subscription syncs when multiple subscriptions are selected")
 	syncCmd.Flags().IntVar(&syncConcurrency, "concurrency", 20, "Max concurrent table syncs for native engines")
-	syncCmd.Flags().IntVar(&syncPermissionLookback, "permission-usage-lookback-days", 90, "Usage window in days for IAM permission usage analysis (1-400)")
-	syncCmd.Flags().IntVar(&syncPermissionRemovalThreshold, "permission-removal-threshold-days", 180, "Consecutive unused days before recommending IAM permission removal (1-400)")
-	syncCmd.Flags().StringVar(&syncGCPIAMGroups, "gcp-iam-target-groups", "", "Comma-separated Google group emails to analyze for IAM permission usage")
-	syncCmd.Flags().StringVar(&syncAWSPSInclude, "aws-identity-center-permission-sets-include", "", "Comma-separated Identity Center permission set names/ARNs to include")
-	syncCmd.Flags().StringVar(&syncAWSPSExclude, "aws-identity-center-permission-sets-exclude", "", "Comma-separated Identity Center permission set names/ARNs to exclude")
 	syncCmd.Flags().StringVar(&syncTable, "table", "", "Sync only specific table(s), comma-separated (e.g., aws_iam_accounts)")
 	syncCmd.Flags().StringVarP(&syncOutput, "output", "o", "table", "Output format (table, json)")
 	syncCmd.Flags().StringVar(&syncReportFile, "report-file", "", "Write sync/preflight JSON summary to a file path")
@@ -184,6 +187,9 @@ func init() {
 	syncCmd.Flags().StringVar(&syncAWSOrgInclude, "aws-org-include", "", "Comma-separated AWS account IDs to include when syncing org accounts")
 	syncCmd.Flags().StringVar(&syncAWSOrgExclude, "aws-org-exclude", "", "Comma-separated AWS account IDs to exclude when syncing org accounts")
 	syncCmd.Flags().IntVar(&syncAWSOrgConcurrency, "aws-org-concurrency", 4, "Max concurrent AWS organization account syncs")
+	syncCmd.Flags().StringVar(&syncAWSPSInclude, "aws-identity-center-permission-sets-include", "", "Comma-separated AWS IAM Identity Center permission set names or ARNs to include for permission usage sync")
+	syncCmd.Flags().StringVar(&syncAWSPSExclude, "aws-identity-center-permission-sets-exclude", "", "Comma-separated AWS IAM Identity Center permission set names or ARNs to exclude from permission usage sync")
+	syncCmd.Flags().StringVar(&syncGCPIAMGroups, "gcp-iam-target-groups", "", "Comma-separated Google Group email addresses to scope GCP IAM permission usage sync")
 
 	syncBackfillRelationshipsCmd.Flags().IntVar(&syncBackfillBatchSize, "batch-size", 200, "Batch size for relationship ID updates")
 	syncCmd.AddCommand(syncBackfillRelationshipsCmd)
@@ -1194,16 +1200,16 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 
 	graphToxicCount := 0
 	graphPaths := 0
-	if application.SecurityGraph != nil {
+	if application.Scanner != nil {
 		graphCtx := ctx
 		cancel := func() {}
 		if tuning.GraphWaitTimeout > 0 {
 			graphCtx, cancel = context.WithTimeout(ctx, tuning.GraphWaitTimeout)
 		}
-		graphReady := application.WaitForGraph(graphCtx)
+		securityGraph := application.WaitForReadableSecurityGraph(graphCtx)
 		cancel()
-		if graphReady {
-			graphResult := application.Scanner.AnalyzeGraph(ctx, application.SecurityGraph)
+		if securityGraph != nil {
+			graphResult := application.Scanner.AnalyzeGraph(ctx, securityGraph)
 			if graphResult != nil {
 				graphPaths = graphResult.AttackPathStats.TotalPaths
 				for _, f := range graphResult.ToxicCombinations {

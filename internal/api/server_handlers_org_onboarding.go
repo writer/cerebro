@@ -9,7 +9,12 @@ import (
 )
 
 func (s *Server) orgOnboardingPlan(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -20,7 +25,7 @@ func (s *Server) orgOnboardingPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plan := graph.GenerateOnboardingPlan(s.app.SecurityGraph, personID)
+	plan := graph.GenerateOnboardingPlan(g, personID)
 	if plan == nil {
 		s.error(w, http.StatusNotFound, "onboarding plan not found")
 		return

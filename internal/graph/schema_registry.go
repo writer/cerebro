@@ -530,6 +530,7 @@ func (r *SchemaRegistry) ValidateNode(node *Node) []SchemaValidationIssue {
 	}
 
 	issues := make([]SchemaValidationIssue, 0)
+	properties := node.PropertyMap()
 	required := make(map[string]struct{})
 	for _, property := range def.RequiredProperties {
 		property = strings.TrimSpace(property)
@@ -545,7 +546,7 @@ func (r *SchemaRegistry) ValidateNode(node *Node) []SchemaValidationIssue {
 	}
 
 	for property := range required {
-		if node.Properties == nil {
+		if properties == nil {
 			issues = append(issues, SchemaValidationIssue{
 				Code:     SchemaIssueMissingRequiredProperty,
 				EntityID: node.ID,
@@ -555,7 +556,7 @@ func (r *SchemaRegistry) ValidateNode(node *Node) []SchemaValidationIssue {
 			})
 			continue
 		}
-		value, exists := node.Properties[property]
+		value, exists := properties[property]
 		if !exists || value == nil {
 			issues = append(issues, SchemaValidationIssue{
 				Code:     SchemaIssueMissingRequiredProperty,
@@ -568,10 +569,10 @@ func (r *SchemaRegistry) ValidateNode(node *Node) []SchemaValidationIssue {
 	}
 
 	for property, spec := range def.Properties {
-		if node.Properties == nil {
+		if properties == nil {
 			continue
 		}
-		value, exists := node.Properties[property]
+		value, exists := properties[property]
 		if !exists || value == nil {
 			continue
 		}
@@ -599,7 +600,7 @@ func validateNodeMetadataProfile(node *Node, kind NodeKind, profile NodeMetadata
 	}
 
 	issues := make([]SchemaValidationIssue, 0)
-	properties := node.Properties
+	properties := node.PropertyMap()
 
 	for _, key := range profile.RequiredKeys {
 		if _, coveredByPropertyRequirement := alreadyRequired[key]; coveredByPropertyRequirement {
@@ -1546,7 +1547,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"service_id", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindOwns, EdgeKindRuns, EdgeKindDependsOn, EdgeKindTargets},
+		Relationships:      []EdgeKind{EdgeKindOwns, EdgeKindRuns, EdgeKindDependsOn, EdgeKindCalls, EdgeKindServes, EdgeKindTargets},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
@@ -1616,13 +1617,28 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"workload_id", "runtime", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindConnectsTo, EdgeKindDependsOn, EdgeKindTargets},
+		Relationships:      []EdgeKind{EdgeKindConnectsTo, EdgeKindCalls, EdgeKindDependsOn, EdgeKindServes, EdgeKindTargets, EdgeKindHasSequence},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
 				"environment": {"prod", "production", "staging", "qa", "dev", "test", "sandbox"},
 			},
 		),
+	},
+	{
+		Kind:         NodeKindAPIEndpoint,
+		Categories:   []NodeKindCategory{NodeCategoryResource},
+		Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable},
+		Properties: map[string]string{
+			"url":             "string",
+			"scheme":          "string",
+			"host":            "string",
+			"path":            "string",
+			"public":          "boolean",
+			"exposure_source": "string",
+		},
+		RequiredProperties: []string{"url", "scheme", "host"},
+		MetadataProfile:    writeMetadataProfile(nil, nil),
 	},
 	{
 		Kind:         NodeKindBucket,
@@ -1781,47 +1797,60 @@ var builtInNodeKinds = []NodeKindDefinition{
 	{Kind: NodeKindInstance, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable}},
 	{Kind: NodeKindDatabase, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilitySensitiveData}},
 	{Kind: NodeKindSecret, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilitySensitiveData, NodeCapabilityCredentialStore}},
-	{Kind: NodeKindFunction, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable}},
+	{
+		Kind:         NodeKindFunction,
+		Categories:   []NodeKindCategory{NodeCategoryResource},
+		Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable},
+		Relationships: []EdgeKind{
+			EdgeKindServes,
+		},
+	},
 	{
 		Kind:       NodeKindWorkloadScan,
 		Categories: []NodeKindCategory{NodeCategoryResource},
 		Properties: map[string]string{
-			"scan_id":                         "string",
-			"target_id":                       "string",
-			"target_kind":                     "string",
-			"provider":                        "string",
-			"status":                          "string",
-			"stage":                           "string",
-			"submitted_at":                    "string",
-			"started_at":                      "string",
-			"completed_at":                    "string",
-			"os_name":                         "string",
-			"os_version":                      "string",
-			"os_architecture":                 "string",
-			"package_count":                   "integer|number",
-			"vulnerability_count":             "integer|number",
-			"critical_vulnerability_count":    "integer|number",
-			"high_vulnerability_count":        "integer|number",
-			"medium_vulnerability_count":      "integer|number",
-			"low_vulnerability_count":         "integer|number",
-			"unknown_vulnerability_count":     "integer|number",
-			"known_exploited_count":           "integer|number",
-			"exploitable_vulnerability_count": "integer|number",
-			"fixable_vulnerability_count":     "integer|number",
-			"secret_count":                    "integer|number",
-			"misconfiguration_count":          "integer|number",
-			"malware_count":                   "integer|number",
-			"finding_count":                   "integer|number",
-			"sbom_ref":                        "string",
-			"source_system":                   "string",
-			"source_event_id":                 "string",
-			"observed_at":                     "string",
-			"valid_from":                      "string",
-			"valid_to":                        "string",
-			"recorded_at":                     "string",
-			"transaction_from":                "string",
-			"transaction_to":                  "string",
-			"confidence":                      "number",
+			"scan_id":                                "string",
+			"target_id":                              "string",
+			"target_kind":                            "string",
+			"provider":                               "string",
+			"status":                                 "string",
+			"stage":                                  "string",
+			"submitted_at":                           "string",
+			"started_at":                             "string",
+			"completed_at":                           "string",
+			"os_name":                                "string",
+			"os_version":                             "string",
+			"os_architecture":                        "string",
+			"package_count":                          "integer|number",
+			"vulnerability_count":                    "integer|number",
+			"reachable_vulnerability_count":          "integer|number",
+			"critical_vulnerability_count":           "integer|number",
+			"reachable_critical_vulnerability_count": "integer|number",
+			"high_vulnerability_count":               "integer|number",
+			"reachable_high_vulnerability_count":     "integer|number",
+			"medium_vulnerability_count":             "integer|number",
+			"low_vulnerability_count":                "integer|number",
+			"unknown_vulnerability_count":            "integer|number",
+			"known_exploited_count":                  "integer|number",
+			"reachable_known_exploited_count":        "integer|number",
+			"direct_reachable_vulnerability_count":   "integer|number",
+			"exploitable_vulnerability_count":        "integer|number",
+			"fixable_vulnerability_count":            "integer|number",
+			"secret_count":                           "integer|number",
+			"misconfiguration_count":                 "integer|number",
+			"malware_count":                          "integer|number",
+			"technology_count":                       "integer|number",
+			"finding_count":                          "integer|number",
+			"sbom_ref":                               "string",
+			"source_system":                          "string",
+			"source_event_id":                        "string",
+			"observed_at":                            "string",
+			"valid_from":                             "string",
+			"valid_to":                               "string",
+			"recorded_at":                            "string",
+			"transaction_from":                       "string",
+			"transaction_to":                         "string",
+			"confidence":                             "number",
 		},
 		RequiredProperties: []string{"scan_id", "target_id", "target_kind", "status", "observed_at", "valid_from", "recorded_at", "transaction_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindHasScan, EdgeKindContainsPkg, EdgeKindFoundVuln, EdgeKindBasedOn},
@@ -1853,6 +1882,32 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"package_name", "version", "ecosystem", "observed_at", "valid_from", "recorded_at", "transaction_from"},
 		Relationships:      []EdgeKind{EdgeKindAffectedBy, EdgeKindBasedOn},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from", "recorded_at", "transaction_from"},
+			nil,
+		),
+	},
+	{
+		Kind:       NodeKindTechnology,
+		Categories: []NodeKindCategory{NodeCategoryResource},
+		Properties: map[string]string{
+			"technology_id":    "string",
+			"technology_name":  "string",
+			"category":         "string",
+			"version":          "string",
+			"file_path":        "string",
+			"source_system":    "string",
+			"source_event_id":  "string",
+			"observed_at":      "string",
+			"valid_from":       "string",
+			"valid_to":         "string",
+			"recorded_at":      "string",
+			"transaction_from": "string",
+			"transaction_to":   "string",
+			"confidence":       "number",
+		},
+		RequiredProperties: []string{"technology_id", "technology_name", "category", "observed_at", "valid_from", "recorded_at", "transaction_from"},
+		Relationships:      []EdgeKind{EdgeKindBasedOn},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from", "recorded_at", "transaction_from"},
 			nil,
@@ -1892,8 +1947,8 @@ var builtInNodeKinds = []NodeKindDefinition{
 	},
 	{Kind: NodeKindNetwork, Categories: []NodeKindCategory{NodeCategoryResource}, Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable}},
 	{Kind: NodeKindApplication, Categories: []NodeKindCategory{NodeCategoryResource}},
-	{Kind: NodeKindPod, Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryKubernetes}},
-	{Kind: NodeKindDeployment, Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryKubernetes}},
+	{Kind: NodeKindPod, Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryKubernetes}, Relationships: []EdgeKind{EdgeKindCalls, EdgeKindTargets, EdgeKindHasSequence}},
+	{Kind: NodeKindDeployment, Categories: []NodeKindCategory{NodeCategoryResource, NodeCategoryKubernetes}, Relationships: []EdgeKind{EdgeKindCalls, EdgeKindTargets, EdgeKindHasSequence}},
 	{Kind: NodeKindNamespace, Categories: []NodeKindCategory{NodeCategoryKubernetes}},
 	{Kind: NodeKindClusterRole, Categories: []NodeKindCategory{NodeCategoryKubernetes}},
 	{Kind: NodeKindClusterRoleBinding, Categories: []NodeKindCategory{NodeCategoryKubernetes}},
@@ -1908,6 +1963,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 	{Kind: NodeKindCustomer, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindContact, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindCompany, Categories: []NodeKindCategory{NodeCategoryBusiness}},
+	{Kind: NodeKindVendor, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindDeal, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindOpportunity, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindSubscription, Categories: []NodeKindCategory{NodeCategoryBusiness}},
@@ -2181,24 +2237,64 @@ var builtInNodeKinds = []NodeKindDefinition{
 		Kind:       NodeKindObservation,
 		Categories: []NodeKindCategory{NodeCategoryBusiness},
 		Properties: map[string]string{
-			"observation_type": "string",
-			"subject_id":       "string",
-			"detail":           "string",
-			"source_system":    "string",
-			"source_event_id":  "string",
-			"observed_at":      "string",
-			"valid_from":       "string",
-			"valid_to":         "string",
-			"recorded_at":      "string",
-			"transaction_from": "string",
-			"transaction_to":   "string",
-			"confidence":       "number",
+			"observation_type":           "string",
+			"subject_id":                 "string",
+			"detail":                     "string",
+			"source_system":              "string",
+			"source_event_id":            "string",
+			"observed_at":                "string",
+			"valid_from":                 "string",
+			"valid_to":                   "string",
+			"recorded_at":                "string",
+			"transaction_from":           "string",
+			"transaction_to":             "string",
+			"confidence":                 "number",
+			"correlation_key":            "string",
+			"correlation_primary":        "boolean",
+			"corroboration_primary_id":   "string",
+			"corroboration_count":        "integer",
+			"corroborating_source_count": "integer",
+			"corroboration_multiplier":   "number",
+			"corroborating_sources":      "array",
 		},
 		RequiredProperties: []string{"observation_type", "subject_id", "observed_at", "valid_from", "recorded_at", "transaction_from"},
-		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindAssertedBy},
+		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindBasedOn, EdgeKindAssertedBy, EdgeKindCorroborates},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from", "recorded_at", "transaction_from"},
 			nil,
+		),
+	},
+	{
+		Kind:       NodeKindAttackSequence,
+		Categories: []NodeKindCategory{NodeCategoryBusiness},
+		Properties: map[string]string{
+			"sequence_type":           "string",
+			"workload_ref":            "string",
+			"detail":                  "string",
+			"severity":                "string",
+			"observation_count":       "number",
+			"sequence_start":          "string",
+			"sequence_end":            "string",
+			"window_seconds":          "number",
+			"observation_types":       "array",
+			"ordered_observation_ids": "array",
+			"mitre_attack":            "array",
+			"source_system":           "string",
+			"source_event_id":         "string",
+			"observed_at":             "string",
+			"valid_from":              "string",
+			"valid_to":                "string",
+			"recorded_at":             "string",
+			"transaction_from":        "string",
+			"confidence":              "number",
+		},
+		RequiredProperties: []string{"sequence_type", "workload_ref", "sequence_start", "sequence_end", "observed_at", "valid_from", "recorded_at", "transaction_from"},
+		Relationships:      []EdgeKind{EdgeKindContains, EdgeKindBasedOn},
+		MetadataProfile: writeMetadataProfile(
+			[]string{"source_system", "observed_at", "valid_from", "recorded_at", "transaction_from"},
+			map[string][]string{
+				"severity": {"critical", "high", "medium", "low", "unknown"},
+			},
 		),
 	},
 	{
@@ -2304,6 +2400,8 @@ var builtInEdgeKinds = []EdgeKindDefinition{
 	{Kind: EdgeKindCanDelete},
 	{Kind: EdgeKindCanAdmin},
 	{Kind: EdgeKindConnectsTo},
+	{Kind: EdgeKindCalls},
+	{Kind: EdgeKindServes},
 	{Kind: EdgeKindRuns},
 	{Kind: EdgeKindDependsOn},
 	{Kind: EdgeKindConfigures},
@@ -2329,6 +2427,7 @@ var builtInEdgeKinds = []EdgeKindDefinition{
 	{Kind: EdgeKindHasScan},
 	{Kind: EdgeKindFoundVuln},
 	{Kind: EdgeKindContainsPkg},
+	{Kind: EdgeKindContains},
 	{Kind: EdgeKindAffectedBy},
 	{Kind: EdgeKindAssertedBy},
 	{Kind: EdgeKindSupports},
@@ -2337,5 +2436,7 @@ var builtInEdgeKinds = []EdgeKindDefinition{
 	{Kind: EdgeKindContradicts},
 	{Kind: EdgeKindTriggeredBy},
 	{Kind: EdgeKindCausedBy},
+	{Kind: EdgeKindHasSequence},
+	{Kind: EdgeKindCorroborates, Description: "Links one observation to the primary observation that semantically corroborates the same activity."},
 	{Kind: EdgeKindHasCredentialFor},
 }

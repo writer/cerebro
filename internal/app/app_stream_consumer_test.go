@@ -8,6 +8,7 @@ import (
 
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestEnsureSecurityGraph_ConcurrentInitSingleInstance(t *testing.T) {
@@ -86,6 +87,92 @@ func TestHandleTapCloudEventWaitsForGraphReady(t *testing.T) {
 	}
 }
 
+func TestHandleGraphCloudEvent_AuditMutationPersistsCDCEvents(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{}
+	a := &App{Warehouse: store}
+	evt := events.CloudEvent{
+		ID:     "evt-audit-1",
+		Source: "urn:aws:cloudtrail",
+		Type:   "aws.cloudtrail.asset.changed",
+		Time:   time.Date(2026, 3, 14, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"table_name":  "aws_ec2_security_groups",
+			"resource_id": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123",
+			"change_type": "modified",
+			"account_id":  "123456789012",
+			"region":      "us-east-1",
+			"payload": map[string]any{
+				"arn":            "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123",
+				"group_id":       "sg-123",
+				"group_name":     "web",
+				"account_id":     "123456789012",
+				"region":         "us-east-1",
+				"ip_permissions": []map[string]any{{"IpRanges": []map[string]any{{"CidrIp": "0.0.0.0/0"}}}},
+			},
+		},
+	}
+
+	if err := a.handleGraphCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphCloudEvent failed: %v", err)
+	}
+	if len(store.CDCBatches) != 1 || len(store.CDCBatches[0]) != 1 {
+		t.Fatalf("expected one persisted audit CDC event, got %#v", store.CDCBatches)
+	}
+	got := store.CDCBatches[0][0]
+	if got.TableName != "aws_ec2_security_groups" {
+		t.Fatalf("expected table aws_ec2_security_groups, got %q", got.TableName)
+	}
+	if got.Provider != "aws" {
+		t.Fatalf("expected provider aws, got %q", got.Provider)
+	}
+	if got.ResourceID != "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123" {
+		t.Fatalf("unexpected resource id %q", got.ResourceID)
+	}
+}
+
+func TestHandleGraphCloudEvent_AuditMutationSkipsInvalidBatchRecords(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{}
+	a := &App{Warehouse: store}
+	evt := events.CloudEvent{
+		ID:     "evt-audit-batch-invalid-1",
+		Source: "urn:aws:cloudtrail",
+		Type:   "aws.cloudtrail.asset.changed",
+		Time:   time.Date(2026, 3, 14, 12, 30, 0, 0, time.UTC),
+		Data: map[string]any{
+			"mutations": []any{
+				map[string]any{
+					"payload": map[string]any{"id": "missing-table"},
+				},
+				map[string]any{
+					"table_name":  "aws_ec2_security_groups",
+					"change_type": "modified",
+					"resource_id": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456",
+					"payload": map[string]any{
+						"arn":        "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456",
+						"group_id":   "sg-456",
+						"group_name": "api",
+					},
+				},
+				map[string]any{
+					"table_name":  "aws_ec2_security_groups",
+					"change_type": "modified",
+					"payload":     map[string]any{},
+				},
+			},
+		},
+	}
+
+	if err := a.handleGraphCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphCloudEvent failed: %v", err)
+	}
+	if len(store.CDCBatches) != 1 || len(store.CDCBatches[0]) != 1 {
+		t.Fatalf("expected one persisted audit CDC event from valid subset, got %#v", store.CDCBatches)
+	}
+	if got := store.CDCBatches[0][0].ResourceID; got != "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456" {
+		t.Fatalf("unexpected persisted resource id %q", got)
+	}
+}
+
 func TestParseTapType(t *testing.T) {
 	system, entity, action := parseTapType("ensemble.tap.stripe.customer.created")
 	if system != "stripe" || entity != "customer" || action != "created" {
@@ -100,6 +187,114 @@ func TestParseTapType(t *testing.T) {
 	channel, interactionType := parseTapInteractionType("ensemble.tap.interaction.gong.call_completed")
 	if channel != "gong" || interactionType != "call_completed" {
 		t.Fatalf("unexpected interaction parse result: channel=%q type=%q", channel, interactionType)
+	}
+}
+
+func TestBuildTapBusinessEventPlan_ParsesWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.salesforce.opportunity.updated",
+		Time: time.Date(2026, 3, 11, 18, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"entity_id": "opp-1",
+			"snapshot": map[string]any{
+				"name":             "Renewal Opp",
+				"LastModifiedDate": "2026-03-11T18:00:00Z",
+				"account_id":       "acct-1",
+			},
+			"changes": map[string]any{
+				"CloseDate": map[string]any{
+					"old": "2026-04-01",
+					"new": "2026-04-15",
+				},
+			},
+		},
+	}
+
+	plan, ok := buildTapBusinessEventPlan("salesforce", "opportunity", "updated", evt.Type, evt, map[string]any{
+		"close_date_push_count": 1,
+	})
+	if !ok {
+		t.Fatal("expected business plan to be created")
+	}
+	if plan.Node == nil || plan.Node.ID != "salesforce:opportunity:opp-1" {
+		t.Fatalf("plan.Node.ID = %v, want salesforce:opportunity:opp-1", plan.Node)
+	}
+	if got := toInt(plan.Node.Properties["close_date_push_count"]); got != 2 {
+		t.Fatalf("close_date_push_count = %d, want 2", got)
+	}
+	if len(plan.TargetStubs) != 1 || plan.TargetStubs[0].ID != "salesforce:account:acct-1" {
+		t.Fatalf("TargetStubs = %#v, want account stub", plan.TargetStubs)
+	}
+	if len(plan.Edges) != 1 || plan.Edges[0].Kind != graph.EdgeKindOwns {
+		t.Fatalf("Edges = %#v, want one owns edge", plan.Edges)
+	}
+}
+
+func TestBuildTapInteractionEventPlan_ParsesWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.interaction.slack.message",
+		Time: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"participants": []any{
+				map[string]any{"email": "alice@example.com", "name": "Alice"},
+				map[string]any{"email": "bob@example.com", "name": "Bob"},
+			},
+			"duration_minutes": 10,
+		},
+	}
+
+	plan, ok := buildTapInteractionEventPlan(evt.Type, evt)
+	if !ok {
+		t.Fatal("expected interaction plan to be created")
+	}
+	if plan.Channel != "slack" || plan.InteractionType != "message" {
+		t.Fatalf("channel/type = %q/%q, want slack/message", plan.Channel, plan.InteractionType)
+	}
+	if plan.Duration != 10*time.Minute {
+		t.Fatalf("Duration = %s, want 10m", plan.Duration)
+	}
+	if len(plan.Participants) != 2 || plan.Participants[0].ID != "person:alice@example.com" || plan.Participants[1].ID != "person:bob@example.com" {
+		t.Fatalf("Participants = %#v, want normalized person IDs", plan.Participants)
+	}
+}
+
+func TestBuildTapActivityEventPlan_ParsesWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		ID:   "evt-activity-1",
+		Type: "ensemble.tap.activity.gong.call_completed",
+		Time: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"actor": map[string]any{
+				"email": "alice@example.com",
+				"name":  "Alice",
+			},
+			"target": map[string]any{
+				"id":   "deal-123",
+				"type": "deal",
+				"name": "Enterprise Renewal",
+			},
+			"action": "call_completed",
+			"metadata": map[string]any{
+				"duration_seconds": 1800,
+			},
+		},
+	}
+
+	plan, ok := buildTapActivityEventPlan("gong", "call_completed", evt)
+	if !ok {
+		t.Fatal("expected activity plan to be created")
+	}
+	if plan.Actor == nil || plan.Actor.ID != "person:alice@example.com" {
+		t.Fatalf("Actor = %#v, want person:alice@example.com", plan.Actor)
+	}
+	if plan.Target == nil || plan.Target.ID != "gong:deal:deal-123" {
+		t.Fatalf("Target = %#v, want gong:deal:deal-123", plan.Target)
+	}
+	if plan.Activity == nil || plan.Activity.ID != "action:gong:call_completed:evt-activity-1" {
+		t.Fatalf("Activity = %#v, want action:gong:call_completed:evt-activity-1", plan.Activity)
+	}
+	if plan.ActivityTarget == nil || plan.ActivityTarget.Kind != graph.EdgeKindTargets {
+		t.Fatalf("ActivityTarget = %#v, want targets edge", plan.ActivityTarget)
 	}
 }
 

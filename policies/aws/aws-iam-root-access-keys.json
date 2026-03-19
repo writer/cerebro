@@ -1,21 +1,25 @@
 {
   "id": "aws-iam-root-no-access-keys",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Root Account Access Keys",
   "description": "The root account should not have active access keys",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::iam::credential_report",
   "conditions": [
-    "user == '\u003croot_account\u003e'",
-    "access_key_1_active == true OR access_key_2_active == true"
+    "cmp_eq(path(resource, \"user\"), \"\\u003croot_account\\u003e\")",
+    "(cmp_eq(path(resource, \"access_key_1_active\"), true)) || (cmp_eq(path(resource, \"access_key_2_active\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Delete all access keys associated with the root account. Use IAM users or roles for programmatic access.",
   "tags": [
     "cis-aws-1.4",
     "iam",
     "root-account",
     "access-keys"
   ],
+  "remediation": "Delete all access keys associated with the root account. Use IAM users or roles for programmatic access.",
   "risk_categories": [
     "IDENTITY_RISK",
     "MISCONFIGURATION"

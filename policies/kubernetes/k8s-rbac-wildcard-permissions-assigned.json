@@ -1,20 +1,24 @@
 {
   "id": "k8s-rbac-wildcard-permissions-assigned",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "User/ServiceAccount Bound to Wildcard RBAC Permissions",
   "description": "A user or service account is bound to a role with wildcard verbs or resources.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::rbac::risky_binding",
   "conditions": [
-    "subject_kind IN ('User', 'ServiceAccount')",
-    "(wildcard_verbs == true OR wildcard_resources == true)"
+    "in_list(path(resource, \"subject_kind\"), [\"User\",\"ServiceAccount\"])",
+    "(cmp_eq(path(resource, \"wildcard_verbs\"), true)) || (cmp_eq(path(resource, \"wildcard_resources\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "Replace wildcard RBAC permissions with explicit verbs and resources and split broad roles into least-privilege roles.",
   "tags": [
     "kubernetes",
     "rbac",
     "least-privilege"
   ],
+  "remediation": "Replace wildcard RBAC permissions with explicit verbs and resources and split broad roles into least-privilege roles.",
   "risk_categories": [
     "PRIVILEGE_ESCALATION",
     "IDENTITY_RISK"

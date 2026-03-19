@@ -1,15 +1,17 @@
 {
   "id": "internal-vm-cross-account-keys",
-  "control_id": "wc-id-405",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internal VM/serverless with cleartext cloud keys granting permission to access resources in other subscriptions with high privileges",
   "description": "An internal resource contains highly privileged cross-account access keys",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND cross_account_access == true AND grants_high_privilege == true)"
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"cross_account_access\"), true)) \u0026\u0026 (cmp_eq(path(item, \"grants_high_privilege\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Remove cleartext keys. Use cross-account IAM roles with proper trust relationships.",
   "tags": [
     "wiz",
     "compute",
@@ -17,6 +19,8 @@
     "cross-account",
     "privileged"
   ],
+  "control_id": "wc-id-405",
+  "remediation": "Remove cleartext keys. Use cross-account IAM roles with proper trust relationships.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "IDENTITY_RISK",

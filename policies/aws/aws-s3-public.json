@@ -1,12 +1,16 @@
 {
   "id": "aws-s3-bucket-no-public-access",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Bucket Public Access",
   "description": "S3 buckets should not allow public access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::s3::bucket",
   "conditions": [
-    "block_public_acls != true"
+    "cmp_ne(path(resource, \"block_public_acls\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
   "tags": [
     "cis-aws-2.1.5",

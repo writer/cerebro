@@ -19,6 +19,7 @@ const (
 
 	// Resource nodes
 	NodeKindService                 NodeKind = "service"
+	NodeKindAPIEndpoint             NodeKind = "api_endpoint"
 	NodeKindWorkload                NodeKind = "workload"
 	NodeKindBucket                  NodeKind = "bucket"
 	NodeKindBucketPolicyStatement   NodeKind = "bucket_policy_statement"
@@ -33,6 +34,7 @@ const (
 	NodeKindWorkloadScan            NodeKind = "workload_scan"
 	NodeKindPackage                 NodeKind = "package"
 	NodeKindVulnerability           NodeKind = "vulnerability"
+	NodeKindTechnology              NodeKind = "technology"
 	NodeKindNetwork                 NodeKind = "network"
 	NodeKindApplication             NodeKind = "application"
 	NodeKindOrganization            NodeKind = "organization"
@@ -62,33 +64,35 @@ const (
 	NodeKindPolicy             NodeKind = "policy"
 
 	// Business entities
-	NodeKindCustomer      NodeKind = "customer"
-	NodeKindContact       NodeKind = "contact"
-	NodeKindCompany       NodeKind = "company"
-	NodeKindDeal          NodeKind = "deal"
-	NodeKindOpportunity   NodeKind = "opportunity"
-	NodeKindSubscription  NodeKind = "subscription"
-	NodeKindInvoice       NodeKind = "invoice"
-	NodeKindTicket        NodeKind = "ticket"
-	NodeKindLead          NodeKind = "lead"
-	NodeKindActivity      NodeKind = "activity"
-	NodeKindPullRequest   NodeKind = "pull_request"
-	NodeKindDeploymentRun NodeKind = "deployment_run"
-	NodeKindPipelineRun   NodeKind = "pipeline_run"
-	NodeKindCheckRun      NodeKind = "check_run"
-	NodeKindMeeting       NodeKind = "meeting"
-	NodeKindDocument      NodeKind = "document"
-	NodeKindThread        NodeKind = "communication_thread"
-	NodeKindIncident      NodeKind = "incident"
-	NodeKindDecision      NodeKind = "decision"
-	NodeKindOutcome       NodeKind = "outcome"
-	NodeKindEvidence      NodeKind = "evidence"
-	NodeKindObservation   NodeKind = "observation"
-	NodeKindSource        NodeKind = "source"
-	NodeKindClaim         NodeKind = "claim"
-	NodeKindAction        NodeKind = "action"
-	NodeKindDepartment    NodeKind = "department"
-	NodeKindLocation      NodeKind = "location"
+	NodeKindCustomer       NodeKind = "customer"
+	NodeKindContact        NodeKind = "contact"
+	NodeKindCompany        NodeKind = "company"
+	NodeKindVendor         NodeKind = "vendor"
+	NodeKindDeal           NodeKind = "deal"
+	NodeKindOpportunity    NodeKind = "opportunity"
+	NodeKindSubscription   NodeKind = "subscription"
+	NodeKindInvoice        NodeKind = "invoice"
+	NodeKindTicket         NodeKind = "ticket"
+	NodeKindLead           NodeKind = "lead"
+	NodeKindActivity       NodeKind = "activity"
+	NodeKindPullRequest    NodeKind = "pull_request"
+	NodeKindDeploymentRun  NodeKind = "deployment_run"
+	NodeKindPipelineRun    NodeKind = "pipeline_run"
+	NodeKindCheckRun       NodeKind = "check_run"
+	NodeKindMeeting        NodeKind = "meeting"
+	NodeKindDocument       NodeKind = "document"
+	NodeKindThread         NodeKind = "communication_thread"
+	NodeKindIncident       NodeKind = "incident"
+	NodeKindDecision       NodeKind = "decision"
+	NodeKindOutcome        NodeKind = "outcome"
+	NodeKindEvidence       NodeKind = "evidence"
+	NodeKindObservation    NodeKind = "observation"
+	NodeKindAttackSequence NodeKind = "attack_sequence"
+	NodeKindSource         NodeKind = "source"
+	NodeKindClaim          NodeKind = "claim"
+	NodeKindAction         NodeKind = "action"
+	NodeKindDepartment     NodeKind = "department"
+	NodeKindLocation       NodeKind = "location"
 )
 
 // RiskLevel represents the risk level of a node or edge
@@ -111,23 +115,25 @@ type PropertySnapshot struct {
 
 // Node represents an entity in the graph platform.
 type Node struct {
-	ID                 string                        `json:"id"`
-	Kind               NodeKind                      `json:"kind"`
-	Name               string                        `json:"name"`
-	TenantID           string                        `json:"tenant_id,omitempty"`
-	Provider           string                        `json:"provider"`
-	Account            string                        `json:"account"`
-	Region             string                        `json:"region,omitempty"`
-	Properties         map[string]any                `json:"properties,omitempty"`
-	Tags               map[string]string             `json:"tags,omitempty"`
-	Risk               RiskLevel                     `json:"risk"`
-	Findings           []string                      `json:"findings,omitempty"`
-	CreatedAt          time.Time                     `json:"created_at"`
-	UpdatedAt          time.Time                     `json:"updated_at"`
-	DeletedAt          *time.Time                    `json:"deleted_at,omitempty"`
-	Version            int                           `json:"version"`
-	PreviousProperties map[string]any                `json:"previous_properties,omitempty"`
-	PropertyHistory    map[string][]PropertySnapshot `json:"property_history,omitempty"`
+	ID                  string                        `json:"id"`
+	Kind                NodeKind                      `json:"kind"`
+	Name                string                        `json:"name"`
+	TenantID            string                        `json:"tenant_id,omitempty"`
+	Provider            string                        `json:"provider"`
+	Account             string                        `json:"account"`
+	Region              string                        `json:"region,omitempty"`
+	Properties          map[string]any                `json:"properties,omitempty"`
+	Tags                map[string]string             `json:"tags,omitempty"`
+	Risk                RiskLevel                     `json:"risk"`
+	Findings            []string                      `json:"findings,omitempty"`
+	CreatedAt           time.Time                     `json:"created_at"`
+	UpdatedAt           time.Time                     `json:"updated_at"`
+	DeletedAt           *time.Time                    `json:"deleted_at,omitempty"`
+	Version             int                           `json:"version"`
+	PreviousProperties  map[string]any                `json:"previous_properties,omitempty"`
+	PropertyHistory     map[string][]PropertySnapshot `json:"property_history,omitempty"`
+	observationProps    *ObservationProperties        `json:"-"`
+	attackSequenceProps *AttackSequenceProperties     `json:"-"`
 }
 
 // IsIdentity returns true if the node is an identity type

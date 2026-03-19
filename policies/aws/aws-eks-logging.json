@@ -1,14 +1,17 @@
 {
   "id": "aws-eks-control-plane-logging",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "EKS Control Plane Logging",
   "description": "EKS cluster should have control plane logging enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::eks::cluster",
   "conditions": [
-    "logging.cluster_logging.enabled != true"
+    "cmp_ne(path(resource, \"logging.cluster_logging.enabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable all control plane logging types: api, audit, authenticator, controllerManager, scheduler.",
   "tags": [
     "cis-eks-2.1.1",
     "eks",
@@ -16,6 +19,7 @@
     "logging",
     "audit"
   ],
+  "remediation": "Enable all control plane logging types: api, audit, authenticator, controllerManager, scheduler.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

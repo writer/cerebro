@@ -1,14 +1,25 @@
 {
   "id": "vendor-dpa-exists",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Vendor Data Processing Agreement Exists",
   "description": "Vendors that process personal data on behalf of the organization should have a Data Processing Agreement (DPA) in place",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "vendors",
   "conditions": [
-    "processes_personal_data == true",
-    "dpa_signed != true"
+    "cmp_eq(path(resource, \"processes_personal_data\"), true)",
+    "cmp_ne(path(resource, \"dpa_signed\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
+  "tags": [
+    "vendor",
+    "dpa",
+    "privacy",
+    "gdpr",
+    "data-processing"
+  ],
   "remediation": "Execute a Data Processing Agreement with the vendor that covers data protection requirements per GDPR, CCPA, and other applicable regulations",
   "remediation_steps": [
     "Identify vendors processing personal data",
@@ -17,32 +28,35 @@
     "Execute the DPA with appropriate signatories",
     "Store DPA in contract management system"
   ],
-  "tags": [
-    "vendor",
-    "dpa",
-    "privacy",
-    "gdpr",
-    "data-processing"
-  ],
   "risk_categories": [
     "MISCONFIGURATION"
   ],
   "frameworks": [
     {
       "name": "GDPR",
-      "controls": ["Article 28"]
+      "controls": [
+        "Article 28"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC9.2", "P6.1"]
+      "controls": [
+        "CC9.2",
+        "P6.1"
+      ]
     },
     {
       "name": "ISO 27001:2022",
-      "controls": ["A.5.20"]
+      "controls": [
+        "A.5.20"
+      ]
     },
     {
       "name": "ISO 27701",
-      "controls": ["7.2.6", "8.2.1"]
+      "controls": [
+        "7.2.6",
+        "8.2.1"
+      ]
     }
   ]
 }

@@ -23,7 +23,7 @@ func NewTapReplayApp(cfg *Config, logger *slog.Logger) *App {
 		Logger:        logger,
 		SecurityGraph: securityGraph,
 	}
-	app.configureGraphSchemaValidation(securityGraph)
+	app.configureGraphRuntimeBehavior(securityGraph)
 	return app
 }
 

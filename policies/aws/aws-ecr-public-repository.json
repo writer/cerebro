@@ -1,20 +1,24 @@
 {
   "id": "aws-ecr-public-repository",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "ECR Public Repository",
   "description": "ECR repository is publicly accessible, potentially exposing container images",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ecr_public::repository",
   "conditions": [
-    "repository_visibility == 'PUBLIC'"
+    "cmp_eq(path(resource, \"repository_visibility\"), \"PUBLIC\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Use private ECR repositories. If public access is required, ensure no sensitive data or credentials are included in images. Use separate repositories for public images.",
   "tags": [
     "aws",
     "ecr",
     "containers",
     "data-exposure"
   ],
+  "remediation": "Use private ECR repositories. If public access is required, ensure no sensitive data or credentials are included in images. Use separate repositories for public images.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

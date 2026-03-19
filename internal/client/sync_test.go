@@ -199,6 +199,53 @@ func TestRunAzureSync_EmptyRequestBodyForDefaultBehavior(t *testing.T) {
 	}
 }
 
+func TestRunAzureSync_SendsManagementGroupAndSubscriptionConcurrency(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/sync/azure" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		var req map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if req["management_group"] != "mg-platform" {
+			t.Fatalf("expected management_group mg-platform, got %#v", req["management_group"])
+		}
+		if req["subscription_concurrency"] != float64(6) {
+			t.Fatalf("expected subscription_concurrency=6, got %#v", req["subscription_concurrency"])
+		}
+		if _, ok := req["subscription"]; ok {
+			t.Fatalf("did not expect single subscription field in management-group request: %#v", req)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"provider": "azure",
+			"validate": false,
+			"results":  []map[string]interface{}{},
+		})
+	}))
+	defer server.Close()
+
+	c, err := New(Config{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	resp, err := c.RunAzureSync(context.Background(), AzureSyncRequest{
+		ManagementGroup:         " mg-platform ",
+		SubscriptionConcurrency: 6,
+	})
+	if err != nil {
+		t.Fatalf("RunAzureSync returned error: %v", err)
+	}
+	if resp.Provider != "azure" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
 func TestRunAWSSync_SendsRequestAndParsesResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -830,6 +877,51 @@ func TestRunGCPAssetSync_EmptyRequestBodyForDefaultBehavior(t *testing.T) {
 		t.Fatalf("RunGCPAssetSync returned error: %v", err)
 	}
 	if resp.Provider != "gcp_asset" || resp.Validate {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+func TestRunGCPAssetSync_SendsOrganizationScope(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/sync/gcp-asset" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		var req map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if req["organization"] != "1234567890" {
+			t.Fatalf("expected organization 1234567890, got %#v", req["organization"])
+		}
+		projects, ok := req["projects"].([]interface{})
+		if !ok || len(projects) != 0 {
+			t.Fatalf("expected explicit empty projects array in organization request: %#v", req["projects"])
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"provider": "gcp_asset",
+			"validate": false,
+			"results":  []map[string]interface{}{},
+		})
+	}))
+	defer server.Close()
+
+	c, err := New(Config{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	resp, err := c.RunGCPAssetSync(context.Background(), GCPAssetSyncRequest{
+		Organization: " 1234567890 ",
+	})
+	if err != nil {
+		t.Fatalf("RunGCPAssetSync returned error: %v", err)
+	}
+	if resp.Provider != "gcp_asset" {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
 }

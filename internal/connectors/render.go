@@ -1,13 +1,10 @@
 package connectors
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
-	"text/template"
 
+	"github.com/writer/cerebro/internal/iacrender"
 	"github.com/writer/cerebro/internal/textutil"
 )
 
@@ -53,7 +50,7 @@ type AzureRenderOptions struct {
 func RenderAWSBundle(opts AWSRenderOptions) (Bundle, error) {
 	data := map[string]string{
 		"RoleName":      textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.RoleName), "CerebroScanRole"),
-		"PrincipalARN":  textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalARN), "arn:aws:iam::<account-id>:role/CerebroControlPlane"),
+		"PrincipalARN":  textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalARN), "arn:aws:iam::111122223333:role/CerebroControlPlane"),
 		"ExternalID":    textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.ExternalID), "replace-with-customer-specific-external-id"),
 		"ManagedTagKey": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.ManagedTagKey), "CerebroManagedBy"),
 		"ManagedTagVal": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.ManagedTagVal), "cerebro"),
@@ -76,7 +73,7 @@ func RenderGCPBundle(opts GCPRenderOptions) (Bundle, error) {
 		"WorkloadIdentityProviderID": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.WorkloadIdentityProviderID), "cerebro-oidc"),
 		"WorkloadIdentityIssuerURI":  textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.WorkloadIdentityIssuerURI), "https://token.actions.githubusercontent.com"),
 		"WorkloadIdentityAudience":   textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.WorkloadIdentityAudience), "//iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/cerebro-workload-pool/providers/cerebro-oidc"),
-		"PrincipalSubject":           textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalSubject), "repo:your-org/your-repo:ref:refs/heads/main"),
+		"PrincipalSubject":           textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalSubject), "repo:evalops/cerebro:ref:refs/heads/main"),
 	}
 	files := []GeneratedFile{
 		{Path: filepath.ToSlash("gcp/main.tf"), Content: renderTemplate(gcpMainTemplate, data)},
@@ -89,8 +86,8 @@ func RenderGCPBundle(opts GCPRenderOptions) (Bundle, error) {
 
 func RenderAzureBundle(opts AzureRenderOptions) (Bundle, error) {
 	data := map[string]string{
-		"SubscriptionID":       textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.SubscriptionID), "replace-with-subscription-id"),
-		"TenantID":             textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.TenantID), "replace-with-tenant-id"),
+		"SubscriptionID":       textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.SubscriptionID), "00000000-0000-0000-0000-000000000000"),
+		"TenantID":             textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.TenantID), "00000000-0000-0000-0000-000000000000"),
 		"Location":             textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.Location), "eastus"),
 		"PrincipalDisplayName": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalDisplayName), "cerebro-workload-scan"),
 		"CustomRoleName":       textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.CustomRoleName), "Cerebro Snapshot Operator"),
@@ -107,49 +104,11 @@ func RenderAzureBundle(opts AzureRenderOptions) (Bundle, error) {
 }
 
 func renderTemplate(src string, data any) string {
-	tmpl := template.Must(template.New("bundle").Funcs(renderTemplateFuncs()).Parse(src))
-	return executeTemplate(tmpl, data)
+	return iacrender.RenderTemplate("bundle", src, data)
 }
 
 func renderJSONTemplate(src string, data any) string {
-	tmpl := template.Must(template.New("bundle").Funcs(renderTemplateFuncs()).Parse(src))
-	return executeTemplate(tmpl, data)
-}
-
-func renderTemplateFuncs() template.FuncMap {
-	return template.FuncMap{
-		"jsonString": mustJSONString,
-		"yamlString": mustJSONString,
-		"hclString": func(value any) string {
-			text := asString(value)
-			text = strings.ReplaceAll(text, "${", "$${")
-			text = strings.ReplaceAll(text, "%{", "%%{")
-			return mustJSONString(text)
-		},
-	}
-}
-
-func mustJSONString(value any) string {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
-	return string(encoded)
-}
-
-func asString(value any) string {
-	if text, ok := value.(string); ok {
-		return text
-	}
-	return strings.TrimSpace(fmt.Sprint(value))
-}
-
-func executeTemplate(tmpl *template.Template, data any) string {
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		panic(err)
-	}
-	return strings.TrimLeft(buf.String(), "\n")
+	return iacrender.RenderTemplate("bundle", src, data)
 }
 
 const awsStackSetTemplate = `AWSTemplateFormatVersion: '2010-09-09'
@@ -228,6 +187,11 @@ Resources:
                   StringEquals:
                     {{yamlString (print "aws:ResourceTag/" .ManagedTagKey)}}: {{yamlString .ManagedTagVal}}
               - Sid: AllowKMSForEC2SnapshotFlows
+                Effect: Allow
+                Action:
+                  - kms:DescribeKey
+                Resource: '*'
+              - Sid: AllowKMSEC2GrantAndDecryptFlows
                 Effect: Allow
                 Action:
                   - kms:Decrypt
@@ -508,7 +472,7 @@ const azureARMParametersTemplate = `{
   "contentVersion": "1.0.0.0",
   "parameters": {
     "principalId": {
-      "value": "replace-with-principal-id"
+      "value": "00000000-0000-0000-0000-000000000000"
     },
     "subscriptionId": {
       "value": {{jsonString .SubscriptionID}}

@@ -1,21 +1,25 @@
 {
   "id": "aws-iam-role-cross-account-admin",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "IAM Role Cross Account Admin",
   "description": "IAM role can be assumed from external account and has administrator privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::iam::role",
   "conditions": [
-    "assume_role_policy_document.Statement.Principal.AWS contains 'arn:aws:iam::'",
-    "attached_policies contains 'AdministratorAccess'"
+    "contains_value(path(resource, \"assume_role_policy_document.Statement.Principal.AWS\"), \"arn:aws:iam::\")",
+    "contains_value(path(resource, \"attached_policies\"), \"AdministratorAccess\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Reduce permissions on cross-account roles or restrict trust to specific principals.",
   "tags": [
     "iam",
     "cross-account",
     "admin",
     "lateral-movement"
   ],
+  "remediation": "Reduce permissions on cross-account roles or restrict trust to specific principals.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

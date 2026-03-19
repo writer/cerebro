@@ -1,20 +1,24 @@
 {
   "id": "aws-codebuild-privileged-mode",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AWS CodeBuild Privileged Mode",
   "description": "CodeBuild project runs with privileged container mode enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::codebuild::project",
   "conditions": [
-    "environment.privileged_mode == true"
+    "cmp_eq(path(resource, \"environment.privileged_mode\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Disable privileged mode unless Docker builds are required.",
   "tags": [
     "cicd",
     "codebuild",
     "container-security",
     "privilege-escalation"
   ],
+  "remediation": "Disable privileged mode unless Docker builds are required.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

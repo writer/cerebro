@@ -170,12 +170,12 @@ func (s *Server) getScanWatermarks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getPolicyCoverage(w http.ResponseWriter, r *http.Request) {
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not initialized")
+	if s.app.Warehouse == nil {
+		s.error(w, http.StatusServiceUnavailable, "warehouse not initialized")
 		return
 	}
 
-	availableTables, err := s.app.Snowflake.ListAvailableTables(r.Context())
+	availableTables, err := s.app.Warehouse.ListAvailableTables(r.Context())
 	if err != nil {
 		s.errorFromErr(w, err)
 		return

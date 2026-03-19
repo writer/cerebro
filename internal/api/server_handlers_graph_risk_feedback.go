@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/writer/cerebro/internal/graph"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 	"github.com/writer/cerebro/internal/metrics"
 )
 
@@ -21,11 +21,7 @@ type recordOutcomeRequest struct {
 }
 
 func (s *Server) listGraphOutcomes(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -41,11 +37,7 @@ func (s *Server) listGraphOutcomes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) recordGraphOutcome(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -57,7 +49,7 @@ func (s *Server) recordGraphOutcome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recorded, err := engine.RecordOutcome(graph.OutcomeEvent{
+	recorded, err := engine.RecordOutcome(risk.OutcomeEvent{
 		ID:         req.ID,
 		EntityID:   req.EntityID,
 		Outcome:    req.Outcome,
@@ -78,11 +70,7 @@ func (s *Server) recordGraphOutcome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) graphRiskFeedback(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return

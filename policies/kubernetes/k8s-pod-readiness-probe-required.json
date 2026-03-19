@@ -1,19 +1,23 @@
 {
   "id": "k8s-pod-readiness-probe-required",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Kubernetes Pod Requires Readiness Probes",
   "description": "All containers should define readiness probes before receiving traffic.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "kubernetes::pod",
   "conditions": [
-    "spec.all_containers_have_readiness_probe != true"
+    "cmp_ne(path(resource, \"spec.all_containers_have_readiness_probe\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Define a readinessProbe for each container so only healthy pods receive traffic.",
   "tags": [
     "kubernetes",
     "reliability",
     "operations"
   ],
+  "remediation": "Define a readinessProbe for each container so only healthy pods receive traffic.",
   "risk_categories": [
     "MISCONFIGURATION"
   ]

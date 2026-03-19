@@ -1,14 +1,25 @@
 {
   "id": "compliance-data-inventory-maintained",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Data Inventory Maintained",
   "description": "The organization should maintain an inventory of personal data processing activities as required by privacy regulations",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compliance_documents",
   "conditions": [
-    "document_type == DATA_INVENTORY",
-    "last_updated_days > 365"
+    "cmp_eq(path(resource, \"document_type\"), path(resource, \"DATA_INVENTORY\"))",
+    "cmp_gt(path(resource, \"last_updated_days\"), 365)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
+  "tags": [
+    "compliance",
+    "privacy",
+    "data-inventory",
+    "gdpr",
+    "ropa"
+  ],
   "remediation": "Create and maintain a data inventory/records of processing activities (ROPA) documenting all personal data processed",
   "remediation_steps": [
     "Identify all systems that process personal data",
@@ -18,32 +29,33 @@
     "Identify technical and organizational security measures",
     "Review and update at least annually"
   ],
-  "tags": [
-    "compliance",
-    "privacy",
-    "data-inventory",
-    "gdpr",
-    "ropa"
-  ],
   "risk_categories": [
     "MISCONFIGURATION"
   ],
   "frameworks": [
     {
       "name": "GDPR",
-      "controls": ["Article 30"]
+      "controls": [
+        "Article 30"
+      ]
     },
     {
       "name": "ISO 27701",
-      "controls": ["7.2.8"]
+      "controls": [
+        "7.2.8"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["P1.1"]
+      "controls": [
+        "P1.1"
+      ]
     },
     {
       "name": "CCPA",
-      "controls": ["1798.100"]
+      "controls": [
+        "1798.100"
+      ]
     }
   ]
 }

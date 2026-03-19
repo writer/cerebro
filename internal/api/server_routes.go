@@ -3,8 +3,6 @@
 package api
 
 import (
-	"time"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -16,9 +14,9 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.Recoverer)
 	s.router.Use(SecurityHeaders())
 	s.router.Use(s.graphBuildWarningHeaders)
-	s.router.Use(middleware.Timeout(60 * time.Second))
+	s.router.Use(middleware.Timeout(s.apiRequestTimeout()))
 	s.router.Use(middleware.Compress(5))
-	s.router.Use(MaxBodySize(DefaultMaxBodySize))
+	s.router.Use(MaxBodySize(s.apiMaxBodyBytes()))
 	s.router.Use(MetricsMiddleware)
 
 	if len(s.app.Config.CORSAllowedOrigins) > 0 {
@@ -134,6 +132,8 @@ func (s *Server) setupRoutes() {
 		r.Route("/compliance", func(r chi.Router) {
 			r.Get("/frameworks", s.listFrameworks)
 			r.Get("/frameworks/{id}", s.getFramework)
+			r.Get("/frameworks/{id}/status", s.getFrameworkStatus)
+			r.Get("/frameworks/{id}/controls/{control_id}", s.getFrameworkControl)
 			r.Get("/frameworks/{id}/report", s.generateComplianceReport)
 			r.Get("/frameworks/{id}/pre-audit", s.preAuditCheck)
 			r.Get("/frameworks/{id}/export", s.exportAuditPackage)
@@ -278,12 +278,12 @@ func (s *Server) setupRoutes() {
 		// Runtime Detection endpoints
 		r.Route("/runtime", func(r chi.Router) {
 			r.Get("/detections", s.listDetectionRules)
+			r.Get("/executions", s.listRuntimeExecutions)
 			r.Post("/events", s.ingestRuntimeEvent)
 			r.Get("/findings", s.listRuntimeFindings)
-			r.Get("/executions", s.listRuntimeExecutions)
+			r.Get("/responses", s.listResponsePolicies)
 			r.Post("/executions/{id}/approve", s.approveRuntimeExecution)
 			r.Post("/executions/{id}/reject", s.rejectRuntimeExecution)
-			r.Get("/responses", s.listResponsePolicies)
 			r.Post("/responses/{id}/enable", s.enableResponsePolicy)
 			r.Post("/responses/{id}/disable", s.disableResponsePolicy)
 		})
@@ -355,6 +355,7 @@ func (s *Server) setupRoutes() {
 		// Shared platform primitives
 		r.Route("/platform", func(r chi.Router) {
 			r.Get("/executions", s.listPlatformExecutions)
+			r.Get("/workload-scan/targets", s.listPlatformWorkloadScanTargets)
 			r.Get("/entities", s.listPlatformEntities)
 			r.Get("/entities/search", s.searchPlatformEntities)
 			r.Get("/entities/suggest", s.suggestPlatformEntities)

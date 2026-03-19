@@ -35,7 +35,10 @@ func (a *App) GraphFreshnessStatusSnapshot(now time.Time) GraphFreshnessStatus {
 		EvaluatedAt: now.UTC(),
 		Healthy:     true,
 	}
-	securityGraph := a.CurrentSecurityGraph()
+	securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
+	if err != nil && a != nil && a.Logger != nil {
+		a.Logger.Warn("failed to resolve security graph for freshness status", "error", err)
+	}
 	if securityGraph == nil {
 		return status
 	}

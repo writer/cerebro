@@ -1,15 +1,18 @@
 {
   "id": "m365-guest-admin",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Microsoft 365 Guest User with Admin Role",
   "description": "External guest user has been assigned an administrative role in the tenant",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "m365::directory::user",
   "conditions": [
-    "user_type == 'Guest'",
-    "directory_roles ANY (is_privileged == true)"
+    "cmp_eq(path(resource, \"user_type\"), \"Guest\")",
+    "list_value(path(resource, \"directory_roles\")).exists(item, cmp_eq(path(item, \"is_privileged\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove admin roles from guest users immediately. Guest users should not have elevated privileges. Create internal accounts if external admin access is required.",
   "tags": [
     "m365",
     "identity",
@@ -17,6 +20,7 @@
     "guest-user",
     "nist-ac-6"
   ],
+  "remediation": "Remove admin roles from guest users immediately. Guest users should not have elevated privileges. Create internal accounts if external admin access is required.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

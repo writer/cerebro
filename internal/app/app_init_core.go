@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/dspm"
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/notifications"
@@ -21,8 +22,22 @@ import (
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/ticketing"
+	"github.com/writer/cerebro/internal/warehouse"
 	"github.com/writer/cerebro/internal/webhooks"
 )
+
+func (a *App) initWarehouse(ctx context.Context) error {
+	switch strings.ToLower(strings.TrimSpace(a.Config.WarehouseBackend)) {
+	case "", "snowflake":
+		return a.initSnowflake(ctx)
+	case "sqlite":
+		return a.initSQLiteWarehouse(ctx)
+	case "postgres":
+		return a.initPostgresWarehouse(ctx)
+	default:
+		return fmt.Errorf("unsupported warehouse backend %q", a.Config.WarehouseBackend)
+	}
+}
 
 func (a *App) initSnowflake(ctx context.Context) error {
 	// Require key-pair auth
@@ -52,6 +67,34 @@ func (a *App) initSnowflake(ctx context.Context) error {
 	return nil
 }
 
+func (a *App) initSQLiteWarehouse(_ context.Context) error {
+	store, err := warehouse.NewSQLiteWarehouse(warehouse.SQLiteWarehouseConfig{
+		Path:      strings.TrimSpace(a.Config.WarehouseSQLitePath),
+		Database:  "sqlite",
+		Schema:    "RAW",
+		AppSchema: "CEREBRO",
+	})
+	if err != nil {
+		return err
+	}
+	a.Snowflake = nil
+	a.Warehouse = store
+	return nil
+}
+
+func (a *App) initPostgresWarehouse(_ context.Context) error {
+	store, err := warehouse.NewPostgresWarehouse(warehouse.PostgresWarehouseConfig{
+		DSN:       strings.TrimSpace(a.Config.WarehousePostgresDSN),
+		AppSchema: "cerebro",
+	})
+	if err != nil {
+		return err
+	}
+	a.Snowflake = nil
+	a.Warehouse = store
+	return nil
+}
+
 func (a *App) initPolicy() error {
 	a.Policy = policy.NewEngine()
 	if err := a.Policy.LoadPolicies(a.Config.PoliciesPath); err != nil {
@@ -75,10 +118,18 @@ func (a *App) initFindings() {
 	if a.Warehouse != nil {
 		warehouseDB = a.Warehouse.DB()
 	}
+	warehouseBackend := strings.ToLower(strings.TrimSpace(a.Config.WarehouseBackend))
+	if warehouseBackend == "" {
+		warehouseBackend = "snowflake"
+		if a.Snowflake == nil {
+			warehouseBackend = "sqlite"
+		}
+	}
 
-	// Use SQLite persistence when Snowflake is not available
-	// This prevents data loss on restart in dev/test environments
-	if a.Warehouse == nil || warehouseDB == nil {
+	// Findings persistence is still Snowflake-specific today. For non-Snowflake
+	// warehouse backends, keep using the local SQLite findings store instead of
+	// routing through Snowflake SQL semantics on an incompatible backend.
+	if warehouseBackend != "snowflake" || a.Warehouse == nil || warehouseDB == nil {
 		dbPath := filepath.Join(findings.DefaultFilePath(), "cerebro.db")
 		if path := os.Getenv("CEREBRO_DB_PATH"); path != "" {
 			dbPath = path
@@ -225,7 +276,7 @@ func (a *App) initTicketing(ctx context.Context) {
 			Project:          a.Config.JiraProject,
 			CloseTransitions: a.Config.JiraCloseTransitions,
 		})
-		if err := validateTicketingProvider(ctx, jira); err != nil {
+		if err := validateTicketingProvider(ctx, jira, a.Config.TicketingProviderValidateTimeoutOrDefault()); err != nil {
 			a.Logger.Error("ticketing provider validation failed", "provider", jira.Name(), "error", err)
 		} else {
 			a.Ticketing.RegisterProvider(jira)
@@ -238,7 +289,7 @@ func (a *App) initTicketing(ctx context.Context) {
 			APIKey: a.Config.LinearAPIKey,
 			TeamID: a.Config.LinearTeamID,
 		})
-		if err := validateTicketingProvider(ctx, linear); err != nil {
+		if err := validateTicketingProvider(ctx, linear, a.Config.TicketingProviderValidateTimeoutOrDefault()); err != nil {
 			a.Logger.Error("ticketing provider validation failed", "provider", linear.Name(), "error", err)
 		} else {
 			a.Ticketing.RegisterProvider(linear)
@@ -246,17 +297,36 @@ func (a *App) initTicketing(ctx context.Context) {
 	}
 }
 
-func validateTicketingProvider(parent context.Context, provider ticketing.Provider) error {
+func validateTicketingProvider(parent context.Context, provider ticketing.Provider, timeout time.Duration) error {
 	if parent == nil {
 		parent = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	if timeout <= 0 {
+		timeout = (*Config)(nil).TicketingProviderValidateTimeoutOrDefault()
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	return provider.Validate(ctx)
 }
 
 func (a *App) initIdentity() {
-	a.Identity = identity.NewService()
+	a.Identity = identity.NewService(
+		identity.WithExecutionStore(a.ExecutionStore),
+		identity.WithGraphResolver(func(ctx context.Context) *graph.Graph {
+			if scope, ok := graph.TenantReadScopeFromContext(ctx); ok && !scope.CrossTenant && len(scope.TenantIDs) == 1 {
+				view, err := a.currentOrStoredSecurityGraphViewForTenant(scope.TenantIDs[0])
+				if err != nil {
+					return nil
+				}
+				return view
+			}
+			view, err := a.currentOrStoredSecurityGraphView()
+			if err != nil {
+				return nil
+			}
+			return view
+		}),
+	)
 }
 
 func (a *App) initAttackPath() {

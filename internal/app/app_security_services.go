@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/lineage"
+	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/remediation"
 	"github.com/writer/cerebro/internal/runtime"
 	"github.com/writer/cerebro/internal/threatintel"
@@ -61,12 +61,10 @@ func (a *App) initThreatIntel(ctx context.Context) {
 	// Sync feeds in background
 	go func() {
 		defer a.threatIntelSyncWG.Done()
-		const (
-			syncTimeout  = 2 * time.Minute
-			syncMaxAge   = 12 * time.Hour
-			syncAttempts = 3
-			syncBackoff  = 5 * time.Second
-		)
+		syncTimeout := a.Config.ThreatIntelSyncTimeoutOrDefault()
+		syncMaxAge := a.Config.ThreatIntelSyncMaxAgeOrDefault()
+		syncAttempts := a.Config.ThreatIntelSyncAttemptsOrDefault()
+		syncBackoff := a.Config.ThreatIntelSyncBackoffOrDefault()
 		if !a.ThreatIntel.ShouldSync(syncMaxAge) {
 			stats := a.ThreatIntel.Stats()
 			a.Logger.Info("threat intel feeds fresh", "last_updated", stats["last_updated"])
@@ -176,6 +174,7 @@ func (a *App) initHealth() {
 	}))
 
 	a.Health.Register("graph_ontology_slo", a.graphOntologySLOHealthCheck())
+	a.Health.Register("graph_writer_lease", a.graphWriterLeaseHealthCheck())
 	a.Health.Register("graph_build", func(_ context.Context) health.CheckResult {
 		start := time.Now().UTC()
 		result := health.CheckResult{
@@ -212,7 +211,11 @@ func (a *App) initHealth() {
 			Name:      "graph_freshness",
 			Timestamp: start,
 		}
-		if a.CurrentSecurityGraph() == nil {
+		securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
+		if err != nil && a != nil && a.Logger != nil {
+			a.Logger.Warn("failed to resolve security graph for graph freshness health check", "error", err)
+		}
+		if securityGraph == nil {
 			result.Status = health.StatusUnknown
 			result.Message = "graph not initialized"
 			result.Latency = time.Since(start)
@@ -363,7 +366,10 @@ func (a *App) graphOntologySLOHealthCheck() health.Checker {
 			result.Latency = time.Since(start)
 			return result
 		}
-		securityGraph := a.CurrentSecurityGraph()
+		securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
+		if err != nil && a.Logger != nil {
+			a.Logger.Warn("failed to resolve security graph for ontology slo health check", "error", err)
+		}
 		if securityGraph == nil {
 			result.Status = health.StatusUnknown
 			result.Message = "security graph not initialized"
@@ -502,6 +508,14 @@ func (a *App) initRemediation() {
 
 func (a *App) initRuntime() {
 	a.RuntimeDetect = runtime.NewDetectionEngine()
+	if a.ExecutionStore != nil {
+		ingestStore, err := runtime.NewSQLiteIngestStoreWithExecutionStore(a.ExecutionStore)
+		if err != nil {
+			a.Logger.Warn("failed to initialize runtime ingest bloom fast path; using durable dedupe only", "error", err)
+			ingestStore = runtime.NewSQLiteIngestStoreWithoutBloom(a.ExecutionStore)
+		}
+		a.RuntimeIngest = ingestStore
+	}
 	a.RuntimeRespond = runtime.NewResponseEngine()
 	a.RuntimeRespond.SetSharedExecutor(a.newSharedActionExecutor())
 	a.RuntimeRespond.SetActionHandler(runtime.NewDefaultActionHandler(runtime.DefaultActionHandlerOptions{
@@ -509,6 +523,9 @@ func (a *App) initRuntime() {
 		RemoteCaller: a.RemoteTools,
 	}))
 	a.Logger.Info("runtime detection initialized", "rules", len(a.RuntimeDetect.ListRules()))
+	if a.RuntimeIngest != nil {
+		a.Logger.Info("runtime ingest initialized", "store", "executionstore")
+	}
 	a.Logger.Info("runtime response initialized", "policies", len(a.RuntimeRespond.ListPolicies()))
 }
 
@@ -517,7 +534,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	a.setGraphBuildState(GraphBuildNotStarted, time.Time{}, nil)
 
 	if a.Warehouse == nil {
-		a.Logger.Warn("security graph disabled - snowflake not configured")
+		a.Logger.Warn("security graph disabled - warehouse not configured")
 		a.Propagation = nil
 		a.graphCancel = nil
 		close(a.graphReady)
@@ -527,7 +544,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	source := builders.NewSnowflakeSource(a.Warehouse)
 	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
 	securityGraph := a.SecurityGraphBuilder.Graph()
-	a.configureGraphSchemaValidation(securityGraph)
+	a.configureGraphRuntimeBehavior(securityGraph)
 	a.setSecurityGraph(securityGraph)
 	if a.GraphSnapshots != nil {
 		recovered, record, recoverySource, err := a.GraphSnapshots.LoadLatestSnapshot()
@@ -535,7 +552,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 			a.Logger.Warn("failed to recover persisted security graph snapshot", "error", err)
 		} else if recovered != nil {
 			recoveredGraph := graph.RestoreFromSnapshot(recovered)
-			a.configureGraphSchemaValidation(recoveredGraph)
+			a.configureGraphRuntimeBehavior(recoveredGraph)
 			a.setSecurityGraph(recoveredGraph)
 			if record != nil && record.BuiltAt != nil {
 				a.setGraphBuildState(GraphBuildSuccess, record.BuiltAt.UTC(), nil)
@@ -547,6 +564,14 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 				"edges", recoveredGraph.EdgeCount(),
 			)
 		}
+	}
+	if !a.graphWriterLeaseAllowsWrites() {
+		a.Logger.Info("security graph initialized in follower mode",
+			"lease", a.Config.GraphWriterLeaseName,
+			"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
+		)
+		close(a.graphReady)
+		return
 	}
 
 	graphCtx, cancel := context.WithCancel(backgroundWorkContext(ctx))
@@ -602,16 +627,26 @@ func backgroundWorkContext(ctx context.Context) context.Context {
 	return context.WithoutCancel(ctx)
 }
 
-func (a *App) configureGraphSchemaValidation(g *graph.Graph) {
+func (a *App) configureGraphRuntimeBehavior(g *graph.Graph) {
 	if g == nil {
 		return
 	}
 
 	mode := graph.SchemaValidationWarn
+	maxEntries := graph.DefaultTemporalHistoryMaxEntries
+	ttl := graph.DefaultTemporalHistoryTTL
 	if a != nil && a.Config != nil {
 		mode = graph.ParseSchemaValidationMode(a.Config.GraphSchemaValidationMode)
+		if a.Config.GraphPropertyHistoryMaxEntries > 0 {
+			maxEntries = a.Config.GraphPropertyHistoryMaxEntries
+		}
+		if a.Config.GraphPropertyHistoryTTL > 0 {
+			ttl = a.Config.GraphPropertyHistoryTTL
+		}
 	}
 	g.SetSchemaValidationMode(mode)
+	g.SetTemporalHistoryConfig(maxEntries, ttl)
+	metrics.SetGraphPropertyHistoryDepth(maxEntries)
 }
 
 // WaitForGraph blocks until the initial graph build completes (or ctx is cancelled).
@@ -636,6 +671,9 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	if a.SecurityGraphBuilder == nil {
 		return fmt.Errorf("security graph not initialized")
 	}
+	if err := a.requireGraphWriterLease("rebuild security graph"); err != nil {
+		return err
+	}
 
 	a.graphUpdateMu.Lock()
 	defer a.graphUpdateMu.Unlock()
@@ -648,6 +686,9 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	}
 
 	securityGraph := a.SecurityGraphBuilder.Graph()
+	if err := a.requireGraphWriterLease("rebuild security graph"); err != nil {
+		return err
+	}
 	meta, err := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if err != nil {
 		return err
@@ -671,6 +712,10 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 		return graph.Metadata{}, err
 	}
+	if err := a.requireGraphWriterLease("activate security graph"); err != nil {
+		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+		return graph.Metadata{}, err
+	}
 	if materialized, err := a.materializePersistedWorkloadScans(ctx, securityGraph); err != nil {
 		a.Logger.Warn("failed to materialize persisted workload scans into security graph", "error", err)
 	} else if materialized.RunsMaterialized > 0 {
@@ -685,7 +730,7 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 		)
 	}
 	a.rematerializeEventCorrelations(securityGraph, "graph_activation")
-	a.configureGraphSchemaValidation(securityGraph)
+	a.configureGraphRuntimeBehavior(securityGraph)
 	a.setSecurityGraph(securityGraph)
 	if a.GraphSnapshots != nil {
 		if record, err := a.GraphSnapshots.SaveGraph(securityGraph); err != nil {
@@ -730,67 +775,22 @@ func (a *App) rematerializeEventCorrelations(securityGraph *graph.Graph, reason 
 }
 
 func (a *App) initEventCorrelationRefreshLoop(ctx context.Context) {
-	if a == nil || a.eventCorrelationRefreshCh != nil {
+	if a == nil || a.eventCorrelationRefreshQueue != nil {
 		return
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	loopCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is stored on App and invoked by stopEventCorrelationRefreshLoop during shutdown.
-	a.eventCorrelationRefreshCh = make(chan string, 1)
+	queue := newEventCorrelationRefreshQueue(a.refreshCurrentEventCorrelations)
+	queue.start()
+	a.eventCorrelationRefreshQueue = queue
 	a.eventCorrelationRefreshCancel = cancel
 	a.eventCorrelationRefreshWG.Add(1)
 	go func() {
 		defer a.eventCorrelationRefreshWG.Done()
-		const debounce = 2 * time.Second
-		pendingReasons := make(map[string]struct{})
-		var (
-			timer   *time.Timer
-			timerCh <-chan time.Time
-		)
-		flush := func() {
-			if len(pendingReasons) == 0 {
-				return
-			}
-			reasons := make([]string, 0, len(pendingReasons))
-			for reason := range pendingReasons {
-				reasons = append(reasons, reason)
-			}
-			sort.Strings(reasons)
-			pendingReasons = make(map[string]struct{})
-			a.refreshCurrentEventCorrelations(strings.Join(reasons, ","))
-		}
-		for {
-			select {
-			case <-loopCtx.Done():
-				if timer != nil {
-					timer.Stop()
-				}
-				return
-			case reason := <-a.eventCorrelationRefreshCh:
-				reason = strings.TrimSpace(reason)
-				if reason == "" {
-					reason = "tap_mapping"
-				}
-				pendingReasons[reason] = struct{}{}
-				if timer == nil {
-					timer = time.NewTimer(debounce)
-					timerCh = timer.C
-					continue
-				}
-				if !timer.Stop() {
-					select {
-					case <-timer.C:
-					default:
-					}
-				}
-				timer.Reset(debounce)
-			case <-timerCh:
-				timerCh = nil
-				if timer != nil {
-					timer.Stop()
-					timer = nil
-				}
-				flush()
-			}
-		}
+		<-loopCtx.Done()
+		queue.stop()
 	}()
 }
 
@@ -798,17 +798,13 @@ func (a *App) queueEventCorrelationRefresh(reason string) {
 	if a == nil {
 		return
 	}
-	reason = strings.TrimSpace(reason)
-	if reason == "" {
-		reason = "tap_mapping"
-	}
-	if a.eventCorrelationRefreshCh == nil {
+	reason = normalizeEventCorrelationRefreshReason(reason)
+	if a.eventCorrelationRefreshQueue == nil {
 		a.refreshCurrentEventCorrelations(reason)
 		return
 	}
-	select {
-	case a.eventCorrelationRefreshCh <- reason:
-	default:
+	if delay := eventCorrelationBackpressureDelay(a.eventCorrelationRefreshQueue.enqueue(reason)); delay > 0 {
+		time.Sleep(delay)
 	}
 }
 
@@ -816,6 +812,7 @@ func (a *App) stopEventCorrelationRefreshLoop() {
 	if a == nil {
 		return
 	}
+	shutdownTimeout := a.Config.ShutdownTimeoutOrDefault()
 	if a.eventCorrelationRefreshCancel != nil {
 		a.eventCorrelationRefreshCancel()
 	}
@@ -826,12 +823,12 @@ func (a *App) stopEventCorrelationRefreshLoop() {
 	}()
 	select {
 	case <-done:
-	case <-time.After(appShutdownTimeout):
+	case <-time.After(shutdownTimeout):
 		if a.Logger != nil {
-			a.Logger.Warn("timed out waiting for event correlation refresh loop to stop", "timeout", appShutdownTimeout)
+			a.Logger.Warn("timed out waiting for event correlation refresh loop to stop", "timeout", shutdownTimeout)
 		}
 	}
-	a.eventCorrelationRefreshCh = nil
+	a.eventCorrelationRefreshQueue = nil
 	a.eventCorrelationRefreshCancel = nil
 }
 

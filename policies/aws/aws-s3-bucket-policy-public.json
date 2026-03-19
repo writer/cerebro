@@ -1,22 +1,26 @@
 {
   "id": "aws-s3-bucket-policy-public",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Bucket Policy Allows Public Access",
   "description": "S3 bucket policy allows public access via Principal: '*' without restrictive conditions",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::s3::bucket",
   "conditions": [
-    "policy.Statement.Principal == '*'",
-    "policy.Statement.Effect == 'Allow'",
-    "policy.Statement.Condition == null"
+    "cmp_eq(path(resource, \"policy.Statement.Principal\"), \"*\")",
+    "cmp_eq(path(resource, \"policy.Statement.Effect\"), \"Allow\")",
+    "cmp_eq(path(resource, \"policy.Statement.Condition\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public access from bucket policy or add restrictive conditions (e.g., source VPC, IP).",
   "tags": [
     "cis-aws-2.1.5",
     "s3",
     "data-exposure",
     "public-access"
   ],
+  "remediation": "Remove public access from bucket policy or add restrictive conditions (e.g., source VPC, IP).",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

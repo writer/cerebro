@@ -1,20 +1,24 @@
 {
   "id": "aws-iam-user-multiple-access-keys",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "IAM User Multiple Access Keys",
   "description": "IAM user has more than one active access key",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::iam::user",
   "conditions": [
-    "access_key_1_active == true",
-    "access_key_2_active == true"
+    "cmp_eq(path(resource, \"access_key_1_active\"), true)",
+    "cmp_eq(path(resource, \"access_key_2_active\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "Rotate access keys and ensure only one is active at a time.",
   "tags": [
     "iam",
     "hygiene",
     "access-keys"
   ],
+  "remediation": "Rotate access keys and ensure only one is active at a time.",
   "risk_categories": [
     "IDENTITY_RISK"
   ],

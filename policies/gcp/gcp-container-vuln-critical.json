@@ -1,15 +1,27 @@
 {
   "id": "gcp-container-vuln-critical",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Container Critical Vulnerabilities Addressed",
   "description": "Ensures critical vulnerabilities in GCP container images are remediated within SLA (7 days)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp_container_vulnerabilities",
   "conditions": [
-    "severity = 'CRITICAL'",
-    "state = 'ACTIVE'",
-    "discovered_at < NOW() - INTERVAL '7 days'"
+    "cmp_eq(path(resource, \"severity\"), \"CRITICAL\")",
+    "cmp_eq(path(resource, \"state\"), \"ACTIVE\")",
+    "cmp_lt(path(resource, \"discovered_at\"), \"NOW() - INTERVAL '7 days'\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
+  "tags": [
+    "gcp",
+    "container",
+    "vulnerability",
+    "critical",
+    "sla",
+    "compliance"
+  ],
   "remediation": "Update container images to address critical vulnerabilities. Rebuild and redeploy containers with patched base images.",
   "remediation_steps": [
     "Identify affected container images in GCR/Artifact Registry",
@@ -18,11 +30,29 @@
     "Rebuild container images",
     "Deploy updated images to GKE clusters"
   ],
-  "tags": ["gcp", "container", "vulnerability", "critical", "sla", "compliance"],
-  "risk_categories": ["VULNERABLE_WORKLOAD"],
+  "risk_categories": [
+    "VULNERABLE_WORKLOAD"
+  ],
   "frameworks": [
-    {"name": "SOC 2", "controls": ["CC7.1"]},
-    {"name": "PCI DSS v4.0", "controls": ["6.3.1", "11.3.1"]},
-    {"name": "NIST 800-53 r5", "controls": ["RA-5", "SI-2"]}
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.1"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "6.3.1",
+        "11.3.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "RA-5",
+        "SI-2"
+      ]
+    }
   ]
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/writer/cerebro/internal/graph"
+	entities "github.com/writer/cerebro/internal/graph/entities"
 )
 
 const maxPlatformEntityQueryLength = 512
@@ -20,9 +21,9 @@ func platformEntityQueryLengthExceeds(value string) bool {
 }
 
 func (s *Server) listPlatformEntities(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -32,13 +33,13 @@ func (s *Server) listPlatformEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.json(w, http.StatusOK, graph.QueryEntities(g, opts))
+	s.json(w, http.StatusOK, entities.QueryEntities(g, opts))
 }
 
 func (s *Server) searchPlatformEntities(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -47,13 +48,13 @@ func (s *Server) searchPlatformEntities(w http.ResponseWriter, r *http.Request) 
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, graph.SearchEntities(g, opts))
+	s.json(w, http.StatusOK, entities.SearchEntities(g, opts))
 }
 
 func (s *Server) suggestPlatformEntities(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -62,11 +63,11 @@ func (s *Server) suggestPlatformEntities(w http.ResponseWriter, r *http.Request)
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, graph.SuggestEntities(g, opts))
+	s.json(w, http.StatusOK, entities.SuggestEntities(g, opts))
 }
 
 func (s *Server) listPlatformEntityFacets(w http.ResponseWriter, r *http.Request) {
-	s.json(w, http.StatusOK, graph.BuildEntityFacetContractCatalog(time.Now().UTC()))
+	s.json(w, http.StatusOK, entities.BuildEntityFacetContractCatalog(time.Now().UTC()))
 }
 
 func (s *Server) getPlatformEntityFacet(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +76,7 @@ func (s *Server) getPlatformEntityFacet(w http.ResponseWriter, r *http.Request) 
 		s.error(w, http.StatusBadRequest, "facet id required")
 		return
 	}
-	facet, ok := graph.GetEntityFacetDefinition(facetID)
+	facet, ok := entities.GetEntityFacetDefinition(facetID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "facet not found")
 		return
@@ -84,9 +85,9 @@ func (s *Server) getPlatformEntityFacet(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) getPlatformEntity(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -107,7 +108,7 @@ func (s *Server) getPlatformEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	record, ok := graph.GetEntityRecord(g, entityID, validAt, recordedAt)
+	record, ok := entities.GetEntityRecord(g, entityID, validAt, recordedAt)
 	if !ok {
 		s.error(w, http.StatusNotFound, "entity not found")
 		return
@@ -116,9 +117,9 @@ func (s *Server) getPlatformEntity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getPlatformEntityAtTime(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -138,7 +139,7 @@ func (s *Server) getPlatformEntityAtTime(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	record, ok := graph.GetEntityRecordAtTime(g, entityID, timestamp, recordedAt)
+	record, ok := entities.GetEntityRecordAtTime(g, entityID, timestamp, recordedAt)
 	if !ok {
 		s.error(w, http.StatusNotFound, "entity not found")
 		return
@@ -147,9 +148,9 @@ func (s *Server) getPlatformEntityAtTime(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) getPlatformEntityTimeDiff(w http.ResponseWriter, r *http.Request) {
-	g := s.currentTenantSecurityGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -174,7 +175,7 @@ func (s *Server) getPlatformEntityTimeDiff(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	record, ok := graph.GetEntityTimeDiff(g, entityID, from, to, recordedAt)
+	record, ok := entities.GetEntityTimeDiff(g, entityID, from, to, recordedAt)
 	if !ok {
 		s.error(w, http.StatusNotFound, "entity not found")
 		return
@@ -182,9 +183,9 @@ func (s *Server) getPlatformEntityTimeDiff(w http.ResponseWriter, r *http.Reques
 	s.json(w, http.StatusOK, record)
 }
 
-func parsePlatformEntityQueryOptions(r *http.Request) (graph.EntityQueryOptions, error) {
+func parsePlatformEntityQueryOptions(r *http.Request) (entities.EntityQueryOptions, error) {
 	query := r.URL.Query()
-	opts := graph.EntityQueryOptions{
+	opts := entities.EntityQueryOptions{
 		ID:           strings.TrimSpace(query.Get("id")),
 		Kinds:        parseNodeKindsCSV(query.Get("kind")),
 		Categories:   parseNodeCategoriesCSV(query.Get("category")),
@@ -197,91 +198,91 @@ func parsePlatformEntityQueryOptions(r *http.Request) (graph.EntityQueryOptions,
 		TagValue:     strings.TrimSpace(query.Get("tag_value")),
 	}
 	if platformEntityQueryLengthExceeds(opts.Search) {
-		return graph.EntityQueryOptions{}, fmt.Errorf("q exceeds max length %d", maxPlatformEntityQueryLength)
+		return entities.EntityQueryOptions{}, fmt.Errorf("q exceeds max length %d", maxPlatformEntityQueryLength)
 	}
 	if risk := strings.ToLower(strings.TrimSpace(query.Get("risk"))); risk != "" {
 		switch graph.RiskLevel(risk) {
 		case graph.RiskCritical, graph.RiskHigh, graph.RiskMedium, graph.RiskLow, graph.RiskNone:
 			opts.Risk = graph.RiskLevel(risk)
 		default:
-			return graph.EntityQueryOptions{}, fmt.Errorf("invalid risk %q", risk)
+			return entities.EntityQueryOptions{}, fmt.Errorf("invalid risk %q", risk)
 		}
 	}
 	if hasFindings, ok, err := parseOptionalBoolQuery(r, "has_findings"); err != nil {
-		return graph.EntityQueryOptions{}, err
+		return entities.EntityQueryOptions{}, err
 	} else if ok {
 		opts.HasFindings = &hasFindings
 	}
 	if validAt, err := parseOptionalRFC3339Query(r, "valid_at"); err != nil {
-		return graph.EntityQueryOptions{}, err
+		return entities.EntityQueryOptions{}, err
 	} else {
 		opts.ValidAt = validAt
 	}
 	if recordedAt, err := parseOptionalRFC3339Query(r, "recorded_at"); err != nil {
-		return graph.EntityQueryOptions{}, err
+		return entities.EntityQueryOptions{}, err
 	} else {
 		opts.RecordedAt = recordedAt
 	}
 	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
 		limit, err := strconv.Atoi(raw)
 		if err != nil {
-			return graph.EntityQueryOptions{}, fmt.Errorf("invalid limit %q", raw)
+			return entities.EntityQueryOptions{}, fmt.Errorf("invalid limit %q", raw)
 		}
 		opts.Limit = limit
 	}
 	if raw := strings.TrimSpace(query.Get("offset")); raw != "" {
 		offset, err := strconv.Atoi(raw)
 		if err != nil {
-			return graph.EntityQueryOptions{}, fmt.Errorf("invalid offset %q", raw)
+			return entities.EntityQueryOptions{}, fmt.Errorf("invalid offset %q", raw)
 		}
 		opts.Offset = offset
 	}
 	return opts, nil
 }
 
-func parsePlatformEntitySearchOptions(r *http.Request) (graph.EntitySearchOptions, error) {
+func parsePlatformEntitySearchOptions(r *http.Request) (entities.EntitySearchOptions, error) {
 	query := r.URL.Query()
-	opts := graph.EntitySearchOptions{
+	opts := entities.EntitySearchOptions{
 		Query: strings.TrimSpace(query.Get("q")),
 		Kinds: parseNodeKindsCSV(query.Get("kind")),
 	}
 	if opts.Query == "" {
-		return graph.EntitySearchOptions{}, fmt.Errorf("q is required")
+		return entities.EntitySearchOptions{}, fmt.Errorf("q is required")
 	}
 	if platformEntityQueryLengthExceeds(opts.Query) {
-		return graph.EntitySearchOptions{}, fmt.Errorf("q exceeds max length %d", maxPlatformEntityQueryLength)
+		return entities.EntitySearchOptions{}, fmt.Errorf("q exceeds max length %d", maxPlatformEntityQueryLength)
 	}
 	if fuzzy, ok, err := parseOptionalBoolQuery(r, "fuzzy"); err != nil {
-		return graph.EntitySearchOptions{}, err
+		return entities.EntitySearchOptions{}, err
 	} else if ok {
 		opts.Fuzzy = fuzzy
 	}
 	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
 		limit, err := strconv.Atoi(raw)
 		if err != nil {
-			return graph.EntitySearchOptions{}, fmt.Errorf("invalid limit %q", raw)
+			return entities.EntitySearchOptions{}, fmt.Errorf("invalid limit %q", raw)
 		}
 		opts.Limit = limit
 	}
 	return opts, nil
 }
 
-func parsePlatformEntitySuggestOptions(r *http.Request) (graph.EntitySuggestOptions, error) {
+func parsePlatformEntitySuggestOptions(r *http.Request) (entities.EntitySuggestOptions, error) {
 	query := r.URL.Query()
-	opts := graph.EntitySuggestOptions{
+	opts := entities.EntitySuggestOptions{
 		Prefix: strings.TrimSpace(query.Get("prefix")),
 		Kinds:  parseNodeKindsCSV(query.Get("kind")),
 	}
 	if opts.Prefix == "" {
-		return graph.EntitySuggestOptions{}, fmt.Errorf("prefix is required")
+		return entities.EntitySuggestOptions{}, fmt.Errorf("prefix is required")
 	}
 	if platformEntityQueryLengthExceeds(opts.Prefix) {
-		return graph.EntitySuggestOptions{}, fmt.Errorf("prefix exceeds max length %d", maxPlatformEntityQueryLength)
+		return entities.EntitySuggestOptions{}, fmt.Errorf("prefix exceeds max length %d", maxPlatformEntityQueryLength)
 	}
 	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
 		limit, err := strconv.Atoi(raw)
 		if err != nil {
-			return graph.EntitySuggestOptions{}, fmt.Errorf("invalid limit %q", raw)
+			return entities.EntitySuggestOptions{}, fmt.Errorf("invalid limit %q", raw)
 		}
 		opts.Limit = limit
 	}

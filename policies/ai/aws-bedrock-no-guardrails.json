@@ -1,13 +1,23 @@
 {
   "id": "aws-bedrock-model-no-guardrails",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Bedrock Model Without Guardrails",
   "description": "Amazon Bedrock custom model deployed without content guardrails",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::bedrock::provisioned_model_throughput",
   "conditions": [
-    "guardrail_identifier == null"
+    "cmp_eq(path(resource, \"guardrail_identifier\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "tags": ["ai", "bedrock", "llm", "content-safety", "guardrails"],
+  "tags": [
+    "ai",
+    "bedrock",
+    "llm",
+    "content-safety",
+    "guardrails"
+  ],
   "remediation": "Configure Bedrock Guardrails to filter harmful content and protect against prompt injection."
 }

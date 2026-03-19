@@ -1,20 +1,24 @@
 {
   "id": "aws-s3-bucket-encryption-enabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Bucket Encryption Enabled",
   "description": "S3 bucket should have default encryption enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::s3::bucket",
   "conditions": [
-    "encryption_configuration == null"
+    "cmp_eq(path(resource, \"encryption_configuration\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable default encryption on the S3 bucket using SSE-S3 or SSE-KMS.",
   "tags": [
     "cis-aws-2.1.1",
     "s3",
     "encryption",
     "data-protection"
   ],
+  "remediation": "Enable default encryption on the S3 bucket using SSE-S3 or SSE-KMS.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

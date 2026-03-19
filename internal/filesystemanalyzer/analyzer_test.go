@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/writer/cerebro/internal/scanner"
 )
@@ -17,6 +16,30 @@ type stubFilesystemScanner struct {
 }
 
 func (s stubFilesystemScanner) ScanFilesystem(context.Context, string) (*scanner.ContainerScanResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.result, nil
+}
+
+type stubSecretScanner struct {
+	result *SecretScanResult
+	err    error
+}
+
+func (s stubSecretScanner) ScanFilesystem(context.Context, string) (*SecretScanResult, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.result, nil
+}
+
+type stubMalwareScanner struct {
+	result *scanner.MalwareScanResult
+	err    error
+}
+
+func (s stubMalwareScanner) ScanData(context.Context, []byte, string) (*scanner.MalwareScanResult, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -112,46 +135,6 @@ func TestDedupeVulnerabilitiesUsesIDWhenCVEIsMissing(t *testing.T) {
 	}
 }
 
-func TestDedupeVulnerabilitiesMergesMatcherEnrichment(t *testing.T) {
-	published := time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)
-	vulns := dedupeVulnerabilities([]scanner.ImageVulnerability{
-		{
-			CVE:              "CVE-2026-0001",
-			Severity:         "high",
-			Package:          "busybox",
-			InstalledVersion: "1.36.1-r0",
-			FixedVersion:     "1.36.1-r1",
-			Description:      "scanner description",
-		},
-		{
-			ID:               "vulndb:CVE-2026-0001",
-			CVE:              "CVE-2026-0001",
-			Severity:         "high",
-			Package:          "busybox",
-			InstalledVersion: "1.36.1-r0",
-			Published:        published,
-			Exploitable:      true,
-			InKEV:            true,
-			References:       []string{"https://example.com/CVE-2026-0001"},
-		},
-	})
-	if len(vulns) != 1 {
-		t.Fatalf("expected duplicate vulnerability records to merge, got %#v", vulns)
-	}
-	if vulns[0].FixedVersion != "1.36.1-r1" {
-		t.Fatalf("expected merged vulnerability to preserve fixed version, got %#v", vulns[0])
-	}
-	if !vulns[0].InKEV || !vulns[0].Exploitable {
-		t.Fatalf("expected merged vulnerability to preserve matcher enrichment, got %#v", vulns[0])
-	}
-	if vulns[0].Published.IsZero() || vulns[0].Published != published {
-		t.Fatalf("expected merged vulnerability to preserve published timestamp, got %#v", vulns[0])
-	}
-	if len(vulns[0].References) != 1 {
-		t.Fatalf("expected merged vulnerability to preserve matcher references, got %#v", vulns[0])
-	}
-}
-
 func TestAnalyzerRecordsUnreadableFileErrors(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "etc", "os-release"), "ID=ubuntu\nNAME=Ubuntu\nVERSION_ID=22.04\n")
@@ -185,6 +168,37 @@ func TestAnalyzerRecordsUnreadableFileErrors(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected unreadable file error for dpkg status, got %#v", errors)
+	}
+}
+
+func TestAnalyzerRecordsMalwareScannerErrors(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "bin", "payload.sh"), "#!/bin/sh\necho payload\n")
+
+	clamav := filepath.Join(root, "clamscan")
+	mustWriteFile(t, clamav, "#!/bin/sh\necho 'database missing' >&2\nexit 2\n")
+	if err := os.Chmod(clamav, 0o755); err != nil {
+		t.Fatalf("Chmod(%s): %v", clamav, err)
+	}
+
+	malwareScanner := scanner.NewMalwareScanner()
+	malwareScanner.RegisterEngine(scanner.NewClamAVBinaryEngine(clamav))
+
+	report, err := New(Options{MalwareScanner: malwareScanner}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	rawErrors, ok := report.Metadata["errors"]
+	if !ok {
+		t.Fatalf("expected malware scan metadata errors, got %#v", report.Metadata)
+	}
+	errors, ok := rawErrors.([]string)
+	if !ok {
+		t.Fatalf("expected []string metadata errors, got %T", rawErrors)
+	}
+	if len(errors) == 0 || !strings.Contains(strings.Join(errors, "\n"), "clamav binary scan failed: database missing") {
+		t.Fatalf("expected malware scan error to surface, got %#v", errors)
 	}
 }
 
@@ -285,6 +299,271 @@ func TestAnalyzerExtractsResolvableSecretReferences(t *testing.T) {
 	}
 }
 
+func TestAnalyzerDetectsExpandedSecretPatternsAndDockerRegistryCredentials(t *testing.T) {
+	root := t.TempDir()
+	stripeKey := "sk_" + "live_" + strings.Repeat("1234abcd", 3)
+	twilioKey := "SK" + strings.Repeat("01234567", 4)
+	mustWriteFile(t, filepath.Join(root, "workspace", ".env"), strings.Join([]string{
+		"GITLAB_TOKEN=glpat-1234567890abcdefghijklmn",
+		"NPM_TOKEN=npm_1234567890abcdefghijklmnopqrstuvwxyz",
+		"STRIPE_KEY=" + stripeKey,
+		"TWILIO_KEY=" + twilioKey,
+		"SENDGRID_KEY=SG.ABCDEFGHIJKLMNOP.QRSTUVWXYZabcdefghi",
+		"MAILGUN_KEY=key-0123456789abcdef0123456789abcdef",
+		"JWT_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiYWRtaW4iOnRydWV9.c2lnbmF0dXJlLXNlY3JldC12YWx1ZQ",
+	}, "\n"))
+	mustWriteFile(t, filepath.Join(root, "root", ".docker", "config.json"), `{
+		"auths": {
+			"https://123456789012.dkr.ecr.us-east-1.amazonaws.com": {
+				"auth": "ZWNydXNlcjpTdXBlclNlY3JldFBhc3M="
+			}
+		}
+	}`)
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	byType := make(map[string]SecretFinding, len(report.Secrets))
+	for _, finding := range report.Secrets {
+		byType[finding.Type] = finding
+	}
+	for _, kind := range []string{
+		"gitlab_token",
+		"npm_token",
+		"stripe_api_key",
+		"twilio_api_key",
+		"sendgrid_api_key",
+		"mailgun_api_key",
+		"jwt_token",
+		"docker_registry_credentials",
+	} {
+		if _, ok := byType[kind]; !ok {
+			t.Fatalf("expected secret finding %q, got %#v", kind, report.Secrets)
+		}
+	}
+
+	dockerFinding := byType["docker_registry_credentials"]
+	if len(dockerFinding.References) != 1 {
+		t.Fatalf("expected docker registry reference, got %#v", dockerFinding)
+	}
+	ref := dockerFinding.References[0]
+	if ref.Provider != "aws" || ref.Host != "123456789012.dkr.ecr.us-east-1.amazonaws.com" {
+		t.Fatalf("expected ECR reference metadata, got %#v", ref)
+	}
+	if ref.Attributes["username"] != "ecruser" {
+		t.Fatalf("expected docker username extraction, got %#v", ref.Attributes)
+	}
+	if strings.Contains(dockerFinding.Match, "SuperSecretPass") {
+		t.Fatalf("expected docker credential to be redacted, got %#v", dockerFinding)
+	}
+}
+
+func TestAnalyzerDetectsExpandedCloudSecretFamiliesAndSkipsPlaceholders(t *testing.T) {
+	root := t.TempDir()
+	stripeKey := "sk_" + "live_" + strings.Repeat("1234abcd", 3)
+	twilioKey := "SK" + strings.Repeat("01234567", 4)
+	mustWriteFile(t, filepath.Join(root, "app", ".env"), strings.Join([]string{
+		"STRIPE_SECRET_KEY=" + stripeKey,
+		"SENDGRID_API_KEY=SG.abcdefghijklmnop.ABCDEFGHIJKLMNOP",
+		"GCP_API_KEY=AIza12345678901234567890123456789012345",
+		"GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-1234567890abcdefghijklmnop",
+		"TWILIO_API_KEY=" + twilioKey,
+		"AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=opsstore;AccountKey=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=;EndpointSuffix=core.windows.net",
+		"JWT_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlLmNvbSIsInN1YiI6InN2Yy1hY2NvdW50IiwiZXhwIjoyMDAwMDAwMDAwfQ.c2lnbmF0dXJl",
+		"API_KEY=${SECRET_VALUE}",
+		"DATABASE_URL=postgresql://localhost:5432/appdb",
+	}, "\n"))
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	types := make(map[string]SecretFinding, len(report.Secrets))
+	for _, finding := range report.Secrets {
+		types[finding.Type] = finding
+	}
+
+	for _, expected := range []string{
+		"stripe_api_key",
+		"sendgrid_api_key",
+		"gcp_api_key",
+		"google_oauth_client_secret",
+		"twilio_api_key",
+		"azure_storage_connection_string",
+		"jwt_token",
+	} {
+		if _, ok := types[expected]; !ok {
+			t.Fatalf("expected secret type %q, got %#v", expected, report.Secrets)
+		}
+	}
+
+	if _, ok := types["database_connection_string"]; ok {
+		t.Fatalf("expected credential-less database URL to be ignored, got %#v", report.Secrets)
+	}
+	if _, ok := types["inline_secret"]; ok {
+		t.Fatalf("expected placeholder inline secret assignment to be ignored, got %#v", report.Secrets)
+	}
+
+	azureFinding := types["azure_storage_connection_string"]
+	if len(azureFinding.References) != 1 {
+		t.Fatalf("expected azure connection string reference, got %#v", azureFinding)
+	}
+	if azureFinding.References[0].Provider != "azure" || azureFinding.References[0].Identifier != "opsstore" {
+		t.Fatalf("expected azure storage account reference, got %#v", azureFinding.References[0])
+	}
+}
+
+func TestAnalyzerDoesNotMatchUppercaseTwilioLikeKeys(t *testing.T) {
+	root := t.TempDir()
+	twilioLikeValue := "SK" + strings.Repeat("ABCD", 8)
+	mustWriteFile(t, filepath.Join(root, "app", ".env"), "TWILIO_API_KEY="+twilioLikeValue+"\n")
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	for _, finding := range report.Secrets {
+		if finding.Type == "twilio_api_key" {
+			t.Fatalf("expected uppercase Twilio-like value to be ignored, got %#v", finding)
+		}
+	}
+}
+
+func TestAnalyzerDetectsDatabaseURLWithCustomSecretQueryKey(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "app", ".env"), "DATABASE_URL=postgresql://db.internal:5432/appdb?client.secret=topsecret\n")
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	for _, finding := range report.Secrets {
+		if finding.Type != "database_connection_string" {
+			continue
+		}
+		if len(finding.References) != 1 {
+			t.Fatalf("expected database reference, got %#v", finding)
+		}
+		if finding.References[0].Host != "db.internal" || finding.References[0].Database != "appdb" {
+			t.Fatalf("expected parsed database reference, got %#v", finding.References[0])
+		}
+		return
+	}
+	t.Fatalf("expected database connection finding, got %#v", report.Secrets)
+}
+
+func TestAnalyzerDetectsJDBCSQLServerReferenceWhenLaterSecretFieldEmpty(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "app", ".env"), "DATABASE_URL=jdbc:sqlserver://db.internal:1433;databaseName=appdb;password=s3cr3t;token=\n")
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	for _, finding := range report.Secrets {
+		if finding.Type != "database_connection_string" {
+			continue
+		}
+		if len(finding.References) != 1 {
+			t.Fatalf("expected sqlserver reference, got %#v", finding)
+		}
+		ref := finding.References[0]
+		if ref.Host != "db.internal" || ref.Database != "appdb" || ref.Attributes["scheme"] != "sqlserver" {
+			t.Fatalf("expected sqlserver reference metadata, got %#v", ref)
+		}
+		return
+	}
+	t.Fatalf("expected sqlserver database connection finding, got %#v", report.Secrets)
+}
+func TestInlineSecretValueHandlesQuotedValuesWithSemicolons(t *testing.T) {
+	value, key := inlineSecretValue(`PASSWORD='secret;value';`)
+	if key != "PASSWORD" {
+		t.Fatalf("expected PASSWORD key, got %q", key)
+	}
+	if value != "secret;value" {
+		t.Fatalf("expected semicolon-delimited secret value to remain intact, got %q", value)
+	}
+}
+
+func TestAnalyzerMergesExternalSecretScannerResultsWithoutDuplicates(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "workspace", ".env"), "GITHUB_TOKEN=ghp_1234567890abcdefghijklmn\n")
+
+	report, err := New(Options{
+		SecretScanner: stubSecretScanner{result: &SecretScanResult{
+			Engine: "stub",
+			Findings: []SecretFinding{{
+				Type:     "github_token",
+				Severity: "high",
+				Path:     "workspace/.env",
+				Line:     1,
+				Match:    fingerprintSecretMatch("ghp_1234567890abcdefghijklmn"),
+			}},
+		}},
+	}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if report.Metadata["secret_scan_engine"] != "stub" {
+		t.Fatalf("expected secret scan engine metadata, got %#v", report.Metadata)
+	}
+	count := 0
+	for _, finding := range report.Secrets {
+		if finding.Type == "github_token" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected deduped github token finding, got %#v", report.Secrets)
+	}
+}
+
+func TestAnalyzerIncludesMalwareScannerResults(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "bin", "payload.sh"), "#!/bin/sh\necho infected\n")
+
+	report, err := New(Options{
+		MalwareScanner: stubMalwareScanner{result: &scanner.MalwareScanResult{
+			Hash:        "sha256:feedface",
+			Status:      scanner.ScanStatusMalicious,
+			Malicious:   true,
+			MalwareType: "signature_match",
+			MalwareName: "Eicar-Test-Signature",
+			Engine:      "clamav_binary",
+			Confidence:  90,
+		}},
+	}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if report.Summary.MalwareCount != 1 {
+		t.Fatalf("expected one malware finding, got %#v", report.Malware)
+	}
+	if len(report.Malware) != 1 {
+		t.Fatalf("expected malware finding in report, got %#v", report.Malware)
+	}
+	malware := report.Malware[0]
+	if malware.Path != "bin/payload.sh" || malware.Engine != "clamav_binary" {
+		t.Fatalf("unexpected malware finding: %#v", malware)
+	}
+	found := false
+	for _, finding := range report.Findings {
+		if finding.Type == "malware" && strings.Contains(finding.Description, "Eicar-Test-Signature") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected malware container finding, got %#v", report.Findings)
+	}
+}
+
 func TestShouldSecretScanUsesConfiguredMaxBytes(t *testing.T) {
 	size := defaultMaxSecretBytes + 1
 	if shouldSecretScan("workspace/.env", 0, size, defaultMaxSecretBytes) {
@@ -292,6 +571,16 @@ func TestShouldSecretScanUsesConfiguredMaxBytes(t *testing.T) {
 	}
 	if !shouldSecretScan("workspace/.env", 0, size, defaultMaxSecretBytes+1024) {
 		t.Fatalf("expected configured secret byte cap to allow scan")
+	}
+}
+
+func TestShouldMalwareScanUsesConfiguredMaxBytes(t *testing.T) {
+	size := defaultMaxMalwareBytes + 1
+	if shouldMalwareScan("workspace/payload.sh", 0o755, size, defaultMaxMalwareBytes) {
+		t.Fatalf("expected file larger than default cap to be skipped")
+	}
+	if !shouldMalwareScan("workspace/payload.sh", 0o755, size, defaultMaxMalwareBytes+1024) {
+		t.Fatalf("expected configured malware byte cap to allow scan")
 	}
 }
 

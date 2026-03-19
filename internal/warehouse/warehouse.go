@@ -136,6 +136,9 @@ func (m *MemoryWarehouse) DescribeColumns(ctx context.Context, table string) ([]
 }
 
 func (m *MemoryWarehouse) GetAssets(ctx context.Context, table string, filter snowflake.AssetFilter) ([]map[string]interface{}, error) {
+	if _, err := normalizeAssetTableName(table); err != nil {
+		return nil, err
+	}
 	if m.GetAssetsFunc != nil {
 		return m.GetAssetsFunc(ctx, table, filter)
 	}
@@ -143,6 +146,9 @@ func (m *MemoryWarehouse) GetAssets(ctx context.Context, table string, filter sn
 }
 
 func (m *MemoryWarehouse) GetAssetByID(ctx context.Context, table, id string) (map[string]interface{}, error) {
+	if _, err := normalizeAssetTableName(table); err != nil {
+		return nil, err
+	}
 	if m.GetAssetByIDFunc != nil {
 		return m.GetAssetByIDFunc(ctx, table, id)
 	}

@@ -1,0 +1,83 @@
+{
+  "time": "2024-07-09T18:05:00Z",
+  "flow": {
+    "time": "2024-07-09T18:01:00Z",
+    "verdict": "FORWARDED",
+    "IP": {
+      "source": "10.244.0.10",
+      "destination": "10.96.0.10",
+      "ipVersion": "IPv4"
+    },
+    "l4": {
+      "UDP": {
+        "source_port": 53000,
+        "destination_port": 53
+      }
+    },
+    "source_names": [
+      "xwing.default"
+    ],
+    "destination_names": [
+      "api.github.com"
+    ],
+    "trace_observation_point": "TO_PROXY",
+    "l7": {
+      "type": "RESPONSE",
+      "dns": {
+        "query": "api.github.com.",
+        "ips": [
+          "140.82.114.5"
+        ],
+        "ttl": 300,
+        "cnames": [
+          "github.com."
+        ],
+        "observation_source": "proxy",
+        "rcode": 0,
+        "qtypes": [
+          "A"
+        ],
+        "rrtypes": [
+          "CNAME",
+          "A"
+        ]
+      }
+    },
+    "source": {
+      "ID": 101,
+      "identity": 1234,
+      "cluster_name": "prod-west",
+      "labels": [
+        "k8s:app=xwing"
+      ],
+      "namespace": "default",
+      "pod_name": "xwing",
+      "workloads": [
+        {
+          "name": "xwing",
+          "kind": "Deployment"
+        }
+      ]
+    },
+    "destination": {
+      "ID": 202,
+      "identity": 5678,
+      "cluster_name": "remote-east",
+      "labels": [
+        "k8s:app=coredns"
+      ],
+      "namespace": "kube-system",
+      "pod_name": "coredns-7d8f",
+      "workloads": [
+        {
+          "name": "coredns",
+          "kind": "Deployment"
+        }
+      ]
+    },
+    "Type": "L7",
+    "node_name": "worker-3",
+    "traffic_direction": "EGRESS"
+  },
+  "node_name": "worker-3"
+}

@@ -10,10 +10,10 @@ type (
 	Edge                    = graph.Edge
 	EdgeKind                = graph.EdgeKind
 	NodeKind                = graph.NodeKind
+	ObservationWriteRequest = graph.ObservationWriteRequest
+	ClaimWriteRequest       = graph.ClaimWriteRequest
 	RiskLevel               = graph.RiskLevel
 	ToxicCombination        = graph.ToxicCombination
-	ClaimWriteRequest       = graph.ClaimWriteRequest
-	ObservationWriteRequest = graph.ObservationWriteRequest
 )
 
 const (
@@ -35,13 +35,15 @@ const (
 	EdgeKindExposedTo      = graph.EdgeKindExposedTo
 	EdgeKindInteractedWith = graph.EdgeKindInteractedWith
 	EdgeKindLocatedIn      = graph.EdgeKindLocatedIn
+	EdgeKindManagedBy      = graph.EdgeKindManagedBy
 	EdgeKindMemberOf       = graph.EdgeKindMemberOf
 	EdgeKindReportsTo      = graph.EdgeKindReportsTo
 	EdgeKindResolvesTo     = graph.EdgeKindResolvesTo
+	EdgeKindServes         = graph.EdgeKindServes
 
+	NodeKindAPIEndpoint        = graph.NodeKindAPIEndpoint
 	NodeKindApplication        = graph.NodeKindApplication
 	NodeKindBucket             = graph.NodeKindBucket
-	NodeKindClaim              = graph.NodeKindClaim
 	NodeKindClusterRole        = graph.NodeKindClusterRole
 	NodeKindClusterRoleBinding = graph.NodeKindClusterRoleBinding
 	NodeKindConfigMap          = graph.NodeKindConfigMap
@@ -61,6 +63,7 @@ const (
 	NodeKindPerson             = graph.NodeKindPerson
 	NodeKindPod                = graph.NodeKindPod
 	NodeKindProject            = graph.NodeKindProject
+	NodeKindClaim              = graph.NodeKindClaim
 	NodeKindRepository         = graph.NodeKindRepository
 	NodeKindRole               = graph.NodeKindRole
 	NodeKindRoleBinding        = graph.NodeKindRoleBinding
@@ -69,8 +72,10 @@ const (
 	NodeKindServiceAccount     = graph.NodeKindServiceAccount
 	NodeKindUser               = graph.NodeKindUser
 	NodeKindFolder             = graph.NodeKindFolder
+	NodeKindVendor             = graph.NodeKindVendor
 
 	RiskNone     = graph.RiskNone
+	RiskLow      = graph.RiskLow
 	RiskMedium   = graph.RiskMedium
 	RiskHigh     = graph.RiskHigh
 	RiskCritical = graph.RiskCritical
@@ -86,6 +91,6 @@ var (
 	FindMatchingNodes           = graph.FindMatchingNodes
 	ActionsToEdgeKind           = graph.ActionsToEdgeKind
 	ExtractAccountFromARN       = graph.ExtractAccountFromARN
-	WriteClaim                  = graph.WriteClaim
 	WriteObservation            = graph.WriteObservation
+	WriteClaim                  = graph.WriteClaim
 )

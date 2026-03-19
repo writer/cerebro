@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -141,71 +142,184 @@ func TestPlatformExecutionsListsSharedExecutionStoreRuns(t *testing.T) {
 	if got := int(filteredBody["count"].(float64)); got != 1 {
 		t.Fatalf("expected one filtered execution, got %#v", filteredBody)
 	}
+}
 
-	reportRunTwo := &reports.ReportRun{
-		ID:            "report_run:quality-filtered",
-		ReportID:      "quality",
-		Status:        reports.ReportRunStatusSucceeded,
-		ExecutionMode: reports.ReportExecutionModeSync,
-		SubmittedAt:   reportRun.SubmittedAt.Add(-2 * time.Hour),
+func TestPlatformExecutionsIncludeWorkloadPriorityFields(t *testing.T) {
+	s := newTestServer(t)
+	sharedStore := s.app.ExecutionStore
+	if sharedStore == nil {
+		t.Fatal("expected shared execution store")
 	}
-	reportRunTwoUpdatedAt := reportRun.SubmittedAt.Add(-2 * time.Hour)
-	reportPayloadTwo, err := json.Marshal(map[string]any{"run": reportRunTwo})
+
+	lastScannedAt := time.Date(2026, 3, 12, 8, 30, 0, 0, time.UTC)
+	workloadRun := workloadscan.RunRecord{
+		ID:          "workload_scan:test-priority-fields",
+		Provider:    workloadscan.ProviderAWS,
+		Status:      workloadscan.RunStatusQueued,
+		Stage:       workloadscan.RunStageQueued,
+		Target:      workloadscan.VMTarget{Provider: workloadscan.ProviderAWS, Region: "us-east-1", InstanceID: "i-priority"},
+		RequestedBy: "alice",
+		Priority: &workloadscan.PriorityAssessment{
+			Score:         88,
+			Priority:      workloadscan.ScanPriorityCritical,
+			Eligible:      true,
+			Source:        "graph",
+			LastScannedAt: &lastScannedAt,
+		},
+		SubmittedAt: time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:   time.Date(2026, 3, 12, 10, 0, 30, 0, time.UTC),
+	}
+	workloadPayload, err := json.Marshal(workloadRun)
 	if err != nil {
-		t.Fatalf("marshal second report payload: %v", err)
+		t.Fatalf("marshal workload run: %v", err)
 	}
 	if err := sharedStore.UpsertRun(t.Context(), executionstore.RunEnvelope{
-		Namespace:   executionstore.NamespacePlatformReportRun,
-		RunID:       reportRunTwo.ID,
-		Kind:        reportRunTwo.ReportID,
-		Status:      string(reportRunTwo.Status),
-		Stage:       string(reportRunTwo.Status),
-		SubmittedAt: reportRunTwo.SubmittedAt,
-		UpdatedAt:   reportRunTwoUpdatedAt,
-		Payload:     reportPayloadTwo,
+		Namespace:   executionstore.NamespaceWorkloadScan,
+		RunID:       workloadRun.ID,
+		Kind:        string(workloadRun.Provider),
+		Status:      string(workloadRun.Status),
+		Stage:       string(workloadRun.Stage),
+		SubmittedAt: workloadRun.SubmittedAt,
+		UpdatedAt:   workloadRun.UpdatedAt,
+		Payload:     workloadPayload,
 	}); err != nil {
-		t.Fatalf("UpsertRun second report: %v", err)
+		t.Fatalf("UpsertRun workload: %v", err)
 	}
 
-	nonMatching := &reports.ReportRun{
-		ID:            "report_run:non-matching-filtered",
-		ReportID:      "drift",
-		Status:        reports.ReportRunStatusSucceeded,
-		ExecutionMode: reports.ReportExecutionModeSync,
-		SubmittedAt:   reportRun.SubmittedAt.Add(2 * time.Hour),
+	resp := do(t, s, http.MethodGet, "/api/v1/platform/executions?namespace=workload_scan", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
 	}
-	nonMatchingUpdatedAt := reportRun.SubmittedAt.Add(2 * time.Hour)
-	nonMatchingPayload, err := json.Marshal(map[string]any{"run": nonMatching})
+	body := decodeJSON(t, resp)
+	executions, ok := body["executions"].([]any)
+	if !ok || len(executions) != 1 {
+		t.Fatalf("expected one execution, got %#v", body["executions"])
+	}
+	execution := executions[0].(map[string]any)
+	if execution["priority"] != "critical" {
+		t.Fatalf("expected priority field, got %#v", execution)
+	}
+	if score, ok := execution["priority_score"].(float64); !ok || score != 88 {
+		t.Fatalf("expected priority score 88, got %#v", execution["priority_score"])
+	}
+	if eligible, ok := execution["priority_eligible"].(bool); !ok || !eligible {
+		t.Fatalf("expected priority eligible true, got %#v", execution["priority_eligible"])
+	}
+}
+
+func TestPlatformWorkloadScanTargetsPrioritizeGraphSignals(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	g.AddNode(&graph.Node{ID: "internet", Kind: graph.NodeKindInternet, Name: "Internet", Provider: "external"})
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-public",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-public",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+		Properties: map[string]any{
+			"instance_id":      "i-public",
+			"public_ip":        "54.1.2.3",
+			"criticality":      "high",
+			"compliance_scope": "pci",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:ec2:us-east-1:123456789012:instance/i-fresh",
+		Kind:     graph.NodeKindInstance,
+		Name:     "i-fresh",
+		Provider: "aws",
+		Account:  "123456789012",
+		Region:   "us-east-1",
+		Properties: map[string]any{
+			"instance_id": "i-fresh",
+		},
+	})
+	g.AddNode(&graph.Node{ID: "role:admin", Kind: graph.NodeKindRole, Name: "Admin Role", Provider: "aws", Risk: graph.RiskHigh})
+	g.AddNode(&graph.Node{ID: "db:prod", Kind: graph.NodeKindDatabase, Name: "Prod DB", Provider: "aws", Risk: graph.RiskCritical, Properties: map[string]any{"data_classification": "restricted"}})
+	g.AddEdge(&graph.Edge{ID: "internet->public", Source: "internet", Target: "arn:aws:ec2:us-east-1:123456789012:instance/i-public", Kind: graph.EdgeKindExposedTo, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "public->role", Source: "arn:aws:ec2:us-east-1:123456789012:instance/i-public", Target: "role:admin", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "role->db", Source: "role:admin", Target: "db:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	g.BuildIndex()
+
+	lastCompletedAt := time.Now().UTC().Add(-12 * time.Hour)
+	workloadRun := workloadscan.RunRecord{
+		ID:          "workload_scan:fresh",
+		Provider:    workloadscan.ProviderAWS,
+		Status:      workloadscan.RunStatusSucceeded,
+		Stage:       workloadscan.RunStageCompleted,
+		Target:      workloadscan.VMTarget{Provider: workloadscan.ProviderAWS, Region: "us-east-1", InstanceID: "i-fresh"},
+		SubmittedAt: lastCompletedAt.Add(-30 * time.Minute),
+		UpdatedAt:   lastCompletedAt,
+		CompletedAt: &lastCompletedAt,
+	}
+	workloadPayload, err := json.Marshal(workloadRun)
 	if err != nil {
-		t.Fatalf("marshal non-matching report payload: %v", err)
+		t.Fatalf("marshal workload run: %v", err)
 	}
-	if err := sharedStore.UpsertRun(t.Context(), executionstore.RunEnvelope{
-		Namespace:   executionstore.NamespacePlatformReportRun,
-		RunID:       nonMatching.ID,
-		Kind:        nonMatching.ReportID,
-		Status:      string(nonMatching.Status),
-		Stage:       string(nonMatching.Status),
-		SubmittedAt: nonMatching.SubmittedAt,
-		UpdatedAt:   nonMatchingUpdatedAt,
-		Payload:     nonMatchingPayload,
+	if err := s.app.ExecutionStore.UpsertRun(t.Context(), executionstore.RunEnvelope{
+		Namespace:   executionstore.NamespaceWorkloadScan,
+		RunID:       workloadRun.ID,
+		Kind:        string(workloadRun.Provider),
+		Status:      string(workloadRun.Status),
+		Stage:       string(workloadRun.Stage),
+		SubmittedAt: workloadRun.SubmittedAt,
+		UpdatedAt:   workloadRun.UpdatedAt,
+		CompletedAt: workloadRun.CompletedAt,
+		Payload:     workloadPayload,
 	}); err != nil {
-		t.Fatalf("UpsertRun non-matching report: %v", err)
+		t.Fatalf("UpsertRun workload: %v", err)
 	}
 
-	limitedFiltered := do(t, s, http.MethodGet, "/api/v1/platform/executions?report_id=quality&limit=1", nil)
-	if limitedFiltered.Code != http.StatusOK {
-		t.Fatalf("expected 200 for limited report filter, got %d: %s", limitedFiltered.Code, limitedFiltered.Body.String())
+	resp := do(t, s, http.MethodGet, "/api/v1/platform/workload-scan/targets?include_deferred=true", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
 	}
-	limitedBody := decodeJSON(t, limitedFiltered)
-	if got := int(limitedBody["count"].(float64)); got != 1 {
-		t.Fatalf("expected one limited filtered execution, got %#v", limitedBody)
+	body := decodeJSON(t, resp)
+	targets, ok := body["targets"].([]any)
+	if !ok || len(targets) != 2 {
+		t.Fatalf("expected two targets, got %#v", body["targets"])
 	}
-	items, ok := limitedBody["executions"].([]any)
-	if !ok || len(items) != 1 {
-		t.Fatalf("expected one filtered execution item, got %#v", limitedBody["executions"])
+	first := targets[0].(map[string]any)
+	if first["provider"] != "aws" {
+		t.Fatalf("expected aws target, got %#v", first)
 	}
-	if got := items[0].(map[string]any)["scope_id"]; got != "quality" {
-		t.Fatalf("expected quality report execution despite newer unrelated run, got %#v", items[0])
+	firstTarget := first["target"].(map[string]any)
+	if firstTarget["instance_id"] != "i-public" {
+		t.Fatalf("expected public target first, got %#v", firstTarget)
+	}
+	firstAssessment := first["assessment"].(map[string]any)
+	if firstAssessment["priority"] != "critical" {
+		t.Fatalf("expected critical first target, got %#v", firstAssessment)
+	}
+
+	secondAssessment := targets[1].(map[string]any)["assessment"].(map[string]any)
+	if eligible, ok := secondAssessment["eligible"].(bool); !ok || eligible {
+		t.Fatalf("expected fresh target to be deferred, got %#v", secondAssessment)
+	}
+
+	filtered := do(t, s, http.MethodGet, "/api/v1/platform/workload-scan/targets", nil)
+	if filtered.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", filtered.Code, filtered.Body.String())
+	}
+	filteredBody := decodeJSON(t, filtered)
+	filteredTargets, ok := filteredBody["targets"].([]any)
+	if !ok || len(filteredTargets) != 1 {
+		t.Fatalf("expected only actionable target, got %#v", filteredBody["targets"])
+	}
+}
+
+func TestPlatformWorkloadScanTargetsRejectInvalidProvider(t *testing.T) {
+	s := newTestServer(t)
+
+	resp := do(t, s, http.MethodGet, "/api/v1/platform/workload-scan/targets?provider=digitalocean", nil)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", resp.Code, resp.Body.String())
+	}
+	body := decodeJSON(t, resp)
+	if body["error"] != "provider must be one of aws, gcp, azure" {
+		t.Fatalf("unexpected error body: %#v", body)
 	}
 }
 
@@ -240,7 +354,7 @@ func TestPlatformGraphSnapshotRecordsIncludePersistedReportRuns(t *testing.T) {
 	s.platformReportRuns = map[string]*reports.ReportRun{}
 	s.platformReportRunMu.Unlock()
 
-	records := s.platformGraphSnapshotRecords()
+	records := s.platformGraphSnapshotRecords(context.Background())
 	record, ok := records["graph_snapshot:historic"]
 	if !ok || record == nil {
 		t.Fatalf("expected persisted report-run lineage snapshot to be present, got %#v", records)

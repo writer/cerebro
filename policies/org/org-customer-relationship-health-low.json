@@ -1,20 +1,24 @@
 {
   "id": "org-customer-relationship-health-low",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Customer Relationship Structural Health Low",
   "description": "Customer relationship topology health has dropped below the acceptable threshold.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "org::customer_relationship",
   "conditions": [
-    "health_score < 60",
-    "touchpoint_trend == 'declining' || frequency_trend == 'decreasing'"
+    "cmp_lt(path(resource, \"health_score\"), 60)",
+    "(cmp_eq(path(resource, \"touchpoint_trend\"), \"declining\")) || (cmp_eq(path(resource, \"frequency_trend\"), \"decreasing\"))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Assign additional account coverage, restore interaction cadence, and schedule an executive check-in.",
   "tags": [
     "org-topology",
     "customer-health",
     "churn-risk"
   ],
+  "remediation": "Assign additional account coverage, restore interaction cadence, and schedule an executive check-in.",
   "risk_categories": [
     "CUSTOMER_HEALTH_RISK",
     "CHURN_RISK"

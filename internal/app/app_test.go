@@ -3,8 +3,11 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,8 +15,11 @@ import (
 	"testing"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
 	"github.com/writer/cerebro/internal/apiauth"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
@@ -42,6 +48,112 @@ func TestLoadConfig(t *testing.T) {
 
 	if cfg.SecurityDigestInterval != "24h" {
 		t.Errorf("expected security digest interval 24h, got %s", cfg.SecurityDigestInterval)
+	}
+}
+
+func TestLoadConfigCredentialFileSourceOverridesSecretsOnly(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "OPENAI_API_KEY"), []byte("file-openai-key\n"), 0o600); err != nil {
+		t.Fatalf("write openai secret: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "API_KEYS"), []byte("file-key:file-user\n"), 0o600); err != nil {
+		t.Fatalf("write api keys secret: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "LOG_LEVEL"), []byte("debug\n"), 0o600); err != nil {
+		t.Fatalf("write log level attempt: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "API_AUTH_ENABLED"), []byte("false\n"), 0o600); err != nil {
+		t.Fatalf("write api auth attempt: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "GRAPH_CROSS_TENANT_SIGNING_KEY"), []byte("file-graph-signing-key\n"), 0o600); err != nil {
+		t.Fatalf("write graph signing key attempt: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "FINDING_ATTESTATION_SIGNING_KEY"), []byte("file-attestation-signing-key\n"), 0o600); err != nil {
+		t.Fatalf("write finding signing key attempt: %v", err)
+	}
+
+	t.Setenv("CEREBRO_CREDENTIAL_SOURCE", "file")
+	t.Setenv("CEREBRO_CREDENTIAL_FILE_DIR", dir)
+	t.Setenv("OPENAI_API_KEY", "env-openai-key")
+	t.Setenv("API_KEYS", "env-key:env-user")
+	t.Setenv("LOG_LEVEL", "warn")
+	t.Setenv("API_AUTH_ENABLED", "true")
+	t.Setenv("GRAPH_CROSS_TENANT_SIGNING_KEY", "env-graph-signing-key")
+	t.Setenv("FINDING_ATTESTATION_SIGNING_KEY", "env-finding-signing-key")
+
+	cfg := LoadConfig()
+	if cfg.CredentialSource != "file" {
+		t.Fatalf("expected credential source file, got %q", cfg.CredentialSource)
+	}
+	if cfg.OpenAIAPIKey != "file-openai-key" {
+		t.Fatalf("expected file-backed openai key, got %q", cfg.OpenAIAPIKey)
+	}
+	if cfg.APIKeys["file-key"] != "file-user" || len(cfg.APIKeys) != 1 {
+		t.Fatalf("expected file-backed api key map, got %#v", cfg.APIKeys)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Fatalf("expected non-secret config to continue using env/config, got %q", cfg.LogLevel)
+	}
+	if !cfg.APIAuthEnabled {
+		t.Fatal("expected credential file source to be unable to disable API auth")
+	}
+	if cfg.GraphCrossTenantSigningKey != "env-graph-signing-key" {
+		t.Fatalf("expected graph signing key to remain on raw env/config path, got %q", cfg.GraphCrossTenantSigningKey)
+	}
+	if cfg.FindingAttestationSigningKey != "env-finding-signing-key" {
+		t.Fatalf("expected finding attestation signing key to remain on raw env/config path, got %q", cfg.FindingAttestationSigningKey)
+	}
+}
+
+func TestLoadConfigCredentialVaultSource(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/secret/data/cerebro" {
+			t.Fatalf("unexpected vault path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("X-Vault-Token"); got != "bootstrap-token" {
+			t.Fatalf("unexpected vault token %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"data":{"data":{"OPENAI_API_KEY":"vault-openai-key","API_CREDENTIALS_JSON":[{"key":"vault-key","user_id":"vault-user"}],"LOG_LEVEL":"debug","API_AUTH_ENABLED":"false"}}}`)
+	}))
+	defer server.Close()
+
+	t.Setenv("CEREBRO_CREDENTIAL_SOURCE", "vault")
+	t.Setenv("CEREBRO_CREDENTIAL_VAULT_ADDRESS", server.URL)
+	t.Setenv("CEREBRO_CREDENTIAL_VAULT_TOKEN", "bootstrap-token")
+	t.Setenv("CEREBRO_CREDENTIAL_VAULT_PATH", "secret/cerebro")
+	t.Setenv("CEREBRO_CREDENTIAL_VAULT_KV_VERSION", "2")
+	t.Setenv("LOG_LEVEL", "error")
+	t.Setenv("API_AUTH_ENABLED", "true")
+
+	cfg := LoadConfig()
+	if cfg.CredentialSource != "vault" {
+		t.Fatalf("expected credential source vault, got %q", cfg.CredentialSource)
+	}
+	if cfg.OpenAIAPIKey != "vault-openai-key" {
+		t.Fatalf("expected vault-backed openai key, got %q", cfg.OpenAIAPIKey)
+	}
+	if cfg.APIKeys["vault-key"] != "vault-user" || len(cfg.APIKeys) != 1 {
+		t.Fatalf("expected vault-backed api credentials, got %#v", cfg.APIKeys)
+	}
+	if cfg.LogLevel != "error" {
+		t.Fatalf("expected non-secret env config to survive vault credential source, got %q", cfg.LogLevel)
+	}
+	if !cfg.APIAuthEnabled {
+		t.Fatal("expected vault credential source to be unable to disable API auth")
+	}
+}
+
+func TestLoadConfigCredentialSourceValidation(t *testing.T) {
+	t.Setenv("CEREBRO_CREDENTIAL_SOURCE", "vault")
+	cfg := LoadConfig()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected validation error for incomplete vault credential source")
+	}
+	if !strings.Contains(err.Error(), "CEREBRO_CREDENTIAL_VAULT_ADDRESS is required") {
+		t.Fatalf("expected vault address validation failure, got %v", err)
 	}
 }
 
@@ -95,6 +207,8 @@ func TestLoadConfigWorkloadScanPathsAndControls(t *testing.T) {
 	t.Setenv("WORKLOAD_SCAN_CLEANUP_TIMEOUT", "4m")
 	t.Setenv("WORKLOAD_SCAN_RECONCILE_OLDER_THAN", "45m")
 	t.Setenv("WORKLOAD_SCAN_TRIVY_BINARY", "/usr/local/bin/trivy-workload")
+	t.Setenv("WORKLOAD_SCAN_GITLEAKS_BINARY", "/usr/local/bin/gitleaks-workload")
+	t.Setenv("WORKLOAD_SCAN_CLAMAV_BINARY", "/usr/local/bin/clamscan-workload")
 
 	cfg := LoadConfig()
 	if cfg.ExecutionStoreFile != "/tmp/cerebro-executions.db" {
@@ -118,6 +232,29 @@ func TestLoadConfigWorkloadScanPathsAndControls(t *testing.T) {
 	if cfg.WorkloadScanTrivyBinary != "/usr/local/bin/trivy-workload" {
 		t.Fatalf("expected workload scan trivy binary override, got %q", cfg.WorkloadScanTrivyBinary)
 	}
+	if cfg.WorkloadScanGitleaksBinary != "/usr/local/bin/gitleaks-workload" {
+		t.Fatalf("expected workload scan gitleaks binary override, got %q", cfg.WorkloadScanGitleaksBinary)
+	}
+	if cfg.WorkloadScanClamAVBinary != "/usr/local/bin/clamscan-workload" {
+		t.Fatalf("expected workload scan clamav binary override, got %q", cfg.WorkloadScanClamAVBinary)
+	}
+}
+
+func TestLoadConfigMalwareScannerControls(t *testing.T) {
+	t.Setenv("MALWARE_SCAN_CLAMAV_HOST", "clamav.internal")
+	t.Setenv("MALWARE_SCAN_CLAMAV_PORT", "3310")
+	t.Setenv("MALWARE_SCAN_VIRUSTOTAL_API_KEY", "vt-test-key")
+
+	cfg := LoadConfig()
+	if cfg.MalwareScanClamAVHost != "clamav.internal" {
+		t.Fatalf("expected malware scan clamd host override, got %q", cfg.MalwareScanClamAVHost)
+	}
+	if cfg.MalwareScanClamAVPort != 3310 {
+		t.Fatalf("expected malware scan clamd port override, got %d", cfg.MalwareScanClamAVPort)
+	}
+	if cfg.MalwareScanVirusTotalAPIKey != "vt-test-key" {
+		t.Fatalf("expected malware scan vt api key override, got %q", cfg.MalwareScanVirusTotalAPIKey)
+	}
 }
 
 func TestLoadConfigImageScanPathsAndControls(t *testing.T) {
@@ -125,6 +262,8 @@ func TestLoadConfigImageScanPathsAndControls(t *testing.T) {
 	t.Setenv("IMAGE_SCAN_ROOTFS_BASE_PATH", "/tmp/cerebro-image-rootfs")
 	t.Setenv("IMAGE_SCAN_CLEANUP_TIMEOUT", "5m")
 	t.Setenv("IMAGE_SCAN_TRIVY_BINARY", "/usr/local/bin/trivy")
+	t.Setenv("IMAGE_SCAN_GITLEAKS_BINARY", "/usr/local/bin/gitleaks-image")
+	t.Setenv("IMAGE_SCAN_CLAMAV_BINARY", "/usr/local/bin/clamscan-image")
 
 	cfg := LoadConfig()
 	if cfg.ImageScanStateFile != "/tmp/cerebro-executions.db" {
@@ -139,6 +278,12 @@ func TestLoadConfigImageScanPathsAndControls(t *testing.T) {
 	if cfg.ImageScanTrivyBinary != "/usr/local/bin/trivy" {
 		t.Fatalf("expected image scan trivy binary override, got %q", cfg.ImageScanTrivyBinary)
 	}
+	if cfg.ImageScanGitleaksBinary != "/usr/local/bin/gitleaks-image" {
+		t.Fatalf("expected image scan gitleaks binary override, got %q", cfg.ImageScanGitleaksBinary)
+	}
+	if cfg.ImageScanClamAVBinary != "/usr/local/bin/clamscan-image" {
+		t.Fatalf("expected image scan clamav binary override, got %q", cfg.ImageScanClamAVBinary)
+	}
 }
 
 func TestLoadConfigFunctionScanPathsAndControls(t *testing.T) {
@@ -146,6 +291,8 @@ func TestLoadConfigFunctionScanPathsAndControls(t *testing.T) {
 	t.Setenv("FUNCTION_SCAN_ROOTFS_BASE_PATH", "/tmp/cerebro-function-rootfs")
 	t.Setenv("FUNCTION_SCAN_CLEANUP_TIMEOUT", "6m")
 	t.Setenv("FUNCTION_SCAN_TRIVY_BINARY", "/usr/local/bin/trivy-function")
+	t.Setenv("FUNCTION_SCAN_GITLEAKS_BINARY", "/usr/local/bin/gitleaks-function")
+	t.Setenv("FUNCTION_SCAN_CLAMAV_BINARY", "/usr/local/bin/clamscan-function")
 
 	cfg := LoadConfig()
 	if cfg.FunctionScanStateFile != "/tmp/cerebro-executions.db" {
@@ -160,6 +307,12 @@ func TestLoadConfigFunctionScanPathsAndControls(t *testing.T) {
 	if cfg.FunctionScanTrivyBinary != "/usr/local/bin/trivy-function" {
 		t.Fatalf("expected function scan trivy binary override, got %q", cfg.FunctionScanTrivyBinary)
 	}
+	if cfg.FunctionScanGitleaksBinary != "/usr/local/bin/gitleaks-function" {
+		t.Fatalf("expected function scan gitleaks binary override, got %q", cfg.FunctionScanGitleaksBinary)
+	}
+	if cfg.FunctionScanClamAVBinary != "/usr/local/bin/clamscan-function" {
+		t.Fatalf("expected function scan clamav binary override, got %q", cfg.FunctionScanClamAVBinary)
+	}
 }
 
 func TestLoadConfigGraphSchemaValidationMode(t *testing.T) {
@@ -167,6 +320,85 @@ func TestLoadConfigGraphSchemaValidationMode(t *testing.T) {
 	cfg := LoadConfig()
 	if cfg.GraphSchemaValidationMode != "enforce" {
 		t.Fatalf("expected graph schema validation mode enforce, got %q", cfg.GraphSchemaValidationMode)
+	}
+}
+
+func TestLoadConfigGraphPropertyHistoryControls(t *testing.T) {
+	t.Setenv("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", "17")
+	t.Setenv("GRAPH_PROPERTY_HISTORY_TTL", "36h")
+
+	cfg := LoadConfig()
+	if cfg.GraphPropertyHistoryMaxEntries != 17 {
+		t.Fatalf("expected graph property history max entries 17, got %d", cfg.GraphPropertyHistoryMaxEntries)
+	}
+	if cfg.GraphPropertyHistoryTTL != 36*time.Hour {
+		t.Fatalf("expected graph property history ttl 36h, got %s", cfg.GraphPropertyHistoryTTL)
+	}
+}
+
+func TestLoadConfigGraphTenantShardControls(t *testing.T) {
+	t.Setenv("GRAPH_TENANT_SHARD_IDLE_TTL", "27m")
+	t.Setenv("GRAPH_TENANT_WARM_SHARD_TTL", "3h")
+	t.Setenv("GRAPH_TENANT_WARM_SHARD_MAX_RETAINED", "2")
+
+	cfg := LoadConfig()
+	if cfg.GraphTenantShardIdleTTL != 27*time.Minute {
+		t.Fatalf("expected graph tenant shard idle ttl 27m, got %s", cfg.GraphTenantShardIdleTTL)
+	}
+	if cfg.GraphTenantWarmShardTTL != 3*time.Hour {
+		t.Fatalf("expected graph tenant warm shard ttl 3h, got %s", cfg.GraphTenantWarmShardTTL)
+	}
+	if cfg.GraphTenantWarmShardMaxRetained != 2 {
+		t.Fatalf("expected graph tenant warm shard max retained 2, got %d", cfg.GraphTenantWarmShardMaxRetained)
+	}
+}
+
+func TestLoadConfigOperationalTimeoutControls(t *testing.T) {
+	t.Setenv("API_REQUEST_TIMEOUT", "33s")
+	t.Setenv("API_MAX_BODY_BYTES", "2048")
+	t.Setenv("CEREBRO_HEALTH_CHECK_TIMEOUT", "4s")
+	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "45s")
+	t.Setenv("GRAPH_RISK_ENGINE_STATE_TIMEOUT", "7s")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_TIMEOUT", "90s")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_MAX_AGE", "4h")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS", "5")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_BACKOFF", "9s")
+	t.Setenv("CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT", "8s")
+	t.Setenv("GRAPH_CONSISTENCY_CHECK_TIMEOUT", "12m")
+
+	cfg := LoadConfig()
+	if cfg.APIRequestTimeout != 33*time.Second {
+		t.Fatalf("expected api request timeout 33s, got %s", cfg.APIRequestTimeout)
+	}
+	if cfg.APIMaxBodyBytes != 2048 {
+		t.Fatalf("expected api max body bytes 2048, got %d", cfg.APIMaxBodyBytes)
+	}
+	if cfg.HealthCheckTimeout != 4*time.Second {
+		t.Fatalf("expected health check timeout 4s, got %s", cfg.HealthCheckTimeout)
+	}
+	if cfg.ShutdownTimeout != 45*time.Second {
+		t.Fatalf("expected shutdown timeout 45s, got %s", cfg.ShutdownTimeout)
+	}
+	if cfg.GraphRiskEngineStateTimeout != 7*time.Second {
+		t.Fatalf("expected graph risk engine state timeout 7s, got %s", cfg.GraphRiskEngineStateTimeout)
+	}
+	if cfg.ThreatIntelSyncTimeout != 90*time.Second {
+		t.Fatalf("expected threat intel sync timeout 90s, got %s", cfg.ThreatIntelSyncTimeout)
+	}
+	if cfg.ThreatIntelSyncMaxAge != 4*time.Hour {
+		t.Fatalf("expected threat intel sync max age 4h, got %s", cfg.ThreatIntelSyncMaxAge)
+	}
+	if cfg.ThreatIntelSyncAttempts != 5 {
+		t.Fatalf("expected threat intel sync attempts 5, got %d", cfg.ThreatIntelSyncAttempts)
+	}
+	if cfg.ThreatIntelSyncBackoff != 9*time.Second {
+		t.Fatalf("expected threat intel sync backoff 9s, got %s", cfg.ThreatIntelSyncBackoff)
+	}
+	if cfg.TicketingProviderValidateTimeout != 8*time.Second {
+		t.Fatalf("expected ticketing provider validate timeout 8s, got %s", cfg.TicketingProviderValidateTimeout)
+	}
+	if cfg.GraphConsistencyCheckTimeout != 12*time.Minute {
+		t.Fatalf("expected graph consistency check timeout 12m, got %s", cfg.GraphConsistencyCheckTimeout)
 	}
 }
 
@@ -437,8 +669,12 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	// Clear any env vars that might affect defaults
 	t.Setenv("API_PORT", "")
 	t.Setenv("LOG_LEVEL", "")
+	t.Setenv("WAREHOUSE_BACKEND", "")
 	t.Setenv("SNOWFLAKE_SCHEMA", "")
 	t.Setenv("SNOWFLAKE_DATABASE", "")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
 
 	cfg := LoadConfig()
 
@@ -456,6 +692,24 @@ func TestLoadConfig_Defaults(t *testing.T) {
 
 	if cfg.SnowflakeSchema != "CEREBRO" {
 		t.Errorf("expected default schema CEREBRO, got %s", cfg.SnowflakeSchema)
+	}
+	if cfg.WarehouseBackend != "sqlite" {
+		t.Errorf("expected default warehouse backend sqlite without Snowflake auth, got %s", cfg.WarehouseBackend)
+	}
+	if cfg.WarehouseSQLitePath == "" {
+		t.Error("expected default sqlite warehouse path to be set")
+	}
+}
+
+func TestLoadConfig_DefaultsToSnowflakeBackendWhenAuthPresent(t *testing.T) {
+	t.Setenv("WAREHOUSE_BACKEND", "")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "acct")
+	t.Setenv("SNOWFLAKE_USER", "user")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----")
+
+	cfg := LoadConfig()
+	if cfg.WarehouseBackend != "snowflake" {
+		t.Fatalf("expected snowflake warehouse backend with auth present, got %q", cfg.WarehouseBackend)
 	}
 }
 
@@ -489,6 +743,11 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 	t.Setenv("NATS_CONSUMER_ENABLED", "true")
 	t.Setenv("NATS_JETSTREAM_ENABLED", "false")
 	t.Setenv("GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST", "true")
+	t.Setenv("GRAPH_TENANT_SHARD_IDLE_TTL", "-1s")
+	t.Setenv("GRAPH_TENANT_WARM_SHARD_TTL", "-1s")
+	t.Setenv("GRAPH_TENANT_WARM_SHARD_MAX_RETAINED", "0")
+	t.Setenv("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", "-1")
+	t.Setenv("GRAPH_PROPERTY_HISTORY_TTL", "-1s")
 
 	cfg := LoadConfig()
 	err := cfg.Validate()
@@ -507,6 +766,11 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 		"QUERY_POLICY_ROW_LIMIT must be greater than 0",
 		"NATS_JETSTREAM_ENABLED must be true when NATS_CONSUMER_ENABLED=true",
 		"GRAPH_CROSS_TENANT_SIGNING_KEY is required when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true",
+		"GRAPH_TENANT_SHARD_IDLE_TTL must be > 0",
+		"GRAPH_TENANT_WARM_SHARD_TTL must be > 0",
+		"GRAPH_TENANT_WARM_SHARD_MAX_RETAINED must be > 0",
+		"GRAPH_PROPERTY_HISTORY_MAX_ENTRIES must be >= 0",
+		"GRAPH_PROPERTY_HISTORY_TTL must be >= 0",
 	}
 	for _, want := range wantProblems {
 		found := false
@@ -520,6 +784,94 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 			t.Fatalf("expected validation problem containing %q, got %#v", want, validationErr.Problems)
 		}
 	}
+}
+
+func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
+	t.Setenv("API_REQUEST_TIMEOUT", "3s")
+	t.Setenv("API_MAX_BODY_BYTES", "0")
+	t.Setenv("CEREBRO_HEALTH_CHECK_TIMEOUT", "4s")
+	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "0s")
+	t.Setenv("GRAPH_RISK_ENGINE_STATE_TIMEOUT", "0s")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_TIMEOUT", "0s")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_MAX_AGE", "0s")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS", "0")
+	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_BACKOFF", "0s")
+	t.Setenv("CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT", "0s")
+	t.Setenv("GRAPH_CONSISTENCY_CHECK_TIMEOUT", "0s")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+
+	var validationErr *ConfigValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ConfigValidationError, got %T", err)
+	}
+
+	wantProblems := []string{
+		"API_MAX_BODY_BYTES must be > 0",
+		"CEREBRO_SHUTDOWN_TIMEOUT must be > 0",
+		"GRAPH_RISK_ENGINE_STATE_TIMEOUT must be > 0",
+		"CEREBRO_THREAT_INTEL_SYNC_TIMEOUT must be > 0",
+		"CEREBRO_THREAT_INTEL_SYNC_MAX_AGE must be > 0",
+		"CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS must be > 0",
+		"CEREBRO_THREAT_INTEL_SYNC_BACKOFF must be > 0",
+		"CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT must be > 0",
+		"GRAPH_CONSISTENCY_CHECK_TIMEOUT must be > 0",
+		"CEREBRO_HEALTH_CHECK_TIMEOUT must be <= API_REQUEST_TIMEOUT",
+	}
+	for _, want := range wantProblems {
+		found := false
+		for _, problem := range validationErr.Problems {
+			if strings.Contains(problem, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected validation problem containing %q, got %#v", want, validationErr.Problems)
+		}
+	}
+}
+
+func TestConfigureGraphRuntimeBehaviorAppliesPropertyHistoryConfig(t *testing.T) {
+	metrics.Register()
+
+	application := &App{
+		Config: &Config{
+			GraphSchemaValidationMode:      "enforce",
+			GraphPropertyHistoryMaxEntries: 17,
+			GraphPropertyHistoryTTL:        3 * time.Hour,
+		},
+	}
+	g := graph.New()
+
+	application.configureGraphRuntimeBehavior(g)
+
+	if g.SchemaValidationMode() != graph.SchemaValidationEnforce {
+		t.Fatalf("expected graph schema validation enforce, got %q", g.SchemaValidationMode())
+	}
+	maxEntries, ttl := g.TemporalHistoryConfig()
+	if maxEntries != 17 {
+		t.Fatalf("expected graph property history max entries 17, got %d", maxEntries)
+	}
+	if ttl != 3*time.Hour {
+		t.Fatalf("expected graph property history ttl 3h, got %s", ttl)
+	}
+	if got := gaugeValue(t, metrics.GraphPropertyHistoryDepth); got != 17 {
+		t.Fatalf("expected graph property history depth gauge 17, got %v", got)
+	}
+}
+
+func gaugeValue(t *testing.T, gauge interface{ Write(*dto.Metric) error }) float64 {
+	t.Helper()
+	var metric dto.Metric
+	if err := gauge.Write(&metric); err != nil {
+		t.Fatalf("write gauge metric: %v", err)
+	}
+	return metric.GetGauge().GetValue()
 }
 
 func TestNewWithConfigFailsFastOnInvalidConfig(t *testing.T) {
@@ -656,6 +1008,10 @@ func TestNew_WithoutSnowflake(t *testing.T) {
 
 	if app.RuntimeDetect == nil {
 		t.Error("RuntimeDetect should be initialized")
+	}
+
+	if app.RuntimeIngest == nil {
+		t.Error("RuntimeIngest should be initialized")
 	}
 
 	if app.RuntimeRespond == nil {

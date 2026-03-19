@@ -1,20 +1,24 @@
 {
   "id": "aws-ecr-scan-on-push",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "ECR Scan on Push Enabled",
   "description": "ECR repositories should have scan on push enabled to detect vulnerabilities",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ecr::repository",
   "conditions": [
-    "image_scanning_configuration.scan_on_push != true"
+    "cmp_ne(path(resource, \"image_scanning_configuration.scan_on_push\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable scan on push in the ECR repository image scanning configuration.",
   "tags": [
     "ecr",
     "container",
     "vulnerability",
     "scanning"
   ],
+  "remediation": "Enable scan on push in the ECR repository image scanning configuration.",
   "risk_categories": [
     "MISCONFIGURATION",
     "VULNERABILITY"

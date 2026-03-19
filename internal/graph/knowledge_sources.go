@@ -100,7 +100,11 @@ func buildKnowledgeSourceRecord(g *Graph, node *Node, validAt, recordedAt time.T
 		case NodeKindObservation:
 			artifactIDs = append(artifactIDs, upstream.ID)
 			observationCount++
-			subjectIDs = append(subjectIDs, strings.TrimSpace(readString(upstream.Properties, "subject_id")))
+			if props, ok := upstream.ObservationProperties(); ok {
+				subjectIDs = append(subjectIDs, strings.TrimSpace(props.SubjectID))
+			} else {
+				subjectIDs = append(subjectIDs, strings.TrimSpace(readString(upstream.Properties, "subject_id")))
+			}
 		case NodeKindEvidence:
 			artifactIDs = append(artifactIDs, upstream.ID)
 			evidenceCount++

@@ -1,10 +1,12 @@
 package apptest
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,17 +38,22 @@ import (
 func NewConfig(t *testing.T) *app.Config {
 	t.Helper()
 
-	reportStateDir := t.TempDir()
-	if os.Getenv("GRAPH_SNAPSHOT_PATH") == "" {
-		t.Setenv("GRAPH_SNAPSHOT_PATH", filepath.Join(reportStateDir, "graph-snapshots"))
+	stateDir := t.TempDir()
+	graphSnapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
+	if graphSnapshotPath == "" {
+		graphSnapshotPath = filepath.Join(stateDir, "graph-snapshots")
+		t.Setenv("GRAPH_SNAPSHOT_PATH", graphSnapshotPath)
 	}
 
 	return &app.Config{
 		LogLevel:                   "error",
 		Port:                       0,
-		ExecutionStoreFile:         filepath.Join(reportStateDir, "executions.db"),
-		PlatformReportRunStateFile: filepath.Join(reportStateDir, "state.json"),
-		PlatformReportSnapshotPath: filepath.Join(reportStateDir, "snapshots"),
+		ExecutionStoreFile:         filepath.Join(stateDir, "executions.db"),
+		PlatformReportRunStateFile: filepath.Join(stateDir, "state.json"),
+		PlatformReportSnapshotPath: filepath.Join(stateDir, "snapshots"),
+		GraphSnapshotPath:          graphSnapshotPath,
+		WorkloadScanStateFile:      filepath.Join(stateDir, "workload-scan.db"),
+		WorkloadScanMountBasePath:  filepath.Join(stateDir, "workload-scan", "mounts"),
 	}
 }
 
@@ -85,18 +92,28 @@ func NewAppWithWarehouse(t *testing.T, store warehouse.DataWarehouse) *app.App {
 		Notifications:  notifications.NewManager(),
 		Scheduler:      scheduler.NewScheduler(logger),
 		Ticketing:      ticketing.NewService(),
-		Identity:       identity.NewService(),
 		AttackPath:     attackpath.NewGraph(),
 		Providers:      providers.NewRegistry(),
 		Health:         health.NewRegistry(),
 		Lineage:        lineage.NewLineageMapper(),
 		Remediation:    remediation.NewEngine(logger),
 		RuntimeDetect:  runtime.NewDetectionEngine(),
+		RuntimeIngest: func() runtime.IngestStore {
+			ingestStore, err := runtime.NewSQLiteIngestStoreWithExecutionStore(executionStore)
+			if err != nil {
+				t.Fatalf("NewSQLiteIngestStoreWithExecutionStore: %v", err)
+			}
+			return ingestStore
+		}(),
 		RuntimeRespond: runtime.NewResponseEngine(),
 		SecurityGraph:  graph.New(),
 		ScanWatermarks: scanner.NewWatermarkStore(nil),
 		ThreatIntel:    threatintel.NewThreatIntelService(),
 	}
+	application.Identity = identity.NewService(
+		identity.WithExecutionStore(executionStore),
+		identity.WithGraphResolver(func(context.Context) *graph.Graph { return application.SecurityGraph }),
+	)
 	t.Cleanup(func() { _ = application.Close() })
 	return application
 }

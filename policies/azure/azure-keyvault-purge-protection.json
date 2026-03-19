@@ -1,19 +1,23 @@
 {
   "id": "azure-keyvault-purge-protection",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure Key Vault Purge Protection",
   "description": "Azure Key Vaults should have purge protection enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::keyvault::vault",
   "conditions": [
-    "properties.enable_purge_protection != true"
+    "cmp_ne(path(resource, \"properties.enable_purge_protection\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable purge protection on the Key Vault to prevent permanent deletion.",
   "tags": [
     "cis-azure-8.5",
     "keyvault",
     "data-protection"
   ],
+  "remediation": "Enable purge protection on the Key Vault to prevent permanent deletion.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

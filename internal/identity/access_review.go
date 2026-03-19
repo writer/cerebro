@@ -2,29 +2,37 @@ package identity
 
 import (
 	"context"
-	"sync"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/writer/cerebro/internal/cerrors"
+	"github.com/writer/cerebro/internal/executionstore"
+	"github.com/writer/cerebro/internal/graph"
 )
 
-// AccessReview represents a periodic review of user access
+// AccessReview represents a periodic graph-powered review of access rights.
 type AccessReview struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Type        ReviewType      `json:"type"`
-	Status      ReviewStatus    `json:"status"`
-	Scope       ReviewScope     `json:"scope"`
-	Schedule    *ReviewSchedule `json:"schedule,omitempty"`
-	Reviewers   []string        `json:"reviewers"`
-	Items       []ReviewItem    `json:"items"`
-	Stats       ReviewStats     `json:"stats"`
-	CreatedBy   string          `json:"created_by"`
-	CreatedAt   time.Time       `json:"created_at"`
-	StartedAt   *time.Time      `json:"started_at,omitempty"`
-	DueAt       *time.Time      `json:"due_at,omitempty"`
-	CompletedAt *time.Time      `json:"completed_at,omitempty"`
+	ID               string          `json:"id"`
+	Name             string          `json:"name"`
+	Description      string          `json:"description,omitempty"`
+	Type             ReviewType      `json:"type"`
+	Status           ReviewStatus    `json:"status"`
+	Scope            ReviewScope     `json:"scope"`
+	Schedule         *ReviewSchedule `json:"schedule,omitempty"`
+	Reviewers        []string        `json:"reviewers,omitempty"`
+	Items            []ReviewItem    `json:"items"`
+	Stats            ReviewStats     `json:"stats"`
+	CreatedBy        string          `json:"created_by"`
+	CreatedAt        time.Time       `json:"created_at"`
+	StartedAt        *time.Time      `json:"started_at,omitempty"`
+	DueAt            *time.Time      `json:"due_at,omitempty"`
+	CompletedAt      *time.Time      `json:"completed_at,omitempty"`
+	GenerationSource string          `json:"generation_source,omitempty"`
+	Events           []ReviewEvent   `json:"events,omitempty"`
+	Metadata         map[string]any  `json:"metadata,omitempty"`
 }
 
 type ReviewType string
@@ -48,34 +56,54 @@ const (
 )
 
 type ReviewScope struct {
-	Providers    []string `json:"providers,omitempty"`    // aws, gcp, azure
-	Accounts     []string `json:"accounts,omitempty"`     // specific accounts
-	Applications []string `json:"applications,omitempty"` // specific apps
-	Roles        []string `json:"roles,omitempty"`        // specific roles
-	Users        []string `json:"users,omitempty"`        // specific users
+	Mode         ReviewScopeMode `json:"mode,omitempty"`
+	Providers    []string        `json:"providers,omitempty"`
+	Accounts     []string        `json:"accounts,omitempty"`
+	Applications []string        `json:"applications,omitempty"`
+	Roles        []string        `json:"roles,omitempty"`
+	Users        []string        `json:"users,omitempty"`
+	Resources    []string        `json:"resources,omitempty"`
+	RiskLevels   []string        `json:"risk_levels,omitempty"`
 }
 
+type ReviewScopeMode string
+
+const (
+	ReviewScopeModeAll            ReviewScopeMode = "all"
+	ReviewScopeModeAccount        ReviewScopeMode = "account"
+	ReviewScopeModePrincipal      ReviewScopeMode = "principal"
+	ReviewScopeModeResource       ReviewScopeMode = "resource"
+	ReviewScopeModeHighRisk       ReviewScopeMode = "high_risk"
+	ReviewScopeModeCrossAccount   ReviewScopeMode = "cross_account"
+	ReviewScopeModePrivilegeCreep ReviewScopeMode = "privilege_creep"
+)
+
 type ReviewSchedule struct {
-	Frequency string     `json:"frequency"` // daily, weekly, monthly, quarterly
+	Frequency string     `json:"frequency"`
 	NextRun   time.Time  `json:"next_run"`
 	LastRun   *time.Time `json:"last_run,omitempty"`
 }
 
 type ReviewItem struct {
-	ID          string                 `json:"id"`
-	ReviewID    string                 `json:"review_id"`
-	Type        string                 `json:"type"` // user, service_account, role_binding
-	Principal   Principal              `json:"principal"`
-	Access      []AccessGrant          `json:"access"`
-	RiskScore   int                    `json:"risk_score"`
-	RiskFactors []string               `json:"risk_factors,omitempty"`
-	Decision    *ReviewDecision        `json:"decision,omitempty"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	ID                 string                `json:"id"`
+	ReviewID           string                `json:"review_id"`
+	Type               string                `json:"type"`
+	Principal          Principal             `json:"principal"`
+	Access             []AccessGrant         `json:"access"`
+	RiskScore          int                   `json:"risk_score"`
+	RiskFactors        []string              `json:"risk_factors,omitempty"`
+	Decision           *ReviewDecision       `json:"decision,omitempty"`
+	Recommendation     *ReviewRecommendation `json:"recommendation,omitempty"`
+	ReviewerCandidates []string              `json:"reviewer_candidates,omitempty"`
+	LastActivity       *time.Time            `json:"last_activity,omitempty"`
+	Path               []string              `json:"path,omitempty"`
+	Flags              []string              `json:"flags,omitempty"`
+	Metadata           map[string]any        `json:"metadata,omitempty"`
 }
 
 type Principal struct {
 	ID        string     `json:"id"`
-	Type      string     `json:"type"` // user, service_account, group
+	Type      string     `json:"type"`
 	Name      string     `json:"name"`
 	Email     string     `json:"email,omitempty"`
 	Provider  string     `json:"provider"`
@@ -103,6 +131,22 @@ type ReviewDecision struct {
 	EffectiveAt *time.Time     `json:"effective_at,omitempty"`
 }
 
+type ReviewRecommendation struct {
+	Action     DecisionAction `json:"action"`
+	Reason     string         `json:"reason"`
+	Confidence string         `json:"confidence,omitempty"`
+}
+
+type ReviewEvent struct {
+	Sequence   int64           `json:"sequence"`
+	Type       string          `json:"type"`
+	RecordedAt time.Time       `json:"recorded_at"`
+	Actor      string          `json:"actor,omitempty"`
+	ItemID     string          `json:"item_id,omitempty"`
+	Decision   *ReviewDecision `json:"decision,omitempty"`
+	Metadata   map[string]any  `json:"metadata,omitempty"`
+}
+
 type DecisionAction string
 
 const (
@@ -118,149 +162,322 @@ type ReviewStats struct {
 	Pending       int `json:"pending"`
 	Approved      int `json:"approved"`
 	Revoked       int `json:"revoked"`
+	Modified      int `json:"modified"`
 	Escalated     int `json:"escalated"`
+	Deferred      int `json:"deferred"`
 	HighRisk      int `json:"high_risk"`
 	CompletionPct int `json:"completion_pct"`
 }
 
-// Service manages access reviews
 type Service struct {
-	reviews map[string]*AccessReview
-	items   map[string]*ReviewItem
-	mu      sync.RWMutex
+	store          Store
+	graphResolver  func(context.Context) *graph.Graph
+	riskCalculator *RiskCalculator
 }
 
-func NewService() *Service {
-	return &Service{
-		reviews: make(map[string]*AccessReview),
-		items:   make(map[string]*ReviewItem),
+type ServiceOption func(*Service)
+
+func WithStore(store Store) ServiceOption {
+	return func(s *Service) {
+		if store != nil {
+			s.store = store
+		}
 	}
+}
+
+func WithExecutionStore(store executionstore.Store) ServiceOption {
+	return func(s *Service) {
+		if store != nil {
+			s.store = NewSQLiteStoreWithExecutionStore(store, DefaultStoreNamespace)
+		}
+	}
+}
+
+func WithGraphResolver(resolver func(context.Context) *graph.Graph) ServiceOption {
+	return func(s *Service) {
+		s.graphResolver = resolver
+	}
+}
+
+func NewService(opts ...ServiceOption) *Service {
+	svc := &Service{
+		store:          NewMemoryStore(),
+		riskCalculator: NewRiskCalculator(),
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(svc)
+		}
+	}
+	return svc
 }
 
 func (s *Service) CreateReview(ctx context.Context, review *AccessReview) (*AccessReview, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if review == nil {
+		return nil, cerrors.E(cerrors.Op("identity.CreateReview"), cerrors.ErrInvalidInput, "review payload is required")
+	}
+	if strings.TrimSpace(review.Name) == "" {
+		return nil, cerrors.E(cerrors.Op("identity.CreateReview"), cerrors.ErrInvalidInput, "review name is required")
+	}
 
-	review.ID = uuid.New().String()
-	review.Status = ReviewStatusDraft
-	review.CreatedAt = time.Now()
-	review.Stats = ReviewStats{}
-
-	s.reviews[review.ID] = review
-	return review, nil
+	now := time.Now().UTC()
+	created := *review
+	created.ID = uuid.New().String()
+	created.Name = strings.TrimSpace(review.Name)
+	created.Description = strings.TrimSpace(review.Description)
+	created.CreatedAt = now
+	created.Events = nil
+	created.GenerationSource = strings.TrimSpace(review.GenerationSource)
+	if created.GenerationSource == "" {
+		created.GenerationSource = "manual"
+	}
+	if created.Type == "" {
+		created.Type = ReviewTypeUserAccess
+	}
+	created.Status = ReviewStatusDraft
+	if created.Schedule != nil && !created.Schedule.NextRun.IsZero() && created.Schedule.NextRun.After(now) {
+		created.Status = ReviewStatusScheduled
+	}
+	if created.DueAt == nil && created.Schedule != nil && !created.Schedule.NextRun.IsZero() {
+		due := created.Schedule.NextRun
+		created.DueAt = &due
+	}
+	if created.GenerationSource == "graph" && len(created.Items) == 0 {
+		items, err := s.generateReviewItems(ctx, &created)
+		if err != nil {
+			return nil, err
+		}
+		created.Items = items
+	}
+	created.recalculateStats()
+	if err := s.store.SaveReview(ctx, &created); err != nil {
+		return nil, fmt.Errorf("save access review: %w", err)
+	}
+	_, err := s.store.AppendEvent(ctx, created.ID, ReviewEvent{
+		Type:       "review.created",
+		RecordedAt: now,
+		Actor:      created.CreatedBy,
+		Metadata: map[string]any{
+			"item_count": created.Stats.TotalItems,
+			"scope_mode": created.Scope.effectiveMode(),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("append access review event: %w", err)
+	}
+	return s.store.LoadReview(ctx, created.ID)
 }
 
 func (s *Service) GetReview(ctx context.Context, id string) (*AccessReview, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	r, ok := s.reviews[id]
-	return r, ok
+	review, err := s.store.LoadReview(ctx, strings.TrimSpace(id))
+	return review, err == nil && review != nil
 }
 
 func (s *Service) ListReviews(ctx context.Context, status ReviewStatus) []*AccessReview {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var result []*AccessReview
-	for _, r := range s.reviews {
-		if status == "" || r.Status == status {
-			result = append(result, r)
-		}
+	reviews, err := s.store.ListReviews(ctx, status)
+	if err != nil {
+		return nil
 	}
-	return result
+	return reviews
 }
 
 func (s *Service) StartReview(ctx context.Context, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	review, ok := s.reviews[id]
-	if !ok {
-		return nil
+	review, err := s.loadRequiredReview(ctx, id)
+	if err != nil {
+		return err
 	}
-
-	now := time.Now()
+	now := time.Now().UTC()
 	review.Status = ReviewStatusInProgress
 	review.StartedAt = &now
-
+	if review.Schedule != nil {
+		review.Schedule.LastRun = &now
+	}
+	if err := s.store.SaveReview(ctx, review); err != nil {
+		return fmt.Errorf("save started access review: %w", err)
+	}
+	_, err = s.store.AppendEvent(ctx, review.ID, ReviewEvent{Type: "review.started", RecordedAt: now})
+	if err != nil {
+		return fmt.Errorf("append access review event: %w", err)
+	}
 	return nil
 }
 
 func (s *Service) AddReviewItem(ctx context.Context, reviewID string, item *ReviewItem) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	review, ok := s.reviews[reviewID]
-	if !ok {
-		return nil
+	if item == nil {
+		return cerrors.E(cerrors.Op("identity.AddReviewItem"), cerrors.ErrInvalidInput, "review item is required")
 	}
-
-	item.ID = uuid.New().String()
-	item.ReviewID = reviewID
-	review.Items = append(review.Items, *item)
-	review.Stats.TotalItems++
-	review.Stats.Pending++
-
-	if item.RiskScore >= 80 {
-		review.Stats.HighRisk++
+	review, err := s.loadRequiredReview(ctx, reviewID)
+	if err != nil {
+		return err
 	}
-
-	s.items[item.ID] = item
+	prepared := s.prepareManualReviewItem(review, item)
+	review.Items = append(review.Items, prepared)
+	review.recalculateStats()
+	if err := s.store.SaveReview(ctx, review); err != nil {
+		return fmt.Errorf("save access review: %w", err)
+	}
+	_, err = s.store.AppendEvent(ctx, review.ID, ReviewEvent{
+		Type:       "review.item_added",
+		RecordedAt: time.Now().UTC(),
+		ItemID:     prepared.ID,
+		Metadata: map[string]any{
+			"risk_score": prepared.RiskScore,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("append access review event: %w", err)
+	}
 	return nil
 }
 
-func (s *Service) RecordDecision(ctx context.Context, itemID string, decision *ReviewDecision) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	item, ok := s.items[itemID]
-	if !ok {
+func (s *Service) RecordDecision(ctx context.Context, reviewID, itemID string, decision *ReviewDecision) error {
+	if decision == nil {
+		return cerrors.E(cerrors.Op("identity.RecordDecision"), cerrors.ErrInvalidInput, "review decision is required")
+	}
+	review, err := s.loadRequiredReview(ctx, reviewID)
+	if err != nil {
+		return err
+	}
+	normalizedItemID := strings.TrimSpace(itemID)
+	for i := range review.Items {
+		if review.Items[i].ID != normalizedItemID {
+			continue
+		}
+		if strings.TrimSpace(review.Items[i].ReviewID) != "" && strings.TrimSpace(review.Items[i].ReviewID) != strings.TrimSpace(review.ID) {
+			return cerrors.E(cerrors.Op("identity.RecordDecision"), cerrors.ErrInvalidInput, "review item does not belong to review")
+		}
+		decided := *decision
+		if decided.DecidedAt.IsZero() {
+			decided.DecidedAt = time.Now().UTC()
+		}
+		review.Items[i].Decision = &decided
+		review.recalculateStats()
+		if review.Stats.Pending == 0 {
+			completed := decided.DecidedAt.UTC()
+			review.Status = ReviewStatusCompleted
+			review.CompletedAt = &completed
+		}
+		if err := s.store.SaveReview(ctx, review); err != nil {
+			return fmt.Errorf("save access review decision: %w", err)
+		}
+		_, err = s.store.AppendEvent(ctx, review.ID, ReviewEvent{
+			Type:       "review.item_decided",
+			RecordedAt: decided.DecidedAt.UTC(),
+			Actor:      decided.Reviewer,
+			ItemID:     review.Items[i].ID,
+			Decision:   &decided,
+		})
+		if err != nil {
+			return fmt.Errorf("append access review event: %w", err)
+		}
+		if review.Status == ReviewStatusCompleted {
+			_, err = s.store.AppendEvent(ctx, review.ID, ReviewEvent{Type: "review.completed", RecordedAt: decided.DecidedAt.UTC()})
+			if err != nil {
+				return fmt.Errorf("append access review completion event: %w", err)
+			}
+		}
 		return nil
 	}
-
-	item.Decision = decision
-
-	// Update review stats
-	review, ok := s.reviews[item.ReviewID]
-	if ok {
-		review.Stats.Pending--
-		switch decision.Action {
-		case DecisionApprove:
-			review.Stats.Approved++
-		case DecisionRevoke:
-			review.Stats.Revoked++
-		case DecisionEscalate:
-			review.Stats.Escalated++
-		}
-
-		completed := review.Stats.TotalItems - review.Stats.Pending
-		review.Stats.CompletionPct = (completed * 100) / review.Stats.TotalItems
-
-		// Check if review is complete
-		if review.Stats.Pending == 0 {
-			now := time.Now()
-			review.Status = ReviewStatusCompleted
-			review.CompletedAt = &now
-		}
-	}
-
-	return nil
+	return cerrors.E(cerrors.Op("identity.RecordDecision"), cerrors.ErrNotFound, "review item not found in review")
 }
 
 func (s *Service) GetPendingItems(ctx context.Context, reviewerID string) []*ReviewItem {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+	reviews, err := s.store.ListReviews(ctx, ReviewStatusInProgress)
+	if err != nil {
+		return nil
+	}
 	var pending []*ReviewItem
-	for _, item := range s.items {
-		if item.Decision == nil {
-			pending = append(pending, item)
+	for _, review := range reviews {
+		full, err := s.store.LoadReview(ctx, review.ID)
+		if err != nil || full == nil {
+			continue
+		}
+		for i := range full.Items {
+			item := &full.Items[i]
+			if item.Decision != nil {
+				continue
+			}
+			if reviewerID == "" || containsString(item.ReviewerCandidates, reviewerID) {
+				pending = append(pending, item)
+			}
 		}
 	}
 	return pending
 }
 
-// RiskCalculator computes risk scores for review items
+func (s *Service) loadRequiredReview(ctx context.Context, reviewID string) (*AccessReview, error) {
+	review, err := s.store.LoadReview(ctx, strings.TrimSpace(reviewID))
+	if err != nil {
+		return nil, fmt.Errorf("load access review: %w", err)
+	}
+	if review == nil {
+		return nil, cerrors.E(cerrors.Op("identity.loadRequiredReview"), cerrors.ErrNotFound, "access review not found")
+	}
+	return review, nil
+}
+
+func (s *Service) prepareManualReviewItem(review *AccessReview, item *ReviewItem) ReviewItem {
+	prepared := *item
+	prepared.ID = uuid.New().String()
+	prepared.ReviewID = review.ID
+	if prepared.Metadata == nil {
+		prepared.Metadata = map[string]any{}
+	}
+	if prepared.RiskScore == 0 {
+		prepared.RiskScore, prepared.RiskFactors = s.riskCalculator.Calculate(&prepared)
+	}
+	if prepared.Recommendation == nil {
+		prepared.Recommendation = &ReviewRecommendation{Action: DecisionDefer, Reason: "manual review item requires reviewer judgment", Confidence: "low"}
+	}
+	return prepared
+}
+
+func (r *AccessReview) recalculateStats() {
+	r.Stats = ReviewStats{TotalItems: len(r.Items), Pending: len(r.Items)}
+	for _, item := range r.Items {
+		if item.RiskScore >= 80 {
+			r.Stats.HighRisk++
+		}
+		if item.Decision == nil {
+			continue
+		}
+		r.Stats.Pending--
+		switch item.Decision.Action {
+		case DecisionApprove:
+			r.Stats.Approved++
+		case DecisionRevoke:
+			r.Stats.Revoked++
+		case DecisionModify:
+			r.Stats.Modified++
+		case DecisionEscalate:
+			r.Stats.Escalated++
+		case DecisionDefer:
+			r.Stats.Deferred++
+		}
+	}
+	if r.Stats.TotalItems > 0 {
+		completed := r.Stats.TotalItems - r.Stats.Pending
+		r.Stats.CompletionPct = (completed * 100) / r.Stats.TotalItems
+	}
+}
+
+func (s ReviewScope) effectiveMode() ReviewScopeMode {
+	if s.Mode != "" {
+		return s.Mode
+	}
+	switch {
+	case len(s.Resources) > 0:
+		return ReviewScopeModeResource
+	case len(s.Users) > 0:
+		return ReviewScopeModePrincipal
+	case len(s.Accounts) > 0:
+		return ReviewScopeModeAccount
+	default:
+		return ReviewScopeModeAll
+	}
+}
+
+// RiskCalculator computes risk scores for review items.
 type RiskCalculator struct {
 	weights map[string]int
 }
@@ -284,32 +501,34 @@ func (rc *RiskCalculator) Calculate(item *ReviewItem) (int, []string) {
 	score := 0
 	var factors []string
 
-	// Check for admin/privileged access
 	for _, grant := range item.Access {
-		if grant.Role == "admin" || grant.Role == "owner" || grant.Permission == "*" {
+		role := strings.ToLower(strings.TrimSpace(grant.Role))
+		perm := strings.ToLower(strings.TrimSpace(grant.Permission))
+		if role == "admin" || role == "owner" || perm == "*" || strings.Contains(perm, "admin") {
 			score += rc.weights["admin_access"]
 			factors = append(factors, "Has admin/owner access")
 			break
 		}
 	}
 
-	// Check for service accounts
 	if item.Principal.Type == "service_account" {
 		score += rc.weights["service_account"]
 		factors = append(factors, "Service account")
 	}
 
-	// Check for no recent login
-	if item.Principal.LastLogin != nil {
-		if time.Since(*item.Principal.LastLogin) > 90*24*time.Hour {
+	lastActivity := item.LastActivity
+	if lastActivity == nil {
+		lastActivity = item.Principal.LastLogin
+	}
+	if lastActivity != nil {
+		if time.Since(*lastActivity) > 90*24*time.Hour {
 			score += rc.weights["no_recent_login"]
 			factors = append(factors, "No login in 90+ days")
 		}
 	}
 
-	// Check for long-standing access
 	for _, grant := range item.Access {
-		if time.Since(grant.GrantedAt) > 365*24*time.Hour {
+		if !grant.GrantedAt.IsZero() && time.Since(grant.GrantedAt) > 365*24*time.Hour {
 			score += rc.weights["long_standing"]
 			factors = append(factors, "Access granted over 1 year ago")
 			break
@@ -319,6 +538,36 @@ func (rc *RiskCalculator) Calculate(item *ReviewItem) (int, []string) {
 	if score > 100 {
 		score = 100
 	}
+	return score, uniqueStrings(factors)
+}
 
-	return score, factors
+func containsString(values []string, want string) bool {
+	want = strings.TrimSpace(want)
+	for _, value := range values {
+		if strings.TrimSpace(value) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func uniqueStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
 }

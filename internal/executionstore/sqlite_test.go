@@ -293,3 +293,49 @@ func TestSQLiteStoreReplaceRunWithEventsReplacesEventSetAtomically(t *testing.T)
 		t.Fatalf("unexpected second event after replace: %#v", events[1])
 	}
 }
+
+func TestSQLiteStoreCompareAndSwapRunTransitionsOnce(t *testing.T) {
+	store, err := NewSQLiteStore(filepath.Join(t.TempDir(), "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	current := RunEnvelope{
+		Namespace:   NamespaceAutonomousWorkflow,
+		RunID:       "run-cas",
+		Kind:        "credential_exposure_response",
+		Status:      "awaiting_approval",
+		Stage:       "approval",
+		SubmittedAt: now,
+		StartedAt:   &now,
+		UpdatedAt:   now,
+		Payload:     []byte(`{"status":"awaiting_approval"}`),
+	}
+	if err := store.UpsertRun(context.Background(), current); err != nil {
+		t.Fatalf("UpsertRun: %v", err)
+	}
+
+	next := current
+	next.Status = "running"
+	next.Stage = "execute"
+	next.UpdatedAt = now.Add(time.Second)
+	next.Payload = []byte(`{"status":"running"}`)
+
+	swapped, err := store.CompareAndSwapRun(context.Background(), current, next)
+	if err != nil {
+		t.Fatalf("CompareAndSwapRun first: %v", err)
+	}
+	if !swapped {
+		t.Fatal("expected first compare-and-swap to succeed")
+	}
+
+	swapped, err = store.CompareAndSwapRun(context.Background(), current, next)
+	if err != nil {
+		t.Fatalf("CompareAndSwapRun second: %v", err)
+	}
+	if swapped {
+		t.Fatal("expected second compare-and-swap to fail after state transition")
+	}
+}

@@ -1,21 +1,25 @@
 {
   "id": "gcp-compute-no-public-ip",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Compute Instance Public IP",
   "description": "Compute instances should not have public IP addresses unless required",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::compute::instance",
   "conditions": [
-    "network_interfaces.access_configs != null",
-    "labels.allow_public_ip != 'true'"
+    "cmp_ne(path(resource, \"network_interfaces.access_configs\"), null)",
+    "cmp_ne(path(resource, \"labels.allow_public_ip\"), \"true\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Remove external IP addresses from compute instances. Use Cloud NAT for outbound internet access.",
   "tags": [
     "cis-gcp-4.9",
     "compute",
     "network",
     "public-ip"
   ],
+  "remediation": "Remove external IP addresses from compute instances. Use Cloud NAT for outbound internet access.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "MISCONFIGURATION"

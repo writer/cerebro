@@ -3,6 +3,7 @@ package graph
 import (
 	"container/heap"
 	"fmt"
+	"math/bits"
 	"sort"
 	"sync"
 )
@@ -13,22 +14,25 @@ type AttackPathSimulator struct {
 	entryPoints    []*Node
 	crownJewels    []*Node
 	exploitability map[string]float64 // node ID -> exploitability score
-	nodeIndex      map[string]int
+	nodeIDs        *NodeIDIndex
+	adjacency      *attackAdjacencySnapshot
 	visitedWords   int
 }
 
 // NewAttackPathSimulator creates a new simulator
 func NewAttackPathSimulator(g *Graph) *AttackPathSimulator {
 	allNodes := g.GetAllNodes()
+	nodeIDs := NewNodeIDIndex()
+	for _, node := range allNodes {
+		nodeIDs.Intern(node.ID)
+	}
 	sim := &AttackPathSimulator{
 		graph:          g,
 		exploitability: make(map[string]float64),
-		nodeIndex:      make(map[string]int, len(allNodes)),
+		nodeIDs:        nodeIDs,
 	}
-	for idx, node := range allNodes {
-		sim.nodeIndex[node.ID] = idx
-	}
-	sim.visitedWords = (len(allNodes) + 63) / 64
+	sim.adjacency = newAttackAdjacencySnapshot(g, nodeIDs)
+	sim.visitedWords = (nodeIDs.Len() + 63) / 64
 	sim.identifyEntryPoints()
 	sim.identifyCrownJewels()
 	sim.calculateExploitability()
@@ -304,48 +308,50 @@ func (sim *AttackPathSimulator) findAttackPaths(entry, target *Node, maxLen int)
 		}
 
 		// Explore outbound edges
-		for _, edge := range sim.graph.GetOutEdges(current.nodeID) {
-			if sim.isVisited(current.visitedBits, edge.Target) {
-				continue
+		sim.forEachOutEdge(current.nodeID, func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
+			if sim.isVisited(current.visitedBits, targetID) {
+				return true
 			}
-			if edge.IsDeny() {
-				continue
+			if effect == EdgeEffectDeny {
+				return true
 			}
 
-			targetNode, ok := sim.graph.GetNode(edge.Target)
+			targetNode, ok := sim.graph.GetNode(targetID)
 			if !ok {
-				continue
+				return true
 			}
 
 			// Calculate step cost (inverse of exploitability)
-			stepCost := 1.0 - sim.exploitability[edge.Target]
+			stepCost := 1.0 - sim.exploitability[targetID]
 			if stepCost < 0.1 {
 				stepCost = 0.1
 			}
 
 			newVisited := cloneVisitedBits(current.visitedBits)
-			sim.markVisited(newVisited, edge.Target)
+			sim.markVisited(newVisited, targetID)
 
 			newStep := &AttackStep{
 				Order:         len(current.path) + 1,
 				FromNode:      current.nodeID,
-				ToNode:        edge.Target,
-				Technique:     edgeToTechnique(edge.Kind),
-				EdgeKind:      edge.Kind,
-				Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, edge.Kind),
-				MITREAttackID: edgeToMITRE(edge.Kind),
+				ToNode:        targetID,
+				Technique:     edgeToTechnique(kind),
+				EdgeKind:      kind,
+				Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, kind),
+				MITREAttackID: edgeToMITRE(kind),
 			}
 
 			newPath := append([]*AttackStep{}, current.path...)
 			newPath = append(newPath, newStep)
 
 			heap.Push(pq, &pathState{
-				nodeID:      edge.Target,
+				nodeID:      targetID,
 				path:        newPath,
 				visitedBits: newVisited,
 				cost:        current.cost + stepCost,
 			})
-		}
+			_ = targetOrdinal
+			return true
+		})
 	}
 
 	return paths
@@ -394,9 +400,9 @@ func (sim *AttackPathSimulator) scorePath(path *ScoredAttackPath) {
 
 func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Chokepoint {
 	// Count how many paths go through each node
-	nodePathCount := make(map[string]int)
-	nodeUpstream := make(map[string]map[string]bool)
-	nodeDownstream := make(map[string]map[string]bool)
+	nodePathCount := make([]int, sim.nodeIDs.Len()+1)
+	nodeUpstream := make(map[NodeOrdinal][]uint64)
+	nodeDownstream := make(map[NodeOrdinal][]uint64)
 
 	// Check if all paths share the same entry point (e.g. Internet).
 	// When they do, include intermediate nodes AND shared entry points
@@ -413,42 +419,30 @@ func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Ch
 	}
 
 	for _, path := range paths {
-		pathNodes := make(map[string]bool)
-		for _, step := range path.Steps {
-			pathNodes[step.ToNode] = true
-			pathNodes[step.FromNode] = true
+		entryOrdinal, ok := sim.nodeIDs.Lookup(path.EntryPoint.ID)
+		if !ok {
+			continue
 		}
-
-		for nodeID := range pathNodes {
-			// Always skip the shared entry point itself (e.g. Internet)
-			if nodeID == sharedEntry {
-				continue
-			}
-			// For multi-hop paths, skip entry/target to find true intermediaries.
-			// For direct paths (length <= 1), include targets so they can be
-			// identified as convergence points reachable from the shared entry.
-			if path.Length > 1 && (nodeID == path.EntryPoint.ID || nodeID == path.Target.ID) {
-				continue
-			}
-			nodePathCount[nodeID]++
-
-			if nodeUpstream[nodeID] == nil {
-				nodeUpstream[nodeID] = make(map[string]bool)
-			}
-			nodeUpstream[nodeID][path.EntryPoint.ID] = true
-
-			if nodeDownstream[nodeID] == nil {
-				nodeDownstream[nodeID] = make(map[string]bool)
-			}
-			nodeDownstream[nodeID][path.Target.ID] = true
+		targetOrdinal, ok := sim.nodeIDs.Lookup(path.Target.ID)
+		if !ok {
+			continue
+		}
+		pathNodes := make([]uint64, sim.visitedWords)
+		for _, step := range path.Steps {
+			sim.recordChokepointNode(path, sharedEntry, step.FromNode, entryOrdinal, targetOrdinal, pathNodes, nodePathCount, nodeUpstream, nodeDownstream)
+			sim.recordChokepointNode(path, sharedEntry, step.ToNode, entryOrdinal, targetOrdinal, pathNodes, nodePathCount, nodeUpstream, nodeDownstream)
 		}
 	}
 
 	// Convert to chokepoints
 	chokepoints := make([]*Chokepoint, 0, len(nodePathCount))
-	for nodeID, count := range nodePathCount {
+	for ordinal, count := range nodePathCount {
 		if count < 2 {
 			continue // Only nodes with multiple paths through them
+		}
+		nodeID, ok := sim.nodeIDs.Resolve(NodeOrdinal(ordinal))
+		if !ok {
+			continue
 		}
 
 		node, ok := sim.graph.GetNode(nodeID)
@@ -456,15 +450,8 @@ func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Ch
 			continue
 		}
 
-		upstream := make([]string, 0, len(nodeUpstream[nodeID]))
-		for id := range nodeUpstream[nodeID] {
-			upstream = append(upstream, id)
-		}
-
-		downstream := make([]string, 0, len(nodeDownstream[nodeID]))
-		for id := range nodeDownstream[nodeID] {
-			downstream = append(downstream, id)
-		}
+		upstream := sim.ordinalBitsToNodeIDs(nodeUpstream[NodeOrdinal(ordinal)])
+		downstream := sim.ordinalBitsToNodeIDs(nodeDownstream[NodeOrdinal(ordinal)])
 
 		// Calculate betweenness centrality approximation
 		centrality := float64(count) / float64(len(paths))
@@ -492,6 +479,77 @@ func (sim *AttackPathSimulator) findChokepoints(paths []*ScoredAttackPath) []*Ch
 	return chokepoints
 }
 
+func (sim *AttackPathSimulator) recordChokepointNode(
+	path *ScoredAttackPath,
+	sharedEntry string,
+	nodeID string,
+	entryOrdinal NodeOrdinal,
+	targetOrdinal NodeOrdinal,
+	pathNodes []uint64,
+	nodePathCount []int,
+	nodeUpstream map[NodeOrdinal][]uint64,
+	nodeDownstream map[NodeOrdinal][]uint64,
+) {
+	// Always skip the shared entry point itself (e.g. Internet)
+	if nodeID == sharedEntry {
+		return
+	}
+	// For multi-hop paths, skip entry/target to find true intermediaries.
+	// For direct paths (length <= 1), include targets so they can be
+	// identified as convergence points reachable from the shared entry.
+	if path.Length > 1 && (nodeID == path.EntryPoint.ID || nodeID == path.Target.ID) {
+		return
+	}
+	nodeOrdinal, ok := sim.nodeIDs.Lookup(nodeID)
+	if !ok || !markOrdinalBits(pathNodes, nodeOrdinal) {
+		return
+	}
+	if int(nodeOrdinal) >= len(nodePathCount) {
+		return
+	}
+	nodePathCount[nodeOrdinal]++
+	if nodeUpstream[nodeOrdinal] == nil {
+		nodeUpstream[nodeOrdinal] = make([]uint64, sim.visitedWords)
+	}
+	markOrdinalBits(nodeUpstream[nodeOrdinal], entryOrdinal)
+	if nodeDownstream[nodeOrdinal] == nil {
+		nodeDownstream[nodeOrdinal] = make([]uint64, sim.visitedWords)
+	}
+	markOrdinalBits(nodeDownstream[nodeOrdinal], targetOrdinal)
+}
+
+func markOrdinalBits(visited []uint64, ordinal NodeOrdinal) bool {
+	word, mask, ok := ordinalWordAndMask(ordinal)
+	if !ok || word >= len(visited) {
+		return false
+	}
+	alreadyVisited := visited[word]&mask != 0
+	visited[word] |= mask
+	return !alreadyVisited
+}
+
+func (sim *AttackPathSimulator) ordinalBitsToNodeIDs(visited []uint64) []string {
+	if len(visited) == 0 {
+		return nil
+	}
+	ids := make([]string, 0)
+	for wordIndex, word := range visited {
+		for word != 0 {
+			bit := bits.TrailingZeros64(word)
+			ordinal, ok := nodeOrdinalFromWordBit(wordIndex, bit)
+			if !ok {
+				word &^= uint64(1) << bit
+				continue
+			}
+			if id, ok := sim.nodeIDs.Resolve(ordinal); ok {
+				ids = append(ids, id)
+			}
+			word &^= uint64(1) << bit
+		}
+	}
+	return ids
+}
+
 // pathState is used for pathfinding algorithms
 type pathState struct {
 	nodeID      string
@@ -507,28 +565,27 @@ func (sim *AttackPathSimulator) newVisitedBits(nodeID string) []uint64 {
 }
 
 func (sim *AttackPathSimulator) markVisited(visited []uint64, nodeID string) {
-	index, ok := sim.nodeIndex[nodeID]
-	if !ok {
+	word, mask, ok := sim.visitedWordAndMask(nodeID)
+	if !ok || word >= len(visited) {
 		return
 	}
-	word := index / 64
-	bit := index % 64
-	if word >= 0 && word < len(visited) {
-		visited[word] |= uint64(1) << bit
-	}
+	visited[word] |= mask
 }
 
 func (sim *AttackPathSimulator) isVisited(visited []uint64, nodeID string) bool {
-	index, ok := sim.nodeIndex[nodeID]
+	word, mask, ok := sim.visitedWordAndMask(nodeID)
+	if !ok || word >= len(visited) {
+		return false
+	}
+	return visited[word]&mask != 0
+}
+
+func (sim *AttackPathSimulator) visitedWordAndMask(nodeID string) (int, uint64, bool) {
+	ordinal, ok := sim.nodeIDs.Lookup(nodeID)
 	if !ok {
-		return false
+		return 0, 0, false
 	}
-	word := index / 64
-	bit := index % 64
-	if word < 0 || word >= len(visited) {
-		return false
-	}
-	return visited[word]&(uint64(1)<<bit) != 0
+	return ordinalWordAndMask(ordinal)
 }
 
 func cloneVisitedBits(visited []uint64) []uint64 {
@@ -688,24 +745,32 @@ func (sim *AttackPathSimulator) KShortestPaths(entryID, targetID string, k, maxL
 			copy(rootPath, prevPath.Steps[:spurIdx])
 
 			// Temporarily remove edges that would lead to already-found paths
-			removedEdges := make(map[string][]*Edge)
+			removedEdges := make(map[NodeOrdinal]ordinalVisitSet)
+			spurOrdinal, ok := sim.nodeIDs.Lookup(spurNodeID)
+			if !ok {
+				continue
+			}
 			for _, p := range result {
 				if len(p.Steps) > spurIdx && pathPrefixMatch(p.Steps, rootPath) {
 					edgeToRemove := p.Steps[spurIdx]
-					edges := sim.graph.GetOutEdges(spurNodeID)
-					for _, e := range edges {
-						if e.Target == edgeToRemove.ToNode {
-							removedEdges[spurNodeID] = append(removedEdges[spurNodeID], e)
-						}
+					targetOrdinal, ok := sim.nodeIDs.Lookup(edgeToRemove.ToNode)
+					if !ok {
+						continue
 					}
+					removed := removedEdges[spurOrdinal]
+					if removed.nodeIDs == nil {
+						removed = newOrdinalVisitSet(sim.nodeIDs)
+					}
+					removed.markOrdinal(targetOrdinal)
+					removedEdges[spurOrdinal] = removed
 				}
 			}
 
 			// Find spur path from spur node to target, avoiding root path nodes
 			spurNode, _ := sim.graph.GetNode(spurNodeID)
-			avoidNodes := make(map[string]bool)
+			avoidNodes := newOrdinalVisitSet(sim.nodeIDs)
 			for _, step := range rootPath {
-				avoidNodes[step.ToNode] = true
+				avoidNodes.mark(step.ToNode)
 			}
 
 			spurPath := sim.findShortestPathAvoiding(spurNode, target, maxLen-len(rootPath), avoidNodes, removedEdges)
@@ -758,22 +823,21 @@ func (sim *AttackPathSimulator) KShortestPaths(entryID, targetID string, k, maxL
 
 // findShortestPath finds the shortest path using BFS
 func (sim *AttackPathSimulator) findShortestPath(entry, target *Node, maxLen int) *ScoredAttackPath {
-	return sim.findShortestPathAvoiding(entry, target, maxLen, nil, nil)
+	return sim.findShortestPathAvoiding(entry, target, maxLen, ordinalVisitSet{}, nil)
 }
 
 // findShortestPathAvoiding finds shortest path while avoiding certain nodes/edges
-func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, maxLen int, avoidNodes map[string]bool, avoidEdges map[string][]*Edge) *ScoredAttackPath {
+func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, maxLen int, avoidNodes ordinalVisitSet, avoidEdges map[NodeOrdinal]ordinalVisitSet) *ScoredAttackPath {
 	type bfsState struct {
 		nodeID string
 		path   []*AttackStep
 	}
 
 	queue := []bfsState{{nodeID: entry.ID, path: nil}}
-	visited := map[string]bool{entry.ID: true}
+	visitedBits := sim.newVisitedBits(entry.ID)
 
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
+	for head := 0; head < len(queue); head++ {
+		current := queue[head]
 
 		if len(current.path) > maxLen {
 			continue
@@ -791,34 +855,25 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 			return path
 		}
 
-		for _, edge := range sim.graph.GetOutEdges(current.nodeID) {
-			if visited[edge.Target] {
-				continue
+		currentOrdinal, _ := sim.nodeIDs.Lookup(current.nodeID)
+		removedTargets := avoidEdges[currentOrdinal]
+		sim.forEachOutEdge(current.nodeID, func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
+			if sim.isVisited(visitedBits, targetID) {
+				return true
 			}
-			if edge.IsDeny() {
-				continue
+			if effect == EdgeEffectDeny {
+				return true
 			}
-			if avoidNodes != nil && avoidNodes[edge.Target] {
-				continue
+			if avoidNodes.has(targetID) {
+				return true
 			}
-
-			// Check if this edge should be avoided
-			skip := false
-			if avoidEdges != nil {
-				for _, avoidEdge := range avoidEdges[current.nodeID] {
-					if avoidEdge.Target == edge.Target {
-						skip = true
-						break
-					}
-				}
-			}
-			if skip {
-				continue
+			if removedTargets.hasOrdinal(targetOrdinal) {
+				return true
 			}
 
-			targetNode, ok := sim.graph.GetNode(edge.Target)
+			targetNode, ok := sim.graph.GetNode(targetID)
 			if !ok {
-				continue
+				return true
 			}
 
 			newPath := make([]*AttackStep, len(current.path)+1)
@@ -826,16 +881,17 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 			newPath[len(current.path)] = &AttackStep{
 				Order:         len(current.path) + 1,
 				FromNode:      current.nodeID,
-				ToNode:        edge.Target,
-				Technique:     edgeToTechnique(edge.Kind),
-				EdgeKind:      edge.Kind,
-				Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, edge.Kind),
-				MITREAttackID: edgeToMITRE(edge.Kind),
+				ToNode:        targetID,
+				Technique:     edgeToTechnique(kind),
+				EdgeKind:      kind,
+				Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, kind),
+				MITREAttackID: edgeToMITRE(kind),
 			}
 
-			visited[edge.Target] = true
-			queue = append(queue, bfsState{nodeID: edge.Target, path: newPath})
-		}
+			sim.markVisited(visitedBits, targetID)
+			queue = append(queue, bfsState{nodeID: targetID, path: newPath})
+			return true
+		})
 	}
 
 	return nil
@@ -861,6 +917,28 @@ func pathToKey(path *ScoredAttackPath) string {
 		key += "->" + step.ToNode
 	}
 	return key
+}
+
+func (sim *AttackPathSimulator) forEachOutEdge(sourceID string, visit func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool) {
+	if sim == nil || visit == nil {
+		return
+	}
+	if sim.adjacency != nil {
+		sim.adjacency.forEachOutEdge(sourceID, visit)
+		return
+	}
+	for _, edge := range sim.graph.GetOutEdges(sourceID) {
+		if edge == nil {
+			continue
+		}
+		targetOrdinal, ok := sim.nodeIDs.Lookup(edge.Target)
+		if !ok {
+			targetOrdinal = sim.nodeIDs.Intern(edge.Target)
+		}
+		if !visit(targetOrdinal, edge.Target, edge.Kind, edge.Effect) {
+			return
+		}
+	}
 }
 
 // kPathHeap is a min-heap of paths ordered by length (for Yen's algorithm)

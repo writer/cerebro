@@ -1,16 +1,18 @@
 {
   "id": "vm-public-eol-targeted",
-  "control_id": "wc-id-2436",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed VM with end-of-life targeted technology",
   "description": "A publicly exposed VM has EOL software that is commonly targeted by attackers",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance",
   "conditions": [
-    "is_public == true",
-    "installed_packages ANY (end_of_life == true AND is_commonly_targeted == true)"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "list_value(path(resource, \"installed_packages\")).exists(item, (cmp_eq(path(item, \"end_of_life\"), true)) \u0026\u0026 (cmp_eq(path(item, \"is_commonly_targeted\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Update or remove targeted EOL software immediately. This is an actively exploited attack surface.",
   "tags": [
     "wiz",
     "compute",
@@ -18,6 +20,8 @@
     "targeted",
     "public-exposure"
   ],
+  "control_id": "wc-id-2436",
+  "remediation": "Update or remove targeted EOL software immediately. This is an actively exploited attack surface.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

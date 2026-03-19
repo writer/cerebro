@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -137,5 +139,43 @@ func TestReloadSecretsRejectsInvalidConfig(t *testing.T) {
 	}
 	if application.Config != current {
 		t.Fatal("expected current config to remain in place after validation failure")
+	}
+}
+
+func TestReloadSecretsReadsUpdatedCredentialFileSource(t *testing.T) {
+	previousLoad := loadConfigForSecretsReload
+	t.Cleanup(func() { loadConfigForSecretsReload = previousLoad })
+	loadConfigForSecretsReload = LoadConfig
+
+	dir := t.TempDir()
+	writeSecret := func(name, value string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	t.Setenv("CEREBRO_CREDENTIAL_SOURCE", "file")
+	t.Setenv("CEREBRO_CREDENTIAL_FILE_DIR", dir)
+	t.Setenv("API_AUTH_ENABLED", "true")
+
+	writeSecret("API_KEYS", "old-key:old-user\n")
+	current := LoadConfig()
+	current.RefreshProviderAwareConfig()
+
+	application := &App{
+		Config: current,
+		Logger: testAppLogger(),
+	}
+	application.setAPIKeys(current.APIKeys)
+
+	writeSecret("API_KEYS", "new-key:new-user\n")
+	if err := application.ReloadSecrets(context.Background()); err != nil {
+		t.Fatalf("ReloadSecrets failed: %v", err)
+	}
+
+	keys := application.APIKeysSnapshot()
+	if len(keys) != 1 || keys["new-key"] != "new-user" {
+		t.Fatalf("expected updated file-backed API keys, got %#v", keys)
 	}
 }

@@ -48,6 +48,8 @@ var (
 	_ EventPublisher     = (*webhooks.Service)(nil)
 )
 
+const remediationRuleSnapshotTriggerKey = "_remediation_rule"
+
 type Executor struct {
 	engine        *Engine
 	ticketing     TicketService
@@ -58,12 +60,6 @@ type Executor struct {
 	ensemble      *EnsembleExecutor
 	shared        *actionengine.Executor
 }
-
-const (
-	remediationExecutionSurfaceKey   = "_execution_surface"
-	remediationExecutionSurfaceValue = "remediation"
-	remediationRuleSnapshotKey       = "_remediation_rule"
-)
 
 func NewExecutor(
 	engine *Engine,
@@ -98,8 +94,15 @@ func (ex *Executor) SetSharedExecutor(shared *actionengine.Executor) {
 }
 
 func (ex *Executor) ListExecutions(ctx context.Context, limit int) []*Execution {
-	if stored, err := ex.listStoredExecutions(ctx, limit); err == nil && stored != nil {
-		return stored
+	if ex != nil && ex.shared != nil {
+		sharedExecutions, err := ex.shared.ListExecutions(ctx, limit)
+		if err == nil && len(sharedExecutions) > 0 {
+			result := make([]*Execution, 0, len(sharedExecutions))
+			for i := range sharedExecutions {
+				result = append(result, remediationExecutionFromShared(&sharedExecutions[i], true))
+			}
+			return result
+		}
 	}
 	if ex == nil || ex.engine == nil {
 		return nil
@@ -108,17 +111,31 @@ func (ex *Executor) ListExecutions(ctx context.Context, limit int) []*Execution 
 }
 
 func (ex *Executor) GetExecution(ctx context.Context, id string) (*Execution, bool) {
+	if ex != nil && ex.shared != nil {
+		sharedExecution, err := ex.shared.LoadExecution(ctx, id)
+		if err == nil && sharedExecution != nil {
+			return remediationExecutionFromShared(sharedExecution, true), true
+		}
+	}
+	if ex == nil || ex.engine == nil {
+		return nil, false
+	}
+	return ex.engine.GetExecution(id)
+}
+
+func (ex *Executor) loadExecution(ctx context.Context, id string) (*Execution, bool) {
 	if ex != nil && ex.engine != nil {
 		if execution, ok := ex.engine.GetExecution(id); ok {
 			return execution, true
 		}
 	}
-	execution, _, err := ex.loadStoredExecution(ctx, id)
-	if err != nil || execution == nil {
-		return nil, false
+	if ex != nil && ex.shared != nil {
+		sharedExecution, err := ex.shared.LoadExecution(ctx, id)
+		if err == nil && sharedExecution != nil {
+			return remediationExecutionFromShared(sharedExecution, false), true
+		}
 	}
-	ex.cacheExecution(execution)
-	return execution, true
+	return nil, false
 }
 
 // Execute runs an execution
@@ -129,10 +146,9 @@ func (ex *Executor) Execute(ctx context.Context, execution *Execution) error {
 		execution.Error = "rule not found"
 		return fmt.Errorf("rule not found: %s", execution.RuleID)
 	}
-	playbook := remediationPlaybookFromRule(*rule, ex)
+	playbook := remediationPlaybookFromRule(*rule, ex, execution)
 	signal := remediationSignalFromTriggerData(execution.TriggerData)
-	sharedExecution := remediationExecutionToShared(execution)
-	annotateRemediationSharedExecution(sharedExecution, rule)
+	sharedExecution := remediationExecutionToSharedWithRule(execution, rule)
 	err := ex.shared.Execute(ctx, sharedExecution, playbook, signal, remediationStepRunner{executor: ex})
 	applySharedExecution(execution, sharedExecution)
 	if execution.Status == ExecutionApproval {
@@ -147,8 +163,19 @@ func (ex *Executor) Execute(ctx context.Context, execution *Execution) error {
 	return nil
 }
 
-func (ex *Executor) actionRequiresApproval(action Action) bool {
-	if action.RequiresApproval {
+func (ex *Executor) actionRequiresApproval(action Action, execution *Execution) bool {
+	switch strings.ToLower(strings.TrimSpace(action.Config["approval_mode"])) {
+	case "auto", "none", "disabled", "not_required":
+		return false
+	case "required", "manual":
+		return true
+	}
+	entry, _ := CatalogEntryByAction(action.Type)
+	mode := actionDeliveryMode(action, execution, entry)
+	if catalogSupportsDeliveryMode(entry, mode) && mode == DeliveryModeTerraform {
+		return false
+	}
+	if action.RequiresApproval || entry.RequiresApproval {
 		return true
 	}
 	if ex != nil && ex.ensemble != nil {
@@ -178,13 +205,25 @@ func (r remediationStepRunner) RunStep(ctx context.Context, step actionengine.St
 	}
 	nativeExecution.TriggerData["_approval_granted"] = true
 	result := r.executor.executeAction(ctx, action, nativeExecution)
+	if execution.TriggerData == nil {
+		execution.TriggerData = map[string]any{}
+	}
+	for key, value := range nativeExecution.TriggerData {
+		if key == "_approval_granted" {
+			continue
+		}
+		execution.TriggerData[key] = value
+	}
+	if len(result.Metadata) > 0 {
+		actionengine.SetStepMetadata(execution, step.ID, result.Metadata)
+	}
 	if result.Error != "" {
 		return "", errors.New(result.Error)
 	}
 	return result.Output, nil
 }
 
-func remediationPlaybookFromRule(rule Rule, executor *Executor) actionengine.Playbook {
+func remediationPlaybookFromRule(rule Rule, executor *Executor, execution *Execution) actionengine.Playbook {
 	steps := make([]actionengine.Step, 0, len(rule.Actions))
 	for idx, action := range rule.Actions {
 		failurePolicy := actionengine.FailurePolicyAbort
@@ -192,7 +231,7 @@ func remediationPlaybookFromRule(rule Rule, executor *Executor) actionengine.Pla
 			ID:               fmt.Sprintf("%s-step-%d", firstNonEmpty(rule.ID, "rule"), idx+1),
 			Type:             string(action.Type),
 			Parameters:       cloneStringMap(action.Config),
-			RequiresApproval: executor != nil && executor.actionRequiresApproval(action),
+			RequiresApproval: executor != nil && executor.actionRequiresApproval(action, execution),
 			TimeoutSeconds:   action.TimeoutSeconds,
 			OnFailure:        failurePolicy,
 		})
@@ -239,14 +278,25 @@ func remediationSignalFromTriggerData(data map[string]any) actionengine.Signal {
 }
 
 func remediationExecutionToShared(execution *Execution) *actionengine.Execution {
+	return remediationExecutionToSharedWithRule(execution, nil)
+}
+
+func remediationExecutionToSharedWithRule(execution *Execution, rule *Rule) *actionengine.Execution {
+	triggerData := cloneAnyMap(execution.TriggerData)
+	if triggerData == nil {
+		triggerData = map[string]any{}
+	}
+	if rule != nil {
+		triggerData[remediationRuleSnapshotTriggerKey] = *rule
+	}
 	shared := &actionengine.Execution{
 		ID:           execution.ID,
 		PlaybookID:   execution.RuleID,
 		PlaybookName: execution.RuleName,
 		Status:       remediationStatusToShared(execution.Status),
-		ResourceID:   remediationMapValueToString(execution.TriggerData, "entity_id"),
+		ResourceID:   firstNonEmpty(remediationMapValueToString(execution.TriggerData, "entity_id"), remediationMapValueToString(execution.TriggerData, "resource_id")),
 		ResourceType: remediationMapValueToString(execution.TriggerData, "resource_type"),
-		TriggerData:  cloneAnyMap(execution.TriggerData),
+		TriggerData:  triggerData,
 		Results:      make([]actionengine.ActionResult, 0, len(execution.Actions)),
 		StartedAt:    execution.StartedAt,
 		CompletedAt:  execution.CompletedAt,
@@ -258,6 +308,7 @@ func remediationExecutionToShared(execution *Execution) *actionengine.Execution 
 			Status:    remediationResultStatusToShared(action.Status),
 			Output:    action.Output,
 			Error:     action.Error,
+			Metadata:  cloneAnyMap(action.Metadata),
 			StartedAt: action.StartedAt,
 			Duration:  action.Duration,
 		})
@@ -266,6 +317,45 @@ func remediationExecutionToShared(execution *Execution) *actionengine.Execution 
 		shared.ApprovedBy = approvedBy
 	}
 	return shared
+}
+
+func remediationExecutionFromShared(shared *actionengine.Execution, sanitize bool) *Execution {
+	if shared == nil {
+		return nil
+	}
+	execution := &Execution{
+		ID:          shared.ID,
+		RuleID:      shared.PlaybookID,
+		RuleName:    shared.PlaybookName,
+		TriggerData: cloneAnyMap(shared.TriggerData),
+	}
+	applySharedExecution(execution, shared)
+	if execution.Status == ExecutionApproval {
+		execution.ApprovalID = fmt.Sprintf("approval-%s", execution.ID)
+	}
+	if sanitize && execution.TriggerData != nil {
+		delete(execution.TriggerData, remediationRuleSnapshotTriggerKey)
+	}
+	return execution
+}
+
+func remediationRuleFromTriggerData(data map[string]any) (Rule, bool) {
+	if len(data) == 0 {
+		return Rule{}, false
+	}
+	raw, ok := data[remediationRuleSnapshotTriggerKey]
+	if !ok || raw == nil {
+		return Rule{}, false
+	}
+	payload, err := json.Marshal(raw)
+	if err != nil {
+		return Rule{}, false
+	}
+	var rule Rule
+	if err := json.Unmarshal(payload, &rule); err != nil {
+		return Rule{}, false
+	}
+	return rule, strings.TrimSpace(rule.ID) != ""
 }
 
 func applySharedExecution(target *Execution, shared *actionengine.Execution) {
@@ -295,175 +385,11 @@ func applySharedExecution(target *Execution, shared *actionengine.Execution) {
 			Status:     sharedActionResultStatus(result.Status),
 			Output:     result.Output,
 			Error:      result.Error,
+			Metadata:   cloneAnyMap(result.Metadata),
 			StartedAt:  result.StartedAt,
 			Duration:   result.Duration,
 		})
 	}
-}
-
-func remediationExecutionFromShared(shared *actionengine.Execution) *Execution {
-	if shared == nil {
-		return nil
-	}
-	execution := &Execution{
-		ID:          shared.ID,
-		RuleID:      shared.PlaybookID,
-		RuleName:    shared.PlaybookName,
-		Status:      sharedStatusToRemediation(shared.Status),
-		TriggerData: cloneAnyMap(shared.TriggerData),
-		Actions:     make([]ActionResult, 0, len(shared.Results)),
-		StartedAt:   shared.StartedAt,
-		CompletedAt: shared.CompletedAt,
-		Error:       shared.Error,
-	}
-	if execution.Status == ExecutionApproval {
-		execution.ApprovalID = fmt.Sprintf("approval-%s", execution.ID)
-	}
-	for _, result := range shared.Results {
-		execution.Actions = append(execution.Actions, ActionResult{
-			ActionType: ActionType(result.Type),
-			Status:     sharedActionResultStatus(result.Status),
-			Output:     result.Output,
-			Error:      result.Error,
-			StartedAt:  result.StartedAt,
-			Duration:   result.Duration,
-		})
-	}
-	return execution
-}
-
-func annotateRemediationSharedExecution(shared *actionengine.Execution, rule *Rule) {
-	if shared == nil {
-		return
-	}
-	if shared.TriggerData == nil {
-		shared.TriggerData = map[string]any{}
-	}
-	shared.TriggerData[remediationExecutionSurfaceKey] = remediationExecutionSurfaceValue
-	if rule == nil {
-		return
-	}
-	if snapshot := remediationRuleSnapshot(rule); snapshot != nil {
-		shared.TriggerData[remediationRuleSnapshotKey] = snapshot
-	}
-}
-
-func remediationRuleSnapshot(rule *Rule) map[string]any {
-	if rule == nil {
-		return nil
-	}
-	payload, err := json.Marshal(rule)
-	if err != nil {
-		return nil
-	}
-	var snapshot map[string]any
-	if err := json.Unmarshal(payload, &snapshot); err != nil {
-		return nil
-	}
-	return snapshot
-}
-
-func remediationRuleFromTriggerData(data map[string]any) *Rule {
-	if len(data) == 0 {
-		return nil
-	}
-	raw, ok := data[remediationRuleSnapshotKey]
-	if !ok {
-		return nil
-	}
-	payload, err := json.Marshal(raw)
-	if err != nil {
-		return nil
-	}
-	var rule Rule
-	if err := json.Unmarshal(payload, &rule); err != nil {
-		return nil
-	}
-	return &rule
-}
-
-func (ex *Executor) remediationExecutionBelongsToExecutor(shared *actionengine.Execution) bool {
-	if shared == nil {
-		return false
-	}
-	if strings.EqualFold(remediationMapValueToString(shared.TriggerData, remediationExecutionSurfaceKey), remediationExecutionSurfaceValue) {
-		return true
-	}
-	if remediationRuleFromTriggerData(shared.TriggerData) != nil {
-		return true
-	}
-	if ex == nil || ex.engine == nil {
-		return false
-	}
-	_, ok := ex.engine.GetRule(shared.PlaybookID)
-	return ok
-}
-
-func (ex *Executor) loadStoredExecution(ctx context.Context, executionID string) (*Execution, *actionengine.Execution, error) {
-	if ex == nil || ex.shared == nil {
-		return nil, nil, nil
-	}
-	sharedExecution, err := ex.shared.LoadExecution(ctx, executionID)
-	if err != nil || sharedExecution == nil {
-		return nil, nil, err
-	}
-	if !ex.remediationExecutionBelongsToExecutor(sharedExecution) {
-		return nil, nil, nil
-	}
-	return remediationExecutionFromShared(sharedExecution), sharedExecution, nil
-}
-
-func (ex *Executor) listStoredExecutions(ctx context.Context, limit int) ([]*Execution, error) {
-	if ex == nil || ex.shared == nil {
-		return nil, nil
-	}
-	sharedExecutions, err := ex.shared.ListExecutions(ctx, 0)
-	if err != nil {
-		return nil, err
-	}
-	if len(sharedExecutions) == 0 {
-		return nil, nil
-	}
-	result := make([]*Execution, 0, len(sharedExecutions))
-	for i := range sharedExecutions {
-		sharedExecution := sharedExecutions[i]
-		if !ex.remediationExecutionBelongsToExecutor(&sharedExecution) {
-			continue
-		}
-		result = append(result, remediationExecutionFromShared(&sharedExecution))
-		if limit > 0 && len(result) >= limit {
-			break
-		}
-	}
-	return result, nil
-}
-
-func (ex *Executor) ruleForExecution(execution *Execution) (*Rule, bool) {
-	if ex != nil && ex.engine != nil {
-		if rule, ok := ex.engine.GetRule(execution.RuleID); ok {
-			copy := *rule
-			return &copy, true
-		}
-	}
-	if execution == nil {
-		return nil, false
-	}
-	if rule := remediationRuleFromTriggerData(execution.TriggerData); rule != nil {
-		return rule, true
-	}
-	return nil, false
-}
-
-func (ex *Executor) cacheExecution(execution *Execution) {
-	if ex == nil || ex.engine == nil || execution == nil {
-		return
-	}
-	ex.engine.mu.Lock()
-	defer ex.engine.mu.Unlock()
-	if ex.engine.executions == nil {
-		ex.engine.executions = make(map[string]*Execution)
-	}
-	ex.engine.executions[execution.ID] = execution
 }
 
 func remediationActionFromStep(step actionengine.Step) Action {
@@ -628,79 +554,85 @@ func (ex *Executor) executeAction(ctx context.Context, action Action, execution 
 
 	var err error
 	approvalGranted, _ := execution.TriggerData["_approval_granted"].(bool)
-	if ex.actionRequiresApproval(action) && !approvalGranted {
+	if ex.actionRequiresApproval(action, execution) && !approvalGranted {
 		err = fmt.Errorf("%s action requires approval", action.Type)
 	}
 
 	if err == nil {
-		switch action.Type {
-		case ActionCreateTicket:
-			err = ex.createTicket(ctx, action, execution)
-			if err == nil {
-				result.Output = "Ticket created"
-			}
+		if output, metadata, catalogErr, handled := ex.executeCatalogAction(ctx, action, execution); handled {
+			result.Output = output
+			result.Metadata = metadata
+			err = catalogErr
+		} else {
+			switch action.Type {
+			case ActionCreateTicket:
+				err = ex.createTicket(ctx, action, execution)
+				if err == nil {
+					result.Output = "Ticket created"
+				}
 
-		case ActionNotifySlack:
-			err = ex.notifySlack(ctx, action, execution)
-			if err == nil {
-				result.Output = "Slack notification sent"
-			}
+			case ActionNotifySlack:
+				err = ex.notifySlack(ctx, action, execution)
+				if err == nil {
+					result.Output = "Slack notification sent"
+				}
 
-		case ActionNotifyPagerDuty:
-			err = ex.notifyPagerDuty(ctx, action, execution)
-			if err == nil {
-				result.Output = "PagerDuty alert sent"
-			}
+			case ActionNotifyPagerDuty:
+				err = ex.notifyPagerDuty(ctx, action, execution)
+				if err == nil {
+					result.Output = "PagerDuty alert sent"
+				}
 
-		case ActionResolveFinding:
-			err = ex.resolveFinding(ctx, action, execution)
-			if err == nil {
-				result.Output = "Finding resolved"
-			}
+			case ActionResolveFinding:
+				err = ex.resolveFinding(ctx, action, execution)
+				if err == nil {
+					result.Output = "Finding resolved"
+				}
 
-		case ActionRunWebhook:
-			err = ex.runWebhook(ctx, action, execution)
-			if err == nil {
-				result.Output = "Webhook executed"
-			}
+			case ActionRunWebhook:
+				err = ex.runWebhook(ctx, action, execution)
+				if err == nil {
+					result.Output = "Webhook executed"
+				}
 
-		case ActionUpdateCRMField:
-			err = ex.updateCRMField(ctx, action, execution)
-			if err == nil {
-				result.Output = "CRM field updated"
-			}
+			case ActionUpdateCRMField:
+				err = ex.updateCRMField(ctx, action, execution)
+				if err == nil {
+					result.Output = "CRM field updated"
+				}
 
-		case ActionTriggerWorkflow:
-			err = ex.triggerWorkflow(ctx, action, execution)
-			if err == nil {
-				result.Output = "Workflow triggered"
-			}
+			case ActionTriggerWorkflow:
+				err = ex.triggerWorkflow(ctx, action, execution)
+				if err == nil {
+					result.Output = "Workflow triggered"
+				}
 
-		case ActionCreateReview:
-			err = ex.createReview(ctx, action, execution)
-			if err == nil {
-				result.Output = "Review created"
-			}
+			case ActionCreateReview:
+				err = ex.createReview(ctx, action, execution)
+				if err == nil {
+					result.Output = "Review created"
+				}
 
-		case ActionEscalateToOwner:
-			err = ex.escalateToOwner(ctx, action, execution)
-			if err == nil {
-				result.Output = "Escalated to owner"
-			}
+			case ActionEscalateToOwner:
+				err = ex.escalateToOwner(ctx, action, execution)
+				if err == nil {
+					result.Output = "Escalated to owner"
+				}
 
-		case ActionPauseSubscription:
-			err = ex.pauseSubscription(ctx, action, execution)
-			if err == nil {
-				result.Output = "Subscription paused"
-			}
-		case ActionSendCustomerComm:
-			err = ex.sendCustomerCommunication(ctx, action, execution)
-			if err == nil {
-				result.Output = "Customer communication sent"
-			}
+			case ActionPauseSubscription:
+				err = ex.pauseSubscription(ctx, action, execution)
+				if err == nil {
+					result.Output = "Subscription paused"
+				}
+			case ActionSendCustomerComm:
+				err = ex.sendCustomerCommunication(ctx, action, execution)
+				if err == nil {
+					result.Output = "Customer communication sent"
+				}
 
-		default:
-			err = fmt.Errorf("unknown action type: %s", action.Type)
+			default:
+				err = fmt.Errorf("unknown action type: %s", action.Type)
+			}
 		}
 	}
 
@@ -1020,7 +952,7 @@ func (ex *Executor) emitApprovalRequested(ctx context.Context, execution *Execut
 	}
 	actions := make([]string, 0, len(rule.Actions))
 	for _, action := range rule.Actions {
-		if action.RequiresApproval {
+		if ex.actionRequiresApproval(action, execution) {
 			actions = append(actions, string(action.Type))
 		}
 	}
@@ -1037,7 +969,7 @@ func (ex *Executor) emitApprovalRequested(ctx context.Context, execution *Execut
 
 // Approve approves a pending execution
 func (ex *Executor) Approve(ctx context.Context, executionID, approverID string) error {
-	execution, ok := ex.GetExecution(ctx, executionID)
+	execution, ok := ex.loadExecution(ctx, executionID)
 	if !ok {
 		return fmt.Errorf("execution not found: %s", executionID)
 	}
@@ -1049,25 +981,21 @@ func (ex *Executor) Approve(ctx context.Context, executionID, approverID string)
 	if execution.TriggerData == nil {
 		execution.TriggerData = make(map[string]any)
 	}
-	approvedAt := time.Now().UTC()
-	execution.Status = ExecutionRunning
-	execution.Error = ""
-	execution.CompletedAt = nil
 	execution.TriggerData["_approval_granted"] = true
 	execution.TriggerData["approved_by"] = approverID
-	execution.TriggerData["approved_at"] = approvedAt.Format(time.RFC3339Nano)
+	execution.TriggerData["approved_at"] = time.Now().UTC().Format(time.RFC3339Nano)
 
-	if rule, ok := ex.ruleForExecution(execution); ok {
-		sharedExecution := remediationExecutionToShared(execution)
+	if rule, ok := ex.resolveRuleForExecution(execution); ok {
+		sharedExecution := remediationExecutionToSharedWithRule(execution, &rule)
 		sharedExecution.ApprovedBy = approverID
-		sharedExecution.ApprovedAt = &approvedAt
-		annotateRemediationSharedExecution(sharedExecution, rule)
-		playbook := remediationPlaybookFromRule(*rule, ex)
+		if approvedAt, _ := time.Parse(time.RFC3339Nano, remediationMapValueToString(execution.TriggerData, "approved_at")); !approvedAt.IsZero() {
+			sharedExecution.ApprovedAt = &approvedAt
+		}
+		playbook := remediationPlaybookFromRule(rule, ex, execution)
 		signal := remediationSignalFromTriggerData(execution.TriggerData)
 		err := ex.shared.Approve(ctx, sharedExecution, approverID, playbook, signal, remediationStepRunner{executor: ex})
 		applySharedExecution(execution, sharedExecution)
 		delete(execution.TriggerData, "_approval_granted")
-		ex.cacheExecution(execution)
 		return err
 	}
 
@@ -1076,7 +1004,7 @@ func (ex *Executor) Approve(ctx context.Context, executionID, approverID string)
 
 // Reject rejects a pending execution
 func (ex *Executor) Reject(ctx context.Context, executionID, rejecterID, reason string) error {
-	execution, ok := ex.GetExecution(ctx, executionID)
+	execution, ok := ex.loadExecution(ctx, executionID)
 	if !ok {
 		return fmt.Errorf("execution not found: %s", executionID)
 	}
@@ -1090,13 +1018,21 @@ func (ex *Executor) Reject(ctx context.Context, executionID, rejecterID, reason 
 	now := time.Now().UTC()
 	execution.CompletedAt = &now
 	if sharedExecution := remediationExecutionToShared(execution); sharedExecution != nil {
-		if rule, ok := ex.ruleForExecution(execution); ok {
-			annotateRemediationSharedExecution(sharedExecution, rule)
-		}
 		_ = ex.shared.Reject(ctx, sharedExecution, rejecterID, reason)
 		applySharedExecution(execution, sharedExecution)
 	}
-	ex.cacheExecution(execution)
 
 	return nil
+}
+
+func (ex *Executor) resolveRuleForExecution(execution *Execution) (Rule, bool) {
+	if rule, ok := remediationRuleFromTriggerData(execution.TriggerData); ok {
+		return rule, true
+	}
+	if ex != nil && ex.engine != nil {
+		if rule, ok := ex.engine.GetRule(execution.RuleID); ok {
+			return *rule, true
+		}
+	}
+	return Rule{}, false
 }

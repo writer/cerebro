@@ -1,12 +1,20 @@
 {
   "id": "contract-billing-mismatch",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Contract and Billing Mismatch",
   "description": "Flags records where contractual and billed amounts are inconsistent.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "billing::contract",
   "conditions": [
-    "contract_amount != billed_amount"
+    "cmp_ne(path(resource, \"contract_amount\"), path(resource, \"billed_amount\"))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "tags": ["financial-controls", "revops", "billing"]
+  "tags": [
+    "financial-controls",
+    "revops",
+    "billing"
+  ]
 }

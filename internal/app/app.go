@@ -98,8 +98,8 @@ type App struct {
 	Scanner        *scanner.Scanner
 	DSPM           *dspm.Scanner
 	Cache          *cache.PolicyCache
-	GraphSnapshots *graph.GraphPersistenceStore
 	ExecutionStore executionstore.Store
+	GraphSnapshots *graph.GraphPersistenceStore
 
 	// Feature services
 	Agents         *agents.AgentRegistry
@@ -139,6 +139,7 @@ type App struct {
 	Remediation         *remediation.Engine
 	RemediationExecutor *remediation.Executor
 	RuntimeDetect       *runtime.DetectionEngine
+	RuntimeIngest       runtime.IngestStore
 	RuntimeRespond      *runtime.ResponseEngine
 
 	// Security Graph
@@ -158,7 +159,11 @@ type App struct {
 	graphConsistencyRun           bool
 	graphConsistencyCancel        context.CancelFunc
 	graphConsistencyWG            sync.WaitGroup
-	eventCorrelationRefreshCh     chan string
+	graphWriterLease              *graphWriterLeaseManager
+	graphWriterLeaseTransitionWG  sync.WaitGroup
+	tenantShardMu                 sync.Mutex
+	tenantSecurityGraphShards     *tenantGraphShardManager
+	eventCorrelationRefreshQueue  *eventCorrelationRefreshQueue
 	eventCorrelationRefreshCancel context.CancelFunc
 	eventCorrelationRefreshWG     sync.WaitGroup
 	threatIntelSyncCancel         context.CancelFunc
@@ -170,6 +175,7 @@ type App struct {
 	tapMapperErr                  error
 	tapResolveGraphMu             sync.RWMutex
 	tapResolveGraph               *graph.Graph
+	tapConsumerMu                 sync.Mutex
 	securityGraphInitMu           sync.RWMutex
 	reloadMu                      sync.Mutex
 	apiKeys                       atomic.Value // map[string]string

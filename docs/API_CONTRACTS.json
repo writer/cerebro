@@ -2,7 +2,7 @@
   "api_version": "devex.cerebro/v1alpha1",
   "kind": "HTTPAPIContractCatalog",
   "generated_at": "0001-01-01T00:00:00Z",
-  "endpoint_count": 300,
+  "endpoint_count": 303,
   "endpoints": [
     {
       "id": "DELETE /api/v1/findings/{id}",
@@ -2827,6 +2827,26 @@
               "type": "string"
             },
             {
+              "path": "frameworks[].controls[].graph_queries",
+              "type": "array"
+            },
+            {
+              "path": "frameworks[].controls[].graph_queries[]",
+              "type": "object"
+            },
+            {
+              "path": "frameworks[].controls[].graph_queries[].description",
+              "type": "string"
+            },
+            {
+              "path": "frameworks[].controls[].graph_queries[].id",
+              "type": "string"
+            },
+            {
+              "path": "frameworks[].controls[].graph_queries[].provider",
+              "type": "string"
+            },
+            {
               "path": "frameworks[].controls[].id",
               "type": "string"
             },
@@ -2836,6 +2856,10 @@
             },
             {
               "path": "frameworks[].controls[].policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "frameworks[].controls[].severity",
               "type": "string"
             },
             {
@@ -2886,6 +2910,26 @@
               "type": "string"
             },
             {
+              "path": "controls[].graph_queries",
+              "type": "array"
+            },
+            {
+              "path": "controls[].graph_queries[]",
+              "type": "object"
+            },
+            {
+              "path": "controls[].graph_queries[].description",
+              "type": "string"
+            },
+            {
+              "path": "controls[].graph_queries[].id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].graph_queries[].provider",
+              "type": "string"
+            },
+            {
               "path": "controls[].id",
               "type": "string"
             },
@@ -2895,6 +2939,10 @@
             },
             {
               "path": "controls[].policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "controls[].severity",
               "type": "string"
             },
             {
@@ -2922,9 +2970,208 @@
       ]
     },
     {
+      "id": "GET /api/v1/compliance/frameworks/{id}/controls/{control_id}",
+      "path": "/api/v1/compliance/frameworks/{id}/controls/{control_id}",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "recorded_at",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "valid_at",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "control",
+              "type": "object"
+            },
+            {
+              "path": "control.description",
+              "type": "string"
+            },
+            {
+              "path": "control.graph_queries",
+              "type": "array"
+            },
+            {
+              "path": "control.graph_queries[]",
+              "type": "object"
+            },
+            {
+              "path": "control.graph_queries[].description",
+              "type": "string"
+            },
+            {
+              "path": "control.graph_queries[].id",
+              "type": "string"
+            },
+            {
+              "path": "control.graph_queries[].provider",
+              "type": "string"
+            },
+            {
+              "path": "control.id",
+              "type": "string"
+            },
+            {
+              "path": "control.policy_ids",
+              "type": "array"
+            },
+            {
+              "path": "control.policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "control.severity",
+              "type": "string"
+            },
+            {
+              "path": "control.title",
+              "type": "string"
+            },
+            {
+              "path": "framework_id",
+              "type": "string"
+            },
+            {
+              "path": "framework_name",
+              "type": "string"
+            },
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "recorded_at",
+              "type": "string"
+            },
+            {
+              "path": "status",
+              "type": "object"
+            },
+            {
+              "path": "status.control_id",
+              "type": "string"
+            },
+            {
+              "path": "status.description",
+              "type": "string"
+            },
+            {
+              "path": "status.evaluation_source",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence",
+              "type": "array"
+            },
+            {
+              "path": "status.evidence[]",
+              "type": "object"
+            },
+            {
+              "path": "status.evidence[].entity_id",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].entity_kind",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].entity_name",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].facet_id",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].policy_id",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].reason",
+              "type": "string"
+            },
+            {
+              "path": "status.evidence[].status",
+              "type": "string"
+            },
+            {
+              "path": "status.fail_count",
+              "type": "integer"
+            },
+            {
+              "path": "status.last_evaluated",
+              "type": "string"
+            },
+            {
+              "path": "status.pass_count",
+              "type": "integer"
+            },
+            {
+              "path": "status.policy_ids",
+              "type": "array"
+            },
+            {
+              "path": "status.policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "status.severity",
+              "type": "string"
+            },
+            {
+              "path": "status.status",
+              "type": "string"
+            },
+            {
+              "path": "status.title",
+              "type": "string"
+            },
+            {
+              "path": "status.total_assets",
+              "type": "integer"
+            },
+            {
+              "path": "valid_at",
+              "type": "string"
+            },
+            {
+              "path": "version",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "GET /api/v1/compliance/frameworks/{id}/export",
       "path": "/api/v1/compliance/frameworks/{id}/export",
       "method": "GET",
+      "query_params": [
+        {
+          "name": "recorded_at",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "valid_at",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
       "success_responses": [
         {
           "status_code": "200",
@@ -2941,7 +3188,91 @@
               "type": "object"
             },
             {
+              "path": "controls[].control_id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].description",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evaluation_source",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence",
+              "type": "array"
+            },
+            {
+              "path": "controls[].evidence[]",
+              "type": "object"
+            },
+            {
+              "path": "controls[].evidence[].entity_id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].entity_kind",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].entity_name",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].facet_id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].policy_id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].reason",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].status",
+              "type": "string"
+            },
+            {
+              "path": "controls[].finding_count",
+              "type": "integer"
+            },
+            {
+              "path": "controls[].findings",
+              "type": "array"
+            },
+            {
+              "path": "controls[].findings[]",
+              "type": "string"
+            },
+            {
+              "path": "controls[].last_evaluated",
+              "type": "string"
+            },
+            {
+              "path": "controls[].policies",
+              "type": "array"
+            },
+            {
+              "path": "controls[].policies[]",
+              "type": "string"
+            },
+            {
+              "path": "controls[].status",
+              "type": "string"
+            },
+            {
+              "path": "controls[].title",
+              "type": "string"
+            },
+            {
               "path": "manifest",
+              "type": "object"
+            },
+            {
+              "path": "summary",
               "type": "object"
             }
           ]
@@ -2952,6 +3283,18 @@
       "id": "GET /api/v1/compliance/frameworks/{id}/pre-audit",
       "path": "/api/v1/compliance/frameworks/{id}/pre-audit",
       "method": "GET",
+      "query_params": [
+        {
+          "name": "recorded_at",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "valid_at",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
       "success_responses": [
         {
           "status_code": "200",
@@ -2995,6 +3338,18 @@
       "id": "GET /api/v1/compliance/frameworks/{id}/report",
       "path": "/api/v1/compliance/frameworks/{id}/report",
       "method": "GET",
+      "query_params": [
+        {
+          "name": "recorded_at",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "valid_at",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
       "success_responses": [
         {
           "status_code": "200",
@@ -3015,8 +3370,84 @@
               "type": "string"
             },
             {
+              "path": "controls[].description",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evaluation_source",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence",
+              "type": "array"
+            },
+            {
+              "path": "controls[].evidence[]",
+              "type": "object"
+            },
+            {
+              "path": "controls[].evidence[].entity_id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].entity_kind",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].entity_name",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].facet_id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].policy_id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].reason",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evidence[].status",
+              "type": "string"
+            },
+            {
+              "path": "controls[].fail_count",
+              "type": "integer"
+            },
+            {
+              "path": "controls[].last_evaluated",
+              "type": "string"
+            },
+            {
+              "path": "controls[].pass_count",
+              "type": "integer"
+            },
+            {
+              "path": "controls[].policy_ids",
+              "type": "array"
+            },
+            {
+              "path": "controls[].policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "controls[].severity",
+              "type": "string"
+            },
+            {
               "path": "controls[].status",
               "type": "string"
+            },
+            {
+              "path": "controls[].title",
+              "type": "string"
+            },
+            {
+              "path": "controls[].total_assets",
+              "type": "integer"
             },
             {
               "path": "framework_id",
@@ -3043,12 +3474,203 @@
               "type": "integer"
             },
             {
+              "path": "summary.fallback_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.graph_evaluated_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.not_applicable_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.partial_controls",
+              "type": "integer"
+            },
+            {
               "path": "summary.passing_controls",
               "type": "integer"
             },
             {
               "path": "summary.total_controls",
               "type": "integer"
+            },
+            {
+              "path": "summary.weighted_score",
+              "type": "number"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/compliance/frameworks/{id}/status",
+      "path": "/api/v1/compliance/frameworks/{id}/status",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "recorded_at",
+          "required": false,
+          "schema_type": "string"
+        },
+        {
+          "name": "valid_at",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "controls",
+              "type": "array"
+            },
+            {
+              "path": "controls[]",
+              "type": "object"
+            },
+            {
+              "path": "controls[].control_id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].description",
+              "type": "string"
+            },
+            {
+              "path": "controls[].evaluation_source",
+              "type": "string"
+            },
+            {
+              "path": "controls[].fail_count",
+              "type": "integer"
+            },
+            {
+              "path": "controls[].graph_queries",
+              "type": "array"
+            },
+            {
+              "path": "controls[].graph_queries[]",
+              "type": "object"
+            },
+            {
+              "path": "controls[].graph_queries[].description",
+              "type": "string"
+            },
+            {
+              "path": "controls[].graph_queries[].id",
+              "type": "string"
+            },
+            {
+              "path": "controls[].graph_queries[].provider",
+              "type": "string"
+            },
+            {
+              "path": "controls[].last_evaluated",
+              "type": "string"
+            },
+            {
+              "path": "controls[].pass_count",
+              "type": "integer"
+            },
+            {
+              "path": "controls[].policy_ids",
+              "type": "array"
+            },
+            {
+              "path": "controls[].policy_ids[]",
+              "type": "string"
+            },
+            {
+              "path": "controls[].severity",
+              "type": "string"
+            },
+            {
+              "path": "controls[].status",
+              "type": "string"
+            },
+            {
+              "path": "controls[].title",
+              "type": "string"
+            },
+            {
+              "path": "controls[].total_assets",
+              "type": "integer"
+            },
+            {
+              "path": "framework_id",
+              "type": "string"
+            },
+            {
+              "path": "framework_name",
+              "type": "string"
+            },
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "recorded_at",
+              "type": "string"
+            },
+            {
+              "path": "summary",
+              "type": "object"
+            },
+            {
+              "path": "summary.compliance_score",
+              "type": "number"
+            },
+            {
+              "path": "summary.failing_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.fallback_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.graph_evaluated_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.not_applicable_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.partial_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.passing_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.total_controls",
+              "type": "integer"
+            },
+            {
+              "path": "summary.weighted_score",
+              "type": "number"
+            },
+            {
+              "path": "total_findings",
+              "type": "integer"
+            },
+            {
+              "path": "valid_at",
+              "type": "string"
+            },
+            {
+              "path": "version",
+              "type": "string"
             }
           ]
         }
@@ -4154,7 +4776,83 @@
               "type": "object"
             },
             {
+              "path": "reviews[].completed_at",
+              "type": "string"
+            },
+            {
               "path": "reviews[].created_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].created_by",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].description",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].due_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].events",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].events[]",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].events[].actor",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].events[].decision",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].events[].decision.action",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].events[].decision.comment",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].events[].decision.decided_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].events[].decision.effective_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].events[].decision.reviewer",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].events[].item_id",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].events[].metadata",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].events[].recorded_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].events[].sequence",
+              "type": "integer"
+            },
+            {
+              "path": "reviews[].events[].type",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].generation_source",
               "type": "string"
             },
             {
@@ -4162,11 +4860,331 @@
               "type": "string"
             },
             {
+              "path": "reviews[].items",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].items[]",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].items[].access",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].items[].access[]",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].items[].access[].expires_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].access[].granted_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].access[].granted_by",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].access[].id",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].access[].permission",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].access[].resource",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].access[].resource_type",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].access[].role",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].decision",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].items[].decision.action",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].decision.comment",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].decision.decided_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].decision.effective_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].decision.reviewer",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].flags",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].items[].flags[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].id",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].last_activity",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].metadata",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].items[].path",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].items[].path[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].principal",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].items[].principal.account",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].principal.created_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].principal.email",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].principal.id",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].principal.last_login",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].principal.name",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].principal.provider",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].principal.type",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].recommendation",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].items[].recommendation.action",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].recommendation.confidence",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].recommendation.reason",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].review_id",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].reviewer_candidates",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].items[].reviewer_candidates[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].risk_factors",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].items[].risk_factors[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].items[].risk_score",
+              "type": "integer"
+            },
+            {
+              "path": "reviews[].items[].type",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].metadata",
+              "type": "object"
+            },
+            {
               "path": "reviews[].name",
               "type": "string"
             },
             {
+              "path": "reviews[].reviewers",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].reviewers[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].schedule",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].schedule.frequency",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].schedule.last_run",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].schedule.next_run",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].scope",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].scope.accounts",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].scope.accounts[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].scope.applications",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].scope.applications[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].scope.mode",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].scope.providers",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].scope.providers[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].scope.resources",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].scope.resources[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].scope.risk_levels",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].scope.risk_levels[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].scope.roles",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].scope.roles[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].scope.users",
+              "type": "array"
+            },
+            {
+              "path": "reviews[].scope.users[]",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].started_at",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].stats",
+              "type": "object"
+            },
+            {
+              "path": "reviews[].stats.approved",
+              "type": "integer"
+            },
+            {
+              "path": "reviews[].stats.completion_pct",
+              "type": "integer"
+            },
+            {
+              "path": "reviews[].stats.deferred",
+              "type": "integer"
+            },
+            {
+              "path": "reviews[].stats.escalated",
+              "type": "integer"
+            },
+            {
+              "path": "reviews[].stats.high_risk",
+              "type": "integer"
+            },
+            {
+              "path": "reviews[].stats.modified",
+              "type": "integer"
+            },
+            {
+              "path": "reviews[].stats.pending",
+              "type": "integer"
+            },
+            {
+              "path": "reviews[].stats.revoked",
+              "type": "integer"
+            },
+            {
+              "path": "reviews[].stats.total_items",
+              "type": "integer"
+            },
+            {
               "path": "reviews[].status",
+              "type": "string"
+            },
+            {
+              "path": "reviews[].type",
               "type": "string"
             }
           ]
@@ -4185,7 +5203,83 @@
           ],
           "fields": [
             {
+              "path": "completed_at",
+              "type": "string"
+            },
+            {
               "path": "created_at",
+              "type": "string"
+            },
+            {
+              "path": "created_by",
+              "type": "string"
+            },
+            {
+              "path": "description",
+              "type": "string"
+            },
+            {
+              "path": "due_at",
+              "type": "string"
+            },
+            {
+              "path": "events",
+              "type": "array"
+            },
+            {
+              "path": "events[]",
+              "type": "object"
+            },
+            {
+              "path": "events[].actor",
+              "type": "string"
+            },
+            {
+              "path": "events[].decision",
+              "type": "object"
+            },
+            {
+              "path": "events[].decision.action",
+              "type": "string"
+            },
+            {
+              "path": "events[].decision.comment",
+              "type": "string"
+            },
+            {
+              "path": "events[].decision.decided_at",
+              "type": "string"
+            },
+            {
+              "path": "events[].decision.effective_at",
+              "type": "string"
+            },
+            {
+              "path": "events[].decision.reviewer",
+              "type": "string"
+            },
+            {
+              "path": "events[].item_id",
+              "type": "string"
+            },
+            {
+              "path": "events[].metadata",
+              "type": "object"
+            },
+            {
+              "path": "events[].recorded_at",
+              "type": "string"
+            },
+            {
+              "path": "events[].sequence",
+              "type": "integer"
+            },
+            {
+              "path": "events[].type",
+              "type": "string"
+            },
+            {
+              "path": "generation_source",
               "type": "string"
             },
             {
@@ -4193,11 +5287,331 @@
               "type": "string"
             },
             {
+              "path": "items",
+              "type": "array"
+            },
+            {
+              "path": "items[]",
+              "type": "object"
+            },
+            {
+              "path": "items[].access",
+              "type": "array"
+            },
+            {
+              "path": "items[].access[]",
+              "type": "object"
+            },
+            {
+              "path": "items[].access[].expires_at",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].granted_at",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].granted_by",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].id",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].permission",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].resource",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].resource_type",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].role",
+              "type": "string"
+            },
+            {
+              "path": "items[].decision",
+              "type": "object"
+            },
+            {
+              "path": "items[].decision.action",
+              "type": "string"
+            },
+            {
+              "path": "items[].decision.comment",
+              "type": "string"
+            },
+            {
+              "path": "items[].decision.decided_at",
+              "type": "string"
+            },
+            {
+              "path": "items[].decision.effective_at",
+              "type": "string"
+            },
+            {
+              "path": "items[].decision.reviewer",
+              "type": "string"
+            },
+            {
+              "path": "items[].flags",
+              "type": "array"
+            },
+            {
+              "path": "items[].flags[]",
+              "type": "string"
+            },
+            {
+              "path": "items[].id",
+              "type": "string"
+            },
+            {
+              "path": "items[].last_activity",
+              "type": "string"
+            },
+            {
+              "path": "items[].metadata",
+              "type": "object"
+            },
+            {
+              "path": "items[].path",
+              "type": "array"
+            },
+            {
+              "path": "items[].path[]",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal",
+              "type": "object"
+            },
+            {
+              "path": "items[].principal.account",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.created_at",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.email",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.id",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.last_login",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.name",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.provider",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.type",
+              "type": "string"
+            },
+            {
+              "path": "items[].recommendation",
+              "type": "object"
+            },
+            {
+              "path": "items[].recommendation.action",
+              "type": "string"
+            },
+            {
+              "path": "items[].recommendation.confidence",
+              "type": "string"
+            },
+            {
+              "path": "items[].recommendation.reason",
+              "type": "string"
+            },
+            {
+              "path": "items[].review_id",
+              "type": "string"
+            },
+            {
+              "path": "items[].reviewer_candidates",
+              "type": "array"
+            },
+            {
+              "path": "items[].reviewer_candidates[]",
+              "type": "string"
+            },
+            {
+              "path": "items[].risk_factors",
+              "type": "array"
+            },
+            {
+              "path": "items[].risk_factors[]",
+              "type": "string"
+            },
+            {
+              "path": "items[].risk_score",
+              "type": "integer"
+            },
+            {
+              "path": "items[].type",
+              "type": "string"
+            },
+            {
+              "path": "metadata",
+              "type": "object"
+            },
+            {
               "path": "name",
               "type": "string"
             },
             {
+              "path": "reviewers",
+              "type": "array"
+            },
+            {
+              "path": "reviewers[]",
+              "type": "string"
+            },
+            {
+              "path": "schedule",
+              "type": "object"
+            },
+            {
+              "path": "schedule.frequency",
+              "type": "string"
+            },
+            {
+              "path": "schedule.last_run",
+              "type": "string"
+            },
+            {
+              "path": "schedule.next_run",
+              "type": "string"
+            },
+            {
+              "path": "scope",
+              "type": "object"
+            },
+            {
+              "path": "scope.accounts",
+              "type": "array"
+            },
+            {
+              "path": "scope.accounts[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.applications",
+              "type": "array"
+            },
+            {
+              "path": "scope.applications[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.mode",
+              "type": "string"
+            },
+            {
+              "path": "scope.providers",
+              "type": "array"
+            },
+            {
+              "path": "scope.providers[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.resources",
+              "type": "array"
+            },
+            {
+              "path": "scope.resources[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.risk_levels",
+              "type": "array"
+            },
+            {
+              "path": "scope.risk_levels[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.roles",
+              "type": "array"
+            },
+            {
+              "path": "scope.roles[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.users",
+              "type": "array"
+            },
+            {
+              "path": "scope.users[]",
+              "type": "string"
+            },
+            {
+              "path": "started_at",
+              "type": "string"
+            },
+            {
+              "path": "stats",
+              "type": "object"
+            },
+            {
+              "path": "stats.approved",
+              "type": "integer"
+            },
+            {
+              "path": "stats.completion_pct",
+              "type": "integer"
+            },
+            {
+              "path": "stats.deferred",
+              "type": "integer"
+            },
+            {
+              "path": "stats.escalated",
+              "type": "integer"
+            },
+            {
+              "path": "stats.high_risk",
+              "type": "integer"
+            },
+            {
+              "path": "stats.modified",
+              "type": "integer"
+            },
+            {
+              "path": "stats.pending",
+              "type": "integer"
+            },
+            {
+              "path": "stats.revoked",
+              "type": "integer"
+            },
+            {
+              "path": "stats.total_items",
+              "type": "integer"
+            },
+            {
               "path": "status",
+              "type": "string"
+            },
+            {
+              "path": "type",
               "type": "string"
             }
           ]
@@ -8563,7 +9977,27 @@
               "type": "string"
             },
             {
+              "path": "executions[].last_scanned_at",
+              "type": "string"
+            },
+            {
               "path": "executions[].namespace",
+              "type": "string"
+            },
+            {
+              "path": "executions[].priority",
+              "type": "string"
+            },
+            {
+              "path": "executions[].priority_eligible",
+              "type": "boolean"
+            },
+            {
+              "path": "executions[].priority_score",
+              "type": "integer"
+            },
+            {
+              "path": "executions[].priority_source",
               "type": "string"
             },
             {
@@ -25265,6 +26699,182 @@
       ]
     },
     {
+      "id": "GET /api/v1/platform/workload-scan/targets",
+      "path": "/api/v1/platform/workload-scan/targets",
+      "method": "GET",
+      "query_params": [
+        {
+          "name": "include_deferred",
+          "required": false,
+          "schema_type": "boolean"
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema_type": "integer"
+        },
+        {
+          "name": "provider",
+          "required": false,
+          "schema_type": "string"
+        }
+      ],
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "count",
+              "type": "integer"
+            },
+            {
+              "path": "generated_at",
+              "type": "string"
+            },
+            {
+              "path": "targets",
+              "type": "array"
+            },
+            {
+              "path": "targets[]",
+              "type": "object"
+            },
+            {
+              "path": "targets[].assessment",
+              "type": "object"
+            },
+            {
+              "path": "targets[].assessment.compliance_scopes",
+              "type": "array"
+            },
+            {
+              "path": "targets[].assessment.compliance_scopes[]",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.criticality",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.eligible",
+              "type": "boolean"
+            },
+            {
+              "path": "targets[].assessment.exposure",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.last_scanned_at",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.priority",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.privilege",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.reasons",
+              "type": "array"
+            },
+            {
+              "path": "targets[].assessment.reasons[]",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.score",
+              "type": "integer"
+            },
+            {
+              "path": "targets[].assessment.signals",
+              "type": "array"
+            },
+            {
+              "path": "targets[].assessment.signals[]",
+              "type": "object"
+            },
+            {
+              "path": "targets[].assessment.signals[].category",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.signals[].summary",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.signals[].weight",
+              "type": "integer"
+            },
+            {
+              "path": "targets[].assessment.source",
+              "type": "string"
+            },
+            {
+              "path": "targets[].assessment.staleness",
+              "type": "string"
+            },
+            {
+              "path": "targets[].display_name",
+              "type": "string"
+            },
+            {
+              "path": "targets[].node_id",
+              "type": "string"
+            },
+            {
+              "path": "targets[].provider",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target",
+              "type": "object"
+            },
+            {
+              "path": "targets[].target.account_id",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.instance_id",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.instance_name",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.project_id",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.provider",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.region",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.resource_group",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.subscription_id",
+              "type": "string"
+            },
+            {
+              "path": "targets[].target.zone",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "GET /api/v1/policies",
       "path": "/api/v1/policies",
       "method": "GET",
@@ -29933,7 +31543,83 @@
           ],
           "fields": [
             {
+              "path": "completed_at",
+              "type": "string"
+            },
+            {
               "path": "created_at",
+              "type": "string"
+            },
+            {
+              "path": "created_by",
+              "type": "string"
+            },
+            {
+              "path": "description",
+              "type": "string"
+            },
+            {
+              "path": "due_at",
+              "type": "string"
+            },
+            {
+              "path": "events",
+              "type": "array"
+            },
+            {
+              "path": "events[]",
+              "type": "object"
+            },
+            {
+              "path": "events[].actor",
+              "type": "string"
+            },
+            {
+              "path": "events[].decision",
+              "type": "object"
+            },
+            {
+              "path": "events[].decision.action",
+              "type": "string"
+            },
+            {
+              "path": "events[].decision.comment",
+              "type": "string"
+            },
+            {
+              "path": "events[].decision.decided_at",
+              "type": "string"
+            },
+            {
+              "path": "events[].decision.effective_at",
+              "type": "string"
+            },
+            {
+              "path": "events[].decision.reviewer",
+              "type": "string"
+            },
+            {
+              "path": "events[].item_id",
+              "type": "string"
+            },
+            {
+              "path": "events[].metadata",
+              "type": "object"
+            },
+            {
+              "path": "events[].recorded_at",
+              "type": "string"
+            },
+            {
+              "path": "events[].sequence",
+              "type": "integer"
+            },
+            {
+              "path": "events[].type",
+              "type": "string"
+            },
+            {
+              "path": "generation_source",
               "type": "string"
             },
             {
@@ -29941,11 +31627,331 @@
               "type": "string"
             },
             {
+              "path": "items",
+              "type": "array"
+            },
+            {
+              "path": "items[]",
+              "type": "object"
+            },
+            {
+              "path": "items[].access",
+              "type": "array"
+            },
+            {
+              "path": "items[].access[]",
+              "type": "object"
+            },
+            {
+              "path": "items[].access[].expires_at",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].granted_at",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].granted_by",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].id",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].permission",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].resource",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].resource_type",
+              "type": "string"
+            },
+            {
+              "path": "items[].access[].role",
+              "type": "string"
+            },
+            {
+              "path": "items[].decision",
+              "type": "object"
+            },
+            {
+              "path": "items[].decision.action",
+              "type": "string"
+            },
+            {
+              "path": "items[].decision.comment",
+              "type": "string"
+            },
+            {
+              "path": "items[].decision.decided_at",
+              "type": "string"
+            },
+            {
+              "path": "items[].decision.effective_at",
+              "type": "string"
+            },
+            {
+              "path": "items[].decision.reviewer",
+              "type": "string"
+            },
+            {
+              "path": "items[].flags",
+              "type": "array"
+            },
+            {
+              "path": "items[].flags[]",
+              "type": "string"
+            },
+            {
+              "path": "items[].id",
+              "type": "string"
+            },
+            {
+              "path": "items[].last_activity",
+              "type": "string"
+            },
+            {
+              "path": "items[].metadata",
+              "type": "object"
+            },
+            {
+              "path": "items[].path",
+              "type": "array"
+            },
+            {
+              "path": "items[].path[]",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal",
+              "type": "object"
+            },
+            {
+              "path": "items[].principal.account",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.created_at",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.email",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.id",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.last_login",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.name",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.provider",
+              "type": "string"
+            },
+            {
+              "path": "items[].principal.type",
+              "type": "string"
+            },
+            {
+              "path": "items[].recommendation",
+              "type": "object"
+            },
+            {
+              "path": "items[].recommendation.action",
+              "type": "string"
+            },
+            {
+              "path": "items[].recommendation.confidence",
+              "type": "string"
+            },
+            {
+              "path": "items[].recommendation.reason",
+              "type": "string"
+            },
+            {
+              "path": "items[].review_id",
+              "type": "string"
+            },
+            {
+              "path": "items[].reviewer_candidates",
+              "type": "array"
+            },
+            {
+              "path": "items[].reviewer_candidates[]",
+              "type": "string"
+            },
+            {
+              "path": "items[].risk_factors",
+              "type": "array"
+            },
+            {
+              "path": "items[].risk_factors[]",
+              "type": "string"
+            },
+            {
+              "path": "items[].risk_score",
+              "type": "integer"
+            },
+            {
+              "path": "items[].type",
+              "type": "string"
+            },
+            {
+              "path": "metadata",
+              "type": "object"
+            },
+            {
               "path": "name",
               "type": "string"
             },
             {
+              "path": "reviewers",
+              "type": "array"
+            },
+            {
+              "path": "reviewers[]",
+              "type": "string"
+            },
+            {
+              "path": "schedule",
+              "type": "object"
+            },
+            {
+              "path": "schedule.frequency",
+              "type": "string"
+            },
+            {
+              "path": "schedule.last_run",
+              "type": "string"
+            },
+            {
+              "path": "schedule.next_run",
+              "type": "string"
+            },
+            {
+              "path": "scope",
+              "type": "object"
+            },
+            {
+              "path": "scope.accounts",
+              "type": "array"
+            },
+            {
+              "path": "scope.accounts[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.applications",
+              "type": "array"
+            },
+            {
+              "path": "scope.applications[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.mode",
+              "type": "string"
+            },
+            {
+              "path": "scope.providers",
+              "type": "array"
+            },
+            {
+              "path": "scope.providers[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.resources",
+              "type": "array"
+            },
+            {
+              "path": "scope.resources[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.risk_levels",
+              "type": "array"
+            },
+            {
+              "path": "scope.risk_levels[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.roles",
+              "type": "array"
+            },
+            {
+              "path": "scope.roles[]",
+              "type": "string"
+            },
+            {
+              "path": "scope.users",
+              "type": "array"
+            },
+            {
+              "path": "scope.users[]",
+              "type": "string"
+            },
+            {
+              "path": "started_at",
+              "type": "string"
+            },
+            {
+              "path": "stats",
+              "type": "object"
+            },
+            {
+              "path": "stats.approved",
+              "type": "integer"
+            },
+            {
+              "path": "stats.completion_pct",
+              "type": "integer"
+            },
+            {
+              "path": "stats.deferred",
+              "type": "integer"
+            },
+            {
+              "path": "stats.escalated",
+              "type": "integer"
+            },
+            {
+              "path": "stats.high_risk",
+              "type": "integer"
+            },
+            {
+              "path": "stats.modified",
+              "type": "integer"
+            },
+            {
+              "path": "stats.pending",
+              "type": "integer"
+            },
+            {
+              "path": "stats.revoked",
+              "type": "integer"
+            },
+            {
+              "path": "stats.total_items",
+              "type": "integer"
+            },
+            {
               "path": "status",
+              "type": "string"
+            },
+            {
+              "path": "type",
               "type": "string"
             }
           ]

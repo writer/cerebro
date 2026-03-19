@@ -147,6 +147,21 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 			},
 		},
 		{
+			table: "gcp_compute_firewalls",
+			query: `SELECT self_link, name, project_id, network, direction, source_ranges, allowed, denied, disabled FROM gcp_compute_firewalls`,
+			parse: func(rows []map[string]any) []*Node {
+				nodes := make([]*Node, 0, len(rows))
+				for _, firewall := range rows {
+					node := gcpFirewallNodeFromRecord(firewall, "gcp", "", "")
+					if node == nil {
+						continue
+					}
+					nodes = append(nodes, node)
+				}
+				return nodes
+			},
+		},
+		{
 			table: "gcp_storage_buckets",
 			query: `SELECT name, project_id, location, iam_policy, public_access_prevention, uniform_bucket_level_access FROM gcp_storage_buckets`,
 			parse: func(rows []map[string]any) []*Node {

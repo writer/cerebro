@@ -1,19 +1,23 @@
 {
   "id": "aws-rds-deletion-protection",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "RDS Deletion Protection",
   "description": "RDS instances should have deletion protection enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::rds::db_instance",
   "conditions": [
-    "deletion_protection != true"
+    "cmp_ne(path(resource, \"deletion_protection\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable deletion protection to prevent accidental database deletion.",
   "tags": [
     "rds",
     "database",
     "data-protection"
   ],
+  "remediation": "Enable deletion protection to prevent accidental database deletion.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

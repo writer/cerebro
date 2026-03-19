@@ -614,6 +614,71 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Framework'
+  /api/v1/compliance/frameworks/{id}/status:
+    get:
+      tags:
+        - Compliance
+      summary: Get current compliance framework status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Framework compliance status summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FrameworkComplianceStatusResponse'
+  /api/v1/compliance/frameworks/{id}/controls/{control_id}:
+    get:
+      tags:
+        - Compliance
+      summary: Get compliance control detail with evidence
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: control_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: valid_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Compliance control detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceControlDetailResponse'
   /api/v1/compliance/frameworks/{id}/report:
     get:
       tags:
@@ -625,6 +690,18 @@ paths:
           required: true
           schema:
             type: string
+        - name: valid_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         '200':
           description: Compliance report
@@ -643,6 +720,18 @@ paths:
           required: true
           schema:
             type: string
+        - name: valid_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         '200':
           description: Pre-audit assessment
@@ -661,6 +750,18 @@ paths:
           required: true
           schema:
             type: string
+        - name: valid_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
       responses:
         '200':
           description: Audit package data
@@ -1030,7 +1131,16 @@ paths:
               properties:
                 subscription:
                   type: string
+                subscriptions:
+                  type: array
+                  items:
+                    type: string
+                management_group:
+                  type: string
                 concurrency:
+                  type: integer
+                  minimum: 1
+                subscription_concurrency:
                   type: integer
                   minimum: 1
                 tables:
@@ -1116,6 +1226,8 @@ paths:
                   type: array
                   items:
                     type: string
+                organization:
+                  type: string
                 concurrency:
                   type: integer
                   minimum: 1
@@ -4009,6 +4121,98 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RuntimeEventIngestRequest'
+  /api/v1/runtime/executions:
+    get:
+      tags:
+        - Runtime
+      summary: List runtime executions
+      description: List recent runtime execution records.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Maximum execution records to return
+      responses:
+        '200':
+          description: Runtime execution list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  executions:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+  /api/v1/runtime/executions/{id}/approve:
+    post:
+      tags:
+        - Runtime
+      summary: Approve runtime execution
+      description: Approve a runtime execution waiting for human approval.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Runtime execution ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemediationApproveRequest'
+      responses:
+        '200':
+          description: Execution approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '400':
+          description: Invalid approval request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/runtime/executions/{id}/reject:
+    post:
+      tags:
+        - Runtime
+      summary: Reject runtime execution
+      description: Reject a runtime execution and provide a reason.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Runtime execution ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemediationRejectRequest'
+      responses:
+        '200':
+          description: Execution rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusResponse'
+        '400':
+          description: Invalid rejection request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/runtime/findings:
     get:
       tags:
@@ -4030,106 +4234,6 @@ paths:
             type: integer
             default: 100
           description: Maximum result size
-  /api/v1/runtime/executions:
-    get:
-      tags:
-        - Runtime
-      summary: List runtime executions
-      description: List recent runtime response executions.
-      responses:
-        '200':
-          description: Runtime executions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RuntimeExecutionsResponse'
-        '503':
-          description: Runtime response unavailable
-          content: *id001
-      parameters:
-        - name: limit
-          in: query
-          required: false
-          schema:
-            type: integer
-            default: 50
-          description: Maximum result size
-  /api/v1/runtime/executions/{id}/approve:
-    post:
-      tags:
-        - Runtime
-      summary: Approve runtime execution
-      description: Approve a runtime response execution that is awaiting approval.
-      responses:
-        '200':
-          description: Execution approved
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StatusResponse'
-        '400':
-          description: Invalid approval request
-          content: *id001
-        '503':
-          description: Runtime response unavailable
-          content: *id001
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Runtime execution ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - approver_id
-              properties:
-                approver_id:
-                  type: string
-  /api/v1/runtime/executions/{id}/reject:
-    post:
-      tags:
-        - Runtime
-      summary: Reject runtime execution
-      description: Reject a runtime response execution that is awaiting approval.
-      responses:
-        '200':
-          description: Execution rejected
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StatusResponse'
-        '400':
-          description: Invalid rejection request
-          content: *id001
-        '503':
-          description: Runtime response unavailable
-          content: *id001
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Runtime execution ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - rejecter_id
-              properties:
-                rejecter_id:
-                  type: string
-                reason:
-                  type: string
   /api/v1/runtime/responses:
     get:
       tags:
@@ -7119,6 +7223,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/workload-scan/targets:
+    get:
+      tags:
+        - Platform
+      summary: List prioritized workload scan targets from the current graph
+      parameters:
+        - name: provider
+          in: query
+          required: false
+          description: Optional provider filter. Repeat or comma-separate values.
+          schema:
+            type: string
+        - name: include_deferred
+          in: query
+          required: false
+          description: Include recently scanned targets that are deferred from immediate execution.
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of prioritized targets to return (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: Prioritized workload scan targets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformWorkloadScanTargetCollection'
+        '400':
+          description: Invalid workload scan target query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to prioritize workload scan targets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/graph/actuate/recommendation:
     post:
       tags:
@@ -9934,10 +10083,25 @@ components:
           type: string
         description:
           type: string
+        severity:
+          type: string
         policy_ids:
           type: array
           items:
             type: string
+        graph_queries:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQueryDefinition'
+    GraphQueryDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+        provider:
+          type: string
+        description:
+          type: string
     FrameworksResponse:
       type: object
       properties:
@@ -9972,19 +10136,177 @@ components:
           type: integer
         failing_controls:
           type: integer
+        partial_controls:
+          type: integer
+        not_applicable_controls:
+          type: integer
         compliance_score:
           type: number
-    ControlStatus:
+        weighted_score:
+          type: number
+        graph_evaluated_controls:
+          type: integer
+        fallback_controls:
+          type: integer
+    ControlEvidence:
       type: object
       properties:
-        control_id:
+        entity_id:
+          type: string
+        entity_kind:
+          type: string
+        entity_name:
+          type: string
+        facet_id:
+          type: string
+        policy_id:
           type: string
         status:
           type: string
           enum:
             - passing
             - failing
+            - partial
+            - not_applicable
             - unknown
+        reason:
+          type: string
+    ControlStatus:
+      type: object
+      properties:
+        control_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+          enum:
+            - passing
+            - failing
+            - partial
+            - not_applicable
+            - unknown
+        pass_count:
+          type: integer
+          description: "Count of graph-identified assets currently passing this control; findings-fallback controls leave this at 0 because asset counts are not inferred from findings alone."
+        fail_count:
+          type: integer
+          description: "Count of graph-identified assets currently failing this control; findings-fallback controls leave this at 0 because asset counts are not inferred from findings alone."
+        total_assets:
+          type: integer
+          description: "Count of graph-identified assets evaluated for this control; findings-fallback controls leave this at 0 when the graph cannot enumerate an evaluated asset set."
+        evaluation_source:
+          type: string
+          description: "findings_fallback determines control state from mapped findings only and does not imply graph-backed asset counts."
+          enum:
+            - graph
+            - findings_fallback
+            - hybrid
+        last_evaluated:
+          type: string
+          format: date-time
+        policy_ids:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/ControlEvidence'
+    ComplianceFrameworkStatusControl:
+      type: object
+      properties:
+        control_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+        status:
+          type: string
+          enum:
+            - passing
+            - failing
+            - partial
+            - not_applicable
+            - unknown
+        pass_count:
+          type: integer
+        fail_count:
+          type: integer
+        total_assets:
+          type: integer
+        evaluation_source:
+          type: string
+          enum:
+            - graph
+            - findings_fallback
+            - hybrid
+        last_evaluated:
+          type: string
+          format: date-time
+        policy_ids:
+          type: array
+          items:
+            type: string
+        graph_queries:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQueryDefinition'
+    FrameworkComplianceStatusResponse:
+      type: object
+      properties:
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        version:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        summary:
+          $ref: '#/components/schemas/ComplianceSummary'
+        controls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComplianceFrameworkStatusControl'
+        total_findings:
+          type: integer
+    ComplianceControlDetailResponse:
+      type: object
+      properties:
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        version:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        valid_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        control:
+          $ref: '#/components/schemas/Control'
+        status:
+          $ref: '#/components/schemas/ControlStatus'
     PreAuditReport:
       type: object
       properties:
@@ -10007,10 +10329,40 @@ components:
       properties:
         manifest:
           type: object
+        summary:
+          type: object
         controls:
           type: array
           items:
             type: object
+            properties:
+              control_id:
+                type: string
+              title:
+                type: string
+              description:
+                type: string
+              status:
+                type: string
+              policies:
+                type: array
+                items:
+                  type: string
+              findings:
+                type: array
+                items:
+                  type: string
+              finding_count:
+                type: integer
+              evaluation_source:
+                type: string
+              last_evaluated:
+                type: string
+                format: date-time
+              evidence:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ControlEvidence'
     StaleAccessResponse:
       type: object
       properties:
@@ -10071,11 +10423,49 @@ components:
           type: string
         name:
           type: string
+        description:
+          type: string
+        type:
+          type: string
         status:
+          type: string
+        scope:
+          $ref: '#/components/schemas/ReviewScope'
+        schedule:
+          $ref: '#/components/schemas/ReviewSchedule'
+        reviewers:
+          type: array
+          items:
+            type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewItem'
+        stats:
+          $ref: '#/components/schemas/ReviewStats'
+        created_by:
           type: string
         created_at:
           type: string
           format: date-time
+        started_at:
+          type: string
+          format: date-time
+        due_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        generation_source:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewEvent'
+        metadata:
+          type: object
+          additionalProperties: true
     ReviewsResponse:
       type: object
       properties:
@@ -10093,16 +10483,230 @@ components:
       properties:
         name:
           type: string
+        description:
+          type: string
         type:
           type: string
           enum:
             - user_access
             - service_account
             - privileged
+            - entitlement
+            - application
+        created_by:
+          type: string
+        scope:
+          $ref: '#/components/schemas/ReviewScope'
+        schedule:
+          $ref: '#/components/schemas/ReviewSchedule'
         reviewers:
           type: array
           items:
             type: string
+        due_at:
+          type: string
+          format: date-time
+    ReviewScope:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - all
+            - account
+            - principal
+            - resource
+            - high_risk
+            - cross_account
+            - privilege_creep
+        providers:
+          type: array
+          items:
+            type: string
+        accounts:
+          type: array
+          items:
+            type: string
+        applications:
+          type: array
+          items:
+            type: string
+        roles:
+          type: array
+          items:
+            type: string
+        users:
+          type: array
+          items:
+            type: string
+        resources:
+          type: array
+          items:
+            type: string
+        risk_levels:
+          type: array
+          items:
+            type: string
+    ReviewSchedule:
+      type: object
+      properties:
+        frequency:
+          type: string
+        next_run:
+          type: string
+          format: date-time
+        last_run:
+          type: string
+          format: date-time
+    ReviewItem:
+      type: object
+      properties:
+        id:
+          type: string
+        review_id:
+          type: string
+        type:
+          type: string
+        principal:
+          $ref: '#/components/schemas/ReviewPrincipal'
+        access:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewAccessGrant'
+        risk_score:
+          type: integer
+        risk_factors:
+          type: array
+          items:
+            type: string
+        decision:
+          $ref: '#/components/schemas/ReviewDecision'
+        recommendation:
+          $ref: '#/components/schemas/ReviewRecommendation'
+        reviewer_candidates:
+          type: array
+          items:
+            type: string
+        last_activity:
+          type: string
+          format: date-time
+        path:
+          type: array
+          items:
+            type: string
+        flags:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    ReviewPrincipal:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        provider:
+          type: string
+        account:
+          type: string
+        last_login:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    ReviewAccessGrant:
+      type: object
+      properties:
+        id:
+          type: string
+        resource:
+          type: string
+        resource_type:
+          type: string
+        permission:
+          type: string
+        role:
+          type: string
+        granted_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        granted_by:
+          type: string
+    ReviewDecision:
+      type: object
+      properties:
+        action:
+          type: string
+        reviewer:
+          type: string
+        comment:
+          type: string
+        decided_at:
+          type: string
+          format: date-time
+        effective_at:
+          type: string
+          format: date-time
+    ReviewRecommendation:
+      type: object
+      properties:
+        action:
+          type: string
+        reason:
+          type: string
+        confidence:
+          type: string
+    ReviewEvent:
+      type: object
+      properties:
+        sequence:
+          type: integer
+        type:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time
+        actor:
+          type: string
+        item_id:
+          type: string
+        decision:
+          $ref: '#/components/schemas/ReviewDecision'
+        metadata:
+          type: object
+          additionalProperties: true
+    ReviewStats:
+      type: object
+      properties:
+        total_items:
+          type: integer
+        pending:
+          type: integer
+        approved:
+          type: integer
+        revoked:
+          type: integer
+        modified:
+          type: integer
+        escalated:
+          type: integer
+        deferred:
+          type: integer
+        high_risk:
+          type: integer
+        completion_pct:
+          type: integer
     AgentsResponse:
       type: object
       properties:
@@ -10836,16 +11440,6 @@ components:
       type: object
       properties:
         findings:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-        count:
-          type: integer
-    RuntimeExecutionsResponse:
-      type: object
-      properties:
-        executions:
           type: array
           items:
             type: object
@@ -14559,6 +15153,22 @@ components:
           type: string
         target:
           type: string
+        priority:
+          type: string
+          enum:
+            - critical
+            - high
+            - medium
+            - low
+        priority_score:
+          type: integer
+        priority_source:
+          type: string
+        priority_eligible:
+          type: boolean
+        last_scanned_at:
+          type: string
+          format: date-time
       required:
         - namespace
         - run_id
@@ -14580,6 +15190,134 @@ components:
       required:
         - count
         - executions
+    WorkloadScanVMTarget:
+      type: object
+      additionalProperties: false
+      properties:
+        provider:
+          type: string
+          enum:
+            - aws
+            - gcp
+            - azure
+        account_id:
+          type: string
+        project_id:
+          type: string
+        subscription_id:
+          type: string
+        resource_group:
+          type: string
+        region:
+          type: string
+        zone:
+          type: string
+        instance_id:
+          type: string
+        instance_name:
+          type: string
+      required:
+        - provider
+        - region
+    WorkloadScanPrioritySignal:
+      type: object
+      additionalProperties: false
+      properties:
+        category:
+          type: string
+        weight:
+          type: integer
+        summary:
+          type: string
+      required:
+        - category
+        - weight
+        - summary
+    WorkloadScanPriorityAssessment:
+      type: object
+      additionalProperties: false
+      properties:
+        score:
+          type: integer
+        priority:
+          type: string
+          enum:
+            - critical
+            - high
+            - medium
+            - low
+        eligible:
+          type: boolean
+        source:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        exposure:
+          type: string
+        privilege:
+          type: string
+        criticality:
+          type: string
+        compliance_scopes:
+          type: array
+          items:
+            type: string
+        staleness:
+          type: string
+        last_scanned_at:
+          type: string
+          format: date-time
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkloadScanPrioritySignal'
+      required:
+        - score
+        - priority
+        - eligible
+    PlatformWorkloadScanTarget:
+      type: object
+      additionalProperties: false
+      properties:
+        node_id:
+          type: string
+        display_name:
+          type: string
+        provider:
+          type: string
+          enum:
+            - aws
+            - gcp
+            - azure
+        target:
+          $ref: '#/components/schemas/WorkloadScanVMTarget'
+        assessment:
+          $ref: '#/components/schemas/WorkloadScanPriorityAssessment'
+      required:
+        - node_id
+        - display_name
+        - provider
+        - target
+        - assessment
+    PlatformWorkloadScanTargetCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformWorkloadScanTarget'
+      required:
+        - generated_at
+        - count
+        - targets
     PlatformReportRunRequest:
       type: object
       additionalProperties: false

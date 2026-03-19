@@ -1,21 +1,25 @@
 {
   "id": "aws-cloudwatch-alarm-missing",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "CloudTrail Without CloudWatch Alarm",
   "description": "CloudTrail trail does not have CloudWatch alarms configured for security events",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::cloudtrail::trail",
   "conditions": [
-    "cloud_watch_logs_log_group_arn != null",
-    "associated_alarms_count == 0"
+    "cmp_ne(path(resource, \"cloud_watch_logs_log_group_arn\"), null)",
+    "cmp_eq(path(resource, \"associated_alarms_count\"), 0)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Create CloudWatch metric filters and alarms for: unauthorized API calls, root login, IAM changes, VPC changes, S3 bucket policy changes. Reference CIS AWS Benchmark 4.x controls.",
   "tags": [
     "aws",
     "cloudwatch",
     "monitoring",
     "cis-aws-4.1"
   ],
+  "remediation": "Create CloudWatch metric filters and alarms for: unauthorized API calls, root login, IAM changes, VPC changes, S3 bucket policy changes. Reference CIS AWS Benchmark 4.x controls.",
   "frameworks": [
     {
       "name": "CIS AWS Foundations Benchmark v2.0",

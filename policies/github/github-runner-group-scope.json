@@ -1,14 +1,17 @@
 {
   "id": "github-runner-group-scope",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitHub Runner Group with Broad Repository Access",
   "description": "Self-hosted runner group is accessible to all repositories or allows public repositories",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "github::runner_group",
   "conditions": [
-    "visibility == 'all' OR allows_public_repositories == true OR selected_repositories_count == 0"
+    "(cmp_eq(path(resource, \"visibility\"), \"all\")) || (cmp_eq(path(resource, \"allows_public_repositories\"), true)) || (cmp_eq(path(resource, \"selected_repositories_count\"), 0))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Restrict runner groups to specific repositories. Disable public repository access for self-hosted runners. Create separate runner groups for different security boundaries.",
   "tags": [
     "github",
     "runners",
@@ -16,6 +19,7 @@
     "ci-cd",
     "least-privilege"
   ],
+  "remediation": "Restrict runner groups to specific repositories. Disable public repository access for self-hosted runners. Create separate runner groups for different security boundaries.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "PRIVILEGE_ESCALATION"

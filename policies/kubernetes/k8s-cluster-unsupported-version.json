@@ -1,19 +1,23 @@
 {
   "id": "k8s-cluster-unsupported-version",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Kubernetes Cluster on Unsupported Minor Version",
   "description": "Cluster is running an older Kubernetes minor version that is likely outside standard support windows.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::cluster::inventory",
   "conditions": [
-    "kubernetes_version MATCHES 'v1\\.(1[0-9]|2[0-7])\\.'"
+    "matches_value(path(resource, \"kubernetes_version\"), \"v1\\\\.(1[0-9]|2[0-7])\\\\.\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Upgrade control plane and nodes to a currently supported Kubernetes minor release and establish a regular upgrade cadence.",
   "tags": [
     "kubernetes",
     "version",
     "hardening"
   ],
+  "remediation": "Upgrade control plane and nodes to a currently supported Kubernetes minor release and establish a regular upgrade cadence.",
   "risk_categories": [
     "VULNERABILITY",
     "MISCONFIGURATION"

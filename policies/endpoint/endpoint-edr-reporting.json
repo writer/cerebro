@@ -1,14 +1,24 @@
 {
   "id": "endpoint-edr-reporting",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "EDR Agents Actively Reporting",
   "description": "EDR agents should be actively reporting to the console. Agents that haven't checked in recently may indicate offline devices or tampering",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "edr_agents",
   "conditions": [
-    "days_since_last_seen > 7",
-    "agent_status == ACTIVE"
+    "cmp_gt(path(resource, \"days_since_last_seen\"), 7)",
+    "cmp_eq(path(resource, \"agent_status\"), path(resource, \"ACTIVE\"))"
   ],
+  "condition_format": "cel",
   "severity": "high",
+  "tags": [
+    "endpoint",
+    "edr",
+    "agent-health",
+    "monitoring"
+  ],
   "remediation": "Investigate why the agent is not reporting. The device may be offline, the agent may be corrupted, or it may have been uninstalled",
   "remediation_steps": [
     "Check if the device is online and connected to network",
@@ -17,27 +27,28 @@
     "Reinstall agent if necessary",
     "If device is lost/stolen, initiate incident response"
   ],
-  "tags": [
-    "endpoint",
-    "edr",
-    "agent-health",
-    "monitoring"
-  ],
   "risk_categories": [
     "MISCONFIGURATION"
   ],
   "frameworks": [
     {
       "name": "CIS Controls v8",
-      "controls": ["10.7"]
+      "controls": [
+        "10.7"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6.8"]
+      "controls": [
+        "CC6.8"
+      ]
     },
     {
       "name": "NIST 800-53 r5",
-      "controls": ["SI-3", "SI-4"]
+      "controls": [
+        "SI-3",
+        "SI-4"
+      ]
     }
   ]
 }

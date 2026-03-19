@@ -12,7 +12,12 @@ import (
 )
 
 func (s *Server) getEntityCohort(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -23,7 +28,7 @@ func (s *Server) getEntityCohort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cohort, ok := graph.GetEntityCohort(s.app.SecurityGraph, entityID)
+	cohort, ok := graph.GetEntityCohort(g, entityID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "cohort not found")
 		return
@@ -33,7 +38,12 @@ func (s *Server) getEntityCohort(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getEntityOutlierScore(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -44,7 +54,7 @@ func (s *Server) getEntityOutlierScore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outlier, ok := graph.GetEntityOutlierScore(s.app.SecurityGraph, entityID)
+	outlier, ok := graph.GetEntityOutlierScore(g, entityID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "outlier score not found")
 		return
@@ -54,7 +64,12 @@ func (s *Server) getEntityOutlierScore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) impactAnalysis(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -90,7 +105,7 @@ func (s *Server) impactAnalysis(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analyzer := graph.NewImpactPathAnalyzer(s.app.SecurityGraph)
+	analyzer := graph.NewImpactPathAnalyzer(g)
 	result := analyzer.Analyze(req.StartNode, scenario, req.MaxDepth)
 	s.json(w, http.StatusOK, result)
 }

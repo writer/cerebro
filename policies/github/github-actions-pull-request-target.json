@@ -1,21 +1,25 @@
 {
   "id": "github-actions-dangerous-trigger",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitHub Actions Dangerous Trigger",
   "description": "Workflow uses pull_request_target trigger which can expose secrets to forked PRs",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "github::actions_workflow",
   "conditions": [
-    "content contains 'pull_request_target'",
-    "content contains 'secrets.'"
+    "contains_value(path(resource, \"content\"), \"pull_request_target\")",
+    "contains_value(path(resource, \"content\"), \"secrets.\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Review workflow for secret exposure. Use pull_request instead and avoid checkout of PR code with secrets.",
   "tags": [
     "devsecops",
     "github-actions",
     "supply-chain",
     "cicd-security"
   ],
+  "remediation": "Review workflow for secret exposure. Use pull_request instead and avoid checkout of PR code with secrets.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],

@@ -37,6 +37,9 @@ func (a *App) TryApplySecurityGraphChanges(ctx context.Context, trigger string) 
 }
 
 func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger string) (graph.GraphMutationSummary, error) {
+	if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
+		return graph.GraphMutationSummary{}, err
+	}
 	start := time.Now()
 	summary, err := a.SecurityGraphBuilder.ApplyChanges(ctx, time.Time{})
 	if err != nil {
@@ -79,6 +82,9 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 	}
 
 	securityGraph := a.SecurityGraphBuilder.Graph()
+	if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
+		return graph.GraphMutationSummary{}, err
+	}
 	meta, activateErr := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if activateErr != nil {
 		return graph.GraphMutationSummary{}, activateErr
@@ -126,8 +132,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 	if baseCtx == nil {
 		baseCtx = context.Background()
 	}
-	// #nosec G118 -- cancel is stored for shutdown coordination and also deferred inside the check goroutine.
-	checkCtx, cancel := context.WithTimeout(baseCtx, 30*time.Minute)
+	checkCtx, cancel := context.WithTimeout(baseCtx, a.Config.GraphConsistencyCheckTimeoutOrDefault())
 	a.graphConsistencyCancel = cancel
 	a.graphConsistencyMu.Unlock()
 
@@ -187,23 +192,6 @@ func graphDiffHasChanges(diff *graph.GraphDiff) bool {
 		len(diff.NodesModified) > 0 ||
 		len(diff.EdgesAdded) > 0 ||
 		len(diff.EdgesRemoved) > 0
-}
-
-func (a *App) buildGraphConsistencyCandidate(ctx context.Context) (*graph.Graph, error) {
-	if a == nil || a.SecurityGraphBuilder == nil {
-		return nil, nil
-	}
-	candidate, _, err := a.SecurityGraphBuilder.BuildCandidate(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if candidate == nil {
-		return nil, nil
-	}
-	if _, err := a.materializePersistedWorkloadScans(ctx, candidate); err != nil {
-		return nil, err
-	}
-	return candidate, nil
 }
 
 func errGraphNotInitialized() error {

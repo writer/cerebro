@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/snowflake"
@@ -143,6 +144,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	tuning := application.ScanTuning()
 
 	graphAvailable := false
+	var securityGraph *graph.Graph
 	if scanUseGraph && !localMode {
 		spinner := NewSpinner("Waiting for security graph")
 		spinner.Start()
@@ -151,10 +153,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 		if tuning.GraphWaitTimeout > 0 {
 			graphCtx, cancel = context.WithTimeout(ctx, tuning.GraphWaitTimeout)
 		}
-		graphReady := application.WaitForGraph(graphCtx)
+		securityGraph = application.WaitForReadableSecurityGraph(graphCtx)
 		cancel()
-		if graphReady {
-			spinner.Stop(true, fmt.Sprintf("Security graph ready (%d nodes, %d edges)", application.SecurityGraph.NodeCount(), application.SecurityGraph.EdgeCount()))
+		if securityGraph != nil {
+			spinner.Stop(true, fmt.Sprintf("Security graph ready (%d nodes, %d edges)", securityGraph.NodeCount(), securityGraph.EdgeCount()))
 			graphAvailable = true
 		} else {
 			spinner.Stop(false, "Security graph not available, falling back to profile-based analysis")
@@ -375,7 +377,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	var graphChokepoints []scanner.AttackPathChokepointSummary
 	var graphToxicCount int
 	if scanToxicCombos && graphAvailable {
-		graphResult := application.Scanner.AnalyzeGraph(ctx, application.SecurityGraph)
+		graphResult := application.Scanner.AnalyzeGraph(ctx, securityGraph)
 		if graphResult != nil {
 			graphStats = graphResult.AttackPathStats
 			graphChokepoints = graphResult.Chokepoints

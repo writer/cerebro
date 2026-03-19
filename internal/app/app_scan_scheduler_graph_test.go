@@ -32,12 +32,9 @@ func (s *schedulerGraphSource) Query(ctx context.Context, query string, args ...
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if strings.Contains(lower, "select event_time") && strings.Contains(lower, "from cdc_events") && strings.Contains(lower, "limit 1") {
+	if strings.Contains(lower, "select max(event_time)") && strings.Contains(lower, "from cdc_events") {
 		s.queryCounts["has_changes"]++
-		if s.latest.IsZero() {
-			return &builders.DataQueryResult{Rows: []map[string]any{}}, nil
-		}
-		return &builders.DataQueryResult{Rows: []map[string]any{{"event_time": s.latest, "ingested_at": s.latest, "event_id": "evt-latest"}}, Count: 1}, nil
+		return &builders.DataQueryResult{Rows: []map[string]any{{"latest": s.latest}}, Count: 1}, nil
 	}
 	if strings.Contains(lower, "select event_id") && strings.Contains(lower, "from cdc_events") {
 		s.queryCounts["cdc_events"]++

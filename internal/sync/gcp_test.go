@@ -1,7 +1,15 @@
 package sync
 
 import (
+	"context"
+	"io"
+	"log/slog"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestGCPHashRowContent(t *testing.T) {
@@ -143,5 +151,93 @@ func TestGCPProjectIDFromScope(t *testing.T) {
 	}
 	if got := gcpProjectIDFromScope("organizations/123456789"); got != "" {
 		t.Fatalf("expected empty project id for org scope, got %q", got)
+	}
+}
+
+func TestGCPSyncTableEmitsCDCEvents(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(_ context.Context, query string, _ ...any) (*snowflake.QueryResult, error) {
+			switch {
+			case strings.Contains(query, "INFORMATION_SCHEMA.COLUMNS"):
+				return &snowflake.QueryResult{
+					Rows: []map[string]interface{}{
+						{"COLUMN_NAME": "_CQ_ID"},
+						{"COLUMN_NAME": "_CQ_HASH"},
+						{"COLUMN_NAME": "PROJECT_ID"},
+						{"COLUMN_NAME": "NAME"},
+					},
+				}, nil
+			case strings.Contains(query, "SELECT _CQ_ID, _CQ_HASH FROM GCP_SAMPLE_TABLE"):
+				return &snowflake.QueryResult{}, nil
+			default:
+				return &snowflake.QueryResult{}, nil
+			}
+		},
+	}
+	engine := NewGCPSyncEngine(store, slog.New(slog.NewTextHandler(io.Discard, nil)), WithGCPProject("project-a"))
+
+	result, err := engine.syncTable(context.Background(), GCPTableSpec{
+		Name:    "GCP_SAMPLE_TABLE",
+		Columns: []string{"project_id", "name"},
+		Fetch: func(_ context.Context, projectID string) ([]map[string]interface{}, error) {
+			if projectID != "project-a" {
+				t.Fatalf("expected project-a, got %q", projectID)
+			}
+			return []map[string]interface{}{
+				{"_cq_id": "asset-1", "project_id": "project-a", "name": "vm-1"},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("syncTable returned error: %v", err)
+	}
+	if result.Synced != 1 || result.Changes == nil || len(result.Changes.Added) != 1 {
+		t.Fatalf("unexpected sync result: %#v", result)
+	}
+	if len(store.CDCBatches) != 1 || store.CDCBatches[0][0].AccountID != "project-a" {
+		t.Fatalf("expected one GCP CDC batch, got %#v", store.CDCBatches)
+	}
+}
+
+func TestGCPSyncAllRejectsUnknownFilter(t *testing.T) {
+	engine := NewGCPSyncEngine(&warehouse.MemoryWarehouse{}, slog.New(slog.NewTextHandler(io.Discard, nil)),
+		WithGCPProject("project-a"),
+		WithGCPTableFilter([]string{"missing_table"}),
+	)
+
+	_, err := engine.SyncAll(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "no GCP tables matched filter") {
+		t.Fatalf("expected unknown filter error, got %v", err)
+	}
+}
+
+func TestGCPPersistChangeHistoryUsesSharedProviderHelper(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{}
+	engine := NewGCPSyncEngine(store, slog.New(slog.NewTextHandler(io.Discard, nil)), WithGCPProject("project-a"))
+	syncTime := time.Date(2026, 3, 12, 20, 0, 0, 0, time.UTC)
+
+	err := engine.persistChangeHistory(context.Background(), []SyncResult{{
+		Table:    "GCP_SAMPLE_TABLE",
+		Region:   "project-a",
+		SyncTime: syncTime,
+		Changes: &ChangeSet{
+			Added: []string{"asset-1"},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("persistChangeHistory returned error: %v", err)
+	}
+
+	var sawInsert bool
+	for _, call := range store.Execs {
+		if strings.Contains(call.Statement, "INSERT INTO _sync_change_history") {
+			sawInsert = true
+			if call.Args[6] != "gcp" {
+				t.Fatalf("expected gcp provider arg, got %#v", call.Args)
+			}
+		}
+	}
+	if !sawInsert {
+		t.Fatalf("expected change-history insert, execs=%#v", store.Execs)
 	}
 }

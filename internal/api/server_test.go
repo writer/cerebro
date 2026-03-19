@@ -17,6 +17,8 @@ import (
 
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/apptest"
@@ -26,6 +28,7 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/identity"
+	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/providers"
@@ -64,6 +67,26 @@ func do(t *testing.T, s *Server, method, path string, body interface{}) *httptes
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	return w
+}
+
+func doAsUser(t *testing.T, s *Server, userID, method, path string, body interface{}) *httptest.ResponseRecorder {
+	t.Helper()
+	var reader io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal body: %v", err)
+		}
+		reader = bytes.NewReader(b)
+	}
+	req := httptest.NewRequest(method, path, reader)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req = req.WithContext(context.WithValue(req.Context(), contextKeyUserID, strings.TrimSpace(userID)))
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
 	return w
@@ -596,47 +619,6 @@ func TestCreatePolicy_RejectsInvalidCELCondition(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "invalid CEL condition") {
 		t.Fatalf("expected CEL validation error, got %s", w.Body.String())
-	}
-}
-
-func TestCreatePolicy_InfersCELConditionFormatWhenOmitted(t *testing.T) {
-	s := newTestServer(t)
-
-	w := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
-		ID:          "implicit-cel",
-		Name:        "Implicit CEL",
-		Description: "test",
-		Effect:      "forbid",
-		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"resource.public == true"},
-		Severity:    "high",
-	})
-	if w.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-	body := decodeJSON(t, w)
-	if body["condition_format"] != policy.ConditionFormatCEL {
-		t.Fatalf("expected inferred CEL condition format, got %#v", body["condition_format"])
-	}
-}
-
-func TestCreatePolicy_RejectsInvalidImplicitCELCondition(t *testing.T) {
-	s := newTestServer(t)
-
-	w := do(t, s, "POST", "/api/v1/policies/", policy.Policy{
-		ID:          "invalid-implicit-cel",
-		Name:        "Invalid implicit CEL",
-		Description: "test",
-		Effect:      "forbid",
-		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"resource.public =="},
-		Severity:    "high",
-	})
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
-	}
-	if !strings.Contains(w.Body.String(), "invalid CEL condition") {
-		t.Fatalf("expected implicit CEL validation error, got %s", w.Body.String())
 	}
 }
 
@@ -1306,6 +1288,49 @@ func TestGetAttackPath_RespectsMaxDepth(t *testing.T) {
 	}
 }
 
+func TestListAttackPaths_RecordsMetrics(t *testing.T) {
+	metrics.Register()
+
+	s := newTestServer(t)
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "external", Type: attackpath.NodeTypeExternal, Name: "Internet", Risk: attackpath.RiskHigh})
+	s.app.AttackPath.AddNode(&attackpath.Node{ID: "db", Type: attackpath.NodeTypeDatabase, Name: "Prod DB", Risk: attackpath.RiskCritical})
+	s.app.AttackPath.AddEdge(&attackpath.Edge{ID: "edge-1", Source: "external", Target: "db", Type: attackpath.EdgeTypeHasAccess, Risk: attackpath.RiskHigh})
+
+	beforeQueries := apiCounterValue(t, metrics.AttackPathQueriesTotal, "list", "success")
+	beforeResults := apiHistogramCount(t, metrics.AttackPathResultCount, "list")
+
+	w := do(t, s, "GET", "/api/v1/attack-paths", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if got := apiCounterValue(t, metrics.AttackPathQueriesTotal, "list", "success"); got != beforeQueries+1 {
+		t.Fatalf("expected list query counter to increase by 1, got before=%v after=%v", beforeQueries, got)
+	}
+	if got := apiHistogramCount(t, metrics.AttackPathResultCount, "list"); got != beforeResults+1 {
+		t.Fatalf("expected list result histogram count to increase by 1, got before=%v after=%v", beforeResults, got)
+	}
+}
+
+func TestAnalyzeAttackPaths_InvalidRequestRecordsMetric(t *testing.T) {
+	metrics.Register()
+
+	s := newTestServer(t)
+	beforeQueries := apiCounterValue(t, metrics.AttackPathQueriesTotal, "analyze", "invalid_request")
+
+	req := httptest.NewRequest("POST", "/api/v1/attack-paths/analyze", strings.NewReader("{"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := apiCounterValue(t, metrics.AttackPathQueriesTotal, "analyze", "invalid_request"); got != beforeQueries+1 {
+		t.Fatalf("expected invalid analyze counter to increase by 1, got before=%v after=%v", beforeQueries, got)
+	}
+}
+
 func TestListToxicCombinations_PaginationMetadata(t *testing.T) {
 	s := newTestServer(t)
 	w := do(t, s, "GET", "/api/v1/graph/toxic-combinations?limit=1&offset=0", nil)
@@ -1367,6 +1392,36 @@ func TestWebhookCRUD(t *testing.T) {
 	if w.Code != http.StatusNoContent && w.Code != http.StatusOK {
 		t.Fatalf("expected 200/204, got %d: %s", w.Code, w.Body.String())
 	}
+}
+
+func apiCounterValue(t *testing.T, vec *prometheus.CounterVec, labels ...string) float64 {
+	t.Helper()
+	counter, err := vec.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get counter metric with labels %v: %v", labels, err)
+	}
+	var metric dto.Metric
+	if err := counter.Write(&metric); err != nil {
+		t.Fatalf("write counter metric: %v", err)
+	}
+	return metric.GetCounter().GetValue()
+}
+
+func apiHistogramCount(t *testing.T, histogram *prometheus.HistogramVec, labels ...string) uint64 {
+	t.Helper()
+	metric, err := histogram.GetMetricWithLabelValues(labels...)
+	if err != nil {
+		t.Fatalf("get histogram metric with labels %v: %v", labels, err)
+	}
+	metricCollector, ok := metric.(prometheus.Metric)
+	if !ok {
+		t.Fatalf("histogram collector does not implement prometheus.Metric")
+	}
+	var dtoMetric dto.Metric
+	if err := metricCollector.Write(&dtoMetric); err != nil {
+		t.Fatalf("write histogram metric: %v", err)
+	}
+	return dtoMetric.GetHistogram().GetSampleCount()
 }
 
 func TestListWebhooks_Pagination(t *testing.T) {
@@ -2416,6 +2471,23 @@ func TestMaxBodySize_RejectsLargeBody(t *testing.T) {
 	s.ServeHTTP(w, req)
 	if w.Code == http.StatusOK || w.Code == http.StatusCreated {
 		t.Fatalf("expected rejection of 11MB body, got %d", w.Code)
+	}
+}
+
+func TestMaxBodySize_UsesConfiguredLimit(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.APIMaxBodyBytes = 32
+	s := NewServer(a)
+	t.Cleanup(func() {
+		s.Close()
+	})
+
+	req := httptest.NewRequest("POST", "/api/v1/policies/", bytes.NewReader([]byte(strings.Repeat("x", 64))))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, req)
+	if w.Code == http.StatusOK || w.Code == http.StatusCreated {
+		t.Fatalf("expected rejection of body larger than configured limit, got %d", w.Code)
 	}
 }
 

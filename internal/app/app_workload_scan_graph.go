@@ -49,3 +49,20 @@ func (a *App) materializePersistedWorkloadScans(ctx context.Context, g *graph.Gr
 	}
 	return workloadscan.MaterializeRunsIntoGraph(g, runs, time.Now().UTC()), nil
 }
+
+func (a *App) buildGraphConsistencyCandidate(ctx context.Context) (*graph.Graph, error) {
+	if a == nil || a.SecurityGraphBuilder == nil {
+		return nil, nil
+	}
+	candidate, _, err := a.SecurityGraphBuilder.BuildCandidate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if candidate == nil {
+		return nil, nil
+	}
+	if _, err := a.materializePersistedWorkloadScans(ctx, candidate); err != nil {
+		return nil, err
+	}
+	return candidate, nil
+}

@@ -1,16 +1,18 @@
 {
   "id": "admin-keys-unrotated",
-  "control_id": "wc-id-2219",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Admin user/service account with active access keys were used in the past 90 days but not rotated in the past year",
   "description": "An active admin access key has not been rotated in over a year",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "iam::user|iam::service_account",
   "conditions": [
-    "has_admin_role == true",
-    "access_keys ANY (status == 'Active' AND last_used_days_ago \u003c 90 AND created_days_ago \u003e 365)"
+    "cmp_eq(path(resource, \"has_admin_role\"), true)",
+    "list_value(path(resource, \"access_keys\")).exists(item, (cmp_eq(path(item, \"status\"), \"Active\")) \u0026\u0026 (cmp_lt(path(item, \"last_used_days_ago\"), 90)) \u0026\u0026 (cmp_gt(path(item, \"created_days_ago\"), 365)))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Rotate admin access keys immediately. Implement automated key rotation policy.",
   "tags": [
     "wiz",
     "identity",
@@ -18,6 +20,8 @@
     "admin",
     "rotation"
   ],
+  "control_id": "wc-id-2219",
+  "remediation": "Rotate admin access keys immediately. Implement automated key rotation policy.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

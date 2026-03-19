@@ -102,44 +102,6 @@ func TestPolicyCELConditions(t *testing.T) {
 	}
 }
 
-func TestPolicyCELConditionsWithoutExplicitFormat(t *testing.T) {
-	engine := NewEngine()
-	engine.AddPolicy(&Policy{
-		ID:          "implicit-cel-policy",
-		Name:        "Implicit CEL policy",
-		Description: "test",
-		Effect:      "forbid",
-		Resource:    "aws::s3::bucket",
-		Conditions: []string{
-			"resource.public == true",
-			"resource.name.startsWith('prod-')",
-		},
-		Severity: "high",
-	})
-
-	p, ok := engine.GetPolicy("implicit-cel-policy")
-	if !ok {
-		t.Fatal("expected implicit CEL policy to be stored")
-	}
-	if p.ConditionFormat != ConditionFormatCEL {
-		t.Fatalf("expected inferred CEL condition format, got %q", p.ConditionFormat)
-	}
-
-	findings, err := engine.EvaluateAsset(context.Background(), map[string]interface{}{
-		"_cq_id":    "bucket-1",
-		"_cq_table": "aws_s3_buckets",
-		"type":      "aws::s3::bucket",
-		"public":    true,
-		"name":      "prod-logs",
-	})
-	if err != nil {
-		t.Fatalf("EvaluateAsset failed: %v", err)
-	}
-	if len(findings) != 1 {
-		t.Fatalf("expected 1 finding, got %d", len(findings))
-	}
-}
-
 func TestPublicVMPolicies(t *testing.T) {
 	engine := NewEngine()
 

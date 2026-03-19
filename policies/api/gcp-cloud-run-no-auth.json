@@ -1,14 +1,17 @@
 {
   "id": "gcp-cloud-run-allow-unauthenticated",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Cloud Run Allow Unauthenticated",
   "description": "Cloud Run service allows unauthenticated invocations",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::run::service",
   "conditions": [
-    "iam_policy contains 'allUsers'"
+    "contains_value(path(resource, \"iam_policy\"), \"allUsers\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Remove allUsers IAM binding and require authentication.",
   "tags": [
     "api",
     "cloud-run",
@@ -16,6 +19,7 @@
     "authentication",
     "serverless"
   ],
+  "remediation": "Remove allUsers IAM binding and require authentication.",
   "risk_categories": [
     "IDENTITY_RISK"
   ],

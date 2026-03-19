@@ -1,20 +1,24 @@
 {
   "id": "k8s-network-policy-selector-present",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Kubernetes NetworkPolicy Selector Is Present",
   "description": "NetworkPolicies should define pod selectors to avoid unintentionally broad scope.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::core::namespace",
   "conditions": [
-    "name NOT IN ('kube-system', 'kube-public', 'kube-node-lease')",
-    "network_policies_without_selector > 0"
+    "!(in_list(path(resource, \"name\"), [\"kube-system\",\"kube-public\",\"kube-node-lease\"]))",
+    "cmp_gt(path(resource, \"network_policies_without_selector\"), 0)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Add explicit pod selectors to NetworkPolicies that currently target all pods.",
   "tags": [
     "kubernetes",
     "network",
     "segmentation"
   ],
+  "remediation": "Add explicit pod selectors to NetworkPolicies that currently target all pods.",
   "risk_categories": [
     "LATERAL_MOVEMENT",
     "MISCONFIGURATION"

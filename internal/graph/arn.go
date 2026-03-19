@@ -143,21 +143,19 @@ func FindMatchingNodes(g *Graph, pattern string) []*Node {
 
 	// Use ARN prefix index if available and pattern has a concrete service + resource type
 	prefix := patternARN.ResourcePrefix()
-	if g.IsIndexBuilt() && patternARN.Service != "*" && !strings.Contains(prefix, "*") {
+	if g.HasResourceARNPrefixIndex() && patternARN.Service != "*" && !strings.Contains(prefix, "*") {
 		candidates := g.GetResourceNodesByARNPrefix(prefix)
-		if candidates != nil {
-			var matches []*Node
-			for _, node := range candidates {
-				nodeARN, err := ParseARN(node.ID)
-				if err != nil {
-					continue
-				}
-				if nodeARN.MatchesPattern(patternARN) {
-					matches = append(matches, node)
-				}
+		var matches []*Node
+		for _, node := range candidates {
+			nodeARN, err := ParseARN(node.ID)
+			if err != nil {
+				continue
 			}
-			return matches
+			if nodeARN.MatchesPattern(patternARN) {
+				matches = append(matches, node)
+			}
 		}
+		return matches
 	}
 
 	// Fallback: full scan

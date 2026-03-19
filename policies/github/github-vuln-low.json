@@ -1,20 +1,43 @@
 {
   "id": "github-vuln-low",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitHub Repo Low Vulnerabilities Addressed",
   "description": "Ensures low vulnerabilities identified by Dependabot/Code Scanning are addressed within SLA (90 days)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "github_dependabot_alerts",
   "conditions": [
-    "severity = 'low'",
-    "state = 'open'",
-    "created_at < NOW() - INTERVAL '90 days'"
+    "cmp_eq(path(resource, \"severity\"), \"low\")",
+    "cmp_eq(path(resource, \"state\"), \"open\")",
+    "cmp_lt(path(resource, \"created_at\"), \"NOW() - INTERVAL '90 days'\")"
   ],
+  "condition_format": "cel",
   "severity": "low",
+  "tags": [
+    "github",
+    "dependabot",
+    "vulnerability",
+    "low",
+    "sla",
+    "compliance"
+  ],
   "remediation": "Review and address Dependabot alerts for low severity vulnerabilities during regular maintenance.",
-  "tags": ["github", "dependabot", "vulnerability", "low", "sla", "compliance"],
-  "risk_categories": ["VULNERABLE_CODE"],
+  "risk_categories": [
+    "VULNERABLE_CODE"
+  ],
   "frameworks": [
-    {"name": "SOC 2", "controls": ["CC7.1"]},
-    {"name": "NIST 800-53 r5", "controls": ["RA-5"]}
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "RA-5"
+      ]
+    }
   ]
 }

@@ -13,11 +13,7 @@ import (
 )
 
 func (s *Server) runGraphRuleDiscovery(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -44,11 +40,7 @@ func (s *Server) runGraphRuleDiscovery(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listGraphRuleDiscoveryCandidates(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -63,11 +55,7 @@ func (s *Server) listGraphRuleDiscoveryCandidates(w http.ResponseWriter, r *http
 }
 
 func (s *Server) decideGraphRuleDiscoveryCandidate(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return

@@ -1,22 +1,26 @@
 {
   "id": "bucket-keys-excessive-access",
-  "control_id": "wc-id-1340",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Bucket with cleartext cloud keys allowing high privileges can be accessed by an account with excessive data access",
   "description": "A bucket with privileged keys can be accessed by an overly permissive account",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "storage::bucket|storage::blob_container",
   "conditions": [
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)",
-    "iam_policy.principals ANY (has_excessive_data_access == true)"
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"grants_high_privilege\"), true)))",
+    "list_value(path(resource, \"iam_policy.principals\")).exists(item, cmp_eq(path(item, \"has_excessive_data_access\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Remove cleartext keys. Restrict bucket access to minimum required principals.",
   "tags": [
     "wiz",
     "storage",
     "secrets",
     "excessive-access"
   ],
+  "control_id": "wc-id-1340",
+  "remediation": "Remove cleartext keys. Restrict bucket access to minimum required principals.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "IDENTITY_RISK",

@@ -44,8 +44,8 @@ func (a *App) initialize(ctx context.Context) error {
 }
 
 func (a *App) initPhase1(ctx context.Context) error {
-	if err := runInitErrorStep("snowflake", func() error { return a.initSnowflake(ctx) }); err != nil {
-		a.Logger.Warn("snowflake initialization failed", "error", err)
+	if err := runInitErrorStep("warehouse", func() error { return a.initWarehouse(ctx) }); err != nil {
+		a.Logger.Warn("warehouse initialization failed", "error", err, "backend", a.Config.WarehouseBackend)
 	}
 	if err := runInitErrorStep("policy", a.initPolicy); err != nil {
 		return err
@@ -54,8 +54,12 @@ func (a *App) initPhase1(ctx context.Context) error {
 }
 
 func (a *App) initPhase2a(ctx context.Context) error {
-	a.initGraphPersistenceStore()
 	a.initExecutionStore()
+	a.initGraphPersistenceStore()
+	if err := runInitErrorStep("graph_writer_lease", func() error { return a.initGraphWriterLease(ctx) }); err != nil {
+		return err
+	}
+
 	if err := runInitTasksConcurrently(ctx, []concurrentInitTask{
 		{name: "cache", run: func(context.Context) { a.initCache() }},
 		{name: "ticketing", run: func(taskCtx context.Context) { a.initTicketing(taskCtx) }},

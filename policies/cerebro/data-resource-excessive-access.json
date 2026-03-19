@@ -1,22 +1,26 @@
 {
   "id": "data-resource-excessive-access",
-  "control_id": "wc-id-2565",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Data resource with sensitive data has excessive access permissions",
   "description": "A data resource with sensitive data has overly broad access permissions",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "storage::bucket|database::instance|storage::blob_container",
   "conditions": [
-    "has_sensitive_data == true",
-    "iam_policy.principals_count \u003e 20 OR iam_policy.allows_any_authenticated_user == true"
+    "cmp_eq(path(resource, \"has_sensitive_data\"), true)",
+    "(cmp_gt(path(resource, \"iam_policy.principals_count\"), 20)) || (cmp_eq(path(resource, \"iam_policy.allows_any_authenticated_user\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Reduce access to minimum required. Implement need-to-know access controls for sensitive data.",
   "tags": [
     "wiz",
     "data",
     "excessive-access",
     "sensitive-data"
   ],
+  "control_id": "wc-id-2565",
+  "remediation": "Reduce access to minimum required. Implement need-to-know access controls for sensitive data.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],

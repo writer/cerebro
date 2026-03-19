@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -117,6 +118,40 @@ func TestGraphOntologySLOHealthCheckWithoutGraph(t *testing.T) {
 	result := application.graphOntologySLOHealthCheck()(context.Background())
 	if result.Status != health.StatusUnknown {
 		t.Fatalf("expected unknown when graph is missing, got %s", result.Status)
+	}
+}
+
+func TestGraphOntologySLOHealthCheckUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	g := graph.New()
+	now := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+	g.AddNode(&graph.Node{
+		ID:   "activity:test",
+		Kind: graph.NodeKindActivity,
+		Name: "Legacy Activity",
+		Properties: map[string]any{
+			"source_system": "github",
+			"observed_at":   now.Format(time.RFC3339),
+			"valid_from":    now.Format(time.RFC3339),
+		},
+	})
+	g.BuildIndex()
+
+	application := &App{
+		Config: &Config{
+			GraphOntologyFallbackWarnPct:        10,
+			GraphOntologyFallbackCriticalPct:    50,
+			GraphOntologySchemaValidWarnPct:     98,
+			GraphOntologySchemaValidCriticalPct: 92,
+		},
+		GraphSnapshots: mustPersistToolGraph(t, g),
+	}
+
+	result := application.graphOntologySLOHealthCheck()(context.Background())
+	if result.Status != health.StatusUnhealthy {
+		t.Fatalf("expected unhealthy status from persisted snapshot fallback activity, got %s (%s)", result.Status, result.Message)
+	}
+	if !strings.Contains(result.Message, "fallback_activity_percent") {
+		t.Fatalf("expected fallback issue in message, got %q", result.Message)
 	}
 }
 
@@ -354,6 +389,109 @@ func TestGraphBuildSnapshotIncludesNodeCountWithoutHoldingBuildLock(t *testing.T
 	}
 }
 
+func TestGraphBuildSnapshotUsesPersistedSnapshotNodeCountWhenLiveGraphUnavailable(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+	persisted.AddNode(&graph.Node{ID: "service:billing", Kind: graph.NodeKindService, Name: "billing"})
+	store := mustPersistToolGraph(t, persisted)
+
+	application := &App{
+		Config:         &Config{},
+		GraphSnapshots: store,
+	}
+	application.setGraphBuildState(GraphBuildSuccess, time.Now().UTC(), nil)
+
+	snapshot := application.GraphBuildSnapshot()
+	if snapshot.State != GraphBuildSuccess {
+		t.Fatalf("expected graph build state success, got %#v", snapshot)
+	}
+	if snapshot.NodeCount != 2 {
+		t.Fatalf("expected persisted graph node count 2, got %d", snapshot.NodeCount)
+	}
+	if status := store.Status(); status.LastRecoveredAt != nil {
+		t.Fatalf("expected build snapshot read to avoid recovery bookkeeping, got %#v", status)
+	}
+}
+
+func TestGraphFreshnessStatusSnapshotUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	now := time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC)
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{
+		ID:       "service:payments",
+		Kind:     graph.NodeKindService,
+		Name:     "payments",
+		Provider: "aws",
+		Properties: map[string]any{
+			"observed_at": now.Add(-12 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	store := mustPersistToolGraph(t, persisted)
+
+	application := &App{
+		Config: &Config{
+			GraphFreshnessDefaultSLA: 6 * time.Hour,
+		},
+		GraphSnapshots: store,
+	}
+
+	status := application.GraphFreshnessStatusSnapshot(now)
+	if status.Healthy {
+		t.Fatalf("expected persisted snapshot freshness breach, got %#v", status)
+	}
+	if len(status.Breaches) != 1 {
+		t.Fatalf("expected one freshness breach, got %#v", status.Breaches)
+	}
+	if got := status.Breaches[0].Provider; got != "aws" {
+		t.Fatalf("expected aws freshness breach, got %#v", got)
+	}
+	if len(status.Breakdown.Providers) != 1 {
+		t.Fatalf("expected one provider freshness scope, got %#v", status.Breakdown.Providers)
+	}
+	if persistence := store.Status(); persistence.LastRecoveredAt != nil {
+		t.Fatalf("expected freshness status read to avoid recovery bookkeeping, got %#v", persistence)
+	}
+}
+
+func TestInitHealthRegistersGraphFreshnessCheckUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	now := time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC)
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{
+		ID:       "service:payments",
+		Kind:     graph.NodeKindService,
+		Name:     "payments",
+		Provider: "aws",
+		Properties: map[string]any{
+			"observed_at": now.Add(-12 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	store := mustPersistToolGraph(t, persisted)
+
+	application := &App{
+		Config: &Config{
+			GraphFreshnessDefaultSLA: 6 * time.Hour,
+		},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse:      &warehouse.MemoryWarehouse{},
+		GraphSnapshots: store,
+	}
+	application.initHealth()
+
+	results := application.Health.RunAll(context.Background())
+	check, ok := results["graph_freshness"]
+	if !ok {
+		t.Fatal("expected graph_freshness health check to be registered")
+	}
+	if check.Status != health.StatusUnhealthy {
+		t.Fatalf("expected unhealthy persisted graph freshness check, got %s (%s)", check.Status, check.Message)
+	}
+	if !strings.Contains(check.Message, "aws") {
+		t.Fatalf("expected persisted provider breach in message, got %q", check.Message)
+	}
+	if persistence := store.Status(); persistence.LastRecoveredAt != nil {
+		t.Fatalf("expected graph freshness health check to avoid recovery bookkeeping, got %#v", persistence)
+	}
+}
+
 func TestMutateSecurityGraphSwapsCloneAfterMutationCompletes(t *testing.T) {
 	liveGraph := graph.New()
 	liveGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
@@ -402,6 +540,45 @@ func TestMutateSecurityGraphSwapsCloneAfterMutationCompletes(t *testing.T) {
 	}
 	if got := liveGraph.NodeCount(); got != 1 {
 		t.Fatalf("expected original graph to remain unchanged after swap, got %d", got)
+	}
+}
+
+func TestMutateSecurityGraphUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	base := graph.New()
+	base.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+	base.AddNode(&graph.Node{ID: "bucket:prod", Kind: graph.NodeKindBucket, Name: "prod"})
+	base.AddEdge(&graph.Edge{ID: "payments-prod", Source: "service:payments", Target: "bucket:prod", Kind: graph.EdgeKindOwns, Effect: graph.EdgeEffectAllow})
+	base.BuildIndex()
+
+	application := &App{
+		Config:         &Config{},
+		GraphSnapshots: mustPersistToolGraph(t, base),
+	}
+
+	mutated, err := application.MutateSecurityGraph(context.Background(), func(candidate *graph.Graph) error {
+		if _, ok := candidate.GetNode("service:payments"); !ok {
+			return fmt.Errorf("persisted base node missing")
+		}
+		if _, ok := candidate.GetNode("bucket:prod"); !ok {
+			return fmt.Errorf("persisted base resource missing")
+		}
+		candidate.AddNode(&graph.Node{ID: "service:billing", Kind: graph.NodeKindService, Name: "billing"})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("MutateSecurityGraph() error = %v", err)
+	}
+	if _, ok := mutated.GetNode("service:payments"); !ok {
+		t.Fatal("expected persisted base node to be preserved")
+	}
+	if _, ok := mutated.GetNode("bucket:prod"); !ok {
+		t.Fatal("expected persisted base resource to be preserved")
+	}
+	if _, ok := mutated.GetNode("service:billing"); !ok {
+		t.Fatal("expected new node to be added on top of persisted base")
+	}
+	if got := application.CurrentSecurityGraph(); got != mutated {
+		t.Fatal("expected mutated graph to become the live graph")
 	}
 }
 

@@ -1,21 +1,25 @@
 {
   "id": "group-excessive-high-priv",
-  "control_id": "wc-id-2198",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Group with excessive high privileges",
   "description": "A group has excessive high-level privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "iam::group",
   "conditions": [
-    "high_privilege_role_count \u003e 5"
+    "cmp_gt(path(resource, \"high_privilege_role_count\"), 5)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Review and reduce group privileges. Create more granular groups based on job functions.",
   "tags": [
     "wiz",
     "identity",
     "group",
     "excessive-privilege"
   ],
+  "control_id": "wc-id-2198",
+  "remediation": "Review and reduce group privileges. Create more granular groups based on job functions.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

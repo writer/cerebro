@@ -1,14 +1,24 @@
 {
   "id": "endpoint-disk-encryption",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Endpoint Disk Encryption Enabled",
   "description": "Corporate endpoints (laptops/desktops) should have full disk encryption enabled (FileVault on macOS, BitLocker on Windows)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "mdm_devices",
   "conditions": [
-    "disk_encryption_enabled != true",
-    "device_type == WORKSTATION"
+    "cmp_ne(path(resource, \"disk_encryption_enabled\"), true)",
+    "cmp_eq(path(resource, \"device_type\"), path(resource, \"WORKSTATION\"))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
+  "tags": [
+    "endpoint",
+    "encryption",
+    "disk-encryption",
+    "data-protection"
+  ],
   "remediation": "Enable full disk encryption on the device through MDM policy enforcement or manual configuration",
   "remediation_steps": [
     "Identify the device without disk encryption",
@@ -18,39 +28,45 @@
     "Verify encryption status after enabling",
     "Store recovery keys securely in MDM"
   ],
-  "tags": [
-    "endpoint",
-    "encryption",
-    "disk-encryption",
-    "data-protection"
-  ],
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],
   "frameworks": [
     {
       "name": "CIS Controls v8",
-      "controls": ["3.6"]
+      "controls": [
+        "3.6"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6.7"]
+      "controls": [
+        "CC6.7"
+      ]
     },
     {
       "name": "ISO 27001:2022",
-      "controls": ["A.8.24"]
+      "controls": [
+        "A.8.24"
+      ]
     },
     {
       "name": "NIST 800-53 r5",
-      "controls": ["SC-28"]
+      "controls": [
+        "SC-28"
+      ]
     },
     {
       "name": "HIPAA",
-      "controls": ["164.312(a)(2)(iv)"]
+      "controls": [
+        "164.312(a)(2)(iv)"
+      ]
     },
     {
       "name": "PCI DSS v4.0.1",
-      "controls": ["3.5.1"]
+      "controls": [
+        "3.5.1"
+      ]
     }
   ]
 }

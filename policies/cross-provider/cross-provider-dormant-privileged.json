@@ -1,21 +1,25 @@
 {
   "id": "cross-provider-dormant-privileged",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Dormant Account with Privileged Access",
   "description": "User has not logged in for 90+ days but still has administrative access across providers",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "cross_provider::identity_cluster",
   "conditions": [
-    "has_admin_role == true",
-    "last_login_days_ago \u003e 90"
+    "cmp_eq(path(resource, \"has_admin_role\"), true)",
+    "cmp_gt(path(resource, \"last_login_days_ago\"), 90)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Review dormant privileged accounts. Remove admin access if no longer needed. Disable accounts for users who have left. Implement access certification reviews.",
   "tags": [
     "cross-provider",
     "identity",
     "privileged-access",
     "hygiene"
   ],
+  "remediation": "Review dormant privileged accounts. Remove admin access if no longer needed. Disable accounts for users who have left. Implement access certification reviews.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

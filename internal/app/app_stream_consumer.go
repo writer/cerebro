@@ -18,24 +18,38 @@ import (
 )
 
 func (a *App) initTapGraphConsumer(ctx context.Context) {
+	if a == nil || a.Config == nil {
+		return
+	}
+	if !a.graphWriterLeaseAllowsWrites() {
+		if a.Logger != nil {
+			a.Logger.Info("deferring tap graph consumer until graph writer lease is acquired",
+				"lease", a.Config.GraphWriterLeaseName,
+				"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
+			)
+		}
+		return
+	}
+	a.startTapGraphConsumer(ctx)
+}
+
+func (a *App) startTapGraphConsumer(ctx context.Context) {
+	if a == nil || a.Config == nil {
+		return
+	}
 	if !a.Config.NATSConsumerEnabled {
 		return
 	}
-	subject := "ensemble.tap.>"
-	if len(a.Config.NATSConsumerSubjects) > 0 && strings.TrimSpace(a.Config.NATSConsumerSubjects[0]) != "" {
-		subject = strings.TrimSpace(a.Config.NATSConsumerSubjects[0])
-	}
-	if len(a.Config.NATSConsumerSubjects) > 1 {
-		a.Logger.Warn("multiple NATS consumer subjects configured; using first subject only",
-			"configured_subjects", a.Config.NATSConsumerSubjects,
-			"active_subject", subject,
-		)
+	a.tapConsumerMu.Lock()
+	defer a.tapConsumerMu.Unlock()
+	if a.TapConsumer != nil {
+		return
 	}
 
 	consumer, err := events.NewJetStreamConsumer(events.ConsumerConfig{
 		URLs:                  a.Config.NATSJetStreamURLs,
 		Stream:                a.Config.NATSConsumerStream,
-		Subject:               subject,
+		Subjects:              a.Config.NATSConsumerSubjects,
 		Durable:               a.Config.NATSConsumerDurable,
 		BatchSize:             a.Config.NATSConsumerBatchSize,
 		AckWait:               a.Config.NATSConsumerAckWait,
@@ -61,7 +75,7 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 		TLSKeyFile:            a.Config.NATSJetStreamTLSKeyFile,
 		TLSServerName:         a.Config.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: a.Config.NATSJetStreamTLSInsecure,
-	}, a.Logger, a.handleTapCloudEvent)
+	}, a.Logger, a.handleGraphCloudEvent)
 	if err != nil {
 		a.Logger.Warn("failed to initialize tap graph consumer", "error", err)
 		return
@@ -106,13 +120,56 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 	}
 	a.Logger.Info("tap graph consumer enabled",
 		"stream", a.Config.NATSConsumerStream,
-		"subject", subject,
+		"subjects", a.Config.NATSConsumerSubjects,
 		"durable", a.Config.NATSConsumerDurable,
 		"batch_size", a.Config.NATSConsumerBatchSize,
 		"dedupe_enabled", a.Config.NATSConsumerDedupEnabled,
 	)
 
 	_ = ctx
+}
+
+func (a *App) stopTapGraphConsumer(ctx context.Context) error {
+	if a == nil {
+		return nil
+	}
+	a.tapConsumerMu.Lock()
+	defer a.tapConsumerMu.Unlock()
+	consumer := a.TapConsumer
+	if consumer == nil {
+		return nil
+	}
+	defer func() {
+		a.TapConsumer = nil
+	}()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := consumer.Drain(ctx); err != nil {
+		_ = consumer.Close()
+		return err
+	}
+	return consumer.Close()
+}
+
+func (a *App) handleGraphCloudEvent(ctx context.Context, evt events.CloudEvent) error {
+	eventType := cloudEventType(evt)
+	switch {
+	case strings.HasPrefix(strings.ToLower(eventType), "ensemble.tap."):
+		return a.handleTapCloudEvent(ctx, evt)
+	case isAuditMutationEventType(eventType):
+		return a.handleAuditMutationCloudEvent(ctx, evt)
+	default:
+		return nil
+	}
+}
+
+func cloudEventType(evt events.CloudEvent) string {
+	eventType := strings.TrimSpace(evt.Type)
+	if eventType != "" {
+		return eventType
+	}
+	return strings.TrimSpace(evt.Subject)
 }
 
 func (a *App) ensureSecurityGraph() *graph.Graph {
@@ -125,7 +182,7 @@ func (a *App) ensureSecurityGraph() *graph.Graph {
 
 	if a.SecurityGraph == nil {
 		a.SecurityGraph = graph.New()
-		a.configureGraphSchemaValidation(a.SecurityGraph)
+		a.configureGraphRuntimeBehavior(a.SecurityGraph)
 	}
 	return a.SecurityGraph
 }
@@ -143,10 +200,7 @@ func (a *App) waitForSecurityGraphReady(ctx context.Context) error {
 }
 
 func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) error {
-	eventType := strings.TrimSpace(evt.Type)
-	if eventType == "" {
-		eventType = strings.TrimSpace(evt.Subject)
-	}
+	eventType := cloudEventType(evt)
 	if !strings.HasPrefix(strings.ToLower(eventType), "ensemble.tap.") {
 		return nil
 	}
@@ -165,118 +219,14 @@ func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) er
 		return nil
 	}
 
-	system, entityType, action := parseTapType(eventType)
+	system, entityType, _ := parseTapType(eventType)
 	if system == "" {
 		return nil
 	}
 	if isTapActivityType(eventType) {
 		return a.handleTapActivityEvent(ctx, system, entityType, evt)
 	}
-
-	entityID := strings.TrimSpace(anyToString(evt.Data["entity_id"]))
-	if entityID == "" {
-		entityID = strings.TrimSpace(anyToString(evt.Data["id"]))
-	}
-	if entityID == "" {
-		return nil
-	}
-
-	kind := mapBusinessEntityKind(entityType)
-	nodeID := fmt.Sprintf("%s:%s:%s", system, entityType, entityID)
-	var refreshEventCorrelations bool
-	_, err := a.MutateSecurityGraphMaybe(ctx, func(securityGraph *graph.Graph) (bool, error) {
-		existingProperties := map[string]any{}
-		if existingNode, ok := securityGraph.GetNode(nodeID); ok && existingNode != nil && existingNode.Properties != nil {
-			existingProperties = existingNode.Properties
-		}
-
-		properties := map[string]any{
-			"source_system": system,
-			"entity_type":   entityType,
-			"action":        action,
-			"event_type":    eventType,
-			"event_time":    evt.Time.UTC().Format(time.RFC3339),
-		}
-
-		snapshot := mapFromAny(evt.Data["snapshot"])
-		changes := mapFromAny(evt.Data["changes"])
-		for k, v := range snapshot {
-			properties[k] = v
-		}
-		properties["changes"] = changes
-		for k, v := range deriveComputedFields(system, entityType, snapshot, changes, existingProperties, evt.Time) {
-			properties[k] = v
-		}
-		if action == "deleted" {
-			properties["inactive"] = true
-		}
-
-		node := &graph.Node{
-			ID:         nodeID,
-			Kind:       kind,
-			Name:       coalesceString(anyToString(snapshot["name"]), entityID),
-			Provider:   system,
-			Properties: properties,
-			Risk:       graph.RiskNone,
-		}
-
-		securityGraph.AddNode(node)
-
-		// Link foreign-key relationships from snapshot data.
-		edges := extractBusinessEdges(system, entityType, nodeID, snapshot)
-		for _, e := range edges {
-			if _, ok := securityGraph.GetNode(e.Target); !ok {
-				targetParts := strings.SplitN(e.Target, ":", 3)
-				targetKind := graph.NodeKindCompany
-				targetProvider := system
-				targetName := e.Target
-				if len(targetParts) == 3 {
-					targetProvider = targetParts[0]
-					targetKind = mapBusinessEntityKind(targetParts[1])
-					targetName = targetParts[2]
-				}
-				securityGraph.AddNode(&graph.Node{
-					ID:       e.Target,
-					Kind:     targetKind,
-					Name:     targetName,
-					Provider: targetProvider,
-					Risk:     graph.RiskNone,
-				})
-			}
-			if !tapBusinessEdgeExists(securityGraph, e.ID, e.Source) {
-				securityGraph.AddEdge(e)
-			}
-		}
-		refreshEventCorrelations = shouldRefreshEventCorrelations(securityGraph, []string{nodeID})
-		return true, nil
-	})
-	if err != nil {
-		return err
-	}
-	if refreshEventCorrelations {
-		a.queueEventCorrelationRefresh("tap_business")
-	}
-	return nil
-}
-
-func tapBusinessEdgeExists(g *graph.Graph, edgeID, source string) bool {
-	if g == nil {
-		return false
-	}
-	edgeID = strings.TrimSpace(edgeID)
-	source = strings.TrimSpace(source)
-	if edgeID == "" || source == "" {
-		return false
-	}
-	for _, edge := range g.GetOutEdges(source) {
-		if edge == nil {
-			continue
-		}
-		if strings.TrimSpace(edge.ID) == edgeID {
-			return true
-		}
-	}
-	return false
+	return a.handleTapBusinessEvent(ctx, eventType, evt)
 }
 
 func (a *App) tapEventMapper() (*graphingest.Mapper, error) {
@@ -867,438 +817,6 @@ func isTapInteractionType(eventType string) bool {
 type tapInteractionParticipant struct {
 	ID   string
 	Name string
-}
-
-func (a *App) handleTapInteractionEvent(ctx context.Context, eventType string, evt events.CloudEvent) error {
-	channel, interactionType := parseTapInteractionType(eventType)
-	if channel == "" {
-		return nil
-	}
-
-	interactionType = coalesceString(
-		interactionType,
-		strings.ToLower(strings.TrimSpace(anyToString(firstPresent(evt.Data, "interaction_type", "type", "action", "snapshot.interaction_type", "snapshot.type", "snapshot.action")))),
-		"interaction",
-	)
-
-	occurredAt := evt.Time.UTC()
-	if ts, ok := parseTimeValue(firstPresent(evt.Data, "timestamp", "event_time", "occurred_at", "provider_timestamp", "snapshot.timestamp", "snapshot.event_time", "snapshot.occurred_at", "snapshot.provider_timestamp")); ok {
-		occurredAt = ts.UTC()
-	}
-
-	duration := parseTapInteractionDuration(evt.Data)
-	weight := parseTapInteractionWeight(evt.Data, duration)
-	participants := parseTapInteractionParticipants(evt.Data)
-	if len(participants) < 2 {
-		return nil
-	}
-
-	_, err := a.MutateSecurityGraphMaybe(ctx, func(securityGraph *graph.Graph) (bool, error) {
-		for _, participant := range participants {
-			a.upsertTapInteractionPersonNode(securityGraph, participant, channel, occurredAt)
-		}
-
-		for i := 0; i < len(participants); i++ {
-			for j := i + 1; j < len(participants); j++ {
-				graph.UpsertInteractionEdge(securityGraph, graph.InteractionEdge{
-					SourcePersonID: participants[i].ID,
-					TargetPersonID: participants[j].ID,
-					Channel:        channel,
-					Type:           interactionType,
-					Timestamp:      occurredAt,
-					Duration:       duration,
-					Weight:         weight,
-				})
-			}
-		}
-		return true, nil
-	})
-	return err
-}
-
-func parseTapInteractionType(eventType string) (channel string, interactionType string) {
-	parts := strings.Split(strings.TrimSpace(eventType), ".")
-	if len(parts) < 4 || !strings.EqualFold(parts[2], "interaction") {
-		return "", ""
-	}
-	channel = strings.ToLower(strings.TrimSpace(parts[3]))
-	if len(parts) > 4 {
-		interactionType = strings.ToLower(strings.Join(parts[4:], "_"))
-	}
-	return channel, interactionType
-}
-
-func parseTapInteractionParticipants(data map[string]any) []tapInteractionParticipant {
-	participants := make([]tapInteractionParticipant, 0)
-	seen := make(map[string]struct{})
-
-	addParticipant := func(raw any) {
-		participant, ok := parseTapInteractionParticipant(raw)
-		if !ok {
-			return
-		}
-		participant.ID = normalizeTapInteractionPersonID(participant.ID)
-		if participant.ID == "" {
-			return
-		}
-		if _, ok := seen[participant.ID]; ok {
-			return
-		}
-		if strings.TrimSpace(participant.Name) == "" {
-			participant.Name = strings.TrimPrefix(participant.ID, "person:")
-		}
-		participants = append(participants, participant)
-		seen[participant.ID] = struct{}{}
-	}
-
-	addMany := func(raw any) {
-		switch typed := raw.(type) {
-		case []any:
-			for _, value := range typed {
-				addParticipant(value)
-			}
-		case []string:
-			for _, value := range typed {
-				addParticipant(value)
-			}
-		default:
-			addParticipant(raw)
-		}
-	}
-
-	addParticipant(firstPresent(data,
-		"source_person_id", "source_person_email", "source_id", "source_email",
-		"actor_id", "actor_email", "user_id", "user_email",
-		"snapshot.source_person_id", "snapshot.source_person_email", "snapshot.source_id", "snapshot.source_email",
-		"snapshot.actor_id", "snapshot.actor_email", "snapshot.user_id", "snapshot.user_email",
-	))
-	addParticipant(firstPresent(data,
-		"target_person_id", "target_person_email", "target_id", "target_email",
-		"counterparty_id", "counterparty_email", "peer_id", "peer_email",
-		"reviewed_id", "reviewed_email",
-		"snapshot.target_person_id", "snapshot.target_person_email", "snapshot.target_id", "snapshot.target_email",
-		"snapshot.counterparty_id", "snapshot.counterparty_email", "snapshot.peer_id", "snapshot.peer_email",
-	))
-	addParticipant(firstPresent(data, "actor", "source", "target", "user", "snapshot.actor", "snapshot.source", "snapshot.target", "snapshot.user"))
-
-	for _, key := range []string{
-		"participants", "participant_ids", "participant_emails", "people", "users", "members", "attendees", "reviewers", "assignees", "collaborators",
-		"snapshot.participants", "snapshot.participant_ids", "snapshot.participant_emails",
-		"snapshot.people", "snapshot.users", "snapshot.members", "snapshot.attendees", "snapshot.reviewers", "snapshot.assignees", "snapshot.collaborators",
-		"interaction.participants", "interaction.users", "snapshot.interaction.participants", "snapshot.interaction.users",
-	} {
-		addMany(firstPresent(data, key))
-	}
-
-	return participants
-}
-
-func parseTapInteractionParticipant(raw any) (tapInteractionParticipant, bool) {
-	switch typed := raw.(type) {
-	case string:
-		id := strings.TrimSpace(typed)
-		if id == "" {
-			return tapInteractionParticipant{}, false
-		}
-		return tapInteractionParticipant{ID: id}, true
-	case map[string]any:
-		id := strings.TrimSpace(anyToString(firstPresent(typed,
-			"person_id", "person", "id", "user_id", "user", "email",
-			"actor_id", "actor_email", "source_person_id", "target_person_id",
-		)))
-		if id == "" {
-			if person, ok := typed["person"].(map[string]any); ok {
-				return parseTapInteractionParticipant(person)
-			}
-			return tapInteractionParticipant{}, false
-		}
-		name := strings.TrimSpace(anyToString(firstPresent(typed, "name", "display_name", "full_name", "username")))
-		return tapInteractionParticipant{ID: id, Name: name}, true
-	default:
-		return tapInteractionParticipant{}, false
-	}
-}
-
-func normalizeTapInteractionPersonID(raw string) string {
-	normalized := strings.ToLower(strings.TrimSpace(raw))
-	if normalized == "" {
-		return ""
-	}
-	if strings.HasPrefix(normalized, "person:") {
-		return normalized
-	}
-	normalized = strings.TrimPrefix(normalized, "user:")
-	if strings.Contains(normalized, ":") {
-		return normalized
-	}
-	return "person:" + normalized
-}
-
-func parseTapInteractionDuration(data map[string]any) time.Duration {
-	if seconds := toFloat64(firstPresent(data, "duration_seconds", "duration_sec", "duration_s", "metadata.duration_seconds", "snapshot.duration_seconds", "snapshot.metadata.duration_seconds")); seconds > 0 {
-		return time.Duration(seconds * float64(time.Second))
-	}
-	if minutes := toFloat64(firstPresent(data, "duration_minutes", "metadata.duration_minutes", "snapshot.duration_minutes", "snapshot.metadata.duration_minutes")); minutes > 0 {
-		return time.Duration(minutes * float64(time.Minute))
-	}
-	if millis := toFloat64(firstPresent(data, "duration_ms", "metadata.duration_ms", "snapshot.duration_ms", "snapshot.metadata.duration_ms")); millis > 0 {
-		return time.Duration(millis * float64(time.Millisecond))
-	}
-
-	rawDuration := strings.TrimSpace(anyToString(firstPresent(data, "duration", "metadata.duration", "snapshot.duration", "snapshot.metadata.duration")))
-	if rawDuration == "" {
-		return 0
-	}
-	if parsed, err := time.ParseDuration(rawDuration); err == nil && parsed > 0 {
-		return parsed
-	}
-	if seconds, err := strconv.ParseFloat(rawDuration, 64); err == nil && seconds > 0 {
-		return time.Duration(seconds * float64(time.Second))
-	}
-	return 0
-}
-
-func parseTapInteractionWeight(data map[string]any, duration time.Duration) float64 {
-	if explicit := toFloat64(firstPresent(data, "weight", "interaction_weight", "score", "metadata.weight", "snapshot.weight", "snapshot.metadata.weight")); explicit > 0 {
-		return explicit
-	}
-	if duration <= 0 {
-		return 1
-	}
-	weight := 1 + math.Log1p(duration.Minutes()/30.0)
-	if weight < 1 {
-		return 1
-	}
-	return weight
-}
-
-func (a *App) upsertTapInteractionPersonNode(securityGraph *graph.Graph, participant tapInteractionParticipant, channel string, occurredAt time.Time) {
-	if securityGraph == nil {
-		return
-	}
-	personID := normalizeTapInteractionPersonID(participant.ID)
-	if personID == "" {
-		return
-	}
-
-	properties := make(map[string]any)
-	nodeKind := graph.NodeKindPerson
-	nodeName := strings.TrimSpace(participant.Name)
-	provider := strings.ToLower(strings.TrimSpace(channel))
-
-	if existing, ok := securityGraph.GetNode(personID); ok && existing != nil {
-		for key, value := range mapFromAny(existing.Properties) {
-			properties[key] = value
-		}
-		if existing.Kind != "" {
-			nodeKind = existing.Kind
-		}
-		if nodeKind == graph.NodeKindUser {
-			nodeKind = graph.NodeKindPerson
-		}
-		if strings.TrimSpace(nodeName) == "" {
-			nodeName = strings.TrimSpace(existing.Name)
-		}
-		if provider == "" {
-			provider = strings.TrimSpace(existing.Provider)
-		}
-	}
-
-	if strings.TrimSpace(nodeName) == "" {
-		nodeName = strings.TrimPrefix(personID, "person:")
-	}
-	if !strings.Contains(nodeName, "@") {
-		nodeName = strings.TrimSpace(nodeName)
-	}
-
-	email := strings.TrimPrefix(personID, "person:")
-	if strings.Contains(email, "@") && strings.TrimSpace(anyToString(properties["email"])) == "" {
-		properties["email"] = email
-	}
-
-	sources := make(map[string]struct{})
-	for _, source := range stringSliceFromAny(properties["source_systems"]) {
-		source = strings.ToLower(strings.TrimSpace(source))
-		if source == "" {
-			continue
-		}
-		sources[source] = struct{}{}
-	}
-	if provider != "" {
-		sources[provider] = struct{}{}
-		properties["source_system"] = provider
-	}
-	if len(sources) > 0 {
-		properties["source_systems"] = setutil.SortedStrings(sources)
-	}
-	if !occurredAt.IsZero() {
-		properties["last_seen"] = occurredAt.UTC().Format(time.RFC3339)
-	}
-
-	securityGraph.AddNode(&graph.Node{
-		ID:         personID,
-		Kind:       nodeKind,
-		Name:       nodeName,
-		Provider:   provider,
-		Properties: properties,
-		Risk:       graph.RiskNone,
-	})
-}
-
-func stringSliceFromAny(value any) []string {
-	switch typed := value.(type) {
-	case []string:
-		return typed
-	case []any:
-		values := make([]string, 0, len(typed))
-		for _, item := range typed {
-			text := strings.TrimSpace(anyToString(item))
-			if text == "" {
-				continue
-			}
-			values = append(values, text)
-		}
-		return values
-	case string:
-		trimmed := strings.TrimSpace(typed)
-		if trimmed == "" {
-			return nil
-		}
-		return []string{trimmed}
-	default:
-		return nil
-	}
-}
-
-func (a *App) handleTapActivityEvent(ctx context.Context, source, activityType string, evt events.CloudEvent) error {
-	actorID, actorName := parseTapActivityActor(evt.Data["actor"])
-	if actorID == "" {
-		actorID = strings.TrimSpace(anyToString(firstPresent(evt.Data, "actor_email", "actor_id", "user_email", "user_id")))
-	}
-	if actorID == "" {
-		return nil
-	}
-	actorNodeID := actorID
-	if !strings.Contains(actorNodeID, ":") {
-		actorNodeID = "person:" + strings.ToLower(actorNodeID)
-	}
-
-	targetNodeID, targetKind, targetName := parseTapActivityTarget(evt.Data["target"], source)
-	if targetNodeID == "" {
-		targetID := strings.TrimSpace(anyToString(firstPresent(evt.Data, "entity_id", "target_id", "id")))
-		if targetID != "" {
-			targetNodeID = fmt.Sprintf("%s:entity:%s", source, targetID)
-			targetKind = graph.NodeKindCompany
-			targetName = targetID
-		}
-	}
-	if targetNodeID == "" {
-		return nil
-	}
-
-	occurredAt := evt.Time.UTC()
-	if ts, ok := parseTimeValue(firstPresent(evt.Data, "timestamp", "event_time", "occurred_at")); ok {
-		occurredAt = ts.UTC()
-	}
-	action := strings.TrimSpace(anyToString(evt.Data["action"]))
-	if action == "" {
-		action = activityType
-	}
-
-	activityID := strings.TrimSpace(evt.ID)
-	if activityID == "" {
-		activityID = fmt.Sprintf("%d", occurredAt.UnixNano())
-	}
-	activityKind := deriveTapActivityNodeKind(source, activityType, evt.Data)
-	activityNodeID := fmt.Sprintf("%s:%s:%s:%s", tapActivityNodePrefix(activityKind), source, activityType, activityID)
-	metadata := mapFromAny(evt.Data["metadata"])
-	if metadata == nil {
-		metadata = map[string]any{}
-	}
-	writeMeta := graph.NormalizeWriteMetadata(
-		occurredAt,
-		occurredAt,
-		nil,
-		source,
-		evt.ID,
-		0.8,
-		graph.WriteMetadataDefaults{
-			Now:               occurredAt,
-			SourceSystem:      source,
-			SourceEventID:     evt.ID,
-			SourceEventPrefix: "tap_activity",
-			DefaultConfidence: 0.8,
-		},
-	)
-
-	_, err := a.MutateSecurityGraphMaybe(ctx, func(securityGraph *graph.Graph) (bool, error) {
-		securityGraph.AddNode(&graph.Node{
-			ID:       actorNodeID,
-			Kind:     graph.NodeKindPerson,
-			Name:     coalesceString(actorName, actorID),
-			Provider: source,
-			Risk:     graph.RiskNone,
-			Properties: map[string]any{
-				"email": actorID,
-			},
-		})
-
-		securityGraph.AddNode(&graph.Node{
-			ID:         targetNodeID,
-			Kind:       targetKind,
-			Name:       coalesceString(targetName, targetNodeID),
-			Provider:   source,
-			Risk:       graph.RiskNone,
-			Properties: map[string]any{"source_system": source},
-		})
-
-		activityProps := map[string]any{
-			"event_type":           evt.Type,
-			"legacy_activity_type": activityType,
-			"action":               action,
-			"metadata":             metadata,
-		}
-		writeMeta.ApplyTo(activityProps)
-		applyTapActivityKindProperties(activityProps, activityKind, activityID, activityType, action, actorNodeID, occurredAt, evt.Data)
-
-		securityGraph.AddNode(&graph.Node{
-			ID:         activityNodeID,
-			Kind:       activityKind,
-			Name:       coalesceString(action, activityType),
-			Provider:   source,
-			Risk:       graph.RiskNone,
-			Properties: activityProps,
-		})
-
-		securityGraph.AddEdge(&graph.Edge{
-			ID:     fmt.Sprintf("%s->%s:%s", actorNodeID, activityNodeID, graph.EdgeKindInteractedWith),
-			Source: actorNodeID,
-			Target: activityNodeID,
-			Kind:   graph.EdgeKindInteractedWith,
-			Effect: graph.EdgeEffectAllow,
-			Risk:   graph.RiskNone,
-			Properties: map[string]any{
-				"source_system": source,
-			},
-		})
-		targetEdgeKind := graph.EdgeKindInteractedWith
-		if activityKind != graph.NodeKindActivity {
-			targetEdgeKind = graph.EdgeKindTargets
-		}
-		securityGraph.AddEdge(&graph.Edge{
-			ID:     fmt.Sprintf("%s->%s:%s", activityNodeID, targetNodeID, targetEdgeKind),
-			Source: activityNodeID,
-			Target: targetNodeID,
-			Kind:   targetEdgeKind,
-			Effect: graph.EdgeEffectAllow,
-			Risk:   graph.RiskNone,
-			Properties: map[string]any{
-				"source_system": source,
-			},
-		})
-		return true, nil
-	})
-	return err
 }
 
 func parseTapActivityActor(raw any) (id string, name string) {

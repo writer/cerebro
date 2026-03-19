@@ -396,7 +396,7 @@ func lookupToolContractOverride(name string) (toolContractOverride, bool) {
 		},
 		"cerebro.execution_status": {
 			ID:                 "cerebro_execution_status",
-			Version:            "1.1.0",
+			Version:            "1.2.0",
 			SDKMethod:          "execution_status",
 			Title:              "Execution Status",
 			Category:           "query",

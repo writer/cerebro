@@ -16,7 +16,12 @@ type graphSimulateRequest struct {
 }
 
 func (s *Server) simulateGraph(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -47,7 +52,7 @@ func (s *Server) simulateGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.app.SecurityGraph.Simulate(delta)
+	result, err := g.Simulate(delta)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return

@@ -1,17 +1,19 @@
 {
   "id": "vm-public-vuln-cross-account-keys",
-  "control_id": "wc-id-1370",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed VM/serverless with initial access vulnerabilities and cleartext cloud keys granting permissions in another subscription",
   "description": "A public vulnerable resource contains cross-account access keys",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "is_public == true",
-    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND cross_account_access == true)"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, (in_list(path(item, \"severity\"), [\"CRITICAL\",\"HIGH\"])) \u0026\u0026 (cmp_eq(path(item, \"initial_access\"), true)))",
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"cross_account_access\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Patch vulnerabilities. Remove cleartext cross-account keys. Use IAM roles instead.",
   "tags": [
     "wiz",
     "compute",
@@ -19,6 +21,8 @@
     "cleartext-keys",
     "cross-account"
   ],
+  "control_id": "wc-id-1370",
+  "remediation": "Patch vulnerabilities. Remove cleartext cross-account keys. Use IAM roles instead.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

@@ -193,6 +193,99 @@
       "execution_kind": "direct_tool"
     },
     {
+      "id": "cerebro_autonomous_credential_response",
+      "version": "1.0.0",
+      "tool_name": "cerebro.autonomous_credential_response",
+      "sdk_method": "autonomous_credential_response",
+      "title": "Autonomous Credential Response",
+      "description": "Start an autonomous credential exposure response workflow from a discovered secret or credential pivot",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "requested_by": {
+            "type": "string"
+          },
+          "secret_node_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret_node_id"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "requested_by": "requested_by",
+        "secret_node_id": "secret_node_id"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_autonomous_workflow_approve",
+      "version": "1.0.0",
+      "tool_name": "cerebro.autonomous_workflow_approve",
+      "sdk_method": "autonomous_workflow_approve",
+      "title": "Autonomous Workflow Approve",
+      "description": "Approve or reject a pending autonomous workflow and continue execution",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "approve": {
+            "default": true,
+            "type": "boolean"
+          },
+          "approved_by": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "approve": true,
+        "approved_by": "approved_by",
+        "reason": "reason",
+        "run_id": "run_id"
+      },
+      "requires_approval": true,
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_autonomous_workflow_status",
+      "version": "1.0.0",
+      "tool_name": "cerebro.autonomous_workflow_status",
+      "sdk_method": "autonomous_workflow_status",
+      "title": "Autonomous Workflow Status",
+      "description": "Inspect an autonomous workflow run, its events, and any linked action execution",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "run_id": "run_id"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
       "id": "cerebro_blast_radius",
       "version": "1.0.0",
       "tool_name": "cerebro.blast_radius",
@@ -648,7 +741,7 @@
     },
     {
       "id": "cerebro_execution_status",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "tool_name": "cerebro.execution_status",
       "sdk_method": "execution_status",
       "title": "Execution Status",
@@ -668,11 +761,6 @@
               "type": "string"
             },
             "type": "array"
-          },
-          "offset": {
-            "default": 0,
-            "description": "Pagination offset for execution history (0 or greater).",
-            "type": "integer"
           },
           "order": {
             "default": "updated",
@@ -702,7 +790,6 @@
         "namespace": [
           "namespace"
         ],
-        "offset": 0,
         "order": "updated",
         "report_id": "insights",
         "status": [

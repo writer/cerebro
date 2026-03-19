@@ -22,6 +22,8 @@ const (
 
 	// Resource -> Resource
 	EdgeKindConnectsTo EdgeKind = "connects_to"
+	EdgeKindCalls      EdgeKind = "calls"
+	EdgeKindServes     EdgeKind = "serves"
 	EdgeKindRuns       EdgeKind = "runs"
 	EdgeKindDependsOn  EdgeKind = "depends_on"
 	EdgeKindConfigures EdgeKind = "configures"
@@ -53,6 +55,7 @@ const (
 	EdgeKindHasScan          EdgeKind = "has_scan"
 	EdgeKindFoundVuln        EdgeKind = "found_vulnerability"
 	EdgeKindContainsPkg      EdgeKind = "contains_package"
+	EdgeKindContains         EdgeKind = "contains"
 	EdgeKindAffectedBy       EdgeKind = "affected_by"
 	EdgeKindAssertedBy       EdgeKind = "asserted_by"
 	EdgeKindSupports         EdgeKind = "supports"
@@ -61,6 +64,8 @@ const (
 	EdgeKindContradicts      EdgeKind = "contradicts"
 	EdgeKindTriggeredBy      EdgeKind = "triggered_by"
 	EdgeKindCausedBy         EdgeKind = "caused_by"
+	EdgeKindHasSequence      EdgeKind = "has_sequence"
+	EdgeKindCorroborates     EdgeKind = "corroborates"
 	EdgeKindHasCredentialFor EdgeKind = "has_credential_for"
 )
 

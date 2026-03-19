@@ -29,8 +29,8 @@ type stubGraphIntelligenceService struct {
 	hasCatalog        bool
 }
 
-func (s stubGraphIntelligenceService) CurrentGraph() *graph.Graph {
-	return s.graph
+func (s stubGraphIntelligenceService) CurrentGraph(context.Context) (*graph.Graph, error) {
+	return s.graph, nil
 }
 
 func (s stubGraphIntelligenceService) MapperInitialized() bool {
@@ -1771,7 +1771,6 @@ func TestAttachPlatformReportRunJobCancelsLateAttachedJobForCanceledRun(t *testi
 	}
 	if stored == nil {
 		t.Fatal("expected updated run snapshot after attaching job")
-		return
 	}
 	if !cancelJob {
 		t.Fatal("expected canceled run to request immediate job cancellation")

@@ -1,22 +1,26 @@
 {
   "id": "public-saas-keys",
-  "control_id": "wc-id-894",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed resource with cleartext SaaS API keys",
   "description": "A public resource contains cleartext SaaS API keys",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "*",
   "conditions": [
-    "is_public == true",
-    "secrets ANY (type == 'saas_api_key' AND cleartext == true)"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"saas_api_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Remove cleartext SaaS keys. Rotate exposed keys. Use secret managers.",
   "tags": [
     "wiz",
     "secrets",
     "saas",
     "public-exposure"
   ],
+  "control_id": "wc-id-894",
+  "remediation": "Remove cleartext SaaS keys. Rotate exposed keys. Use secret managers.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

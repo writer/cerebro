@@ -1,22 +1,26 @@
 {
   "id": "azure-nsg-restrict-ssh",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "NSG SSH Restriction",
   "description": "Network Security Groups should not allow unrestricted SSH access from the internet",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::network::security_group",
   "conditions": [
-    "security_rules.destination_port_range == '22'",
-    "security_rules.source_address_prefix == '*'",
-    "security_rules.access == 'Allow'"
+    "cmp_eq(path(resource, \"security_rules.destination_port_range\"), \"22\")",
+    "cmp_eq(path(resource, \"security_rules.source_address_prefix\"), \"*\")",
+    "cmp_eq(path(resource, \"security_rules.access\"), \"Allow\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Restrict SSH access to specific IP ranges. Use Azure Bastion for secure remote access.",
   "tags": [
     "cis-azure-6.1",
     "nsg",
     "network",
     "ssh"
   ],
+  "remediation": "Restrict SSH access to specific IP ranges. Use Azure Bastion for secure remote access.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "MISCONFIGURATION"

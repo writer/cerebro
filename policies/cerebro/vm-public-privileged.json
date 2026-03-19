@@ -1,15 +1,18 @@
 {
   "id": "vm-public-high-privileges",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internet-facing VM with high privileges",
   "description": "Compute instance is exposed to the public internet via external IP and has high privileges through its service account, creating an attractive target for attackers",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::compute::instance",
   "conditions": [
-    "network_interfaces CONTAINS 'accessConfigs'",
-    "service_accounts CONTAINS 'compute@developer.gserviceaccount.com'"
+    "contains_value(path(resource, \"network_interfaces\"), \"accessConfigs\")",
+    "contains_value(path(resource, \"service_accounts\"), \"compute@developer.gserviceaccount.com\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "1. Remove external IP if not required (use Cloud NAT for egress). 2. Create dedicated service account with minimal permissions. 3. Apply OS-level hardening. 4. Enable Shielded VM features. 5. Use VPC Service Controls.",
   "tags": [
     "gcp",
     "compute",
@@ -18,6 +21,7 @@
     "toxic-combination",
     "security"
   ],
+  "remediation": "1. Remove external IP if not required (use Cloud NAT for egress). 2. Create dedicated service account with minimal permissions. 3. Apply OS-level hardening. 4. Enable Shielded VM features. 5. Use VPC Service Controls.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_PRINCIPAL"
@@ -25,15 +29,26 @@
   "frameworks": [
     {
       "name": "NIST 800-53 r5",
-      "controls": ["AC-6", "SC-7", "SI-2"]
+      "controls": [
+        "AC-6",
+        "SC-7",
+        "SI-2"
+      ]
     },
     {
       "name": "CIS Controls v8",
-      "controls": ["5", "6", "7", "12"]
+      "controls": [
+        "5",
+        "6",
+        "7",
+        "12"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6"]
+      "controls": [
+        "CC6"
+      ]
     }
   ],
   "mitre_attack": [

@@ -11,6 +11,7 @@ import (
 type Store interface {
 	Close() error
 	UpsertRun(context.Context, RunEnvelope) error
+	CompareAndSwapRun(context.Context, RunEnvelope, RunEnvelope) (bool, error)
 	ReplaceRunWithEvents(context.Context, RunEnvelope, []EventEnvelope) error
 	LoadRun(context.Context, string, string) (*RunEnvelope, error)
 	ListRuns(context.Context, string, RunListOptions) ([]RunEnvelope, error)
@@ -21,6 +22,7 @@ type Store interface {
 	LoadEvents(context.Context, string, string) ([]EventEnvelope, error)
 	LookupProcessedEvent(context.Context, string, string, time.Time) (*ProcessedEventRecord, error)
 	TouchProcessedEvent(context.Context, string, string, time.Time, time.Duration) error
+	ClaimProcessedEvent(context.Context, ProcessedEventRecord, int) (bool, *ProcessedEventRecord, error)
 	RememberProcessedEvent(context.Context, ProcessedEventRecord, int) error
 	DeleteProcessedEvent(context.Context, string, string) error
 }

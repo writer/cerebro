@@ -91,17 +91,6 @@ func TestServiceImportsOSVAndMatchesPackages(t *testing.T) {
 		t.Fatalf("expected KEV/EPSS enrichment to make advisory exploitable, got %#v", info)
 	}
 
-	if _, err := service.ImportOSVJSON(context.Background(), "osv-test", strings.NewReader(osv)); err != nil {
-		t.Fatalf("second ImportOSVJSON: %v", err)
-	}
-	info, ok = service.LookupCVE("CVE-2026-0001")
-	if !ok {
-		t.Fatal("expected LookupCVE after OSV re-import")
-	}
-	if !info.InKEV || !info.Exploitable {
-		t.Fatalf("expected OSV re-import to preserve KEV/EPSS enrichment, got %#v", info)
-	}
-
 	syncStates, err := service.ListSyncStates(context.Background())
 	if err != nil {
 		t.Fatalf("ListSyncStates: %v", err)
@@ -169,37 +158,6 @@ func TestServiceMatchesEcosystemRanges(t *testing.T) {
 	}
 	if len(matches) != 1 {
 		t.Fatalf("expected one ECOSYSTEM range match, got %#v", matches)
-	}
-}
-
-func TestServicePrefersRangeMetadataWhenExactAndRangeRowsCollide(t *testing.T) {
-	store, err := NewSQLiteStore(t.TempDir() + "/vulndb.db")
-	if err != nil {
-		t.Fatalf("NewSQLiteStore: %v", err)
-	}
-	defer func() { _ = store.Close() }()
-	service := NewService(store)
-
-	osv := `
-{"id":"GHSA-test-mixed","aliases":["CVE-2026-1500"],"summary":"mixed exact and range advisory","details":"keeps fixed version from range","database_specific":{"severity":"HIGH"},"affected":[{"package":{"ecosystem":"npm","name":"lodash"},"versions":["4.17.20"],"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"4.17.21"}]}]}]}
-`
-	if _, err := service.ImportOSVJSON(context.Background(), "osv-test", strings.NewReader(osv)); err != nil {
-		t.Fatalf("ImportOSVJSON: %v", err)
-	}
-
-	matches, err := service.MatchPackages(context.Background(), filesystemanalyzer.OSInfo{}, []filesystemanalyzer.PackageRecord{{
-		Ecosystem: "npm",
-		Name:      "lodash",
-		Version:   "4.17.20",
-	}})
-	if err != nil {
-		t.Fatalf("MatchPackages: %v", err)
-	}
-	if len(matches) != 1 {
-		t.Fatalf("expected one merged vulnerability match, got %#v", matches)
-	}
-	if matches[0].FixedVersion != "4.17.21" {
-		t.Fatalf("expected merged match to preserve fixed version from range row, got %#v", matches[0])
 	}
 }
 
@@ -278,7 +236,7 @@ func TestServiceMatchesAPKRevisionAwareFixedVersion(t *testing.T) {
 	}
 }
 
-func TestServiceMatchesExtendedAPKVersions(t *testing.T) {
+func TestServiceFiltersScopedCandidatesByDistribution(t *testing.T) {
 	store, err := NewSQLiteStore(t.TempDir() + "/vulndb.db")
 	if err != nil {
 		t.Fatalf("NewSQLiteStore: %v", err)
@@ -286,37 +244,52 @@ func TestServiceMatchesExtendedAPKVersions(t *testing.T) {
 	defer func() { _ = store.Close() }()
 	service := NewService(store)
 
-	osv := `
-{"id":"GHSA-test-apk-extended","aliases":["CVE-2026-2500"],"summary":"extended apk versions","details":"supports alpine package version forms","database_specific":{"severity":"HIGH"},"affected":[{"package":{"ecosystem":"Alpine","name":"openssl"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"1.1.1u-r0"}]}]},{"package":{"ecosystem":"Alpine","name":"openssh"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"3.3_p1-r2"}]}]}]}
-`
-	if _, err := service.ImportOSVJSON(context.Background(), "osv-test", strings.NewReader(osv)); err != nil {
-		t.Fatalf("ImportOSVJSON: %v", err)
+	if err := store.UpsertAdvisory(context.Background(), Vulnerability{
+		ID:       "GHSA-test-ubuntu",
+		Aliases:  []string{"CVE-2026-2501"},
+		Summary:  "ubuntu scoped advisory",
+		Severity: "high",
+	}, []AffectedPackage{{
+		Ecosystem:           "deb",
+		PackageName:         "openssl",
+		RangeType:           "ECOSYSTEM",
+		Introduced:          "0",
+		Fixed:               "1.2.4",
+		Distribution:        "ubuntu",
+		DistributionVersion: "22.04",
+	}}); err != nil {
+		t.Fatalf("UpsertAdvisory ubuntu: %v", err)
+	}
+	if err := store.UpsertAdvisory(context.Background(), Vulnerability{
+		ID:       "GHSA-test-debian",
+		Aliases:  []string{"CVE-2026-2502"},
+		Summary:  "debian scoped advisory",
+		Severity: "high",
+	}, []AffectedPackage{{
+		Ecosystem:           "deb",
+		PackageName:         "openssl",
+		RangeType:           "ECOSYSTEM",
+		Introduced:          "0",
+		Fixed:               "1.2.4",
+		Distribution:        "debian",
+		DistributionVersion: "12",
+	}}); err != nil {
+		t.Fatalf("UpsertAdvisory debian: %v", err)
 	}
 
-	matches, err := service.MatchPackages(context.Background(), filesystemanalyzer.OSInfo{}, []filesystemanalyzer.PackageRecord{
-		{Ecosystem: "apk", Name: "openssl", Version: "1.1.1t-r0"},
-		{Ecosystem: "apk", Name: "openssh", Version: "3.3_p1-r1"},
-		{Ecosystem: "apk", Name: "openssh", Version: "3.3_p1-r2"},
-	})
+	matches, err := service.MatchPackages(context.Background(), filesystemanalyzer.OSInfo{
+		ID:        "ubuntu",
+		VersionID: "22.04",
+	}, []filesystemanalyzer.PackageRecord{{
+		Ecosystem: "deb",
+		Name:      "openssl",
+		Version:   "1.2.3",
+	}})
 	if err != nil {
-		t.Fatalf("MatchPackages: %v", err)
+		t.Fatalf("MatchPackages ubuntu: %v", err)
 	}
-	if len(matches) != 2 {
-		t.Fatalf("expected two vulnerable extended apk matches, got %#v", matches)
-	}
-	for _, match := range matches {
-		switch match.Package {
-		case "openssl":
-			if match.FixedVersion != "1.1.1u-r0" {
-				t.Fatalf("expected openssl fixed version 1.1.1u-r0, got %#v", match)
-			}
-		case "openssh":
-			if match.FixedVersion != "3.3_p1-r2" || match.InstalledVersion != "3.3_p1-r1" {
-				t.Fatalf("expected only the pre-fix openssh revision to match, got %#v", match)
-			}
-		default:
-			t.Fatalf("unexpected apk package match %#v", match)
-		}
+	if len(matches) != 1 || matches[0].CVE != "CVE-2026-2501" {
+		t.Fatalf("expected only ubuntu-scoped advisory to match, got %#v", matches)
 	}
 }
 

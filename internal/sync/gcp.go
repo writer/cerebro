@@ -20,14 +20,13 @@ import (
 
 // GCPSyncEngine orchestrates GCP resource syncing with change detection
 type GCPSyncEngine struct {
-	sf           warehouse.SyncWarehouse
-	logger       *slog.Logger
-	concurrency  int
-	projectID    string
-	tableFilter  map[string]struct{}
-	rateLimiter  *rate.Limiter
-	retryOptions retryOptions
-
+	sf                                  warehouse.SyncWarehouse
+	logger                              *slog.Logger
+	concurrency                         int
+	projectID                           string
+	tableFilter                         map[string]struct{}
+	rateLimiter                         *rate.Limiter
+	retryOptions                        retryOptions
 	permissionUsageLookbackDays         int
 	permissionUsageRemovalThresholdDays int
 	gcpIAMTargetGroups                  map[string]struct{}
@@ -62,7 +61,12 @@ func WithGCPPermissionRemovalThresholdDays(days int) GCPEngineOption {
 
 func WithGCPIAMTargetGroups(groups []string) GCPEngineOption {
 	return func(e *GCPSyncEngine) {
-		e.gcpIAMTargetGroups = normalizeIdentityFilterSet(groups)
+		e.gcpIAMTargetGroups = make(map[string]struct{}, len(groups))
+		for _, group := range groups {
+			if trimmed := strings.ToLower(strings.TrimSpace(group)); trimmed != "" {
+				e.gcpIAMTargetGroups[trimmed] = struct{}{}
+			}
+		}
 	}
 }
 
@@ -210,15 +214,16 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (Sync
 	rows, err := e.fetchWithRetry(ctx, table)
 	partialFetch := false
 	if err != nil {
-		if errors.Is(err, errSkipGCPIAMGroupPermissionUsage) {
-			e.logger.Info("skipping gcp table sync", "table", table.Name, "project_id", e.projectID, "reason", err.Error())
+		switch {
+		case errors.Is(err, errSkipGCPIAMGroupPermissionUsage):
+			e.logger.Info("skipping optional table", "table", table.Name, "project", e.projectID, "reason", err)
 			result.Duration = time.Since(start)
 			return result, nil
-		}
-		if isPartialFetchError(err) && len(rows) > 0 {
+		case isPartialFetchError(err) && len(rows) > 0:
 			partialFetch = true
-			e.logger.Warn("fetch returned partial results; enabling backfill-safe scoped upsert", "table", table.Name, "project_id", e.projectID, "rows", len(rows), "error", err)
-		} else {
+			result.BackfillPending = true
+			e.logger.Warn("fetch returned partial results; enabling backfill-safe upsert", "table", table.Name, "project", e.projectID, "rows", len(rows), "error", err)
+		default:
 			e.logger.Error("fetch failed", "table", table.Name, "error", err)
 			result.Errors = 1
 			result.Error = err.Error()
@@ -239,7 +244,7 @@ func (e *GCPSyncEngine) syncTable(ctx context.Context, table GCPTableSpec) (Sync
 	}
 	if table.Name == gcpIAMGroupPermissionUsageTable {
 		if err := e.appendGCPIAMGroupPermissionUsageHistory(ctx, rows); err != nil {
-			e.logger.Error("append gcp iam permission usage history failed", "table", table.Name, "error", err)
+			e.logger.Error("append gcp IAM group permission usage history failed", "table", table.Name, "error", err)
 			result.Errors = 1
 			result.Error = err.Error()
 			result.Duration = time.Since(start)

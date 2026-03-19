@@ -1,16 +1,18 @@
 {
   "id": "privileged-inactive-keys",
-  "control_id": "wc-id-2182",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "User/service account with high privileges and active access key that are inactive for over 90 days",
   "description": "A privileged account has access keys that have been inactive for over 90 days",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "iam::user|iam::service_account",
   "conditions": [
-    "has_high_privilege == true",
-    "access_keys ANY (status == 'Active' AND last_used_days_ago \u003e 90)"
+    "cmp_eq(path(resource, \"has_high_privilege\"), true)",
+    "list_value(path(resource, \"access_keys\")).exists(item, (cmp_eq(path(item, \"status\"), \"Active\")) \u0026\u0026 (cmp_gt(path(item, \"last_used_days_ago\"), 90)))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Disable or delete unused access keys. Review and reduce account privileges.",
   "tags": [
     "wiz",
     "identity",
@@ -18,6 +20,8 @@
     "privileged",
     "dormant"
   ],
+  "control_id": "wc-id-2182",
+  "remediation": "Disable or delete unused access keys. Review and reduce account privileges.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

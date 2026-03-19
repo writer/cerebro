@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	apicontract "github.com/writer/cerebro/api"
+	"github.com/writer/cerebro/internal/runtime"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,6 +22,67 @@ type openAPIContractCase struct {
 	requestPath    string
 	body           interface{}
 	expectedStatus int
+}
+
+type noopRuntimeActionHandler struct{}
+
+func (noopRuntimeActionHandler) KillProcess(context.Context, string, int) error          { return nil }
+func (noopRuntimeActionHandler) IsolateContainer(context.Context, string, string) error  { return nil }
+func (noopRuntimeActionHandler) IsolateHost(context.Context, string, string) error       { return nil }
+func (noopRuntimeActionHandler) QuarantineFile(context.Context, string, string) error    { return nil }
+func (noopRuntimeActionHandler) BlockIP(context.Context, string) error                   { return nil }
+func (noopRuntimeActionHandler) BlockDomain(context.Context, string) error               { return nil }
+func (noopRuntimeActionHandler) RevokeCredentials(context.Context, string, string) error { return nil }
+func (noopRuntimeActionHandler) ScaleDown(context.Context, string, int) error            { return nil }
+
+func seedRuntimeApprovalExecution(t *testing.T, s *Server, executionID, dstIP string) *runtime.ResponseExecution {
+	t.Helper()
+	if s.app.RuntimeRespond == nil {
+		t.Fatal("expected runtime response engine")
+	}
+	s.app.RuntimeRespond.SetActionHandler(noopRuntimeActionHandler{})
+	policyID := executionID + "-policy"
+	if err := s.app.RuntimeRespond.CreatePolicy(&runtime.ResponsePolicy{
+		ID:              policyID,
+		Name:            "OpenAPI Approval",
+		Enabled:         true,
+		Priority:        1000,
+		RequireApproval: true,
+		Triggers: []runtime.PolicyTrigger{{
+			Type:     "finding",
+			Category: runtime.DetectionCategory("openapi-approval"),
+			Severity: "critical",
+		}},
+		Actions: []runtime.PolicyAction{{
+			Type:       runtime.ActionBlockIP,
+			Parameters: map[string]string{"target": "destination"},
+		}},
+	}); err != nil {
+		t.Fatalf("CreatePolicy: %v", err)
+	}
+	execution, err := s.app.RuntimeRespond.ProcessFinding(context.Background(), &runtime.RuntimeFinding{
+		ID:           executionID + "-finding",
+		RuleID:       executionID + "-rule",
+		Category:     runtime.DetectionCategory("openapi-approval"),
+		Severity:     "critical",
+		ResourceID:   executionID + "-resource",
+		ResourceType: "pod",
+		Event: &runtime.RuntimeEvent{
+			ID:           executionID + "-event",
+			ResourceID:   executionID + "-resource",
+			ResourceType: "pod",
+			Network: &runtime.NetworkEvent{
+				DstIP: dstIP,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessFinding: %v", err)
+	}
+	if execution == nil {
+		t.Fatal("expected runtime execution")
+	}
+	return execution
 }
 
 func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
@@ -300,6 +363,13 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			method:         http.MethodGet,
 			pathTemplate:   "/api/v1/tickets",
 			requestPath:    "/api/v1/tickets/",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "platform workload scan targets contract",
+			method:         http.MethodGet,
+			pathTemplate:   "/api/v1/platform/workload-scan/targets",
+			requestPath:    "/api/v1/platform/workload-scan/targets",
 			expectedStatus: http.StatusOK,
 		},
 	}

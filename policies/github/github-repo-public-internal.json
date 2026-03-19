@@ -1,21 +1,25 @@
 {
   "id": "github-repo-internal-exposed",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitHub Internal Repository Made Public",
   "description": "Repository appears to contain internal code but is publicly visible",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "github::repository",
   "conditions": [
-    "visibility == 'public'",
-    "name matches '(?i)(internal|private|confidential|secret)'"
+    "cmp_eq(path(resource, \"visibility\"), \"public\")",
+    "matches_value(path(resource, \"name\"), \"(?i)(internal|private|confidential|secret)\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Change repository visibility to private or internal.",
   "tags": [
     "devsecops",
     "github",
     "data-exposure",
     "misconfiguration"
   ],
+  "remediation": "Change repository visibility to private or internal.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

@@ -102,6 +102,42 @@ func TestPolicyEvaluateEndpoint_RequiresApprovalFromPropagation(t *testing.T) {
 	}
 }
 
+func TestPolicyEvaluateEndpoint_UsesGraphStoreWhenRawGraphUnavailable(t *testing.T) {
+	s := newStoreBackedGraphServer(t, buildGraphStorePropagationTestGraph())
+	s.app.Policy = policy.NewEngine()
+
+	w := do(t, s, http.MethodPost, "/api/v1/policy/evaluate", map[string]any{
+		"principal": map[string]any{"id": "user:reviewer"},
+		"action":    "identity.update",
+		"resource":  map[string]any{"type": "user", "id": "user-1"},
+		"context":   map[string]any{"ticket_id": "CHG-456"},
+		"proposed_change": map[string]any{
+			"id":                     "proposal-2",
+			"source":                 "api-test",
+			"reason":                 "store-backed review",
+			"approval_arr_threshold": 100000.0,
+			"mutations": []map[string]any{
+				{"type": "modify_node", "id": "user-1", "properties": map[string]any{"mfa_enabled": false}},
+			},
+		},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if body["decision"] != "require_approval" {
+		t.Fatalf("expected require_approval decision from store-backed graph, got %#v", body["decision"])
+	}
+	propagation, ok := body["propagation"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected propagation section, got %#v", body["propagation"])
+	}
+	if propagation["decision"] != string(graph.DecisionNeedsApproval) {
+		t.Fatalf("expected propagation decision %q, got %#v", graph.DecisionNeedsApproval, propagation["decision"])
+	}
+}
+
 func TestPolicyEvaluateEndpoint_BackwardCompatiblePoliciesPath(t *testing.T) {
 	s := newTestServer(t)
 

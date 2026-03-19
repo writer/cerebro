@@ -12,6 +12,7 @@ type EffectivePermissions struct {
 	PrincipalID      string                     `json:"principal_id"`
 	PrincipalName    string                     `json:"principal_name"`
 	Resources        map[string]*ResourceAccess `json:"resources"`
+	Conditional      map[string]*ResourceAccess `json:"conditional_resources,omitempty"`
 	Summary          *PermissionSummary         `json:"summary"`
 	RiskAssessment   *PermissionRiskAssessment  `json:"risk_assessment"`
 	InheritanceChain []*PermissionSource        `json:"inheritance_chain"`
@@ -114,28 +115,10 @@ func (c *EffectivePermissionsCalculator) Calculate(principalID string) *Effectiv
 		}
 	}
 
-	principal, ok := c.graph.GetNode(principalID)
-	if !ok {
+	ep := c.calculate(principalID, nil)
+	if ep == nil {
 		return nil
 	}
-
-	ep := &EffectivePermissions{
-		PrincipalID:   principalID,
-		PrincipalName: principal.Name,
-		Resources:     make(map[string]*ResourceAccess),
-	}
-
-	// Collect permissions from all sources
-	c.collectDirectPermissions(ep, principalID)
-	c.collectGroupPermissions(ep, principalID)
-	c.collectRolePermissions(ep, principalID)
-	c.applyDenyRules(ep, principalID)
-
-	// Generate summary
-	ep.Summary = c.generateSummary(ep)
-
-	// Assess risk
-	ep.RiskAssessment = c.assessRisk(ep)
 
 	// Cache result with version
 	c.cache.Store(principalID, &cachedPermissions{
@@ -146,8 +129,55 @@ func (c *EffectivePermissionsCalculator) Calculate(principalID string) *Effectiv
 	return ep
 }
 
-func (c *EffectivePermissionsCalculator) collectDirectPermissions(ep *EffectivePermissions, principalID string) {
-	for _, edge := range c.graph.GetOutEdges(principalID) {
+// CalculateWithContext computes effective permissions for a principal under a
+// specific request-time context. Context-specific evaluations are not cached.
+func (c *EffectivePermissionsCalculator) CalculateWithContext(
+	principalID string,
+	ctx *PermissionEvaluationContext,
+) *EffectivePermissions {
+	return c.calculate(principalID, ctx)
+}
+
+func (c *EffectivePermissionsCalculator) calculate(
+	principalID string,
+	ctx *PermissionEvaluationContext,
+) *EffectivePermissions {
+	principal, ok := c.graph.GetNode(principalID)
+	if !ok {
+		return nil
+	}
+
+	ep := &EffectivePermissions{
+		PrincipalID:   principalID,
+		PrincipalName: principal.Name,
+		Resources:     make(map[string]*ResourceAccess),
+		Conditional:   make(map[string]*ResourceAccess),
+	}
+
+	// Collect permissions from all sources
+	c.collectDirectPermissions(ep, principal, ctx)
+	c.collectGroupPermissions(ep, principal, ctx)
+	c.collectRolePermissions(ep, principalID, ctx)
+	c.applyDenyRules(ep, principalID, ctx)
+
+	// Generate summary
+	ep.Summary = c.generateSummary(ep)
+
+	// Assess risk
+	ep.RiskAssessment = c.assessRisk(ep)
+	if len(ep.Conditional) == 0 {
+		ep.Conditional = nil
+	}
+
+	return ep
+}
+
+func (c *EffectivePermissionsCalculator) collectDirectPermissions(
+	ep *EffectivePermissions,
+	principalNode *Node,
+	ctx *PermissionEvaluationContext,
+) {
+	for _, edge := range c.graph.GetOutEdges(principalNode.ID) {
 		if edge.IsDeny() {
 			continue
 		}
@@ -159,34 +189,25 @@ func (c *EffectivePermissionsCalculator) collectDirectPermissions(ep *EffectiveP
 
 		actions := permissionActionsForEdge(edge)
 		conditions := permissionConditionsForEdge(edge)
-		source := permissionSourceForEdge(edge, principalID, ep.PrincipalName, "direct", "allow")
-
-		if existing, ok := ep.Resources[edge.Target]; ok {
-			existing.Actions = mergeActions(existing.Actions, actions)
-			existing.Sources = mergeActions(existing.Sources, []string{source.SourceID})
-			existing.Conditions = mergeActions(existing.Conditions, conditions)
-			existing.IsDirect = true
-		} else {
-			ep.Resources[edge.Target] = &ResourceAccess{
-				ResourceID:   edge.Target,
-				ResourceName: targetNode.Name,
-				ResourceType: targetNode.Kind,
-				Actions:      actions,
-				Effect:       EdgeEffectAllow,
-				Sources:      []string{source.SourceID},
-				Path:         []string{principalID, edge.Target},
-				IsDirect:     true,
-				Conditions:   conditions,
-			}
+		match := evaluateEdgeConditions(edge, principalNode, targetNode, ctx)
+		if match == conditionMatchNo {
+			continue
 		}
-
-		ep.InheritanceChain = append(ep.InheritanceChain, source)
+		source := permissionSourceForEdge(edge, principalNode.ID, ep.PrincipalName, "direct", "allow")
+		upsertResourceAccess(resourceBucket(ep, match), targetNode, actions, conditions, source.SourceID, []string{principalNode.ID, edge.Target}, true, false)
+		if match == conditionMatchYes {
+			ep.InheritanceChain = append(ep.InheritanceChain, source)
+		}
 	}
 }
 
-func (c *EffectivePermissionsCalculator) collectGroupPermissions(ep *EffectivePermissions, principalID string) {
+func (c *EffectivePermissionsCalculator) collectGroupPermissions(
+	ep *EffectivePermissions,
+	principalNode *Node,
+	ctx *PermissionEvaluationContext,
+) {
 	// Find groups this principal is a member of
-	for _, edge := range c.graph.GetOutEdges(principalID) {
+	for _, edge := range c.graph.GetOutEdges(principalNode.ID) {
 		if edge.Kind != EdgeKindMemberOf {
 			continue
 		}
@@ -209,53 +230,58 @@ func (c *EffectivePermissionsCalculator) collectGroupPermissions(ep *EffectivePe
 
 			actions := permissionActionsForEdge(groupEdge)
 			conditions := permissionConditionsForEdge(groupEdge)
-
-			// Merge with existing or create new
-			if existing, ok := ep.Resources[groupEdge.Target]; ok {
-				existing.Actions = mergeActions(existing.Actions, actions)
-				existing.Sources = append(existing.Sources, groupNode.ID)
-				existing.Conditions = mergeActions(existing.Conditions, conditions)
-			} else {
-				ep.Resources[groupEdge.Target] = &ResourceAccess{
-					ResourceID:   groupEdge.Target,
-					ResourceName: targetNode.Name,
-					ResourceType: targetNode.Kind,
-					Actions:      actions,
-					Effect:       EdgeEffectAllow,
-					Sources:      []string{groupNode.ID},
-					Path:         []string{principalID, groupNode.ID, groupEdge.Target},
-					IsInherited:  true,
-					Conditions:   conditions,
-				}
+			match := evaluateEdgeConditions(groupEdge, principalNode, targetNode, ctx)
+			if match == conditionMatchNo {
+				continue
 			}
 
-			ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
-				Type:       "group",
-				SourceID:   groupNode.ID,
-				SourceName: groupNode.Name,
-				Effect:     "allow",
-			})
+			upsertResourceAccess(
+				resourceBucket(ep, match),
+				targetNode,
+				actions,
+				conditions,
+				groupNode.ID,
+				[]string{principalNode.ID, groupNode.ID, groupEdge.Target},
+				false,
+				true,
+			)
+
+			if match == conditionMatchYes {
+				ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
+					Type:       "group",
+					SourceID:   groupNode.ID,
+					SourceName: groupNode.Name,
+					Effect:     "allow",
+				})
+			}
 		}
 	}
 }
 
-func (c *EffectivePermissionsCalculator) collectRolePermissions(ep *EffectivePermissions, principalID string) {
+func (c *EffectivePermissionsCalculator) collectRolePermissions(
+	ep *EffectivePermissions,
+	principalID string,
+	ctx *PermissionEvaluationContext,
+) {
 	// Find roles this principal can assume
-	visited := make(map[string]bool)
-	c.collectRolePermissionsRecursive(ep, principalID, principalID, visited, []string{principalID})
+	visited := newOrdinalVisitSet(NewNodeIDIndex())
+	c.collectRolePermissionsRecursive(ep, principalID, &visited, []string{principalID}, nil, conditionMatchYes, ctx)
 }
 
 func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
 	ep *EffectivePermissions,
-	_ string, // principalID - kept for potential future use
 	currentID string,
-	visited map[string]bool,
+	visited *ordinalVisitSet,
 	path []string,
+	pathConditions []string,
+	pathState conditionMatchResult,
+	ctx *PermissionEvaluationContext,
 ) {
-	if visited[currentID] {
+	if visited.has(currentID) {
 		return
 	}
-	visited[currentID] = true
+	visited.mark(currentID)
+	currentNode, _ := c.graph.GetNode(currentID)
 
 	for _, edge := range c.graph.GetOutEdges(currentID) {
 		if edge.Kind != EdgeKindCanAssume {
@@ -269,6 +295,11 @@ func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
 
 		newPath := append([]string{}, path...)
 		newPath = append(newPath, roleNode.ID)
+		assumeConditions := mergeActions(pathConditions, permissionConditionsForEdge(edge))
+		assumeState := combineConditionResult(pathState, evaluateEdgeConditions(edge, currentNode, roleNode, ctx))
+		if assumeState == conditionMatchNo {
+			continue
+		}
 
 		// Get role's permissions
 		for _, roleEdge := range c.graph.GetOutEdges(roleNode.ID) {
@@ -278,7 +309,7 @@ func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
 
 			if roleEdge.Kind == EdgeKindCanAssume {
 				// Role can assume another role - recurse
-				c.collectRolePermissionsRecursive(ep, "", roleNode.ID, visited, newPath)
+				c.collectRolePermissionsRecursive(ep, roleNode.ID, visited, newPath, assumeConditions, assumeState, ctx)
 				continue
 			}
 
@@ -288,42 +319,37 @@ func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
 			}
 
 			actions := permissionActionsForEdge(roleEdge)
-			conditions := permissionConditionsForEdge(roleEdge)
+			conditions := mergeActions(assumeConditions, permissionConditionsForEdge(roleEdge))
 			resourcePath := append([]string{}, newPath...)
 			resourcePath = append(resourcePath, roleEdge.Target)
-
-			if existing, ok := ep.Resources[roleEdge.Target]; ok {
-				existing.Actions = mergeActions(existing.Actions, actions)
-				existing.Sources = append(existing.Sources, roleNode.ID)
-				existing.Conditions = mergeActions(existing.Conditions, conditions)
-			} else {
-				ep.Resources[roleEdge.Target] = &ResourceAccess{
-					ResourceID:   roleEdge.Target,
-					ResourceName: targetNode.Name,
-					ResourceType: targetNode.Kind,
-					Actions:      actions,
-					Effect:       EdgeEffectAllow,
-					Sources:      []string{roleNode.ID},
-					Path:         resourcePath,
-					IsInherited:  true,
-					Conditions:   conditions,
-				}
+			match := combineConditionResult(assumeState, evaluateEdgeConditions(roleEdge, roleNode, targetNode, ctx))
+			if match == conditionMatchNo {
+				continue
 			}
 
-			ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
-				Type:       "role",
-				SourceID:   roleNode.ID,
-				SourceName: roleNode.Name,
-				Effect:     "allow",
-			})
+			upsertResourceAccess(resourceBucket(ep, match), targetNode, actions, conditions, roleNode.ID, resourcePath, false, true)
+
+			if match == conditionMatchYes {
+				ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
+					Type:       "role",
+					SourceID:   roleNode.ID,
+					SourceName: roleNode.Name,
+					Effect:     "allow",
+				})
+			}
 		}
 	}
 }
 
-func (c *EffectivePermissionsCalculator) applyDenyRules(ep *EffectivePermissions, principalID string) {
+func (c *EffectivePermissionsCalculator) applyDenyRules(
+	ep *EffectivePermissions,
+	principalID string,
+	ctx *PermissionEvaluationContext,
+) {
 	// Collect all deny edges from various sources
 	// Priority order: SCPs > Resource Policies > Identity Policies
 	denies := make(map[string][]string) // resourceID -> denied actions
+	principalNode, _ := c.graph.GetNode(principalID)
 
 	// 1. Direct denies from principal
 	for _, edge := range c.graph.GetOutEdges(principalID) {
@@ -332,6 +358,9 @@ func (c *EffectivePermissionsCalculator) applyDenyRules(ep *EffectivePermissions
 		}
 		targetNode, ok := c.graph.GetNode(edge.Target)
 		if !ok || !targetNode.IsResource() {
+			continue
+		}
+		if evaluateEdgeConditions(edge, principalNode, targetNode, ctx) != conditionMatchYes {
 			continue
 		}
 		actions := permissionActionsForEdge(edge)
@@ -360,6 +389,9 @@ func (c *EffectivePermissionsCalculator) applyDenyRules(ep *EffectivePermissions
 			if !ok || !targetNode.IsResource() {
 				continue
 			}
+			if evaluateEdgeConditions(groupEdge, principalNode, targetNode, ctx) != conditionMatchYes {
+				continue
+			}
 
 			actions := permissionActionsForEdge(groupEdge)
 			denies[groupEdge.Target] = append(denies[groupEdge.Target], actions...)
@@ -374,24 +406,20 @@ func (c *EffectivePermissionsCalculator) applyDenyRules(ep *EffectivePermissions
 	}
 
 	// 3. Role denies - check all roles the principal can assume
-	visited := make(map[string]bool)
-	c.collectRoleDenies(ep, principalID, denies, visited)
+	visited := newOrdinalVisitSet(NewNodeIDIndex())
+	c.collectRoleDenies(ep, principalID, denies, &visited, conditionMatchYes, ctx)
 
 	// 4. Service Control Policies (SCPs) - apply organization-level restrictions
 	// SCPs are stored as special nodes with EdgeKindSCP edges
-	c.applyServiceControlPolicies(ep, principalID, denies)
+	c.applyServiceControlPolicies(ep, principalID, denies, ctx)
 
 	// 5. Permission Boundaries - AWS specific, limits max permissions
-	c.applyPermissionBoundaries(ep, principalID, denies)
+	c.applyPermissionBoundaries(ep, principalID, denies, ctx)
 
 	// Apply all collected denies
 	for resourceID, deniedActions := range denies {
-		if access, ok := ep.Resources[resourceID]; ok {
-			access.Actions = removeActions(access.Actions, deniedActions)
-			if len(access.Actions) == 0 {
-				delete(ep.Resources, resourceID)
-			}
-		}
+		applyDeniedActions(ep.Resources, resourceID, deniedActions)
+		applyDeniedActions(ep.Conditional, resourceID, deniedActions)
 	}
 }
 
@@ -400,12 +428,15 @@ func (c *EffectivePermissionsCalculator) collectRoleDenies(
 	ep *EffectivePermissions,
 	currentID string,
 	denies map[string][]string,
-	visited map[string]bool,
+	visited *ordinalVisitSet,
+	pathState conditionMatchResult,
+	ctx *PermissionEvaluationContext,
 ) {
-	if visited[currentID] {
+	if visited.has(currentID) {
 		return
 	}
-	visited[currentID] = true
+	visited.mark(currentID)
+	currentNode, _ := c.graph.GetNode(currentID)
 
 	for _, edge := range c.graph.GetOutEdges(currentID) {
 		if edge.Kind != EdgeKindCanAssume {
@@ -416,19 +447,26 @@ func (c *EffectivePermissionsCalculator) collectRoleDenies(
 		if !ok || roleNode.Kind != NodeKindRole {
 			continue
 		}
+		assumeState := combineConditionResult(pathState, evaluateEdgeConditions(edge, currentNode, roleNode, ctx))
+		if assumeState == conditionMatchNo {
+			continue
+		}
 
 		// Check role's deny edges
 		for _, roleEdge := range c.graph.GetOutEdges(roleNode.ID) {
 			if !roleEdge.IsDeny() {
 				if roleEdge.Kind == EdgeKindCanAssume {
 					// Role can assume another role - recurse
-					c.collectRoleDenies(ep, roleNode.ID, denies, visited)
+					c.collectRoleDenies(ep, roleNode.ID, denies, visited, assumeState, ctx)
 				}
 				continue
 			}
 
 			targetNode, ok := c.graph.GetNode(roleEdge.Target)
 			if !ok || !targetNode.IsResource() {
+				continue
+			}
+			if combineConditionResult(assumeState, evaluateEdgeConditions(roleEdge, roleNode, targetNode, ctx)) != conditionMatchYes {
 				continue
 			}
 
@@ -450,6 +488,7 @@ func (c *EffectivePermissionsCalculator) applyServiceControlPolicies(
 	ep *EffectivePermissions,
 	principalID string,
 	denies map[string][]string,
+	ctx *PermissionEvaluationContext,
 ) {
 	principal, ok := c.graph.GetNode(principalID)
 	if !ok {
@@ -493,17 +532,13 @@ func (c *EffectivePermissionsCalculator) applyServiceControlPolicies(
 			if !edge.IsDeny() {
 				continue
 			}
-
-			// SCPs can deny access to services/actions globally
-			// Apply to all matching resources
-			actions := edgeKindToActions(edge.Kind)
-			if edge.Target == "*" {
-				// Deny applies to all resources
-				for resourceID := range ep.Resources {
-					denies[resourceID] = append(denies[resourceID], actions...)
+			actions := permissionActionsForEdge(edge)
+			for _, resourceID := range effectivePermissionTargetIDs(ep, edge.Target) {
+				targetNode, _ := c.graph.GetNode(resourceID)
+				if evaluateEdgeConditions(edge, principal, targetNode, ctx) != conditionMatchYes {
+					continue
 				}
-			} else {
-				denies[edge.Target] = append(denies[edge.Target], actions...)
+				denies[resourceID] = append(denies[resourceID], actions...)
 			}
 
 			ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
@@ -522,17 +557,18 @@ func (c *EffectivePermissionsCalculator) applyServiceControlPolicies(
 				if edge.IsDeny() {
 					continue
 				}
-				actions := edgeKindToActions(edge.Kind)
-				if allowedActions[edge.Target] == nil {
-					allowedActions[edge.Target] = make(map[string]bool)
-				}
-				for _, a := range actions {
-					allowedActions[edge.Target][a] = true
+				actions := permissionActionsForEdge(edge)
+				for _, resourceID := range effectivePermissionTargetIDs(ep, edge.Target) {
+					targetNode, _ := c.graph.GetNode(resourceID)
+					if evaluateEdgeConditions(edge, principal, targetNode, ctx) != conditionMatchYes {
+						continue
+					}
+					addAllowedActions(allowedActions, resourceID, actions)
 				}
 			}
 
 			// Everything not explicitly allowed is denied
-			for resourceID, access := range ep.Resources {
+			forEachEffectivePermissionAccess(ep, func(resourceID string, access *ResourceAccess) {
 				allowed := allowedActions[resourceID]
 				if allowed == nil {
 					allowed = allowedActions["*"]
@@ -548,7 +584,7 @@ func (c *EffectivePermissionsCalculator) applyServiceControlPolicies(
 						}
 					}
 				}
-			}
+			})
 		}
 	}
 }
@@ -558,6 +594,7 @@ func (c *EffectivePermissionsCalculator) applyPermissionBoundaries(
 	ep *EffectivePermissions,
 	principalID string,
 	denies map[string][]string,
+	ctx *PermissionEvaluationContext,
 ) {
 	principal, ok := c.graph.GetNode(principalID)
 	if !ok {
@@ -583,17 +620,18 @@ func (c *EffectivePermissionsCalculator) applyPermissionBoundaries(
 		if edge.IsDeny() {
 			continue
 		}
-		actions := edgeKindToActions(edge.Kind)
-		if allowedActions[edge.Target] == nil {
-			allowedActions[edge.Target] = make(map[string]bool)
-		}
-		for _, a := range actions {
-			allowedActions[edge.Target][a] = true
+		actions := permissionActionsForEdge(edge)
+		for _, resourceID := range effectivePermissionTargetIDs(ep, edge.Target) {
+			targetNode, _ := c.graph.GetNode(resourceID)
+			if evaluateEdgeConditions(edge, principal, targetNode, ctx) != conditionMatchYes {
+				continue
+			}
+			addAllowedActions(allowedActions, resourceID, actions)
 		}
 	}
 
 	// If boundary exists, everything not in the boundary is implicitly denied
-	for resourceID, access := range ep.Resources {
+	forEachEffectivePermissionAccess(ep, func(resourceID string, access *ResourceAccess) {
 		allowed := allowedActions[resourceID]
 		if allowed == nil {
 			allowed = allowedActions["*"]
@@ -609,7 +647,7 @@ func (c *EffectivePermissionsCalculator) applyPermissionBoundaries(
 				}
 			}
 		}
-	}
+	})
 
 	ep.InheritanceChain = append(ep.InheritanceChain, &PermissionSource{
 		Type:       "permission_boundary",
@@ -885,19 +923,30 @@ func permissionConditionsForEdge(edge *Edge) []string {
 	if edge == nil || edge.Properties == nil {
 		return nil
 	}
-	raw, ok := edge.Properties["conditions"]
-	if !ok || raw == nil {
+	rawValues := make([]any, 0, 2)
+	if raw, ok := edge.Properties["conditions"]; ok && raw != nil {
+		rawValues = append(rawValues, raw)
+	}
+	if raw, ok := edge.Properties["condition"]; ok && raw != nil {
+		rawValues = append(rawValues, raw)
+	}
+	if len(rawValues) == 0 {
 		return nil
 	}
-	payload, err := json.Marshal(raw)
-	if err != nil {
-		value := strings.TrimSpace(toString(raw))
-		if value == "" {
-			return nil
+	results := make([]string, 0, len(rawValues))
+	for _, raw := range rawValues {
+		payload, err := json.Marshal(raw)
+		if err != nil {
+			value := strings.TrimSpace(toString(raw))
+			if value == "" {
+				continue
+			}
+			results = append(results, value)
+			continue
 		}
-		return []string{value}
+		results = append(results, string(payload))
 	}
-	return []string{string(payload)}
+	return mergeActions(nil, results)
 }
 
 func permissionSourceForEdge(edge *Edge, fallbackID, fallbackName, fallbackType, effect string) *PermissionSource {
@@ -938,6 +987,97 @@ func mergeActions(a, b []string) []string {
 	return result
 }
 
+func resourceBucket(ep *EffectivePermissions, match conditionMatchResult) map[string]*ResourceAccess {
+	if match == conditionMatchUnknown {
+		return ep.Conditional
+	}
+	return ep.Resources
+}
+
+func effectivePermissionTargetIDs(ep *EffectivePermissions, target string) []string {
+	target = strings.TrimSpace(target)
+	if target != "" && target != "*" {
+		return []string{target}
+	}
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(ep.Resources)+len(ep.Conditional))
+	appendIDs := func(bucket map[string]*ResourceAccess) {
+		for resourceID := range bucket {
+			if _, ok := seen[resourceID]; ok {
+				continue
+			}
+			seen[resourceID] = struct{}{}
+			out = append(out, resourceID)
+		}
+	}
+	appendIDs(ep.Resources)
+	appendIDs(ep.Conditional)
+	return out
+}
+
+func forEachEffectivePermissionAccess(ep *EffectivePermissions, fn func(resourceID string, access *ResourceAccess)) {
+	if ep == nil || fn == nil {
+		return
+	}
+	for resourceID, access := range ep.Resources {
+		if access != nil {
+			fn(resourceID, access)
+		}
+	}
+	for resourceID, access := range ep.Conditional {
+		if access != nil {
+			fn(resourceID, access)
+		}
+	}
+}
+
+func addAllowedActions(allowedActions map[string]map[string]bool, resourceID string, actions []string) {
+	if allowedActions[resourceID] == nil {
+		allowedActions[resourceID] = make(map[string]bool)
+	}
+	for _, action := range actions {
+		allowedActions[resourceID][action] = true
+	}
+}
+
+func upsertResourceAccess(
+	bucket map[string]*ResourceAccess,
+	targetNode *Node,
+	actions []string,
+	conditions []string,
+	sourceID string,
+	path []string,
+	isDirect bool,
+	isInherited bool,
+) {
+	if bucket == nil || targetNode == nil {
+		return
+	}
+	if existing, ok := bucket[targetNode.ID]; ok {
+		existing.Actions = mergeActions(existing.Actions, actions)
+		existing.Sources = mergeActions(existing.Sources, []string{sourceID})
+		existing.Conditions = mergeActions(existing.Conditions, conditions)
+		if len(existing.Path) == 0 {
+			existing.Path = append([]string(nil), path...)
+		}
+		existing.IsDirect = existing.IsDirect || isDirect
+		existing.IsInherited = existing.IsInherited || isInherited
+		return
+	}
+	bucket[targetNode.ID] = &ResourceAccess{
+		ResourceID:   targetNode.ID,
+		ResourceName: targetNode.Name,
+		ResourceType: targetNode.Kind,
+		Actions:      mergeActions(nil, actions),
+		Effect:       EdgeEffectAllow,
+		Sources:      mergeActions(nil, []string{sourceID}),
+		Path:         append([]string(nil), path...),
+		IsDirect:     isDirect,
+		IsInherited:  isInherited,
+		Conditions:   mergeActions(nil, conditions),
+	}
+}
+
 func removeActions(actions, toRemove []string) []string {
 	removeSet := make(map[string]bool)
 	for _, a := range toRemove {
@@ -951,6 +1091,15 @@ func removeActions(actions, toRemove []string) []string {
 		}
 	}
 	return result
+}
+
+func applyDeniedActions(bucket map[string]*ResourceAccess, resourceID string, deniedActions []string) {
+	if access, ok := bucket[resourceID]; ok {
+		access.Actions = removeActions(access.Actions, deniedActions)
+		if len(access.Actions) == 0 {
+			delete(bucket, resourceID)
+		}
+	}
 }
 
 func subtractActions(a, b []string) []string {

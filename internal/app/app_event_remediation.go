@@ -127,19 +127,40 @@ func (a *App) propagationEngine() *graph.PropagationEngine {
 	securityGraph := a.SecurityGraph
 	a.securityGraphInitMu.RUnlock()
 	if securityGraph == nil {
-		return nil
+		return a.currentOrStoredPassivePropagationEngine()
 	}
 
 	engine := graph.NewPropagationEngine(securityGraph)
 
 	a.securityGraphInitMu.Lock()
+	if a.SecurityGraph == nil {
+		a.securityGraphInitMu.Unlock()
+		return a.currentOrStoredPassivePropagationEngine()
+	}
 	if a.Propagation == nil {
+		if a.SecurityGraph != securityGraph {
+			engine = graph.NewPropagationEngine(a.SecurityGraph)
+		}
 		a.Propagation = engine
 	} else {
 		engine = a.Propagation
 	}
 	a.securityGraphInitMu.Unlock()
 	return engine
+}
+
+func (a *App) currentOrStoredPassivePropagationEngine() *graph.PropagationEngine {
+	view, err := a.currentOrStoredPassiveSecurityGraphView()
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("failed to resolve propagation graph", "error", err)
+		}
+		return nil
+	}
+	if view == nil {
+		return nil
+	}
+	return graph.NewPropagationEngine(view)
 }
 
 func (a *App) executionChangeProposal(execution *remediation.Execution, event remediation.Event) *graph.ChangeProposal {

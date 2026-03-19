@@ -1,20 +1,24 @@
 {
   "id": "k8s-pod-resource-limits",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "K8s Pod Resource Limits",
   "description": "Containers should have CPU and memory limits defined",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "kubernetes::pod",
   "conditions": [
-    "spec.containers.resources.limits.memory == null",
-    "spec.containers.resources.limits.cpu == null"
+    "cmp_eq(path(resource, \"spec.containers.resources.limits.memory\"), null)",
+    "cmp_eq(path(resource, \"spec.containers.resources.limits.cpu\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Define CPU and memory limits for all containers.",
   "tags": [
     "pod-security",
     "resources",
     "availability"
   ],
+  "remediation": "Define CPU and memory limits for all containers.",
   "risk_categories": [
     "MISCONFIGURATION"
   ]

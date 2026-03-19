@@ -308,9 +308,7 @@ func validateLoadedPolicy(policyDef *Policy, path string) error {
 	policyDef.Resource = strings.TrimSpace(policyDef.Resource)
 	policyDef.Query = strings.TrimSpace(policyDef.Query)
 	policyDef.Severity = normalizeSeverity(policyDef.Severity)
-	if err := canonicalizePolicyConditionFormat(policyDef); err != nil {
-		return fmt.Errorf("invalid policy %s (%s): %w", path, policyDef.ID, err)
-	}
+	policyDef.ConditionFormat = normalizeConditionFormat(policyDef.ConditionFormat)
 
 	missing := make([]string, 0, 4)
 	if policyDef.ID == "" {
@@ -392,9 +390,7 @@ func (e *Engine) AddPolicy(p *Policy) {
 	stored := clonePolicy(p)
 	stored.ID = policyID
 	stored.LastModified = now
-	if err := canonicalizePolicyConditionFormat(stored); err != nil {
-		return
-	}
+	stored.ConditionFormat = normalizeConditionFormat(stored.ConditionFormat)
 
 	if existing, ok := e.policies[policyID]; ok {
 		stored.Version = existing.Version + 1
@@ -430,9 +426,7 @@ func (e *Engine) UpdatePolicy(id string, p *Policy) bool {
 	stored.Version = e.nextPolicyVersionLocked(id)
 	stored.LastModified = now
 	stored.PinnedVersion = 0
-	if err := canonicalizePolicyConditionFormat(stored); err != nil {
-		return false
-	}
+	stored.ConditionFormat = normalizeConditionFormat(stored.ConditionFormat)
 	if err := e.syncConditionProgramsLocked(stored); err != nil {
 		return false
 	}
@@ -887,9 +881,29 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 		return match
 	}
 
+	if field, notNull, ok := parseNullCondition(condition); ok {
+		exists := getNestedValue(asset, field) != nil
+		if notNull {
+			return exists
+		}
+		return !exists
+	}
+
+	if field, suffix, negated, ok := parseEndsWithCondition(condition); ok {
+		match := valueEndsWith(getNestedValue(asset, field), trimQuotes(suffix))
+		if negated {
+			return !match
+		}
+		return match
+	}
+
+	if field, ok := parseReferenceBucketWithPublicAccessCondition(condition); ok {
+		return referencesPublicBucket(asset, field)
+	}
+
 	if field, expected, operator, ok := parseComparisonCondition(condition); ok {
 		val := getNestedValue(asset, field)
-		return compareValues(val, expected, operator)
+		return compareValues(val, resolveComparisonExpectedValue(asset, expected), operator)
 	}
 
 	// Handle starts_with
@@ -923,12 +937,15 @@ func evaluateCondition(condition string, asset map[string]interface{}) bool {
 }
 
 func parseComparisonCondition(condition string) (string, string, string, bool) {
-	for _, operator := range []string{">=", "<=", "==", "!=", ">", "<"} {
+	for _, operator := range []string{">=", "<=", "==", "!=", "=", ">", "<"} {
 		if parts := splitTopLevel(condition, operator); len(parts) == 2 {
 			field := strings.TrimSpace(parts[0])
 			expected := strings.TrimSpace(parts[1])
 			if field == "" || expected == "" {
 				return "", "", "", false
+			}
+			if operator == "=" {
+				operator = "=="
 			}
 			return field, expected, operator, true
 		}
@@ -1110,6 +1127,11 @@ func parseAnyCondition(condition string) (string, string, bool, bool) {
 }
 
 func parseInCondition(condition string) (string, []string, bool, bool) {
+	if parts := splitTopLevelFold(condition, " NOT_IN "); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		values := parseListValues(parts[1])
+		return field, values, true, field != "" && len(values) > 0
+	}
 	if parts := splitTopLevelFold(condition, " NOT IN "); len(parts) == 2 {
 		field := strings.TrimSpace(parts[0])
 		values := parseListValues(parts[1])
@@ -1188,6 +1210,11 @@ func parseMatchesCondition(condition string) (string, string, bool, bool) {
 }
 
 func parseContainsCondition(condition string) (string, string, bool, bool) {
+	if parts := splitTopLevelFold(condition, " NOT_CONTAINS "); len(parts) == 2 {
+		field := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		return field, value, true, field != "" && value != ""
+	}
 	if parts := splitTopLevelFold(condition, " NOT CONTAINS "); len(parts) == 2 {
 		field := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
@@ -1207,12 +1234,22 @@ func evaluateContainsCondition(asset map[string]interface{}, field string, expec
 		return false
 	}
 
-	if !isQuoted(expected) && isOuterParens(expected) {
-		inner := trimOuterParens(expected)
-		return anyValueMatches(getNestedValue(asset, field), inner)
+	if mapped, ok := parseLegacyObjectLiteral(expected); ok {
+		return valueContainsExpected(getNestedValue(asset, field), mapped)
 	}
 
-	return valueContains(getNestedValue(asset, field), trimQuotes(expected))
+	if !isQuoted(expected) && isOuterParens(expected) {
+		inner := trimOuterParens(expected)
+		if shouldTreatContainsInnerAsCondition(inner) {
+			return anyValueMatches(getNestedValue(asset, field), inner)
+		}
+		if mapped, ok := parseLegacyObjectLiteral(inner); ok {
+			return valueContainsExpected(getNestedValue(asset, field), mapped)
+		}
+		return valueContainsExpected(getNestedValue(asset, field), trimQuotes(inner))
+	}
+
+	return valueContainsExpected(getNestedValue(asset, field), trimQuotes(expected))
 }
 
 func anyValueMatches(value interface{}, condition string) bool {
@@ -1539,30 +1576,36 @@ func getFieldCaseInsensitive(m map[string]interface{}, key string) interface{} {
 	return nil
 }
 
-// compareValues compares an asset value against an expected value
-func compareValues(val interface{}, expected string, operator string) bool {
+// compareValues compares an asset value against an expected value.
+func compareValues(val interface{}, expected interface{}, operator string) bool {
 	if val == nil {
-		// nil handling: nil == "nil" or nil == "null" is true
 		if operator == "==" {
-			return expected == "nil" || expected == "null" || expected == ""
+			switch typed := expected.(type) {
+			case nil:
+				return true
+			case string:
+				trimmed := strings.TrimSpace(strings.Trim(typed, "\"'"))
+				return trimmed == "" || trimmed == "nil" || trimmed == "null"
+			default:
+				return false
+			}
 		}
 		return operator == "!="
 	}
 
-	// Handle boolean comparison
-	if b, ok := val.(bool); ok {
-		expectedBool := expected == "true" || expected == "1"
-		switch operator {
-		case "==":
-			return b == expectedBool
-		case "!=":
-			return b != expectedBool
+	if b, ok := toBoolValue(val); ok {
+		if expectedBool, ok := toBoolValue(expected); ok {
+			switch operator {
+			case "==":
+				return b == expectedBool
+			case "!=":
+				return b != expectedBool
+			}
 		}
 	}
 
-	// Handle numeric comparison
-	if f, ok := toFloat64(val); ok {
-		if ef, err := parseFloat64(expected); err == nil {
+	if f, ok := numericValue(val); ok {
+		if ef, ok := numericValue(expected); ok {
 			switch operator {
 			case "==":
 				return f == ef
@@ -1580,34 +1623,36 @@ func compareValues(val interface{}, expected string, operator string) bool {
 		}
 	}
 
-	// Default string comparison
-	strVal := fmt.Sprintf("%v", val)
-	// Strip quotes from both actual and expected values (Snowflake VARIANT columns include quotes)
-	strVal = strings.Trim(strVal, "\"'")
-	expected = strings.Trim(expected, "\"'")
+	if valTime, ok := toTimeValue(val); ok {
+		if expectedTime, ok := toTimeValue(expected); ok {
+			switch operator {
+			case "==":
+				return valTime.Equal(expectedTime)
+			case "!=":
+				return !valTime.Equal(expectedTime)
+			case ">=":
+				return valTime.Equal(expectedTime) || valTime.After(expectedTime)
+			case "<=":
+				return valTime.Equal(expectedTime) || valTime.Before(expectedTime)
+			case ">":
+				return valTime.After(expectedTime)
+			case "<":
+				return valTime.Before(expectedTime)
+			}
+		}
+	}
+
+	strVal := stringifyComparable(val)
+	expectedStr := stringifyComparable(expected)
 
 	switch operator {
 	case "==":
-		return strVal == expected
+		return strVal == expectedStr
 	case "!=":
-		return strVal != expected
+		return strVal != expectedStr
 	}
 
 	return false
-}
-
-func toFloat64(v interface{}) (float64, bool) {
-	switch n := v.(type) {
-	case int:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	case float32:
-		return float64(n), true
-	case float64:
-		return n, true
-	}
-	return 0, false
 }
 
 func parseFloat64(s string) (float64, error) {

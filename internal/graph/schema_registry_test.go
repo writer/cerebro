@@ -53,6 +53,7 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		NodeKindCheckRun,
 		NodeKindWorkloadScan,
 		NodeKindPackage,
+		NodeKindTechnology,
 		NodeKindVulnerability,
 		NodeKindMeeting,
 		NodeKindDocument,
@@ -62,9 +63,11 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		NodeKindOutcome,
 		NodeKindEvidence,
 		NodeKindObservation,
+		NodeKindAttackSequence,
 		NodeKindSource,
 		NodeKindClaim,
 		NodeKindAction,
+		NodeKindVendor,
 	}
 	for _, kind := range requiredNodeKinds {
 		if !reg.IsNodeKindRegistered(kind) {
@@ -84,6 +87,7 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		EdgeKindHasScan,
 		EdgeKindFoundVuln,
 		EdgeKindContainsPkg,
+		EdgeKindContains,
 		EdgeKindAffectedBy,
 		EdgeKindAssertedBy,
 		EdgeKindSupports,
@@ -92,6 +96,8 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		EdgeKindContradicts,
 		EdgeKindTriggeredBy,
 		EdgeKindCausedBy,
+		EdgeKindHasSequence,
+		EdgeKindCorroborates,
 	}
 	for _, kind := range requiredEdgeKinds {
 		if !reg.IsEdgeKindRegistered(kind) {
@@ -211,6 +217,19 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		if !containsEdgeKind(packageDef.Relationships, relationship) {
 			t.Fatalf("expected package relationship %q, got %#v", relationship, packageDef.Relationships)
 		}
+	}
+
+	technologyDef, ok := defByKind[NodeKindTechnology]
+	if !ok {
+		t.Fatal("expected technology definition")
+	}
+	for _, property := range []string{"technology_id", "technology_name", "category", "observed_at", "valid_from", "recorded_at", "transaction_from"} {
+		if !containsRequiredProperty(technologyDef.RequiredProperties, property) {
+			t.Fatalf("expected technology required property %q, got %#v", property, technologyDef.RequiredProperties)
+		}
+	}
+	if !containsEdgeKind(technologyDef.Relationships, EdgeKindBasedOn) {
+		t.Fatalf("expected technology relationship %q, got %#v", EdgeKindBasedOn, technologyDef.Relationships)
 	}
 
 	vulnerabilityDef, ok := defByKind[NodeKindVulnerability]

@@ -1,21 +1,25 @@
 {
   "id": "saas-token-exposed",
-  "control_id": "wc-id-2017",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Validated exposure of SaaS API token",
   "description": "A SaaS API token has been validated as exposed and functional",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "*",
   "conditions": [
-    "secrets ANY (type == 'saas_api_key' AND validated_exposed == true)"
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"saas_api_key\")) \u0026\u0026 (cmp_eq(path(item, \"validated_exposed\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Rotate the exposed token immediately. Audit for unauthorized access using the token.",
   "tags": [
     "wiz",
     "secrets",
     "saas",
     "validated-exposure"
   ],
+  "control_id": "wc-id-2017",
+  "remediation": "Rotate the exposed token immediately. Audit for unauthorized access using the token.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

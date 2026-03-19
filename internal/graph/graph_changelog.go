@@ -13,6 +13,7 @@ type GraphDiffFilter struct {
 	Kind     NodeKind `json:"kind,omitempty"`
 	Provider string   `json:"provider,omitempty"`
 	Account  string   `json:"account,omitempty"`
+	TenantID string   `json:"tenant_id,omitempty"`
 }
 
 // GraphDiffAttribution summarizes the changed slice of the graph for operator-facing changelog views.
@@ -63,7 +64,7 @@ func FilterGraphDiff(diff *GraphDiff, before, after *Snapshot, filter GraphDiffF
 		return nil
 	}
 	filter = normalizeGraphDiffFilter(filter)
-	if filter.Kind == "" && filter.Provider == "" && filter.Account == "" {
+	if filter.Kind == "" && filter.Provider == "" && filter.Account == "" && filter.TenantID == "" {
 		cloned := *diff
 		cloned.NodesAdded = cloneNodes(diff.NodesAdded)
 		cloned.NodesRemoved = cloneNodes(diff.NodesRemoved)
@@ -185,6 +186,7 @@ func normalizeGraphDiffFilter(filter GraphDiffFilter) GraphDiffFilter {
 	filter.Kind = NodeKind(strings.ToLower(strings.TrimSpace(string(filter.Kind))))
 	filter.Provider = strings.ToLower(strings.TrimSpace(filter.Provider))
 	filter.Account = strings.TrimSpace(filter.Account)
+	filter.TenantID = strings.TrimSpace(filter.TenantID)
 	return filter
 }
 
@@ -201,6 +203,9 @@ func nodeMatchesGraphDiffFilter(node *Node, filter GraphDiffFilter) bool {
 	if filter.Account != "" && strings.TrimSpace(node.Account) != filter.Account {
 		return false
 	}
+	if filter.TenantID != "" && strings.TrimSpace(node.TenantID) != filter.TenantID {
+		return false
+	}
 	return true
 }
 
@@ -208,7 +213,7 @@ func edgeMatchesGraphDiffFilter(edge *Edge, filter GraphDiffFilter, nodes map[st
 	if edge == nil {
 		return false
 	}
-	if filter.Kind == "" && filter.Provider == "" && filter.Account == "" {
+	if filter.Kind == "" && filter.Provider == "" && filter.Account == "" && filter.TenantID == "" {
 		return true
 	}
 	return nodeMatchesGraphDiffFilter(nodes[edge.Source], filter) || nodeMatchesGraphDiffFilter(nodes[edge.Target], filter)

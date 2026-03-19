@@ -1,21 +1,25 @@
 {
   "id": "resource-cleartext-keys-privileged",
-  "control_id": "wc-id-254",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Resource with cleartext cloud keys granting high privileges",
   "description": "A resource contains cleartext cloud credentials that grant high privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "*",
   "conditions": [
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"grants_high_privilege\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove cleartext keys. Use IAM roles, managed identities, or secret managers. Rotate any potentially exposed credentials.",
   "tags": [
     "wiz",
     "secrets",
     "cleartext-keys",
     "privileged"
   ],
+  "control_id": "wc-id-254",
+  "remediation": "Remove cleartext keys. Use IAM roles, managed identities, or secret managers. Rotate any potentially exposed credentials.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "IDENTITY_RISK",

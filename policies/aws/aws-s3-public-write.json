@@ -1,15 +1,18 @@
 {
   "id": "aws-s3-public-write",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Bucket Allows Public Write Access",
   "description": "S3 bucket policy or ACL grants write permissions to anonymous users or all authenticated AWS users",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::s3::bucket",
   "conditions": [
-    "policy.Statement ANY (Effect == 'Allow' AND Principal == '*' AND Action MATCHES 's3:(Put|Delete).*')",
-    "acl.grants ANY (grantee.uri CONTAINS 'AllUsers' AND permission IN ('WRITE', 'FULL_CONTROL'))"
+    "list_value(path(resource, \"policy.Statement\")).exists(item, (cmp_eq(path(item, \"Effect\"), \"Allow\")) \u0026\u0026 (cmp_eq(path(item, \"Principal\"), \"*\")) \u0026\u0026 (matches_value(path(item, \"Action\"), \"s3:(Put|Delete).*\")))",
+    "list_value(path(resource, \"acl.grants\")).exists(item, (contains_value(path(item, \"grantee.uri\"), \"AllUsers\")) \u0026\u0026 (in_list(path(item, \"permission\"), [\"WRITE\",\"FULL_CONTROL\"])))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public write permissions immediately. Enable Block Public Access settings. Review and restrict bucket policy. Enable versioning for recovery from malicious writes.",
   "tags": [
     "aws",
     "s3",
@@ -17,6 +20,7 @@
     "data-integrity",
     "cwe-732"
   ],
+  "remediation": "Remove public write permissions immediately. Enable Block Public Access settings. Review and restrict bucket policy. Enable versioning for recovery from malicious writes.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

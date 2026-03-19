@@ -1,14 +1,17 @@
 {
   "id": "azure-postgresql-ssl",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "PostgreSQL SSL Enforcement Disabled",
   "description": "Azure Database for PostgreSQL does not enforce SSL connections",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::postgresql::server",
   "conditions": [
-    "ssl_enforcement != 'Enabled'"
+    "cmp_ne(path(resource, \"ssl_enforcement\"), \"Enabled\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Enable SSL enforcement on the PostgreSQL server. Update connection strings to use SSL.",
   "tags": [
     "azure",
     "postgresql",
@@ -16,6 +19,7 @@
     "transport-security",
     "cis-azure-4.3.1"
   ],
+  "remediation": "Enable SSL enforcement on the PostgreSQL server. Update connection strings to use SSL.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

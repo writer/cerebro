@@ -19,7 +19,12 @@ type graphEvaluateChangeRequest struct {
 }
 
 func (s *Server) evaluateGraphChange(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -60,7 +65,7 @@ func (s *Server) evaluateGraphChange(w http.ResponseWriter, r *http.Request) {
 		options = append(options, graph.WithApprovalARRThreshold(*req.ApprovalARRThreshold))
 	}
 
-	engine := graph.NewPropagationEngine(s.app.SecurityGraph, options...)
+	engine := graph.NewPropagationEngine(g, options...)
 	result, err := engine.Evaluate(proposal)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())

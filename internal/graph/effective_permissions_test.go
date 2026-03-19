@@ -1,8 +1,10 @@
 package graph
 
 import (
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func setupIAMTestGraph() *Graph {
@@ -365,6 +367,105 @@ func TestEffectivePermissionsCalculator_Calculate(t *testing.T) {
 	})
 }
 
+func TestEffectivePermissionsCalculator_HandlesRoleCycles(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:start", Kind: NodeKindUser, Name: "start"})
+	g.AddNode(&Node{ID: "role:a", Kind: NodeKindRole, Name: "role-a"})
+	g.AddNode(&Node{ID: "role:b", Kind: NodeKindRole, Name: "role-b"})
+	g.AddNode(&Node{ID: "bucket:logs", Kind: NodeKindBucket, Name: "logs"})
+	g.AddNode(&Node{ID: "db:prod", Kind: NodeKindDatabase, Name: "prod"})
+
+	g.AddEdge(&Edge{ID: "user-role-a", Source: "user:start", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-a-role-b", Source: "role:a", Target: "role:b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-b-role-a", Source: "role:b", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-b-logs", Source: "role:b", Target: "bucket:logs", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-a-db", Source: "role:a", Target: "db:prod", Kind: EdgeKindCanWrite, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-b-deny-db", Source: "role:b", Target: "db:prod", Kind: EdgeKindCanWrite, Effect: EdgeEffectDeny})
+
+	ep := NewEffectivePermissionsCalculator(g).Calculate("user:start")
+	if ep == nil {
+		t.Fatal("expected effective permissions, got nil")
+	}
+	if _, ok := ep.Resources["bucket:logs"]; !ok {
+		t.Fatal("expected role cycle traversal to reach bucket:logs")
+	}
+	if access, ok := ep.Resources["db:prod"]; ok {
+		for _, action := range access.Actions {
+			if action == "write" {
+				t.Fatalf("did not expect denied write action to survive role-cycle deny traversal: %#v", access.Actions)
+			}
+		}
+	}
+}
+
+func TestEffectivePermissionsCalculator_SharesVisitedAcrossWideRoleBranches(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:start", Kind: NodeKindUser, Name: "start"})
+	g.AddNode(&Node{ID: "role:left", Kind: NodeKindRole, Name: "left"})
+	g.AddNode(&Node{ID: "role:right", Kind: NodeKindRole, Name: "right"})
+	g.AddNode(&Node{ID: "role:shared", Kind: NodeKindRole, Name: "shared"})
+	g.AddNode(&Node{ID: "role:leaf", Kind: NodeKindRole, Name: "leaf"})
+	g.AddNode(&Node{ID: "bucket:logs", Kind: NodeKindBucket, Name: "logs"})
+	g.AddNode(&Node{ID: "db:prod", Kind: NodeKindDatabase, Name: "prod"})
+
+	g.AddEdge(&Edge{ID: "user-left", Source: "user:start", Target: "role:left", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "user-right", Source: "user:start", Target: "role:right", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+
+	previous := "role:left"
+	for i := range 70 {
+		roleID := "role:chain:" + strconv.Itoa(i)
+		g.AddNode(&Node{ID: roleID, Kind: NodeKindRole, Name: roleID})
+		g.AddEdge(&Edge{
+			ID:     "chain-" + strconv.Itoa(i),
+			Source: previous,
+			Target: roleID,
+			Kind:   EdgeKindCanAssume,
+			Effect: EdgeEffectAllow,
+		})
+		previous = roleID
+	}
+	g.AddEdge(&Edge{ID: "chain-shared", Source: previous, Target: "role:shared", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "right-shared", Source: "role:right", Target: "role:shared", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "shared-leaf", Source: "role:shared", Target: "role:leaf", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "leaf-logs", Source: "role:leaf", Target: "bucket:logs", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "leaf-deny-db", Source: "role:leaf", Target: "db:prod", Kind: EdgeKindCanWrite, Effect: EdgeEffectDeny})
+
+	ep := NewEffectivePermissionsCalculator(g).Calculate("user:start")
+	if ep == nil {
+		t.Fatal("expected effective permissions, got nil")
+	}
+	if _, ok := ep.Resources["bucket:logs"]; !ok {
+		t.Fatal("expected shared role traversal to grant access to bucket:logs")
+	}
+	if access, ok := ep.Resources["db:prod"]; ok {
+		for _, action := range access.Actions {
+			if action == "write" {
+				t.Fatalf("did not expect denied write action to survive shared traversal: %#v", access.Actions)
+			}
+		}
+	}
+
+	allowCount := 0
+	denyCount := 0
+	for _, source := range ep.InheritanceChain {
+		if source.SourceID != "role:leaf" {
+			continue
+		}
+		switch source.Effect {
+		case "allow":
+			allowCount++
+		case "deny":
+			denyCount++
+		}
+	}
+	if allowCount != 1 {
+		t.Fatalf("expected shared allow source exactly once, got %d", allowCount)
+	}
+	if denyCount != 1 {
+		t.Fatalf("expected shared deny source exactly once, got %d", denyCount)
+	}
+}
+
 func TestEffectivePermissionsCalculator_DenyRules(t *testing.T) {
 	g := setupIAMTestGraph()
 	calc := NewEffectivePermissionsCalculator(g)
@@ -382,6 +483,71 @@ func TestEffectivePermissionsCalculator_DenyRules(t *testing.T) {
 					t.Errorf("expected alice to NOT have write access to db:production, but has action: %s", a)
 				}
 			}
+		}
+	})
+
+	t.Run("explicit deny removes conditional access", func(t *testing.T) {
+		g := New()
+		g.AddNode(&Node{
+			ID:       "user:alice",
+			Kind:     NodeKindUser,
+			Name:     "alice",
+			Account:  "111111111111",
+			Provider: "aws",
+		})
+		g.AddNode(&Node{
+			ID:       "bucket:data",
+			Kind:     NodeKindBucket,
+			Name:     "data",
+			Account:  "111111111111",
+			Provider: "aws",
+		})
+		g.AddEdge(&Edge{
+			ID:     "conditional-allow",
+			Source: "user:alice",
+			Target: "bucket:data",
+			Kind:   EdgeKindCanRead,
+			Effect: EdgeEffectAllow,
+			Properties: map[string]any{
+				"actions":    []string{"s3:GetObject"},
+				"conditions": map[string]any{"StringEquals": map[string]any{"aws:SourceVpce": "vpce-123"}},
+			},
+		})
+		g.AddEdge(&Edge{
+			ID:     "explicit-deny",
+			Source: "user:alice",
+			Target: "bucket:data",
+			Kind:   EdgeKindCanRead,
+			Effect: EdgeEffectDeny,
+			Properties: map[string]any{
+				"actions": []string{"s3:GetObject"},
+			},
+		})
+
+		calc := NewEffectivePermissionsCalculator(g)
+
+		ep := calc.Calculate("user:alice")
+		if ep == nil {
+			t.Fatal("expected effective permissions, got nil")
+		}
+		if _, ok := ep.Resources["bucket:data"]; ok {
+			t.Fatalf("expected explicit deny to block unconditional access, got %#v", ep.Resources["bucket:data"])
+		}
+		if _, ok := ep.Conditional["bucket:data"]; ok {
+			t.Fatalf("expected explicit deny to remove conditional access, got %#v", ep.Conditional["bucket:data"])
+		}
+
+		withContext := calc.CalculateWithContext("user:alice", &PermissionEvaluationContext{
+			SourceVPCe: "vpce-123",
+		})
+		if withContext == nil {
+			t.Fatal("expected contextual effective permissions, got nil")
+		}
+		if _, ok := withContext.Resources["bucket:data"]; ok {
+			t.Fatalf("expected explicit deny to override satisfied conditional allow, got %#v", withContext.Resources["bucket:data"])
+		}
+		if _, ok := withContext.Conditional["bucket:data"]; ok {
+			t.Fatalf("expected no remaining conditional access after explicit deny, got %#v", withContext.Conditional["bucket:data"])
 		}
 	})
 }
@@ -411,6 +577,159 @@ func TestEffectivePermissionsCalculator_PermissionBoundary(t *testing.T) {
 			t.Error("expected charlie to have read access to bucket:data (allowed by boundary)")
 		}
 	})
+
+	t.Run("permission boundary strips conditional-only resources", func(t *testing.T) {
+		g := New()
+		g.AddNode(&Node{
+			ID:       "user:bounded",
+			Kind:     NodeKindUser,
+			Name:     "bounded",
+			Account:  "111111111111",
+			Provider: "aws",
+			Properties: map[string]any{
+				"permission_boundary": "boundary:read-only",
+			},
+		})
+		g.AddNode(&Node{
+			ID:       "boundary:read-only",
+			Kind:     NodeKindPermissionBoundary,
+			Name:     "read-only",
+			Account:  "111111111111",
+			Provider: "aws",
+		})
+		g.AddNode(&Node{
+			ID:       "bucket:conditional",
+			Kind:     NodeKindBucket,
+			Name:     "conditional",
+			Account:  "111111111111",
+			Provider: "aws",
+		})
+		g.AddEdge(&Edge{
+			ID:     "conditional-write",
+			Source: "user:bounded",
+			Target: "bucket:conditional",
+			Kind:   EdgeKindCanWrite,
+			Effect: EdgeEffectAllow,
+			Properties: map[string]any{
+				"actions":    []string{"s3:PutObject"},
+				"conditions": map[string]any{"StringEquals": map[string]any{"aws:SourceVpce": "vpce-123"}},
+			},
+		})
+		g.AddEdge(&Edge{
+			ID:     "boundary-read",
+			Source: "boundary:read-only",
+			Target: "*",
+			Kind:   EdgeKindCanRead,
+			Effect: EdgeEffectAllow,
+			Properties: map[string]any{
+				"actions": []string{"s3:GetObject"},
+			},
+		})
+
+		calc := NewEffectivePermissionsCalculator(g)
+
+		ep := calc.Calculate("user:bounded")
+		if ep == nil {
+			t.Fatal("expected effective permissions, got nil")
+		}
+		if _, ok := ep.Resources["bucket:conditional"]; ok {
+			t.Fatalf("expected no unconditional resource access, got %#v", ep.Resources["bucket:conditional"])
+		}
+		if _, ok := ep.Conditional["bucket:conditional"]; ok {
+			t.Fatalf("expected permission boundary to remove conditional-only write access, got %#v", ep.Conditional["bucket:conditional"])
+		}
+
+		withContext := calc.CalculateWithContext("user:bounded", &PermissionEvaluationContext{
+			SourceVPCe: "vpce-123",
+		})
+		if withContext == nil {
+			t.Fatal("expected contextual effective permissions, got nil")
+		}
+		if _, ok := withContext.Resources["bucket:conditional"]; ok {
+			t.Fatalf("expected permission boundary to block contextual write access, got %#v", withContext.Resources["bucket:conditional"])
+		}
+	})
+}
+
+func TestEffectivePermissionsCalculator_EvaluatesWildcardSCPConditionsPerResource(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "user:alice",
+		Kind:     NodeKindUser,
+		Name:     "alice",
+		Account:  "111111111111",
+		Provider: "aws",
+	})
+	g.AddNode(&Node{
+		ID:       "bucket:owned",
+		Kind:     NodeKindBucket,
+		Name:     "owned",
+		Account:  "111111111111",
+		Provider: "aws",
+	})
+	g.AddNode(&Node{
+		ID:       "bucket:external",
+		Kind:     NodeKindBucket,
+		Name:     "external",
+		Account:  "222222222222",
+		Provider: "aws",
+	})
+	g.AddNode(&Node{
+		ID:       "scp:resource-account",
+		Kind:     NodeKindSCP,
+		Name:     "resource-account",
+		Provider: "aws",
+		Properties: map[string]any{
+			"target_accounts": []string{"111111111111"},
+		},
+	})
+	g.AddEdge(&Edge{
+		ID:     "user-delete-owned",
+		Source: "user:alice",
+		Target: "bucket:owned",
+		Kind:   EdgeKindCanDelete,
+		Effect: EdgeEffectAllow,
+		Properties: map[string]any{
+			"actions": []string{"s3:DeleteObject"},
+		},
+	})
+	g.AddEdge(&Edge{
+		ID:     "user-delete-external",
+		Source: "user:alice",
+		Target: "bucket:external",
+		Kind:   EdgeKindCanDelete,
+		Effect: EdgeEffectAllow,
+		Properties: map[string]any{
+			"actions": []string{"s3:DeleteObject"},
+		},
+	})
+	g.AddEdge(&Edge{
+		ID:       "scp-deny-owned-account",
+		Source:   "scp:resource-account",
+		Target:   "*",
+		Kind:     EdgeKindCanDelete,
+		Effect:   EdgeEffectDeny,
+		Priority: 200,
+		Properties: map[string]any{
+			"actions":    []string{"s3:DeleteObject"},
+			"conditions": map[string]any{"StringEquals": map[string]any{"aws:ResourceAccount": "111111111111"}},
+		},
+	})
+
+	ep := NewEffectivePermissionsCalculator(g).Calculate("user:alice")
+	if ep == nil {
+		t.Fatal("expected effective permissions, got nil")
+	}
+	if _, ok := ep.Resources["bucket:owned"]; ok {
+		t.Fatalf("expected wildcard SCP condition to deny owned-account bucket delete, got %#v", ep.Resources["bucket:owned"])
+	}
+	access, ok := ep.Resources["bucket:external"]
+	if !ok {
+		t.Fatal("expected external bucket delete to remain allowed")
+	}
+	if !containsString(access.Actions, "s3:DeleteObject") {
+		t.Fatalf("expected external bucket delete action to remain, got %#v", access.Actions)
+	}
 }
 
 func TestEffectivePermissionsCalculator_Summary(t *testing.T) {
@@ -580,13 +899,24 @@ func TestEffectivePermissionsCalculator_TracksResourcePolicySources(t *testing.T
 
 	access, ok := ep.Resources["bucket:data"]
 	if !ok {
-		t.Fatal("expected bucket access from resource policy")
+		t.Fatal("expected unconditional bucket access from resource policy")
 	}
-	if !containsString(access.Actions, "s3:GetObject") || !containsString(access.Actions, "s3:PutObject") {
-		t.Fatalf("expected merged actions from multiple resource-policy edges, got %#v", access.Actions)
+	if containsString(access.Actions, "s3:GetObject") || !containsString(access.Actions, "s3:PutObject") {
+		t.Fatalf("expected only unconditional action in effective permissions, got %#v", access.Actions)
 	}
-	if len(access.Conditions) != 1 || !strings.Contains(access.Conditions[0], "aws:SourceVpce") {
-		t.Fatalf("expected serialized policy condition, got %#v", access.Conditions)
+	if len(access.Conditions) != 0 {
+		t.Fatalf("expected unconditional access to have no serialized conditions, got %#v", access.Conditions)
+	}
+
+	conditionalAccess, ok := ep.Conditional["bucket:data"]
+	if !ok {
+		t.Fatal("expected conditional bucket access to be tracked separately")
+	}
+	if !containsString(conditionalAccess.Actions, "s3:GetObject") {
+		t.Fatalf("expected conditional read action, got %#v", conditionalAccess.Actions)
+	}
+	if len(conditionalAccess.Conditions) != 1 || !strings.Contains(conditionalAccess.Conditions[0], "aws:SourceVpce") {
+		t.Fatalf("expected serialized policy condition on conditional access, got %#v", conditionalAccess.Conditions)
 	}
 	if len(access.Sources) != 1 || access.Sources[0] != "arn:aws:s3:::data/policy" {
 		t.Fatalf("expected resource-policy source provenance, got %#v", access.Sources)
@@ -601,6 +931,164 @@ func TestEffectivePermissionsCalculator_TracksResourcePolicySources(t *testing.T
 	}
 	if !found {
 		t.Fatalf("expected resource_policy inheritance source, got %#v", ep.InheritanceChain)
+	}
+
+	withContext := NewEffectivePermissionsCalculator(g).CalculateWithContext("user:alice", &PermissionEvaluationContext{
+		SourceVPCe: "vpce-123",
+	})
+	if withContext == nil {
+		t.Fatal("expected contextual effective permissions, got nil")
+	}
+	contextualAccess, ok := withContext.Resources["bucket:data"]
+	if !ok {
+		t.Fatal("expected bucket access with matching VPC endpoint context")
+	}
+	if !containsString(contextualAccess.Actions, "s3:GetObject") || !containsString(contextualAccess.Actions, "s3:PutObject") {
+		t.Fatalf("expected matching context to merge conditional and unconditional actions, got %#v", contextualAccess.Actions)
+	}
+	if len(withContext.Conditional) != 0 {
+		t.Fatalf("expected matching context to satisfy all bucket conditions, got %#v", withContext.Conditional)
+	}
+}
+
+func TestEffectivePermissionsCalculator_EvaluatesTrustPolicyConditions(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "user:alice",
+		Kind:     NodeKindUser,
+		Name:     "alice",
+		Account:  "111111111111",
+		Provider: "aws",
+	})
+	g.AddNode(&Node{
+		ID:       "role:conditional",
+		Kind:     NodeKindRole,
+		Name:     "conditional",
+		Account:  "111111111111",
+		Provider: "aws",
+	})
+	g.AddNode(&Node{
+		ID:       "bucket:data",
+		Kind:     NodeKindBucket,
+		Name:     "data",
+		Account:  "111111111111",
+		Provider: "aws",
+	})
+	g.AddEdge(&Edge{
+		ID:     "assume-role",
+		Source: "user:alice",
+		Target: "role:conditional",
+		Kind:   EdgeKindCanAssume,
+		Effect: EdgeEffectAllow,
+		Properties: map[string]any{
+			"mechanism":  "trust_policy",
+			"conditions": map[string]any{"StringEquals": map[string]any{"aws:SourceVpce": "vpce-123"}},
+		},
+	})
+	g.AddEdge(&Edge{
+		ID:     "role-read",
+		Source: "role:conditional",
+		Target: "bucket:data",
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+		Properties: map[string]any{
+			"actions": []string{"s3:GetObject"},
+		},
+	})
+
+	calc := NewEffectivePermissionsCalculator(g)
+	ep := calc.Calculate("user:alice")
+	if ep == nil {
+		t.Fatal("expected effective permissions, got nil")
+	}
+	if _, ok := ep.Resources["bucket:data"]; ok {
+		t.Fatal("expected trust-policy condition to keep role-derived access out of unconditional permissions")
+	}
+	conditionalAccess, ok := ep.Conditional["bucket:data"]
+	if !ok {
+		t.Fatal("expected conditional role-derived bucket access")
+	}
+	if !containsString(conditionalAccess.Actions, "s3:GetObject") {
+		t.Fatalf("expected role-derived read action, got %#v", conditionalAccess.Actions)
+	}
+	if len(conditionalAccess.Conditions) != 1 || !strings.Contains(conditionalAccess.Conditions[0], "aws:SourceVpce") {
+		t.Fatalf("expected trust policy condition to propagate to conditional access, got %#v", conditionalAccess.Conditions)
+	}
+
+	contextual := calc.CalculateWithContext("user:alice", &PermissionEvaluationContext{
+		SourceVPCe: "vpce-123",
+	})
+	if contextual == nil {
+		t.Fatal("expected contextual effective permissions, got nil")
+	}
+	access, ok := contextual.Resources["bucket:data"]
+	if !ok {
+		t.Fatal("expected matching trust-policy context to unlock role-derived access")
+	}
+	if !containsString(access.Actions, "s3:GetObject") {
+		t.Fatalf("expected role-derived read action with matching context, got %#v", access.Actions)
+	}
+	if len(contextual.Conditional) != 0 {
+		t.Fatalf("expected no remaining conditional access after satisfying trust condition, got %#v", contextual.Conditional)
+	}
+}
+
+func TestEffectivePermissionsCalculator_EvaluatesDateAndIPConditions(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{
+		ID:       "user:alice",
+		Kind:     NodeKindUser,
+		Name:     "alice",
+		Account:  "111111111111",
+		Provider: "aws",
+	})
+	g.AddNode(&Node{
+		ID:       "bucket:data",
+		Kind:     NodeKindBucket,
+		Name:     "data",
+		Account:  "111111111111",
+		Provider: "aws",
+	})
+	g.AddEdge(&Edge{
+		ID:     "date-and-ip-read",
+		Source: "user:alice",
+		Target: "bucket:data",
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+		Properties: map[string]any{
+			"actions": []string{"s3:GetObject"},
+			"conditions": map[string]any{
+				"IpAddress":       map[string]any{"aws:SourceIp": "10.0.0.0/8"},
+				"DateGreaterThan": map[string]any{"aws:CurrentTime": "2026-03-01T00:00:00Z"},
+			},
+		},
+	})
+
+	calc := NewEffectivePermissionsCalculator(g)
+	unmatched := calc.CalculateWithContext("user:alice", &PermissionEvaluationContext{
+		SourceIP:    "192.168.1.20",
+		CurrentTime: time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC),
+	})
+	if unmatched == nil {
+		t.Fatal("expected contextual effective permissions, got nil")
+	}
+	if _, ok := unmatched.Resources["bucket:data"]; ok {
+		t.Fatal("expected non-matching IP context to block access")
+	}
+
+	matched := calc.CalculateWithContext("user:alice", &PermissionEvaluationContext{
+		SourceIP:    "10.1.2.3",
+		CurrentTime: time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC),
+	})
+	if matched == nil {
+		t.Fatal("expected matching contextual effective permissions, got nil")
+	}
+	access, ok := matched.Resources["bucket:data"]
+	if !ok {
+		t.Fatal("expected matching IP/date context to grant access")
+	}
+	if !containsString(access.Actions, "s3:GetObject") {
+		t.Fatalf("expected conditional read action, got %#v", access.Actions)
 	}
 }
 

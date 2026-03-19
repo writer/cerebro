@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/writer/cerebro/internal/workloadscan"
 )
 
 func TestRootCmd(t *testing.T) {
@@ -225,6 +226,104 @@ func TestWorkloadScanReconcileAWSRequiredFlags(t *testing.T) {
 	}
 	if values, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok || len(values) == 0 {
 		t.Fatal("expected reconcile aws region flag to be marked required")
+	}
+}
+
+func TestWorkloadScanAzureRegionFlagUsesDedicatedVariable(t *testing.T) {
+	previousAWS := workloadScanAWSRegion
+	previousAzure := workloadScanAzureRegion
+	t.Cleanup(func() {
+		workloadScanAWSRegion = previousAWS
+		workloadScanAzureRegion = previousAzure
+	})
+
+	workloadScanAWSRegion = ""
+	workloadScanAzureRegion = ""
+	if err := workloadScanRunAzureCmd.Flags().Set("region", "eastus"); err != nil {
+		t.Fatalf("set azure region flag: %v", err)
+	}
+	if workloadScanAzureRegion != "eastus" {
+		t.Fatalf("expected azure region variable to be populated, got %q", workloadScanAzureRegion)
+	}
+	if workloadScanAWSRegion != "" {
+		t.Fatalf("expected aws region variable to remain unchanged, got %q", workloadScanAWSRegion)
+	}
+}
+
+func TestGCPRegionFromZone(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "zone", in: "us-central1-a", want: "us-central1"},
+		{name: "region", in: "us-central1", want: "us-central1"},
+		{name: "trims whitespace", in: " europe-west1-b ", want: "europe-west1"},
+		{name: "empty", in: "   ", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := gcpRegionFromZone(tc.in); got != tc.want {
+				t.Fatalf("gcpRegionFromZone(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseWorkloadScanPriorityOverride(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    *workloadscan.PriorityAssessment
+		wantErr string
+	}{
+		{
+			name: "empty",
+			raw:  "",
+		},
+		{
+			name: "critical alias",
+			raw:  "urgent",
+			want: &workloadscan.PriorityAssessment{
+				Priority: workloadscan.ScanPriorityCritical,
+				Score:    100,
+				Eligible: true,
+				Source:   "manual_override",
+			},
+		},
+		{
+			name:    "invalid",
+			raw:     "asap-ish",
+			wantErr: "priority override must be one of critical, high, medium, low",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseWorkloadScanPriorityOverride(tc.raw)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseWorkloadScanPriorityOverride(%q): %v", tc.raw, err)
+			}
+			if tc.want == nil {
+				if got != nil {
+					t.Fatalf("expected nil priority assessment, got %#v", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("expected priority assessment")
+			}
+			if got.Priority != tc.want.Priority || got.Score != tc.want.Score || got.Eligible != tc.want.Eligible || got.Source != tc.want.Source {
+				t.Fatalf("unexpected priority assessment: %#v", got)
+			}
+		})
 	}
 }
 

@@ -57,6 +57,8 @@ var (
 	imageScanRootFSBasePath    string
 	imageScanCleanupTimeout    time.Duration
 	imageScanTrivyBinary       string
+	imageScanGitleaksBinary    string
+	imageScanClamAVBinary      string
 	imageScanListStatuses      string
 	imageScanListLimit         int
 	imageScanRequestedBy       string
@@ -84,6 +86,8 @@ func init() {
 	imageScanCmd.PersistentFlags().StringVar(&imageScanRootFSBasePath, "rootfs-base", "", "Override image scan rootfs materialization path")
 	imageScanCmd.PersistentFlags().DurationVar(&imageScanCleanupTimeout, "cleanup-timeout", 0, "Override image scan cleanup timeout")
 	imageScanCmd.PersistentFlags().StringVar(&imageScanTrivyBinary, "trivy-binary", "", "Override trivy binary path")
+	imageScanCmd.PersistentFlags().StringVar(&imageScanGitleaksBinary, "gitleaks-binary", "", "Optional gitleaks binary path for expanded secret scanning")
+	imageScanCmd.PersistentFlags().StringVar(&imageScanClamAVBinary, "clamav-binary", "", "Optional ClamAV clamscan binary path for malware scanning")
 
 	imageScanListCmd.Flags().StringVar(&imageScanListStatuses, "status", "", "Optional comma-separated status filter")
 	imageScanListCmd.Flags().IntVar(&imageScanListLimit, "limit", 20, "Maximum runs to list")
@@ -128,21 +132,6 @@ func bindImageReferenceFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&imageScanDigest, "digest", "", "Optional image digest (overrides tag for manifest resolution)")
 }
 
-func imageScanTargetFromFlags(cmd *cobra.Command, registry imagescan.RegistryKind, registryHost string) imagescan.ScanTarget {
-	tag := strings.TrimSpace(imageScanTag)
-	digest := strings.TrimSpace(imageScanDigest)
-	if digest != "" && cmd != nil && !cmd.Flags().Changed("tag") {
-		tag = ""
-	}
-	return imagescan.ScanTarget{
-		Registry:     registry,
-		RegistryHost: registryHost,
-		Repository:   strings.TrimSpace(imageScanRepository),
-		Tag:          tag,
-		Digest:       digest,
-	}
-}
-
 func runImageScanList(cmd *cobra.Command, args []string) error {
 	cfg := app.LoadConfig()
 	store, err := imagescan.NewSQLiteRunStore(resolveImageScanStateFile(cfg))
@@ -167,21 +156,39 @@ func runImageScanList(cmd *cobra.Command, args []string) error {
 
 func runImageScanECR(cmd *cobra.Command, args []string) error {
 	client := scanner.NewECRClient(strings.TrimSpace(imageScanECRRegion), strings.TrimSpace(imageScanECRAccountID))
-	return runImageScan(cmd.Context(), imageScanTargetFromFlags(cmd, imagescan.RegistryECR, client.RegistryHost()), client)
+	return runImageScan(cmd.Context(), imagescan.ScanTarget{
+		Registry:     imagescan.RegistryECR,
+		RegistryHost: client.RegistryHost(),
+		Repository:   strings.TrimSpace(imageScanRepository),
+		Tag:          strings.TrimSpace(imageScanTag),
+		Digest:       strings.TrimSpace(imageScanDigest),
+	}, client)
 }
 
 func runImageScanGCR(cmd *cobra.Command, args []string) error {
 	client := scanner.NewGCRClient(strings.TrimSpace(imageScanGCRProjectID))
 	client.SetRegistryHost(strings.TrimSpace(imageScanGCRHost))
 	client.SetAccessToken(strings.TrimSpace(imageScanGCRAccessToken))
-	return runImageScan(cmd.Context(), imageScanTargetFromFlags(cmd, imagescan.RegistryGCR, client.RegistryHost()), client)
+	return runImageScan(cmd.Context(), imagescan.ScanTarget{
+		Registry:     imagescan.RegistryGCR,
+		RegistryHost: client.RegistryHost(),
+		Repository:   strings.TrimSpace(imageScanRepository),
+		Tag:          strings.TrimSpace(imageScanTag),
+		Digest:       strings.TrimSpace(imageScanDigest),
+	}, client)
 }
 
 func runImageScanACR(cmd *cobra.Command, args []string) error {
 	client := scanner.NewACRClient(strings.TrimSpace(imageScanACRRegistryName), strings.TrimSpace(imageScanACRSubscriptionID))
 	client.SetCredentials(strings.TrimSpace(imageScanACRUsername), strings.TrimSpace(imageScanACRPassword))
 	client.SetBaseURL(strings.TrimSpace(imageScanACRBaseURL))
-	return runImageScan(cmd.Context(), imageScanTargetFromFlags(cmd, imagescan.RegistryACR, client.RegistryHost()), client)
+	return runImageScan(cmd.Context(), imagescan.ScanTarget{
+		Registry:     imagescan.RegistryACR,
+		RegistryHost: client.RegistryHost(),
+		Repository:   strings.TrimSpace(imageScanRepository),
+		Tag:          strings.TrimSpace(imageScanTag),
+		Digest:       strings.TrimSpace(imageScanDigest),
+	}, client)
 }
 
 func runImageScan(parent context.Context, target imagescan.ScanTarget, client scanner.RegistryClient) error {
@@ -200,7 +207,7 @@ func runImageScan(parent context.Context, target imagescan.ScanTarget, client sc
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
-	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveImageScanTrivyBinary(cfg))
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveImageScanTrivyBinary(cfg), resolveImageScanGitleaksBinary(cfg), resolveImageScanClamAVBinary(cfg))
 	if err != nil {
 		return err
 	}
@@ -340,4 +347,24 @@ func resolveImageScanTrivyBinary(cfg *app.Config) string {
 		return strings.TrimSpace(cfg.ImageScanTrivyBinary)
 	}
 	return "trivy"
+}
+
+func resolveImageScanGitleaksBinary(cfg *app.Config) string {
+	if strings.TrimSpace(imageScanGitleaksBinary) != "" {
+		return strings.TrimSpace(imageScanGitleaksBinary)
+	}
+	if cfg != nil && strings.TrimSpace(cfg.ImageScanGitleaksBinary) != "" {
+		return strings.TrimSpace(cfg.ImageScanGitleaksBinary)
+	}
+	return ""
+}
+
+func resolveImageScanClamAVBinary(cfg *app.Config) string {
+	if strings.TrimSpace(imageScanClamAVBinary) != "" {
+		return strings.TrimSpace(imageScanClamAVBinary)
+	}
+	if cfg != nil && strings.TrimSpace(cfg.ImageScanClamAVBinary) != "" {
+		return strings.TrimSpace(cfg.ImageScanClamAVBinary)
+	}
+	return ""
 }

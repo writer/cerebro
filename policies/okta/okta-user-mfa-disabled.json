@@ -1,21 +1,25 @@
 {
   "id": "okta-user-mfa-disabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Okta User Without MFA Enrolled",
   "description": "Okta user does not have any multi-factor authentication methods enrolled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "okta::user",
   "conditions": [
-    "status == 'ACTIVE'",
-    "mfa_factors_count == 0"
+    "cmp_eq(path(resource, \"status\"), \"ACTIVE\")",
+    "cmp_eq(path(resource, \"mfa_factors_count\"), 0)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Enroll the user in MFA. Configure authentication policies to require MFA enrollment. Use Okta's self-service MFA enrollment.",
   "tags": [
     "okta",
     "authentication",
     "mfa",
     "identity"
   ],
+  "remediation": "Enroll the user in MFA. Configure authentication policies to require MFA enrollment. Use Okta's self-service MFA enrollment.",
   "risk_categories": [
     "IDENTITY_RISK"
   ],

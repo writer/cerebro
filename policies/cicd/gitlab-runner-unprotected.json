@@ -1,14 +1,23 @@
 {
   "id": "gitlab-runner-unprotected-tags",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitLab Runner Without Protected Tags",
   "description": "GitLab runner accepts jobs without requiring protected tags",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gitlab::runner",
   "conditions": [
-    "run_untagged == true",
-    "is_shared == true"
+    "cmp_eq(path(resource, \"run_untagged\"), true)",
+    "cmp_eq(path(resource, \"is_shared\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "tags": ["cicd", "gitlab", "runners", "supply-chain"],
+  "tags": [
+    "cicd",
+    "gitlab",
+    "runners",
+    "supply-chain"
+  ],
   "remediation": "Configure runner to only accept jobs with protected tags."
 }
