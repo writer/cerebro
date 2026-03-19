@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 211 - Organizational Policy Assignee Roster (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still had no policy-centered assignee roster, so callers could see aggregate acknowledgment gaps and reminder candidates but not the full assigned employee set with current status in one graph query.
+- [x] Gap: direct person assignments and department-derived assignments were only exposed through separate helpers, which made it awkward to answer the core operational question: who owes this policy right now, and why?
+- [x] Gap: there was no reusable graph-layer report that distinguished `acknowledged`, `pending`, and `stale` assignees while preserving assignment provenance for follow-on onboarding and reminder flows.
+
+### Execution plan
+- [x] Add a policy-scoped assignee roster helper that returns the full assigned employee set for one policy version.
+- [x] Include current acknowledgment status plus direct-assignment and department-assignment provenance on each assignee record.
+- [x] Add focused graph tests for mixed assignment scope, stale acknowledgments after a version change, and invalid policy input, then rerun graph validation before opening the PR.
+
 ## Deep Review Cycle 209 - Platform Snapshot Catalog Context Propagation (2026-03-18)
 
 ### Review findings
