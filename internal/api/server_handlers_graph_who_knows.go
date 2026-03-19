@@ -11,20 +11,6 @@ import (
 )
 
 func (s *Server) whoKnows(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphView(r.Context())
-	if err != nil {
-		if errors.Is(err, graph.ErrStoreUnavailable) {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-			return
-		}
-		s.errorFromErr(w, err)
-		return
-	}
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	query := knowledge.KnowledgeQuery{
 		Topic:         strings.TrimSpace(r.URL.Query().Get("topic")),
 		Customer:      strings.TrimSpace(r.URL.Query().Get("customer")),
@@ -43,7 +29,15 @@ func (s *Server) whoKnows(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := knowledge.WhoKnows(g, query)
+	result, err := s.graphAdvisory.WhoKnows(r.Context(), query)
+	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, result)
 }
 

@@ -28,6 +28,7 @@ import (
 // Server is the fully wired API server
 type Server struct {
 	app                      *serverDependencies
+	graphAdvisory            graphAdvisoryService
 	findingsCompliance       findingsComplianceService
 	entitiesImpact           entitiesImpactService
 	graphSimulation          graphSimulationService
@@ -128,6 +129,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if entitiesImpact == nil {
 		entitiesImpact = newEntitiesImpactService(&deps)
 	}
+	graphAdvisory := deps.graphAdvisory
+	if graphAdvisory == nil {
+		graphAdvisory = newGraphAdvisoryService(&deps)
+	}
 	lineage := deps.lineage
 	if lineage == nil {
 		lineage = newLineageService(&deps)
@@ -173,6 +178,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		app:                    &deps,
 		agentSDKAdmin:          agentSDKAdmin,
 		entitiesImpact:         entitiesImpact,
+		graphAdvisory:          graphAdvisory,
 		findingsCompliance:     newFindingsComplianceService(&deps),
 		graphSimulation:        graphSimulation,
 		graphIntelligence:      newGraphIntelligenceService(&deps),

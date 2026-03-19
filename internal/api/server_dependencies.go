@@ -124,6 +124,7 @@ type serverDependencies struct {
 	agentSDKToolSource    agentSDKToolService
 	agentSDKAdmin         agentSDKAdminService
 	entitiesImpact        entitiesImpactService
+	graphAdvisory         graphAdvisoryService
 	graphWriteback        graphWritebackService
 	lineage               lineageService
 	orgAnalysis           orgAnalysisService

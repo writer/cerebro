@@ -10,20 +10,6 @@ import (
 )
 
 func (s *Server) recommendTeam(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphView(r.Context())
-	if err != nil {
-		if errors.Is(err, graph.ErrStoreUnavailable) {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-			return
-		}
-		s.errorFromErr(w, err)
-		return
-	}
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	var req graph.TeamRecommendationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request body")
@@ -42,5 +28,15 @@ func (s *Server) recommendTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.json(w, http.StatusOK, graph.RecommendTeam(g, req))
+	result, err := s.graphAdvisory.RecommendTeam(r.Context(), req)
+	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
+
+	s.json(w, http.StatusOK, result)
 }

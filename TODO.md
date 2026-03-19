@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Route ticket list/detail/create/update/comment/close handlers through that service while preserving the existing `200 empty` list behavior and `503` mutation behavior when no provider is configured.
 - [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
 
+## Deep Review Cycle 233 - Graph Advisory Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left `POST /api/v1/graph/evaluate-change`, `GET /api/v1/org/expertise/queries`, and `POST /api/v1/org/team-recommendations` reaching directly into graph view resolution and graph package helpers from the HTTP layer.
+- [x] Gap: those three endpoints form a compact graph advisory family with stable request validation and small dependency surfaces, making them a clean extraction seam without touching the larger graph risk or writeback services.
+- [x] Gap: there was no constructor-level regression proving those handlers can execute through `NewServerWithDependencies(...)` with only a narrow typed advisory stub.
+
+### Execution plan
+- [x] Add a dedicated `graphAdvisoryService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route evaluate-change, who-knows, and team-recommendation handlers through that service while preserving existing validation and error semantics.
+- [x] Add focused service-stub coverage plus one store-backed regression and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 231 - Platform Workload Scan Handler Service Seam (2026-03-19)
 
 ### Review findings
