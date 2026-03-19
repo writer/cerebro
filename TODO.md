@@ -17,6 +17,18 @@ Status: executed end-to-end via PR workflow
 - [x] Preserve the existing tenant-scoped read validation before mutation so wrong-tenant group IDs still fail cleanly.
 - [x] Add a store/runtime-backed HTTP regression for adjudication with no direct graph pointer, then rerun focused API validation before opening the PR.
 
+## Deep Review Cycle 211 - Platform Snapshot Record Resolver Seam (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#392` still left `currentPlatformGraphSnapshotRecord()` hand-rolling its own live-graph-then-store fallback instead of using the shared graph resolver infrastructure.
+- [x] Gap: that duplication preserved the right behavior today, but it left the platform snapshot catalog outside the common resolver seam that already guards live-vs-store precedence elsewhere in `internal/api`.
+- [x] Gap: there was no focused unit coverage for snapshot-record precedence itself, so a future runtime/store migration could regress the catalog while graph-view resolver tests still passed.
+
+### Execution plan
+- [x] Add a shared current-or-stored graph snapshot record resolver alongside the existing graph-view resolvers.
+- [x] Route `currentPlatformGraphSnapshotRecord()` through that resolver while preserving the fallback from a live graph with no current record to a store snapshot.
+- [x] Add focused resolver tests for live-record preference, store fallback, and unavailable-source behavior, then rerun API validation before opening the PR.
+
 ## Deep Review Cycle 211 - Organizational Policy Assignee Roster (2026-03-18)
 
 ### Review findings

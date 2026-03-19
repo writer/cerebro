@@ -410,18 +410,11 @@ func (s *Server) currentPlatformGraphSnapshotRecord(ctx context.Context) *graph.
 	if s == nil || s.app == nil {
 		return nil
 	}
-	if current := graph.CurrentGraphSnapshotRecord(s.app.CurrentSecurityGraph()); current != nil {
-		return current
-	}
-	store := s.app.CurrentSecurityGraphStore()
-	if store == nil {
+	record, err := currentOrStoredGraphSnapshotRecord(ctx, s.app.CurrentSecurityGraph(), s.app.CurrentSecurityGraphStore())
+	if err != nil {
 		return nil
 	}
-	snapshot, err := store.Snapshot(ctx)
-	if err != nil || snapshot == nil {
-		return nil
-	}
-	return graph.CurrentGraphSnapshotRecord(graph.GraphViewFromSnapshot(snapshot))
+	return record
 }
 
 func (s *Server) platformGraphSnapshotRecords(ctx context.Context) map[string]*graph.GraphSnapshotRecord {

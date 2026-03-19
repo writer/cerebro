@@ -52,6 +52,62 @@ func TestCurrentOrStoredGraphViewFallsBackToStoreSnapshot(t *testing.T) {
 	}
 }
 
+func TestCurrentOrStoredGraphSnapshotRecordPrefersLiveRecord(t *testing.T) {
+	live := buildPlatformGraphSnapshotCatalogTestGraph()
+	store := &countingGraphViewStore{GraphStore: buildPlatformGraphSnapshotCatalogTestGraph()}
+
+	record, err := currentOrStoredGraphSnapshotRecord(context.Background(), live, store)
+	if err != nil {
+		t.Fatalf("currentOrStoredGraphSnapshotRecord() error = %v", err)
+	}
+	if record == nil {
+		t.Fatal("expected live snapshot record")
+	}
+	if got := record.NodeCount; got != 1 {
+		t.Fatalf("record node_count = %d, want 1", got)
+	}
+	if store.snapshots != 0 {
+		t.Fatalf("expected no store snapshots, got %d", store.snapshots)
+	}
+}
+
+func TestCurrentOrStoredGraphSnapshotRecordFallsBackToStoreRecord(t *testing.T) {
+	live := graph.New()
+	store := &countingGraphViewStore{GraphStore: buildPlatformGraphSnapshotCatalogTestGraph()}
+
+	record, err := currentOrStoredGraphSnapshotRecord(context.Background(), live, store)
+	if err != nil {
+		t.Fatalf("currentOrStoredGraphSnapshotRecord() error = %v", err)
+	}
+	if record == nil {
+		t.Fatal("expected store-backed snapshot record")
+	}
+	if got := record.NodeCount; got != 1 {
+		t.Fatalf("record node_count = %d, want 1", got)
+	}
+	if store.snapshots != 1 {
+		t.Fatalf("expected one store snapshot lookup, got %d", store.snapshots)
+	}
+}
+
+func TestCurrentOrStoredGraphSnapshotRecordReturnsNilWhenStoreSnapshotHasNoCurrentRecord(t *testing.T) {
+	live := graph.New()
+	storeGraph := graph.New()
+	storeGraph.AddNode(&graph.Node{ID: "service:store", Kind: graph.NodeKindService})
+	store := &countingGraphViewStore{GraphStore: storeGraph}
+
+	record, err := currentOrStoredGraphSnapshotRecord(context.Background(), live, store)
+	if err != nil {
+		t.Fatalf("currentOrStoredGraphSnapshotRecord() error = %v", err)
+	}
+	if record != nil {
+		t.Fatalf("expected nil snapshot record, got %#v", record)
+	}
+	if store.snapshots != 1 {
+		t.Fatalf("expected one store snapshot lookup, got %d", store.snapshots)
+	}
+}
+
 func TestSnapshotBackedGraphViewPrefersStoreSnapshot(t *testing.T) {
 	live := graph.New()
 	live.AddNode(&graph.Node{ID: "service:live", Kind: graph.NodeKindService})
@@ -94,6 +150,13 @@ func TestCurrentOrStoredGraphViewReturnsUnavailableWithoutSources(t *testing.T) 
 	_, err := currentOrStoredGraphView(context.Background(), nil, nil)
 	if !errors.Is(err, graph.ErrStoreUnavailable) {
 		t.Fatalf("currentOrStoredGraphView() error = %v, want ErrStoreUnavailable", err)
+	}
+}
+
+func TestCurrentOrStoredGraphSnapshotRecordReturnsUnavailableWithoutSources(t *testing.T) {
+	_, err := currentOrStoredGraphSnapshotRecord(context.Background(), nil, nil)
+	if !errors.Is(err, graph.ErrStoreUnavailable) {
+		t.Fatalf("currentOrStoredGraphSnapshotRecord() error = %v, want ErrStoreUnavailable", err)
 	}
 }
 

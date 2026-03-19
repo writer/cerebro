@@ -13,6 +13,21 @@ func currentOrStoredGraphView(ctx context.Context, current *graph.Graph, store g
 	return snapshotGraphView(ctx, store)
 }
 
+func currentOrStoredGraphSnapshotRecord(ctx context.Context, current *graph.Graph, store graph.GraphStore) (*graph.GraphSnapshotRecord, error) {
+	if record := graph.CurrentGraphSnapshotRecord(current); record != nil {
+		return record, nil
+	}
+	view, err := snapshotGraphView(ctx, store)
+	if err != nil {
+		return nil, err
+	}
+	record := graph.CurrentGraphSnapshotRecord(view)
+	if record == nil {
+		return nil, nil
+	}
+	return record, nil
+}
+
 func snapshotBackedGraphView(ctx context.Context, current *graph.Graph, store graph.GraphStore) (*graph.Graph, error) {
 	if store != nil {
 		return snapshotGraphView(ctx, store)
