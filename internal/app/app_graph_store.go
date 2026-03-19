@@ -9,6 +9,7 @@ import (
 
 type liveGraphStore struct {
 	current  func() *graph.Graph
+	fallback func() (*graph.Graph, error)
 	writable bool
 }
 
@@ -16,7 +17,13 @@ func (a *App) CurrentSecurityGraphStore() graph.GraphStore {
 	if a == nil {
 		return nil
 	}
-	return liveGraphStore{current: a.CurrentSecurityGraph, writable: true}
+	return liveGraphStore{
+		current: a.CurrentSecurityGraph,
+		fallback: func() (*graph.Graph, error) {
+			return a.storedPassiveSecurityGraphView()
+		},
+		writable: true,
+	}
 }
 
 func (a *App) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphStore {
@@ -29,7 +36,17 @@ func (a *App) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphSto
 	}
 	return liveGraphStore{
 		current: func() *graph.Graph {
+			if a.CurrentSecurityGraph() == nil {
+				return nil
+			}
 			return a.CurrentSecurityGraphForTenant(tenantID)
+		},
+		fallback: func() (*graph.Graph, error) {
+			view, err := a.storedPassiveSecurityGraphView()
+			if err != nil || view == nil {
+				return view, err
+			}
+			return view.SubgraphForTenant(tenantID), nil
 		},
 		writable: false,
 	}
@@ -185,14 +202,22 @@ func (s liveGraphStore) currentGraph(ctx context.Context) (*graph.Graph, error) 
 			return nil, err
 		}
 	}
-	if s.current == nil {
-		return nil, graph.ErrStoreUnavailable
+	if s.current != nil {
+		g := s.current()
+		if g != nil {
+			return g, nil
+		}
 	}
-	g := s.current()
-	if g == nil {
-		return nil, graph.ErrStoreUnavailable
+	if s.fallback != nil {
+		g, err := s.fallback()
+		if err != nil {
+			return nil, err
+		}
+		if g != nil {
+			return g, nil
+		}
 	}
-	return g, nil
+	return nil, graph.ErrStoreUnavailable
 }
 
 func (s liveGraphStore) currentGraphForWrite(ctx context.Context) (*graph.Graph, error) {
@@ -202,7 +227,25 @@ func (s liveGraphStore) currentGraphForWrite(ctx context.Context) (*graph.Graph,
 		}
 		return nil, graph.ErrStoreReadOnly
 	}
-	return s.currentGraph(ctx)
+	if err := graphStoreContextErr(ctx); err != nil {
+		return nil, err
+	}
+	if s.current != nil {
+		g := s.current()
+		if g != nil {
+			return g, nil
+		}
+	}
+	if s.fallback != nil {
+		g, err := s.fallback()
+		if err != nil {
+			return nil, err
+		}
+		if g != nil {
+			return nil, graph.ErrStoreReadOnly
+		}
+	}
+	return nil, graph.ErrStoreUnavailable
 }
 
 func graphStoreContextErr(ctx context.Context) error {

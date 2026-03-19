@@ -22,6 +22,13 @@ func (a *App) currentOrStoredPassiveSecurityGraphView() (*graph.Graph, error) {
 	})
 }
 
+func (a *App) storedPassiveSecurityGraphView() (*graph.Graph, error) {
+	return a.storedSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error) {
+		snapshot, _, _, err := store.PeekLatestSnapshot()
+		return snapshot, err
+	})
+}
+
 func (a *App) currentOrStoredPassiveGraphSnapshotRecord() (*graph.GraphSnapshotRecord, error) {
 	if a == nil {
 		return nil, nil
@@ -57,6 +64,13 @@ func (a *App) currentOrStoredSecurityGraphViewWithSnapshotLoader(loadSnapshot fu
 	}
 	if current := a.CurrentSecurityGraph(); current != nil {
 		return current, nil
+	}
+	return a.storedSecurityGraphViewWithSnapshotLoader(loadSnapshot)
+}
+
+func (a *App) storedSecurityGraphViewWithSnapshotLoader(loadSnapshot func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error)) (*graph.Graph, error) {
+	if a == nil {
+		return nil, nil
 	}
 	if a.GraphSnapshots == nil || loadSnapshot == nil {
 		return nil, nil

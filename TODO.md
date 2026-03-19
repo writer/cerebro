@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 229 - App Graph Store Snapshot Fallback (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#392` still left `App.CurrentSecurityGraphStore()` live-graph-only, so callers that correctly depended on the graph-store seam still got `graph.ErrStoreUnavailable` whenever the app was serving from persisted snapshots without an in-memory graph pointer.
+- [x] Gap: the graph-store seam is read-heavy across the app and API layers, so it should resolve persisted snapshots passively instead of mutating graph recovery status on every read.
+- [x] Gap: writes must stay pinned to a live graph; snapshot-backed fallback should remain read-only so this slice does not widen mutation semantics.
+
+### Execution plan
+- [x] Add a passive persisted-snapshot fallback to the app graph-store seam while preserving the live-graph fast path.
+- [x] Keep snapshot-backed writes read-only and add focused regressions for both unscoped and tenant-scoped fallback behavior.
+- [x] Re-run focused app validation and changed-file gates before opening the PR.
+
 ## Deep Review Cycle 222 - CLI Readable Graph Snapshot Fallback (2026-03-19)
 
 ### Review findings
