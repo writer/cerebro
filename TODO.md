@@ -446,6 +446,18 @@ Status: executed end-to-end via PR workflow
 - [x] Surface per-policy counts, pending people, and whether the policy came from a direct department assignment.
 - [x] Add focused graph tests for mixed assignment sources, stale acknowledgments, and invalid department input.
 
+## Deep Review Cycle 206 - Organizational Policy Control Evidence (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still had no graph-layer bridge from `framework_mappings` like `soc2:cc6.1` to current policy acknowledgment coverage, so future compliance handlers would have to duplicate policy-to-control joins outside the graph package.
+- [x] Gap: policy status needed to surface per-policy evidence for a framework control, including current version, required people, acknowledged people, and pending acknowledgments, before the compliance layer can consume it safely.
+- [x] Gap: there was no regression proving control matching is case-insensitive or that stale acknowledgments stop counting once a mapped policy version advances.
+
+### Execution plan
+- [x] Add a graph helper that returns current-version policy acknowledgment evidence for one framework/control pair derived from `framework_mappings`.
+- [x] Normalize framework and control identifiers so callers can query controls without depending on template-specific casing.
+- [x] Add focused graph tests for mapped control coverage, stale acknowledgments, unmapped policies, and input validation.
+
 ## Deep Review Cycle 205 - Graph Store Compliance Evaluation Paths (2026-03-18)
 
 ### Review findings
