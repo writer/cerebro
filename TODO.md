@@ -29,6 +29,18 @@ Status: executed end-to-end via PR workflow
 - [x] Route `/api/v1/platform/executions` through that service while preserving not-configured, unavailable, and list-failure semantics.
 - [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
 
+## Deep Review Cycle 232 - Entity Impact Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left the entity cohort, outlier-score, and impact-analysis handlers reaching directly into graph resolution helpers inside the HTTP layer, so that family could not be exercised through `NewServerWithDependencies(...)` with only a narrow typed stub.
+- [x] Gap: those endpoints already form a compact graph-read-only family with stable validation and not-found semantics, which makes them a clean extraction seam.
+- [x] Gap: there was no constructor-level regression proving the handlers can execute against a dedicated service dependency without a concrete live graph on `*app.App`.
+
+### Execution plan
+- [x] Add a dedicated `entitiesImpactService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route the entity cohort, outlier-score, and impact-analysis handlers through that service while preserving validation, not-found, and service-unavailable behavior.
+- [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 228 - Scheduler Operations Handler Service Seam (2026-03-19)
 
 ### Review findings

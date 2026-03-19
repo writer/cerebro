@@ -122,6 +122,7 @@ type serverDependencies struct {
 	apiCredentials        apiCredentialService
 	agentSDKToolSource    agentSDKToolService
 	agentSDKAdmin         agentSDKAdminService
+	entitiesImpact        entitiesImpactService
 	graphWriteback        graphWritebackService
 	lineage               lineageService
 	orgAnalysis           orgAnalysisService

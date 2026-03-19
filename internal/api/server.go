@@ -29,6 +29,7 @@ import (
 type Server struct {
 	app                      *serverDependencies
 	findingsCompliance       findingsComplianceService
+	entitiesImpact           entitiesImpactService
 	graphRisk                graphRiskService
 	graphIntelligence        graphIntelligenceService
 	graphWriteback           graphWritebackService
@@ -121,6 +122,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if agentSDKAdmin == nil {
 		agentSDKAdmin = newAgentSDKAdminService(&deps)
 	}
+	entitiesImpact := deps.entitiesImpact
+	if entitiesImpact == nil {
+		entitiesImpact = newEntitiesImpactService(&deps)
+	}
 	lineage := deps.lineage
 	if lineage == nil {
 		lineage = newLineageService(&deps)
@@ -157,6 +162,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	s := &Server{
 		app:                    &deps,
 		agentSDKAdmin:          agentSDKAdmin,
+		entitiesImpact:         entitiesImpact,
 		findingsCompliance:     newFindingsComplianceService(&deps),
 		graphIntelligence:      newGraphIntelligenceService(&deps),
 		lineage:                lineage,
