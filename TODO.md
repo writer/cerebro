@@ -15,6 +15,18 @@ Status: executed end-to-end via PR workflow
 ### Execution plan
 - [x] Add a dedicated `schedulerOperationsService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
 - [x] Route the scheduler status/list/run/enable/disable handlers through that service while preserving unavailable, conflict, and not-found behavior.
+ - [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
+
+## Deep Review Cycle 229 - Lineage Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left the `/lineage` handlers reaching directly into `s.app.Lineage`, so that family could not be exercised through `NewServerWithDependencies(...)` with only a narrow stub.
+- [x] Gap: the lineage read and drift endpoints form a compact handler family with stable request normalization and existing unavailable/not-found behavior, making them a clean extraction seam.
+- [x] Gap: there was no constructor-level regression proving those handlers can execute without a concrete `*lineage.LineageMapper` on `*app.App`.
+
+### Execution plan
+- [x] Add a dedicated `lineageService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route the `/lineage` handlers through that service without changing validation or status semantics.
 - [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
 
 ## Deep Review Cycle 227 - RBAC Admin Handler Service Seam (2026-03-19)

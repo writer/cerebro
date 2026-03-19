@@ -123,6 +123,7 @@ type serverDependencies struct {
 	agentSDKToolSource    agentSDKToolService
 	agentSDKAdmin         agentSDKAdminService
 	graphWriteback        graphWritebackService
+	lineage               lineageService
 	orgAnalysis           orgAnalysisService
 	platformKnowledge     platformKnowledgeService
 	rbacAdmin             rbacAdminService

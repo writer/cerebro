@@ -33,6 +33,7 @@ type Server struct {
 	graphIntelligence        graphIntelligenceService
 	graphWriteback           graphWritebackService
 	agentSDKAdmin            agentSDKAdminService
+	lineage                  lineageService
 	orgAnalysis              orgAnalysisService
 	platformKnowledge        platformKnowledgeService
 	rbacAdmin                rbacAdminService
@@ -118,6 +119,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if agentSDKAdmin == nil {
 		agentSDKAdmin = newAgentSDKAdminService(&deps)
 	}
+	lineage := deps.lineage
+	if lineage == nil {
+		lineage = newLineageService(&deps)
+	}
 	remediationOperations := deps.remediationOperations
 	if remediationOperations == nil {
 		remediationOperations = newRemediationOperationsService(&deps)
@@ -144,6 +149,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		agentSDKAdmin:          agentSDKAdmin,
 		findingsCompliance:     newFindingsComplianceService(&deps),
 		graphIntelligence:      newGraphIntelligenceService(&deps),
+		lineage:                lineage,
 		orgAnalysis:            orgAnalysis,
 		platformKnowledge:      platformKnowledge,
 		rbacAdmin:              rbacAdmin,
