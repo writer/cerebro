@@ -37,6 +37,7 @@ type Server struct {
 	platformKnowledge        platformKnowledgeService
 	rbacAdmin                rbacAdminService
 	remediationOperations    remediationOperationsService
+	schedulerOperations      schedulerOperationsService
 	syncHandlers             syncHandlerService
 	threatRuntime            threatRuntimeService
 	router                   *chi.Mux
@@ -121,6 +122,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if remediationOperations == nil {
 		remediationOperations = newRemediationOperationsService(&deps)
 	}
+	schedulerOperations := deps.schedulerOperations
+	if schedulerOperations == nil {
+		schedulerOperations = newSchedulerOperationsService(&deps)
+	}
 	orgAnalysis := deps.orgAnalysis
 	if orgAnalysis == nil {
 		orgAnalysis = newOrgAnalysisService(&deps)
@@ -143,6 +148,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		platformKnowledge:      platformKnowledge,
 		rbacAdmin:              rbacAdmin,
 		remediationOperations:  remediationOperations,
+		schedulerOperations:    schedulerOperations,
 		syncHandlers:           syncHandlers,
 		threatRuntime:          threatRuntime,
 		router:                 chi.NewRouter(),

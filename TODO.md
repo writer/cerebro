@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 228 - Scheduler Operations Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left the scheduler status/list/run/enable/disable handlers reaching directly into `s.app.Scheduler`, `s.app.Webhooks`, and `s.app.Logger`, so that handler family could not be exercised through `NewServerWithDependencies(...)` with only a narrow stub.
+- [x] Gap: the scheduler operations endpoints already form a cohesive admin handler family with stable request normalization and existing unavailable/conflict/not-found semantics, which makes them a clean extraction seam.
+- [x] Gap: there was no constructor-level regression proving those handlers can execute using only a typed scheduler-operations service dependency and no concrete scheduler on `*app.App`.
+
+### Execution plan
+- [x] Add a dedicated `schedulerOperationsService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route the scheduler status/list/run/enable/disable handlers through that service while preserving unavailable, conflict, and not-found behavior.
+- [x] Add focused handler-interface regressions and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 227 - RBAC Admin Handler Service Seam (2026-03-19)
 
 ### Review findings

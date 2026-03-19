@@ -127,6 +127,7 @@ type serverDependencies struct {
 	platformKnowledge     platformKnowledgeService
 	rbacAdmin             rbacAdminService
 	remediationOperations remediationOperationsService
+	schedulerOperations   schedulerOperationsService
 	syncHandlers          syncHandlerService
 	threatRuntime         threatRuntimeService
 }

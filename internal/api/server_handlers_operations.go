@@ -12,17 +12,32 @@ import (
 	"github.com/evalops/cerebro/internal/notifications"
 	"github.com/evalops/cerebro/internal/remediation"
 	"github.com/evalops/cerebro/internal/scheduler"
-	"github.com/evalops/cerebro/internal/webhooks"
 )
 
 func (s *Server) schedulerStatus(w http.ResponseWriter, r *http.Request) {
-	status := s.app.Scheduler.Status()
+	status, err := s.schedulerOperations.Status()
+	if err != nil {
+		if errors.Is(err, errSchedulerUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, status)
 }
 
 func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
 	pagination := ParsePagination(r, 100, 1000)
-	jobs := s.app.Scheduler.ListJobs()
+	jobs, err := s.schedulerOperations.ListJobs()
+	if err != nil {
+		if errors.Is(err, errSchedulerUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
 	sort.Slice(jobs, func(i, j int) bool { return jobs[i].Name < jobs[j].Name })
 
 	result := make([]map[string]interface{}, len(jobs))
@@ -49,8 +64,10 @@ func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if err := s.app.Scheduler.RunNow(name); err != nil {
+	if err := s.schedulerOperations.RunJob(r.Context(), name, GetUserID(r.Context())); err != nil {
 		switch {
+		case errors.Is(err, errSchedulerUnavailable):
+			s.error(w, http.StatusServiceUnavailable, err.Error())
 		case errors.Is(err, scheduler.ErrJobNotFound):
 			s.error(w, http.StatusNotFound, err.Error())
 		case errors.Is(err, scheduler.ErrJobAlreadyRunning):
@@ -62,26 +79,32 @@ func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if s.app.Webhooks != nil {
-		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventSchedulerJobRun, map[string]interface{}{
-			"job_name":     name,
-			"triggered_by": GetUserID(r.Context()),
-		}); err != nil {
-			s.app.Logger.Warn("failed to emit scheduler job event", "job", name, "error", err)
-		}
-	}
 	s.json(w, http.StatusAccepted, map[string]string{"status": "job triggered"})
 }
 
 func (s *Server) enableJob(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	s.app.Scheduler.EnableJob(name)
+	if err := s.schedulerOperations.EnableJob(name); err != nil {
+		if errors.Is(err, errSchedulerUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, map[string]string{"status": "job enabled"})
 }
 
 func (s *Server) disableJob(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	s.app.Scheduler.DisableJob(name)
+	if err := s.schedulerOperations.DisableJob(name); err != nil {
+		if errors.Is(err, errSchedulerUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, map[string]string{"status": "job disabled"})
 }
 
