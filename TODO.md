@@ -223,6 +223,18 @@ Status: executed end-to-end via PR workflow
 - [x] Reuse the existing policy version-history machinery so direct-assignment changes are tracked as `required_person_ids` diffs without duplicating the policy write path.
 - [x] Add focused graph tests for mixed add/remove updates, no-op rewrites, and invalid input, then rerun graph validation before opening the PR.
 
+## Deep Review Cycle 213 - Organizational Policy Department Assignment Sync (2026-03-18)
+
+### Review findings
+- [x] Gap: issue `#256` still had no narrow graph helper to change department assignment scope on an existing policy, so org-level onboarding and HR sync flows still had to resend the full policy registry payload to add or remove one department.
+- [x] Gap: department assignment churn should preserve direct person assignments and the existing policy metadata, but there was no focused mutation path that guaranteed that behavior.
+- [x] Gap: there was no regression proving department-assignment updates only touch `required_department_ids` history while leaving direct assignee scope intact.
+
+### Execution plan
+- [x] Add a department-scoped assignment sync helper for existing policies that preserves direct person assignments.
+- [x] Reuse the direct-assignment mutation infrastructure so both write paths share the same history and edge-rewrite semantics.
+- [x] Add focused graph tests for mixed add/remove updates, no-op rewrites, and invalid input, then rerun graph validation before opening the PR.
+
 ### Review findings
 - [x] Gap: issue `#256` still had no policy-centered assignee roster, so callers could see aggregate acknowledgment gaps and reminder candidates but not the full assigned employee set with current status in one graph query.
 - [x] Gap: direct person assignments and department-derived assignments were only exposed through separate helpers, which made it awkward to answer the core operational question: who owes this policy right now, and why?

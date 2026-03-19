@@ -69,7 +69,7 @@ func UpdateOrganizationalPolicyDirectPersonAssignments(g *Graph, req Organizatio
 	}
 
 	current := organizationalPolicyVersionStateFromGraph(policy, g)
-	nextPersonIDs, addedPersonIDs, removedPersonIDs := updatePolicyPersonAssignmentSet(current.RequiredPersonIDs, addPersonIDs, removePersonIDs)
+	nextPersonIDs, addedPersonIDs, removedPersonIDs := updatePolicyAssignmentSet(current.RequiredPersonIDs, addPersonIDs, removePersonIDs)
 	metadata := NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, WriteMetadataDefaults{
 		RecordedAt:        req.RecordedAt,
 		TransactionFrom:   req.TransactionFrom,
@@ -78,44 +78,7 @@ func UpdateOrganizationalPolicyDirectPersonAssignments(g *Graph, req Organizatio
 		SourceEventPrefix: "organizational-policy-assignment",
 		DefaultConfidence: 0.95,
 	})
-
-	properties := cloneAnyMap(policy.Properties)
-	if properties == nil {
-		properties = make(map[string]any)
-	}
-	for key, value := range req.Metadata {
-		properties[key] = value
-	}
-	properties["policy_id"] = policyID
-	properties["policy_version"] = current.PolicyVersion
-	if title := firstNonEmpty(readString(properties, "title"), policy.Name); title != "" {
-		properties["title"] = title
-	}
-	metadata.ApplyTo(properties)
-
-	historyEntries, changedFields := nextOrganizationalPolicyVersionHistory(policy, g, organizationalPolicyVersionState{
-		PolicyVersion:         current.PolicyVersion,
-		Title:                 current.Title,
-		Summary:               current.Summary,
-		ContentDigest:         current.ContentDigest,
-		OwnerID:               current.OwnerID,
-		ReviewCycleDays:       current.ReviewCycleDays,
-		FrameworkMappings:     current.FrameworkMappings,
-		RequiredDepartmentIDs: current.RequiredDepartmentIDs,
-		RequiredPersonIDs:     nextPersonIDs,
-	}, metadata)
-	if len(historyEntries) > 0 {
-		properties["version_history"] = organizationalPolicyVersionHistoryProperty(historyEntries)
-	}
-
-	updated := *policy
-	updated.Provider = metadata.SourceSystem
-	updated.Properties = properties
-	g.AddNode(&updated)
-
-	assignmentTargets := append([]string{}, current.RequiredDepartmentIDs...)
-	assignmentTargets = append(assignmentTargets, nextPersonIDs...)
-	syncOrganizationalPolicyAssignments(g, policyID, assignmentTargets, metadata)
+	historyEntries, changedFields := updateExistingOrganizationalPolicyAssignments(g, policy, current.RequiredDepartmentIDs, nextPersonIDs, metadata, req.Metadata)
 
 	return OrganizationalPolicyDirectPersonAssignmentResult{
 		PolicyID:              policyID,
@@ -130,29 +93,76 @@ func UpdateOrganizationalPolicyDirectPersonAssignments(g *Graph, req Organizatio
 	}, nil
 }
 
-func updatePolicyPersonAssignmentSet(currentPersonIDs, addPersonIDs, removePersonIDs []string) ([]string, []string, []string) {
-	current := make(map[string]struct{}, len(currentPersonIDs))
-	for _, personID := range uniquePolicyStrings(currentPersonIDs) {
-		current[personID] = struct{}{}
+func updateExistingOrganizationalPolicyAssignments(g *Graph, policy *Node, nextDepartmentIDs, nextPersonIDs []string, metadata WriteMetadata, requestMetadata map[string]any) ([]OrganizationalPolicyVersionHistoryEntry, []string) {
+	if g == nil || policy == nil {
+		return nil, nil
 	}
 
-	added := make(map[string]struct{}, len(addPersonIDs))
-	for _, personID := range uniquePolicyStrings(addPersonIDs) {
-		if _, exists := current[personID]; exists {
-			continue
-		}
-		current[personID] = struct{}{}
-		added[personID] = struct{}{}
+	current := organizationalPolicyVersionStateFromGraph(policy, g)
+	properties := cloneAnyMap(policy.Properties)
+	if properties == nil {
+		properties = make(map[string]any)
+	}
+	for key, value := range requestMetadata {
+		properties[key] = value
+	}
+	properties["policy_id"] = policy.ID
+	properties["policy_version"] = current.PolicyVersion
+	if title := firstNonEmpty(readString(properties, "title"), policy.Name); title != "" {
+		properties["title"] = title
+	}
+	metadata.ApplyTo(properties)
+
+	historyEntries, changedFields := nextOrganizationalPolicyVersionHistory(policy, g, organizationalPolicyVersionState{
+		PolicyVersion:         current.PolicyVersion,
+		Title:                 current.Title,
+		Summary:               current.Summary,
+		ContentDigest:         current.ContentDigest,
+		OwnerID:               current.OwnerID,
+		ReviewCycleDays:       current.ReviewCycleDays,
+		FrameworkMappings:     current.FrameworkMappings,
+		RequiredDepartmentIDs: nextDepartmentIDs,
+		RequiredPersonIDs:     nextPersonIDs,
+	}, metadata)
+	if len(historyEntries) > 0 {
+		properties["version_history"] = organizationalPolicyVersionHistoryProperty(historyEntries)
 	}
 
-	removed := make(map[string]struct{}, len(removePersonIDs))
-	for _, personID := range uniquePolicyStrings(removePersonIDs) {
-		if _, exists := current[personID]; !exists {
+	updated := *policy
+	updated.Provider = metadata.SourceSystem
+	updated.Properties = properties
+	g.AddNode(&updated)
+
+	assignmentTargets := append([]string{}, nextDepartmentIDs...)
+	assignmentTargets = append(assignmentTargets, nextPersonIDs...)
+	syncOrganizationalPolicyAssignments(g, policy.ID, assignmentTargets, metadata)
+
+	return historyEntries, changedFields
+}
+
+func updatePolicyAssignmentSet(currentIDs, addIDs, removeIDs []string) ([]string, []string, []string) {
+	current := make(map[string]struct{}, len(currentIDs))
+	for _, targetID := range uniquePolicyStrings(currentIDs) {
+		current[targetID] = struct{}{}
+	}
+
+	added := make(map[string]struct{}, len(addIDs))
+	for _, targetID := range uniquePolicyStrings(addIDs) {
+		if _, exists := current[targetID]; exists {
 			continue
 		}
-		delete(current, personID)
-		removed[personID] = struct{}{}
-		delete(added, personID)
+		current[targetID] = struct{}{}
+		added[targetID] = struct{}{}
+	}
+
+	removed := make(map[string]struct{}, len(removeIDs))
+	for _, targetID := range uniquePolicyStrings(removeIDs) {
+		if _, exists := current[targetID]; !exists {
+			continue
+		}
+		delete(current, targetID)
+		removed[targetID] = struct{}{}
+		delete(added, targetID)
 	}
 
 	return sortedSet(current), sortedSet(added), sortedSet(removed)
