@@ -1304,3 +1304,15 @@ Status: executed end-to-end via PR workflow
 - [x] Move TAP consumer lifecycle helpers into a dedicated lifecycle file.
 - [x] Leave event dispatch behavior unchanged in `app_stream_consumer.go`.
 - [x] Add a direct no-consumer shutdown regression and rerun changed-package validation before pushing.
+
+## Deep Review Cycle 241 - TAP Dispatch Split (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#211` still left the remaining TAP dispatch/router functions in `app_stream_consumer.go`, even after parser, runtime, mapping, modeling, mutation, and lifecycle logic had already been extracted.
+- [x] Gap: that file had become a pure dispatch shim, so keeping it as the old catchall file no longer reflected the actual responsibility split.
+- [x] Gap: there was no direct regression proving `cloudEventType(...)` correctly falls back to `Subject` when `Type` is empty, even though that behavior is central to the dispatcher entrypoint.
+
+### Execution plan
+- [x] Move the remaining dispatch/router functions into a dedicated dispatch file.
+- [x] Remove the now-empty catchall TAP consumer file.
+- [x] Add a focused `cloudEventType(...)` fallback regression and rerun changed-package validation before pushing.

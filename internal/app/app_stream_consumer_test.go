@@ -51,6 +51,15 @@ func TestStopTapGraphConsumer_NoConsumerNoop(t *testing.T) {
 	}
 }
 
+func TestCloudEventTypeFallsBackToSubject(t *testing.T) {
+	evt := events.CloudEvent{
+		Subject: " ensemble.tap.github.pull_request.updated ",
+	}
+	if got := cloudEventType(evt); got != "ensemble.tap.github.pull_request.updated" {
+		t.Fatalf("cloudEventType() = %q, want ensemble.tap.github.pull_request.updated", got)
+	}
+}
+
 func TestHandleTapCloudEventWaitsForGraphReady(t *testing.T) {
 	a := &App{graphReady: make(chan struct{})}
 	evt := events.CloudEvent{
