@@ -279,6 +279,28 @@ func TestBuildTapBusinessEventPlan_ParsesWithoutGraph(t *testing.T) {
 	}
 }
 
+func TestBuildTapBusinessEventPlan_UsesIDFallbackAndDeletedFlagWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.stripe.customer.deleted",
+		Time: time.Date(2026, 3, 11, 18, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"id": "cus_123",
+		},
+	}
+
+	plan, ok := buildTapBusinessEventPlan("stripe", "customer", "deleted", evt.Type, evt, nil)
+	if !ok {
+		t.Fatal("expected business plan to be created from id fallback")
+	}
+	if plan.Node == nil || plan.Node.ID != "stripe:customer:cus_123" {
+		t.Fatalf("plan.Node = %#v, want stripe:customer:cus_123", plan.Node)
+	}
+	got, _ := plan.Node.Properties["inactive"].(bool)
+	if !got {
+		t.Fatalf("inactive = %v, want true", plan.Node.Properties["inactive"])
+	}
+}
+
 func TestBuildTapInteractionEventPlan_ParsesWithoutGraph(t *testing.T) {
 	evt := events.CloudEvent{
 		Type: "ensemble.tap.interaction.slack.message",

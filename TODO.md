@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 244 - TAP Business Parse Split (2026-03-19)
+
+### Review findings
+- [x] Gap: `internal/app/app_stream_consumer_business.go` still mixed business-event planning with mutation and correlation-refresh control flow, so another TAP path remained only partially decomposed for issue `#211`.
+- [x] Gap: the business planner is graph-independent apart from shaping graph nodes and edges, which makes it a clean candidate for its own parse-focused file beside the activity and interaction splits.
+- [x] Gap: existing coverage exercised the snapshot-heavy update path, but there was no focused no-graph regression proving the planner still works from the scalar `id` fallback and preserves deleted-event inactivity semantics.
+
+### Execution plan
+- [x] Move the business event plan type and builder into a dedicated parse-focused file.
+- [x] Leave mutation application and correlation refresh control flow in `app_stream_consumer_business.go`.
+- [x] Add a focused scalar-id/deleted-flag regression and rerun targeted `internal/app` validation before opening the PR.
+
 ## Deep Review Cycle 243 - TAP Activity Parse Split (2026-03-19)
 
 ### Review findings
