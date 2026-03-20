@@ -295,13 +295,7 @@ func (s *Server) Run() error {
 	s.app.Logger.Info("starting server", "addr", addr)
 	defer s.Close()
 
-	srv := &http.Server{
-		Addr:         addr,
-		Handler:      s.router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
+	srv := s.httpServer(addr)
 	return srv.ListenAndServe()
 }
 
@@ -433,11 +427,42 @@ func (s *Server) apiMaxBodyBytes() int64 {
 	return s.app.Config.APIMaxBodyBytesOrDefault()
 }
 
+func (s *Server) apiReadTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).APIReadTimeoutOrDefault()
+	}
+	return s.app.Config.APIReadTimeoutOrDefault()
+}
+
+func (s *Server) apiWriteTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).APIWriteTimeoutOrDefault()
+	}
+	return s.app.Config.APIWriteTimeoutOrDefault()
+}
+
+func (s *Server) apiIdleTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).APIIdleTimeoutOrDefault()
+	}
+	return s.app.Config.APIIdleTimeoutOrDefault()
+}
+
 func (s *Server) healthCheckTimeout() time.Duration {
 	if s == nil || s.app == nil {
 		return (*app.Config)(nil).HealthCheckTimeoutOrDefault()
 	}
 	return s.app.Config.HealthCheckTimeoutOrDefault()
+}
+
+func (s *Server) httpServer(addr string) *http.Server {
+	return &http.Server{
+		Addr:         addr,
+		Handler:      s.router,
+		ReadTimeout:  s.apiReadTimeout(),
+		WriteTimeout: s.apiWriteTimeout(),
+		IdleTimeout:  s.apiIdleTimeout(),
+	}
 }
 
 func (s *Server) riskEngineStateTimeout() time.Duration {

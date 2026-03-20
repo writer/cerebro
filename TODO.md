@@ -1232,3 +1232,15 @@ Status: executed end-to-end via PR workflow
 - [x] Route remediation propagation evaluation through the passive persisted graph resolver when no live graph is loaded.
 - [x] Preserve the existing cached live-graph engine behavior once a live graph exists.
 - [x] Add a snapshot-backed remediation regression and rerun focused app validation before pushing.
+
+## Deep Review Cycle 220 - API Server Socket Timeout Controls (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#217` still left the HTTP server socket timeouts hardcoded in `internal/api/server.go`, so read, write, and idle budgets could not be tuned through env-backed config.
+- [x] Gap: the app already had env-backed operational budget helpers for request timeout, body size, shutdown, and health checks, but the listen-server path was bypassing that pattern.
+- [x] Gap: there was no regression proving the server constructor actually applies configured read/write/idle timeouts after config load.
+
+### Execution plan
+- [x] Add env-backed config fields and defaults for API read, write, and idle socket timeouts.
+- [x] Route `Server.Run()` through a small HTTP server builder that consumes those configured budgets instead of inline literals.
+- [x] Add focused config and server regressions, then rerun changed-file validation before pushing.

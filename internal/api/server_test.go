@@ -2491,6 +2491,32 @@ func TestMaxBodySize_UsesConfiguredLimit(t *testing.T) {
 	}
 }
 
+func TestHTTPServer_UsesConfiguredSocketTimeouts(t *testing.T) {
+	a := newTestApp(t)
+	a.Config.Port = 9443
+	a.Config.APIReadTimeout = 13 * time.Second
+	a.Config.APIWriteTimeout = 41 * time.Second
+	a.Config.APIIdleTimeout = 2 * time.Minute
+	s := NewServer(a)
+	t.Cleanup(func() {
+		s.Close()
+	})
+
+	srv := s.httpServer(":9443")
+	if srv.Addr != ":9443" {
+		t.Fatalf("expected addr :9443, got %q", srv.Addr)
+	}
+	if srv.ReadTimeout != 13*time.Second {
+		t.Fatalf("expected read timeout 13s, got %s", srv.ReadTimeout)
+	}
+	if srv.WriteTimeout != 41*time.Second {
+		t.Fatalf("expected write timeout 41s, got %s", srv.WriteTimeout)
+	}
+	if srv.IdleTimeout != 2*time.Minute {
+		t.Fatalf("expected idle timeout 2m, got %s", srv.IdleTimeout)
+	}
+}
+
 func TestAgentSendMessageExecutesToolCalls(t *testing.T) {
 	a := newTestApp(t)
 	called := false

@@ -4,6 +4,9 @@ import "time"
 
 const (
 	defaultAPIRequestTimeout                      = 60 * time.Second
+	defaultAPIReadTimeout                         = 30 * time.Second
+	defaultAPIWriteTimeout                        = 60 * time.Second
+	defaultAPIIdleTimeout                         = 120 * time.Second
 	defaultAPIMaxBodyBytes                  int64 = 10 * 1024 * 1024
 	defaultShutdownTimeout                        = 30 * time.Second
 	defaultHealthCheckTimeout                     = 5 * time.Second
@@ -28,6 +31,27 @@ func (c *Config) APIMaxBodyBytesOrDefault() int64 {
 		return defaultAPIMaxBodyBytes
 	}
 	return c.APIMaxBodyBytes
+}
+
+func (c *Config) APIReadTimeoutOrDefault() time.Duration {
+	if c == nil || c.APIReadTimeout <= 0 {
+		return defaultAPIReadTimeout
+	}
+	return c.APIReadTimeout
+}
+
+func (c *Config) APIWriteTimeoutOrDefault() time.Duration {
+	if c == nil || c.APIWriteTimeout <= 0 {
+		return defaultAPIWriteTimeout
+	}
+	return c.APIWriteTimeout
+}
+
+func (c *Config) APIIdleTimeoutOrDefault() time.Duration {
+	if c == nil || c.APIIdleTimeout <= 0 {
+		return defaultAPIIdleTimeout
+	}
+	return c.APIIdleTimeout
 }
 
 func (c *Config) ShutdownTimeoutOrDefault() time.Duration {

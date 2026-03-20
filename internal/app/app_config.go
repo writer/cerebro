@@ -18,6 +18,9 @@ type Config struct {
 	Port                 int
 	LogLevel             string
 	APIRequestTimeout    time.Duration
+	APIReadTimeout       time.Duration
+	APIWriteTimeout      time.Duration
+	APIIdleTimeout       time.Duration
 	APIMaxBodyBytes      int64
 	HealthCheckTimeout   time.Duration
 	TracingEnabled       bool
@@ -551,6 +554,9 @@ func LoadConfig() *Config {
 				Port:                                getEnvInt("API_PORT", 8080),
 				LogLevel:                            getEnv("LOG_LEVEL", "info"),
 				APIRequestTimeout:                   getEnvDuration("API_REQUEST_TIMEOUT", defaultAPIRequestTimeout),
+				APIReadTimeout:                      getEnvDuration("API_READ_TIMEOUT", defaultAPIReadTimeout),
+				APIWriteTimeout:                     getEnvDuration("API_WRITE_TIMEOUT", defaultAPIWriteTimeout),
+				APIIdleTimeout:                      getEnvDuration("API_IDLE_TIMEOUT", defaultAPIIdleTimeout),
 				APIMaxBodyBytes:                     int64(getEnvInt("API_MAX_BODY_BYTES", int(defaultAPIMaxBodyBytes))),
 				HealthCheckTimeout:                  getEnvDuration("CEREBRO_HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
 				TracingEnabled:                      getEnvBool("CEREBRO_OTEL_ENABLED", false),

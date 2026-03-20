@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **355**
+Total variables: **358**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -26,10 +26,13 @@ Total variables: **355**
 | `API_CORS_ALLOWED_ORIGINS` | `getEnv` | `""` | `CORSAllowedOrigins` | `-` |
 | `API_CREDENTIALS_JSON` | `getEnv` | `""` | `-` | `-` |
 | `API_CREDENTIAL_STATE_FILE` | `getEnv` | `filepath.Join(".cerebro", "api-credentials", "state.json")` | `APICredentialStateFile` | `-` |
+| `API_IDLE_TIMEOUT` | `getEnvDuration` | `defaultAPIIdleTimeout` | `APIIdleTimeout` | `must be greater than 0` |
 | `API_KEYS` | `getEnv` | `""` | `-` | `-` |
 | `API_MAX_BODY_BYTES` | `getEnvInt` | `int(defaultAPIMaxBodyBytes)` | `APIMaxBodyBytes` | `must be greater than 0` |
 | `API_PORT` | `getEnvInt` | `8080` | `Port` | `must be between 1 and 65535` |
-| `API_REQUEST_TIMEOUT` | `getEnvDuration` | `defaultAPIRequestTimeout` | `APIRequestTimeout` | `health checks must not outlive the API request timeout`, `must be greater than 0` |
+| `API_READ_TIMEOUT` | `getEnvDuration` | `defaultAPIReadTimeout` | `APIReadTimeout` | `must be greater than 0` |
+| `API_REQUEST_TIMEOUT` | `getEnvDuration` | `defaultAPIRequestTimeout` | `APIRequestTimeout` | `health checks must not outlive the API request timeout`, `must be greater than 0`, `request timeout must not exceed the server write timeout` |
+| `API_WRITE_TIMEOUT` | `getEnvDuration` | `defaultAPIWriteTimeout` | `APIWriteTimeout` | `must be greater than 0`, `request timeout must not exceed the server write timeout` |
 | `AUTH0_CLIENT_ID` | `getEnv` | `""` | `Auth0ClientID` | `-` |
 | `AUTH0_CLIENT_SECRET` | `getEnv` | `""` | `Auth0ClientSecret` | `-` |
 | `AUTH0_DOMAIN` | `getEnv` | `""` | `Auth0Domain` | `-` |

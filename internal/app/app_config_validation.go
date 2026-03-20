@@ -57,6 +57,9 @@ func ConfigValidationRules() []ConfigValidationRule {
 	return []ConfigValidationRule{
 		{EnvVars: []string{"API_PORT"}, Summary: "must be between 1 and 65535", Category: "range"},
 		{EnvVars: []string{"API_REQUEST_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"API_READ_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"API_WRITE_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"API_IDLE_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"API_MAX_BODY_BYTES"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"CEREBRO_HEALTH_CHECK_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"CEREBRO_SHUTDOWN_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
@@ -72,6 +75,7 @@ func ConfigValidationRules() []ConfigValidationRule {
 		{EnvVars: []string{"CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"GRAPH_CONSISTENCY_CHECK_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"CEREBRO_HEALTH_CHECK_TIMEOUT", "API_REQUEST_TIMEOUT"}, Summary: "health checks must not outlive the API request timeout", Category: "dependency"},
+		{EnvVars: []string{"API_REQUEST_TIMEOUT", "API_WRITE_TIMEOUT"}, Summary: "request timeout must not exceed the server write timeout", Category: "dependency"},
 		{EnvVars: []string{"FINDINGS_MAX_IN_MEMORY"}, Summary: "must be greater than or equal to 0", Category: "range"},
 		{EnvVars: []string{"FINDINGS_RESOLVED_RETENTION"}, Summary: "must be greater than or equal to 0", Category: "range"},
 		{EnvVars: []string{"FINDINGS_SEMANTIC_DEDUP_ENABLED"}, Summary: "enables semantic finding identity across policy/version drift", Category: "behavior"},
@@ -188,6 +192,15 @@ func (c *Config) Validate() error {
 	if c.APIRequestTimeout <= 0 {
 		problems = addConfigProblem(problems, "API_REQUEST_TIMEOUT must be > 0")
 	}
+	if c.APIReadTimeout <= 0 {
+		problems = addConfigProblem(problems, "API_READ_TIMEOUT must be > 0")
+	}
+	if c.APIWriteTimeout <= 0 {
+		problems = addConfigProblem(problems, "API_WRITE_TIMEOUT must be > 0")
+	}
+	if c.APIIdleTimeout <= 0 {
+		problems = addConfigProblem(problems, "API_IDLE_TIMEOUT must be > 0")
+	}
 	if c.APIMaxBodyBytes <= 0 {
 		problems = addConfigProblem(problems, "API_MAX_BODY_BYTES must be > 0")
 	}
@@ -236,6 +249,9 @@ func (c *Config) Validate() error {
 	}
 	if c.HealthCheckTimeout > 0 && c.APIRequestTimeout > 0 && c.HealthCheckTimeout > c.APIRequestTimeout {
 		problems = addConfigProblem(problems, "CEREBRO_HEALTH_CHECK_TIMEOUT must be <= API_REQUEST_TIMEOUT")
+	}
+	if c.APIRequestTimeout > 0 && c.APIWriteTimeout > 0 && c.APIRequestTimeout > c.APIWriteTimeout {
+		problems = addConfigProblem(problems, "API_REQUEST_TIMEOUT must be <= API_WRITE_TIMEOUT")
 	}
 	if c.FindingsMaxInMemory < 0 {
 		problems = addConfigProblem(problems, "FINDINGS_MAX_IN_MEMORY must be >= 0")

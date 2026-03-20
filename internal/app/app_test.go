@@ -355,6 +355,9 @@ func TestLoadConfigGraphTenantShardControls(t *testing.T) {
 
 func TestLoadConfigOperationalTimeoutControls(t *testing.T) {
 	t.Setenv("API_REQUEST_TIMEOUT", "33s")
+	t.Setenv("API_READ_TIMEOUT", "13s")
+	t.Setenv("API_WRITE_TIMEOUT", "41s")
+	t.Setenv("API_IDLE_TIMEOUT", "2m")
 	t.Setenv("API_MAX_BODY_BYTES", "2048")
 	t.Setenv("CEREBRO_HEALTH_CHECK_TIMEOUT", "4s")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "45s")
@@ -369,6 +372,15 @@ func TestLoadConfigOperationalTimeoutControls(t *testing.T) {
 	cfg := LoadConfig()
 	if cfg.APIRequestTimeout != 33*time.Second {
 		t.Fatalf("expected api request timeout 33s, got %s", cfg.APIRequestTimeout)
+	}
+	if cfg.APIReadTimeout != 13*time.Second {
+		t.Fatalf("expected api read timeout 13s, got %s", cfg.APIReadTimeout)
+	}
+	if cfg.APIWriteTimeout != 41*time.Second {
+		t.Fatalf("expected api write timeout 41s, got %s", cfg.APIWriteTimeout)
+	}
+	if cfg.APIIdleTimeout != 2*time.Minute {
+		t.Fatalf("expected api idle timeout 2m, got %s", cfg.APIIdleTimeout)
 	}
 	if cfg.APIMaxBodyBytes != 2048 {
 		t.Fatalf("expected api max body bytes 2048, got %d", cfg.APIMaxBodyBytes)
@@ -788,6 +800,9 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 
 func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
 	t.Setenv("API_REQUEST_TIMEOUT", "3s")
+	t.Setenv("API_READ_TIMEOUT", "0s")
+	t.Setenv("API_WRITE_TIMEOUT", "2s")
+	t.Setenv("API_IDLE_TIMEOUT", "0s")
 	t.Setenv("API_MAX_BODY_BYTES", "0")
 	t.Setenv("CEREBRO_HEALTH_CHECK_TIMEOUT", "4s")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "0s")
@@ -811,6 +826,8 @@ func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
 	}
 
 	wantProblems := []string{
+		"API_READ_TIMEOUT must be > 0",
+		"API_IDLE_TIMEOUT must be > 0",
 		"API_MAX_BODY_BYTES must be > 0",
 		"CEREBRO_SHUTDOWN_TIMEOUT must be > 0",
 		"GRAPH_RISK_ENGINE_STATE_TIMEOUT must be > 0",
@@ -821,6 +838,7 @@ func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
 		"CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT must be > 0",
 		"GRAPH_CONSISTENCY_CHECK_TIMEOUT must be > 0",
 		"CEREBRO_HEALTH_CHECK_TIMEOUT must be <= API_REQUEST_TIMEOUT",
+		"API_REQUEST_TIMEOUT must be <= API_WRITE_TIMEOUT",
 	}
 	for _, want := range wantProblems {
 		found := false
