@@ -63,6 +63,7 @@ func ConfigValidationRules() []ConfigValidationRule {
 		{EnvVars: []string{"API_MAX_BODY_BYTES"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"CEREBRO_HEALTH_CHECK_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"CEREBRO_SHUTDOWN_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"AGENT_PENDING_TOOL_APPROVAL_TTL"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"LOG_LEVEL"}, Summary: "must be one of debug, info, warn, error", Category: "enum"},
 		{EnvVars: []string{"CEREBRO_OTEL_SAMPLE_RATIO"}, Summary: "must be between 0 and 1", Category: "range"},
 		{EnvVars: []string{"QUERY_POLICY_ROW_LIMIT"}, Summary: "must be greater than 0", Category: "range"},
@@ -210,6 +211,9 @@ func (c *Config) Validate() error {
 	}
 	if c.ShutdownTimeout <= 0 {
 		problems = addConfigProblem(problems, "CEREBRO_SHUTDOWN_TIMEOUT must be > 0")
+	}
+	if c.AgentPendingToolApprovalTTL <= 0 {
+		problems = addConfigProblem(problems, "AGENT_PENDING_TOOL_APPROVAL_TTL must be > 0")
 	}
 
 	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {

@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 249 - Agent Tool Approval TTL Config (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#217` still left the agent pending-tool approval window hardcoded to 30 minutes in `internal/api/handlers_agents.go`, so operators could not tune approval expiry without changing code.
+- [x] Gap: the approval-expiry regression depended on the package constant, which meant the test only proved the old global behavior instead of proving the handler respected app config.
+- [x] Gap: generated env-var docs and startup validation did not expose any knob for the approval TTL, leaving this operational timeout outside the centralized config surface.
+
+### Execution plan
+- [x] Add an `AGENT_PENDING_TOOL_APPROVAL_TTL` config/env control with the existing 30-minute default.
+- [x] Route approval-expiry checks through the config helper instead of the package constant.
+- [x] Tighten the approval-expiry regression to prove a short configured TTL expires pending approvals, then rerun the changed-package validation gate before pushing.
+
 ## Deep Review Cycle 248 - TAP Schema Handler Split (2026-03-19)
 
 ### Review findings

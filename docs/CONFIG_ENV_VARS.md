@@ -2,10 +2,11 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **359**
+Total variables: **360**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
+| `AGENT_PENDING_TOOL_APPROVAL_TTL` | `getEnvDuration` | `defaultAgentPendingToolApprovalTTL` | `AgentPendingToolApprovalTTL` | `must be greater than 0` |
 | `AGENT_REMOTE_TOOLS_DISCOVER_TIMEOUT` | `getEnvDuration` | `5 * time.Second` | `AgentRemoteToolsDiscoverTimeout` | `-` |
 | `AGENT_REMOTE_TOOLS_ENABLED` | `getEnvBool` | `false` | `AgentRemoteToolsEnabled` | `-` |
 | `AGENT_REMOTE_TOOLS_MANIFEST_SUBJECT` | `getEnv` | `"ensemble.tools.manifest"` | `AgentRemoteToolsManifestSubject` | `-` |

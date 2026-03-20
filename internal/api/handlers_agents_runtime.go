@@ -125,8 +125,6 @@ func approvalRequiredToolOutput(toolName string) string {
 	return string(payload)
 }
 
-const pendingToolApprovalTTL = 30 * time.Minute
-
 func setPendingToolCall(session *agents.Session, call agents.ToolCall) {
 	if session.Context.Metadata == nil {
 		session.Context.Metadata = map[string]interface{}{}

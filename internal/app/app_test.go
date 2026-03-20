@@ -361,6 +361,7 @@ func TestLoadConfigOperationalTimeoutControls(t *testing.T) {
 	t.Setenv("API_MAX_BODY_BYTES", "2048")
 	t.Setenv("CEREBRO_HEALTH_CHECK_TIMEOUT", "4s")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "45s")
+	t.Setenv("AGENT_PENDING_TOOL_APPROVAL_TTL", "17m")
 	t.Setenv("GRAPH_RISK_ENGINE_STATE_TIMEOUT", "7s")
 	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_TIMEOUT", "90s")
 	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_MAX_AGE", "4h")
@@ -391,6 +392,9 @@ func TestLoadConfigOperationalTimeoutControls(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout != 45*time.Second {
 		t.Fatalf("expected shutdown timeout 45s, got %s", cfg.ShutdownTimeout)
+	}
+	if cfg.AgentPendingToolApprovalTTL != 17*time.Minute {
+		t.Fatalf("expected agent pending tool approval ttl 17m, got %s", cfg.AgentPendingToolApprovalTTL)
 	}
 	if cfg.GraphPostSyncUpdateTimeout != 14*time.Minute {
 		t.Fatalf("expected graph post-sync update timeout 14m, got %s", cfg.GraphPostSyncUpdateTimeout)
@@ -813,6 +817,7 @@ func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
 	t.Setenv("API_MAX_BODY_BYTES", "0")
 	t.Setenv("CEREBRO_HEALTH_CHECK_TIMEOUT", "4s")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "0s")
+	t.Setenv("AGENT_PENDING_TOOL_APPROVAL_TTL", "0s")
 	t.Setenv("GRAPH_RISK_ENGINE_STATE_TIMEOUT", "0s")
 	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_TIMEOUT", "0s")
 	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_MAX_AGE", "0s")
@@ -838,6 +843,7 @@ func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
 		"API_IDLE_TIMEOUT must be > 0",
 		"API_MAX_BODY_BYTES must be > 0",
 		"CEREBRO_SHUTDOWN_TIMEOUT must be > 0",
+		"AGENT_PENDING_TOOL_APPROVAL_TTL must be > 0",
 		"GRAPH_RISK_ENGINE_STATE_TIMEOUT must be > 0",
 		"CEREBRO_THREAT_INTEL_SYNC_TIMEOUT must be > 0",
 		"CEREBRO_THREAT_INTEL_SYNC_MAX_AGE must be > 0",

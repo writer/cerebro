@@ -10,6 +10,7 @@ const (
 	defaultAPIMaxBodyBytes                  int64 = 10 * 1024 * 1024
 	defaultShutdownTimeout                        = 30 * time.Second
 	defaultHealthCheckTimeout                     = 5 * time.Second
+	defaultAgentPendingToolApprovalTTL            = 30 * time.Minute
 	defaultGraphRiskEngineStateTimeout            = 2 * time.Second
 	defaultThreatIntelSyncTimeout                 = 2 * time.Minute
 	defaultThreatIntelSyncMaxAge                  = 12 * time.Hour
@@ -67,6 +68,13 @@ func (c *Config) HealthCheckTimeoutOrDefault() time.Duration {
 		return defaultHealthCheckTimeout
 	}
 	return c.HealthCheckTimeout
+}
+
+func (c *Config) AgentPendingToolApprovalTTLOrDefault() time.Duration {
+	if c == nil || c.AgentPendingToolApprovalTTL <= 0 {
+		return defaultAgentPendingToolApprovalTTL
+	}
+	return c.AgentPendingToolApprovalTTL
 }
 
 func (c *Config) GraphRiskEngineStateTimeoutOrDefault() time.Duration {

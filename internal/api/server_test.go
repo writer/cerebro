@@ -2861,6 +2861,7 @@ func TestApproveSessionToolCallDeniedRecordsAudit(t *testing.T) {
 
 func TestApproveSessionToolCallExpiredPendingRequest(t *testing.T) {
 	a := newTestApp(t)
+	a.Config.AgentPendingToolApprovalTTL = 500 * time.Millisecond
 	called := false
 
 	provider := &scriptedAgentProvider{
@@ -2914,7 +2915,7 @@ func TestApproveSessionToolCallExpiredPendingRequest(t *testing.T) {
 	if !ok {
 		t.Fatal("expected pending_tool_call metadata")
 	}
-	pending["created_at"] = time.Now().Add(-2 * pendingToolApprovalTTL).UTC().Format(time.RFC3339Nano)
+	pending["created_at"] = time.Now().Add(-2 * a.Config.AgentPendingToolApprovalTTL).UTC().Format(time.RFC3339Nano)
 
 	w = do(t, s, "POST", "/api/v1/agents/sessions/"+session.ID+"/approve", map[string]bool{"approve": true})
 	if w.Code != http.StatusBadRequest {

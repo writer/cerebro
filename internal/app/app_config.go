@@ -374,6 +374,7 @@ type Config struct {
 	AgentToolPublisherManifestSubject string
 	AgentToolPublisherRequestPrefix   string
 	AgentToolPublisherRequestTimeout  time.Duration
+	AgentPendingToolApprovalTTL       time.Duration
 
 	// Tool-specific approval policy for published Cerebro tools
 	CerebroSimulateNeedsApproval     bool
@@ -791,6 +792,7 @@ func LoadConfig() *Config {
 				AgentToolPublisherManifestSubject:   getEnv("AGENT_TOOL_PUBLISHER_MANIFEST_SUBJECT", "cerebro.tools.manifest"),
 				AgentToolPublisherRequestPrefix:     getEnv("AGENT_TOOL_PUBLISHER_REQUEST_PREFIX", "cerebro.tools.request"),
 				AgentToolPublisherRequestTimeout:    getEnvDuration("AGENT_TOOL_PUBLISHER_REQUEST_TIMEOUT", 30*time.Second),
+				AgentPendingToolApprovalTTL:         getEnvDuration("AGENT_PENDING_TOOL_APPROVAL_TTL", defaultAgentPendingToolApprovalTTL),
 				CerebroSimulateNeedsApproval:        getEnvBool("CEREBRO_TOOL_SIMULATE_REQUIRES_APPROVAL", true),
 				CerebroAccessReviewNeedsApproval:    getEnvBool("CEREBRO_TOOL_ACCESS_REVIEW_REQUIRES_APPROVAL", true),
 				SlackWebhookURL:                     getEnv("SLACK_WEBHOOK_URL", ""),
