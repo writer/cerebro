@@ -163,18 +163,6 @@ func (a *App) upsertTapInteractionPersonNode(securityGraph *graph.Graph, partici
 	})
 }
 
-func parseTapInteractionType(eventType string) (channel string, interactionType string) {
-	parts := strings.Split(strings.TrimSpace(eventType), ".")
-	if len(parts) < 4 || !strings.EqualFold(parts[2], "interaction") {
-		return "", ""
-	}
-	channel = strings.ToLower(strings.TrimSpace(parts[3]))
-	if len(parts) > 4 {
-		interactionType = strings.ToLower(strings.Join(parts[4:], "_"))
-	}
-	return channel, interactionType
-}
-
 func parseTapInteractionParticipants(data map[string]any) []tapInteractionParticipant {
 	participants := make([]tapInteractionParticipant, 0)
 	seen := make(map[string]struct{})

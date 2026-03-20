@@ -923,6 +923,64 @@ func TestIsTapSchemaEventType(t *testing.T) {
 	}
 }
 
+func TestParseTapSchemaEntities_ParsesWithoutGraph(t *testing.T) {
+	definitions := parseTapSchemaEntities(map[string]any{
+		"entities": []any{
+			map[string]any{
+				"kind":       "tap_test_user_v1",
+				"categories": []any{"identity", "business", "identity", "ignored"},
+				"schema": map[string]any{
+					"email":        map[string]any{"type": "STRING", "required": true},
+					"display_name": map[string]any{"data_type": "Text"},
+					"score":        "number",
+				},
+				"required_properties": []any{"external_id", "display_name"},
+				"relationships": []any{
+					"member_of",
+					map[string]any{"edge_kind": "reports_to"},
+					"member_of",
+				},
+				"capabilities": []any{
+					"internet_exposable",
+					"privileged_identity",
+					"ignored",
+				},
+				"description": "Test user definition",
+			},
+			map[string]any{
+				"schema": map[string]any{"orphaned": map[string]any{"type": "string"}},
+			},
+		},
+	})
+
+	if len(definitions) != 1 {
+		t.Fatalf("len(definitions) = %d, want 1", len(definitions))
+	}
+
+	got := definitions[0]
+	if got.Kind != "tap_test_user_v1" {
+		t.Fatalf("Kind = %q, want tap_test_user_v1", got.Kind)
+	}
+	if got.Description != "Test user definition" {
+		t.Fatalf("Description = %q, want Test user definition", got.Description)
+	}
+	if want := []graph.NodeKindCategory{graph.NodeCategoryBusiness, graph.NodeCategoryIdentity}; len(got.Categories) != len(want) || got.Categories[0] != want[0] || got.Categories[1] != want[1] {
+		t.Fatalf("Categories = %#v, want %#v", got.Categories, want)
+	}
+	if got.Properties["email"] != "string" || got.Properties["display_name"] != "text" || got.Properties["score"] != "number" {
+		t.Fatalf("Properties = %#v, want parsed property types", got.Properties)
+	}
+	if want := []string{"display_name", "email", "external_id"}; len(got.Required) != len(want) || got.Required[0] != want[0] || got.Required[1] != want[1] || got.Required[2] != want[2] {
+		t.Fatalf("Required = %#v, want %#v", got.Required, want)
+	}
+	if want := []graph.EdgeKind{"member_of", "reports_to"}; len(got.Relationships) != len(want) || got.Relationships[0] != want[0] || got.Relationships[1] != want[1] {
+		t.Fatalf("Relationships = %#v, want %#v", got.Relationships, want)
+	}
+	if want := []graph.NodeKindCapability{graph.NodeCapabilityInternetExposable, graph.NodeCapabilityPrivilegedIdentity}; len(got.Capabilities) != len(want) || got.Capabilities[0] != want[0] || got.Capabilities[1] != want[1] {
+		t.Fatalf("Capabilities = %#v, want %#v", got.Capabilities, want)
+	}
+}
+
 func findInteractionEdge(g *graph.Graph, left, right string) *graph.Edge {
 	for _, edge := range g.GetOutEdges(left) {
 		if edge.Kind == graph.EdgeKindInteractedWith && edge.Target == right {

@@ -1244,3 +1244,15 @@ Status: executed end-to-end via PR workflow
 - [x] Add env-backed config fields and defaults for API read, write, and idle socket timeouts.
 - [x] Route `Server.Run()` through a small HTTP server builder that consumes those configured budgets instead of inline literals.
 - [x] Add focused config and server regressions, then rerun changed-file validation before pushing.
+
+## Deep Review Cycle 236 - TAP Parser Separation (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#211` still left TAP schema parsing, interaction type parsing, and activity target parsing embedded in `app_stream_consumer.go`, mixed with the mutation hot path.
+- [x] Gap: those parser helpers were only indirectly covered through graph mutation tests, which made it harder to validate them without a graph instance.
+- [x] Gap: there was no parser-only regression proving TAP schema entity definitions can be deserialized without touching graph state.
+
+### Execution plan
+- [x] Move the remaining read-only TAP parser helpers into a dedicated parser file.
+- [x] Keep the interaction and activity mutation files consuming those helpers without changing mutation behavior.
+- [x] Add a focused schema parser regression and rerun the changed-package validation gate before pushing.
