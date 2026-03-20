@@ -1256,3 +1256,15 @@ Status: executed end-to-end via PR workflow
 - [x] Move the remaining read-only TAP parser helpers into a dedicated parser file.
 - [x] Keep the interaction and activity mutation files consuming those helpers without changing mutation behavior.
 - [x] Add a focused schema parser regression and rerun the changed-package validation gate before pushing.
+
+## Deep Review Cycle 237 - TAP Runtime Coordination Split (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#211` still left TAP readiness gating and resolver-graph scoping embedded in `app_stream_consumer.go`, mixed into the same file as consumer bootstrapping and event dispatch.
+- [x] Gap: declarative TAP mapping identity resolution depends on a temporary scoped graph, but there was no focused regression proving that scoped graph is preferred over the live graph pointer.
+- [x] Gap: the remaining runtime helper block was small and stable enough to extract without widening the event mutation behavior.
+
+### Execution plan
+- [x] Move the TAP runtime coordination helpers into a dedicated runtime helper file.
+- [x] Keep event dispatch and declarative mapping behavior unchanged while routing through those extracted helpers.
+- [x] Add a focused scoped-resolver regression and rerun the changed-package validation gate before pushing.

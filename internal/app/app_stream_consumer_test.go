@@ -87,6 +87,39 @@ func TestHandleTapCloudEventWaitsForGraphReady(t *testing.T) {
 	}
 }
 
+func TestResolveTapMappingIdentityPrefersScopedResolveGraph(t *testing.T) {
+	live := graph.New()
+	scoped := graph.New()
+	a := &App{SecurityGraph: live}
+	evt := events.CloudEvent{
+		ID:   "evt-tap-identity-1",
+		Type: "ensemble.tap.github.pull_request.updated",
+		Time: time.Date(2026, 3, 19, 18, 0, 0, 0, time.UTC),
+	}
+
+	if err := a.withTapResolveGraph(scoped, func() error {
+		if got := a.resolveTapMappingIdentity("alice@example.com", evt); got != "person:alice@example.com" {
+			t.Fatalf("resolveTapMappingIdentity() = %q, want person:alice@example.com", got)
+		}
+		if a.currentTapResolveGraph() != scoped {
+			t.Fatal("expected scoped resolve graph to remain active inside callback")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("withTapResolveGraph returned error: %v", err)
+	}
+
+	if a.currentTapResolveGraph() != nil {
+		t.Fatal("expected scoped resolve graph to be cleared after callback")
+	}
+	if _, ok := scoped.GetNode("person:alice@example.com"); !ok {
+		t.Fatal("expected scoped resolve graph to receive resolved identity node")
+	}
+	if _, ok := live.GetNode("person:alice@example.com"); ok {
+		t.Fatal("expected live graph to remain untouched while scoped resolve graph is active")
+	}
+}
+
 func TestHandleGraphCloudEvent_AuditMutationPersistsCDCEvents(t *testing.T) {
 	store := &warehouse.MemoryWarehouse{}
 	a := &App{Warehouse: store}
