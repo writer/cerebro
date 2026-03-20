@@ -1,16 +1,18 @@
 {
   "id": "public-resource-cleartext-keys",
-  "control_id": "wc-id-269",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed resource with cleartext cloud keys granting high privileges",
   "description": "A publicly exposed resource contains cleartext cloud credentials with high privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "*",
   "conditions": [
-    "is_public == true",
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"grants_high_privilege\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public access immediately. Remove cleartext keys and rotate all credentials. Use IAM roles instead.",
   "tags": [
     "wiz",
     "secrets",
@@ -18,6 +20,8 @@
     "public-exposure",
     "privileged"
   ],
+  "control_id": "wc-id-269",
+  "remediation": "Remove public access immediately. Remove cleartext keys and rotate all credentials. Use IAM roles instead.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

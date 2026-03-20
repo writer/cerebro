@@ -37,6 +37,11 @@ func (a *App) TryApplySecurityGraphChanges(ctx context.Context, trigger string) 
 }
 
 func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger string) (graph.GraphMutationSummary, error) {
+	if !graphReplicaReplayEnabled(ctx) {
+		if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
+			return graph.GraphMutationSummary{}, err
+		}
+	}
 	start := time.Now()
 	summary, err := a.SecurityGraphBuilder.ApplyChanges(ctx, time.Time{})
 	if err != nil {
@@ -64,8 +69,10 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 			"edges", meta.EdgeCount,
 			"duration", duration,
 		)
-		a.emitGraphRebuiltEvent(ctx, meta, duration)
-		a.emitGraphMutationEvent(ctx, summary, trigger)
+		if !graphReplicaReplayEnabled(ctx) {
+			a.emitGraphRebuiltEvent(ctx, meta, duration)
+			a.emitGraphMutationEvent(ctx, summary, trigger)
+		}
 		return summary, nil
 	}
 
@@ -79,6 +86,11 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 	}
 
 	securityGraph := a.SecurityGraphBuilder.Graph()
+	if !graphReplicaReplayEnabled(ctx) {
+		if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
+			return graph.GraphMutationSummary{}, err
+		}
+	}
 	meta, activateErr := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if activateErr != nil {
 		return graph.GraphMutationSummary{}, activateErr
@@ -94,8 +106,10 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 		"edges", meta.EdgeCount,
 		"duration", summary.Duration,
 	)
-	a.emitGraphMutationEvent(ctx, summary, trigger)
-	a.maybeStartGraphConsistencyCheck(trigger, summary)
+	if !graphReplicaReplayEnabled(ctx) {
+		a.emitGraphMutationEvent(ctx, summary, trigger)
+		a.maybeStartGraphConsistencyCheck(trigger, summary)
+	}
 	return summary, nil
 }
 
@@ -126,8 +140,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 	if baseCtx == nil {
 		baseCtx = context.Background()
 	}
-	// #nosec G118 -- cancel is stored for shutdown coordination and also deferred inside the check goroutine.
-	checkCtx, cancel := context.WithTimeout(baseCtx, 30*time.Minute)
+	checkCtx, cancel := context.WithTimeout(baseCtx, a.Config.GraphConsistencyCheckTimeoutOrDefault())
 	a.graphConsistencyCancel = cancel
 	a.graphConsistencyMu.Unlock()
 

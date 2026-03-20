@@ -1,13 +1,21 @@
 {
   "id": "stripe-large-refund",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Large Refund Without Approval",
   "description": "Flags large refunds without explicit approval metadata.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "stripe::charge",
   "conditions": [
-    "amount_refunded > 500000",
-    "metadata.approved != true"
+    "cmp_gt(path(resource, \"amount_refunded\"), 500000)",
+    "cmp_ne(path(resource, \"metadata.approved\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "tags": ["finance", "guardrail", "stripe"]
+  "tags": [
+    "finance",
+    "guardrail",
+    "stripe"
+  ]
 }

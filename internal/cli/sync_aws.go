@@ -128,6 +128,11 @@ func buildScheduledAWSSpecFromSyncFlags(profile string) scheduledSyncSpec {
 		AWSRoleDurationSeconds:   strings.TrimSpace(syncAWSRoleDuration),
 		AWSRoleSessionTags:       parseCommaSeparatedValues(syncAWSRoleTags),
 		AWSRoleTransitiveTagKeys: parseCommaSeparatedValues(syncAWSRoleTransitive),
+		AWSOrg:                   syncAWSOrg,
+		AWSOrgRole:               strings.TrimSpace(syncAWSOrgRole),
+		AWSOrgIncludeAccounts:    parseCommaSeparatedValues(syncAWSOrgInclude),
+		AWSOrgExcludeAccounts:    parseCommaSeparatedValues(syncAWSOrgExclude),
+		AWSOrgAccountConcurrency: fmt.Sprintf("%d", max(1, syncAWSOrgConcurrency)),
 	}
 }
 

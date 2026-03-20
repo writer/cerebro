@@ -2,7 +2,7 @@
 
 Generated from `docs/AGENT_SDK_CONTRACTS.json` via `go run ./scripts/generate_agent_sdk_packages/main.go`.
 
-- Tool bindings: **27**
+- Tool bindings: **30**
 - Package paths:
   - `sdk/go/cerebro`
   - `sdk/python/cerebro_sdk`
@@ -16,6 +16,9 @@ Generated from `docs/AGENT_SDK_CONTRACTS.json` via `go run ./scripts/generate_ag
 | `cerebro_access_review` | `AccessReview` | `access_review` | `accessReview` |
 | `cerebro_actuate_recommendation` | `ActuateRecommendation` | `actuate_recommendation` | `actuateRecommendation` |
 | `cerebro_annotate` | `Annotate` | `annotate` | `annotate` |
+| `cerebro_autonomous_credential_response` | `AutonomousCredentialResponse` | `autonomous_credential_response` | `autonomousCredentialResponse` |
+| `cerebro_autonomous_workflow_approve` | `AutonomousWorkflowApprove` | `autonomous_workflow_approve` | `autonomousWorkflowApprove` |
+| `cerebro_autonomous_workflow_status` | `AutonomousWorkflowStatus` | `autonomous_workflow_status` | `autonomousWorkflowStatus` |
 | `cerebro_blast_radius` | `BlastRadius` | `blast_radius` | `blastRadius` |
 | `cerebro_check` | `Check` | `check` | `check` |
 | `cerebro_claim` | `Claim` | `claim` | `claim` |

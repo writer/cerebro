@@ -40,6 +40,18 @@ var workloadScanRunAWSCmd = &cobra.Command{
 	RunE:  runWorkloadScanAWS,
 }
 
+var workloadScanRunGCPCmd = &cobra.Command{
+	Use:   "gcp",
+	Short: "Run a GCP VM snapshot scan",
+	RunE:  runWorkloadScanGCP,
+}
+
+var workloadScanRunAzureCmd = &cobra.Command{
+	Use:   "azure",
+	Short: "Run an Azure VM snapshot scan",
+	RunE:  runWorkloadScanAzure,
+}
+
 var workloadScanReconcileCmd = &cobra.Command{
 	Use:   "reconcile",
 	Short: "Reconcile leaked workload scan artifacts",
@@ -51,25 +63,63 @@ var workloadScanReconcileAWSCmd = &cobra.Command{
 	RunE:  reconcileWorkloadScanAWS,
 }
 
+var workloadScanReconcileGCPCmd = &cobra.Command{
+	Use:   "gcp",
+	Short: "Reconcile leaked GCP VM snapshot scan artifacts",
+	RunE:  reconcileWorkloadScanGCP,
+}
+
+var workloadScanReconcileAzureCmd = &cobra.Command{
+	Use:   "azure",
+	Short: "Reconcile leaked Azure VM snapshot scan artifacts",
+	RunE:  reconcileWorkloadScanAzure,
+}
+
 var (
-	workloadScanOutput              string
-	workloadScanStateFile           string
-	workloadScanMountBasePath       string
-	workloadScanMaxConcurrent       int
-	workloadScanCleanupTimeout      time.Duration
-	workloadScanReconcileOlderThan  time.Duration
-	workloadScanTrivyBinary         string
-	workloadScanListStatuses        string
-	workloadScanListLimit           int
-	workloadScanAWSRegion           string
-	workloadScanAWSInstanceID       string
-	workloadScanAWSAccountID        string
-	workloadScanAWSScannerInstance  string
-	workloadScanAWSScannerAccountID string
-	workloadScanAWSScannerZone      string
-	workloadScanRequestedBy         string
-	workloadScanDryRun              bool
-	workloadScanMetadataPairs       []string
+	workloadScanOutput                     string
+	workloadScanStateFile                  string
+	workloadScanMountBasePath              string
+	workloadScanMaxConcurrent              int
+	workloadScanCleanupTimeout             time.Duration
+	workloadScanReconcileOlderThan         time.Duration
+	workloadScanTrivyBinary                string
+	workloadScanGitleaksBinary             string
+	workloadScanClamAVBinary               string
+	workloadScanListStatuses               string
+	workloadScanListLimit                  int
+	workloadScanAWSRegion                  string
+	workloadScanAWSInstanceID              string
+	workloadScanAWSAccountID               string
+	workloadScanAWSSourceProfile           string
+	workloadScanAWSSourceRoleARN           string
+	workloadScanAWSSourceRoleSession       string
+	workloadScanAWSSourceRoleExternalID    string
+	workloadScanAWSScannerInstance         string
+	workloadScanAWSScannerAccountID        string
+	workloadScanAWSScannerZone             string
+	workloadScanAWSScannerProfile          string
+	workloadScanAWSScannerRoleARN          string
+	workloadScanAWSScannerRoleSession      string
+	workloadScanAWSScannerRoleExternalID   string
+	workloadScanAWSShareKMSKeyID           string
+	workloadScanAWSScannerSnapshotKMSKeyID string
+	workloadScanGCPProjectID               string
+	workloadScanGCPZone                    string
+	workloadScanGCPInstanceName            string
+	workloadScanGCPScannerInstance         string
+	workloadScanGCPScannerProjectID        string
+	workloadScanGCPScannerZone             string
+	workloadScanAzureSubscriptionID        string
+	workloadScanAzureResourceGroup         string
+	workloadScanAzureInstanceName          string
+	workloadScanAzureScannerVM             string
+	workloadScanAzureScannerRG             string
+	workloadScanAzureScannerSubID          string
+	workloadScanAzureRegion                string
+	workloadScanRequestedBy                string
+	workloadScanDryRun                     bool
+	workloadScanMetadataPairs              []string
+	workloadScanPriorityOverride           string
 )
 
 func init() {
@@ -80,6 +130,18 @@ func init() {
 	workloadScanCmd.PersistentFlags().DurationVar(&workloadScanCleanupTimeout, "cleanup-timeout", 0, "Override cleanup timeout")
 	workloadScanCmd.PersistentFlags().DurationVar(&workloadScanReconcileOlderThan, "reconcile-older-than", 0, "Override minimum run age before reconciliation")
 	workloadScanCmd.PersistentFlags().StringVar(&workloadScanTrivyBinary, "trivy-binary", "", "Override trivy binary path")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanGitleaksBinary, "gitleaks-binary", "", "Optional gitleaks binary path for expanded secret scanning")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanClamAVBinary, "clamav-binary", "", "Optional ClamAV clamscan binary path for malware scanning")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceProfile, "source-profile", "", "Optional AWS profile for source-account snapshot operations")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceRoleARN, "source-role-arn", "", "Optional AWS role ARN assumed for source-account snapshot operations")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceRoleSession, "source-role-session-name", "", "Optional AWS source role session name")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSSourceRoleExternalID, "source-role-external-id", "", "Optional AWS source role external ID")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSScannerProfile, "scanner-profile", "", "Optional AWS profile for scanner-account inspection volume operations")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSScannerRoleARN, "scanner-role-arn", "", "Optional AWS role ARN assumed for scanner-account inspection volume operations")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSScannerRoleSession, "scanner-role-session-name", "", "Optional AWS scanner role session name")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSScannerRoleExternalID, "scanner-role-external-id", "", "Optional AWS scanner role external ID")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSShareKMSKeyID, "share-kms-key-id", "", "Optional customer-managed source-account KMS key for shareable snapshot copies")
+	workloadScanCmd.PersistentFlags().StringVar(&workloadScanAWSScannerSnapshotKMSKeyID, "scanner-snapshot-kms-key-id", "", "Optional customer-managed scanner-account KMS key for copied inspection snapshots")
 
 	workloadScanListCmd.Flags().StringVar(&workloadScanListStatuses, "status", "", "Optional comma-separated status filter")
 	workloadScanListCmd.Flags().IntVar(&workloadScanListLimit, "limit", 20, "Maximum runs to list")
@@ -93,18 +155,55 @@ func init() {
 	workloadScanRunAWSCmd.Flags().StringVar(&workloadScanRequestedBy, "requested-by", "", "Optional operator identity recorded on the run")
 	workloadScanRunAWSCmd.Flags().BoolVar(&workloadScanDryRun, "dry-run", false, "Inventory only; do not snapshot, attach, or mount volumes")
 	workloadScanRunAWSCmd.Flags().StringSliceVar(&workloadScanMetadataPairs, "metadata", nil, "Optional metadata entries (key=value)")
+	workloadScanRunAWSCmd.Flags().StringVar(&workloadScanPriorityOverride, "priority-override", "", "Optional manual workload scan priority override (critical, high, medium, low)")
 	_ = workloadScanRunAWSCmd.MarkFlagRequired("region")
 	_ = workloadScanRunAWSCmd.MarkFlagRequired("instance-id")
 	_ = workloadScanRunAWSCmd.MarkFlagRequired("scanner-instance-id")
 	_ = workloadScanRunAWSCmd.MarkFlagRequired("scanner-zone")
+
+	workloadScanRunGCPCmd.Flags().StringVar(&workloadScanGCPProjectID, "project-id", "", "GCP project ID containing the target instance")
+	workloadScanRunGCPCmd.Flags().StringVar(&workloadScanGCPZone, "zone", "", "GCP zone containing the target instance")
+	workloadScanRunGCPCmd.Flags().StringVar(&workloadScanGCPInstanceName, "instance-name", "", "Target Compute Engine instance name")
+	workloadScanRunGCPCmd.Flags().StringVar(&workloadScanGCPScannerInstance, "scanner-instance-name", "", "Scanner Compute Engine instance name that receives attached inspection disks")
+	workloadScanRunGCPCmd.Flags().StringVar(&workloadScanGCPScannerProjectID, "scanner-project-id", "", "Optional scanner project ID (defaults to target project)")
+	workloadScanRunGCPCmd.Flags().StringVar(&workloadScanGCPScannerZone, "scanner-zone", "", "Scanner Compute Engine zone for inspection disks")
+	workloadScanRunGCPCmd.Flags().StringVar(&workloadScanRequestedBy, "requested-by", "", "Optional operator identity recorded on the run")
+	workloadScanRunGCPCmd.Flags().BoolVar(&workloadScanDryRun, "dry-run", false, "Inventory only; do not snapshot, attach, or mount volumes")
+	workloadScanRunGCPCmd.Flags().StringSliceVar(&workloadScanMetadataPairs, "metadata", nil, "Optional metadata entries (key=value)")
+	_ = workloadScanRunGCPCmd.MarkFlagRequired("project-id")
+	_ = workloadScanRunGCPCmd.MarkFlagRequired("zone")
+	_ = workloadScanRunGCPCmd.MarkFlagRequired("instance-name")
+	_ = workloadScanRunGCPCmd.MarkFlagRequired("scanner-instance-name")
+	_ = workloadScanRunGCPCmd.MarkFlagRequired("scanner-zone")
+
+	workloadScanRunAzureCmd.Flags().StringVar(&workloadScanAzureSubscriptionID, "subscription-id", "", "Azure subscription ID containing the target VM")
+	workloadScanRunAzureCmd.Flags().StringVar(&workloadScanAzureResourceGroup, "resource-group", "", "Azure resource group containing the target VM")
+	workloadScanRunAzureCmd.Flags().StringVar(&workloadScanAzureInstanceName, "instance-name", "", "Target Azure VM name")
+	workloadScanRunAzureCmd.Flags().StringVar(&workloadScanAzureScannerVM, "scanner-vm-name", "", "Scanner Azure VM name that receives attached inspection disks")
+	workloadScanRunAzureCmd.Flags().StringVar(&workloadScanAzureScannerRG, "scanner-resource-group", "", "Azure resource group containing the scanner VM")
+	workloadScanRunAzureCmd.Flags().StringVar(&workloadScanAzureScannerSubID, "scanner-subscription-id", "", "Optional scanner subscription ID (defaults to target subscription)")
+	workloadScanRunAzureCmd.Flags().StringVar(&workloadScanAzureRegion, "region", "", "Azure region containing the target and scanner VMs")
+	workloadScanRunAzureCmd.Flags().StringVar(&workloadScanRequestedBy, "requested-by", "", "Optional operator identity recorded on the run")
+	workloadScanRunAzureCmd.Flags().BoolVar(&workloadScanDryRun, "dry-run", false, "Inventory only; do not snapshot, attach, or mount volumes")
+	workloadScanRunAzureCmd.Flags().StringSliceVar(&workloadScanMetadataPairs, "metadata", nil, "Optional metadata entries (key=value)")
+	_ = workloadScanRunAzureCmd.MarkFlagRequired("subscription-id")
+	_ = workloadScanRunAzureCmd.MarkFlagRequired("resource-group")
+	_ = workloadScanRunAzureCmd.MarkFlagRequired("instance-name")
+	_ = workloadScanRunAzureCmd.MarkFlagRequired("scanner-vm-name")
+	_ = workloadScanRunAzureCmd.MarkFlagRequired("scanner-resource-group")
+	_ = workloadScanRunAzureCmd.MarkFlagRequired("region")
 
 	workloadScanReconcileAWSCmd.Flags().StringVar(&workloadScanAWSRegion, "region", "", "AWS region containing the target workload scan artifacts")
 	_ = workloadScanReconcileAWSCmd.MarkFlagRequired("region")
 
 	workloadScanCmd.AddCommand(workloadScanListCmd)
 	workloadScanRunCmd.AddCommand(workloadScanRunAWSCmd)
+	workloadScanRunCmd.AddCommand(workloadScanRunGCPCmd)
+	workloadScanRunCmd.AddCommand(workloadScanRunAzureCmd)
 	workloadScanCmd.AddCommand(workloadScanRunCmd)
 	workloadScanReconcileCmd.AddCommand(workloadScanReconcileAWSCmd)
+	workloadScanReconcileCmd.AddCommand(workloadScanReconcileGCPCmd)
+	workloadScanReconcileCmd.AddCommand(workloadScanReconcileAzureCmd)
 	workloadScanCmd.AddCommand(workloadScanReconcileCmd)
 }
 
@@ -146,13 +245,13 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
-	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg))
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg), resolveWorkloadScanGitleaksBinary(cfg), resolveWorkloadScanClamAVBinary(cfg))
 	if err != nil {
 		return err
 	}
 	defer func() { _ = vulnDBCloser.Close() }()
 
-	provider, err := workloadscan.NewAWSProvider(ctx, strings.TrimSpace(workloadScanAWSRegion))
+	provider, err := buildWorkloadScanAWSProvider(ctx)
 	if err != nil {
 		return err
 	}
@@ -165,6 +264,10 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
 		CleanupTimeout:         resolveWorkloadScanCleanupTimeout(cfg),
 	})
+	priority, err := parseWorkloadScanPriorityOverride(workloadScanPriorityOverride)
+	if err != nil {
+		return err
+	}
 
 	run, runErr := runner.RunVMScan(ctx, workloadscan.ScanRequest{
 		RequestedBy: workloadScanRequestedBy,
@@ -179,6 +282,138 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 			AccountID: strings.TrimSpace(workloadScanAWSScannerAccountID),
 			Region:    strings.TrimSpace(workloadScanAWSRegion),
 			Zone:      strings.TrimSpace(workloadScanAWSScannerZone),
+		},
+		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
+		DryRun:                 workloadScanDryRun,
+		Metadata:               parseMetadataPairs(workloadScanMetadataPairs),
+		Priority:               priority,
+		SubmittedAt:            time.Now().UTC(),
+	})
+	if run != nil {
+		if err := renderWorkloadRun(*run); err != nil {
+			return err
+		}
+	}
+	return runErr
+}
+
+func runWorkloadScanGCP(cmd *cobra.Command, args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	cfg := app.LoadConfig()
+	store, err := workloadscan.NewSQLiteRunStore(resolveWorkloadScanStateFile(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+
+	emitter, err := newWorkloadScanEmitter(cfg, slog.Default())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = emitter.Close() }()
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg), resolveWorkloadScanGitleaksBinary(cfg), resolveWorkloadScanClamAVBinary(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = vulnDBCloser.Close() }()
+
+	provider, err := workloadscan.NewGCPProvider(ctx)
+	if err != nil {
+		return err
+	}
+	runner := workloadscan.NewRunner(workloadscan.RunnerOptions{
+		Store:                  store,
+		Providers:              []workloadscan.Provider{provider},
+		Mounter:                workloadscan.NewLocalMounter(resolveWorkloadScanMountBasePath(cfg)),
+		Analyzer:               workloadscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
+		Events:                 emitter,
+		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
+		CleanupTimeout:         resolveWorkloadScanCleanupTimeout(cfg),
+	})
+
+	targetZone := strings.TrimSpace(workloadScanGCPZone)
+	scannerZone := strings.TrimSpace(workloadScanGCPScannerZone)
+	run, runErr := runner.RunVMScan(ctx, workloadscan.ScanRequest{
+		RequestedBy: workloadScanRequestedBy,
+		Target: workloadscan.VMTarget{
+			Provider:     workloadscan.ProviderGCP,
+			ProjectID:    strings.TrimSpace(workloadScanGCPProjectID),
+			Region:       gcpRegionFromZone(targetZone),
+			Zone:         targetZone,
+			InstanceName: strings.TrimSpace(workloadScanGCPInstanceName),
+		},
+		ScannerHost: workloadscan.ScannerHost{
+			HostID:    strings.TrimSpace(workloadScanGCPScannerInstance),
+			ProjectID: firstNonEmptyString(strings.TrimSpace(workloadScanGCPScannerProjectID), strings.TrimSpace(workloadScanGCPProjectID)),
+			Region:    gcpRegionFromZone(scannerZone),
+			Zone:      scannerZone,
+		},
+		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
+		DryRun:                 workloadScanDryRun,
+		Metadata:               parseMetadataPairs(workloadScanMetadataPairs),
+		SubmittedAt:            time.Now().UTC(),
+	})
+	if run != nil {
+		if err := renderWorkloadRun(*run); err != nil {
+			return err
+		}
+	}
+	return runErr
+}
+
+func runWorkloadScanAzure(cmd *cobra.Command, args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	cfg := app.LoadConfig()
+	store, err := workloadscan.NewSQLiteRunStore(resolveWorkloadScanStateFile(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+
+	emitter, err := newWorkloadScanEmitter(cfg, slog.Default())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = emitter.Close() }()
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg), resolveWorkloadScanGitleaksBinary(cfg), resolveWorkloadScanClamAVBinary(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = vulnDBCloser.Close() }()
+
+	provider, err := workloadscan.NewAzureProvider()
+	if err != nil {
+		return err
+	}
+	runner := workloadscan.NewRunner(workloadscan.RunnerOptions{
+		Store:                  store,
+		Providers:              []workloadscan.Provider{provider},
+		Mounter:                workloadscan.NewLocalMounter(resolveWorkloadScanMountBasePath(cfg)),
+		Analyzer:               workloadscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
+		Events:                 emitter,
+		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
+		CleanupTimeout:         resolveWorkloadScanCleanupTimeout(cfg),
+	})
+
+	region := strings.TrimSpace(workloadScanAzureRegion)
+	run, runErr := runner.RunVMScan(ctx, workloadscan.ScanRequest{
+		RequestedBy: workloadScanRequestedBy,
+		Target: workloadscan.VMTarget{
+			Provider:       workloadscan.ProviderAzure,
+			SubscriptionID: strings.TrimSpace(workloadScanAzureSubscriptionID),
+			ResourceGroup:  strings.TrimSpace(workloadScanAzureResourceGroup),
+			Region:         region,
+			InstanceName:   strings.TrimSpace(workloadScanAzureInstanceName),
+		},
+		ScannerHost: workloadscan.ScannerHost{
+			HostID:         strings.TrimSpace(workloadScanAzureScannerVM),
+			SubscriptionID: firstNonEmptyString(strings.TrimSpace(workloadScanAzureScannerSubID), strings.TrimSpace(workloadScanAzureSubscriptionID)),
+			ResourceGroup:  strings.TrimSpace(workloadScanAzureScannerRG),
+			Region:         region,
 		},
 		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
 		DryRun:                 workloadScanDryRun,
@@ -209,8 +444,13 @@ func reconcileWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer func() { _ = emitter.Close() }()
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg), resolveWorkloadScanGitleaksBinary(cfg), resolveWorkloadScanClamAVBinary(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = vulnDBCloser.Close() }()
 
-	provider, err := workloadscan.NewAWSProvider(ctx, strings.TrimSpace(workloadScanAWSRegion))
+	provider, err := buildWorkloadScanAWSProvider(ctx)
 	if err != nil {
 		return err
 	}
@@ -218,6 +458,91 @@ func reconcileWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		Store:          store,
 		Providers:      []workloadscan.Provider{provider},
 		Mounter:        workloadscan.NewLocalMounter(resolveWorkloadScanMountBasePath(cfg)),
+		Analyzer:       workloadscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
+		Events:         emitter,
+		CleanupTimeout: resolveWorkloadScanCleanupTimeout(cfg),
+	})
+
+	reconciled, err := runner.Reconcile(ctx, resolveWorkloadScanReconcileOlderThan(cfg))
+	if err != nil {
+		return err
+	}
+	return renderWorkloadRuns(reconciled)
+}
+
+func reconcileWorkloadScanGCP(cmd *cobra.Command, args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	cfg := app.LoadConfig()
+	store, err := workloadscan.NewSQLiteRunStore(resolveWorkloadScanStateFile(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+
+	emitter, err := newWorkloadScanEmitter(cfg, slog.Default())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = emitter.Close() }()
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg), resolveWorkloadScanGitleaksBinary(cfg), resolveWorkloadScanClamAVBinary(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = vulnDBCloser.Close() }()
+
+	provider, err := workloadscan.NewGCPProvider(ctx)
+	if err != nil {
+		return err
+	}
+	runner := workloadscan.NewRunner(workloadscan.RunnerOptions{
+		Store:          store,
+		Providers:      []workloadscan.Provider{provider},
+		Mounter:        workloadscan.NewLocalMounter(resolveWorkloadScanMountBasePath(cfg)),
+		Analyzer:       workloadscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
+		Events:         emitter,
+		CleanupTimeout: resolveWorkloadScanCleanupTimeout(cfg),
+	})
+
+	reconciled, err := runner.Reconcile(ctx, resolveWorkloadScanReconcileOlderThan(cfg))
+	if err != nil {
+		return err
+	}
+	return renderWorkloadRuns(reconciled)
+}
+
+func reconcileWorkloadScanAzure(cmd *cobra.Command, args []string) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	cfg := app.LoadConfig()
+	store, err := workloadscan.NewSQLiteRunStore(resolveWorkloadScanStateFile(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+
+	emitter, err := newWorkloadScanEmitter(cfg, slog.Default())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = emitter.Close() }()
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveWorkloadScanTrivyBinary(cfg), resolveWorkloadScanGitleaksBinary(cfg), resolveWorkloadScanClamAVBinary(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = vulnDBCloser.Close() }()
+
+	provider, err := workloadscan.NewAzureProvider()
+	if err != nil {
+		return err
+	}
+	runner := workloadscan.NewRunner(workloadscan.RunnerOptions{
+		Store:          store,
+		Providers:      []workloadscan.Provider{provider},
+		Mounter:        workloadscan.NewLocalMounter(resolveWorkloadScanMountBasePath(cfg)),
+		Analyzer:       workloadscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
 		Events:         emitter,
 		CleanupTimeout: resolveWorkloadScanCleanupTimeout(cfg),
 	})
@@ -276,14 +601,19 @@ func renderWorkloadRuns(runs []workloadscan.RunRecord) error {
 	if workloadScanOutput == FormatJSON {
 		return JSONOutput(runs)
 	}
-	tw := NewTableWriter(os.Stdout, "Run ID", "Provider", "Status", "Stage", "Target", "Volumes", "Findings", "Updated")
+	tw := NewTableWriter(os.Stdout, "Run ID", "Provider", "Status", "Stage", "Target", "Priority", "Volumes", "Findings", "Updated")
 	for _, run := range runs {
+		priority := "-"
+		if run.Priority != nil && run.Priority.Priority != "" {
+			priority = string(run.Priority.Priority)
+		}
 		tw.AddRow(
 			run.ID,
 			string(run.Provider),
 			statusColor(string(run.Status)),
 			string(run.Stage),
 			run.Target.Identity(),
+			priority,
 			fmt.Sprintf("%d", run.Summary.VolumeCount),
 			fmt.Sprintf("%d", run.Summary.Findings),
 			run.UpdatedAt.UTC().Format(time.RFC3339),
@@ -303,6 +633,9 @@ func renderWorkloadRun(run workloadscan.RunRecord) error {
 	fmt.Printf("  Status:    %s\n", statusColor(string(run.Status)))
 	fmt.Printf("  Stage:     %s\n", run.Stage)
 	fmt.Printf("  Target:    %s\n", run.Target.Identity())
+	if run.Priority != nil && run.Priority.Priority != "" {
+		fmt.Printf("  Priority:  %s (%d)\n", run.Priority.Priority, run.Priority.Score)
+	}
 	fmt.Printf("  Volumes:   %d (ok=%d failed=%d)\n", run.Summary.VolumeCount, run.Summary.SucceededVolumes, run.Summary.FailedVolumes)
 	fmt.Printf("  Findings:  %d\n", run.Summary.Findings)
 	fmt.Printf("  Snapshot:  %.4f GiB-hours\n", run.Summary.SnapshotGiBHours)
@@ -389,10 +722,46 @@ func resolveWorkloadScanTrivyBinary(cfg *app.Config) string {
 	if strings.TrimSpace(workloadScanTrivyBinary) != "" {
 		return strings.TrimSpace(workloadScanTrivyBinary)
 	}
-	if cfg != nil {
+	if cfg != nil && strings.TrimSpace(cfg.WorkloadScanTrivyBinary) != "" {
 		return strings.TrimSpace(cfg.WorkloadScanTrivyBinary)
 	}
 	return "trivy"
+}
+
+func resolveWorkloadScanGitleaksBinary(cfg *app.Config) string {
+	if strings.TrimSpace(workloadScanGitleaksBinary) != "" {
+		return strings.TrimSpace(workloadScanGitleaksBinary)
+	}
+	if cfg != nil && strings.TrimSpace(cfg.WorkloadScanGitleaksBinary) != "" {
+		return strings.TrimSpace(cfg.WorkloadScanGitleaksBinary)
+	}
+	return ""
+}
+
+func resolveWorkloadScanClamAVBinary(cfg *app.Config) string {
+	if strings.TrimSpace(workloadScanClamAVBinary) != "" {
+		return strings.TrimSpace(workloadScanClamAVBinary)
+	}
+	if cfg != nil && strings.TrimSpace(cfg.WorkloadScanClamAVBinary) != "" {
+		return strings.TrimSpace(cfg.WorkloadScanClamAVBinary)
+	}
+	return ""
+}
+
+func gcpRegionFromZone(zone string) string {
+	zone = strings.TrimSpace(zone)
+	if zone == "" {
+		return ""
+	}
+	lastDash := strings.LastIndex(zone, "-")
+	if lastDash <= 0 || lastDash == len(zone)-1 {
+		return zone
+	}
+	suffix := zone[lastDash+1:]
+	if len(suffix) == 1 && suffix[0] >= 'a' && suffix[0] <= 'z' {
+		return zone[:lastDash]
+	}
+	return zone
 }
 
 func parseMetadataPairs(values []string) map[string]string {
@@ -415,6 +784,18 @@ func parseMetadataPairs(values []string) map[string]string {
 	return out
 }
 
+func parseWorkloadScanPriorityOverride(raw string) (*workloadscan.PriorityAssessment, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	priority, ok := workloadscan.NormalizeScanPriority(raw)
+	if !ok {
+		return nil, fmt.Errorf("priority override must be one of critical, high, medium, low")
+	}
+	return workloadscan.ManualPriorityAssessment(priority, ""), nil
+}
+
 func parseWorkloadRunStatuses(raw string) ([]workloadscan.RunStatus, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil
@@ -431,4 +812,80 @@ func parseWorkloadRunStatuses(raw string) ([]workloadscan.RunStatus, error) {
 		}
 	}
 	return statuses, nil
+}
+
+func buildWorkloadScanAWSProvider(ctx context.Context) (*workloadscan.AWSProvider, error) {
+	if err := validateWorkloadScanAWSFlags(); err != nil {
+		return nil, err
+	}
+	sourceCfg, err := loadScheduledAWSConfig(ctx, buildWorkloadScanSourceAWSSpec())
+	if err != nil {
+		return nil, fmt.Errorf("load source aws config: %w", err)
+	}
+	region := strings.TrimSpace(workloadScanAWSRegion)
+	if region != "" {
+		sourceCfg.Region = region
+	}
+	inspectionCfg := sourceCfg
+	if workloadScanHasScannerAuthOverrides() {
+		inspectionCfg, err = loadScheduledAWSConfig(ctx, buildWorkloadScanScannerAWSSpec())
+		if err != nil {
+			return nil, fmt.Errorf("load scanner aws config: %w", err)
+		}
+		if region != "" {
+			inspectionCfg.Region = region
+		}
+	}
+	return workloadscan.NewAWSProviderWithConfigs(sourceCfg, inspectionCfg, workloadscan.AWSProviderOptions{
+		ShareKMSKeyID:      strings.TrimSpace(workloadScanAWSShareKMSKeyID),
+		InspectionKMSKeyID: strings.TrimSpace(workloadScanAWSScannerSnapshotKMSKeyID),
+	}), nil
+}
+
+func validateWorkloadScanAWSFlags() error {
+	targetAccount := strings.TrimSpace(workloadScanAWSAccountID)
+	scannerAccount := strings.TrimSpace(workloadScanAWSScannerAccountID)
+	crossAccount := targetAccount != "" && scannerAccount != "" && targetAccount != scannerAccount
+
+	if scannerAccount != "" && targetAccount == "" {
+		return fmt.Errorf("--scanner-account-id requires --account-id so cross-account routing is explicit")
+	}
+	if workloadScanHasScannerAuthOverrides() && scannerAccount == "" {
+		return fmt.Errorf("--scanner-profile/--scanner-role-arn require --scanner-account-id")
+	}
+	if strings.TrimSpace(workloadScanAWSScannerSnapshotKMSKeyID) != "" && scannerAccount == "" {
+		return fmt.Errorf("--scanner-snapshot-kms-key-id requires --scanner-account-id")
+	}
+	if strings.TrimSpace(workloadScanAWSShareKMSKeyID) != "" && scannerAccount == "" {
+		return fmt.Errorf("--share-kms-key-id requires --scanner-account-id")
+	}
+	if crossAccount && !workloadScanHasScannerAuthOverrides() {
+		return fmt.Errorf("cross-account workload scans require scanner credentials via --scanner-profile or --scanner-role-arn")
+	}
+	return nil
+}
+
+func buildWorkloadScanSourceAWSSpec() scheduledSyncSpec {
+	return scheduledSyncSpec{
+		AWSProfile:        strings.TrimSpace(workloadScanAWSSourceProfile),
+		AWSRoleARN:        strings.TrimSpace(workloadScanAWSSourceRoleARN),
+		AWSRoleSession:    strings.TrimSpace(workloadScanAWSSourceRoleSession),
+		AWSRoleExternalID: strings.TrimSpace(workloadScanAWSSourceRoleExternalID),
+	}
+}
+
+func buildWorkloadScanScannerAWSSpec() scheduledSyncSpec {
+	return scheduledSyncSpec{
+		AWSProfile:        strings.TrimSpace(workloadScanAWSScannerProfile),
+		AWSRoleARN:        strings.TrimSpace(workloadScanAWSScannerRoleARN),
+		AWSRoleSession:    strings.TrimSpace(workloadScanAWSScannerRoleSession),
+		AWSRoleExternalID: strings.TrimSpace(workloadScanAWSScannerRoleExternalID),
+	}
+}
+
+func workloadScanHasScannerAuthOverrides() bool {
+	return strings.TrimSpace(workloadScanAWSScannerProfile) != "" ||
+		strings.TrimSpace(workloadScanAWSScannerRoleARN) != "" ||
+		strings.TrimSpace(workloadScanAWSScannerRoleSession) != "" ||
+		strings.TrimSpace(workloadScanAWSScannerRoleExternalID) != ""
 }

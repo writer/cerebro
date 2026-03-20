@@ -1,22 +1,26 @@
 {
   "id": "third-party-sa-admin",
-  "control_id": "wc-id-2210",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Third party service account with admin privileges",
   "description": "A service account owned by a third party has administrative privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "iam::service_account|iam::role",
   "conditions": [
-    "is_third_party == true",
-    "has_admin_role == true"
+    "cmp_eq(path(resource, \"is_third_party\"), true)",
+    "cmp_eq(path(resource, \"has_admin_role\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Third parties should never have admin access. Reduce privileges immediately. Implement proper vendor access management.",
   "tags": [
     "wiz",
     "identity",
     "third-party",
     "admin"
   ],
+  "control_id": "wc-id-2210",
+  "remediation": "Third parties should never have admin access. Reduce privileges immediately. Implement proper vendor access management.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

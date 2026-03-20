@@ -1,15 +1,18 @@
 {
   "id": "m365-sharepoint-anonymous-link",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "SharePoint Anonymous Sharing Link",
   "description": "SharePoint site allows anonymous sharing links that don't require authentication",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "m365::sharepoint::site",
   "conditions": [
-    "sharing_capability IN ('ExternalUserAndGuestSharing', 'Anyone')",
-    "anonymous_link_count \u003e 0"
+    "in_list(path(resource, \"sharing_capability\"), [\"ExternalUserAndGuestSharing\",\"Anyone\"])",
+    "cmp_gt(path(resource, \"anonymous_link_count\"), 0)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Disable anonymous sharing links. Use authenticated links with expiration. Configure site-level and tenant-level sharing restrictions.",
   "tags": [
     "m365",
     "sharepoint",
@@ -17,6 +20,7 @@
     "anonymous-access",
     "cwe-200"
   ],
+  "remediation": "Disable anonymous sharing links. Use authenticated links with expiration. Configure site-level and tenant-level sharing restrictions.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

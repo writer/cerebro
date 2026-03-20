@@ -400,6 +400,7 @@ func TestRoutePermissionCoverage(t *testing.T) {
 		{name: "platform intelligence", method: http.MethodGet, path: "/api/v1/platform/intelligence/leverage", expectedRB: "platform.intelligence.read"},
 		{name: "platform intelligence run", method: http.MethodPost, path: "/api/v1/platform/intelligence/reports/quality/runs", expectedRB: "platform.intelligence.run"},
 		{name: "platform graph diff materialize", method: http.MethodPost, path: "/api/v1/platform/graph/diffs", expectedRB: "platform.graph.write"},
+		{name: "platform workload scan targets", method: http.MethodGet, path: "/api/v1/platform/workload-scan/targets", expectedRB: "platform.graph.read"},
 		{name: "cross tenant read", method: http.MethodGet, path: "/api/v1/graph/cross-tenant/patterns", expectedRB: "platform.cross_tenant.read"},
 		{name: "cross tenant write", method: http.MethodPost, path: "/api/v1/graph/cross-tenant/patterns/ingest", expectedRB: "platform.cross_tenant.write"},
 		{name: "platform knowledge read", method: http.MethodGet, path: "/api/v1/platform/knowledge/claims", expectedRB: "platform.knowledge.read"},
@@ -422,6 +423,19 @@ func TestRoutePermissionCoverage(t *testing.T) {
 				t.Fatalf("routePermission(%s, %s) = %q, want %q", tt.method, tt.path, got, tt.expectedRB)
 			}
 		})
+	}
+}
+
+func TestRoutePermission_WorkloadScanTargetsRequiresGraphRead(t *testing.T) {
+	required := routePermission(http.MethodGet, "/api/v1/platform/workload-scan/targets")
+	if required != "platform.graph.read" {
+		t.Fatalf("expected platform.graph.read, got %q", required)
+	}
+	if credentialAllowsPermission([]string{"security.findings.read"}, required) {
+		t.Fatalf("security.findings.read should not satisfy %q", required)
+	}
+	if !credentialAllowsPermission([]string{"platform.graph.read"}, required) {
+		t.Fatalf("platform.graph.read should satisfy %q", required)
 	}
 }
 

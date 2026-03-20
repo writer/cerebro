@@ -1,20 +1,24 @@
 {
   "id": "gcp-logging-disabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Cloud Logging Disabled",
   "description": "Cloud Logging is not enabled or log sinks are not configured for the project",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::logging::project_sink",
   "conditions": [
-    "disabled == true OR sink_count == 0"
+    "(cmp_eq(path(resource, \"disabled\"), true)) || (cmp_eq(path(resource, \"sink_count\"), 0))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Enable Cloud Logging for the project. Configure log sinks to export logs to Cloud Storage, BigQuery, or Pub/Sub for retention and analysis.",
   "tags": [
     "gcp",
     "logging",
     "audit",
     "compliance"
   ],
+  "remediation": "Enable Cloud Logging for the project. Configure log sinks to export logs to Cloud Storage, BigQuery, or Pub/Sub for retention and analysis.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

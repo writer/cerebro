@@ -1,22 +1,26 @@
 {
   "id": "serverless-public-admin",
-  "control_id": "wc-id-289",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed serverless with admin privileges",
   "description": "A publicly exposed serverless function has administrative privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "serverless::function",
   "conditions": [
-    "is_public == true",
-    "execution_role.has_admin_role == true"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "cmp_eq(path(resource, \"execution_role.has_admin_role\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove admin privileges from the function. Implement least privilege IAM policies. Add authentication to the function endpoint.",
   "tags": [
     "wiz",
     "serverless",
     "admin",
     "public-exposure"
   ],
+  "control_id": "wc-id-289",
+  "remediation": "Remove admin privileges from the function. Implement least privilege IAM policies. Add authentication to the function endpoint.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

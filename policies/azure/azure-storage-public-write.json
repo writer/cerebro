@@ -1,21 +1,25 @@
 {
   "id": "azure-storage-public-write",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure Storage Container Allows Public Write",
   "description": "Storage container has public access level that could allow anonymous writes",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::storage::container",
   "conditions": [
-    "public_access != 'None'",
-    "immutability_policy == null"
+    "cmp_ne(path(resource, \"public_access\"), \"None\")",
+    "cmp_eq(path(resource, \"immutability_policy\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Set public access level to 'None' (private). Use SAS tokens with limited permissions for external access. Enable soft delete and versioning.",
   "tags": [
     "azure",
     "storage",
     "public-access",
     "data-integrity"
   ],
+  "remediation": "Set public access level to 'None' (private). Use SAS tokens with limited permissions for external access. Enable soft delete and versioning.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

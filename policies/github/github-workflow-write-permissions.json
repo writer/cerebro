@@ -1,20 +1,24 @@
 {
   "id": "github-workflow-write-permissions",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitHub Actions Default Write Permissions",
   "description": "Repository grants GitHub Actions workflows default write permissions, increasing blast radius of compromised workflows",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "github::repository",
   "conditions": [
-    "actions_permissions.default_workflow_permissions == 'write'"
+    "cmp_eq(path(resource, \"actions_permissions.default_workflow_permissions\"), \"write\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Set default workflow permissions to 'read' in repository settings under Actions \u003e General. Grant specific permissions in workflow YAML files as needed.",
   "tags": [
     "github",
     "actions",
     "supply-chain",
     "least-privilege"
   ],
+  "remediation": "Set default workflow permissions to 'read' in repository settings under Actions \u003e General. Grant specific permissions in workflow YAML files as needed.",
   "risk_categories": [
     "PRIVILEGE_ESCALATION"
   ],

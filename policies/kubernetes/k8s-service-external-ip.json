@@ -1,21 +1,25 @@
 {
   "id": "k8s-service-external-ip",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Kubernetes Service with ExternalIP",
   "description": "Kubernetes Service uses externalIPs which can be exploited for CVE-2020-8554 man-in-the-middle attacks",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::core::service",
   "conditions": [
-    "spec.external_ips != null",
-    "spec.external_ips_count \u003e 0"
+    "cmp_ne(path(resource, \"spec.external_ips\"), null)",
+    "cmp_gt(path(resource, \"spec.external_ips_count\"), 0)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Remove externalIPs from Service spec. Use LoadBalancer or Ingress for external access. Enable ExternalIP admission controller to restrict usage.",
   "tags": [
     "kubernetes",
     "network",
     "cve-2020-8554",
     "service-exposure"
   ],
+  "remediation": "Remove externalIPs from Service spec. Use LoadBalancer or Ingress for external access. Enable ExternalIP admission controller to restrict usage.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "VULNERABILITY"

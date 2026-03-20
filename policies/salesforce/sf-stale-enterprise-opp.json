@@ -1,15 +1,23 @@
 {
   "id": "sf-stale-enterprise-opp",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Stale Enterprise Opportunity",
   "description": "Flags enterprise opportunities that are stale outside closed states.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "salesforce::opportunity",
   "conditions": [
-    "StageName != 'Closed Won'",
-    "StageName != 'Closed Lost'",
-    "days_since_last_modified > 30",
-    "Amount > 100000"
+    "cmp_ne(path(resource, \"StageName\"), \"Closed Won\")",
+    "cmp_ne(path(resource, \"StageName\"), \"Closed Lost\")",
+    "cmp_gt(path(resource, \"days_since_last_modified\"), 30)",
+    "cmp_gt(path(resource, \"Amount\"), 100000)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "tags": ["revenue", "pipeline-hygiene", "salesforce"]
+  "tags": [
+    "revenue",
+    "pipeline-hygiene",
+    "salesforce"
+  ]
 }

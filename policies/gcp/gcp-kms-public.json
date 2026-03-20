@@ -1,14 +1,17 @@
 {
   "id": "gcp-kms-public",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "KMS Key Publicly Accessible",
   "description": "Cloud KMS key grants access to allUsers or allAuthenticatedUsers",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::kms::crypto_key",
   "conditions": [
-    "iam_policy.bindings ANY (members CONTAINS 'allUsers' OR members CONTAINS 'allAuthenticatedUsers')"
+    "list_value(path(resource, \"iam_policy.bindings\")).exists(item, (contains_value(path(item, \"members\"), \"allUsers\")) || (contains_value(path(item, \"members\"), \"allAuthenticatedUsers\")))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove allUsers and allAuthenticatedUsers from KMS key IAM policy. Grant access to specific principals only.",
   "tags": [
     "gcp",
     "kms",
@@ -16,6 +19,7 @@
     "public-access",
     "data-protection"
   ],
+  "remediation": "Remove allUsers and allAuthenticatedUsers from KMS key IAM policy. Grant access to specific principals only.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

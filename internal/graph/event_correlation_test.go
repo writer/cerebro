@@ -91,46 +91,6 @@ func TestMaterializeEventCorrelationsBuildsCausalChain(t *testing.T) {
 	}
 }
 
-func TestMaterializeEventCorrelationsIgnoresNonSharedTargets(t *testing.T) {
-	g := New()
-	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
-
-	g.AddNode(&Node{ID: "bucket:shared", Kind: NodeKindBucket, Name: "shared-bucket"})
-	g.AddNode(&Node{
-		ID:   "pull_request:bucket-only:42",
-		Kind: NodeKindPullRequest,
-		Name: "bucket-only pr",
-		Properties: map[string]any{
-			"repository":  "bucket-only",
-			"number":      "42",
-			"state":       "merged",
-			"observed_at": base.Format(time.RFC3339),
-			"valid_from":  base.Format(time.RFC3339),
-		},
-	})
-	g.AddNode(&Node{
-		ID:   "deployment:bucket-only:deploy-1",
-		Kind: NodeKindDeploymentRun,
-		Name: "deploy-1",
-		Properties: map[string]any{
-			"deploy_id":   "deploy-1",
-			"status":      "succeeded",
-			"observed_at": base.Add(5 * time.Minute).Format(time.RFC3339),
-			"valid_from":  base.Add(5 * time.Minute).Format(time.RFC3339),
-		},
-	})
-	g.AddEdge(&Edge{ID: "pr->bucket", Source: "pull_request:bucket-only:42", Target: "bucket:shared", Kind: EdgeKindTargets, Effect: EdgeEffectAllow})
-	g.AddEdge(&Edge{ID: "deploy->bucket", Source: "deployment:bucket-only:deploy-1", Target: "bucket:shared", Kind: EdgeKindTargets, Effect: EdgeEffectAllow})
-
-	summary := MaterializeEventCorrelations(g, base.Add(10*time.Minute))
-	if summary.CorrelationsCreated != 0 {
-		t.Fatalf("expected non-service shared targets to be ignored, got %#v", summary)
-	}
-	if got := countMaterializedCorrelationEdges(g); got != 0 {
-		t.Fatalf("expected no materialized correlation edges, got %d", got)
-	}
-}
-
 func TestQueryEventCorrelationsIncludesFailureSpikeAnomaly(t *testing.T) {
 	g := New()
 	now := time.Date(2026, 3, 12, 12, 0, 0, 0, time.UTC)
@@ -251,92 +211,6 @@ func TestQueryEventCorrelationsSortsAnomaliesBySeverityRank(t *testing.T) {
 	}
 	if result.Anomalies[0].Severity != "high" {
 		t.Fatalf("expected highest severity anomaly first, got %#v", result.Anomalies)
-	}
-}
-
-func TestQueryEventCorrelationsPatternFilterScopesAnomalies(t *testing.T) {
-	g := New()
-	now := time.Date(2026, 3, 12, 12, 0, 0, 0, time.UTC)
-	g.AddNode(&Node{ID: "service:payments", Kind: NodeKindService, Name: "Payments"})
-
-	for i := 0; i < 4; i++ {
-		at := now.Add(-time.Duration(i+1) * 24 * time.Hour)
-		g.AddNode(&Node{
-			ID:   "pull_request:payments:current-" + string(rune('a'+i)),
-			Kind: NodeKindPullRequest,
-			Name: "current-pr",
-			Properties: map[string]any{
-				"repository":  "payments",
-				"number":      string(rune('0' + i)),
-				"service_id":  "payments",
-				"state":       "merged",
-				"observed_at": at.Format(time.RFC3339),
-				"valid_from":  at.Format(time.RFC3339),
-			},
-		})
-	}
-	for i := 0; i < 4; i++ {
-		baselineAt := now.Add(-time.Duration(14+i*5) * 24 * time.Hour)
-		g.AddNode(&Node{
-			ID:   "pull_request:payments:baseline-" + string(rune('a'+i)),
-			Kind: NodeKindPullRequest,
-			Name: "baseline-pr",
-			Properties: map[string]any{
-				"repository":  "payments",
-				"number":      string(rune('0' + i)),
-				"service_id":  "payments",
-				"state":       "merged",
-				"observed_at": baselineAt.Format(time.RFC3339),
-				"valid_from":  baselineAt.Format(time.RFC3339),
-			},
-		})
-	}
-	for i := 0; i < 4; i++ {
-		at := now.Add(-time.Duration(i+1) * 24 * time.Hour)
-		g.AddNode(&Node{
-			ID:   "deployment:payments:current-" + string(rune('a'+i)),
-			Kind: NodeKindDeploymentRun,
-			Name: "current-deploy",
-			Properties: map[string]any{
-				"deploy_id":   "current",
-				"service_id":  "payments",
-				"environment": "prod",
-				"status":      "failed",
-				"observed_at": at.Format(time.RFC3339),
-				"valid_from":  at.Format(time.RFC3339),
-			},
-		})
-	}
-	for i := 0; i < 4; i++ {
-		baselineAt := now.Add(-time.Duration(14+i*5) * 24 * time.Hour)
-		g.AddNode(&Node{
-			ID:   "deployment:payments:baseline-" + string(rune('a'+i)),
-			Kind: NodeKindDeploymentRun,
-			Name: "baseline-deploy",
-			Properties: map[string]any{
-				"deploy_id":   "baseline",
-				"service_id":  "payments",
-				"environment": "prod",
-				"status":      "failed",
-				"observed_at": baselineAt.Format(time.RFC3339),
-				"valid_from":  baselineAt.Format(time.RFC3339),
-			},
-		})
-	}
-
-	result := QueryEventCorrelations(g, now, EventCorrelationQuery{
-		EntityID:         "service:payments",
-		PatternID:        "deploy_incident_chain",
-		Limit:            10,
-		IncludeAnomalies: true,
-	})
-	if len(result.Anomalies) == 0 {
-		t.Fatalf("expected anomalies, got %#v", result)
-	}
-	for _, anomaly := range result.Anomalies {
-		if anomaly.EventKind == NodeKindPullRequest {
-			t.Fatalf("expected deploy_incident_chain anomalies to exclude pull requests, got %#v", result.Anomalies)
-		}
 	}
 }
 

@@ -1,15 +1,17 @@
 {
   "id": "ai-agent-lambda-data-access",
-  "control_id": "wc-id-2874",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AI Agent that is using a lambda function with access to sensitive data",
   "description": "An AI agent uses a Lambda function that has access to sensitive data",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "ai::agent",
   "conditions": [
-    "tools ANY (type == 'lambda' AND execution_role.has_sensitive_data_access == true)"
+    "list_value(path(resource, \"tools\")).exists(item, (cmp_eq(path(item, \"type\"), \"lambda\")) \u0026\u0026 (cmp_eq(path(item, \"execution_role.has_sensitive_data_access\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Restrict Lambda function permissions. Implement data access controls for AI agent actions.",
   "tags": [
     "wiz",
     "ai",
@@ -17,6 +19,8 @@
     "lambda",
     "data-access"
   ],
+  "control_id": "wc-id-2874",
+  "remediation": "Restrict Lambda function permissions. Implement data access controls for AI agent actions.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],

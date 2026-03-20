@@ -1,21 +1,25 @@
 {
   "id": "github-public-repo-branch-protection",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitHub Public Repository Without Branch Protection",
   "description": "Public repository does not have branch protection rules on the default branch",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "github::repository",
   "conditions": [
-    "visibility == 'public'",
-    "default_branch_protection_enabled != true"
+    "cmp_eq(path(resource, \"visibility\"), \"public\")",
+    "cmp_ne(path(resource, \"default_branch_protection_enabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Enable branch protection rules on the default branch: require pull request reviews, require status checks, restrict force pushes.",
   "tags": [
     "github",
     "branch-protection",
     "supply-chain",
     "cis-github-1.1.3"
   ],
+  "remediation": "Enable branch protection rules on the default branch: require pull request reviews, require status checks, restrict force pushes.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

@@ -1,20 +1,24 @@
 {
   "id": "aws-cloudwatch-log-group-retention",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "CloudWatch Log Group Retention",
   "description": "CloudWatch log groups should have a retention policy set",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::logs::log_group",
   "conditions": [
-    "retention_in_days == null"
+    "cmp_eq(path(resource, \"retention_in_days\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "Set a retention policy on the log group to manage storage costs and compliance requirements.",
   "tags": [
     "cloudwatch",
     "logging",
     "retention",
     "cost"
   ],
+  "remediation": "Set a retention policy on the log group to manage storage costs and compliance requirements.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

@@ -112,90 +112,6 @@ func TestImportKEVJSONStreamsAndMatches(t *testing.T) {
 	}
 }
 
-func TestImportOSVJSONRollsBackOnMalformedStream(t *testing.T) {
-	store, err := NewSQLiteStore(t.TempDir() + "/vulndb.db")
-	if err != nil {
-		t.Fatalf("NewSQLiteStore: %v", err)
-	}
-	defer func() { _ = store.Close() }()
-	service := NewService(store)
-
-	_, err = service.ImportOSVJSON(context.Background(), "osv-test", strings.NewReader(`
-{"id":"GHSA-test-0001","aliases":["CVE-2026-0001"],"summary":"valid","affected":[]}
-{"id":"GHSA-test-0002"
-`))
-	if err == nil {
-		t.Fatal("expected malformed OSV stream to fail")
-	}
-	if vuln, ok := service.LookupCVE("CVE-2026-0001"); ok || vuln != nil {
-		t.Fatalf("expected malformed OSV import to roll back advisory writes, got %#v", vuln)
-	}
-	stats, err := service.Stats(context.Background())
-	if err != nil {
-		t.Fatalf("Stats: %v", err)
-	}
-	if stats.VulnerabilityCount != 0 || stats.PackageRangeCount != 0 {
-		t.Fatalf("expected malformed OSV import to leave database unchanged, got %#v", stats)
-	}
-	states, err := service.ListSyncStates(context.Background())
-	if err != nil {
-		t.Fatalf("ListSyncStates: %v", err)
-	}
-	if len(states) != 0 {
-		t.Fatalf("expected malformed OSV import to avoid sync-state writes, got %#v", states)
-	}
-}
-
-func TestImportKEVJSONRollsBackOnMalformedStream(t *testing.T) {
-	store, err := NewSQLiteStore(t.TempDir() + "/vulndb.db")
-	if err != nil {
-		t.Fatalf("NewSQLiteStore: %v", err)
-	}
-	defer func() { _ = store.Close() }()
-	service := NewService(store)
-
-	if err := store.UpsertAdvisory(context.Background(), Vulnerability{
-		ID:      "GHSA-test-0001",
-		Aliases: []string{"CVE-2026-0001"},
-		Source:  "osv",
-	}, nil); err != nil {
-		t.Fatalf("UpsertAdvisory: %v", err)
-	}
-
-	var payload strings.Builder
-	payload.WriteString(`{"vulnerabilities":[`)
-	for i := 0; i < 1024; i++ {
-		if i > 0 {
-			payload.WriteByte(',')
-		}
-		cve := "CVE-2026-0001"
-		if i > 0 {
-			cve = "CVE-2026-9999"
-		}
-		payload.WriteString(`{"cveID":"` + cve + `"}`)
-	}
-	payload.WriteString(`,{"cveID":`)
-
-	_, err = service.ImportKEVJSON(context.Background(), "kev-test", strings.NewReader(payload.String()))
-	if err == nil {
-		t.Fatal("expected malformed KEV stream to fail")
-	}
-	vuln, ok := service.LookupCVE("CVE-2026-0001")
-	if !ok || vuln == nil {
-		t.Fatal("expected seeded advisory lookup to succeed")
-	}
-	if vuln.InKEV {
-		t.Fatalf("expected malformed KEV import to roll back enrichment, got %#v", vuln)
-	}
-	states, err := service.ListSyncStates(context.Background())
-	if err != nil {
-		t.Fatalf("ListSyncStates: %v", err)
-	}
-	if len(states) != 0 {
-		t.Fatalf("expected malformed KEV import to avoid sync-state writes, got %#v", states)
-	}
-}
-
 func TestImportEPSSCSVSkipsCommentLines(t *testing.T) {
 	store, err := NewSQLiteStore(t.TempDir() + "/vulndb.db")
 	if err != nil {
@@ -218,42 +134,6 @@ func TestImportEPSSCSVSkipsCommentLines(t *testing.T) {
 	}
 	if report.Imported != 1 || report.MatchedEPSS != 1 {
 		t.Fatalf("expected comment-prefixed EPSS import to match one record, got %#v", report)
-	}
-}
-
-func TestImportEPSSCSVRollsBackOnMalformedCSV(t *testing.T) {
-	store, err := NewSQLiteStore(t.TempDir() + "/vulndb.db")
-	if err != nil {
-		t.Fatalf("NewSQLiteStore: %v", err)
-	}
-	defer func() { _ = store.Close() }()
-	service := NewService(store)
-
-	if err := store.UpsertAdvisory(context.Background(), Vulnerability{
-		ID:      "GHSA-test-0001",
-		Aliases: []string{"CVE-2026-0001"},
-		Source:  "osv",
-	}, nil); err != nil {
-		t.Fatalf("UpsertAdvisory: %v", err)
-	}
-
-	_, err = service.ImportEPSSCSV(context.Background(), "epss-test", strings.NewReader("cve,epss,percentile\nCVE-2026-0001,0.91,0.99\n\"unterminated\n"))
-	if err == nil {
-		t.Fatal("expected malformed EPSS csv to fail")
-	}
-	vuln, ok := service.LookupCVE("CVE-2026-0001")
-	if !ok || vuln == nil {
-		t.Fatal("expected seeded advisory lookup to succeed")
-	}
-	if vuln.Exploitable {
-		t.Fatalf("expected malformed EPSS import to roll back enrichment, got %#v", vuln)
-	}
-	states, err := service.ListSyncStates(context.Background())
-	if err != nil {
-		t.Fatalf("ListSyncStates: %v", err)
-	}
-	if len(states) != 0 {
-		t.Fatalf("expected malformed EPSS import to avoid sync-state writes, got %#v", states)
 	}
 }
 

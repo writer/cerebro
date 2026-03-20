@@ -1,20 +1,24 @@
 {
   "id": "aws-sns-public-access",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "SNS Topic Allows Public Access",
   "description": "SNS topic policy allows access from any AWS account or public access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::sns::topic",
   "conditions": [
-    "policy.Statement ANY (Principal == '*' AND Condition == null)"
+    "list_value(path(resource, \"policy.Statement\")).exists(item, (cmp_eq(path(item, \"Principal\"), \"*\")) \u0026\u0026 (cmp_eq(path(item, \"Condition\"), null)))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Update SNS topic policy to restrict access to specific AWS accounts or principals. Add conditions to limit access scope.",
   "tags": [
     "aws",
     "sns",
     "messaging",
     "public-access"
   ],
+  "remediation": "Update SNS topic policy to restrict access to specific AWS accounts or principals. Add conditions to limit access scope.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

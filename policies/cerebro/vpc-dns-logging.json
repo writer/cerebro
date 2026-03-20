@@ -1,15 +1,17 @@
 {
   "id": "vpc-dns-logging",
-  "control_id": "wc-id-2175",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "VPC has no Route 53 DNS resolver with logging enabled",
   "description": "A VPC does not have DNS query logging enabled for security visibility",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ec2::vpc",
   "conditions": [
-    "dns_query_logging_enabled == false"
+    "cmp_eq(path(resource, \"dns_query_logging_enabled\"), false)"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "Enable Route 53 Resolver DNS query logging for security monitoring and threat detection.",
   "tags": [
     "wiz",
     "aws",
@@ -17,6 +19,8 @@
     "dns",
     "logging"
   ],
+  "control_id": "wc-id-2175",
+  "remediation": "Enable Route 53 Resolver DNS query logging for security monitoring and threat detection.",
   "frameworks": [
     {
       "name": "NIST 800-53 r5",

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -246,6 +247,282 @@ func TestAppendOktaAdminRoleRelationships(t *testing.T) {
 	}
 	if props["role_type"] != "SUPER_ADMIN" || props["role_label"] != "Super Admin" {
 		t.Fatalf("unexpected relationship properties: %+v", props)
+	}
+}
+
+func TestAppendOktaAppGrantRelationships(t *testing.T) {
+	t.Parallel()
+
+	rels := appendOktaAppGrantRelationships(nil, []map[string]interface{}{
+		{
+			"id":       "grant-1",
+			"app_id":   "app-1",
+			"scope_id": "okta.users.read",
+			"issuer":   "https://example.okta.com",
+			"source":   "ADMIN",
+			"status":   "ACTIVE",
+		},
+		{
+			"id":       "grant-2",
+			"app_id":   "app-1",
+			"scope_id": "okta.apps.manage",
+			"issuer":   "https://example.okta.com",
+			"source":   "END_USER",
+			"user_id":  "user-1",
+			"status":   "ACTIVE",
+		},
+		{
+			"id":       "grant-3",
+			"app_id":   "app-1",
+			"scope_id": "okta.users.manage",
+			"issuer":   "https://example.okta.com",
+			"source":   "ADMIN",
+			"status":   "INACTIVE",
+		},
+	})
+
+	if len(rels) != 3 {
+		t.Fatalf("expected 3 relationships, got %d", len(rels))
+	}
+	if rels[0].SourceType != "okta:application" || rels[0].TargetType != "okta:scope" || rels[0].RelType != RelCanAccess {
+		t.Fatalf("unexpected read-scope relationship: %+v", rels[0])
+	}
+	if rels[1].RelType != RelHasPermission {
+		t.Fatalf("expected manage scope to map to HAS_PERMISSION, got %+v", rels[1])
+	}
+	if rels[2].SourceType != "okta:user" || rels[2].TargetType != "okta:application" || rels[2].RelType != RelCanAccess {
+		t.Fatalf("unexpected principal consent relationship: %+v", rels[2])
+	}
+
+	props := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(rels[1].Properties), &props); err != nil {
+		t.Fatalf("failed to parse relationship properties: %v", err)
+	}
+	if props["scope"] != "okta.apps.manage" || props["grant_id"] != "grant-2" || props["source"] != "END_USER" || props["grant_type"] != "delegated_permission" || props["consent_type"] != "Principal" {
+		t.Fatalf("unexpected relationship properties: %+v", props)
+	}
+
+	principalProps := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(rels[2].Properties), &principalProps); err != nil {
+		t.Fatalf("failed to parse principal relationship properties: %v", err)
+	}
+	if principalProps["grant_type"] != "delegated_permission_consent" || principalProps["consent_type"] != "Principal" || principalProps["user_id"] != "user-1" {
+		t.Fatalf("unexpected principal relationship properties: %+v", principalProps)
+	}
+}
+
+func TestAppendGoogleWorkspaceTokenRelationships(t *testing.T) {
+	t.Parallel()
+
+	rels := appendGoogleWorkspaceTokenRelationships(nil, []map[string]interface{}{
+		{
+			"id":           "user-1|client-1",
+			"user_id":      "user-1",
+			"client_id":    "client-1",
+			"display_text": "Slack",
+			"anonymous":    false,
+			"native_app":   true,
+			"scope":        "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/admin.directory.user.readonly",
+			"scope_count":  2,
+		},
+	})
+
+	if len(rels) != 3 {
+		t.Fatalf("expected 3 relationships, got %d", len(rels))
+	}
+
+	if rels[0].SourceType != "google_workspace:user" || rels[0].TargetType != "google_workspace:application" || rels[0].RelType != RelCanAccess {
+		t.Fatalf("unexpected token consent relationship: %+v", rels[0])
+	}
+	if rels[1].SourceID != "client-1" || rels[1].TargetID != "google_workspace_scope:https://www.googleapis.com/auth/admin.directory.user.readonly" {
+		t.Fatalf("unexpected first scope relationship: %+v", rels[1])
+	}
+	if rels[2].SourceID != "client-1" || rels[2].TargetID != "google_workspace_scope:https://www.googleapis.com/auth/calendar.readonly" {
+		t.Fatalf("unexpected second scope relationship: %+v", rels[2])
+	}
+}
+
+func TestAppendEntraAppRoleAssignmentRelationships(t *testing.T) {
+	t.Parallel()
+
+	rels := appendEntraAppRoleAssignmentRelationships(nil, []map[string]interface{}{
+		{
+			"id":             "assignment-1",
+			"principal_id":   "user-1",
+			"principal_type": "User",
+			"resource_id":    "sp-app-1",
+			"app_role_id":    "role-1",
+		},
+		{
+			"id":             "assignment-2",
+			"principal_id":   "group-1",
+			"principal_type": "Group",
+			"resource_id":    "sp-app-1",
+			"app_role_id":    "role-2",
+		},
+		{
+			"id":             "assignment-3",
+			"principal_id":   "sp-caller-1",
+			"principal_type": "ServicePrincipal",
+			"resource_id":    "sp-app-2",
+		},
+		{
+			"id":             "assignment-4",
+			"principal_id":   "ignored-1",
+			"principal_type": "DirectoryRole",
+			"resource_id":    "sp-app-3",
+		},
+	})
+
+	if len(rels) != 3 {
+		t.Fatalf("expected 3 relationships, got %d", len(rels))
+	}
+
+	if rels[0].SourceType != "entra:user" || rels[0].TargetType != "entra:service_principal" || rels[0].RelType != RelCanAccess {
+		t.Fatalf("unexpected user assignment relationship: %+v", rels[0])
+	}
+	if rels[1].SourceType != "entra:group" || rels[1].TargetType != "entra:service_principal" || rels[1].RelType != RelCanAccess {
+		t.Fatalf("unexpected group assignment relationship: %+v", rels[1])
+	}
+	if rels[2].SourceType != "entra:service_principal" || rels[2].TargetType != "entra:service_principal" || rels[2].RelType != RelCanAccess {
+		t.Fatalf("unexpected service principal assignment relationship: %+v", rels[2])
+	}
+
+	for _, rel := range rels {
+		props := map[string]interface{}{}
+		if err := json.Unmarshal([]byte(rel.Properties), &props); err != nil {
+			t.Fatalf("failed to parse relationship properties: %v", err)
+		}
+		if props["assignment_id"] == "" {
+			t.Fatalf("expected assignment_id property on relationship: %+v", props)
+		}
+	}
+}
+
+func TestAppendEntraOAuth2PermissionGrantRelationships(t *testing.T) {
+	t.Parallel()
+
+	rels := appendEntraOAuth2PermissionGrantRelationships(nil, []map[string]interface{}{
+		{
+			"id":           "grant-1",
+			"client_id":    "sp-client-1",
+			"consent_type": "Principal",
+			"principal_id": "user-1",
+			"resource_id":  "sp-resource-1",
+			"scope":        "Mail.Read Files.Read",
+		},
+		{
+			"id":           "grant-2",
+			"client_id":    "sp-client-2",
+			"consent_type": "AllPrincipals",
+			"resource_id":  "sp-resource-2",
+			"scope":        "User.Read.All",
+		},
+	})
+
+	if len(rels) != 3 {
+		t.Fatalf("expected 3 relationships, got %d", len(rels))
+	}
+
+	if rels[0].SourceType != "entra:service_principal" || rels[0].TargetType != "entra:service_principal" || rels[0].RelType != RelCanAccess {
+		t.Fatalf("unexpected delegated resource relationship: %+v", rels[0])
+	}
+	if rels[1].SourceType != "entra:user" || rels[1].TargetType != "entra:service_principal" || rels[1].RelType != RelCanAccess {
+		t.Fatalf("unexpected principal consent relationship: %+v", rels[1])
+	}
+	if rels[2].SourceType != "entra:service_principal" || rels[2].TargetType != "entra:service_principal" || rels[2].RelType != RelCanAccess {
+		t.Fatalf("unexpected admin consent resource relationship: %+v", rels[2])
+	}
+
+	props := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(rels[0].Properties), &props); err != nil {
+		t.Fatalf("failed to parse relationship properties: %v", err)
+	}
+	if props["grant_type"] != "delegated_permission" || props["scope"] != "Mail.Read Files.Read" {
+		t.Fatalf("unexpected delegated grant properties: %+v", props)
+	}
+	if _, ok := props["start_time"]; ok {
+		t.Fatalf("expected delegated grant properties to avoid unsupported start_time field: %+v", props)
+	}
+	if _, ok := props["expiry_time"]; ok {
+		t.Fatalf("expected delegated grant properties to avoid unsupported expiry_time field: %+v", props)
+	}
+
+	props = map[string]interface{}{}
+	if err := json.Unmarshal([]byte(rels[1].Properties), &props); err != nil {
+		t.Fatalf("failed to parse relationship properties: %v", err)
+	}
+	if props["grant_type"] != "delegated_permission_consent" || props["client_id"] != "sp-client-1" {
+		t.Fatalf("unexpected consent relationship properties: %+v", props)
+	}
+}
+
+func TestExtractAzureRelationships_UsesStableOAuthGrantColumns(t *testing.T) {
+	t.Parallel()
+
+	origSchema := relationshipSchemaName
+	origBatch := relationshipQueryBatch
+	t.Cleanup(func() {
+		relationshipSchemaName = origSchema
+		relationshipQueryBatch = origBatch
+	})
+
+	relationshipSchemaName = func(_ warehouse.SyncWarehouse) string { return "RAW" }
+	relationshipQueryBatch = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, _ ...interface{}) error {
+		return nil
+	}
+
+	var sawGrantQuery bool
+	sf := &warehouse.MemoryWarehouse{
+		SchemaValue: "RAW",
+		QueryFunc: func(_ context.Context, query string, args ...any) (*snowflake.QueryResult, error) {
+			if strings.Contains(query, "FROM INFORMATION_SCHEMA.COLUMNS") {
+				table := strings.ToUpper(args[0].(string))
+				if table != "ENTRA_OAUTH2_PERMISSION_GRANTS" {
+					return &snowflake.QueryResult{Rows: nil}, nil
+				}
+				return &snowflake.QueryResult{Rows: []map[string]any{
+					{"column_name": "ID"},
+					{"column_name": "CLIENT_ID"},
+					{"column_name": "CONSENT_TYPE"},
+					{"column_name": "PRINCIPAL_ID"},
+					{"column_name": "RESOURCE_ID"},
+					{"column_name": "SCOPE"},
+				}}, nil
+			}
+			if strings.Contains(query, "FROM ENTRA_OAUTH2_PERMISSION_GRANTS") {
+				sawGrantQuery = true
+				if strings.Contains(query, "START_TIME") || strings.Contains(query, "EXPIRY_TIME") {
+					t.Fatalf("expected stable OAuth grant query to avoid removed timestamp columns, got %q", query)
+				}
+				return &snowflake.QueryResult{Rows: []map[string]any{{
+					"id":           "grant-1",
+					"client_id":    "sp-client-1",
+					"consent_type": "Principal",
+					"principal_id": "user-1",
+					"resource_id":  "sp-resource-1",
+					"scope":        "Mail.Read",
+				}}}, nil
+			}
+			return &snowflake.QueryResult{Rows: nil}, nil
+		},
+	}
+
+	rex := &RelationshipExtractor{
+		sf:          sf,
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		runSyncTime: time.Date(2026, 3, 15, 17, 0, 0, 0, time.UTC),
+	}
+
+	total, err := rex.extractAzureRelationships(context.Background())
+	if err != nil {
+		t.Fatalf("extractAzureRelationships returned error: %v", err)
+	}
+	if !sawGrantQuery {
+		t.Fatal("expected delegated OAuth grant query to be executed")
+	}
+	if total != 2 {
+		t.Fatalf("expected principal grant to persist two relationships, got %d", total)
 	}
 }
 

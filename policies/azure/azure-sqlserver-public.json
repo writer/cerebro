@@ -1,20 +1,24 @@
 {
   "id": "azure-sqlserver-public",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure SQL Server Allows All Azure IPs",
   "description": "Azure SQL Server firewall allows connections from all Azure services (0.0.0.0)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::sql::server",
   "conditions": [
-    "firewall_rules ANY (start_ip_address == '0.0.0.0' AND end_ip_address == '0.0.0.0')"
+    "list_value(path(resource, \"firewall_rules\")).exists(item, (cmp_eq(path(item, \"start_ip_address\"), \"0.0.0.0\")) \u0026\u0026 (cmp_eq(path(item, \"end_ip_address\"), \"0.0.0.0\")))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Remove the 'Allow Azure services' firewall rule. Use Private Endpoints for secure access. Add specific IP ranges for required services.",
   "tags": [
     "azure",
     "sql",
     "database",
     "network-exposure"
   ],
+  "remediation": "Remove the 'Allow Azure services' firewall rule. Use Private Endpoints for secure access. Add specific IP ranges for required services.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

@@ -1,20 +1,24 @@
 {
   "id": "aws-rds-iam-authentication",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "RDS IAM Authentication",
   "description": "RDS instances should have IAM database authentication enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::rds::db_instance",
   "conditions": [
-    "iam_database_authentication_enabled != true"
+    "cmp_ne(path(resource, \"iam_database_authentication_enabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "Enable IAM database authentication for centralized credential management.",
   "tags": [
     "rds",
     "database",
     "iam",
     "authentication"
   ],
+  "remediation": "Enable IAM database authentication for centralized credential management.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "IDENTITY_RISK",

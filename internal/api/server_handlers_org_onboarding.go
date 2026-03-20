@@ -5,22 +5,20 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/writer/cerebro/internal/graph"
 )
 
 func (s *Server) orgOnboardingPlan(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	personID := strings.TrimSpace(chi.URLParam(r, "id"))
 	if personID == "" {
 		s.error(w, http.StatusBadRequest, "person id is required")
 		return
 	}
 
-	plan := graph.GenerateOnboardingPlan(s.app.SecurityGraph, personID)
+	plan, err := s.orgAnalysis.OnboardingPlan(r.Context(), personID)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
 	if plan == nil {
 		s.error(w, http.StatusNotFound, "onboarding plan not found")
 		return

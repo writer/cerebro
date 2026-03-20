@@ -1,14 +1,24 @@
 {
   "id": "sentinelone-command-control",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "SentinelOne Command and Control Activity",
   "description": "SentinelOne detected command and control (C2) communication from an endpoint",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "sentinelone::threat",
   "conditions": [
-    "indicators.mitre_tactics CONTAINS 'TA0011'",
-    "threat_info.analyst_verdict != 'false_positive'"
+    "contains_value(path(resource, \"indicators.mitre_tactics\"), \"TA0011\")",
+    "cmp_ne(path(resource, \"threat_info.analyst_verdict\"), \"false_positive\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Immediately isolate endpoint from network. Block C2 domains/IPs at perimeter. Conduct forensic investigation. Engage incident response procedures. Hunt for lateral movement.",
-  "tags": ["sentinelone", "edr", "c2", "threat-detection", "mitre-ta0011"]
+  "tags": [
+    "sentinelone",
+    "edr",
+    "c2",
+    "threat-detection",
+    "mitre-ta0011"
+  ],
+  "remediation": "Immediately isolate endpoint from network. Block C2 domains/IPs at perimeter. Conduct forensic investigation. Engage incident response procedures. Hunt for lateral movement."
 }

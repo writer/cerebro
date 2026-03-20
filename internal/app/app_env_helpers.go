@@ -11,16 +11,162 @@ import (
 
 	"github.com/writer/cerebro/internal/apiauth"
 	"github.com/writer/cerebro/internal/envutil"
+	"github.com/writer/cerebro/internal/secretsource"
 )
 
+var configValueSourceState struct {
+	mu     sync.RWMutex
+	source secretsource.Source
+}
+
+// Only explicit credential/auth material is overrideable via file/Vault-backed
+// credential sources. This intentionally excludes runtime policy and platform
+// integrity controls such as graph or attestation signing keys.
+var credentialSourceAllowedKeys = map[string]struct{}{
+	"ANTHROPIC_API_KEY":                  {},
+	"API_CREDENTIALS_JSON":               {},
+	"API_KEYS":                           {},
+	"AUTH0_CLIENT_SECRET":                {},
+	"AZURE_CLIENT_SECRET":                {},
+	"BAMBOOHR_API_TOKEN":                 {},
+	"CEREBRO_OTEL_EXPORTER_OTLP_HEADERS": {},
+	"CLOUDFLARE_API_TOKEN":               {},
+	"CROWDSTRIKE_CLIENT_SECRET":          {},
+	"CYBERARK_API_TOKEN":                 {},
+	"DATADOG_API_KEY":                    {},
+	"DATADOG_APP_KEY":                    {},
+	"DUO_SECRET_KEY":                     {},
+	"DUO_SKEY":                           {},
+	"ENTRA_CLIENT_SECRET":                {},
+	"FIGMA_API_TOKEN":                    {},
+	"FORGEROCK_API_TOKEN":                {},
+	"GITHUB_TOKEN":                       {},
+	"GITLAB_TOKEN":                       {},
+	"GONG_ACCESS_KEY":                    {},
+	"GONG_ACCESS_SECRET":                 {},
+	"GOOGLE_WORKSPACE_CREDENTIALS_JSON":  {},
+	"INTUNE_CLIENT_SECRET":               {},
+	"JAMF_CLIENT_SECRET":                 {},
+	"JIRA_API_TOKEN":                     {},
+	"JUMPCLOUD_API_TOKEN":                {},
+	"KANDJI_API_TOKEN":                   {},
+	"KOLIDE_API_TOKEN":                   {},
+	"LINEAR_API_KEY":                     {},
+	"NATS_JETSTREAM_NKEY_SEED":           {},
+	"NATS_JETSTREAM_PASSWORD":            {},
+	"NATS_JETSTREAM_USERNAME":            {},
+	"NATS_JETSTREAM_USER_JWT":            {},
+	"OKTA_API_TOKEN":                     {},
+	"ONELOGIN_CLIENT_SECRET":             {},
+	"OPENAI_API_KEY":                     {},
+	"ORACLE_IDCS_API_TOKEN":              {},
+	"OTEL_EXPORTER_OTLP_HEADERS":         {},
+	"PAGERDUTY_ROUTING_KEY":              {},
+	"PANTHER_API_TOKEN":                  {},
+	"PINGIDENTITY_CLIENT_SECRET":         {},
+	"PINGONE_CLIENT_SECRET":              {},
+	"QUALYS_PASSWORD":                    {},
+	"RAMP_CLIENT_SECRET":                 {},
+	"RIPPLING_API_TOKEN":                 {},
+	"SAILPOINT_API_TOKEN":                {},
+	"SALESFORCE_CLIENT_SECRET":           {},
+	"SALESFORCE_PASSWORD":                {},
+	"SALESFORCE_SECURITY_TOKEN":          {},
+	"SAVIYNT_API_TOKEN":                  {},
+	"SEMGREP_API_TOKEN":                  {},
+	"SENTINELONE_API_TOKEN":              {},
+	"SERVICENOW_API_TOKEN":               {},
+	"SERVICENOW_PASSWORD":                {},
+	"SLACK_API_TOKEN":                    {},
+	"SLACK_SIGNING_SECRET":               {},
+	"SLACK_WEBHOOK_URL":                  {},
+	"SNOWFLAKE_PRIVATE_KEY":              {},
+	"SNYK_API_TOKEN":                     {},
+	"SOCKET_API_TOKEN":                   {},
+	"SPLUNK_TOKEN":                       {},
+	"TAILSCALE_API_KEY":                  {},
+	"TENABLE_ACCESS_KEY":                 {},
+	"TENABLE_SECRET_KEY":                 {},
+	"TFC_TOKEN":                          {},
+	"VAULT_TOKEN":                        {},
+	"VANTA_API_TOKEN":                    {},
+	"WIZ_CLIENT_SECRET":                  {},
+	"WORKDAY_API_TOKEN":                  {},
+	"ZOOM_CLIENT_SECRET":                 {},
+}
+
 func getEnv(key, fallback string) string {
-	if value := strings.TrimSpace(envutil.Get(key, "")); value != "" {
-		return value
+	if credentialSourceEligibleKey(key) {
+		if value, ok := lookupActiveConfigSourceValue(key); ok && strings.TrimSpace(value) != "" {
+			return value
+		}
 	}
-	if value, ok := lookupConfigFileValue(key); ok {
+	if value, ok := lookupRawConfigValue(key); ok {
 		return value
 	}
 	return fallback
+}
+
+func credentialSourceEligibleKey(key string) bool {
+	key = strings.ToUpper(strings.TrimSpace(key))
+	if key == "" {
+		return false
+	}
+	_, ok := credentialSourceAllowedKeys[key]
+	return ok
+}
+
+func withConfigValueSource(source secretsource.Source, fn func()) {
+	configValueSourceState.mu.Lock()
+	previous := configValueSourceState.source
+	configValueSourceState.source = source
+	configValueSourceState.mu.Unlock()
+	defer func() {
+		configValueSourceState.mu.Lock()
+		configValueSourceState.source = previous
+		configValueSourceState.mu.Unlock()
+	}()
+	fn()
+}
+
+func lookupActiveConfigSourceValue(key string) (string, bool) {
+	configValueSourceState.mu.RLock()
+	source := configValueSourceState.source
+	configValueSourceState.mu.RUnlock()
+	if source == nil {
+		return "", false
+	}
+	return source.Lookup(key)
+}
+
+func lookupRawConfigValue(key string) (string, bool) {
+	if value := strings.TrimSpace(envutil.Get(key, "")); value != "" {
+		return value, true
+	}
+	if value, ok := lookupConfigFileValue(key); ok {
+		return value, true
+	}
+	return "", false
+}
+
+func bootstrapConfigValue(key, fallback string) string {
+	if value, ok := lookupRawConfigValue(key); ok {
+		return value
+	}
+	return fallback
+}
+
+func bootstrapConfigInt(key string, fallback int) int {
+	value := strings.TrimSpace(bootstrapConfigValue(key, ""))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		recordConfigProblem("%s must be a valid integer", key)
+		return fallback
+	}
+	return parsed
 }
 
 var configParseRecorder struct {

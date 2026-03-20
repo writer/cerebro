@@ -1,16 +1,18 @@
 {
   "id": "gke-cluster-admin",
-  "control_id": "wc-id-445",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GKE cluster-admin role is used by an account",
   "description": "An account is using the cluster-admin role in GKE, granting full cluster control",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::gke::cluster_role_binding|k8s::rbac::risky_binding",
   "conditions": [
-    "role_ref_name == 'cluster-admin' OR role_ref.name == 'cluster-admin'",
-    "subject_kind IN ('User', 'ServiceAccount', 'Group') OR subjects ANY (kind IN ('User', 'ServiceAccount', 'Group'))"
+    "(cmp_eq(path(resource, \"role_ref_name\"), \"cluster-admin\")) || (cmp_eq(path(resource, \"role_ref.name\"), \"cluster-admin\"))",
+    "(in_list(path(resource, \"subject_kind\"), [\"User\",\"ServiceAccount\",\"Group\"])) || (list_value(path(resource, \"subjects\")).exists(item, in_list(path(item, \"kind\"), [\"User\",\"ServiceAccount\",\"Group\"])))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Replace cluster-admin with more restrictive custom roles. Use namespaced roles when possible.",
   "tags": [
     "wiz",
     "gke",
@@ -18,6 +20,8 @@
     "rbac",
     "admin"
   ],
+  "control_id": "wc-id-445",
+  "remediation": "Replace cluster-admin with more restrictive custom roles. Use namespaced roles when possible.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

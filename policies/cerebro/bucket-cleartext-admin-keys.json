@@ -1,15 +1,17 @@
 {
   "id": "bucket-cleartext-admin-keys",
-  "control_id": "wc-id-2421",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Bucket with cleartext highly privileged cloud keys",
   "description": "A bucket contains cleartext cloud keys with high privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "storage::bucket|storage::blob_container",
   "conditions": [
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_high_privilege == true)"
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"grants_high_privilege\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove cleartext keys immediately. Rotate all exposed credentials. Use IAM roles instead.",
   "tags": [
     "wiz",
     "storage",
@@ -17,6 +19,8 @@
     "cleartext-keys",
     "admin"
   ],
+  "control_id": "wc-id-2421",
+  "remediation": "Remove cleartext keys immediately. Rotate all exposed credentials. Use IAM roles instead.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "IDENTITY_RISK",

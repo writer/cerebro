@@ -337,6 +337,13 @@ var (
 		},
 	)
 
+	GraphPropertyHistoryDepth = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_property_history_depth",
+			Help: "Configured maximum number of property-history snapshots retained per node property",
+		},
+	)
+
 	GraphFreshnessByProvider = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "cerebro_graph_freshness_by_provider",
@@ -361,11 +368,98 @@ var (
 		[]string{"provider"},
 	)
 
+	GraphIndexBuildDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_graph_index_build_duration_seconds",
+			Help:    "Duration of graph secondary-index builds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"trigger"},
+	)
+
+	GraphMutationLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_graph_mutation_latency_seconds",
+			Help:    "Duration of graph mutation operations",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"op"},
+	)
+
+	GraphSearchLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_graph_search_latency_seconds",
+			Help:    "Duration of graph search operations",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"query_type"},
+	)
+
+	GraphSnapshotDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_graph_snapshot_duration_seconds",
+			Help:    "Duration of graph snapshot operations",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"op"},
+	)
+
+	GraphSnapshotSizeBytes = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_snapshot_size_bytes",
+			Help: "Size in bytes of the most recently persisted graph snapshot artifact",
+		},
+	)
+
+	GraphNodesTotal = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_nodes_total",
+			Help: "Node count of the current live security graph",
+		},
+	)
+
+	GraphEdgesTotal = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_edges_total",
+			Help: "Edge count of the current live security graph",
+		},
+	)
+
+	GraphCloneDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_graph_clone_duration_seconds",
+			Help:    "Duration of full graph clone operations",
+			Buckets: prometheus.DefBuckets,
+		},
+	)
+
 	EventProcessingDuration = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "cerebro_event_processing_duration_seconds",
 			Help:    "End-to-end duration from event timestamp to successful graph processing",
 			Buckets: prometheus.ExponentialBuckets(0.1, 2, 12),
+		},
+	)
+
+	CorrelationRefreshDroppedTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "cerebro_correlation_refresh_dropped_total",
+			Help: "Total number of event correlation refresh requests dropped before they could be queued",
+		},
+	)
+
+	CorrelationRefreshDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_correlation_refresh_duration_seconds",
+			Help:    "Duration of coalesced event correlation refresh runs",
+			Buckets: prometheus.DefBuckets,
+		},
+	)
+
+	CorrelationRefreshQueueDepth = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_correlation_refresh_queue_depth",
+			Help: "Current number of distinct pending event correlation refresh scopes",
 		},
 	)
 
@@ -394,6 +488,20 @@ var (
 			Buckets: prometheus.ExponentialBuckets(1, 2, 10),
 		},
 		[]string{"job"},
+	)
+
+	SchedulerQueueDepth = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_scheduler_queue_depth",
+			Help: "Number of due scheduler jobs awaiting execution",
+		},
+	)
+
+	SchedulerRunningJobs = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_scheduler_running_jobs",
+			Help: "Number of scheduler jobs currently executing",
+		},
 	)
 
 	ScheduledAuthPreflightTotal = prometheus.NewCounterVec(
@@ -435,6 +543,82 @@ var (
 			Help: "Number of stale access findings",
 		},
 		[]string{"type"},
+	)
+
+	WorkloadScanRunsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_workload_scan_runs_total",
+			Help: "Total number of workload scan runs by provider, status, and dry-run mode",
+		},
+		[]string{"provider", "status", "dry_run"},
+	)
+
+	WorkloadScanRunDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_workload_scan_run_duration_seconds",
+			Help:    "Duration of workload scan runs by provider, status, and dry-run mode",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 12),
+		},
+		[]string{"provider", "status", "dry_run"},
+	)
+
+	WorkloadScanStageDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_workload_scan_stage_duration_seconds",
+			Help:    "Duration of workload scan stages by provider, stage, and status",
+			Buckets: prometheus.ExponentialBuckets(0.1, 2, 12),
+		},
+		[]string{"provider", "stage", "status"},
+	)
+
+	WorkloadScanActiveRuns = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_workload_scan_active_runs",
+			Help: "Number of workload scan runs currently executing",
+		},
+		[]string{"provider"},
+	)
+
+	WorkloadScanActiveVolumeOps = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cerebro_workload_scan_active_volume_ops",
+			Help: "Number of workload scan volume operations currently executing by provider and stage",
+		},
+		[]string{"provider", "stage"},
+	)
+
+	WorkloadScanMountFailuresTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_workload_scan_mount_failures_total",
+			Help: "Total number of workload scan mount failures by provider",
+		},
+		[]string{"provider"},
+	)
+
+	AttackPathQueriesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cerebro_attack_path_queries_total",
+			Help: "Total number of attack path queries by operation and status",
+		},
+		[]string{"operation", "status"},
+	)
+
+	AttackPathQueryDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_attack_path_query_duration_seconds",
+			Help:    "Duration of attack path queries by operation and status",
+			Buckets: prometheus.ExponentialBuckets(0.001, 2, 14),
+		},
+		[]string{"operation", "status"},
+	)
+
+	AttackPathResultCount = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cerebro_attack_path_result_count",
+			Help:    "Number of attack paths returned per attack path operation",
+			Buckets: []float64{0, 1, 2, 5, 10, 25, 50, 100},
+		},
+		[]string{"operation"},
 	)
 
 	GraphOutcomeEventsTotal = prometheus.NewCounterVec(
@@ -507,6 +691,27 @@ var (
 		[]string{"result"},
 	)
 
+	GraphWriterActive = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_writer_active",
+			Help: "Whether this process currently holds the graph writer lease (1 held, 0 not held)",
+		},
+	)
+
+	GraphWriterLeaseRemainingSeconds = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_graph_writer_lease_remaining_seconds",
+			Help: "Seconds remaining until the current graph writer lease expires on this process",
+		},
+	)
+
+	GraphReplicaLagMutations = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_replica_lag_mutations",
+			Help: "Current security-graph replica lag in pending mutation messages",
+		},
+	)
+
 	// Build info
 	BuildInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -573,21 +778,44 @@ func Register() {
 			GraphBuildStatus,
 			GraphLastUpdateTimestamp,
 			GraphStalenessSeconds,
+			GraphPropertyHistoryDepth,
 			GraphFreshnessByProvider,
 			GraphOldestNodeAgeSeconds,
 			GraphProviderLastSyncTimestamp,
+			GraphIndexBuildDuration,
+			GraphMutationLatency,
+			GraphSearchLatency,
+			GraphSnapshotDuration,
+			GraphSnapshotSizeBytes,
+			GraphNodesTotal,
+			GraphEdgesTotal,
+			GraphCloneDuration,
 			EventProcessingDuration,
+			CorrelationRefreshDroppedTotal,
+			CorrelationRefreshDuration,
+			CorrelationRefreshQueueDepth,
 			// Notifications
 			NotificationsSent,
 			// Scheduler
 			SchedulerJobRuns,
 			SchedulerJobDuration,
+			SchedulerQueueDepth,
+			SchedulerRunningJobs,
 			ScheduledAuthPreflightTotal,
 			ProviderCounts,
 			ProviderCircuitState,
 			ComplianceExportsTotal,
 			// Identity
 			StaleAccessFindings,
+			WorkloadScanRunsTotal,
+			WorkloadScanRunDuration,
+			WorkloadScanStageDuration,
+			WorkloadScanActiveRuns,
+			WorkloadScanActiveVolumeOps,
+			WorkloadScanMountFailuresTotal,
+			AttackPathQueriesTotal,
+			AttackPathQueryDuration,
+			AttackPathResultCount,
 			// Graph intelligence
 			GraphOutcomeEventsTotal,
 			GraphRuleDiscoveryCandidatesTotal,
@@ -598,6 +826,9 @@ func Register() {
 			GraphCrossTenantMatches,
 			GraphCrossTenantReadsTotal,
 			GraphStatePersistenceTotal,
+			GraphWriterActive,
+			GraphWriterLeaseRemainingSeconds,
+			GraphReplicaLagMutations,
 			// Build
 			BuildInfo,
 		)
@@ -706,6 +937,75 @@ func RecordScheduledAuthPreflight(provider, authMethod string, success bool) {
 	ScheduledAuthPreflightTotal.WithLabelValues(provider, authMethod, status).Inc()
 }
 
+func RecordSchedulerJobRun(job, status string, duration time.Duration) {
+	job = strings.TrimSpace(job)
+	if job == "" {
+		job = "unknown"
+	}
+	status = normalizeResult(status)
+	SchedulerJobRuns.WithLabelValues(job, status).Inc()
+	SchedulerJobDuration.WithLabelValues(job).Observe(duration.Seconds())
+}
+
+func SetSchedulerQueueDepth(depth int) {
+	if depth < 0 {
+		depth = 0
+	}
+	SchedulerQueueDepth.Set(float64(depth))
+}
+
+func SetSchedulerRunningJobs(count int) {
+	if count < 0 {
+		count = 0
+	}
+	SchedulerRunningJobs.Set(float64(count))
+}
+
+func RecordWorkloadScanRun(provider, status string, dryRun bool, duration time.Duration) {
+	provider = normalizeProvider(provider)
+	status = normalizeResult(status)
+	dryRunLabel := "false"
+	if dryRun {
+		dryRunLabel = "true"
+	}
+	WorkloadScanRunsTotal.WithLabelValues(provider, status, dryRunLabel).Inc()
+	WorkloadScanRunDuration.WithLabelValues(provider, status, dryRunLabel).Observe(duration.Seconds())
+}
+
+func RecordWorkloadScanStage(provider, stage, status string, duration time.Duration) {
+	provider = normalizeProvider(provider)
+	stage = normalizeStage(stage)
+	status = normalizeResult(status)
+	WorkloadScanStageDuration.WithLabelValues(provider, stage, status).Observe(duration.Seconds())
+}
+
+func AddWorkloadScanActiveRun(provider string, delta int) {
+	provider = normalizeProvider(provider)
+	WorkloadScanActiveRuns.WithLabelValues(provider).Add(float64(delta))
+}
+
+func AddWorkloadScanActiveVolumeOp(provider, stage string, delta int) {
+	provider = normalizeProvider(provider)
+	stage = normalizeStage(stage)
+	WorkloadScanActiveVolumeOps.WithLabelValues(provider, stage).Add(float64(delta))
+}
+
+func RecordWorkloadScanMountFailure(provider string) {
+	provider = normalizeProvider(provider)
+	WorkloadScanMountFailuresTotal.WithLabelValues(provider).Inc()
+}
+
+func RecordAttackPathQuery(operation, status string, duration time.Duration, resultCount int) {
+	operation = normalizeOperation(operation)
+	status = normalizeResult(status)
+	if resultCount < 0 {
+		resultCount = 0
+	}
+	AttackPathQueriesTotal.WithLabelValues(operation, status).Inc()
+	AttackPathQueryDuration.WithLabelValues(operation, status).Observe(duration.Seconds())
+	AttackPathResultCount.WithLabelValues(operation).Observe(float64(resultCount))
+}
+
 func RecordGraphOutcome(status string) {
 	status = strings.TrimSpace(status)
 	if status == "" {
@@ -789,6 +1089,33 @@ func RecordGraphStatePersistence(result string) {
 		result = "unknown"
 	}
 	GraphStatePersistenceTotal.WithLabelValues(result).Inc()
+}
+
+func SetGraphWriterLeaseState(active bool, leaseUntil, now time.Time) {
+	if active {
+		GraphWriterActive.Set(1)
+	} else {
+		GraphWriterActive.Set(0)
+	}
+	if leaseUntil.IsZero() {
+		GraphWriterLeaseRemainingSeconds.Set(0)
+		return
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	remaining := leaseUntil.Sub(now)
+	if remaining < 0 {
+		remaining = 0
+	}
+	GraphWriterLeaseRemainingSeconds.Set(remaining.Seconds())
+}
+
+func SetGraphReplicaLagMutations(lag int) {
+	if lag < 0 {
+		lag = 0
+	}
+	GraphReplicaLagMutations.Set(float64(lag))
 }
 
 func RecordJetStreamPublish(stream, result string) {
@@ -964,6 +1291,82 @@ func SetGraphStaleness(age time.Duration) {
 	GraphStalenessSeconds.Set(age.Seconds())
 }
 
+func SetGraphPropertyHistoryDepth(depth int) {
+	if depth < 0 {
+		depth = 0
+	}
+	GraphPropertyHistoryDepth.Set(float64(depth))
+}
+
+func ObserveGraphIndexBuild(trigger string, duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	trigger = strings.ToLower(strings.TrimSpace(trigger))
+	if trigger == "" {
+		trigger = "manual"
+	}
+	GraphIndexBuildDuration.WithLabelValues(trigger).Observe(duration.Seconds())
+}
+
+func ObserveGraphMutation(op string, duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	op = strings.ToLower(strings.TrimSpace(op))
+	if op == "" {
+		op = "unknown"
+	}
+	GraphMutationLatency.WithLabelValues(op).Observe(duration.Seconds())
+}
+
+func ObserveGraphSearch(queryType string, duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	queryType = strings.ToLower(strings.TrimSpace(queryType))
+	if queryType == "" {
+		queryType = "unknown"
+	}
+	GraphSearchLatency.WithLabelValues(queryType).Observe(duration.Seconds())
+}
+
+func ObserveGraphSnapshot(op string, duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	op = strings.ToLower(strings.TrimSpace(op))
+	if op == "" {
+		op = "unknown"
+	}
+	GraphSnapshotDuration.WithLabelValues(op).Observe(duration.Seconds())
+}
+
+func SetGraphSnapshotSizeBytes(size int64) {
+	if size < 0 {
+		size = 0
+	}
+	GraphSnapshotSizeBytes.Set(float64(size))
+}
+
+func SetGraphCounts(nodes, edges int) {
+	if nodes < 0 {
+		nodes = 0
+	}
+	if edges < 0 {
+		edges = 0
+	}
+	GraphNodesTotal.Set(float64(nodes))
+	GraphEdgesTotal.Set(float64(edges))
+}
+
+func ObserveGraphCloneDuration(duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	GraphCloneDuration.Observe(duration.Seconds())
+}
+
 func ResetGraphFreshnessProviderMetrics() {
 	GraphFreshnessByProvider.Reset()
 	GraphOldestNodeAgeSeconds.Reset()
@@ -989,6 +1392,24 @@ func ObserveEventProcessingDuration(duration time.Duration) {
 		return
 	}
 	EventProcessingDuration.Observe(duration.Seconds())
+}
+
+func RecordCorrelationRefreshDrop() {
+	CorrelationRefreshDroppedTotal.Inc()
+}
+
+func ObserveCorrelationRefreshDuration(duration time.Duration) {
+	if duration < 0 {
+		return
+	}
+	CorrelationRefreshDuration.Observe(duration.Seconds())
+}
+
+func SetCorrelationRefreshQueueDepth(depth int) {
+	if depth < 0 {
+		depth = 0
+	}
+	CorrelationRefreshQueueDepth.Set(float64(depth))
 }
 
 func SetJetStreamOutboxBackpressureLevel(stream, level string) {
@@ -1066,10 +1487,35 @@ func statusBucket(status int) string {
 }
 
 func normalizeProvider(provider string) string {
-	if strings.TrimSpace(provider) == "" {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
 		return "unknown"
 	}
 	return provider
+}
+
+func normalizeOperation(operation string) string {
+	operation = strings.TrimSpace(strings.ToLower(operation))
+	if operation == "" {
+		return "unknown"
+	}
+	return operation
+}
+
+func normalizeResult(status string) string {
+	status = strings.TrimSpace(strings.ToLower(status))
+	if status == "" {
+		return "unknown"
+	}
+	return status
+}
+
+func normalizeStage(stage string) string {
+	stage = strings.TrimSpace(strings.ToLower(stage))
+	if stage == "" {
+		return "unknown"
+	}
+	return stage
 }
 
 func normalizeMetricPath(path string) string {

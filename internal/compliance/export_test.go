@@ -96,6 +96,24 @@ func TestRenderAuditPackageZIP(t *testing.T) {
 	}
 }
 
+func TestBuildAuditPackageFromReportCountsPartialControlsAsFailing(t *testing.T) {
+	framework := &Framework{ID: "fw", Name: "Framework", Version: "1.0"}
+	report := ComplianceReport{
+		GeneratedAt: "2026-03-14T00:00:00Z",
+		Summary: ComplianceSummary{
+			TotalControls:   3,
+			PassingControls: 1,
+			FailingControls: 1,
+			PartialControls: 1,
+		},
+	}
+
+	pkg := BuildAuditPackageFromReport(framework, report)
+	if pkg.Summary.TotalControls != 3 || pkg.Summary.PassingControls != 1 || pkg.Summary.FailingControls != 2 {
+		t.Fatalf("unexpected export summary: %+v", pkg.Summary)
+	}
+}
+
 func TestAuditPackageFilename(t *testing.T) {
 	now := time.Date(2026, 2, 24, 16, 15, 3, 0, time.UTC)
 	got := AuditPackageFilename("pci-dss-4.0", now)

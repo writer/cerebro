@@ -1,17 +1,19 @@
 {
   "id": "vm-vuln-lateral-admin",
-  "control_id": "wc-id-857",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internet-facing VM/serverless with initial access vulnerabilities and a lateral movement finding to admin privileges",
   "description": "An internet-facing resource has vulnerabilities that could enable initial access and an attack path to admin privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "is_internet_facing == true",
-    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
-    "attack_paths ANY (target.is_admin == true)"
+    "cmp_eq(path(resource, \"is_internet_facing\"), true)",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, (in_list(path(item, \"severity\"), [\"CRITICAL\",\"HIGH\"])) \u0026\u0026 (cmp_eq(path(item, \"initial_access\"), true)))",
+    "list_value(path(resource, \"attack_paths\")).exists(item, cmp_eq(path(item, \"target.is_admin\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Patch vulnerabilities immediately. Break the attack path by removing excessive permissions or trust relationships. Consider isolating the resource.",
   "tags": [
     "wiz",
     "compute",
@@ -19,6 +21,8 @@
     "lateral-movement",
     "admin"
   ],
+  "control_id": "wc-id-857",
+  "remediation": "Patch vulnerabilities immediately. Break the attack path by removing excessive permissions or trust relationships. Consider isolating the resource.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

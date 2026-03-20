@@ -1,14 +1,23 @@
 {
   "id": "vendor-risk-assessed",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Vendor Risk Level Assigned",
   "description": "All vendors should have a risk level assigned based on data access, criticality, and other factors",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "vendors",
   "conditions": [
-    "risk_level == null",
-    "vendor_status == ACTIVE"
+    "cmp_eq(path(resource, \"risk_level\"), null)",
+    "cmp_eq(path(resource, \"vendor_status\"), path(resource, \"ACTIVE\"))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
+  "tags": [
+    "vendor",
+    "risk-assessment",
+    "third-party-risk"
+  ],
   "remediation": "Assess the vendor's risk level based on the type of data accessed, service criticality, and security posture",
   "remediation_steps": [
     "Review what data/systems the vendor has access to",
@@ -17,26 +26,28 @@
     "Assign risk level (Critical, High, Medium, Low)",
     "Document the risk assessment rationale"
   ],
-  "tags": [
-    "vendor",
-    "risk-assessment",
-    "third-party-risk"
-  ],
   "risk_categories": [
     "MISCONFIGURATION"
   ],
   "frameworks": [
     {
       "name": "SOC 2",
-      "controls": ["CC9.2"]
+      "controls": [
+        "CC9.2"
+      ]
     },
     {
       "name": "ISO 27001:2022",
-      "controls": ["A.5.19"]
+      "controls": [
+        "A.5.19"
+      ]
     },
     {
       "name": "NIST 800-53 r5",
-      "controls": ["RA-3", "SA-9"]
+      "controls": [
+        "RA-3",
+        "SA-9"
+      ]
     }
   ]
 }

@@ -1,20 +1,24 @@
 {
   "id": "azure-ad-guest-access-restricted",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure AD Guest Access Restricted",
   "description": "Azure AD should restrict guest user access to directory objects",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::ad::authorization_policy",
   "conditions": [
-    "guest_user_role_id == 'a0b1b346-4d3e-4e8b-98f8-753987be4970'"
+    "cmp_eq(path(resource, \"guest_user_role_id\"), \"a0b1b346-4d3e-4e8b-98f8-753987be4970\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Restrict guest user access in Azure AD external collaboration settings.",
   "tags": [
     "cis-azure-1.3",
     "azure-ad",
     "guest",
     "access-control"
   ],
+  "remediation": "Restrict guest user access in Azure AD external collaboration settings.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

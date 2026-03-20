@@ -4,18 +4,140 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/writer/cerebro/internal/actionengine"
 	"github.com/writer/cerebro/internal/agents"
+	"github.com/writer/cerebro/internal/autonomous"
 	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/imagescan"
 	"github.com/writer/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/runtime"
 )
+
+type recordingAutonomousActionHandler struct {
+	principalID string
+	provider    string
+	calls       int
+}
+
+type blockingAutonomousActionHandler struct {
+	started chan struct{}
+	release chan struct{}
+	calls   atomic.Int32
+	once    sync.Once
+}
+
+func (h *recordingAutonomousActionHandler) KillProcess(context.Context, string, int) error {
+	return nil
+}
+
+func (h *recordingAutonomousActionHandler) IsolateContainer(context.Context, string, string) error {
+	return nil
+}
+
+func (h *recordingAutonomousActionHandler) IsolateHost(context.Context, string, string) error {
+	return nil
+}
+
+func (h *recordingAutonomousActionHandler) QuarantineFile(context.Context, string, string) error {
+	return nil
+}
+
+func (h *recordingAutonomousActionHandler) BlockIP(context.Context, string) error {
+	return nil
+}
+
+func (h *recordingAutonomousActionHandler) BlockDomain(context.Context, string) error {
+	return nil
+}
+
+func (h *recordingAutonomousActionHandler) RevokeCredentials(_ context.Context, principalID, provider string) error {
+	h.principalID = principalID
+	h.provider = provider
+	h.calls++
+	return nil
+}
+
+func (h *recordingAutonomousActionHandler) ScaleDown(context.Context, string, int) error {
+	return nil
+}
+
+func (h *blockingAutonomousActionHandler) KillProcess(context.Context, string, int) error {
+	return nil
+}
+
+func (h *blockingAutonomousActionHandler) IsolateContainer(context.Context, string, string) error {
+	return nil
+}
+
+func (h *blockingAutonomousActionHandler) IsolateHost(context.Context, string, string) error {
+	return nil
+}
+
+func (h *blockingAutonomousActionHandler) QuarantineFile(context.Context, string, string) error {
+	return nil
+}
+
+func (h *blockingAutonomousActionHandler) BlockIP(context.Context, string) error {
+	return nil
+}
+
+func (h *blockingAutonomousActionHandler) BlockDomain(context.Context, string) error {
+	return nil
+}
+
+func (h *blockingAutonomousActionHandler) RevokeCredentials(context.Context, string, string) error {
+	h.calls.Add(1)
+	h.once.Do(func() {
+		close(h.started)
+	})
+	<-h.release
+	return nil
+}
+
+func (h *blockingAutonomousActionHandler) ScaleDown(context.Context, string, int) error {
+	return nil
+}
+
+func autonomousCredentialWorkflowGraph() *graph.Graph {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:   "secret:public-repo:1",
+		Kind: graph.NodeKindSecret,
+		Name: "exposed-secret",
+		Properties: map[string]any{
+			"provider":           "aws",
+			"workload_target_id": "workload:payments-api",
+			"finding_id":         "finding:secret:1",
+		},
+	})
+	g.AddNode(&graph.Node{ID: "workload:payments-api", Kind: graph.NodeKindWorkload, Name: "payments-api", Provider: "aws"})
+	g.AddNode(&graph.Node{ID: "service_account:payments-prod", Kind: graph.NodeKindServiceAccount, Name: "payments-prod", Provider: "aws"})
+	g.AddNode(&graph.Node{ID: "bucket:payments-prod", Kind: graph.NodeKindBucket, Name: "payments-prod", Provider: "aws"})
+	g.AddEdge(&graph.Edge{
+		ID:     "workload:payments-api->bucket:payments-prod:has_credential_for",
+		Source: "workload:payments-api",
+		Target: "bucket:payments-prod",
+		Kind:   graph.EdgeKindHasCredentialFor,
+		Effect: graph.EdgeEffectAllow,
+		Properties: map[string]any{
+			"secret_node_id":   "secret:public-repo:1",
+			"via_principal_id": "service_account:payments-prod",
+		},
+	})
+	g.BuildIndex()
+	return g
+}
 
 func TestCerebroToolsApprovalFlags(t *testing.T) {
 	application := &App{Config: &Config{
@@ -50,6 +172,14 @@ func TestCerebroToolsApprovalFlags(t *testing.T) {
 	if !accessReview.RequiresApproval {
 		t.Fatal("access_review should require approval with current config")
 	}
+
+	autonomousApprove := findCerebroTool(tools, "cerebro.autonomous_workflow_approve")
+	if autonomousApprove == nil {
+		t.Fatal("expected cerebro.autonomous_workflow_approve tool")
+	}
+	if !autonomousApprove.RequiresApproval {
+		t.Fatal("autonomous_workflow_approve should require approval")
+	}
 }
 
 func TestCerebroBlastRadiusTool(t *testing.T) {
@@ -81,6 +211,287 @@ func TestCerebroBlastRadiusTool(t *testing.T) {
 	}
 }
 
+func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
+	g.AddNode(&graph.Node{ID: "role:ops", Kind: graph.NodeKindRole, Name: "Ops"})
+	g.AddNode(&graph.Node{ID: "db:prod", Kind: graph.NodeKindDatabase, Name: "Prod DB", Risk: graph.RiskCritical})
+	g.AddNode(&graph.Node{
+		ID:   "person:alice@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Alice",
+		Properties: map[string]any{
+			"email":       "alice@example.com",
+			"observed_at": base.Add(-1 * time.Hour).Format(time.RFC3339),
+			"valid_from":  base.Add(-1 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "identity_alias:github:alice",
+		Kind: graph.NodeKindIdentityAlias,
+		Name: "alice",
+		Properties: map[string]any{
+			"source_system": "github",
+			"external_id":   "alice",
+			"email":         "alice@example.com",
+			"observed_at":   base.Add(-1 * time.Hour).Format(time.RFC3339),
+			"valid_from":    base.Add(-1 * time.Hour).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{ID: "svc:payments", Kind: graph.NodeKindApplication, Name: "Payments"})
+	g.AddNode(&graph.Node{
+		ID:   "customer:acme",
+		Kind: graph.NodeKindCustomer,
+		Name: "Acme",
+		Properties: map[string]any{
+			"arr":             500000.0,
+			"usage_declining": true,
+			"nps_score":       22,
+		},
+	})
+	g.AddEdge(&graph.Edge{ID: "alice-role", Source: "user:alice", Target: "role:ops", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "role-db", Source: "role:ops", Target: "db:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "alias-link", Source: "identity_alias:github:alice", Target: "person:alice@example.com", Kind: graph.EdgeKindAliasOf, Effect: graph.EdgeEffectAllow, Properties: map[string]any{
+		"observed_at": base.Add(-1 * time.Hour).Format(time.RFC3339),
+		"valid_from":  base.Add(-1 * time.Hour).Format(time.RFC3339),
+	}})
+	g.AddEdge(&graph.Edge{ID: "alice-customer", Source: "person:alice@example.com", Target: "customer:acme", Kind: graph.EdgeKindInteractedWith, Effect: graph.EdgeEffectAllow, Properties: map[string]any{
+		"last_seen": base.Format(time.RFC3339),
+	}})
+	g.AddEdge(&graph.Edge{ID: "svc-customer", Source: "svc:payments", Target: "customer:acme", Kind: graph.EdgeKindOwns, Effect: graph.EdgeEffectAllow})
+	g.BuildIndex()
+
+	application := &App{
+		GraphSnapshots: mustPersistToolGraph(t, g),
+		Identity:       identity.NewService(identity.WithGraphResolver(func(context.Context) *graph.Graph { return nil })),
+	}
+	tests := []struct {
+		name   string
+		tool   string
+		args   string
+		assert func(*testing.T, map[string]any)
+	}{
+		{
+			name: "access review",
+			tool: "cerebro.access_review",
+			args: `{"identity_id":"user:alice"}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["status"] != "pending" {
+					t.Fatalf("expected pending status, got %#v", payload["status"])
+				}
+				if payload["created_by"] != "ensemble" {
+					t.Fatalf("expected created_by ensemble, got %#v", payload["created_by"])
+				}
+			},
+		},
+		{
+			name: "blast radius",
+			tool: "cerebro.blast_radius",
+			args: `{"principal_id":"user:alice","max_depth":3}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["principal_id"] != "user:alice" {
+					t.Fatalf("expected principal_id user:alice, got %#v", payload["principal_id"])
+				}
+				if total, ok := payload["total_count"].(float64); !ok || total < 1 {
+					t.Fatalf("expected reachable nodes, got %#v", payload["total_count"])
+				}
+			},
+		},
+		{
+			name: "simulate delta",
+			tool: "cerebro.simulate",
+			args: `{"nodes":[{"action":"add","node":{"id":"bucket:backup","kind":"bucket","name":"Backup Bucket"}}]}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				after, ok := payload["after"].(map[string]any)
+				if !ok {
+					t.Fatalf("expected after map, got %#v", payload["after"])
+				}
+				if _, ok := after["risk_score"].(float64); !ok {
+					t.Fatalf("expected after.risk_score, got %#v", after["risk_score"])
+				}
+			},
+		},
+		{
+			name: "graph query",
+			tool: "cerebro.graph_query",
+			args: `{"mode":"paths","node_id":"user:alice","target_id":"db:prod","k":2,"max_depth":6}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["mode"] != "paths" {
+					t.Fatalf("expected paths mode, got %#v", payload["mode"])
+				}
+				if count, ok := payload["count"].(float64); !ok || count < 1 {
+					t.Fatalf("expected at least one path, got %#v", payload["count"])
+				}
+			},
+		},
+		{
+			name: "risk score",
+			tool: "cerebro.risk_score",
+			args: `{"entity_id":"db:prod","include_overall":true}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if _, ok := payload["entity_risk"].(map[string]any); !ok {
+					t.Fatalf("expected entity_risk, got %#v", payload["entity_risk"])
+				}
+				if _, ok := payload["overall_risk_score"].(float64); !ok {
+					t.Fatalf("expected overall_risk_score, got %#v", payload["overall_risk_score"])
+				}
+			},
+		},
+		{
+			name: "identity calibration",
+			tool: "cerebro.identity_calibration",
+			args: `{"include_queue":true}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if aliasNodes, ok := payload["alias_nodes"].(float64); !ok || aliasNodes < 1 {
+					t.Fatalf("expected alias_nodes >= 1, got %#v", payload["alias_nodes"])
+				}
+			},
+		},
+		{
+			name: "intelligence report",
+			tool: "cerebro.intelligence_report",
+			args: `{"entity_id":"db:prod","include_counterfactual":false}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if _, ok := payload["risk_score"].(float64); !ok {
+					t.Fatalf("expected risk_score, got %#v", payload["risk_score"])
+				}
+				if insights, ok := payload["insights"].([]any); !ok || len(insights) == 0 {
+					t.Fatalf("expected insights, got %#v", payload["insights"])
+				}
+			},
+		},
+		{
+			name: "graph quality report",
+			tool: "cerebro.graph_quality_report",
+			args: `{"history_limit":10,"stale_after_hours":24}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				summary, ok := payload["summary"].(map[string]any)
+				if !ok {
+					t.Fatalf("expected summary object, got %#v", payload["summary"])
+				}
+				if _, ok := summary["maturity_score"].(float64); !ok {
+					t.Fatalf("expected maturity_score, got %#v", summary["maturity_score"])
+				}
+			},
+		},
+		{
+			name: "graph leverage report",
+			tool: "cerebro.graph_leverage_report",
+			args: `{"recent_window_hours":24}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				summary, ok := payload["summary"].(map[string]any)
+				if !ok {
+					t.Fatalf("expected summary object, got %#v", payload["summary"])
+				}
+				if _, ok := summary["leverage_score"].(float64); !ok {
+					t.Fatalf("expected leverage score, got %#v", summary["leverage_score"])
+				}
+			},
+		},
+		{
+			name: "scenario simulate",
+			tool: "simulate",
+			args: `{"scenario":"customer_churn","target":"customer:acme","parameters":{"include_cascade":true,"depth":3}}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["scenario"] != "customer_churn" {
+					t.Fatalf("expected customer_churn, got %#v", payload["scenario"])
+				}
+				if strings.TrimSpace(stringValue(payload["recommendation"])) == "" {
+					t.Fatalf("expected recommendation, got %#v", payload["recommendation"])
+				}
+			},
+		},
+		{
+			name: "insight card",
+			tool: "insight_card",
+			args: `{"entity":"customer:acme"}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["entity_id"] != "customer:acme" {
+					t.Fatalf("expected customer:acme, got %#v", payload["entity_id"])
+				}
+				if _, ok := payload["risk_score"]; !ok {
+					t.Fatalf("expected risk_score, got %#v", payload)
+				}
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tool := findCerebroTool(application.cerebroTools(), tc.tool)
+			if tool == nil {
+				t.Fatalf("expected %s tool", tc.tool)
+			}
+			result, err := tool.Handler(context.Background(), json.RawMessage(tc.args))
+			if err != nil {
+				t.Fatalf("tool returned error: %v", err)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(result), &payload); err != nil {
+				t.Fatalf("decode tool payload: %v", err)
+			}
+			tc.assert(t, payload)
+		})
+	}
+}
+
+func TestCerebroAnalysisToolsSanitizeSnapshotLoadErrors(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
+	g.AddNode(&graph.Node{ID: "bucket:prod", Kind: graph.NodeKindBucket, Name: "Prod Bucket", Risk: graph.RiskHigh})
+	g.AddEdge(&graph.Edge{ID: "alice-bucket", Source: "user:alice", Target: "bucket:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+
+	basePath := filepath.Join(t.TempDir(), "graph-snapshots")
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    basePath,
+		MaxSnapshots: 4,
+	})
+	if err != nil {
+		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
+	}
+	if _, err := store.SaveGraph(g); err != nil {
+		t.Fatalf("SaveGraph() error = %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(basePath, "graph-*.json.gz"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected one snapshot artifact, got %v", matches)
+	}
+	if err := os.WriteFile(matches[0], []byte("not-a-valid-snapshot"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	application := &App{GraphSnapshots: store}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.blast_radius")
+	if tool == nil {
+		t.Fatal("expected blast radius tool")
+	}
+
+	_, err = tool.Handler(context.Background(), json.RawMessage(`{"principal_id":"user:alice","max_depth":3}`))
+	if err == nil {
+		t.Fatal("expected snapshot load error")
+	}
+	if !strings.Contains(err.Error(), "security graph not initialized") {
+		t.Fatalf("expected sanitized graph error, got %v", err)
+	}
+	if strings.Contains(err.Error(), basePath) {
+		t.Fatalf("expected sanitized error without snapshot path, got %v", err)
+	}
+}
 func TestCerebroGraphQueryPathsTool(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
@@ -530,8 +941,8 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	if observationNode.Kind != graph.NodeKindObservation {
 		t.Fatalf("expected observation node, got %q", observationNode.Kind)
 	}
-	if stringValue(observationNode.Properties["source_system"]) != "agent" {
-		t.Fatalf("expected default source_system=agent, got %#v", observationNode.Properties["source_system"])
+	if got, ok := observationNode.PropertyValue("source_system"); !ok || stringValue(got) != "agent" {
+		t.Fatalf("expected default source_system=agent, got %#v ok=%t", got, ok)
 	}
 
 	annotateEntity := findCerebroTool(application.cerebroTools(), "cerebro.annotate_entity")
@@ -768,6 +1179,131 @@ func TestCerebroEvaluatePolicyTool(t *testing.T) {
 	}
 }
 
+func TestCerebroEvaluatePolicyToolUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    filepath.Join(t.TempDir(), "graph-snapshots"),
+		MaxSnapshots: 4,
+	})
+	if err != nil {
+		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
+	}
+	if _, err := store.SaveGraph(graph.New()); err != nil {
+		t.Fatalf("SaveGraph() error = %v", err)
+	}
+
+	application := &App{
+		Policy:         policy.NewEngine(),
+		GraphSnapshots: store,
+	}
+	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
+	if tool == nil {
+		t.Fatal("expected evaluate_policy tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"principal": {"id":"agent:sales-assistant"},
+		"action":"refund.create",
+		"resource":{"type":"refund","id":"refund:123"},
+		"proposed_change":{
+			"id":"chg-1",
+			"source":"tool",
+			"reason":"test snapshot fallback",
+			"nodes":[{"action":"add","node":{"id":"service:payments","kind":"service","name":"payments"}}]
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("evaluate_policy returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if payload["decision"] != "allow" {
+		t.Fatalf("expected allow decision, got %#v", payload["decision"])
+	}
+	if _, ok := payload["propagation"].(map[string]any); !ok {
+		t.Fatalf("expected propagation payload, got %#v", payload["propagation"])
+	}
+}
+
+func TestCerebroEvaluatePolicyToolRequiresGraphSourceForProposedChange(t *testing.T) {
+	application := &App{Policy: policy.NewEngine()}
+	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
+	if tool == nil {
+		t.Fatal("expected evaluate_policy tool")
+	}
+
+	_, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"principal": {"id":"agent:sales-assistant"},
+		"action":"refund.create",
+		"resource":{"type":"refund","id":"refund:123"},
+		"proposed_change":{
+			"id":"chg-1",
+			"source":"tool",
+			"reason":"test missing graph",
+			"nodes":[{"action":"add","node":{"id":"service:payments","kind":"service","name":"payments"}}]
+		}
+	}`))
+	if err == nil || !strings.Contains(err.Error(), "graph platform not initialized") {
+		t.Fatalf("expected missing graph error, got %v", err)
+	}
+}
+
+func TestCerebroEvaluatePolicyToolSanitizesSnapshotLoadErrors(t *testing.T) {
+	basePath := filepath.Join(t.TempDir(), "graph-snapshots")
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    basePath,
+		MaxSnapshots: 4,
+	})
+	if err != nil {
+		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
+	}
+	if _, err := store.SaveGraph(graph.New()); err != nil {
+		t.Fatalf("SaveGraph() error = %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(basePath, "graph-*.json.gz"))
+	if err != nil {
+		t.Fatalf("Glob() error = %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected one snapshot artifact, got %v", matches)
+	}
+	if err := os.WriteFile(matches[0], []byte("not-a-gzip-snapshot"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	application := &App{
+		Policy:         policy.NewEngine(),
+		GraphSnapshots: store,
+	}
+	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
+	if tool == nil {
+		t.Fatal("expected evaluate_policy tool")
+	}
+
+	_, err = tool.Handler(context.Background(), json.RawMessage(`{
+		"principal": {"id":"agent:sales-assistant"},
+		"action":"refund.create",
+		"resource":{"type":"refund","id":"refund:123"},
+		"proposed_change":{
+			"id":"chg-1",
+			"source":"tool",
+			"reason":"test snapshot load failure",
+			"nodes":[{"action":"add","node":{"id":"service:payments","kind":"service","name":"payments"}}]
+		}
+	}`))
+	if err == nil {
+		t.Fatal("expected snapshot load error")
+	}
+	if !strings.Contains(err.Error(), "graph platform not initialized") {
+		t.Fatalf("expected sanitized graph error, got %v", err)
+	}
+	if strings.Contains(err.Error(), basePath) {
+		t.Fatalf("expected sanitized error without filesystem path, got %v", err)
+	}
+}
+
 func TestCerebroWriteClaimTool(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "customer:acme", Kind: graph.NodeKindCustomer, Name: "Acme"})
@@ -879,72 +1415,6 @@ func TestCerebroExecutionStatusTool(t *testing.T) {
 	}
 }
 
-func TestCerebroExecutionStatusToolSupportsOffset(t *testing.T) {
-	dir := t.TempDir()
-	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
-	if err != nil {
-		t.Fatalf("NewSQLiteStore: %v", err)
-	}
-	defer func() { _ = store.Close() }()
-
-	for idx, updatedAt := range []time.Time{
-		time.Date(2026, 3, 12, 9, 2, 0, 0, time.UTC),
-		time.Date(2026, 3, 12, 9, 1, 0, 0, time.UTC),
-	} {
-		run := imagescan.RunRecord{
-			ID:          fmt.Sprintf("image_scan:offset-%d", idx+1),
-			Registry:    imagescan.RegistryECR,
-			Status:      imagescan.RunStatusRunning,
-			Stage:       imagescan.RunStageAnalyze,
-			Target:      imagescan.ScanTarget{Registry: imagescan.RegistryECR, Repository: "payments/app", Tag: fmt.Sprintf("%d", idx+1)},
-			RequestedBy: "alice",
-			SubmittedAt: updatedAt.Add(-1 * time.Minute),
-			UpdatedAt:   updatedAt,
-		}
-		payload, err := json.Marshal(run)
-		if err != nil {
-			t.Fatalf("marshal image run: %v", err)
-		}
-		if err := store.UpsertRun(context.Background(), executionstore.RunEnvelope{
-			Namespace:   executionstore.NamespaceImageScan,
-			RunID:       run.ID,
-			Kind:        string(run.Registry),
-			Status:      string(run.Status),
-			Stage:       string(run.Stage),
-			SubmittedAt: run.SubmittedAt,
-			UpdatedAt:   run.UpdatedAt,
-			Payload:     payload,
-		}); err != nil {
-			t.Fatalf("UpsertRun: %v", err)
-		}
-	}
-
-	application := &App{
-		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
-		ExecutionStore: store,
-	}
-	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.execution_status")
-	if tool == nil {
-		t.Fatal("expected cerebro.execution_status tool")
-	}
-	result, err := tool.Handler(context.Background(), json.RawMessage(`{"namespace":["image_scan"],"limit":1,"offset":1}`))
-	if err != nil {
-		t.Fatalf("execution_status with offset returned error: %v", err)
-	}
-
-	var body map[string]any
-	if err := json.Unmarshal([]byte(result), &body); err != nil {
-		t.Fatalf("decode tool payload: %v", err)
-	}
-	execs, ok := body["executions"].([]any)
-	if !ok || len(execs) != 1 {
-		t.Fatalf("expected one paginated execution, got %#v", body["executions"])
-	}
-	if got := execs[0].(map[string]any)["run_id"]; got != "image_scan:offset-2" {
-		t.Fatalf("expected offset to skip newest execution, got %#v", got)
-	}
-}
-
 func TestCerebroFindingsTool(t *testing.T) {
 	store := policyBackedFindingStore(t)
 	application := &App{Findings: store}
@@ -979,7 +1449,7 @@ func TestCerebroAccessReviewTool(t *testing.T) {
 		t.Fatal("expected access_review tool")
 	}
 
-	result, err := tool.Handler(context.Background(), json.RawMessage(`{"identity_id":"user:alice","created_by":"ensemble-test"}`))
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"identity_id":"user:alice"}`))
 	if err != nil {
 		t.Fatalf("tool returned error: %v", err)
 	}
@@ -991,8 +1461,470 @@ func TestCerebroAccessReviewTool(t *testing.T) {
 	if payload["status"] != "pending" {
 		t.Fatalf("expected pending review status, got %#v", payload["status"])
 	}
-	if payload["created_by"] != "ensemble-test" {
-		t.Fatalf("expected created_by ensemble-test, got %#v", payload["created_by"])
+	if payload["created_by"] != "ensemble" {
+		t.Fatalf("expected created_by ensemble, got %#v", payload["created_by"])
+	}
+}
+
+func TestCerebroAccessReviewToolUsesTenantScopedPersistedSnapshot(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
+	g.AddNode(&graph.Node{ID: "bucket:tenant-a", Kind: graph.NodeKindBucket, Name: "Tenant A Bucket", TenantID: "tenant-a", Risk: graph.RiskHigh})
+	g.AddNode(&graph.Node{ID: "bucket:tenant-b", Kind: graph.NodeKindBucket, Name: "Tenant B Bucket", TenantID: "tenant-b", Risk: graph.RiskHigh})
+	g.AddEdge(&graph.Edge{ID: "alice-tenant-a", Source: "user:alice", Target: "bucket:tenant-a", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "alice-tenant-b", Source: "user:alice", Target: "bucket:tenant-b", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+
+	application := &App{GraphSnapshots: mustPersistToolGraph(t, g)}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.access_review")
+	if tool == nil {
+		t.Fatal("expected access_review tool")
+	}
+
+	result, err := tool.Handler(graph.WithTenantScope(context.Background(), "tenant-a"), json.RawMessage(`{"identity_id":"user:alice"}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	items, ok := payload["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one tenant-scoped review item, got %#v", payload["items"])
+	}
+	item := items[0].(map[string]any)
+	metadata, ok := item["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected review item metadata, got %#v", item["metadata"])
+	}
+	if got := metadata["resource_id"]; got != "bucket:tenant-a" {
+		t.Fatalf("expected tenant-a resource only, got %#v", got)
+	}
+}
+
+func TestCerebroAutonomousCredentialResponseTool_AwaitingApproval(t *testing.T) {
+	dir := t.TempDir()
+	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	application := &App{
+		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
+		ExecutionStore: store,
+		SecurityGraph:  autonomousCredentialWorkflowGraph(),
+	}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
+	if tool == nil {
+		t.Fatal("expected autonomous credential response tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"secret_node_id":"secret:public-repo:1",
+		"require_approval":true,
+		"requested_by":"analyst@example.com"
+	}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(result), &body); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if body["status"] != string(autonomous.RunStatusAwaitingApproval) {
+		t.Fatalf("expected awaiting approval status, got %#v", body["status"])
+	}
+	if body["stage"] != string(autonomous.RunStageAwaitingApproval) {
+		t.Fatalf("expected approval stage, got %#v", body["stage"])
+	}
+	runID, ok := body["run_id"].(string)
+	if !ok || strings.TrimSpace(runID) == "" {
+		t.Fatalf("expected run_id, got %#v", body["run_id"])
+	}
+
+	runStore := autonomous.NewSQLiteRunStoreWithExecutionStore(store)
+	run, err := runStore.LoadRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("LoadRun: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected persisted autonomous run")
+	}
+	if run.RequestedBy != "ensemble" {
+		t.Fatalf("expected durable actor ensemble, got %q", run.RequestedBy)
+	}
+	if got := fmt.Sprintf("%v", run.Metadata["requested_by_hint"]); got != "analyst@example.com" {
+		t.Fatalf("expected requested_by_hint analyst@example.com, got %#v", run.Metadata["requested_by_hint"])
+	}
+	if run.ActionExecutionID == "" || run.ObservationID == "" || run.DetectionClaimID == "" || run.DecisionID == "" {
+		t.Fatalf("expected workflow artifacts to be persisted, got %#v", run)
+	}
+
+	actionStore := actionengine.NewSQLiteStoreWithExecutionStore(store, actionengine.DefaultNamespace)
+	execution, err := actionStore.LoadExecution(context.Background(), run.ActionExecutionID)
+	if err != nil {
+		t.Fatalf("LoadExecution: %v", err)
+	}
+	if execution == nil {
+		t.Fatal("expected persisted action execution")
+	}
+	if execution.Status != actionengine.StatusAwaitingApproval {
+		t.Fatalf("expected awaiting approval action execution, got %q", execution.Status)
+	}
+
+	current := application.CurrentSecurityGraph()
+	if _, ok := current.GetNode(run.ObservationID); !ok {
+		t.Fatalf("expected observation node %q", run.ObservationID)
+	}
+	if _, ok := current.GetNode(run.DetectionClaimID); !ok {
+		t.Fatalf("expected detection claim node %q", run.DetectionClaimID)
+	}
+	if _, ok := current.GetNode(run.DecisionID); !ok {
+		t.Fatalf("expected decision node %q", run.DecisionID)
+	}
+}
+
+func TestCerebroAutonomousCredentialResponseTool_UsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	dir := t.TempDir()
+	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	application := &App{
+		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
+		ExecutionStore: store,
+		GraphSnapshots: mustPersistToolGraph(t, autonomousCredentialWorkflowGraph()),
+	}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
+	if tool == nil {
+		t.Fatal("expected autonomous credential response tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"secret_node_id":"secret:public-repo:1",
+		"require_approval":true
+	}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(result), &body); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if body["status"] != string(autonomous.RunStatusAwaitingApproval) {
+		t.Fatalf("expected awaiting approval status, got %#v", body["status"])
+	}
+	runID, ok := body["run_id"].(string)
+	if !ok || strings.TrimSpace(runID) == "" {
+		t.Fatalf("expected run_id, got %#v", body["run_id"])
+	}
+
+	runStore := autonomous.NewSQLiteRunStoreWithExecutionStore(store)
+	run, err := runStore.LoadRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("LoadRun: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected persisted autonomous run")
+	}
+	if run.ActionExecutionID == "" || run.ObservationID == "" || run.DetectionClaimID == "" || run.DecisionID == "" {
+		t.Fatalf("expected workflow artifacts to be persisted, got %#v", run)
+	}
+
+	current := application.CurrentSecurityGraph()
+	if current == nil {
+		t.Fatal("expected persisted snapshot base to hydrate a live graph during mutation")
+	}
+	if _, ok := current.GetNode("secret:public-repo:1"); !ok {
+		t.Fatal("expected original persisted secret node to remain present")
+	}
+	if _, ok := current.GetNode(run.ObservationID); !ok {
+		t.Fatalf("expected observation node %q", run.ObservationID)
+	}
+	if _, ok := current.GetNode(run.DetectionClaimID); !ok {
+		t.Fatalf("expected detection claim node %q", run.DetectionClaimID)
+	}
+	if _, ok := current.GetNode(run.DecisionID); !ok {
+		t.Fatalf("expected decision node %q", run.DecisionID)
+	}
+}
+
+func TestCerebroAutonomousCredentialResponseTool_IgnoresCallerApprovalPreference(t *testing.T) {
+	dir := t.TempDir()
+	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	application := &App{
+		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
+		ExecutionStore: store,
+		SecurityGraph:  autonomousCredentialWorkflowGraph(),
+	}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
+	if tool == nil {
+		t.Fatal("expected autonomous credential response tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"secret_node_id":"secret:public-repo:1",
+		"require_approval":false
+	}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(result), &body); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if body["status"] != string(autonomous.RunStatusAwaitingApproval) {
+		t.Fatalf("expected awaiting approval status, got %#v", body["status"])
+	}
+	if value, ok := body["require_approval"].(bool); !ok || !value {
+		t.Fatalf("expected server-owned require_approval=true, got %#v", body["require_approval"])
+	}
+}
+
+func TestCerebroAutonomousWorkflowApproveTool_CompletesRun(t *testing.T) {
+	dir := t.TempDir()
+	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	handler := &recordingAutonomousActionHandler{}
+	responseEngine := runtime.NewResponseEngine()
+	responseEngine.SetActionHandler(handler)
+
+	application := &App{
+		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
+		ExecutionStore: store,
+		SecurityGraph:  autonomousCredentialWorkflowGraph(),
+		RuntimeRespond: responseEngine,
+	}
+
+	startTool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
+	if startTool == nil {
+		t.Fatal("expected autonomous credential response tool")
+	}
+	startResult, err := startTool.Handler(context.Background(), json.RawMessage(`{
+		"secret_node_id":"secret:public-repo:1",
+		"require_approval":true
+	}`))
+	if err != nil {
+		t.Fatalf("start tool returned error: %v", err)
+	}
+	var startBody map[string]any
+	if err := json.Unmarshal([]byte(startResult), &startBody); err != nil {
+		t.Fatalf("decode start payload: %v", err)
+	}
+	runID, ok := startBody["run_id"].(string)
+	if !ok || strings.TrimSpace(runID) == "" {
+		t.Fatalf("expected run_id, got %#v", startBody["run_id"])
+	}
+
+	approveTool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_workflow_approve")
+	if approveTool == nil {
+		t.Fatal("expected autonomous workflow approve tool")
+	}
+	approveResult, err := approveTool.Handler(context.Background(), json.RawMessage(fmt.Sprintf(`{
+		"run_id":%q,
+		"approve":true,
+		"approved_by":"manager@example.com"
+	}`, runID)))
+	if err != nil {
+		t.Fatalf("approve tool returned error: %v", err)
+	}
+
+	var approveBody map[string]any
+	if err := json.Unmarshal([]byte(approveResult), &approveBody); err != nil {
+		t.Fatalf("decode approve payload: %v", err)
+	}
+	if approveBody["status"] != string(autonomous.RunStatusCompleted) {
+		t.Fatalf("expected completed run status, got %#v", approveBody["status"])
+	}
+	if approveBody["stage"] != string(autonomous.RunStageClosed) {
+		t.Fatalf("expected closed stage, got %#v", approveBody["stage"])
+	}
+	if handler.calls != 1 {
+		t.Fatalf("expected one revoke call, got %d", handler.calls)
+	}
+	if handler.principalID != "service_account:payments-prod" {
+		t.Fatalf("expected principal service_account:payments-prod, got %q", handler.principalID)
+	}
+	if handler.provider != "aws" {
+		t.Fatalf("expected provider aws, got %q", handler.provider)
+	}
+
+	runStore := autonomous.NewSQLiteRunStoreWithExecutionStore(store)
+	run, err := runStore.LoadRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("LoadRun: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected persisted autonomous run")
+	}
+	if run.Status != autonomous.RunStatusCompleted || run.RemediationClaimID == "" || run.OutcomeID == "" {
+		t.Fatalf("expected completed workflow with remediation artifacts, got %#v", run)
+	}
+
+	actionStore := actionengine.NewSQLiteStoreWithExecutionStore(store, actionengine.DefaultNamespace)
+	execution, err := actionStore.LoadExecution(context.Background(), run.ActionExecutionID)
+	if err != nil {
+		t.Fatalf("LoadExecution: %v", err)
+	}
+	if execution == nil {
+		t.Fatal("expected persisted action execution")
+	}
+	if execution.Status != actionengine.StatusCompleted {
+		t.Fatalf("expected completed action execution, got %q", execution.Status)
+	}
+	if execution.ApprovedBy != "ensemble" {
+		t.Fatalf("expected approved_by ensemble, got %q", execution.ApprovedBy)
+	}
+
+	statusTool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_workflow_status")
+	if statusTool == nil {
+		t.Fatal("expected autonomous workflow status tool")
+	}
+	statusResult, err := statusTool.Handler(context.Background(), json.RawMessage(fmt.Sprintf(`{"run_id":%q}`, runID)))
+	if err != nil {
+		t.Fatalf("status tool returned error: %v", err)
+	}
+	var statusBody map[string]any
+	if err := json.Unmarshal([]byte(statusResult), &statusBody); err != nil {
+		t.Fatalf("decode status payload: %v", err)
+	}
+	if _, ok := statusBody["events"].([]any); !ok {
+		t.Fatalf("expected workflow events, got %#v", statusBody["events"])
+	}
+	if _, ok := statusBody["action_events"].([]any); !ok {
+		t.Fatalf("expected action events, got %#v", statusBody["action_events"])
+	}
+
+	current := application.CurrentSecurityGraph()
+	if _, ok := current.GetNode(run.RemediationClaimID); !ok {
+		t.Fatalf("expected remediation claim node %q", run.RemediationClaimID)
+	}
+	if _, ok := current.GetNode(run.OutcomeID); !ok {
+		t.Fatalf("expected outcome node %q", run.OutcomeID)
+	}
+
+	_, err = approveTool.Handler(context.Background(), json.RawMessage(fmt.Sprintf(`{
+		"run_id":%q,
+		"approve":true,
+		"approved_by":"manager@example.com"
+	}`, runID)))
+	if err == nil {
+		t.Fatal("expected second approval attempt to fail")
+	}
+	if !strings.Contains(err.Error(), "not awaiting approval") {
+		t.Fatalf("expected awaiting approval error, got %v", err)
+	}
+	if handler.calls != 1 {
+		t.Fatalf("expected one revoke call after replay attempt, got %d", handler.calls)
+	}
+}
+
+func TestCerebroAutonomousWorkflowApproveTool_ConcurrentApprovalClaimsOnce(t *testing.T) {
+	dir := t.TempDir()
+	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	handler := &blockingAutonomousActionHandler{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	responseEngine := runtime.NewResponseEngine()
+	responseEngine.SetActionHandler(handler)
+
+	application := &App{
+		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
+		ExecutionStore: store,
+		SecurityGraph:  autonomousCredentialWorkflowGraph(),
+		RuntimeRespond: responseEngine,
+	}
+
+	startTool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
+	if startTool == nil {
+		t.Fatal("expected autonomous credential response tool")
+	}
+	startResult, err := startTool.Handler(context.Background(), json.RawMessage(`{
+		"secret_node_id":"secret:public-repo:1",
+		"require_approval":true
+	}`))
+	if err != nil {
+		t.Fatalf("start tool returned error: %v", err)
+	}
+	var startBody map[string]any
+	if err := json.Unmarshal([]byte(startResult), &startBody); err != nil {
+		t.Fatalf("decode start payload: %v", err)
+	}
+	runID, ok := startBody["run_id"].(string)
+	if !ok || strings.TrimSpace(runID) == "" {
+		t.Fatalf("expected run_id, got %#v", startBody["run_id"])
+	}
+
+	approveTool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_workflow_approve")
+	if approveTool == nil {
+		t.Fatal("expected autonomous workflow approve tool")
+	}
+
+	type approveResult struct {
+		body string
+		err  error
+	}
+	results := make(chan approveResult, 2)
+	approveCall := func() {
+		body, err := approveTool.Handler(context.Background(), json.RawMessage(fmt.Sprintf(`{
+			"run_id":%q,
+			"approve":true,
+			"approved_by":"manager@example.com"
+		}`, runID)))
+		results <- approveResult{body: body, err: err}
+	}
+
+	go approveCall()
+	<-handler.started
+	go approveCall()
+
+	firstResult := <-results
+	if firstResult.err == nil {
+		t.Fatal("expected one concurrent approval to fail before release")
+	}
+	if !strings.Contains(firstResult.err.Error(), "not awaiting approval") {
+		t.Fatalf("expected awaiting approval error, got %v", firstResult.err)
+	}
+
+	close(handler.release)
+
+	secondResult := <-results
+	if secondResult.err != nil {
+		t.Fatalf("expected claimed approval to complete, got %v", secondResult.err)
+	}
+
+	if got := handler.calls.Load(); got != 1 {
+		t.Fatalf("expected exactly one revoke call, got %d", got)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal([]byte(secondResult.body), &body); err != nil {
+		t.Fatalf("decode approve payload: %v", err)
+	}
+	if body["status"] != string(autonomous.RunStatusCompleted) {
+		t.Fatalf("expected completed status, got %#v", body["status"])
 	}
 }
 
@@ -1168,6 +2100,21 @@ func TestCerebroInsightCardTool_EntityNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected not found error")
 	}
+}
+
+func mustPersistToolGraph(t *testing.T, g *graph.Graph) *graph.GraphPersistenceStore {
+	t.Helper()
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    filepath.Join(t.TempDir(), "graph-snapshots"),
+		MaxSnapshots: 4,
+	})
+	if err != nil {
+		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
+	}
+	if _, err := store.SaveGraph(g); err != nil {
+		t.Fatalf("SaveGraph() error = %v", err)
+	}
+	return store
 }
 
 func findCerebroTool(tools []agents.Tool, name string) *agents.Tool {

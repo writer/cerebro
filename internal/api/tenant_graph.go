@@ -5,15 +5,8 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/graph"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 )
-
-func (s *Server) tenantScopedGraph(ctx context.Context, g *graph.Graph) *graph.Graph {
-	if s == nil || g == nil {
-		return nil
-	}
-	tenantID := currentTenantScopeID(ctx)
-	return g.SubgraphForTenant(tenantID)
-}
 
 func currentTenantScopeID(ctx context.Context) string {
 	return strings.TrimSpace(GetTenantID(ctx))
@@ -27,23 +20,44 @@ func (s *Server) currentTenantSecurityGraph(ctx context.Context) *graph.Graph {
 	if s == nil || s.app == nil {
 		return nil
 	}
-	return s.tenantScopedGraph(ctx, s.app.CurrentSecurityGraph())
+	return s.app.CurrentSecurityGraphForTenant(currentTenantScopeID(ctx))
 }
 
-func (s *Server) currentTenantRiskEngine(ctx context.Context) *graph.RiskEngine {
+func (s *Server) currentTenantSecurityGraphView(ctx context.Context) (*graph.Graph, error) {
+	if s == nil || s.app == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return currentOrStoredTenantGraphView(ctx, s.app)
+}
+
+func (s *Server) currentTenantSecurityGraphSnapshotView(ctx context.Context) (*graph.Graph, error) {
+	if s == nil || s.app == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return snapshotBackedTenantGraphView(ctx, s.app)
+}
+
+func (s *Server) currentTenantSecurityGraphStore(ctx context.Context) graph.GraphStore {
+	if s == nil || s.app == nil {
+		return nil
+	}
+	return s.app.CurrentSecurityGraphStoreForTenant(currentTenantScopeID(ctx))
+}
+
+func (s *Server) currentTenantRiskEngine(ctx context.Context) *risk.RiskEngine {
 	if s == nil || s.app == nil {
 		return nil
 	}
 	if !requestUsesTenantScope(ctx) {
-		return s.graphRiskEngine()
+		return s.graphRiskEngine(ctx)
 	}
-	g := s.currentTenantSecurityGraph(ctx)
-	if g == nil {
+	g, err := s.currentTenantSecurityGraphView(ctx)
+	if err != nil || g == nil {
 		return nil
 	}
-	engine := graph.NewRiskEngine(g)
+	engine := risk.NewRiskEngine(g)
 	if s.app.Config != nil {
-		engine.SetCrossTenantPrivacyConfig(graph.CrossTenantPrivacyConfig{
+		engine.SetCrossTenantPrivacyConfig(risk.CrossTenantPrivacyConfig{
 			MinTenantCount:    s.app.Config.GraphCrossTenantMinTenants,
 			MinPatternSupport: s.app.Config.GraphCrossTenantMinSupport,
 		})

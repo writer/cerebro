@@ -1,20 +1,44 @@
 {
   "id": "gcp-container-vuln-medium",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Container Medium Vulnerabilities Addressed",
   "description": "Ensures medium vulnerabilities in GCP container images are remediated within SLA (30 days)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp_container_vulnerabilities",
   "conditions": [
-    "severity = 'MEDIUM'",
-    "state = 'ACTIVE'",
-    "discovered_at < NOW() - INTERVAL '30 days'"
+    "cmp_eq(path(resource, \"severity\"), \"MEDIUM\")",
+    "cmp_eq(path(resource, \"state\"), \"ACTIVE\")",
+    "cmp_lt(path(resource, \"discovered_at\"), \"NOW() - INTERVAL '30 days'\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
+  "tags": [
+    "gcp",
+    "container",
+    "vulnerability",
+    "medium",
+    "sla",
+    "compliance"
+  ],
   "remediation": "Update container images to address medium vulnerabilities within 30 days of discovery.",
-  "tags": ["gcp", "container", "vulnerability", "medium", "sla", "compliance"],
-  "risk_categories": ["VULNERABLE_WORKLOAD"],
+  "risk_categories": [
+    "VULNERABLE_WORKLOAD"
+  ],
   "frameworks": [
-    {"name": "SOC 2", "controls": ["CC7.1"]},
-    {"name": "NIST 800-53 r5", "controls": ["RA-5", "SI-2"]}
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "RA-5",
+        "SI-2"
+      ]
+    }
   ]
 }

@@ -183,7 +183,7 @@ func profileSyntheticScaleTier(resourceCount, queryIterations int) (ScaleProfile
 	cloneDuration := time.Since(cloneStart)
 
 	copyOnWriteStart := time.Now()
-	candidate := g.Clone()
+	candidate := g.Fork()
 	candidate.SetNodeProperty(fixture.mutationNodeID, "profile_marker", fmt.Sprintf("tier-%d", resourceCount))
 	candidate.BuildIndex()
 	copyOnWriteDuration := time.Since(copyOnWriteStart)

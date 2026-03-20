@@ -1,15 +1,38 @@
 {
   "id": "ai-incident-response",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AI Incident Response Plan",
   "description": "Ensures AI systems have documented incident response procedures (ISO 42001)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "ai_models",
-  "conditions": ["environment = 'production'", "(incident_response_plan IS NULL OR incident_response_plan = '')"],
+  "conditions": [
+    "cmp_eq(path(resource, \"environment\"), \"production\")",
+    "(!exists_path(resource, \"incident_response_plan\")) || (cmp_eq(path(resource, \"incident_response_plan\"), \"\"))"
+  ],
+  "condition_format": "cel",
   "severity": "high",
+  "tags": [
+    "ai",
+    "ml",
+    "incident-response",
+    "iso42001"
+  ],
   "remediation": "Create incident response plan for AI systems covering model failures, biased outputs, and security incidents.",
-  "tags": ["ai", "ml", "incident-response", "iso42001"],
   "frameworks": [
-    {"name": "ISO 42001", "controls": ["10.1", "10.2"]},
-    {"name": "SOC 2", "controls": ["CC7.4"]}
+    {
+      "name": "ISO 42001",
+      "controls": [
+        "10.1",
+        "10.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.4"
+      ]
+    }
   ]
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/actionengine"
+	"github.com/writer/cerebro/internal/autonomous"
 	"github.com/writer/cerebro/internal/executionstore"
 	"github.com/writer/cerebro/internal/functionscan"
 	reports "github.com/writer/cerebro/internal/graph/reports"
@@ -27,50 +28,43 @@ type ListOptions struct {
 }
 
 type Summary struct {
-	Namespace     string     `json:"namespace"`
-	RunID         string     `json:"run_id"`
-	Kind          string     `json:"kind"`
-	Status        string     `json:"status"`
-	Stage         string     `json:"stage"`
-	SubmittedAt   time.Time  `json:"submitted_at"`
-	StartedAt     *time.Time `json:"started_at,omitempty"`
-	CompletedAt   *time.Time `json:"completed_at,omitempty"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	DisplayName   string     `json:"display_name,omitempty"`
-	ScopeID       string     `json:"scope_id,omitempty"`
-	RequestedBy   string     `json:"requested_by,omitempty"`
-	ExecutionMode string     `json:"execution_mode,omitempty"`
-	StatusURL     string     `json:"status_url,omitempty"`
-	JobID         string     `json:"job_id,omitempty"`
-	Error         string     `json:"error,omitempty"`
-	Provider      string     `json:"provider,omitempty"`
-	Target        string     `json:"target,omitempty"`
+	Namespace        string     `json:"namespace"`
+	RunID            string     `json:"run_id"`
+	Kind             string     `json:"kind"`
+	Status           string     `json:"status"`
+	Stage            string     `json:"stage"`
+	SubmittedAt      time.Time  `json:"submitted_at"`
+	StartedAt        *time.Time `json:"started_at,omitempty"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	DisplayName      string     `json:"display_name,omitempty"`
+	ScopeID          string     `json:"scope_id,omitempty"`
+	RequestedBy      string     `json:"requested_by,omitempty"`
+	ExecutionMode    string     `json:"execution_mode,omitempty"`
+	StatusURL        string     `json:"status_url,omitempty"`
+	JobID            string     `json:"job_id,omitempty"`
+	Error            string     `json:"error,omitempty"`
+	Provider         string     `json:"provider,omitempty"`
+	Target           string     `json:"target,omitempty"`
+	Priority         string     `json:"priority,omitempty"`
+	PriorityScore    int        `json:"priority_score,omitempty"`
+	PrioritySource   string     `json:"priority_source,omitempty"`
+	PriorityEligible *bool      `json:"priority_eligible,omitempty"`
+	LastScannedAt    *time.Time `json:"last_scanned_at,omitempty"`
 }
 
 func List(ctx context.Context, store executionstore.Store, opts ListOptions) ([]Summary, error) {
 	if store == nil {
 		return nil, nil
 	}
-	query := executionstore.RunListOptions{
+	envs, err := store.ListAllRuns(ctx, executionstore.RunListOptions{
 		Namespaces:         opts.Namespaces,
 		Statuses:           opts.Statuses,
 		ExcludeStatuses:    opts.ExcludeStatuses,
 		Limit:              opts.Limit,
 		Offset:             opts.Offset,
 		OrderBySubmittedAt: opts.OrderBySubmittedAt,
-	}
-	applyPaginationAfterFilter := false
-	if strings.TrimSpace(opts.ReportID) != "" {
-		reportNamespaces, ok := reportFilterNamespaces(opts.Namespaces)
-		if !ok {
-			return nil, nil
-		}
-		query.Namespaces = reportNamespaces
-		query.Limit = 0
-		query.Offset = 0
-		applyPaginationAfterFilter = true
-	}
-	envs, err := store.ListAllRuns(ctx, query)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -97,36 +91,7 @@ func List(ctx context.Context, store executionstore.Store, opts ListOptions) ([]
 		}
 		return summaries[i].UpdatedAt.After(summaries[j].UpdatedAt)
 	})
-	if applyPaginationAfterFilter {
-		summaries = paginateSummaries(summaries, opts.Offset, opts.Limit)
-	}
 	return summaries, nil
-}
-
-func reportFilterNamespaces(namespaces []string) ([]string, bool) {
-	if len(namespaces) == 0 {
-		return []string{executionstore.NamespacePlatformReportRun}, true
-	}
-	for _, namespace := range namespaces {
-		if strings.TrimSpace(namespace) == executionstore.NamespacePlatformReportRun {
-			return []string{executionstore.NamespacePlatformReportRun}, true
-		}
-	}
-	return nil, false
-}
-
-func paginateSummaries(summaries []Summary, offset, limit int) []Summary {
-	if offset < 0 {
-		offset = 0
-	}
-	if offset >= len(summaries) {
-		return nil
-	}
-	end := len(summaries)
-	if limit > 0 && offset+limit < end {
-		end = offset + limit
-	}
-	return summaries[offset:end]
 }
 
 func summarizeEnvelope(env executionstore.RunEnvelope, opts ListOptions) (Summary, bool, error) {
@@ -141,6 +106,8 @@ func summarizeEnvelope(env executionstore.RunEnvelope, opts ListOptions) (Summar
 		return summarizeFunctionRun(env)
 	case executionstore.NamespaceActionEngine:
 		return summarizeActionExecution(env)
+	case executionstore.NamespaceAutonomousWorkflow:
+		return summarizeAutonomousWorkflowRun(env)
 	default:
 		return Summary{
 			Namespace:   env.Namespace,
@@ -191,10 +158,15 @@ func summarizeReportRun(env executionstore.RunEnvelope, opts ListOptions) (Summa
 	}, true, nil
 }
 
-func summarizeWorkloadRun(env executionstore.RunEnvelope) (Summary, bool, error) {
-	var run workloadscan.RunRecord
+func summarizeAutonomousWorkflowRun(env executionstore.RunEnvelope) (Summary, bool, error) {
+	var run autonomous.RunRecord
 	if err := json.Unmarshal(env.Payload, &run); err != nil {
-		return Summary{}, false, fmt.Errorf("decode workload execution %q: %w", env.RunID, err)
+		return Summary{}, false, fmt.Errorf("decode autonomous workflow execution %q: %w", env.RunID, err)
+	}
+	scopeID := firstNonEmpty(strings.TrimSpace(run.SecretNodeID), strings.TrimSpace(run.WorkloadID), strings.TrimSpace(run.PrincipalID))
+	displayName := "workflow:" + firstNonEmpty(string(run.WorkflowID), env.RunID)
+	if scopeID != "" {
+		displayName += ":" + scopeID
 	}
 	return Summary{
 		Namespace:   env.Namespace,
@@ -206,12 +178,41 @@ func summarizeWorkloadRun(env executionstore.RunEnvelope) (Summary, bool, error)
 		StartedAt:   env.StartedAt,
 		CompletedAt: env.CompletedAt,
 		UpdatedAt:   env.UpdatedAt,
-		DisplayName: "workload:" + run.Target.Identity(),
-		ScopeID:     run.Target.Identity(),
+		DisplayName: displayName,
+		ScopeID:     scopeID,
 		RequestedBy: strings.TrimSpace(run.RequestedBy),
 		Error:       strings.TrimSpace(run.Error),
-		Provider:    string(run.Provider),
-		Target:      run.Target.Identity(),
+		Provider:    strings.TrimSpace(run.Provider),
+		Target:      scopeID,
+	}, true, nil
+}
+
+func summarizeWorkloadRun(env executionstore.RunEnvelope) (Summary, bool, error) {
+	var run workloadscan.RunRecord
+	if err := json.Unmarshal(env.Payload, &run); err != nil {
+		return Summary{}, false, fmt.Errorf("decode workload execution %q: %w", env.RunID, err)
+	}
+	return Summary{
+		Namespace:        env.Namespace,
+		RunID:            env.RunID,
+		Kind:             env.Kind,
+		Status:           env.Status,
+		Stage:            env.Stage,
+		SubmittedAt:      env.SubmittedAt,
+		StartedAt:        env.StartedAt,
+		CompletedAt:      env.CompletedAt,
+		UpdatedAt:        env.UpdatedAt,
+		DisplayName:      "workload:" + run.Target.Identity(),
+		ScopeID:          run.Target.Identity(),
+		RequestedBy:      strings.TrimSpace(run.RequestedBy),
+		Error:            strings.TrimSpace(run.Error),
+		Provider:         string(run.Provider),
+		Target:           run.Target.Identity(),
+		Priority:         string(priorityValue(run.Priority)),
+		PriorityScore:    priorityScore(run.Priority),
+		PrioritySource:   prioritySource(run.Priority),
+		PriorityEligible: priorityEligible(run.Priority),
+		LastScannedAt:    priorityLastScannedAt(run.Priority),
 	}, true, nil
 }
 
@@ -296,4 +297,41 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func priorityValue(value *workloadscan.PriorityAssessment) workloadscan.ScanPriority {
+	if value == nil {
+		return ""
+	}
+	return value.Priority
+}
+
+func priorityScore(value *workloadscan.PriorityAssessment) int {
+	if value == nil {
+		return 0
+	}
+	return value.Score
+}
+
+func prioritySource(value *workloadscan.PriorityAssessment) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(value.Source)
+}
+
+func priorityEligible(value *workloadscan.PriorityAssessment) *bool {
+	if value == nil {
+		return nil
+	}
+	copy := value.Eligible
+	return &copy
+}
+
+func priorityLastScannedAt(value *workloadscan.PriorityAssessment) *time.Time {
+	if value == nil || value.LastScannedAt == nil || value.LastScannedAt.IsZero() {
+		return nil
+	}
+	copy := value.LastScannedAt.UTC()
+	return &copy
 }

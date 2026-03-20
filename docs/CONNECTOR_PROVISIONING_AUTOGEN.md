@@ -47,6 +47,8 @@ CloudFormation StackSet contract for a read-only plus snapshot-limited IAM role 
 - `ec2:DeleteVolume` (`account`): Delete temporary inspection volumes after use.
   - Condition: Restrict deletion to tagged Cerebro-managed volumes.
   - Reference: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DeleteVolume.html
+- `kms:DescribeKey` (`account`): Inspect EBS snapshot key manager metadata before cross-account encrypted scans.
+  - Reference: https://docs.aws.amazon.com/kms/latest/developerguide/kms-api-permissions-reference.html
 - `kms:Decrypt` (`account`): Use customer-managed keys when encrypted EBS volumes are snapshotted.
   - Condition: Limit use to EC2 via-service requests and AWS-resource grants.
   - Reference: https://docs.aws.amazon.com/kms/latest/developerguide/kms-api-permissions-reference.html

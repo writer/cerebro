@@ -26,11 +26,7 @@ type crossTenantIngestRequest struct {
 }
 
 func (s *Server) buildCrossTenantPatternSamples(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -64,11 +60,7 @@ func (s *Server) buildCrossTenantPatternSamples(w http.ResponseWriter, r *http.R
 }
 
 func (s *Server) ingestCrossTenantPatternSamples(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -112,11 +104,7 @@ func (s *Server) ingestCrossTenantPatternSamples(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) listCrossTenantPatterns(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
@@ -142,11 +130,7 @@ func (s *Server) listCrossTenantPatterns(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) matchCrossTenantPatterns(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-	engine := s.graphRiskEngine()
+	engine := s.graphRiskEngine(r.Context())
 	if engine == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return

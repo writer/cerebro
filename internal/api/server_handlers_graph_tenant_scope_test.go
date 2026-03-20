@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -39,6 +37,36 @@ func doWithTenantContext(t *testing.T, s *Server, method, path string, body any,
 	return w
 }
 
+type tenantScopedStoreGraphRuntime struct {
+	stubGraphRuntime
+	tenantStores map[string]graph.GraphStore
+}
+
+func (r tenantScopedStoreGraphRuntime) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphStore {
+	if store, ok := r.tenantStores[tenantID]; ok {
+		return store
+	}
+	return r.stubGraphRuntime.CurrentSecurityGraphStoreForTenant(tenantID)
+}
+
+func newTenantScopedStoreBackedServer(t *testing.T, g *graph.Graph) *Server {
+	t.Helper()
+	application := newTestApp(t)
+	deps := newServerDependenciesFromApp(application)
+	deps.SecurityGraph = nil
+	deps.SecurityGraphBuilder = nil
+	deps.graphRuntime = tenantScopedStoreGraphRuntime{
+		stubGraphRuntime: stubGraphRuntime{store: g},
+		tenantStores: map[string]graph.GraphStore{
+			"tenant-a": g.SubgraphForTenant("tenant-a"),
+			"tenant-b": g.SubgraphForTenant("tenant-b"),
+		},
+	}
+	s := NewServerWithDependencies(deps)
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
 func TestGraphRiskHandlersUseTenantScopedGraph(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
@@ -60,6 +88,58 @@ func TestGraphRiskHandlersUseTenantScopedGraph(t *testing.T) {
 	node := reachable[0].(map[string]any)["node"].(map[string]any)
 	if node["id"] != "service:tenant-a" {
 		t.Fatalf("expected tenant-a node only, got %#v", node)
+	}
+}
+
+func TestCurrentTenantSecurityGraphReusesTenantShard(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	g.AddNode(&graph.Node{ID: "service:shared", Kind: graph.NodeKindService, Name: "Shared"})
+	g.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"})
+	g.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
+	g.AddEdge(&graph.Edge{ID: "shared-a", Source: "service:shared", Target: "service:tenant-a", Kind: graph.EdgeKindDependsOn})
+	g.AddEdge(&graph.Edge{ID: "shared-b", Source: "service:shared", Target: "service:tenant-b", Kind: graph.EdgeKindDependsOn})
+
+	ctx := context.WithValue(context.Background(), contextKeyTenant, "tenant-a")
+	first := s.currentTenantSecurityGraph(ctx)
+	second := s.currentTenantSecurityGraph(ctx)
+	if first == nil || second == nil {
+		t.Fatal("expected tenant-scoped live graph")
+	}
+	if first != second {
+		t.Fatalf("expected live tenant graph reuse, got %p then %p", first, second)
+	}
+	if first == g {
+		t.Fatal("expected tenant-scoped graph to differ from the global live graph")
+	}
+	if _, ok := first.GetNode("service:tenant-b"); ok {
+		t.Fatal("expected tenant shard to exclude foreign-tenant nodes")
+	}
+}
+
+func TestCurrentTenantSecurityGraphSnapshotViewIsIsolatedFromLiveShard(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	g.AddNode(&graph.Node{ID: "service:shared", Kind: graph.NodeKindService, Name: "Shared"})
+	g.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"})
+	g.AddEdge(&graph.Edge{ID: "shared-a", Source: "service:shared", Target: "service:tenant-a", Kind: graph.EdgeKindDependsOn})
+
+	ctx := context.WithValue(context.Background(), contextKeyTenant, "tenant-a")
+	live := s.currentTenantSecurityGraph(ctx)
+	snapshot, err := s.currentTenantSecurityGraphSnapshotView(ctx)
+	if err != nil {
+		t.Fatalf("expected snapshot-backed tenant graph, got error: %v", err)
+	}
+	if live == nil || snapshot == nil {
+		t.Fatal("expected both live and snapshot tenant graphs")
+	}
+	if snapshot == live {
+		t.Fatal("expected snapshot-backed tenant graph to differ from the live tenant shard")
+	}
+
+	snapshot.AddNode(&graph.Node{ID: "service:snapshot-only", Kind: graph.NodeKindService, Name: "Snapshot Only", TenantID: "tenant-a"})
+	if _, ok := live.GetNode("service:snapshot-only"); ok {
+		t.Fatal("expected snapshot-backed tenant graph mutations to stay isolated from the live tenant shard")
 	}
 }
 
@@ -116,50 +196,56 @@ func TestGraphIntelligenceHandlersUseTenantScopedGraph(t *testing.T) {
 	}
 }
 
-func TestGraphIntelligenceInsightsUseTenantScopedTemporalDiff(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
-	s := newTestServer(t)
+func TestGraphIntelligenceHandlersUseTenantScopedStoreBackedGraph(t *testing.T) {
+	g := graph.New()
 	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+	g.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"})
+	g.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
+	g.AddNode(&graph.Node{
+		ID:       "pull_request:tenant-b:42",
+		Kind:     graph.NodeKindPullRequest,
+		TenantID: "tenant-b",
+		Properties: map[string]any{
+			"repository":  "tenant-b",
+			"number":      "42",
+			"state":       "merged",
+			"observed_at": base.Format(time.RFC3339),
+			"valid_from":  base.Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:       "deployment:tenant-b:deploy-1",
+		Kind:     graph.NodeKindDeploymentRun,
+		TenantID: "tenant-b",
+		Properties: map[string]any{
+			"deploy_id":   "deploy-1",
+			"service_id":  "tenant-b",
+			"environment": "prod",
+			"status":      "succeeded",
+			"observed_at": base.Add(5 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(5 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:       "incident:tenant-b:1",
+		Kind:     graph.NodeKindIncident,
+		TenantID: "tenant-b",
+		Properties: map[string]any{
+			"incident_id": "incident-b-1",
+			"service_id":  "tenant-b",
+			"observed_at": base.Add(7 * time.Minute).Format(time.RFC3339),
+			"valid_from":  base.Add(7 * time.Minute).Format(time.RFC3339),
+		},
+	})
+	g.AddEdge(&graph.Edge{ID: "pr-b-service", Source: "pull_request:tenant-b:42", Target: "service:tenant-b", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "deploy-b-service", Source: "deployment:tenant-b:deploy-1", Target: "service:tenant-b", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "incident-b-service", Source: "incident:tenant-b:1", Target: "service:tenant-b", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	graph.MaterializeEventCorrelations(g, base.Add(10*time.Minute))
 
-	current := s.app.SecurityGraph
-	current.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"})
-	current.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
-	current.AddNode(&graph.Node{ID: "db:tenant-b", Kind: graph.NodeKindDatabase, Name: "Tenant B DB", TenantID: "tenant-b", Risk: graph.RiskHigh})
-
-	saveSnapshot := func(createdAt time.Time, nodes []*graph.Node, edges []*graph.Edge) {
-		t.Helper()
-		snapshot := &graph.Snapshot{Version: "1.0", CreatedAt: createdAt, Nodes: nodes, Edges: edges}
-		path := filepath.Join(dir, fmt.Sprintf("graph-%s.json.gz", createdAt.Format("20060102-150405.000000000")))
-		if err := snapshot.SaveToFile(path); err != nil {
-			t.Fatalf("SaveToFile: %v", err)
-		}
-	}
-	saveSnapshot(base, []*graph.Node{
-		{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"},
-		{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"},
-	}, nil)
-	saveSnapshot(base.Add(1*time.Hour), []*graph.Node{
-		{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a"},
-		{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"},
-		{ID: "db:tenant-b", Kind: graph.NodeKindDatabase, Name: "Tenant B DB", TenantID: "tenant-b"},
-	}, []*graph.Edge{{ID: "tenant-b-db", Source: "service:tenant-b", Target: "db:tenant-b", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow}})
-
-	query := fmt.Sprintf("/api/v1/platform/intelligence/insights?from=%s&to=%s&max_insights=10", base.Add(5*time.Minute).Format(time.RFC3339), base.Add(65*time.Minute).Format(time.RFC3339))
-	global := do(t, s, http.MethodGet, query, nil)
-	if global.Code != http.StatusOK {
-		t.Fatalf("expected global insights 200, got %d: %s", global.Code, global.Body.String())
-	}
-	if !containsInsightID(decodeJSON(t, global), "graph-temporal-drift") {
-		t.Fatalf("expected global insights to include temporal drift, got %s", global.Body.String())
-	}
-
-	tenant := doWithTenantContext(t, s, http.MethodGet, query, nil, "tenant-a")
-	if tenant.Code != http.StatusOK {
-		t.Fatalf("expected tenant insights 200, got %d: %s", tenant.Code, tenant.Body.String())
-	}
-	if containsInsightID(decodeJSON(t, tenant), "graph-temporal-drift") {
-		t.Fatalf("expected tenant-scoped insights to exclude foreign-tenant temporal drift, got %s", tenant.Body.String())
+	s := newTenantScopedStoreBackedServer(t, g)
+	resp := doWithTenantContext(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-correlations?event_id=incident:tenant-b:1&limit=10", nil, "tenant-a")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected tenant-scoped store-backed event correlation lookup to hide foreign tenant event, got %d: %s", resp.Code, resp.Body.String())
 	}
 }
 
@@ -267,19 +353,21 @@ func TestRiskReportPersistsOnlyForGlobalRequests(t *testing.T) {
 	}
 }
 
-func containsInsightID(body map[string]any, id string) bool {
-	insights, ok := body["insights"].([]any)
-	if !ok {
-		return false
+func TestTenantScopedRiskReportUsesStoreBackedGraphWhenRawGraphUnavailable(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "user:shared", Kind: graph.NodeKindUser, Name: "Shared User"})
+	g.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, Name: "Tenant A", TenantID: "tenant-a", Risk: graph.RiskHigh})
+	g.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
+	g.AddEdge(&graph.Edge{ID: "shared-a", Source: "user:shared", Target: "service:tenant-a", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "shared-b", Source: "user:shared", Target: "service:tenant-b", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+
+	s := newTenantScopedStoreBackedServer(t, g)
+	resp := doWithTenantContext(t, s, http.MethodGet, "/api/v1/graph/risk-report", nil, "tenant-a")
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected tenant-scoped store-backed risk report 200, got %d: %s", resp.Code, resp.Body.String())
 	}
-	for _, raw := range insights {
-		insight, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		if insight["id"] == id {
-			return true
-		}
+	body := decodeJSON(t, resp)
+	if _, ok := body["risk_score"].(float64); !ok {
+		t.Fatalf("expected risk_score from tenant-scoped store-backed risk report, got %#v", body["risk_score"])
 	}
-	return false
 }

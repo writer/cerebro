@@ -1,23 +1,27 @@
 {
   "id": "vm-vuln-data-access",
-  "control_id": "wc-id-1211",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internet-facing VM/serverless with initial access vulnerabilities and data access to sensitive data",
   "description": "An internet-facing resource has vulnerabilities and access to sensitive data",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "is_internet_facing == true",
-    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
-    "service_account.has_sensitive_data_access == true OR attached_role.has_sensitive_data_access == true"
+    "cmp_eq(path(resource, \"is_internet_facing\"), true)",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, (in_list(path(item, \"severity\"), [\"CRITICAL\",\"HIGH\"])) \u0026\u0026 (cmp_eq(path(item, \"initial_access\"), true)))",
+    "(cmp_eq(path(resource, \"service_account.has_sensitive_data_access\"), true)) || (cmp_eq(path(resource, \"attached_role.has_sensitive_data_access\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Patch vulnerabilities immediately. Remove data access until vulnerabilities are resolved.",
   "tags": [
     "wiz",
     "compute",
     "vulnerability",
     "data-access"
   ],
+  "control_id": "wc-id-1211",
+  "remediation": "Patch vulnerabilities immediately. Remove data access until vulnerabilities are resolved.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

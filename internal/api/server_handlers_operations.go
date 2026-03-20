@@ -12,17 +12,32 @@ import (
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/remediation"
 	"github.com/writer/cerebro/internal/scheduler"
-	"github.com/writer/cerebro/internal/webhooks"
 )
 
 func (s *Server) schedulerStatus(w http.ResponseWriter, r *http.Request) {
-	status := s.app.Scheduler.Status()
+	status, err := s.schedulerOperations.Status()
+	if err != nil {
+		if errors.Is(err, errSchedulerUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, status)
 }
 
 func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
 	pagination := ParsePagination(r, 100, 1000)
-	jobs := s.app.Scheduler.ListJobs()
+	jobs, err := s.schedulerOperations.ListJobs()
+	if err != nil {
+		if errors.Is(err, errSchedulerUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
 	sort.Slice(jobs, func(i, j int) bool { return jobs[i].Name < jobs[j].Name })
 
 	result := make([]map[string]interface{}, len(jobs))
@@ -49,8 +64,10 @@ func (s *Server) listJobs(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	if err := s.app.Scheduler.RunNow(name); err != nil {
+	if err := s.schedulerOperations.RunJob(r.Context(), name, GetUserID(r.Context())); err != nil {
 		switch {
+		case errors.Is(err, errSchedulerUnavailable):
+			s.error(w, http.StatusServiceUnavailable, err.Error())
 		case errors.Is(err, scheduler.ErrJobNotFound):
 			s.error(w, http.StatusNotFound, err.Error())
 		case errors.Is(err, scheduler.ErrJobAlreadyRunning):
@@ -62,26 +79,32 @@ func (s *Server) runJob(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if s.app.Webhooks != nil {
-		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventSchedulerJobRun, map[string]interface{}{
-			"job_name":     name,
-			"triggered_by": GetUserID(r.Context()),
-		}); err != nil {
-			s.app.Logger.Warn("failed to emit scheduler job event", "job", name, "error", err)
-		}
-	}
 	s.json(w, http.StatusAccepted, map[string]string{"status": "job triggered"})
 }
 
 func (s *Server) enableJob(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	s.app.Scheduler.EnableJob(name)
+	if err := s.schedulerOperations.EnableJob(name); err != nil {
+		if errors.Is(err, errSchedulerUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, map[string]string{"status": "job enabled"})
 }
 
 func (s *Server) disableJob(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	s.app.Scheduler.DisableJob(name)
+	if err := s.schedulerOperations.DisableJob(name); err != nil {
+		if errors.Is(err, errSchedulerUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, map[string]string{"status": "job disabled"})
 }
 
@@ -146,7 +169,11 @@ func (s *Server) slackCommands(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listRemediationRules(w http.ResponseWriter, r *http.Request) {
 	pagination := ParsePagination(r, 100, 1000)
-	rules := s.app.Remediation.ListRules()
+	rules, err := s.remediationOperations.ListRules()
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	sort.Slice(rules, func(i, j int) bool { return rules[i].ID < rules[j].ID })
 	paged, paginationResp := paginateSlice(rules, pagination)
 
@@ -165,22 +192,16 @@ func (s *Server) createRemediationRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.app.Remediation.AddRule(rule); err != nil {
+	created, err := s.remediationOperations.CreateRule(r.Context(), rule, GetUserID(r.Context()))
+	if err != nil {
+		if errors.Is(err, errRemediationUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.errorFromErr(w, err)
 		return
 	}
-
-	if s.app.Webhooks != nil {
-		if err := s.app.Webhooks.EmitWithErrors(r.Context(), webhooks.EventRemediationRule, map[string]interface{}{
-			"rule_id":    rule.ID,
-			"rule_name":  rule.Name,
-			"created_by": GetUserID(r.Context()),
-		}); err != nil {
-			s.app.Logger.Warn("failed to emit remediation rule event", "rule_id", rule.ID, "error", err)
-		}
-	}
-
-	s.json(w, http.StatusCreated, rule)
+	s.json(w, http.StatusCreated, created)
 }
 
 func (s *Server) updateRemediationRule(w http.ResponseWriter, r *http.Request) {
@@ -201,12 +222,15 @@ func (s *Server) updateRemediationRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rule.ID = id
-	if err := s.app.Remediation.UpdateRule(id, rule); err != nil {
+	updated, err := s.remediationOperations.UpdateRule(id, rule)
+	if err != nil {
+		if errors.Is(err, errRemediationUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.error(w, http.StatusNotFound, "rule not found")
 		return
 	}
-
-	updated, _ := s.app.Remediation.GetRule(id)
 	s.json(w, http.StatusOK, updated)
 }
 
@@ -216,7 +240,11 @@ func (s *Server) deleteRemediationRule(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "rule id required")
 		return
 	}
-	if err := s.app.Remediation.DeleteRule(id); err != nil {
+	if err := s.remediationOperations.DeleteRule(id); err != nil {
+		if errors.Is(err, errRemediationUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.error(w, http.StatusNotFound, "rule not found")
 		return
 	}
@@ -225,7 +253,11 @@ func (s *Server) deleteRemediationRule(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getRemediationRule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	rule, ok := s.app.Remediation.GetRule(id)
+	rule, ok, err := s.remediationOperations.GetRule(id)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "rule not found")
 		return
@@ -235,7 +267,11 @@ func (s *Server) getRemediationRule(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) enableRemediationRule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := s.app.Remediation.EnableRule(id); err != nil {
+	if err := s.remediationOperations.EnableRule(id); err != nil {
+		if errors.Is(err, errRemediationUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.error(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -244,7 +280,11 @@ func (s *Server) enableRemediationRule(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) disableRemediationRule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := s.app.Remediation.DisableRule(id); err != nil {
+	if err := s.remediationOperations.DisableRule(id); err != nil {
+		if errors.Is(err, errRemediationUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.error(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -259,11 +299,10 @@ func (s *Server) listRemediationExecutions(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	var executions []*remediation.Execution
-	if s.app.RemediationExecutor != nil {
-		executions = s.app.RemediationExecutor.ListExecutions(r.Context(), limit)
-	} else if s.app.Remediation != nil {
-		executions = s.app.Remediation.ListExecutions(limit)
+	executions, err := s.remediationOperations.ListExecutions(limit)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
 	}
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"executions": executions,
@@ -273,14 +312,10 @@ func (s *Server) listRemediationExecutions(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) getRemediationExecution(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	var (
-		execution *remediation.Execution
-		ok        bool
-	)
-	if s.app.RemediationExecutor != nil {
-		execution, ok = s.app.RemediationExecutor.GetExecution(r.Context(), id)
-	} else if s.app.Remediation != nil {
-		execution, ok = s.app.Remediation.GetExecution(id)
+	execution, ok, err := s.remediationOperations.GetExecution(id)
+	if err != nil {
+		s.error(w, http.StatusServiceUnavailable, err.Error())
+		return
 	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "execution not found")
@@ -300,7 +335,11 @@ func (s *Server) approveExecution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.app.RemediationExecutor.Approve(r.Context(), id, req.ApproverID); err != nil {
+	if err := s.remediationOperations.ApproveExecution(r.Context(), id, req.ApproverID); err != nil {
+		if errors.Is(err, errRemediationExecutorUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -320,7 +359,11 @@ func (s *Server) rejectExecution(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.app.RemediationExecutor.Reject(r.Context(), id, req.RejecterID, req.Reason); err != nil {
+	if err := s.remediationOperations.RejectExecution(r.Context(), id, req.RejecterID, req.Reason); err != nil {
+		if errors.Is(err, errRemediationExecutorUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}

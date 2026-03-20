@@ -29,10 +29,13 @@ func (c *Client) BackfillRelationshipIDs(ctx context.Context, batchSize int) (*R
 }
 
 type AzureSyncRequest struct {
-	Subscription string
-	Concurrency  int
-	Tables       []string
-	Validate     bool
+	Subscription            string
+	Subscriptions           []string
+	ManagementGroup         string
+	Concurrency             int
+	SubscriptionConcurrency int
+	Tables                  []string
+	Validate                bool
 }
 
 type SyncRunResponse struct {
@@ -49,11 +52,40 @@ func (c *Client) RunAzureSync(ctx context.Context, req AzureSyncRequest) (*SyncR
 	if sub := strings.TrimSpace(req.Subscription); sub != "" {
 		reqBody = map[string]interface{}{"subscription": sub}
 	}
+	if len(req.Subscriptions) > 0 {
+		subscriptions := make([]string, 0, len(req.Subscriptions))
+		for _, subscriptionID := range req.Subscriptions {
+			if trimmed := strings.TrimSpace(subscriptionID); trimmed != "" {
+				subscriptions = append(subscriptions, trimmed)
+			}
+		}
+		singleExplicitSubscription := len(subscriptions) == 1 &&
+			strings.TrimSpace(req.Subscription) != "" &&
+			strings.EqualFold(subscriptions[0], strings.TrimSpace(req.Subscription))
+		if len(subscriptions) > 0 && !singleExplicitSubscription {
+			if reqBody == nil {
+				reqBody = make(map[string]interface{}, 1)
+			}
+			reqBody["subscriptions"] = subscriptions
+		}
+	}
+	if managementGroup := strings.TrimSpace(req.ManagementGroup); managementGroup != "" {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["management_group"] = managementGroup
+	}
 	if req.Concurrency > 0 {
 		if reqBody == nil {
 			reqBody = make(map[string]interface{}, 1)
 		}
 		reqBody["concurrency"] = req.Concurrency
+	}
+	if req.SubscriptionConcurrency > 0 {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["subscription_concurrency"] = req.SubscriptionConcurrency
 	}
 	if len(req.Tables) > 0 {
 		if reqBody == nil {
@@ -381,14 +413,16 @@ func (c *Client) RunGCPSync(ctx context.Context, req GCPSyncRequest) (*SyncRunRe
 }
 
 type GCPAssetSyncRequest struct {
-	Projects    []string
-	Concurrency int
-	Tables      []string
-	Validate    bool
+	Projects     []string
+	Organization string
+	Concurrency  int
+	Tables       []string
+	Validate     bool
 }
 
 func (c *Client) RunGCPAssetSync(ctx context.Context, req GCPAssetSyncRequest) (*SyncRunResponse, error) {
 	var reqBody map[string]interface{}
+	organization := strings.TrimSpace(req.Organization)
 	if len(req.Projects) > 0 {
 		projects := make([]string, 0, len(req.Projects))
 		for _, project := range req.Projects {
@@ -399,6 +433,14 @@ func (c *Client) RunGCPAssetSync(ctx context.Context, req GCPAssetSyncRequest) (
 		if len(projects) > 0 {
 			reqBody = map[string]interface{}{"projects": projects}
 		}
+	} else if organization != "" {
+		reqBody = map[string]interface{}{"projects": []string{}}
+	}
+	if organization != "" {
+		if reqBody == nil {
+			reqBody = make(map[string]interface{}, 1)
+		}
+		reqBody["organization"] = organization
 	}
 	if req.Concurrency > 0 {
 		if reqBody == nil {

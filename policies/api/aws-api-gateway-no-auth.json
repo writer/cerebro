@@ -1,21 +1,25 @@
 {
   "id": "aws-api-gateway-no-authorization",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AWS API Gateway No Authorization",
   "description": "API Gateway endpoint has no authorization configured",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::apigateway::method",
   "conditions": [
-    "authorization_type == 'NONE'",
-    "api_key_required != true"
+    "cmp_eq(path(resource, \"authorization_type\"), \"NONE\")",
+    "cmp_ne(path(resource, \"api_key_required\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Configure IAM, Cognito, or Lambda authorizer for the API Gateway method.",
   "tags": [
     "api",
     "apigateway",
     "authentication",
     "public-api"
   ],
+  "remediation": "Configure IAM, Cognito, or Lambda authorizer for the API Gateway method.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK"

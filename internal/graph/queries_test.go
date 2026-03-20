@@ -1,6 +1,9 @@
 package graph
 
 import (
+	"fmt"
+	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -107,6 +110,54 @@ func TestBlastRadius(t *testing.T) {
 	})
 }
 
+func TestBlastRadius_DenyChecksFallbackWhenOrdinalsAreInvalid(t *testing.T) {
+	newGraph := func() *Graph {
+		g := New()
+		g.AddNode(&Node{ID: "user:start", Kind: NodeKindUser, Name: "start"})
+		g.AddNode(&Node{ID: "bucket:allowed", Kind: NodeKindBucket, Name: "allowed"})
+		g.AddNode(&Node{ID: "bucket:blocked", Kind: NodeKindBucket, Name: "blocked"})
+		g.AddEdge(&Edge{ID: "allow-allowed", Source: "user:start", Target: "bucket:allowed", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+		g.AddEdge(&Edge{ID: "allow-blocked", Source: "user:start", Target: "bucket:blocked", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+		g.AddEdge(&Edge{ID: "deny-blocked", Source: "user:start", Target: "bucket:blocked", Kind: EdgeKindCanRead, Effect: EdgeEffectDeny})
+		return g
+	}
+
+	assertBlockedRemainsDenied := func(t *testing.T, result *BlastRadiusResult) {
+		t.Helper()
+		reachable := make(map[string]struct{}, len(result.ReachableNodes))
+		for _, node := range result.ReachableNodes {
+			reachable[node.Node.ID] = struct{}{}
+		}
+		if _, ok := reachable["bucket:allowed"]; !ok {
+			t.Fatal("expected blast radius to keep the allowed target reachable")
+		}
+		if _, ok := reachable["bucket:blocked"]; ok {
+			t.Fatal("expected blast radius to keep the denied target unreachable")
+		}
+	}
+
+	t.Run("invalid source ordinal falls back to source node id", func(t *testing.T) {
+		g := newGraph()
+
+		g.mu.Lock()
+		g.nodes["user:start"].ordinal = InvalidNodeOrdinal
+		g.mu.Unlock()
+
+		assertBlockedRemainsDenied(t, BlastRadius(g, "user:start", 1))
+	})
+
+	t.Run("invalid target ordinal falls back to target node id", func(t *testing.T) {
+		g := newGraph()
+
+		g.mu.Lock()
+		g.edgeByID["allow-blocked"].targetOrd = InvalidNodeOrdinal
+		g.edgeByID["deny-blocked"].targetOrd = InvalidNodeOrdinal
+		g.mu.Unlock()
+
+		assertBlockedRemainsDenied(t, BlastRadius(g, "user:start", 1))
+	})
+}
+
 func TestBlastRadius_CacheIsolationAndInvalidation(t *testing.T) {
 	g := setupTestGraph()
 
@@ -151,6 +202,258 @@ func TestBlastRadius_CacheIsolationAndInvalidation(t *testing.T) {
 	if !found {
 		t.Fatal("expected blast radius to include post-mutation resource after cache invalidation")
 	}
+}
+
+func TestBlastRadius_CacheInvalidationUsesVersioning(t *testing.T) {
+	g := setupTestGraph()
+
+	computeCalls := 0
+	blastRadiusComputeHook = func(_ string, _ int) {
+		computeCalls++
+	}
+	defer func() {
+		blastRadiusComputeHook = nil
+	}()
+
+	if got := countBlastRadiusCacheEntries(g); got != 0 {
+		t.Fatalf("expected empty blast radius cache, got %d entries", got)
+	}
+
+	BlastRadius(g, "user:alice", 3)
+	BlastRadius(g, "user:bob", 3)
+	if computeCalls != 2 {
+		t.Fatalf("expected 2 blast radius computations, got %d", computeCalls)
+	}
+	if got := countBlastRadiusCacheEntries(g); got != 2 {
+		t.Fatalf("expected 2 cached blast radius entries before mutation, got %d", got)
+	}
+
+	g.AddNode(&Node{
+		ID:      "bucket:versioned-cache",
+		Kind:    NodeKindBucket,
+		Name:    "versioned-cache",
+		Account: "111111111111",
+		Risk:    RiskLow,
+	})
+
+	if got := countBlastRadiusCacheEntries(g); got != 2 {
+		t.Fatalf("expected version invalidation to leave cached entries in place, got %d", got)
+	}
+	if !g.blastRadiusNeedsCompaction {
+		t.Fatal("expected mutation to mark blast radius cache for deferred compaction")
+	}
+
+	BlastRadius(g, "user:alice", 3)
+	if computeCalls != 3 {
+		t.Fatalf("expected stale cache entry to force recomputation after mutation, got %d computations", computeCalls)
+	}
+	if got := countBlastRadiusCacheEntries(g); got != 1 {
+		t.Fatalf("expected recomputation to compact stale cache entries, got %d entries", got)
+	}
+	if g.blastRadiusNeedsCompaction {
+		t.Fatal("expected deferred compaction marker to clear after stale cache cleanup")
+	}
+}
+
+func TestBlastRadius_DoesNotCacheMissingPrincipal(t *testing.T) {
+	g := setupTestGraph()
+
+	result := BlastRadius(g, "user:missing", 3)
+	if result.PrincipalID != "user:missing" {
+		t.Fatalf("expected missing principal result, got %#v", result.PrincipalID)
+	}
+	if got := countBlastRadiusCacheEntries(g); got != 0 {
+		t.Fatalf("expected missing principal lookups to skip cache writes, got %d entries", got)
+	}
+}
+
+func TestBlastRadius_DoesNotStoreStaleEntryAfterVersionAdvance(t *testing.T) {
+	g := setupTestGraph()
+
+	hooked := false
+	blastRadiusCacheStoreHook = func(g *Graph, version uint64) {
+		if hooked {
+			return
+		}
+		hooked = true
+		g.AddNode(&Node{
+			ID:      "bucket:stale-write-race",
+			Kind:    NodeKindBucket,
+			Name:    "stale-write-race",
+			Account: "111111111111",
+			Risk:    RiskLow,
+		})
+	}
+	defer func() {
+		blastRadiusCacheStoreHook = nil
+	}()
+
+	result := BlastRadius(g, "user:alice", 3)
+	if result.TotalCount == 0 {
+		t.Fatal("expected blast radius results for alice")
+	}
+	if got := countBlastRadiusCacheEntries(g); got != 0 {
+		t.Fatalf("expected stale version write to be skipped after graph mutation, got %d cache entries", got)
+	}
+
+	BlastRadius(g, "user:alice", 3)
+	if got := countBlastRadiusCacheEntries(g); got != 1 {
+		t.Fatalf("expected follow-up computation on current version to populate one cache entry, got %d", got)
+	}
+}
+
+func TestBlastRadius_StaleWriterDoesNotCompactCurrentEntries(t *testing.T) {
+	g := setupTestGraph()
+
+	hooked := false
+	blastRadiusCacheBeforeWriteHook = func(g *Graph, version uint64) {
+		if hooked {
+			return
+		}
+		hooked = true
+
+		g.AddNode(&Node{
+			ID:      "bucket:compaction-race",
+			Kind:    NodeKindBucket,
+			Name:    "compaction-race",
+			Account: "111111111111",
+			Risk:    RiskLow,
+		})
+
+		currentVersion := g.currentBlastRadiusCacheVersion()
+		g.blastRadiusCache.Store(blastRadiusCacheKey{principalID: "user:bob", maxDepth: 3}, &cachedBlastRadius{
+			version: currentVersion,
+			result:  &BlastRadiusResult{PrincipalID: "user:bob"},
+		})
+	}
+	defer func() {
+		blastRadiusCacheBeforeWriteHook = nil
+	}()
+
+	staleVersion := g.currentBlastRadiusCacheVersion()
+	g.putBlastRadiusInCache("user:alice", 3, staleVersion, &BlastRadiusResult{PrincipalID: "user:alice"})
+
+	raw, ok := g.blastRadiusCache.Load(blastRadiusCacheKey{principalID: "user:bob", maxDepth: 3})
+	if !ok {
+		t.Fatal("expected current-version cache entry to survive stale writer")
+	}
+	cached, ok := raw.(*cachedBlastRadius)
+	if !ok || cached == nil {
+		t.Fatalf("expected cached blast radius entry, got %#v", raw)
+	}
+	if cached.version != g.currentBlastRadiusCacheVersion() {
+		t.Fatalf("cached.version = %d, want current version %d", cached.version, g.currentBlastRadiusCacheVersion())
+	}
+
+	if _, ok := g.blastRadiusCache.Load(blastRadiusCacheKey{principalID: "user:alice", maxDepth: 3}); ok {
+		t.Fatal("expected stale writer to skip caching its obsolete result")
+	}
+}
+
+func TestBlastRadius_StaleReaderDoesNotDeleteFreshEntry(t *testing.T) {
+	g := setupTestGraph()
+
+	key := blastRadiusCacheKey{principalID: "user:alice", maxDepth: 3}
+	g.blastRadiusCache.Store(key, &cachedBlastRadius{
+		version: 0,
+		result:  &BlastRadiusResult{PrincipalID: "user:alice"},
+	})
+
+	hooked := false
+	blastRadiusCacheAfterLoadHook = func(g *Graph, loadedKey blastRadiusCacheKey) {
+		if hooked {
+			return
+		}
+		hooked = true
+		if loadedKey != key {
+			t.Fatalf("loaded key = %#v, want %#v", loadedKey, key)
+		}
+		g.blastRadiusCache.Store(key, &cachedBlastRadius{
+			version: g.currentBlastRadiusCacheVersion(),
+			result:  &BlastRadiusResult{PrincipalID: "user:alice", TotalCount: 42},
+		})
+	}
+	defer func() {
+		blastRadiusCacheAfterLoadHook = nil
+	}()
+
+	if cached, ok := g.getBlastRadiusFromCache("user:alice", 3); ok || cached != nil {
+		t.Fatalf("expected stale loaded entry to miss cache, got (%#v, %v)", cached, ok)
+	}
+
+	raw, ok := g.blastRadiusCache.Load(key)
+	if !ok {
+		t.Fatal("expected fresh cache entry to remain after stale read miss")
+	}
+	cached, ok := raw.(*cachedBlastRadius)
+	if !ok || cached == nil {
+		t.Fatalf("expected cached blast radius entry, got %#v", raw)
+	}
+	if cached.version != g.currentBlastRadiusCacheVersion() {
+		t.Fatalf("cached.version = %d, want current version %d", cached.version, g.currentBlastRadiusCacheVersion())
+	}
+	if cached.result == nil || cached.result.TotalCount != 42 {
+		t.Fatalf("cached.result = %#v, want TotalCount 42", cached.result)
+	}
+}
+
+func TestBlastRadius_CompactionRetainsFlagAcrossConcurrentMutation(t *testing.T) {
+	g := setupTestGraph()
+
+	key := blastRadiusCacheKey{principalID: "user:alice", maxDepth: 3}
+	g.blastRadiusCache.Store(key, &cachedBlastRadius{
+		version: 0,
+		result:  &BlastRadiusResult{PrincipalID: "user:alice"},
+	})
+
+	g.mu.Lock()
+	g.blastRadiusNeedsCompaction = true
+	version := g.blastRadiusVersion
+	g.mu.Unlock()
+
+	hooked := false
+	blastRadiusCacheAfterCompactionScanHook = func(g *Graph, scannedVersion uint64, removed int) {
+		if hooked {
+			return
+		}
+		hooked = true
+		if scannedVersion != version {
+			t.Fatalf("scannedVersion = %d, want %d", scannedVersion, version)
+		}
+		if removed != 1 {
+			t.Fatalf("removed = %d, want 1", removed)
+		}
+		g.AddNode(&Node{
+			ID:      "bucket:compaction-flag-race",
+			Kind:    NodeKindBucket,
+			Name:    "compaction-flag-race",
+			Account: "111111111111",
+		})
+	}
+	defer func() {
+		blastRadiusCacheAfterCompactionScanHook = nil
+	}()
+
+	g.maybeCompactStaleBlastRadiusCache(version)
+
+	if !g.blastRadiusNeedsCompaction {
+		t.Fatal("expected concurrent mutation to keep compaction flag set")
+	}
+	if got := g.currentBlastRadiusCacheVersion(); got == version {
+		t.Fatalf("expected graph version to advance, still %d", got)
+	}
+	if got := countBlastRadiusCacheEntries(g); got != 0 {
+		t.Fatalf("expected stale cache entry to be removed, got %d entries", got)
+	}
+}
+
+func countBlastRadiusCacheEntries(g *Graph) int {
+	count := 0
+	g.blastRadiusCache.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	return count
 }
 
 func TestReverseAccess(t *testing.T) {
@@ -211,6 +514,28 @@ func TestEffectiveAccess(t *testing.T) {
 			t.Error("expected bob to NOT have access to production db")
 		}
 	})
+}
+
+func TestEffectiveAccess_CycleHandling(t *testing.T) {
+	g := New()
+
+	g.AddNode(&Node{ID: "user:cycle", Kind: NodeKindUser, Account: "111"})
+	g.AddNode(&Node{ID: "role:a", Kind: NodeKindRole, Account: "111"})
+	g.AddNode(&Node{ID: "role:b", Kind: NodeKindRole, Account: "111"})
+	g.AddNode(&Node{ID: "bucket:cycle", Kind: NodeKindBucket, Account: "111"})
+
+	g.AddEdge(&Edge{ID: "u-a", Source: "user:cycle", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "a-b", Source: "role:a", Target: "role:b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "b-a", Source: "role:b", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "b-bucket", Source: "role:b", Target: "bucket:cycle", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	result := EffectiveAccess(g, "user:cycle", "bucket:cycle", 6)
+	if !result.Allowed {
+		t.Fatal("expected cycle traversal to find allowed access")
+	}
+	if len(result.AllowedBy) != 3 {
+		t.Fatalf("expected 3 edges in allowed path, got %d", len(result.AllowedBy))
+	}
 }
 
 func TestBlastRadius_DepthLimit(t *testing.T) {
@@ -344,6 +669,231 @@ func TestBlastRadius_CrossAccountTracking(t *testing.T) {
 	}
 }
 
+func TestBlastRadius_ParallelMatchesSequentialWideFrontier(t *testing.T) {
+	single := runBlastRadiusWithWorkers(setupWideBlastRadiusGraph(), 1)
+	parallel := runBlastRadiusWithWorkers(setupWideBlastRadiusGraph(), 8)
+
+	assertBlastRadiusResultsEqual(t, single, parallel)
+}
+
+func TestReverseAccess_ParallelMatchesSequentialWideFrontier(t *testing.T) {
+	single := runReverseAccessWithWorkers(setupWideReverseAccessGraph(), 1)
+	parallel := runReverseAccessWithWorkers(setupWideReverseAccessGraph(), 8)
+
+	assertReverseAccessResultsEqual(t, single, parallel)
+}
+
+func TestEffectiveAccess_ParallelMatchesSequentialWideGraph(t *testing.T) {
+	single := runEffectiveAccessWithWorkers(newEffectiveAccessBenchmarkGraph(5, 3), 1)
+	parallel := runEffectiveAccessWithWorkers(newEffectiveAccessBenchmarkGraph(5, 3), 8)
+
+	assertEffectiveAccessResultsEqual(t, single, parallel)
+}
+
+func runBlastRadiusWithWorkers(g *Graph, workers int) *BlastRadiusResult {
+	previous := parallelTraversalWorkerOverride
+	parallelTraversalWorkerOverride = workers
+	defer func() {
+		parallelTraversalWorkerOverride = previous
+	}()
+	return BlastRadius(g, "user:wide", 4)
+}
+
+func runReverseAccessWithWorkers(g *Graph, workers int) *ReverseAccessResult {
+	previous := parallelTraversalWorkerOverride
+	parallelTraversalWorkerOverride = workers
+	defer func() {
+		parallelTraversalWorkerOverride = previous
+	}()
+	return ReverseAccess(g, "bucket:wide-target", 4)
+}
+
+func runEffectiveAccessWithWorkers(g *Graph, workers int) *EffectiveAccessResult {
+	previous := parallelTraversalWorkerOverride
+	parallelTraversalWorkerOverride = workers
+	defer func() {
+		parallelTraversalWorkerOverride = previous
+	}()
+	return EffectiveAccess(g, "user:start", "bucket:target", 8)
+}
+
+func setupWideBlastRadiusGraph() *Graph {
+	g := New()
+	g.AddNode(&Node{ID: "user:wide", Kind: NodeKindUser, Account: "111111111111"})
+	g.AddNode(&Node{ID: "role:shared-wide", Kind: NodeKindRole, Account: "222222222222"})
+	g.AddNode(&Node{ID: "bucket:shared-wide", Kind: NodeKindBucket, Account: "222222222222", Risk: RiskCritical})
+	g.AddEdge(&Edge{ID: "shared-wide-resource", Source: "role:shared-wide", Target: "bucket:shared-wide", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	for i := 0; i < 96; i++ {
+		roleID := fmt.Sprintf("role:wide-%03d", i)
+		bucketID := fmt.Sprintf("bucket:wide-%03d", i)
+		accountID := "111111111111"
+		risk := RiskLow
+		edgeProps := map[string]any{}
+		if i%12 == 0 {
+			accountID = "222222222222"
+			edgeProps["cross_account"] = true
+			edgeProps["target_account"] = accountID
+			risk = RiskHigh
+		}
+		if i%10 == 0 {
+			risk = RiskCritical
+		}
+
+		g.AddNode(&Node{ID: roleID, Kind: NodeKindRole, Account: accountID})
+		g.AddNode(&Node{ID: bucketID, Kind: NodeKindBucket, Account: accountID, Risk: risk})
+		g.AddEdge(&Edge{ID: fmt.Sprintf("user-wide-%03d", i), Source: "user:wide", Target: roleID, Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow, Properties: edgeProps})
+		g.AddEdge(&Edge{
+			ID:         fmt.Sprintf("role-wide-bucket-%03d", i),
+			Source:     roleID,
+			Target:     bucketID,
+			Kind:       EdgeKindCanRead,
+			Effect:     EdgeEffectAllow,
+			Properties: map[string]any{"actions": []string{"s3:GetObject"}},
+		})
+		if i%3 == 0 {
+			g.AddEdge(&Edge{
+				ID:         fmt.Sprintf("role-wide-shared-%03d", i),
+				Source:     roleID,
+				Target:     "role:shared-wide",
+				Kind:       EdgeKindCanAssume,
+				Effect:     EdgeEffectAllow,
+				Properties: map[string]any{"cross_account": true, "target_account": "222222222222"},
+			})
+		}
+	}
+
+	return g
+}
+
+func setupWideReverseAccessGraph() *Graph {
+	g := New()
+	g.AddNode(&Node{ID: "bucket:wide-target", Kind: NodeKindBucket, Account: "111111111111", Risk: RiskHigh})
+
+	for i := 0; i < 96; i++ {
+		roleID := fmt.Sprintf("role:reverse-%03d", i)
+		userID := fmt.Sprintf("user:reverse-%03d", i)
+		g.AddNode(&Node{ID: roleID, Kind: NodeKindRole, Account: "111111111111"})
+		g.AddNode(&Node{ID: userID, Kind: NodeKindUser, Account: "111111111111"})
+		g.AddEdge(&Edge{ID: fmt.Sprintf("reverse-role-target-%03d", i), Source: roleID, Target: "bucket:wide-target", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+		g.AddEdge(&Edge{ID: fmt.Sprintf("reverse-user-role-%03d", i), Source: userID, Target: roleID, Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	}
+
+	return g
+}
+
+func assertBlastRadiusResultsEqual(t *testing.T, want, got *BlastRadiusResult) {
+	t.Helper()
+
+	if want.PrincipalID != got.PrincipalID || want.PrincipalName != got.PrincipalName {
+		t.Fatalf("principal mismatch: want %s/%s got %s/%s", want.PrincipalID, want.PrincipalName, got.PrincipalID, got.PrincipalName)
+	}
+	if want.TotalCount != got.TotalCount || want.MaxDepth != got.MaxDepth || want.CrossAccountRisk != got.CrossAccountRisk || want.AccountsReached != got.AccountsReached || want.RiskSummary != got.RiskSummary {
+		t.Fatalf("blast radius summary mismatch: want %#v got %#v", want, got)
+	}
+
+	wantAccounts := append([]string(nil), want.ForeignAccounts...)
+	gotAccounts := append([]string(nil), got.ForeignAccounts...)
+	sort.Strings(wantAccounts)
+	sort.Strings(gotAccounts)
+	if len(wantAccounts) != len(gotAccounts) {
+		t.Fatalf("foreign account count mismatch: want %v got %v", wantAccounts, gotAccounts)
+	}
+	for i := range wantAccounts {
+		if wantAccounts[i] != gotAccounts[i] {
+			t.Fatalf("foreign accounts mismatch: want %v got %v", wantAccounts, gotAccounts)
+		}
+	}
+
+	if len(want.ReachableNodes) != len(got.ReachableNodes) {
+		t.Fatalf("reachable node count mismatch: want %d got %d", len(want.ReachableNodes), len(got.ReachableNodes))
+	}
+	for i := range want.ReachableNodes {
+		assertReachableNodeEqual(t, want.ReachableNodes[i], got.ReachableNodes[i], i)
+	}
+}
+
+func assertReachableNodeEqual(t *testing.T, want, got *ReachableNode, index int) {
+	t.Helper()
+
+	if want.Node.ID != got.Node.ID || want.Depth != got.Depth || want.EdgeKind != got.EdgeKind {
+		t.Fatalf("reachable node %d mismatch: want %#v got %#v", index, want, got)
+	}
+	if len(want.Path) != len(got.Path) || len(want.Actions) != len(got.Actions) {
+		t.Fatalf("reachable node %d path/action length mismatch: want %#v got %#v", index, want, got)
+	}
+	for i := range want.Path {
+		if want.Path[i] != got.Path[i] {
+			t.Fatalf("reachable node %d path mismatch: want %v got %v", index, want.Path, got.Path)
+		}
+	}
+	for i := range want.Actions {
+		if want.Actions[i] != got.Actions[i] {
+			t.Fatalf("reachable node %d actions mismatch: want %v got %v", index, want.Actions, got.Actions)
+		}
+	}
+}
+
+func assertEffectiveAccessResultsEqual(t *testing.T, want, got *EffectiveAccessResult) {
+	t.Helper()
+
+	if want.PrincipalID != got.PrincipalID || want.ResourceID != got.ResourceID || want.Allowed != got.Allowed {
+		t.Fatalf("effective access summary mismatch: want %#v got %#v", want, got)
+	}
+	assertEdgeMultisetEqual(t, want.AllowedBy, got.AllowedBy, "allowed_by")
+	assertEdgeMultisetEqual(t, want.DeniedBy, got.DeniedBy, "denied_by")
+}
+
+func assertEdgeMultisetEqual(t *testing.T, want, got []*Edge, label string) {
+	t.Helper()
+
+	if len(want) != len(got) {
+		t.Fatalf("%s edge count mismatch: want %d got %d", label, len(want), len(got))
+	}
+	wantCounts := make(map[string]int, len(want))
+	for _, edge := range want {
+		wantCounts[edge.ID]++
+	}
+	gotCounts := make(map[string]int, len(got))
+	for _, edge := range got {
+		gotCounts[edge.ID]++
+	}
+	if !reflect.DeepEqual(wantCounts, gotCounts) {
+		t.Fatalf("%s mismatch: want %v got %v", label, wantCounts, gotCounts)
+	}
+}
+
+func assertReverseAccessResultsEqual(t *testing.T, want, got *ReverseAccessResult) {
+	t.Helper()
+
+	if want.ResourceID != got.ResourceID || want.ResourceName != got.ResourceName || want.TotalCount != got.TotalCount {
+		t.Fatalf("reverse access summary mismatch: want %#v got %#v", want, got)
+	}
+	if len(want.AccessibleBy) != len(got.AccessibleBy) {
+		t.Fatalf("accessible-by count mismatch: want %d got %d", len(want.AccessibleBy), len(got.AccessibleBy))
+	}
+	for i := range want.AccessibleBy {
+		wantAccessor := want.AccessibleBy[i]
+		gotAccessor := got.AccessibleBy[i]
+		if wantAccessor.Node.ID != gotAccessor.Node.ID || wantAccessor.EdgeKind != gotAccessor.EdgeKind {
+			t.Fatalf("accessible-by %d mismatch: want %#v got %#v", i, wantAccessor, gotAccessor)
+		}
+		if len(wantAccessor.Path) != len(gotAccessor.Path) || len(wantAccessor.Actions) != len(gotAccessor.Actions) {
+			t.Fatalf("accessible-by %d path/action length mismatch: want %#v got %#v", i, wantAccessor, gotAccessor)
+		}
+		for j := range wantAccessor.Path {
+			if wantAccessor.Path[j] != gotAccessor.Path[j] {
+				t.Fatalf("accessible-by %d path mismatch: want %v got %v", i, wantAccessor.Path, gotAccessor.Path)
+			}
+		}
+		for j := range wantAccessor.Actions {
+			if wantAccessor.Actions[j] != gotAccessor.Actions[j] {
+				t.Fatalf("accessible-by %d actions mismatch: want %v got %v", i, wantAccessor.Actions, gotAccessor.Actions)
+			}
+		}
+	}
+}
+
 func TestCascadingBlastRadius(t *testing.T) {
 	g := New()
 
@@ -449,6 +999,28 @@ func TestCascadingBlastRadius(t *testing.T) {
 		}
 	})
 
+	t.Run("cascading blast radius handles cycles without duplicating impact", func(t *testing.T) {
+		cycleGraph := New()
+		cycleGraph.AddNode(&Node{ID: "user:start", Kind: NodeKindUser})
+		cycleGraph.AddNode(&Node{ID: "role:a", Kind: NodeKindRole})
+		cycleGraph.AddNode(&Node{ID: "role:b", Kind: NodeKindRole})
+		cycleGraph.AddEdge(&Edge{ID: "start-a", Source: "user:start", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+		cycleGraph.AddEdge(&Edge{ID: "a-b", Source: "role:a", Target: "role:b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+		cycleGraph.AddEdge(&Edge{ID: "b-a", Source: "role:b", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+
+		result := CascadingBlastRadius(cycleGraph, "user:start", 6)
+
+		if got := result.TotalImpact; got != 2 {
+			t.Fatalf("TotalImpact = %d, want 2", got)
+		}
+		if got := len(result.TimeToCompromise[1]); got != 1 {
+			t.Fatalf("depth 1 impacted count = %d, want 1", got)
+		}
+		if got := len(result.TimeToCompromise[2]); got != 1 {
+			t.Fatalf("depth 2 impacted count = %d, want 1", got)
+		}
+	})
+
 	t.Run("cascading blast radius calculates impact score", func(t *testing.T) {
 		result := CascadingBlastRadius(g, "user:attacker", 4)
 
@@ -477,6 +1049,40 @@ func TestCascadingBlastRadius(t *testing.T) {
 			t.Errorf("expected 0 impact for non-existent source, got %d", result.TotalImpact)
 		}
 	})
+}
+
+func TestCascadingBlastRadius_BestTimeFallsBackForInvalidOrdinals(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:start", Kind: NodeKindUser, Name: "start"})
+	g.AddNode(&Node{ID: "role:a", Kind: NodeKindRole, Name: "role-a"})
+	g.AddNode(&Node{ID: "role:b", Kind: NodeKindRole, Name: "role-b"})
+	g.AddEdge(&Edge{ID: "start-a", Source: "user:start", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "start-b", Source: "user:start", Target: "role:b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+
+	g.mu.Lock()
+	g.nodes["user:start"].ordinal = InvalidNodeOrdinal
+	g.edgeByID["start-a"].targetOrd = InvalidNodeOrdinal
+	g.edgeByID["start-b"].targetOrd = InvalidNodeOrdinal
+	g.mu.Unlock()
+
+	result := CascadingBlastRadius(g, "user:start", 2)
+	if got := result.TotalImpact; got != 2 {
+		t.Fatalf("TotalImpact = %d, want 2", got)
+	}
+	if got := len(result.TimeToCompromise[1]); got != 2 {
+		t.Fatalf("depth 1 impacted count = %d, want 2", got)
+	}
+
+	reached := make(map[string]struct{}, len(result.TimeToCompromise[1]))
+	for _, node := range result.TimeToCompromise[1] {
+		reached[node.Node.ID] = struct{}{}
+	}
+	if _, ok := reached["role:a"]; !ok {
+		t.Fatal("expected role:a to remain reachable with invalid ordinals")
+	}
+	if _, ok := reached["role:b"]; !ok {
+		t.Fatal("expected role:b to remain reachable with invalid ordinals")
+	}
 }
 
 func TestDetectSensitiveData(t *testing.T) {
@@ -553,6 +1159,51 @@ func TestDetectSensitiveData(t *testing.T) {
 		}
 		if !sliceContains(result.DataTypes, "credentials") {
 			t.Error("expected credentials in data types")
+		}
+	})
+
+	t.Run("detects secrets from DSPM properties", func(t *testing.T) {
+		node := &Node{
+			ID:   "test",
+			Name: "archive-bucket",
+			Properties: map[string]any{
+				"contains_secrets": true,
+			},
+		}
+		result := detectSensitiveData(node)
+		if result == nil {
+			t.Fatal("expected sensitive data detection")
+		}
+		if !sliceContains(result.DataTypes, "secrets") {
+			t.Error("expected secrets in data types")
+		}
+		if !sliceContains(result.ComplianceImpact, "SOC2") {
+			t.Error("expected SOC2 in compliance impact")
+		}
+	})
+
+	t.Run("deduplicates SOC2 for secrets with sensitive classification", func(t *testing.T) {
+		node := &Node{
+			ID:   "test",
+			Name: "restricted-archive-bucket",
+			Properties: map[string]any{
+				"data_classification": "restricted",
+				"contains_secrets":    true,
+			},
+		}
+		result := detectSensitiveData(node)
+		if result == nil {
+			t.Fatal("expected sensitive data detection")
+		}
+
+		soc2Count := 0
+		for _, framework := range result.ComplianceImpact {
+			if framework == "SOC2" {
+				soc2Count++
+			}
+		}
+		if soc2Count != 1 {
+			t.Errorf("expected SOC2 once in compliance impact, got %d entries: %v", soc2Count, result.ComplianceImpact)
 		}
 	})
 

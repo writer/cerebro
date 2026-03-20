@@ -135,15 +135,21 @@ type azureGraphServicePrincipalListResponse struct {
 }
 
 type azureGraphServicePrincipal struct {
-	ID                     *string  `json:"id"`
-	AppID                  *string  `json:"appId"`
-	DisplayName            *string  `json:"displayName"`
-	ServicePrincipalType   *string  `json:"servicePrincipalType"`
-	AccountEnabled         *bool    `json:"accountEnabled"`
-	AppOwnerOrganizationID *string  `json:"appOwnerOrganizationId"`
-	PublisherName          *string  `json:"publisherName"`
-	CreatedDateTime        *string  `json:"createdDateTime"`
-	Tags                   []string `json:"tags"`
+	ID                        *string `json:"id"`
+	AppID                     *string `json:"appId"`
+	DisplayName               *string `json:"displayName"`
+	ServicePrincipalType      *string `json:"servicePrincipalType"`
+	AccountEnabled            *bool   `json:"accountEnabled"`
+	AppOwnerOrganizationID    *string `json:"appOwnerOrganizationId"`
+	AppRoleAssignmentRequired *bool   `json:"appRoleAssignmentRequired"`
+	PublisherName             *string `json:"publisherName"`
+	VerifiedPublisher         *struct {
+		DisplayName         *string `json:"displayName"`
+		VerifiedPublisherID *string `json:"verifiedPublisherId"`
+		AddedDateTime       *string `json:"addedDateTime"`
+	} `json:"verifiedPublisher"`
+	CreatedDateTime *string  `json:"createdDateTime"`
+	Tags            []string `json:"tags"`
 }
 
 type azureDefenderAssessmentListResponse struct {
@@ -325,6 +331,73 @@ func (e *AzureSyncEngine) azureAKSClusterTable() AzureTableSpec {
 	}
 }
 
+func (e *AzureSyncEngine) azureAKSNodePoolTable() AzureTableSpec {
+	return AzureTableSpec{
+		Name: "azure_aks_node_pools",
+		Columns: []string{
+			"id",
+			"cluster_id",
+			"cluster_name",
+			"name",
+			"location",
+			"resource_group",
+			"node_resource_group",
+			"count",
+			"vm_size",
+			"mode",
+			"os_type",
+			"orchestrator_version",
+			"subscription_id",
+			"tags",
+		},
+		Fetch: func(ctx context.Context, cred *azidentity.DefaultAzureCredential, subscriptionID string) ([]map[string]interface{}, error) {
+			clusters, err := listAzureManagedClusters(ctx, cred, subscriptionID)
+			if err != nil {
+				return nil, err
+			}
+
+			results := make([]map[string]interface{}, 0)
+			for _, cluster := range clusters {
+				clusterID := ptrStr(cluster.ID)
+				resourceGroup := resourceGroupFromID(clusterID)
+				nodeResourceGroup := ""
+				if cluster.Properties == nil {
+					continue
+				}
+				nodeResourceGroup = ptrStr(cluster.Properties.NodeResourceGroup)
+				for _, pool := range cluster.Properties.AgentPoolProfiles {
+					poolID := strings.TrimSpace(clusterID)
+					if poolName := ptrStr(pool.Name); poolID != "" && poolName != "" {
+						poolID += "/agentPools/" + poolName
+					}
+					row := map[string]interface{}{
+						"_cq_id":               poolID,
+						"id":                   poolID,
+						"cluster_id":           clusterID,
+						"cluster_name":         ptrStr(cluster.Name),
+						"name":                 ptrStr(pool.Name),
+						"location":             ptrStr(cluster.Location),
+						"resource_group":       resourceGroup,
+						"node_resource_group":  nodeResourceGroup,
+						"vm_size":              ptrStr(pool.VMSize),
+						"mode":                 ptrStr(pool.Mode),
+						"os_type":              ptrStr(pool.OSType),
+						"orchestrator_version": ptrStr(pool.OrchestratorVersion),
+						"subscription_id":      subscriptionID,
+						"tags":                 cluster.Tags,
+					}
+					if pool.Count != nil {
+						row["count"] = *pool.Count
+					}
+					results = append(results, row)
+				}
+			}
+
+			return results, nil
+		},
+	}
+}
+
 func (e *AzureSyncEngine) azureRBACRoleAssignmentTable() AzureTableSpec {
 	return AzureTableSpec{
 		Name: "azure_rbac_role_assignments",
@@ -480,7 +553,11 @@ func (e *AzureSyncEngine) azureGraphServicePrincipalTable() AzureTableSpec {
 			"service_principal_type",
 			"account_enabled",
 			"app_owner_organization_id",
+			"app_role_assignment_required",
 			"publisher_name",
+			"verified_publisher_display_name",
+			"verified_publisher_id",
+			"verified_publisher_added_datetime",
 			"created_date_time",
 			"tags",
 			"subscription_id",
@@ -512,9 +589,17 @@ func (e *AzureSyncEngine) azureGraphServicePrincipalTable() AzureTableSpec {
 					"created_date_time":         ptrStr(principal.CreatedDateTime),
 					"subscription_id":           subscriptionID,
 				}
+				if principal.VerifiedPublisher != nil {
+					row["verified_publisher_display_name"] = ptrStr(principal.VerifiedPublisher.DisplayName)
+					row["verified_publisher_id"] = ptrStr(principal.VerifiedPublisher.VerifiedPublisherID)
+					row["verified_publisher_added_datetime"] = ptrStr(principal.VerifiedPublisher.AddedDateTime)
+				}
 
 				if principal.AccountEnabled != nil {
 					row["account_enabled"] = *principal.AccountEnabled
+				}
+				if principal.AppRoleAssignmentRequired != nil {
+					row["app_role_assignment_required"] = *principal.AppRoleAssignmentRequired
 				}
 				if len(principal.Tags) > 0 {
 					row["tags"] = principal.Tags
@@ -914,7 +999,7 @@ func listAzureGraphServicePrincipals(ctx context.Context, cred *azidentity.Defau
 		return nil, err
 	}
 
-	nextURL := "https://graph.microsoft.com/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,publisherName,createdDateTime,tags"
+	nextURL := "https://graph.microsoft.com/v1.0/servicePrincipals?$select=id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,appRoleAssignmentRequired,publisherName,verifiedPublisher,createdDateTime,tags"
 	servicePrincipals := make([]azureGraphServicePrincipal, 0)
 	for nextURL != "" {
 		var page azureGraphServicePrincipalListResponse

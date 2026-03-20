@@ -1,16 +1,18 @@
 {
   "id": "aws-user-data-no-mfa",
-  "control_id": "wc-id-2217",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AWS user account with access to sensitive data and MFA disabled",
   "description": "An AWS user with access to sensitive data does not have MFA enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::iam::user",
   "conditions": [
-    "has_sensitive_data_access == true",
-    "mfa_enabled == false"
+    "cmp_eq(path(resource, \"has_sensitive_data_access\"), true)",
+    "cmp_eq(path(resource, \"mfa_enabled\"), false)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Enable MFA immediately for all users with access to sensitive data.",
   "tags": [
     "wiz",
     "aws",
@@ -18,6 +20,8 @@
     "mfa",
     "data-access"
   ],
+  "control_id": "wc-id-2217",
+  "remediation": "Enable MFA immediately for all users with access to sensitive data.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "IDENTITY_RISK",

@@ -2,10 +2,11 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **314**
+Total variables: **360**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
+| `AGENT_PENDING_TOOL_APPROVAL_TTL` | `getEnvDuration` | `defaultAgentPendingToolApprovalTTL` | `AgentPendingToolApprovalTTL` | `must be greater than 0` |
 | `AGENT_REMOTE_TOOLS_DISCOVER_TIMEOUT` | `getEnvDuration` | `5 * time.Second` | `AgentRemoteToolsDiscoverTimeout` | `-` |
 | `AGENT_REMOTE_TOOLS_ENABLED` | `getEnvBool` | `false` | `AgentRemoteToolsEnabled` | `-` |
 | `AGENT_REMOTE_TOOLS_MANIFEST_SUBJECT` | `getEnv` | `"ensemble.tools.manifest"` | `AgentRemoteToolsManifestSubject` | `-` |
@@ -26,8 +27,13 @@ Total variables: **314**
 | `API_CORS_ALLOWED_ORIGINS` | `getEnv` | `""` | `CORSAllowedOrigins` | `-` |
 | `API_CREDENTIALS_JSON` | `getEnv` | `""` | `-` | `-` |
 | `API_CREDENTIAL_STATE_FILE` | `getEnv` | `filepath.Join(".cerebro", "api-credentials", "state.json")` | `APICredentialStateFile` | `-` |
+| `API_IDLE_TIMEOUT` | `getEnvDuration` | `defaultAPIIdleTimeout` | `APIIdleTimeout` | `must be greater than 0` |
 | `API_KEYS` | `getEnv` | `""` | `-` | `-` |
+| `API_MAX_BODY_BYTES` | `getEnvInt` | `int(defaultAPIMaxBodyBytes)` | `APIMaxBodyBytes` | `must be greater than 0` |
 | `API_PORT` | `getEnvInt` | `8080` | `Port` | `must be between 1 and 65535` |
+| `API_READ_TIMEOUT` | `getEnvDuration` | `defaultAPIReadTimeout` | `APIReadTimeout` | `must be greater than 0` |
+| `API_REQUEST_TIMEOUT` | `getEnvDuration` | `defaultAPIRequestTimeout` | `APIRequestTimeout` | `health checks must not outlive the API request timeout`, `must be greater than 0`, `request timeout must not exceed the server write timeout` |
+| `API_WRITE_TIMEOUT` | `getEnvDuration` | `defaultAPIWriteTimeout` | `APIWriteTimeout` | `must be greater than 0`, `request timeout must not exceed the server write timeout` |
 | `AUTH0_CLIENT_ID` | `getEnv` | `""` | `Auth0ClientID` | `-` |
 | `AUTH0_CLIENT_SECRET` | `getEnv` | `""` | `Auth0ClientSecret` | `-` |
 | `AUTH0_DOMAIN` | `getEnv` | `""` | `Auth0Domain` | `-` |
@@ -40,8 +46,16 @@ Total variables: **314**
 | `BAMBOOHR_URL` | `getEnv` | `""` | `BambooHRURL` | `-` |
 | `CEREBRO_ACCESS_REVIEW_RETENTION_DAYS` | `getEnvInt` | `365` | `AccessReviewRetentionDays` | `-` |
 | `CEREBRO_AUDIT_RETENTION_DAYS` | `getEnvInt` | `90` | `AuditRetentionDays` | `-` |
+| `CEREBRO_CREDENTIAL_FILE_DIR` | `bootstrapConfigValue` | `""` | `CredentialFileDir` | `credential-source settings must be present and valid for the selected source backend` |
+| `CEREBRO_CREDENTIAL_SOURCE` | `bootstrapConfigValue` | `secretsource.KindEnv` | `CredentialSource` | `credential-source settings must be present and valid for the selected source backend`, `must be one of env, file, vault` |
+| `CEREBRO_CREDENTIAL_VAULT_ADDRESS` | `bootstrapConfigValue` | `""` | `CredentialVaultAddress` | `credential-source settings must be present and valid for the selected source backend` |
+| `CEREBRO_CREDENTIAL_VAULT_KV_VERSION` | `bootstrapConfigInt` | `2` | `CredentialVaultKVVersion` | `credential-source settings must be present and valid for the selected source backend` |
+| `CEREBRO_CREDENTIAL_VAULT_NAMESPACE` | `bootstrapConfigValue` | `""` | `CredentialVaultNamespace` | `credential-source settings must be present and valid for the selected source backend` |
+| `CEREBRO_CREDENTIAL_VAULT_PATH` | `bootstrapConfigValue` | `""` | `CredentialVaultPath` | `credential-source settings must be present and valid for the selected source backend` |
+| `CEREBRO_CREDENTIAL_VAULT_TOKEN` | `bootstrapConfigValue` | `""` | `CredentialVaultToken` | `credential-source settings must be present and valid for the selected source backend` |
 | `CEREBRO_GRAPH_FRESHNESS_DEFAULT_SLA` | `getEnvDuration` | `6 * time.Hour` | `GraphFreshnessDefaultSLA` | `-` |
 | `CEREBRO_GRAPH_RETENTION_DAYS` | `getEnvInt` | `180` | `GraphRetentionDays` | `-` |
+| `CEREBRO_HEALTH_CHECK_TIMEOUT` | `getEnvDuration` | `defaultHealthCheckTimeout` | `HealthCheckTimeout` | `health checks must not outlive the API request timeout`, `must be greater than 0` |
 | `CEREBRO_INIT_TIMEOUT` | `getEnvDuration` | `2 * time.Minute` | `InitTimeout` | `must be greater than or equal to 0` |
 | `CEREBRO_OTEL_ENABLED` | `getEnvBool` | `false` | `TracingEnabled` | `-` |
 | `CEREBRO_OTEL_EXPORTER_OTLP_ENDPOINT` | `getEnv` | `getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "")` | `TracingOTLPEndpoint` | `-` |
@@ -53,6 +67,12 @@ Total variables: **314**
 | `CEREBRO_RETENTION_JOB_INTERVAL` | `getEnvDuration` | `24 * time.Hour` | `RetentionJobInterval` | `-` |
 | `CEREBRO_SECRETS_RELOAD_INTERVAL` | `getEnvDuration` | `0` | `SecretsReloadInterval` | `-` |
 | `CEREBRO_SESSION_RETENTION_DAYS` | `getEnvInt` | `30` | `SessionRetentionDays` | `-` |
+| `CEREBRO_SHUTDOWN_TIMEOUT` | `getEnvDuration` | `defaultShutdownTimeout` | `ShutdownTimeout` | `must be greater than 0` |
+| `CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS` | `getEnvInt` | `defaultThreatIntelSyncAttempts` | `ThreatIntelSyncAttempts` | `must be greater than 0` |
+| `CEREBRO_THREAT_INTEL_SYNC_BACKOFF` | `getEnvDuration` | `defaultThreatIntelSyncBackoff` | `ThreatIntelSyncBackoff` | `must be greater than 0` |
+| `CEREBRO_THREAT_INTEL_SYNC_MAX_AGE` | `getEnvDuration` | `defaultThreatIntelSyncMaxAge` | `ThreatIntelSyncMaxAge` | `must be greater than 0` |
+| `CEREBRO_THREAT_INTEL_SYNC_TIMEOUT` | `getEnvDuration` | `defaultThreatIntelSyncTimeout` | `ThreatIntelSyncTimeout` | `must be greater than 0` |
+| `CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT` | `getEnvDuration` | `defaultTicketingProviderValidateTimeout` | `TicketingProviderValidateTimeout` | `must be greater than 0` |
 | `CEREBRO_TOOL_ACCESS_REVIEW_REQUIRES_APPROVAL` | `getEnvBool` | `true` | `CerebroAccessReviewNeedsApproval` | `-` |
 | `CEREBRO_TOOL_SIMULATE_REQUIRES_APPROVAL` | `getEnvBool` | `true` | `CerebroSimulateNeedsApproval` | `-` |
 | `CLOUDFLARE_API_TOKEN` | `getEnv` | `""` | `CloudflareAPIToken` | `-` |
@@ -90,7 +110,9 @@ Total variables: **314**
 | `FINDING_ATTESTATION_TIMEOUT` | `getEnvDuration` | `3 * time.Second` | `FindingAttestationTimeout` | `when FINDING_ATTESTATION_ENABLED=true, the signing key is required and timeout must be positive` |
 | `FORGEROCK_API_TOKEN` | `getEnv` | `""` | `ForgeRockAPIToken` | `-` |
 | `FORGEROCK_URL` | `getEnv` | `""` | `ForgeRockURL` | `-` |
+| `FUNCTION_SCAN_CLAMAV_BINARY` | `getEnv` | `""` | `FunctionScanClamAVBinary` | `-` |
 | `FUNCTION_SCAN_CLEANUP_TIMEOUT` | `getEnvDuration` | `2 * time.Minute` | `FunctionScanCleanupTimeout` | `-` |
+| `FUNCTION_SCAN_GITLEAKS_BINARY` | `getEnv` | `""` | `FunctionScanGitleaksBinary` | `-` |
 | `FUNCTION_SCAN_ROOTFS_BASE_PATH` | `getEnv` | `filepath.Join(".cerebro", "function-scan", "rootfs")` | `FunctionScanRootFSBasePath` | `-` |
 | `FUNCTION_SCAN_STATE_FILE` | `getEnv` | `getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))` | `FunctionScanStateFile` | `-` |
 | `FUNCTION_SCAN_TRIVY_BINARY` | `getEnv` | `"trivy"` | `FunctionScanTrivyBinary` | `-` |
@@ -108,6 +130,7 @@ Total variables: **314**
 | `GOOGLE_WORKSPACE_IMPERSONATOR_EMAIL` | `getEnv` | `""` | `GoogleWorkspaceImpersonatorEmail` | `-` |
 | `GRAPH_CONSISTENCY_CHECK_ENABLED` | `getEnvBool` | `false` | `GraphConsistencyCheckEnabled` | `-` |
 | `GRAPH_CONSISTENCY_CHECK_INTERVAL` | `getEnvDuration` | `6 * time.Hour` | `GraphConsistencyCheckInterval` | `-` |
+| `GRAPH_CONSISTENCY_CHECK_TIMEOUT` | `getEnvDuration` | `defaultGraphConsistencyCheckTimeout` | `GraphConsistencyCheckTimeout` | `must be greater than 0` |
 | `GRAPH_CROSS_TENANT_MIN_SUPPORT` | `getEnvInt` | `2` | `GraphCrossTenantMinSupport` | `when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true, signing key is required and skew/TTL/support thresholds must be positive` |
 | `GRAPH_CROSS_TENANT_MIN_TENANTS` | `getEnvInt` | `2` | `GraphCrossTenantMinTenants` | `when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true, signing key is required and skew/TTL/support thresholds must be positive` |
 | `GRAPH_CROSS_TENANT_REPLAY_TTL` | `getEnvDuration` | `24 * time.Hour` | `GraphCrossTenantReplayTTL` | `when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true, signing key is required and skew/TTL/support thresholds must be positive` |
@@ -117,11 +140,26 @@ Total variables: **314**
 | `GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH` | `getEnv` | `filepath.Join(findings.DefaultFilePath(), "graph-event-mapper.dlq.jsonl")` | `GraphEventMapperDeadLetterPath` | `-` |
 | `GRAPH_EVENT_MAPPER_VALIDATION_MODE` | `getEnv` | `"enforce"` | `GraphEventMapperValidationMode` | `must be one of warn, enforce` |
 | `GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START` | `getEnvBool` | `false` | `GraphMigrateLegacyActivityOnStart` | `-` |
+| `GRAPH_POST_SYNC_UPDATE_TIMEOUT` | `getEnvDuration` | `defaultGraphPostSyncUpdateTimeout` | `GraphPostSyncUpdateTimeout` | `must be greater than 0` |
+| `GRAPH_PROPERTY_HISTORY_MAX_ENTRIES` | `getEnvInt` | `graph.DefaultTemporalHistoryMaxEntries` | `GraphPropertyHistoryMaxEntries` | `non-positive values fall back to the default max property-history depth` |
+| `GRAPH_PROPERTY_HISTORY_TTL` | `getEnvDuration` | `graph.DefaultTemporalHistoryTTL` | `GraphPropertyHistoryTTL` | `non-positive values fall back to the default property-history TTL` |
+| `GRAPH_RISK_ENGINE_STATE_TIMEOUT` | `getEnvDuration` | `defaultGraphRiskEngineStateTimeout` | `GraphRiskEngineStateTimeout` | `must be greater than 0` |
 | `GRAPH_SCHEMA_VALIDATION_MODE` | `getEnv` | `"warn"` | `GraphSchemaValidationMode` | `must be one of off, warn, enforce` |
 | `GRAPH_SNAPSHOT_MAX_RETAINED` | `getEnvInt` | `10` | `GraphSnapshotMaxRetained` | `-` |
 | `GRAPH_SNAPSHOT_PATH` | `getEnv` | `filepath.Join(".cerebro", "graph-snapshots")` | `GraphSnapshotPath` | `-` |
 | `GRAPH_SNAPSHOT_REPLICA_URI` | `getEnv` | `""` | `GraphSnapshotReplicaURI` | `-` |
+| `GRAPH_TENANT_SHARD_IDLE_TTL` | `getEnvDuration` | `defaultGraphTenantShardIdleTTL` | `GraphTenantShardIdleTTL` | `must be greater than 0` |
+| `GRAPH_TENANT_WARM_SHARD_MAX_RETAINED` | `getEnvInt` | `defaultGraphTenantWarmShardMaxRetained` | `GraphTenantWarmShardMaxRetained` | `must be greater than 0` |
+| `GRAPH_TENANT_WARM_SHARD_TTL` | `getEnvDuration` | `defaultGraphTenantWarmShardTTL` | `GraphTenantWarmShardTTL` | `must be greater than 0` |
+| `GRAPH_WRITER_LEASE_BUCKET` | `getEnv` | `defaultGraphWriterLeaseBucket` | `GraphWriterLeaseBucket` | `-` |
+| `GRAPH_WRITER_LEASE_ENABLED` | `getEnvBool` | `false` | `GraphWriterLeaseEnabled` | `-` |
+| `GRAPH_WRITER_LEASE_HEARTBEAT` | `getEnvDuration` | `5 * time.Second` | `GraphWriterLeaseHeartbeat` | `-` |
+| `GRAPH_WRITER_LEASE_NAME` | `getEnv` | `defaultGraphWriterLeaseName` | `GraphWriterLeaseName` | `-` |
+| `GRAPH_WRITER_LEASE_OWNER_ID` | `getEnv` | `defaultGraphWriterLeaseOwnerID()` | `GraphWriterLeaseOwnerID` | `-` |
+| `GRAPH_WRITER_LEASE_TTL` | `getEnvDuration` | `15 * time.Second` | `GraphWriterLeaseTTL` | `-` |
+| `IMAGE_SCAN_CLAMAV_BINARY` | `getEnv` | `""` | `ImageScanClamAVBinary` | `-` |
 | `IMAGE_SCAN_CLEANUP_TIMEOUT` | `getEnvDuration` | `2 * time.Minute` | `ImageScanCleanupTimeout` | `-` |
+| `IMAGE_SCAN_GITLEAKS_BINARY` | `getEnv` | `""` | `ImageScanGitleaksBinary` | `-` |
 | `IMAGE_SCAN_ROOTFS_BASE_PATH` | `getEnv` | `filepath.Join(".cerebro", "image-scan", "rootfs")` | `ImageScanRootFSBasePath` | `-` |
 | `IMAGE_SCAN_STATE_FILE` | `getEnv` | `getEnv("EXECUTION_STORE_FILE", filepath.Join(".cerebro", "executions.db"))` | `ImageScanStateFile` | `-` |
 | `IMAGE_SCAN_TRIVY_BINARY` | `getEnv` | `"trivy"` | `ImageScanTrivyBinary` | `-` |
@@ -154,6 +192,9 @@ Total variables: **314**
 | `LINEAR_API_KEY` | `getEnv` | `""` | `LinearAPIKey` | `-` |
 | `LINEAR_TEAM_ID` | `getEnv` | `""` | `LinearTeamID` | `-` |
 | `LOG_LEVEL` | `getEnv` | `"info"` | `LogLevel` | `must be one of debug, info, warn, error` |
+| `MALWARE_SCAN_CLAMAV_HOST` | `getEnv` | `""` | `MalwareScanClamAVHost` | `-` |
+| `MALWARE_SCAN_CLAMAV_PORT` | `getEnvInt` | `0` | `MalwareScanClamAVPort` | `-` |
+| `MALWARE_SCAN_VIRUSTOTAL_API_KEY` | `getEnv` | `""` | `MalwareScanVirusTotalAPIKey` | `-` |
 | `NATS_CONSUMER_ACK_WAIT` | `getEnvDuration` | `120 * time.Second` | `NATSConsumerAckWait` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
 | `NATS_CONSUMER_BATCH_SIZE` | `getEnvInt` | `50` | `NATSConsumerBatchSize` | `when NATS_CONSUMER_ENABLED=true, JetStream must also be enabled; identifiers must be present; durations must be positive; drop threshold must be non-negative; dedupe settings must be valid when enabled` |
 | `NATS_CONSUMER_DEAD_LETTER_PATH` | `getEnv` | `filepath.Join(findings.DefaultFilePath(), "nats-consumer.dlq.jsonl")` | `NATSConsumerDeadLetterPath` | `-` |
@@ -276,12 +317,12 @@ Total variables: **314**
 | `SLACK_API_TOKEN` | `getEnv` | `""` | `SlackAPIToken` | `-` |
 | `SLACK_SIGNING_SECRET` | `getEnv` | `""` | `SlackSigningSecret` | `-` |
 | `SLACK_WEBHOOK_URL` | `getEnv` | `""` | `SlackWebhookURL` | `-` |
-| `SNOWFLAKE_ACCOUNT` | `getEnv` | `""` | `SnowflakeAccount` | `when any Snowflake auth field is set, all three are required` |
+| `SNOWFLAKE_ACCOUNT` | `getEnv` | `""` | `-` | `when the Snowflake backend is selected or any Snowflake auth field is set, all three auth fields are required` |
 | `SNOWFLAKE_DATABASE` | `getEnv` | `"CEREBRO"` | `SnowflakeDatabase` | `-` |
-| `SNOWFLAKE_PRIVATE_KEY` | `getEnv` | `""` | `SnowflakePrivateKey` | `when any Snowflake auth field is set, all three are required` |
+| `SNOWFLAKE_PRIVATE_KEY` | `getEnv` | `""` | `-` | `when the Snowflake backend is selected or any Snowflake auth field is set, all three auth fields are required` |
 | `SNOWFLAKE_ROLE` | `getEnv` | `""` | `SnowflakeRole` | `-` |
 | `SNOWFLAKE_SCHEMA` | `getEnv` | `"CEREBRO"` | `SnowflakeSchema` | `-` |
-| `SNOWFLAKE_USER` | `getEnv` | `""` | `SnowflakeUser` | `when any Snowflake auth field is set, all three are required` |
+| `SNOWFLAKE_USER` | `getEnv` | `""` | `-` | `when the Snowflake backend is selected or any Snowflake auth field is set, all three auth fields are required` |
 | `SNOWFLAKE_WAREHOUSE` | `getEnv` | `"COMPUTE_WH"` | `SnowflakeWarehouse` | `-` |
 | `SNYK_API_TOKEN` | `getEnv` | `""` | `SnykAPIToken` | `-` |
 | `SNYK_ORG_ID` | `getEnv` | `""` | `SnykOrgID` | `-` |
@@ -301,6 +342,9 @@ Total variables: **314**
 | `VAULT_NAMESPACE` | `getEnv` | `""` | `VaultNamespace` | `-` |
 | `VAULT_TOKEN` | `getEnv` | `""` | `VaultToken` | `-` |
 | `VULNDB_STATE_FILE` | `getEnv` | `filepath.Join(".cerebro", "vulndb.db")` | `VulnDBStateFile` | `-` |
+| `WAREHOUSE_BACKEND` | `getEnv` | `defaultWarehouseBackend` | `WarehouseBackend` | `backend-specific connection settings must be present when an alternative warehouse backend is selected`, `must be one of snowflake, sqlite, postgres` |
+| `WAREHOUSE_POSTGRES_DSN` | `getEnv` | `""` | `WarehousePostgresDSN` | `backend-specific connection settings must be present when an alternative warehouse backend is selected` |
+| `WAREHOUSE_SQLITE_PATH` | `getEnv` | `defaultWarehouseSQLitePath` | `WarehouseSQLitePath` | `backend-specific connection settings must be present when an alternative warehouse backend is selected` |
 | `WEBHOOK_URLS` | `getEnv` | `""` | `WebhookURLs` | `-` |
 | `WIZ_API_URL` | `getEnv` | `""` | `WizAPIURL` | `-` |
 | `WIZ_AUDIENCE` | `getEnv` | `"wiz-api"` | `WizAudience` | `-` |
@@ -309,7 +353,9 @@ Total variables: **314**
 | `WIZ_TOKEN_URL` | `getEnv` | `"https://auth.app.wiz.io/oauth/token"` | `WizTokenURL` | `-` |
 | `WORKDAY_API_TOKEN` | `getEnv` | `""` | `WorkdayAPIToken` | `-` |
 | `WORKDAY_URL` | `getEnv` | `""` | `WorkdayURL` | `-` |
+| `WORKLOAD_SCAN_CLAMAV_BINARY` | `getEnv` | `""` | `WorkloadScanClamAVBinary` | `-` |
 | `WORKLOAD_SCAN_CLEANUP_TIMEOUT` | `getEnvDuration` | `2 * time.Minute` | `WorkloadScanCleanupTimeout` | `-` |
+| `WORKLOAD_SCAN_GITLEAKS_BINARY` | `getEnv` | `""` | `WorkloadScanGitleaksBinary` | `-` |
 | `WORKLOAD_SCAN_MAX_CONCURRENT_SNAPSHOTS` | `getEnvInt` | `2` | `WorkloadScanMaxConcurrentSnapshots` | `-` |
 | `WORKLOAD_SCAN_MOUNT_BASE_PATH` | `getEnv` | `filepath.Join(".cerebro", "workload-scan", "mounts")` | `WorkloadScanMountBasePath` | `-` |
 | `WORKLOAD_SCAN_RECONCILE_OLDER_THAN` | `getEnvDuration` | `30 * time.Minute` | `WorkloadScanReconcileOlderThan` | `-` |

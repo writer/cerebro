@@ -96,6 +96,7 @@ var (
 	executeProviderSyncFn        = executeProviderSync
 	enqueueScheduledNativeSyncFn = enqueueScheduledNativeSync
 	runScheduledAWSNativeSyncFn  = runScheduledAWSNativeSync
+	runScheduledAWSOrgSyncFn     = runScheduledAWSOrgSync
 
 	runScheduledGCPNativeSyncFn   = runScheduledGCPNativeSync
 	runScheduledGCPSecuritySyncFn = runScheduledGCPSecuritySync
@@ -785,13 +786,16 @@ func executeProviderSync(ctx context.Context, _ *snowflake.Client, schedule *Syn
 }
 
 type scheduledSyncSpec struct {
-	TableFilter              []string
-	GCPProjects              []string
-	GCPOrg                   string
-	AzureSubscription        string
-	SyncTimeoutSeconds       string
-	WorkerWaitTimeoutSeconds string
-	GCPProjectTimeoutSeconds string
+	TableFilter                  []string
+	GCPProjects                  []string
+	GCPOrg                       string
+	AzureSubscription            string
+	AzureSubscriptions           []string
+	AzureManagementGroup         string
+	AzureSubscriptionConcurrency string
+	SyncTimeoutSeconds           string
+	WorkerWaitTimeoutSeconds     string
+	GCPProjectTimeoutSeconds     string
 
 	AWSProfile               string
 	AWSConfigFile            string
@@ -809,6 +813,11 @@ type scheduledSyncSpec struct {
 	AWSRoleDurationSeconds   string
 	AWSRoleSessionTags       []string
 	AWSRoleTransitiveTagKeys []string
+	AWSOrg                   bool
+	AWSOrgRole               string
+	AWSOrgIncludeAccounts    []string
+	AWSOrgExcludeAccounts    []string
+	AWSOrgAccountConcurrency string
 
 	GCPCredentialsFile           string
 	GCPImpersonateServiceAccount string
@@ -882,6 +891,34 @@ func parseScheduledSyncSpec(raw string) scheduledSyncSpec {
 			spec.AzureSubscription = value
 			continue
 		}
+		if value, ok := directiveValue(part, "subscriptions"); ok {
+			spec.AzureSubscriptions = append(spec.AzureSubscriptions, splitDirectiveList(value)...)
+			continue
+		}
+		if value, ok := directiveValue(part, "azure_subscriptions"); ok {
+			spec.AzureSubscriptions = append(spec.AzureSubscriptions, splitDirectiveList(value)...)
+			continue
+		}
+		if value, ok := directiveValue(part, "management_group"); ok {
+			spec.AzureManagementGroup = value
+			continue
+		}
+		if value, ok := directiveValue(part, "management-group"); ok {
+			spec.AzureManagementGroup = value
+			continue
+		}
+		if value, ok := directiveValue(part, "azure_management_group"); ok {
+			spec.AzureManagementGroup = value
+			continue
+		}
+		if value, ok := directiveValue(part, "subscription_concurrency"); ok {
+			spec.AzureSubscriptionConcurrency = value
+			continue
+		}
+		if value, ok := directiveValue(part, "azure_subscription_concurrency"); ok {
+			spec.AzureSubscriptionConcurrency = value
+			continue
+		}
 		if value, ok := directiveValue(part, "aws_profile"); ok {
 			spec.AWSProfile = value
 			continue
@@ -946,6 +983,32 @@ func parseScheduledSyncSpec(raw string) scheduledSyncSpec {
 			spec.AWSRoleTransitiveTagKeys = append(spec.AWSRoleTransitiveTagKeys, splitDirectiveList(value)...)
 			continue
 		}
+		if strings.EqualFold(strings.TrimSpace(part), "aws_org") {
+			spec.AWSOrg = true
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_org"); ok {
+			if parsed, parseOK := parseDirectiveBool(value); parseOK {
+				spec.AWSOrg = parsed
+				continue
+			}
+		}
+		if value, ok := directiveValue(part, "aws_org_role"); ok {
+			spec.AWSOrgRole = value
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_org_include_accounts"); ok {
+			spec.AWSOrgIncludeAccounts = append(spec.AWSOrgIncludeAccounts, splitDirectiveList(value)...)
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_org_exclude_accounts"); ok {
+			spec.AWSOrgExcludeAccounts = append(spec.AWSOrgExcludeAccounts, splitDirectiveList(value)...)
+			continue
+		}
+		if value, ok := directiveValue(part, "aws_org_account_concurrency"); ok {
+			spec.AWSOrgAccountConcurrency = value
+			continue
+		}
 		if value, ok := directiveValue(part, "gcp_credentials_file"); ok {
 			spec.GCPCredentialsFile = value
 			continue
@@ -966,7 +1029,10 @@ func parseScheduledSyncSpec(raw string) scheduledSyncSpec {
 	}
 
 	spec.GCPProjects = uniqueNonEmpty(spec.GCPProjects)
+	spec.AzureSubscriptions = uniqueNonEmpty(spec.AzureSubscriptions)
 	spec.AWSRoleTransitiveTagKeys = uniqueNonEmpty(spec.AWSRoleTransitiveTagKeys)
+	spec.AWSOrgIncludeAccounts = uniqueNonEmpty(spec.AWSOrgIncludeAccounts)
+	spec.AWSOrgExcludeAccounts = uniqueNonEmpty(spec.AWSOrgExcludeAccounts)
 	spec.GCPImpersonateDelegates = uniqueNonEmpty(spec.GCPImpersonateDelegates)
 	if len(spec.TableFilter) == 0 {
 		spec.TableFilter = nil
@@ -1007,6 +1073,17 @@ func splitDirectiveList(value string) []string {
 		out = append(out, trimmed)
 	}
 	return out
+}
+
+func parseDirectiveBool(value string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "y", "on":
+		return true, true
+	case "0", "false", "no", "n", "off":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 func firstNonEmptyEnv(keys ...string) string {

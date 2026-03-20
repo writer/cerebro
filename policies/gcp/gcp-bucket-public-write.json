@@ -1,20 +1,24 @@
 {
   "id": "gcp-bucket-public-write",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCS Bucket Allows Public Write Access",
   "description": "Cloud Storage bucket grants write permissions to allUsers or allAuthenticatedUsers",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::storage::bucket",
   "conditions": [
-    "iam_policy.bindings ANY (members CONTAINS 'allUsers' OR members CONTAINS 'allAuthenticatedUsers') AND role IN ('roles/storage.objectCreator', 'roles/storage.objectAdmin', 'roles/storage.admin')"
+    "(list_value(path(resource, \"iam_policy.bindings\")).exists(item, (contains_value(path(item, \"members\"), \"allUsers\")) || (contains_value(path(item, \"members\"), \"allAuthenticatedUsers\")))) \u0026\u0026 (in_list(path(resource, \"role\"), [\"roles/storage.objectCreator\",\"roles/storage.objectAdmin\",\"roles/storage.admin\"]))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public write access immediately. Grant write access only to specific service accounts or users. Enable object versioning for recovery.",
   "tags": [
     "gcp",
     "storage",
     "public-access",
     "data-integrity"
   ],
+  "remediation": "Remove public write access immediately. Grant write access only to specific service accounts or users. Enable object versioning for recovery.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

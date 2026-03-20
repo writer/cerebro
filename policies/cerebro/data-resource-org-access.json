@@ -1,22 +1,26 @@
 {
   "id": "data-resource-org-access",
-  "control_id": "wc-id-2568",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Data resource with sensitive data allows organization-wide access",
   "description": "A resource with sensitive data allows access to the entire organization",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "storage::bucket|database::instance|storage::blob_container",
   "conditions": [
-    "has_sensitive_data == true",
-    "iam_policy.allows_org_wide_access == true"
+    "cmp_eq(path(resource, \"has_sensitive_data\"), true)",
+    "cmp_eq(path(resource, \"iam_policy.allows_org_wide_access\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Remove organization-wide access. Implement granular access controls based on business need.",
   "tags": [
     "wiz",
     "data",
     "org-wide-access",
     "sensitive-data"
   ],
+  "control_id": "wc-id-2568",
+  "remediation": "Remove organization-wide access. Implement granular access controls based on business need.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],

@@ -1,20 +1,24 @@
 {
   "id": "aws-ec2-instance-profile-attached",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "EC2 Instance Profile Attached",
   "description": "EC2 instances should use instance profiles instead of hardcoded credentials",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ec2::instance",
   "conditions": [
-    "iam_instance_profile == null"
+    "cmp_eq(path(resource, \"iam_instance_profile\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Attach an IAM instance profile to the EC2 instance instead of using static credentials.",
   "tags": [
     "ec2",
     "iam",
     "credentials",
     "best-practice"
   ],
+  "remediation": "Attach an IAM instance profile to the EC2 instance instead of using static credentials.",
   "risk_categories": [
     "IDENTITY_RISK",
     "MISCONFIGURATION"

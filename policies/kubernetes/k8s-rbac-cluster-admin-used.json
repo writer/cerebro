@@ -1,21 +1,25 @@
 {
   "id": "k8s-rbac-cluster-admin-used",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "User/ServiceAccount Assigned cluster-admin",
   "description": "A user or service account is bound to the cluster-admin ClusterRole.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::rbac::risky_binding",
   "conditions": [
-    "subject_kind IN ('User', 'ServiceAccount')",
-    "role_ref_kind == 'ClusterRole'",
-    "role_ref_name == 'cluster-admin'"
+    "in_list(path(resource, \"subject_kind\"), [\"User\",\"ServiceAccount\"])",
+    "cmp_eq(path(resource, \"role_ref_kind\"), \"ClusterRole\")",
+    "cmp_eq(path(resource, \"role_ref_name\"), \"cluster-admin\")"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "Replace cluster-admin assignments with narrowly scoped roles and namespace-scoped RoleBindings.",
   "tags": [
     "kubernetes",
     "rbac",
     "least-privilege"
   ],
+  "remediation": "Replace cluster-admin assignments with narrowly scoped roles and namespace-scoped RoleBindings.",
   "risk_categories": [
     "PRIVILEGE_ESCALATION",
     "IDENTITY_RISK"

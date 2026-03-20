@@ -1,20 +1,24 @@
 {
   "id": "org-customer-topology-churn-risk",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Customer Topology Matches Churn Pattern",
   "description": "Customer topology is structurally similar to historically churned relationships.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "org::customer_relationship",
   "conditions": [
-    "churn_risk > 0.7",
-    "cohort_percentile < 40"
+    "cmp_gt(path(resource, \"churn_risk\"), 0.7)",
+    "cmp_lt(path(resource, \"cohort_percentile\"), 40)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Trigger churn-intervention playbook: sponsor outreach, technical recovery plan, and weekly account-team sync.",
   "tags": [
     "org-topology",
     "customer-health",
     "churn-risk"
   ],
+  "remediation": "Trigger churn-intervention playbook: sponsor outreach, technical recovery plan, and weekly account-team sync.",
   "risk_categories": [
     "CHURN_RISK",
     "CUSTOMER_HEALTH_RISK"

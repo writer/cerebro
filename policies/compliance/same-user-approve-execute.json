@@ -1,12 +1,20 @@
 {
   "id": "same-user-approve-execute",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Same User Approved and Executed Financial Action",
   "description": "Flags finance actions where approver and executor are the same principal.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "billing::approval_event",
   "conditions": [
-    "approved_by == executed_by"
+    "cmp_eq(path(resource, \"approved_by\"), path(resource, \"executed_by\"))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "tags": ["financial-controls", "separation-of-duties", "fraud-prevention"]
+  "tags": [
+    "financial-controls",
+    "separation-of-duties",
+    "fraud-prevention"
+  ]
 }

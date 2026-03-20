@@ -16,8 +16,25 @@ type cachedBlastRadius struct {
 	result  *BlastRadiusResult
 }
 
+const blastRadiusCacheCompactionDeleteLimit = 128
+
 // blastRadiusComputeHook is used by tests to verify cache hit/miss behavior.
 var blastRadiusComputeHook func(principalID string, maxDepth int)
+
+// blastRadiusCacheBeforeWriteHook is used by tests to force interleavings right
+// before cache compaction/store is serialized.
+var blastRadiusCacheBeforeWriteHook func(g *Graph, version uint64)
+
+// blastRadiusCacheStoreHook is used by tests to force interleavings around cache writes.
+var blastRadiusCacheStoreHook func(g *Graph, version uint64)
+
+// blastRadiusCacheAfterLoadHook is used by tests to force interleavings after a
+// cache load but before stale-state handling.
+var blastRadiusCacheAfterLoadHook func(g *Graph, key blastRadiusCacheKey)
+
+// blastRadiusCacheAfterCompactionScanHook is used by tests to force
+// interleavings after a stale-cache scan but before compaction state is cleared.
+var blastRadiusCacheAfterCompactionScanHook func(g *Graph, version uint64, removed int)
 
 // BlastRadiusResult represents the result of a blast radius analysis
 type BlastRadiusResult struct {
@@ -49,6 +66,19 @@ type RiskSummary struct {
 	Low      int `json:"low"`
 }
 
+type blastRadiusFrontierItem struct {
+	ordinal NodeOrdinal
+	path    []string
+}
+
+type blastRadiusExpansion struct {
+	next             blastRadiusFrontierItem
+	reachable        *ReachableNode
+	crossAccountRisk bool
+	accounts         [2]string
+	accountCount     int
+}
+
 // BlastRadius performs forward reachability analysis from a principal
 func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult {
 	if cached, ok := g.getBlastRadiusFromCache(principalID, maxDepth); ok {
@@ -58,88 +88,84 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 
 	principal, ok := g.GetNode(principalID)
 	if !ok {
-		result := &BlastRadiusResult{PrincipalID: principalID}
-		g.putBlastRadiusInCache(principalID, maxDepth, cacheVersion, result)
-		return result
+		return &BlastRadiusResult{PrincipalID: principalID}
 	}
 
 	if blastRadiusComputeHook != nil {
 		blastRadiusComputeHook(principalID, maxDepth)
 	}
 
+	result := computeBlastRadius(g, principal, maxDepth)
+
+	g.putBlastRadiusInCache(principalID, maxDepth, cacheVersion, result)
+	return cloneBlastRadiusResult(result)
+}
+
+func computeBlastRadius(g *Graph, principal *Node, maxDepth int) *BlastRadiusResult {
+	if principal == nil {
+		return &BlastRadiusResult{}
+	}
+	snapshot := g.csrEdgeSnapshot()
+	if snapshot == nil {
+		return &BlastRadiusResult{
+			PrincipalID:   principal.ID,
+			PrincipalName: principal.Name,
+			MaxDepth:      maxDepth,
+		}
+	}
+	principalOrdinal, ok := snapshot.lookupOrdinal(principal.ID)
+	if !ok {
+		return &BlastRadiusResult{
+			PrincipalID:   principal.ID,
+			PrincipalName: principal.Name,
+			MaxDepth:      maxDepth,
+		}
+	}
+
 	result := &BlastRadiusResult{
-		PrincipalID:   principalID,
+		PrincipalID:   principal.ID,
 		PrincipalName: principal.Name,
 		MaxDepth:      maxDepth,
 	}
 
 	startAccount := principal.Account
-	visited := make(map[string]bool)
+	visited := newOrdinalVisitSet(snapshot.nodeIDs)
 	accountsReached := make(map[string]bool)
+	frontier := []blastRadiusFrontierItem{{
+		ordinal: principalOrdinal,
+		path:    []string{principal.ID},
+	}}
 
-	type queueItem struct {
-		nodeID string
-		depth  int
-		path   []string
-	}
-	queue := []queueItem{{principalID, 0, []string{principalID}}}
-
-	for len(queue) > 0 {
-		item := queue[0]
-		queue = queue[1:]
-
-		if item.depth > maxDepth || visited[item.nodeID] {
-			continue
+	for depth := 0; depth <= maxDepth && len(frontier) > 0; depth++ {
+		activeFrontier := make([]blastRadiusFrontierItem, 0, len(frontier))
+		for _, item := range frontier {
+			if visited.hasOrdinal(item.ordinal) {
+				continue
+			}
+			visited.markOrdinal(item.ordinal)
+			activeFrontier = append(activeFrontier, item)
 		}
-		visited[item.nodeID] = true
+		if len(activeFrontier) == 0 {
+			break
+		}
 
-		for _, edge := range g.GetOutEdges(item.nodeID) {
-			// Skip deny edges - they block access
-			if edge.IsDeny() {
-				continue
-			}
+		expansions := parallelProcessOrdered(activeFrontier, func(item blastRadiusFrontierItem) []blastRadiusExpansion {
+			return expandBlastRadiusFrontierItem(g, snapshot, item, depth, startAccount)
+		})
 
-			// Check if there's a deny that blocks this allow
-			if isDenied(g, item.nodeID, edge.Target) {
-				continue
-			}
-
-			targetNode, ok := g.GetNode(edge.Target)
-			if !ok {
-				continue
-			}
-
-			newPath := append([]string{}, item.path...)
-			newPath = append(newPath, edge.Target)
-
-			// Track cross-account access
-			if edge.IsCrossAccount() {
+		nextFrontier := make([]blastRadiusFrontierItem, 0, len(expansions))
+		for _, expansion := range expansions {
+			if expansion.crossAccountRisk {
 				result.CrossAccountRisk = true
-				if targetAccount, ok := edge.Properties["target_account"].(string); ok {
-					accountsReached[targetAccount] = true
+			}
+			for i := 0; i < expansion.accountCount; i++ {
+				if expansion.accounts[i] != "" {
+					accountsReached[expansion.accounts[i]] = true
 				}
 			}
-			if targetNode.Account != "" && targetNode.Account != startAccount {
-				accountsReached[targetNode.Account] = true
-			}
-
-			// Only collect resource nodes in results
-			if targetNode.IsResource() {
-				var actions []string
-				if a, ok := edge.Properties["actions"].([]string); ok {
-					actions = a
-				}
-
-				result.ReachableNodes = append(result.ReachableNodes, &ReachableNode{
-					Node:     targetNode,
-					Depth:    item.depth + 1,
-					Path:     newPath,
-					EdgeKind: edge.Kind,
-					Actions:  actions,
-				})
-
-				// Update risk summary
-				switch targetNode.Risk {
+			if expansion.reachable != nil {
+				result.ReachableNodes = append(result.ReachableNodes, expansion.reachable)
+				switch expansion.reachable.Node.Risk {
 				case RiskCritical:
 					result.RiskSummary.Critical++
 				case RiskHigh:
@@ -150,14 +176,9 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 					result.RiskSummary.Low++
 				}
 			}
-
-			// Continue traversal for role chains
-			queue = append(queue, queueItem{
-				nodeID: edge.Target,
-				depth:  item.depth + 1,
-				path:   newPath,
-			})
+			nextFrontier = append(nextFrontier, expansion.next)
 		}
+		frontier = nextFrontier
 	}
 
 	result.TotalCount = len(result.ReachableNodes)
@@ -169,8 +190,66 @@ func BlastRadius(g *Graph, principalID string, maxDepth int) *BlastRadiusResult 
 		result.ForeignAccounts = append(result.ForeignAccounts, acc)
 	}
 
-	g.putBlastRadiusInCache(principalID, maxDepth, cacheVersion, result)
-	return cloneBlastRadiusResult(result)
+	return result
+}
+
+func expandBlastRadiusFrontierItem(g *Graph, snapshot *csrEdgeSnapshot, item blastRadiusFrontierItem, depth int, startAccount string) []blastRadiusExpansion {
+	start, end, ok := snapshot.outRange(item.ordinal)
+	if !ok || end <= start {
+		return nil
+	}
+
+	expansions := make([]blastRadiusExpansion, 0, end-start)
+	snapshot.forEachOutEdgeOrdinal(item.ordinal, func(edge *Edge, targetOrdinal NodeOrdinal, targetID string) bool {
+		if edge == nil || edge.IsDeny() || snapshot.hasDenyOrdinals(item.ordinal, targetOrdinal) {
+			return true
+		}
+
+		targetNode, ok := g.GetNode(targetID)
+		if !ok {
+			return true
+		}
+
+		newPath := append(append([]string{}, item.path...), targetID)
+		expansion := blastRadiusExpansion{
+			next: blastRadiusFrontierItem{
+				ordinal: targetOrdinal,
+				path:    newPath,
+			},
+		}
+
+		if edge.IsCrossAccount() {
+			expansion.crossAccountRisk = true
+			if targetAccount, ok := edge.Properties["target_account"].(string); ok && targetAccount != "" {
+				expansion.accounts[expansion.accountCount] = targetAccount
+				expansion.accountCount++
+			}
+		}
+		if targetNode.Account != "" && targetNode.Account != startAccount {
+			if expansion.accountCount == 0 || expansion.accounts[0] != targetNode.Account {
+				expansion.accounts[expansion.accountCount] = targetNode.Account
+				expansion.accountCount++
+			}
+		}
+
+		if targetNode.IsResource() {
+			var actions []string
+			if a, ok := edge.Properties["actions"].([]string); ok {
+				actions = a
+			}
+			expansion.reachable = &ReachableNode{
+				Node:     targetNode,
+				Depth:    depth + 1,
+				Path:     newPath,
+				EdgeKind: edge.Kind,
+				Actions:  actions,
+			}
+		}
+
+		expansions = append(expansions, expansion)
+		return true
+	})
+	return expansions
 }
 
 func (g *Graph) getBlastRadiusFromCache(principalID string, maxDepth int) (*BlastRadiusResult, bool) {
@@ -180,6 +259,9 @@ func (g *Graph) getBlastRadiusFromCache(principalID string, maxDepth int) (*Blas
 	raw, ok := g.blastRadiusCache.Load(key)
 	if !ok {
 		return nil, false
+	}
+	if blastRadiusCacheAfterLoadHook != nil {
+		blastRadiusCacheAfterLoadHook(g, key)
 	}
 
 	cached, ok := raw.(*cachedBlastRadius)
@@ -199,17 +281,76 @@ func (g *Graph) putBlastRadiusInCache(principalID string, maxDepth int, version 
 		return
 	}
 
+	if blastRadiusCacheBeforeWriteHook != nil {
+		blastRadiusCacheBeforeWriteHook(g, version)
+	}
+
+	g.blastRadiusCacheWriteMu.Lock()
+	defer g.blastRadiusCacheWriteMu.Unlock()
+
+	currentVersion := g.currentBlastRadiusCacheVersion()
+	if version != currentVersion {
+		return
+	}
+
+	g.maybeCompactStaleBlastRadiusCache(currentVersion)
+	if blastRadiusCacheStoreHook != nil {
+		blastRadiusCacheStoreHook(g, currentVersion)
+	}
+	currentVersion = g.currentBlastRadiusCacheVersion()
+	if version != currentVersion {
+		return
+	}
+
 	key := blastRadiusCacheKey{principalID: principalID, maxDepth: maxDepth}
 	g.blastRadiusCache.Store(key, &cachedBlastRadius{
-		version: version,
+		version: currentVersion,
 		result:  cloneBlastRadiusResult(result),
 	})
+}
+
+func (g *Graph) maybeCompactStaleBlastRadiusCache(version uint64) {
+	g.mu.RLock()
+	needsCompaction := g.blastRadiusNeedsCompaction
+	g.mu.RUnlock()
+	if !needsCompaction {
+		return
+	}
+
+	removed := 0
+	g.blastRadiusCache.Range(func(key, value any) bool {
+		cached, ok := value.(*cachedBlastRadius)
+		if !ok || cached == nil || cached.version != version || cached.result == nil {
+			g.blastRadiusCache.Delete(key)
+			removed++
+			if removed >= blastRadiusCacheCompactionDeleteLimit {
+				return false
+			}
+		}
+		return true
+	})
+
+	if blastRadiusCacheAfterCompactionScanHook != nil {
+		blastRadiusCacheAfterCompactionScanHook(g, version, removed)
+	}
+
+	g.mu.Lock()
+	if removed < blastRadiusCacheCompactionDeleteLimit && g.blastRadiusNeedsCompaction && g.blastRadiusVersion == version {
+		g.blastRadiusNeedsCompaction = false
+	}
+	g.mu.Unlock()
 }
 
 func (g *Graph) currentBlastRadiusCacheVersion() uint64 {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	return g.blastRadiusVersion
+}
+
+// CurrentVersion returns the current in-memory mutation version for cache and
+// scoped-store invalidation.
+func (g *Graph) CurrentVersion() uint64 {
+	return g.currentBlastRadiusCacheVersion()
 }
 
 func cloneBlastRadiusResult(result *BlastRadiusResult) *BlastRadiusResult {
@@ -251,6 +392,16 @@ type ReverseAccessResult struct {
 	TotalCount   int             `json:"total_count"`
 }
 
+type reverseAccessFrontierItem struct {
+	ordinal NodeOrdinal
+	path    []string
+}
+
+type reverseAccessExpansion struct {
+	next     reverseAccessFrontierItem
+	accessor *AccessorNode
+}
+
 // AccessorNode represents a principal that can access a resource
 type AccessorNode struct {
 	Node     *Node    `json:"node"`
@@ -266,66 +417,102 @@ func ReverseAccess(g *Graph, resourceID string, maxDepth int) *ReverseAccessResu
 		return &ReverseAccessResult{ResourceID: resourceID}
 	}
 
+	return computeReverseAccess(g, resource, maxDepth)
+}
+
+func computeReverseAccess(g *Graph, resource *Node, maxDepth int) *ReverseAccessResult {
+	snapshot := g.csrEdgeSnapshot()
 	result := &ReverseAccessResult{
-		ResourceID:   resourceID,
+		ResourceID:   resource.ID,
 		ResourceName: resource.Name,
 	}
-
-	visited := make(map[string]bool)
-	type queueItem struct {
-		nodeID string
-		depth  int
-		path   []string
+	if snapshot == nil {
+		return result
 	}
-	queue := []queueItem{{resourceID, 0, []string{resourceID}}}
+	resourceOrdinal, ok := snapshot.lookupOrdinal(resource.ID)
+	if !ok {
+		return result
+	}
 
-	for len(queue) > 0 {
-		item := queue[0]
-		queue = queue[1:]
+	visited := newOrdinalVisitSet(snapshot.nodeIDs)
+	frontier := []reverseAccessFrontierItem{{
+		ordinal: resourceOrdinal,
+		path:    []string{resource.ID},
+	}}
 
-		if item.depth > maxDepth || visited[item.nodeID] {
-			continue
-		}
-		visited[item.nodeID] = true
-
-		// Use inbound edges for reverse traversal
-		for _, edge := range g.GetInEdges(item.nodeID) {
-			if edge.IsDeny() {
+	for depth := 0; depth <= maxDepth && len(frontier) > 0; depth++ {
+		activeFrontier := make([]reverseAccessFrontierItem, 0, len(frontier))
+		for _, item := range frontier {
+			if visited.hasOrdinal(item.ordinal) {
 				continue
 			}
-
-			sourceNode, ok := g.GetNode(edge.Source)
-			if !ok {
-				continue
-			}
-
-			newPath := append([]string{edge.Source}, item.path...)
-
-			// Collect identity nodes
-			if sourceNode.IsIdentity() {
-				var actions []string
-				if a, ok := edge.Properties["actions"].([]string); ok {
-					actions = a
-				}
-
-				result.AccessibleBy = append(result.AccessibleBy, &AccessorNode{
-					Node:     sourceNode,
-					EdgeKind: edge.Kind,
-					Path:     newPath,
-					Actions:  actions,
-				})
-			}
-
-			queue = append(queue, queueItem{
-				nodeID: edge.Source,
-				depth:  item.depth + 1,
-				path:   newPath,
-			})
+			visited.markOrdinal(item.ordinal)
+			activeFrontier = append(activeFrontier, item)
 		}
+		if len(activeFrontier) == 0 {
+			break
+		}
+
+		expansions := parallelProcessOrdered(activeFrontier, func(item reverseAccessFrontierItem) []reverseAccessExpansion {
+			return expandReverseAccessFrontierItem(g, snapshot, item)
+		})
+
+		nextFrontier := make([]reverseAccessFrontierItem, 0, len(expansions))
+		for _, expansion := range expansions {
+			if expansion.accessor != nil {
+				result.AccessibleBy = append(result.AccessibleBy, expansion.accessor)
+			}
+			nextFrontier = append(nextFrontier, expansion.next)
+		}
+		frontier = nextFrontier
 	}
 
 	result.TotalCount = len(result.AccessibleBy)
 	return result
+}
+
+func expandReverseAccessFrontierItem(g *Graph, snapshot *csrEdgeSnapshot, item reverseAccessFrontierItem) []reverseAccessExpansion {
+	start, end, ok := snapshot.inRange(item.ordinal)
+	if !ok || end <= start {
+		return nil
+	}
+
+	expansions := make([]reverseAccessExpansion, 0, end-start)
+	snapshot.forEachInEdgeOrdinal(item.ordinal, func(edge *Edge, sourceOrdinal NodeOrdinal, sourceID string) bool {
+		if edge == nil || edge.IsDeny() {
+			return true
+		}
+
+		sourceNode, ok := g.GetNode(sourceID)
+		if !ok {
+			return true
+		}
+
+		newPath := append([]string{sourceID}, item.path...)
+		expansion := reverseAccessExpansion{
+			next: reverseAccessFrontierItem{
+				ordinal: sourceOrdinal,
+				path:    newPath,
+			},
+		}
+
+		if sourceNode.IsIdentity() {
+			var actions []string
+			if a, ok := edge.Properties["actions"].([]string); ok {
+				actions = a
+			}
+			expansion.accessor = &AccessorNode{
+				Node:     sourceNode,
+				EdgeKind: edge.Kind,
+				Path:     newPath,
+				Actions:  actions,
+			}
+		}
+
+		expansions = append(expansions, expansion)
+		return true
+	})
+	return expansions
 }
 
 // EffectiveAccessResult shows whether a principal can access a resource
@@ -370,19 +557,33 @@ func EffectiveAccess(g *Graph, principalID, resourceID string, maxDepth int) *Ef
 
 func findAllPaths(g *Graph, from, to string, maxDepth int) [][]*Edge {
 	var allPaths [][]*Edge
-
-	type state struct {
-		nodeID  string
-		depth   int
-		path    []*Edge
-		visited map[string]bool
+	snapshot := g.csrEdgeSnapshot()
+	if snapshot == nil {
+		return nil
+	}
+	sourceOrdinal, ok := snapshot.lookupOrdinal(from)
+	if !ok {
+		return nil
+	}
+	targetOrdinal, ok := snapshot.lookupOrdinal(to)
+	if !ok {
+		return nil
 	}
 
+	type state struct {
+		ordinal NodeOrdinal
+		depth   int
+		path    []*Edge
+		visited ordinalVisitSet
+	}
+
+	initialVisited := newOrdinalVisitSet(snapshot.nodeIDs)
+	initialVisited.markOrdinal(sourceOrdinal)
 	initial := state{
-		nodeID:  from,
+		ordinal: sourceOrdinal,
 		depth:   0,
 		path:    nil,
-		visited: map[string]bool{from: true},
+		visited: initialVisited,
 	}
 	queue := []state{initial}
 
@@ -394,42 +595,31 @@ func findAllPaths(g *Graph, from, to string, maxDepth int) [][]*Edge {
 			continue
 		}
 
-		for _, edge := range g.GetOutEdges(current.nodeID) {
-			if current.visited[edge.Target] {
-				continue
+		snapshot.forEachOutEdgeOrdinal(current.ordinal, func(edge *Edge, nextOrdinal NodeOrdinal, _ string) bool {
+			if edge == nil || current.visited.hasOrdinal(nextOrdinal) {
+				return true
 			}
 
 			newPath := append([]*Edge{}, current.path...)
 			newPath = append(newPath, edge)
-			newVisited := make(map[string]bool)
-			for k, v := range current.visited {
-				newVisited[k] = v
-			}
-			newVisited[edge.Target] = true
+			newVisited := current.visited.clone()
+			newVisited.markOrdinal(nextOrdinal)
 
-			if edge.Target == to {
+			if nextOrdinal == targetOrdinal {
 				allPaths = append(allPaths, newPath)
 			} else {
 				queue = append(queue, state{
-					nodeID:  edge.Target,
+					ordinal: nextOrdinal,
 					depth:   current.depth + 1,
 					path:    newPath,
 					visited: newVisited,
 				})
 			}
-		}
+			return true
+		})
 	}
 
 	return allPaths
-}
-
-func isDenied(g *Graph, source, target string) bool {
-	for _, edge := range g.GetOutEdges(source) {
-		if edge.Target == target && edge.IsDeny() {
-			return true
-		}
-	}
-	return false
 }
 
 // CascadingBlastRadiusResult represents time-aware blast radius with sensitive data mapping
@@ -476,6 +666,7 @@ type AccountBoundaryCross struct {
 }
 
 type cascadeItem struct {
+	ordinal   NodeOrdinal
 	nodeID    string
 	depth     int
 	path      []string
@@ -524,6 +715,14 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 	if !ok {
 		return &CascadingBlastRadiusResult{SourceID: sourceID}
 	}
+	snapshot := g.csrEdgeSnapshot()
+	if snapshot == nil {
+		return &CascadingBlastRadiusResult{SourceID: sourceID}
+	}
+	sourceOrdinal, ok := snapshot.lookupOrdinal(sourceID)
+	if !ok {
+		return &CascadingBlastRadiusResult{SourceID: sourceID}
+	}
 
 	if maxDepth <= 0 {
 		maxDepth = 6
@@ -537,13 +736,31 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 		SensitiveDataHits: make([]*SensitiveDataNode, 0),
 		AccountBoundaries: make([]*AccountBoundaryCross, 0),
 	}
-
-	visited := make(map[string]bool)
-	bestTime := map[string]int64{sourceID: 0}
+	visited := newOrdinalVisitSet(snapshot.nodeIDs)
+	visitedCount := 0
+	bestTimeByOrdinal := make(map[NodeOrdinal]int64)
+	bestTimeByNodeID := make(map[string]int64)
+	getBestTime := func(nodeID string, ordinal NodeOrdinal) (int64, bool) {
+		if ordinal != InvalidNodeOrdinal {
+			best, ok := bestTimeByOrdinal[ordinal]
+			return best, ok
+		}
+		best, ok := bestTimeByNodeID[nodeID]
+		return best, ok
+	}
+	setBestTime := func(nodeID string, ordinal NodeOrdinal, timeMs int64) {
+		if ordinal != InvalidNodeOrdinal {
+			bestTimeByOrdinal[ordinal] = timeMs
+			return
+		}
+		bestTimeByNodeID[nodeID] = timeMs
+	}
+	setBestTime(sourceID, sourceOrdinal, 0)
 
 	queue := &cascadePriorityQueue{}
 	heap.Init(queue)
 	heap.Push(queue, &cascadeItem{
+		ordinal:   sourceOrdinal,
 		nodeID:    sourceID,
 		depth:     0,
 		path:      []string{sourceID},
@@ -556,11 +773,11 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 		if item.depth > maxDepth {
 			continue
 		}
-		if item.timeMs > bestTime[item.nodeID] {
+		if best, ok := getBestTime(item.nodeID, item.ordinal); ok && item.timeMs > best {
 			continue
 		}
-		if !visited[item.nodeID] {
-			visited[item.nodeID] = true
+		if visited.markOrdinal(item.ordinal) {
+			visitedCount++
 		}
 
 		currentNode, ok := g.GetNode(item.nodeID)
@@ -599,26 +816,23 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 		}
 
 		// Explore outbound edges
-		for _, edge := range g.GetOutEdges(item.nodeID) {
-			if edge.IsDeny() {
-				continue
-			}
-			if isDenied(g, item.nodeID, edge.Target) {
-				continue
+		snapshot.forEachOutEdgeOrdinal(item.ordinal, func(edge *Edge, targetOrdinal NodeOrdinal, targetID string) bool {
+			if edge == nil || edge.IsDeny() || snapshot.hasDenyOrdinals(item.ordinal, targetOrdinal) {
+				return true
 			}
 
-			targetNode, ok := g.GetNode(edge.Target)
+			targetNode, ok := g.GetNode(targetID)
 			if !ok {
-				continue
+				return true
 			}
 
 			nextDepth := item.depth + 1
 			if nextDepth > maxDepth {
-				continue
+				return true
 			}
 
 			newPath := append([]string{}, item.path...)
-			newPath = append(newPath, edge.Target)
+			newPath = append(newPath, targetID)
 
 			// Estimate time based on edge type and target
 			timeIncrement := estimateCompromiseTime(edge, targetNode)
@@ -653,30 +867,32 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 				result.AccountBoundaries = append(result.AccountBoundaries, &AccountBoundaryCross{
 					FromAccount: fromAccount,
 					ToAccount:   toAccount,
-					CrossingAt:  edge.Target,
+					CrossingAt:  targetID,
 					EdgeKind:    edge.Kind,
 					Depth:       nextDepth,
 				})
 			}
 
 			nextTime := item.timeMs + timeIncrement
-			if best, ok := bestTime[edge.Target]; ok && nextTime >= best {
-				continue
+			if best, ok := getBestTime(targetID, targetOrdinal); ok && nextTime >= best {
+				return true
 			}
-			bestTime[edge.Target] = nextTime
+			setBestTime(targetID, targetOrdinal, nextTime)
 
 			heap.Push(queue, &cascadeItem{
-				nodeID:    edge.Target,
+				ordinal:   targetOrdinal,
+				nodeID:    targetID,
 				depth:     nextDepth,
 				path:      newPath,
 				timeMs:    nextTime,
 				technique: edgeToAttackTechnique(edge.Kind),
 			})
-		}
+			return true
+		})
 	}
 
 	// Calculate total impact and score
-	result.TotalImpact = len(visited) - 1 // Exclude source
+	result.TotalImpact = visitedCount - 1 // Exclude source
 	result.ImpactScore = calculateImpactScore(result)
 	result.RemediationPaths = suggestRemediationPaths(result)
 
@@ -699,6 +915,14 @@ func riskToImpact(risk RiskLevel) string {
 
 // detectSensitiveData checks if a node contains sensitive data
 func detectSensitiveData(node *Node) *SensitiveDataNode {
+	return detectSensitiveDataWithOptions(node, true)
+}
+
+func detectSensitiveDataExplicit(node *Node) *SensitiveDataNode {
+	return detectSensitiveDataWithOptions(node, false)
+}
+
+func detectSensitiveDataWithOptions(node *Node, includeNameHeuristics bool) *SensitiveDataNode {
 	if node.Properties == nil {
 		return nil
 	}
@@ -735,20 +959,30 @@ func detectSensitiveData(node *Node) *SensitiveDataNode {
 		result.ComplianceImpact = append(result.ComplianceImpact, "PCI-DSS")
 	}
 
+	// Buckets and databases can also contain secrets surfaced by DSPM scans.
+	if containsSecrets, ok := node.Properties["contains_secrets"].(bool); ok && containsSecrets {
+		result.DataTypes = append(result.DataTypes, "secrets")
+		if !sliceContains(result.ComplianceImpact, "SOC2") {
+			result.ComplianceImpact = append(result.ComplianceImpact, "SOC2")
+		}
+	}
+
 	// Check for credentials/secrets via ontology capability.
 	if NodeKindHasCapability(node.Kind, NodeCapabilityCredentialStore) {
 		result.DataTypes = append(result.DataTypes, "credentials")
 	}
 
-	// Check node name for sensitive patterns
-	sensitivePatterns := []string{"secret", "credential", "password", "key", "token", "backup", "pii", "phi"}
-	nodeName := node.Name
-	for _, pattern := range sensitivePatterns {
-		if containsIgnoreCase(nodeName, pattern) {
-			if !sliceContains(result.DataTypes, "sensitive_by_name") {
-				result.DataTypes = append(result.DataTypes, "sensitive_by_name")
+	if includeNameHeuristics {
+		// Check node name for sensitive patterns
+		sensitivePatterns := []string{"secret", "credential", "password", "key", "token", "backup", "pii", "phi"}
+		nodeName := node.Name
+		for _, pattern := range sensitivePatterns {
+			if containsIgnoreCase(nodeName, pattern) {
+				if !sliceContains(result.DataTypes, "sensitive_by_name") {
+					result.DataTypes = append(result.DataTypes, "sensitive_by_name")
+				}
+				break
 			}
-			break
 		}
 	}
 

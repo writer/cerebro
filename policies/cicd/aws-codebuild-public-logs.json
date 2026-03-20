@@ -1,21 +1,25 @@
 {
   "id": "aws-codebuild-public-logs",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AWS CodeBuild Public Build Logs",
   "description": "CodeBuild project has publicly accessible build logs",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::codebuild::project",
   "conditions": [
-    "logs_config.cloud_watch_logs.status == 'ENABLED'",
-    "logs_config.s3_logs.encryption_disabled == true"
+    "cmp_eq(path(resource, \"logs_config.cloud_watch_logs.status\"), \"ENABLED\")",
+    "cmp_eq(path(resource, \"logs_config.s3_logs.encryption_disabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable encryption for CodeBuild logs and restrict S3 bucket access.",
   "tags": [
     "cicd",
     "codebuild",
     "logging",
     "data-exposure"
   ],
+  "remediation": "Enable encryption for CodeBuild logs and restrict S3 bucket access.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

@@ -1,16 +1,46 @@
 {
   "id": "ai-data-governance",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AI Training Data Governance",
   "description": "Ensures AI training data has documented lineage and usage rights (ISO 42001)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "ai_datasets",
-  "conditions": ["consent_documented = false OR lineage_documented = false"],
+  "conditions": [
+    "(cmp_eq(path(resource, \"consent_documented\"), false)) || (cmp_eq(path(resource, \"lineage_documented\"), false))"
+  ],
+  "condition_format": "cel",
   "severity": "high",
+  "tags": [
+    "ai",
+    "ml",
+    "data",
+    "governance",
+    "privacy",
+    "iso42001"
+  ],
   "remediation": "Document data lineage and usage rights for all AI training datasets. Ensure consent is obtained where required.",
-  "tags": ["ai", "ml", "data", "governance", "privacy", "iso42001"],
   "frameworks": [
-    {"name": "ISO 42001", "controls": ["7.3", "10.2"]},
-    {"name": "SOC 2", "controls": ["CC6.1"]},
-    {"name": "GDPR", "controls": ["Art.5", "Art.30"]}
+    {
+      "name": "ISO 42001",
+      "controls": [
+        "7.3",
+        "10.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "GDPR",
+      "controls": [
+        "Art.5",
+        "Art.30"
+      ]
+    }
   ]
 }

@@ -1,21 +1,25 @@
 {
   "id": "aws-ec2-sg-no-all-traffic-ingress",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Security Group No All Traffic Ingress",
   "description": "Security group should not allow all traffic (0.0.0.0/0 on all ports) inbound",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ec2::security_group",
   "conditions": [
-    "ip_permissions.ip_protocol == '-1'",
-    "ip_permissions.ip_ranges contains '0.0.0.0/0'"
+    "cmp_eq(path(resource, \"ip_permissions.ip_protocol\"), \"-1\")",
+    "contains_value(path(resource, \"ip_permissions.ip_ranges\"), \"0.0.0.0/0\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Restrict security group rules to specific ports and IP ranges.",
   "tags": [
     "cis-aws-5.4",
     "security-group",
     "network",
     "exposure"
   ],
+  "remediation": "Restrict security group rules to specific ports and IP ranges.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "MISCONFIGURATION"

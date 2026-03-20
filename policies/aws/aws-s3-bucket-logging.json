@@ -1,20 +1,24 @@
 {
   "id": "aws-s3-bucket-logging-enabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Bucket Logging Enabled",
   "description": "S3 bucket should have server access logging enabled for audit trail",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::s3::bucket",
   "conditions": [
-    "logging_enabled != true"
+    "cmp_ne(path(resource, \"logging_enabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable server access logging on the S3 bucket to capture access requests.",
   "tags": [
     "cis-aws-3.6",
     "s3",
     "logging",
     "audit"
   ],
+  "remediation": "Enable server access logging on the S3 bucket to capture access requests.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

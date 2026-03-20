@@ -145,6 +145,29 @@ func (s *GraphPersistenceStore) LoadLatest() (*Graph, error) {
 	return RestoreFromSnapshot(snapshot), nil
 }
 
+func (s *GraphPersistenceStore) PeekLatestSnapshot() (*Snapshot, *GraphSnapshotRecord, string, error) {
+	if s == nil {
+		return nil, nil, "", fmt.Errorf("graph persistence store not configured")
+	}
+	if s.local != nil {
+		snapshot, record, err := s.local.LoadLatestSnapshot()
+		if err == nil {
+			return snapshot, record, graphRecoverySourceLocal, nil
+		}
+		if s.replica == nil {
+			return nil, nil, "", err
+		}
+	}
+	if s.replica == nil {
+		return nil, nil, "", fmt.Errorf("graph persistence replica not configured")
+	}
+	snapshot, record, err := s.loadLatestSnapshotFromReplica(context.Background())
+	if err != nil {
+		return nil, nil, "", err
+	}
+	return snapshot, record, graphRecoverySourceReplica, nil
+}
+
 func (s *GraphPersistenceStore) LoadLatestSnapshot() (*Snapshot, *GraphSnapshotRecord, string, error) {
 	if s == nil {
 		return nil, nil, "", fmt.Errorf("graph persistence store not configured")
@@ -243,37 +266,6 @@ func (s *GraphPersistenceStore) DiffByTime(t1, t2 time.Time) (*GraphDiff, error)
 		return nil, err
 	}
 	return DiffSnapshots(before, after), nil
-}
-
-func (s *GraphPersistenceStore) DiffByTimeForTenant(t1, t2 time.Time, tenantID string) (*GraphDiff, error) {
-	if s == nil {
-		return nil, fmt.Errorf("graph persistence store not configured")
-	}
-	tenantID = strings.TrimSpace(tenantID)
-	if tenantID == "" {
-		return s.DiffByTime(t1, t2)
-	}
-	if s.local != nil {
-		diff, err := s.local.DiffByTimeForTenant(t1, t2, tenantID)
-		if err == nil {
-			return diff, nil
-		}
-		if s.replica == nil {
-			return nil, err
-		}
-	}
-	if s.replica == nil {
-		return nil, fmt.Errorf("graph persistence replica not configured")
-	}
-	before, err := s.loadClosestSnapshotAtReplica(context.Background(), t1)
-	if err != nil {
-		return nil, err
-	}
-	after, err := s.loadClosestSnapshotAtReplica(context.Background(), t2)
-	if err != nil {
-		return nil, err
-	}
-	return diffSnapshotsForTenant(before, after, tenantID), nil
 }
 
 func (s *GraphPersistenceStore) syncReplica(ctx context.Context) error {

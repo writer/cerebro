@@ -1,20 +1,24 @@
 {
   "id": "aws-sagemaker-notebook-root-access",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "SageMaker Notebook Root Access",
   "description": "SageMaker notebook instance allows root access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::sagemaker::notebook_instance",
   "conditions": [
-    "root_access == 'Enabled'"
+    "cmp_eq(path(resource, \"root_access\"), \"Enabled\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Disable root access on the notebook instance.",
   "tags": [
     "ai",
     "sagemaker",
     "least-privilege",
     "container-security"
   ],
+  "remediation": "Disable root access on the notebook instance.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

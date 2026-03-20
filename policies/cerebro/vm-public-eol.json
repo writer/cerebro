@@ -1,22 +1,26 @@
 {
   "id": "vm-public-eol",
-  "control_id": "wc-id-169",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed VM with end-of-life software",
   "description": "A publicly exposed VM is running end-of-life software that no longer receives security updates",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance",
   "conditions": [
-    "is_public == true",
-    "installed_packages ANY (end_of_life == true)"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "list_value(path(resource, \"installed_packages\")).exists(item, cmp_eq(path(item, \"end_of_life\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Update to supported software versions. If not possible, remove public access and implement compensating controls.",
   "tags": [
     "wiz",
     "compute",
     "eol",
     "public-exposure"
   ],
+  "control_id": "wc-id-169",
+  "remediation": "Update to supported software versions. If not possible, remove public access and implement compensating controls.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

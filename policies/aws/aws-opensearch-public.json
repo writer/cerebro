@@ -1,14 +1,17 @@
 {
   "id": "aws-opensearch-public",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "OpenSearch Domain Publicly Accessible",
   "description": "OpenSearch domain allows public access without VPC configuration",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::opensearch::domain",
   "conditions": [
-    "vpc_options == null OR vpc_options.vpc_id == null"
+    "(cmp_eq(path(resource, \"vpc_options\"), null)) || (cmp_eq(path(resource, \"vpc_options.vpc_id\"), null))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Deploy the OpenSearch domain within a VPC. Configure security groups and access policies to restrict access.",
   "tags": [
     "aws",
     "opensearch",
@@ -16,6 +19,7 @@
     "network-exposure",
     "data-protection"
   ],
+  "remediation": "Deploy the OpenSearch domain within a VPC. Configure security groups and access policies to restrict access.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

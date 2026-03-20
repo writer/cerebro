@@ -1,20 +1,24 @@
 {
   "id": "aws-s3-bucket-ssl-only",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Bucket Requires SSL",
   "description": "S3 bucket policy should enforce SSL/TLS for all requests",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::s3::bucket",
   "conditions": [
-    "policy_requires_ssl != true"
+    "cmp_ne(path(resource, \"policy_requires_ssl\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Add bucket policy condition to deny requests where aws:SecureTransport is false.",
   "tags": [
     "cis-aws-2.1.2",
     "s3",
     "encryption",
     "transport-security"
   ],
+  "remediation": "Add bucket policy condition to deny requests where aws:SecureTransport is false.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

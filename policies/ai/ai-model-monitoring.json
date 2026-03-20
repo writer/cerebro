@@ -1,15 +1,39 @@
 {
   "id": "ai-model-monitoring",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AI Model Performance Monitoring",
   "description": "Ensures deployed AI models have monitoring for performance degradation and drift (ISO 42001)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "ai_models",
-  "conditions": ["environment = 'production'", "(monitoring_enabled = false OR drift_detection_enabled = false)"],
+  "conditions": [
+    "cmp_eq(path(resource, \"environment\"), \"production\")",
+    "(cmp_eq(path(resource, \"monitoring_enabled\"), false)) || (cmp_eq(path(resource, \"drift_detection_enabled\"), false))"
+  ],
+  "condition_format": "cel",
   "severity": "medium",
+  "tags": [
+    "ai",
+    "ml",
+    "monitoring",
+    "drift",
+    "iso42001"
+  ],
   "remediation": "Enable monitoring and drift detection for all production AI models. Set alerts for performance degradation.",
-  "tags": ["ai", "ml", "monitoring", "drift", "iso42001"],
   "frameworks": [
-    {"name": "ISO 42001", "controls": ["9.1", "9.3"]},
-    {"name": "SOC 2", "controls": ["CC7.2"]}
+    {
+      "name": "ISO 42001",
+      "controls": [
+        "9.1",
+        "9.3"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.2"
+      ]
+    }
   ]
 }

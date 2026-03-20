@@ -1,22 +1,26 @@
 {
   "id": "bucket-dormant-principal",
-  "control_id": "wc-id-2692",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Bucket with sensitive data can be accessed by a principal that has been inactive in the last 90 days",
   "description": "A dormant principal still has access to a bucket containing sensitive data",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "storage::bucket|storage::blob_container",
   "conditions": [
-    "has_sensitive_data == true",
-    "iam_policy.principals ANY (last_activity_days_ago \u003e 90)"
+    "cmp_eq(path(resource, \"has_sensitive_data\"), true)",
+    "list_value(path(resource, \"iam_policy.principals\")).exists(item, cmp_gt(path(item, \"last_activity_days_ago\"), 90))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Review and remove access for dormant principals. Implement regular access certification.",
   "tags": [
     "wiz",
     "storage",
     "dormant",
     "sensitive-data"
   ],
+  "control_id": "wc-id-2692",
+  "remediation": "Review and remove access for dormant principals. Implement regular access certification.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],

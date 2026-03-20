@@ -1,18 +1,20 @@
 {
   "id": "vm-medium-exposure-vuln-data",
-  "control_id": "wc-id-2922",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internet-facing VM/serverless (medium exposure) with initial access vulnerabilities and data access to sensitive data",
   "description": "A medium-exposure internet-facing resource has vulnerabilities and data access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "exposure_level == 'medium'",
-    "is_internet_facing == true",
-    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)",
-    "service_account.has_sensitive_data_access == true"
+    "cmp_eq(path(resource, \"exposure_level\"), \"medium\")",
+    "cmp_eq(path(resource, \"is_internet_facing\"), true)",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, (in_list(path(item, \"severity\"), [\"CRITICAL\",\"HIGH\"])) \u0026\u0026 (cmp_eq(path(item, \"initial_access\"), true)))",
+    "cmp_eq(path(resource, \"service_account.has_sensitive_data_access\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Patch vulnerabilities. Reduce data access. Strengthen network controls.",
   "tags": [
     "wiz",
     "compute",
@@ -20,6 +22,8 @@
     "data-access",
     "medium-exposure"
   ],
+  "control_id": "wc-id-2922",
+  "remediation": "Patch vulnerabilities. Reduce data access. Strengthen network controls.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/knowledge"
 	reports "github.com/writer/cerebro/internal/graph/reports"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 	"github.com/writer/cerebro/internal/graphingest"
 )
 
@@ -23,7 +25,11 @@ func (s *Server) currentGraphIntelligenceGraph(ctx context.Context) *graph.Graph
 	if s == nil || s.graphIntelligence == nil {
 		return nil
 	}
-	return s.tenantScopedGraph(ctx, s.graphIntelligence.CurrentGraph())
+	g, err := s.graphIntelligence.CurrentGraph(ctx)
+	if err != nil {
+		return nil
+	}
+	return g
 }
 
 func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *http.Request) {
@@ -235,13 +241,7 @@ func (s *Server) graphIntelligenceInsights(w http.ResponseWriter, r *http.Reques
 			s.error(w, http.StatusNotFound, "graph snapshot store not configured")
 			return
 		}
-		var diff *graph.GraphDiff
-		tenantID := currentTenantScopeID(r.Context())
-		if tenantID != "" {
-			diff, err = store.DiffByTimeForTenant(from, to, tenantID)
-		} else {
-			diff, err = store.DiffByTime(from, to)
-		}
+		diff, err := store.DiffByTime(from, to)
 		if err != nil {
 			status := http.StatusInternalServerError
 			if strings.Contains(err.Error(), "no snapshots") {
@@ -390,7 +390,7 @@ func (s *Server) graphIntelligenceClaimConflicts(w http.ResponseWriter, r *http.
 		recordedAt = parsed
 	}
 
-	report := graph.BuildClaimConflictReport(g, graph.ClaimConflictReportOptions{
+	report := knowledge.BuildClaimConflictReport(g, knowledge.ClaimConflictReportOptions{
 		ValidAt:         validAt,
 		RecordedAt:      recordedAt,
 		MaxConflicts:    maxConflicts,
@@ -1013,7 +1013,7 @@ func (s *Server) graphQueryPaths(w http.ResponseWriter, r *http.Request, g *grap
 		maxDepth = parsed
 	}
 
-	simulator := graph.NewAttackPathSimulator(g)
+	simulator := risk.NewAttackPathSimulator(g)
 	paths := simulator.KShortestPaths(nodeID, targetID, k, maxDepth)
 	pathsExamined := 0
 	for _, path := range paths {

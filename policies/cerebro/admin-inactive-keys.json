@@ -1,16 +1,18 @@
 {
   "id": "admin-inactive-keys",
-  "control_id": "wc-id-2178",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Admin user/service account with active access keys that are inactive for over 90 days",
   "description": "An admin account has access keys that have been inactive for over 90 days",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "iam::user|iam::service_account",
   "conditions": [
-    "has_admin_role == true",
-    "access_keys ANY (status == 'Active' AND last_used_days_ago \u003e 90)"
+    "cmp_eq(path(resource, \"has_admin_role\"), true)",
+    "list_value(path(resource, \"access_keys\")).exists(item, (cmp_eq(path(item, \"status\"), \"Active\")) \u0026\u0026 (cmp_gt(path(item, \"last_used_days_ago\"), 90)))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Disable or delete unused access keys. Rotate any keys that are still needed.",
   "tags": [
     "wiz",
     "identity",
@@ -18,6 +20,8 @@
     "admin",
     "dormant"
   ],
+  "control_id": "wc-id-2178",
+  "remediation": "Disable or delete unused access keys. Rotate any keys that are still needed.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

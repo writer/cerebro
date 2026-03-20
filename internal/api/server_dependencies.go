@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,11 +42,17 @@ var errManagedAPICredentialsUnavailable = errors.New("managed api credentials un
 
 type graphRuntimeService interface {
 	CurrentSecurityGraph() *graph.Graph
+	CurrentSecurityGraphStore() graph.GraphStore
+	CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphStore
 	GraphBuildSnapshot() app.GraphBuildSnapshot
 	CurrentRetentionStatus() app.RetentionStatus
 	GraphFreshnessStatusSnapshot(now time.Time) app.GraphFreshnessStatus
 	RebuildSecurityGraph(ctx context.Context) error
 	TryApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, bool, error)
+}
+
+type graphChangeApplyCapability interface {
+	CanApplySecurityGraphChanges() bool
 }
 
 type apiCredentialService interface {
@@ -76,8 +85,8 @@ type serverDependencies struct {
 	Findings       findings.FindingStore
 	Scanner        *scanner.Scanner
 	Cache          *cache.PolicyCache
-	GraphSnapshots *graph.GraphPersistenceStore
 	ExecutionStore executionstore.Store
+	GraphSnapshots *graph.GraphPersistenceStore
 
 	Agents         *agents.AgentRegistry
 	Ticketing      *ticketing.Service
@@ -100,6 +109,7 @@ type serverDependencies struct {
 	Lineage        *lineage.LineageMapper
 	Remediation    *remediation.Engine
 	RuntimeDetect  *runtime.DetectionEngine
+	RuntimeIngest  runtime.IngestStore
 	RuntimeRespond *runtime.ResponseEngine
 
 	RemediationExecutor *remediation.Executor
@@ -107,10 +117,27 @@ type serverDependencies struct {
 	SecurityGraph        *graph.Graph
 	SecurityGraphBuilder *builders.Builder
 
-	graphRuntime       graphRuntimeService
-	graphMutator       graphMutationService
-	apiCredentials     apiCredentialService
-	agentSDKToolSource agentSDKToolService
+	graphRuntime          graphRuntimeService
+	graphMutator          graphMutationService
+	graphRuleDiscovery    graphRuleDiscoveryService
+	graphSimulation       graphSimulationService
+	apiCredentials        apiCredentialService
+	agentSDKToolSource    agentSDKToolService
+	agentSDKAdmin         agentSDKAdminService
+	entitiesImpact        entitiesImpactService
+	graphAdvisory         graphAdvisoryService
+	graphWriteback        graphWritebackService
+	lineage               lineageService
+	orgAnalysis           orgAnalysisService
+	platformExecutions    platformExecutionService
+	platformKnowledge     platformKnowledgeService
+	platformWorkloadScan  platformWorkloadScanService
+	rbacAdmin             rbacAdminService
+	remediationOperations remediationOperationsService
+	schedulerOperations   schedulerOperationsService
+	syncHandlers          syncHandlerService
+	ticketingOps          ticketingService
+	threatRuntime         threatRuntimeService
 }
 
 type graphRuntimeAdapter struct {
@@ -138,8 +165,8 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		Findings:             application.Findings,
 		Scanner:              application.Scanner,
 		Cache:                application.Cache,
-		GraphSnapshots:       application.GraphSnapshots,
 		ExecutionStore:       application.ExecutionStore,
+		GraphSnapshots:       application.GraphSnapshots,
 		Agents:               application.Agents,
 		Ticketing:            application.Ticketing,
 		Identity:             application.Identity,
@@ -160,6 +187,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		Remediation:          application.Remediation,
 		RemediationExecutor:  application.RemediationExecutor,
 		RuntimeDetect:        application.RuntimeDetect,
+		RuntimeIngest:        application.RuntimeIngest,
 		RuntimeRespond:       application.RuntimeRespond,
 		SecurityGraph:        application.SecurityGraph,
 		SecurityGraphBuilder: application.SecurityGraphBuilder,
@@ -184,6 +212,53 @@ func (d serverDependencies) CurrentSecurityGraph() *graph.Graph {
 		}
 	}
 	return d.SecurityGraph
+}
+
+func (d serverDependencies) CurrentSecurityGraphStore() graph.GraphStore {
+	if d.graphRuntime != nil {
+		if store := d.graphRuntime.CurrentSecurityGraphStore(); store != nil {
+			return store
+		}
+	}
+	if d.SecurityGraph != nil {
+		return d.SecurityGraph
+	}
+	return nil
+}
+
+func (d serverDependencies) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return d.CurrentSecurityGraph()
+	}
+	if scoped, ok := d.graphRuntime.(interface {
+		CurrentSecurityGraphForTenant(string) *graph.Graph
+	}); ok {
+		if g := scoped.CurrentSecurityGraphForTenant(tenantID); g != nil {
+			return g
+		}
+	}
+	current := d.CurrentSecurityGraph()
+	if current == nil {
+		return nil
+	}
+	return current.SubgraphForTenant(tenantID)
+}
+
+func (d serverDependencies) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphStore {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return d.CurrentSecurityGraphStore()
+	}
+	if d.graphRuntime != nil {
+		if store := d.graphRuntime.CurrentSecurityGraphStoreForTenant(tenantID); store != nil {
+			return store
+		}
+	}
+	if scoped := d.CurrentSecurityGraphForTenant(tenantID); scoped != nil {
+		return scoped
+	}
+	return nil
 }
 
 func (d serverDependencies) GraphBuildSnapshot() app.GraphBuildSnapshot {
@@ -214,6 +289,16 @@ func (d serverDependencies) RebuildSecurityGraph(ctx context.Context) error {
 	return d.graphRuntime.RebuildSecurityGraph(ctx)
 }
 
+func (d serverDependencies) CanApplySecurityGraphChanges() bool {
+	if capable, ok := d.graphRuntime.(graphChangeApplyCapability); ok {
+		return capable.CanApplySecurityGraphChanges()
+	}
+	if d.graphRuntime != nil {
+		return true
+	}
+	return d.SecurityGraphBuilder != nil
+}
+
 func (d serverDependencies) TryApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, bool, error) {
 	if d.graphRuntime == nil {
 		return graph.GraphMutationSummary{}, false, errors.New("security graph runtime not configured")
@@ -226,6 +311,33 @@ func (d serverDependencies) MutateSecurityGraph(ctx context.Context, mutate func
 		return nil, errors.New("security graph runtime not configured")
 	}
 	return d.graphMutator.MutateSecurityGraph(ctx, mutate)
+}
+
+func (d serverDependencies) PlatformGraphSnapshotStore() *graph.GraphPersistenceStore {
+	if d.GraphSnapshots != nil {
+		return d.GraphSnapshots
+	}
+	snapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
+	maxSnapshots := 10
+	if d.Config != nil {
+		if configured := strings.TrimSpace(d.Config.GraphSnapshotPath); configured != "" {
+			snapshotPath = configured
+		}
+		if d.Config.GraphSnapshotMaxRetained > 0 {
+			maxSnapshots = d.Config.GraphSnapshotMaxRetained
+		}
+	}
+	if snapshotPath == "" {
+		snapshotPath = filepath.Join(".cerebro", "graph-snapshots")
+	}
+	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
+		LocalPath:    snapshotPath,
+		MaxSnapshots: maxSnapshots,
+	})
+	if err != nil {
+		return nil
+	}
+	return store
 }
 
 func (d serverDependencies) APICredentialsSnapshot() map[string]apiauth.Credential {
@@ -288,7 +400,13 @@ func (r *graphRuntimeAdapter) useLocalGraph() bool {
 	if r == nil || r.deps == nil {
 		return false
 	}
-	return r.deps.SecurityGraph != r.originalGraph || r.deps.SecurityGraphBuilder != r.originalBuilder
+	if r.deps.SecurityGraphBuilder != nil {
+		return true
+	}
+	if r.fallback != nil {
+		return false
+	}
+	return r.deps.SecurityGraph != nil
 }
 
 func (r *graphRuntimeAdapter) CurrentSecurityGraph() *graph.Graph {
@@ -303,6 +421,62 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraph() *graph.Graph {
 	}
 	if r.deps != nil {
 		return r.deps.SecurityGraph
+	}
+	return nil
+}
+
+func (r *graphRuntimeAdapter) CurrentSecurityGraphStore() graph.GraphStore {
+	if r == nil {
+		return nil
+	}
+	if r.useLocalGraph() && r.deps != nil && r.deps.SecurityGraph != nil {
+		return r.deps.SecurityGraph
+	}
+	if scoped, ok := r.fallback.(interface {
+		CurrentSecurityGraphStore() graph.GraphStore
+	}); ok {
+		return scoped.CurrentSecurityGraphStore()
+	}
+	return r.CurrentSecurityGraph()
+}
+
+func (r *graphRuntimeAdapter) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
+	if r.useLocalGraph() && r.deps != nil {
+		if r.deps.SecurityGraph == nil {
+			return nil
+		}
+		return r.deps.SecurityGraph.SubgraphForTenant(tenantID)
+	}
+	if scoped, ok := r.fallback.(interface {
+		CurrentSecurityGraphForTenant(string) *graph.Graph
+	}); ok {
+		return scoped.CurrentSecurityGraphForTenant(tenantID)
+	}
+	current := r.CurrentSecurityGraph()
+	if current == nil {
+		return nil
+	}
+	return current.SubgraphForTenant(tenantID)
+}
+
+func (r *graphRuntimeAdapter) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphStore {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return r.CurrentSecurityGraphStore()
+	}
+	if r.useLocalGraph() && r.deps != nil {
+		if r.deps.SecurityGraph == nil {
+			return nil
+		}
+		return r.deps.SecurityGraph.SubgraphForTenant(tenantID)
+	}
+	if scoped, ok := r.fallback.(interface {
+		CurrentSecurityGraphStoreForTenant(string) graph.GraphStore
+	}); ok {
+		return scoped.CurrentSecurityGraphStoreForTenant(tenantID)
+	}
+	if current := r.CurrentSecurityGraphForTenant(tenantID); current != nil {
+		return current
 	}
 	return nil
 }
@@ -371,6 +545,19 @@ func (r *graphRuntimeAdapter) RebuildSecurityGraph(ctx context.Context) error {
 	}
 	r.setSnapshot(app.GraphBuildSuccess, builtAt, nil)
 	return nil
+}
+
+func (r *graphRuntimeAdapter) CanApplySecurityGraphChanges() bool {
+	if r == nil {
+		return false
+	}
+	if r.useLocalGraph() {
+		return r.localBuilder() != nil
+	}
+	if capable, ok := r.fallback.(graphChangeApplyCapability); ok {
+		return capable.CanApplySecurityGraphChanges()
+	}
+	return r.originalBuilder != nil
 }
 
 func (r *graphRuntimeAdapter) TryApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, bool, error) {

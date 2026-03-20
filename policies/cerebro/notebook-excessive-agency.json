@@ -1,15 +1,17 @@
 {
   "id": "notebook-excessive-agency",
-  "control_id": "wc-id-2273",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Notebook with excessive agency",
   "description": "A notebook has excessive permissions that could lead to unintended resource access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "ai::notebook",
   "conditions": [
-    "execution_role.has_admin_role == true OR can_access_production_data == true"
+    "(cmp_eq(path(resource, \"execution_role.has_admin_role\"), true)) || (cmp_eq(path(resource, \"can_access_production_data\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Reduce notebook execution role permissions. Separate development and production access.",
   "tags": [
     "wiz",
     "ai",
@@ -17,6 +19,8 @@
     "agency",
     "permissions"
   ],
+  "control_id": "wc-id-2273",
+  "remediation": "Reduce notebook execution role permissions. Separate development and production access.",
   "frameworks": [
     {
       "name": "NIST 800-53 r5",

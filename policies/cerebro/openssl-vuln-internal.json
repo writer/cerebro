@@ -1,21 +1,25 @@
 {
   "id": "openssl-vuln-internal",
-  "control_id": "wc-id-997",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internal VM/serverless vulnerable to CVE-2022-3602 or CVE-2022-3786 (OpenSSL vulnerability)",
   "description": "An internal resource is vulnerable to OpenSSL buffer overflow vulnerabilities",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "vulnerabilities ANY (cve_id IN ('CVE-2022-3602', 'CVE-2022-3786'))"
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, in_list(path(item, \"cve_id\"), [\"CVE-2022-3602\",\"CVE-2022-3786\"]))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Update OpenSSL to version 3.0.7 or later.",
   "tags": [
     "wiz",
     "compute",
     "vulnerability",
     "openssl"
   ],
+  "control_id": "wc-id-997",
+  "remediation": "Update OpenSSL to version 3.0.7 or later.",
   "risk_categories": [
     "VULNERABILITY"
   ],

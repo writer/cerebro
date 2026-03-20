@@ -1,22 +1,26 @@
 {
   "id": "ai-model-third-party-access",
-  "control_id": "wc-id-2274",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "3rd party access to AI model in bucket",
   "description": "A third party has access to AI model artifacts stored in a bucket",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "storage::bucket",
   "conditions": [
-    "contains_ml_model == true",
-    "iam_policy.principals ANY (is_third_party == true)"
+    "cmp_eq(path(resource, \"contains_ml_model\"), true)",
+    "list_value(path(resource, \"iam_policy.principals\")).exists(item, cmp_eq(path(item, \"is_third_party\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Review and restrict third-party access to AI model artifacts. Implement proper model governance.",
   "tags": [
     "wiz",
     "ai",
     "third-party",
     "model-security"
   ],
+  "control_id": "wc-id-2274",
+  "remediation": "Review and restrict third-party access to AI model artifacts. Implement proper model governance.",
   "frameworks": [
     {
       "name": "NIST 800-53 r5",

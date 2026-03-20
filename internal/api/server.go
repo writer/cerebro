@@ -6,7 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"runtime"
+	goruntime "runtime"
 	"strings"
 	"sync"
 	"time"
@@ -17,21 +17,44 @@ import (
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/graph"
 	reports "github.com/writer/cerebro/internal/graph/reports"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 	"github.com/writer/cerebro/internal/health"
+	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/metrics"
+	cerebroruntime "github.com/writer/cerebro/internal/runtime"
 	"github.com/writer/cerebro/internal/snowflake"
 )
 
 // Server is the fully wired API server
 type Server struct {
 	app                      *serverDependencies
+	graphAdvisory            graphAdvisoryService
+	findingsCompliance       findingsComplianceService
+	entitiesImpact           entitiesImpactService
+	graphRuleDiscovery       graphRuleDiscoveryService
+	graphSimulation          graphSimulationService
+	graphRisk                graphRiskService
 	graphIntelligence        graphIntelligenceService
+	graphWriteback           graphWritebackService
+	agentSDKAdmin            agentSDKAdminService
+	lineage                  lineageService
+	orgAnalysis              orgAnalysisService
+	platformExecutions       platformExecutionService
+	platformKnowledge        platformKnowledgeService
+	platformWorkloadScan     platformWorkloadScanService
+	rbacAdmin                rbacAdminService
+	remediationOperations    remediationOperationsService
+	schedulerOperations      schedulerOperationsService
+	syncHandlers             syncHandlerService
+	ticketingOps             ticketingService
+	threatRuntime            threatRuntimeService
 	router                   *chi.Mux
 	auditLogger              auditLogWriter
 	rateLimiter              *RateLimiter
 	riskEngineMu             sync.Mutex
-	riskEngine               *graph.RiskEngine
+	riskEngine               *risk.RiskEngine
 	riskEngineSource         *graph.Graph
+	riskEngineSnapshotKey    string
 	crossTenantReplayMu      sync.Mutex
 	crossTenantReplay        map[string]time.Time
 	platformJobMu            sync.RWMutex
@@ -54,7 +77,7 @@ type auditLogWriter interface {
 	Log(ctx context.Context, entry *snowflake.AuditEntry) error
 }
 
-var runtimeNumGoroutine = runtime.NumGoroutine
+var runtimeNumGoroutine = goruntime.NumGoroutine
 
 // NewServer creates a new server with all services wired
 func NewServer(application *app.App) *Server {
@@ -68,12 +91,114 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if deps.Logger == nil {
 		deps.Logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 	}
+	if deps.RuntimeIngest == nil && deps.ExecutionStore != nil {
+		ingestStore, err := cerebroruntime.NewSQLiteIngestStoreWithExecutionStore(deps.ExecutionStore)
+		if err != nil {
+			deps.Logger.Warn("failed to initialize runtime ingest bloom fast path; using durable dedupe only", "error", err)
+			ingestStore = cerebroruntime.NewSQLiteIngestStoreWithoutBloom(deps.ExecutionStore)
+		}
+		deps.RuntimeIngest = ingestStore
+	}
 	if adapter, ok := deps.graphRuntime.(*graphRuntimeAdapter); ok {
 		adapter.deps = &deps
 	}
+	if deps.Identity == nil {
+		deps.Identity = identity.NewService(
+			identity.WithExecutionStore(deps.ExecutionStore),
+			identity.WithGraphResolver(func(ctx context.Context) *graph.Graph {
+				view, err := currentOrStoredTenantGraphView(ctx, &deps)
+				if err != nil {
+					return nil
+				}
+				return view
+			}),
+		)
+	}
+	platformKnowledge := deps.platformKnowledge
+	if platformKnowledge == nil {
+		platformKnowledge = newPlatformKnowledgeService(&deps)
+	}
+	rbacAdmin := deps.rbacAdmin
+	if rbacAdmin == nil {
+		rbacAdmin = newRBACAdminService(&deps)
+	}
+	agentSDKAdmin := deps.agentSDKAdmin
+	if agentSDKAdmin == nil {
+		agentSDKAdmin = newAgentSDKAdminService(&deps)
+	}
+	entitiesImpact := deps.entitiesImpact
+	if entitiesImpact == nil {
+		entitiesImpact = newEntitiesImpactService(&deps)
+	}
+	graphAdvisory := deps.graphAdvisory
+	if graphAdvisory == nil {
+		graphAdvisory = newGraphAdvisoryService(&deps)
+	}
+	lineage := deps.lineage
+	if lineage == nil {
+		lineage = newLineageService(&deps)
+	}
+	remediationOperations := deps.remediationOperations
+	if remediationOperations == nil {
+		remediationOperations = newRemediationOperationsService(&deps)
+	}
+	schedulerOperations := deps.schedulerOperations
+	if schedulerOperations == nil {
+		schedulerOperations = newSchedulerOperationsService(&deps)
+	}
+	orgAnalysis := deps.orgAnalysis
+	if orgAnalysis == nil {
+		orgAnalysis = newOrgAnalysisService(&deps)
+	}
+	platformExecutions := deps.platformExecutions
+	if platformExecutions == nil {
+		platformExecutions = newPlatformExecutionService(&deps)
+	}
+	platformWorkloadScan := deps.platformWorkloadScan
+	if platformWorkloadScan == nil {
+		platformWorkloadScan = newPlatformWorkloadScanService(&deps)
+	}
+	graphRuleDiscovery := deps.graphRuleDiscovery
+	if graphRuleDiscovery == nil {
+		graphRuleDiscovery = newGraphRuleDiscoveryService(nil)
+	}
+	graphSimulation := deps.graphSimulation
+	if graphSimulation == nil {
+		graphSimulation = newGraphSimulationService(&deps)
+	}
+	ticketingOps := deps.ticketingOps
+	if ticketingOps == nil {
+		ticketingOps = newTicketingService(&deps)
+	}
+	threatRuntime := deps.threatRuntime
+	if threatRuntime == nil {
+		threatRuntime = newThreatRuntimeService(&deps)
+	}
+	syncHandlers := deps.syncHandlers
+	if syncHandlers == nil {
+		syncHandlers = newSyncHandlerService(&deps)
+	}
+	graphWriteback := deps.graphWriteback
 	s := &Server{
 		app:                    &deps,
+		agentSDKAdmin:          agentSDKAdmin,
+		entitiesImpact:         entitiesImpact,
+		graphAdvisory:          graphAdvisory,
+		findingsCompliance:     newFindingsComplianceService(&deps),
+		graphRuleDiscovery:     graphRuleDiscovery,
+		graphSimulation:        graphSimulation,
 		graphIntelligence:      newGraphIntelligenceService(&deps),
+		lineage:                lineage,
+		orgAnalysis:            orgAnalysis,
+		platformExecutions:     platformExecutions,
+		platformKnowledge:      platformKnowledge,
+		platformWorkloadScan:   platformWorkloadScan,
+		rbacAdmin:              rbacAdmin,
+		remediationOperations:  remediationOperations,
+		schedulerOperations:    schedulerOperations,
+		syncHandlers:           syncHandlers,
+		ticketingOps:           ticketingOps,
+		threatRuntime:          threatRuntime,
 		router:                 chi.NewRouter(),
 		auditLogger:            deps.AuditRepo,
 		crossTenantReplay:      make(map[string]time.Time),
@@ -84,6 +209,14 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		agentSDKMCPSessions:    make(map[string]*agentSDKMCPSession),
 		agentSDKReportProgress: make(map[string]agentSDKReportProgressSubscription),
 	}
+	if _, ok := graphRuleDiscovery.(serverGraphRuleDiscoveryService); ok {
+		s.graphRuleDiscovery = newGraphRuleDiscoveryService(s)
+	}
+	s.graphRisk = newGraphRiskService(s, &deps)
+	if graphWriteback == nil {
+		graphWriteback = newGraphWritebackService(s, &deps)
+	}
+	s.graphWriteback = graphWriteback
 	if cfg := deps.Config; cfg != nil {
 		var (
 			store *reports.ReportRunStore
@@ -162,13 +295,7 @@ func (s *Server) Run() error {
 	s.app.Logger.Info("starting server", "addr", addr)
 	defer s.Close()
 
-	srv := &http.Server{
-		Addr:         addr,
-		Handler:      s.router,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
+	srv := s.httpServer(addr)
 	return srv.ListenAndServe()
 }
 
@@ -183,7 +310,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		20000,
 	))
 
-	status, checks := runHealthChecks(r.Context(), liveness)
+	status, checks := runHealthChecks(r.Context(), liveness, s.healthCheckTimeout())
 
 	s.json(w, healthHTTPStatus(status), map[string]interface{}{
 		"status":    status,
@@ -197,7 +324,7 @@ func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	checks := map[string]health.CheckResult{}
 
 	if s.app.Health != nil {
-		status, checks = runHealthChecks(r.Context(), s.app.Health)
+		status, checks = runHealthChecks(r.Context(), s.app.Health, s.healthCheckTimeout())
 	}
 
 	s.json(w, healthHTTPStatus(status), map[string]interface{}{
@@ -220,7 +347,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		body["freshness"] = s.app.GraphFreshnessStatusSnapshot(now)
 	}
 	if s.app != nil && s.app.Health != nil {
-		status, checks := runHealthChecks(r.Context(), s.app.Health)
+		status, checks := runHealthChecks(r.Context(), s.app.Health, s.healthCheckTimeout())
 		body["health"] = map[string]any{
 			"status": status,
 			"checks": formatHealthChecks(checks),
@@ -269,15 +396,80 @@ func skipGraphBuildWarningHeaders(path string) bool {
 	}
 }
 
-func runHealthChecks(ctx context.Context, registry *health.Registry) (health.Status, map[string]health.CheckResult) {
+func runHealthChecks(ctx context.Context, registry *health.Registry, timeout time.Duration) (health.Status, map[string]health.CheckResult) {
 	if registry == nil {
 		return health.StatusUnknown, map[string]health.CheckResult{}
 	}
+	if timeout <= 0 {
+		timeout = (*app.Config)(nil).HealthCheckTimeoutOrDefault()
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
-	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	results := registry.RunAll(checkCtx)
 	return overallHealthStatus(results), results
+}
+
+func (s *Server) apiRequestTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).APIRequestTimeoutOrDefault()
+	}
+	return s.app.Config.APIRequestTimeoutOrDefault()
+}
+
+func (s *Server) apiMaxBodyBytes() int64 {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).APIMaxBodyBytesOrDefault()
+	}
+	return s.app.Config.APIMaxBodyBytesOrDefault()
+}
+
+func (s *Server) apiReadTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).APIReadTimeoutOrDefault()
+	}
+	return s.app.Config.APIReadTimeoutOrDefault()
+}
+
+func (s *Server) apiWriteTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).APIWriteTimeoutOrDefault()
+	}
+	return s.app.Config.APIWriteTimeoutOrDefault()
+}
+
+func (s *Server) apiIdleTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).APIIdleTimeoutOrDefault()
+	}
+	return s.app.Config.APIIdleTimeoutOrDefault()
+}
+
+func (s *Server) healthCheckTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).HealthCheckTimeoutOrDefault()
+	}
+	return s.app.Config.HealthCheckTimeoutOrDefault()
+}
+
+func (s *Server) httpServer(addr string) *http.Server {
+	return &http.Server{
+		Addr:         addr,
+		Handler:      s.router,
+		ReadTimeout:  s.apiReadTimeout(),
+		WriteTimeout: s.apiWriteTimeout(),
+		IdleTimeout:  s.apiIdleTimeout(),
+	}
+}
+
+func (s *Server) riskEngineStateTimeout() time.Duration {
+	if s == nil || s.app == nil {
+		return (*app.Config)(nil).GraphRiskEngineStateTimeoutOrDefault()
+	}
+	return s.app.Config.GraphRiskEngineStateTimeoutOrDefault()
 }
 
 func overallHealthStatus(results map[string]health.CheckResult) health.Status {
@@ -415,7 +607,7 @@ func (s *Server) adminHealth(w http.ResponseWriter, r *http.Request) {
 
 	// Snowflake status
 	if s.app.Snowflake != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), s.healthCheckTimeout())
 		start := time.Now()
 		err := s.app.Snowflake.Ping(ctx)
 		cancel()

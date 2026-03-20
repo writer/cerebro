@@ -1,20 +1,24 @@
 {
   "id": "github-org-2fa-disabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitHub Organization 2FA Not Required",
   "description": "GitHub organization does not require two-factor authentication for all members",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "github::organization",
   "conditions": [
-    "two_factor_requirement_enabled != true"
+    "cmp_ne(path(resource, \"two_factor_requirement_enabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Enable 'Require two-factor authentication' in organization security settings. Members without 2FA will be removed from the organization.",
   "tags": [
     "github",
     "authentication",
     "mfa",
     "cis-github-1.3.1"
   ],
+  "remediation": "Enable 'Require two-factor authentication' in organization security settings. Members without 2FA will be removed from the organization.",
   "risk_categories": [
     "IDENTITY_RISK"
   ],

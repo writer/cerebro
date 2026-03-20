@@ -1,21 +1,25 @@
 {
   "id": "aws-elb-https-only",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Load Balancer Listener Without HTTPS",
   "description": "Application or Network Load Balancer has a listener accepting unencrypted HTTP traffic",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::elbv2::listener",
   "conditions": [
-    "protocol == 'HTTP'",
-    "default_actions NOT CONTAINS (type == 'redirect' AND redirect_config.protocol == 'HTTPS')"
+    "cmp_eq(path(resource, \"protocol\"), \"HTTP\")",
+    "!(contains_value(path(resource, \"default_actions\"), \"type == 'redirect' AND redirect_config.protocol == 'HTTPS'\"))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Configure HTTP listeners to redirect to HTTPS. Remove plain HTTP listeners if not needed for redirects.",
   "tags": [
     "aws",
     "elb",
     "encryption",
     "transport-security"
   ],
+  "remediation": "Configure HTTP listeners to redirect to HTTPS. Remove plain HTTP listeners if not needed for redirects.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],

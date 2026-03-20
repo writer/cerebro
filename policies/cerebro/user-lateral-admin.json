@@ -1,15 +1,17 @@
 {
   "id": "user-lateral-admin",
-  "control_id": "wc-id-921",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "User account with lateral movement to admin in another account",
   "description": "A user account has an attack path that leads to admin privileges in another cloud account",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "iam::user",
   "conditions": [
-    "attack_paths ANY (target.is_admin == true AND target.is_cross_account == true)"
+    "list_value(path(resource, \"attack_paths\")).exists(item, (cmp_eq(path(item, \"target.is_admin\"), true)) \u0026\u0026 (cmp_eq(path(item, \"target.is_cross_account\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Break the attack path by removing trust relationships or reducing privileges. Implement proper IAM boundaries.",
   "tags": [
     "wiz",
     "identity",
@@ -17,6 +19,8 @@
     "admin",
     "cross-account"
   ],
+  "control_id": "wc-id-921",
+  "remediation": "Break the attack path by removing trust relationships or reducing privileges. Implement proper IAM boundaries.",
   "risk_categories": [
     "IDENTITY_RISK",
     "LATERAL_MOVEMENT",

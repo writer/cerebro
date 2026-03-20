@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -16,11 +17,6 @@ type graphSimulateRequest struct {
 }
 
 func (s *Server) simulateGraph(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	var req graphSimulateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request body")
@@ -47,8 +43,12 @@ func (s *Server) simulateGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.app.SecurityGraph.Simulate(delta)
+	result, err := s.graphSimulation.Simulate(r.Context(), delta)
 	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			s.errorFromErr(w, err)
+			return
+		}
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}

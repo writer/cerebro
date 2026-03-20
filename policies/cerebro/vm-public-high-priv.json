@@ -1,22 +1,26 @@
 {
   "id": "vm-public-high-priv",
-  "control_id": "wc-id-311",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed VM with high privileges",
   "description": "A publicly exposed virtual machine has high privileges that could enable lateral movement",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance",
   "conditions": [
-    "is_public == true",
-    "service_account.has_high_privilege == true OR attached_role.has_high_privilege == true"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "(cmp_eq(path(resource, \"service_account.has_high_privilege\"), true)) || (cmp_eq(path(resource, \"attached_role.has_high_privilege\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public access or reduce privileges. Use bastion hosts for access. Implement proper network segmentation.",
   "tags": [
     "wiz",
     "compute",
     "high-privilege",
     "public-exposure"
   ],
+  "control_id": "wc-id-311",
+  "remediation": "Remove public access or reduce privileges. Use bastion hosts for access. Implement proper network segmentation.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "LATERAL_MOVEMENT",

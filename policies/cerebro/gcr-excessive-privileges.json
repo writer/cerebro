@@ -1,21 +1,25 @@
 {
   "id": "gcr-excessive-privileges",
-  "control_id": "wc-id-453",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Google Container Registry allows excessive high privileges to user/service accounts",
   "description": "GCR grants excessive privileges that could allow supply chain attacks",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::artifact_registry::repository|gcp::container_registry::registry",
   "conditions": [
-    "iam_policy.bindings ANY (role IN ('roles/artifactregistry.admin', 'roles/artifactregistry.repoAdmin', 'roles/artifactregistry.writer', 'roles/storage.admin', 'roles/storage.objectAdmin') AND (members CONTAINS 'user:' OR members CONTAINS 'serviceAccount:'))"
+    "list_value(path(resource, \"iam_policy.bindings\")).exists(item, (in_list(path(item, \"role\"), [\"roles/artifactregistry.admin\",\"roles/artifactregistry.repoAdmin\",\"roles/artifactregistry.writer\",\"roles/storage.admin\",\"roles/storage.objectAdmin\"])) \u0026\u0026 ((contains_value(path(item, \"members\"), \"user:\")) || (contains_value(path(item, \"members\"), \"serviceAccount:\"))))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Restrict registry write access. Implement CI/CD-only push policies.",
   "tags": [
     "wiz",
     "gcp",
     "container-registry",
     "excessive-privileges"
   ],
+  "control_id": "wc-id-453",
+  "remediation": "Restrict registry write access. Implement CI/CD-only push policies.",
   "risk_categories": [
     "PRIVILEGE_ESCALATION"
   ],

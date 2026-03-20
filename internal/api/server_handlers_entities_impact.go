@@ -12,18 +12,17 @@ import (
 )
 
 func (s *Server) getEntityCohort(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	entityID := chi.URLParam(r, "id")
 	if strings.TrimSpace(entityID) == "" {
 		s.error(w, http.StatusBadRequest, "entity id required")
 		return
 	}
 
-	cohort, ok := graph.GetEntityCohort(s.app.SecurityGraph, entityID)
+	cohort, ok, err := s.entitiesImpact.GetEntityCohort(r.Context(), entityID)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "cohort not found")
 		return
@@ -33,18 +32,17 @@ func (s *Server) getEntityCohort(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getEntityOutlierScore(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	entityID := chi.URLParam(r, "id")
 	if strings.TrimSpace(entityID) == "" {
 		s.error(w, http.StatusBadRequest, "entity id required")
 		return
 	}
 
-	outlier, ok := graph.GetEntityOutlierScore(s.app.SecurityGraph, entityID)
+	outlier, ok, err := s.entitiesImpact.GetEntityOutlierScore(r.Context(), entityID)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
 	if !ok {
 		s.error(w, http.StatusNotFound, "outlier score not found")
 		return
@@ -54,11 +52,6 @@ func (s *Server) getEntityOutlierScore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) impactAnalysis(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	var req struct {
 		StartNode string `json:"start_node"`
 		Scenario  string `json:"scenario"`
@@ -90,7 +83,10 @@ func (s *Server) impactAnalysis(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	analyzer := graph.NewImpactPathAnalyzer(s.app.SecurityGraph)
-	result := analyzer.Analyze(req.StartNode, scenario, req.MaxDepth)
+	result, err := s.entitiesImpact.AnalyzeImpact(r.Context(), req.StartNode, scenario, req.MaxDepth)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, result)
 }

@@ -1,0 +1,55 @@
+{
+  "process_kprobe": {
+    "process": {
+      "exec_id": "exec-file-1",
+      "pid": 64746,
+      "uid": 0,
+      "cwd": "/",
+      "binary": "/bin/vi",
+      "arguments": "/etc/passwd",
+      "flags": "execve rootcwd clone",
+      "start_time": "2024-04-14T02:18:02.240856427Z",
+      "pod": {
+        "namespace": "default",
+        "name": "file-access",
+        "workload": "file-access",
+        "container": {
+          "id": "containerd://6b742e38",
+          "name": "file-access",
+          "image": {
+            "id": "docker.io/library/busybox@sha256:c3839dd8",
+            "name": "docker.io/library/busybox:latest"
+          }
+        },
+        "pod_labels": {
+          "run": "file-access"
+        }
+      },
+      "docker": "6b742e38",
+      "parent_exec_id": "parent-file-1"
+    },
+    "parent": {
+      "binary": "/bin/sh"
+    },
+    "function_name": "security_file_permission",
+    "args": [
+      {
+        "file_arg": {
+          "path": "/etc/passwd",
+          "permission": "-rw-r--r--"
+        }
+      },
+      {
+        "int_arg": 2
+      }
+    ],
+    "return": {
+      "int_arg": 0
+    },
+    "action": "KPROBE_ACTION_POST",
+    "policy_name": "file-monitoring",
+    "return_action": "KPROBE_ACTION_POST"
+  },
+  "node_name": "worker-1",
+  "time": "2024-04-14T02:18:14.376304204Z"
+}

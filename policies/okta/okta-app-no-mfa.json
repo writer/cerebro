@@ -1,21 +1,25 @@
 {
   "id": "okta-app-no-mfa",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Okta Application Without MFA Policy",
   "description": "Okta application does not have an authentication policy requiring MFA",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "okta::application",
   "conditions": [
-    "sign_on_policy.rules NOT ANY (actions.signon.factor_mode == 'MFA_REQUIRED')",
-    "label NOT MATCHES '.*(test|dev|sandbox).*'"
+    "!(list_value(path(resource, \"sign_on_policy.rules\")).exists(item, cmp_eq(path(item, \"actions.signon.factor_mode\"), \"MFA_REQUIRED\")))",
+    "!(matches_value(path(resource, \"label\"), \".*(test|dev|sandbox).*\"))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Create or update the application's sign-on policy to require MFA. Use Okta's authentication policies to enforce MFA for sensitive applications.",
   "tags": [
     "okta",
     "application",
     "mfa",
     "authentication"
   ],
+  "remediation": "Create or update the application's sign-on policy to require MFA. Use Okta's authentication policies to enforce MFA for sensitive applications.",
   "risk_categories": [
     "IDENTITY_RISK"
   ],

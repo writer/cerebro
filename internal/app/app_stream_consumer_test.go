@@ -8,6 +8,7 @@ import (
 
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestEnsureSecurityGraph_ConcurrentInitSingleInstance(t *testing.T) {
@@ -40,6 +41,22 @@ func TestEnsureSecurityGraph_ConcurrentInitSingleInstance(t *testing.T) {
 		if g != first {
 			t.Fatalf("expected a single graph instance, got %p and %p", first, g)
 		}
+	}
+}
+
+func TestStopTapGraphConsumer_NoConsumerNoop(t *testing.T) {
+	a := &App{}
+	if err := a.stopTapGraphConsumer(context.Background()); err != nil {
+		t.Fatalf("stopTapGraphConsumer() error = %v, want nil", err)
+	}
+}
+
+func TestCloudEventTypeFallsBackToSubject(t *testing.T) {
+	evt := events.CloudEvent{
+		Subject: " ensemble.tap.github.pull_request.updated ",
+	}
+	if got := cloudEventType(evt); got != "ensemble.tap.github.pull_request.updated" {
+		t.Fatalf("cloudEventType() = %q, want ensemble.tap.github.pull_request.updated", got)
 	}
 }
 
@@ -86,6 +103,141 @@ func TestHandleTapCloudEventWaitsForGraphReady(t *testing.T) {
 	}
 }
 
+func TestResolveTapMappingIdentityPrefersScopedResolveGraph(t *testing.T) {
+	live := graph.New()
+	scoped := graph.New()
+	a := &App{SecurityGraph: live}
+	evt := events.CloudEvent{
+		ID:   "evt-tap-identity-1",
+		Type: "ensemble.tap.github.pull_request.updated",
+		Time: time.Date(2026, 3, 19, 18, 0, 0, 0, time.UTC),
+	}
+
+	if err := a.withTapResolveGraph(scoped, func() error {
+		if got := a.resolveTapMappingIdentity("alice@example.com", evt); got != "person:alice@example.com" {
+			t.Fatalf("resolveTapMappingIdentity() = %q, want person:alice@example.com", got)
+		}
+		if a.currentTapResolveGraph() != scoped {
+			t.Fatal("expected scoped resolve graph to remain active inside callback")
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("withTapResolveGraph returned error: %v", err)
+	}
+
+	if a.currentTapResolveGraph() != nil {
+		t.Fatal("expected scoped resolve graph to be cleared after callback")
+	}
+	if _, ok := scoped.GetNode("person:alice@example.com"); !ok {
+		t.Fatal("expected scoped resolve graph to receive resolved identity node")
+	}
+	if _, ok := live.GetNode("person:alice@example.com"); ok {
+		t.Fatal("expected live graph to remain untouched while scoped resolve graph is active")
+	}
+}
+
+func TestResolveTapMappingIdentityCanonicalizesEmailWithoutLiveGraph(t *testing.T) {
+	a := &App{}
+	evt := events.CloudEvent{
+		ID:   "evt-email-only",
+		Type: "ensemble.tap.slack.user.updated",
+		Time: time.Date(2026, 3, 12, 9, 0, 0, 0, time.UTC),
+	}
+
+	if got := a.resolveTapMappingIdentity(" Alice@Example.com ", evt); got != "person:alice@example.com" {
+		t.Fatalf("resolveTapMappingIdentity() = %q, want person:alice@example.com", got)
+	}
+	if a.CurrentSecurityGraph() != nil {
+		t.Fatalf("expected no live graph allocation, got %p", a.CurrentSecurityGraph())
+	}
+}
+
+func TestHandleGraphCloudEvent_AuditMutationPersistsCDCEvents(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{}
+	a := &App{Warehouse: store}
+	evt := events.CloudEvent{
+		ID:     "evt-audit-1",
+		Source: "urn:aws:cloudtrail",
+		Type:   "aws.cloudtrail.asset.changed",
+		Time:   time.Date(2026, 3, 14, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"table_name":  "aws_ec2_security_groups",
+			"resource_id": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123",
+			"change_type": "modified",
+			"account_id":  "123456789012",
+			"region":      "us-east-1",
+			"payload": map[string]any{
+				"arn":            "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123",
+				"group_id":       "sg-123",
+				"group_name":     "web",
+				"account_id":     "123456789012",
+				"region":         "us-east-1",
+				"ip_permissions": []map[string]any{{"IpRanges": []map[string]any{{"CidrIp": "0.0.0.0/0"}}}},
+			},
+		},
+	}
+
+	if err := a.handleGraphCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphCloudEvent failed: %v", err)
+	}
+	if len(store.CDCBatches) != 1 || len(store.CDCBatches[0]) != 1 {
+		t.Fatalf("expected one persisted audit CDC event, got %#v", store.CDCBatches)
+	}
+	got := store.CDCBatches[0][0]
+	if got.TableName != "aws_ec2_security_groups" {
+		t.Fatalf("expected table aws_ec2_security_groups, got %q", got.TableName)
+	}
+	if got.Provider != "aws" {
+		t.Fatalf("expected provider aws, got %q", got.Provider)
+	}
+	if got.ResourceID != "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123" {
+		t.Fatalf("unexpected resource id %q", got.ResourceID)
+	}
+}
+
+func TestHandleGraphCloudEvent_AuditMutationSkipsInvalidBatchRecords(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{}
+	a := &App{Warehouse: store}
+	evt := events.CloudEvent{
+		ID:     "evt-audit-batch-invalid-1",
+		Source: "urn:aws:cloudtrail",
+		Type:   "aws.cloudtrail.asset.changed",
+		Time:   time.Date(2026, 3, 14, 12, 30, 0, 0, time.UTC),
+		Data: map[string]any{
+			"mutations": []any{
+				map[string]any{
+					"payload": map[string]any{"id": "missing-table"},
+				},
+				map[string]any{
+					"table_name":  "aws_ec2_security_groups",
+					"change_type": "modified",
+					"resource_id": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456",
+					"payload": map[string]any{
+						"arn":        "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456",
+						"group_id":   "sg-456",
+						"group_name": "api",
+					},
+				},
+				map[string]any{
+					"table_name":  "aws_ec2_security_groups",
+					"change_type": "modified",
+					"payload":     map[string]any{},
+				},
+			},
+		},
+	}
+
+	if err := a.handleGraphCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleGraphCloudEvent failed: %v", err)
+	}
+	if len(store.CDCBatches) != 1 || len(store.CDCBatches[0]) != 1 {
+		t.Fatalf("expected one persisted audit CDC event from valid subset, got %#v", store.CDCBatches)
+	}
+	if got := store.CDCBatches[0][0].ResourceID; got != "arn:aws:ec2:us-east-1:123456789012:security-group/sg-456" {
+		t.Fatalf("unexpected persisted resource id %q", got)
+	}
+}
+
 func TestParseTapType(t *testing.T) {
 	system, entity, action := parseTapType("ensemble.tap.stripe.customer.created")
 	if system != "stripe" || entity != "customer" || action != "created" {
@@ -100,6 +252,182 @@ func TestParseTapType(t *testing.T) {
 	channel, interactionType := parseTapInteractionType("ensemble.tap.interaction.gong.call_completed")
 	if channel != "gong" || interactionType != "call_completed" {
 		t.Fatalf("unexpected interaction parse result: channel=%q type=%q", channel, interactionType)
+	}
+}
+
+func TestBuildTapBusinessEventPlan_ParsesWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.salesforce.opportunity.updated",
+		Time: time.Date(2026, 3, 11, 18, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"entity_id": "opp-1",
+			"snapshot": map[string]any{
+				"name":             "Renewal Opp",
+				"LastModifiedDate": "2026-03-11T18:00:00Z",
+				"account_id":       "acct-1",
+			},
+			"changes": map[string]any{
+				"CloseDate": map[string]any{
+					"old": "2026-04-01",
+					"new": "2026-04-15",
+				},
+			},
+		},
+	}
+
+	plan, ok := buildTapBusinessEventPlan("salesforce", "opportunity", "updated", evt.Type, evt, map[string]any{
+		"close_date_push_count": 1,
+	})
+	if !ok {
+		t.Fatal("expected business plan to be created")
+	}
+	if plan.Node == nil || plan.Node.ID != "salesforce:opportunity:opp-1" {
+		t.Fatalf("plan.Node.ID = %v, want salesforce:opportunity:opp-1", plan.Node)
+	}
+	if got := toInt(plan.Node.Properties["close_date_push_count"]); got != 2 {
+		t.Fatalf("close_date_push_count = %d, want 2", got)
+	}
+	if len(plan.TargetStubs) != 1 || plan.TargetStubs[0].ID != "salesforce:account:acct-1" {
+		t.Fatalf("TargetStubs = %#v, want account stub", plan.TargetStubs)
+	}
+	if len(plan.Edges) != 1 || plan.Edges[0].Kind != graph.EdgeKindOwns {
+		t.Fatalf("Edges = %#v, want one owns edge", plan.Edges)
+	}
+}
+
+func TestBuildTapBusinessEventPlan_UsesIDFallbackAndDeletedFlagWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.stripe.customer.deleted",
+		Time: time.Date(2026, 3, 11, 18, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"id": "cus_123",
+		},
+	}
+
+	plan, ok := buildTapBusinessEventPlan("stripe", "customer", "deleted", evt.Type, evt, nil)
+	if !ok {
+		t.Fatal("expected business plan to be created from id fallback")
+	}
+	if plan.Node == nil || plan.Node.ID != "stripe:customer:cus_123" {
+		t.Fatalf("plan.Node = %#v, want stripe:customer:cus_123", plan.Node)
+	}
+	got, _ := plan.Node.Properties["inactive"].(bool)
+	if !got {
+		t.Fatalf("inactive = %v, want true", plan.Node.Properties["inactive"])
+	}
+}
+
+func TestBuildTapInteractionEventPlan_ParsesWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.interaction.slack.message",
+		Time: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"participants": []any{
+				map[string]any{"email": "alice@example.com", "name": "Alice"},
+				map[string]any{"email": "bob@example.com", "name": "Bob"},
+			},
+			"duration_minutes": 10,
+		},
+	}
+
+	plan, ok := buildTapInteractionEventPlan(evt.Type, evt)
+	if !ok {
+		t.Fatal("expected interaction plan to be created")
+	}
+	if plan.Channel != "slack" || plan.InteractionType != "message" {
+		t.Fatalf("channel/type = %q/%q, want slack/message", plan.Channel, plan.InteractionType)
+	}
+	if plan.Duration != 10*time.Minute {
+		t.Fatalf("Duration = %s, want 10m", plan.Duration)
+	}
+	if len(plan.Participants) != 2 || plan.Participants[0].ID != "person:alice@example.com" || plan.Participants[1].ID != "person:bob@example.com" {
+		t.Fatalf("Participants = %#v, want normalized person IDs", plan.Participants)
+	}
+}
+
+func TestParseTapInteractionParticipants_DedupesAcrossScalarAndSliceFields(t *testing.T) {
+	participants := parseTapInteractionParticipants(map[string]any{
+		"source_person_email": "Alice@Example.com",
+		"attendees": []any{
+			"alice@example.com",
+			map[string]any{"email": "bob@example.com", "name": "Bob"},
+		},
+	})
+
+	if len(participants) != 2 {
+		t.Fatalf("len(participants) = %d, want 2 (%#v)", len(participants), participants)
+	}
+	if participants[0].ID != "person:alice@example.com" || participants[0].Name != "alice@example.com" {
+		t.Fatalf("participants[0] = %#v, want normalized Alice fallback", participants[0])
+	}
+	if participants[1].ID != "person:bob@example.com" || participants[1].Name != "Bob" {
+		t.Fatalf("participants[1] = %#v, want normalized Bob", participants[1])
+	}
+}
+
+func TestBuildTapActivityEventPlan_ParsesWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		ID:   "evt-activity-1",
+		Type: "ensemble.tap.activity.gong.call_completed",
+		Time: time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"actor": map[string]any{
+				"email": "alice@example.com",
+				"name":  "Alice",
+			},
+			"target": map[string]any{
+				"id":   "deal-123",
+				"type": "deal",
+				"name": "Enterprise Renewal",
+			},
+			"action": "call_completed",
+			"metadata": map[string]any{
+				"duration_seconds": 1800,
+			},
+		},
+	}
+
+	plan, ok := buildTapActivityEventPlan("gong", "call_completed", evt)
+	if !ok {
+		t.Fatal("expected activity plan to be created")
+	}
+	if plan.Actor == nil || plan.Actor.ID != "person:alice@example.com" {
+		t.Fatalf("Actor = %#v, want person:alice@example.com", plan.Actor)
+	}
+	if plan.Target == nil || plan.Target.ID != "gong:deal:deal-123" {
+		t.Fatalf("Target = %#v, want gong:deal:deal-123", plan.Target)
+	}
+	if plan.Activity == nil || plan.Activity.ID != "action:gong:call_completed:evt-activity-1" {
+		t.Fatalf("Activity = %#v, want action:gong:call_completed:evt-activity-1", plan.Activity)
+	}
+	if plan.ActivityTarget == nil || plan.ActivityTarget.Kind != graph.EdgeKindTargets {
+		t.Fatalf("ActivityTarget = %#v, want targets edge", plan.ActivityTarget)
+	}
+}
+
+func TestBuildTapActivityEventPlan_UsesScalarFallbackFieldsWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		ID:   "evt-activity-2",
+		Type: "ensemble.tap.activity.salesforce.note_created",
+		Time: time.Date(2026, 3, 8, 12, 30, 0, 0, time.UTC),
+		Data: map[string]any{
+			"actor_email": "owner@example.com",
+			"entity_id":   "acct-42",
+		},
+	}
+
+	plan, ok := buildTapActivityEventPlan("salesforce", "note_created", evt)
+	if !ok {
+		t.Fatal("expected activity plan to be created from scalar fallback fields")
+	}
+	if plan.Actor == nil || plan.Actor.ID != "person:owner@example.com" {
+		t.Fatalf("Actor = %#v, want person:owner@example.com", plan.Actor)
+	}
+	if plan.Target == nil || plan.Target.ID != "salesforce:entity:acct-42" {
+		t.Fatalf("Target = %#v, want salesforce:entity:acct-42", plan.Target)
+	}
+	if plan.Activity == nil || plan.Activity.Name != "note_created" {
+		t.Fatalf("Activity = %#v, want default action name note_created", plan.Activity)
 	}
 }
 
@@ -130,6 +458,73 @@ func TestDeriveComputedFields(t *testing.T) {
 	}, nil, nil, now)
 	if got := toInt(stripe["days_until_trial_end"]); got <= 0 {
 		t.Fatalf("expected positive days_until_trial_end, got %d", got)
+	}
+}
+
+func TestDeriveTapActivityNodeKind(t *testing.T) {
+	if got := deriveTapActivityNodeKind("slack", "thread_replied", map[string]any{
+		"thread_id":  "thread-1",
+		"channel_id": "channel-1",
+	}); got != graph.NodeKindThread {
+		t.Fatalf("deriveTapActivityNodeKind(thread) = %q, want %q", got, graph.NodeKindThread)
+	}
+
+	if got := deriveTapActivityNodeKind("github", "pr_opened", map[string]any{
+		"repository": "upstream/cerebro",
+		"number":     "42",
+	}); got != graph.NodeKindPullRequest {
+		t.Fatalf("deriveTapActivityNodeKind(pr) = %q, want %q", got, graph.NodeKindPullRequest)
+	}
+
+	if got := deriveTapActivityNodeKind("crm", "note_updated", map[string]any{}); got != graph.NodeKindAction {
+		t.Fatalf("deriveTapActivityNodeKind(action) = %q, want %q", got, graph.NodeKindAction)
+	}
+}
+
+func TestInferTapActivityStatus_UsesActionFallbacks(t *testing.T) {
+	if got := inferTapActivityStatus("deploy_failed", map[string]any{}); got != "failed" {
+		t.Fatalf("inferTapActivityStatus(failed) = %q, want failed", got)
+	}
+	if got := inferTapActivityStatus("ticket_opened", map[string]any{}); got != "open" {
+		t.Fatalf("inferTapActivityStatus(open) = %q, want open", got)
+	}
+	if got := inferTapActivityStatus("commented", map[string]any{}); got != "updated" {
+		t.Fatalf("inferTapActivityStatus(updated) = %q, want updated", got)
+	}
+}
+
+func TestExtractBusinessEdges(t *testing.T) {
+	edges := extractBusinessEdges("hubspot", "contact", "hubspot:contact:contact-1", map[string]any{
+		"company_id": "company-1",
+		"owner_id":   "owner-1",
+		"name":       "Alice",
+	})
+	if len(edges) != 2 {
+		t.Fatalf("extractBusinessEdges len = %d, want 2", len(edges))
+	}
+
+	byTarget := map[string]*graph.Edge{}
+	for _, edge := range edges {
+		byTarget[edge.Target] = edge
+	}
+
+	company := byTarget["hubspot:company:company-1"]
+	if company == nil {
+		t.Fatal("expected company edge")
+	}
+	if company.Kind != graph.EdgeKindWorksAt {
+		t.Fatalf("company edge kind = %q, want %q", company.Kind, graph.EdgeKindWorksAt)
+	}
+	if company.Properties["derived_from"] != "company_id" {
+		t.Fatalf("company edge derived_from = %#v, want company_id", company.Properties["derived_from"])
+	}
+
+	owner := byTarget["hubspot:owner:owner-1"]
+	if owner == nil {
+		t.Fatal("expected owner edge")
+	}
+	if owner.Kind != graph.EdgeKindAssignedTo {
+		t.Fatalf("owner edge kind = %q, want %q", owner.Kind, graph.EdgeKindAssignedTo)
 	}
 }
 
@@ -709,6 +1104,61 @@ func TestHandleTapCloudEvent_SchemaEventRegistersRuntimeKinds(t *testing.T) {
 	}
 }
 
+func TestHandleTapSchemaEvent_RegistersKindsWithoutLiveGraph(t *testing.T) {
+	a := &App{}
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.schema.workday.updated",
+		Time: time.Date(2026, 3, 9, 11, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"integration": "workday",
+			"entity_types": []any{
+				map[string]any{
+					"kind": "tap_test_mapping_employee_v1",
+					"properties": map[string]any{
+						"title": map[string]any{"type": "string"},
+					},
+				},
+			},
+			"edge_types": []any{"tap_test_mapping_reports_to_v1"},
+		},
+	}
+
+	if err := a.handleTapSchemaEvent(evt.Type, evt); err != nil {
+		t.Fatalf("handleTapSchemaEvent failed: %v", err)
+	}
+	if a.SecurityGraph != nil {
+		t.Fatal("expected schema registration to avoid creating a live graph")
+	}
+	if !graph.IsNodeKindInCategory(graph.NodeKind("tap_test_mapping_employee_v1"), graph.NodeCategoryBusiness) {
+		t.Fatal("expected schema registration to infer business category without a live graph")
+	}
+	if !graph.GlobalSchemaRegistry().IsEdgeKindRegistered(graph.EdgeKind("tap_test_mapping_reports_to_v1")) {
+		t.Fatal("expected schema edge kind to register without a live graph")
+	}
+}
+
+func TestHandleTapSchemaEvent_EmptyEntityPayloadNoop(t *testing.T) {
+	a := &App{}
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.schema.workday.updated",
+		Time: time.Date(2026, 3, 9, 11, 30, 0, 0, time.UTC),
+		Data: map[string]any{
+			"integration": "workday",
+			"edge_types":  []any{"tap_test_unused_schema_edge_v1"},
+		},
+	}
+
+	if err := a.handleTapSchemaEvent(evt.Type, evt); err != nil {
+		t.Fatalf("handleTapSchemaEvent failed: %v", err)
+	}
+	if a.SecurityGraph != nil {
+		t.Fatal("expected empty schema payload to avoid creating a live graph")
+	}
+	if graph.GlobalSchemaRegistry().IsEdgeKindRegistered(graph.EdgeKind("tap_test_unused_schema_edge_v1")) {
+		t.Fatal("expected empty schema payload to skip edge registration")
+	}
+}
+
 func TestIsTapSchemaEventType(t *testing.T) {
 	cases := []struct {
 		eventType string
@@ -724,6 +1174,98 @@ func TestIsTapSchemaEventType(t *testing.T) {
 	for _, tc := range cases {
 		if got := isTapSchemaEventType(tc.eventType); got != tc.want {
 			t.Fatalf("isTapSchemaEventType(%q) = %v, want %v", tc.eventType, got, tc.want)
+		}
+	}
+}
+
+func TestParseTapSchemaEntities_ParsesWithoutGraph(t *testing.T) {
+	definitions := parseTapSchemaEntities(map[string]any{
+		"entities": []any{
+			map[string]any{
+				"kind":       "tap_test_user_v1",
+				"categories": []any{"identity", "business", "identity", "ignored"},
+				"schema": map[string]any{
+					"email":        map[string]any{"type": "STRING", "required": true},
+					"display_name": map[string]any{"data_type": "Text"},
+					"score":        "number",
+				},
+				"required_properties": []any{"external_id", "display_name"},
+				"relationships": []any{
+					"member_of",
+					map[string]any{"edge_kind": "reports_to"},
+					"member_of",
+				},
+				"capabilities": []any{
+					"internet_exposable",
+					"privileged_identity",
+					"ignored",
+				},
+				"description": "Test user definition",
+			},
+			map[string]any{
+				"schema": map[string]any{"orphaned": map[string]any{"type": "string"}},
+			},
+		},
+	})
+
+	if len(definitions) != 1 {
+		t.Fatalf("len(definitions) = %d, want 1", len(definitions))
+	}
+
+	got := definitions[0]
+	if got.Kind != "tap_test_user_v1" {
+		t.Fatalf("Kind = %q, want tap_test_user_v1", got.Kind)
+	}
+	if got.Description != "Test user definition" {
+		t.Fatalf("Description = %q, want Test user definition", got.Description)
+	}
+	if want := []graph.NodeKindCategory{graph.NodeCategoryBusiness, graph.NodeCategoryIdentity}; len(got.Categories) != len(want) || got.Categories[0] != want[0] || got.Categories[1] != want[1] {
+		t.Fatalf("Categories = %#v, want %#v", got.Categories, want)
+	}
+	if got.Properties["email"] != "string" || got.Properties["display_name"] != "text" || got.Properties["score"] != "number" {
+		t.Fatalf("Properties = %#v, want parsed property types", got.Properties)
+	}
+	if want := []string{"display_name", "email", "external_id"}; len(got.Required) != len(want) || got.Required[0] != want[0] || got.Required[1] != want[1] || got.Required[2] != want[2] {
+		t.Fatalf("Required = %#v, want %#v", got.Required, want)
+	}
+	if want := []graph.EdgeKind{"member_of", "reports_to"}; len(got.Relationships) != len(want) || got.Relationships[0] != want[0] || got.Relationships[1] != want[1] {
+		t.Fatalf("Relationships = %#v, want %#v", got.Relationships, want)
+	}
+	if want := []graph.NodeKindCapability{graph.NodeCapabilityInternetExposable, graph.NodeCapabilityPrivilegedIdentity}; len(got.Capabilities) != len(want) || got.Capabilities[0] != want[0] || got.Capabilities[1] != want[1] {
+		t.Fatalf("Capabilities = %#v, want %#v", got.Capabilities, want)
+	}
+}
+
+func TestParseTapSchemaIntegration_FallsBackToEventType(t *testing.T) {
+	cases := []struct {
+		name      string
+		eventType string
+		data      map[string]any
+		want      string
+	}{
+		{
+			name:      "schema-prefix",
+			eventType: "ensemble.tap.schema.workday.updated",
+			data:      map[string]any{},
+			want:      "workday",
+		},
+		{
+			name:      "integration-schema-prefix",
+			eventType: "ensemble.tap.github.schema.updated",
+			data:      map[string]any{},
+			want:      "github",
+		},
+		{
+			name:      "payload-wins",
+			eventType: "ensemble.tap.schema.workday.updated",
+			data:      map[string]any{"provider": "slack"},
+			want:      "slack",
+		},
+	}
+
+	for _, tc := range cases {
+		if got := parseTapSchemaIntegration(tc.eventType, tc.data); got != tc.want {
+			t.Fatalf("%s: parseTapSchemaIntegration() = %q, want %q", tc.name, got, tc.want)
 		}
 	}
 }

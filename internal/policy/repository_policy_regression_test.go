@@ -68,6 +68,56 @@ func TestRepositoryPoliciesRemainUniqueAndFullyLoadable(t *testing.T) {
 	}
 }
 
+func TestRepositoryResourceConditionPoliciesUseCELFormat(t *testing.T) {
+	policiesRoot := filepath.Clean("../../policies")
+
+	type repoPolicy struct {
+		ID              string   `json:"id"`
+		Resource        string   `json:"resource"`
+		Conditions      []string `json:"conditions"`
+		ConditionFormat string   `json:"condition_format"`
+	}
+
+	var legacyPaths []string
+
+	err := filepath.WalkDir(policiesRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || filepath.Ext(path) != ".json" {
+			return nil
+		}
+
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", path, err)
+		}
+		if isPolicyMetadataFile(raw) {
+			return nil
+		}
+
+		var p repoPolicy
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+
+		if strings.TrimSpace(p.Resource) == "" || len(p.Conditions) == 0 {
+			return nil
+		}
+		if normalizeConditionFormat(p.ConditionFormat) != ConditionFormatCEL {
+			legacyPaths = append(legacyPaths, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("condition-format inventory failed: %v", err)
+	}
+
+	if len(legacyPaths) > 0 {
+		t.Fatalf("resource condition policies still not migrated to CEL: %v", legacyPaths)
+	}
+}
+
 func TestRepositoryPolicyInventorySnapshot(t *testing.T) {
 	policiesRoot := filepath.Clean("../../policies")
 

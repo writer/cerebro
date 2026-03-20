@@ -6,6 +6,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/writer/cerebro/internal/metrics"
 )
 
 const (
@@ -72,6 +74,11 @@ type EntitySuggestCollection struct {
 }
 
 func SearchEntities(g *Graph, opts EntitySearchOptions) EntitySearchCollection {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphSearch("entity_search", time.Since(start))
+	}()
+
 	query := normalizeEntitySearchOptions(opts)
 	result := EntitySearchCollection{
 		GeneratedAt: temporalNowUTC(),
@@ -81,39 +88,11 @@ func SearchEntities(g *Graph, opts EntitySearchOptions) EntitySearchCollection {
 	if g == nil || query.Query == "" {
 		return result
 	}
-	if !g.IsIndexBuilt() {
-		g.BuildIndex()
-	}
 
 	normalizedQuery := entitySearchNormalize(query.Query)
 	queryTokens := entitySearchTokens(normalizedQuery)
 	queryTrigrams := entitySearchTrigrams(normalizedQuery)
-
-	g.mu.RLock()
-	candidateScores := make(map[string]float64)
-	for _, token := range queryTokens {
-		for _, id := range g.entitySearchTokenIndex[token] {
-			candidateScores[id] += 3
-		}
-	}
-	if utf8.RuneCountInString(normalizedQuery) < 3 {
-		for _, candidate := range g.entitySuggestIndex[normalizedQuery] {
-			candidateScores[candidate.EntityID] += 2
-		}
-	} else if query.Fuzzy || len(candidateScores) == 0 {
-		for _, trigram := range queryTrigrams {
-			for _, id := range g.entitySearchTrigramIndex[trigram] {
-				candidateScores[id] += 1
-			}
-		}
-	}
-	documents := make(map[string]entitySearchDocument, len(candidateScores))
-	for id := range candidateScores {
-		if doc, ok := g.entitySearchDocs[id]; ok {
-			documents[id] = doc
-		}
-	}
-	g.mu.RUnlock()
+	candidateScores, documents := g.snapshotEntitySearchCandidates(normalizedQuery, queryTokens, queryTrigrams, query.Fuzzy)
 
 	results := make([]EntitySearchResult, 0, len(candidateScores))
 	for id, baseScore := range candidateScores {
@@ -159,6 +138,11 @@ func SearchEntities(g *Graph, opts EntitySearchOptions) EntitySearchCollection {
 }
 
 func SuggestEntities(g *Graph, opts EntitySuggestOptions) EntitySuggestCollection {
+	start := time.Now()
+	defer func() {
+		metrics.ObserveGraphSearch("entity_suggest", time.Since(start))
+	}()
+
 	query := normalizeEntitySuggestOptions(opts)
 	result := EntitySuggestCollection{
 		GeneratedAt: temporalNowUTC(),
@@ -167,14 +151,9 @@ func SuggestEntities(g *Graph, opts EntitySuggestOptions) EntitySuggestCollectio
 	if g == nil || query.Prefix == "" {
 		return result
 	}
-	if !g.IsIndexBuilt() {
-		g.BuildIndex()
-	}
 
 	normalizedPrefix := entitySearchNormalize(query.Prefix)
-	g.mu.RLock()
-	candidates := append([]EntitySuggestion(nil), g.entitySuggestIndex[normalizedPrefix]...)
-	g.mu.RUnlock()
+	candidates := g.snapshotEntitySuggestions(normalizedPrefix)
 
 	if len(candidates) == 0 {
 		return result
@@ -217,6 +196,47 @@ func SuggestEntities(g *Graph, opts EntitySuggestOptions) EntitySuggestCollectio
 	return result
 }
 
+func (g *Graph) snapshotEntitySearchCandidates(normalizedQuery string, queryTokens, queryTrigrams []string, fuzzy bool) (map[string]float64, map[string]entitySearchDocument) {
+	needSuggestions := utf8.RuneCountInString(normalizedQuery) < 3
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.ensureEntitySearchIndexesLocked(needSuggestions)
+
+	candidateScores := make(map[string]float64)
+	for _, token := range queryTokens {
+		for _, id := range g.entitySearchTokenIndex[token] {
+			candidateScores[id] += 3
+		}
+	}
+	if needSuggestions {
+		for _, candidate := range g.entitySuggestIndex[normalizedQuery] {
+			candidateScores[candidate.EntityID] += 2
+		}
+	} else if fuzzy || len(candidateScores) == 0 {
+		for _, trigram := range queryTrigrams {
+			for _, id := range g.entitySearchTrigramIndex[trigram] {
+				candidateScores[id] += 1
+			}
+		}
+	}
+
+	documents := make(map[string]entitySearchDocument, len(candidateScores))
+	for id := range candidateScores {
+		if doc, ok := g.entitySearchDocs[id]; ok {
+			documents[id] = doc
+		}
+	}
+	return candidateScores, documents
+}
+
+func (g *Graph) snapshotEntitySuggestions(normalizedPrefix string) []EntitySuggestion {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.ensureEntitySearchIndexesLocked(true)
+	return append([]EntitySuggestion(nil), g.entitySuggestIndex[normalizedPrefix]...)
+}
+
 func buildEntitySearchDocument(node *Node) (entitySearchDocument, bool) {
 	if node == nil || node.DeletedAt != nil || !entityQueryAllowedNodeKind(node.Kind) {
 		return entitySearchDocument{}, false
@@ -254,6 +274,51 @@ func buildEntitySearchDocument(node *Node) (entitySearchDocument, bool) {
 		Tokens:             entitySearchTokens(searchText),
 		Suggestions:        compactEntitySearchStrings(suggestions),
 	}, true
+}
+
+func (g *Graph) ensureEntitySearchIndexesLocked(includeSuggestions bool) {
+	if !g.indexBuilt {
+		g.buildIndexLocked()
+	}
+	if includeSuggestions {
+		g.ensureEntitySuggestIndexBuiltLocked()
+	}
+}
+
+func (g *Graph) ensureEntitySuggestIndexBuiltLocked() {
+	if g.entitySuggestBuilt {
+		return
+	}
+	if g.entitySuggestIndex == nil {
+		g.entitySuggestIndex = make(map[string][]EntitySuggestion)
+	}
+	entitySuggestSets := make(map[string]map[string]EntitySuggestion)
+	for _, doc := range g.entitySearchDocs {
+		for _, suggestion := range doc.Suggestions {
+			normalized := entitySearchNormalize(suggestion)
+			if normalized == "" {
+				continue
+			}
+			runes := []rune(normalized)
+			for length := 1; length <= len(runes) && length <= 24; length++ {
+				prefix := string(runes[:length])
+				if entitySuggestSets[prefix] == nil {
+					entitySuggestSets[prefix] = make(map[string]EntitySuggestion)
+				}
+				key := doc.ID + "\x00" + normalized
+				entitySuggestSets[prefix][key] = EntitySuggestion{
+					EntityID: doc.ID,
+					Kind:     doc.Kind,
+					Name:     doc.Name,
+					Value:    suggestion,
+				}
+			}
+		}
+	}
+	for prefix, candidates := range entitySuggestSets {
+		g.entitySuggestIndex[prefix] = flattenEntitySuggestionSet(candidates)
+	}
+	g.entitySuggestBuilt = true
 }
 
 func scoreEntitySearchDocument(doc entitySearchDocument, query string, queryTokens []string) (float64, []string) {

@@ -1,20 +1,24 @@
 {
   "id": "gcp-iam-sa-no-admin-privileges",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Service Account No Admin Privileges",
   "description": "Service accounts should not have Owner or Editor roles at project level",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::iam::service_account",
   "conditions": [
-    "roles contains 'roles/owner' OR roles contains 'roles/editor'"
+    "(contains_value(path(resource, \"roles\"), \"roles/owner\")) || (contains_value(path(resource, \"roles\"), \"roles/editor\"))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Replace Owner/Editor with more specific roles following least privilege principle.",
   "tags": [
     "cis-gcp-1.5",
     "iam",
     "service-account",
     "least-privilege"
   ],
+  "remediation": "Replace Owner/Editor with more specific roles following least privilege principle.",
   "risk_categories": [
     "IDENTITY_RISK",
     "MISCONFIGURATION",

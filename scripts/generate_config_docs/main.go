@@ -23,10 +23,12 @@ const (
 )
 
 var envReaders = map[string]struct{}{
-	"getEnv":         {},
-	"getEnvInt":      {},
-	"getEnvBool":     {},
-	"getEnvDuration": {},
+	"getEnv":               {},
+	"getEnvInt":            {},
+	"getEnvBool":           {},
+	"getEnvDuration":       {},
+	"bootstrapConfigValue": {},
+	"bootstrapConfigInt":   {},
 }
 
 type envDoc struct {

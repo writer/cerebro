@@ -1,20 +1,24 @@
 {
   "id": "aws-sagemaker-endpoint-no-encryption",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "SageMaker Endpoint Without Encryption",
   "description": "SageMaker endpoint does not have KMS encryption configured",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::sagemaker::endpoint_configuration",
   "conditions": [
-    "kms_key_id == null"
+    "cmp_eq(path(resource, \"kms_key_id\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Configure KMS encryption for the SageMaker endpoint.",
   "tags": [
     "ai",
     "sagemaker",
     "encryption",
     "data-protection"
   ],
+  "remediation": "Configure KMS encryption for the SageMaker endpoint.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],
