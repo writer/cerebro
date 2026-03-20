@@ -148,6 +148,7 @@ func (g *Graph) restoreSnapshotNodeLocked(node *Node, activeOnly bool) bool {
 	if !g.applyNodeSchemaValidationLocked(restored) {
 		return false
 	}
+	restored.ordinal = g.internNodeOrdinalLocked(restored.ID)
 	hydrateNodeTypedProperties(restored)
 
 	if existing := g.nodes[restored.ID]; existing != nil && existing.DeletedAt == nil {
@@ -184,6 +185,8 @@ func (g *Graph) restoreSnapshotEdgeLocked(edge *Edge, activeOnly bool) bool {
 	if !g.applyEdgeSchemaValidationLocked(restored) {
 		return false
 	}
+	restored.sourceOrd = g.internNodeOrdinalLocked(restored.Source)
+	restored.targetOrd = g.internNodeOrdinalLocked(restored.Target)
 
 	if restored.ID != "" {
 		if existing := g.edgeByID[restored.ID]; existing != nil {

@@ -18,6 +18,7 @@ type Graph struct {
 	outEdges   map[string][]*Edge // source -> edges
 	inEdges    map[string][]*Edge // target -> edges
 	edgeByID   map[string]*Edge
+	nodeIDs    *NodeIDIndex
 	mu         sync.RWMutex
 	metadata   Metadata
 	changeFeed graphChangeFeed
@@ -92,6 +93,7 @@ func New() *Graph {
 		outEdges:                   make(map[string][]*Edge),
 		inEdges:                    make(map[string][]*Edge),
 		edgeByID:                   make(map[string]*Edge),
+		nodeIDs:                    NewNodeIDIndex(),
 		changeFeed:                 newGraphChangeFeed(),
 		blastRadiusVersion:         1,
 		blastRadiusNeedsCompaction: false,
@@ -581,6 +583,7 @@ func (g *Graph) Clear() {
 	g.activeNodeCount.Store(0)
 	g.activeEdgeCount.Store(0)
 	g.edgeByID = make(map[string]*Edge)
+	g.nodeIDs = NewNodeIDIndex()
 	g.sharedNodes = nil
 	g.sharedEdges = nil
 	g.sharedOutEdgeBuckets = nil
@@ -629,6 +632,44 @@ func (g *Graph) Metadata() Metadata {
 	return g.metadata
 }
 
+func (g *Graph) internNodeOrdinalLocked(id string) NodeOrdinal {
+	if g == nil {
+		return InvalidNodeOrdinal
+	}
+	if g.nodeIDs == nil {
+		g.nodeIDs = NewNodeIDIndex()
+	}
+	return g.nodeIDs.Intern(id)
+}
+
+func (g *Graph) lookupNodeOrdinalLocked(id string) (NodeOrdinal, bool) {
+	if g == nil || g.nodeIDs == nil {
+		return InvalidNodeOrdinal, false
+	}
+	return g.nodeIDs.Lookup(id)
+}
+
+func (g *Graph) resolveNodeOrdinalLocked(ordinal NodeOrdinal) (string, bool) {
+	if g == nil || g.nodeIDs == nil {
+		return "", false
+	}
+	return g.nodeIDs.Resolve(ordinal)
+}
+
+// LookupNodeOrdinal resolves a string node ID into its compact internal ordinal.
+func (g *Graph) LookupNodeOrdinal(id string) (NodeOrdinal, bool) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.lookupNodeOrdinalLocked(id)
+}
+
+// ResolveNodeOrdinal maps an internal ordinal back to its string node ID.
+func (g *Graph) ResolveNodeOrdinal(ordinal NodeOrdinal) (string, bool) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.resolveNodeOrdinalLocked(ordinal)
+}
+
 // BuildIndex builds all secondary indexes for O(1) lookups.
 // Should be called after bulk graph construction for optimal performance.
 func (g *Graph) BuildIndex() {
@@ -647,6 +688,10 @@ func (g *Graph) buildIndexWithTrigger(trigger string) {
 }
 
 func (g *Graph) buildIndexLocked() {
+	if g.nodeIDs == nil {
+		g.nodeIDs = NewNodeIDIndex()
+	}
+
 	// Initialize index maps
 	g.indexByKind = make(map[NodeKind][]*Node)
 	g.indexByAccount = make(map[string][]*Node)
@@ -672,6 +717,7 @@ func (g *Graph) buildIndexLocked() {
 		if node == nil || node.DeletedAt != nil {
 			continue
 		}
+		node.ordinal = g.internNodeOrdinalLocked(node.ID)
 		g.indexByKind[node.Kind] = append(g.indexByKind[node.Kind], node)
 
 		if node.Account != "" {
@@ -715,6 +761,8 @@ func (g *Graph) buildIndexLocked() {
 			if !g.activeEdgeLocked(edge) {
 				continue
 			}
+			edge.sourceOrd = g.internNodeOrdinalLocked(edge.Source)
+			edge.targetOrd = g.internNodeOrdinalLocked(edge.Target)
 			source, ok := g.nodes[edge.Source]
 			if !ok || source == nil {
 				continue
@@ -1040,6 +1088,7 @@ func (g *Graph) addNodeLocked(node *Node) bool {
 		node.Version = 1
 	}
 	node.DeletedAt = nil
+	node.ordinal = g.internNodeOrdinalLocked(node.ID)
 	hydrateNodeTypedProperties(node)
 	g.appendNodePropertiesHistoryLocked(node, node.UpdatedAt)
 	g.removeNodeFromLookupIndexesLocked(existing)
@@ -1141,6 +1190,8 @@ func (g *Graph) addEdgeLocked(edge *Edge) bool {
 	if !g.applyEdgeSchemaValidationLocked(edge) {
 		return false
 	}
+	edge.sourceOrd = g.internNodeOrdinalLocked(edge.Source)
+	edge.targetOrd = g.internNodeOrdinalLocked(edge.Target)
 
 	now := temporalNowUTC()
 	if edge.ID != "" {
@@ -1192,6 +1243,8 @@ func (g *Graph) replaceEdgeLocked(existing *Edge, next *Edge, now time.Time) boo
 		}
 	}
 	next.DeletedAt = nil
+	next.sourceOrd = g.internNodeOrdinalLocked(next.Source)
+	next.targetOrd = g.internNodeOrdinalLocked(next.Target)
 	if existing.DeletedAt != nil {
 		g.activeEdgeCount.Add(1)
 	}

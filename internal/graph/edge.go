@@ -90,6 +90,8 @@ type Edge struct {
 	CreatedAt  time.Time      `json:"created_at"`
 	DeletedAt  *time.Time     `json:"deleted_at,omitempty"`
 	Version    int            `json:"version"`
+	sourceOrd  NodeOrdinal    `json:"-"`
+	targetOrd  NodeOrdinal    `json:"-"`
 }
 
 // IsDeny returns true if this edge denies access

@@ -131,6 +131,7 @@ type Node struct {
 	Version             int                           `json:"version"`
 	PreviousProperties  map[string]any                `json:"previous_properties,omitempty"`
 	PropertyHistory     map[string][]PropertySnapshot `json:"property_history,omitempty"`
+	ordinal             NodeOrdinal                   `json:"-"`
 	observationProps    *ObservationProperties        `json:"-"`
 	attackSequenceProps *AttackSequenceProperties     `json:"-"`
 }

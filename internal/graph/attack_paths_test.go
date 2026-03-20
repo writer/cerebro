@@ -69,6 +69,79 @@ func TestAttackPathSimulatorFindShortestPathAvoidingHandlesCycles(t *testing.T) 
 	}
 }
 
+func TestAttackPathSimulatorFindShortestPathRespectsMaxLen(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "role", Kind: NodeKindRole, Name: "Role"})
+	g.AddNode(&Node{ID: "db", Kind: NodeKindDatabase, Name: "DB", Risk: RiskCritical})
+
+	g.AddEdge(&Edge{ID: "internet-role", Source: "internet", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-db", Source: "role", Target: "db", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	sim := NewAttackPathSimulator(g)
+	entry, ok := g.GetNode("internet")
+	if !ok {
+		t.Fatal("expected internet node")
+	}
+	target, ok := g.GetNode("db")
+	if !ok {
+		t.Fatal("expected db node")
+	}
+
+	if path := sim.findShortestPath(entry, target, 1); path != nil {
+		t.Fatalf("expected no path when maxLen is shorter than shortest path, got %#v", path)
+	}
+
+	path := sim.findShortestPath(entry, target, 2)
+	if path == nil {
+		t.Fatal("expected shortest path when maxLen matches path length")
+	}
+	if path.Length != 2 {
+		t.Fatalf("expected path length 2, got %d", path.Length)
+	}
+}
+
+func TestAttackPathSimulatorFindShortestPathParallelMatchesSequentialWideFrontier(t *testing.T) {
+	parallelGraph, _, _ := newAttackPathTraversalBenchmarkGraph(5, 4)
+	singleGraph, _, _ := newAttackPathTraversalBenchmarkGraph(5, 4)
+	single := runAttackShortestPathWithWorkers(singleGraph, 1)
+	parallel := runAttackShortestPathWithWorkers(parallelGraph, 8)
+
+	if single == nil || parallel == nil {
+		t.Fatalf("expected shortest paths, got single=%#v parallel=%#v", single, parallel)
+	}
+	if single.Length != parallel.Length {
+		t.Fatalf("path length mismatch: want %d got %d", single.Length, parallel.Length)
+	}
+	if len(single.Steps) != len(parallel.Steps) {
+		t.Fatalf("step count mismatch: want %d got %d", len(single.Steps), len(parallel.Steps))
+	}
+	for index := range single.Steps {
+		if single.Steps[index].FromNode != parallel.Steps[index].FromNode || single.Steps[index].ToNode != parallel.Steps[index].ToNode {
+			t.Fatalf("step %d mismatch: want %#v got %#v", index, single.Steps[index], parallel.Steps[index])
+		}
+	}
+}
+
+func runAttackShortestPathWithWorkers(graph *Graph, workers int) *ScoredAttackPath {
+	previous := parallelTraversalWorkerOverride
+	parallelTraversalWorkerOverride = workers
+	defer func() {
+		parallelTraversalWorkerOverride = previous
+	}()
+
+	sim := NewAttackPathSimulator(graph)
+	entry, ok := graph.GetNode("internet")
+	if !ok {
+		return nil
+	}
+	target, ok := graph.GetNode("target")
+	if !ok {
+		return nil
+	}
+	return sim.findShortestPath(entry, target, 8)
+}
+
 func TestFindChokepoints_DirectPaths(t *testing.T) {
 	// 4 direct Internet -> target paths with no shared intermediary.
 	// Targets appear on only 1 path each, so no chokepoints.
@@ -357,6 +430,78 @@ func TestAttackPathSimulatorAdjacencySnapshotSkipsDeletedNodesAndEdges(t *testin
 	}
 	if path.Steps[0].ToNode != "fresh" || path.Steps[1].ToNode != "target" {
 		t.Fatalf("expected path through fresh node, got %#v", path.Steps)
+	}
+}
+
+func TestAttackPathSimulatorForEachOutEdgeFallbackDoesNotInternMissingTargets(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddEdge(&Edge{ID: "internet-missing", Source: "internet", Target: "missing", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	nodeIDs := NewNodeIDIndex()
+	nodeIDs.Intern("internet")
+	sim := &AttackPathSimulator{
+		graph:   g,
+		nodeIDs: nodeIDs,
+	}
+
+	if _, ok := sim.nodeIDs.Lookup("missing"); ok {
+		t.Fatal("did not expect missing target to be interned before fallback traversal")
+	}
+
+	seenMissing := false
+	sim.forEachOutEdge("internet", func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
+		if targetID == "missing" {
+			seenMissing = true
+			if targetOrdinal != InvalidNodeOrdinal {
+				t.Fatalf("expected unresolved target to use invalid ordinal, got %d", targetOrdinal)
+			}
+		}
+		_ = kind
+		_ = effect
+		return true
+	})
+
+	if !seenMissing {
+		t.Fatal("expected fallback traversal to visit missing target edge")
+	}
+	if _, ok := sim.nodeIDs.Lookup("missing"); ok {
+		t.Fatal("did not expect fallback traversal to intern missing target")
+	}
+}
+
+func TestAttackPathSimulatorKShortestPathsFallbackRemovesUninternedTargets(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "alpha", Kind: NodeKindRole, Name: "Alpha"})
+	g.AddNode(&Node{ID: "beta", Kind: NodeKindRole, Name: "Beta"})
+	g.AddNode(&Node{ID: "target", Kind: NodeKindDatabase, Name: "Target", Risk: RiskCritical})
+
+	g.AddEdge(&Edge{ID: "internet-alpha", Source: "internet", Target: "alpha", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "alpha-target", Source: "alpha", Target: "target", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "internet-beta", Source: "internet", Target: "beta", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "beta-target", Source: "beta", Target: "target", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	nodeIDs := NewNodeIDIndex()
+	nodeIDs.Intern("internet")
+	sim := &AttackPathSimulator{
+		graph:        g,
+		nodeIDs:      nodeIDs,
+		visitedWords: (nodeIDs.Len() + 63) / 64,
+	}
+
+	paths := sim.KShortestPaths("internet", "target", 2, 2)
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 fallback paths, got %d", len(paths))
+	}
+	if len(paths[0].Steps) != 2 || len(paths[1].Steps) != 2 {
+		t.Fatalf("expected two 2-step paths, got %#v", paths)
+	}
+	if paths[0].Steps[0].ToNode != "alpha" {
+		t.Fatalf("expected first path through alpha, got %#v", paths[0].Steps)
+	}
+	if paths[1].Steps[0].ToNode != "beta" {
+		t.Fatalf("expected second path through beta, got %#v", paths[1].Steps)
 	}
 }
 

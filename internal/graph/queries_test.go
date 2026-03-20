@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"testing"
 )
@@ -634,6 +635,13 @@ func TestReverseAccess_ParallelMatchesSequentialWideFrontier(t *testing.T) {
 	assertReverseAccessResultsEqual(t, single, parallel)
 }
 
+func TestEffectiveAccess_ParallelMatchesSequentialWideGraph(t *testing.T) {
+	single := runEffectiveAccessWithWorkers(newEffectiveAccessBenchmarkGraph(5, 3), 1)
+	parallel := runEffectiveAccessWithWorkers(newEffectiveAccessBenchmarkGraph(5, 3), 8)
+
+	assertEffectiveAccessResultsEqual(t, single, parallel)
+}
+
 func runBlastRadiusWithWorkers(g *Graph, workers int) *BlastRadiusResult {
 	previous := parallelTraversalWorkerOverride
 	parallelTraversalWorkerOverride = workers
@@ -650,6 +658,15 @@ func runReverseAccessWithWorkers(g *Graph, workers int) *ReverseAccessResult {
 		parallelTraversalWorkerOverride = previous
 	}()
 	return ReverseAccess(g, "bucket:wide-target", 4)
+}
+
+func runEffectiveAccessWithWorkers(g *Graph, workers int) *EffectiveAccessResult {
+	previous := parallelTraversalWorkerOverride
+	parallelTraversalWorkerOverride = workers
+	defer func() {
+		parallelTraversalWorkerOverride = previous
+	}()
+	return EffectiveAccess(g, "user:start", "bucket:target", 8)
 }
 
 func setupWideBlastRadiusGraph() *Graph {
@@ -766,6 +783,35 @@ func assertReachableNodeEqual(t *testing.T, want, got *ReachableNode, index int)
 		if want.Actions[i] != got.Actions[i] {
 			t.Fatalf("reachable node %d actions mismatch: want %v got %v", index, want.Actions, got.Actions)
 		}
+	}
+}
+
+func assertEffectiveAccessResultsEqual(t *testing.T, want, got *EffectiveAccessResult) {
+	t.Helper()
+
+	if want.PrincipalID != got.PrincipalID || want.ResourceID != got.ResourceID || want.Allowed != got.Allowed {
+		t.Fatalf("effective access summary mismatch: want %#v got %#v", want, got)
+	}
+	assertEdgeMultisetEqual(t, want.AllowedBy, got.AllowedBy, "allowed_by")
+	assertEdgeMultisetEqual(t, want.DeniedBy, got.DeniedBy, "denied_by")
+}
+
+func assertEdgeMultisetEqual(t *testing.T, want, got []*Edge, label string) {
+	t.Helper()
+
+	if len(want) != len(got) {
+		t.Fatalf("%s edge count mismatch: want %d got %d", label, len(want), len(got))
+	}
+	wantCounts := make(map[string]int, len(want))
+	for _, edge := range want {
+		wantCounts[edge.ID]++
+	}
+	gotCounts := make(map[string]int, len(got))
+	for _, edge := range got {
+		gotCounts[edge.ID]++
+	}
+	if !reflect.DeepEqual(wantCounts, gotCounts) {
+		t.Fatalf("%s mismatch: want %v got %v", label, wantCounts, gotCounts)
 	}
 }
 

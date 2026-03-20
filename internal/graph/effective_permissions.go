@@ -264,7 +264,7 @@ func (c *EffectivePermissionsCalculator) collectRolePermissions(
 	ctx *PermissionEvaluationContext,
 ) {
 	// Find roles this principal can assume
-	visited := newOrdinalVisitSet(NewNodeIDIndex())
+	visited := newOrdinalVisitSet(nil)
 	c.collectRolePermissionsRecursive(ep, principalID, &visited, []string{principalID}, nil, conditionMatchYes, ctx)
 }
 
@@ -277,11 +277,14 @@ func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
 	pathState conditionMatchResult,
 	ctx *PermissionEvaluationContext,
 ) {
-	if visited.has(currentID) {
+	currentNode, _ := c.graph.GetNode(currentID)
+	if currentNode == nil {
 		return
 	}
-	visited.mark(currentID)
-	currentNode, _ := c.graph.GetNode(currentID)
+	if visited.hasOrdinal(currentNode.ordinal) {
+		return
+	}
+	visited.markOrdinal(currentNode.ordinal)
 
 	for _, edge := range c.graph.GetOutEdges(currentID) {
 		if edge.Kind != EdgeKindCanAssume {
@@ -406,7 +409,7 @@ func (c *EffectivePermissionsCalculator) applyDenyRules(
 	}
 
 	// 3. Role denies - check all roles the principal can assume
-	visited := newOrdinalVisitSet(NewNodeIDIndex())
+	visited := newOrdinalVisitSet(nil)
 	c.collectRoleDenies(ep, principalID, denies, &visited, conditionMatchYes, ctx)
 
 	// 4. Service Control Policies (SCPs) - apply organization-level restrictions
@@ -432,11 +435,14 @@ func (c *EffectivePermissionsCalculator) collectRoleDenies(
 	pathState conditionMatchResult,
 	ctx *PermissionEvaluationContext,
 ) {
-	if visited.has(currentID) {
+	currentNode, _ := c.graph.GetNode(currentID)
+	if currentNode == nil {
 		return
 	}
-	visited.mark(currentID)
-	currentNode, _ := c.graph.GetNode(currentID)
+	if visited.hasOrdinal(currentNode.ordinal) {
+		return
+	}
+	visited.markOrdinal(currentNode.ordinal)
 
 	for _, edge := range c.graph.GetOutEdges(currentID) {
 		if edge.Kind != EdgeKindCanAssume {

@@ -753,15 +753,13 @@ func (sim *AttackPathSimulator) KShortestPaths(entryID, targetID string, k, maxL
 			for _, p := range result {
 				if len(p.Steps) > spurIdx && pathPrefixMatch(p.Steps, rootPath) {
 					edgeToRemove := p.Steps[spurIdx]
-					targetOrdinal, ok := sim.nodeIDs.Lookup(edgeToRemove.ToNode)
-					if !ok {
-						continue
-					}
 					removed := removedEdges[spurOrdinal]
 					if removed.nodeIDs == nil {
 						removed = newOrdinalVisitSet(sim.nodeIDs)
 					}
-					removed.markOrdinal(targetOrdinal)
+					if !removed.mark(edgeToRemove.ToNode) {
+						continue
+					}
 					removedEdges[spurOrdinal] = removed
 				}
 			}
@@ -826,75 +824,116 @@ func (sim *AttackPathSimulator) findShortestPath(entry, target *Node, maxLen int
 	return sim.findShortestPathAvoiding(entry, target, maxLen, ordinalVisitSet{}, nil)
 }
 
+type shortestPathState struct {
+	nodeID string
+	path   []*AttackStep
+}
+
+type shortestPathExpansion struct {
+	found   *ScoredAttackPath
+	next    shortestPathState
+	hasNext bool
+}
+
 // findShortestPathAvoiding finds shortest path while avoiding certain nodes/edges
 func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, maxLen int, avoidNodes ordinalVisitSet, avoidEdges map[NodeOrdinal]ordinalVisitSet) *ScoredAttackPath {
-	type bfsState struct {
-		nodeID string
-		path   []*AttackStep
+	if entry == nil || target == nil {
+		return nil
+	}
+	if entry.ID == target.ID {
+		path := &ScoredAttackPath{
+			ID:         fmt.Sprintf("%s->%s", entry.ID, target.ID),
+			EntryPoint: entry,
+			Target:     target,
+			Length:     0,
+		}
+		sim.scorePath(path)
+		return path
 	}
 
-	queue := []bfsState{{nodeID: entry.ID, path: nil}}
+	frontier := []shortestPathState{{nodeID: entry.ID, path: nil}}
 	visitedBits := sim.newVisitedBits(entry.ID)
 
-	for head := 0; head < len(queue); head++ {
-		current := queue[head]
-
-		if len(current.path) > maxLen {
-			continue
-		}
-
-		if current.nodeID == target.ID {
-			path := &ScoredAttackPath{
-				ID:         fmt.Sprintf("%s->%s", entry.ID, target.ID),
-				EntryPoint: entry,
-				Target:     target,
-				Steps:      current.path,
-				Length:     len(current.path),
-			}
-			sim.scorePath(path)
-			return path
-		}
-
-		currentOrdinal, _ := sim.nodeIDs.Lookup(current.nodeID)
-		removedTargets := avoidEdges[currentOrdinal]
-		sim.forEachOutEdge(current.nodeID, func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
-			if sim.isVisited(visitedBits, targetID) {
-				return true
-			}
-			if effect == EdgeEffectDeny {
-				return true
-			}
-			if avoidNodes.has(targetID) {
-				return true
-			}
-			if removedTargets.hasOrdinal(targetOrdinal) {
-				return true
-			}
-
-			targetNode, ok := sim.graph.GetNode(targetID)
-			if !ok {
-				return true
-			}
-
-			newPath := make([]*AttackStep, len(current.path)+1)
-			copy(newPath, current.path)
-			newPath[len(current.path)] = &AttackStep{
-				Order:         len(current.path) + 1,
-				FromNode:      current.nodeID,
-				ToNode:        targetID,
-				Technique:     edgeToTechnique(kind),
-				EdgeKind:      kind,
-				Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, kind),
-				MITREAttackID: edgeToMITRE(kind),
-			}
-
-			sim.markVisited(visitedBits, targetID)
-			queue = append(queue, bfsState{nodeID: targetID, path: newPath})
-			return true
+	for depth := 0; depth < maxLen && len(frontier) > 0; depth++ {
+		expansions := parallelProcessOrdered(frontier, func(current shortestPathState) []shortestPathExpansion {
+			return sim.expandShortestPathFrontierItem(current, entry, target, avoidNodes, avoidEdges)
 		})
+
+		nextFrontier := make([]shortestPathState, 0, len(expansions))
+		for _, expansion := range expansions {
+			if expansion.found != nil {
+				sim.scorePath(expansion.found)
+				return expansion.found
+			}
+			if !expansion.hasNext {
+				continue
+			}
+			if sim.isVisited(visitedBits, expansion.next.nodeID) {
+				continue
+			}
+			sim.markVisited(visitedBits, expansion.next.nodeID)
+			nextFrontier = append(nextFrontier, expansion.next)
+		}
+		frontier = nextFrontier
 	}
 
 	return nil
+}
+
+func (sim *AttackPathSimulator) expandShortestPathFrontierItem(current shortestPathState, entry, target *Node, avoidNodes ordinalVisitSet, avoidEdges map[NodeOrdinal]ordinalVisitSet) []shortestPathExpansion {
+	currentOrdinal, _ := sim.nodeIDs.Lookup(current.nodeID)
+	removedTargets := avoidEdges[currentOrdinal]
+	expansions := make([]shortestPathExpansion, 0, len(sim.graph.GetOutEdges(current.nodeID)))
+
+	sim.forEachOutEdge(current.nodeID, func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
+		if effect == EdgeEffectDeny {
+			return true
+		}
+		if avoidNodes.has(targetID) {
+			return true
+		}
+		if removedTargets.hasOrdinal(targetOrdinal) {
+			return true
+		}
+
+		targetNode, ok := sim.graph.GetNode(targetID)
+		if !ok {
+			return true
+		}
+
+		newPath := make([]*AttackStep, len(current.path)+1)
+		copy(newPath, current.path)
+		newPath[len(current.path)] = &AttackStep{
+			Order:         len(current.path) + 1,
+			FromNode:      current.nodeID,
+			ToNode:        targetID,
+			Technique:     edgeToTechnique(kind),
+			EdgeKind:      kind,
+			Description:   fmt.Sprintf("Move from %s to %s via %s", current.nodeID, targetNode.Name, kind),
+			MITREAttackID: edgeToMITRE(kind),
+		}
+
+		expansion := shortestPathExpansion{}
+		if targetID == target.ID {
+			expansion.found = &ScoredAttackPath{
+				ID:         fmt.Sprintf("%s->%s", entry.ID, target.ID),
+				EntryPoint: entry,
+				Target:     target,
+				Steps:      newPath,
+				Length:     len(newPath),
+			}
+		} else {
+			expansion.next = shortestPathState{
+				nodeID: targetID,
+				path:   newPath,
+			}
+			expansion.hasNext = true
+		}
+		expansions = append(expansions, expansion)
+		return true
+	})
+
+	return expansions
 }
 
 // pathPrefixMatch checks if path matches prefix
@@ -931,10 +970,7 @@ func (sim *AttackPathSimulator) forEachOutEdge(sourceID string, visit func(targe
 		if edge == nil {
 			continue
 		}
-		targetOrdinal, ok := sim.nodeIDs.Lookup(edge.Target)
-		if !ok {
-			targetOrdinal = sim.nodeIDs.Intern(edge.Target)
-		}
+		targetOrdinal, _ := sim.nodeIDs.Lookup(edge.Target)
 		if !visit(targetOrdinal, edge.Target, edge.Kind, edge.Effect) {
 			return
 		}

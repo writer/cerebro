@@ -3,13 +3,11 @@ package graph
 import (
 	"runtime"
 	"sync"
-	"sync/atomic"
 )
 
 const (
 	minParallelTraversalItems   = 64
-	minParallelTraversalChunk   = 8
-	maxParallelTraversalWorkers = 4
+	maxParallelTraversalWorkers = 8
 )
 
 var parallelTraversalWorkerOverride int
@@ -48,46 +46,23 @@ func parallelProcessOrdered[T any, R any](items []T, process func(T) []R) []R {
 		return sequentialProcessOrdered(items, process)
 	}
 
-	chunkSize := len(items) / workers
-	if chunkSize < minParallelTraversalChunk {
-		chunkSize = minParallelTraversalChunk
-	}
-	if chunkSize >= len(items) {
-		return sequentialProcessOrdered(items, process)
-	}
-
-	chunkCount := (len(items) + chunkSize - 1) / chunkSize
-	if chunkCount < workers {
-		workers = chunkCount
-	}
-
-	results := make([][]R, chunkCount)
-	var nextChunk atomic.Int64
+	queue := newTraversalWorkQueue(workers, len(items))
+	queue.seedContiguous(len(items))
+	results := make([][]R, len(items))
 	var wg sync.WaitGroup
 
 	for worker := 0; worker < workers; worker++ {
 		wg.Add(1)
-		go func() {
+		go func(worker int) {
 			defer wg.Done()
 			for {
-				chunk := int(nextChunk.Add(1) - 1)
-				if chunk >= chunkCount {
+				index, ok := queue.next(worker)
+				if !ok {
 					return
 				}
-
-				start := chunk * chunkSize
-				end := start + chunkSize
-				if end > len(items) {
-					end = len(items)
-				}
-
-				local := make([]R, 0, end-start)
-				for _, item := range items[start:end] {
-					local = append(local, process(item)...)
-				}
-				results[chunk] = local
+				results[index] = process(items[index])
 			}
-		}()
+		}(worker)
 	}
 
 	wg.Wait()

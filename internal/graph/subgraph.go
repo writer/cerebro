@@ -44,7 +44,7 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 	edgesToCopy := make(map[*Edge]struct{})
 	clonedNodes := make([]*Node, 0, 16)
 	clonedEdges := make([]*Edge, 0, 16)
-	seen := newOrdinalVisitSet(NewNodeIDIndex())
+	seen := newOrdinalVisitSet(nil)
 	queue := make([]subgraphQueueItem, 0, 16)
 	queueHead := 0
 
@@ -56,7 +56,7 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 	}
 
 	nodesToCopy[rootID] = root
-	seen.mark(rootID)
+	seen.markOrdinal(root.ordinal)
 	queue = append(queue, subgraphQueueItem{nodeID: rootID, depth: 0})
 
 	visitEdges := func(current string, depth int, edges []*Edge, nextNodeID func(*Edge) string) {
@@ -74,11 +74,11 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 				continue
 			}
 
-			if !seen.has(neighborID) {
+			if !seen.hasOrdinal(neighbor.ordinal) {
 				if depth >= maxDepth || len(nodesToCopy) >= maxNodes {
 					continue
 				}
-				seen.mark(neighborID)
+				seen.markOrdinal(neighbor.ordinal)
 				nodesToCopy[neighborID] = neighbor
 				queue = append(queue, subgraphQueueItem{nodeID: neighborID, depth: depth + 1})
 			}

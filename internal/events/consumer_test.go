@@ -852,6 +852,182 @@ func TestConsumerProcessBatchStopsDispatchOnContextCancel(t *testing.T) {
 	}
 }
 
+func TestConsumerProcessBatchReportsBackpressureWhenPipelineSaturates(t *testing.T) {
+	cfg := (ConsumerConfig{
+		Stream:         "ENSEMBLE_TAP",
+		Durable:        "cerebro_graph_builder",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		BatchSize:      2,
+		HandlerWorkers: 1,
+	}).withDefaults()
+	dlq, err := newConsumerDeadLetterSink(cfg.DeadLetterPath)
+	if err != nil {
+		t.Fatalf("new consumer dead-letter sink: %v", err)
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	consumer := &Consumer{
+		config: cfg,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dlq:    dlq,
+		handler: func(context.Context, CloudEvent) error {
+			once.Do(func() { close(started) })
+			<-release
+			return nil
+		},
+	}
+
+	messages := []consumerPipelineMessage{
+		testConsumerPipelineMessage(t, 0, testConsumerEvent("customer:a", 1, true), nil),
+		testConsumerPipelineMessage(t, 1, testConsumerEvent("customer:b", 1, true), nil),
+		testConsumerPipelineMessage(t, 2, testConsumerEvent("customer:c", 1, true), nil),
+		testConsumerPipelineMessage(t, 3, testConsumerEvent("customer:d", 1, true), nil),
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		done <- consumer.processBatch(context.Background(), messages)
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for pipeline handler to start")
+	}
+
+	time.Sleep(25 * time.Millisecond)
+	close(release)
+
+	select {
+	case backpressured := <-done:
+		if !backpressured {
+			t.Fatal("expected saturated pipeline to report backpressure")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for saturated pipeline batch to finish")
+	}
+}
+
+func TestConsumerProcessBatchPreservesBackpressureSignalOnContextCancel(t *testing.T) {
+	cfg := (ConsumerConfig{
+		Stream:         "ENSEMBLE_TAP",
+		Durable:        "cerebro_graph_builder",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		BatchSize:      2,
+		HandlerWorkers: 1,
+	}).withDefaults()
+	dlq, err := newConsumerDeadLetterSink(cfg.DeadLetterPath)
+	if err != nil {
+		t.Fatalf("new consumer dead-letter sink: %v", err)
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	consumer := &Consumer{
+		config: cfg,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dlq:    dlq,
+		handler: func(context.Context, CloudEvent) error {
+			once.Do(func() { close(started) })
+			<-release
+			return nil
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	messages := []consumerPipelineMessage{
+		testConsumerPipelineMessage(t, 0, testConsumerEvent("customer:a", 1, true), nil),
+		testConsumerPipelineMessage(t, 1, testConsumerEvent("customer:b", 1, true), nil),
+		testConsumerPipelineMessage(t, 2, testConsumerEvent("customer:c", 1, true), nil),
+		testConsumerPipelineMessage(t, 3, testConsumerEvent("customer:d", 1, true), nil),
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		done <- consumer.processBatch(ctx, messages)
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for pipeline handler to start")
+	}
+
+	time.Sleep(25 * time.Millisecond)
+	cancel()
+	close(release)
+
+	select {
+	case backpressured := <-done:
+		if !backpressured {
+			t.Fatal("expected context cancellation to preserve prior backpressure signal")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for cancelled saturated pipeline batch to finish")
+	}
+}
+
+func TestConsumerProcessBatchReportsIntakeBackpressureForHotShard(t *testing.T) {
+	cfg := (ConsumerConfig{
+		Stream:         "ENSEMBLE_TAP",
+		Durable:        "cerebro_graph_builder",
+		DeadLetterPath: t.TempDir() + "/consumer.dlq.jsonl",
+		BatchSize:      4,
+		HandlerWorkers: 2,
+	}).withDefaults()
+	dlq, err := newConsumerDeadLetterSink(cfg.DeadLetterPath)
+	if err != nil {
+		t.Fatalf("new consumer dead-letter sink: %v", err)
+	}
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	consumer := &Consumer{
+		config: cfg,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dlq:    dlq,
+		handler: func(context.Context, CloudEvent) error {
+			once.Do(func() { close(started) })
+			<-release
+			return nil
+		},
+	}
+
+	messages := make([]consumerPipelineMessage, 10)
+	for i := range messages {
+		messages[i] = testConsumerPipelineMessage(t, i, testConsumerEvent("customer:a", i+1, true), nil)
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		done <- consumer.processBatch(context.Background(), messages)
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for hot shard handler to start")
+	}
+
+	time.Sleep(25 * time.Millisecond)
+	close(release)
+
+	select {
+	case backpressured := <-done:
+		if !backpressured {
+			t.Fatal("expected intake saturation behind a hot shard to report backpressure")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for hot shard batch to finish")
+	}
+}
+
 func TestConsumerHandleMessageSkipsAlreadyProcessedCloudEvent(t *testing.T) {
 	cfg := (ConsumerConfig{
 		Stream:         "ENSEMBLE_TAP",

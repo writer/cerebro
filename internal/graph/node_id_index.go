@@ -87,6 +87,21 @@ func (idx *NodeIDIndex) NewBitmap() []bool {
 	return make([]bool, len(idx.ordinalToStr))
 }
 
+// Clone returns a copy of the index suitable for independent graph clones/forks.
+func (idx *NodeIDIndex) Clone() *NodeIDIndex {
+	if idx == nil {
+		return NewNodeIDIndex()
+	}
+	cloned := &NodeIDIndex{
+		strToOrdinal: make(map[string]NodeOrdinal, len(idx.strToOrdinal)),
+		ordinalToStr: append([]string(nil), idx.ordinalToStr...),
+	}
+	for id, ordinal := range idx.strToOrdinal {
+		cloned.strToOrdinal[id] = ordinal
+	}
+	return cloned
+}
+
 func nodeOrdinalFromLength(length int) (NodeOrdinal, bool) {
 	if length <= 0 || length > math.MaxUint32 {
 		return InvalidNodeOrdinal, false

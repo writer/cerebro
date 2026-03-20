@@ -2,21 +2,39 @@ package graph
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
 )
 
 func BenchmarkAttackPathSimulatorFindShortestPath(b *testing.B) {
 	g, entry, target := newAttackPathTraversalBenchmarkGraph(6, 4)
 	sim := NewAttackPathSimulator(g)
+	configs := []struct {
+		name    string
+		workers int
+	}{
+		{name: "workers_1", workers: 1},
+		{name: "workers_auto", workers: runtime.GOMAXPROCS(0)},
+	}
 
-	b.ReportAllocs()
-	b.ResetTimer()
+	for _, config := range configs {
+		b.Run(config.name, func(b *testing.B) {
+			previous := parallelTraversalWorkerOverride
+			parallelTraversalWorkerOverride = config.workers
+			defer func() {
+				parallelTraversalWorkerOverride = previous
+			}()
 
-	for i := 0; i < b.N; i++ {
-		path := sim.findShortestPath(entry, target, 8)
-		if path == nil {
-			b.Fatal("expected shortest path")
-		}
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				path := sim.findShortestPath(entry, target, 8)
+				if path == nil {
+					b.Fatal("expected shortest path")
+				}
+			}
+		})
 	}
 }
 

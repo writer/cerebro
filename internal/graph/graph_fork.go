@@ -10,6 +10,7 @@ func forkGraphForMutation(g *Graph) *Graph {
 		outEdges:                  g.outEdges,
 		inEdges:                   g.inEdges,
 		edgeByID:                  g.edgeByID,
+		nodeIDs:                   g.nodeIDs.Clone(),
 		metadata:                  cloneMetadata(g.metadata),
 		blastRadiusVersion:        g.blastRadiusVersion,
 		schemaValidationMode:      g.schemaValidationMode,

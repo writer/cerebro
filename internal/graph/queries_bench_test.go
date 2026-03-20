@@ -44,15 +44,32 @@ func BenchmarkBlastRadius(b *testing.B) {
 
 func BenchmarkEffectiveAccess(b *testing.B) {
 	g := newEffectiveAccessBenchmarkGraph(6, 4)
+	configs := []struct {
+		name    string
+		workers int
+	}{
+		{name: "workers_1", workers: 1},
+		{name: "workers_auto", workers: runtime.GOMAXPROCS(0)},
+	}
 
-	b.ReportAllocs()
-	b.ResetTimer()
+	for _, config := range configs {
+		b.Run(config.name, func(b *testing.B) {
+			previous := parallelTraversalWorkerOverride
+			parallelTraversalWorkerOverride = config.workers
+			defer func() {
+				parallelTraversalWorkerOverride = previous
+			}()
 
-	for i := 0; i < b.N; i++ {
-		result := EffectiveAccess(g, "user:start", "bucket:target", 8)
-		if !result.Allowed {
-			b.Fatal("expected effective access path")
-		}
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				result := EffectiveAccess(g, "user:start", "bucket:target", 8)
+				if !result.Allowed {
+					b.Fatal("expected effective access path")
+				}
+			}
+		})
 	}
 }
 

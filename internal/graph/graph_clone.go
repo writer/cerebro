@@ -10,6 +10,7 @@ func cloneGraphWithSharedPropertyHistory(g *Graph) *Graph {
 	cloned.activeNodeCount.Store(g.activeNodeCount.Load())
 	cloned.activeEdgeCount.Store(g.activeEdgeCount.Load())
 	cloned.blastRadiusVersion = g.blastRadiusVersion
+	cloned.nodeIDs = g.nodeIDs.Clone()
 	cloned.schemaValidationMode = g.schemaValidationMode
 	cloned.schemaValidationStats = cloneSchemaValidationStats(g.schemaValidationStats)
 	cloned.temporalHistoryMaxEntries = g.temporalHistoryMaxEntries
