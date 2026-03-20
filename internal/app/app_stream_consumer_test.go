@@ -307,6 +307,26 @@ func TestBuildTapInteractionEventPlan_ParsesWithoutGraph(t *testing.T) {
 	}
 }
 
+func TestParseTapInteractionParticipants_DedupesAcrossScalarAndSliceFields(t *testing.T) {
+	participants := parseTapInteractionParticipants(map[string]any{
+		"source_person_email": "Alice@Example.com",
+		"attendees": []any{
+			"alice@example.com",
+			map[string]any{"email": "bob@example.com", "name": "Bob"},
+		},
+	})
+
+	if len(participants) != 2 {
+		t.Fatalf("len(participants) = %d, want 2 (%#v)", len(participants), participants)
+	}
+	if participants[0].ID != "person:alice@example.com" || participants[0].Name != "alice@example.com" {
+		t.Fatalf("participants[0] = %#v, want normalized Alice fallback", participants[0])
+	}
+	if participants[1].ID != "person:bob@example.com" || participants[1].Name != "Bob" {
+		t.Fatalf("participants[1] = %#v, want normalized Bob", participants[1])
+	}
+}
+
 func TestBuildTapActivityEventPlan_ParsesWithoutGraph(t *testing.T) {
 	evt := events.CloudEvent{
 		ID:   "evt-activity-1",

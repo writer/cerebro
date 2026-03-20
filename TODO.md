@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 242 - TAP Interaction Parse Split (2026-03-19)
+
+### Review findings
+- [x] Gap: `internal/app/app_stream_consumer_interaction.go` still mixed interaction-event parsing/planning with graph mutation and person-node upsert logic, which left one TAP subpath misaligned with issue `#211`'s goal of separating event parsing from mutation behavior.
+- [x] Gap: the interaction planner and participant-normalization helpers are fully graph-independent, so they should live in their own parse-focused file and stay directly testable without a live graph.
+- [x] Gap: coverage already proved the interaction event plan can be built without a graph, but there was no direct regression around participant deduplication across the scalar and slice fallback fields that the parser accepts.
+
+### Execution plan
+- [x] Move the interaction event plan builder and participant/duration/weight parsing helpers into a dedicated parse-focused file.
+- [x] Leave the mutation path and person-node upsert logic in `app_stream_consumer_interaction.go` so write behavior stays isolated from parse-only helpers.
+- [x] Add a focused no-graph participant deduplication regression and rerun the targeted `internal/app` validation gate before opening the PR.
+
 ## Deep Review Cycle 235 - Graph Rule Discovery Handler Service Seam (2026-03-19)
 
 ### Review findings
