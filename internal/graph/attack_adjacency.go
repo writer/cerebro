@@ -32,7 +32,7 @@ func newAttackAdjacencySnapshot(g *Graph, nodeIDs *NodeIDIndex) *attackAdjacency
 			continue
 		}
 		sourceOrdinal := nodeIDs.Intern(sourceID)
-		counts = growAttackAdjacencyCounts(counts, sourceOrdinal)
+		counts = growOrdinalCounts(counts, sourceOrdinal)
 		counts[sourceOrdinal] += activeCount
 		total += activeCount
 	}
@@ -77,18 +77,6 @@ func newAttackAdjacencySnapshot(g *Graph, nodeIDs *NodeIDIndex) *attackAdjacency
 	}
 
 	return snapshot
-}
-
-func growAttackAdjacencyCounts(counts []uint32, ordinal NodeOrdinal) []uint32 {
-	if ordinal == InvalidNodeOrdinal {
-		return counts
-	}
-	if int(ordinal) < len(counts) {
-		return counts
-	}
-	grown := make([]uint32, int(ordinal)+1)
-	copy(grown, counts)
-	return grown
 }
 
 func (s *attackAdjacencySnapshot) forEachOutEdge(sourceID string, visit func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool) {

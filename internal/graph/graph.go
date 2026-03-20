@@ -27,6 +27,9 @@ type Graph struct {
 	activeNodeCount atomic.Int64
 	activeEdgeCount atomic.Int64
 
+	// Read-heavy traversals use a lazily rebuilt immutable CSR edge snapshot.
+	csrEdges *csrEdgeSnapshot
+
 	// Traversal cache for expensive reachability queries.
 	blastRadiusCache            sync.Map
 	blastRadiusCacheWriteMu     sync.Mutex
@@ -1495,17 +1498,20 @@ func (g *Graph) markGraphChangedLocked() {
 	g.crossAccountIndexBuilt = false
 	g.indexBuilt = false
 	g.entitySuggestBuilt = false
+	g.csrEdges = nil
 	g.blastRadiusVersion++
 	g.blastRadiusNeedsCompaction = true
 }
 
 func (g *Graph) markGraphChangedPreservingNodeIndexesLocked() {
 	g.entitySuggestBuilt = false
+	g.csrEdges = nil
 	g.blastRadiusVersion++
 	g.blastRadiusNeedsCompaction = true
 }
 
 func (g *Graph) markGraphEdgeMutationLocked() {
+	g.csrEdges = nil
 	g.blastRadiusVersion++
 	g.blastRadiusNeedsCompaction = true
 }
