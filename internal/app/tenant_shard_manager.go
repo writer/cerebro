@@ -1,12 +1,10 @@
 package app
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/evalops/cerebro/internal/findings"
@@ -14,83 +12,77 @@ import (
 )
 
 const (
-	defaultGraphTenantShardIdleTTL         = 15 * time.Minute
+	defaultGraphTenantShardIdleTTL         = time.Hour
 	defaultGraphTenantWarmShardTTL         = 24 * time.Hour
 	defaultGraphTenantWarmShardMaxRetained = 1
-	tenantGraphWarmCleanupInterval         = 15 * time.Minute
+	defaultGraphTenantHotShardMaxEntries   = 64
 )
-
-type tenantGraphShard struct {
-	graph      *graph.Graph
-	lastAccess time.Time
-}
 
 // tenantGraphShardManager maintains tenant-scoped graph shards across three
 // tiers: hot in-memory shards, warm on-disk tenant snapshots, and cold full
 // graph snapshots recovered through the graph persistence store.
 type tenantGraphShardManager struct {
-	mu               sync.Mutex
-	source           *graph.Graph
-	generation       string
-	idleTTL          time.Duration
-	warmTTL          time.Duration
-	warmBasePath     string
-	warmMaxSnapshots int
-	snapshots        *graph.GraphPersistenceStore
-	findings         findings.FindingStore
-	now              func() time.Time
-	lastWarmCleanup  time.Time
-	shards           map[string]tenantGraphShard
+	mu         sync.Mutex
+	source     *graph.Graph
+	generation string
+	snapshots  *graph.GraphPersistenceStore
+	now        func() time.Time
+	tiers      *graph.TierManager
+	findings   atomic.Pointer[tenantFindingStoreRef]
+}
+
+type tenantFindingStoreRef struct {
+	store findings.FindingStore
 }
 
 func newTenantGraphShardManager(idleTTL, warmTTL time.Duration, warmBasePath string, warmMaxSnapshots int, snapshots *graph.GraphPersistenceStore, findingStore findings.FindingStore) *tenantGraphShardManager {
-	if idleTTL <= 0 {
-		idleTTL = defaultGraphTenantShardIdleTTL
-	}
-	if warmTTL <= 0 {
-		warmTTL = defaultGraphTenantWarmShardTTL
-	}
-	if warmMaxSnapshots <= 0 {
-		warmMaxSnapshots = defaultGraphTenantWarmShardMaxRetained
-	}
-	return &tenantGraphShardManager{
-		idleTTL:          idleTTL,
-		warmTTL:          warmTTL,
-		warmBasePath:     strings.TrimSpace(warmBasePath),
-		warmMaxSnapshots: warmMaxSnapshots,
-		snapshots:        snapshots,
-		findings:         findingStore,
+	manager := &tenantGraphShardManager{
+		snapshots: snapshots,
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
-		shards: make(map[string]tenantGraphShard),
 	}
+	manager.setFindingsStore(findingStore)
+	manager.tiers = graph.NewTierManager(graph.TierManagerOptions{
+		HotRetention:     idleTTL,
+		WarmRetention:    warmTTL,
+		HotMaxEntries:    defaultGraphTenantHotShardMaxEntries,
+		WarmBasePath:     strings.TrimSpace(warmBasePath),
+		WarmMaxSnapshots: warmMaxSnapshots,
+		Now: func() time.Time {
+			return manager.now()
+		},
+		Pin: func(key string) bool {
+			return manager.shouldPinTenant(strings.TrimSpace(key))
+		},
+	})
+	return manager
 }
 
 func (m *tenantGraphShardManager) Configure(idleTTL, warmTTL time.Duration, warmBasePath string, warmMaxSnapshots int, snapshots *graph.GraphPersistenceStore, findingStore findings.FindingStore) {
 	if m == nil {
 		return
 	}
-	if idleTTL <= 0 {
-		idleTTL = defaultGraphTenantShardIdleTTL
-	}
-	if warmTTL <= 0 {
-		warmTTL = defaultGraphTenantWarmShardTTL
-	}
-	if warmMaxSnapshots <= 0 {
-		warmMaxSnapshots = defaultGraphTenantWarmShardMaxRetained
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.idleTTL = idleTTL
-	m.warmTTL = warmTTL
-	m.warmBasePath = strings.TrimSpace(warmBasePath)
-	m.warmMaxSnapshots = warmMaxSnapshots
 	m.snapshots = snapshots
-	m.findings = findingStore
-	if m.shards == nil {
-		m.shards = make(map[string]tenantGraphShard)
+	m.setFindingsStore(findingStore)
+	if m.tiers == nil {
+		m.tiers = graph.NewTierManager(graph.TierManagerOptions{})
 	}
+	m.tiers.Configure(graph.TierManagerOptions{
+		HotRetention:     idleTTL,
+		WarmRetention:    warmTTL,
+		HotMaxEntries:    defaultGraphTenantHotShardMaxEntries,
+		WarmBasePath:     strings.TrimSpace(warmBasePath),
+		WarmMaxSnapshots: warmMaxSnapshots,
+		Now: func() time.Time {
+			return m.now()
+		},
+		Pin: func(key string) bool {
+			return m.shouldPinTenant(strings.TrimSpace(key))
+		},
+	})
 }
 
 func (m *tenantGraphShardManager) SetSource(source *graph.Graph) {
@@ -108,7 +100,9 @@ func (m *tenantGraphShardManager) SetSource(source *graph.Graph) {
 	}
 	m.source = source
 	m.generation = nextGeneration
-	clear(m.shards)
+	if m.tiers != nil {
+		m.tiers.ResetHot()
+	}
 }
 
 func (m *tenantGraphShardManager) GraphForTenant(source *graph.Graph, tenantID string) *graph.Graph {
@@ -131,36 +125,36 @@ func (m *tenantGraphShardManager) GraphForTenant(source *graph.Graph, tenantID s
 		if source != m.source || sourceGeneration != m.generation {
 			m.source = source
 			m.generation = sourceGeneration
-			clear(m.shards)
+			if m.tiers != nil {
+				m.tiers.ResetHot()
+			}
 		}
 	} else if source != m.source {
 		m.source = nil
-		clear(m.shards)
-	}
-	m.evictExpiredLocked(now)
-	if shard, ok := m.shards[tenantID]; ok && shard.graph != nil {
-		shard.lastAccess = now
-		m.shards[tenantID] = shard
-		result := shard.graph
-		m.mu.Unlock()
-		return result
+		if m.tiers != nil {
+			m.tiers.ResetHot()
+		}
 	}
 	generation := m.generation
 	m.mu.Unlock()
 
-	m.maybeCleanupWarmTier(now)
-
-	if generation != "" {
-		if shard := m.loadWarmShard(generation, tenantID, now); shard != nil {
-			return m.promoteHotShard(source, generation, tenantID, shard, now)
+	if m.tiers != nil {
+		if shard := m.tiers.HotGraph(generation, tenantID); shard != nil {
+			return shard
+		}
+		if generation != "" {
+			if shard := m.tiers.WarmGraph(generation, tenantID); shard != nil {
+				return m.promoteHotShard(source, generation, tenantID, shard, now)
+			}
 		}
 	}
 
 	if source != nil {
-		if shard := source.SubgraphForTenant(tenantID); shard != nil {
-			if sourceGeneration != "" {
-				m.saveWarmShard(sourceGeneration, tenantID, shard, now)
+		if shard, hasScopedNodes := source.SubgraphForTenantWithScopedNodes(tenantID); shard != nil {
+			if !hasScopedNodes {
+				return shard
 			}
+			m.saveWarmShard(sourceGeneration, tenantID, shard, now)
 			return m.promoteHotShard(source, sourceGeneration, tenantID, shard, now)
 		}
 	}
@@ -169,42 +163,45 @@ func (m *tenantGraphShardManager) GraphForTenant(source *graph.Graph, tenantID s
 	if shard == nil {
 		return nil
 	}
-	if coldGeneration != "" {
-		m.saveWarmShard(coldGeneration, tenantID, shard, now)
-	}
+	m.saveWarmShard(coldGeneration, tenantID, shard, now)
 	return m.promoteHotShard(source, coldGeneration, tenantID, shard, now)
 }
 
-func (m *tenantGraphShardManager) EvictExpired(now time.Time) int {
-	if m == nil {
-		return 0
+func (m *tenantGraphShardManager) WarmStoreForTenant(tenantID string) graph.GraphStore {
+	tenantID = strings.TrimSpace(tenantID)
+	if m == nil || tenantID == "" {
+		return nil
 	}
+
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.evictExpiredLocked(now.UTC())
+	generation := m.generation
+	m.mu.Unlock()
+	if generation == "" || m.tiers == nil {
+		return nil
+	}
+
+	if shard := m.tiers.HotGraph(generation, tenantID); shard != nil {
+		return shard
+	}
+	return m.tiers.WarmStore(generation, tenantID)
 }
 
-func (m *tenantGraphShardManager) evictExpiredLocked(now time.Time) int {
-	if m.idleTTL <= 0 || len(m.shards) == 0 {
+func (m *tenantGraphShardManager) EvictExpired(now time.Time) int {
+	if m == nil || m.tiers == nil {
 		return 0
 	}
-	cutoff := now.Add(-m.idleTTL)
-	evicted := 0
-	for tenantID, shard := range m.shards {
-		if shard.lastAccess.After(cutoff) || m.shouldPinTenantLocked(tenantID) {
-			continue
-		}
-		delete(m.shards, tenantID)
-		evicted++
-	}
-	return evicted
+	return m.tiers.Evict(now.UTC())
 }
 
-func (m *tenantGraphShardManager) shouldPinTenantLocked(tenantID string) bool {
-	if m == nil || m.findings == nil {
+func (m *tenantGraphShardManager) shouldPinTenant(tenantID string) bool {
+	if m == nil {
 		return false
 	}
-	return m.findings.Count(findings.FindingFilter{TenantID: tenantID, Status: "OPEN"}) > 0
+	storeRef := m.findings.Load()
+	if storeRef == nil || storeRef.store == nil {
+		return false
+	}
+	return storeRef.store.Count(findings.FindingFilter{TenantID: tenantID, Status: "OPEN"}) > 0
 }
 
 func (m *tenantGraphShardManager) promoteHotShard(source *graph.Graph, generation, tenantID string, shardGraph *graph.Graph, now time.Time) *graph.Graph {
@@ -212,56 +209,43 @@ func (m *tenantGraphShardManager) promoteHotShard(source *graph.Graph, generatio
 		return shardGraph
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	var finalize func()
 	if source == nil {
 		if m.source != nil {
+			m.mu.Unlock()
 			return shardGraph
 		}
 		if generation != "" && generation != m.generation {
 			m.generation = generation
-			clear(m.shards)
+			if m.tiers != nil {
+				m.tiers.ResetHot()
+			}
 		}
 	} else {
 		if source != m.source {
+			m.mu.Unlock()
 			return shardGraph
 		}
 		if generation != "" && m.generation != "" && generation != m.generation {
+			m.mu.Unlock()
 			return shardGraph
 		}
 	}
-	m.shards[tenantID] = tenantGraphShard{
-		graph:      shardGraph,
-		lastAccess: now,
+	if m.tiers != nil {
+		_, finalize = m.tiers.PromoteHotDeferred(generation, tenantID, shardGraph, now)
+	}
+	m.mu.Unlock()
+	if finalize != nil {
+		finalize()
 	}
 	return shardGraph
 }
 
-func (m *tenantGraphShardManager) loadWarmShard(generation, tenantID string, now time.Time) *graph.Graph {
-	if m == nil || generation == "" || strings.TrimSpace(m.warmBasePath) == "" {
-		return nil
-	}
-	store := tenantGraphWarmStore(m.warmBasePath, generation, tenantID, m.warmMaxSnapshots)
-	snapshot, _, err := store.LoadLatestSnapshot()
-	if err != nil || snapshot == nil {
-		return nil
-	}
-	tenantDir := store.BasePath()
-	touchPath(tenantDir, now)
-	touchPath(filepath.Dir(tenantDir), now)
-	return graph.GraphViewFromSnapshot(snapshot)
-}
-
 func (m *tenantGraphShardManager) saveWarmShard(generation, tenantID string, shardGraph *graph.Graph, now time.Time) {
-	if m == nil || generation == "" || shardGraph == nil || strings.TrimSpace(m.warmBasePath) == "" {
+	if m == nil || m.tiers == nil {
 		return
 	}
-	store := tenantGraphWarmStore(m.warmBasePath, generation, tenantID, m.warmMaxSnapshots)
-	if _, _, err := store.SaveGraph(shardGraph); err != nil {
-		return
-	}
-	tenantDir := store.BasePath()
-	touchPath(tenantDir, now)
-	touchPath(filepath.Dir(tenantDir), now)
+	m.tiers.SaveWarm(generation, tenantID, shardGraph, now)
 }
 
 func (m *tenantGraphShardManager) loadColdShard(tenantID, liveGeneration string) (string, *graph.Graph) {
@@ -281,45 +265,6 @@ func (m *tenantGraphShardManager) loadColdShard(tenantID, liveGeneration string)
 		return generation, nil
 	}
 	return generation, view.SubgraphForTenant(tenantID)
-}
-
-func (m *tenantGraphShardManager) maybeCleanupWarmTier(now time.Time) {
-	if m == nil {
-		return
-	}
-	m.mu.Lock()
-	basePath := strings.TrimSpace(m.warmBasePath)
-	warmTTL := m.warmTTL
-	interval := tenantGraphWarmCleanupInterval
-	if warmTTL > 0 && warmTTL < interval {
-		interval = warmTTL
-	}
-	if basePath == "" || warmTTL <= 0 {
-		m.mu.Unlock()
-		return
-	}
-	if !m.lastWarmCleanup.IsZero() && now.Sub(m.lastWarmCleanup) < interval {
-		m.mu.Unlock()
-		return
-	}
-	m.lastWarmCleanup = now
-	m.mu.Unlock()
-
-	entries, err := os.ReadDir(basePath)
-	if err != nil {
-		return
-	}
-	cutoff := now.Add(-warmTTL)
-	for _, entry := range entries {
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		if info.ModTime().After(cutoff) {
-			continue
-		}
-		_ = os.RemoveAll(filepath.Join(basePath, entry.Name()))
-	}
 }
 
 func tenantGraphSourceGeneration(source *graph.Graph) string {
@@ -350,28 +295,15 @@ func tenantGraphSnapshotGeneration(snapshot *graph.Snapshot, record *graph.Graph
 	return "built-at-" + snapshot.Metadata.BuiltAt.UTC().Format(time.RFC3339Nano)
 }
 
-func tenantGraphWarmStore(basePath, generation, tenantID string, maxSnapshots int) *graph.SnapshotStore {
-	return graph.NewSnapshotStore(tenantGraphWarmDir(basePath, generation, tenantID), maxSnapshots)
-}
-
-func tenantGraphWarmDir(basePath, generation, tenantID string) string {
-	return filepath.Join(
-		strings.TrimSpace(basePath),
-		tenantGraphCacheDirName("generation", generation),
-		tenantGraphCacheDirName("tenant", tenantID),
-	)
-}
-
-func tenantGraphCacheDirName(prefix, value string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(value)))
-	return prefix + "-" + hex.EncodeToString(sum[:8])
-}
-
-func touchPath(path string, now time.Time) {
-	if strings.TrimSpace(path) == "" || now.IsZero() {
+func (m *tenantGraphShardManager) setFindingsStore(store findings.FindingStore) {
+	if m == nil {
 		return
 	}
-	_ = os.Chtimes(path, now, now)
+	if store == nil {
+		m.findings.Store(nil)
+		return
+	}
+	m.findings.Store(&tenantFindingStoreRef{store: store})
 }
 
 func (a *App) graphTenantShardIdleTTL() time.Duration {

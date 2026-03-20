@@ -49,21 +49,48 @@ func NodeVisibleToTenant(node *Node, tenantID string) bool {
 	return nodeTenant == "" || nodeTenant == tenantID
 }
 
-// SubgraphForTenant returns one graph view scoped to nodes visible to the tenant.
-// Empty tenant scope returns the original graph to avoid unnecessary cloning.
-func (g *Graph) SubgraphForTenant(tenantID string) *Graph {
+// HasScopedNodesForTenant returns true when the graph contains at least one node
+// explicitly scoped to the requested tenant.
+func (g *Graph) HasScopedNodesForTenant(tenantID string) bool {
 	tenantID = strings.TrimSpace(tenantID)
 	if g == nil {
-		return nil
+		return false
 	}
 	if tenantID == "" {
-		return g
+		return false
+	}
+	for _, node := range g.GetAllNodes() {
+		if nodeTenantID(node) == tenantID {
+			return true
+		}
+	}
+	return false
+}
+
+// SubgraphForTenantWithScopedNodes returns one graph view scoped to nodes
+// visible to the tenant together with whether the source graph contained any
+// nodes explicitly scoped to that tenant.
+//
+// Empty tenant scope returns the original graph and reports no tenant-scoped
+// nodes to avoid unnecessary cloning.
+func (g *Graph) SubgraphForTenantWithScopedNodes(tenantID string) (*Graph, bool) {
+	tenantID = strings.TrimSpace(tenantID)
+	if g == nil {
+		return nil, false
+	}
+	if tenantID == "" {
+		return g, false
 	}
 
 	out := New()
 	out.SetSchemaValidationMode(g.SchemaValidationMode())
+	hasScopedNodes := false
 	for _, node := range g.GetAllNodes() {
-		if !NodeVisibleToTenant(node, tenantID) {
+		nodeTenant := nodeTenantID(node)
+		if nodeTenant == tenantID {
+			hasScopedNodes = true
+		}
+		if nodeTenant != "" && nodeTenant != tenantID {
 			continue
 		}
 		out.AddNode(cloneNode(node))
@@ -90,6 +117,14 @@ func (g *Graph) SubgraphForTenant(tenantID string) *Graph {
 	meta.Providers = uniqueNonEmptyNodeStrings(out.GetAllNodes(), func(node *Node) string { return node.Provider })
 	out.SetMetadata(meta)
 	out.BuildIndex()
+	return out, hasScopedNodes
+}
+
+// SubgraphForTenant returns one graph view scoped to nodes visible to the
+// tenant. Empty tenant scope returns the original graph to avoid unnecessary
+// cloning.
+func (g *Graph) SubgraphForTenant(tenantID string) *Graph {
+	out, _ := g.SubgraphForTenantWithScopedNodes(tenantID)
 	return out
 }
 

@@ -328,6 +328,11 @@ func (g *Graph) currentBlastRadiusCacheVersion() uint64 {
 	return g.blastRadiusVersion
 }
 
+// CurrentVersion returns the current in-memory mutation version for cache invalidation.
+func (g *Graph) CurrentVersion() uint64 {
+	return g.currentBlastRadiusCacheVersion()
+}
+
 func cloneBlastRadiusResult(result *BlastRadiusResult) *BlastRadiusResult {
 	if result == nil {
 		return nil

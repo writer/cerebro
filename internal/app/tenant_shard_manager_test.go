@@ -105,7 +105,7 @@ func TestTenantGraphShardManagerPromoteHotShardReturnsShardWithoutCachingOnSourc
 	if returned != shard {
 		t.Fatalf("expected computed shard to be returned on race, got %p want %p", returned, shard)
 	}
-	if _, ok := manager.shards["tenant-a"]; ok {
+	if got := manager.tiers.HotGraph(manager.generation, "tenant-a"); got != nil {
 		t.Fatal("did not expect stale shard to be promoted into hot cache")
 	}
 }
@@ -127,7 +127,7 @@ func TestTenantGraphShardManagerPromoteHotShardReturnsWarmShardWithoutCachingWhe
 	if returned != warmShard {
 		t.Fatalf("expected warm shard to be returned while skipping cache promotion, got %p want %p", returned, warmShard)
 	}
-	if _, ok := manager.shards["tenant-a"]; ok {
+	if got := manager.tiers.HotGraph(manager.generation, "tenant-a"); got != nil {
 		t.Fatal("did not expect warm shard to be promoted when live graph reappeared")
 	}
 }
@@ -266,6 +266,41 @@ func TestTenantGraphShardManagerPinsTenantsWithOpenFindings(t *testing.T) {
 	}
 }
 
+func TestTenantGraphShardManagerGraphForTenantAvoidsDoubleEviction(t *testing.T) {
+	store := &countingFindingStore{Store: findings.NewStore()}
+	store.Upsert(context.Background(), policy.Finding{
+		ID:          "finding:tenant-a",
+		PolicyID:    "tenant-a-open",
+		PolicyName:  "Tenant A Open Finding",
+		Severity:    "high",
+		Description: "open finding for pinning",
+		Resource: map[string]any{
+			"tenant_id": "tenant-a",
+		},
+	})
+
+	manager := newTenantGraphShardManager(time.Minute, time.Hour, "", 1, nil, store)
+	now := time.Date(2026, time.March, 17, 23, 5, 0, 0, time.UTC)
+	manager.now = func() time.Time { return now }
+
+	live := graph.New()
+	live.AddNode(&graph.Node{ID: "service:tenant-a", Kind: graph.NodeKindService, TenantID: "tenant-a"})
+	live.BuildIndex()
+
+	if shard := manager.GraphForTenant(live, "tenant-a"); shard == nil {
+		t.Fatal("expected initial tenant shard")
+	}
+
+	now = now.Add(2 * time.Minute)
+	store.countCalls = 0
+	if shard := manager.GraphForTenant(live, "tenant-a"); shard == nil {
+		t.Fatal("expected pinned tenant shard to remain available")
+	}
+	if store.countCalls != 1 {
+		t.Fatalf("Count() called %d times, want 1", store.countCalls)
+	}
+}
+
 func BenchmarkCurrentSecurityGraphForTenant(b *testing.B) {
 	live := graph.New()
 	for tenant := 0; tenant < 12; tenant++ {
@@ -350,4 +385,14 @@ func buildTenantShardTestGraph(builtAt time.Time) *graph.Graph {
 		EdgeCount: live.EdgeCount(),
 	})
 	return live
+}
+
+type countingFindingStore struct {
+	*findings.Store
+	countCalls int
+}
+
+func (s *countingFindingStore) Count(filter findings.FindingFilter) int {
+	s.countCalls++
+	return s.Store.Count(filter)
 }

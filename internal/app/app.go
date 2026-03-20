@@ -163,6 +163,12 @@ type App struct {
 	graphWriterLeaseTransitionWG  sync.WaitGroup
 	tenantShardMu                 sync.Mutex
 	tenantSecurityGraphShards     *tenantGraphShardManager
+	passiveSnapshotStoreMu        sync.RWMutex
+	passiveSnapshotStoreOwner     *graph.GraphPersistenceStore
+	passiveSnapshotStoreSource    string
+	passiveSnapshotStoreID        string
+	passiveSnapshotStoreStatusID  string
+	passiveSnapshotStore          *graph.SnapshotGraphStore
 	eventCorrelationRefreshQueue  *eventCorrelationRefreshQueue
 	eventCorrelationRefreshCancel context.CancelFunc
 	eventCorrelationRefreshWG     sync.WaitGroup
