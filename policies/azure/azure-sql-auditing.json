@@ -1,14 +1,17 @@
 {
   "id": "azure-sql-auditing-enabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "SQL Database Auditing",
   "description": "Azure SQL Database should have auditing enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::sql::database",
   "conditions": [
-    "auditing_state != 'Enabled'"
+    "cmp_ne(path(resource, \"auditing_state\"), \"Enabled\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable auditing on Azure SQL Database. Configure retention and destination (Storage Account, Log Analytics, or Event Hub).",
   "tags": [
     "cis-azure-4.1.1",
     "sql",
@@ -16,6 +19,7 @@
     "audit",
     "logging"
   ],
+  "remediation": "Enable auditing on Azure SQL Database. Configure retention and destination (Storage Account, Log Analytics, or Event Hub).",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

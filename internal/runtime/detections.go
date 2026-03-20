@@ -24,9 +24,13 @@ package runtime
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/writer/cerebro/internal/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // DetectionEngine is the core runtime threat detection component. It maintains
@@ -38,11 +42,15 @@ import (
 //
 // Thread-safe for concurrent event processing.
 type DetectionEngine struct {
-	rules          []DetectionRule  // Active detection rules
-	suppressions   map[string]bool  // Rule IDs that are suppressed
-	recentFindings []RuntimeFinding // Recent findings ring buffer
-	maxFindings    int              // Max findings to retain
-	mu             sync.RWMutex     // Protects recentFindings
+	rules              []DetectionRule // Active detection rules
+	rulesByMask        [16][]DetectionRule
+	suppressions       map[string]bool  // Rule IDs that are suppressed
+	recentFindings     []RuntimeFinding // Recent findings ring buffer
+	maxFindings        int              // Max findings to retain
+	behaviorProfiles   map[string]*workloadBehaviorProfile
+	behaviorProfileCfg behaviorProfileConfig
+	behaviorProfileSeq uint64
+	mu                 sync.RWMutex // Protects recentFindings and behavior profile state
 }
 
 // DetectionRule defines a runtime threat detection rule with conditions,
@@ -52,15 +60,16 @@ type DetectionEngine struct {
 // Each rule includes MITRE ATT&CK technique IDs for threat intelligence
 // correlation and incident response prioritization.
 type DetectionRule struct {
-	ID          string            `json:"id"`           // Unique rule identifier
-	Name        string            `json:"name"`         // Human-readable rule name
-	Description string            `json:"description"`  // Detailed description of what the rule detects
-	Category    DetectionCategory `json:"category"`     // Threat category for grouping/filtering
-	Severity    string            `json:"severity"`     // critical, high, medium, low
-	Enabled     bool              `json:"enabled"`      // Whether rule is active
-	Conditions  []Condition       `json:"conditions"`   // Conditions that must match
-	MITRE       []string          `json:"mitre_attack"` // MITRE ATT&CK technique IDs (e.g., T1496)
-	Response    ResponseAction    `json:"response"`     // Automated response configuration
+	ID           string            `json:"id"`           // Unique rule identifier
+	Name         string            `json:"name"`         // Human-readable rule name
+	Description  string            `json:"description"`  // Detailed description of what the rule detects
+	Category     DetectionCategory `json:"category"`     // Threat category for grouping/filtering
+	Severity     string            `json:"severity"`     // critical, high, medium, low
+	Enabled      bool              `json:"enabled"`      // Whether rule is active
+	Conditions   []Condition       `json:"conditions"`   // Conditions that must match
+	MITRE        []string          `json:"mitre_attack"` // MITRE ATT&CK technique IDs (e.g., T1496)
+	Response     ResponseAction    `json:"response"`     // Automated response configuration
+	requiredMask detectionFieldMask
 }
 
 // DetectionCategory classifies the type of threat being detected.
@@ -81,18 +90,29 @@ const (
 	CategoryPersistence         DetectionCategory = "persistence"          // Mechanisms for maintaining access
 	CategoryCredentialAccess    DetectionCategory = "credential_access"    //nolint:gosec // Attempts to steal credentials
 	CategoryContainerDrift      DetectionCategory = "container_drift"      // Unexpected changes to container filesystem
+	CategoryBehavioralAnomaly   DetectionCategory = "behavioral_anomaly"   // Learned workload behavior deviations
 )
 
 type Condition struct {
-	Field    string `json:"field"`
-	Operator string `json:"operator"` // eq, neq, contains, regex, gt, lt
-	Value    string `json:"value"`
+	Field         string `json:"field"`
+	Operator      string `json:"operator"` // eq, neq, contains, regex, gt, lt
+	Value         string `json:"value"`
+	compiledRegex *regexp.Regexp
 }
 
 type ResponseAction struct {
 	Type        string `json:"type"` // alert, isolate, kill, quarantine
 	AutoExecute bool   `json:"auto_execute"`
 }
+
+type detectionFieldMask uint8
+
+const (
+	detectionFieldProcess detectionFieldMask = 1 << iota
+	detectionFieldNetwork
+	detectionFieldFile
+	detectionFieldContainer
+)
 
 // RuntimeEvent represents a telemetry event from agents
 type RuntimeEvent struct {
@@ -155,34 +175,37 @@ type ContainerEvent struct {
 
 // RuntimeFinding represents a detected threat
 type RuntimeFinding struct {
-	ID           string            `json:"id"`
-	RuleID       string            `json:"rule_id"`
-	RuleName     string            `json:"rule_name"`
-	Category     DetectionCategory `json:"category"`
-	Severity     string            `json:"severity"`
-	ResourceID   string            `json:"resource_id"`
-	ResourceType string            `json:"resource_type"`
-	Description  string            `json:"description"`
-	Event        *RuntimeEvent     `json:"event"`
-	MITRE        []string          `json:"mitre_attack"`
-	Remediation  string            `json:"remediation"`
-	Suppressed   bool              `json:"suppressed"`
-	Timestamp    time.Time         `json:"timestamp"`
+	ID           string              `json:"id"`
+	RuleID       string              `json:"rule_id"`
+	RuleName     string              `json:"rule_name"`
+	Category     DetectionCategory   `json:"category"`
+	Severity     string              `json:"severity"`
+	ResourceID   string              `json:"resource_id"`
+	ResourceType string              `json:"resource_type"`
+	Description  string              `json:"description"`
+	Event        *RuntimeEvent       `json:"event"`
+	Observation  *RuntimeObservation `json:"observation,omitempty"`
+	MITRE        []string            `json:"mitre_attack"`
+	Remediation  string              `json:"remediation"`
+	Suppressed   bool                `json:"suppressed"`
+	Timestamp    time.Time           `json:"timestamp"`
 }
 
 func NewDetectionEngine() *DetectionEngine {
 	engine := &DetectionEngine{
-		rules:          make([]DetectionRule, 0),
-		suppressions:   make(map[string]bool),
-		recentFindings: make([]RuntimeFinding, 0),
-		maxFindings:    1000,
+		rules:              make([]DetectionRule, 0),
+		suppressions:       make(map[string]bool),
+		recentFindings:     make([]RuntimeFinding, 0),
+		maxFindings:        1000,
+		behaviorProfiles:   make(map[string]*workloadBehaviorProfile),
+		behaviorProfileCfg: defaultBehaviorProfileConfig(),
 	}
 	engine.loadDefaultRules()
 	return engine
 }
 
 func (e *DetectionEngine) loadDefaultRules() {
-	e.rules = []DetectionRule{
+	e.rules = e.prepareRules([]DetectionRule{
 		// Crypto Mining Detection
 		{
 			ID:          "crypto-mining-process",
@@ -468,14 +491,56 @@ func (e *DetectionEngine) loadDefaultRules() {
 			MITRE:    []string{"T1552.001"},
 			Response: ResponseAction{Type: "alert", AutoExecute: true},
 		},
-	}
+	})
+	e.rebuildRuleMaskIndex()
 }
 
 // ProcessEvent evaluates an event against all rules and stores resulting findings
 func (e *DetectionEngine) ProcessEvent(ctx context.Context, event *RuntimeEvent) []RuntimeFinding {
-	var findings []RuntimeFinding
+	observation := observationFromEventBase(event)
+	if normalized, err := NormalizeObservation(observation); err == nil {
+		observation = normalized
+	}
+	return e.process(ctx, event, observation)
+}
 
-	for _, rule := range e.rules {
+// ProcessObservation evaluates a runtime observation after normalizing it.
+func (e *DetectionEngine) ProcessObservation(ctx context.Context, observation *RuntimeObservation) []RuntimeFinding {
+	if observation == nil {
+		return nil
+	}
+	normalized, err := NormalizeObservation(observation)
+	if err != nil {
+		return nil
+	}
+	return e.ProcessNormalizedObservation(ctx, normalized)
+}
+
+// ProcessNormalizedObservation evaluates a previously-normalized runtime
+// observation without re-running normalization in the hot path.
+func (e *DetectionEngine) ProcessNormalizedObservation(ctx context.Context, observation *RuntimeObservation) []RuntimeFinding {
+	if observation == nil {
+		return nil
+	}
+	return e.process(ctx, observation.AsRuntimeEvent(), observation)
+}
+
+func (e *DetectionEngine) process(ctx context.Context, event *RuntimeEvent, observation *RuntimeObservation) []RuntimeFinding {
+	if event == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	candidateRules := e.candidateRulesForEvent(event)
+	_, span := telemetry.StartSpan(ctx, "cerebro.runtime", "cerebro.detection.evaluate",
+		detectionSpanAttributes(event, observation, len(candidateRules))...,
+	)
+	defer span.End()
+
+	findings := make([]RuntimeFinding, 0, 2)
+
+	for _, rule := range candidateRules {
 		if !rule.Enabled {
 			continue
 		}
@@ -491,6 +556,7 @@ func (e *DetectionEngine) ProcessEvent(ctx context.Context, event *RuntimeEvent)
 				ResourceType: event.ResourceType,
 				Description:  rule.Description,
 				Event:        event,
+				Observation:  observation,
 				MITRE:        rule.MITRE,
 				Remediation:  getRemediation(rule),
 				Suppressed:   e.suppressions[rule.ID],
@@ -500,11 +566,55 @@ func (e *DetectionEngine) ProcessEvent(ctx context.Context, event *RuntimeEvent)
 		}
 	}
 
+	if behavioral := e.behavioralFindingForObservation(observation); behavioral != nil {
+		findings = append(findings, *behavioral)
+	}
+
 	if len(findings) > 0 {
 		e.storeFindings(findings)
 	}
+	span.SetAttributes(
+		attribute.Int("cerebro.detection.findings_count", len(findings)),
+		attribute.String("cerebro.detection.scope", detectionScope(event, observation)),
+	)
 
 	return findings
+}
+
+func detectionSpanAttributes(event *RuntimeEvent, observation *RuntimeObservation, candidateCount int) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		attribute.String("cerebro.event.id", strings.TrimSpace(event.ID)),
+		attribute.String("cerebro.event.type", strings.TrimSpace(event.EventType)),
+		attribute.String("cerebro.resource.id", strings.TrimSpace(event.ResourceID)),
+		attribute.String("cerebro.resource.type", strings.TrimSpace(event.ResourceType)),
+		attribute.Int("cerebro.detection.rule_candidates", candidateCount),
+	}
+	if tenantID := detectionTenantID(event, observation); tenantID != "" {
+		attrs = append(attrs, attribute.String("cerebro.tenant_id", tenantID))
+	}
+	return attrs
+}
+
+func detectionTenantID(event *RuntimeEvent, observation *RuntimeObservation) string {
+	if observation != nil {
+		if tenantID := stringMapValue(observation.Metadata, "tenant_id"); tenantID != "" {
+			return tenantID
+		}
+	}
+	if event == nil {
+		return ""
+	}
+	return stringMapValue(event.Metadata, "tenant_id")
+}
+
+func detectionScope(event *RuntimeEvent, observation *RuntimeObservation) string {
+	if observation != nil && strings.TrimSpace(string(observation.Kind)) != "" {
+		return strings.TrimSpace(string(observation.Kind))
+	}
+	if event == nil {
+		return ""
+	}
+	return strings.TrimSpace(event.EventType)
 }
 
 // storeFindings appends findings to the in-memory ring buffer
@@ -550,6 +660,9 @@ func (e *DetectionEngine) evaluateCondition(event *RuntimeEvent, cond Condition)
 	case "contains":
 		return strings.Contains(value, cond.Value)
 	case "regex":
+		if cond.compiledRegex != nil {
+			return cond.compiledRegex.MatchString(value)
+		}
 		matched, _ := regexp.MatchString(cond.Value, value)
 		return matched
 	case "gt":
@@ -636,7 +749,9 @@ func (e *DetectionEngine) extractField(event *RuntimeEvent, field string) string
 }
 
 func (e *DetectionEngine) AddRule(rule DetectionRule) {
-	e.rules = append(e.rules, rule)
+	prepared := e.prepareRule(rule)
+	e.rules = append(e.rules, prepared)
+	e.addRuleToMaskIndex(prepared)
 }
 
 func (e *DetectionEngine) SetSuppression(ruleID string, suppressed bool) {
@@ -645,6 +760,216 @@ func (e *DetectionEngine) SetSuppression(ruleID string, suppressed bool) {
 
 func (e *DetectionEngine) ListRules() []DetectionRule {
 	return e.rules
+}
+
+func (e *DetectionEngine) behavioralFindingForObservation(observation *RuntimeObservation) *RuntimeFinding {
+	if e == nil || observation == nil {
+		return nil
+	}
+	workloadID := strings.TrimSpace(observation.WorkloadRef)
+	if workloadID == "" || !e.behaviorProfileCfg.enabled {
+		return nil
+	}
+	observedAt := observation.ObservedAt.UTC()
+	if observedAt.IsZero() {
+		observedAt = time.Now().UTC()
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	profile := e.behaviorProfiles[workloadID]
+	if profile == nil {
+		profile = newWorkloadBehaviorProfile(workloadID, observedAt, e.behaviorProfileCfg)
+		e.behaviorProfiles[workloadID] = profile
+	}
+	e.behaviorProfileSeq++
+	profile.lastAccessSeq = e.behaviorProfileSeq
+	e.evictBehaviorProfilesLocked()
+
+	evaluation := profile.evaluate(observation, e.behaviorProfileCfg)
+	if len(evaluation.anomalies) == 0 {
+		return nil
+	}
+
+	event := observation.AsRuntimeEvent()
+	if event == nil {
+		event = &RuntimeEvent{ID: observation.ID}
+	}
+	if strings.TrimSpace(event.ResourceID) == "" {
+		event.ResourceID = firstNonEmptyRuntime(observation.ResourceID, observation.WorkloadRef, observation.ContainerID)
+	}
+	if strings.TrimSpace(event.ResourceType) == "" {
+		event.ResourceType = firstNonEmptyRuntime(observation.ResourceType, observationResourceType(observation))
+	}
+
+	description := "Observed workload behavior outside learned baseline: " + strings.Join(evaluation.anomalies, ", ")
+	return &RuntimeFinding{
+		ID:           generateFindingID("behavioral-anomaly-"+string(observation.Kind), event),
+		RuleID:       "behavioral-anomaly",
+		RuleName:     "Workload Behavioral Anomaly",
+		Category:     CategoryBehavioralAnomaly,
+		Severity:     evaluation.severity,
+		ResourceID:   event.ResourceID,
+		ResourceType: event.ResourceType,
+		Description:  description,
+		Event:        event,
+		Observation:  observation,
+		Remediation:  "Review whether this workload behavior is expected. If not, investigate the workload, image, and recent deployment changes.",
+		Timestamp:    time.Now(),
+	}
+}
+
+func (e *DetectionEngine) evictBehaviorProfilesLocked() {
+	if e == nil {
+		return
+	}
+	limit := e.behaviorProfileCfg.maxProfiles
+	if limit <= 0 || len(e.behaviorProfiles) <= limit {
+		return
+	}
+
+	workloads := make([]string, 0, len(e.behaviorProfiles))
+	for workloadID := range e.behaviorProfiles {
+		workloads = append(workloads, workloadID)
+	}
+	slices.SortFunc(workloads, func(a, b string) int {
+		left := e.behaviorProfiles[a]
+		right := e.behaviorProfiles[b]
+		switch {
+		case left == nil && right == nil:
+			return 0
+		case left == nil:
+			return -1
+		case right == nil:
+			return 1
+		case left.lastAccessSeq < right.lastAccessSeq:
+			return -1
+		case left.lastAccessSeq > right.lastAccessSeq:
+			return 1
+		case left.lastSeen.Before(right.lastSeen):
+			return -1
+		case left.lastSeen.After(right.lastSeen):
+			return 1
+		case a < b:
+			return -1
+		case a > b:
+			return 1
+		default:
+			return 0
+		}
+	})
+	for len(e.behaviorProfiles) > limit && len(workloads) > 0 {
+		evict := workloads[0]
+		workloads = workloads[1:]
+		delete(e.behaviorProfiles, evict)
+	}
+}
+
+func (e *DetectionEngine) candidateRulesForEvent(event *RuntimeEvent) []DetectionRule {
+	return e.rulesByMask[eventFieldMask(event)]
+}
+
+func (e *DetectionEngine) prepareRules(rules []DetectionRule) []DetectionRule {
+	prepared := make([]DetectionRule, 0, len(rules))
+	for _, rule := range rules {
+		prepared = append(prepared, e.prepareRule(rule))
+	}
+	return prepared
+}
+
+func (e *DetectionEngine) prepareRule(rule DetectionRule) DetectionRule {
+	conditions := make([]Condition, 0, len(rule.Conditions))
+	var mask detectionFieldMask
+	for _, cond := range rule.Conditions {
+		cond.compiledRegex = nil
+		if cond.Operator == "regex" {
+			if compiled, err := regexp.Compile(cond.Value); err == nil {
+				cond.compiledRegex = compiled
+			}
+		}
+		if !conditionCanMatchEmpty(cond) {
+			mask |= conditionFieldMask(cond.Field)
+		}
+		conditions = append(conditions, cond)
+	}
+	rule.Conditions = conditions
+	rule.requiredMask = mask
+	return rule
+}
+
+func (e *DetectionEngine) rebuildRuleMaskIndex() {
+	e.rulesByMask = [16][]DetectionRule{}
+	for _, rule := range e.rules {
+		e.addRuleToMaskIndex(rule)
+	}
+}
+
+func (e *DetectionEngine) addRuleToMaskIndex(rule DetectionRule) {
+	for mask := detectionFieldMask(0); mask < 16; mask++ {
+		if mask&rule.requiredMask != rule.requiredMask {
+			continue
+		}
+		e.rulesByMask[mask] = append(e.rulesByMask[mask], rule)
+	}
+}
+
+func eventFieldMask(event *RuntimeEvent) detectionFieldMask {
+	if event == nil {
+		return 0
+	}
+	var mask detectionFieldMask
+	if event.Process != nil {
+		mask |= detectionFieldProcess
+	}
+	if event.Network != nil {
+		mask |= detectionFieldNetwork
+	}
+	if event.File != nil {
+		mask |= detectionFieldFile
+	}
+	if event.Container != nil {
+		mask |= detectionFieldContainer
+	}
+	return mask
+}
+
+func conditionFieldMask(field string) detectionFieldMask {
+	switch strings.SplitN(field, ".", 2)[0] {
+	case "process":
+		return detectionFieldProcess
+	case "network":
+		return detectionFieldNetwork
+	case "file":
+		return detectionFieldFile
+	case "container":
+		return detectionFieldContainer
+	default:
+		return 0
+	}
+}
+
+func conditionCanMatchEmpty(cond Condition) bool {
+	switch cond.Operator {
+	case "eq":
+		return cond.Value == ""
+	case "neq":
+		return cond.Value != ""
+	case "contains":
+		return cond.Value == ""
+	case "regex":
+		if cond.compiledRegex != nil {
+			return cond.compiledRegex.MatchString("")
+		}
+		matched, err := regexp.MatchString(cond.Value, "")
+		return err == nil && matched
+	case "gt":
+		return false
+	case "lt":
+		return len(cond.Value) > 0
+	default:
+		return false
+	}
 }
 
 func generateFindingID(ruleID string, event *RuntimeEvent) string {

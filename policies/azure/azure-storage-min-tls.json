@@ -1,20 +1,24 @@
 {
   "id": "azure-storage-minimum-tls-1-2",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure Storage Minimum TLS 1.2",
   "description": "Storage accounts should enforce minimum TLS version 1.2",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::storage::account",
   "conditions": [
-    "minimum_tls_version != 'TLS1_2'"
+    "cmp_ne(path(resource, \"minimum_tls_version\"), \"TLS1_2\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Set the minimum TLS version to 1.2 in storage account configuration.",
   "tags": [
     "cis-azure-3.15",
     "storage",
     "encryption",
     "tls"
   ],
+  "remediation": "Set the minimum TLS version to 1.2 in storage account configuration.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

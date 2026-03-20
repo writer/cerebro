@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -19,11 +20,6 @@ type graphEvaluateChangeRequest struct {
 }
 
 func (s *Server) evaluateGraphChange(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	var req graphEvaluateChangeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request body")
@@ -60,9 +56,12 @@ func (s *Server) evaluateGraphChange(w http.ResponseWriter, r *http.Request) {
 		options = append(options, graph.WithApprovalARRThreshold(*req.ApprovalARRThreshold))
 	}
 
-	engine := graph.NewPropagationEngine(s.app.SecurityGraph, options...)
-	result, err := engine.Evaluate(proposal)
+	result, err := s.graphAdvisory.EvaluateChange(r.Context(), proposal, options...)
 	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			s.errorFromErr(w, err)
+			return
+		}
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}

@@ -1,21 +1,25 @@
 {
   "id": "ssh-key-unused",
-  "control_id": "wc-id-912",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "SSH key pair is not used by any VM",
   "description": "An SSH key pair exists but is not associated with any VM",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::ssh_key",
   "conditions": [
-    "associated_instances_count == 0"
+    "cmp_eq(path(resource, \"associated_instances_count\"), 0)"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "Delete unused SSH key pairs. Maintain key hygiene for security.",
   "tags": [
     "wiz",
     "compute",
     "ssh",
     "hygiene"
   ],
+  "control_id": "wc-id-912",
+  "remediation": "Delete unused SSH key pairs. Maintain key hygiene for security.",
   "frameworks": [
     {
       "name": "NIST 800-53 r5",

@@ -15,9 +15,14 @@ type PackageVulnerabilityMatcher interface {
 	MatchPackages(ctx context.Context, os OSInfo, packages []PackageRecord) ([]scanner.ImageVulnerability, error)
 }
 
+type SecretScanner interface {
+	ScanFilesystem(ctx context.Context, rootfsPath string) (*SecretScanResult, error)
+}
+
 type Options struct {
 	VulnerabilityScanner scanner.FilesystemScanner
 	VulnerabilityMatcher PackageVulnerabilityMatcher
+	SecretScanner        SecretScanner
 	MalwareScanner       MalwareScanner
 	Now                  func() time.Time
 	MaxWalkEntries       int
@@ -38,12 +43,16 @@ type OSInfo struct {
 }
 
 type PackageRecord struct {
-	Ecosystem string `json:"ecosystem"`
-	Manager   string `json:"manager,omitempty"`
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	PURL      string `json:"purl,omitempty"`
-	Location  string `json:"location,omitempty"`
+	Ecosystem        string `json:"ecosystem"`
+	Manager          string `json:"manager,omitempty"`
+	Name             string `json:"name"`
+	Version          string `json:"version"`
+	PURL             string `json:"purl,omitempty"`
+	Location         string `json:"location,omitempty"`
+	DirectDependency bool   `json:"direct_dependency,omitempty"`
+	Reachable        bool   `json:"reachable,omitempty"`
+	DependencyDepth  int    `json:"dependency_depth,omitempty"`
+	ImportFileCount  int    `json:"import_file_count,omitempty"`
 }
 
 type SecretFinding struct {
@@ -65,6 +74,11 @@ type SecretReference struct {
 	Port       int               `json:"port,omitempty"`
 	Database   string            `json:"database,omitempty"`
 	Attributes map[string]string `json:"attributes,omitempty"`
+}
+
+type SecretScanResult struct {
+	Engine   string          `json:"engine,omitempty"`
+	Findings []SecretFinding `json:"findings,omitempty"`
 }
 
 type ConfigFinding struct {
@@ -99,30 +113,50 @@ type MalwareFinding struct {
 	Engine      string `json:"engine,omitempty"`
 }
 
+type TechnologyRecord struct {
+	Name       string            `json:"name"`
+	Category   string            `json:"category"`
+	Version    string            `json:"version,omitempty"`
+	Path       string            `json:"path,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
+}
+
 type SBOMComponent struct {
-	BOMRef    string `json:"bom_ref"`
-	Type      string `json:"type"`
-	Name      string `json:"name"`
-	Version   string `json:"version,omitempty"`
-	PURL      string `json:"purl,omitempty"`
-	Ecosystem string `json:"ecosystem,omitempty"`
-	Location  string `json:"location,omitempty"`
+	BOMRef           string `json:"bom_ref"`
+	Type             string `json:"type"`
+	Name             string `json:"name"`
+	Version          string `json:"version,omitempty"`
+	PURL             string `json:"purl,omitempty"`
+	Ecosystem        string `json:"ecosystem,omitempty"`
+	Location         string `json:"location,omitempty"`
+	DirectDependency bool   `json:"direct_dependency,omitempty"`
+	Reachable        bool   `json:"reachable,omitempty"`
+	DependencyDepth  int    `json:"dependency_depth,omitempty"`
+	ImportFileCount  int    `json:"import_file_count,omitempty"`
+}
+
+type SBOMDependency struct {
+	Ref       string   `json:"ref"`
+	DependsOn []string `json:"depends_on,omitempty"`
 }
 
 type SBOMDocument struct {
-	Format      string          `json:"format"`
-	SpecVersion string          `json:"spec_version"`
-	GeneratedAt time.Time       `json:"generated_at"`
-	Components  []SBOMComponent `json:"components,omitempty"`
+	Format       string           `json:"format"`
+	SpecVersion  string           `json:"spec_version"`
+	GeneratedAt  time.Time        `json:"generated_at"`
+	Components   []SBOMComponent  `json:"components,omitempty"`
+	Dependencies []SBOMDependency `json:"dependencies,omitempty"`
 }
 
 type Summary struct {
 	PackageCount          int  `json:"package_count"`
+	DependencyCount       int  `json:"dependency_count"`
 	VulnerabilityCount    int  `json:"vulnerability_count"`
 	SecretCount           int  `json:"secret_count"`
 	MisconfigurationCount int  `json:"misconfiguration_count"`
 	IaCArtifactCount      int  `json:"iac_artifact_count"`
 	MalwareCount          int  `json:"malware_count"`
+	TechnologyCount       int  `json:"technology_count"`
 	Truncated             bool `json:"truncated,omitempty"`
 }
 
@@ -137,6 +171,7 @@ type Report struct {
 	Misconfigurations []ConfigFinding              `json:"misconfigurations,omitempty"`
 	IaCArtifacts      []IaCArtifact                `json:"iac_artifacts,omitempty"`
 	Malware           []MalwareFinding             `json:"malware,omitempty"`
+	Technologies      []TechnologyRecord           `json:"technologies,omitempty"`
 	SBOM              SBOMDocument                 `json:"sbom"`
 	Summary           Summary                      `json:"summary"`
 	Metadata          map[string]any               `json:"metadata,omitempty"`

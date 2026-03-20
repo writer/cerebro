@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -460,6 +461,7 @@ func (s *Scanner) EnrichGraphNode(result *ScanResult) map[string]any {
 	for fw := range frameworks {
 		fwList = append(fwList, string(fw))
 	}
+	sort.Strings(fwList)
 	props["compliance_frameworks"] = fwList
 
 	containsPII := false

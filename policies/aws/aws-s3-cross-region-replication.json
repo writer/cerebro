@@ -1,14 +1,24 @@
 {
   "id": "aws-s3-cross-region-replication",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Buckets Have Cross-Region Replication",
   "description": "Critical S3 buckets should have cross-region replication enabled for disaster recovery and data durability",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws_s3_buckets",
   "conditions": [
-    "replication_configuration == null",
-    "tags.critical == true"
+    "cmp_eq(path(resource, \"replication_configuration\"), null)",
+    "cmp_eq(path(resource, \"tags.critical\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
+  "tags": [
+    "s3",
+    "disaster-recovery",
+    "replication",
+    "backup"
+  ],
   "remediation": "Enable cross-region replication for the S3 bucket to a bucket in a different AWS region",
   "remediation_steps": [
     "Navigate to S3 in AWS Console",
@@ -19,27 +29,29 @@
     "Configure IAM role for replication",
     "Enable versioning on both source and destination buckets"
   ],
-  "tags": [
-    "s3",
-    "disaster-recovery",
-    "replication",
-    "backup"
-  ],
   "risk_categories": [
     "MISCONFIGURATION"
   ],
   "frameworks": [
     {
       "name": "NIST 800-53 r5",
-      "controls": ["CP-9", "CP-10"]
+      "controls": [
+        "CP-9",
+        "CP-10"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["A1.2"]
+      "controls": [
+        "A1.2"
+      ]
     },
     {
       "name": "ISO 27001:2022",
-      "controls": ["A.5.29", "A.8.13"]
+      "controls": [
+        "A.5.29",
+        "A.8.13"
+      ]
     }
   ]
 }

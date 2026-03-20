@@ -1,20 +1,24 @@
 {
   "id": "gcp-iam-minimize-user-managed-keys",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Minimize User Managed Service Account Keys",
   "description": "Service accounts should use GCP-managed keys instead of user-managed keys where possible",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::iam::service_account_key",
   "conditions": [
-    "key_type == 'USER_MANAGED'"
+    "cmp_eq(path(resource, \"key_type\"), \"USER_MANAGED\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Use workload identity or GCP-managed keys. If user-managed keys are required, implement rotation.",
   "tags": [
     "cis-gcp-1.4",
     "iam",
     "service-account",
     "keys"
   ],
+  "remediation": "Use workload identity or GCP-managed keys. If user-managed keys are required, implement rotation.",
   "risk_categories": [
     "IDENTITY_RISK",
     "MISCONFIGURATION"

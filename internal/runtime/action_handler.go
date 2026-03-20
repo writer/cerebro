@@ -208,21 +208,21 @@ func (h *DefaultActionHandler) RevokeCredentials(ctx context.Context, principalI
 
 func (h *DefaultActionHandler) ScaleDown(ctx context.Context, resourceID string, replicas int) error {
 	resourceID = strings.TrimSpace(resourceID)
+	if replicas < 0 {
+		return fmt.Errorf("replicas must be non-negative")
+	}
+	if err := authorizeActuation(ctx, ActionScaleDown, map[string]any{
+		"resource_id": resourceID,
+		"replicas":    replicas,
+	}); err != nil {
+		return err
+	}
 	replicas32, err := runtimeScaleReplicas32(replicas)
 	if err != nil {
 		return err
 	}
-	target, parseErr := ParseWorkloadTarget(resourceID)
-	if parseErr == nil {
-		resourceID = target.String()
-		if err := authorizeActuation(ctx, ActionScaleDown, map[string]any{
-			"resource_id": resourceID,
-			"replicas":    replicas,
-		}); err != nil {
-			return err
-		}
-	}
-	if parseErr == nil && h.workloadScaler != nil {
+	target, err := ParseWorkloadTarget(resourceID)
+	if err == nil && h.workloadScaler != nil {
 		if scaleErr := h.workloadScaler.ScaleDown(ctx, target, replicas32); scaleErr == nil {
 			return nil
 		} else {
@@ -237,9 +237,6 @@ func (h *DefaultActionHandler) ScaleDown(ctx context.Context, resourceID string,
 	}
 	if err != nil {
 		return err
-	}
-	if parseErr != nil {
-		return parseErr
 	}
 	return &ActionCapabilityError{
 		Action:  ActionScaleDown,
@@ -319,8 +316,7 @@ func authorizeActuation(ctx context.Context, action ResponseActionType, payload 
 			return unauthorizedRuntimeTargetError(action)
 		}
 	case ActionScaleDown:
-		candidate := runtimeMapValueToString(payload, "resource_id")
-		if !scopeAllows(scope.AllowedWorkloadTargets, candidate) && !scopeAllows(scope.AllowedResourceIDs, candidate) {
+		if !scopeAllows(scope.AllowedWorkloadTargets, runtimeMapValueToString(payload, "resource_id")) {
 			return unauthorizedRuntimeTargetError(action)
 		}
 	case ActionBlockIP, ActionBlockDomain:

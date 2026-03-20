@@ -137,7 +137,7 @@ jobs:
           from pathlib import Path
 
           required = {
-              "github.com/writer/cerebro/internal/api": 40.0,
+              "github.com/writer/cerebro/internal/api": 55.0,
               "github.com/writer/cerebro/internal/app": 47.0,
               "github.com/writer/cerebro/internal/cache": 82.0,
               "github.com/writer/cerebro/internal/graph": 62.0,
@@ -146,7 +146,7 @@ jobs:
               "github.com/writer/cerebro/internal/providers": 51.0,
               "github.com/writer/cerebro/internal/scanner": 44.0,
               "github.com/writer/cerebro/internal/scheduler": 71.5,
-              "github.com/writer/cerebro/internal/sync": 11.5,
+              "github.com/writer/cerebro/internal/sync": 20.0,
           }
 
           pattern = re.compile(r"^ok\s+(\S+)\s+.*coverage:\s+([0-9.]+)% of statements$")

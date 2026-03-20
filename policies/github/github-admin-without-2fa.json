@@ -1,21 +1,25 @@
 {
   "id": "github-admin-without-2fa",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GitHub Admin Without 2FA",
   "description": "Organization admin or repository admin does not have two-factor authentication enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "github::user",
   "conditions": [
-    "role IN ('admin', 'owner')",
-    "two_factor_enabled != true"
+    "in_list(path(resource, \"role\"), [\"admin\",\"owner\"])",
+    "cmp_ne(path(resource, \"two_factor_enabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Require the user to enable 2FA on their GitHub account. Consider removing admin access until 2FA is enabled.",
   "tags": [
     "github",
     "authentication",
     "mfa",
     "privileged-access"
   ],
+  "remediation": "Require the user to enable 2FA on their GitHub account. Consider removing admin access until 2FA is enabled.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

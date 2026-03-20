@@ -1,25 +1,29 @@
 {
   "id": "aws-iam-single-access-key",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "IAM Users Have Single Active Access Key",
   "description": "IAM users should have at most one active access key. Having multiple active access keys increases the risk of credential exposure",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws_iam_users",
   "conditions": [
-    "active_access_key_count > 1"
+    "cmp_gt(path(resource, \"active_access_key_count\"), 1)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Deactivate or delete extra access keys for IAM users, keeping only one active key per user",
-  "remediation_steps": [
-    "List access keys: aws iam list-access-keys --user-name <username>",
-    "Identify which key is actively used",
-    "Deactivate unused keys: aws iam update-access-key --user-name <username> --access-key-id <key-id> --status Inactive",
-    "After confirming the inactive key is not needed, delete it: aws iam delete-access-key --user-name <username> --access-key-id <key-id>"
-  ],
   "tags": [
     "cis-aws-1.13",
     "iam",
     "access-keys",
     "credential-hygiene"
+  ],
+  "remediation": "Deactivate or delete extra access keys for IAM users, keeping only one active key per user",
+  "remediation_steps": [
+    "List access keys: aws iam list-access-keys --user-name \u003cusername\u003e",
+    "Identify which key is actively used",
+    "Deactivate unused keys: aws iam update-access-key --user-name \u003cusername\u003e --access-key-id \u003ckey-id\u003e --status Inactive",
+    "After confirming the inactive key is not needed, delete it: aws iam delete-access-key --user-name \u003cusername\u003e --access-key-id \u003ckey-id\u003e"
   ],
   "risk_categories": [
     "IDENTITY_RISK"
@@ -27,15 +31,22 @@
   "frameworks": [
     {
       "name": "CIS AWS Foundations Benchmark v2.0",
-      "controls": ["1.13"]
+      "controls": [
+        "1.13"
+      ]
     },
     {
       "name": "NIST 800-53 r5",
-      "controls": ["AC-2", "IA-5"]
+      "controls": [
+        "AC-2",
+        "IA-5"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6.1"]
+      "controls": [
+        "CC6.1"
+      ]
     }
   ]
 }

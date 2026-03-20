@@ -37,7 +37,7 @@ func (policyConditionCELLib) CompileOptions() []cel.EnvOption {
 		cel.Function("contains_value",
 			cel.Overload("cerebro_contains_value_dyn_dyn", []*cel.Type{cel.DynType, cel.DynType}, cel.BoolType,
 				cel.BinaryBinding(func(value, expected ref.Val) ref.Val {
-					return types.Bool(valueContains(celRefToNative(value), stringifyExpected(celRefToNative(expected))))
+					return types.Bool(valueContainsExpected(celRefToNative(value), celRefToNative(expected)))
 				}))),
 		cel.Function("matches_value",
 			cel.Overload("cerebro_matches_value_dyn_dyn", []*cel.Type{cel.DynType, cel.DynType}, cel.BoolType,
@@ -51,6 +51,16 @@ func (policyConditionCELLib) CompileOptions() []cel.EnvOption {
 					actual, ok := celRefToNative(value).(string)
 					return types.Bool(ok && strings.HasPrefix(actual, prefixStr))
 				}))),
+		cel.Function("ends_with_value",
+			cel.Overload("cerebro_ends_with_value_dyn_dyn", []*cel.Type{cel.DynType, cel.DynType}, cel.BoolType,
+				cel.BinaryBinding(func(value, suffix ref.Val) ref.Val {
+					return types.Bool(valueEndsWith(celRefToNative(value), stringifyExpected(celRefToNative(suffix))))
+				}))),
+		cel.Function("references_public_bucket",
+			cel.Overload("cerebro_references_public_bucket_dyn_string", []*cel.Type{cel.DynType, cel.StringType}, cel.BoolType,
+				cel.BinaryBinding(func(root, path ref.Val) ref.Val {
+					return types.Bool(referencesPublicBucket(celRefToNative(root), celStringValue(path)))
+				}))),
 		cel.Function("in_list",
 			cel.Overload("cerebro_in_list_dyn_dyn", []*cel.Type{cel.DynType, cel.DynType}, cel.BoolType,
 				cel.BinaryBinding(func(value, expected ref.Val) ref.Val {
@@ -59,32 +69,32 @@ func (policyConditionCELLib) CompileOptions() []cel.EnvOption {
 		cel.Function("cmp_eq",
 			cel.Overload("cerebro_cmp_eq_dyn_dyn", []*cel.Type{cel.DynType, cel.DynType}, cel.BoolType,
 				cel.BinaryBinding(func(value, expected ref.Val) ref.Val {
-					return types.Bool(compareValues(celRefToNative(value), stringifyExpected(celRefToNative(expected)), "=="))
+					return types.Bool(compareValues(celRefToNative(value), celRefToNative(expected), "=="))
 				}))),
 		cel.Function("cmp_ne",
 			cel.Overload("cerebro_cmp_ne_dyn_dyn", []*cel.Type{cel.DynType, cel.DynType}, cel.BoolType,
 				cel.BinaryBinding(func(value, expected ref.Val) ref.Val {
-					return types.Bool(compareValues(celRefToNative(value), stringifyExpected(celRefToNative(expected)), "!="))
+					return types.Bool(compareValues(celRefToNative(value), celRefToNative(expected), "!="))
 				}))),
 		cel.Function("cmp_gt",
 			cel.Overload("cerebro_cmp_gt_dyn_dyn", []*cel.Type{cel.DynType, cel.DynType}, cel.BoolType,
 				cel.BinaryBinding(func(value, expected ref.Val) ref.Val {
-					return types.Bool(compareValues(celRefToNative(value), stringifyExpected(celRefToNative(expected)), ">"))
+					return types.Bool(compareValues(celRefToNative(value), celRefToNative(expected), ">"))
 				}))),
 		cel.Function("cmp_ge",
 			cel.Overload("cerebro_cmp_ge_dyn_dyn", []*cel.Type{cel.DynType, cel.DynType}, cel.BoolType,
 				cel.BinaryBinding(func(value, expected ref.Val) ref.Val {
-					return types.Bool(compareValues(celRefToNative(value), stringifyExpected(celRefToNative(expected)), ">="))
+					return types.Bool(compareValues(celRefToNative(value), celRefToNative(expected), ">="))
 				}))),
 		cel.Function("cmp_lt",
 			cel.Overload("cerebro_cmp_lt_dyn_dyn", []*cel.Type{cel.DynType, cel.DynType}, cel.BoolType,
 				cel.BinaryBinding(func(value, expected ref.Val) ref.Val {
-					return types.Bool(compareValues(celRefToNative(value), stringifyExpected(celRefToNative(expected)), "<"))
+					return types.Bool(compareValues(celRefToNative(value), celRefToNative(expected), "<"))
 				}))),
 		cel.Function("cmp_le",
 			cel.Overload("cerebro_cmp_le_dyn_dyn", []*cel.Type{cel.DynType, cel.DynType}, cel.BoolType,
 				cel.BinaryBinding(func(value, expected ref.Val) ref.Val {
-					return types.Bool(compareValues(celRefToNative(value), stringifyExpected(celRefToNative(expected)), "<="))
+					return types.Bool(compareValues(celRefToNative(value), celRefToNative(expected), "<="))
 				}))),
 	}
 }
@@ -299,14 +309,23 @@ func convertLegacyConditionToCEL(condition string, root string) (string, error) 
 	if field, expected, negated, ok := parseContainsCondition(condition); ok {
 		expected = strings.TrimSpace(expected)
 		var expr string
-		if !isQuoted(expected) && isOuterParens(expected) {
-			innerExpr, err := convertLegacyConditionToCEL(trimOuterParens(expected), "item")
-			if err != nil {
-				return "", err
+		if mapped, ok := parseLegacyObjectLiteral(expected); ok {
+			expr = fmt.Sprintf("contains_value(path(%s, %s), %s)", root, celJSONString(field), celJSONValue(mapped))
+		} else if !isQuoted(expected) && isOuterParens(expected) {
+			inner := trimOuterParens(expected)
+			if shouldTreatContainsInnerAsCondition(inner) {
+				innerExpr, err := convertLegacyConditionToCEL(inner, "item")
+				if err != nil {
+					return "", err
+				}
+				expr = fmt.Sprintf("list_value(path(%s, %s)).exists(item, %s)", root, celJSONString(field), innerExpr)
+			} else if mapped, ok := parseLegacyObjectLiteral(inner); ok {
+				expr = fmt.Sprintf("contains_value(path(%s, %s), %s)", root, celJSONString(field), celJSONValue(mapped))
+			} else {
+				expr = fmt.Sprintf("contains_value(path(%s, %s), %s)", root, celJSONString(field), celLegacyLiteral(inner))
 			}
-			expr = fmt.Sprintf("list_value(path(%s, %s)).exists(item, %s)", root, celJSONString(field), innerExpr)
 		} else {
-			expr = fmt.Sprintf("contains_value(path(%s, %s), %s)", root, celJSONString(field), celJSONString(trimQuotes(expected)))
+			expr = fmt.Sprintf("contains_value(path(%s, %s), %s)", root, celJSONString(field), celLegacyLiteral(expected))
 		}
 		if negated {
 			return "!(" + expr + ")", nil
@@ -314,12 +333,31 @@ func convertLegacyConditionToCEL(condition string, root string) (string, error) 
 		return expr, nil
 	}
 
+	if field, notNull, ok := parseNullCondition(condition); ok {
+		if notNull {
+			return fmt.Sprintf("exists_path(%s, %s)", root, celJSONString(field)), nil
+		}
+		return fmt.Sprintf("!exists_path(%s, %s)", root, celJSONString(field)), nil
+	}
+
+	if field, suffix, negated, ok := parseEndsWithCondition(condition); ok {
+		expr := fmt.Sprintf("ends_with_value(path(%s, %s), %s)", root, celJSONString(field), celJSONString(trimQuotes(suffix)))
+		if negated {
+			return "!(" + expr + ")", nil
+		}
+		return expr, nil
+	}
+
+	if field, ok := parseReferenceBucketWithPublicAccessCondition(condition); ok {
+		return fmt.Sprintf("references_public_bucket(%s, %s)", root, celJSONString(field)), nil
+	}
+
 	if field, expected, operator, ok := parseComparisonCondition(condition); ok {
 		fn, err := comparisonOperatorFunction(operator)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("%s(path(%s, %s), %s)", fn, root, celJSONString(field), celLegacyLiteral(expected)), nil
+		return fmt.Sprintf("%s(path(%s, %s), %s)", fn, root, celJSONString(field), celLegacyOperand(expected, root)), nil
 	}
 
 	if parts := splitTopLevelFold(condition, " starts_with "); len(parts) == 2 {
@@ -408,4 +446,12 @@ func celLegacyLiteral(value string) string {
 	}
 
 	return celJSONString(trimmed)
+}
+
+func celLegacyOperand(value string, root string) string {
+	trimmed := strings.TrimSpace(value)
+	if looksLikeFieldReference(trimmed) {
+		return fmt.Sprintf("path(%s, %s)", root, celJSONString(trimmed))
+	}
+	return celLegacyLiteral(trimmed)
 }

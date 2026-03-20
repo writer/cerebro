@@ -1,15 +1,17 @@
 {
   "id": "bucket-cleartext-keys-data",
-  "control_id": "wc-id-2419",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Bucket with cleartext cloud keys granting data access to sensitive data",
   "description": "A bucket contains cleartext cloud keys that grant access to sensitive data",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "storage::bucket|storage::blob_container",
   "conditions": [
-    "secrets ANY (type == 'cloud_key' AND cleartext == true AND grants_sensitive_data_access == true)"
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"cloud_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"grants_sensitive_data_access\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove cleartext keys. Use IAM roles. Rotate any exposed credentials immediately.",
   "tags": [
     "wiz",
     "storage",
@@ -17,6 +19,8 @@
     "cleartext-keys",
     "data-access"
   ],
+  "control_id": "wc-id-2419",
+  "remediation": "Remove cleartext keys. Use IAM roles. Rotate any exposed credentials immediately.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],

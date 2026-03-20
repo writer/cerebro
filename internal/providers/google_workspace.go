@@ -27,13 +27,19 @@ type GoogleWorkspaceProvider struct {
 	credentials  []byte
 	impersonator string
 
-	calendarRowsLoaded bool
-	calendarEventRows  []map[string]interface{}
-	calendarGuestRows  []map[string]interface{}
-	calendarRowsErr    error
+	calendarRowsLoaded      bool
+	calendarEventRows       []map[string]interface{}
+	calendarGuestRows       []map[string]interface{}
+	calendarRowsErr         error
+	tokenActivityRowsLoaded bool
+	tokenActivityRows       []map[string]interface{}
+	tokenActivityRowsErr    error
 }
 
-const googleWorkspaceCalendarLookbackDays = 180
+const (
+	googleWorkspaceCalendarLookbackDays      = 180
+	googleWorkspaceTokenActivityLookbackDays = 180
+)
 
 func NewGoogleWorkspaceProvider() *GoogleWorkspaceProvider {
 	return &GoogleWorkspaceProvider{
@@ -85,9 +91,11 @@ func (g *GoogleWorkspaceProvider) Configure(ctx context.Context, config map[stri
 	// Create OAuth2 client with domain-wide delegation
 	conf, err := google.JWTConfigFromJSON(g.credentials,
 		"https://www.googleapis.com/auth/admin.directory.user.readonly",
+		"https://www.googleapis.com/auth/admin.directory.user.security",
 		"https://www.googleapis.com/auth/admin.directory.group.readonly",
 		"https://www.googleapis.com/auth/admin.directory.group.member.readonly",
 		"https://www.googleapis.com/auth/admin.directory.domain.readonly",
+		"https://www.googleapis.com/auth/admin.reports.audit.readonly",
 		"https://www.googleapis.com/auth/calendar.readonly",
 	)
 	if err != nil {
@@ -152,6 +160,7 @@ func (g *GoogleWorkspaceProvider) Schema() []TableSchema {
 			Columns: []ColumnSchema{
 				{Name: "id", Type: "string", Required: true},
 				{Name: "group_id", Type: "string", Required: true},
+				{Name: "member_id", Type: "string"},
 				{Name: "email", Type: "string"},
 				{Name: "role", Type: "string"},
 				{Name: "type", Type: "string"},
@@ -169,6 +178,38 @@ func (g *GoogleWorkspaceProvider) Schema() []TableSchema {
 				{Name: "creation_time", Type: "timestamp"},
 			},
 			PrimaryKey: []string{"domain_name"},
+		},
+		{
+			Name:        "google_workspace_tokens",
+			Description: "Google Workspace third-party OAuth tokens",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "string", Required: true},
+				{Name: "user_id", Type: "string", Required: true},
+				{Name: "user_email", Type: "string"},
+				{Name: "client_id", Type: "string", Required: true},
+				{Name: "display_text", Type: "string"},
+				{Name: "anonymous", Type: "boolean"},
+				{Name: "native_app", Type: "boolean"},
+				{Name: "scope", Type: "string"},
+				{Name: "scope_count", Type: "integer"},
+				{Name: "app_type", Type: "string"},
+			},
+			PrimaryKey: []string{"id"},
+		},
+		{
+			Name:        "google_workspace_token_activities",
+			Description: "Recent Google Workspace OAuth token audit activity",
+			Columns: []ColumnSchema{
+				{Name: "id", Type: "string", Required: true},
+				{Name: "event_time", Type: "timestamp"},
+				{Name: "event_name", Type: "string", Required: true},
+				{Name: "actor_email", Type: "string"},
+				{Name: "client_id", Type: "string", Required: true},
+				{Name: "display_text", Type: "string"},
+				{Name: "scope", Type: "string"},
+				{Name: "ip_address", Type: "string"},
+			},
+			PrimaryKey: []string{"id"},
 		},
 		{
 			Name:        "google_workspace_calendar_events",
@@ -216,6 +257,7 @@ func (g *GoogleWorkspaceProvider) schemaFor(name string) (TableSchema, error) {
 func (g *GoogleWorkspaceProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 	start := time.Now()
 	g.resetCalendarRowsCache()
+	g.resetTokenActivityRowsCache()
 	result := &SyncResult{
 		Provider:  g.Name(),
 		StartedAt: start,
@@ -254,6 +296,22 @@ func (g *GoogleWorkspaceProvider) Sync(ctx context.Context, opts SyncOptions) (*
 	} else {
 		result.Tables = append(result.Tables, *domains)
 		result.TotalRows += domains.Rows
+	}
+
+	tokens, err := g.syncTokens(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "tokens: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *tokens)
+		result.TotalRows += tokens.Rows
+	}
+
+	tokenActivities, err := g.syncTokenActivities(ctx)
+	if err != nil {
+		result.Errors = append(result.Errors, "token_activities: "+err.Error())
+	} else {
+		result.Tables = append(result.Tables, *tokenActivities)
+		result.TotalRows += tokenActivities.Rows
 	}
 
 	calendarEvents, err := g.syncCalendarEvents(ctx)
@@ -409,17 +467,98 @@ func (g *GoogleWorkspaceProvider) syncGroupMembers(ctx context.Context) (*TableR
 			seen[id] = struct{}{}
 
 			rows = append(rows, map[string]interface{}{
-				"id":       id,
-				"group_id": groupID,
-				"email":    member["email"],
-				"role":     member["role"],
-				"type":     member["type"],
-				"status":   member["status"],
+				"id":        id,
+				"group_id":  groupID,
+				"member_id": member["id"],
+				"email":     member["email"],
+				"role":      member["role"],
+				"type":      member["type"],
+				"status":    member["status"],
 			})
 		}
 	}
 
 	return g.syncTable(ctx, schema, rows)
+}
+
+func (g *GoogleWorkspaceProvider) syncTokens(ctx context.Context) (*TableResult, error) {
+	schema, err := g.schemaFor("google_workspace_tokens")
+	result := &TableResult{Name: "google_workspace_tokens"}
+	if err != nil {
+		return result, err
+	}
+
+	users, err := g.listAll(ctx, "https://admin.googleapis.com/admin/directory/v1/users", map[string]string{
+		"domain":     g.domain,
+		"maxResults": "500",
+		"projection": "basic",
+	}, "users")
+	if err != nil {
+		return result, err
+	}
+
+	rows := make([]map[string]interface{}, 0)
+	seen := make(map[string]struct{})
+
+	for _, rawUser := range users {
+		user := normalizeGoogleUser(rawUser)
+		userID := strings.TrimSpace(providerStringValue(user["id"]))
+		userEmail := strings.ToLower(strings.TrimSpace(providerStringValue(user["primary_email"])))
+		if userID == "" {
+			continue
+		}
+		if suspended, _ := user["suspended"].(bool); suspended {
+			continue
+		}
+
+		body, tokenErr := g.request(ctx, fmt.Sprintf("https://admin.googleapis.com/admin/directory/v1/users/%s/tokens", url.PathEscape(userID)))
+		if tokenErr != nil {
+			if isGoogleWorkspaceIgnorableError(tokenErr) {
+				continue
+			}
+			return result, fmt.Errorf("list tokens for %q: %w", userID, tokenErr)
+		}
+
+		var resp struct {
+			Items []map[string]interface{} `json:"items"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return result, err
+		}
+
+		for _, rawToken := range resp.Items {
+			row := normalizeGoogleToken(rawToken)
+			clientID := strings.TrimSpace(providerStringValue(row["client_id"]))
+			if clientID == "" {
+				continue
+			}
+
+			rowID := userID + "|" + clientID
+			if _, ok := seen[rowID]; ok {
+				continue
+			}
+			seen[rowID] = struct{}{}
+
+			row["id"] = rowID
+			row["user_id"] = userID
+			row["user_email"] = userEmail
+			rows = append(rows, row)
+		}
+	}
+
+	return g.syncTable(ctx, schema, rows)
+}
+
+func (g *GoogleWorkspaceProvider) syncTokenActivities(ctx context.Context) (*TableResult, error) {
+	schema, err := g.schemaFor("google_workspace_token_activities")
+	result := &TableResult{Name: "google_workspace_token_activities"}
+	if err != nil {
+		return result, err
+	}
+	if err := g.ensureTokenActivityRows(ctx); err != nil {
+		return result, err
+	}
+	return g.syncTable(ctx, schema, g.tokenActivityRows)
 }
 
 func (g *GoogleWorkspaceProvider) syncCalendarEvents(ctx context.Context) (*TableResult, error) {
@@ -462,6 +601,168 @@ func (g *GoogleWorkspaceProvider) resetCalendarRowsCache() {
 	g.calendarEventRows = nil
 	g.calendarGuestRows = nil
 	g.calendarRowsErr = nil
+}
+
+func (g *GoogleWorkspaceProvider) ensureTokenActivityRows(ctx context.Context) error {
+	if g.tokenActivityRowsLoaded {
+		return g.tokenActivityRowsErr
+	}
+
+	since := time.Now().AddDate(0, 0, -googleWorkspaceTokenActivityLookbackDays)
+	g.tokenActivityRows, g.tokenActivityRowsErr = g.listTokenActivities(ctx, since)
+	g.tokenActivityRowsLoaded = true
+	return g.tokenActivityRowsErr
+}
+
+func (g *GoogleWorkspaceProvider) resetTokenActivityRowsCache() {
+	g.tokenActivityRowsLoaded = false
+	g.tokenActivityRows = nil
+	g.tokenActivityRowsErr = nil
+}
+
+func (g *GoogleWorkspaceProvider) listTokenActivities(ctx context.Context, since time.Time) ([]map[string]interface{}, error) {
+	baseURL := "https://admin.googleapis.com/admin/reports/v1/activity/users/all/applications/token"
+	pageToken := ""
+	rows := make([]map[string]interface{}, 0)
+
+	for {
+		parsed, err := url.Parse(baseURL)
+		if err != nil {
+			return nil, err
+		}
+		query := parsed.Query()
+		query.Set("maxResults", "1000")
+		if !since.IsZero() {
+			query.Set("startTime", since.UTC().Format(time.RFC3339))
+		}
+		if pageToken != "" {
+			query.Set("pageToken", pageToken)
+		}
+		parsed.RawQuery = query.Encode()
+
+		body, err := g.request(ctx, parsed.String())
+		if err != nil {
+			if isGoogleWorkspaceIgnorableError(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+
+		var resp struct {
+			Items         []map[string]interface{} `json:"items"`
+			NextPageToken string                   `json:"nextPageToken"`
+		}
+		if err := json.Unmarshal(body, &resp); err != nil {
+			return nil, err
+		}
+
+		for _, rawItem := range resp.Items {
+			rows = append(rows, normalizeGoogleTokenActivityRows(rawItem)...)
+		}
+
+		if strings.TrimSpace(resp.NextPageToken) == "" {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+
+	return rows, nil
+}
+
+func normalizeGoogleTokenActivityRows(item map[string]interface{}) []map[string]interface{} {
+	normalized := normalizeGoogleRow(item)
+	eventTime := strings.TrimSpace(getGoogleNestedString(normalized, "id", "time"))
+	uniqueQualifier := strings.TrimSpace(getGoogleNestedString(normalized, "id", "unique_qualifier"))
+	actorEmail := strings.ToLower(strings.TrimSpace(getGoogleNestedString(normalized, "actor", "email")))
+	ipAddress := strings.TrimSpace(providerStringValue(normalized["ip_address"]))
+	rawEvents := googleActivityMaps(normalized["events"])
+	rows := make([]map[string]interface{}, 0, len(rawEvents))
+
+	for index, eventMap := range rawEvents {
+		event := normalizeGoogleRow(eventMap)
+		eventName := strings.TrimSpace(providerStringValue(event["name"]))
+		if eventName == "" {
+			continue
+		}
+		params := googleActivityParameters(event["parameters"])
+		clientID := firstNonEmptyString(
+			params["client_id"],
+			params["clientid"],
+			params["oauth_client_id"],
+			params["app_id"],
+		)
+		displayText := firstNonEmptyString(
+			params["app_name"],
+			params["application_name"],
+			params["client_name"],
+			params["display_text"],
+		)
+		if strings.TrimSpace(clientID) == "" {
+			continue
+		}
+		scopes := stringSliceValue(firstNonEmptyString(params["scope"], params["scopes"]))
+		sort.Strings(scopes)
+		rowID := firstNonEmptyString(uniqueQualifier, eventTime)
+		rowID = strings.TrimSpace(rowID)
+		if rowID == "" {
+			rowID = fmt.Sprintf("%s|%s|%s|%d", actorEmail, clientID, eventName, index)
+		} else {
+			rowID = fmt.Sprintf("%s|%s|%d", rowID, clientID, index)
+		}
+		rows = append(rows, map[string]interface{}{
+			"id":           rowID,
+			"event_time":   eventTime,
+			"event_name":   eventName,
+			"actor_email":  actorEmail,
+			"client_id":    clientID,
+			"display_text": displayText,
+			"scope":        strings.Join(scopes, " "),
+			"ip_address":   ipAddress,
+		})
+	}
+
+	return rows
+}
+
+func googleActivityParameters(raw interface{}) map[string]string {
+	params := make(map[string]string)
+	for _, row := range googleActivityMaps(raw) {
+		normalized := normalizeGoogleRow(row)
+		name := strings.TrimSpace(providerStringValue(normalized["name"]))
+		if name == "" {
+			continue
+		}
+		value := firstNonEmptyString(
+			strings.TrimSpace(providerStringValue(normalized["value"])),
+			strings.Join(stringSliceValue(normalized["multi_value"]), " "),
+			strings.TrimSpace(providerStringValue(normalized["bool_value"])),
+			strings.TrimSpace(providerStringValue(normalized["int_value"])),
+		)
+		if value == "" {
+			continue
+		}
+		params[name] = value
+	}
+	return params
+}
+
+func googleActivityMaps(raw interface{}) []map[string]interface{} {
+	switch typed := raw.(type) {
+	case []interface{}:
+		rows := make([]map[string]interface{}, 0, len(typed))
+		for _, item := range typed {
+			row, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			rows = append(rows, row)
+		}
+		return rows
+	case []map[string]interface{}:
+		return typed
+	default:
+		return nil
+	}
 }
 
 func (g *GoogleWorkspaceProvider) request(ctx context.Context, url string) ([]byte, error) {
@@ -700,6 +1001,30 @@ func normalizeGoogleGroup(group map[string]interface{}) map[string]interface{} {
 	}
 }
 
+func normalizeGoogleToken(token map[string]interface{}) map[string]interface{} {
+	normalized := normalizeGoogleRow(token)
+	scopes := stringSliceValue(normalized["scopes"])
+	sort.Strings(scopes)
+
+	appType := "web"
+	if nativeApp, _ := normalized["native_app"].(bool); nativeApp {
+		appType = "native"
+	}
+	if anonymous, _ := normalized["anonymous"].(bool); anonymous {
+		appType = "anonymous"
+	}
+
+	return map[string]interface{}{
+		"client_id":    normalized["client_id"],
+		"display_text": normalized["display_text"],
+		"anonymous":    normalized["anonymous"],
+		"native_app":   normalized["native_app"],
+		"scope":        strings.Join(scopes, " "),
+		"scope_count":  len(scopes),
+		"app_type":     appType,
+	}
+}
+
 func normalizeGoogleCalendarEvent(eventID string, calendarID string, event map[string]interface{}) map[string]interface{} {
 	startTime := googleCalendarEventTime(event["start"])
 	endTime := googleCalendarEventTime(event["end"])
@@ -874,6 +1199,37 @@ func parseGoogleCount(value interface{}) interface{} {
 		return typed
 	default:
 		return value
+	}
+}
+
+func stringSliceValue(value interface{}) []string {
+	switch typed := value.(type) {
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, entry := range typed {
+			entry = strings.TrimSpace(entry)
+			if entry == "" {
+				continue
+			}
+			out = append(out, entry)
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, entry := range typed {
+			text := strings.TrimSpace(providerStringValue(entry))
+			if text == "" {
+				continue
+			}
+			out = append(out, text)
+		}
+		return out
+	default:
+		text := strings.TrimSpace(providerStringValue(value))
+		if text == "" {
+			return nil
+		}
+		return strings.Fields(text)
 	}
 }
 

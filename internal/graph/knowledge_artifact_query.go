@@ -232,27 +232,63 @@ func buildKnowledgeArtifactRecord(g *Graph, node *Node, validAt, recordedAt time
 	}
 	switch node.Kind {
 	case NodeKindObservation:
-		record.ArtifactType = strings.ToLower(strings.TrimSpace(readString(node.Properties, "observation_type")))
+		if props, ok := node.ObservationProperties(); ok {
+			record.SubjectID = strings.TrimSpace(props.SubjectID)
+			record.Detail = strings.TrimSpace(props.Detail)
+			record.SourceSystem = firstNonEmpty(strings.TrimSpace(props.SourceSystem), strings.TrimSpace(node.Provider))
+			record.SourceEventID = strings.TrimSpace(props.SourceEventID)
+			record.Confidence = props.Confidence
+			record.ArtifactType = strings.ToLower(strings.TrimSpace(props.ObservationType))
+			if !props.ValidFrom.IsZero() {
+				record.ValidFrom = props.ValidFrom
+			}
+			if props.ValidTo != nil && !props.ValidTo.IsZero() {
+				validTo := props.ValidTo.UTC()
+				record.ValidTo = &validTo
+			}
+			if !props.RecordedAt.IsZero() {
+				record.RecordedAt = props.RecordedAt
+			}
+			if !props.TransactionFrom.IsZero() {
+				record.TransactionFrom = props.TransactionFrom
+			}
+			if props.TransactionTo != nil && !props.TransactionTo.IsZero() {
+				transactionTo := props.TransactionTo.UTC()
+				record.TransactionTo = &transactionTo
+			}
+		} else {
+			record.ArtifactType = strings.ToLower(strings.TrimSpace(readString(node.Properties, "observation_type")))
+		}
 	default:
 		record.ArtifactType = strings.ToLower(strings.TrimSpace(readString(node.Properties, "evidence_type")))
 	}
 	if ts, ok := graphObservedAt(node); ok {
 		record.ObservedAt = ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "valid_from"); ok {
-		record.ValidFrom = ts
+	if record.ValidFrom.IsZero() {
+		if ts, ok := nodePropertyTime(node, "valid_from"); ok {
+			record.ValidFrom = ts
+		}
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "valid_to"); ok {
-		record.ValidTo = &ts
+	if record.ValidTo == nil {
+		if ts, ok := nodePropertyTime(node, "valid_to"); ok {
+			record.ValidTo = &ts
+		}
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "recorded_at"); ok {
-		record.RecordedAt = ts
+	if record.RecordedAt.IsZero() {
+		if ts, ok := nodePropertyTime(node, "recorded_at"); ok {
+			record.RecordedAt = ts
+		}
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "transaction_from"); ok {
-		record.TransactionFrom = ts
+	if record.TransactionFrom.IsZero() {
+		if ts, ok := nodePropertyTime(node, "transaction_from"); ok {
+			record.TransactionFrom = ts
+		}
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "transaction_to"); ok {
-		record.TransactionTo = &ts
+	if record.TransactionTo == nil {
+		if ts, ok := nodePropertyTime(node, "transaction_to"); ok {
+			record.TransactionTo = &ts
+		}
 	}
 
 	record.Links = KnowledgeArtifactLinks{

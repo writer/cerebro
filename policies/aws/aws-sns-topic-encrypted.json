@@ -1,19 +1,23 @@
 {
   "id": "aws-sns-topic-encrypted",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "SNS Topic Encrypted",
   "description": "SNS topics should be encrypted with KMS",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::sns::topic",
   "conditions": [
-    "kms_master_key_id == null"
+    "cmp_eq(path(resource, \"kms_master_key_id\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable server-side encryption for the SNS topic using a KMS key.",
   "tags": [
     "sns",
     "encryption",
     "messaging"
   ],
+  "remediation": "Enable server-side encryption for the SNS topic using a KMS key.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

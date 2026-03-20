@@ -3,6 +3,7 @@ package actionengine
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,6 +12,8 @@ import (
 type StepRunner interface {
 	RunStep(ctx context.Context, step Step, signal Signal, execution *Execution) (string, error)
 }
+
+const stepMetadataTriggerPrefix = "_step_metadata:"
 
 type Executor struct {
 	store Store
@@ -24,6 +27,27 @@ func NewExecutor(store Store) *Executor {
 			return time.Now().UTC()
 		},
 	}
+}
+
+func (e *Executor) Close() error {
+	if e == nil || e.store == nil {
+		return nil
+	}
+	return e.store.Close()
+}
+
+func (e *Executor) LoadExecution(ctx context.Context, executionID string) (*Execution, error) {
+	if e == nil || e.store == nil {
+		return nil, nil
+	}
+	return e.store.LoadExecution(ctx, executionID)
+}
+
+func (e *Executor) ListExecutions(ctx context.Context, limit int) ([]Execution, error) {
+	if e == nil || e.store == nil {
+		return nil, nil
+	}
+	return e.store.ListExecutions(ctx, limit)
 }
 
 func (e *Executor) RequiresApproval(playbook Playbook) bool {
@@ -83,7 +107,7 @@ func (e *Executor) NewExecution(playbook Playbook, signal Signal) *Execution {
 		ResourceType: signal.ResourceType,
 		TriggerData:  triggerData,
 		Results:      make([]ActionResult, 0, len(playbook.Steps)),
-		SubmittedAt:  now,
+		StartedAt:    now,
 	}
 	e.persist(context.Background(), execution)
 	e.appendEvent(context.Background(), Event{
@@ -106,13 +130,12 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 	if runner == nil {
 		return fmt.Errorf("step runner is nil")
 	}
-	if execution.SubmittedAt.IsZero() {
-		execution.SubmittedAt = e.now()
+	if execution.StartedAt.IsZero() {
+		execution.StartedAt = e.now()
 	}
 	if e.RequiresApproval(playbook) && execution.ApprovedAt == nil {
 		execution.Status = StatusAwaitingApproval
 		execution.Error = ""
-		execution.CompletedAt = nil
 		now := e.now()
 		e.persist(ctx, execution)
 		e.appendEvent(ctx, Event{
@@ -126,12 +149,8 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 		})
 		return nil
 	}
-	if execution.StartedAt.IsZero() {
-		execution.StartedAt = e.now()
-	}
 	execution.Status = StatusRunning
 	execution.Error = ""
-	execution.CompletedAt = nil
 	e.persist(ctx, execution)
 	e.appendEvent(ctx, Event{
 		Type:        "execution.started",
@@ -174,25 +193,27 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 		completedAt := e.now()
 		result.CompletedAt = &completedAt
 		result.Duration = completedAt.Sub(result.StartedAt).String()
+		result.Metadata = ConsumeStepMetadata(execution, step.ID)
 		if err != nil {
 			result.Status = StatusFailed
 			result.Error = err.Error()
 			execution.Results = append(execution.Results, result)
+			execution.Status = StatusFailed
+			execution.Error = err.Error()
+			execution.CompletedAt = &completedAt
+			e.persist(ctx, execution)
 			e.appendEvent(ctx, Event{
 				Type:        "step.failed",
 				ExecutionID: execution.ID,
 				RecordedAt:  completedAt,
 				Data: map[string]any{
-					"step_id": step.ID,
-					"type":    step.Type,
-					"error":   err.Error(),
+					"step_id":  step.ID,
+					"type":     step.Type,
+					"error":    err.Error(),
+					"metadata": result.Metadata,
 				},
 			})
 			if step.OnFailure != FailurePolicyContinue {
-				execution.Status = StatusFailed
-				execution.Error = err.Error()
-				execution.CompletedAt = &completedAt
-				e.persist(ctx, execution)
 				e.appendEvent(ctx, Event{
 					Type:        "execution.failed",
 					ExecutionID: execution.ID,
@@ -205,25 +226,19 @@ func (e *Executor) Execute(ctx context.Context, execution *Execution, playbook P
 				})
 				return err
 			}
-			execution.Status = StatusRunning
-			execution.Error = err.Error()
-			execution.CompletedAt = nil
-			e.persist(ctx, execution)
 		} else {
 			result.Status = StatusCompleted
 			result.Output = output
 			execution.Results = append(execution.Results, result)
-			execution.Status = StatusRunning
-			execution.CompletedAt = nil
-			e.persist(ctx, execution)
 			e.appendEvent(ctx, Event{
 				Type:        "step.completed",
 				ExecutionID: execution.ID,
 				RecordedAt:  completedAt,
 				Data: map[string]any{
-					"step_id": step.ID,
-					"type":    step.Type,
-					"output":  output,
+					"step_id":  step.ID,
+					"type":     step.Type,
+					"output":   output,
+					"metadata": result.Metadata,
 				},
 			})
 		}
@@ -286,20 +301,6 @@ func (e *Executor) Reject(ctx context.Context, execution *Execution, rejecter, r
 	return nil
 }
 
-func (e *Executor) LoadExecution(ctx context.Context, executionID string) (*Execution, error) {
-	if e == nil || e.store == nil {
-		return nil, nil
-	}
-	return e.store.LoadExecution(ctx, executionID)
-}
-
-func (e *Executor) ListExecutions(ctx context.Context, limit int) ([]Execution, error) {
-	if e == nil || e.store == nil {
-		return nil, nil
-	}
-	return e.store.ListExecutions(ctx, limit)
-}
-
 func (e *Executor) persist(ctx context.Context, execution *Execution) {
 	if e == nil || e.store == nil || execution == nil {
 		return
@@ -323,4 +324,39 @@ func cloneAnyMap(input map[string]any) map[string]any {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func SetStepMetadata(execution *Execution, stepID string, metadata map[string]any) {
+	if execution == nil || len(metadata) == 0 {
+		return
+	}
+	stepID = strings.TrimSpace(stepID)
+	if stepID == "" {
+		return
+	}
+	if execution.TriggerData == nil {
+		execution.TriggerData = map[string]any{}
+	}
+	execution.TriggerData[stepMetadataTriggerPrefix+stepID] = cloneAnyMap(metadata)
+}
+
+func ConsumeStepMetadata(execution *Execution, stepID string) map[string]any {
+	if execution == nil || len(execution.TriggerData) == 0 {
+		return nil
+	}
+	stepID = strings.TrimSpace(stepID)
+	if stepID == "" {
+		return nil
+	}
+	key := stepMetadataTriggerPrefix + stepID
+	raw, ok := execution.TriggerData[key]
+	if !ok {
+		return nil
+	}
+	delete(execution.TriggerData, key)
+	values, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return cloneAnyMap(values)
 }

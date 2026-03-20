@@ -152,6 +152,21 @@ export class Client {
   }
 
 
+  async autonomousCredentialResponse(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_autonomous_credential_response", args);
+  }
+
+
+  async autonomousWorkflowApprove(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_autonomous_workflow_approve", args);
+  }
+
+
+  async autonomousWorkflowStatus(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_autonomous_workflow_status", args);
+  }
+
+
   async blastRadius(args: unknown): Promise<ToolCallResponse> {
     return this.callTool("cerebro_blast_radius", args);
   }

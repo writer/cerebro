@@ -92,11 +92,66 @@ func TestCerebroEntityHistoryTool(t *testing.T) {
 	}
 }
 
+func TestCerebroEntityHistoryToolUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "service:payments",
+		Kind:     graph.NodeKindService,
+		Name:     "Payments",
+		Provider: "aws",
+		Properties: map[string]any{
+			"status":           "degraded",
+			"owner":            "team-payments",
+			"observed_at":      base.Add(2 * time.Hour).Format(time.RFC3339),
+			"valid_from":       base.Format(time.RFC3339),
+			"recorded_at":      base.Format(time.RFC3339),
+			"transaction_from": base.Format(time.RFC3339),
+		},
+	})
+	node, ok := g.GetNode("service:payments")
+	if !ok || node == nil {
+		t.Fatal("expected seeded service node")
+	}
+	node.PropertyHistory = map[string][]graph.PropertySnapshot{
+		"status": {
+			{Timestamp: base, Value: "healthy"},
+			{Timestamp: base.Add(2 * time.Hour), Value: "degraded"},
+		},
+	}
+
+	application := &App{
+		GraphSnapshots: mustPersistToolGraph(t, g),
+		Config:         &Config{},
+	}
+	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.entity_history")
+	if tool == nil {
+		t.Fatal("expected cerebro.entity_history tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{
+		"entity_id":"service:payments",
+		"timestamp":"2026-03-10T09:30:00Z"
+	}`))
+	if err != nil {
+		t.Fatalf("entity_history returned error: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode entity_history payload: %v", err)
+	}
+	entity := payload["entity"].(map[string]any)
+	properties := entity["properties"].(map[string]any)
+	if got := properties["status"]; got != "healthy" {
+		t.Fatalf("expected reconstructed status healthy, got %#v", got)
+	}
+}
+
 func TestCerebroGraphChangelogTool(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
 
-	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Minute)
+	base := time.Now().UTC().Add(-6 * 24 * time.Hour).Truncate(time.Second)
 	older := &graph.Snapshot{
 		Version:   "1.0",
 		CreatedAt: base.Add(5 * time.Minute),
@@ -151,21 +206,13 @@ func TestCerebroGraphChangelogTool(t *testing.T) {
 	mustSaveGraphSnapshotForTool(t, dir, newer)
 	mustSaveGraphSnapshotForTool(t, dir, latest)
 
-	application := &App{SecurityGraph: graph.New(), Config: &Config{}}
+	application := &App{SecurityGraph: graph.New(), Config: &Config{GraphSnapshotPath: dir}}
 	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.graph_changelog")
 	if tool == nil {
 		t.Fatal("expected cerebro.graph_changelog tool")
 	}
 
-	result, err := tool.Handler(context.Background(), json.RawMessage(fmt.Sprintf(`{
-		"since":%q,
-		"until":%q,
-		"provider":"aws",
-		"limit":1
-	}`,
-		base.Add(-time.Hour).Format(time.RFC3339),
-		base.Add(3*time.Hour).Format(time.RFC3339),
-	)))
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"since":"2026-03-07T00:00:00Z","provider":"aws","limit":1}`))
 	if err != nil {
 		t.Fatalf("graph_changelog returned error: %v", err)
 	}
@@ -201,6 +248,9 @@ func TestCerebroGraphChangelogTool(t *testing.T) {
 	if got := toSnapshot["captured_at"]; got != latest.CreatedAt.Format(time.RFC3339) {
 		t.Fatalf("expected newest changelog entry, got to=%#v", toSnapshot)
 	}
+	if got := toSnapshot["current"]; got != true {
+		t.Fatalf("expected newest persisted snapshot to be current, got %#v", got)
+	}
 	summary := entry["summary"].(map[string]any)
 	if summary["nodes_modified"] != float64(1) || summary["nodes_added"] != float64(0) {
 		t.Fatalf("unexpected changelog summary: %#v", summary)
@@ -221,6 +271,10 @@ func TestCerebroGraphChangelogTool(t *testing.T) {
 	if detailSummary["nodes_modified"] != float64(1) {
 		t.Fatalf("expected filtered detail nodes_added=1, got %#v", detailSummary)
 	}
+	detailTo := detailPayload["to"].(map[string]any)
+	if got := detailTo["current"]; got != true {
+		t.Fatalf("expected detail target snapshot to be current, got %#v", got)
+	}
 
 	diffDir := filepath.Join(dir, "diffs")
 	entriesOnDisk, err := os.ReadDir(diffDir)
@@ -229,6 +283,73 @@ func TestCerebroGraphChangelogTool(t *testing.T) {
 	}
 	if len(entriesOnDisk) != 0 {
 		t.Fatalf("expected tool reads to avoid diff materialization, got %d artifacts", len(entriesOnDisk))
+	}
+}
+
+func TestCerebroGraphChangelogToolMarksPersistedSnapshotCurrentWithoutBuiltAt(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
+
+	base := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
+	older := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(5 * time.Minute),
+		Metadata: graph.Metadata{
+			BuiltAt:   base,
+			NodeCount: 1,
+			EdgeCount: 0,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments", Provider: "aws", Account: "acct-a"},
+		},
+	}
+	latest := &graph.Snapshot{
+		Version:   "1.0",
+		CreatedAt: base.Add(65 * time.Minute),
+		Metadata: graph.Metadata{
+			NodeCount: 2,
+			EdgeCount: 1,
+			Providers: []string{"aws"},
+			Accounts:  []string{"acct-a"},
+		},
+		Nodes: []*graph.Node{
+			{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments Core", Provider: "aws", Account: "acct-a"},
+			{ID: "bucket:logs", Kind: graph.NodeKindBucket, Name: "Logs", Provider: "aws", Account: "acct-a"},
+		},
+		Edges: []*graph.Edge{
+			{ID: "service:payments->bucket:logs:targets", Source: "service:payments", Target: "bucket:logs", Kind: graph.EdgeKindTargets},
+		},
+	}
+	mustSaveGraphSnapshotForTool(t, dir, older)
+	mustSaveGraphSnapshotForTool(t, dir, latest)
+
+	application := &App{Config: &Config{GraphSnapshotPath: dir}}
+	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.graph_changelog")
+	if tool == nil {
+		t.Fatal("expected cerebro.graph_changelog tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"since":"2026-03-07T00:00:00Z","provider":"aws","limit":1}`))
+	if err != nil {
+		t.Fatalf("graph_changelog returned error: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode graph_changelog payload: %v", err)
+	}
+	entries, ok := payload["entries"].([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("expected one changelog entry, got %#v", payload["entries"])
+	}
+	entry := entries[0].(map[string]any)
+	toSnapshot := entry["to"].(map[string]any)
+	if got := toSnapshot["captured_at"]; got != latest.CreatedAt.Format(time.RFC3339) {
+		t.Fatalf("expected latest persisted snapshot in changelog, got %#v", toSnapshot)
+	}
+	if got := toSnapshot["current"]; got != true {
+		t.Fatalf("expected latest persisted snapshot to stay current without built_at, got %#v", got)
 	}
 }
 

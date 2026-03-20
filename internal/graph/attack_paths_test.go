@@ -1,8 +1,144 @@
 package graph
 
 import (
+	"fmt"
 	"testing"
 )
+
+func TestAttackPathSimulatorVisitedBitsUseInternedOrdinals(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "role", Kind: NodeKindRole, Name: "Role"})
+	g.AddNode(&Node{ID: "db", Kind: NodeKindDatabase, Name: "DB", Risk: RiskCritical})
+	g.AddEdge(&Edge{ID: "i-role", Source: "internet", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-db", Source: "role", Target: "db", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	sim := NewAttackPathSimulator(g)
+	visited := sim.newVisitedBits("internet")
+
+	if !sim.isVisited(visited, "internet") {
+		t.Fatal("expected entry node to be marked visited")
+	}
+	if sim.isVisited(visited, "role") {
+		t.Fatal("did not expect unrelated node to start visited")
+	}
+	if sim.isVisited(visited, "missing") {
+		t.Fatal("did not expect unknown node to be treated as visited")
+	}
+
+	sim.markVisited(visited, "role")
+	if !sim.isVisited(visited, "role") {
+		t.Fatal("expected interned node to become visited")
+	}
+}
+
+func TestAttackPathSimulatorFindShortestPathAvoidingHandlesCycles(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "web", Kind: NodeKindInstance, Name: "Web", Risk: RiskHigh})
+	g.AddNode(&Node{ID: "role", Kind: NodeKindRole, Name: "Role"})
+	g.AddNode(&Node{ID: "db", Kind: NodeKindDatabase, Name: "DB", Risk: RiskCritical})
+
+	g.AddEdge(&Edge{ID: "i-web", Source: "internet", Target: "web", Kind: EdgeKindExposedTo, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "web-role", Source: "web", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-web", Source: "role", Target: "web", Kind: EdgeKindCanWrite, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-db", Source: "role", Target: "db", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	sim := NewAttackPathSimulator(g)
+	entry, ok := g.GetNode("internet")
+	if !ok {
+		t.Fatal("expected internet node")
+	}
+	target, ok := g.GetNode("db")
+	if !ok {
+		t.Fatal("expected db node")
+	}
+
+	path := sim.findShortestPath(entry, target, 6)
+	if path == nil {
+		t.Fatal("expected shortest path through cycle to be found")
+	}
+	if path.Length != 3 {
+		t.Fatalf("expected shortest path length 3, got %d", path.Length)
+	}
+	if len(path.Steps) != 3 {
+		t.Fatalf("expected 3 path steps, got %d", len(path.Steps))
+	}
+	if path.Steps[0].ToNode != "web" || path.Steps[1].ToNode != "role" || path.Steps[2].ToNode != "db" {
+		t.Fatalf("unexpected shortest path sequence: %#v", path.Steps)
+	}
+}
+
+func TestAttackPathSimulatorFindShortestPathHonorsMaxLen(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "role", Kind: NodeKindRole, Name: "Role"})
+	g.AddNode(&Node{ID: "db", Kind: NodeKindDatabase, Name: "DB", Risk: RiskCritical})
+	g.AddEdge(&Edge{ID: "internet-role", Source: "internet", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-db", Source: "role", Target: "db", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	sim := NewAttackPathSimulator(g)
+	entry, ok := g.GetNode("internet")
+	if !ok {
+		t.Fatal("expected internet node")
+	}
+	target, ok := g.GetNode("db")
+	if !ok {
+		t.Fatal("expected db node")
+	}
+
+	if path := sim.findShortestPath(entry, target, 1); path != nil {
+		t.Fatalf("expected no path when maxLen is shorter than shortest path, got %#v", path)
+	}
+
+	path := sim.findShortestPath(entry, target, 2)
+	if path == nil {
+		t.Fatal("expected shortest path at exact maxLen")
+	}
+	if path.Length != 2 {
+		t.Fatalf("expected shortest path length 2, got %d", path.Length)
+	}
+}
+func TestAttackPathSimulatorFindShortestPathParallelMatchesSequentialWideFrontier(t *testing.T) {
+	parallelGraph, _, _ := newAttackPathTraversalBenchmarkGraph(5, 4)
+	singleGraph, _, _ := newAttackPathTraversalBenchmarkGraph(5, 4)
+	single := runAttackShortestPathWithWorkers(singleGraph, 1)
+	parallel := runAttackShortestPathWithWorkers(parallelGraph, 8)
+
+	if single == nil || parallel == nil {
+		t.Fatalf("expected shortest paths, got single=%#v parallel=%#v", single, parallel)
+	}
+	if single.Length != parallel.Length {
+		t.Fatalf("path length mismatch: want %d got %d", single.Length, parallel.Length)
+	}
+	if len(single.Steps) != len(parallel.Steps) {
+		t.Fatalf("step count mismatch: want %d got %d", len(single.Steps), len(parallel.Steps))
+	}
+	for index := range single.Steps {
+		if single.Steps[index].FromNode != parallel.Steps[index].FromNode || single.Steps[index].ToNode != parallel.Steps[index].ToNode {
+			t.Fatalf("step %d mismatch: want %#v got %#v", index, single.Steps[index], parallel.Steps[index])
+		}
+	}
+}
+
+func runAttackShortestPathWithWorkers(graph *Graph, workers int) *ScoredAttackPath {
+	previous := parallelTraversalWorkerOverride
+	parallelTraversalWorkerOverride = workers
+	defer func() {
+		parallelTraversalWorkerOverride = previous
+	}()
+
+	sim := NewAttackPathSimulator(graph)
+	entry, ok := graph.GetNode("internet")
+	if !ok {
+		return nil
+	}
+	target, ok := graph.GetNode("target")
+	if !ok {
+		return nil
+	}
+	return sim.findShortestPath(entry, target, 8)
+}
 
 func TestFindChokepoints_DirectPaths(t *testing.T) {
 	// 4 direct Internet -> target paths with no shared intermediary.
@@ -70,6 +206,53 @@ func TestFindChokepoints_SharedIntermediary(t *testing.T) {
 	}
 }
 
+func TestFindChokepoints_TracksDistinctEntriesAndTargets(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "user1", Kind: NodeKindUser, Name: "User1"})
+	g.AddNode(&Node{ID: "role", Kind: NodeKindRole, Name: "SharedRole"})
+	g.AddNode(&Node{ID: "db1", Kind: NodeKindDatabase, Name: "DB1", Risk: RiskCritical})
+	g.AddNode(&Node{ID: "db2", Kind: NodeKindDatabase, Name: "DB2", Risk: RiskCritical})
+
+	g.AddEdge(&Edge{ID: "internet-role", Source: "internet", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "user-role", Source: "user1", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-db1", Source: "role", Target: "db1", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-db2", Source: "role", Target: "db2", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	sim := NewAttackPathSimulator(g)
+	result := sim.Simulate(6)
+
+	var roleChokepoint *Chokepoint
+	for _, cp := range result.Chokepoints {
+		if cp.Node.ID == "role" {
+			roleChokepoint = cp
+			break
+		}
+	}
+	if roleChokepoint == nil {
+		t.Fatal("expected shared role to be identified as a chokepoint")
+	}
+	if roleChokepoint.PathsThrough != 4 {
+		t.Fatalf("expected shared role on 4 paths, got %d", roleChokepoint.PathsThrough)
+	}
+
+	upstream := make(map[string]bool, len(roleChokepoint.UpstreamEntries))
+	for _, id := range roleChokepoint.UpstreamEntries {
+		upstream[id] = true
+	}
+	if len(upstream) != 2 || !upstream["internet"] || !upstream["user1"] {
+		t.Fatalf("unexpected upstream entries: %#v", roleChokepoint.UpstreamEntries)
+	}
+
+	downstream := make(map[string]bool, len(roleChokepoint.DownstreamTargets))
+	for _, id := range roleChokepoint.DownstreamTargets {
+		downstream[id] = true
+	}
+	if len(downstream) != 2 || !downstream["db1"] || !downstream["db2"] {
+		t.Fatalf("unexpected downstream targets: %#v", roleChokepoint.DownstreamTargets)
+	}
+}
+
 func TestFindChokepoints_DirectPathsSharedTarget(t *testing.T) {
 	// Two entry points (Internet and a User) both reach the same DB directly.
 	// Since they have different entry points, sharedEntry is "" and targets are
@@ -93,6 +276,230 @@ func TestFindChokepoints_DirectPathsSharedTarget(t *testing.T) {
 		if cp.PathsThrough < 2 {
 			t.Errorf("chokepoint %s has only %d paths through (need >= 2)", cp.Node.ID, cp.PathsThrough)
 		}
+	}
+}
+
+func TestAttackPathSimulatorFindShortestPathAvoidingHonorsWideAvoidSet(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "target", Kind: NodeKindDatabase, Name: "Target", Risk: RiskCritical})
+
+	const chainLen = 70
+	prevID := "internet"
+	for i := 0; i < chainLen; i++ {
+		nodeID := fmt.Sprintf("chain-%d", i)
+		g.AddNode(&Node{ID: nodeID, Kind: NodeKindRole, Name: nodeID})
+		g.AddEdge(&Edge{
+			ID:     fmt.Sprintf("%s->%s", prevID, nodeID),
+			Source: prevID,
+			Target: nodeID,
+			Kind:   EdgeKindCanAssume,
+			Effect: EdgeEffectAllow,
+		})
+		prevID = nodeID
+	}
+	g.AddEdge(&Edge{
+		ID:     "chain-69->target",
+		Source: "chain-69",
+		Target: "target",
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+	})
+
+	// This back-edge points to a prefix node whose ordinal is beyond the first 64-bit word.
+	// The avoiding BFS must still reject it after the ordinal visit-set conversion.
+	g.AddEdge(&Edge{
+		ID:     "chain-68->chain-65",
+		Source: "chain-68",
+		Target: "chain-65",
+		Kind:   EdgeKindCanAssume,
+		Effect: EdgeEffectAllow,
+	})
+	g.AddEdge(&Edge{
+		ID:     "chain-65->target",
+		Source: "chain-65",
+		Target: "target",
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+	})
+
+	prevID = "chain-68"
+	for i := 0; i < 8; i++ {
+		nodeID := fmt.Sprintf("alt-%d", i)
+		g.AddNode(&Node{ID: nodeID, Kind: NodeKindRole, Name: nodeID})
+		g.AddEdge(&Edge{
+			ID:     fmt.Sprintf("%s->%s", prevID, nodeID),
+			Source: prevID,
+			Target: nodeID,
+			Kind:   EdgeKindCanAssume,
+			Effect: EdgeEffectAllow,
+		})
+		prevID = nodeID
+	}
+	g.AddEdge(&Edge{
+		ID:     "alt-7->target",
+		Source: "alt-7",
+		Target: "target",
+		Kind:   EdgeKindCanRead,
+		Effect: EdgeEffectAllow,
+	})
+
+	sim := NewAttackPathSimulator(g)
+	entry, ok := g.GetNode("chain-68")
+	if !ok {
+		t.Fatal("expected spur node")
+	}
+	target, ok := g.GetNode("target")
+	if !ok {
+		t.Fatal("expected target node")
+	}
+
+	avoidNodes := newOrdinalVisitSet(sim.nodeIDs)
+	for i := 0; i <= 65; i++ {
+		avoidNodes.mark(fmt.Sprintf("chain-%d", i))
+	}
+	avoidEdges := make(map[NodeOrdinal]ordinalVisitSet)
+	sourceOrdinal, ok := sim.nodeIDs.Lookup("chain-68")
+	if !ok {
+		t.Fatal("expected chain-68 ordinal")
+	}
+	removedTargets := newOrdinalVisitSet(sim.nodeIDs)
+	removedTargets.mark("chain-69")
+	avoidEdges[sourceOrdinal] = removedTargets
+
+	path := sim.findShortestPathAvoiding(entry, target, 20, avoidNodes, avoidEdges)
+	if path == nil {
+		t.Fatal("expected alternate path")
+	}
+	if len(path.Steps) == 0 {
+		t.Fatal("expected path steps")
+	}
+	if path.Steps[0].FromNode != "chain-68" || path.Steps[0].ToNode != "alt-0" {
+		t.Fatalf("expected avoiding path to branch to alt-0, got %#v", path.Steps)
+	}
+}
+
+func TestAttackPathSimulatorAdjacencySnapshotSkipsDeletedNodesAndEdges(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "stale", Kind: NodeKindRole, Name: "Stale"})
+	g.AddNode(&Node{ID: "fresh", Kind: NodeKindRole, Name: "Fresh"})
+	g.AddNode(&Node{ID: "target", Kind: NodeKindDatabase, Name: "Target", Risk: RiskCritical})
+
+	g.AddEdge(&Edge{ID: "internet-stale", Source: "internet", Target: "stale", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "stale-target", Source: "stale", Target: "target", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "internet-fresh", Source: "internet", Target: "fresh", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "fresh-target", Source: "fresh", Target: "target", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	if !g.RemoveNode("stale") {
+		t.Fatal("expected stale node to be removed")
+	}
+
+	sim := NewAttackPathSimulator(g)
+	entry, ok := g.GetNode("internet")
+	if !ok {
+		t.Fatal("expected internet node")
+	}
+	target, ok := g.GetNode("target")
+	if !ok {
+		t.Fatal("expected target node")
+	}
+
+	seenStale := false
+	sim.forEachOutEdge("internet", func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
+		if targetID == "stale" {
+			seenStale = true
+		}
+		_ = targetOrdinal
+		_ = kind
+		_ = effect
+		return true
+	})
+	if seenStale {
+		t.Fatal("expected adjacency snapshot to skip deleted-node edges")
+	}
+
+	path := sim.findShortestPath(entry, target, 4)
+	if path == nil {
+		t.Fatal("expected path through fresh node")
+	}
+	if len(path.Steps) != 2 {
+		t.Fatalf("expected 2-step path, got %d", len(path.Steps))
+	}
+	if path.Steps[0].ToNode != "fresh" || path.Steps[1].ToNode != "target" {
+		t.Fatalf("expected path through fresh node, got %#v", path.Steps)
+	}
+}
+
+func TestAttackPathSimulatorForEachOutEdgeFallbackDoesNotInternMissingTargets(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddEdge(&Edge{ID: "internet-missing", Source: "internet", Target: "missing", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	nodeIDs := NewNodeIDIndex()
+	nodeIDs.Intern("internet")
+	sim := &AttackPathSimulator{
+		graph:   g,
+		nodeIDs: nodeIDs,
+	}
+
+	if _, ok := sim.nodeIDs.Lookup("missing"); ok {
+		t.Fatal("did not expect missing target to be interned before fallback traversal")
+	}
+
+	seenMissing := false
+	sim.forEachOutEdge("internet", func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
+		if targetID == "missing" {
+			seenMissing = true
+			if targetOrdinal != InvalidNodeOrdinal {
+				t.Fatalf("expected unresolved target to use invalid ordinal, got %d", targetOrdinal)
+			}
+		}
+		_ = kind
+		_ = effect
+		return true
+	})
+
+	if !seenMissing {
+		t.Fatal("expected fallback traversal to visit missing target edge")
+	}
+	if _, ok := sim.nodeIDs.Lookup("missing"); ok {
+		t.Fatal("did not expect fallback traversal to intern missing target")
+	}
+}
+
+func TestAttackPathSimulatorKShortestPathsFallbackRemovesUninternedTargets(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "alpha", Kind: NodeKindRole, Name: "Alpha"})
+	g.AddNode(&Node{ID: "beta", Kind: NodeKindRole, Name: "Beta"})
+	g.AddNode(&Node{ID: "target", Kind: NodeKindDatabase, Name: "Target", Risk: RiskCritical})
+
+	g.AddEdge(&Edge{ID: "internet-alpha", Source: "internet", Target: "alpha", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "alpha-target", Source: "alpha", Target: "target", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "internet-beta", Source: "internet", Target: "beta", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "beta-target", Source: "beta", Target: "target", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	nodeIDs := NewNodeIDIndex()
+	nodeIDs.Intern("internet")
+	sim := &AttackPathSimulator{
+		graph:        g,
+		nodeIDs:      nodeIDs,
+		visitedWords: (nodeIDs.Len() + 63) / 64,
+	}
+
+	paths := sim.KShortestPaths("internet", "target", 2, 2)
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 fallback paths, got %d", len(paths))
+	}
+	if len(paths[0].Steps) != 2 || len(paths[1].Steps) != 2 {
+		t.Fatalf("expected two 2-step paths, got %#v", paths)
+	}
+	if paths[0].Steps[0].ToNode != "alpha" {
+		t.Fatalf("expected first path through alpha, got %#v", paths[0].Steps)
+	}
+	if paths[1].Steps[0].ToNode != "beta" {
+		t.Fatalf("expected second path through beta, got %#v", paths[1].Steps)
 	}
 }
 

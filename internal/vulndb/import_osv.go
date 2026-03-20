@@ -71,20 +71,6 @@ type ImportReport struct {
 	MatchedKEV  int64  `json:"matched_kev"`
 }
 
-func (s *Service) withWriteStore(ctx context.Context, fn func(advisoryWriteStore) (ImportReport, error)) (ImportReport, error) {
-	writer := advisoryWriteStore(s.store)
-	if txStore, ok := s.store.(transactionalWriteStore); ok {
-		var report ImportReport
-		err := txStore.WithWriteTx(ctx, func(txWriter advisoryWriteStore) error {
-			var txErr error
-			report, txErr = fn(txWriter)
-			return txErr
-		})
-		return report, err
-	}
-	return fn(writer)
-}
-
 func (s *Service) ImportOSVJSON(ctx context.Context, source string, r io.Reader) (ImportReport, error) {
 	if s == nil || s.store == nil {
 		return ImportReport{}, fmt.Errorf("vulnerability database service is not configured")
@@ -92,78 +78,76 @@ func (s *Service) ImportOSVJSON(ctx context.Context, source string, r io.Reader)
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return s.withWriteStore(ctx, func(store advisoryWriteStore) (ImportReport, error) {
-		limited := &io.LimitedReader{R: r, N: maxOSVImportBytes + 1}
-		reader := bufio.NewReader(limited)
-		first, err := firstNonSpaceByte(reader)
-		if err != nil {
-			return ImportReport{}, err
+	limited := &io.LimitedReader{R: r, N: maxOSVImportBytes + 1}
+	reader := bufio.NewReader(limited)
+	first, err := firstNonSpaceByte(reader)
+	if err != nil {
+		return ImportReport{}, err
+	}
+	decoder := json.NewDecoder(reader)
+	report := ImportReport{Source: strings.TrimSpace(source)}
+	sizeLimitErr := func(err error) error {
+		if limited.N <= 0 {
+			return fmt.Errorf("osv feed exceeded maximum size %d bytes", maxOSVImportBytes)
 		}
-		decoder := json.NewDecoder(reader)
-		report := ImportReport{Source: strings.TrimSpace(source)}
-		sizeLimitErr := func(err error) error {
-			if limited.N <= 0 {
-				return fmt.Errorf("osv feed exceeded maximum size %d bytes", maxOSVImportBytes)
-			}
-			return err
-		}
-		importOne := func(doc osvAdvisory) error {
-			vuln, affected := normalizeOSVAdvisory(doc)
-			if vuln.ID == "" {
-				return nil
-			}
-			if err := store.UpsertAdvisory(ctx, vuln, affected); err != nil {
-				return err
-			}
-			report.Imported++
-			if report.Imported > maxOSVImportRows {
-				return fmt.Errorf("osv feed exceeded maximum row count %d", maxOSVImportRows)
-			}
+		return err
+	}
+	importOne := func(doc osvAdvisory) error {
+		vuln, affected := normalizeOSVAdvisory(doc)
+		if vuln.ID == "" {
 			return nil
 		}
-		if first == '[' {
-			tok, err := decoder.Token()
-			if err != nil {
-				return report, fmt.Errorf("read osv array start: %w", sizeLimitErr(err))
+		if err := s.store.UpsertAdvisory(ctx, vuln, affected); err != nil {
+			return err
+		}
+		report.Imported++
+		if report.Imported > maxOSVImportRows {
+			return fmt.Errorf("osv feed exceeded maximum row count %d", maxOSVImportRows)
+		}
+		return nil
+	}
+	if first == '[' {
+		tok, err := decoder.Token()
+		if err != nil {
+			return report, fmt.Errorf("read osv array start: %w", sizeLimitErr(err))
+		}
+		if _, ok := tok.(json.Delim); !ok {
+			return report, fmt.Errorf("invalid osv array stream")
+		}
+		for decoder.More() {
+			var doc osvAdvisory
+			if err := decoder.Decode(&doc); err != nil {
+				return report, fmt.Errorf("decode osv advisory: %w", sizeLimitErr(err))
 			}
-			if _, ok := tok.(json.Delim); !ok {
-				return report, fmt.Errorf("invalid osv array stream")
-			}
-			for decoder.More() {
-				var doc osvAdvisory
-				if err := decoder.Decode(&doc); err != nil {
-					return report, fmt.Errorf("decode osv advisory: %w", sizeLimitErr(err))
-				}
-				if err := importOne(doc); err != nil {
-					return report, fmt.Errorf("import osv advisory %s: %w", doc.ID, err)
-				}
-			}
-			if _, err := decoder.Token(); err != nil {
-				return report, fmt.Errorf("read osv array end: %w", sizeLimitErr(err))
-			}
-		} else {
-			for {
-				var doc osvAdvisory
-				if err := decoder.Decode(&doc); err != nil {
-					if err == io.EOF {
-						break
-					}
-					return report, fmt.Errorf("decode osv advisory stream: %w", sizeLimitErr(err))
-				}
-				if err := importOne(doc); err != nil {
-					return report, fmt.Errorf("import osv advisory %s: %w", doc.ID, err)
-				}
+			if err := importOne(doc); err != nil {
+				return report, fmt.Errorf("import osv advisory %s: %w", doc.ID, err)
 			}
 		}
-		if limited.N <= 0 {
-			return report, fmt.Errorf("osv feed exceeded maximum size %d bytes", maxOSVImportBytes)
+		if _, err := decoder.Token(); err != nil {
+			return report, fmt.Errorf("read osv array end: %w", sizeLimitErr(err))
 		}
-		attemptedAt := s.now().UTC()
-		if err := store.UpdateSyncState(ctx, SyncState{Source: report.Source, LastAttemptAt: attemptedAt, LastSuccessAt: attemptedAt, RecordsSynced: report.Imported}); err != nil {
-			return report, err
+	} else {
+		for {
+			var doc osvAdvisory
+			if err := decoder.Decode(&doc); err != nil {
+				if err == io.EOF {
+					break
+				}
+				return report, fmt.Errorf("decode osv advisory stream: %w", sizeLimitErr(err))
+			}
+			if err := importOne(doc); err != nil {
+				return report, fmt.Errorf("import osv advisory %s: %w", doc.ID, err)
+			}
 		}
-		return report, nil
-	})
+	}
+	if limited.N <= 0 {
+		return report, fmt.Errorf("osv feed exceeded maximum size %d bytes", maxOSVImportBytes)
+	}
+	attemptedAt := s.now().UTC()
+	if err := s.store.UpdateSyncState(ctx, SyncState{Source: report.Source, LastAttemptAt: attemptedAt, LastSuccessAt: attemptedAt, RecordsSynced: report.Imported}); err != nil {
+		return report, err
+	}
+	return report, nil
 }
 
 func (s *Service) ImportKEVJSON(ctx context.Context, source string, r io.Reader) (ImportReport, error) {
@@ -173,113 +157,111 @@ func (s *Service) ImportKEVJSON(ctx context.Context, source string, r io.Reader)
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return s.withWriteStore(ctx, func(store advisoryWriteStore) (ImportReport, error) {
-		limited := &io.LimitedReader{R: r, N: maxKEVImportBytes + 1}
-		decoder := json.NewDecoder(limited)
-		report := ImportReport{Source: strings.TrimSpace(source)}
-		sizeLimitErr := func(err error) error {
-			if limited.N <= 0 {
-				return fmt.Errorf("kev feed exceeded maximum size %d bytes", maxKEVImportBytes)
-			}
-			return err
+	limited := &io.LimitedReader{R: r, N: maxKEVImportBytes + 1}
+	decoder := json.NewDecoder(limited)
+	report := ImportReport{Source: strings.TrimSpace(source)}
+	sizeLimitErr := func(err error) error {
+		if limited.N <= 0 {
+			return fmt.Errorf("kev feed exceeded maximum size %d bytes", maxKEVImportBytes)
 		}
-		type kevVulnerability struct {
-			CVEID string `json:"cveID"`
+		return err
+	}
+	type kevVulnerability struct {
+		CVEID string `json:"cveID"`
+	}
+	flushBatch := func(cves []string) (int64, error) {
+		if len(cves) == 0 {
+			return 0, nil
 		}
-		flushBatch := func(cves []string) (int64, error) {
-			if len(cves) == 0 {
-				return 0, nil
-			}
-			return store.MarkKEV(ctx, cves)
-		}
+		return s.store.MarkKEV(ctx, cves)
+	}
 
-		token, err := decoder.Token()
+	token, err := decoder.Token()
+	if err != nil {
+		return ImportReport{}, fmt.Errorf("decode kev feed: %w", sizeLimitErr(err))
+	}
+	start, ok := token.(json.Delim)
+	if !ok || start != '{' {
+		return ImportReport{}, fmt.Errorf("decode kev feed: expected object start")
+	}
+
+	const kevBatchSize = 1024
+	batch := make([]string, 0, kevBatchSize)
+	for decoder.More() {
+		keyToken, err := decoder.Token()
 		if err != nil {
-			return ImportReport{}, fmt.Errorf("decode kev feed: %w", sizeLimitErr(err))
+			return ImportReport{}, fmt.Errorf("decode kev feed key: %w", sizeLimitErr(err))
 		}
-		start, ok := token.(json.Delim)
-		if !ok || start != '{' {
-			return ImportReport{}, fmt.Errorf("decode kev feed: expected object start")
+		key, ok := keyToken.(string)
+		if !ok {
+			return ImportReport{}, fmt.Errorf("decode kev feed: invalid object key")
 		}
-
-		const kevBatchSize = 1024
-		batch := make([]string, 0, kevBatchSize)
+		if key != "vulnerabilities" {
+			var discard any
+			if err := decoder.Decode(&discard); err != nil {
+				return ImportReport{}, fmt.Errorf("decode kev feed field %q: %w", key, sizeLimitErr(err))
+			}
+			continue
+		}
+		arrayToken, err := decoder.Token()
+		if err != nil {
+			return ImportReport{}, fmt.Errorf("decode kev vulnerabilities start: %w", sizeLimitErr(err))
+		}
+		arrayStart, ok := arrayToken.(json.Delim)
+		if !ok || arrayStart != '[' {
+			return ImportReport{}, fmt.Errorf("decode kev feed: vulnerabilities must be an array")
+		}
 		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return ImportReport{}, fmt.Errorf("decode kev feed key: %w", sizeLimitErr(err))
+			var vuln kevVulnerability
+			if err := decoder.Decode(&vuln); err != nil {
+				return ImportReport{}, fmt.Errorf("decode kev vulnerability: %w", sizeLimitErr(err))
 			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return ImportReport{}, fmt.Errorf("decode kev feed: invalid object key")
+			report.Imported++
+			if report.Imported > maxKEVImportRows {
+				return ImportReport{}, fmt.Errorf("kev feed exceeded maximum row count %d", maxKEVImportRows)
 			}
-			if key != "vulnerabilities" {
-				var discard any
-				if err := decoder.Decode(&discard); err != nil {
-					return ImportReport{}, fmt.Errorf("decode kev feed field %q: %w", key, sizeLimitErr(err))
+			if cve := strings.TrimSpace(vuln.CVEID); cve != "" {
+				batch = append(batch, cve)
+			}
+			if len(batch) >= kevBatchSize {
+				matched, err := flushBatch(batch)
+				if err != nil {
+					return ImportReport{}, err
 				}
-				continue
-			}
-			arrayToken, err := decoder.Token()
-			if err != nil {
-				return ImportReport{}, fmt.Errorf("decode kev vulnerabilities start: %w", sizeLimitErr(err))
-			}
-			arrayStart, ok := arrayToken.(json.Delim)
-			if !ok || arrayStart != '[' {
-				return ImportReport{}, fmt.Errorf("decode kev feed: vulnerabilities must be an array")
-			}
-			for decoder.More() {
-				var vuln kevVulnerability
-				if err := decoder.Decode(&vuln); err != nil {
-					return ImportReport{}, fmt.Errorf("decode kev vulnerability: %w", sizeLimitErr(err))
-				}
-				report.Imported++
-				if report.Imported > maxKEVImportRows {
-					return ImportReport{}, fmt.Errorf("kev feed exceeded maximum row count %d", maxKEVImportRows)
-				}
-				if cve := strings.TrimSpace(vuln.CVEID); cve != "" {
-					batch = append(batch, cve)
-				}
-				if len(batch) >= kevBatchSize {
-					matched, err := flushBatch(batch)
-					if err != nil {
-						return ImportReport{}, err
-					}
-					report.MatchedKEV += matched
-					batch = batch[:0]
-				}
-			}
-			endToken, err := decoder.Token()
-			if err != nil {
-				return ImportReport{}, fmt.Errorf("decode kev vulnerabilities end: %w", sizeLimitErr(err))
-			}
-			arrayEnd, ok := endToken.(json.Delim)
-			if !ok || arrayEnd != ']' {
-				return ImportReport{}, fmt.Errorf("decode kev feed: invalid vulnerabilities terminator")
+				report.MatchedKEV += matched
+				batch = batch[:0]
 			}
 		}
 		endToken, err := decoder.Token()
 		if err != nil {
-			return ImportReport{}, fmt.Errorf("decode kev feed end: %w", sizeLimitErr(err))
+			return ImportReport{}, fmt.Errorf("decode kev vulnerabilities end: %w", sizeLimitErr(err))
 		}
-		end, ok := endToken.(json.Delim)
-		if !ok || end != '}' {
-			return ImportReport{}, fmt.Errorf("decode kev feed: invalid object terminator")
+		arrayEnd, ok := endToken.(json.Delim)
+		if !ok || arrayEnd != ']' {
+			return ImportReport{}, fmt.Errorf("decode kev feed: invalid vulnerabilities terminator")
 		}
-		matched, err := flushBatch(batch)
-		if err != nil {
-			return ImportReport{}, err
-		}
-		report.MatchedKEV += matched
-		if limited.N <= 0 {
-			return ImportReport{}, fmt.Errorf("kev feed exceeded maximum size %d bytes", maxKEVImportBytes)
-		}
-		now := s.now().UTC()
-		if err := store.UpdateSyncState(ctx, SyncState{Source: report.Source, LastAttemptAt: now, LastSuccessAt: now, RecordsSynced: report.Imported}); err != nil {
-			return report, err
-		}
-		return report, nil
-	})
+	}
+	endToken, err := decoder.Token()
+	if err != nil {
+		return ImportReport{}, fmt.Errorf("decode kev feed end: %w", sizeLimitErr(err))
+	}
+	end, ok := endToken.(json.Delim)
+	if !ok || end != '}' {
+		return ImportReport{}, fmt.Errorf("decode kev feed: invalid object terminator")
+	}
+	matched, err := flushBatch(batch)
+	if err != nil {
+		return ImportReport{}, err
+	}
+	report.MatchedKEV += matched
+	if limited.N <= 0 {
+		return ImportReport{}, fmt.Errorf("kev feed exceeded maximum size %d bytes", maxKEVImportBytes)
+	}
+	now := s.now().UTC()
+	if err := s.store.UpdateSyncState(ctx, SyncState{Source: report.Source, LastAttemptAt: now, LastSuccessAt: now, RecordsSynced: report.Imported}); err != nil {
+		return report, err
+	}
+	return report, nil
 }
 
 func (s *Service) ImportEPSSCSV(ctx context.Context, source string, r io.Reader) (ImportReport, error) {
@@ -289,55 +271,53 @@ func (s *Service) ImportEPSSCSV(ctx context.Context, source string, r io.Reader)
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return s.withWriteStore(ctx, func(store advisoryWriteStore) (ImportReport, error) {
-		limited := &io.LimitedReader{R: r, N: maxEPSSImportBytes + 1}
-		reader := csv.NewReader(limited)
-		reader.FieldsPerRecord = -1
-		reader.Comment = '#'
-		report := ImportReport{Source: strings.TrimSpace(source)}
-		rowCount := 0
-		for {
-			record, err := reader.Read()
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			if err != nil {
-				return ImportReport{}, fmt.Errorf("read epss csv: %w", err)
-			}
-			rowCount++
-			if rowCount > maxEPSSImportRows {
-				return report, fmt.Errorf("epss csv exceeded maximum row count %d", maxEPSSImportRows)
-			}
-			if len(record) < 3 {
-				continue
-			}
-			if rowCount == 1 && strings.EqualFold(strings.TrimSpace(record[0]), "cve") {
-				continue
-			}
-			score, err := strconv.ParseFloat(strings.TrimSpace(record[1]), 64)
-			if err != nil {
-				continue
-			}
-			percentile, err := strconv.ParseFloat(strings.TrimSpace(record[2]), 64)
-			if err != nil {
-				continue
-			}
-			updated, err := store.UpsertEPSS(ctx, record[0], score, percentile)
-			if err != nil {
-				return report, err
-			}
-			report.Imported++
-			report.MatchedEPSS += updated
+	limited := &io.LimitedReader{R: r, N: maxEPSSImportBytes + 1}
+	reader := csv.NewReader(limited)
+	reader.FieldsPerRecord = -1
+	reader.Comment = '#'
+	report := ImportReport{Source: strings.TrimSpace(source)}
+	rowCount := 0
+	for {
+		record, err := reader.Read()
+		if errors.Is(err, io.EOF) {
+			break
 		}
-		if limited.N == 0 {
-			return report, fmt.Errorf("epss csv exceeded maximum size %d bytes", maxEPSSImportBytes)
+		if err != nil {
+			return ImportReport{}, fmt.Errorf("read epss csv: %w", err)
 		}
-		now := s.now().UTC()
-		if err := store.UpdateSyncState(ctx, SyncState{Source: report.Source, LastAttemptAt: now, LastSuccessAt: now, RecordsSynced: report.Imported}); err != nil {
+		rowCount++
+		if rowCount > maxEPSSImportRows {
+			return report, fmt.Errorf("epss csv exceeded maximum row count %d", maxEPSSImportRows)
+		}
+		if len(record) < 3 {
+			continue
+		}
+		if rowCount == 1 && strings.EqualFold(strings.TrimSpace(record[0]), "cve") {
+			continue
+		}
+		score, err := strconv.ParseFloat(strings.TrimSpace(record[1]), 64)
+		if err != nil {
+			continue
+		}
+		percentile, err := strconv.ParseFloat(strings.TrimSpace(record[2]), 64)
+		if err != nil {
+			continue
+		}
+		updated, err := s.store.UpsertEPSS(ctx, record[0], score, percentile)
+		if err != nil {
 			return report, err
 		}
-		return report, nil
-	})
+		report.Imported++
+		report.MatchedEPSS += updated
+	}
+	if limited.N == 0 {
+		return report, fmt.Errorf("epss csv exceeded maximum size %d bytes", maxEPSSImportBytes)
+	}
+	now := s.now().UTC()
+	if err := s.store.UpdateSyncState(ctx, SyncState{Source: report.Source, LastAttemptAt: now, LastSuccessAt: now, RecordsSynced: report.Imported}); err != nil {
+		return report, err
+	}
+	return report, nil
 }
 
 func normalizeOSVAdvisory(doc osvAdvisory) (Vulnerability, []AffectedPackage) {

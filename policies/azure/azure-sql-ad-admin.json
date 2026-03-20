@@ -1,20 +1,24 @@
 {
   "id": "azure-sql-azure-ad-admin",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure SQL Azure AD Admin",
   "description": "Azure SQL servers should have an Azure AD administrator configured",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::sql::server",
   "conditions": [
-    "azure_ad_administrator == null"
+    "cmp_eq(path(resource, \"azure_ad_administrator\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Configure an Azure AD administrator for the SQL server.",
   "tags": [
     "cis-azure-4.4",
     "sql",
     "database",
     "authentication"
   ],
+  "remediation": "Configure an Azure AD administrator for the SQL server.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "IDENTITY_RISK",

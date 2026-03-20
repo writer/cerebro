@@ -1,21 +1,25 @@
 {
   "id": "k8s-service-loadbalancer-internal",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "K8s LoadBalancer Service Internal",
   "description": "LoadBalancer services should use internal load balancers when possible",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "kubernetes::service",
   "conditions": [
-    "spec.type == 'LoadBalancer'",
-    "metadata.annotations['service.beta.kubernetes.io/aws-load-balancer-internal'] != 'true'",
-    "metadata.annotations['cloud.google.com/load-balancer-type'] != 'Internal'"
+    "cmp_eq(path(resource, \"spec.type\"), \"LoadBalancer\")",
+    "cmp_ne(path(resource, \"metadata.annotations['service.beta.kubernetes.io/aws-load-balancer-internal']\"), \"true\")",
+    "cmp_ne(path(resource, \"metadata.annotations['cloud.google.com/load-balancer-type']\"), \"Internal\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Use internal load balancer annotations or switch to ClusterIP with Ingress.",
   "tags": [
     "service",
     "network",
     "exposure"
   ],
+  "remediation": "Use internal load balancer annotations or switch to ClusterIP with Ingress.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "MISCONFIGURATION"

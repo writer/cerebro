@@ -1,15 +1,38 @@
 {
   "id": "ai-model-inventory",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AI Model Inventory Maintained",
   "description": "Ensures all AI/ML models are documented in a central inventory (ISO 42001)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "ai_models",
-  "conditions": ["last_inventory_update IS NULL OR last_inventory_update < NOW() - INTERVAL '90 days'"],
+  "conditions": [
+    "(!exists_path(resource, \"last_inventory_update\")) || (cmp_lt(path(resource, \"last_inventory_update\"), \"NOW() - INTERVAL '90 days'\"))"
+  ],
+  "condition_format": "cel",
   "severity": "medium",
+  "tags": [
+    "ai",
+    "ml",
+    "inventory",
+    "governance",
+    "iso42001"
+  ],
   "remediation": "Update AI model inventory with all deployed models. Document model purpose, inputs, outputs, and risk assessment.",
-  "tags": ["ai", "ml", "inventory", "governance", "iso42001"],
   "frameworks": [
-    {"name": "ISO 42001", "controls": ["7.1", "7.2"]},
-    {"name": "SOC 2", "controls": ["CC6.1"]}
+    {
+      "name": "ISO 42001",
+      "controls": [
+        "7.1",
+        "7.2"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    }
   ]
 }

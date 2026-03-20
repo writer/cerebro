@@ -1,13 +1,21 @@
 {
   "id": "zendesk-sla-breach",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Zendesk First Response SLA Breach",
   "description": "Flags high-priority Zendesk tickets that have breached first response SLA.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "zendesk::ticket",
   "conditions": [
-    "first_response_sla_breached == true",
-    "status != 'closed'"
+    "cmp_eq(path(resource, \"first_response_sla_breached\"), true)",
+    "cmp_ne(path(resource, \"status\"), \"closed\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "tags": ["sla", "support", "zendesk"]
+  "tags": [
+    "sla",
+    "support",
+    "zendesk"
+  ]
 }

@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -19,13 +18,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	orgtypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
 	"golang.org/x/sync/errgroup"
 )
-
-var postSyncGraphUpdateTimeout = 30 * time.Minute
 
 func (s *Server) backfillRelationshipIDs(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -39,40 +35,46 @@ func (s *Server) backfillRelationshipIDs(w http.ResponseWriter, r *http.Request)
 		req.BatchSize = 200
 	}
 
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
-		return
-	}
-
-	extractor := nativesync.NewRelationshipExtractor(s.app.Snowflake, s.app.Logger)
-	stats, err := extractor.BackfillNormalizedRelationshipIDs(r.Context(), req.BatchSize)
+	stats, err := s.syncHandlers.BackfillRelationshipIDs(r.Context(), req.BatchSize)
 	if err != nil {
+		if errors.Is(err, errSyncSnowflakeUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.errorFromErr(w, err)
 		return
 	}
-
-	s.json(w, http.StatusOK, map[string]interface{}{
-		"scanned": stats.Scanned,
-		"updated": stats.Updated,
-		"deleted": stats.Deleted,
-		"skipped": stats.Skipped,
-	})
+	s.json(w, http.StatusOK, stats)
 }
 
 type azureSyncRequest struct {
-	Subscription string   `json:"subscription"`
-	Concurrency  int      `json:"concurrency"`
-	Tables       []string `json:"tables"`
-	Validate     bool     `json:"validate"`
+	Subscription            string   `json:"subscription"`
+	Subscriptions           []string `json:"subscriptions"`
+	ManagementGroup         string   `json:"management_group"`
+	Concurrency             int      `json:"concurrency"`
+	SubscriptionConcurrency int      `json:"subscription_concurrency"`
+	Tables                  []string `json:"tables"`
+	Validate                bool     `json:"validate"`
 }
 
 var runAzureSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req azureSyncRequest) ([]nativesync.SyncResult, error) {
 	opts := []nativesync.AzureEngineOption{}
-	if req.Subscription != "" {
-		opts = append(opts, nativesync.WithAzureSubscription(req.Subscription))
+	switch len(req.Subscriptions) {
+	case 1:
+		opts = append(opts, nativesync.WithAzureSubscription(req.Subscriptions[0]))
+	case 0:
+		// let the engine discover all enabled subscriptions if no explicit scope is provided
+	default:
+		opts = append(opts, nativesync.WithAzureSubscriptions(req.Subscriptions))
+	}
+	if req.ManagementGroup != "" {
+		opts = append(opts, nativesync.WithAzureManagementGroup(req.ManagementGroup))
 	}
 	if req.Concurrency > 0 {
 		opts = append(opts, nativesync.WithAzureConcurrency(req.Concurrency))
+	}
+	if req.SubscriptionConcurrency > 0 {
+		opts = append(opts, nativesync.WithAzureSubscriptionConcurrency(req.SubscriptionConcurrency))
 	}
 	if len(req.Tables) > 0 {
 		opts = append(opts, nativesync.WithAzureTableFilter(req.Tables))
@@ -106,15 +108,20 @@ func (s *Server) syncAzure(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Subscription = strings.TrimSpace(req.Subscription)
+	req.Subscriptions = nativesync.NormalizeAzureSubscriptionIDs(append(req.Subscriptions, req.Subscription))
+	req.ManagementGroup = strings.TrimSpace(req.ManagementGroup)
 	req.Tables = normalizeSyncTables(req.Tables)
-
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+	if req.ManagementGroup != "" && len(req.Subscriptions) > 0 {
+		s.error(w, http.StatusBadRequest, "management_group cannot be combined with subscription or subscriptions")
 		return
 	}
 
-	results, err := runAzureSyncWithOptions(r.Context(), s.app.Snowflake, req)
+	result, err := s.syncHandlers.SyncAzure(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, errSyncSnowflakeUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.errorFromErr(w, err)
 		return
 	}
@@ -122,9 +129,9 @@ func (s *Server) syncAzure(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"provider": "azure",
 		"validate": req.Validate,
-		"results":  results,
+		"results":  result.Results,
 	}
-	if graphUpdate := s.applySecurityGraphUpdateAfterSync(r.Context(), "azure", req.Validate); graphUpdate != nil {
+	if graphUpdate := result.GraphUpdate; graphUpdate != nil {
 		resp["graph_update"] = graphUpdate
 	}
 	s.json(w, http.StatusOK, resp)
@@ -185,13 +192,12 @@ func (s *Server) syncK8s(w http.ResponseWriter, r *http.Request) {
 	req.Namespace = strings.TrimSpace(req.Namespace)
 	req.Tables = normalizeSyncTables(req.Tables)
 
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
-		return
-	}
-
-	results, err := runK8sSyncWithOptions(r.Context(), s.app.Snowflake, req)
+	result, err := s.syncHandlers.SyncK8s(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, errSyncSnowflakeUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.errorFromErr(w, err)
 		return
 	}
@@ -199,9 +205,9 @@ func (s *Server) syncK8s(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"provider": "k8s",
 		"validate": req.Validate,
-		"results":  results,
+		"results":  result.Results,
 	}
-	if graphUpdate := s.applySecurityGraphUpdateAfterSync(r.Context(), "k8s", req.Validate); graphUpdate != nil {
+	if graphUpdate := result.GraphUpdate; graphUpdate != nil {
 		resp["graph_update"] = graphUpdate
 	}
 	s.json(w, http.StatusOK, resp)
@@ -310,30 +316,26 @@ func (s *Server) syncAWS(w http.ResponseWriter, r *http.Request) {
 	req.AWSIdentityCenterPermissionSetsInclude = normalizeSyncStrings(req.AWSIdentityCenterPermissionSetsInclude)
 	req.AWSIdentityCenterPermissionSetsExclude = normalizeSyncStrings(req.AWSIdentityCenterPermissionSetsExclude)
 
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
-		return
-	}
-
-	outcome, err := runAWSSyncWithOptions(r.Context(), s.app.Snowflake, req)
+	result, err := s.syncHandlers.SyncAWS(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, errSyncSnowflakeUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.errorFromErr(w, err)
 		return
-	}
-	if outcome == nil {
-		outcome = &awsSyncOutcome{}
 	}
 
 	resp := map[string]interface{}{
 		"provider":                "aws",
 		"validate":                req.Validate,
-		"results":                 outcome.Results,
-		"relationships_extracted": outcome.RelationshipsExtracted,
+		"results":                 result.Results,
+		"relationships_extracted": result.RelationshipsExtracted,
 	}
-	if outcome.RelationshipsSkippedReason != "" {
-		resp["relationships_skipped_reason"] = outcome.RelationshipsSkippedReason
+	if result.RelationshipsSkippedReason != "" {
+		resp["relationships_skipped_reason"] = result.RelationshipsSkippedReason
 	}
-	if graphUpdate := s.applySecurityGraphUpdateAfterSync(r.Context(), "aws", req.Validate); graphUpdate != nil {
+	if graphUpdate := result.GraphUpdate; graphUpdate != nil {
 		resp["graph_update"] = graphUpdate
 	}
 
@@ -490,29 +492,25 @@ func (s *Server) syncAWSOrg(w http.ResponseWriter, r *http.Request) {
 		req.AccountConcurrency = 4
 	}
 
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
-		return
-	}
-
-	outcome, err := runAWSOrgSyncWithOptions(r.Context(), s.app.Snowflake, req)
+	result, err := s.syncHandlers.SyncAWSOrg(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, errSyncSnowflakeUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.errorFromErr(w, err)
 		return
-	}
-	if outcome == nil {
-		outcome = &awsOrgSyncOutcome{}
 	}
 
 	resp := map[string]interface{}{
 		"provider": "aws_org",
 		"validate": req.Validate,
-		"results":  outcome.Results,
+		"results":  result.Results,
 	}
-	if len(outcome.AccountErrors) > 0 {
-		resp["account_errors"] = outcome.AccountErrors
+	if len(result.AccountErrors) > 0 {
+		resp["account_errors"] = result.AccountErrors
 	}
-	if graphUpdate := s.applySecurityGraphUpdateAfterSync(r.Context(), "aws_org", req.Validate); graphUpdate != nil {
+	if graphUpdate := result.GraphUpdate; graphUpdate != nil {
 		resp["graph_update"] = graphUpdate
 	}
 
@@ -722,30 +720,26 @@ func (s *Server) syncGCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
-		return
-	}
-
-	outcome, err := runGCPSyncWithOptions(r.Context(), s.app.Snowflake, req)
+	result, err := s.syncHandlers.SyncGCP(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, errSyncSnowflakeUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.errorFromErr(w, err)
 		return
-	}
-	if outcome == nil {
-		outcome = &gcpSyncOutcome{}
 	}
 
 	resp := map[string]interface{}{
 		"provider":                "gcp",
 		"validate":                req.Validate,
-		"results":                 outcome.Results,
-		"relationships_extracted": outcome.RelationshipsExtracted,
+		"results":                 result.Results,
+		"relationships_extracted": result.RelationshipsExtracted,
 	}
-	if outcome.RelationshipsSkippedReason != "" {
-		resp["relationships_skipped_reason"] = outcome.RelationshipsSkippedReason
+	if result.RelationshipsSkippedReason != "" {
+		resp["relationships_skipped_reason"] = result.RelationshipsSkippedReason
 	}
-	if graphUpdate := s.applySecurityGraphUpdateAfterSync(r.Context(), "gcp", req.Validate); graphUpdate != nil {
+	if graphUpdate := result.GraphUpdate; graphUpdate != nil {
 		resp["graph_update"] = graphUpdate
 	}
 
@@ -766,18 +760,25 @@ func appendGCPPermissionUsageRequestOptions(options []nativesync.GCPEngineOption
 }
 
 type gcpAssetSyncRequest struct {
-	Projects    []string `json:"projects"`
-	Concurrency int      `json:"concurrency"`
-	Tables      []string `json:"tables"`
-	Validate    bool     `json:"validate"`
+	Projects     []string `json:"projects"`
+	Organization string   `json:"organization"`
+	Concurrency  int      `json:"concurrency"`
+	Tables       []string `json:"tables"`
+	Validate     bool     `json:"validate"`
 }
 
 var runGCPAssetSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
-	if len(req.Projects) == 0 {
-		return nil, fmt.Errorf("projects are required")
+	organization := strings.TrimSpace(req.Organization)
+	if len(req.Projects) == 0 && organization == "" {
+		return nil, fmt.Errorf("projects or organization are required")
 	}
 
-	opts := []nativesync.GCPAssetOption{nativesync.WithProjects(req.Projects)}
+	opts := make([]nativesync.GCPAssetOption, 0, 3)
+	if organization != "" {
+		opts = append(opts, nativesync.WithAssetScope("organizations/"+organization))
+	} else {
+		opts = append(opts, nativesync.WithProjects(req.Projects))
+	}
 	if req.Concurrency > 0 {
 		opts = append(opts, nativesync.WithAssetConcurrency(req.Concurrency))
 	}
@@ -809,19 +810,23 @@ func (s *Server) syncGCPAsset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Projects = normalizeSyncProjects(req.Projects)
+	req.Organization = strings.TrimSpace(req.Organization)
 	req.Tables = normalizeSyncTables(req.Tables)
-	if len(req.Projects) == 0 {
-		s.error(w, http.StatusBadRequest, "projects are required")
+	if req.Organization != "" && len(req.Projects) > 0 {
+		s.error(w, http.StatusBadRequest, "organization cannot be combined with projects")
+		return
+	}
+	if len(req.Projects) == 0 && req.Organization == "" {
+		s.error(w, http.StatusBadRequest, "projects or organization are required")
 		return
 	}
 
-	if s.app.Snowflake == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
-		return
-	}
-
-	results, err := runGCPAssetSyncWithOptions(r.Context(), s.app.Snowflake, req)
+	result, err := s.syncHandlers.SyncGCPAsset(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, errSyncSnowflakeUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		s.errorFromErr(w, err)
 		return
 	}
@@ -829,9 +834,9 @@ func (s *Server) syncGCPAsset(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"provider": "gcp_asset",
 		"validate": req.Validate,
-		"results":  results,
+		"results":  result.Results,
 	}
-	if graphUpdate := s.applySecurityGraphUpdateAfterSync(r.Context(), "gcp_asset", req.Validate); graphUpdate != nil {
+	if graphUpdate := result.GraphUpdate; graphUpdate != nil {
 		resp["graph_update"] = graphUpdate
 	}
 	s.json(w, http.StatusOK, resp)
@@ -860,70 +865,6 @@ func normalizeSyncProjects(raw []string) []string {
 		return nil
 	}
 	return normalized
-}
-
-func normalizeSyncStrings(raw []string) []string {
-	if len(raw) == 0 {
-		return nil
-	}
-
-	normalized := make([]string, 0, len(raw))
-	seen := make(map[string]struct{}, len(raw))
-	for _, value := range raw {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		key := strings.ToLower(trimmed)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		normalized = append(normalized, trimmed)
-	}
-	if len(normalized) == 0 {
-		return nil
-	}
-	return normalized
-}
-
-func (s *Server) applySecurityGraphUpdateAfterSync(ctx context.Context, provider string, validate bool) map[string]any {
-	if validate || s == nil || s.app == nil || s.app.SecurityGraphBuilder == nil {
-		return nil
-	}
-
-	trigger := "sync_" + strings.ToLower(strings.TrimSpace(provider))
-	graphCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postSyncGraphUpdateTimeout)
-	defer cancel()
-
-	summary, applied, err := s.app.TryApplySecurityGraphChanges(graphCtx, trigger)
-	if !applied {
-		return map[string]any{
-			"status":     "busy",
-			"trigger":    trigger,
-			"error":      "graph update already in progress",
-			"error_code": "GRAPH_UPDATE_BUSY",
-		}
-	}
-	if err != nil {
-		s.app.Logger.Warn("post-sync graph update failed", "provider", provider, "error", err)
-		return map[string]any{
-			"status":     "failed",
-			"trigger":    trigger,
-			"error":      "graph update failed",
-			"error_code": "GRAPH_UPDATE_FAILED",
-		}
-	}
-
-	status := "noop"
-	if summary.Mode == graph.GraphMutationModeFullRebuild || summary.HasChanges() {
-		status = "applied"
-	}
-	return map[string]any{
-		"status":  status,
-		"trigger": trigger,
-		"summary": summary.Payload(trigger),
-	}
 }
 
 func normalizeSyncAccountIDs(raw []string) []string {
@@ -968,6 +909,31 @@ func normalizeSyncTables(raw []string) []string {
 		}
 		seen[name] = struct{}{}
 		normalized = append(normalized, name)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func normalizeSyncStrings(raw []string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, value := range raw {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, trimmed)
 	}
 	if len(normalized) == 0 {
 		return nil

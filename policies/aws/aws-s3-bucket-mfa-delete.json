@@ -1,21 +1,25 @@
 {
   "id": "aws-s3-bucket-mfa-delete",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Bucket MFA Delete",
   "description": "S3 bucket should have MFA delete enabled for versioned objects",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::s3::bucket",
   "conditions": [
-    "versioning.status == 'Enabled'",
-    "versioning.mfa_delete != 'Enabled'"
+    "cmp_eq(path(resource, \"versioning.status\"), \"Enabled\")",
+    "cmp_ne(path(resource, \"versioning.mfa_delete\"), \"Enabled\")"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "Enable MFA delete on the bucket to require MFA for permanent deletion of versioned objects.",
   "tags": [
     "s3",
     "data-protection",
     "mfa",
     "versioning"
   ],
+  "remediation": "Enable MFA delete on the bucket to require MFA for permanent deletion of versioned objects.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "IDENTITY_RISK",

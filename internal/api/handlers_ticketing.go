@@ -11,12 +11,12 @@ import (
 // Ticketing endpoints
 
 func (s *Server) listTickets(w http.ResponseWriter, r *http.Request) {
-	if s.app.Ticketing.Primary() == nil {
+	if !s.ticketingOps.PrimaryConfigured() {
 		s.json(w, http.StatusOK, map[string]interface{}{"tickets": []interface{}{}, "count": 0, "message": "no ticketing provider configured"})
 		return
 	}
 
-	tickets, err := s.app.Ticketing.Primary().ListTickets(r.Context(), ticketing.TicketFilter{
+	tickets, err := s.ticketingOps.ListTickets(r.Context(), ticketing.TicketFilter{
 		Status:   r.URL.Query().Get("status"),
 		Priority: r.URL.Query().Get("priority"),
 		Limit:    50,
@@ -29,7 +29,7 @@ func (s *Server) listTickets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
-	if s.app.Ticketing.Primary() == nil {
+	if !s.ticketingOps.PrimaryConfigured() {
 		s.error(w, http.StatusServiceUnavailable, "no ticketing provider configured")
 		return
 	}
@@ -53,7 +53,7 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		Type:        "finding",
 	}
 
-	created, err := s.app.Ticketing.CreateTicket(r.Context(), ticket)
+	created, err := s.ticketingOps.CreateTicket(r.Context(), ticket)
 	if err != nil {
 		s.errorFromErr(w, err)
 		return
@@ -62,13 +62,13 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getTicket(w http.ResponseWriter, r *http.Request) {
-	if s.app.Ticketing.Primary() == nil {
+	if !s.ticketingOps.PrimaryConfigured() {
 		s.error(w, http.StatusServiceUnavailable, "no ticketing provider configured")
 		return
 	}
 
 	id := chi.URLParam(r, "id")
-	ticket, err := s.app.Ticketing.Primary().GetTicket(r.Context(), id)
+	ticket, err := s.ticketingOps.GetTicket(r.Context(), id)
 	if err != nil {
 		s.error(w, http.StatusNotFound, err.Error())
 		return
@@ -77,7 +77,7 @@ func (s *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
-	if s.app.Ticketing.Primary() == nil {
+	if !s.ticketingOps.PrimaryConfigured() {
 		s.error(w, http.StatusServiceUnavailable, "no ticketing provider configured")
 		return
 	}
@@ -89,7 +89,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ticket, err := s.app.Ticketing.Primary().UpdateTicket(r.Context(), id, &update)
+	ticket, err := s.ticketingOps.UpdateTicket(r.Context(), id, &update)
 	if err != nil {
 		s.errorFromErr(w, err)
 		return
@@ -98,7 +98,7 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) addComment(w http.ResponseWriter, r *http.Request) {
-	if s.app.Ticketing.Primary() == nil {
+	if !s.ticketingOps.PrimaryConfigured() {
 		s.error(w, http.StatusServiceUnavailable, "no ticketing provider configured")
 		return
 	}
@@ -112,7 +112,7 @@ func (s *Server) addComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.app.Ticketing.Primary().AddComment(r.Context(), id, &ticketing.Comment{Body: req.Body})
+	err := s.ticketingOps.AddComment(r.Context(), id, &ticketing.Comment{Body: req.Body})
 	if err != nil {
 		s.errorFromErr(w, err)
 		return
@@ -121,7 +121,7 @@ func (s *Server) addComment(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) closeTicket(w http.ResponseWriter, r *http.Request) {
-	if s.app.Ticketing.Primary() == nil {
+	if !s.ticketingOps.PrimaryConfigured() {
 		s.error(w, http.StatusServiceUnavailable, "no ticketing provider configured")
 		return
 	}
@@ -132,7 +132,7 @@ func (s *Server) closeTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	err := s.app.Ticketing.Primary().Close(r.Context(), id, req.Resolution)
+	err := s.ticketingOps.CloseTicket(r.Context(), id, req.Resolution)
 	if err != nil {
 		s.errorFromErr(w, err)
 		return

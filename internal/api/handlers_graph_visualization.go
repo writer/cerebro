@@ -6,13 +6,15 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/writer/cerebro/internal/graph"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 )
 
 // Visualization endpoints (Mermaid)
 
 func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	g, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -23,7 +25,7 @@ func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+	simulator := risk.NewAttackPathSimulator(g)
 	result := simulator.Simulate(6)
 
 	if idx >= len(result.Paths) {
@@ -31,7 +33,7 @@ func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)
+	exporter := graph.NewMermaidExporter(g)
 	mermaid := exporter.ExportAttackPath(result.Paths[idx])
 
 	w.Header().Set("Content-Type", "text/markdown")
@@ -40,8 +42,9 @@ func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	g, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 
@@ -51,10 +54,10 @@ func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	engine := graph.NewToxicCombinationEngine()
-	results := engine.Analyze(s.app.SecurityGraph)
+	engine := risk.NewToxicCombinationEngine()
+	results := engine.Analyze(g)
 
-	var targetTC *graph.ToxicCombination
+	var targetTC *risk.ToxicCombination
 	for _, tc := range results {
 		if tc.ID == tcID {
 			targetTC = tc
@@ -67,7 +70,7 @@ func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)
+	exporter := graph.NewMermaidExporter(g)
 	mermaid := exporter.ExportToxicCombination(targetTC)
 
 	w.Header().Set("Content-Type", "text/markdown")
@@ -76,7 +79,8 @@ func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	store := s.currentTenantSecurityGraphStore(r.Context())
+	if store == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -94,8 +98,12 @@ func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := graph.BlastRadius(s.app.SecurityGraph, principalID, maxDepth)
-	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)
+	result, err := store.BlastRadius(r.Context(), principalID, maxDepth)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	exporter := graph.NewMermaidExporter(nil)
 	mermaid := exporter.ExportBlastRadius(result)
 
 	w.Header().Set("Content-Type", "text/markdown")
@@ -104,15 +112,16 @@ func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) visualizeReport(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	g, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 
-	engine := graph.NewRiskEngine(s.app.SecurityGraph)
+	engine := risk.NewRiskEngine(g)
 	report := engine.Analyze()
 
-	exporter := graph.NewMermaidExporter(s.app.SecurityGraph)
+	exporter := graph.NewMermaidExporter(g)
 	mermaid := exporter.ExportSecurityReport(report)
 
 	w.Header().Set("Content-Type", "text/markdown")

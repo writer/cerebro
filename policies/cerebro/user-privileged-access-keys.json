@@ -1,22 +1,26 @@
 {
   "id": "user-privileged-access-keys",
-  "control_id": "wc-id-522",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "User account with high privileges has active access keys",
   "description": "A user with high privileges has active access keys, increasing compromise risk",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "iam::user",
   "conditions": [
-    "has_high_privilege == true",
-    "access_keys ANY (status == 'Active')"
+    "cmp_eq(path(resource, \"has_high_privilege\"), true)",
+    "list_value(path(resource, \"access_keys\")).exists(item, cmp_eq(path(item, \"status\"), \"Active\"))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Disable access keys for privileged users. Use IAM roles for programmatic access. Implement MFA for console access.",
   "tags": [
     "wiz",
     "identity",
     "access-keys",
     "privileged"
   ],
+  "control_id": "wc-id-522",
+  "remediation": "Disable access keys for privileged users. Use IAM roles for programmatic access. Implement MFA for console access.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

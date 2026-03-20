@@ -200,7 +200,7 @@ func (s *Server) approveSessionToolCall(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !pendingCall.CreatedAt.IsZero() && time.Since(pendingCall.CreatedAt) > pendingToolApprovalTTL {
+	if !pendingCall.CreatedAt.IsZero() && time.Since(pendingCall.CreatedAt) > s.app.Config.AgentPendingToolApprovalTTLOrDefault() {
 		clearPendingToolCall(session)
 		session.Status = "active"
 		msg := agents.Message{

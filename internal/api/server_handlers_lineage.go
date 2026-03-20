@@ -2,18 +2,23 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func (s *Server) getAssetLineage(w http.ResponseWriter, r *http.Request) {
-	if s.app.Lineage == nil {
-		s.error(w, http.StatusServiceUnavailable, "lineage not initialized")
+	assetID := chi.URLParam(r, "assetId")
+	lineage, found, err := s.lineage.GetLineage(assetID)
+	if err != nil {
+		if errors.Is(err, errLineageUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
 		return
 	}
-	assetID := chi.URLParam(r, "assetId")
-	lineage, found := s.app.Lineage.GetLineage(assetID)
 	if !found {
 		s.error(w, http.StatusNotFound, "lineage not found")
 		return
@@ -22,31 +27,43 @@ func (s *Server) getAssetLineage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getLineageByCommit(w http.ResponseWriter, r *http.Request) {
-	if s.app.Lineage == nil {
-		s.error(w, http.StatusServiceUnavailable, "lineage not initialized")
+	sha := chi.URLParam(r, "sha")
+	assets, err := s.lineage.GetLineageByCommit(sha)
+	if err != nil {
+		if errors.Is(err, errLineageUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
 		return
 	}
-	sha := chi.URLParam(r, "sha")
-	assets := s.app.Lineage.GetLineageByCommit(sha)
 	s.json(w, http.StatusOK, assets)
 }
 
 func (s *Server) getLineageByImage(w http.ResponseWriter, r *http.Request) {
-	if s.app.Lineage == nil {
-		s.error(w, http.StatusServiceUnavailable, "lineage not initialized")
+	digest := chi.URLParam(r, "digest")
+	assets, err := s.lineage.GetLineageByImage(digest)
+	if err != nil {
+		if errors.Is(err, errLineageUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
 		return
 	}
-	digest := chi.URLParam(r, "digest")
-	assets := s.app.Lineage.GetLineageByImage(digest)
 	s.json(w, http.StatusOK, assets)
 }
 
 func (s *Server) detectDrift(w http.ResponseWriter, r *http.Request) {
-	if s.app.Lineage == nil {
-		s.error(w, http.StatusServiceUnavailable, "lineage not initialized")
+	assetID := chi.URLParam(r, "assetId")
+	if err := s.lineage.Available(); err != nil {
+		if errors.Is(err, errLineageUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
 		return
 	}
-	assetID := chi.URLParam(r, "assetId")
 
 	var req struct {
 		CurrentState map[string]interface{} `json:"current_state"`
@@ -57,7 +74,15 @@ func (s *Server) detectDrift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	drifts := s.app.Lineage.DetectDrift(r.Context(), assetID, req.CurrentState, req.IaCState)
+	drifts, err := s.lineage.DetectDrift(r.Context(), assetID, req.CurrentState, req.IaCState)
+	if err != nil {
+		if errors.Is(err, errLineageUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
 	s.json(w, http.StatusOK, map[string]interface{}{
 		"asset_id":       assetID,
 		"drift_detected": len(drifts) > 0,

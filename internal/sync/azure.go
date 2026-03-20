@@ -2,14 +2,19 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	azpolicy "github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
@@ -27,14 +32,20 @@ import (
 
 // AzureSyncEngine orchestrates Azure resource syncing with change detection
 type AzureSyncEngine struct {
-	sf             warehouse.SyncWarehouse
-	logger         *slog.Logger
-	concurrency    int
-	subscriptionID string
-	credential     *azidentity.DefaultAzureCredential
-	tableFilter    map[string]struct{}
-	rateLimiter    *rate.Limiter
-	retryOptions   retryOptions
+	sf                      warehouse.SyncWarehouse
+	logger                  *slog.Logger
+	concurrency             int
+	subscriptionConcurrency int
+	subscriptionID          string
+	subscriptionIDs         []string
+	managementGroupID       string
+	credential              *azidentity.DefaultAzureCredential
+	tableFilter             map[string]struct{}
+	rateLimiter             *rate.Limiter
+	retryOptions            retryOptions
+	httpClient              *http.Client
+	tokenCredential         azcore.TokenCredential
+	listEnabledFunc         func(context.Context) ([]string, error)
 }
 
 // AzureEngineOption configures the Azure sync engine
@@ -42,6 +53,18 @@ type AzureEngineOption func(*AzureSyncEngine)
 
 func WithAzureSubscription(subscriptionID string) AzureEngineOption {
 	return func(e *AzureSyncEngine) { e.subscriptionID = subscriptionID }
+}
+
+func WithAzureSubscriptions(subscriptionIDs []string) AzureEngineOption {
+	return func(e *AzureSyncEngine) { e.subscriptionIDs = NormalizeAzureSubscriptionIDs(subscriptionIDs) }
+}
+
+func WithAzureManagementGroup(managementGroupID string) AzureEngineOption {
+	return func(e *AzureSyncEngine) { e.managementGroupID = strings.TrimSpace(managementGroupID) }
+}
+
+func WithAzureSubscriptionConcurrency(n int) AzureEngineOption {
+	return func(e *AzureSyncEngine) { e.subscriptionConcurrency = n }
 }
 
 func WithAzureConcurrency(n int) AzureEngineOption {
@@ -59,10 +82,13 @@ func NewAzureSyncEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ..
 	}
 
 	e := &AzureSyncEngine{
-		sf:          sf,
-		logger:      logger,
-		concurrency: 10,
-		credential:  cred,
+		sf:                      sf,
+		logger:                  logger,
+		concurrency:             10,
+		subscriptionConcurrency: 4,
+		credential:              cred,
+		httpClient:              http.DefaultClient,
+		tokenCredential:         cred,
 	}
 	for _, opt := range opts {
 		opt(e)
@@ -85,46 +111,42 @@ type AzureTableSpec struct {
 
 // SyncAll syncs all Azure resources with change detection
 func (e *AzureSyncEngine) SyncAll(ctx context.Context) ([]SyncResult, error) {
-	if e.subscriptionID == "" {
-		// Try to discover subscription
-		subID, err := e.discoverSubscription(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("azure subscription ID not set and discovery failed: %w", err)
-		}
-		e.subscriptionID = subID
-		e.logger.Info("discovered Azure subscription", "subscription_id", subID)
+	subscriptionIDs, err := e.resolveSubscriptionIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolve azure subscriptions: %w", err)
 	}
-
 	tables := filterAzureTables(e.getAzureTables(), e.tableFilter)
 	if len(e.tableFilter) > 0 && len(tables) == 0 {
 		return nil, fmt.Errorf("no Azure tables matched filter: %s", strings.Join(filterNames(e.tableFilter), ", "))
 	}
-	results := make([]SyncResult, len(tables))
+	results := make([]SyncResult, 0, len(tables)*len(subscriptionIDs))
 	var mu sync.Mutex
 	var errs []error
 	var group errgroup.Group
-	limit := e.concurrency
+	limit := e.subscriptionConcurrency
 	if limit <= 0 {
 		limit = 1
 	}
 	group.SetLimit(limit)
 
-	for i, table := range tables {
-		idx := i
-		tableSpec := table
+	for _, subscriptionID := range subscriptionIDs {
+		subscriptionID := subscriptionID
 		group.Go(func() error {
-			result, err := e.syncTable(ctx, tableSpec)
-			results[idx] = result
+			subResults, err := e.syncSubscription(ctx, subscriptionID, tables)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, err)
 				mu.Unlock()
 			}
+			mu.Lock()
+			results = append(results, subResults...)
+			mu.Unlock()
 			return nil
 		})
 	}
 
 	_ = group.Wait()
+	sortAzureSyncResults(results)
 
 	// Persist change history
 	if err := e.persistChangeHistory(ctx, results); err != nil {
@@ -136,19 +158,279 @@ func (e *AzureSyncEngine) SyncAll(ctx context.Context) ([]SyncResult, error) {
 
 // ValidateTables ensures required Snowflake tables exist without fetching Azure resources.
 func (e *AzureSyncEngine) ValidateTables(ctx context.Context) ([]SyncResult, error) {
-	if e.subscriptionID == "" {
-		subID, err := e.discoverSubscription(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("azure subscription ID not set and discovery failed: %w", err)
-		}
-		e.subscriptionID = subID
-		e.logger.Info("discovered Azure subscription", "subscription_id", subID)
+	subscriptionIDs, err := e.resolveSubscriptionIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolve azure subscriptions: %w", err)
 	}
-
 	tables := filterAzureTables(e.getAzureTables(), e.tableFilter)
 	if len(e.tableFilter) > 0 && len(tables) == 0 {
 		return nil, fmt.Errorf("no Azure tables matched filter: %s", strings.Join(filterNames(e.tableFilter), ", "))
 	}
+	results := make([]SyncResult, 0, len(tables)*len(subscriptionIDs))
+	var mu sync.Mutex
+	var errs []error
+	var group errgroup.Group
+	limit := e.subscriptionConcurrency
+	if limit <= 0 {
+		limit = 1
+	}
+	group.SetLimit(limit)
+
+	for _, subscriptionID := range subscriptionIDs {
+		subscriptionID := subscriptionID
+		group.Go(func() error {
+			subResults, err := e.validateSubscription(ctx, subscriptionID, tables)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
+			mu.Lock()
+			results = append(results, subResults...)
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	_ = group.Wait()
+	sortAzureSyncResults(results)
+	return results, errors.Join(errs...)
+}
+
+func (e *AzureSyncEngine) resolveSubscriptionIDs(ctx context.Context) ([]string, error) {
+	explicit := NormalizeAzureSubscriptionIDs(append(append([]string{}, e.subscriptionIDs...), e.subscriptionID))
+	if len(explicit) > 0 {
+		return explicit, nil
+	}
+	if strings.TrimSpace(e.managementGroupID) != "" {
+		return e.listManagementGroupSubscriptions(ctx, e.managementGroupID)
+	}
+	return e.listEnabledSubscriptions(ctx)
+}
+
+func (e *AzureSyncEngine) listEnabledSubscriptions(ctx context.Context) ([]string, error) {
+	if e.listEnabledFunc != nil {
+		return e.listEnabledFunc(ctx)
+	}
+
+	client, err := armsubscriptions.NewClient(e.credential, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	pager := client.NewListPager(nil)
+	subscriptionIDs := make([]string, 0)
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, sub := range page.Value {
+			if sub.SubscriptionID != nil && sub.State != nil && *sub.State == armsubscriptions.SubscriptionStateEnabled {
+				subscriptionIDs = append(subscriptionIDs, strings.TrimSpace(*sub.SubscriptionID))
+			}
+		}
+	}
+	subscriptionIDs = NormalizeAzureSubscriptionIDs(subscriptionIDs)
+	if len(subscriptionIDs) == 0 {
+		return nil, fmt.Errorf("no enabled subscriptions found")
+	}
+	return subscriptionIDs, nil
+}
+
+func (e *AzureSyncEngine) listManagementGroupSubscriptions(ctx context.Context, managementGroupID string) ([]string, error) {
+	enabledSubscriptions, err := e.listEnabledSubscriptions(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	credential := e.tokenCredential
+	if credential == nil {
+		credential = e.credential
+	}
+	if credential == nil {
+		return nil, fmt.Errorf("azure token credential not configured")
+	}
+
+	token, err := credential.GetToken(ctx, azpolicy.TokenRequestOptions{Scopes: []string{"https://management.azure.com/.default"}})
+	if err != nil {
+		return nil, fmt.Errorf("acquire Azure management token: %w", err)
+	}
+
+	endpoint, err := buildAzureManagementGroupURL(managementGroupID)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := e.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("azure management group query failed for %s: status %d", strings.TrimSpace(managementGroupID), resp.StatusCode)
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode Azure management group response: %w", err)
+	}
+
+	subscriptionIDs := extractAzureManagementGroupSubscriptionIDs(payload)
+	if len(subscriptionIDs) == 0 {
+		return nil, fmt.Errorf("no subscriptions found under management group %s", strings.TrimSpace(managementGroupID))
+	}
+
+	enabledSet := make(map[string]struct{}, len(enabledSubscriptions))
+	for _, subscriptionID := range enabledSubscriptions {
+		enabledSet[strings.ToLower(subscriptionID)] = struct{}{}
+	}
+
+	filtered := make([]string, 0, len(subscriptionIDs))
+	for _, subscriptionID := range subscriptionIDs {
+		if _, ok := enabledSet[strings.ToLower(subscriptionID)]; ok {
+			filtered = append(filtered, subscriptionID)
+		}
+	}
+	filtered = NormalizeAzureSubscriptionIDs(filtered)
+	if len(filtered) == 0 {
+		return nil, fmt.Errorf("no enabled subscriptions found under management group %s", strings.TrimSpace(managementGroupID))
+	}
+	return filtered, nil
+}
+
+func buildAzureManagementGroupURL(managementGroupID string) (string, error) {
+	groupID := strings.TrimSpace(managementGroupID)
+	if groupID == "" {
+		return "", fmt.Errorf("azure management group ID is required")
+	}
+	params := url.Values{}
+	params.Set("api-version", "2020-05-01")
+	params.Set("$expand", "children")
+	params.Set("$recurse", "true")
+	return fmt.Sprintf(
+		"https://management.azure.com/providers/Microsoft.Management/managementGroups/%s?%s",
+		url.PathEscape(groupID),
+		params.Encode(),
+	), nil
+}
+
+func extractAzureManagementGroupSubscriptionIDs(payload map[string]any) []string {
+	if payload == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	var subscriptionIDs []string
+	var walk func(map[string]any)
+	walk = func(node map[string]any) {
+		if node == nil {
+			return
+		}
+		if subscriptionID := azureManagementGroupSubscriptionID(node); subscriptionID != "" {
+			if _, ok := seen[subscriptionID]; !ok {
+				seen[subscriptionID] = struct{}{}
+				subscriptionIDs = append(subscriptionIDs, subscriptionID)
+			}
+		}
+		for _, child := range azureManagementGroupChildren(node) {
+			walk(child)
+		}
+	}
+	walk(payload)
+	sort.Strings(subscriptionIDs)
+	return subscriptionIDs
+}
+
+func azureManagementGroupChildren(node map[string]any) []map[string]any {
+	children := make([]map[string]any, 0)
+	appendChildren := func(raw any) {
+		items, ok := raw.([]any)
+		if !ok {
+			return
+		}
+		for _, item := range items {
+			child, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			children = append(children, child)
+		}
+	}
+	appendChildren(node["children"])
+	if properties, ok := node["properties"].(map[string]any); ok {
+		appendChildren(properties["children"])
+	}
+	return children
+}
+
+func azureManagementGroupSubscriptionID(node map[string]any) string {
+	childType := strings.ToLower(strings.TrimSpace(stringValue(node["childType"])))
+	resourceType := strings.ToLower(strings.TrimSpace(stringValue(node["type"])))
+	id := strings.TrimSpace(stringValue(node["id"]))
+	name := strings.TrimSpace(stringValue(node["name"]))
+
+	isSubscription := childType == "subscription" ||
+		strings.Contains(resourceType, "/subscriptions") ||
+		strings.HasPrefix(strings.ToLower(id), "/subscriptions/")
+	if !isSubscription {
+		return ""
+	}
+	if name != "" && !strings.Contains(strings.ToLower(name), "managementgroup") {
+		return name
+	}
+	if strings.HasPrefix(strings.ToLower(id), "/subscriptions/") {
+		parts := strings.Split(strings.Trim(id, "/"), "/")
+		if len(parts) >= 2 {
+			return strings.TrimSpace(parts[1])
+		}
+	}
+	return ""
+}
+
+// NormalizeAzureSubscriptionIDs trims, de-duplicates case-insensitively, and
+// sorts Azure subscription IDs for stable downstream execution.
+func NormalizeAzureSubscriptionIDs(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	sort.Strings(normalized)
+	return normalized
+}
+
+func sortAzureSyncResults(results []SyncResult) {
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Region == results[j].Region {
+			return results[i].Table < results[j].Table
+		}
+		return results[i].Region < results[j].Region
+	})
+}
+
+func (e *AzureSyncEngine) syncSubscription(ctx context.Context, subscriptionID string, tables []AzureTableSpec) ([]SyncResult, error) {
 	results := make([]SyncResult, len(tables))
 	var mu sync.Mutex
 	var errs []error
@@ -163,7 +445,7 @@ func (e *AzureSyncEngine) ValidateTables(ctx context.Context) ([]SyncResult, err
 		idx := i
 		tableSpec := table
 		group.Go(func() error {
-			result, err := e.validateTable(ctx, tableSpec)
+			result, err := e.syncTable(ctx, tableSpec, subscriptionID)
 			results[idx] = result
 			if err != nil {
 				mu.Lock()
@@ -178,32 +460,41 @@ func (e *AzureSyncEngine) ValidateTables(ctx context.Context) ([]SyncResult, err
 	return results, errors.Join(errs...)
 }
 
-func (e *AzureSyncEngine) discoverSubscription(ctx context.Context) (string, error) {
-	client, err := armsubscriptions.NewClient(e.credential, nil)
-	if err != nil {
-		return "", err
+func (e *AzureSyncEngine) validateSubscription(ctx context.Context, subscriptionID string, tables []AzureTableSpec) ([]SyncResult, error) {
+	results := make([]SyncResult, len(tables))
+	var mu sync.Mutex
+	var errs []error
+	var group errgroup.Group
+	limit := e.concurrency
+	if limit <= 0 {
+		limit = 1
 	}
+	group.SetLimit(limit)
 
-	pager := client.NewListPager(nil)
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return "", err
-		}
-		for _, sub := range page.Value {
-			if sub.SubscriptionID != nil && sub.State != nil && *sub.State == armsubscriptions.SubscriptionStateEnabled {
-				return *sub.SubscriptionID, nil
+	for i, table := range tables {
+		idx := i
+		tableSpec := table
+		group.Go(func() error {
+			result, err := e.validateTable(ctx, tableSpec, subscriptionID)
+			results[idx] = result
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
 			}
-		}
+			return nil
+		})
 	}
 
-	return "", fmt.Errorf("no enabled subscriptions found")
+	_ = group.Wait()
+	return results, errors.Join(errs...)
 }
 
-func (e *AzureSyncEngine) syncTable(ctx context.Context, table AzureTableSpec) (SyncResult, error) {
+func (e *AzureSyncEngine) syncTable(ctx context.Context, table AzureTableSpec, subscriptionID string) (SyncResult, error) {
 	start := time.Now()
 	result := SyncResult{
-		Table: table.Name,
+		Table:  table.Name,
+		Region: subscriptionID,
 	}
 	defer func() {
 		if result.Duration == 0 {
@@ -216,37 +507,37 @@ func (e *AzureSyncEngine) syncTable(ctx context.Context, table AzureTableSpec) (
 		result.Errors = 1
 		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("azure %s (subscription %s): invalid table name: %w", table.Name, e.subscriptionID, err)
+		return result, fmt.Errorf("azure %s (subscription %s): invalid table name: %w", table.Name, subscriptionID, err)
 	}
 
-	e.logger.Info("syncing", "table", table.Name)
+	e.logger.Info("syncing", "table", table.Name, "subscription_id", subscriptionID)
 
 	if err := e.ensureTable(ctx, table.Name, table.Columns); err != nil {
 		e.logger.Error("ensure table failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("azure %s (subscription %s): ensure table: %w", table.Name, e.subscriptionID, err)
+		return result, fmt.Errorf("azure %s (subscription %s): ensure table: %w", table.Name, subscriptionID, err)
 	}
 
-	rows, err := e.fetchWithRetry(ctx, table)
+	rows, err := e.fetchWithRetry(ctx, table, subscriptionID)
 	if err != nil {
 		e.logger.Error("fetch failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("azure %s (subscription %s): fetch: %w", table.Name, e.subscriptionID, err)
+		return result, fmt.Errorf("azure %s (subscription %s): fetch: %w", table.Name, subscriptionID, err)
 	}
 
 	rows = normalizeRows(table.Name, table.Columns, rows, e.logger)
 
-	changes, err := e.upsertWithChanges(ctx, table.Name, table.Columns, rows)
+	changes, err := e.upsertWithChanges(ctx, table.Name, table.Columns, rows, subscriptionID)
 	if err != nil {
 		e.logger.Error("upsert failed", "table", table.Name, "error", err)
 		result.Errors = 1
 		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("azure %s (subscription %s): upsert: %w", table.Name, e.subscriptionID, err)
+		return result, fmt.Errorf("azure %s (subscription %s): upsert: %w", table.Name, subscriptionID, err)
 	}
 
 	result.Synced = len(rows)
@@ -257,14 +548,15 @@ func (e *AzureSyncEngine) syncTable(ctx context.Context, table AzureTableSpec) (
 		e.logger.Info("detected changes", "table", table.Name, "added", len(changes.Added), "modified", len(changes.Modified), "removed", len(changes.Removed))
 	}
 
-	e.logger.Info("synced", "table", table.Name, "count", result.Synced)
+	e.logger.Info("synced", "table", table.Name, "count", result.Synced, "subscription_id", subscriptionID)
 	return result, nil
 }
 
-func (e *AzureSyncEngine) validateTable(ctx context.Context, table AzureTableSpec) (SyncResult, error) {
+func (e *AzureSyncEngine) validateTable(ctx context.Context, table AzureTableSpec, subscriptionID string) (SyncResult, error) {
 	start := time.Now()
 	result := SyncResult{
-		Table: table.Name,
+		Table:  table.Name,
+		Region: subscriptionID,
 	}
 	defer func() {
 		if result.Duration == 0 {
@@ -277,7 +569,7 @@ func (e *AzureSyncEngine) validateTable(ctx context.Context, table AzureTableSpe
 		result.Errors = 1
 		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("azure %s (subscription %s): invalid table name: %w", table.Name, e.subscriptionID, err)
+		return result, fmt.Errorf("azure %s (subscription %s): invalid table name: %w", table.Name, subscriptionID, err)
 	}
 
 	if err := e.ensureTable(ctx, table.Name, table.Columns); err != nil {
@@ -285,7 +577,7 @@ func (e *AzureSyncEngine) validateTable(ctx context.Context, table AzureTableSpe
 		result.Errors = 1
 		result.Error = err.Error()
 		result.Duration = time.Since(start)
-		return result, fmt.Errorf("azure %s (subscription %s): ensure table: %w", table.Name, e.subscriptionID, err)
+		return result, fmt.Errorf("azure %s (subscription %s): ensure table: %w", table.Name, subscriptionID, err)
 	}
 
 	result.Duration = time.Since(start)
@@ -298,8 +590,8 @@ func (e *AzureSyncEngine) ensureTable(ctx context.Context, table string, columns
 	})
 }
 
-func (e *AzureSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}) (*ChangeSet, error) {
-	scopeColumn, scopeValues := azureScopeFilter(columns, rows, e.subscriptionID)
+func (e *AzureSyncEngine) upsertWithChanges(ctx context.Context, table string, columns []string, rows []map[string]interface{}, subscriptionID string) (*ChangeSet, error) {
+	scopeColumn, scopeValues := azureScopeFilter(columns, rows, subscriptionID)
 	return upsertScopedRowsWithChanges(ctx, e.sf, e.logger, table, rows, scopeColumn, scopeValues, e.hashRowContent, false)
 }
 
@@ -346,6 +638,7 @@ func (e *AzureSyncEngine) getAzureTables() []AzureTableSpec {
 	return []AzureTableSpec{
 		e.azureVirtualMachineTable(),
 		e.azureAKSClusterTable(),
+		e.azureAKSNodePoolTable(),
 		e.azureRBACRoleAssignmentTable(),
 		e.azurePolicyAssignmentTable(),
 		e.azureGraphServicePrincipalTable(),

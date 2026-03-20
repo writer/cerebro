@@ -1,21 +1,25 @@
 {
   "id": "k8s-pod-create",
-  "control_id": "wc-id-474",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "User/service accounts with the privileges to create pods",
   "description": "An identity can create pods in Kubernetes, which could be used for privilege escalation",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::cluster_role|k8s::role|k8s::rbac::risky_binding",
   "conditions": [
-    "risk_reasons CONTAINS 'pod_create_access' OR rules ANY (resources CONTAINS 'pods' AND verbs CONTAINS 'create')"
+    "(contains_value(path(resource, \"risk_reasons\"), \"pod_create_access\")) || (list_value(path(resource, \"rules\")).exists(item, (contains_value(path(item, \"resources\"), \"pods\")) \u0026\u0026 (contains_value(path(item, \"verbs\"), \"create\"))))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Restrict pod creation privileges. Implement admission controllers to validate pod specs.",
   "tags": [
     "wiz",
     "kubernetes",
     "rbac",
     "pods"
   ],
+  "control_id": "wc-id-474",
+  "remediation": "Restrict pod creation privileges. Implement admission controllers to validate pod specs.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

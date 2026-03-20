@@ -178,6 +178,10 @@ func WriteOrganizationalPolicy(g *Graph, req OrganizationalPolicyWriteRequest) (
 	frameworkMappings := uniquePolicyStrings(req.FrameworkMappings)
 	content := strings.TrimSpace(req.Content)
 	contentDigest := derivePolicyContentDigest(strings.TrimSpace(req.ContentDigest), content)
+	reviewCycleDays := req.ReviewCycleDays
+	if reviewCycleDays <= 0 && existingPolicy != nil {
+		reviewCycleDays = readInt(existingPolicy.Properties, "review_cycle_days")
+	}
 	metadata := NormalizeWriteMetadata(req.ObservedAt, req.ValidFrom, req.ValidTo, req.SourceSystem, req.SourceEventID, req.Confidence, WriteMetadataDefaults{
 		RecordedAt:        req.RecordedAt,
 		TransactionFrom:   req.TransactionFrom,
@@ -206,8 +210,8 @@ func WriteOrganizationalPolicy(g *Graph, req OrganizationalPolicyWriteRequest) (
 	if ownerID != "" {
 		properties["owner_id"] = ownerID
 	}
-	if req.ReviewCycleDays > 0 {
-		properties["review_cycle_days"] = req.ReviewCycleDays
+	if reviewCycleDays > 0 {
+		properties["review_cycle_days"] = reviewCycleDays
 	}
 	if len(frameworkMappings) > 0 {
 		properties["framework_mappings"] = frameworkMappings
@@ -233,7 +237,7 @@ func WriteOrganizationalPolicy(g *Graph, req OrganizationalPolicyWriteRequest) (
 		Summary:               strings.TrimSpace(req.Summary),
 		ContentDigest:         contentDigest,
 		OwnerID:               ownerID,
-		ReviewCycleDays:       req.ReviewCycleDays,
+		ReviewCycleDays:       reviewCycleDays,
 		FrameworkMappings:     frameworkMappings,
 		RequiredDepartmentIDs: requiredDepartmentIDs,
 		RequiredPersonIDs:     requiredPersonIDs,

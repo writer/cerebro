@@ -1,20 +1,24 @@
 {
   "id": "gcp-storage-no-public-allusers",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Storage No Public allUsers Access",
   "description": "Cloud Storage buckets should not grant access to allUsers (public)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::storage::bucket",
   "conditions": [
-    "iam_policy.bindings.members contains 'allUsers'"
+    "contains_value(path(resource, \"iam_policy.bindings.members\"), \"allUsers\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove allUsers binding from bucket IAM policy.",
   "tags": [
     "cis-gcp-5.1",
     "storage",
     "data-exposure",
     "public-access"
   ],
+  "remediation": "Remove allUsers binding from bucket IAM policy.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

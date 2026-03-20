@@ -76,14 +76,15 @@ type Playbook struct {
 }
 
 type ActionResult struct {
-	StepID      string     `json:"step_id,omitempty"`
-	Type        string     `json:"type"`
-	Status      Status     `json:"status"`
-	Output      string     `json:"output,omitempty"`
-	Error       string     `json:"error,omitempty"`
-	StartedAt   time.Time  `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	Duration    string     `json:"duration,omitempty"`
+	StepID      string         `json:"step_id,omitempty"`
+	Type        string         `json:"type"`
+	Status      Status         `json:"status"`
+	Output      string         `json:"output,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	Metadata    map[string]any `json:"metadata,omitempty"`
+	StartedAt   time.Time      `json:"started_at"`
+	CompletedAt *time.Time     `json:"completed_at,omitempty"`
+	Duration    string         `json:"duration,omitempty"`
 }
 
 type Execution struct {
@@ -96,7 +97,6 @@ type Execution struct {
 	ResourceType string         `json:"resource_type,omitempty"`
 	TriggerData  map[string]any `json:"trigger_data,omitempty"`
 	Results      []ActionResult `json:"results"`
-	SubmittedAt  time.Time      `json:"submitted_at"`
 	ApprovedBy   string         `json:"approved_by,omitempty"`
 	ApprovedAt   *time.Time     `json:"approved_at,omitempty"`
 	StartedAt    time.Time      `json:"started_at"`

@@ -1,20 +1,24 @@
 {
   "id": "aws-dynamodb-encryption",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "DynamoDB Table Not Encrypted with CMK",
   "description": "DynamoDB table is using default AWS-owned key instead of customer-managed KMS key",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::dynamodb::table",
   "conditions": [
-    "sse_description.sse_type != 'KMS' OR sse_description.kms_master_key_arn == null"
+    "(cmp_ne(path(resource, \"sse_description.sse_type\"), \"KMS\")) || (cmp_eq(path(resource, \"sse_description.kms_master_key_arn\"), null))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable encryption with a customer-managed KMS key for sensitive data. Update the table's SSE specification.",
   "tags": [
     "aws",
     "dynamodb",
     "encryption",
     "data-protection"
   ],
+  "remediation": "Enable encryption with a customer-managed KMS key for sensitive data. Update the table's SSE specification.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],

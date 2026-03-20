@@ -2,6 +2,8 @@
 
 Issue `#154` is the first concrete executor layer on top of the shared action engine from issue `#143`.
 
+See [RUNTIME_VISIBILITY_ARCHITECTURE.md](./RUNTIME_VISIBILITY_ARCHITECTURE.md) for the complementary sensor, ingest, graph-projection, and response-outcome design that should feed this execution layer.
+
 The design goal is practical:
 
 - make default runtime response policies capable of taking real action

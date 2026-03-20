@@ -14,6 +14,8 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	reports "github.com/writer/cerebro/internal/graph/reports"
+	risk "github.com/writer/cerebro/internal/graph/risk"
+	"github.com/writer/cerebro/internal/identity"
 )
 
 func (a *App) cerebroTools() []agents.Tool {
@@ -209,11 +211,6 @@ func (a *App) cerebroTools() []agents.Tool {
 						"type":        "integer",
 						"description": "Maximum executions to return (1-100).",
 						"default":     20,
-					},
-					"offset": map[string]any{
-						"type":        "integer",
-						"description": "Pagination offset for execution history (0 or greater).",
-						"default":     0,
 					},
 					"order": map[string]any{
 						"type":        "string",
@@ -688,6 +685,47 @@ func (a *App) cerebroTools() []agents.Tool {
 			},
 			Handler: a.toolCerebroAccessReview,
 		},
+		{
+			Name:        "cerebro.autonomous_credential_response",
+			Description: "Start an autonomous credential exposure response workflow from a discovered secret or credential pivot",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"secret_node_id": map[string]any{"type": "string"},
+					"requested_by":   map[string]any{"type": "string"},
+				},
+				"required": []string{"secret_node_id"},
+			},
+			Handler: a.toolCerebroAutonomousCredentialResponse,
+		},
+		{
+			Name:             "cerebro.autonomous_workflow_approve",
+			Description:      "Approve or reject a pending autonomous workflow and continue execution",
+			RequiresApproval: true,
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"run_id":      map[string]any{"type": "string"},
+					"approved_by": map[string]any{"type": "string"},
+					"approve":     map[string]any{"type": "boolean", "default": true},
+					"reason":      map[string]any{"type": "string"},
+				},
+				"required": []string{"run_id"},
+			},
+			Handler: a.toolCerebroAutonomousWorkflowApprove,
+		},
+		{
+			Name:        "cerebro.autonomous_workflow_status",
+			Description: "Inspect an autonomous workflow run, its events, and any linked action execution",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"run_id": map[string]any{"type": "string"},
+				},
+				"required": []string{"run_id"},
+			},
+			Handler: a.toolCerebroAutonomousWorkflowStatus,
+		},
 	}
 }
 
@@ -705,7 +743,7 @@ type cerebroGraphQueryRequest struct {
 }
 
 func (a *App) toolCerebroSimulate(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -743,7 +781,7 @@ func (a *App) toolCerebroSimulate(_ context.Context, args json.RawMessage) (stri
 }
 
 func (a *App) toolCerebroScenarioSimulate(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -820,7 +858,7 @@ func (a *App) toolCerebroScenarioSimulate(_ context.Context, args json.RawMessag
 }
 
 func (a *App) toolCerebroInsightCard(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -879,7 +917,7 @@ func (a *App) toolCerebroInsightCard(_ context.Context, args json.RawMessage) (s
 }
 
 func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -904,7 +942,7 @@ func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMess
 	historyLimit := clampInt(req.HistoryLimit, 20, 1, 200)
 	maxInsights := clampInt(req.MaxInsights, 8, 1, 20)
 
-	report := reports.BuildIntelligenceReport(g, graph.NewRiskEngine(g), reports.IntelligenceReportOptions{
+	report := reports.BuildIntelligenceReport(g, risk.NewRiskEngine(g), reports.IntelligenceReportOptions{
 		EntityID:              strings.TrimSpace(req.EntityID),
 		OutcomeWindow:         time.Duration(windowDays) * 24 * time.Hour,
 		SchemaHistoryLimit:    historyLimit,
@@ -915,7 +953,7 @@ func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMess
 }
 
 func (a *App) toolCerebroGraphQualityReport(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -945,7 +983,7 @@ func (a *App) toolCerebroGraphQualityReport(_ context.Context, args json.RawMess
 }
 
 func (a *App) toolCerebroGraphLeverageReport(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -1121,7 +1159,7 @@ func buildInsightRiskSection(g *graph.Graph, node *graph.Node) (float64, string,
 	if g == nil || node == nil {
 		return 0, "stable", nil
 	}
-	engine := graph.NewRiskEngine(g)
+	engine := risk.NewRiskEngine(g)
 	entityRisk := engine.ScoreEntity(node.ID)
 	if entityRisk == nil {
 		return mapNodeRiskToScore(node.Risk), "stable", nil
@@ -1144,7 +1182,7 @@ func buildInsightToxicCombinations(g *graph.Graph, entityID string) []string {
 	if g == nil || strings.TrimSpace(entityID) == "" {
 		return nil
 	}
-	engine := graph.NewToxicCombinationEngine()
+	engine := risk.NewToxicCombinationEngine()
 	combinations := engine.Analyze(g)
 	matches := make([]string, 0)
 	for _, combo := range combinations {
@@ -1506,7 +1544,7 @@ func simulationRecommendation(result *graph.GraphSimulationResult) string {
 }
 
 func (a *App) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -1524,12 +1562,12 @@ func (a *App) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (s
 	}
 	req.MaxDepth = clampInt(req.MaxDepth, 3, 1, 10)
 
-	result := graph.BlastRadius(g, req.PrincipalID, req.MaxDepth)
+	result := risk.BlastRadius(g, req.PrincipalID, req.MaxDepth)
 	return marshalToolResponse(result)
 }
 
 func (a *App) toolCerebroRiskScore(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -1546,13 +1584,13 @@ func (a *App) toolCerebroRiskScore(_ context.Context, args json.RawMessage) (str
 		return "", fmt.Errorf("entity_id is required")
 	}
 
-	engine := graph.NewRiskEngine(g)
-	risk := engine.ScoreEntity(req.EntityID)
-	if risk == nil {
+	engine := risk.NewRiskEngine(g)
+	entityRisk := engine.ScoreEntity(req.EntityID)
+	if entityRisk == nil {
 		return "", fmt.Errorf("entity not found: %s", req.EntityID)
 	}
 
-	response := map[string]any{"entity_risk": risk}
+	response := map[string]any{"entity_risk": entityRisk}
 	if req.IncludeOverall {
 		report := engine.Analyze()
 		response["overall_risk_score"] = report.RiskScore
@@ -1562,7 +1600,7 @@ func (a *App) toolCerebroRiskScore(_ context.Context, args json.RawMessage) (str
 }
 
 func (a *App) toolCerebroGraphQuery(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -1707,7 +1745,7 @@ func (a *App) runPathsQuery(g *graph.Graph, req cerebroGraphQueryRequest, tempor
 	k := clampInt(req.K, 3, 1, 10)
 	maxDepth := clampInt(req.MaxDepth, 6, 1, 12)
 
-	simulator := graph.NewAttackPathSimulator(g)
+	simulator := risk.NewAttackPathSimulator(g)
 	paths := simulator.KShortestPaths(req.NodeID, req.TargetID, k, maxDepth)
 
 	return marshalToolResponse(map[string]any{
@@ -1808,8 +1846,8 @@ func (a *App) toolCerebroFindings(_ context.Context, args json.RawMessage) (stri
 	})
 }
 
-func (a *App) toolCerebroAccessReview(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireSecurityGraph()
+func (a *App) toolCerebroAccessReview(ctx context.Context, args json.RawMessage) (string, error) {
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -1818,7 +1856,6 @@ func (a *App) toolCerebroAccessReview(_ context.Context, args json.RawMessage) (
 		IdentityID  string `json:"identity_id"`
 		Name        string `json:"name"`
 		Description string `json:"description"`
-		CreatedBy   string `json:"created_by"`
 	}
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
@@ -1835,17 +1872,69 @@ func (a *App) toolCerebroAccessReview(_ context.Context, args json.RawMessage) (
 	if name == "" {
 		name = "Identity access review: " + req.IdentityID
 	}
-	createdBy := strings.TrimSpace(req.CreatedBy)
-	if createdBy == "" {
-		createdBy = "ensemble"
+
+	reviewService := a.cerebroAccessReviewService(g)
+
+	review, err := reviewService.CreateReview(ctx, &identity.AccessReview{
+		Name:        name,
+		Description: strings.TrimSpace(req.Description),
+		Type:        identity.ReviewTypeUserAccess,
+		CreatedBy:   toolDurableActorID(ctx),
+		Scope: identity.ReviewScope{
+			Mode:  identity.ReviewScopeModePrincipal,
+			Users: []string{req.IdentityID},
+		},
+		GenerationSource: "graph",
+	})
+	if err != nil {
+		return "", err
+	}
+	payload := map[string]any{
+		"id":                review.ID,
+		"name":              review.Name,
+		"description":       review.Description,
+		"type":              review.Type,
+		"status":            review.Status,
+		"scope":             review.Scope,
+		"reviewers":         review.Reviewers,
+		"items":             review.Items,
+		"stats":             review.Stats,
+		"created_by":        review.CreatedBy,
+		"created_at":        review.CreatedAt,
+		"started_at":        review.StartedAt,
+		"due_at":            review.DueAt,
+		"completed_at":      review.CompletedAt,
+		"generation_source": review.GenerationSource,
+	}
+	if review.Status == identity.ReviewStatusDraft {
+		payload["status"] = "pending"
+	}
+	return marshalToolResponse(payload)
+}
+
+func (a *App) cerebroAccessReviewService(g *graph.Graph) *identity.Service {
+	if a != nil && a.Identity != nil && a.CurrentSecurityGraph() != nil {
+		return a.Identity
 	}
 
-	review := graph.CreateAccessReview(g, name, graph.ReviewScope{
-		Type:       graph.ScopeTypePrincipal,
-		Principals: []string{req.IdentityID},
-	}, createdBy)
-	review.Description = strings.TrimSpace(req.Description)
-	return marshalToolResponse(review)
+	opts := []identity.ServiceOption{
+		identity.WithGraphResolver(func(ctx context.Context) *graph.Graph {
+			if scope, ok := graph.TenantReadScopeFromContext(ctx); ok && !scope.CrossTenant && len(scope.TenantIDs) == 1 {
+				return g.SubgraphForTenant(scope.TenantIDs[0])
+			}
+			return g
+		}),
+	}
+	if a != nil && a.ExecutionStore != nil {
+		opts = append(opts, identity.WithExecutionStore(a.ExecutionStore))
+	}
+	return identity.NewService(opts...)
+}
+
+func toolDurableActorID(_ context.Context) string {
+	// Tool arguments are untrusted input. Until the app surface exposes an authenticated
+	// caller identity contract, durable tool writes must use a fixed system actor.
+	return "ensemble"
 }
 
 func findingMatchesQuery(f *findings.Finding, query string) bool {
@@ -1974,17 +2063,6 @@ func marshalToolResponse(value any) (string, error) {
 		return "", fmt.Errorf("encode tool response: %w", err)
 	}
 	return string(encoded), nil
-}
-
-func (a *App) requireSecurityGraph() (*graph.Graph, error) {
-	if a == nil {
-		return nil, fmt.Errorf("security graph not initialized")
-	}
-	securityGraph := a.CurrentSecurityGraph()
-	if securityGraph == nil {
-		return nil, fmt.Errorf("security graph not initialized")
-	}
-	return securityGraph, nil
 }
 
 func clampInt(value, defaultValue, minValue, maxValue int) int {

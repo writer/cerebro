@@ -1,27 +1,55 @@
 {
   "id": "identity-google-workspace-mfa",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Google Workspace MFA Enforced",
   "description": "Ensures all Google Workspace users have MFA enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "google_workspace_users",
   "conditions": [
-    "is_enrolled_in_2sv = false",
-    "suspended = false"
+    "cmp_eq(path(resource, \"is_enrolled_in_2sv\"), false)",
+    "cmp_eq(path(resource, \"suspended\"), false)"
   ],
+  "condition_format": "cel",
   "severity": "high",
+  "tags": [
+    "google-workspace",
+    "gsuite",
+    "identity",
+    "mfa",
+    "authentication",
+    "compliance"
+  ],
   "remediation": "Enable 2-Step Verification (MFA) for all Google Workspace users. Configure organizational policy to enforce MFA.",
   "remediation_steps": [
-    "Navigate to Google Admin Console > Security > 2-Step Verification",
+    "Navigate to Google Admin Console \u003e Security \u003e 2-Step Verification",
     "Enable 'Allow users to turn on 2-Step Verification'",
     "Set enforcement policy to require 2-Step Verification",
     "Provide users with enrollment instructions",
     "Monitor enrollment status and follow up with non-compliant users"
   ],
-  "tags": ["google-workspace", "gsuite", "identity", "mfa", "authentication", "compliance"],
-  "risk_categories": ["WEAK_AUTHENTICATION"],
+  "risk_categories": [
+    "WEAK_AUTHENTICATION"
+  ],
   "frameworks": [
-    {"name": "CIS Google Workspace Benchmark", "controls": ["1.1"]},
-    {"name": "SOC 2", "controls": ["CC6.1"]},
-    {"name": "NIST 800-53 r5", "controls": ["IA-2"]}
+    {
+      "name": "CIS Google Workspace Benchmark",
+      "controls": [
+        "1.1"
+      ]
+    },
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "IA-2"
+      ]
+    }
   ]
 }

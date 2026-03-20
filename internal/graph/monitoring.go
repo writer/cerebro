@@ -20,6 +20,7 @@ type ToxicCombinationMonitor struct {
 	stopCh      chan struct{}
 	running     bool
 	stopOnce    sync.Once
+	scanHook    func()
 }
 
 // ToxicCombinationEvent represents a change in toxic combinations
@@ -73,32 +74,17 @@ func (m *ToxicCombinationMonitor) Start(ctx context.Context) error {
 	m.running = true
 	m.mu.Unlock()
 
-	m.logger.Info("starting toxic combination monitor", "interval", m.interval)
+	defer func() {
+		m.mu.Lock()
+		m.running = false
+		m.mu.Unlock()
+	}()
 
-	// Initial scan
-	m.scan()
-
-	ticker := time.NewTicker(m.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			m.logger.Info("stopping toxic combination monitor")
-			m.mu.Lock()
-			m.running = false
-			m.mu.Unlock()
-			return ctx.Err()
-		case <-m.stopCh:
-			m.logger.Info("stopping toxic combination monitor")
-			m.mu.Lock()
-			m.running = false
-			m.mu.Unlock()
-			return nil
-		case <-ticker.C:
-			m.scan()
-		}
-	}
+	m.logger.Info("starting toxic combination monitor",
+		"debounce", monitorDebounceWindow(m.interval),
+		"max_staleness", monitorMaxStaleness(m.interval),
+	)
+	return runReactiveMonitorLoop(ctx, m.graph, m.stopCh, m.interval, toxicCombinationMonitorChangeFilter(), m.scan)
 }
 
 // Stop stops the monitor (safe to call multiple times)
@@ -116,8 +102,12 @@ func (m *ToxicCombinationMonitor) GetLastResults() []*ToxicCombination {
 }
 
 func (m *ToxicCombinationMonitor) scan() {
+	if m.scanHook != nil {
+		m.scanHook()
+	}
 	start := time.Now()
-	newResults := m.engine.Analyze(m.graph)
+	view := cloneGraphForMonitorScan(m.graph)
+	newResults := m.engine.Analyze(view)
 	duration := time.Since(start)
 
 	m.logger.Debug("toxic combination scan complete",
@@ -231,6 +221,7 @@ type AttackPathMonitor struct {
 	stopCh      chan struct{}
 	running     bool
 	stopOnce    sync.Once
+	scanHook    func()
 }
 
 // AttackPathEvent represents a change in attack paths
@@ -269,30 +260,17 @@ func (m *AttackPathMonitor) Start(ctx context.Context) error {
 	m.running = true
 	m.mu.Unlock()
 
-	m.logger.Info("starting attack path monitor", "interval", m.interval)
+	defer func() {
+		m.mu.Lock()
+		m.running = false
+		m.mu.Unlock()
+	}()
 
-	// Initial scan
-	m.scan()
-
-	ticker := time.NewTicker(m.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			m.mu.Lock()
-			m.running = false
-			m.mu.Unlock()
-			return ctx.Err()
-		case <-m.stopCh:
-			m.mu.Lock()
-			m.running = false
-			m.mu.Unlock()
-			return nil
-		case <-ticker.C:
-			m.scan()
-		}
-	}
+	m.logger.Info("starting attack path monitor",
+		"debounce", monitorDebounceWindow(m.interval),
+		"max_staleness", monitorMaxStaleness(m.interval),
+	)
+	return runReactiveMonitorLoop(ctx, m.graph, m.stopCh, m.interval, attackPathMonitorChangeFilter(), m.scan)
 }
 
 // Stop stops the monitor (safe to call multiple times)
@@ -310,8 +288,12 @@ func (m *AttackPathMonitor) GetLastResult() *SimulationResult {
 }
 
 func (m *AttackPathMonitor) scan() {
+	if m.scanHook != nil {
+		m.scanHook()
+	}
 	start := time.Now()
-	m.simulator = NewAttackPathSimulator(m.graph)
+	view := cloneGraphForMonitorScan(m.graph)
+	m.simulator = NewAttackPathSimulator(view)
 	newResult := m.simulator.Simulate(6)
 	duration := time.Since(start)
 
@@ -400,6 +382,7 @@ type PrivilegeEscalationMonitor struct {
 	stopCh      chan struct{}
 	running     bool
 	stopOnce    sync.Once
+	scanHook    func()
 }
 
 // PrivilegeEscalationEvent represents a new escalation risk
@@ -437,30 +420,17 @@ func (m *PrivilegeEscalationMonitor) Start(ctx context.Context) error {
 	m.running = true
 	m.mu.Unlock()
 
-	m.logger.Info("starting privilege escalation monitor", "interval", m.interval)
+	defer func() {
+		m.mu.Lock()
+		m.running = false
+		m.mu.Unlock()
+	}()
 
-	// Initial scan
-	m.scan()
-
-	ticker := time.NewTicker(m.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			m.mu.Lock()
-			m.running = false
-			m.mu.Unlock()
-			return ctx.Err()
-		case <-m.stopCh:
-			m.mu.Lock()
-			m.running = false
-			m.mu.Unlock()
-			return nil
-		case <-ticker.C:
-			m.scan()
-		}
-	}
+	m.logger.Info("starting privilege escalation monitor",
+		"debounce", monitorDebounceWindow(m.interval),
+		"max_staleness", monitorMaxStaleness(m.interval),
+	)
+	return runReactiveMonitorLoop(ctx, m.graph, m.stopCh, m.interval, privilegeEscalationMonitorChangeFilter(), m.scan)
 }
 
 // Stop stops the monitor (safe to call multiple times)
@@ -471,14 +441,18 @@ func (m *PrivilegeEscalationMonitor) Stop() {
 }
 
 func (m *PrivilegeEscalationMonitor) scan() {
+	if m.scanHook != nil {
+		m.scanHook()
+	}
 	start := time.Now()
+	view := cloneGraphForMonitorScan(m.graph)
 	newRisks := make(map[string][]*PrivilegeEscalationRisk)
 
-	for _, node := range m.graph.GetAllNodes() {
+	for _, node := range view.GetAllNodes() {
 		if !node.IsIdentity() {
 			continue
 		}
-		risks := DetectPrivilegeEscalationRisks(m.graph, node.ID)
+		risks := DetectPrivilegeEscalationRisks(view, node.ID)
 		if len(risks) > 0 {
 			newRisks[node.ID] = risks
 		}
@@ -552,4 +526,13 @@ func (m *PrivilegeEscalationMonitor) publish(event *PrivilegeEscalationEvent) {
 		default:
 		}
 	}
+}
+
+func cloneGraphForMonitorScan(g *Graph) *Graph {
+	if g == nil {
+		return New()
+	}
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return cloneGraphWithSharedPropertyHistory(g)
 }

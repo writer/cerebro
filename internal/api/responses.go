@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/writer/cerebro/internal/cerrors"
+	"github.com/writer/cerebro/internal/graph"
 )
 
 func (s *Server) json(w http.ResponseWriter, status int, data interface{}) {
@@ -37,6 +38,10 @@ func statusFromError(err error) int {
 	switch {
 	case cerrors.IsValidation(err):
 		return http.StatusBadRequest
+	case errors.Is(err, errGraphRiskUnavailable):
+		return http.StatusServiceUnavailable
+	case errors.Is(err, graph.ErrStoreUnavailable):
+		return http.StatusServiceUnavailable
 	case cerrors.IsNotFound(err):
 		return http.StatusNotFound
 	case cerrors.IsAuth(err):

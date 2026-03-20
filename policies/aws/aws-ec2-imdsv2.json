@@ -1,12 +1,16 @@
 {
   "id": "aws-ec2-imdsv2-required",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "EC2 IMDSv2 Required",
   "description": "EC2 instances should require IMDSv2 to prevent SSRF attacks",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ec2::instance",
   "conditions": [
-    "metadata_options_http_tokens != required"
+    "cmp_ne(path(resource, \"metadata_options_http_tokens\"), path(resource, \"required\"))"
   ],
+  "condition_format": "cel",
   "severity": "high",
   "tags": [
     "cis-aws-5.6",

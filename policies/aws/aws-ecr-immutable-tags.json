@@ -1,20 +1,24 @@
 {
   "id": "aws-ecr-immutable-tags",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "ECR Immutable Image Tags",
   "description": "ECR repositories should use immutable image tags to prevent overwrites",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ecr::repository",
   "conditions": [
-    "image_tag_mutability != 'IMMUTABLE'"
+    "cmp_ne(path(resource, \"image_tag_mutability\"), \"IMMUTABLE\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Set image tag mutability to IMMUTABLE to prevent image tag overwrites.",
   "tags": [
     "ecr",
     "container",
     "supply-chain",
     "immutability"
   ],
+  "remediation": "Set image tag mutability to IMMUTABLE to prevent image tag overwrites.",
   "risk_categories": [
     "MISCONFIGURATION"
   ]

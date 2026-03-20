@@ -153,7 +153,7 @@ var defaultEntityFacetDefinitions = []EntityFacetDefinition{
 	},
 	{
 		ID:          "workload_security",
-		Version:     "1.0.0",
+		Version:     "1.1.0",
 		Title:       "Workload Security",
 		Description: "Latest workload scan posture with vulnerability depth and attack-path context.",
 		SchemaName:  "PlatformWorkloadSecurityFacet",
@@ -170,9 +170,14 @@ var defaultEntityFacetDefinitions = []EntityFacetDefinition{
 			{Key: "os_architecture", ValueType: "string"},
 			{Key: "package_count", ValueType: "integer"},
 			{Key: "vulnerability_count", ValueType: "integer"},
+			{Key: "reachable_vulnerability_count", ValueType: "integer"},
 			{Key: "critical_vulnerability_count", ValueType: "integer"},
+			{Key: "reachable_critical_vulnerability_count", ValueType: "integer"},
 			{Key: "high_vulnerability_count", ValueType: "integer"},
+			{Key: "reachable_high_vulnerability_count", ValueType: "integer"},
 			{Key: "known_exploited_count", ValueType: "integer"},
+			{Key: "reachable_known_exploited_count", ValueType: "integer"},
+			{Key: "direct_reachable_vulnerability_count", ValueType: "integer"},
 			{Key: "fixable_vulnerability_count", ValueType: "integer"},
 			{Key: "internet_exposed", ValueType: "boolean"},
 			{Key: "admin_reachable_count", ValueType: "integer"},
@@ -728,13 +733,10 @@ func materializeWorkloadSecurityFacet(g *Graph, node *Node, validAt, recordedAt 
 		lastScannedAt, _ = temporalPropertyTime(scanNode.Properties, "observed_at")
 	}
 
-	view := g.SubgraphBitemporal(validAt, recordedAt)
-	if view == nil {
-		view = g
-	}
-	blast := BlastRadius(view, node.ID, 3)
-	cascade := CascadingBlastRadius(view, node.ID, 4)
-	internetExposed := entityHasInternetExposureAt(view, node.ID, validAt, recordedAt)
+	blast := BlastRadius(g, node.ID, 3)
+	cascade := CascadingBlastRadius(g, node.ID, 4)
+	internetExposed := entityHasInternetExposureAt(g, node.ID, validAt, recordedAt)
+	runtimeRisk := WorkloadRuntimeRiskSummaryAt(g, node.ID, validAt, recordedAt)
 	adminReachable := 0
 	for _, reachable := range blast.ReachableNodes {
 		if reachable == nil {
@@ -753,23 +755,34 @@ func materializeWorkloadSecurityFacet(g *Graph, node *Node, validAt, recordedAt 
 	}
 
 	fields := map[string]any{
-		"last_scan_id":                 scanNode.ID,
-		"last_scanned_at":              formatWorkloadSecurityFacetTime(lastScannedAt),
-		"stale":                        workloadSecurityFacetStale(lastScannedAt, validAt),
-		"os_name":                      readString(scanNode.Properties, "os_name"),
-		"os_version":                   readString(scanNode.Properties, "os_version"),
-		"os_architecture":              readString(scanNode.Properties, "os_architecture"),
-		"package_count":                readInt(scanNode.Properties, "package_count"),
-		"vulnerability_count":          readInt(scanNode.Properties, "vulnerability_count"),
-		"critical_vulnerability_count": readInt(scanNode.Properties, "critical_vulnerability_count"),
-		"high_vulnerability_count":     readInt(scanNode.Properties, "high_vulnerability_count"),
-		"known_exploited_count":        readInt(scanNode.Properties, "known_exploited_count"),
-		"fixable_vulnerability_count":  readInt(scanNode.Properties, "fixable_vulnerability_count"),
-		"internet_exposed":             internetExposed,
-		"admin_reachable_count":        adminReachable,
-		"sensitive_data_path_count":    len(cascade.SensitiveDataHits),
-		"cross_account_risk":           blast.CrossAccountRisk,
-		"prioritized_risk":             string(workloadSecurityPrioritizedRisk(scanNode, internetExposed, adminReachable, len(cascade.SensitiveDataHits), blast.CrossAccountRisk)),
+		"last_scan_id":                           scanNode.ID,
+		"last_scanned_at":                        formatWorkloadSecurityFacetTime(lastScannedAt),
+		"stale":                                  workloadSecurityFacetStale(lastScannedAt, validAt),
+		"os_name":                                readString(scanNode.Properties, "os_name"),
+		"os_version":                             readString(scanNode.Properties, "os_version"),
+		"os_architecture":                        readString(scanNode.Properties, "os_architecture"),
+		"package_count":                          readInt(scanNode.Properties, "package_count"),
+		"vulnerability_count":                    readInt(scanNode.Properties, "vulnerability_count"),
+		"reachable_vulnerability_count":          readInt(scanNode.Properties, "reachable_vulnerability_count"),
+		"critical_vulnerability_count":           readInt(scanNode.Properties, "critical_vulnerability_count"),
+		"reachable_critical_vulnerability_count": readInt(scanNode.Properties, "reachable_critical_vulnerability_count"),
+		"high_vulnerability_count":               readInt(scanNode.Properties, "high_vulnerability_count"),
+		"reachable_high_vulnerability_count":     readInt(scanNode.Properties, "reachable_high_vulnerability_count"),
+		"known_exploited_count":                  readInt(scanNode.Properties, "known_exploited_count"),
+		"reachable_known_exploited_count":        readInt(scanNode.Properties, "reachable_known_exploited_count"),
+		"direct_reachable_vulnerability_count":   readInt(scanNode.Properties, "direct_reachable_vulnerability_count"),
+		"fixable_vulnerability_count":            readInt(scanNode.Properties, "fixable_vulnerability_count"),
+		"internet_exposed":                       internetExposed,
+		"admin_reachable_count":                  adminReachable,
+		"sensitive_data_path_count":              len(cascade.SensitiveDataHits),
+		"cross_account_risk":                     blast.CrossAccountRisk,
+		"prioritized_risk":                       string(workloadSecurityPrioritizedRisk(scanNode, internetExposed, adminReachable, len(cascade.SensitiveDataHits), blast.CrossAccountRisk)),
+		"runtime_observation_count":              runtimeRisk.ObservationCount,
+		"runtime_finding_count":                  runtimeRisk.FindingCount,
+		"runtime_mitre_technique_count":          runtimeRisk.MITRETechniqueCount,
+		"runtime_dark_workload":                  runtimeRisk.Dark,
+		"runtime_risk_multiplier":                runtimeRisk.Multiplier,
+		"runtime_last_observed_at":               formatWorkloadSecurityFacetTime(runtimeRisk.LastObservedAt),
 	}
 
 	assessment := "pass"
@@ -788,6 +801,18 @@ func materializeWorkloadSecurityFacet(g *Graph, node *Node, validAt, recordedAt 
 	if readInt(scanNode.Properties, "vulnerability_count") == 0 && !fields["stale"].(bool) {
 		assessment = "pass"
 		summary = "Latest workload scan found no tracked package vulnerabilities"
+	}
+	if runtimeRisk.Dark && assessment == "pass" {
+		assessment = "warn"
+		summary = "No runtime observations recorded for this workload"
+	}
+	if runtimeRisk.FindingCount > 0 {
+		assessment = "fail"
+		if runtimeRisk.MITRETechniqueCount > 1 {
+			summary = "Runtime findings show active multi-technique behavior on this workload"
+		} else {
+			summary = "Runtime findings show active suspicious behavior on this workload"
+		}
 	}
 
 	return EntityFacetRecord{
@@ -859,22 +884,31 @@ func workloadSecurityPrioritizedRisk(scanNode *Node, internetExposed bool, admin
 	if scanNode == nil {
 		return RiskNone
 	}
+	reachableCount := readInt(scanNode.Properties, "reachable_vulnerability_count")
+	reachableCriticalCount := readInt(scanNode.Properties, "reachable_critical_vulnerability_count")
+	reachableHighCount := readInt(scanNode.Properties, "reachable_high_vulnerability_count")
 	criticalCount := readInt(scanNode.Properties, "critical_vulnerability_count")
 	highCount := readInt(scanNode.Properties, "high_vulnerability_count")
 	kevCount := readInt(scanNode.Properties, "known_exploited_count")
-	if kevCount > 0 && (internetExposed || adminReachable > 0 || sensitiveDataPaths > 0) {
+	if kevCount > 0 {
 		return RiskCritical
 	}
-	if criticalCount > 0 && (internetExposed || adminReachable > 0 || sensitiveDataPaths > 0 || crossAccountRisk) {
+	if reachableCriticalCount > 0 && (internetExposed || adminReachable > 0 || sensitiveDataPaths > 0 || crossAccountRisk) {
 		return RiskCritical
 	}
-	if criticalCount > 0 || (highCount > 0 && (internetExposed || adminReachable > 0 || sensitiveDataPaths > 0)) {
+	if reachableCriticalCount > 0 || (reachableHighCount > 0 && (internetExposed || adminReachable > 0 || sensitiveDataPaths > 0)) {
 		return RiskHigh
 	}
-	if highCount > 0 || readInt(scanNode.Properties, "vulnerability_count") > 0 {
+	if criticalCount > 0 {
+		return RiskHigh
+	}
+	if reachableHighCount > 0 || highCount > 0 || readInt(scanNode.Properties, "medium_vulnerability_count") > 0 {
 		return RiskMedium
 	}
-	return RiskLow
+	if reachableCount > 0 || readInt(scanNode.Properties, "vulnerability_count") > 0 {
+		return RiskLow
+	}
+	return RiskNone
 }
 
 func materializeBucketPublicAccessFacet(g *Graph, node *Node, validAt, recordedAt time.Time, def EntityFacetDefinition, claimIndex map[string][]ClaimRecord) (EntityFacetRecord, bool) {

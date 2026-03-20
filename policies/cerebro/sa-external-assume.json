@@ -1,14 +1,17 @@
 {
   "id": "sa-external-principal-assume",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Service account with high privileges can be assumed by external principal",
   "description": "A service account with high privileges has a trust policy allowing principals from external organizations to assume it, enabling cross-account privilege escalation",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::iam::service_account",
   "conditions": [
-    "iam_policy CONTAINS 'allUsers' OR iam_policy CONTAINS 'allAuthenticatedUsers' OR iam_policy CONTAINS 'domain:'"
+    "(contains_value(path(resource, \"iam_policy\"), \"allUsers\")) || (contains_value(path(resource, \"iam_policy\"), \"allAuthenticatedUsers\")) || (contains_value(path(resource, \"iam_policy\"), \"domain:\"))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "1. Review and restrict the service account's IAM bindings. 2. Remove allUsers and allAuthenticatedUsers principals. 3. Limit cross-organization access to specific, trusted principals. 4. Enable domain restriction constraints.",
   "tags": [
     "gcp",
     "iam",
@@ -17,21 +20,31 @@
     "cross-account",
     "security"
   ],
+  "remediation": "1. Review and restrict the service account's IAM bindings. 2. Remove allUsers and allAuthenticatedUsers principals. 3. Limit cross-organization access to specific, trusted principals. 4. Enable domain restriction constraints.",
   "risk_categories": [
     "UNPROTECTED_PRINCIPAL"
   ],
   "frameworks": [
     {
       "name": "NIST 800-53 r5",
-      "controls": ["AC-2", "AC-6", "AC-17"]
+      "controls": [
+        "AC-2",
+        "AC-6",
+        "AC-17"
+      ]
     },
     {
       "name": "CIS Controls v8",
-      "controls": ["5", "6"]
+      "controls": [
+        "5",
+        "6"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6"]
+      "controls": [
+        "CC6"
+      ]
     }
   ],
   "mitre_attack": [

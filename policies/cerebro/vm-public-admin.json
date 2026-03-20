@@ -1,16 +1,18 @@
 {
   "id": "vm-public-admin",
-  "control_id": "wc-id-54",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed VM with admin privileges",
   "description": "A publicly exposed virtual machine has administrative privileges, creating a critical attack surface",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance",
   "conditions": [
-    "is_public == true",
-    "service_account.has_admin_role == true OR attached_role.is_admin == true"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "(cmp_eq(path(resource, \"service_account.has_admin_role\"), true)) || (cmp_eq(path(resource, \"attached_role.is_admin\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public access or reduce privileges. Use a bastion host for admin access. Implement zero-trust network access.",
   "tags": [
     "wiz",
     "compute",
@@ -18,6 +20,8 @@
     "public-exposure",
     "critical"
   ],
+  "control_id": "wc-id-54",
+  "remediation": "Remove public access or reduce privileges. Use a bastion host for admin access. Implement zero-trust network access.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

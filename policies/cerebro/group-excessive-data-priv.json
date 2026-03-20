@@ -1,15 +1,17 @@
 {
   "id": "group-excessive-data-priv",
-  "control_id": "wc-id-2203",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Group with excessive data privileges",
   "description": "A group has excessive data access privileges",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "iam::group",
   "conditions": [
-    "data_access_scope == 'all' OR data_access_resource_count \u003e 100"
+    "(cmp_eq(path(resource, \"data_access_scope\"), \"all\")) || (cmp_gt(path(resource, \"data_access_resource_count\"), 100))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Reduce group data access scope. Implement data classification and need-to-know access controls.",
   "tags": [
     "wiz",
     "identity",
@@ -17,6 +19,8 @@
     "data-access",
     "excessive-privilege"
   ],
+  "control_id": "wc-id-2203",
+  "remediation": "Reduce group data access scope. Implement data classification and need-to-know access controls.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "IDENTITY_RISK",

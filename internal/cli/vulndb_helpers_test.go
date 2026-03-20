@@ -1,33 +1,43 @@
 package cli
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/filesystemanalyzer"
 )
 
-func TestBuildFilesystemAnalyzerFallsBackWhenVulnDBOpenFails(t *testing.T) {
+func TestBuildMalwareScannerUnconfiguredDoesNotPanicFilesystemAnalyzer(t *testing.T) {
 	root := t.TempDir()
-	blocker := filepath.Join(root, "blocked")
-	if err := os.WriteFile(blocker, []byte("not-a-directory"), 0o644); err != nil {
-		t.Fatalf("WriteFile(%s): %v", blocker, err)
+	if err := os.WriteFile(filepath.Join(root, "index.php"), []byte("<?php echo 'ok';"), 0o644); err != nil {
+		t.Fatalf("write test file: %v", err)
 	}
 
-	analyzer, closer, err := buildFilesystemAnalyzer(&app.Config{
-		VulnDBStateFile: filepath.Join(blocker, "nested", "vulndb.db"),
-	}, "trivy")
+	analyzer := filesystemanalyzer.New(filesystemanalyzer.Options{
+		MalwareScanner: buildMalwareScanner(nil, ""),
+	})
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("expected unconfigured malware scanner to behave as nil, got panic: %v", recovered)
+		}
+	}()
+
+	report, err := analyzer.Analyze(context.Background(), root)
 	if err != nil {
-		t.Fatalf("buildFilesystemAnalyzer: %v", err)
+		t.Fatalf("Analyze: %v", err)
 	}
-	if analyzer == nil {
-		t.Fatal("expected filesystem analyzer fallback")
+	if len(report.Malware) != 0 {
+		t.Fatalf("expected no malware findings, got %#v", report.Malware)
 	}
-	if closer == nil {
-		t.Fatal("expected fallback closer")
-	}
-	if err := closer.Close(); err != nil {
-		t.Fatalf("fallback closer.Close(): %v", err)
+}
+
+func TestBuildMalwareScannerReturnsConfiguredScanner(t *testing.T) {
+	malwareScanner := buildMalwareScanner(&app.Config{MalwareScanVirusTotalAPIKey: "test-api-key"}, "")
+	if malwareScanner == nil {
+		t.Fatal("expected configured malware scanner")
 	}
 }

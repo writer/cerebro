@@ -1,16 +1,18 @@
 {
   "id": "vm-public-vuln-common-dep",
-  "control_id": "wc-id-2448",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed VM/serverless with initial access vulnerabilities affecting a common dependency",
   "description": "A publicly exposed resource has vulnerabilities in a commonly used dependency",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "is_public == true",
-    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true AND is_common_dependency == true)"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, (in_list(path(item, \"severity\"), [\"CRITICAL\",\"HIGH\"])) \u0026\u0026 (cmp_eq(path(item, \"initial_access\"), true)) \u0026\u0026 (cmp_eq(path(item, \"is_common_dependency\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Patch common dependency vulnerabilities immediately. These are high-value targets for attackers.",
   "tags": [
     "wiz",
     "compute",
@@ -18,6 +20,8 @@
     "dependency",
     "public-exposure"
   ],
+  "control_id": "wc-id-2448",
+  "remediation": "Patch common dependency vulnerabilities immediately. These are high-value targets for attackers.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "VULNERABILITY"

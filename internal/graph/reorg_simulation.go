@@ -98,7 +98,7 @@ func SimulateReorg(g *Graph, changes []ReorgChange) (*ReorgImpact, error) {
 		return nil, fmt.Errorf("no actionable reorg changes were provided")
 	}
 
-	after := g.Clone()
+	after := g.Fork()
 	if err := after.ApplyDelta(delta); err != nil {
 		return nil, err
 	}

@@ -549,17 +549,28 @@ func shortestPathBetweenSets(adjacency map[string]map[string]struct{}, sources, 
 		return nil
 	}
 
-	queue := make([]string, 0, len(sources))
-	visited := make(map[string]bool, len(adjacency))
-	prev := make(map[string]string, len(adjacency))
+	nodeIDs := NewNodeIDIndex()
+	for nodeID, neighbors := range adjacency {
+		nodeIDs.Intern(nodeID)
+		for neighbor := range neighbors {
+			nodeIDs.Intern(neighbor)
+		}
+	}
+
+	queue := make([]NodeOrdinal, 0, len(sources))
+	visited := newOrdinalVisitSet(nodeIDs)
+	prev := make(map[NodeOrdinal]NodeOrdinal, len(adjacency))
 
 	for _, source := range sortedSet(sources) {
 		if _, exists := adjacency[source]; !exists {
 			continue
 		}
-		queue = append(queue, source)
-		visited[source] = true
-		prev[source] = ""
+		sourceOrdinal, ok := nodeIDs.Lookup(source)
+		if !ok || !visited.markOrdinal(sourceOrdinal) {
+			continue
+		}
+		queue = append(queue, sourceOrdinal)
+		prev[sourceOrdinal] = InvalidNodeOrdinal
 		if _, isTarget := targets[source]; isTarget {
 			return []string{source}
 		}
@@ -568,37 +579,48 @@ func shortestPathBetweenSets(adjacency map[string]map[string]struct{}, sources, 
 		return nil
 	}
 
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
+	for head := 0; head < len(queue); head++ {
+		currentOrdinal := queue[head]
+		current, ok := nodeIDs.Resolve(currentOrdinal)
+		if !ok {
+			continue
+		}
 
 		for _, neighbor := range sortedSet(adjacency[current]) {
-			if visited[neighbor] {
+			neighborOrdinal, ok := nodeIDs.Lookup(neighbor)
+			if !ok || !visited.markOrdinal(neighborOrdinal) {
 				continue
 			}
-			visited[neighbor] = true
-			prev[neighbor] = current
+			prev[neighborOrdinal] = currentOrdinal
 			if _, isTarget := targets[neighbor]; isTarget {
-				return rebuildInformationPath(prev, neighbor)
+				return rebuildInformationOrdinalPath(prev, neighborOrdinal, nodeIDs)
 			}
-			queue = append(queue, neighbor)
+			queue = append(queue, neighborOrdinal)
 		}
 	}
 
 	return nil
 }
 
-func rebuildInformationPath(prev map[string]string, destination string) []string {
-	if strings.TrimSpace(destination) == "" {
+func rebuildInformationOrdinalPath(prev map[NodeOrdinal]NodeOrdinal, destination NodeOrdinal, nodeIDs *NodeIDIndex) []string {
+	if destination == InvalidNodeOrdinal || nodeIDs == nil {
 		return nil
 	}
-	path := []string{destination}
+	destinationID, ok := nodeIDs.Resolve(destination)
+	if !ok || strings.TrimSpace(destinationID) == "" {
+		return nil
+	}
+	path := []string{destinationID}
 	for cursor := destination; ; {
 		parent, exists := prev[cursor]
-		if !exists || parent == "" {
+		if !exists || parent == InvalidNodeOrdinal {
 			break
 		}
-		path = append(path, parent)
+		parentID, ok := nodeIDs.Resolve(parent)
+		if !ok {
+			break
+		}
+		path = append(path, parentID)
 		cursor = parent
 	}
 	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {

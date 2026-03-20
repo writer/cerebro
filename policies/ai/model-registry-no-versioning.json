@@ -1,21 +1,25 @@
 {
   "id": "ml-model-registry-no-versioning",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "ML Model Registry No Versioning",
   "description": "ML model registry does not enforce version control and audit trail",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::sagemaker::model_package_group",
   "conditions": [
-    "model_package_group_status != 'Pending' || model_package_group_status != 'Completed'",
-    "model_approval_status == 'PendingManualApproval'"
+    "(cmp_ne(path(resource, \"model_package_group_status\"), \"Pending\")) || (cmp_ne(path(resource, \"model_package_group_status\"), \"Completed\"))",
+    "cmp_eq(path(resource, \"model_approval_status\"), \"PendingManualApproval\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Implement model approval workflow and version control.",
   "tags": [
     "ai",
     "model-registry",
     "governance",
     "audit-trail"
   ],
+  "remediation": "Implement model approval workflow and version control.",
   "frameworks": [
     {
       "name": "NIST 800-53 r5",

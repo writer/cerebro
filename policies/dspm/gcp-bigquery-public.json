@@ -1,14 +1,17 @@
 {
   "id": "gcp-bigquery-public-dataset",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP BigQuery Public Dataset",
   "description": "BigQuery dataset is accessible by allUsers or allAuthenticatedUsers",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::bigquery::dataset",
   "conditions": [
-    "access contains 'allUsers' || access contains 'allAuthenticatedUsers'"
+    "(contains_value(path(resource, \"access\"), \"allUsers\")) || (contains_value(path(resource, \"access\"), \"allAuthenticatedUsers\"))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove allUsers and allAuthenticatedUsers from dataset IAM bindings.",
   "tags": [
     "dspm",
     "bigquery",
@@ -16,6 +19,7 @@
     "data-exposure",
     "public-access"
   ],
+  "remediation": "Remove allUsers and allAuthenticatedUsers from dataset IAM bindings.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

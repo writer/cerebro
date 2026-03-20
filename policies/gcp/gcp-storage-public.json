@@ -1,12 +1,16 @@
 {
   "id": "gcp-storage-bucket-no-public",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Storage Bucket Public Access",
   "description": "GCP Storage buckets should not be publicly accessible",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::storage::bucket",
   "conditions": [
-    "iam_policy_public == true"
+    "cmp_eq(path(resource, \"iam_policy_public\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
   "tags": [
     "cis-gcp-5.1",

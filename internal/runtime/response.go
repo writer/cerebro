@@ -194,6 +194,13 @@ func (e *ResponseEngine) SetActionHandler(handler ActionHandler) {
 	e.actionHandler = handler
 }
 
+func (e *ResponseEngine) ActionHandler() ActionHandler {
+	if e == nil {
+		return nil
+	}
+	return e.actionHandler
+}
+
 func (e *ResponseEngine) SetRemoteCaller(caller RemoteActionCaller) {
 	if e == nil || e.actionHandler == nil {
 		return
@@ -334,7 +341,7 @@ func (e *ResponseEngine) ProcessFinding(ctx context.Context, finding *RuntimeFin
 			continue
 		}
 
-		if e.matchesTriggers(finding, policy.Triggers) && responsePolicyScopeMatches(finding, policy.Scope) {
+		if e.matchesTriggers(finding, policy.Triggers) {
 			matched = cloneResponsePolicy(policy)
 			break
 		}
@@ -381,162 +388,6 @@ func severityMatches(actual, required string) bool {
 	}
 
 	return severityRank[actual] >= severityRank[required]
-}
-
-func responsePolicyScopeMatches(finding *RuntimeFinding, scope PolicyScope) bool {
-	if responsePolicyScopeEmpty(scope) {
-		return true
-	}
-	if !scopeMatchesAny(scope.Clusters, runtimeFindingScopeValues(finding, "cluster", "cluster_name", "kubernetes_cluster")) {
-		return false
-	}
-	if !scopeMatchesAny(scope.Namespaces, runtimeFindingNamespaceValues(finding)) {
-		return false
-	}
-	if !scopeMatchesAny(scope.Accounts, runtimeFindingScopeValues(finding, "account", "account_id", "cloud_account_id", "aws_account_id", "subscription_id", "project_id", "project")) {
-		return false
-	}
-	if !scopeMatchesAny(scope.Regions, runtimeFindingScopeValues(finding, "region", "cloud_region", "aws_region", "location")) {
-		return false
-	}
-	if !scopeMatchesTags(scope.Tags, runtimeFindingTags(finding), finding) {
-		return false
-	}
-	return true
-}
-
-func responsePolicyScopeEmpty(scope PolicyScope) bool {
-	return len(scope.Clusters) == 0 &&
-		len(scope.Namespaces) == 0 &&
-		len(scope.Accounts) == 0 &&
-		len(scope.Regions) == 0 &&
-		len(scope.Tags) == 0
-}
-
-func scopeMatchesAny(expected, candidates []string) bool {
-	if len(expected) == 0 {
-		return true
-	}
-	if len(candidates) == 0 {
-		return false
-	}
-	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
-			continue
-		}
-		for _, allowed := range expected {
-			if strings.EqualFold(strings.TrimSpace(allowed), candidate) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func scopeMatchesTags(expected, actual map[string]string, finding *RuntimeFinding) bool {
-	if len(expected) == 0 {
-		return true
-	}
-	for key, value := range expected {
-		actualValue := runtimeFindingTagValue(actual, finding, key)
-		if !strings.EqualFold(strings.TrimSpace(actualValue), strings.TrimSpace(value)) {
-			return false
-		}
-	}
-	return true
-}
-
-func runtimeFindingNamespaceValues(finding *RuntimeFinding) []string {
-	values := runtimeFindingScopeValues(finding, "namespace", "kubernetes_namespace")
-	if finding == nil || finding.Event == nil || finding.Event.Container == nil {
-		return values
-	}
-	return appendRuntimeScopeValue(values, finding.Event.Container.Namespace)
-}
-
-func runtimeFindingScopeValues(finding *RuntimeFinding, keys ...string) []string {
-	metadata := runtimeFindingMetadata(finding)
-	values := make([]string, 0, len(keys))
-	for _, key := range keys {
-		values = appendRuntimeScopeValue(values, runtimeMapValueToString(metadata, key))
-	}
-	return values
-}
-
-func appendRuntimeScopeValue(values []string, candidate string) []string {
-	candidate = strings.TrimSpace(candidate)
-	if candidate == "" {
-		return values
-	}
-	for _, existing := range values {
-		if strings.EqualFold(strings.TrimSpace(existing), candidate) {
-			return values
-		}
-	}
-	return append(values, candidate)
-}
-
-func runtimeFindingMetadata(finding *RuntimeFinding) map[string]any {
-	if finding == nil || finding.Event == nil {
-		return nil
-	}
-	return finding.Event.Metadata
-}
-
-func runtimeFindingTags(finding *RuntimeFinding) map[string]string {
-	metadata := runtimeFindingMetadata(finding)
-	if len(metadata) == 0 {
-		return nil
-	}
-	tags := make(map[string]string)
-	merge := func(raw any) {
-		switch typed := raw.(type) {
-		case map[string]string:
-			for key, value := range typed {
-				key = strings.TrimSpace(key)
-				value = strings.TrimSpace(value)
-				if key == "" || value == "" {
-					continue
-				}
-				tags[key] = value
-			}
-		case map[string]any:
-			for key, value := range typed {
-				key = strings.TrimSpace(key)
-				candidate := strings.TrimSpace(fmt.Sprintf("%v", value))
-				if key == "" || candidate == "" {
-					continue
-				}
-				tags[key] = candidate
-			}
-		}
-	}
-	merge(metadata["tags"])
-	merge(metadata["labels"])
-	if len(tags) == 0 {
-		return nil
-	}
-	return tags
-}
-
-func runtimeFindingTagValue(tags map[string]string, finding *RuntimeFinding, key string) string {
-	key = strings.TrimSpace(key)
-	if key == "" {
-		return ""
-	}
-	for candidateKey, candidateValue := range tags {
-		if strings.EqualFold(strings.TrimSpace(candidateKey), key) {
-			return strings.TrimSpace(candidateValue)
-		}
-	}
-	metadata := runtimeFindingMetadata(finding)
-	for _, candidateKey := range []string{key, "tag:" + key, "label:" + key} {
-		if value := strings.TrimSpace(runtimeMapValueToString(metadata, candidateKey)); value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func (e *ResponseEngine) createExecution(ctx context.Context, policy *ResponsePolicy, finding *RuntimeFinding) *ResponseExecution {
@@ -992,7 +843,7 @@ func (e *ResponseEngine) loadStoredExecution(ctx context.Context, executionID st
 	if !e.runtimeExecutionBelongsToEngine(sharedExecution) {
 		return nil, nil, nil
 	}
-	return responseExecutionFromShared(sharedExecution, nil), sharedExecution, nil
+	return responseExecutionFromShared(sharedExecution, e.runtimePolicyForExecution(sharedExecution, nil)), sharedExecution, nil
 }
 
 func (e *ResponseEngine) listStoredExecutions(ctx context.Context, limit int) ([]*ResponseExecution, error) {
@@ -1012,7 +863,7 @@ func (e *ResponseEngine) listStoredExecutions(ctx context.Context, limit int) ([
 		if !e.runtimeExecutionBelongsToEngine(&sharedExecution) {
 			continue
 		}
-		result = append(result, responseExecutionFromShared(&sharedExecution, nil))
+		result = append(result, responseExecutionFromShared(&sharedExecution, e.runtimePolicyForExecution(&sharedExecution, nil)))
 		if limit > 0 && len(result) >= limit {
 			break
 		}
@@ -1177,8 +1028,8 @@ func runtimeMapValueToString(values map[string]any, key string) string {
 
 func firstNonEmptyRuntime(values ...string) string {
 	for _, value := range values {
-		if value != "" {
-			return value
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
 		}
 	}
 	return ""
@@ -1186,86 +1037,94 @@ func firstNonEmptyRuntime(values ...string) string {
 
 // ApproveExecution approves a pending execution
 func (e *ResponseEngine) ApproveExecution(ctx context.Context, executionID, approver string) error {
+	e.mu.Lock()
 	var target *ResponseExecution
+	var policyCopy *ResponsePolicy
 	var sharedExecution *actionengine.Execution
-	e.mu.RLock()
+	var signal actionengine.Signal
 	for _, exec := range e.executions {
 		if exec.ID == executionID {
+			if exec.Status != StatusApproval {
+				e.mu.Unlock()
+				return fmt.Errorf("execution not awaiting approval")
+			}
+
+			policy, ok := e.policies[exec.PolicyID]
+			if !ok {
+				e.mu.Unlock()
+				return fmt.Errorf("policy not found")
+			}
 			target = exec
+			policyCopy = cloneResponsePolicy(policy)
+			now := time.Now().UTC()
+			target.Status = StatusRunning
+			target.ApprovedBy = approver
+			target.ApprovedAt = &now
+			target.Error = ""
 			sharedExecution = runtimeExecutionToShared(target)
+			signal = runtimeSignalFromTriggerData(target.TriggerData)
 			break
 		}
 	}
-	e.mu.RUnlock()
+	e.mu.Unlock()
 
-	if target == nil || sharedExecution == nil {
-		loadedTarget, loadedShared, err := e.loadStoredExecution(ctx, executionID)
-		if err != nil {
-			return err
-		}
-		if loadedTarget == nil || loadedShared == nil {
-			return fmt.Errorf("execution not found")
-		}
-		target = loadedTarget
-		sharedExecution = loadedShared
-		e.rememberExecution(target)
+	if target == nil || policyCopy == nil || sharedExecution == nil {
+		return fmt.Errorf("execution not found")
 	}
-	if target.Status != StatusApproval {
-		return fmt.Errorf("execution not awaiting approval")
-	}
-	policyCopy := e.runtimePolicyForExecution(sharedExecution, target)
-	if policyCopy == nil {
-		return fmt.Errorf("policy not found")
-	}
-	annotateRuntimeSharedExecution(sharedExecution, policyCopy)
-	approvedAt := time.Now().UTC()
-	target.Status = StatusRunning
-	target.ApprovedBy = approver
-	target.ApprovedAt = &approvedAt
-	target.Error = ""
-	sharedExecution.ApprovedBy = approver
-	sharedExecution.ApprovedAt = &approvedAt
-	e.rememberExecution(target)
-	signal := runtimeSignalFromTriggerData(sharedExecution.TriggerData)
 	err := e.shared.Approve(ctx, sharedExecution, approver, runtimePlaybookFromPolicy(policyCopy), signal, runtimeStepRunner{engine: e})
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	applySharedResponseExecution(target, sharedExecution)
-	e.rememberExecution(target)
-	return err
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // RejectExecution rejects a pending execution
 func (e *ResponseEngine) RejectExecution(executionID, rejecter, reason string) error {
 	var target *ResponseExecution
 	var sharedExecution *actionengine.Execution
-	e.mu.RLock()
+	e.mu.Lock()
 	for _, exec := range e.executions {
 		if exec.ID == executionID {
+			if exec.Status != StatusApproval {
+				e.mu.Unlock()
+				return fmt.Errorf("execution not awaiting approval")
+			}
+
 			target = exec
 			sharedExecution = runtimeExecutionToShared(exec)
 			break
 		}
 	}
-	e.mu.RUnlock()
-	if target == nil || sharedExecution == nil {
-		loadedTarget, loadedShared, err := e.loadStoredExecution(context.Background(), executionID)
-		if err != nil {
+	e.mu.Unlock()
+
+	if target != nil && sharedExecution != nil {
+		if err := e.shared.Reject(context.Background(), sharedExecution, rejecter, reason); err != nil {
 			return err
 		}
-		if loadedTarget == nil || loadedShared == nil {
-			return fmt.Errorf("execution not found")
-		}
-		target = loadedTarget
-		sharedExecution = loadedShared
-		e.rememberExecution(target)
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		applySharedResponseExecution(target, sharedExecution)
+		return nil
 	}
-	if target.Status != StatusApproval {
-		return fmt.Errorf("execution not awaiting approval")
-	}
-	if err := e.shared.Reject(context.Background(), sharedExecution, rejecter, reason); err != nil {
+
+	loadedTarget, loadedShared, err := e.loadStoredExecution(context.Background(), executionID)
+	if err != nil {
 		return err
 	}
-	applySharedResponseExecution(target, sharedExecution)
-	e.rememberExecution(target)
+	if loadedTarget == nil || loadedShared == nil {
+		return fmt.Errorf("execution not found")
+	}
+	if loadedTarget.Status != StatusApproval {
+		return fmt.Errorf("execution not awaiting approval")
+	}
+	if err := e.shared.Reject(context.Background(), loadedShared, rejecter, reason); err != nil {
+		return err
+	}
+	applySharedResponseExecution(loadedTarget, loadedShared)
+	e.rememberExecution(loadedTarget)
 	return nil
 }
 

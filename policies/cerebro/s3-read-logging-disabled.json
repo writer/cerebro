@@ -1,15 +1,17 @@
 {
   "id": "s3-read-logging-disabled",
-  "control_id": "wc-id-943",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "S3 Bucket with object-level read data events logging disabled",
   "description": "An S3 bucket does not have CloudTrail data event logging enabled for read operations",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::s3::bucket",
   "conditions": [
-    "cloudtrail_data_events.read_enabled == false"
+    "cmp_eq(path(resource, \"cloudtrail_data_events.read_enabled\"), false)"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "Enable CloudTrail data events for read operations on sensitive buckets.",
   "tags": [
     "wiz",
     "aws",
@@ -17,6 +19,8 @@
     "logging",
     "cloudtrail"
   ],
+  "control_id": "wc-id-943",
+  "remediation": "Enable CloudTrail data events for read operations on sensitive buckets.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

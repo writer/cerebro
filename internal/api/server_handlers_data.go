@@ -568,8 +568,9 @@ func (s *Server) evaluatePolicy(w http.ResponseWriter, r *http.Request) {
 
 	var propagationResult *graph.PropagationResult
 	if decision != "deny" && req.ProposedChange != nil {
-		if s.app.SecurityGraph == nil {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		g, err := s.currentTenantSecurityGraphView(r.Context())
+		if err != nil {
+			s.errorFromErr(w, err)
 			return
 		}
 
@@ -599,7 +600,7 @@ func (s *Server) evaluatePolicy(w http.ResponseWriter, r *http.Request) {
 				Reason: strings.TrimSpace(req.ProposedChange.Reason),
 				Delta:  delta,
 			}
-			engine := graph.NewPropagationEngine(s.app.SecurityGraph, options...)
+			engine := graph.NewPropagationEngine(g, options...)
 			propagationResult, err = engine.Evaluate(proposal)
 			if err != nil {
 				s.error(w, http.StatusBadRequest, err.Error())

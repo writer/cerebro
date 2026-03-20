@@ -1,21 +1,25 @@
 {
   "id": "ml-model-untrusted-source",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "ML Model from Untrusted Source",
   "description": "ML model loaded from external source without security scanning",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "ml::model_artifact",
   "conditions": [
-    "source_type == 'external'",
-    "security_scan_status != 'passed'"
+    "cmp_eq(path(resource, \"source_type\"), \"external\")",
+    "cmp_ne(path(resource, \"security_scan_status\"), \"passed\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Scan external models for malicious payloads before deployment.",
   "tags": [
     "ai",
     "model-security",
     "supply-chain",
     "malicious-model"
   ],
+  "remediation": "Scan external models for malicious payloads before deployment.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "LATERAL_MOVEMENT"

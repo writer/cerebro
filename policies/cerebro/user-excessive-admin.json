@@ -1,21 +1,25 @@
 {
   "id": "user-excessive-admin",
-  "control_id": "wc-id-909",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "User account with excessive admin privileges",
   "description": "A user account has more admin privileges than necessary for their role",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "iam::user",
   "conditions": [
-    "admin_role_count \u003e 3 OR has_wildcard_admin == true"
+    "(cmp_gt(path(resource, \"admin_role_count\"), 3)) || (cmp_eq(path(resource, \"has_wildcard_admin\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Apply least privilege principle. Remove unnecessary admin roles. Implement break-glass procedures for emergency access.",
   "tags": [
     "wiz",
     "identity",
     "admin",
     "excessive-privilege"
   ],
+  "control_id": "wc-id-909",
+  "remediation": "Apply least privilege principle. Remove unnecessary admin roles. Implement break-glass procedures for emergency access.",
   "risk_categories": [
     "IDENTITY_RISK",
     "PRIVILEGE_ESCALATION"

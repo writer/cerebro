@@ -1,14 +1,17 @@
 {
   "id": "bucket-public-sensitive",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly readable bucket contains sensitive data",
   "description": "Storage bucket allows anonymous read access (allUsers) and may contain sensitive data, creating a direct data breach risk",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::storage::bucket",
   "conditions": [
-    "iam_policy CONTAINS 'allUsers'"
+    "contains_value(path(resource, \"iam_policy\"), \"allUsers\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "1. Remove public access by removing allUsers and allAuthenticatedUsers from IAM bindings. 2. Implement proper access controls using IAM. 3. Enable uniform bucket-level access. 4. Review bucket contents for sensitive data.",
   "tags": [
     "gcp",
     "storage",
@@ -17,28 +20,43 @@
     "toxic-combination",
     "security"
   ],
+  "control_id": "wc-id-1264",
+  "remediation": "1. Remove public access by removing allUsers and allAuthenticatedUsers from IAM bindings. 2. Implement proper access controls using IAM. 3. Enable uniform bucket-level access. 4. Review bucket contents for sensitive data.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "EXTERNAL_ATTACK_SURFACE",
     "UNPROTECTED_DATA"
   ],
-  "control_id": "wc-id-1264",
   "frameworks": [
     {
       "name": "NIST 800-53 r5",
-      "controls": ["AC-3", "SC-7", "AC-6"]
+      "controls": [
+        "AC-3",
+        "SC-7",
+        "AC-6"
+      ]
     },
     {
       "name": "CIS Controls v8",
-      "controls": ["3", "12", "13"]
+      "controls": [
+        "3",
+        "12",
+        "13"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6"]
+      "controls": [
+        "CC6"
+      ]
     },
     {
       "name": "PCI DSS v4.0.1",
-      "controls": ["1.4", "3.3", "3.5"]
+      "controls": [
+        "1.4",
+        "3.3",
+        "3.5"
+      ]
     }
   ],
   "mitre_attack": [

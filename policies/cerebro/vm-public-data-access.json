@@ -1,22 +1,26 @@
 {
   "id": "vm-public-data-access",
-  "control_id": "wc-id-1194",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Publicly exposed VM/serverless with data access to sensitive data",
   "description": "A publicly exposed compute resource has access to sensitive data",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "is_public == true",
-    "service_account.has_sensitive_data_access == true OR attached_role.has_sensitive_data_access == true"
+    "cmp_eq(path(resource, \"is_public\"), true)",
+    "(cmp_eq(path(resource, \"service_account.has_sensitive_data_access\"), true)) || (cmp_eq(path(resource, \"attached_role.has_sensitive_data_access\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Remove public access or remove data access. Implement network segmentation.",
   "tags": [
     "wiz",
     "compute",
     "public-exposure",
     "data-access"
   ],
+  "control_id": "wc-id-1194",
+  "remediation": "Remove public access or remove data access. Implement network segmentation.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

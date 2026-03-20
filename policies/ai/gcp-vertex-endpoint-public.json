@@ -1,15 +1,18 @@
 {
   "id": "gcp-vertex-ai-public-endpoint",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Vertex AI Public Endpoint",
   "description": "Vertex AI endpoint is publicly accessible without VPC restrictions",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::aiplatform::endpoint",
   "conditions": [
-    "network == null",
-    "private_service_connect_config == null"
+    "cmp_eq(path(resource, \"network\"), null)",
+    "cmp_eq(path(resource, \"private_service_connect_config\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Configure VPC peering or Private Service Connect for the Vertex AI endpoint.",
   "tags": [
     "ai",
     "vertex-ai",
@@ -17,6 +20,7 @@
     "public-access",
     "network"
   ],
+  "remediation": "Configure VPC peering or Private Service Connect for the Vertex AI endpoint.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

@@ -1,14 +1,17 @@
 {
   "id": "aws-vpc-flow-logs-enabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "VPC Flow Logs Enabled",
   "description": "VPC Flow Logs should be enabled for all VPCs to capture network traffic metadata",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ec2::vpc",
   "conditions": [
-    "flow_logs_count == 0"
+    "cmp_eq(path(resource, \"flow_logs_count\"), 0)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable VPC Flow Logs for the VPC. Configure to send logs to CloudWatch Logs or S3 for analysis.",
   "tags": [
     "cis-aws-3.9",
     "vpc",
@@ -16,6 +19,7 @@
     "logging",
     "monitoring"
   ],
+  "remediation": "Enable VPC Flow Logs for the VPC. Configure to send logs to CloudWatch Logs or S3 for analysis.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

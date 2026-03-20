@@ -1,13 +1,22 @@
 {
   "id": "aws-guardduty-crypto-mining",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AWS GuardDuty Crypto Mining Detection",
   "description": "GuardDuty detected cryptocurrency mining activity",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::guardduty::finding",
   "conditions": [
-    "type contains 'CryptoCurrency'"
+    "contains_value(path(resource, \"type\"), \"CryptoCurrency\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "tags": ["runtime", "crypto-mining", "guardduty", "resource-abuse"],
+  "tags": [
+    "runtime",
+    "crypto-mining",
+    "guardduty",
+    "resource-abuse"
+  ],
   "remediation": "Terminate compromised resources and investigate unauthorized access."
 }

@@ -1,19 +1,23 @@
 {
   "id": "k8s-pod-readonly-root-filesystem",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "K8s Pod Read-Only Root Filesystem",
   "description": "Containers should use read-only root filesystem",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "kubernetes::pod",
   "conditions": [
-    "spec.containers.security_context.read_only_root_filesystem != true"
+    "cmp_ne(path(resource, \"spec.containers.security_context.read_only_root_filesystem\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Set readOnlyRootFilesystem: true in container security context.",
   "tags": [
     "cis-k8s-5.2.4",
     "pod-security",
     "filesystem"
   ],
+  "remediation": "Set readOnlyRootFilesystem: true in container security context.",
   "risk_categories": [
     "IDENTITY_RISK",
     "MISCONFIGURATION"

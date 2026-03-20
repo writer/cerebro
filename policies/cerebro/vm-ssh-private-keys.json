@@ -1,21 +1,25 @@
 {
   "id": "vm-ssh-private-keys",
-  "control_id": "wc-id-343",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "VM/serverless with cleartext SSH private keys that can be used to access other resources",
   "description": "A compute resource contains SSH private keys that can be used to access other resources",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance|serverless::function",
   "conditions": [
-    "secrets ANY (type == 'ssh_private_key' AND cleartext == true AND can_access_other_resources == true)"
+    "list_value(path(resource, \"secrets\")).exists(item, (cmp_eq(path(item, \"type\"), \"ssh_private_key\")) \u0026\u0026 (cmp_eq(path(item, \"cleartext\"), true)) \u0026\u0026 (cmp_eq(path(item, \"can_access_other_resources\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Remove SSH private keys from the resource. Use SSH certificate-based authentication or IAM-based access. Rotate compromised keys.",
   "tags": [
     "wiz",
     "secrets",
     "ssh-keys",
     "lateral-movement"
   ],
+  "control_id": "wc-id-343",
+  "remediation": "Remove SSH private keys from the resource. Use SSH certificate-based authentication or IAM-based access. Rotate compromised keys.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "LATERAL_MOVEMENT"

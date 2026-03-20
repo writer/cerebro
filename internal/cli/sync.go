@@ -76,6 +76,9 @@ var (
 	syncK8sNamespace               string // namespace to sync
 	syncAzure                      bool   // sync Azure resources
 	syncAzureSubscription          string // Azure subscription ID
+	syncAzureSubscriptions         string // comma-separated Azure subscription IDs
+	syncAzureMgmtGroup             string // Azure management group ID
+	syncAzureSubConcurrency        int
 	syncConcurrency                int
 	syncPermissionLookback         int
 	syncGCPIAMGroups               string
@@ -146,7 +149,10 @@ func init() {
 	syncCmd.Flags().StringVar(&syncK8sContext, "kube-context", "", "Kubernetes context name")
 	syncCmd.Flags().StringVar(&syncK8sNamespace, "k8s-namespace", "", "Kubernetes namespace to sync (defaults to all)")
 	syncCmd.Flags().BoolVar(&syncAzure, "azure", false, "Sync Azure resources")
-	syncCmd.Flags().StringVar(&syncAzureSubscription, "azure-subscription", "", "Azure subscription ID (optional, will auto-discover if not set)")
+	syncCmd.Flags().StringVar(&syncAzureSubscription, "azure-subscription", "", "Azure subscription ID")
+	syncCmd.Flags().StringVar(&syncAzureSubscriptions, "azure-subscriptions", "", "Comma-separated Azure subscription IDs")
+	syncCmd.Flags().StringVar(&syncAzureMgmtGroup, "azure-management-group", "", "Azure management group ID for recursive subscription discovery")
+	syncCmd.Flags().IntVar(&syncAzureSubConcurrency, "azure-subscription-concurrency", 4, "Max concurrent Azure subscription syncs when multiple subscriptions are selected")
 	syncCmd.Flags().IntVar(&syncConcurrency, "concurrency", 20, "Max concurrent table syncs for native engines")
 	syncCmd.Flags().IntVar(&syncPermissionLookback, "permission-usage-lookback-days", 90, "Usage window in days for IAM permission usage analysis (1-400)")
 	syncCmd.Flags().IntVar(&syncPermissionRemovalThreshold, "permission-removal-threshold-days", 180, "Consecutive unused days before recommending IAM permission removal (1-400)")
@@ -1194,16 +1200,16 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 
 	graphToxicCount := 0
 	graphPaths := 0
-	if application.SecurityGraph != nil {
+	if application.Scanner != nil {
 		graphCtx := ctx
 		cancel := func() {}
 		if tuning.GraphWaitTimeout > 0 {
 			graphCtx, cancel = context.WithTimeout(ctx, tuning.GraphWaitTimeout)
 		}
-		graphReady := application.WaitForGraph(graphCtx)
+		securityGraph := application.WaitForReadableSecurityGraph(graphCtx)
 		cancel()
-		if graphReady {
-			graphResult := application.Scanner.AnalyzeGraph(ctx, application.SecurityGraph)
+		if securityGraph != nil {
+			graphResult := application.Scanner.AnalyzeGraph(ctx, securityGraph)
 			if graphResult != nil {
 				graphPaths = graphResult.AttackPathStats.TotalPaths
 				for _, f := range graphResult.ToxicCombinations {

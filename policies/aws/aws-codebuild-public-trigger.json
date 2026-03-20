@@ -1,21 +1,25 @@
 {
   "id": "aws-codebuild-public-trigger",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "CodeBuild Project with Public Webhook",
   "description": "CodeBuild project has a public webhook that can be triggered by external sources",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::codebuild::project",
   "conditions": [
-    "webhook.filter_groups ANY (filters ANY (type == 'EVENT' AND pattern CONTAINS 'PULL_REQUEST'))",
-    "source.type IN ('GITHUB', 'BITBUCKET', 'GITLAB')"
+    "list_value(path(resource, \"webhook.filter_groups\")).exists(item, list_value(path(item, \"filters\")).exists(item, (cmp_eq(path(item, \"type\"), \"EVENT\")) \u0026\u0026 (contains_value(path(item, \"pattern\"), \"PULL_REQUEST\"))))",
+    "in_list(path(resource, \"source.type\"), [\"GITHUB\",\"BITBUCKET\",\"GITLAB\"])"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Configure webhook filters to only accept events from trusted sources. Use branch filters and file path filters. Enable build badge but disable webhook for public repos.",
   "tags": [
     "aws",
     "codebuild",
     "supply-chain",
     "ci-cd"
   ],
+  "remediation": "Configure webhook filters to only accept events from trusted sources. Use branch filters and file path filters. Enable build badge but disable webhook for public repos.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

@@ -205,6 +205,128 @@ func TestSnapshotDeepCopiesPropertyHistory(t *testing.T) {
 	}
 }
 
+func TestTemporalHistoryRespectsConfiguredMaxEntries(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+
+	base := time.Date(2026, 3, 8, 9, 0, 0, 0, time.UTC)
+	now := base
+	temporalNowUTC = func() time.Time { return now }
+
+	g := New()
+	g.SetTemporalHistoryConfig(3, 7*24*time.Hour)
+	g.AddNode(&Node{
+		ID:         "customer:umbrella",
+		Kind:       NodeKindCustomer,
+		Properties: map[string]any{"health_score": 100.0},
+	})
+
+	now = base.Add(1 * time.Hour)
+	g.SetNodeProperty("customer:umbrella", "health_score", 90.0)
+	now = base.Add(2 * time.Hour)
+	g.SetNodeProperty("customer:umbrella", "health_score", 80.0)
+	now = base.Add(3 * time.Hour)
+	g.SetNodeProperty("customer:umbrella", "health_score", 70.0)
+
+	history := g.GetNodePropertyHistory("customer:umbrella", "health_score", 0)
+	if len(history) != 3 {
+		t.Fatalf("expected 3 snapshots after cap enforcement, got %d", len(history))
+	}
+	if history[0].Value != 90.0 || history[1].Value != 80.0 || history[2].Value != 70.0 {
+		t.Fatalf("unexpected capped history: %#v", history)
+	}
+}
+
+func TestTemporalHistoryTrimsExpiredSnapshotsOnWrite(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+
+	base := time.Date(2026, 3, 8, 9, 0, 0, 0, time.UTC)
+	now := base
+	temporalNowUTC = func() time.Time { return now }
+
+	g := New()
+	g.SetTemporalHistoryConfig(50, 2*time.Hour)
+	g.AddNode(&Node{
+		ID:         "customer:stark",
+		Kind:       NodeKindCustomer,
+		Properties: map[string]any{"health_score": 100.0},
+	})
+
+	now = base.Add(30 * time.Minute)
+	g.SetNodeProperty("customer:stark", "health_score", 95.0)
+	now = base.Add(4 * time.Hour)
+	g.SetNodeProperty("customer:stark", "health_score", 80.0)
+
+	history := g.GetNodePropertyHistory("customer:stark", "health_score", 0)
+	if len(history) != 1 {
+		t.Fatalf("expected expired snapshots to be trimmed on write, got %d", len(history))
+	}
+	if history[0].Value != 80.0 {
+		t.Fatalf("expected only current snapshot after ttl trim, got %#v", history)
+	}
+}
+
+func TestTemporalHistoryTrimsExpiredHistoricalSnapshotsAgainstWallClock(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+
+	wallClock := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	temporalNowUTC = func() time.Time { return wallClock }
+
+	g := New()
+	g.SetTemporalHistoryConfig(50, 7*24*time.Hour)
+	g.AddNode(&Node{
+		ID:        "customer:historical",
+		Kind:      NodeKindCustomer,
+		CreatedAt: wallClock.Add(-30 * 24 * time.Hour),
+		UpdatedAt: wallClock.Add(-30 * 24 * time.Hour),
+		Properties: map[string]any{
+			"health_score": 100.0,
+		},
+	})
+
+	history := g.GetNodePropertyHistory("customer:historical", "health_score", 0)
+	if len(history) != 0 {
+		t.Fatalf("expected historical snapshot outside TTL to be trimmed, got %#v", history)
+	}
+}
+
+func TestSnapshotShrinksAfterTemporalHistoryTTLEnforcement(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+
+	base := time.Date(2026, 3, 8, 9, 0, 0, 0, time.UTC)
+	now := base
+	temporalNowUTC = func() time.Time { return now }
+
+	g := New()
+	g.SetTemporalHistoryConfig(50, 90*time.Minute)
+	g.AddNode(&Node{
+		ID:         "customer:wayne",
+		Kind:       NodeKindCustomer,
+		Properties: map[string]any{"health_score": 100.0},
+	})
+
+	now = base.Add(30 * time.Minute)
+	g.SetNodeProperty("customer:wayne", "health_score", 90.0)
+	now = base.Add(3 * time.Hour)
+	g.SetNodeProperty("customer:wayne", "health_score", 80.0)
+
+	snapshot := CreateSnapshot(g)
+	snapshotNode := findSnapshotNode(snapshot, "customer:wayne")
+	if snapshotNode == nil {
+		t.Fatal("expected node in snapshot")
+	}
+	history := snapshotNode.PropertyHistory["health_score"]
+	if len(history) != 1 {
+		t.Fatalf("expected ttl-trimmed snapshot history, got %d", len(history))
+	}
+	if history[0].Value != 80.0 {
+		t.Fatalf("expected only current snapshot value 80.0, got %#v", history)
+	}
+}
+
 func findSnapshotNode(snapshot *Snapshot, id string) *Node {
 	if snapshot == nil {
 		return nil

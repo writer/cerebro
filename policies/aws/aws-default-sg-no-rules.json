@@ -1,14 +1,24 @@
 {
   "id": "aws-default-sg-no-rules",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Default Security Group Restricts All Traffic",
   "description": "The default security group in each VPC should have no inbound or outbound rules to ensure it cannot be accidentally used to allow unintended traffic",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws_ec2_security_groups",
   "conditions": [
-    "group_name == default",
-    "has_rules == true"
+    "cmp_eq(path(resource, \"group_name\"), path(resource, \"default\"))",
+    "cmp_eq(path(resource, \"has_rules\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
+  "tags": [
+    "cis-aws-5.4",
+    "security-groups",
+    "vpc",
+    "network-security"
+  ],
   "remediation": "Remove all inbound and outbound rules from the default security group in each VPC",
   "remediation_steps": [
     "Navigate to VPC in AWS Console",
@@ -18,12 +28,6 @@
     "Remove all inbound rules",
     "Remove all outbound rules except the default egress rule (if required, remove that too)"
   ],
-  "tags": [
-    "cis-aws-5.4",
-    "security-groups",
-    "vpc",
-    "network-security"
-  ],
   "risk_categories": [
     "MISCONFIGURATION",
     "EXTERNAL_EXPOSURE"
@@ -31,15 +35,23 @@
   "frameworks": [
     {
       "name": "CIS AWS Foundations Benchmark v2.0",
-      "controls": ["5.4"]
+      "controls": [
+        "5.4"
+      ]
     },
     {
       "name": "NIST 800-53 r5",
-      "controls": ["AC-4", "SC-7"]
+      "controls": [
+        "AC-4",
+        "SC-7"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC6.1", "CC6.6"]
+      "controls": [
+        "CC6.1",
+        "CC6.6"
+      ]
     }
   ],
   "mitre_attack": [

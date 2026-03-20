@@ -115,7 +115,7 @@ func (s *ReportRunStore) Load() (map[string]*ReportRun, error) {
 		}
 		runs[run.ID] = run
 	}
-	if strings.TrimSpace(s.legacyState) == "" {
+	if len(runs) > 0 || strings.TrimSpace(s.legacyState) == "" {
 		return runs, nil
 	}
 	legacyRuns, err := s.loadLegacyState()
@@ -125,19 +125,10 @@ func (s *ReportRunStore) Load() (map[string]*ReportRun, error) {
 	if len(legacyRuns) == 0 {
 		return runs, nil
 	}
-	for runID, run := range legacyRuns {
-		if run == nil || strings.TrimSpace(runID) == "" {
-			continue
-		}
-		if _, exists := runs[runID]; exists {
-			continue
-		}
-		if err := s.SaveRun(run); err != nil {
-			return nil, fmt.Errorf("import legacy report run state: %w", err)
-		}
-		runs[runID] = run
+	if err := s.SaveAll(legacyRuns); err != nil {
+		return nil, fmt.Errorf("import legacy report run state: %w", err)
 	}
-	return runs, nil
+	return legacyRuns, nil
 }
 
 func (s *ReportRunStore) LoadRun(runID string) (*ReportRun, error) {

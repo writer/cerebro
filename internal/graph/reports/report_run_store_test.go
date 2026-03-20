@@ -1,8 +1,6 @@
 package reports
 
 import (
-	"encoding/json"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -214,86 +212,6 @@ func TestReportRunStoreWithSharedExecutionStoreDoesNotOwnClose(t *testing.T) {
 		Payload:     []byte(`{"run":{"id":"report_run:shared-close","report_id":"quality","status":"queued","submitted_at":"2026-03-12T09:00:00Z"}}`),
 	}); err != nil {
 		t.Fatalf("UpsertRun after borrowed store close: %v", err)
-	}
-}
-
-func TestReportRunStoreLoadImportsMissingLegacyRunsIntoPartiallyMigratedStore(t *testing.T) {
-	stateDir := t.TempDir()
-	store, err := NewReportRunStore(filepath.Join(stateDir, "executions.db"), filepath.Join(stateDir, "snapshots"), filepath.Join(stateDir, "legacy-state.json"))
-	if err != nil {
-		t.Fatalf("NewReportRunStore: %v", err)
-	}
-	defer func() { _ = store.Close() }()
-
-	existing := &ReportRun{
-		ID:            "report_run:migrated",
-		ReportID:      "quality",
-		Status:        ReportRunStatusSucceeded,
-		ExecutionMode: ReportExecutionModeSync,
-		SubmittedAt:   time.Date(2026, 3, 12, 8, 0, 0, 0, time.UTC),
-		StatusURL:     "/api/v1/platform/intelligence/reports/quality/runs/report_run:migrated",
-	}
-	if err := store.SaveRun(existing); err != nil {
-		t.Fatalf("SaveRun existing: %v", err)
-	}
-
-	legacyOnly := &ReportRun{
-		ID:            "report_run:legacy-only",
-		ReportID:      "drift",
-		Status:        ReportRunStatusQueued,
-		ExecutionMode: ReportExecutionModeAsync,
-		SubmittedAt:   time.Date(2026, 3, 12, 7, 0, 0, 0, time.UTC),
-		StatusURL:     "/api/v1/platform/intelligence/reports/drift/runs/report_run:legacy-only",
-	}
-	legacyDuplicate := &ReportRun{
-		ID:            existing.ID,
-		ReportID:      existing.ReportID,
-		Status:        ReportRunStatusQueued,
-		ExecutionMode: ReportExecutionModeAsync,
-		SubmittedAt:   existing.SubmittedAt.Add(-1 * time.Hour),
-		StatusURL:     existing.StatusURL,
-	}
-	legacyState := persistedReportRunStore{
-		Version: reportRunStoreVersion,
-		SavedAt: time.Now().UTC(),
-		Runs: []persistedReportRunRecord{
-			{Run: legacyDuplicate},
-			{Run: legacyOnly},
-		},
-	}
-	payload, err := json.Marshal(legacyState)
-	if err != nil {
-		t.Fatalf("marshal legacy state: %v", err)
-	}
-	if err := os.WriteFile(store.LegacyStateFile(), payload, 0o600); err != nil {
-		t.Fatalf("WriteFile legacy state: %v", err)
-	}
-
-	loadedRuns, err := store.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(loadedRuns) != 2 {
-		t.Fatalf("expected merged run set of size 2, got %#v", loadedRuns)
-	}
-	if loadedRuns[existing.ID].Status != ReportRunStatusSucceeded {
-		t.Fatalf("expected migrated run to keep v2 status, got %+v", loadedRuns[existing.ID])
-	}
-	if _, ok := loadedRuns[legacyOnly.ID]; !ok {
-		t.Fatalf("expected legacy-only run to be imported, got %#v", loadedRuns)
-	}
-
-	executionStore, err := executionstore.NewSQLiteStore(store.StateFile())
-	if err != nil {
-		t.Fatalf("open execution store: %v", err)
-	}
-	defer func() { _ = executionStore.Close() }()
-	envs, err := executionStore.ListRuns(t.Context(), executionstore.NamespacePlatformReportRun, executionstore.RunListOptions{})
-	if err != nil {
-		t.Fatalf("ListRuns: %v", err)
-	}
-	if len(envs) != 2 {
-		t.Fatalf("expected 2 persisted report runs after legacy import, got %#v", envs)
 	}
 }
 

@@ -1,20 +1,24 @@
 {
   "id": "azure-storage-blob-public-access-disabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure Storage Blob Public Access Disabled",
   "description": "Storage accounts should have blob public access disabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::storage::account",
   "conditions": [
-    "allow_blob_public_access == true"
+    "cmp_eq(path(resource, \"allow_blob_public_access\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Disable blob public access at the storage account level.",
   "tags": [
     "cis-azure-3.7",
     "storage",
     "data-exposure",
     "public-access"
   ],
+  "remediation": "Disable blob public access at the storage account level.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

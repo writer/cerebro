@@ -84,6 +84,18 @@ class Client:
         return self.call_tool("cerebro_annotate", args)
 
 
+    def autonomous_credential_response(self, args: Any) -> Any:
+        return self.call_tool("cerebro_autonomous_credential_response", args)
+
+
+    def autonomous_workflow_approve(self, args: Any) -> Any:
+        return self.call_tool("cerebro_autonomous_workflow_approve", args)
+
+
+    def autonomous_workflow_status(self, args: Any) -> Any:
+        return self.call_tool("cerebro_autonomous_workflow_status", args)
+
+
     def blast_radius(self, args: Any) -> Any:
         return self.call_tool("cerebro_blast_radius", args)
 

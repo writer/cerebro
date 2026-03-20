@@ -1,17 +1,19 @@
 {
   "id": "vm-internet-vuln-privileged",
-  "control_id": "wc-id-140",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Internet-facing VM with high privileges and initial access vulnerabilities",
   "description": "An internet-facing VM has both high privileges and vulnerabilities that could enable initial access, creating a critical combined risk",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "compute::instance",
   "conditions": [
-    "is_internet_facing == true",
-    "service_account.has_high_privilege == true OR attached_role.has_high_privilege == true",
-    "vulnerabilities ANY (severity IN ('CRITICAL', 'HIGH') AND initial_access == true)"
+    "cmp_eq(path(resource, \"is_internet_facing\"), true)",
+    "(cmp_eq(path(resource, \"service_account.has_high_privilege\"), true)) || (cmp_eq(path(resource, \"attached_role.has_high_privilege\"), true))",
+    "list_value(path(resource, \"vulnerabilities\")).exists(item, (in_list(path(item, \"severity\"), [\"CRITICAL\",\"HIGH\"])) \u0026\u0026 (cmp_eq(path(item, \"initial_access\"), true)))"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Immediately patch vulnerabilities and reduce privileges. Consider isolating the VM until both issues are resolved.",
   "tags": [
     "wiz",
     "compute",
@@ -19,6 +21,8 @@
     "privileged",
     "internet-facing"
   ],
+  "control_id": "wc-id-140",
+  "remediation": "Immediately patch vulnerabilities and reduce privileges. Consider isolating the VM until both issues are resolved.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

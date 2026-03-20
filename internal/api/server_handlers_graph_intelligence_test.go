@@ -29,8 +29,8 @@ type stubGraphIntelligenceService struct {
 	hasCatalog        bool
 }
 
-func (s stubGraphIntelligenceService) CurrentGraph() *graph.Graph {
-	return s.graph
+func (s stubGraphIntelligenceService) CurrentGraph(context.Context) (*graph.Graph, error) {
+	return s.graph, nil
 }
 
 func (s stubGraphIntelligenceService) MapperInitialized() bool {

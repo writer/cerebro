@@ -54,7 +54,7 @@ func (a *App) startEventAlertRouting(_ context.Context) {
 	}
 	router, err := events.NewAlertRouter(events.AlertRouterOptions{
 		Config:        routingConfig,
-		Resolver:      events.NewGraphAlertResolver(func() *graph.Graph { return a.CurrentSecurityGraph() }),
+		Resolver:      events.NewGraphAlertResolver(a.currentOrStoredEventRoutingGraph),
 		Sender:        notifier,
 		StateStore:    stateStore,
 		SubjectPrefix: subjectPrefix,
@@ -81,4 +81,18 @@ func (a *App) startEventAlertRouting(_ context.Context) {
 		"routes", router.RouteCount(),
 		"subject_prefix", subjectPrefix,
 	)
+}
+
+func (a *App) currentOrStoredEventRoutingGraph() *graph.Graph {
+	if a == nil {
+		return nil
+	}
+	g, err := a.currentOrStoredPassiveSecurityGraphView()
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("failed to resolve event routing graph", "error", err)
+		}
+		return nil
+	}
+	return g
 }

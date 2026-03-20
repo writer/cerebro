@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	entities "github.com/writer/cerebro/internal/graph/entities"
 )
 
 type cerebroGraphChangelogRequest struct {
@@ -71,7 +72,7 @@ func (a *App) toolCerebroEntityHistory(_ context.Context, args json.RawMessage) 
 		return "", err
 	}
 
-	g, err := a.requireSecurityGraph()
+	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
 	}
@@ -90,7 +91,7 @@ func (a *App) toolCerebroEntityHistory(_ context.Context, args json.RawMessage) 
 		if err != nil {
 			return "", err
 		}
-		record, ok := graph.GetEntityRecordAtTime(g, entityID, asOf, recordedAt)
+		record, ok := entities.GetEntityRecordAtTime(g, entityID, asOf, recordedAt)
 		if !ok {
 			return "", fmt.Errorf("entity not found: %s", entityID)
 		}
@@ -111,7 +112,7 @@ func (a *App) toolCerebroEntityHistory(_ context.Context, args json.RawMessage) 
 		return "", err
 	}
 
-	record, ok := graph.GetEntityTimeDiff(g, entityID, from, to, recordedAt)
+	record, ok := entities.GetEntityTimeDiff(g, entityID, from, to, recordedAt)
 	if !ok {
 		return "", fmt.Errorf("entity not found: %s", entityID)
 	}
@@ -302,10 +303,10 @@ func (a *App) platformGraphSnapshotDiffByIDForTool(diffID string) (*graph.GraphS
 
 func (a *App) platformGraphSnapshotRecordsForTool(now time.Time) []graph.GraphSnapshotRecord {
 	records := map[string]*graph.GraphSnapshotRecord{}
-	if g := a.CurrentSecurityGraph(); g != nil {
-		if current := graph.CurrentGraphSnapshotRecord(g); current != nil {
-			records[current.ID] = current
-		}
+	if current, err := a.currentOrStoredPassiveGraphSnapshotRecord(); err == nil && current != nil {
+		records[current.ID] = current
+	} else if err != nil && a != nil && a.Logger != nil {
+		a.Logger.Warn("failed to resolve current graph snapshot record for tool", "error", err)
 	}
 
 	store := a.platformGraphSnapshotStoreForTool()

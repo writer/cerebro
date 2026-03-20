@@ -1,6 +1,9 @@
 package policy
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestEvaluateConditionOperators(t *testing.T) {
 	asset := map[string]interface{}{
@@ -31,6 +34,25 @@ func TestEvaluateConditionOperators(t *testing.T) {
 		"metadata": map[string]interface{}{
 			"annotations": map[string]interface{}{
 				"nginx.ingress.kubernetes.io/auth-type": nil,
+			},
+		},
+		"service_account_email": "runner-compute@developer.gserviceaccount.com",
+		"default_actions": []interface{}{
+			map[string]interface{}{"type": "forward"},
+			map[string]interface{}{"type": "redirect"},
+		},
+		"policy_document":      "allow:*",
+		"identifiers":          []interface{}{"bucket", "alpha"},
+		"created_at":           time.Now().Add(-72 * time.Hour).Format(time.RFC3339),
+		"deployment_date":      time.Now().Add(-72 * time.Hour).Format(time.RFC3339),
+		"risk_assessment_date": time.Now().Add(-24 * time.Hour).Format(time.RFC3339),
+		"training_data_config": map[string]interface{}{
+			"s3_uri": "s3://public-bucket/dataset",
+		},
+		"bucket_inventory": []interface{}{
+			map[string]interface{}{
+				"name":          "public-bucket",
+				"public_access": true,
 			},
 		},
 	}
@@ -109,6 +131,61 @@ func TestEvaluateConditionOperators(t *testing.T) {
 			name:      "not exists false for existing field",
 			condition: "role not exists",
 			want:      false,
+		},
+		{
+			name:      "single equals comparison",
+			condition: "role = 'admin'",
+			want:      true,
+		},
+		{
+			name:      "is null operator",
+			condition: "metadata.annotations['nginx.ingress.kubernetes.io/auth-type'] IS NULL",
+			want:      true,
+		},
+		{
+			name:      "is not null operator",
+			condition: "deployment_date IS NOT NULL",
+			want:      true,
+		},
+		{
+			name:      "not contains object literal",
+			condition: "default_actions not contains { type: 'authenticate-oidc' }",
+			want:      true,
+		},
+		{
+			name:      "contains literal in parens",
+			condition: "policy_document contains ('*')",
+			want:      true,
+		},
+		{
+			name:      "contains bare word in parens as literal",
+			condition: "identifiers CONTAINS (bucket)",
+			want:      true,
+		},
+		{
+			name:      "ends with operator",
+			condition: "service_account_email ends_with '-compute@developer.gserviceaccount.com'",
+			want:      true,
+		},
+		{
+			name:      "missing field reference compares as null",
+			condition: "metadata.annotations['nginx.ingress.kubernetes.io/auth-type'] == missing_field",
+			want:      true,
+		},
+		{
+			name:      "field to field time comparison",
+			condition: "risk_assessment_date > deployment_date",
+			want:      true,
+		},
+		{
+			name:      "relative time comparison",
+			condition: "created_at < NOW() - INTERVAL '48 hours'",
+			want:      true,
+		},
+		{
+			name:      "references public bucket",
+			condition: "training_data_config.s3_uri references bucket with public access",
+			want:      true,
 		},
 	}
 

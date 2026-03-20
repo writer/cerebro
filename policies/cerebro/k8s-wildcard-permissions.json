@@ -1,21 +1,25 @@
 {
   "id": "k8s-wildcard-permissions",
-  "control_id": "wc-id-473",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Kubernetes role/cluster role assigned permissions that contain wildcards",
   "description": "A Kubernetes role uses wildcard permissions which grant overly broad access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "k8s::cluster_role|k8s::role|k8s::rbac::risky_binding",
   "conditions": [
-    "(wildcard_verbs == true OR wildcard_resources == true) OR rules ANY (resources CONTAINS '*' OR verbs CONTAINS '*' OR api_groups CONTAINS '*')"
+    "((cmp_eq(path(resource, \"wildcard_verbs\"), true)) || (cmp_eq(path(resource, \"wildcard_resources\"), true))) || (list_value(path(resource, \"rules\")).exists(item, (contains_value(path(item, \"resources\"), \"*\")) || (contains_value(path(item, \"verbs\"), \"*\")) || (contains_value(path(item, \"api_groups\"), \"*\"))))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Replace wildcard permissions with explicit resource and verb definitions.",
   "tags": [
     "wiz",
     "kubernetes",
     "rbac",
     "wildcard"
   ],
+  "control_id": "wc-id-473",
+  "remediation": "Replace wildcard permissions with explicit resource and verb definitions.",
   "risk_categories": [
     "PRIVILEGE_ESCALATION"
   ],

@@ -135,6 +135,7 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	g.Go(func() error { working.buildGCPNodes(gctx); return nil })
 	g.Go(func() error { working.buildAzureNodes(gctx); return nil })
 	g.Go(func() error { working.buildOktaNodes(gctx); return nil })
+	g.Go(func() error { working.buildGoogleWorkspaceNodes(gctx); return nil })
 	g.Go(func() error { working.buildK8sNodes(gctx); return nil })
 	_ = g.Wait()
 	if err := ctx.Err(); err != nil {
@@ -170,6 +171,8 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 
 	working.buildIAMPermissionUsageKnowledge(ctx)
 
+	working.buildVendorNodes()
+
 	// Build unified person graph overlay (person nodes + projected edges).
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
@@ -182,7 +185,11 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
-	working.buildExposureEdges()
+	working.buildAPIEndpointNodes()
+	if err := ctx.Err(); err != nil {
+		return nil, GraphMutationSummary{}, err
+	}
+	working.buildExposureEdges(ctx)
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
@@ -289,6 +296,16 @@ func (b *Builder) Graph() *Graph {
 	return b.graph
 }
 
+// ReplaceGraph swaps the builder's live graph reference.
+func (b *Builder) ReplaceGraph(g *Graph) {
+	if b == nil || g == nil {
+		return
+	}
+	b.stateMu.Lock()
+	defer b.stateMu.Unlock()
+	b.graph = g
+}
+
 // LastMutation returns metadata for the most recent graph update operation.
 func (b *Builder) LastMutation() GraphMutationSummary {
 	b.stateMu.RLock()
@@ -332,6 +349,8 @@ func (b *Builder) buildRelationshipEdges(ctx context.Context) {
 			edgeTargetType = sourceType
 		case "HAS_ROLE":
 			kind = EdgeKindCanAssume
+		case "CAN_ACCESS":
+			kind = EdgeKindCanRead
 		case "MEMBER_OF":
 			if isIdentityType(sourceType) && isIdentityType(targetType) {
 				kind = EdgeKindMemberOf
@@ -479,6 +498,10 @@ func (b *Builder) ensureRelationshipNode(id, resourceType string) {
 		node.Account = arn.Account
 		node.Region = arn.Region
 	}
+	if node.Provider == "azure" {
+		node.Account = azureIDSegment(id, "subscriptions")
+		node.Name = azureResourceDisplayName(id)
+	}
 
 	b.graph.AddNode(node)
 }
@@ -501,20 +524,53 @@ func nodeKindForResourceType(resourceType string) NodeKind {
 		return NodeKindRole
 	case "okta:application":
 		return NodeKindApplication
+	case "okta:scope", "google_workspace:scope":
+		return NodeKindRole
+	case "google_workspace:user":
+		return NodeKindUser
+	case "google_workspace:group":
+		return NodeKindGroup
+	case "google_workspace:application":
+		return NodeKindApplication
 	case "gcp:iam:service_account", "gcp:iam:serviceaccount":
 		return NodeKindServiceAccount
+	case "azure:ad:user", "entra:user":
+		return NodeKindUser
+	case "azure:ad:group", "entra:group":
+		return NodeKindGroup
+	case "azure:ad:service_principal", "entra:service_principal":
+		return NodeKindServiceAccount
+	case "azure:management:tenant":
+		return NodeKindOrganization
+	case "azure:management:management_group", "azure:management:resource_group":
+		return NodeKindFolder
+	case "azure:management:subscription":
+		return NodeKindProject
 	case "aws:s3:bucket", "gcp:storage:bucket":
+		return NodeKindBucket
+	case "azure:storage:account", "azure:storage:container", "azure:storage:blob":
 		return NodeKindBucket
 	case "aws:ec2:instance", "gcp:compute:instance":
 		return NodeKindInstance
+	case "azure:compute:virtual_machine":
+		return NodeKindInstance
 	case "aws:lambda:function", "gcp:cloudfunctions:function":
+		return NodeKindFunction
+	case "azure:web:function_app":
 		return NodeKindFunction
 	case "aws:rds:db_instance", "gcp:sql:instance":
 		return NodeKindDatabase
+	case "azure:sql:server", "azure:sql:database":
+		return NodeKindDatabase
 	case "aws:secretsmanager:secret", "gcp:secretmanager:secret":
 		return NodeKindSecret
-	case "aws:ec2:security_group", "aws:ec2:vpc", "aws:ec2:subnet", "gcp:compute:network", "gcp:compute:subnetwork":
+	case "azure:keyvault:vault", "azure:keyvault:key":
+		return NodeKindSecret
+	case "aws:ec2:security_group", "aws:ec2:vpc", "aws:ec2:subnet", "gcp:compute:network", "gcp:compute:subnetwork",
+		"azure:network:interface", "azure:network:security_group", "azure:network:virtual_network", "azure:network:subnet", "azure:network:public_ip", "azure:network:load_balancer":
 		return NodeKindNetwork
+	case "azure:policy:assignment", "azure:compute:disk", "azure:compute:availability_set", "azure:compute:managed_cluster":
+		return NodeKindService
 	case "network:internet":
 		return NodeKindInternet
 	default:
@@ -530,31 +586,40 @@ func providerForResourceType(resourceType string) string {
 	if strings.HasPrefix(resourceType, "gcp:") {
 		return "gcp"
 	}
-	if strings.HasPrefix(resourceType, "azure:") {
+	if strings.HasPrefix(resourceType, "azure:") || strings.HasPrefix(resourceType, "entra:") {
 		return "azure"
 	}
 	if strings.HasPrefix(resourceType, "okta:") {
 		return "okta"
+	}
+	if strings.HasPrefix(resourceType, "google_workspace:") {
+		return "google_workspace"
 	}
 	return ""
 }
 
 func isIdentityType(resourceType string) bool {
 	switch strings.ToLower(resourceType) {
-	case "aws:iam:user", "aws:iam:role", "aws:iam:group", "aws:iam:instance_profile", "gcp:iam:service_account", "gcp:iam:serviceaccount", "okta:user", "okta:group", "okta:admin_role":
+	case "aws:iam:user", "aws:iam:role", "aws:iam:group", "aws:iam:instance_profile",
+		"gcp:iam:service_account", "gcp:iam:serviceaccount",
+		"okta:user", "okta:group", "okta:admin_role",
+		"google_workspace:user", "google_workspace:group",
+		"azure:ad:user", "azure:ad:group", "azure:ad:service_principal",
+		"entra:user", "entra:group", "entra:service_principal":
 		return true
 	default:
 		return false
 	}
 }
 
-func (b *Builder) addEdgeIfMissing(edge *Edge) {
+func (b *Builder) addEdgeIfMissing(edge *Edge) bool {
 	for _, existing := range b.graph.GetOutEdges(edge.Source) {
 		if existing.Target == edge.Target && existing.Kind == edge.Kind {
-			return
+			return false
 		}
 	}
 	b.graph.AddEdge(edge)
+	return true
 }
 
 func (b *Builder) runNodeQueries(ctx context.Context, queries []nodeQuery) {
@@ -608,22 +673,28 @@ func (b *Builder) addInternetNode() {
 	})
 }
 
-func (b *Builder) buildExposureEdges() {
+func (b *Builder) buildExposureEdges(ctx context.Context) {
 	count := 0
+	networkHandled, networkCount := b.buildAWSNetworkExposureEdges(ctx)
+	count += networkCount
 	for _, node := range b.graph.GetAllNodes() {
 		if !node.IsResource() {
 			continue
 		}
+		if _, handled := networkHandled[node.ID]; handled {
+			continue
+		}
 		if isNodePublic(node) {
-			b.graph.AddEdge(&Edge{
+			if b.addEdgeIfMissing(&Edge{
 				ID:     "internet->" + node.ID,
 				Source: "internet",
 				Target: node.ID,
 				Kind:   EdgeKindExposedTo,
 				Effect: EdgeEffectAllow,
 				Risk:   RiskHigh,
-			})
-			count++
+			}) {
+				count++
+			}
 		}
 	}
 	b.logger.Debug("added internet exposure edges", "count", count)

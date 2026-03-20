@@ -289,7 +289,7 @@ func buildEntityRecord(g *Graph, node *Node, validAt, recordedAt time.Time, incl
 		Risk:       node.Risk,
 		Tags:       cloneStringMap(node.Tags),
 		Findings:   append([]string(nil), node.Findings...),
-		Properties: cloneAnyMap(node.Properties),
+		Properties: cloneNodeProperties(node),
 	}
 	if def, ok := GlobalSchemaRegistry().NodeKindDefinition(node.Kind); ok {
 		record.Categories = append([]NodeKindCategory(nil), def.Categories...)
@@ -325,19 +325,19 @@ func entityTemporalMetadata(node *Node) EntityTemporalMetadata {
 	if ts, ok := graphObservedAt(node); ok {
 		meta.ObservedAt = ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "valid_from"); ok {
+	if ts, ok := nodePropertyTime(node, "valid_from"); ok {
 		meta.ValidFrom = ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "valid_to"); ok {
+	if ts, ok := nodePropertyTime(node, "valid_to"); ok {
 		meta.ValidTo = &ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "recorded_at"); ok {
+	if ts, ok := nodePropertyTime(node, "recorded_at"); ok {
 		meta.RecordedAt = ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "transaction_from"); ok {
+	if ts, ok := nodePropertyTime(node, "transaction_from"); ok {
 		meta.TransactionFrom = ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "transaction_to"); ok {
+	if ts, ok := nodePropertyTime(node, "transaction_to"); ok {
 		meta.TransactionTo = &ts
 	}
 	return meta

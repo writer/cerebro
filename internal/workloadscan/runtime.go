@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/writer/cerebro/internal/filesystemanalyzer"
+	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/webhooks"
 )
@@ -29,7 +30,7 @@ type Provider interface {
 	Kind() ProviderKind
 	InventoryVolumes(ctx context.Context, target VMTarget) ([]SourceVolume, error)
 	CreateSnapshot(ctx context.Context, target VMTarget, volume SourceVolume, metadata map[string]string) (*SnapshotArtifact, error)
-	ShareSnapshot(ctx context.Context, target VMTarget, scannerHost ScannerHost, snapshot SnapshotArtifact) error
+	ShareSnapshot(ctx context.Context, target VMTarget, scannerHost ScannerHost, snapshot SnapshotArtifact) (*SnapshotArtifact, error)
 	CreateInspectionVolume(ctx context.Context, target VMTarget, scannerHost ScannerHost, snapshot SnapshotArtifact) (*InspectionVolume, error)
 	AttachInspectionVolume(ctx context.Context, target VMTarget, scannerHost ScannerHost, volume InspectionVolume, index int) (*VolumeAttachment, error)
 	DetachInspectionVolume(ctx context.Context, attachment VolumeAttachment) error
@@ -62,14 +63,18 @@ func (NoopAnalyzer) Analyze(_ context.Context, input AnalysisInput) (*AnalysisRe
 }
 
 type FilesystemAnalyzer struct {
-	Scanner  scanner.FilesystemScanner
-	Analyzer *filesystemanalyzer.Analyzer
+	Scanner       scanner.FilesystemScanner
+	SecretScanner filesystemanalyzer.SecretScanner
+	Analyzer      *filesystemanalyzer.Analyzer
 }
 
 func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*AnalysisReport, error) {
 	analyzer := a.Analyzer
 	if analyzer == nil && a.Scanner != nil {
-		analyzer = filesystemanalyzer.New(filesystemanalyzer.Options{VulnerabilityScanner: a.Scanner})
+		analyzer = filesystemanalyzer.New(filesystemanalyzer.Options{
+			VulnerabilityScanner: a.Scanner,
+			SecretScanner:        a.SecretScanner,
+		})
 	}
 	if analyzer == nil {
 		return NoopAnalyzer{}.Analyze(ctx, input)
@@ -82,9 +87,10 @@ func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*
 		FindingCount: int64(len(catalog.Findings)),
 		Catalog:      catalog,
 		Metadata: map[string]any{
-			"analyzer":      "filesystem",
-			"mount_path":    input.Mount.MountPath,
-			"package_count": catalog.Summary.PackageCount,
+			"analyzer":         "filesystem",
+			"mount_path":       input.Mount.MountPath,
+			"package_count":    catalog.Summary.PackageCount,
+			"technology_count": catalog.Summary.TechnologyCount,
 		},
 	}
 	if catalog.SBOM.Format != "" {
@@ -157,7 +163,7 @@ func NewRunner(opts RunnerOptions) *Runner {
 	}
 }
 
-func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (*RunRecord, error) {
+func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (result *RunRecord, err error) {
 	if r == nil {
 		return nil, fmt.Errorf("workload scan runner is nil")
 	}
@@ -187,6 +193,7 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (*RunRecord, er
 		RequestedBy: strings.TrimSpace(req.RequestedBy),
 		DryRun:      req.DryRun,
 		Metadata:    cloneStringMap(req.Metadata),
+		Priority:    ClonePriorityAssessment(req.Priority),
 		SubmittedAt: req.SubmittedAt.UTC(),
 		UpdatedAt:   req.SubmittedAt.UTC(),
 	}
@@ -203,13 +210,33 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (*RunRecord, er
 	if err := r.saveRun(ctx, run); err != nil {
 		return nil, err
 	}
+	finishRunObservation := startRunObservation(run.Provider, req.DryRun)
+	defer func() {
+		if finishRunObservation != nil {
+			status := run.Status
+			if err != nil || !status.Terminal() {
+				status = RunStatusFailed
+			}
+			finishRunObservation(status)
+		}
+	}()
 	r.recordRunEvent(ctx, run, RunStatusRunning, RunStageInventory, "inventorying attached volumes", nil)
 	r.emitLifecycleEvent(ctx, webhooks.EventSecurityWorkloadScanStarted, run, nil)
+	r.logger.Info("workload scan started",
+		"run_id", run.ID,
+		"provider", run.Provider,
+		"target_id", run.Target.Identity(),
+		"scanner_host_id", run.ScannerHost.HostID,
+		"dry_run", run.DryRun,
+	)
 
+	finishInventoryObservation := startStageObservation(run.Provider, RunStageInventory, false)
 	volumes, err := provider.InventoryVolumes(ctx, req.Target)
 	if err != nil {
+		finishInventoryObservation(RunStatusFailed)
 		return r.failRun(ctx, run, RunStageInventory, fmt.Errorf("inventory volumes: %w", err))
 	}
+	finishInventoryObservation(RunStatusSucceeded)
 	run.Summary.VolumeCount = len(volumes)
 	run.Volumes = make([]VolumeScanRecord, len(volumes))
 	now := r.now().UTC()
@@ -229,6 +256,7 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (*RunRecord, er
 	r.recordRunEvent(ctx, run, RunStatusRunning, RunStageInventory, "inventory complete", map[string]any{
 		"volume_count": len(volumes),
 	})
+	r.logger.Info("workload scan inventory complete", "run_id", run.ID, "provider", run.Provider, "volume_count", len(volumes))
 
 	if req.DryRun {
 		completed := r.now().UTC()
@@ -243,6 +271,7 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (*RunRecord, er
 		r.recordRunEvent(ctx, run, run.Status, run.Stage, "dry-run completed", nil)
 		r.emitLifecycleEvent(ctx, webhooks.EventSecurityWorkloadScanCompleted, run, nil)
 		r.emitGenericScanCompleted(ctx, run)
+		r.logger.Info("workload scan dry-run completed", "run_id", run.ID, "provider", run.Provider, "volume_count", run.Summary.VolumeCount)
 		return run, nil
 	}
 
@@ -303,6 +332,14 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (*RunRecord, er
 	r.recordRunEvent(ctx, run, run.Status, run.Stage, "workload scan completed", nil)
 	r.emitLifecycleEvent(ctx, webhooks.EventSecurityWorkloadScanCompleted, run, nil)
 	r.emitGenericScanCompleted(ctx, run)
+	r.logger.Info("workload scan completed",
+		"run_id", run.ID,
+		"provider", run.Provider,
+		"volume_count", run.Summary.VolumeCount,
+		"succeeded_volumes", run.Summary.SucceededVolumes,
+		"failed_volumes", run.Summary.FailedVolumes,
+		"finding_count", run.Summary.Findings,
+	)
 	return run, nil
 }
 
@@ -382,52 +419,68 @@ func (r *Runner) Reconcile(ctx context.Context, olderThan time.Duration) ([]RunR
 
 func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanRequest, run *RunRecord, idx int, attachmentSlots chan int, runMu *sync.Mutex) error {
 	source := run.Volumes[idx].Source
-	failWithCleanup := func(stage RunStage, err error) error {
-		cleanupErr := r.cleanupVolume(run, idx, provider, runMu)
-		return r.failVolume(ctx, run, idx, runMu, stage, joinErrors([]error{err, cleanupErr}))
-	}
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Status = RunStatusRunning
 		volume.Stage = RunStageSnapshot
 		volume.UpdatedAt = r.now().UTC()
 	}, "creating point-in-time snapshot", nil)
 
+	finishSnapshotObservation := startStageObservation(req.Target.Provider, RunStageSnapshot, true)
 	snapshot, _, err := scanner.WithRetryValue(ctx, r.retry, func() (*SnapshotArtifact, error) {
 		return provider.CreateSnapshot(ctx, req.Target, source, req.Metadata)
 	})
 	if err != nil {
+		finishSnapshotObservation(RunStatusFailed)
 		return r.failVolume(ctx, run, idx, runMu, RunStageSnapshot, fmt.Errorf("create snapshot for %s: %w", source.ID, err))
 	}
+	finishSnapshotObservation(RunStatusSucceeded)
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Stage = RunStageShare
 		volume.Snapshot = snapshot
 		volume.UpdatedAt = r.now().UTC()
 	}, "snapshot ready", map[string]any{"snapshot_id": snapshot.ID})
 
-	if _, err := scanner.WithRetry(ctx, r.retry, func() error {
+	failWithCleanup := func(stage RunStage, err error) error {
+		cleanupErr := r.cleanupVolume(run, idx, provider, runMu)
+		return r.failVolume(ctx, run, idx, runMu, stage, joinErrors([]error{err, cleanupErr}))
+	}
+
+	finishShareObservation := startStageObservation(req.Target.Provider, RunStageShare, true)
+	sharedSnapshot, _, err := scanner.WithRetryValue(ctx, r.retry, func() (*SnapshotArtifact, error) {
 		return provider.ShareSnapshot(ctx, req.Target, req.ScannerHost, *snapshot)
-	}); err != nil {
+	})
+	if err != nil {
+		finishShareObservation(RunStatusFailed)
 		return failWithCleanup(RunStageShare, fmt.Errorf("share snapshot %s: %w", snapshot.ID, err))
+	}
+	finishShareObservation(RunStatusSucceeded)
+	if sharedSnapshot != nil {
+		snapshot = sharedSnapshot
 	}
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Stage = RunStageVolumeCreate
+		volume.Snapshot = snapshot
 		if volume.Snapshot != nil {
 			volume.Snapshot.Shared = true
 		}
 		volume.UpdatedAt = r.now().UTC()
 	}, "snapshot share complete", map[string]any{"snapshot_id": snapshot.ID})
 
+	finishVolumeCreateObservation := startStageObservation(req.Target.Provider, RunStageVolumeCreate, true)
 	inspection, _, err := scanner.WithRetryValue(ctx, r.retry, func() (*InspectionVolume, error) {
 		return provider.CreateInspectionVolume(ctx, req.Target, req.ScannerHost, *snapshot)
 	})
 	if err != nil {
+		finishVolumeCreateObservation(RunStatusFailed)
 		return failWithCleanup(RunStageVolumeCreate, fmt.Errorf("create inspection volume from snapshot %s: %w", snapshot.ID, err))
 	}
+	finishVolumeCreateObservation(RunStatusSucceeded)
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Stage = RunStageAttach
 		volume.Inspection = inspection
 		volume.UpdatedAt = r.now().UTC()
 	}, "inspection volume ready", map[string]any{"inspection_volume_id": inspection.ID})
+	finishAttachObservation := startStageObservation(req.Target.Provider, RunStageAttach, true)
 	attachmentSlot := idx
 	releaseAttachmentSlot := func() {}
 	if attachmentSlots != nil {
@@ -437,6 +490,7 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 				attachmentSlots <- attachmentSlot
 			}
 		case <-ctx.Done():
+			finishAttachObservation(RunStatusFailed)
 			return failWithCleanup(RunStageAttach, ctx.Err())
 		}
 	}
@@ -445,24 +499,31 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 		return provider.AttachInspectionVolume(ctx, req.Target, req.ScannerHost, *inspection, attachmentSlot)
 	})
 	if err != nil {
+		finishAttachObservation(RunStatusFailed)
 		return failWithCleanup(RunStageAttach, fmt.Errorf("attach inspection volume %s: %w", inspection.ID, err))
 	}
+	finishAttachObservation(RunStatusSucceeded)
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Stage = RunStageMount
 		volume.Attachment = attachment
 		volume.UpdatedAt = r.now().UTC()
 	}, "inspection volume attached", map[string]any{"device_name": attachment.DeviceName})
 
+	finishMountObservation := startStageObservation(req.Target.Provider, RunStageMount, true)
 	mount, err := r.mounter.Mount(ctx, *attachment, source)
 	if err != nil {
+		finishMountObservation(RunStatusFailed)
+		metrics.RecordWorkloadScanMountFailure(string(req.Target.Provider))
 		return failWithCleanup(RunStageMount, fmt.Errorf("mount inspection volume %s: %w", inspection.ID, err))
 	}
+	finishMountObservation(RunStatusSucceeded)
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Stage = RunStageAnalyze
 		volume.Mount = mount
 		volume.UpdatedAt = r.now().UTC()
 	}, "inspection volume mounted", map[string]any{"mount_path": mount.MountPath})
 
+	finishAnalyzeObservation := startStageObservation(req.Target.Provider, RunStageAnalyze, true)
 	report, analyzeErr := r.analyzer.Analyze(ctx, AnalysisInput{
 		RunID:       run.ID,
 		Target:      req.Target,
@@ -471,6 +532,11 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 		Mount:       *mount,
 		Metadata:    cloneStringMap(req.Metadata),
 	})
+	if analyzeErr != nil {
+		finishAnalyzeObservation(RunStatusFailed)
+	} else {
+		finishAnalyzeObservation(RunStatusSucceeded)
+	}
 	if analyzeErr == nil {
 		r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 			volume.Analysis = report
@@ -499,6 +565,14 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 func (r *Runner) cleanupVolume(run *RunRecord, idx int, provider Provider, runMu *sync.Mutex) error {
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), r.cleanupTimeout)
 	defer cancel()
+	providerKind := ProviderKind("")
+	if provider != nil {
+		providerKind = provider.Kind()
+	}
+	if run != nil {
+		providerKind = run.Provider
+	}
+	finishCleanupObservation := startStageObservation(providerKind, RunStageCleanup, true)
 
 	var errs []error
 	markAttempt := func(volume *VolumeScanRecord) {
@@ -584,12 +658,22 @@ func (r *Runner) cleanupVolume(run *RunRecord, idx int, provider Provider, runMu
 		}
 	}
 	if len(errs) > 0 {
+		finishCleanupObservation(RunStatusFailed)
 		r.updateVolume(cleanupCtx, run, idx, runMu, func(volume *VolumeScanRecord) {
 			volume.Cleanup.Error = joinErrors(errs).Error()
 			volume.UpdatedAt = r.now().UTC()
 		}, "cleanup failed", nil)
+		if run != nil && idx >= 0 && idx < len(run.Volumes) {
+			r.logger.Warn("workload scan cleanup failed",
+				"run_id", run.ID,
+				"provider", run.Provider,
+				"volume_id", run.Volumes[idx].Source.ID,
+				"error", joinErrors(errs),
+			)
+		}
 		return joinErrors(errs)
 	}
+	finishCleanupObservation(RunStatusSucceeded)
 	r.updateVolume(cleanupCtx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Cleanup.Error = ""
 		volume.UpdatedAt = r.now().UTC()
@@ -642,6 +726,13 @@ func (r *Runner) failRun(ctx context.Context, run *RunRecord, stage RunStage, er
 	if saveErr != nil {
 		return run, errors.Join(err, saveErr)
 	}
+	r.logger.Warn("workload scan failed",
+		"run_id", run.ID,
+		"provider", run.Provider,
+		"stage", stage,
+		"target_id", run.Target.Identity(),
+		"error", run.Error,
+	)
 	return run, err
 }
 
@@ -655,6 +746,15 @@ func (r *Runner) failVolume(ctx context.Context, run *RunRecord, idx int, runMu 
 		volume.UpdatedAt = completed
 		updateVolumeCosts(volume)
 	}, errorString(err), nil)
+	if run != nil && idx >= 0 && idx < len(run.Volumes) {
+		r.logger.Warn("workload scan volume failed",
+			"run_id", run.ID,
+			"provider", run.Provider,
+			"volume_id", run.Volumes[idx].Source.ID,
+			"stage", stage,
+			"error", errorString(err),
+		)
+	}
 	return err
 }
 
@@ -848,12 +948,18 @@ func validateRequest(req ScanRequest) error {
 			return fmt.Errorf("aws target instance id is required")
 		}
 	case ProviderGCP:
-		if strings.TrimSpace(req.Target.ProjectID) == "" || strings.TrimSpace(req.Target.InstanceName) == "" {
-			return fmt.Errorf("gcp target project id and instance name are required")
+		if strings.TrimSpace(req.Target.ProjectID) == "" || strings.TrimSpace(req.Target.Zone) == "" || strings.TrimSpace(req.Target.InstanceName) == "" {
+			return fmt.Errorf("gcp target project id, zone, and instance name are required")
+		}
+		if strings.TrimSpace(req.ScannerHost.Zone) == "" {
+			return fmt.Errorf("gcp scanner host zone is required")
 		}
 	case ProviderAzure:
 		if strings.TrimSpace(req.Target.SubscriptionID) == "" || strings.TrimSpace(req.Target.ResourceGroup) == "" || strings.TrimSpace(req.Target.InstanceName) == "" {
 			return fmt.Errorf("azure target subscription id, resource group, and instance name are required")
+		}
+		if strings.TrimSpace(req.ScannerHost.ResourceGroup) == "" {
+			return fmt.Errorf("azure scanner host resource group is required")
 		}
 	default:
 		return fmt.Errorf("unsupported provider %s", req.Target.Provider)
@@ -959,4 +1065,26 @@ func joinErrors(errs []error) error {
 		return nil
 	}
 	return errors.Join(filtered...)
+}
+
+func startRunObservation(provider ProviderKind, dryRun bool) func(RunStatus) {
+	started := time.Now()
+	metrics.AddWorkloadScanActiveRun(string(provider), 1)
+	return func(status RunStatus) {
+		metrics.AddWorkloadScanActiveRun(string(provider), -1)
+		metrics.RecordWorkloadScanRun(string(provider), string(status), dryRun, time.Since(started))
+	}
+}
+
+func startStageObservation(provider ProviderKind, stage RunStage, active bool) func(RunStatus) {
+	started := time.Now()
+	if active {
+		metrics.AddWorkloadScanActiveVolumeOp(string(provider), string(stage), 1)
+	}
+	return func(status RunStatus) {
+		if active {
+			metrics.AddWorkloadScanActiveVolumeOp(string(provider), string(stage), -1)
+		}
+		metrics.RecordWorkloadScanStage(string(provider), string(stage), string(status), time.Since(started))
+	}
 }

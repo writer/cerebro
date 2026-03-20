@@ -115,6 +115,7 @@ func initSQLiteStore(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS processed_events (
 		namespace TEXT NOT NULL,
 		event_key TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'processed',
 		payload_hash TEXT NOT NULL,
 		first_seen_at TIMESTAMP NOT NULL,
 		last_seen_at TIMESTAMP NOT NULL,
@@ -130,6 +131,9 @@ func initSQLiteStore(db *sql.DB) error {
 	`
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		return fmt.Errorf("init execution sqlite schema: %w", err)
+	}
+	if _, err := db.ExecContext(context.Background(), `ALTER TABLE processed_events ADD COLUMN status TEXT NOT NULL DEFAULT 'processed'`); err != nil && !strings.Contains(err.Error(), "duplicate column name: status") {
+		return fmt.Errorf("migrate processed_events status column: %w", err)
 	}
 	return nil
 }
@@ -176,6 +180,69 @@ func (s *SQLiteStore) UpsertRun(ctx context.Context, env RunEnvelope) error {
 		return fmt.Errorf("persist execution run: %w", err)
 	}
 	return nil
+}
+
+func (s *SQLiteStore) CompareAndSwapRun(ctx context.Context, current, next RunEnvelope) (bool, error) {
+	if s == nil || s.db == nil {
+		return false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	current.Namespace = strings.TrimSpace(current.Namespace)
+	current.RunID = strings.TrimSpace(current.RunID)
+	next.Namespace = strings.TrimSpace(next.Namespace)
+	next.RunID = strings.TrimSpace(next.RunID)
+	if current.Namespace == "" || current.RunID == "" || next.Namespace == "" || next.RunID == "" {
+		return false, fmt.Errorf("execution run namespace and id are required")
+	}
+	if current.Namespace != next.Namespace || current.RunID != next.RunID {
+		return false, fmt.Errorf("execution compare-and-swap requires matching namespace and run id")
+	}
+	current.Kind = strings.TrimSpace(current.Kind)
+	current.Status = strings.TrimSpace(current.Status)
+	current.Stage = strings.TrimSpace(current.Stage)
+	next.Kind = strings.TrimSpace(next.Kind)
+	next.Status = strings.TrimSpace(next.Status)
+	next.Stage = strings.TrimSpace(next.Stage)
+	next.SubmittedAt = next.SubmittedAt.UTC()
+	next.UpdatedAt = next.UpdatedAt.UTC()
+
+	query := `
+		UPDATE execution_runs
+		SET kind = ?, status = ?, stage = ?, submitted_at = ?, started_at = ?, completed_at = ?, updated_at = ?, payload = ?
+		WHERE namespace = ? AND run_id = ? AND kind = ? AND status = ? AND stage = ?
+	`
+	args := []any{
+		next.Kind,
+		next.Status,
+		next.Stage,
+		next.SubmittedAt,
+		nullableTime(next.StartedAt),
+		nullableTime(next.CompletedAt),
+		next.UpdatedAt,
+		next.Payload,
+		current.Namespace,
+		current.RunID,
+		current.Kind,
+		current.Status,
+		current.Stage,
+	}
+	if current.CompletedAt == nil {
+		query += ` AND completed_at IS NULL`
+	} else {
+		query += ` AND completed_at = ?`
+		args = append(args, current.CompletedAt.UTC())
+	}
+	result, err := s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return false, fmt.Errorf("compare-and-swap execution run: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("inspect execution run compare-and-swap result: %w", err)
+	}
+	return rows == 1, nil
 }
 
 func (s *SQLiteStore) ReplaceRunWithEvents(ctx context.Context, env RunEnvelope, events []EventEnvelope) error {

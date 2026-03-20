@@ -1,14 +1,17 @@
 {
   "id": "azure-nsg-admin-port",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "NSG Allows Admin Ports from Internet",
   "description": "Network Security Group allows SSH (22) or RDP (3389) access from any source (Internet)",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::network::security_group",
   "conditions": [
-    "security_rules ANY (direction == 'Inbound' AND access == 'Allow' AND source_address_prefix IN ('*', 'Internet', '0.0.0.0/0') AND destination_port_range IN ('22', '3389', '*'))"
+    "list_value(path(resource, \"security_rules\")).exists(item, (cmp_eq(path(item, \"direction\"), \"Inbound\")) \u0026\u0026 (cmp_eq(path(item, \"access\"), \"Allow\")) \u0026\u0026 (in_list(path(item, \"source_address_prefix\"), [\"*\",\"Internet\",\"0.0.0.0/0\"])) \u0026\u0026 (in_list(path(item, \"destination_port_range\"), [\"22\",\"3389\",\"*\"])))"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Restrict source addresses to specific IPs or ranges. Use Azure Bastion for secure RDP/SSH access. Implement Just-in-Time VM access.",
   "tags": [
     "azure",
     "nsg",
@@ -16,6 +19,7 @@
     "admin-access",
     "cis-azure-6.1"
   ],
+  "remediation": "Restrict source addresses to specific IPs or ranges. Use Azure Bastion for secure RDP/SSH access. Implement Just-in-Time VM access.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "IDENTITY_RISK",

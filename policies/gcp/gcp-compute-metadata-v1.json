@@ -1,20 +1,24 @@
 {
   "id": "gcp-compute-metadata-v1",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Instance Metadata v1 Enabled",
   "description": "GCP Compute instance does not block legacy metadata endpoint (v1), making it vulnerable to SSRF attacks",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::compute::instance",
   "conditions": [
-    "metadata.enable-legacy-endpoints != 'false'"
+    "cmp_ne(path(resource, \"metadata.enable-legacy-endpoints\"), \"false\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Set metadata key 'enable-legacy-endpoints' to 'false' to block the v1 metadata endpoint.",
   "tags": [
     "cis-gcp-4.4",
     "ssrf",
     "metadata",
     "compute"
   ],
+  "remediation": "Set metadata key 'enable-legacy-endpoints' to 'false' to block the v1 metadata endpoint.",
   "risk_categories": [
     "UNPROTECTED_DATA"
   ],

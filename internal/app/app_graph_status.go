@@ -62,6 +62,25 @@ func (a *App) CurrentSecurityGraph() *graph.Graph {
 	return a.SecurityGraph
 }
 
+func (a *App) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
+	if a == nil {
+		return nil
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	current := a.CurrentSecurityGraph()
+	if tenantID == "" {
+		return current
+	}
+	manager := a.ensureTenantSecurityGraphShards()
+	if manager == nil {
+		if current == nil {
+			return nil
+		}
+		return current.SubgraphForTenant(tenantID)
+	}
+	return manager.GraphForTenant(current, tenantID)
+}
+
 func (a *App) setSecurityGraph(g *graph.Graph) {
 	if a == nil {
 		return
@@ -70,10 +89,18 @@ func (a *App) setSecurityGraph(g *graph.Graph) {
 	defer a.securityGraphInitMu.Unlock()
 	a.SecurityGraph = g
 	if g == nil {
+		metrics.SetGraphCounts(0, 0)
 		a.Propagation = nil
+		if manager := a.currentTenantSecurityGraphShards(); manager != nil {
+			manager.SetSource(nil)
+		}
 		return
 	}
+	metrics.SetGraphCounts(g.NodeCount(), g.EdgeCount())
 	a.Propagation = graph.NewPropagationEngine(g)
+	if manager := a.currentTenantSecurityGraphShards(); manager != nil {
+		manager.SetSource(g)
+	}
 }
 
 func (a *App) GraphBuildSnapshot() GraphBuildSnapshot {
@@ -88,7 +115,11 @@ func (a *App) GraphBuildSnapshot() GraphBuildSnapshot {
 	}
 	a.graphBuildMu.RUnlock()
 
-	if securityGraph := a.CurrentSecurityGraph(); securityGraph != nil {
+	securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
+	if err != nil && a != nil && a.Logger != nil {
+		a.Logger.Warn("failed to resolve security graph for build snapshot", "error", err)
+	}
+	if securityGraph != nil {
 		snapshot.NodeCount = securityGraph.NodeCount()
 	}
 	return snapshot

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	apicontract "github.com/writer/cerebro/api"
+	"github.com/writer/cerebro/internal/runtime"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,6 +22,57 @@ type openAPIContractCase struct {
 	requestPath    string
 	body           interface{}
 	expectedStatus int
+}
+
+func seedRuntimeApprovalExecution(t *testing.T, s *Server, policyID, ip string) *runtime.ResponseExecution {
+	t.Helper()
+	s.app.RuntimeRespond.SetActionHandler(runtime.NewDefaultActionHandler(runtime.DefaultActionHandlerOptions{
+		Blocklist: s.app.RuntimeRespond.Blocklist(),
+	}))
+	if err := s.app.RuntimeRespond.CreatePolicy(&runtime.ResponsePolicy{
+		ID:              policyID,
+		Name:            policyID,
+		Enabled:         true,
+		RequireApproval: true,
+		Triggers: []runtime.PolicyTrigger{{
+			Type:     "finding",
+			Category: runtime.CategoryReverseShell,
+			Severity: "high",
+		}},
+		Actions: []runtime.PolicyAction{{
+			Type:       runtime.ActionBlockIP,
+			Parameters: map[string]string{"target": "destination"},
+		}},
+	}); err != nil {
+		t.Fatalf("CreatePolicy: %v", err)
+	}
+	execution, err := s.app.RuntimeRespond.ProcessFinding(context.Background(), &runtime.RuntimeFinding{
+		ID:           policyID + "-finding",
+		RuleID:       "reverse-shell",
+		Category:     runtime.CategoryReverseShell,
+		Severity:     "critical",
+		ResourceID:   "pod-1",
+		ResourceType: "pod",
+		Event: &runtime.RuntimeEvent{
+			ID:           policyID + "-event",
+			ResourceID:   "pod-1",
+			ResourceType: "pod",
+			Network: &runtime.NetworkEvent{
+				SrcIP: "10.0.0.5",
+				DstIP: ip,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessFinding: %v", err)
+	}
+	if execution == nil {
+		t.Fatal("expected runtime execution")
+	}
+	if execution.Status != runtime.StatusApproval {
+		t.Fatalf("status = %s, want %s", execution.Status, runtime.StatusApproval)
+	}
+	return execution
 }
 
 func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
@@ -300,6 +353,13 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			method:         http.MethodGet,
 			pathTemplate:   "/api/v1/tickets",
 			requestPath:    "/api/v1/tickets/",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "platform workload scan targets contract",
+			method:         http.MethodGet,
+			pathTemplate:   "/api/v1/platform/workload-scan/targets",
+			requestPath:    "/api/v1/platform/workload-scan/targets",
 			expectedStatus: http.StatusOK,
 		},
 	}

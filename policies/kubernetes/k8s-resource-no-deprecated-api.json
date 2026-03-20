@@ -1,19 +1,23 @@
 {
   "id": "k8s-resource-no-deprecated-api",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Kubernetes Resources Avoid Deprecated APIs",
   "description": "Audit events should not reference deprecated Kubernetes API versions.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "kubernetes::audit_event",
   "conditions": [
-    "involved_object.api_version MATCHES '(extensions/v1beta1|apps/v1beta1|apps/v1beta2|networking.k8s.io/v1beta1|rbac.authorization.k8s.io/v1beta1|batch/v1beta1|policy/v1beta1)'"
+    "matches_value(path(resource, \"involved_object.api_version\"), \"(extensions/v1beta1|apps/v1beta1|apps/v1beta2|networking.k8s.io/v1beta1|rbac.authorization.k8s.io/v1beta1|batch/v1beta1|policy/v1beta1)\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Migrate manifests and controllers to supported stable API versions.",
   "tags": [
     "kubernetes",
     "api",
     "upgrade"
   ],
+  "remediation": "Migrate manifests and controllers to supported stable API versions.",
   "risk_categories": [
     "VULNERABILITY",
     "MISCONFIGURATION"

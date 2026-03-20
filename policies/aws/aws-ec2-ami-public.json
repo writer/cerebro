@@ -1,20 +1,24 @@
 {
   "id": "aws-ec2-ami-not-public",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "EC2 AMI Not Public",
   "description": "EC2 AMIs should not be publicly accessible",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ec2::ami",
   "conditions": [
-    "is_public == true"
+    "cmp_eq(path(resource, \"is_public\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Modify AMI permissions to remove public access.",
   "tags": [
     "ec2",
     "ami",
     "data-exposure",
     "public-access"
   ],
+  "remediation": "Modify AMI permissions to remove public access.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA",

@@ -1,20 +1,24 @@
 {
   "id": "org-bottleneck-critical",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Single Person Bridges Multiple Teams",
   "description": "One person is the sole communication link between multiple teams.",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "org::person",
   "conditions": [
-    "betweenness_centrality > 0.8",
-    "bridged_teams > 1"
+    "cmp_gt(path(resource, \"betweenness_centrality\"), 0.8)",
+    "cmp_gt(path(resource, \"bridged_teams\"), 1)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Establish backup communication channels and cross-team coverage.",
   "tags": [
     "org-topology",
     "bottleneck",
     "knowledge-flow"
   ],
+  "remediation": "Establish backup communication channels and cross-team coverage.",
   "risk_categories": [
     "BOTTLENECK_RISK",
     "RESILIENCE_RISK"

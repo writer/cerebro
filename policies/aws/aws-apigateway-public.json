@@ -1,21 +1,25 @@
 {
   "id": "aws-apigateway-public",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "API Gateway Publicly Accessible",
   "description": "API Gateway REST API is publicly accessible from the internet without authorization",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::apigateway::rest_api",
   "conditions": [
-    "endpoint_configuration.types CONTAINS 'EDGE' OR endpoint_configuration.types CONTAINS 'REGIONAL'",
-    "web_acl_arn == null"
+    "(contains_value(path(resource, \"endpoint_configuration.types\"), \"EDGE\")) || (contains_value(path(resource, \"endpoint_configuration.types\"), \"REGIONAL\"))",
+    "cmp_eq(path(resource, \"web_acl_arn\"), null)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Configure the API as private with VPC endpoint access. Use resource policies to restrict access. Enable authorization on all methods. Attach a WAF web ACL.",
   "tags": [
     "aws",
     "apigateway",
     "network-exposure",
     "cis-aws-2.6"
   ],
+  "remediation": "Configure the API as private with VPC endpoint access. Use resource policies to restrict access. Enable authorization on all methods. Attach a WAF web ACL.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE"
   ],

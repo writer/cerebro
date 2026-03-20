@@ -19,6 +19,7 @@ import (
 
 	"github.com/writer/cerebro/internal/graph"
 	reports "github.com/writer/cerebro/internal/graph/reports"
+	risk "github.com/writer/cerebro/internal/graph/risk"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -128,12 +129,21 @@ func (s *Server) platformGraphTemplates(w http.ResponseWriter, r *http.Request) 
 	s.graphQueryTemplates(w, r)
 }
 
-func (s *Server) listPlatformGraphSnapshots(w http.ResponseWriter, _ *http.Request) {
-	s.json(w, http.StatusOK, s.platformGraphSnapshotCollection())
+func (s *Server) listPlatformGraphSnapshots(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, s.platformGraphSnapshotCollection(r.Context()))
 }
 
-func (s *Server) getCurrentPlatformGraphSnapshot(w http.ResponseWriter, _ *http.Request) {
-	current := graph.CurrentGraphSnapshotRecord(s.app.SecurityGraph)
+func (s *Server) getCurrentPlatformGraphSnapshot(w http.ResponseWriter, r *http.Request) {
+	view, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			s.errorFromErr(w, err)
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
+	current := graph.CurrentGraphSnapshotRecord(view)
 	if current == nil {
 		s.error(w, http.StatusNotFound, "graph snapshot not available")
 		return
@@ -147,12 +157,27 @@ func (s *Server) getPlatformGraphSnapshot(w http.ResponseWriter, r *http.Request
 		s.error(w, http.StatusBadRequest, "snapshot id required")
 		return
 	}
-	snapshot, ok := s.platformGraphSnapshot(snapshotID)
+	snapshot, ok := s.platformGraphSnapshot(r.Context(), snapshotID)
 	if !ok {
 		s.error(w, http.StatusNotFound, "graph snapshot not found")
 		return
 	}
 	s.json(w, http.StatusOK, snapshot)
+}
+
+func (s *Server) currentPlatformSecurityGraphView(ctx context.Context) (*graph.Graph, error) {
+	if s == nil || s.app == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return currentOrStoredGraphView(ctx, s.app.CurrentSecurityGraph(), s.app.CurrentSecurityGraphStore())
+}
+
+func (s *Server) currentPlatformReportLineage(ctx context.Context, definition reports.ReportDefinition) reports.ReportLineage {
+	g, err := s.currentPlatformSecurityGraphView(ctx)
+	if err != nil {
+		return reports.BuildReportLineage(nil, definition)
+	}
+	return reports.BuildReportLineage(g, definition)
 }
 
 func (s *Server) platformWriteClaim(w http.ResponseWriter, r *http.Request) {
@@ -164,11 +189,6 @@ func (s *Server) platformWriteDecision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createSecurityAttackPathJob(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	var req securityAttackPathJobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request body")
@@ -195,6 +215,15 @@ func (s *Server) createSecurityAttackPathJob(w http.ResponseWriter, r *http.Requ
 		s.error(w, http.StatusBadRequest, "threshold must be greater than or equal to 0")
 		return
 	}
+	analysisGraph, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if analysisGraph == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
 
 	job := s.newPlatformJob(r.Context(), "security.attack_path_analysis", map[string]any{
 		"max_depth": maxDepth,
@@ -204,10 +233,10 @@ func (s *Server) createSecurityAttackPathJob(w http.ResponseWriter, r *http.Requ
 
 	// #nosec G118 -- platform jobs intentionally outlive the originating request and use job-owned cancellation.
 	s.startPlatformJob(job.ID, func(_ context.Context) (any, error) {
-		simulator := graph.NewAttackPathSimulator(s.app.SecurityGraph)
+		simulator := risk.NewAttackPathSimulator(analysisGraph)
 		result := simulator.Simulate(maxDepth)
 		if req.Threshold > 0 {
-			filtered := make([]*graph.ScoredAttackPath, 0, len(result.Paths))
+			filtered := make([]*risk.ScoredAttackPath, 0, len(result.Paths))
 			for _, path := range result.Paths {
 				if path.TotalScore >= req.Threshold {
 					filtered = append(filtered, path)
@@ -398,7 +427,7 @@ func (s *Server) startPlatformReportRun(ctx context.Context, reportID string, re
 	}
 
 	now := time.Now().UTC()
-	lineage := reports.BuildReportLineage(s.app.SecurityGraph, definition)
+	lineage := s.currentPlatformReportLineage(ctx, definition)
 	storagePolicy := reports.BuildReportStoragePolicy(materializeResult, false)
 	cacheSource := s.reusablePlatformReportRun(reportID, cacheKey, lineage, "")
 	if strings.TrimSpace(requestedBy) == "" {
@@ -662,7 +691,7 @@ func (s *Server) retryPlatformIntelligenceReportRun(w http.ResponseWriter, r *ht
 		retryPolicy = *req.RetryPolicy
 	}
 	retryPolicy = reports.NormalizeReportRetryPolicy(retryPolicy)
-	lineage := reports.BuildReportLineage(s.app.SecurityGraph, definition)
+	lineage := s.currentPlatformReportLineage(r.Context(), definition)
 	cacheSource := s.reusablePlatformReportRun(reportID, cacheKey, lineage, runID)
 
 	now := time.Now().UTC()
@@ -1005,7 +1034,7 @@ func (s *Server) executePlatformReportRun(ctx context.Context, runID string, def
 	if !ok || artifactRun == nil {
 		return fmt.Errorf("report run disappeared before artifact build: %s", runID)
 	}
-	sections, sectionEmissions, snapshot, err := s.buildPlatformReportArtifacts(artifactRun, runID, definition, result, materializeResult, completedAt)
+	sections, sectionEmissions, snapshot, err := s.buildPlatformReportArtifacts(ctx, artifactRun, runID, definition, result, materializeResult, completedAt)
 	if err != nil {
 		classification := platformReportAttemptClassification(err)
 		if updateErr := s.updatePlatformReportRun(runID, func(run *reports.ReportRun) {
@@ -1691,8 +1720,8 @@ func (s *Server) selectPlatformReportCacheSource(run *reports.ReportRun) *report
 	return s.reusablePlatformReportRun(run.ReportID, run.CacheKey, run.Lineage, run.ID)
 }
 
-func (s *Server) buildPlatformReportArtifacts(run *reports.ReportRun, runID string, definition reports.ReportDefinition, result map[string]any, materializeResult bool, completedAt time.Time) ([]reports.ReportSectionResult, []reports.ReportSectionEmission, *reports.ReportSnapshot, error) {
-	options := s.platformReportSectionBuildOptions(run)
+func (s *Server) buildPlatformReportArtifacts(ctx context.Context, run *reports.ReportRun, runID string, definition reports.ReportDefinition, result map[string]any, materializeResult bool, completedAt time.Time) ([]reports.ReportSectionResult, []reports.ReportSectionEmission, *reports.ReportSnapshot, error) {
+	options := s.platformReportSectionBuildOptions(ctx, run)
 	sections := reports.BuildReportSectionResultsWithOptions(definition, result, options)
 	sectionEmissions := reports.BuildReportSectionEmissionsFromResults(sections, result, completedAt)
 	var snapshot *reports.ReportSnapshot
@@ -1706,12 +1735,16 @@ func (s *Server) buildPlatformReportArtifacts(run *reports.ReportRun, runID stri
 	return sections, sectionEmissions, snapshot, nil
 }
 
-func (s *Server) platformReportSectionBuildOptions(run *reports.ReportRun) *reports.ReportSectionBuildOptions {
+func (s *Server) platformReportSectionBuildOptions(ctx context.Context, run *reports.ReportRun) *reports.ReportSectionBuildOptions {
 	if run == nil {
 		return nil
 	}
+	g, err := s.currentPlatformSecurityGraphView(ctx)
+	if err != nil {
+		g = nil
+	}
 	options := &reports.ReportSectionBuildOptions{
-		Graph:            s.app.SecurityGraph,
+		Graph:            g,
 		TimeSlice:        run.TimeSlice,
 		CacheStatus:      run.CacheStatus,
 		CacheSourceRunID: run.CacheSourceRunID,
@@ -1767,12 +1800,12 @@ func (s *Server) clonePlatformReportRunsLocked() map[string]*reports.ReportRun {
 	return cloned
 }
 
-func (s *Server) platformGraphSnapshotCollection() graph.GraphSnapshotCollection {
-	return graph.GraphSnapshotCollectionFromRecords(s.platformGraphSnapshotRecords(), time.Now().UTC())
+func (s *Server) platformGraphSnapshotCollection(ctx context.Context) graph.GraphSnapshotCollection {
+	return graph.GraphSnapshotCollectionFromRecords(s.platformGraphSnapshotRecords(ctx), time.Now().UTC())
 }
 
-func (s *Server) platformGraphSnapshot(snapshotID string) (*graph.GraphSnapshotRecord, bool) {
-	record, ok := s.platformGraphSnapshotRecords()[strings.TrimSpace(snapshotID)]
+func (s *Server) platformGraphSnapshot(ctx context.Context, snapshotID string) (*graph.GraphSnapshotRecord, bool) {
+	record, ok := s.platformGraphSnapshotRecords(ctx)[strings.TrimSpace(snapshotID)]
 	if !ok || record == nil {
 		return nil, false
 	}

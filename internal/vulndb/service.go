@@ -23,17 +23,6 @@ type advisoryStore interface {
 	UpsertEPSS(ctx context.Context, cve string, score, percentile float64) (int64, error)
 }
 
-type advisoryWriteStore interface {
-	UpsertAdvisory(ctx context.Context, vuln Vulnerability, affected []AffectedPackage) error
-	UpdateSyncState(ctx context.Context, state SyncState) error
-	MarkKEV(ctx context.Context, cves []string) (int64, error)
-	UpsertEPSS(ctx context.Context, cve string, score, percentile float64) (int64, error)
-}
-
-type transactionalWriteStore interface {
-	WithWriteTx(ctx context.Context, fn func(advisoryWriteStore) error) error
-}
-
 type Service struct {
 	store advisoryStore
 	now   func() time.Time
@@ -52,12 +41,16 @@ func (s *Service) LookupCVE(cve string) (*scanner.CVEInfo, bool) {
 		return nil, false
 	}
 	return &scanner.CVEInfo{
-		ID:          vuln.ID,
-		Severity:    vuln.Severity,
-		CVSS:        vuln.CVSS,
-		Published:   vuln.PublishedAt,
-		Exploitable: vuln.InKEV || vuln.EPSSScore >= 0.5,
-		InKEV:       vuln.InKEV,
+		ID:             vuln.ID,
+		Severity:       vuln.Severity,
+		Description:    firstNonEmpty(vuln.Summary, vuln.Details),
+		CVSS:           vuln.CVSS,
+		EPSSScore:      vuln.EPSSScore,
+		EPSSPercentile: vuln.EPSSPercentile,
+		Published:      vuln.PublishedAt,
+		Exploitable:    vuln.InKEV || vuln.EPSSScore >= 0.5,
+		InKEV:          vuln.InKEV,
+		References:     uniqueStrings(vuln.References),
 	}, true
 }
 
@@ -80,12 +73,12 @@ func (s *Service) ListSyncStates(ctx context.Context) ([]SyncState, error) {
 	return s.store.ListSyncStates(ctx)
 }
 
-func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo, packages []filesystemanalyzer.PackageRecord) ([]scanner.ImageVulnerability, error) {
+func (s *Service) MatchPackages(ctx context.Context, osInfo filesystemanalyzer.OSInfo, packages []filesystemanalyzer.PackageRecord) ([]scanner.ImageVulnerability, error) {
 	if s == nil || s.store == nil || len(packages) == 0 {
 		return nil, nil
 	}
 	matches := make([]scanner.ImageVulnerability, 0)
-	matchIndexes := make(map[string]int)
+	seen := make(map[string]struct{})
 	for _, pkg := range packages {
 		ecosystem := normalizeEcosystem(pkg.Ecosystem)
 		name := strings.TrimSpace(strings.ToLower(pkg.Name))
@@ -96,6 +89,7 @@ func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo
 		if err != nil {
 			return nil, err
 		}
+		candidates = filterCandidatesForOS(candidates, osInfo)
 		for _, candidate := range candidates {
 			if candidate.Vulnerability.WithdrawnAt != nil {
 				continue
@@ -106,7 +100,11 @@ func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo
 			}
 			identifier := primaryVulnerabilityID(candidate.Vulnerability)
 			key := strings.ToLower(identifier + "|" + name + "|" + pkg.Version)
-			match := scanner.ImageVulnerability{
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			matches = append(matches, scanner.ImageVulnerability{
 				ID:               fmt.Sprintf("vulndb:%s:%s", sanitizeID(identifier), sanitizeID(name)),
 				CVE:              identifier,
 				Severity:         normalizeSeverity(candidate.Vulnerability.Severity),
@@ -115,49 +113,116 @@ func (s *Service) MatchPackages(ctx context.Context, _ filesystemanalyzer.OSInfo
 				FixedVersion:     fixedVersion,
 				Description:      firstNonEmpty(candidate.Vulnerability.Summary, candidate.Vulnerability.Details),
 				CVSS:             candidate.Vulnerability.CVSS,
+				EPSSScore:        candidate.Vulnerability.EPSSScore,
+				EPSSPercentile:   candidate.Vulnerability.EPSSPercentile,
 				Published:        candidate.Vulnerability.PublishedAt,
-			}
-			match.Exploitable = candidate.Vulnerability.InKEV || candidate.Vulnerability.EPSSScore >= 0.5
-			match.InKEV = candidate.Vulnerability.InKEV
-			match.References = uniqueStrings(candidate.Vulnerability.References)
-			if idx, ok := matchIndexes[key]; ok {
-				matches[idx] = mergeMatchedVulnerability(matches[idx], match)
-				continue
-			}
-			matchIndexes[key] = len(matches)
-			matches = append(matches, match)
+				Exploitable:      candidate.Vulnerability.InKEV || candidate.Vulnerability.EPSSScore >= 0.5,
+				InKEV:            candidate.Vulnerability.InKEV,
+				References:       uniqueStrings(candidate.Vulnerability.References),
+			})
 		}
 	}
 	return matches, nil
 }
 
-func mergeMatchedVulnerability(existing, incoming scanner.ImageVulnerability) scanner.ImageVulnerability {
-	merged := existing
-	if strings.TrimSpace(merged.ID) == "" {
-		merged.ID = strings.TrimSpace(incoming.ID)
+func filterCandidatesForOS(candidates []candidateRecord, osInfo filesystemanalyzer.OSInfo) []candidateRecord {
+	if len(candidates) == 0 {
+		return nil
 	}
-	if strings.TrimSpace(merged.CVE) == "" {
-		merged.CVE = strings.TrimSpace(incoming.CVE)
+	distribution, version := normalizeOSDistribution(osInfo)
+	if distribution == "" {
+		return candidates
 	}
-	if strings.TrimSpace(merged.Severity) == "" || strings.EqualFold(strings.TrimSpace(merged.Severity), "unknown") {
-		merged.Severity = strings.TrimSpace(incoming.Severity)
+	filtered := make([]candidateRecord, 0, len(candidates))
+	unscoped := make([]candidateRecord, 0, len(candidates))
+	hasScopedCandidates := false
+	matchedScopedVulns := make(map[string]struct{})
+	for _, candidate := range candidates {
+		affectedDistribution := normalizeDistributionName(candidate.Affected.Distribution)
+		if affectedDistribution == "" {
+			unscoped = append(unscoped, candidate)
+			continue
+		}
+		hasScopedCandidates = true
+		if affectedDistribution != distribution {
+			continue
+		}
+		if !distributionVersionMatches(version, candidate.Affected.DistributionVersion) {
+			continue
+		}
+		matchedScopedVulns[primaryVulnerabilityID(candidate.Vulnerability)] = struct{}{}
+		filtered = append(filtered, candidate)
 	}
-	if strings.TrimSpace(merged.FixedVersion) == "" {
-		merged.FixedVersion = strings.TrimSpace(incoming.FixedVersion)
+	if len(filtered) == 0 && hasScopedCandidates {
+		return unscoped
 	}
-	if strings.TrimSpace(merged.Description) == "" {
-		merged.Description = strings.TrimSpace(incoming.Description)
+	for _, candidate := range unscoped {
+		if _, ok := matchedScopedVulns[primaryVulnerabilityID(candidate.Vulnerability)]; ok {
+			continue
+		}
+		filtered = append(filtered, candidate)
 	}
-	if merged.CVSS == 0 {
-		merged.CVSS = incoming.CVSS
+	return filtered
+}
+
+func normalizeOSDistribution(osInfo filesystemanalyzer.OSInfo) (string, string) {
+	distribution := normalizeDistributionName(firstNonEmpty(osInfo.ID, osInfo.Family, osInfo.Name))
+	version := firstNonEmpty(osInfo.VersionID, osInfo.Version)
+	return distribution, version
+}
+
+func normalizeDistributionName(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "alpine":
+		return "alpine"
+	case "ubuntu":
+		return "ubuntu"
+	case "deb", "debian":
+		return "debian"
+	case "rhel", "redhat", "red hat", "centos", "rocky", "almalinux", "ubi":
+		return "rhel"
+	case "amzn", "amazon", "amazonlinux":
+		return "amzn"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
 	}
-	if merged.Published.IsZero() {
-		merged.Published = incoming.Published
+}
+
+func distributionVersionMatches(installed, affected string) bool {
+	affected = strings.TrimSpace(affected)
+	if affected == "" {
+		return true
 	}
-	merged.Exploitable = merged.Exploitable || incoming.Exploitable
-	merged.InKEV = merged.InKEV || incoming.InKEV
-	merged.References = uniqueStrings(append(append([]string{}, merged.References...), incoming.References...))
-	return merged
+	installed = strings.TrimSpace(installed)
+	if installed == "" {
+		return true
+	}
+	if installed == affected || strings.HasPrefix(installed, affected+".") || strings.HasPrefix(affected, installed+".") {
+		return true
+	}
+	installedMajor := leadingNumericComponent(installed)
+	affectedMajor := leadingNumericComponent(affected)
+	if installedMajor == "" || affectedMajor == "" {
+		return false
+	}
+	return installedMajor == affectedMajor
+}
+
+func leadingNumericComponent(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '.' || r == '-' || r == ' '
+	})
+	if len(parts) == 0 {
+		return ""
+	}
+	if _, err := strconv.Atoi(parts[0]); err != nil {
+		return ""
+	}
+	return parts[0]
 }
 
 func matchPackageVersion(installed string, affected AffectedPackage) (bool, string) {
@@ -232,7 +297,10 @@ func compareAPKVersions(left, right string) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	cmp := compareAPKBaseVersions(leftBase, rightBase)
+	cmp, ok := compareSemverLooseVersions(leftBase, rightBase)
+	if !ok {
+		return 0, false
+	}
 	if cmp != 0 {
 		return cmp, true
 	}
@@ -244,136 +312,6 @@ func compareAPKVersions(left, right string) (int, bool) {
 	default:
 		return 0, true
 	}
-}
-
-type apkToken struct {
-	numeric bool
-	value   string
-}
-
-func compareAPKBaseVersions(left, right string) int {
-	leftTokens := tokenizeAPKVersion(left)
-	rightTokens := tokenizeAPKVersion(right)
-	length := len(leftTokens)
-	if len(rightTokens) > length {
-		length = len(rightTokens)
-	}
-	for i := 0; i < length; i++ {
-		leftToken := apkToken{value: ""}
-		if i < len(leftTokens) {
-			leftToken = leftTokens[i]
-		}
-		rightToken := apkToken{value: ""}
-		if i < len(rightTokens) {
-			rightToken = rightTokens[i]
-		}
-		cmp := compareAPKToken(leftToken, rightToken)
-		if cmp != 0 {
-			return cmp
-		}
-	}
-	return 0
-}
-
-func tokenizeAPKVersion(value string) []apkToken {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	tokens := make([]apkToken, 0, len(value))
-	for i := 0; i < len(value); {
-		switch {
-		case isAPKDigit(value[i]):
-			start := i
-			for i < len(value) && isAPKDigit(value[i]) {
-				i++
-			}
-			tokens = append(tokens, apkToken{numeric: true, value: value[start:i]})
-		case isAPKAlpha(value[i]):
-			start := i
-			for i < len(value) && isAPKAlpha(value[i]) {
-				i++
-			}
-			tokens = append(tokens, apkToken{value: strings.ToLower(value[start:i])})
-		default:
-			i++
-		}
-	}
-	return tokens
-}
-
-func compareAPKToken(left, right apkToken) int {
-	switch {
-	case left.numeric && right.numeric:
-		return compareNumericToken(left.value, right.value)
-	case left.numeric:
-		return 1
-	case right.numeric:
-		return -1
-	default:
-		return compareAPKTextToken(left.value, right.value)
-	}
-}
-
-func compareNumericToken(left, right string) int {
-	left = strings.TrimLeft(left, "0")
-	right = strings.TrimLeft(right, "0")
-	if left == "" {
-		left = "0"
-	}
-	if right == "" {
-		right = "0"
-	}
-	switch {
-	case len(left) < len(right):
-		return -1
-	case len(left) > len(right):
-		return 1
-	default:
-		return strings.Compare(left, right)
-	}
-}
-
-func compareAPKTextToken(left, right string) int {
-	leftOrder := apkTextOrder(left)
-	rightOrder := apkTextOrder(right)
-	switch {
-	case leftOrder < rightOrder:
-		return -1
-	case leftOrder > rightOrder:
-		return 1
-	case leftOrder != 5:
-		return 0
-	default:
-		return strings.Compare(left, right)
-	}
-}
-
-func apkTextOrder(value string) int {
-	switch value {
-	case "alpha":
-		return -40
-	case "beta":
-		return -30
-	case "pre":
-		return -20
-	case "rc":
-		return -10
-	case "":
-		return 0
-	case "p":
-		return 10
-	default:
-		return 5
-	}
-}
-
-func isAPKDigit(value byte) bool {
-	return value >= '0' && value <= '9'
-}
-
-func isAPKAlpha(value byte) bool {
-	return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z')
 }
 
 func splitAPKRevision(value string) (string, int, bool) {

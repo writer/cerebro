@@ -69,7 +69,12 @@ func (s *Server) registerGraphSchema(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getGraphSchemaHealth(w http.ResponseWriter, r *http.Request) {
-	if s.app.SecurityGraph == nil {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -94,6 +99,6 @@ func (s *Server) getGraphSchemaHealth(w http.ResponseWriter, r *http.Request) {
 		sinceVersion = parsed
 	}
 
-	report := graph.AnalyzeSchemaHealth(s.app.SecurityGraph, historyLimit, sinceVersion)
+	report := graph.AnalyzeSchemaHealth(g, historyLimit, sinceVersion)
 	s.json(w, http.StatusOK, report)
 }

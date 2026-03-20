@@ -11,8 +11,6 @@ import (
 	"github.com/writer/cerebro/internal/snowflake"
 )
 
-var appShutdownTimeout = 30 * time.Second
-
 func (a *App) initRepositories() {
 	a.FindingsRepo = nil
 	a.TicketsRepo = nil
@@ -47,8 +45,8 @@ func (a *App) initSnowflakeFindings(ctx context.Context) {
 }
 
 func (a *App) initScanWatermarks(ctx context.Context) {
-	if a.Snowflake != nil {
-		a.ScanWatermarks = scanner.NewWatermarkStore(a.Snowflake.DB())
+	if a.Warehouse != nil && a.Warehouse.DB() != nil {
+		a.ScanWatermarks = scanner.NewWatermarkStore(a.Warehouse.DB())
 		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil {
 			a.Logger.Warn("failed to load scan watermarks", "error", err)
 		}
@@ -58,13 +56,13 @@ func (a *App) initScanWatermarks(ctx context.Context) {
 	a.Logger.Info("scan watermarks initialized")
 }
 
-// initAvailableTables caches the Snowflake table list for reuse by graph builder and policy validation.
+// initAvailableTables caches the warehouse table list for reuse by graph builder and policy validation.
 
 func (a *App) initAvailableTables(ctx context.Context) {
-	if a.Snowflake == nil {
+	if a.Warehouse == nil {
 		return
 	}
-	tables, err := a.Snowflake.ListAvailableTables(ctx)
+	tables, err := a.Warehouse.ListAvailableTables(ctx)
 	if err != nil {
 		a.Logger.Warn("failed to list available tables", "error", err)
 		return
@@ -75,8 +73,8 @@ func (a *App) initAvailableTables(ctx context.Context) {
 // validatePolicyCoverage checks that required tables exist for loaded policies
 
 func (a *App) validatePolicyCoverage(_ context.Context) error {
-	if a.Snowflake == nil {
-		a.Logger.Warn("skipping policy coverage validation - Snowflake not configured")
+	if a.Warehouse == nil {
+		a.Logger.Warn("skipping policy coverage validation - warehouse not configured")
 		return nil
 	}
 
@@ -193,8 +191,9 @@ func topStrings(values []string, limit int) []string {
 
 func (a *App) Close() error {
 	var errs []error
+	shutdownTimeout := a.Config.ShutdownTimeoutOrDefault()
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), appShutdownTimeout)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
 
 	// Sync findings store to persist any pending changes
@@ -204,30 +203,31 @@ func (a *App) Close() error {
 		}
 	}
 
-	if a.TapConsumer != nil {
-		drainTimeout := appShutdownTimeout
-		if a.Config != nil && a.Config.NATSConsumerDrainTimeout > 0 {
-			drainTimeout = a.Config.NATSConsumerDrainTimeout
-		}
-		// Drain gets its own phase budget so earlier shutdown work does not silently
-		// shorten the configured consumer drain window.
-		var (
-			drainCtx    context.Context
-			drainCancel context.CancelFunc
-		)
-		if drainTimeout <= 0 {
-			drainCtx, drainCancel = context.WithCancel(context.Background())
-		} else {
-			drainCtx, drainCancel = context.WithTimeout(context.Background(), drainTimeout)
-		}
-		if err := a.TapConsumer.Drain(drainCtx); err != nil {
-			errs = append(errs, fmt.Errorf("tap consumer drain: %w", err))
-			if a.Logger != nil {
-				a.Logger.Warn("timed out draining tap consumer before graph shutdown", "timeout", drainTimeout, "error", err)
-			}
-		}
-		drainCancel()
+	a.stopGraphWriterLeaseLoop()
+	a.graphWriterLeaseTransitionWG.Wait()
+
+	drainTimeout := shutdownTimeout
+	if a.Config != nil && a.Config.NATSConsumerDrainTimeout > 0 {
+		drainTimeout = a.Config.NATSConsumerDrainTimeout
 	}
+	// Drain gets its own phase budget so earlier shutdown work does not silently
+	// shorten the configured consumer drain window.
+	var (
+		drainCtx    context.Context
+		drainCancel context.CancelFunc
+	)
+	if drainTimeout <= 0 {
+		drainCtx, drainCancel = context.WithCancel(context.Background())
+	} else {
+		drainCtx, drainCancel = context.WithTimeout(context.Background(), drainTimeout)
+	}
+	if err := a.stopTapGraphConsumer(drainCtx); err != nil {
+		errs = append(errs, fmt.Errorf("tap consumer drain: %w", err))
+		if a.Logger != nil {
+			a.Logger.Warn("timed out draining tap consumer before graph shutdown", "timeout", drainTimeout, "error", err)
+		}
+	}
+	drainCancel()
 
 	if a.graphCancel != nil {
 		a.graphCancel()
@@ -239,13 +239,13 @@ func (a *App) Close() error {
 	}
 	a.graphConsistencyMu.Unlock()
 	if a.graphReady != nil {
-		graphWaitCtx, graphWaitCancel := context.WithTimeout(context.Background(), appShutdownTimeout)
+		graphWaitCtx, graphWaitCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer graphWaitCancel()
 		select {
 		case <-a.graphReady:
 		case <-graphWaitCtx.Done():
 			if a.Logger != nil {
-				a.Logger.Warn("timed out waiting for security graph shutdown", "timeout", appShutdownTimeout, "error", graphWaitCtx.Err())
+				a.Logger.Warn("timed out waiting for security graph shutdown", "timeout", shutdownTimeout, "error", graphWaitCtx.Err())
 			}
 		}
 	}
@@ -256,9 +256,9 @@ func (a *App) Close() error {
 	}()
 	select {
 	case <-graphConsistencyDone:
-	case <-time.After(appShutdownTimeout):
+	case <-time.After(shutdownTimeout):
 		if a.Logger != nil {
-			a.Logger.Warn("timed out waiting for graph consistency checks to stop", "timeout", appShutdownTimeout)
+			a.Logger.Warn("timed out waiting for graph consistency checks to stop", "timeout", shutdownTimeout)
 		}
 	}
 
@@ -272,10 +272,11 @@ func (a *App) Close() error {
 			errs = append(errs, fmt.Errorf("snowflake: %w", err))
 		}
 	}
-
-	if a.TapConsumer != nil {
-		if err := a.TapConsumer.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("tap consumer: %w", err))
+	if closer, ok := a.Warehouse.(interface{ Close() error }); ok {
+		if a.Snowflake == nil || any(a.Warehouse) != any(a.Snowflake) {
+			if err := closer.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("warehouse: %w", err))
+			}
 		}
 	}
 
@@ -292,6 +293,11 @@ func (a *App) Close() error {
 	if a.AlertRouter != nil {
 		if err := a.AlertRouter.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("alert router: %w", err))
+		}
+	}
+	if a.RuntimeIngest != nil {
+		if err := a.RuntimeIngest.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("runtime ingest store: %w", err))
 		}
 	}
 	if a.ExecutionStore != nil {

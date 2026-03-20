@@ -196,27 +196,6 @@ func TestDefaultActionHandlerScaleDownUsesScaler(t *testing.T) {
 	}
 }
 
-func TestDefaultActionHandlerScaleDownFallsBackToRemoteForAuthorizedRawTarget(t *testing.T) {
-	caller := &recordingRemoteCaller{}
-	handler := NewDefaultActionHandler(DefaultActionHandlerOptions{RemoteCaller: caller})
-	ctx := WithTrustedActuationScope(context.Background(), TrustedActuationScope{
-		AllowedResourceIDs: []string{"pod-1"},
-	})
-
-	if err := handler.ScaleDown(ctx, "pod-1", 0); err != nil {
-		t.Fatalf("ScaleDown: %v", err)
-	}
-	if caller.tool != runtimeToolScaleDown {
-		t.Fatalf("tool = %q, want %q", caller.tool, runtimeToolScaleDown)
-	}
-	if got := caller.args["resource_id"]; got != "pod-1" {
-		t.Fatalf("resource_id = %#v, want pod-1", got)
-	}
-	if got := caller.args["replicas"]; got != float64(0) {
-		t.Fatalf("replicas = %#v, want 0", got)
-	}
-}
-
 func TestDefaultActionHandlerScaleDownRequiresTrustedTarget(t *testing.T) {
 	scaler := &recordingScaler{}
 	handler := NewDefaultActionHandler(DefaultActionHandlerOptions{
@@ -244,16 +223,6 @@ func TestDefaultActionHandlerScaleDownRejectsOutOfRangeReplicas(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "replicas must be <=") {
 		t.Fatalf("err = %v, want range error", err)
-	}
-}
-
-func TestRuntimeScaleDownReplicasRequiresExplicitValue(t *testing.T) {
-	_, err := runtimeScaleDownReplicas(PolicyAction{Type: ActionScaleDown})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "requires replicas") {
-		t.Fatalf("err = %v, want missing replicas error", err)
 	}
 }
 

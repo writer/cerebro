@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/writer/cerebro/internal/graph"
 )
 
 func TestRunInitStep_RecoversPanic(t *testing.T) {
@@ -47,16 +49,24 @@ func TestRunInitErrorStep_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestNew_MissingSnowflakeConfigStartsDegraded(t *testing.T) {
+func TestNew_MissingSnowflakeConfigStartsWithSQLiteWarehouse(t *testing.T) {
+	tempDir := t.TempDir()
 	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
 	t.Setenv("SNOWFLAKE_ACCOUNT", "")
 	t.Setenv("SNOWFLAKE_USER", "")
 	t.Setenv("API_AUTH_ENABLED", "false")
 	t.Setenv("API_KEYS", "")
+	t.Setenv("WAREHOUSE_BACKEND", "sqlite")
+	t.Setenv("WAREHOUSE_SQLITE_PATH", filepath.Join(tempDir, "warehouse.db"))
+	t.Setenv("EXECUTION_STORE_FILE", filepath.Join(tempDir, "executions.db"))
+	t.Setenv("GRAPH_SNAPSHOT_PATH", filepath.Join(tempDir, "graph-snapshots"))
+	t.Setenv("PLATFORM_REPORT_RUN_STATE_FILE", filepath.Join(tempDir, "report-runs.json"))
+	t.Setenv("PLATFORM_REPORT_SNAPSHOT_PATH", filepath.Join(tempDir, "report-snapshots"))
+	t.Setenv("CEREBRO_DB_PATH", filepath.Join(tempDir, "findings.db"))
 
 	app, err := New(context.Background())
 	if err != nil {
-		t.Fatalf("expected startup without snowflake to succeed in degraded mode, got: %v", err)
+		t.Fatalf("expected startup without snowflake to succeed with sqlite warehouse, got: %v", err)
 	}
 	t.Cleanup(func() {
 		_ = app.Close()
@@ -65,11 +75,14 @@ func TestNew_MissingSnowflakeConfigStartsDegraded(t *testing.T) {
 	if app.Snowflake != nil {
 		t.Fatal("expected snowflake client to be nil when required snowflake auth env vars are unset")
 	}
-	if app.Findings == nil || app.Scanner == nil || app.Policy == nil {
-		t.Fatal("expected core services to still initialize in degraded mode")
+	if app.Warehouse == nil {
+		t.Fatal("expected local sqlite warehouse to be initialized when snowflake auth is unset")
 	}
-	if app.WaitForGraph(context.Background()) {
-		t.Fatal("expected graph readiness to be false when snowflake is not configured")
+	if app.Findings == nil || app.Scanner == nil || app.Policy == nil {
+		t.Fatal("expected core services to still initialize with sqlite warehouse")
+	}
+	if !app.WaitForGraph(context.Background()) {
+		t.Fatal("expected graph readiness to become true when sqlite warehouse is configured")
 	}
 }
 
@@ -105,6 +118,54 @@ func TestWaitForGraph_ContextCanceled(t *testing.T) {
 	}
 }
 
+func TestWaitForReadableSecurityGraphUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	a := &App{
+		GraphSnapshots: mustPersistToolGraph(t, persisted),
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	resolved := a.WaitForReadableSecurityGraph(context.Background())
+	if resolved == nil {
+		t.Fatal("expected persisted snapshot graph")
+	}
+	if _, ok := resolved.GetNode("service:payments"); !ok {
+		t.Fatal("expected persisted snapshot node in readable graph")
+	}
+}
+
+func TestWaitForReadableSecurityGraphUsesReadyLiveGraphWithoutWaitChannel(t *testing.T) {
+	live := graph.New()
+	live.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	a := &App{SecurityGraph: live}
+
+	resolved := a.WaitForReadableSecurityGraph(context.Background())
+	if resolved != live {
+		t.Fatalf("expected live graph, got %p want %p", resolved, live)
+	}
+}
+
+func TestWaitForReadableSecurityGraphReturnsCurrentGraphWhenWaitTimesOut(t *testing.T) {
+	live := graph.New()
+	live.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	a := &App{
+		SecurityGraph: live,
+		graphReady:    make(chan struct{}),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+
+	resolved := a.WaitForReadableSecurityGraph(ctx)
+	if resolved != live {
+		t.Fatalf("expected current live graph after timeout, got %p want %p", resolved, live)
+	}
+}
+
 func TestClose_CancelsGraphBuilderBeforeWaiting(t *testing.T) {
 	graphReady := make(chan struct{})
 	cancelCalled := make(chan struct{})
@@ -130,14 +191,11 @@ func TestClose_CancelsGraphBuilderBeforeWaiting(t *testing.T) {
 }
 
 func TestClose_LogsWarningWhenGraphShutdownTimesOut(t *testing.T) {
-	oldTimeout := appShutdownTimeout
-	appShutdownTimeout = 20 * time.Millisecond
-	t.Cleanup(func() {
-		appShutdownTimeout = oldTimeout
-	})
-
 	var logs bytes.Buffer
 	a := &App{
+		Config: &Config{
+			ShutdownTimeout: 20 * time.Millisecond,
+		},
 		Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})),
 		graphCancel: func() {
 			// Intentionally leave graphReady open to force timeout path.

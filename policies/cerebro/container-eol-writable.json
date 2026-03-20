@@ -1,14 +1,23 @@
 {
   "id": "container-eol-writable",
-  "control_id": "wc-id-1524",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Container with end-of-life software on the writable layer",
   "description": "A running container has end-of-life software installed on the writable layer",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "container::pod|container::deployment",
   "conditions": [
-    "writable_layer_packages ANY (end_of_life == true)"
+    "list_value(path(resource, \"writable_layer_packages\")).exists(item, cmp_eq(path(item, \"end_of_life\"), true))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Update base images and rebuild containers. Remove EOL software from container runtime.",
-  "tags": ["wiz", "container", "eol", "drift"]
+  "tags": [
+    "wiz",
+    "container",
+    "eol",
+    "drift"
+  ],
+  "control_id": "wc-id-1524",
+  "remediation": "Update base images and rebuild containers. Remove EOL software from container runtime."
 }

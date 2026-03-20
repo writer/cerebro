@@ -1,13 +1,24 @@
 {
   "id": "compliance-inventory-owners",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Inventory Items Have Active Owners",
   "description": "Ensures all infrastructure inventory items have assigned active owners for accountability",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "infrastructure_inventory",
   "conditions": [
-    "owner_id IS NULL OR owner_status = 'inactive'"
+    "(!exists_path(resource, \"owner_id\")) || (cmp_eq(path(resource, \"owner_status\"), \"inactive\"))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
+  "tags": [
+    "compliance",
+    "inventory",
+    "ownership",
+    "accountability",
+    "governance"
+  ],
   "remediation": "Assign active owners to all infrastructure resources. Update ownership when personnel changes occur.",
   "remediation_steps": [
     "Identify resources without assigned owners",
@@ -16,11 +27,27 @@
     "Implement automated ownership assignment for new resources",
     "Set up alerts for orphaned resources"
   ],
-  "tags": ["compliance", "inventory", "ownership", "accountability", "governance"],
-  "risk_categories": ["OPERATIONAL_RISK"],
+  "risk_categories": [
+    "OPERATIONAL_RISK"
+  ],
   "frameworks": [
-    {"name": "SOC 2", "controls": ["CC6.1"]},
-    {"name": "ISO 27001:2022", "controls": ["A.5.9"]},
-    {"name": "NIST 800-53 r5", "controls": ["CM-8"]}
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC6.1"
+      ]
+    },
+    {
+      "name": "ISO 27001:2022",
+      "controls": [
+        "A.5.9"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "CM-8"
+      ]
+    }
   ]
 }

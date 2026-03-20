@@ -1,19 +1,23 @@
 {
   "id": "azure-vm-approved-extensions-only",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure VM Approved Extensions Only",
   "description": "Azure VMs should only have approved extensions installed",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::compute::virtual_machine_extension",
   "conditions": [
-    "type not_in ['MicrosoftMonitoringAgent', 'OmsAgentForLinux', 'DependencyAgentWindows', 'DependencyAgentLinux']"
+    "!(in_list(path(resource, \"type\"), [\"['MicrosoftMonitoringAgent\",\"OmsAgentForLinux\",\"DependencyAgentWindows\",\"DependencyAgentLinux']\"]))"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Review and remove unapproved VM extensions.",
   "tags": [
     "compute",
     "extensions",
     "compliance"
   ],
+  "remediation": "Review and remove unapproved VM extensions.",
   "risk_categories": [
     "MISCONFIGURATION"
   ]

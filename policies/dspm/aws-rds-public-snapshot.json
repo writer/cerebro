@@ -1,14 +1,17 @@
 {
   "id": "aws-rds-public-snapshot",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "AWS RDS Public Snapshot",
   "description": "RDS database snapshot is publicly accessible",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::rds::db_snapshot",
   "conditions": [
-    "attributes.restore contains 'all'"
+    "contains_value(path(resource, \"attributes.restore\"), \"all\")"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "remediation": "Modify snapshot permissions to remove public access.",
   "tags": [
     "dspm",
     "rds",
@@ -16,6 +19,7 @@
     "data-exposure",
     "snapshot"
   ],
+  "remediation": "Modify snapshot permissions to remove public access.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

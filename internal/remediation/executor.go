@@ -129,7 +129,7 @@ func (ex *Executor) Execute(ctx context.Context, execution *Execution) error {
 		execution.Error = "rule not found"
 		return fmt.Errorf("rule not found: %s", execution.RuleID)
 	}
-	playbook := remediationPlaybookFromRule(*rule, ex)
+	playbook := remediationPlaybookFromRule(*rule, ex, execution)
 	signal := remediationSignalFromTriggerData(execution.TriggerData)
 	sharedExecution := remediationExecutionToShared(execution)
 	annotateRemediationSharedExecution(sharedExecution, rule)
@@ -147,8 +147,19 @@ func (ex *Executor) Execute(ctx context.Context, execution *Execution) error {
 	return nil
 }
 
-func (ex *Executor) actionRequiresApproval(action Action) bool {
-	if action.RequiresApproval {
+func (ex *Executor) actionRequiresApproval(action Action, execution *Execution) bool {
+	switch strings.ToLower(strings.TrimSpace(action.Config["approval_mode"])) {
+	case "auto", "none", "disabled", "not_required":
+		return false
+	case "required", "manual":
+		return true
+	}
+	entry, _ := CatalogEntryByAction(action.Type)
+	mode := actionDeliveryMode(action, execution, entry)
+	if catalogSupportsDeliveryMode(entry, mode) && mode == DeliveryModeTerraform {
+		return false
+	}
+	if action.RequiresApproval || entry.RequiresApproval {
 		return true
 	}
 	if ex != nil && ex.ensemble != nil {
@@ -178,13 +189,25 @@ func (r remediationStepRunner) RunStep(ctx context.Context, step actionengine.St
 	}
 	nativeExecution.TriggerData["_approval_granted"] = true
 	result := r.executor.executeAction(ctx, action, nativeExecution)
+	if execution.TriggerData == nil {
+		execution.TriggerData = map[string]any{}
+	}
+	for key, value := range nativeExecution.TriggerData {
+		if key == "_approval_granted" {
+			continue
+		}
+		execution.TriggerData[key] = value
+	}
+	if len(result.Metadata) > 0 {
+		actionengine.SetStepMetadata(execution, step.ID, result.Metadata)
+	}
 	if result.Error != "" {
 		return "", errors.New(result.Error)
 	}
 	return result.Output, nil
 }
 
-func remediationPlaybookFromRule(rule Rule, executor *Executor) actionengine.Playbook {
+func remediationPlaybookFromRule(rule Rule, executor *Executor, execution *Execution) actionengine.Playbook {
 	steps := make([]actionengine.Step, 0, len(rule.Actions))
 	for idx, action := range rule.Actions {
 		failurePolicy := actionengine.FailurePolicyAbort
@@ -192,7 +215,7 @@ func remediationPlaybookFromRule(rule Rule, executor *Executor) actionengine.Pla
 			ID:               fmt.Sprintf("%s-step-%d", firstNonEmpty(rule.ID, "rule"), idx+1),
 			Type:             string(action.Type),
 			Parameters:       cloneStringMap(action.Config),
-			RequiresApproval: executor != nil && executor.actionRequiresApproval(action),
+			RequiresApproval: executor != nil && executor.actionRequiresApproval(action, execution),
 			TimeoutSeconds:   action.TimeoutSeconds,
 			OnFailure:        failurePolicy,
 		})
@@ -244,7 +267,7 @@ func remediationExecutionToShared(execution *Execution) *actionengine.Execution 
 		PlaybookID:   execution.RuleID,
 		PlaybookName: execution.RuleName,
 		Status:       remediationStatusToShared(execution.Status),
-		ResourceID:   remediationMapValueToString(execution.TriggerData, "entity_id"),
+		ResourceID:   firstNonEmpty(remediationMapValueToString(execution.TriggerData, "entity_id"), remediationMapValueToString(execution.TriggerData, "resource_id")),
 		ResourceType: remediationMapValueToString(execution.TriggerData, "resource_type"),
 		TriggerData:  cloneAnyMap(execution.TriggerData),
 		Results:      make([]actionengine.ActionResult, 0, len(execution.Actions)),
@@ -258,6 +281,7 @@ func remediationExecutionToShared(execution *Execution) *actionengine.Execution 
 			Status:    remediationResultStatusToShared(action.Status),
 			Output:    action.Output,
 			Error:     action.Error,
+			Metadata:  cloneAnyMap(action.Metadata),
 			StartedAt: action.StartedAt,
 			Duration:  action.Duration,
 		})
@@ -295,6 +319,7 @@ func applySharedExecution(target *Execution, shared *actionengine.Execution) {
 			Status:     sharedActionResultStatus(result.Status),
 			Output:     result.Output,
 			Error:      result.Error,
+			Metadata:   cloneAnyMap(result.Metadata),
 			StartedAt:  result.StartedAt,
 			Duration:   result.Duration,
 		})
@@ -325,6 +350,7 @@ func remediationExecutionFromShared(shared *actionengine.Execution) *Execution {
 			Status:     sharedActionResultStatus(result.Status),
 			Output:     result.Output,
 			Error:      result.Error,
+			Metadata:   cloneAnyMap(result.Metadata),
 			StartedAt:  result.StartedAt,
 			Duration:   result.Duration,
 		})
@@ -439,14 +465,14 @@ func (ex *Executor) listStoredExecutions(ctx context.Context, limit int) ([]*Exe
 }
 
 func (ex *Executor) ruleForExecution(execution *Execution) (*Rule, bool) {
+	if execution == nil {
+		return nil, false
+	}
 	if ex != nil && ex.engine != nil {
 		if rule, ok := ex.engine.GetRule(execution.RuleID); ok {
 			copy := *rule
 			return &copy, true
 		}
-	}
-	if execution == nil {
-		return nil, false
 	}
 	if rule := remediationRuleFromTriggerData(execution.TriggerData); rule != nil {
 		return rule, true
@@ -628,79 +654,85 @@ func (ex *Executor) executeAction(ctx context.Context, action Action, execution 
 
 	var err error
 	approvalGranted, _ := execution.TriggerData["_approval_granted"].(bool)
-	if ex.actionRequiresApproval(action) && !approvalGranted {
+	if ex.actionRequiresApproval(action, execution) && !approvalGranted {
 		err = fmt.Errorf("%s action requires approval", action.Type)
 	}
 
 	if err == nil {
-		switch action.Type {
-		case ActionCreateTicket:
-			err = ex.createTicket(ctx, action, execution)
-			if err == nil {
-				result.Output = "Ticket created"
-			}
+		if output, metadata, catalogErr, handled := ex.executeCatalogAction(ctx, action, execution); handled {
+			result.Output = output
+			result.Metadata = metadata
+			err = catalogErr
+		} else {
+			switch action.Type {
+			case ActionCreateTicket:
+				err = ex.createTicket(ctx, action, execution)
+				if err == nil {
+					result.Output = "Ticket created"
+				}
 
-		case ActionNotifySlack:
-			err = ex.notifySlack(ctx, action, execution)
-			if err == nil {
-				result.Output = "Slack notification sent"
-			}
+			case ActionNotifySlack:
+				err = ex.notifySlack(ctx, action, execution)
+				if err == nil {
+					result.Output = "Slack notification sent"
+				}
 
-		case ActionNotifyPagerDuty:
-			err = ex.notifyPagerDuty(ctx, action, execution)
-			if err == nil {
-				result.Output = "PagerDuty alert sent"
-			}
+			case ActionNotifyPagerDuty:
+				err = ex.notifyPagerDuty(ctx, action, execution)
+				if err == nil {
+					result.Output = "PagerDuty alert sent"
+				}
 
-		case ActionResolveFinding:
-			err = ex.resolveFinding(ctx, action, execution)
-			if err == nil {
-				result.Output = "Finding resolved"
-			}
+			case ActionResolveFinding:
+				err = ex.resolveFinding(ctx, action, execution)
+				if err == nil {
+					result.Output = "Finding resolved"
+				}
 
-		case ActionRunWebhook:
-			err = ex.runWebhook(ctx, action, execution)
-			if err == nil {
-				result.Output = "Webhook executed"
-			}
+			case ActionRunWebhook:
+				err = ex.runWebhook(ctx, action, execution)
+				if err == nil {
+					result.Output = "Webhook executed"
+				}
 
-		case ActionUpdateCRMField:
-			err = ex.updateCRMField(ctx, action, execution)
-			if err == nil {
-				result.Output = "CRM field updated"
-			}
+			case ActionUpdateCRMField:
+				err = ex.updateCRMField(ctx, action, execution)
+				if err == nil {
+					result.Output = "CRM field updated"
+				}
 
-		case ActionTriggerWorkflow:
-			err = ex.triggerWorkflow(ctx, action, execution)
-			if err == nil {
-				result.Output = "Workflow triggered"
-			}
+			case ActionTriggerWorkflow:
+				err = ex.triggerWorkflow(ctx, action, execution)
+				if err == nil {
+					result.Output = "Workflow triggered"
+				}
 
-		case ActionCreateReview:
-			err = ex.createReview(ctx, action, execution)
-			if err == nil {
-				result.Output = "Review created"
-			}
+			case ActionCreateReview:
+				err = ex.createReview(ctx, action, execution)
+				if err == nil {
+					result.Output = "Review created"
+				}
 
-		case ActionEscalateToOwner:
-			err = ex.escalateToOwner(ctx, action, execution)
-			if err == nil {
-				result.Output = "Escalated to owner"
-			}
+			case ActionEscalateToOwner:
+				err = ex.escalateToOwner(ctx, action, execution)
+				if err == nil {
+					result.Output = "Escalated to owner"
+				}
 
-		case ActionPauseSubscription:
-			err = ex.pauseSubscription(ctx, action, execution)
-			if err == nil {
-				result.Output = "Subscription paused"
-			}
-		case ActionSendCustomerComm:
-			err = ex.sendCustomerCommunication(ctx, action, execution)
-			if err == nil {
-				result.Output = "Customer communication sent"
-			}
+			case ActionPauseSubscription:
+				err = ex.pauseSubscription(ctx, action, execution)
+				if err == nil {
+					result.Output = "Subscription paused"
+				}
+			case ActionSendCustomerComm:
+				err = ex.sendCustomerCommunication(ctx, action, execution)
+				if err == nil {
+					result.Output = "Customer communication sent"
+				}
 
-		default:
-			err = fmt.Errorf("unknown action type: %s", action.Type)
+			default:
+				err = fmt.Errorf("unknown action type: %s", action.Type)
+			}
 		}
 	}
 
@@ -1020,7 +1052,7 @@ func (ex *Executor) emitApprovalRequested(ctx context.Context, execution *Execut
 	}
 	actions := make([]string, 0, len(rule.Actions))
 	for _, action := range rule.Actions {
-		if action.RequiresApproval {
+		if ex.actionRequiresApproval(action, execution) {
 			actions = append(actions, string(action.Type))
 		}
 	}
@@ -1060,9 +1092,11 @@ func (ex *Executor) Approve(ctx context.Context, executionID, approverID string)
 	if rule, ok := ex.ruleForExecution(execution); ok {
 		sharedExecution := remediationExecutionToShared(execution)
 		sharedExecution.ApprovedBy = approverID
-		sharedExecution.ApprovedAt = &approvedAt
+		if approvedAt, _ := time.Parse(time.RFC3339Nano, remediationMapValueToString(execution.TriggerData, "approved_at")); !approvedAt.IsZero() {
+			sharedExecution.ApprovedAt = &approvedAt
+		}
 		annotateRemediationSharedExecution(sharedExecution, rule)
-		playbook := remediationPlaybookFromRule(*rule, ex)
+		playbook := remediationPlaybookFromRule(*rule, ex, execution)
 		signal := remediationSignalFromTriggerData(execution.TriggerData)
 		err := ex.shared.Approve(ctx, sharedExecution, approverID, playbook, signal, remediationStepRunner{executor: ex})
 		applySharedExecution(execution, sharedExecution)

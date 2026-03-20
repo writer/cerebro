@@ -1,19 +1,23 @@
 {
   "id": "gcp-compute-serial-port-disabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "GCP Compute Serial Port Disabled",
   "description": "Compute instances should have serial port access disabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "gcp::compute::instance",
   "conditions": [
-    "metadata.serial-port-enable == 'true'"
+    "cmp_eq(path(resource, \"metadata.serial-port-enable\"), \"true\")"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Set metadata key 'serial-port-enable' to 'false' or remove the key.",
   "tags": [
     "cis-gcp-4.5",
     "compute",
     "security"
   ],
+  "remediation": "Set metadata key 'serial-port-enable' to 'false' or remove the key.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],

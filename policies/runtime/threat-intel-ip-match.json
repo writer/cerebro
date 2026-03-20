@@ -1,13 +1,23 @@
 {
   "id": "threat-intel-malicious-ip-connection",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Connection to Threat Intelligence IP",
   "description": "Network connection detected to IP address in threat intelligence feeds",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "network::connection",
   "conditions": [
-    "destination_ip in threat_intel.malicious_ips"
+    "in_list(path(resource, \"destination_ip\"), [\"threat_intel.malicious_ips\"])"
   ],
+  "condition_format": "cel",
   "severity": "critical",
-  "tags": ["runtime", "threat-intel", "network", "c2", "incident-response"],
+  "tags": [
+    "runtime",
+    "threat-intel",
+    "network",
+    "c2",
+    "incident-response"
+  ],
   "remediation": "Block the IP at security groups/firewall and investigate the source instance."
 }

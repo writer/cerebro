@@ -1,14 +1,17 @@
 {
   "id": "azure-sql-public-network-access",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "Azure SQL Public Network Access",
   "description": "Azure SQL database allows public network access",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "azure::sql::server",
   "conditions": [
-    "public_network_access == 'Enabled'"
+    "cmp_eq(path(resource, \"public_network_access\"), \"Enabled\")"
   ],
+  "condition_format": "cel",
   "severity": "high",
-  "remediation": "Disable public network access and use private endpoints.",
   "tags": [
     "dspm",
     "azure-sql",
@@ -16,6 +19,7 @@
     "public-access",
     "network"
   ],
+  "remediation": "Disable public network access and use private endpoints.",
   "risk_categories": [
     "EXTERNAL_EXPOSURE",
     "UNPROTECTED_DATA"

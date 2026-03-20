@@ -1,21 +1,25 @@
 {
   "id": "aws-kms-key-rotation-enabled",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "KMS Key Rotation Enabled",
   "description": "Customer-managed KMS keys should have automatic rotation enabled",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::kms::key",
   "conditions": [
-    "key_manager == 'CUSTOMER'",
-    "key_rotation_enabled != true"
+    "cmp_eq(path(resource, \"key_manager\"), \"CUSTOMER\")",
+    "cmp_ne(path(resource, \"key_rotation_enabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable automatic key rotation for customer-managed KMS keys using the KMS console or EnableKeyRotation API.",
   "tags": [
     "cis-aws-3.8",
     "kms",
     "encryption",
     "key-management"
   ],
+  "remediation": "Enable automatic key rotation for customer-managed KMS keys using the KMS console or EnableKeyRotation API.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

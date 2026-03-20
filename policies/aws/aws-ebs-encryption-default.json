@@ -1,20 +1,24 @@
 {
   "id": "aws-ebs-encryption-default",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "EBS Encryption by Default",
   "description": "EBS encryption should be enabled by default in each region",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ec2::ebs_encryption_by_default",
   "conditions": [
-    "ebs_encryption_enabled != true"
+    "cmp_ne(path(resource, \"ebs_encryption_enabled\"), true)"
   ],
+  "condition_format": "cel",
   "severity": "medium",
-  "remediation": "Enable EBS encryption by default in each region using the EC2 console or EnableEbsEncryptionByDefault API.",
   "tags": [
     "cis-aws-2.2.1",
     "ebs",
     "encryption",
     "data-protection"
   ],
+  "remediation": "Enable EBS encryption by default in each region using the EC2 console or EnableEbsEncryptionByDefault API.",
   "risk_categories": [
     "UNPROTECTED_DATA",
     "MISCONFIGURATION"

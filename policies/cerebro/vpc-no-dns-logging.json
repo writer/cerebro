@@ -1,14 +1,17 @@
 {
   "id": "vpc-no-dns-resolver-logging",
+  "last_modified": "0001-01-01T00:00:00Z",
   "name": "VPC has no Route 53 DNS resolver with logging enabled",
   "description": "VPC does not have a Route 53 Resolver query logging configuration, limiting visibility into DNS queries for threat detection and incident response",
   "effect": "forbid",
+  "principal": "",
+  "action": "",
   "resource": "aws::ec2::vpc",
   "conditions": [
-    "resolver_query_log_config IS NULL OR resolver_query_log_config == ''"
+    "(!exists_path(resource, \"resolver_query_log_config\")) || (cmp_eq(path(resource, \"resolver_query_log_config\"), \"\"))"
   ],
+  "condition_format": "cel",
   "severity": "low",
-  "remediation": "1. Create a Route 53 Resolver query log configuration. 2. Associate it with the VPC. 3. Configure log destination (CloudWatch Logs, S3, or Kinesis). 4. Set up alerts for suspicious DNS queries.",
   "tags": [
     "aws",
     "vpc",
@@ -17,21 +20,30 @@
     "monitoring",
     "security"
   ],
+  "remediation": "1. Create a Route 53 Resolver query log configuration. 2. Associate it with the VPC. 3. Configure log destination (CloudWatch Logs, S3, or Kinesis). 4. Set up alerts for suspicious DNS queries.",
   "risk_categories": [
     "MISCONFIGURATION"
   ],
   "frameworks": [
     {
       "name": "NIST 800-53 r5",
-      "controls": ["AU-2", "AU-3", "SI-4"]
+      "controls": [
+        "AU-2",
+        "AU-3",
+        "SI-4"
+      ]
     },
     {
       "name": "CIS Controls v8",
-      "controls": ["8"]
+      "controls": [
+        "8"
+      ]
     },
     {
       "name": "SOC 2",
-      "controls": ["CC7"]
+      "controls": [
+        "CC7"
+      ]
     }
   ],
   "mitre_attack": [
