@@ -1137,6 +1137,28 @@ func TestHandleTapSchemaEvent_RegistersKindsWithoutLiveGraph(t *testing.T) {
 	}
 }
 
+func TestHandleTapSchemaEvent_EmptyEntityPayloadNoop(t *testing.T) {
+	a := &App{}
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.schema.workday.updated",
+		Time: time.Date(2026, 3, 9, 11, 30, 0, 0, time.UTC),
+		Data: map[string]any{
+			"integration": "workday",
+			"edge_types":  []any{"tap_test_unused_schema_edge_v1"},
+		},
+	}
+
+	if err := a.handleTapSchemaEvent(evt.Type, evt); err != nil {
+		t.Fatalf("handleTapSchemaEvent failed: %v", err)
+	}
+	if a.SecurityGraph != nil {
+		t.Fatal("expected empty schema payload to avoid creating a live graph")
+	}
+	if graph.GlobalSchemaRegistry().IsEdgeKindRegistered(graph.EdgeKind("tap_test_unused_schema_edge_v1")) {
+		t.Fatal("expected empty schema payload to skip edge registration")
+	}
+}
+
 func TestIsTapSchemaEventType(t *testing.T) {
 	cases := []struct {
 		eventType string

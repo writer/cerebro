@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 248 - TAP Schema Handler Split (2026-03-19)
+
+### Review findings
+- [x] Gap: `internal/app/app_stream_consumer_mapping.go` still mixed declarative mapping logic with TAP schema registration, so schema runtime handling remained bundled into the mapper-specific file even after the schema parse helpers moved out.
+- [x] Gap: schema registration is a separate concern from declarative mapper setup and apply flow, and it can move into its own file without widening graph mutation behavior.
+- [x] Gap: existing coverage proved successful schema registration, but there was no direct regression ensuring an empty schema payload remains a no-op and does not register standalone edge kinds or allocate a graph.
+
+### Execution plan
+- [x] Move `handleTapSchemaEvent(...)` into a dedicated TAP schema handler file with small registration helpers.
+- [x] Leave `app_stream_consumer_mapping.go` focused on declarative mapper setup and apply flow.
+- [x] Add an empty-schema-payload no-op regression and rerun targeted `internal/app` validation before opening the PR.
+
 ## Deep Review Cycle 247 - TAP Schema Parse Split (2026-03-19)
 
 ### Review findings
