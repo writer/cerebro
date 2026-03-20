@@ -255,7 +255,7 @@ func buildGraphIngestionCoverage(g *Graph) GraphIngestionCoverage {
 		if node == nil {
 			continue
 		}
-		source := strings.ToLower(strings.TrimSpace(identityAnyToString(node.Properties["source_system"])))
+		source := strings.ToLower(graphNodePropertyString(node, "source_system"))
 		if source == "" {
 			source = strings.ToLower(strings.TrimSpace(node.Provider))
 		}
@@ -348,7 +348,7 @@ func buildGraphOntologySLO(g *Graph, now time.Time, trendDays int) GraphOntology
 		if node == nil {
 			continue
 		}
-		source := strings.ToLower(strings.TrimSpace(identityAnyToString(node.Properties["source_system"])))
+		source := strings.ToLower(graphNodePropertyString(node, "source_system"))
 		if source == "" {
 			source = strings.ToLower(strings.TrimSpace(node.Provider))
 		}
@@ -428,7 +428,7 @@ func buildGraphOntologySLO(g *Graph, now time.Time, trendDays int) GraphOntology
 			if !ok || observedAt.Before(windowStart) || !observedAt.Before(windowEnd) {
 				continue
 			}
-			source := strings.ToLower(strings.TrimSpace(identityAnyToString(node.Properties["source_system"])))
+			source := strings.ToLower(graphNodePropertyString(node, "source_system"))
 			if source == "" {
 				source = strings.ToLower(strings.TrimSpace(node.Provider))
 			}
@@ -601,7 +601,7 @@ func buildGraphPredictiveReadiness(g *Graph) GraphPredictiveReadiness {
 		if _, ok := graphObservedAt(node); ok {
 			hasObserved = true
 		}
-		hasSource := strings.TrimSpace(identityAnyToString(node.Properties["source_system"])) != "" || strings.TrimSpace(node.Provider) != ""
+		hasSource := graphNodePropertyString(node, "source_system") != "" || strings.TrimSpace(node.Provider) != ""
 		if hasObserved && hasSource {
 			featureReady++
 		}

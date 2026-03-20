@@ -50,6 +50,11 @@ func (n *Node) ObservationProperties() (ObservationProperties, bool) {
 	if n == nil || n.Kind != NodeKindObservation {
 		return ObservationProperties{}, false
 	}
+	if n.propertyColumns != nil && n.ordinal != InvalidNodeOrdinal {
+		if props, ok := n.propertyColumns.ObservationProperties(n.ordinal); ok {
+			return props, true
+		}
+	}
 	if n.observationProps != nil {
 		return cloneObservationProperties(*n.observationProps), true
 	}
@@ -509,10 +514,18 @@ func applyObservationPropertiesToNode(node *Node, props ObservationProperties) {
 	if node == nil {
 		return
 	}
-	if props.present == 0 {
+	if node.propertyColumns != nil && node.ordinal != InvalidNodeOrdinal {
+		node.propertyColumns.ClearObservationProperties(node.ordinal)
+		if props.present != 0 {
+			node.propertyColumns.SetObservationProperties(node.ordinal, props)
+		}
 		node.observationProps = nil
 	} else {
-		node.observationProps = ptrObservationProperties(props)
+		if props.present == 0 {
+			node.observationProps = nil
+		} else {
+			node.observationProps = ptrObservationProperties(props)
+		}
 	}
 	if node.Properties != nil {
 		stripObservationPropertyKeys(node.Properties)

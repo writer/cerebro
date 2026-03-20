@@ -125,10 +125,10 @@ func computeBlastRadius(g *Graph, principal *Node, maxDepth int) *BlastRadiusRes
 	for depth := 0; depth <= maxDepth && len(frontier) > 0; depth++ {
 		activeFrontier := make([]blastRadiusFrontierItem, 0, len(frontier))
 		for _, item := range frontier {
-			if visited.hasOrdinal(item.ordinal) {
+			if visited.hasNode(item.nodeID, item.ordinal) {
 				continue
 			}
-			visited.markOrdinal(item.ordinal)
+			visited.markNode(item.nodeID, item.ordinal)
 			activeFrontier = append(activeFrontier, item)
 		}
 		if len(activeFrontier) == 0 {
@@ -182,7 +182,7 @@ func computeBlastRadius(g *Graph, principal *Node, maxDepth int) *BlastRadiusRes
 func expandBlastRadiusFrontierItem(g *Graph, item blastRadiusFrontierItem, depth int, startAccount string) []blastRadiusExpansion {
 	expansions := make([]blastRadiusExpansion, 0, len(g.GetOutEdges(item.nodeID)))
 	for _, edge := range g.GetOutEdges(item.nodeID) {
-		if edge.IsDeny() || isDeniedByOrdinal(g, item.ordinal, edge.targetOrd) {
+		if edge.IsDeny() || isDeniedByOrdinal(g, item.nodeID, item.ordinal, edge.Target, edge.targetOrd) {
 			continue
 		}
 
@@ -417,10 +417,10 @@ func computeReverseAccess(g *Graph, resource *Node, maxDepth int) *ReverseAccess
 	for depth := 0; depth <= maxDepth && len(frontier) > 0; depth++ {
 		activeFrontier := make([]reverseAccessFrontierItem, 0, len(frontier))
 		for _, item := range frontier {
-			if visited.hasOrdinal(item.ordinal) {
+			if visited.hasNode(item.nodeID, item.ordinal) {
 				continue
 			}
-			visited.markOrdinal(item.ordinal)
+			visited.markNode(item.nodeID, item.ordinal)
 			activeFrontier = append(activeFrontier, item)
 		}
 		if len(activeFrontier) == 0 {
@@ -493,19 +493,6 @@ type EffectiveAccessResult struct {
 	AllowedBy   []*Edge `json:"allowed_by,omitempty"`
 }
 
-type allPathsState struct {
-	ordinal NodeOrdinal
-	nodeID  string
-	path    []*Edge
-	visited ordinalVisitSet
-}
-
-type allPathsExpansion struct {
-	found   []*Edge
-	next    allPathsState
-	hasNext bool
-}
-
 // EffectiveAccess determines if a principal can access a resource
 func EffectiveAccess(g *Graph, principalID, resourceID string, maxDepth int) *EffectiveAccessResult {
 	result := &EffectiveAccessResult{
@@ -540,6 +527,13 @@ func EffectiveAccess(g *Graph, principalID, resourceID string, maxDepth int) *Ef
 func findAllPaths(g *Graph, from, to string, maxDepth int) [][]*Edge {
 	var allPaths [][]*Edge
 
+	type state struct {
+		nodeID  string
+		depth   int
+		path    []*Edge
+		visited ordinalVisitSet
+	}
+
 	sourceNode, ok := g.GetNode(from)
 	if !ok {
 		return nil
@@ -548,72 +542,68 @@ func findAllPaths(g *Graph, from, to string, maxDepth int) [][]*Edge {
 	if !ok {
 		return nil
 	}
-	initialVisited := newOrdinalVisitSet(nil)
-	initialVisited.markOrdinal(sourceNode.ordinal)
-	frontier := []allPathsState{{
-		ordinal: sourceNode.ordinal,
+	nodeIDs := NewNodeIDIndex()
+	initialVisited := newOrdinalVisitSet(nodeIDs)
+	initialVisited.mark(sourceNode.ID)
+	initial := state{
 		nodeID:  sourceNode.ID,
+		depth:   0,
 		path:    nil,
 		visited: initialVisited,
-	}}
+	}
+	queue := []state{initial}
 
-	for depth := 0; depth <= maxDepth && len(frontier) > 0; depth++ {
-		expansions := parallelProcessOrdered(frontier, func(current allPathsState) []allPathsExpansion {
-			return expandAllPathsState(g, current, targetNode.ID)
-		})
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
 
-		nextFrontier := make([]allPathsState, 0, len(expansions))
-		for _, expansion := range expansions {
-			if expansion.found != nil {
-				allPaths = append(allPaths, expansion.found)
+		if current.depth > maxDepth {
+			continue
+		}
+
+		for _, edge := range g.GetOutEdges(current.nodeID) {
+			if current.visited.has(edge.Target) {
 				continue
 			}
-			if expansion.hasNext {
-				nextFrontier = append(nextFrontier, expansion.next)
+
+			newPath := append([]*Edge{}, current.path...)
+			newPath = append(newPath, edge)
+			newVisited := current.visited.clone()
+			newVisited.mark(edge.Target)
+
+			if edge.Target == targetNode.ID {
+				allPaths = append(allPaths, newPath)
+			} else {
+				queue = append(queue, state{
+					nodeID:  edge.Target,
+					depth:   current.depth + 1,
+					path:    newPath,
+					visited: newVisited,
+				})
 			}
 		}
-		frontier = nextFrontier
 	}
 
 	return allPaths
 }
 
-func expandAllPathsState(g *Graph, current allPathsState, targetID string) []allPathsExpansion {
-	expansions := make([]allPathsExpansion, 0, len(g.GetOutEdges(current.nodeID)))
-	for _, edge := range g.GetOutEdges(current.nodeID) {
-		if current.visited.hasOrdinal(edge.targetOrd) {
-			continue
+func isDeniedByOrdinal(g *Graph, sourceID string, sourceOrdinal NodeOrdinal, targetID string, targetOrdinal NodeOrdinal) bool {
+	if sourceOrdinal != InvalidNodeOrdinal {
+		if resolvedSourceID, ok := g.ResolveNodeOrdinal(sourceOrdinal); ok {
+			sourceID = resolvedSourceID
 		}
-
-		newPath := append([]*Edge{}, current.path...)
-		newPath = append(newPath, edge)
-		newVisited := current.visited.clone()
-		newVisited.markOrdinal(edge.targetOrd)
-
-		expansion := allPathsExpansion{}
-		if edge.Target == targetID {
-			expansion.found = newPath
-		} else {
-			expansion.next = allPathsState{
-				ordinal: edge.targetOrd,
-				nodeID:  edge.Target,
-				path:    newPath,
-				visited: newVisited,
-			}
-			expansion.hasNext = true
-		}
-		expansions = append(expansions, expansion)
 	}
-	return expansions
-}
-
-func isDeniedByOrdinal(g *Graph, sourceOrdinal, targetOrdinal NodeOrdinal) bool {
-	sourceID, ok := g.ResolveNodeOrdinal(sourceOrdinal)
-	if !ok {
+	if sourceID == "" {
 		return false
 	}
 	for _, edge := range g.GetOutEdges(sourceID) {
-		if edge.targetOrd == targetOrdinal && edge.IsDeny() {
+		if !edge.IsDeny() {
+			continue
+		}
+		if targetOrdinal != InvalidNodeOrdinal && edge.targetOrd == targetOrdinal {
+			return true
+		}
+		if edge.Target == targetID {
 			return true
 		}
 	}
@@ -730,7 +720,24 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 	sourceOrdinal := source.ordinal
 	visited := newOrdinalVisitSet(nil)
 	visitedCount := 0
-	bestTime := map[NodeOrdinal]int64{sourceOrdinal: 0}
+	bestTimeByOrdinal := make(map[NodeOrdinal]int64)
+	bestTimeByNodeID := make(map[string]int64)
+	getBestTime := func(nodeID string, ordinal NodeOrdinal) (int64, bool) {
+		if ordinal != InvalidNodeOrdinal {
+			best, ok := bestTimeByOrdinal[ordinal]
+			return best, ok
+		}
+		best, ok := bestTimeByNodeID[nodeID]
+		return best, ok
+	}
+	setBestTime := func(nodeID string, ordinal NodeOrdinal, timeMs int64) {
+		if ordinal != InvalidNodeOrdinal {
+			bestTimeByOrdinal[ordinal] = timeMs
+			return
+		}
+		bestTimeByNodeID[nodeID] = timeMs
+	}
+	setBestTime(sourceID, sourceOrdinal, 0)
 
 	queue := &cascadePriorityQueue{}
 	heap.Init(queue)
@@ -748,10 +755,10 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 		if item.depth > maxDepth {
 			continue
 		}
-		if item.timeMs > bestTime[item.ordinal] {
+		if best, ok := getBestTime(item.nodeID, item.ordinal); ok && item.timeMs > best {
 			continue
 		}
-		if visited.markOrdinal(item.ordinal) {
+		if visited.markNode(item.nodeID, item.ordinal) {
 			visitedCount++
 		}
 
@@ -795,7 +802,7 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 			if edge.IsDeny() {
 				continue
 			}
-			if isDeniedByOrdinal(g, item.ordinal, edge.targetOrd) {
+			if isDeniedByOrdinal(g, item.nodeID, item.ordinal, edge.Target, edge.targetOrd) {
 				continue
 			}
 
@@ -853,10 +860,10 @@ func CascadingBlastRadius(g *Graph, sourceID string, maxDepth int) *CascadingBla
 
 			nextTime := item.timeMs + timeIncrement
 			targetOrdinal := edge.targetOrd
-			if best, ok := bestTime[targetOrdinal]; ok && nextTime >= best {
+			if best, ok := getBestTime(edge.Target, targetOrdinal); ok && nextTime >= best {
 				continue
 			}
-			bestTime[targetOrdinal] = nextTime
+			setBestTime(edge.Target, targetOrdinal, nextTime)
 
 			heap.Push(queue, &cascadeItem{
 				ordinal:   targetOrdinal,

@@ -83,3 +83,38 @@ func TestReportUtilityHelpers(t *testing.T) {
 		t.Fatalf("unexpected leading count: %#v", counts[0])
 	}
 }
+
+func TestTemporalPropertyTimeDelegatesToGraphValueTime(t *testing.T) {
+	ts := time.Date(2026, 3, 14, 15, 0, 0, 123456789, time.UTC)
+	cases := []struct {
+		name  string
+		value any
+		want  time.Time
+		ok    bool
+	}{
+		{name: "time", value: ts, want: ts, ok: true},
+		{name: "rfc3339nano", value: ts.Format(time.RFC3339Nano), want: ts, ok: true},
+		{name: "date", value: "2026-03-14", want: time.Date(2026, 3, 14, 0, 0, 0, 0, time.UTC), ok: true},
+		{name: "empty", value: " ", ok: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := graphValueTime(tc.value)
+			if ok != tc.ok {
+				t.Fatalf("graphValueTime(%#v) ok = %v, want %v", tc.value, ok, tc.ok)
+			}
+			if ok && !got.Equal(tc.want) {
+				t.Fatalf("graphValueTime(%#v) = %s, want %s", tc.value, got, tc.want)
+			}
+
+			got, ok = temporalPropertyTime(map[string]any{"observed_at": tc.value}, " observed_at ")
+			if ok != tc.ok {
+				t.Fatalf("temporalPropertyTime(%#v) ok = %v, want %v", tc.value, ok, tc.ok)
+			}
+			if ok && !got.Equal(tc.want) {
+				t.Fatalf("temporalPropertyTime(%#v) = %s, want %s", tc.value, got, tc.want)
+			}
+		})
+	}
+}

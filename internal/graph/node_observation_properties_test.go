@@ -167,6 +167,12 @@ func TestObservationPropertiesUseCompactLiveStorage(t *testing.T) {
 	if !ok {
 		t.Fatal("expected compact observation node")
 	}
+	if node.propertyColumns == nil {
+		t.Fatal("expected observation node to be backed by graph property columns")
+	}
+	if node.observationProps != nil {
+		t.Fatalf("expected live observation node to avoid per-node typed struct, got %+v", node.observationProps)
+	}
 	if _, ok := node.Properties["observation_type"]; ok {
 		t.Fatalf("expected compact live properties without observation_type, got %#v", node.Properties)
 	}
@@ -211,6 +217,9 @@ func TestSetNodePropertyStoresObservationFieldsOutsideLiveMap(t *testing.T) {
 	if !ok {
 		t.Fatal("expected updated observation node after confidence change")
 	}
+	if node.propertyColumns == nil {
+		t.Fatal("expected updated observation node to remain column-backed")
+	}
 	if got := node.PreviousProperties["confidence"]; got != 0.4 {
 		t.Fatalf("PreviousProperties[confidence] = %#v, want 0.4", got)
 	}
@@ -240,6 +249,144 @@ func TestSetNodePropertyStoresObservationFieldsOutsideLiveMap(t *testing.T) {
 	}
 	if props.Detail != "new detail" || props.Confidence != 0.9 {
 		t.Fatalf("unexpected typed observation properties: %+v", props)
+	}
+}
+
+func TestGraphClonePreservesColumnarObservationProperties(t *testing.T) {
+	g := New()
+	observedAt := time.Date(2026, 3, 18, 8, 0, 0, 0, time.UTC)
+	g.AddNode(&Node{
+		ID:   "observation:payments:clone",
+		Kind: NodeKindObservation,
+		Name: "runtime_signal",
+		Properties: map[string]any{
+			"observation_type": "runtime_signal",
+			"subject_id":       "service:payments",
+			"detail":           "before clone",
+			"source_system":    "agent",
+			"confidence":       0.6,
+			"observed_at":      observedAt.Format(time.RFC3339),
+		},
+	})
+
+	cloned := g.Clone()
+	if !cloned.SetNodeProperty("observation:payments:clone", "detail", "after clone") {
+		t.Fatal("expected clone SetNodeProperty(detail) to succeed")
+	}
+
+	originalNode, ok := g.GetNode("observation:payments:clone")
+	if !ok {
+		t.Fatal("expected original observation node")
+	}
+	clonedNode, ok := cloned.GetNode("observation:payments:clone")
+	if !ok {
+		t.Fatal("expected cloned observation node")
+	}
+	if got, ok := originalNode.PropertyValue("detail"); !ok || got != "before clone" {
+		t.Fatalf("original PropertyValue(detail) = %#v, %v", got, ok)
+	}
+	if got, ok := clonedNode.PropertyValue("detail"); !ok || got != "after clone" {
+		t.Fatalf("cloned PropertyValue(detail) = %#v, %v", got, ok)
+	}
+	if originalNode.propertyColumns == nil || clonedNode.propertyColumns == nil {
+		t.Fatal("expected both graphs to retain property column backing")
+	}
+	if originalNode.propertyColumns == clonedNode.propertyColumns {
+		t.Fatal("expected clone to own an independent property column store")
+	}
+}
+
+func TestAddNodeRebindsObservationPropertiesFromUpdatedMap(t *testing.T) {
+	g := New()
+	observedAt := time.Date(2026, 3, 18, 8, 30, 0, 0, time.UTC)
+	g.AddNode(&Node{
+		ID:   "observation:payments:rebind",
+		Kind: NodeKindObservation,
+		Name: "runtime_signal",
+		Properties: map[string]any{
+			"observation_type": "runtime_signal",
+			"subject_id":       "service:payments",
+			"detail":           "before rebind",
+			"confidence":       0.5,
+			"observed_at":      observedAt.Format(time.RFC3339),
+		},
+	})
+
+	existing, ok := g.GetNode("observation:payments:rebind")
+	if !ok {
+		t.Fatal("expected original observation node")
+	}
+	replacement := *existing
+	replacement.Properties = map[string]any{
+		"observation_type": "runtime_signal",
+		"subject_id":       "service:payments",
+		"detail":           "after rebind",
+		"confidence":       0.75,
+		"observed_at":      observedAt.Format(time.RFC3339),
+	}
+
+	g.AddNode(&replacement)
+
+	node, ok := g.GetNode("observation:payments:rebind")
+	if !ok {
+		t.Fatal("expected rebound observation node")
+	}
+	if got, ok := node.PropertyValue("confidence"); !ok || got != 0.75 {
+		t.Fatalf("PropertyValue(confidence) = %#v, %v, want 0.75,true", got, ok)
+	}
+	props, ok := node.ObservationProperties()
+	if !ok {
+		t.Fatal("expected typed observation properties after rebind")
+	}
+	if props.Confidence != 0.75 {
+		t.Fatalf("ObservationProperties().Confidence = %f, want 0.75", props.Confidence)
+	}
+	if props.Detail != "after rebind" {
+		t.Fatalf("ObservationProperties().Detail = %q, want after rebind", props.Detail)
+	}
+}
+
+func TestGraphForkPreservesColumnarObservationProperties(t *testing.T) {
+	g := New()
+	observedAt := time.Date(2026, 3, 18, 9, 0, 0, 0, time.UTC)
+	g.AddNode(&Node{
+		ID:   "observation:payments:fork",
+		Kind: NodeKindObservation,
+		Name: "runtime_signal",
+		Properties: map[string]any{
+			"observation_type": "runtime_signal",
+			"subject_id":       "service:payments",
+			"detail":           "before fork",
+			"source_system":    "agent",
+			"confidence":       0.6,
+			"observed_at":      observedAt.Format(time.RFC3339),
+		},
+	})
+
+	fork := g.Fork()
+	if !fork.SetNodeProperty("observation:payments:fork", "detail", "after fork") {
+		t.Fatal("expected fork SetNodeProperty(detail) to succeed")
+	}
+
+	originalNode, ok := g.GetNode("observation:payments:fork")
+	if !ok {
+		t.Fatal("expected original observation node")
+	}
+	forkedNode, ok := fork.GetNode("observation:payments:fork")
+	if !ok {
+		t.Fatal("expected forked observation node")
+	}
+	if got, ok := originalNode.PropertyValue("detail"); !ok || got != "before fork" {
+		t.Fatalf("original PropertyValue(detail) = %#v, %v", got, ok)
+	}
+	if got, ok := forkedNode.PropertyValue("detail"); !ok || got != "after fork" {
+		t.Fatalf("forked PropertyValue(detail) = %#v, %v", got, ok)
+	}
+	if originalNode.propertyColumns == nil || forkedNode.propertyColumns == nil {
+		t.Fatal("expected both graphs to retain property column backing")
+	}
+	if originalNode.propertyColumns == forkedNode.propertyColumns {
+		t.Fatal("expected fork to own an independent property column store after mutation")
 	}
 }
 

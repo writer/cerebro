@@ -219,6 +219,10 @@ func normalizeGraphMutationNode(node *Node) *Node {
 	if node == nil {
 		return nil
 	}
+	node.ordinal = InvalidNodeOrdinal
+	node.propertyColumns = nil
+	node.observationProps = nil
+	node.attackSequenceProps = nil
 	node.Properties = normalizeGraphMutationMap(node.Properties)
 	node.PreviousProperties = normalizeGraphMutationMap(node.PreviousProperties)
 	if node.PropertyHistory != nil {

@@ -281,10 +281,10 @@ func (c *EffectivePermissionsCalculator) collectRolePermissionsRecursive(
 	if currentNode == nil {
 		return
 	}
-	if visited.hasOrdinal(currentNode.ordinal) {
+	if visited.hasNode(currentID, currentNode.ordinal) {
 		return
 	}
-	visited.markOrdinal(currentNode.ordinal)
+	visited.markNode(currentID, currentNode.ordinal)
 
 	for _, edge := range c.graph.GetOutEdges(currentID) {
 		if edge.Kind != EdgeKindCanAssume {
@@ -439,10 +439,10 @@ func (c *EffectivePermissionsCalculator) collectRoleDenies(
 	if currentNode == nil {
 		return
 	}
-	if visited.hasOrdinal(currentNode.ordinal) {
+	if visited.hasNode(currentID, currentNode.ordinal) {
 		return
 	}
-	visited.markOrdinal(currentNode.ordinal)
+	visited.markNode(currentID, currentNode.ordinal)
 
 	for _, edge := range c.graph.GetOutEdges(currentID) {
 		if edge.Kind != EdgeKindCanAssume {

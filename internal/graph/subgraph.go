@@ -56,7 +56,7 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 	}
 
 	nodesToCopy[rootID] = root
-	seen.markOrdinal(root.ordinal)
+	seen.markNode(rootID, root.ordinal)
 	queue = append(queue, subgraphQueueItem{nodeID: rootID, depth: 0})
 
 	visitEdges := func(current string, depth int, edges []*Edge, nextNodeID func(*Edge) string) {
@@ -74,11 +74,11 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 				continue
 			}
 
-			if !seen.hasOrdinal(neighbor.ordinal) {
+			if !seen.hasNode(neighborID, neighbor.ordinal) {
 				if depth >= maxDepth || len(nodesToCopy) >= maxNodes {
 					continue
 				}
-				seen.markOrdinal(neighbor.ordinal)
+				seen.markNode(neighborID, neighbor.ordinal)
 				nodesToCopy[neighborID] = neighbor
 				queue = append(queue, subgraphQueueItem{nodeID: neighborID, depth: depth + 1})
 			}

@@ -110,6 +110,54 @@ func TestBlastRadius(t *testing.T) {
 	})
 }
 
+func TestBlastRadius_DenyChecksFallbackWhenOrdinalsAreInvalid(t *testing.T) {
+	newGraph := func() *Graph {
+		g := New()
+		g.AddNode(&Node{ID: "user:start", Kind: NodeKindUser, Name: "start"})
+		g.AddNode(&Node{ID: "bucket:allowed", Kind: NodeKindBucket, Name: "allowed"})
+		g.AddNode(&Node{ID: "bucket:blocked", Kind: NodeKindBucket, Name: "blocked"})
+		g.AddEdge(&Edge{ID: "allow-allowed", Source: "user:start", Target: "bucket:allowed", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+		g.AddEdge(&Edge{ID: "allow-blocked", Source: "user:start", Target: "bucket:blocked", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+		g.AddEdge(&Edge{ID: "deny-blocked", Source: "user:start", Target: "bucket:blocked", Kind: EdgeKindCanRead, Effect: EdgeEffectDeny})
+		return g
+	}
+
+	assertBlockedRemainsDenied := func(t *testing.T, result *BlastRadiusResult) {
+		t.Helper()
+		reachable := make(map[string]struct{}, len(result.ReachableNodes))
+		for _, node := range result.ReachableNodes {
+			reachable[node.Node.ID] = struct{}{}
+		}
+		if _, ok := reachable["bucket:allowed"]; !ok {
+			t.Fatal("expected blast radius to keep the allowed target reachable")
+		}
+		if _, ok := reachable["bucket:blocked"]; ok {
+			t.Fatal("expected blast radius to keep the denied target unreachable")
+		}
+	}
+
+	t.Run("invalid source ordinal falls back to source node id", func(t *testing.T) {
+		g := newGraph()
+
+		g.mu.Lock()
+		g.nodes["user:start"].ordinal = InvalidNodeOrdinal
+		g.mu.Unlock()
+
+		assertBlockedRemainsDenied(t, BlastRadius(g, "user:start", 1))
+	})
+
+	t.Run("invalid target ordinal falls back to target node id", func(t *testing.T) {
+		g := newGraph()
+
+		g.mu.Lock()
+		g.edgeByID["allow-blocked"].targetOrd = InvalidNodeOrdinal
+		g.edgeByID["deny-blocked"].targetOrd = InvalidNodeOrdinal
+		g.mu.Unlock()
+
+		assertBlockedRemainsDenied(t, BlastRadius(g, "user:start", 1))
+	})
+}
+
 func TestBlastRadius_CacheIsolationAndInvalidation(t *testing.T) {
 	g := setupTestGraph()
 
@@ -1001,6 +1049,40 @@ func TestCascadingBlastRadius(t *testing.T) {
 			t.Errorf("expected 0 impact for non-existent source, got %d", result.TotalImpact)
 		}
 	})
+}
+
+func TestCascadingBlastRadius_BestTimeFallsBackForInvalidOrdinals(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:start", Kind: NodeKindUser, Name: "start"})
+	g.AddNode(&Node{ID: "role:a", Kind: NodeKindRole, Name: "role-a"})
+	g.AddNode(&Node{ID: "role:b", Kind: NodeKindRole, Name: "role-b"})
+	g.AddEdge(&Edge{ID: "start-a", Source: "user:start", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "start-b", Source: "user:start", Target: "role:b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+
+	g.mu.Lock()
+	g.nodes["user:start"].ordinal = InvalidNodeOrdinal
+	g.edgeByID["start-a"].targetOrd = InvalidNodeOrdinal
+	g.edgeByID["start-b"].targetOrd = InvalidNodeOrdinal
+	g.mu.Unlock()
+
+	result := CascadingBlastRadius(g, "user:start", 2)
+	if got := result.TotalImpact; got != 2 {
+		t.Fatalf("TotalImpact = %d, want 2", got)
+	}
+	if got := len(result.TimeToCompromise[1]); got != 2 {
+		t.Fatalf("depth 1 impacted count = %d, want 2", got)
+	}
+
+	reached := make(map[string]struct{}, len(result.TimeToCompromise[1]))
+	for _, node := range result.TimeToCompromise[1] {
+		reached[node.Node.ID] = struct{}{}
+	}
+	if _, ok := reached["role:a"]; !ok {
+		t.Fatal("expected role:a to remain reachable with invalid ordinals")
+	}
+	if _, ok := reached["role:b"]; !ok {
+		t.Fatal("expected role:b to remain reachable with invalid ordinals")
+	}
 }
 
 func TestDetectSensitiveData(t *testing.T) {

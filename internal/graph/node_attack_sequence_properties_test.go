@@ -42,6 +42,12 @@ func TestAttackSequencePropertiesUseCompactLiveStorage(t *testing.T) {
 	if !ok {
 		t.Fatal("expected attack_sequence node")
 	}
+	if node.propertyColumns == nil {
+		t.Fatal("expected attack sequence node to be backed by graph property columns")
+	}
+	if node.attackSequenceProps != nil {
+		t.Fatalf("expected live attack sequence node to avoid per-node typed struct, got %+v", node.attackSequenceProps)
+	}
 	if _, ok := node.Properties["sequence_type"]; ok {
 		t.Fatalf("expected compact live properties without sequence_type, got %#v", node.Properties)
 	}
@@ -125,6 +131,9 @@ func TestSetNodePropertyRefreshesAttackSequenceProperties(t *testing.T) {
 	node, ok = g.GetNode("attack_sequence:runtime:payments")
 	if !ok {
 		t.Fatal("expected attack_sequence node")
+	}
+	if node.propertyColumns == nil {
+		t.Fatal("expected attack sequence node to remain column-backed")
 	}
 	if _, ok := node.Properties["severity"]; ok {
 		t.Fatalf("expected compact live map without severity, got %#v", node.Properties)

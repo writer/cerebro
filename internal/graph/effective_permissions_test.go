@@ -398,6 +398,42 @@ func TestEffectivePermissionsCalculator_HandlesRoleCycles(t *testing.T) {
 	}
 }
 
+func TestEffectivePermissionsCalculator_HandlesRoleCyclesWithInvalidOrdinals(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "user:start", Kind: NodeKindUser, Name: "start"})
+	g.AddNode(&Node{ID: "role:a", Kind: NodeKindRole, Name: "role-a"})
+	g.AddNode(&Node{ID: "role:b", Kind: NodeKindRole, Name: "role-b"})
+	g.AddNode(&Node{ID: "bucket:logs", Kind: NodeKindBucket, Name: "logs"})
+	g.AddNode(&Node{ID: "db:prod", Kind: NodeKindDatabase, Name: "prod"})
+
+	g.AddEdge(&Edge{ID: "user-role-a", Source: "user:start", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-a-role-b", Source: "role:a", Target: "role:b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-b-role-a", Source: "role:b", Target: "role:a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-b-logs", Source: "role:b", Target: "bucket:logs", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-a-db", Source: "role:a", Target: "db:prod", Kind: EdgeKindCanWrite, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "role-b-deny-db", Source: "role:b", Target: "db:prod", Kind: EdgeKindCanWrite, Effect: EdgeEffectDeny})
+
+	g.mu.Lock()
+	g.nodes["role:a"].ordinal = InvalidNodeOrdinal
+	g.nodes["role:b"].ordinal = InvalidNodeOrdinal
+	g.mu.Unlock()
+
+	ep := NewEffectivePermissionsCalculator(g).Calculate("user:start")
+	if ep == nil {
+		t.Fatal("expected effective permissions, got nil")
+	}
+	if _, ok := ep.Resources["bucket:logs"]; !ok {
+		t.Fatal("expected role cycle traversal to reach bucket:logs with invalid ordinals")
+	}
+	if access, ok := ep.Resources["db:prod"]; ok {
+		for _, action := range access.Actions {
+			if action == "write" {
+				t.Fatalf("did not expect denied write action to survive invalid-ordinal role-cycle deny traversal: %#v", access.Actions)
+			}
+		}
+	}
+}
+
 func TestEffectivePermissionsCalculator_SharesVisitedAcrossWideRoleBranches(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{ID: "user:start", Kind: NodeKindUser, Name: "start"})

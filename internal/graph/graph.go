@@ -14,14 +14,15 @@ var temporalNowUTC = func() time.Time {
 
 // Graph represents the graph platform containing all nodes and edges.
 type Graph struct {
-	nodes      map[string]*Node
-	outEdges   map[string][]*Edge // source -> edges
-	inEdges    map[string][]*Edge // target -> edges
-	edgeByID   map[string]*Edge
-	nodeIDs    *NodeIDIndex
-	mu         sync.RWMutex
-	metadata   Metadata
-	changeFeed graphChangeFeed
+	nodes           map[string]*Node
+	outEdges        map[string][]*Edge // source -> edges
+	inEdges         map[string][]*Edge // target -> edges
+	edgeByID        map[string]*Edge
+	nodeIDs         *NodeIDIndex
+	propertyColumns *PropertyColumns
+	mu              sync.RWMutex
+	metadata        Metadata
+	changeFeed      graphChangeFeed
 
 	activeNodeCount atomic.Int64
 	activeEdgeCount atomic.Int64
@@ -94,6 +95,7 @@ func New() *Graph {
 		inEdges:                    make(map[string][]*Edge),
 		edgeByID:                   make(map[string]*Edge),
 		nodeIDs:                    NewNodeIDIndex(),
+		propertyColumns:            NewPropertyColumns(),
 		changeFeed:                 newGraphChangeFeed(),
 		blastRadiusVersion:         1,
 		blastRadiusNeedsCompaction: false,
@@ -1090,6 +1092,7 @@ func (g *Graph) addNodeLocked(node *Node) bool {
 	node.DeletedAt = nil
 	node.ordinal = g.internNodeOrdinalLocked(node.ID)
 	hydrateNodeTypedProperties(node)
+	g.bindNodePropertyColumnsLocked(node)
 	g.appendNodePropertiesHistoryLocked(node, node.UpdatedAt)
 	g.removeNodeFromLookupIndexesLocked(existing)
 	g.removeNodeFromDerivedIndexesLocked(existing)

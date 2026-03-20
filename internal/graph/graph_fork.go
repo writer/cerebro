@@ -11,6 +11,7 @@ func forkGraphForMutation(g *Graph) *Graph {
 		inEdges:                   g.inEdges,
 		edgeByID:                  g.edgeByID,
 		nodeIDs:                   g.nodeIDs.Clone(),
+		propertyColumns:           g.propertyColumns.Clone(),
 		metadata:                  cloneMetadata(g.metadata),
 		blastRadiusVersion:        g.blastRadiusVersion,
 		schemaValidationMode:      g.schemaValidationMode,
@@ -164,6 +165,9 @@ func (g *Graph) ensureWritableNodeLocked(id string) *Node {
 	}
 	g.detachNodesMapLocked()
 	cloned := cloneNodeForGraphClone(node)
+	if cloned != nil {
+		cloned.propertyColumns = g.propertyColumns
+	}
 	g.nodes[id] = cloned
 	delete(g.sharedNodes, id)
 	return cloned

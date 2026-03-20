@@ -150,6 +150,7 @@ func (g *Graph) restoreSnapshotNodeLocked(node *Node, activeOnly bool) bool {
 	}
 	restored.ordinal = g.internNodeOrdinalLocked(restored.ID)
 	hydrateNodeTypedProperties(restored)
+	g.bindNodePropertyColumnsLocked(restored)
 
 	if existing := g.nodes[restored.ID]; existing != nil && existing.DeletedAt == nil {
 		g.activeNodeCount.Add(-1)
@@ -804,17 +805,15 @@ func cloneNode(node *Node) *Node {
 		return nil
 	}
 	cloned := *node
-	cloned.Properties = cloneAnyMap(node.Properties)
+	cloned.Properties = cloneNodeProperties(node)
 	cloned.PreviousProperties = cloneAnyMap(node.PreviousProperties)
 	cloned.PropertyHistory = clonePropertyHistoryMap(node.PropertyHistory)
 	cloned.Tags = cloneStringMap(node.Tags)
 	cloned.Findings = append([]string(nil), node.Findings...)
-	if node.observationProps != nil {
-		cloned.observationProps = ptrObservationProperties(*node.observationProps)
-	}
-	if node.attackSequenceProps != nil {
-		cloned.attackSequenceProps = ptrAttackSequenceProperties(*node.attackSequenceProps)
-	}
+	cloned.ordinal = InvalidNodeOrdinal
+	cloned.propertyColumns = nil
+	cloned.observationProps = nil
+	cloned.attackSequenceProps = nil
 	return &cloned
 }
 

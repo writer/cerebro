@@ -63,6 +63,11 @@ func (n *Node) AttackSequenceProperties() (AttackSequenceProperties, bool) {
 	if n == nil || n.Kind != NodeKindAttackSequence {
 		return AttackSequenceProperties{}, false
 	}
+	if n.propertyColumns != nil && n.ordinal != InvalidNodeOrdinal {
+		if props, ok := n.propertyColumns.AttackSequenceProperties(n.ordinal); ok {
+			return props, true
+		}
+	}
 	if n.attackSequenceProps != nil {
 		return cloneAttackSequenceProperties(*n.attackSequenceProps), true
 	}
@@ -584,10 +589,18 @@ func applyAttackSequencePropertiesToNode(node *Node, props AttackSequencePropert
 	if node == nil {
 		return
 	}
-	if props.present == 0 {
+	if node.propertyColumns != nil && node.ordinal != InvalidNodeOrdinal {
+		node.propertyColumns.ClearAttackSequenceProperties(node.ordinal)
+		if props.present != 0 {
+			node.propertyColumns.SetAttackSequenceProperties(node.ordinal, props)
+		}
 		node.attackSequenceProps = nil
 	} else {
-		node.attackSequenceProps = ptrAttackSequenceProperties(props)
+		if props.present == 0 {
+			node.attackSequenceProps = nil
+		} else {
+			node.attackSequenceProps = ptrAttackSequenceProperties(props)
+		}
 	}
 	if node.Properties != nil {
 		stripAttackSequencePropertyKeys(node.Properties)

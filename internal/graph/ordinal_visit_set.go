@@ -10,8 +10,11 @@ func newOrdinalVisitSet(nodeIDs *NodeIDIndex) ordinalVisitSet {
 }
 
 func (s *ordinalVisitSet) mark(nodeID string) bool {
-	if s == nil || s.nodeIDs == nil {
+	if s == nil {
 		return false
+	}
+	if s.nodeIDs == nil {
+		s.nodeIDs = NewNodeIDIndex()
 	}
 	ordinal := s.nodeIDs.Intern(nodeID)
 	return s.markOrdinal(ordinal)
@@ -26,6 +29,20 @@ func (s ordinalVisitSet) has(nodeID string) bool {
 		return false
 	}
 	return s.hasOrdinal(ordinal)
+}
+
+func (s *ordinalVisitSet) markNode(nodeID string, ordinal NodeOrdinal) bool {
+	if ordinal != InvalidNodeOrdinal {
+		return s.markOrdinal(ordinal)
+	}
+	return s.mark(nodeID)
+}
+
+func (s ordinalVisitSet) hasNode(nodeID string, ordinal NodeOrdinal) bool {
+	if ordinal != InvalidNodeOrdinal {
+		return s.hasOrdinal(ordinal)
+	}
+	return s.has(nodeID)
 }
 
 func (s *ordinalVisitSet) markOrdinal(ordinal NodeOrdinal) bool {

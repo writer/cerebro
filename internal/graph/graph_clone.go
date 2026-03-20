@@ -11,6 +11,7 @@ func cloneGraphWithSharedPropertyHistory(g *Graph) *Graph {
 	cloned.activeEdgeCount.Store(g.activeEdgeCount.Load())
 	cloned.blastRadiusVersion = g.blastRadiusVersion
 	cloned.nodeIDs = g.nodeIDs.Clone()
+	cloned.propertyColumns = g.propertyColumns.Clone()
 	cloned.schemaValidationMode = g.schemaValidationMode
 	cloned.schemaValidationStats = cloneSchemaValidationStats(g.schemaValidationStats)
 	cloned.temporalHistoryMaxEntries = g.temporalHistoryMaxEntries
@@ -18,6 +19,9 @@ func cloneGraphWithSharedPropertyHistory(g *Graph) *Graph {
 
 	for id, node := range g.nodes {
 		cloned.nodes[id] = cloneNodeForGraphClone(node)
+		if cloned.nodes[id] != nil {
+			cloned.nodes[id].propertyColumns = cloned.propertyColumns
+		}
 	}
 
 	edgeClones := make(map[*Edge]*Edge, len(g.edgeByID))
@@ -59,6 +63,7 @@ func cloneNodeForGraphClone(node *Node) *Node {
 	cloned.PropertyHistory = sharePropertyHistoryMap(node.PropertyHistory)
 	cloned.Tags = cloneStringMap(node.Tags)
 	cloned.Findings = append([]string(nil), node.Findings...)
+	cloned.propertyColumns = node.propertyColumns
 	if node.observationProps != nil {
 		cloned.observationProps = ptrObservationProperties(*node.observationProps)
 	}

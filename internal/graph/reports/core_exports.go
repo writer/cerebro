@@ -222,6 +222,10 @@ func temporalPropertyTime(properties map[string]any, key string) (time.Time, boo
 	if !ok {
 		return time.Time{}, false
 	}
+	return graphValueTime(value)
+}
+
+func graphValueTime(value any) (time.Time, bool) {
 	switch typed := value.(type) {
 	case nil:
 		return time.Time{}, false
@@ -247,6 +251,11 @@ func graphObservedAt(node *Node) (time.Time, bool) {
 	if node == nil {
 		return time.Time{}, false
 	}
+	if value, ok := node.PropertyValue("observed_at"); ok {
+		if ts, ok := graphValueTime(value); ok {
+			return ts, true
+		}
+	}
 	if ts, ok := temporalPropertyTime(node.Properties, "observed_at"); ok {
 		return ts, true
 	}
@@ -257,6 +266,16 @@ func graphObservedAt(node *Node) (time.Time, bool) {
 		return node.CreatedAt.UTC(), true
 	}
 	return time.Time{}, false
+}
+
+func graphNodePropertyString(node *Node, key string) string {
+	if node == nil {
+		return ""
+	}
+	if value, ok := node.PropertyValue(key); ok {
+		return strings.TrimSpace(identityAnyToString(value))
+	}
+	return strings.TrimSpace(identityAnyToString(node.Properties[key]))
 }
 
 func cloneAnyMap(values map[string]any) map[string]any {
