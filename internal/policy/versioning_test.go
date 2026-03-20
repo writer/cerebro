@@ -74,6 +74,49 @@ func TestPolicyVersionLifecycleAndRollback(t *testing.T) {
 	}
 }
 
+func TestRollbackPolicyRecompilesCELConditions(t *testing.T) {
+	engine := NewEngine()
+	engine.AddPolicy(&Policy{
+		ID:              "policy-cel-rollback",
+		Name:            "Original CEL",
+		Description:     "match public buckets",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		ConditionFormat: ConditionFormatCEL,
+		Conditions:      []string{"resource.public == true"},
+		Severity:        "high",
+	})
+
+	if ok := engine.UpdatePolicy("policy-cel-rollback", &Policy{
+		Name:            "Updated CEL",
+		Description:     "match private buckets",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		ConditionFormat: ConditionFormatCEL,
+		Conditions:      []string{"resource.public == false"},
+		Severity:        "high",
+	}); !ok {
+		t.Fatal("expected update to succeed")
+	}
+
+	if _, err := engine.RollbackPolicy("policy-cel-rollback", 1); err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+
+	findings, err := engine.EvaluateAsset(context.Background(), map[string]interface{}{
+		"_cq_id":    "bucket-1",
+		"_cq_table": "aws_s3_buckets",
+		"type":      "aws::s3::bucket",
+		"public":    true,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAsset failed: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding after rollback for public=true asset, got %d", len(findings))
+	}
+}
+
 func TestDiffPolicies_TracksChangedFields(t *testing.T) {
 	before := &Policy{
 		ID:          "policy-diff",

@@ -212,14 +212,18 @@ func (e *Engine) RollbackPolicy(policyID string, version int) (*Policy, error) {
 	}
 
 	now := time.Now().UTC()
-	if _, exists := e.policies[policyID]; exists {
-		e.closeActivePolicyEventLocked(policyID, now)
-	}
-
 	source.ID = policyID
 	source.Version = e.nextPolicyVersionLocked(policyID)
 	source.LastModified = now
 	source.PinnedVersion = version
+	source.ConditionFormat = normalizeConditionFormat(source.ConditionFormat)
+	if err := e.syncConditionProgramsLocked(source); err != nil {
+		return nil, err
+	}
+	if _, exists := e.policies[policyID]; exists {
+		e.closeActivePolicyEventLocked(policyID, now)
+	}
+
 	e.policies[policyID] = clonePolicy(source)
 	e.appendPolicyEventLocked(policyID, source, now, nil, PolicyEventRolledBack)
 
