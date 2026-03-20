@@ -31,6 +31,7 @@ type Server struct {
 	graphAdvisory            graphAdvisoryService
 	findingsCompliance       findingsComplianceService
 	entitiesImpact           entitiesImpactService
+	graphRuleDiscovery       graphRuleDiscoveryService
 	graphSimulation          graphSimulationService
 	graphRisk                graphRiskService
 	graphIntelligence        graphIntelligenceService
@@ -157,6 +158,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if platformWorkloadScan == nil {
 		platformWorkloadScan = newPlatformWorkloadScanService(&deps)
 	}
+	graphRuleDiscovery := deps.graphRuleDiscovery
+	if graphRuleDiscovery == nil {
+		graphRuleDiscovery = newGraphRuleDiscoveryService(nil)
+	}
 	graphSimulation := deps.graphSimulation
 	if graphSimulation == nil {
 		graphSimulation = newGraphSimulationService(&deps)
@@ -180,6 +185,7 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		entitiesImpact:         entitiesImpact,
 		graphAdvisory:          graphAdvisory,
 		findingsCompliance:     newFindingsComplianceService(&deps),
+		graphRuleDiscovery:     graphRuleDiscovery,
 		graphSimulation:        graphSimulation,
 		graphIntelligence:      newGraphIntelligenceService(&deps),
 		lineage:                lineage,
@@ -202,6 +208,9 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		platformReportStreams:  make(map[string]map[chan platformReportStreamMessage]struct{}),
 		agentSDKMCPSessions:    make(map[string]*agentSDKMCPSession),
 		agentSDKReportProgress: make(map[string]agentSDKReportProgressSubscription),
+	}
+	if _, ok := graphRuleDiscovery.(serverGraphRuleDiscoveryService); ok {
+		s.graphRuleDiscovery = newGraphRuleDiscoveryService(s)
 	}
 	s.graphRisk = newGraphRiskService(s, &deps)
 	if graphWriteback == nil {

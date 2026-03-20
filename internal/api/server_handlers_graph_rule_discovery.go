@@ -8,17 +8,10 @@ import (
 	"strings"
 
 	"github.com/evalops/cerebro/internal/graph"
-	"github.com/evalops/cerebro/internal/metrics"
 	"github.com/go-chi/chi/v5"
 )
 
 func (s *Server) runGraphRuleDiscovery(w http.ResponseWriter, r *http.Request) {
-	engine := s.graphRiskEngine(r.Context())
-	if engine == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	var req graph.RuleDiscoveryRequest
 	if r.Body != nil {
 		decoder := json.NewDecoder(r.Body)
@@ -28,11 +21,11 @@ func (s *Server) runGraphRuleDiscovery(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	candidates := engine.DiscoverRules(req)
-	for _, candidate := range candidates {
-		metrics.RecordGraphRuleDiscoveryCandidate(candidate.Type, candidate.Status)
+	candidates, err := s.graphRuleDiscovery.Discover(r.Context(), req)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
 	}
-	s.persistRiskEngineState(r.Context(), engine)
 	s.json(w, http.StatusOK, map[string]any{
 		"count":      len(candidates),
 		"candidates": candidates,
@@ -40,14 +33,12 @@ func (s *Server) runGraphRuleDiscovery(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listGraphRuleDiscoveryCandidates(w http.ResponseWriter, r *http.Request) {
-	engine := s.graphRiskEngine(r.Context())
-	if engine == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	candidates, err := s.graphRuleDiscovery.List(r.Context(), status)
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
-
-	status := strings.TrimSpace(r.URL.Query().Get("status"))
-	candidates := engine.ListDiscoveredRules(status)
 	s.json(w, http.StatusOK, map[string]any{
 		"count":      len(candidates),
 		"candidates": candidates,
@@ -55,12 +46,6 @@ func (s *Server) listGraphRuleDiscoveryCandidates(w http.ResponseWriter, r *http
 }
 
 func (s *Server) decideGraphRuleDiscoveryCandidate(w http.ResponseWriter, r *http.Request) {
-	engine := s.graphRiskEngine(r.Context())
-	if engine == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	candidateID := strings.TrimSpace(chi.URLParam(r, "id"))
 	if candidateID == "" {
 		s.error(w, http.StatusBadRequest, "candidate id is required")
@@ -73,8 +58,12 @@ func (s *Server) decideGraphRuleDiscoveryCandidate(w http.ResponseWriter, r *htt
 		return
 	}
 
-	updated, err := engine.DecideDiscoveredRule(candidateID, req)
+	updated, err := s.graphRuleDiscovery.Decide(r.Context(), candidateID, req)
 	if err != nil {
+		if errors.Is(err, errGraphRiskUnavailable) {
+			s.errorFromErr(w, err)
+			return
+		}
 		if strings.Contains(err.Error(), "not found") {
 			s.error(w, http.StatusNotFound, err.Error())
 			return
@@ -82,9 +71,6 @@ func (s *Server) decideGraphRuleDiscoveryCandidate(w http.ResponseWriter, r *htt
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	metrics.RecordGraphRuleDecision(updated.Type, updated.Status)
-	s.persistRiskEngineState(r.Context(), engine)
-
 	s.json(w, http.StatusOK, map[string]any{
 		"candidate": updated,
 	})

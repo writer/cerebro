@@ -119,6 +119,7 @@ type serverDependencies struct {
 
 	graphRuntime          graphRuntimeService
 	graphMutator          graphMutationService
+	graphRuleDiscovery    graphRuleDiscoveryService
 	graphSimulation       graphSimulationService
 	apiCredentials        apiCredentialService
 	agentSDKToolSource    agentSDKToolService

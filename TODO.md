@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 235 - Graph Rule Discovery Handler Service Seam (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#210` still left the graph rule-discovery run/list/decision handlers reaching directly into the risk-engine lifecycle from the HTTP layer.
+- [x] Gap: those three endpoints form a compact approval-workflow family with stable request parsing and response semantics, which makes them a low-risk extraction seam.
+- [x] Gap: there was no constructor-level regression proving the rule-discovery handlers can execute through `NewServerWithDependencies(...)` with only a narrow typed discovery stub.
+
+### Execution plan
+- [x] Add a dedicated `graphRuleDiscoveryService` in `internal/api/` and wire it through `NewServerWithDependencies(...)`.
+- [x] Route run/list/decision handlers through that service while preserving unavailable, not-found, and bad-request behavior.
+- [x] Add focused service-stub coverage and rerun targeted API validation before opening the PR.
+
 ## Deep Review Cycle 234 - Ticketing Handler Service Seam (2026-03-19)
 
 ### Review findings
