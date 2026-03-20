@@ -185,13 +185,20 @@ func (p *S3SourceProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncRes
 
 	objectRows := make([]map[string]interface{}, 0)
 	recordRows := make([]map[string]interface{}, 0)
+	processedObjects := 0
 
 	for _, prefix := range prefixes {
-		objects, err := p.listObjectsWithPrefix(ctx, prefix)
+		remaining := p.maxObjects - processedObjects
+		if remaining <= 0 {
+			break
+		}
+
+		objects, err := p.listObjectsWithPrefix(ctx, prefix, remaining)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("prefix %q: %v", prefix, err))
 			continue
 		}
+		processedObjects += len(objects)
 
 		for _, object := range objects {
 			parsed, parseErr := p.parseObject(ctx, object)
@@ -277,14 +284,17 @@ func (p *S3SourceProvider) syncSourceTable(ctx context.Context, tableName string
 	return p.syncTable(ctx, schema, rows)
 }
 
-func (p *S3SourceProvider) listObjectsWithPrefix(ctx context.Context, prefix string) ([]s3ObjectMeta, error) {
+func (p *S3SourceProvider) listObjectsWithPrefix(ctx context.Context, prefix string, maxObjects int) ([]s3ObjectMeta, error) {
 	objects := make([]s3ObjectMeta, 0)
+	if maxObjects < 1 {
+		return objects, nil
+	}
 	input := &s3.ListObjectsV2Input{Bucket: aws.String(p.bucket)}
 	if prefix != "" {
 		input.Prefix = aws.String(prefix)
 	}
 
-	for len(objects) < p.maxObjects {
+	for len(objects) < maxObjects {
 		output, err := p.client.ListObjectsV2(ctx, input)
 		if err != nil {
 			return nil, err
@@ -309,12 +319,12 @@ func (p *S3SourceProvider) listObjectsWithPrefix(ctx context.Context, prefix str
 				LastModified: aws.ToTime(object.LastModified).UTC(),
 			})
 
-			if len(objects) >= p.maxObjects {
+			if len(objects) >= maxObjects {
 				break
 			}
 		}
 
-		if len(objects) >= p.maxObjects || !aws.ToBool(output.IsTruncated) {
+		if len(objects) >= maxObjects || !aws.ToBool(output.IsTruncated) {
 			break
 		}
 
