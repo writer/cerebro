@@ -1720,6 +1720,138 @@ func TestConsumerHandleMessageTracesNakOnHandlerFailure(t *testing.T) {
 	}
 }
 
+func TestConsumerHandleDecodedMessageUsesDelayedNakForRetryWithDelayErrors(t *testing.T) {
+	const retryDelay = 5 * time.Second
+
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:  "ENSEMBLE_TAP_TEST",
+			Durable: "cerebro_retry_delay_test",
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		handler: func(context.Context, CloudEvent) error {
+			return RetryWithDelay(errors.New("deferred"), retryDelay)
+		},
+	}
+
+	event := CloudEvent{
+		SpecVersion: cloudEventSpecVersion,
+		ID:          "evt-retry-delay-1",
+		Source:      "cerebro.events.test",
+		Type:        "tap.test",
+		Time:        time.Now().UTC(),
+		DataSchema:  "urn:cerebro:events:test",
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal cloud event: %v", err)
+	}
+
+	var immediateNaks atomic.Int64
+	var delayedNaks atomic.Int64
+	gotDelay := time.Duration(0)
+	decoded := consumer.decodePipelineMessage(context.Background(), consumerPipelineMessage{
+		subject: "ensemble.tap.retry.event",
+		payload: payload,
+		ack: func() error {
+			t.Fatal("expected deferred handler failure not to ack")
+			return nil
+		},
+		nak: func() error {
+			immediateNaks.Add(1)
+			return nil
+		},
+		nakWithDelay: func(delay time.Duration) error {
+			delayedNaks.Add(1)
+			gotDelay = delay
+			return nil
+		},
+		inProgress: func() error { return nil },
+	})
+
+	result := consumer.handleDecodedMessage(decoded)
+	if result.Processed {
+		t.Fatal("expected deferred handler result to remain unprocessed")
+	}
+	if immediateNaks.Load() != 0 {
+		t.Fatalf("expected no immediate naks, got %d", immediateNaks.Load())
+	}
+	if delayedNaks.Load() != 1 {
+		t.Fatalf("expected one delayed nak, got %d", delayedNaks.Load())
+	}
+	if gotDelay != retryDelay {
+		t.Fatalf("delayed nak used delay %s, want %s", gotDelay, retryDelay)
+	}
+}
+
+func TestConsumerProcessBatchUsesDelayedNakForRetryWithDelayErrors(t *testing.T) {
+	const retryDelay = 5 * time.Second
+
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:         "ENSEMBLE_TAP_TEST",
+			Durable:        "cerebro_retry_delay_batch_test",
+			BatchSize:      1,
+			HandlerWorkers: 1,
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		handler: func(context.Context, CloudEvent) error {
+			return RetryWithDelay(errors.New("deferred"), retryDelay)
+		},
+	}
+
+	event := CloudEvent{
+		SpecVersion: cloudEventSpecVersion,
+		ID:          "evt-retry-delay-batch-1",
+		Source:      "cerebro.events.test",
+		Type:        "tap.test",
+		Time:        time.Now().UTC(),
+		DataSchema:  "urn:cerebro:events:test",
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal cloud event: %v", err)
+	}
+
+	var acked atomic.Int64
+	var immediateNaks atomic.Int64
+	var delayedNaks atomic.Int64
+	var gotDelay atomic.Int64
+	consumer.processBatch(context.Background(), []consumerPipelineMessage{
+		{
+			index:   0,
+			subject: "ensemble.tap.retry.event",
+			payload: payload,
+			ack: func() error {
+				acked.Add(1)
+				return nil
+			},
+			nak: func() error {
+				immediateNaks.Add(1)
+				return nil
+			},
+			nakWithDelay: func(delay time.Duration) error {
+				delayedNaks.Add(1)
+				gotDelay.Store(int64(delay))
+				return nil
+			},
+		},
+	})
+
+	if acked.Load() != 0 {
+		t.Fatalf("expected deferred handler failure not to ack, got %d", acked.Load())
+	}
+	if immediateNaks.Load() != 0 {
+		t.Fatalf("expected no immediate naks, got %d", immediateNaks.Load())
+	}
+	if delayedNaks.Load() != 1 {
+		t.Fatalf("expected one delayed nak, got %d", delayedNaks.Load())
+	}
+	if time.Duration(gotDelay.Load()) != retryDelay {
+		t.Fatalf("delayed nak used delay %s, want %s", time.Duration(gotDelay.Load()), retryDelay)
+	}
+}
+
 func TestConsumerHandleMessagePropagatesEventAttributesIntoHandlerChildSpans(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))

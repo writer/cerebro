@@ -712,9 +712,11 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 		return graph.Metadata{}, err
 	}
-	if err := a.requireGraphWriterLease("activate security graph"); err != nil {
-		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
-		return graph.Metadata{}, err
+	if !graphReplicaReplayEnabled(ctx) {
+		if err := a.requireGraphWriterLease("activate security graph"); err != nil {
+			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+			return graph.Metadata{}, err
+		}
 	}
 	if materialized, err := a.materializePersistedWorkloadScans(ctx, securityGraph); err != nil {
 		a.Logger.Warn("failed to materialize persisted workload scans into security graph", "error", err)
@@ -732,7 +734,7 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 	a.rematerializeEventCorrelations(securityGraph, "graph_activation")
 	a.configureGraphRuntimeBehavior(securityGraph)
 	a.setSecurityGraph(securityGraph)
-	if a.GraphSnapshots != nil {
+	if a.GraphSnapshots != nil && !graphReplicaReplayEnabled(ctx) {
 		if record, err := a.GraphSnapshots.SaveGraph(securityGraph); err != nil {
 			if record != nil {
 				a.Logger.Warn("replicated security graph snapshot failed after local persist", "snapshot_id", record.ID, "error", err)

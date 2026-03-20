@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/evalops/cerebro/internal/cerrors"
+	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/health"
 	"github.com/evalops/cerebro/internal/metrics"
 )
@@ -421,22 +422,62 @@ func (a *App) handleGraphWriterLeaseAcquired(ctx context.Context) {
 	a.graphWriterLeaseTransitionWG.Add(1)
 	go func() {
 		defer a.graphWriterLeaseTransitionWG.Done()
-		if err := a.RebuildSecurityGraph(backgroundWorkContext(ctx)); err != nil {
+		promotionCtx := withoutGraphReplicaReplay(backgroundWorkContext(ctx))
+		if err := a.promoteOrRebuildSecurityGraph(promotionCtx); err != nil {
 			if a.Logger != nil {
-				a.Logger.Warn("graph writer promotion rebuild failed", "error", err)
+				a.Logger.Warn("graph writer promotion failed", "error", err)
 			}
 			return
 		}
-		a.startTapGraphConsumer(backgroundWorkContext(ctx))
+		a.startTapGraphConsumer(promotionCtx)
 	}()
 }
 
+func (a *App) promoteOrRebuildSecurityGraph(ctx context.Context) error {
+	if current := a.CurrentSecurityGraph(); current != nil && current.NodeCount() > 0 {
+		meta, promoted, err := func() (graph.Metadata, bool, error) {
+			a.graphUpdateMu.Lock()
+			defer a.graphUpdateMu.Unlock()
+
+			current = a.CurrentSecurityGraph()
+			if current == nil || current.NodeCount() == 0 {
+				return graph.Metadata{}, false, nil
+			}
+
+			meta, err := a.activateBuiltSecurityGraph(ctx, current.Clone())
+			if err != nil {
+				return graph.Metadata{}, false, err
+			}
+			return meta, true, nil
+		}()
+		if err != nil {
+			return err
+		}
+		if promoted {
+			a.emitGraphRebuiltEvent(ctx, meta, 0)
+			a.emitGraphMutationEvent(ctx, graph.GraphMutationSummary{
+				Mode:      graph.GraphMutationModeFullRebuild,
+				Since:     meta.BuiltAt,
+				Until:     meta.BuiltAt,
+				NodeCount: meta.NodeCount,
+				EdgeCount: meta.EdgeCount,
+			}, "lease_promotion")
+			return nil
+		}
+	}
+	return a.RebuildSecurityGraph(ctx)
+}
+
 func (a *App) handleGraphWriterLeaseLost(ctx context.Context) {
-	if a == nil {
+	if a == nil || a.Config == nil || !a.Config.NATSConsumerEnabled {
 		return
 	}
-	if err := a.stopTapGraphConsumer(backgroundWorkContext(ctx)); err != nil && a.Logger != nil {
-		a.Logger.Warn("failed to stop tap consumer after graph writer lease loss", "error", err)
+	a.startTapGraphConsumer(backgroundWorkContext(ctx))
+	if a.Logger != nil {
+		a.Logger.Info("graph writer lease lost; continuing tap consumer in follower replica mode",
+			"lease", a.Config.GraphWriterLeaseName,
+			"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
+		)
 	}
 }
 

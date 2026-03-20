@@ -79,6 +79,53 @@ type ConsumerConfig struct {
 
 type EventHandler func(context.Context, CloudEvent) error
 
+type retryWithDelayError interface {
+	error
+	RetryDelay() time.Duration
+}
+
+type delayedRetryError struct {
+	err   error
+	delay time.Duration
+}
+
+func (e delayedRetryError) Error() string {
+	if e.err == nil {
+		return ""
+	}
+	return e.err.Error()
+}
+
+func (e delayedRetryError) Unwrap() error {
+	return e.err
+}
+
+func (e delayedRetryError) RetryDelay() time.Duration {
+	return e.delay
+}
+
+func RetryWithDelay(err error, delay time.Duration) error {
+	if err == nil || delay <= 0 {
+		return err
+	}
+	return delayedRetryError{
+		err:   err,
+		delay: delay,
+	}
+}
+
+func retryDelay(err error) (time.Duration, bool) {
+	var delayed retryWithDelayError
+	if !errors.As(err, &delayed) {
+		return 0, false
+	}
+	delay := delayed.RetryDelay()
+	if delay <= 0 {
+		return 0, false
+	}
+	return delay, true
+}
+
 type Consumer struct {
 	logger  *slog.Logger
 	config  ConsumerConfig
@@ -345,11 +392,14 @@ func (c *Consumer) run() {
 		for i, msg := range msgs {
 			msg := msg
 			batch[i] = consumerPipelineMessage{
-				index:      i,
-				subject:    msg.Subject,
-				payload:    msg.Data,
-				ack:        func() error { return msg.Ack() },
-				nak:        func() error { return msg.Nak() },
+				index:   i,
+				subject: msg.Subject,
+				payload: msg.Data,
+				ack:     func() error { return msg.Ack() },
+				nak:     func() error { return msg.Nak() },
+				nakWithDelay: func(delay time.Duration) error {
+					return msg.NakWithDelay(delay)
+				},
 				inProgress: func() error { return msg.InProgress() },
 			}
 		}
@@ -367,12 +417,13 @@ type consumerMessageResult struct {
 }
 
 type consumerPipelineMessage struct {
-	index      int
-	subject    string
-	payload    []byte
-	ack        func() error
-	nak        func() error
-	inProgress func() error
+	index        int
+	subject      string
+	payload      []byte
+	ack          func() error
+	nak          func() error
+	nakWithDelay func(time.Duration) error
+	inProgress   func() error
 }
 
 type consumerDecodedMessage struct {
@@ -543,6 +594,20 @@ func (c *Consumer) handleDecodedMessage(decoded consumerDecodedMessage) consumer
 	handlerCtx, handlerSpan := c.startTracingSpan(ingestCtx, "cerebro.event.handle", c.consumerEventAttributes(message, evt)...)
 	handlerCtx = telemetry.ContextWithAttributes(handlerCtx, c.consumerEventAttributes(message, evt)...)
 	if err := c.handler(handlerCtx, evt); err != nil {
+		if delay, ok := retryDelay(err); ok && message.nakWithDelay != nil {
+			handlerSpan.End()
+			c.logger.Info("tap consumer handler deferred; message requeued with delay",
+				"error", err,
+				"event_type", evt.Type,
+				"delay", delay,
+			)
+			if nakErr := c.consumerAckWithTracing(ingestCtx, message, evt, "nak_with_delay", func() error {
+				return message.nakWithDelay(delay)
+			}); nakErr != nil {
+				c.logger.Warn("tap consumer delayed nak failed", "error", nakErr, "event_type", evt.Type, "delay", delay)
+			}
+			return consumerMessageResult{}
+		}
 		consumerRecordSpanError(handlerSpan, err)
 		handlerSpan.End()
 		c.logger.Warn("tap consumer handler failed; message requeued", "error", err, "event_type", evt.Type)

@@ -23,8 +23,10 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 	if a == nil {
 		return nil, fmt.Errorf("security graph not initialized")
 	}
-	if err := a.requireGraphWriterLease("mutate security graph"); err != nil {
-		return nil, err
+	if !graphReplicaReplayEnabled(ctx) {
+		if err := a.requireGraphWriterLease("mutate security graph"); err != nil {
+			return nil, err
+		}
 	}
 	if mutate == nil {
 		return a.CurrentSecurityGraph(), nil
@@ -75,8 +77,10 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
-	if err := a.requireGraphWriterLease("mutate security graph"); err != nil {
-		return nil, err
+	if !graphReplicaReplayEnabled(ctx) {
+		if err := a.requireGraphWriterLease("mutate security graph"); err != nil {
+			return nil, err
+		}
 	}
 
 	_, indexSpan := telemetry.StartSpan(ctx, "cerebro.graph", "cerebro.graph.index_update",

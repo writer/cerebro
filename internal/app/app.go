@@ -182,6 +182,8 @@ type App struct {
 	tapResolveGraphMu             sync.RWMutex
 	tapResolveGraph               *graph.Graph
 	tapConsumerMu                 sync.Mutex
+	tapConsumerDurable            string
+	tapConsumerSubjects           []string
 	securityGraphInitMu           sync.RWMutex
 	reloadMu                      sync.Mutex
 	apiKeys                       atomic.Value // map[string]string

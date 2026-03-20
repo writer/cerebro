@@ -705,6 +705,13 @@ var (
 		},
 	)
 
+	GraphReplicaLagMutations = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cerebro_replica_lag_mutations",
+			Help: "Current security-graph replica lag in pending mutation messages",
+		},
+	)
+
 	// Build info
 	BuildInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -821,6 +828,7 @@ func Register() {
 			GraphStatePersistenceTotal,
 			GraphWriterActive,
 			GraphWriterLeaseRemainingSeconds,
+			GraphReplicaLagMutations,
 			// Build
 			BuildInfo,
 		)
@@ -1101,6 +1109,13 @@ func SetGraphWriterLeaseState(active bool, leaseUntil, now time.Time) {
 		remaining = 0
 	}
 	GraphWriterLeaseRemainingSeconds.Set(remaining.Seconds())
+}
+
+func SetGraphReplicaLagMutations(lag int) {
+	if lag < 0 {
+		lag = 0
+	}
+	GraphReplicaLagMutations.Set(float64(lag))
 }
 
 func RecordJetStreamPublish(stream, result string) {

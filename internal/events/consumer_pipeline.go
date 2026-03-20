@@ -333,6 +333,19 @@ func (c *Consumer) persistBatchRecord(ctx context.Context, record consumerBatchP
 		return consumerMessageResult{}
 
 	case consumerBatchPersistHandlerFailure:
+		if delay, ok := retryDelay(record.err); ok && record.message.nakWithDelay != nil {
+			c.logger.Info("tap consumer handler deferred; message requeued with delay",
+				"error", record.err,
+				"event_type", record.event.Type,
+				"delay", delay,
+			)
+			if nakErr := c.consumerAckWithTracing(record.ctx, record.message, record.event, "nak_with_delay", func() error {
+				return record.message.nakWithDelay(delay)
+			}); nakErr != nil {
+				c.logger.Warn("tap consumer delayed nak failed", "error", nakErr, "event_type", record.event.Type, "delay", delay)
+			}
+			return consumerMessageResult{}
+		}
 		c.logger.Warn("tap consumer handler failed; message requeued", "error", record.err, "event_type", record.event.Type)
 		if nakErr := c.consumerAckWithTracing(record.ctx, record.message, record.event, "nak", record.message.nak); nakErr != nil {
 			c.logger.Warn("tap consumer nak failed", "error", nakErr, "event_type", record.event.Type)
