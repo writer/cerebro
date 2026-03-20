@@ -1,8 +1,10 @@
 package graph
 
 type ordinalVisitSet struct {
-	nodeIDs *NodeIDIndex
-	words   []uint64
+	nodeIDs      *NodeIDIndex
+	words        []uint64
+	localNodeIDs *NodeIDIndex
+	localWords   []uint64
 }
 
 func newOrdinalVisitSet(nodeIDs *NodeIDIndex) ordinalVisitSet {
@@ -13,22 +15,30 @@ func (s *ordinalVisitSet) mark(nodeID string) bool {
 	if s == nil {
 		return false
 	}
-	if s.nodeIDs == nil {
-		s.nodeIDs = NewNodeIDIndex()
+	if s.nodeIDs != nil {
+		ordinal := s.nodeIDs.Intern(nodeID)
+		return s.markOrdinal(ordinal)
 	}
-	ordinal := s.nodeIDs.Intern(nodeID)
-	return s.markOrdinal(ordinal)
+	if s.localNodeIDs == nil {
+		s.localNodeIDs = NewNodeIDIndex()
+	}
+	ordinal := s.localNodeIDs.Intern(nodeID)
+	return markOrdinalInWords(&s.localWords, ordinal)
 }
 
 func (s ordinalVisitSet) has(nodeID string) bool {
-	if s.nodeIDs == nil {
-		return false
+	if s.nodeIDs != nil {
+		if ordinal, ok := s.nodeIDs.Lookup(nodeID); ok {
+			return s.hasOrdinal(ordinal)
+		}
 	}
-	ordinal, ok := s.nodeIDs.Lookup(nodeID)
-	if !ok {
-		return false
+	if s.localNodeIDs != nil {
+		ordinal, ok := s.localNodeIDs.Lookup(nodeID)
+		if ok {
+			return hasOrdinalInWords(s.localWords, ordinal)
+		}
 	}
-	return s.hasOrdinal(ordinal)
+	return false
 }
 
 func (s *ordinalVisitSet) markNode(nodeID string, ordinal NodeOrdinal) bool {
@@ -49,35 +59,51 @@ func (s *ordinalVisitSet) markOrdinal(ordinal NodeOrdinal) bool {
 	if s == nil {
 		return false
 	}
-	word, mask, ok := ordinalWordAndMask(ordinal)
-	if !ok {
-		return false
-	}
-	if word >= len(s.words) {
-		grown := make([]uint64, word+1)
-		copy(grown, s.words)
-		s.words = grown
-	}
-	alreadyMarked := s.words[word]&mask != 0
-	s.words[word] |= mask
-	return !alreadyMarked
+	return markOrdinalInWords(&s.words, ordinal)
 }
 
 func (s ordinalVisitSet) hasOrdinal(ordinal NodeOrdinal) bool {
+	return hasOrdinalInWords(s.words, ordinal)
+}
+
+func markOrdinalInWords(words *[]uint64, ordinal NodeOrdinal) bool {
 	word, mask, ok := ordinalWordAndMask(ordinal)
 	if !ok {
 		return false
 	}
-	if word >= len(s.words) {
+	if word >= len(*words) {
+		grown := make([]uint64, word+1)
+		copy(grown, *words)
+		*words = grown
+	}
+	alreadyMarked := (*words)[word]&mask != 0
+	(*words)[word] |= mask
+	return !alreadyMarked
+}
+
+func hasOrdinalInWords(words []uint64, ordinal NodeOrdinal) bool {
+	word, mask, ok := ordinalWordAndMask(ordinal)
+	if !ok {
 		return false
 	}
-	return s.words[word]&mask != 0
+	if word >= len(words) {
+		return false
+	}
+	return words[word]&mask != 0
 }
 
 func (s ordinalVisitSet) clone() ordinalVisitSet {
-	cloned := ordinalVisitSet{nodeIDs: s.nodeIDs}
+	cloned := ordinalVisitSet{
+		nodeIDs: s.nodeIDs,
+	}
+	if s.localNodeIDs != nil {
+		cloned.localNodeIDs = s.localNodeIDs.Clone()
+	}
 	if len(s.words) > 0 {
 		cloned.words = append([]uint64(nil), s.words...)
+	}
+	if len(s.localWords) > 0 {
+		cloned.localWords = append([]uint64(nil), s.localWords...)
 	}
 	return cloned
 }

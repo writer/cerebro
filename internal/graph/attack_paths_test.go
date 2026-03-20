@@ -69,12 +69,11 @@ func TestAttackPathSimulatorFindShortestPathAvoidingHandlesCycles(t *testing.T) 
 	}
 }
 
-func TestAttackPathSimulatorFindShortestPathRespectsMaxLen(t *testing.T) {
+func TestAttackPathSimulatorFindShortestPathHonorsMaxLen(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
 	g.AddNode(&Node{ID: "role", Kind: NodeKindRole, Name: "Role"})
 	g.AddNode(&Node{ID: "db", Kind: NodeKindDatabase, Name: "DB", Risk: RiskCritical})
-
 	g.AddEdge(&Edge{ID: "internet-role", Source: "internet", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
 	g.AddEdge(&Edge{ID: "role-db", Source: "role", Target: "db", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
 
@@ -94,13 +93,12 @@ func TestAttackPathSimulatorFindShortestPathRespectsMaxLen(t *testing.T) {
 
 	path := sim.findShortestPath(entry, target, 2)
 	if path == nil {
-		t.Fatal("expected shortest path when maxLen matches path length")
+		t.Fatal("expected shortest path at exact maxLen")
 	}
 	if path.Length != 2 {
-		t.Fatalf("expected path length 2, got %d", path.Length)
+		t.Fatalf("expected shortest path length 2, got %d", path.Length)
 	}
 }
-
 func TestAttackPathSimulatorFindShortestPathParallelMatchesSequentialWideFrontier(t *testing.T) {
 	parallelGraph, _, _ := newAttackPathTraversalBenchmarkGraph(5, 4)
 	singleGraph, _, _ := newAttackPathTraversalBenchmarkGraph(5, 4)
