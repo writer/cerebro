@@ -481,6 +481,18 @@ func TestDeriveTapActivityNodeKind(t *testing.T) {
 	}
 }
 
+func TestInferTapActivityStatus_UsesActionFallbacks(t *testing.T) {
+	if got := inferTapActivityStatus("deploy_failed", map[string]any{}); got != "failed" {
+		t.Fatalf("inferTapActivityStatus(failed) = %q, want failed", got)
+	}
+	if got := inferTapActivityStatus("ticket_opened", map[string]any{}); got != "open" {
+		t.Fatalf("inferTapActivityStatus(open) = %q, want open", got)
+	}
+	if got := inferTapActivityStatus("commented", map[string]any{}); got != "updated" {
+		t.Fatalf("inferTapActivityStatus(updated) = %q, want updated", got)
+	}
+}
+
 func TestExtractBusinessEdges(t *testing.T) {
 	edges := extractBusinessEdges("hubspot", "contact", "hubspot:contact:contact-1", map[string]any{
 		"company_id": "company-1",

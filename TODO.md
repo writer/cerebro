@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 246 - TAP Activity Modeling Split (2026-03-19)
+
+### Review findings
+- [x] Gap: `internal/app/app_stream_consumer_modeling.go` still bundled all activity-specific node-kind and property-shaping logic with business modeling and generic coercion helpers, which kept one TAP concern family unnecessarily broad even after the activity parse split.
+- [x] Gap: the activity-kind derivation and property-shaping helpers are cohesive on their own and belong with the TAP activity path rather than the shared mixed modeling file.
+- [x] Gap: existing coverage exercised activity node-kind derivation, but there was no direct regression around the fallback action-to-status mapping that feeds several activity kinds.
+
+### Execution plan
+- [x] Move the TAP activity-specific modeling helpers into a dedicated `app_stream_consumer_activity_modeling.go` file.
+- [x] Leave business modeling and generic coercion utilities in `app_stream_consumer_modeling.go`.
+- [x] Add a focused activity-status fallback regression and rerun targeted `internal/app` validation before opening the PR.
+
 ## Deep Review Cycle 245 - TAP Identity Resolve Split (2026-03-19)
 
 ### Review findings
