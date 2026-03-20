@@ -136,6 +136,22 @@ func TestResolveTapMappingIdentityPrefersScopedResolveGraph(t *testing.T) {
 	}
 }
 
+func TestResolveTapMappingIdentityCanonicalizesEmailWithoutLiveGraph(t *testing.T) {
+	a := &App{}
+	evt := events.CloudEvent{
+		ID:   "evt-email-only",
+		Type: "ensemble.tap.slack.user.updated",
+		Time: time.Date(2026, 3, 12, 9, 0, 0, 0, time.UTC),
+	}
+
+	if got := a.resolveTapMappingIdentity(" Alice@Example.com ", evt); got != "person:alice@example.com" {
+		t.Fatalf("resolveTapMappingIdentity() = %q, want person:alice@example.com", got)
+	}
+	if a.CurrentSecurityGraph() != nil {
+		t.Fatalf("expected no live graph allocation, got %p", a.CurrentSecurityGraph())
+	}
+}
+
 func TestHandleGraphCloudEvent_AuditMutationPersistsCDCEvents(t *testing.T) {
 	store := &warehouse.MemoryWarehouse{}
 	a := &App{Warehouse: store}

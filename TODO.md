@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 245 - TAP Identity Resolve Split (2026-03-19)
+
+### Review findings
+- [x] Gap: `internal/app/app_stream_consumer_runtime.go` still mixed graph readiness/runtime concerns with TAP identity-resolution state, so the runtime file was carrying per-event identity logic that issue `#211` explicitly wants separated from coordination concerns.
+- [x] Gap: the scoped-resolve-graph helpers and email canonicalization path are cohesive on their own and can move into a dedicated identity-resolution file without changing event dispatch or graph-init semantics.
+- [x] Gap: existing coverage proved scoped resolve-graph preference, but there was no regression confirming that email canonicalization still works without allocating a live graph when the app has no current graph loaded.
+
+### Execution plan
+- [x] Move the TAP identity-resolution helpers out of the runtime file into a dedicated helper file.
+- [x] Leave only graph-init and graph-ready waiting logic in `app_stream_consumer_runtime.go`.
+- [x] Add a focused no-live-graph canonicalization regression and rerun targeted `internal/app` validation before opening the PR.
+
 ## Deep Review Cycle 244 - TAP Business Parse Split (2026-03-19)
 
 ### Review findings
