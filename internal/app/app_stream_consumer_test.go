@@ -1214,6 +1214,40 @@ func TestParseTapSchemaEntities_ParsesWithoutGraph(t *testing.T) {
 	}
 }
 
+func TestParseTapSchemaIntegration_FallsBackToEventType(t *testing.T) {
+	cases := []struct {
+		name      string
+		eventType string
+		data      map[string]any
+		want      string
+	}{
+		{
+			name:      "schema-prefix",
+			eventType: "ensemble.tap.schema.workday.updated",
+			data:      map[string]any{},
+			want:      "workday",
+		},
+		{
+			name:      "integration-schema-prefix",
+			eventType: "ensemble.tap.github.schema.updated",
+			data:      map[string]any{},
+			want:      "github",
+		},
+		{
+			name:      "payload-wins",
+			eventType: "ensemble.tap.schema.workday.updated",
+			data:      map[string]any{"provider": "slack"},
+			want:      "slack",
+		},
+	}
+
+	for _, tc := range cases {
+		if got := parseTapSchemaIntegration(tc.eventType, tc.data); got != tc.want {
+			t.Fatalf("%s: parseTapSchemaIntegration() = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
 func findInteractionEdge(g *graph.Graph, left, right string) *graph.Edge {
 	for _, edge := range g.GetOutEdges(left) {
 		if edge.Kind == graph.EdgeKindInteractedWith && edge.Target == right {

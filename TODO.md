@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 247 - TAP Schema Parse Split (2026-03-19)
+
+### Review findings
+- [x] Gap: `internal/app/app_stream_consumer_parse.go` still mixed TAP schema registration parsing with generic event-type decoding and activity-target helpers, so schema-only normalization remained bundled into the last broad parse file after the business, interaction, and activity splits.
+- [x] Gap: the schema entity-definition parsing, category inference, and capability/relationship normalization logic is cohesive enough to live in its own helper file without touching dispatch or graph mutation flow.
+- [x] Gap: existing coverage exercised schema entity parsing broadly, but there was no direct regression proving integration-name fallback still works from the event type when the payload omits provider metadata.
+
+### Execution plan
+- [x] Move the TAP schema-specific parse helpers into a dedicated `app_stream_consumer_schema_parse.go` file.
+- [x] Leave generic TAP type decoding and activity-target parsing in `app_stream_consumer_parse.go`.
+- [x] Add a focused integration-fallback regression and rerun targeted `internal/app` validation before opening the PR.
+
 ## Deep Review Cycle 246 - TAP Activity Modeling Split (2026-03-19)
 
 ### Review findings
