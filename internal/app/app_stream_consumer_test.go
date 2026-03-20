@@ -367,6 +367,32 @@ func TestBuildTapActivityEventPlan_ParsesWithoutGraph(t *testing.T) {
 	}
 }
 
+func TestBuildTapActivityEventPlan_UsesScalarFallbackFieldsWithoutGraph(t *testing.T) {
+	evt := events.CloudEvent{
+		ID:   "evt-activity-2",
+		Type: "ensemble.tap.activity.salesforce.note_created",
+		Time: time.Date(2026, 3, 8, 12, 30, 0, 0, time.UTC),
+		Data: map[string]any{
+			"actor_email": "owner@example.com",
+			"entity_id":   "acct-42",
+		},
+	}
+
+	plan, ok := buildTapActivityEventPlan("salesforce", "note_created", evt)
+	if !ok {
+		t.Fatal("expected activity plan to be created from scalar fallback fields")
+	}
+	if plan.Actor == nil || plan.Actor.ID != "person:owner@example.com" {
+		t.Fatalf("Actor = %#v, want person:owner@example.com", plan.Actor)
+	}
+	if plan.Target == nil || plan.Target.ID != "salesforce:entity:acct-42" {
+		t.Fatalf("Target = %#v, want salesforce:entity:acct-42", plan.Target)
+	}
+	if plan.Activity == nil || plan.Activity.Name != "note_created" {
+		t.Fatalf("Activity = %#v, want default action name note_created", plan.Activity)
+	}
+}
+
 func TestDeriveComputedFields(t *testing.T) {
 	now := time.Date(2026, 3, 6, 12, 0, 0, 0, time.UTC)
 

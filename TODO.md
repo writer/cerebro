@@ -5,6 +5,18 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Deep Review Cycle 243 - TAP Activity Parse Split (2026-03-19)
+
+### Review findings
+- [x] Gap: `internal/app/app_stream_consumer_activity.go` still mixed activity-event planning with graph mutation/apply logic, so one TAP path remained only partially aligned with issue `#211`'s parse-vs-mutation split.
+- [x] Gap: the activity planner depends only on event payload normalization plus graph metadata shaping, not on a live graph instance, so it should live in its own parse-focused file beside the earlier interaction split.
+- [x] Gap: coverage proved the structured actor/target object path, but there was no focused regression showing the planner still builds an activity event from the scalar fallback fields (`actor_email`, `entity_id`) without a graph.
+
+### Execution plan
+- [x] Move the activity event plan type and builder into a dedicated parse-focused file.
+- [x] Leave the mutation/apply path in `app_stream_consumer_activity.go` so runtime writes stay isolated from parse-only helpers.
+- [x] Add a focused scalar-fallback planner regression and rerun targeted `internal/app` validation before opening the PR.
+
 ## Deep Review Cycle 242 - TAP Interaction Parse Split (2026-03-19)
 
 ### Review findings
