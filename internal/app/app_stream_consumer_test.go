@@ -44,6 +44,13 @@ func TestEnsureSecurityGraph_ConcurrentInitSingleInstance(t *testing.T) {
 	}
 }
 
+func TestStopTapGraphConsumer_NoConsumerNoop(t *testing.T) {
+	a := &App{}
+	if err := a.stopTapGraphConsumer(context.Background()); err != nil {
+		t.Fatalf("stopTapGraphConsumer() error = %v, want nil", err)
+	}
+}
+
 func TestHandleTapCloudEventWaitsForGraphReady(t *testing.T) {
 	a := &App{graphReady: make(chan struct{})}
 	evt := events.CloudEvent{

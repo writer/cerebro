@@ -1292,3 +1292,15 @@ Status: executed end-to-end via PR workflow
 - [x] Move the remaining TAP modeling and coercion helpers into a dedicated helper file.
 - [x] Leave consumer lifecycle and dispatch behavior unchanged while keeping the activity/business paths wired through the extracted helpers.
 - [x] Add direct helper regressions for activity-kind classification and business-edge derivation, then rerun the changed-package validation gate before pushing.
+
+## Deep Review Cycle 240 - TAP Consumer Lifecycle Split (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#211` still left TAP consumer initialization, health registration, and shutdown lifecycle code mixed into `app_stream_consumer.go` alongside event dispatch.
+- [x] Gap: after the parser, runtime, mapping, mutation, and modeling extractions, the remaining lifecycle block was the last non-dispatch concern still sharing the same file with the hot-path entrypoints.
+- [x] Gap: there was no direct regression proving `stopTapGraphConsumer(...)` remains a no-op when no consumer has been initialized, which is the minimal guard for this lifecycle-only slice.
+
+### Execution plan
+- [x] Move TAP consumer lifecycle helpers into a dedicated lifecycle file.
+- [x] Leave event dispatch behavior unchanged in `app_stream_consumer.go`.
+- [x] Add a direct no-consumer shutdown regression and rerun changed-package validation before pushing.
