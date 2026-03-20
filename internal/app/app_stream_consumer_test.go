@@ -937,6 +937,39 @@ func TestHandleTapCloudEvent_SchemaEventRegistersRuntimeKinds(t *testing.T) {
 	}
 }
 
+func TestHandleTapSchemaEvent_RegistersKindsWithoutLiveGraph(t *testing.T) {
+	a := &App{}
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.schema.workday.updated",
+		Time: time.Date(2026, 3, 9, 11, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"integration": "workday",
+			"entity_types": []any{
+				map[string]any{
+					"kind": "tap_test_mapping_employee_v1",
+					"properties": map[string]any{
+						"title": map[string]any{"type": "string"},
+					},
+				},
+			},
+			"edge_types": []any{"tap_test_mapping_reports_to_v1"},
+		},
+	}
+
+	if err := a.handleTapSchemaEvent(evt.Type, evt); err != nil {
+		t.Fatalf("handleTapSchemaEvent failed: %v", err)
+	}
+	if a.SecurityGraph != nil {
+		t.Fatal("expected schema registration to avoid creating a live graph")
+	}
+	if !graph.IsNodeKindInCategory(graph.NodeKind("tap_test_mapping_employee_v1"), graph.NodeCategoryBusiness) {
+		t.Fatal("expected schema registration to infer business category without a live graph")
+	}
+	if !graph.GlobalSchemaRegistry().IsEdgeKindRegistered(graph.EdgeKind("tap_test_mapping_reports_to_v1")) {
+		t.Fatal("expected schema edge kind to register without a live graph")
+	}
+}
+
 func TestIsTapSchemaEventType(t *testing.T) {
 	cases := []struct {
 		eventType string

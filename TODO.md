@@ -1268,3 +1268,15 @@ Status: executed end-to-end via PR workflow
 - [x] Move the TAP runtime coordination helpers into a dedicated runtime helper file.
 - [x] Keep event dispatch and declarative mapping behavior unchanged while routing through those extracted helpers.
 - [x] Add a focused scoped-resolver regression and rerun the changed-package validation gate before pushing.
+
+## Deep Review Cycle 238 - TAP Mapping Helper Split (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#211` still left declarative TAP mapper loading, mapper application, and schema-registration logic embedded in `app_stream_consumer.go` alongside event dispatch.
+- [x] Gap: that mapping block is largely graph-independent setup and registration logic, but its coverage was still tied mostly to broader `handleTapCloudEvent(...)` flows.
+- [x] Gap: there was no direct regression proving TAP schema registration works without a live graph pointer, even though it should remain a graph-free path.
+
+### Execution plan
+- [x] Move the TAP mapping and schema-registration helpers into a dedicated helper file.
+- [x] Keep event dispatch behavior unchanged while routing the existing mapper and schema paths through the extracted helpers.
+- [x] Add a focused no-live-graph schema registration regression and rerun the changed-package validation gate before pushing.
