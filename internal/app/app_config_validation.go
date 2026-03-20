@@ -74,6 +74,7 @@ func ConfigValidationRules() []ConfigValidationRule {
 		{EnvVars: []string{"CEREBRO_THREAT_INTEL_SYNC_BACKOFF"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"GRAPH_CONSISTENCY_CHECK_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"GRAPH_POST_SYNC_UPDATE_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"CEREBRO_HEALTH_CHECK_TIMEOUT", "API_REQUEST_TIMEOUT"}, Summary: "health checks must not outlive the API request timeout", Category: "dependency"},
 		{EnvVars: []string{"API_REQUEST_TIMEOUT", "API_WRITE_TIMEOUT"}, Summary: "request timeout must not exceed the server write timeout", Category: "dependency"},
 		{EnvVars: []string{"FINDINGS_MAX_IN_MEMORY"}, Summary: "must be greater than or equal to 0", Category: "range"},
@@ -246,6 +247,9 @@ func (c *Config) Validate() error {
 	}
 	if c.GraphConsistencyCheckTimeout <= 0 {
 		problems = addConfigProblem(problems, "GRAPH_CONSISTENCY_CHECK_TIMEOUT must be > 0")
+	}
+	if c.GraphPostSyncUpdateTimeout <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_POST_SYNC_UPDATE_TIMEOUT must be > 0")
 	}
 	if c.HealthCheckTimeout > 0 && c.APIRequestTimeout > 0 && c.HealthCheckTimeout > c.APIRequestTimeout {
 		problems = addConfigProblem(problems, "CEREBRO_HEALTH_CHECK_TIMEOUT must be <= API_REQUEST_TIMEOUT")

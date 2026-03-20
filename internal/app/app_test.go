@@ -368,6 +368,7 @@ func TestLoadConfigOperationalTimeoutControls(t *testing.T) {
 	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_BACKOFF", "9s")
 	t.Setenv("CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT", "8s")
 	t.Setenv("GRAPH_CONSISTENCY_CHECK_TIMEOUT", "12m")
+	t.Setenv("GRAPH_POST_SYNC_UPDATE_TIMEOUT", "14m")
 
 	cfg := LoadConfig()
 	if cfg.APIRequestTimeout != 33*time.Second {
@@ -387,6 +388,12 @@ func TestLoadConfigOperationalTimeoutControls(t *testing.T) {
 	}
 	if cfg.HealthCheckTimeout != 4*time.Second {
 		t.Fatalf("expected health check timeout 4s, got %s", cfg.HealthCheckTimeout)
+	}
+	if cfg.ShutdownTimeout != 45*time.Second {
+		t.Fatalf("expected shutdown timeout 45s, got %s", cfg.ShutdownTimeout)
+	}
+	if cfg.GraphPostSyncUpdateTimeout != 14*time.Minute {
+		t.Fatalf("expected graph post-sync update timeout 14m, got %s", cfg.GraphPostSyncUpdateTimeout)
 	}
 	if cfg.ShutdownTimeout != 45*time.Second {
 		t.Fatalf("expected shutdown timeout 45s, got %s", cfg.ShutdownTimeout)
@@ -813,6 +820,7 @@ func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
 	t.Setenv("CEREBRO_THREAT_INTEL_SYNC_BACKOFF", "0s")
 	t.Setenv("CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT", "0s")
 	t.Setenv("GRAPH_CONSISTENCY_CHECK_TIMEOUT", "0s")
+	t.Setenv("GRAPH_POST_SYNC_UPDATE_TIMEOUT", "0s")
 
 	cfg := LoadConfig()
 	err := cfg.Validate()
@@ -837,6 +845,7 @@ func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
 		"CEREBRO_THREAT_INTEL_SYNC_BACKOFF must be > 0",
 		"CEREBRO_TICKETING_PROVIDER_VALIDATE_TIMEOUT must be > 0",
 		"GRAPH_CONSISTENCY_CHECK_TIMEOUT must be > 0",
+		"GRAPH_POST_SYNC_UPDATE_TIMEOUT must be > 0",
 		"CEREBRO_HEALTH_CHECK_TIMEOUT must be <= API_REQUEST_TIMEOUT",
 		"API_REQUEST_TIMEOUT must be <= API_WRITE_TIMEOUT",
 	}

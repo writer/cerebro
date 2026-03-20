@@ -5,7 +5,9 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
+	"github.com/evalops/cerebro/internal/app"
 	"github.com/evalops/cerebro/internal/graph"
 	"github.com/evalops/cerebro/internal/snowflake"
 	nativesync "github.com/evalops/cerebro/internal/sync"
@@ -205,7 +207,7 @@ func (s serverSyncHandlerService) applySecurityGraphUpdateAfterSync(ctx context.
 	}
 
 	trigger := "sync_" + strings.ToLower(strings.TrimSpace(provider))
-	graphCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postSyncGraphUpdateTimeout)
+	graphCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.graphPostSyncUpdateTimeout())
 	defer cancel()
 
 	summary, applied, err := s.deps.TryApplySecurityGraphChanges(graphCtx, trigger)
@@ -236,4 +238,11 @@ func (s serverSyncHandlerService) applySecurityGraphUpdateAfterSync(ctx context.
 		"trigger": trigger,
 		"summary": summary.Payload(trigger),
 	}
+}
+
+func (s serverSyncHandlerService) graphPostSyncUpdateTimeout() time.Duration {
+	if s.deps != nil {
+		return s.deps.Config.GraphPostSyncUpdateTimeoutOrDefault()
+	}
+	return (*app.Config)(nil).GraphPostSyncUpdateTimeoutOrDefault()
 }

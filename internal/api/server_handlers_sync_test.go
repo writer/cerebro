@@ -424,9 +424,7 @@ func TestSyncAWS_GraphUpdateFailureIsSanitized(t *testing.T) {
 		}, nil
 	}
 
-	originalTimeout := postSyncGraphUpdateTimeout
-	postSyncGraphUpdateTimeout = 5 * time.Millisecond
-	t.Cleanup(func() { postSyncGraphUpdateTimeout = originalTimeout })
+	s.app.Config.GraphPostSyncUpdateTimeout = 5 * time.Millisecond
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
 		"region": "us-east-1",

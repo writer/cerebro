@@ -29,6 +29,18 @@ Status: executed end-to-end via PR workflow
 - [x] Leave generic TAP type decoding and activity-target parsing in `app_stream_consumer_parse.go`.
 - [x] Add a focused integration-fallback regression and rerun targeted `internal/app` validation before opening the PR.
 
+## Deep Review Cycle 248 - Post-Sync Graph Update Timeout Config (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#217` still left the post-sync graph apply timeout hardcoded in `internal/api/server_handlers_sync.go`, so one operational deadline still bypassed config/env control.
+- [x] Gap: the sync timeout was already exercised by tests through a package global override, which made the HTTP layer depend on mutable process state instead of the app config surface that `#217` is centralizing.
+- [x] Gap: generated env-var docs and startup validation did not mention any post-sync graph update timeout control, so operators had no documented way to tune this path.
+
+### Execution plan
+- [x] Add a dedicated `GRAPH_POST_SYNC_UPDATE_TIMEOUT` config/env control with the same default behavior as today.
+- [x] Route post-sync graph applies through the config helper and update the focused sync timeout regression to set config instead of mutating a package global.
+- [x] Regenerate config docs and rerun focused `internal/app` and `internal/api` validation before opening the PR.
+
 ## Deep Review Cycle 246 - TAP Activity Modeling Split (2026-03-19)
 
 ### Review findings

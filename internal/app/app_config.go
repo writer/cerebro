@@ -497,6 +497,7 @@ type Config struct {
 	GraphConsistencyCheckEnabled        bool
 	GraphConsistencyCheckInterval       time.Duration
 	GraphConsistencyCheckTimeout        time.Duration
+	GraphPostSyncUpdateTimeout          time.Duration
 	GraphRiskEngineStateTimeout         time.Duration
 	GraphFreshnessDefaultSLA            time.Duration
 	GraphFreshnessProviderSLAs          map[string]time.Duration
@@ -893,6 +894,7 @@ func LoadConfig() *Config {
 				GraphConsistencyCheckEnabled:        getEnvBool("GRAPH_CONSISTENCY_CHECK_ENABLED", false),
 				GraphConsistencyCheckInterval:       getEnvDuration("GRAPH_CONSISTENCY_CHECK_INTERVAL", 6*time.Hour),
 				GraphConsistencyCheckTimeout:        getEnvDuration("GRAPH_CONSISTENCY_CHECK_TIMEOUT", defaultGraphConsistencyCheckTimeout),
+				GraphPostSyncUpdateTimeout:          getEnvDuration("GRAPH_POST_SYNC_UPDATE_TIMEOUT", defaultGraphPostSyncUpdateTimeout),
 				GraphRiskEngineStateTimeout:         getEnvDuration("GRAPH_RISK_ENGINE_STATE_TIMEOUT", defaultGraphRiskEngineStateTimeout),
 				GraphFreshnessDefaultSLA:            getEnvDuration("CEREBRO_GRAPH_FRESHNESS_DEFAULT_SLA", 6*time.Hour),
 				GraphFreshnessProviderSLAs:          parseDurationEnvMap("CEREBRO_FRESHNESS_SLA_"),

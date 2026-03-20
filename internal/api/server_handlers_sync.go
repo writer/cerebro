@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -23,8 +22,6 @@ import (
 	nativesync "github.com/evalops/cerebro/internal/sync"
 	"golang.org/x/sync/errgroup"
 )
-
-var postSyncGraphUpdateTimeout = 30 * time.Minute
 
 func (s *Server) backfillRelationshipIDs(w http.ResponseWriter, r *http.Request) {
 	var req struct {

@@ -17,6 +17,7 @@ const (
 	defaultThreatIntelSyncBackoff                 = 5 * time.Second
 	defaultTicketingProviderValidateTimeout       = 5 * time.Second
 	defaultGraphConsistencyCheckTimeout           = 30 * time.Minute
+	defaultGraphPostSyncUpdateTimeout             = 30 * time.Minute
 )
 
 func (c *Config) APIRequestTimeoutOrDefault() time.Duration {
@@ -115,4 +116,11 @@ func (c *Config) GraphConsistencyCheckTimeoutOrDefault() time.Duration {
 		return defaultGraphConsistencyCheckTimeout
 	}
 	return c.GraphConsistencyCheckTimeout
+}
+
+func (c *Config) GraphPostSyncUpdateTimeoutOrDefault() time.Duration {
+	if c == nil || c.GraphPostSyncUpdateTimeout <= 0 {
+		return defaultGraphPostSyncUpdateTimeout
+	}
+	return c.GraphPostSyncUpdateTimeout
 }
