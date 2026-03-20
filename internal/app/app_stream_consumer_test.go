@@ -361,6 +361,61 @@ func TestDeriveComputedFields(t *testing.T) {
 	}
 }
 
+func TestDeriveTapActivityNodeKind(t *testing.T) {
+	if got := deriveTapActivityNodeKind("slack", "thread_replied", map[string]any{
+		"thread_id":  "thread-1",
+		"channel_id": "channel-1",
+	}); got != graph.NodeKindThread {
+		t.Fatalf("deriveTapActivityNodeKind(thread) = %q, want %q", got, graph.NodeKindThread)
+	}
+
+	if got := deriveTapActivityNodeKind("github", "pr_opened", map[string]any{
+		"repository": "evalops/cerebro",
+		"number":     "42",
+	}); got != graph.NodeKindPullRequest {
+		t.Fatalf("deriveTapActivityNodeKind(pr) = %q, want %q", got, graph.NodeKindPullRequest)
+	}
+
+	if got := deriveTapActivityNodeKind("crm", "note_updated", map[string]any{}); got != graph.NodeKindAction {
+		t.Fatalf("deriveTapActivityNodeKind(action) = %q, want %q", got, graph.NodeKindAction)
+	}
+}
+
+func TestExtractBusinessEdges(t *testing.T) {
+	edges := extractBusinessEdges("hubspot", "contact", "hubspot:contact:contact-1", map[string]any{
+		"company_id": "company-1",
+		"owner_id":   "owner-1",
+		"name":       "Alice",
+	})
+	if len(edges) != 2 {
+		t.Fatalf("extractBusinessEdges len = %d, want 2", len(edges))
+	}
+
+	byTarget := map[string]*graph.Edge{}
+	for _, edge := range edges {
+		byTarget[edge.Target] = edge
+	}
+
+	company := byTarget["hubspot:company:company-1"]
+	if company == nil {
+		t.Fatal("expected company edge")
+	}
+	if company.Kind != graph.EdgeKindWorksAt {
+		t.Fatalf("company edge kind = %q, want %q", company.Kind, graph.EdgeKindWorksAt)
+	}
+	if company.Properties["derived_from"] != "company_id" {
+		t.Fatalf("company edge derived_from = %#v, want company_id", company.Properties["derived_from"])
+	}
+
+	owner := byTarget["hubspot:owner:owner-1"]
+	if owner == nil {
+		t.Fatal("expected owner edge")
+	}
+	if owner.Kind != graph.EdgeKindAssignedTo {
+		t.Fatalf("owner edge kind = %q, want %q", owner.Kind, graph.EdgeKindAssignedTo)
+	}
+}
+
 func TestHandleTapCloudEvent_BuildsBusinessNodeAndEdge(t *testing.T) {
 	a := &App{SecurityGraph: graph.New()}
 	evt := events.CloudEvent{

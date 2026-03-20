@@ -1280,3 +1280,15 @@ Status: executed end-to-end via PR workflow
 - [x] Move the TAP mapping and schema-registration helpers into a dedicated helper file.
 - [x] Keep event dispatch behavior unchanged while routing the existing mapper and schema paths through the extracted helpers.
 - [x] Add a focused no-live-graph schema registration regression and rerun the changed-package validation gate before pushing.
+
+## Deep Review Cycle 239 - TAP Modeling Helper Split (2026-03-19)
+
+### Review findings
+- [x] Gap: issue `#211` still left TAP activity-kind derivation, business-edge derivation, computed-field calculation, and generic coercion helpers embedded in `app_stream_consumer.go`, even though that file had already been reduced to lifecycle and dispatch concerns.
+- [x] Gap: those helpers are graph-free modeling logic shared across the activity, business, interaction, and parse paths, but they were still only indirectly separated through broader event-handling tests.
+- [x] Gap: there was no direct regression covering the read-only helper paths that classify activity node kinds and derive business edges without mutating a graph instance.
+
+### Execution plan
+- [x] Move the remaining TAP modeling and coercion helpers into a dedicated helper file.
+- [x] Leave consumer lifecycle and dispatch behavior unchanged while keeping the activity/business paths wired through the extracted helpers.
+- [x] Add direct helper regressions for activity-kind classification and business-edge derivation, then rerun the changed-package validation gate before pushing.
