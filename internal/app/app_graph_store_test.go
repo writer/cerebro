@@ -54,6 +54,72 @@ func (r *recordingTenantScopedGraphStore) Snapshot(ctx context.Context) (*graph.
 	return r.GraphStore.Snapshot(ctx)
 }
 
+type recordingSpannerGraphStoreAdapter struct {
+	store         graph.GraphStore
+	snapshotCalls int
+}
+
+func (r *recordingSpannerGraphStoreAdapter) UpsertNode(ctx context.Context, node *graph.Node) error {
+	return r.store.UpsertNode(ctx, node)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) UpsertNodesBatch(ctx context.Context, nodes []*graph.Node) error {
+	return r.store.UpsertNodesBatch(ctx, nodes)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) UpsertEdge(ctx context.Context, edge *graph.Edge) error {
+	return r.store.UpsertEdge(ctx, edge)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) UpsertEdgesBatch(ctx context.Context, edges []*graph.Edge) error {
+	return r.store.UpsertEdgesBatch(ctx, edges)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) DeleteNode(ctx context.Context, id string) error {
+	return r.store.DeleteNode(ctx, id)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) DeleteEdge(ctx context.Context, id string) error {
+	return r.store.DeleteEdge(ctx, id)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) LookupNode(ctx context.Context, id string) (*graph.Node, bool, error) {
+	return r.store.LookupNode(ctx, id)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) LookupEdge(ctx context.Context, id string) (*graph.Edge, bool, error) {
+	return r.store.LookupEdge(ctx, id)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) LookupOutEdges(ctx context.Context, nodeID string) ([]*graph.Edge, error) {
+	return r.store.LookupOutEdges(ctx, nodeID)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) LookupInEdges(ctx context.Context, nodeID string) ([]*graph.Edge, error) {
+	return r.store.LookupInEdges(ctx, nodeID)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) LookupNodesByKind(ctx context.Context, kinds ...graph.NodeKind) ([]*graph.Node, error) {
+	return r.store.LookupNodesByKind(ctx, kinds...)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) CountNodes(ctx context.Context) (int, error) {
+	return r.store.CountNodes(ctx)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) CountEdges(ctx context.Context) (int, error) {
+	return r.store.CountEdges(ctx)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) EnsureIndexes(ctx context.Context) error {
+	return r.store.EnsureIndexes(ctx)
+}
+
+func (r *recordingSpannerGraphStoreAdapter) Snapshot(ctx context.Context) (*graph.Snapshot, error) {
+	r.snapshotCalls++
+	return r.store.Snapshot(ctx)
+}
+
 func TestCurrentSecurityGraphStoreTracksLiveGraphSwap(t *testing.T) {
 	application := &App{}
 
@@ -469,6 +535,35 @@ func TestCurrentSecurityGraphStoreForTenantPrefersConfiguredTenantScopedBackend(
 	}
 	if recording.snapshotCalls != 0 {
 		t.Fatalf("configured backend snapshot calls = %d, want 0", recording.snapshotCalls)
+	}
+}
+
+func TestCurrentSecurityGraphStoreForTenantPrefersConfiguredSpannerBackend(t *testing.T) {
+	source := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 23, 0, 0, 0, time.UTC))
+	adapter := &recordingSpannerGraphStoreAdapter{store: source}
+	configured := graph.NewSpannerGraphStore(adapter)
+	if !graph.SupportsTenantReadScope(configured) {
+		t.Fatal("expected spanner store to advertise tenant read scope support")
+	}
+
+	application := &App{}
+	application.configuredSecurityGraphStore = configured
+	application.configuredSecurityGraphReady = true
+
+	store := application.CurrentSecurityGraphStoreForTenant("tenant-a")
+	if store == nil {
+		t.Fatal("expected tenant-scoped graph store")
+	}
+	if _, ok, err := store.LookupNode(context.Background(), "service:tenant-a"); err != nil || !ok {
+		t.Fatalf("LookupNode(tenant-a) = (%v, %v), want present; err=%v", ok, err, err)
+	}
+	if _, ok, err := store.LookupNode(context.Background(), "service:tenant-b"); err != nil {
+		t.Fatalf("LookupNode(tenant-b) error = %v", err)
+	} else if ok {
+		t.Fatal("expected configured spanner backend reads to exclude foreign-tenant nodes")
+	}
+	if adapter.snapshotCalls != 0 {
+		t.Fatalf("configured spanner backend snapshot calls = %d, want 0", adapter.snapshotCalls)
 	}
 }
 

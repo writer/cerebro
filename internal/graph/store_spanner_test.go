@@ -195,6 +195,62 @@ func TestSpannerGraphStoreDelegatesCRUDAndTraversal(t *testing.T) {
 	}
 }
 
+func TestSpannerGraphStoreAppliesTenantScopeToReads(t *testing.T) {
+	base := New()
+	base.AddNode(&Node{ID: "service:shared", Kind: NodeKindService, Name: "Shared"})
+	base.AddNode(&Node{ID: "service:tenant-a", Kind: NodeKindService, Name: "Tenant A", TenantID: "tenant-a"})
+	base.AddNode(&Node{ID: "service:tenant-b", Kind: NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
+	base.AddEdge(&Edge{ID: "edge:shared:tenant-a", Source: "service:shared", Target: "service:tenant-a", Kind: EdgeKindDependsOn})
+	base.AddEdge(&Edge{ID: "edge:shared:tenant-b", Source: "service:shared", Target: "service:tenant-b", Kind: EdgeKindDependsOn})
+	base.BuildIndex()
+
+	adapter := &fakeSpannerAdapter{store: GraphStore(base)}
+	store := NewSpannerGraphStore(adapter)
+	ctx := WithTenantScope(context.Background(), "tenant-a")
+
+	if !store.SupportsTenantReadScope() {
+		t.Fatal("expected spanner store to advertise tenant read scope support")
+	}
+	if _, ok, err := store.LookupNode(ctx, "service:tenant-a"); err != nil || !ok {
+		t.Fatalf("LookupNode(tenant-a) = (%v, %v), want present; err=%v", ok, err, err)
+	}
+	if _, ok, err := store.LookupNode(ctx, "service:tenant-b"); err != nil {
+		t.Fatalf("LookupNode(tenant-b) error = %v", err)
+	} else if ok {
+		t.Fatal("expected tenant-scoped spanner reads to exclude foreign-tenant nodes")
+	}
+
+	outEdges, err := store.LookupOutEdges(ctx, "service:shared")
+	if err != nil {
+		t.Fatalf("LookupOutEdges(shared) error = %v", err)
+	}
+	if len(outEdges) != 1 || outEdges[0].Target != "service:tenant-a" {
+		t.Fatalf("LookupOutEdges(shared) = %#v, want only tenant-a edge", sortedEdgeIDs(outEdges))
+	}
+
+	blast, err := store.BlastRadius(ctx, "service:shared", 1)
+	if err != nil {
+		t.Fatalf("BlastRadius() error = %v", err)
+	}
+	if blast.TotalCount != 1 {
+		t.Fatalf("BlastRadius().TotalCount = %d, want 1", blast.TotalCount)
+	}
+	if got := sortedReachableNodeIDs(blast.ReachableNodes); !reflect.DeepEqual(got, []string{"service:tenant-a"}) {
+		t.Fatalf("BlastRadius() reachable nodes = %#v, want [service:tenant-a]", got)
+	}
+
+	subgraph, err := store.ExtractSubgraph(ctx, "service:shared", ExtractSubgraphOptions{MaxDepth: 1})
+	if err != nil {
+		t.Fatalf("ExtractSubgraph() error = %v", err)
+	}
+	if got := sortedNodeIDs(subgraph.GetAllNodes()); !reflect.DeepEqual(got, []string{"service:shared", "service:tenant-a"}) {
+		t.Fatalf("ExtractSubgraph() nodes = %#v, want shared + tenant-a", got)
+	}
+	if adapter.snapshotCalls != 0 {
+		t.Fatalf("expected tenant-scoped traversal reads not to materialize snapshots, snapshotCalls=%d", adapter.snapshotCalls)
+	}
+}
+
 func TestSpannerGraphStoreTraversalsUseBoundedLookupGraphWithoutSnapshotMaterialization(t *testing.T) {
 	base := New()
 	alice := contractStoreTestNode("user:alice", NodeKindUser, "Alice")

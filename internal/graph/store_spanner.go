@@ -126,6 +126,7 @@ type SpannerGraphStore struct {
 }
 
 var _ GraphStore = (*SpannerGraphStore)(nil)
+var _ TenantScopeAwareGraphStore = (*SpannerGraphStore)(nil)
 
 type SpannerGraphStoreOption func(*SpannerGraphStore)
 
@@ -157,6 +158,10 @@ func NewSpannerGraphStore(adapter spannerGraphStoreAdapter, opts ...SpannerGraph
 		}
 	}
 	return store
+}
+
+func (s *SpannerGraphStore) SupportsTenantReadScope() bool {
+	return s != nil
 }
 
 func (s *SpannerGraphStore) UpsertNode(ctx context.Context, node *Node) error {
@@ -226,7 +231,14 @@ func (s *SpannerGraphStore) LookupNode(ctx context.Context, id string) (*Node, b
 	if s == nil || s.adapter == nil {
 		return nil, false, ErrStoreUnavailable
 	}
-	return s.adapter.LookupNode(ctx, id)
+	node, ok, err := s.adapter.LookupNode(ctx, id)
+	if err != nil || !ok || node == nil {
+		return nil, ok, err
+	}
+	if !spannerNodeVisibleForTenantScope(ctx, node) {
+		return nil, false, nil
+	}
+	return node, true, nil
 }
 
 func (s *SpannerGraphStore) LookupEdge(ctx context.Context, id string) (*Edge, bool, error) {
@@ -236,7 +248,16 @@ func (s *SpannerGraphStore) LookupEdge(ctx context.Context, id string) (*Edge, b
 	if s == nil || s.adapter == nil {
 		return nil, false, ErrStoreUnavailable
 	}
-	return s.adapter.LookupEdge(ctx, id)
+	edge, ok, err := s.adapter.LookupEdge(ctx, id)
+	if err != nil || !ok || edge == nil {
+		return nil, ok, err
+	}
+	if visible, err := s.spannerEdgeVisibleForTenantScope(ctx, edge); err != nil {
+		return nil, false, err
+	} else if !visible {
+		return nil, false, nil
+	}
+	return edge, true, nil
 }
 
 func (s *SpannerGraphStore) LookupOutEdges(ctx context.Context, nodeID string) ([]*Edge, error) {
@@ -246,7 +267,16 @@ func (s *SpannerGraphStore) LookupOutEdges(ctx context.Context, nodeID string) (
 	if s == nil || s.adapter == nil {
 		return nil, ErrStoreUnavailable
 	}
-	return s.adapter.LookupOutEdges(ctx, nodeID)
+	if _, ok, err := s.LookupNode(ctx, nodeID); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, nil
+	}
+	edges, err := s.adapter.LookupOutEdges(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	return s.filterEdgesForTenantScope(ctx, edges)
 }
 
 func (s *SpannerGraphStore) LookupInEdges(ctx context.Context, nodeID string) ([]*Edge, error) {
@@ -256,7 +286,16 @@ func (s *SpannerGraphStore) LookupInEdges(ctx context.Context, nodeID string) ([
 	if s == nil || s.adapter == nil {
 		return nil, ErrStoreUnavailable
 	}
-	return s.adapter.LookupInEdges(ctx, nodeID)
+	if _, ok, err := s.LookupNode(ctx, nodeID); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, nil
+	}
+	edges, err := s.adapter.LookupInEdges(ctx, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	return s.filterEdgesForTenantScope(ctx, edges)
 }
 
 func (s *SpannerGraphStore) LookupNodesByKind(ctx context.Context, kinds ...NodeKind) ([]*Node, error) {
@@ -266,7 +305,11 @@ func (s *SpannerGraphStore) LookupNodesByKind(ctx context.Context, kinds ...Node
 	if s == nil || s.adapter == nil {
 		return nil, ErrStoreUnavailable
 	}
-	return s.adapter.LookupNodesByKind(ctx, kinds...)
+	nodes, err := s.adapter.LookupNodesByKind(ctx, kinds...)
+	if err != nil {
+		return nil, err
+	}
+	return filterNodesForTenantScope(ctx, nodes), nil
 }
 
 func (s *SpannerGraphStore) CountNodes(ctx context.Context) (int, error) {
@@ -276,7 +319,17 @@ func (s *SpannerGraphStore) CountNodes(ctx context.Context) (int, error) {
 	if s == nil || s.adapter == nil {
 		return 0, ErrStoreUnavailable
 	}
-	return s.adapter.CountNodes(ctx)
+	if !spannerTenantScopeEnabled(ctx) {
+		return s.adapter.CountNodes(ctx)
+	}
+	snapshot, err := s.Snapshot(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if snapshot == nil {
+		return 0, nil
+	}
+	return snapshot.Metadata.NodeCount, nil
 }
 
 func (s *SpannerGraphStore) CountEdges(ctx context.Context) (int, error) {
@@ -286,7 +339,17 @@ func (s *SpannerGraphStore) CountEdges(ctx context.Context) (int, error) {
 	if s == nil || s.adapter == nil {
 		return 0, ErrStoreUnavailable
 	}
-	return s.adapter.CountEdges(ctx)
+	if !spannerTenantScopeEnabled(ctx) {
+		return s.adapter.CountEdges(ctx)
+	}
+	snapshot, err := s.Snapshot(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if snapshot == nil {
+		return 0, nil
+	}
+	return snapshot.Metadata.EdgeCount, nil
 }
 
 func (s *SpannerGraphStore) EnsureIndexes(ctx context.Context) error {
@@ -306,7 +369,131 @@ func (s *SpannerGraphStore) Snapshot(ctx context.Context) (*Snapshot, error) {
 	if s == nil || s.adapter == nil {
 		return nil, ErrStoreUnavailable
 	}
-	return s.adapter.Snapshot(ctx)
+	snapshot, err := s.adapter.Snapshot(ctx)
+	if err != nil || snapshot == nil {
+		return snapshot, err
+	}
+	return filterSnapshotForTenantScope(ctx, snapshot), nil
+}
+
+func spannerTenantScopeEnabled(ctx context.Context) bool {
+	scope, ok := TenantReadScopeFromContext(ctx)
+	if !ok {
+		return false
+	}
+	if scope.CrossTenant && len(scope.TenantIDs) == 0 {
+		return false
+	}
+	return len(scope.TenantIDs) > 0
+}
+
+func spannerNodeVisibleForTenantScope(ctx context.Context, node *Node) bool {
+	if node == nil || node.DeletedAt != nil {
+		return false
+	}
+	if !spannerTenantScopeEnabled(ctx) {
+		return true
+	}
+	tenantID := nodeTenantID(node)
+	if tenantID == "" {
+		return true
+	}
+	scope, _ := TenantReadScopeFromContext(ctx)
+	for _, allowedTenantID := range scope.TenantIDs {
+		if tenantID == allowedTenantID {
+			return true
+		}
+	}
+	return false
+}
+
+func filterNodesForTenantScope(ctx context.Context, nodes []*Node) []*Node {
+	if len(nodes) == 0 {
+		return nil
+	}
+	filtered := make([]*Node, 0, len(nodes))
+	for _, node := range nodes {
+		if spannerNodeVisibleForTenantScope(ctx, node) {
+			filtered = append(filtered, node)
+		}
+	}
+	return filtered
+}
+
+func filterSnapshotForTenantScope(ctx context.Context, snapshot *Snapshot) *Snapshot {
+	if snapshot == nil || !spannerTenantScopeEnabled(ctx) {
+		return snapshot
+	}
+	filteredNodes := filterNodesForTenantScope(ctx, snapshot.Nodes)
+	visibleNodeIDs := make(map[string]struct{}, len(filteredNodes))
+	activeNodeCount := 0
+	for _, node := range filteredNodes {
+		if node == nil || node.DeletedAt != nil {
+			continue
+		}
+		visibleNodeIDs[node.ID] = struct{}{}
+		activeNodeCount++
+	}
+	filteredEdges := make([]*Edge, 0, len(snapshot.Edges))
+	activeEdgeCount := 0
+	for _, edge := range snapshot.Edges {
+		if edge == nil {
+			continue
+		}
+		if _, ok := visibleNodeIDs[edge.Source]; !ok {
+			continue
+		}
+		if _, ok := visibleNodeIDs[edge.Target]; !ok {
+			continue
+		}
+		filteredEdges = append(filteredEdges, edge)
+		if edge.DeletedAt == nil {
+			activeEdgeCount++
+		}
+	}
+	filtered := *snapshot
+	filtered.Metadata.NodeCount = activeNodeCount
+	filtered.Metadata.EdgeCount = activeEdgeCount
+	filtered.Nodes = filteredNodes
+	filtered.Edges = filteredEdges
+	return &filtered
+}
+
+func (s *SpannerGraphStore) filterEdgesForTenantScope(ctx context.Context, edges []*Edge) ([]*Edge, error) {
+	if len(edges) == 0 {
+		return nil, nil
+	}
+	filtered := make([]*Edge, 0, len(edges))
+	for _, edge := range edges {
+		visible, err := s.spannerEdgeVisibleForTenantScope(ctx, edge)
+		if err != nil {
+			return nil, err
+		}
+		if visible {
+			filtered = append(filtered, edge)
+		}
+	}
+	return filtered, nil
+}
+
+func (s *SpannerGraphStore) spannerEdgeVisibleForTenantScope(ctx context.Context, edge *Edge) (bool, error) {
+	if edge == nil || edge.DeletedAt != nil {
+		return false, nil
+	}
+	if !spannerTenantScopeEnabled(ctx) {
+		return true, nil
+	}
+	if _, ok, err := s.LookupNode(ctx, edge.Source); err != nil {
+		return false, err
+	} else if !ok {
+		return false, nil
+	}
+	if _, ok, err := s.LookupNode(ctx, edge.Target); err != nil {
+		return false, err
+	} else if !ok {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (s *SpannerGraphStore) BlastRadius(ctx context.Context, principalID string, maxDepth int) (*BlastRadiusResult, error) {
@@ -378,7 +565,7 @@ func (s *SpannerGraphStore) lookupTraversalGraph(ctx context.Context, rootID str
 	if rootID == "" {
 		return New(), nil
 	}
-	root, ok, err := s.adapter.LookupNode(ctx, rootID)
+	root, ok, err := s.LookupNode(ctx, rootID)
 	if err != nil {
 		return nil, err
 	}
@@ -452,7 +639,7 @@ func (s *SpannerGraphStore) nativeTraversalGraph(ctx context.Context, rootID str
 	if rootID == "" {
 		return New(), true, nil
 	}
-	root, ok, err := s.adapter.LookupNode(ctx, rootID)
+	root, ok, err := s.LookupNode(ctx, rootID)
 	if err != nil {
 		return nil, true, err
 	}
@@ -473,6 +660,13 @@ func (s *SpannerGraphStore) nativeTraversalGraph(ctx context.Context, rootID str
 		if edge == nil || strings.TrimSpace(edge.ID) == "" {
 			continue
 		}
+		visible, err := s.spannerEdgeVisibleForTenantScope(ctx, edge)
+		if err != nil {
+			return nil, true, err
+		}
+		if !visible {
+			continue
+		}
 		edgeByID[edge.ID] = edge
 		nodeIDs[edge.Source] = struct{}{}
 		nodeIDs[edge.Target] = struct{}{}
@@ -482,7 +676,7 @@ func (s *SpannerGraphStore) nativeTraversalGraph(ctx context.Context, rootID str
 		if nodeID == root.ID {
 			continue
 		}
-		node, ok, err := s.adapter.LookupNode(ctx, nodeID)
+		node, ok, err := s.LookupNode(ctx, nodeID)
 		if err != nil {
 			return nil, true, err
 		}
@@ -513,9 +707,9 @@ func (s *SpannerGraphStore) expandTraversalNode(ctx context.Context, view *Graph
 	)
 	switch direction {
 	case spannerTraversalDirectionIncoming:
-		edges, err = s.adapter.LookupInEdges(ctx, nodeID)
+		edges, err = s.LookupInEdges(ctx, nodeID)
 	default:
-		edges, err = s.adapter.LookupOutEdges(ctx, nodeID)
+		edges, err = s.LookupOutEdges(ctx, nodeID)
 	}
 	if err != nil {
 		return nil, err
@@ -531,7 +725,7 @@ func (s *SpannerGraphStore) expandTraversalNode(ctx context.Context, view *Graph
 		if direction == spannerTraversalDirectionIncoming {
 			neighborID = edge.Source
 		}
-		neighbor, ok, err := s.adapter.LookupNode(ctx, neighborID)
+		neighbor, ok, err := s.LookupNode(ctx, neighborID)
 		if err != nil {
 			return nil, err
 		}
@@ -1058,7 +1252,7 @@ func spannerRowToNode(row *spanner.Row) (*Node, error) {
 		return nil, err
 	}
 	node := &Node{
-		ID:        id,
+		ID:        spannerNodeID(id),
 		Kind:      NodeKind(kind),
 		Name:      name.StringVal,
 		TenantID:  tenantID.StringVal,
@@ -1114,7 +1308,7 @@ func spannerRowToEdge(row *spanner.Row) (*Edge, error) {
 		return nil, err
 	}
 	edge := &Edge{
-		ID:        id,
+		ID:        spannerEdgeID(id),
 		Source:    sourceID,
 		Target:    targetID,
 		Kind:      EdgeKind(kind),
@@ -1132,6 +1326,14 @@ func spannerRowToEdge(row *spanner.Row) (*Edge, error) {
 		return nil, fmt.Errorf("decode spanner edge properties: %w", err)
 	}
 	return edge, nil
+}
+
+func spannerNodeID(id string) string {
+	return strings.TrimSpace(id)
+}
+
+func spannerEdgeID(id string) string {
+	return strings.TrimSpace(id)
 }
 
 func spannerNullableString(value string) spanner.NullString {
