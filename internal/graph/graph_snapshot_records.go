@@ -86,7 +86,12 @@ func CurrentGraphSnapshotRecord(g *Graph) *GraphSnapshotRecord {
 	if g == nil {
 		return nil
 	}
-	meta := g.Metadata()
+	return CurrentGraphSnapshotRecordFromMetadata(g.Metadata())
+}
+
+// CurrentGraphSnapshotRecordFromMetadata builds the current graph snapshot
+// resource from already-resolved graph metadata.
+func CurrentGraphSnapshotRecordFromMetadata(meta Metadata) *GraphSnapshotRecord {
 	snapshotID := buildReportGraphSnapshotID(meta)
 	if snapshotID == "" {
 		return nil

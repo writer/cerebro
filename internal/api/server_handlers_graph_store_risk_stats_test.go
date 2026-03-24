@@ -46,6 +46,30 @@ func TestGraphStatsUsesGraphStoreWhenRawGraphUnavailable(t *testing.T) {
 	}
 }
 
+func TestGraphStatsUsesStoreMetadataWhenSnapshotMaterializationUnavailable(t *testing.T) {
+	store := &snapshotFailingMetadataStore{GraphStore: buildGraphStoreStatsTestGraph()}
+	s := newStoreBackedGraphServer(t, store)
+
+	resp := do(t, s, http.MethodGet, "/api/v1/graph/stats", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected graph stats 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+
+	body := decodeJSON(t, resp)
+	if got := int(body["node_count"].(float64)); got != 2 {
+		t.Fatalf("expected node_count=2 from store metadata, got %#v", body)
+	}
+	if got := int(body["edge_count"].(float64)); got != 1 {
+		t.Fatalf("expected edge_count=1 from store metadata, got %#v", body)
+	}
+	if store.snapshotCalls != 0 {
+		t.Fatalf("expected graph stats to avoid snapshot fallback, got %d snapshot calls", store.snapshotCalls)
+	}
+	if store.metadataCalls == 0 {
+		t.Fatal("expected graph stats to use store-native metadata")
+	}
+}
+
 func TestGraphStatsPrefersLiveGraphOverSnapshotWhenAvailable(t *testing.T) {
 	g := buildGraphStoreStatsTestGraph()
 	s := NewServerWithDependencies(serverDependencies{
@@ -82,6 +106,35 @@ func TestGraphRebuildUsesGraphRuntimeStoreWhenLiveGraphUnavailable(t *testing.T)
 	}
 	if got := int(body["edge_count"].(float64)); got != 1 {
 		t.Fatalf("expected edge_count=1 from store-backed rebuild, got %#v", body)
+	}
+}
+
+func TestGraphRebuildUsesStoreMetadataWhenSnapshotMaterializationUnavailable(t *testing.T) {
+	store := &snapshotFailingMetadataStore{GraphStore: buildGraphStoreStatsTestGraph()}
+	s := NewServerWithDependencies(serverDependencies{
+		Config: &app.Config{},
+		graphRuntime: stubGraphRuntime{
+			store: store,
+		},
+	})
+	t.Cleanup(func() { s.Close() })
+
+	resp := do(t, s, http.MethodPost, "/api/v1/graph/rebuild", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected graph rebuild 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	body := decodeJSON(t, resp)
+	if got := int(body["node_count"].(float64)); got != 2 {
+		t.Fatalf("expected node_count=2 from store metadata, got %#v", body)
+	}
+	if got := int(body["edge_count"].(float64)); got != 1 {
+		t.Fatalf("expected edge_count=1 from store metadata, got %#v", body)
+	}
+	if store.snapshotCalls != 0 {
+		t.Fatalf("expected graph rebuild to avoid snapshot fallback, got %d snapshot calls", store.snapshotCalls)
+	}
+	if store.metadataCalls == 0 {
+		t.Fatal("expected graph rebuild to use store-native metadata")
 	}
 }
 

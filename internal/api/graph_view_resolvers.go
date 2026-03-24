@@ -13,9 +13,26 @@ func currentOrStoredGraphView(ctx context.Context, current *graph.Graph, store g
 	return snapshotGraphView(ctx, store)
 }
 
+func currentOrStoredGraphMetadata(ctx context.Context, current *graph.Graph, store graph.GraphStore) (graph.Metadata, error) {
+	if current != nil {
+		return current.GraphMetadata(ctx)
+	}
+	return graph.GraphMetadataFromStore(ctx, store)
+}
+
 func currentOrStoredGraphSnapshotRecord(ctx context.Context, current *graph.Graph, store graph.GraphStore) (*graph.GraphSnapshotRecord, error) {
 	if record := graph.CurrentGraphSnapshotRecord(current); record != nil {
 		return record, nil
+	}
+	if metadataStore, ok := graph.AsGraphMetadataStore(store); ok {
+		meta, err := metadataStore.GraphMetadata(ctx)
+		if err != nil {
+			return nil, err
+		}
+		record := graph.CurrentGraphSnapshotRecordFromMetadata(meta)
+		if record != nil {
+			return record, nil
+		}
 	}
 	view, err := snapshotGraphView(ctx, store)
 	if err != nil {

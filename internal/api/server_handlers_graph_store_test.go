@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -16,6 +17,60 @@ type nilSnapshotGraphStore struct {
 
 func (n nilSnapshotGraphStore) Snapshot(context.Context) (*graph.Snapshot, error) {
 	return nil, nil
+}
+
+type snapshotFailingExtractableGraphStore struct {
+	graph.GraphStore
+	snapshotCalls   int
+	extractCalls    int
+	attackPathCalls int
+	fixCalls        int
+	chokepointCalls int
+}
+
+func (s *snapshotFailingExtractableGraphStore) Snapshot(context.Context) (*graph.Snapshot, error) {
+	s.snapshotCalls++
+	return nil, errors.New("snapshot unavailable")
+}
+
+func (s *snapshotFailingExtractableGraphStore) ExtractSubgraph(ctx context.Context, rootID string, opts graph.ExtractSubgraphOptions) (*graph.Graph, error) {
+	s.extractCalls++
+	return s.GraphStore.ExtractSubgraph(ctx, rootID, opts)
+}
+
+func (s *snapshotFailingExtractableGraphStore) AttackPaths(ctx context.Context, maxDepth int) (*graph.SimulationResult, error) {
+	s.attackPathCalls++
+	return graph.SimulateAttackPathsFromStore(ctx, s, maxDepth)
+}
+
+func (s *snapshotFailingExtractableGraphStore) SimulateAttackPathFix(ctx context.Context, nodeID string, maxDepth int) (*graph.FixSimulation, error) {
+	s.fixCalls++
+	return graph.SimulateAttackPathFixFromStore(ctx, s, nodeID, maxDepth)
+}
+
+func (s *snapshotFailingExtractableGraphStore) Chokepoints(ctx context.Context, maxDepth int) ([]*graph.Chokepoint, error) {
+	s.chokepointCalls++
+	result, err := s.AttackPaths(ctx, maxDepth)
+	if err != nil {
+		return nil, err
+	}
+	return result.Chokepoints, nil
+}
+
+type snapshotFailingMetadataStore struct {
+	graph.GraphStore
+	snapshotCalls int
+	metadataCalls int
+}
+
+func (s *snapshotFailingMetadataStore) Snapshot(context.Context) (*graph.Snapshot, error) {
+	s.snapshotCalls++
+	return nil, errors.New("snapshot unavailable")
+}
+
+func (s *snapshotFailingMetadataStore) GraphMetadata(ctx context.Context) (graph.Metadata, error) {
+	s.metadataCalls++
+	return graph.GraphMetadataFromStore(ctx, s.GraphStore)
 }
 
 func newStoreBackedGraphServer(t *testing.T, store graph.GraphStore) *Server {

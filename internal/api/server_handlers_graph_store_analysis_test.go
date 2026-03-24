@@ -119,6 +119,50 @@ func TestGraphRiskAnalysisHandlersUseGraphStoreSnapshotWhenRawGraphUnavailable(t
 	}
 }
 
+func TestGraphAttackPathHandlersUseStoreSubgraphsWhenSnapshotMaterializationUnavailable(t *testing.T) {
+	store := &snapshotFailingExtractableGraphStore{GraphStore: buildGraphStoreRiskAnalysisTestGraph()}
+	s := newStoreBackedGraphServer(t, store)
+
+	attack := do(t, s, http.MethodGet, "/api/v1/graph/attack-paths?limit=5", nil)
+	if attack.Code != http.StatusOK {
+		t.Fatalf("expected attack paths 200, got %d: %s", attack.Code, attack.Body.String())
+	}
+	attackBody := decodeJSON(t, attack)
+	if got := int(attackBody["total_paths"].(float64)); got < 1 {
+		t.Fatalf("expected attack paths from store subgraphs, got %#v", attackBody)
+	}
+
+	simFix := do(t, s, http.MethodGet, "/api/v1/graph/attack-paths/web-role/simulate-fix", nil)
+	if simFix.Code != http.StatusOK {
+		t.Fatalf("expected simulate-fix 200, got %d: %s", simFix.Code, simFix.Body.String())
+	}
+	if body := simFix.Body.String(); !strings.Contains(body, "blocked_paths") {
+		t.Fatalf("expected simulation output, got %q", body)
+	}
+
+	choke := do(t, s, http.MethodGet, "/api/v1/graph/chokepoints", nil)
+	if choke.Code != http.StatusOK {
+		t.Fatalf("expected chokepoints 200, got %d: %s", choke.Code, choke.Body.String())
+	}
+	chokeBody := decodeJSON(t, choke)
+	if got := int(chokeBody["total"].(float64)); got < 1 {
+		t.Fatalf("expected chokepoints from store subgraphs, got %#v", chokeBody)
+	}
+
+	if store.snapshotCalls != 0 {
+		t.Fatalf("expected attack path handlers to avoid snapshot fallback, got %d snapshot calls", store.snapshotCalls)
+	}
+	if store.attackPathCalls == 0 {
+		t.Fatal("expected attack path handlers to use store-native attack path queries")
+	}
+	if store.fixCalls == 0 {
+		t.Fatal("expected simulate-fix handler to use store-native attack path queries")
+	}
+	if store.extractCalls == 0 {
+		t.Fatal("expected attack path handlers to extract bounded store subgraphs")
+	}
+}
+
 func buildGraphStorePropagationTestGraph() *graph.Graph {
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "user-1", Kind: graph.NodeKindUser, Name: "user-1"})

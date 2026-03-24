@@ -134,7 +134,7 @@ func (s *Server) listPlatformGraphSnapshots(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) getCurrentPlatformGraphSnapshot(w http.ResponseWriter, r *http.Request) {
-	view, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	record, err := currentOrStoredGraphSnapshotRecord(r.Context(), s.currentTenantSecurityGraph(r.Context()), s.currentTenantSecurityGraphStore(r.Context()))
 	if err != nil {
 		if errors.Is(err, graph.ErrStoreUnavailable) {
 			s.errorFromErr(w, err)
@@ -143,12 +143,11 @@ func (s *Server) getCurrentPlatformGraphSnapshot(w http.ResponseWriter, r *http.
 		s.errorFromErr(w, err)
 		return
 	}
-	current := graph.CurrentGraphSnapshotRecord(view)
-	if current == nil {
+	if record == nil {
 		s.error(w, http.StatusNotFound, "graph snapshot not available")
 		return
 	}
-	s.json(w, http.StatusOK, current)
+	s.json(w, http.StatusOK, record)
 }
 
 func (s *Server) getPlatformGraphSnapshot(w http.ResponseWriter, r *http.Request) {
@@ -215,12 +214,9 @@ func (s *Server) createSecurityAttackPathJob(w http.ResponseWriter, r *http.Requ
 		s.error(w, http.StatusBadRequest, "threshold must be greater than or equal to 0")
 		return
 	}
-	analysisGraph, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
-	if err != nil {
-		s.errorFromErr(w, err)
-		return
-	}
-	if analysisGraph == nil {
+	analysisGraph := s.currentTenantSecurityGraph(r.Context())
+	analysisStore := s.currentTenantSecurityGraphStore(r.Context())
+	if analysisGraph == nil && analysisStore == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
@@ -232,9 +228,27 @@ func (s *Server) createSecurityAttackPathJob(w http.ResponseWriter, r *http.Requ
 	}, GetUserID(r.Context()))
 
 	// #nosec G118 -- platform jobs intentionally outlive the originating request and use job-owned cancellation.
-	s.startPlatformJob(job.ID, func(_ context.Context) (any, error) {
-		simulator := risk.NewAttackPathSimulator(analysisGraph)
-		result := simulator.Simulate(maxDepth)
+	s.startPlatformJob(job.ID, func(ctx context.Context) (any, error) {
+		var result *risk.SimulationResult
+		if analysisStore != nil {
+			queryStore, ok := graph.AsAttackPathQueryStore(analysisStore)
+			if !ok {
+				var err error
+				result, err = graph.SimulateAttackPathsFromStore(ctx, analysisStore, maxDepth)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				var err error
+				result, err = queryStore.AttackPaths(ctx, maxDepth)
+				if err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			simulator := risk.NewAttackPathSimulator(analysisGraph)
+			result = simulator.Simulate(maxDepth)
+		}
 		if req.Threshold > 0 {
 			filtered := make([]*risk.ScoredAttackPath, 0, len(result.Paths))
 			for _, path := range result.Paths {

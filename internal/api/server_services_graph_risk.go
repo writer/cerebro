@@ -57,21 +57,11 @@ func newGraphRiskService(server *Server, deps *serverDependencies) graphRiskServ
 }
 
 func (s serverGraphRiskService) GraphStats(ctx context.Context) (*graphRiskStatsResponse, error) {
-	if g := s.tenantGraph(ctx); g != nil {
-		return graphRiskStatsFromMetadata(g.Metadata()), nil
-	}
-	store := s.tenantStore(ctx)
-	if store == nil {
-		return nil, errGraphRiskUnavailable
-	}
-	snapshot, err := store.Snapshot(ctx)
+	meta, err := currentOrStoredGraphMetadata(ctx, s.tenantGraph(ctx), s.tenantStore(ctx))
 	if err != nil {
 		return nil, graphRiskErr(err)
 	}
-	if snapshot == nil {
-		return nil, errGraphRiskUnavailable
-	}
-	return graphRiskStatsFromMetadata(snapshot.Metadata), nil
+	return graphRiskStatsFromMetadata(meta), nil
 }
 
 func (s serverGraphRiskService) BlastRadius(ctx context.Context, principalID string, maxDepth int) (*risk.BlastRadiusResult, error) {
@@ -108,21 +98,11 @@ func (s serverGraphRiskService) Rebuild(ctx context.Context) (*graphRebuildRespo
 	if err := s.deps.RebuildSecurityGraph(ctx); err != nil {
 		return nil, err
 	}
-	if g := s.deps.CurrentSecurityGraph(); g != nil {
-		return graphRebuildResponseFromMetadata(g.Metadata()), nil
-	}
-	store := s.deps.CurrentSecurityGraphStore()
-	if store == nil {
-		return nil, errGraphRiskUnavailable
-	}
-	snapshot, err := store.Snapshot(ctx)
+	meta, err := currentOrStoredGraphMetadata(ctx, s.deps.CurrentSecurityGraph(), s.deps.CurrentSecurityGraphStore())
 	if err != nil {
 		return nil, graphRiskErr(err)
 	}
-	if snapshot == nil {
-		return nil, errGraphRiskUnavailable
-	}
-	return graphRebuildResponseFromMetadata(snapshot.Metadata), nil
+	return graphRebuildResponseFromMetadata(meta), nil
 }
 
 func (s serverGraphRiskService) RiskReport(ctx context.Context) (*risk.SecurityReport, error) {
@@ -162,21 +142,39 @@ func (s serverGraphRiskService) ToxicCombinations(ctx context.Context) ([]*risk.
 }
 
 func (s serverGraphRiskService) AttackPaths(ctx context.Context, maxDepth int) (*risk.SimulationResult, error) {
-	g, err := s.tenantAnalysisGraph(ctx)
-	if err != nil {
-		return nil, err
+	if g := s.tenantGraph(ctx); g != nil {
+		return risk.NewAttackPathSimulator(g).Simulate(maxDepth), nil
 	}
-	return risk.NewAttackPathSimulator(g).Simulate(maxDepth), nil
+	store := s.tenantStore(ctx)
+	if store == nil {
+		return nil, errGraphRiskUnavailable
+	}
+	queryStore, ok := graph.AsAttackPathQueryStore(store)
+	if !ok {
+		result, err := graph.SimulateAttackPathsFromStore(ctx, store, maxDepth)
+		return result, graphRiskErr(err)
+	}
+	result, err := queryStore.AttackPaths(ctx, maxDepth)
+	return result, graphRiskErr(err)
 }
 
 func (s serverGraphRiskService) SimulateAttackPathFix(ctx context.Context, nodeID string) (*risk.FixSimulation, error) {
-	g, err := s.tenantAnalysisGraph(ctx)
-	if err != nil {
-		return nil, err
+	if g := s.tenantGraph(ctx); g != nil {
+		sim := risk.NewAttackPathSimulator(g)
+		result := sim.Simulate(6)
+		return sim.SimulateFix(result, nodeID), nil
 	}
-	sim := risk.NewAttackPathSimulator(g)
-	result := sim.Simulate(6)
-	return sim.SimulateFix(result, nodeID), nil
+	store := s.tenantStore(ctx)
+	if store == nil {
+		return nil, errGraphRiskUnavailable
+	}
+	queryStore, ok := graph.AsAttackPathQueryStore(store)
+	if !ok {
+		result, err := graph.SimulateAttackPathFixFromStore(ctx, store, nodeID, 6)
+		return result, graphRiskErr(err)
+	}
+	result, err := queryStore.SimulateAttackPathFix(ctx, nodeID, 6)
+	return result, graphRiskErr(err)
 }
 
 func (s serverGraphRiskService) Chokepoints(ctx context.Context) ([]*risk.Chokepoint, error) {
