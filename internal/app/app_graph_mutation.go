@@ -97,7 +97,13 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 	meta.NodeCount = candidate.NodeCount()
 	meta.EdgeCount = candidate.EdgeCount()
 	candidate.SetMetadata(meta)
-	a.setSecurityGraph(candidate)
+	if err := a.syncConfiguredSecurityGraphStore(ctx, candidate); err != nil {
+		return nil, err
+	}
+	if a.SecurityGraphBuilder != nil {
+		a.SecurityGraphBuilder.ReplaceGraph(candidate)
+	}
+	a.publishSecurityGraphRuntimeView(candidate)
 
 	afterNodeCount := candidate.NodeCount()
 	afterEdgeCount := candidate.EdgeCount()

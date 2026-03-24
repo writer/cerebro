@@ -923,7 +923,7 @@ func detectSensitiveDataExplicit(node *Node) *SensitiveDataNode {
 }
 
 func detectSensitiveDataWithOptions(node *Node, includeNameHeuristics bool) *SensitiveDataNode {
-	if node.Properties == nil {
+	if node == nil {
 		return nil
 	}
 
@@ -934,7 +934,7 @@ func detectSensitiveDataWithOptions(node *Node, includeNameHeuristics bool) *Sen
 	}
 
 	// Check data classification
-	if class, ok := node.Properties["data_classification"].(string); ok {
+	if class := nodePropertyString(node, "data_classification"); class != "" {
 		result.DataClassification = class
 		if class == "confidential" || class == "restricted" || class == "sensitive" {
 			result.ComplianceImpact = append(result.ComplianceImpact, "SOC2")
@@ -942,25 +942,25 @@ func detectSensitiveDataWithOptions(node *Node, includeNameHeuristics bool) *Sen
 	}
 
 	// Check for PII
-	if pii, ok := node.Properties["contains_pii"].(bool); ok && pii {
+	if nodePropertyBool(node, "contains_pii") {
 		result.DataTypes = append(result.DataTypes, "PII")
 		result.ComplianceImpact = append(result.ComplianceImpact, "GDPR", "CCPA")
 	}
 
 	// Check for PHI (healthcare data)
-	if phi, ok := node.Properties["contains_phi"].(bool); ok && phi {
+	if nodePropertyBool(node, "contains_phi") {
 		result.DataTypes = append(result.DataTypes, "PHI")
 		result.ComplianceImpact = append(result.ComplianceImpact, "HIPAA")
 	}
 
 	// Check for PCI data
-	if pci, ok := node.Properties["contains_pci"].(bool); ok && pci {
+	if nodePropertyBool(node, "contains_pci") {
 		result.DataTypes = append(result.DataTypes, "PCI")
 		result.ComplianceImpact = append(result.ComplianceImpact, "PCI-DSS")
 	}
 
 	// Buckets and databases can also contain secrets surfaced by DSPM scans.
-	if containsSecrets, ok := node.Properties["contains_secrets"].(bool); ok && containsSecrets {
+	if nodePropertyBool(node, "contains_secrets") {
 		result.DataTypes = append(result.DataTypes, "secrets")
 		if !sliceContains(result.ComplianceImpact, "SOC2") {
 			result.ComplianceImpact = append(result.ComplianceImpact, "SOC2")

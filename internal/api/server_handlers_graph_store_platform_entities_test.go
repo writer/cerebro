@@ -91,6 +91,8 @@ func buildGraphStorePlatformEntitiesTestGraph(t *testing.T) *graph.Graph {
 	if !ok || node == nil {
 		t.Fatal("expected seeded service node")
 	}
+	node.CreatedAt = base
+	node.UpdatedAt = base.Add(2 * time.Hour)
 	node.PropertyHistory = map[string][]graph.PropertySnapshot{
 		"status": {
 			{Timestamp: base, Value: "healthy"},
@@ -177,5 +179,14 @@ func TestPlatformEntityHandlersUseGraphStoreWhenRawGraphUnavailable(t *testing.T
 	diffBody := decodeJSON(t, diff)
 	if got := len(diffBody["changed_keys"].([]any)); got < 2 {
 		t.Fatalf("expected store-backed entity diff changes, got %#v", diffBody)
+	}
+
+	timeline := do(t, s, http.MethodGet, "/api/v1/platform/entities/service:payments/timeline?from=2026-03-10T09:00:00Z&to=2026-03-10T12:00:00Z", nil)
+	if timeline.Code != http.StatusOK {
+		t.Fatalf("expected entity timeline 200, got %d: %s", timeline.Code, timeline.Body.String())
+	}
+	timelineBody := decodeJSON(t, timeline)
+	if got := len(timelineBody["events"].([]any)); got < 3 {
+		t.Fatalf("expected store-backed timeline events, got %#v", timelineBody)
 	}
 }

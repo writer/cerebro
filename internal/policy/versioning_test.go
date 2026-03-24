@@ -2,6 +2,7 @@ package policy
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -13,7 +14,7 @@ func TestPolicyVersionLifecycleAndRollback(t *testing.T) {
 		Description: "original description",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == true"},
+		Conditions:  []string{"resource.public == true"},
 		Severity:    "high",
 	})
 
@@ -33,7 +34,7 @@ func TestPolicyVersionLifecycleAndRollback(t *testing.T) {
 		Description: "updated description",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == false"},
+		Conditions:  []string{"resource.public == false"},
 		Severity:    "critical",
 	}); !ok {
 		t.Fatal("expected update to succeed")
@@ -80,7 +81,7 @@ func TestDiffPolicies_TracksChangedFields(t *testing.T) {
 		Description: "desc",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == true"},
+		Conditions:  []string{"resource.public == true"},
 		Severity:    "high",
 	}
 	after := &Policy{
@@ -89,7 +90,7 @@ func TestDiffPolicies_TracksChangedFields(t *testing.T) {
 		Description: "desc",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == false"},
+		Conditions:  []string{"resource.public == false"},
 		Severity:    "critical",
 	}
 
@@ -125,7 +126,7 @@ func TestDryRunPolicyChange_ComputesImpactDelta(t *testing.T) {
 		Description: "current",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == true"},
+		Conditions:  []string{"resource.public == true"},
 		Severity:    "high",
 	}
 	candidate := &Policy{
@@ -134,13 +135,13 @@ func TestDryRunPolicyChange_ComputesImpactDelta(t *testing.T) {
 		Description: "candidate",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == false"},
+		Conditions:  []string{"resource.public == false"},
 		Severity:    "high",
 	}
 
 	assets := []map[string]interface{}{
-		{"_cq_id": "bucket-a", "_cq_table": "aws_s3_buckets", "public": "true"},
-		{"_cq_id": "bucket-b", "_cq_table": "aws_s3_buckets", "public": "false"},
+		{"_cq_id": "bucket-a", "_cq_table": "aws_s3_buckets", "public": true},
+		{"_cq_id": "bucket-b", "_cq_table": "aws_s3_buckets", "public": false},
 	}
 
 	impact, err := engine.DryRunPolicyChange(context.Background(), current, candidate, assets)
@@ -159,5 +160,149 @@ func TestDryRunPolicyChange_ComputesImpactDelta(t *testing.T) {
 	}
 	if len(impact.RemovedFindingIDs) != 1 {
 		t.Fatalf("expected 1 removed finding, got %d", len(impact.RemovedFindingIDs))
+	}
+}
+
+func TestGetPolicyVersionAndDiffPolicyVersions(t *testing.T) {
+	engine := NewEngine()
+	engine.AddPolicy(&Policy{
+		ID:              "policy-history",
+		Name:            "Original",
+		Description:     "version one",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		Conditions:      []string{"resource.public == true"},
+		ConditionFormat: "cel",
+		Severity:        "high",
+		Frameworks: []FrameworkMapping{
+			{Name: " CIS ", Controls: []string{" 1.1 ", "1.2"}},
+		},
+		MitreAttack: []MitreMapping{
+			{Tactic: " Initial Access ", Technique: " T1190 "},
+		},
+	})
+
+	if ok := engine.UpdatePolicy("policy-history", &Policy{
+		Name:            "Updated",
+		Description:     "version two",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		Conditions:      []string{"resource.public == false"},
+		ConditionFormat: "cel",
+		Severity:        "critical",
+		Frameworks: []FrameworkMapping{
+			{Name: "NIST", Controls: []string{"AC-1"}},
+		},
+		MitreAttack: []MitreMapping{
+			{Tactic: "Execution", Technique: "T1059"},
+		},
+	}); !ok {
+		t.Fatal("expected update to succeed")
+	}
+
+	versionOne, ok := engine.GetPolicyVersion("policy-history", 1)
+	if !ok {
+		t.Fatal("expected version 1 to exist")
+	}
+	if versionOne.Content == nil || versionOne.Content.Name != "Original" {
+		t.Fatalf("unexpected version 1 content: %#v", versionOne.Content)
+	}
+
+	versionOne.Content.Name = "Mutated copy"
+	versionOneAgain, ok := engine.GetPolicyVersion("policy-history", 1)
+	if !ok {
+		t.Fatal("expected version 1 lookup to still succeed")
+	}
+	if versionOneAgain.Content == nil || versionOneAgain.Content.Name != "Original" {
+		t.Fatalf("stored history should not be mutated through copies, got %#v", versionOneAgain.Content)
+	}
+
+	diff, err := engine.DiffPolicyVersions("policy-history", 1, 2)
+	if err != nil {
+		t.Fatalf("diff failed: %v", err)
+	}
+	if diff.PolicyID != "policy-history" || diff.FromVersion != 1 || diff.ToVersion != 2 {
+		t.Fatalf("unexpected diff metadata: %#v", diff)
+	}
+
+	changed := make(map[string]bool, len(diff.FieldDiffs))
+	for _, field := range diff.FieldDiffs {
+		changed[field.Field] = true
+	}
+	for _, field := range []string{"name", "conditions", "severity", "frameworks", "mitre_attack"} {
+		if !changed[field] {
+			t.Fatalf("expected %q to be marked as changed, got %#v", field, diff.FieldDiffs)
+		}
+	}
+}
+
+func TestDiffPolicyVersionsMissingVersionAndNormalizedStructuredFields(t *testing.T) {
+	engine := NewEngine()
+	engine.AddPolicy(&Policy{
+		ID:              "policy-normalized",
+		Name:            "Normalized",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		Conditions:      []string{"resource.public == true"},
+		ConditionFormat: "cel",
+	})
+
+	if _, err := engine.DiffPolicyVersions("policy-normalized", 1, 9); err == nil || !strings.Contains(err.Error(), "policy version not found") {
+		t.Fatalf("expected missing version error, got %v", err)
+	}
+
+	before := &Policy{
+		ID:              "  normalized-id  ",
+		Name:            "Policy",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		Conditions:      []string{"resource.public == true"},
+		ConditionFormat: " cel ",
+		Frameworks: []FrameworkMapping{
+			{Name: " CIS Controls ", Controls: []string{" 1.1 ", "1.2 "}},
+		},
+		MitreAttack: []MitreMapping{
+			{Tactic: " Initial Access ", Technique: " T1190 "},
+		},
+	}
+	after := &Policy{
+		ID:              "normalized-id",
+		Name:            "Policy",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		Conditions:      []string{"resource.public == true"},
+		ConditionFormat: "cel",
+		Frameworks: []FrameworkMapping{
+			{Name: "CIS Controls", Controls: []string{"1.1", "1.2"}},
+		},
+		MitreAttack: []MitreMapping{
+			{Tactic: "Initial Access", Technique: "T1190"},
+		},
+	}
+
+	diff := DiffPolicies(before, after)
+	if diff.PolicyID != "normalized-id" {
+		t.Fatalf("expected normalized policy id, got %#v", diff.PolicyID)
+	}
+	if diff.Changed {
+		t.Fatalf("expected whitespace-only structured changes to normalize away, got %#v", diff.FieldDiffs)
+	}
+}
+
+func TestVersioningHelpers_HandleNilAndFallbackCases(t *testing.T) {
+	if got := clonePolicy(nil); got != nil {
+		t.Fatalf("expected nil clone for nil policy, got %#v", got)
+	}
+
+	before := &Policy{ID: "  before-only  ", Name: "before"}
+	if got := firstNonEmptyPolicyID(before, nil); got != "before-only" {
+		t.Fatalf("expected before policy id fallback, got %q", got)
+	}
+	if got := firstNonEmptyPolicyID(nil, nil); got != "" {
+		t.Fatalf("expected empty id for nil inputs, got %q", got)
+	}
+
+	if got := policyFieldValue(nil, func(p *Policy) interface{} { return p.Name }); got != nil {
+		t.Fatalf("expected nil policyFieldValue for nil policy, got %#v", got)
 	}
 }

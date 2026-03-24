@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -262,4 +264,155 @@ func TestExtractSubgraphReleasesLockWhenEdgeFilterPanics(t *testing.T) {
 			panic("boom")
 		},
 	})
+}
+
+func TestExtractSubgraphMatchesSequentialReferenceOnWideNeighborhood(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "root", Kind: NodeKindRole})
+	for i := 0; i < 96; i++ {
+		childID := "child-" + strconv.Itoa(i)
+		leafID := "leaf-" + strconv.Itoa(i)
+		g.AddNode(&Node{ID: childID, Kind: NodeKindBucket})
+		g.AddNode(&Node{ID: leafID, Kind: NodeKindBucket})
+		g.AddEdge(&Edge{ID: "root-" + childID, Source: "root", Target: childID, Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+		g.AddEdge(&Edge{ID: childID + "-" + leafID, Source: childID, Target: leafID, Kind: EdgeKindConnectsTo, Effect: EdgeEffectAllow})
+		if i > 0 {
+			prevChildID := "child-" + strconv.Itoa(i-1)
+			g.AddEdge(&Edge{ID: prevChildID + "-" + childID, Source: prevChildID, Target: childID, Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+		}
+	}
+	g.AddEdge(&Edge{ID: "leaf-95-root", Source: "leaf-95", Target: "root", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+
+	opts := ExtractSubgraphOptions{
+		MaxDepth:  2,
+		MaxNodes:  40,
+		Direction: ExtractSubgraphDirectionOutgoing,
+	}
+
+	got := ExtractSubgraph(g, "root", opts)
+	want := extractSubgraphSequentialReference(g, "root", opts)
+
+	if !reflect.DeepEqual(sortedNodeIDs(got.GetAllNodes()), sortedNodeIDs(want.GetAllNodes())) {
+		t.Fatalf("node IDs = %#v, want %#v", sortedNodeIDs(got.GetAllNodes()), sortedNodeIDs(want.GetAllNodes()))
+	}
+	if !reflect.DeepEqual(sortedGraphEdgeIDs(got), sortedGraphEdgeIDs(want)) {
+		t.Fatalf("edge IDs = %#v, want %#v", sortedGraphEdgeIDs(got), sortedGraphEdgeIDs(want))
+	}
+}
+
+func TestExtractSubgraphMatchesSequentialReferenceWithCyclesAndBoundaryEdges(t *testing.T) {
+	g := New()
+	for _, nodeID := range []string{"root", "left", "right", "mid-a", "mid-b", "cycle"} {
+		g.AddNode(&Node{ID: nodeID, Kind: NodeKindRole})
+	}
+	g.AddEdge(&Edge{ID: "root-left", Source: "root", Target: "left", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "root-right", Source: "root", Target: "right", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "left-right", Source: "left", Target: "right", Kind: EdgeKindConnectsTo, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "right-left", Source: "right", Target: "left", Kind: EdgeKindConnectsTo, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "left-mid-a", Source: "left", Target: "mid-a", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "right-mid-b", Source: "right", Target: "mid-b", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "mid-a-cycle", Source: "mid-a", Target: "cycle", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "cycle-root", Source: "cycle", Target: "root", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+
+	opts := ExtractSubgraphOptions{
+		MaxDepth:  2,
+		Direction: ExtractSubgraphDirectionBoth,
+	}
+
+	got := ExtractSubgraph(g, "root", opts)
+	want := extractSubgraphSequentialReference(g, "root", opts)
+
+	if !reflect.DeepEqual(sortedNodeIDs(got.GetAllNodes()), sortedNodeIDs(want.GetAllNodes())) {
+		t.Fatalf("node IDs = %#v, want %#v", sortedNodeIDs(got.GetAllNodes()), sortedNodeIDs(want.GetAllNodes()))
+	}
+	if !reflect.DeepEqual(sortedGraphEdgeIDs(got), sortedGraphEdgeIDs(want)) {
+		t.Fatalf("edge IDs = %#v, want %#v", sortedGraphEdgeIDs(got), sortedGraphEdgeIDs(want))
+	}
+}
+
+func extractSubgraphSequentialReference(g *Graph, rootID string, opts ExtractSubgraphOptions) *Graph {
+	subgraph := New()
+	if g == nil {
+		return subgraph
+	}
+
+	maxDepth := opts.MaxDepth
+	if maxDepth <= 0 {
+		maxDepth = defaultExtractSubgraphMaxDepth
+	}
+	maxNodes := opts.MaxNodes
+	if maxNodes <= 0 {
+		maxNodes = int(^uint(0) >> 1)
+	}
+
+	nodesToCopy := make(map[string]*Node)
+	edgesToCopy := make(map[*Edge]struct{})
+	seen := newOrdinalVisitSet(nil)
+	queue := make([]subgraphQueueItem, 0, 16)
+	queueHead := 0
+
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	root, ok := g.nodes[rootID]
+	if !ok || root == nil || root.DeletedAt != nil {
+		return subgraph
+	}
+
+	nodesToCopy[rootID] = root
+	seen.markNode(rootID, root.ordinal)
+	queue = append(queue, subgraphQueueItem{nodeID: rootID, depth: 0})
+
+	visitEdges := func(current string, depth int, edges []*Edge, nextNodeID func(*Edge) string) {
+		for _, edge := range edges {
+			if !g.activeEdgeLocked(edge) {
+				continue
+			}
+			if opts.EdgeFilter != nil && !opts.EdgeFilter(edge) {
+				continue
+			}
+
+			neighborID := nextNodeID(edge)
+			neighbor, ok := g.nodes[neighborID]
+			if !ok || neighbor == nil || neighbor.DeletedAt != nil {
+				continue
+			}
+
+			if !seen.hasNode(neighborID, neighbor.ordinal) {
+				if depth >= maxDepth || len(nodesToCopy) >= maxNodes {
+					continue
+				}
+				seen.markNode(neighborID, neighbor.ordinal)
+				nodesToCopy[neighborID] = neighbor
+				queue = append(queue, subgraphQueueItem{nodeID: neighborID, depth: depth + 1})
+			}
+
+			if _, ok := nodesToCopy[neighborID]; ok {
+				edgesToCopy[edge] = struct{}{}
+			}
+		}
+	}
+
+	for queueHead < len(queue) {
+		item := queue[queueHead]
+		queueHead++
+
+		if opts.Direction == ExtractSubgraphDirectionBoth || opts.Direction == ExtractSubgraphDirectionOutgoing {
+			visitEdges(item.nodeID, item.depth, g.outEdges[item.nodeID], func(edge *Edge) string {
+				return edge.Target
+			})
+		}
+		if opts.Direction == ExtractSubgraphDirectionBoth || opts.Direction == ExtractSubgraphDirectionIncoming {
+			visitEdges(item.nodeID, item.depth, g.inEdges[item.nodeID], func(edge *Edge) string {
+				return edge.Source
+			})
+		}
+	}
+
+	for _, node := range nodesToCopy {
+		subgraph.AddNode(cloneNode(node))
+	}
+	for edge := range edgesToCopy {
+		subgraph.AddEdge(cloneEdge(edge))
+	}
+	return subgraph
 }

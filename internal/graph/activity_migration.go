@@ -302,7 +302,7 @@ func inferServiceIDFromActivityEdges(g *Graph, node *Node) string {
 		}
 		if targetNode.Kind == NodeKindService {
 			return strings.TrimSpace(migrationFirstNonEmpty(
-				identityAnyToString(targetNode.Properties["service_id"]),
+				targetNode.PropertyString("service_id"),
 				strings.TrimPrefix(targetNode.ID, "service:"),
 			))
 		}

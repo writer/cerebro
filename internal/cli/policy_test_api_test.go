@@ -180,8 +180,8 @@ func TestRunPolicyTestDirect_FiltersSelectedPolicyOnly(t *testing.T) {
 	t.Cleanup(func() { restorePolicyTestCLIState(state) })
 
 	policiesDir := t.TempDir()
-	policyA := `{"id":"policy-target","name":"Target","description":"target policy","effect":"forbid","resource":"aws::s3::bucket","conditions":["public == false"],"severity":"high"}`
-	policyB := `{"id":"policy-other","name":"Other","description":"other policy","effect":"forbid","resource":"aws::s3::bucket","conditions":["public == true"],"severity":"high"}`
+	policyA := `{"id":"policy-target","name":"Target","description":"target policy","effect":"forbid","resource":"aws::s3::bucket","conditions":["resource.public == false"],"severity":"high"}`
+	policyB := `{"id":"policy-other","name":"Other","description":"other policy","effect":"forbid","resource":"aws::s3::bucket","conditions":["resource.public == true"],"severity":"high"}`
 	if err := os.WriteFile(filepath.Join(policiesDir, "policy-target.json"), []byte(policyA), 0o600); err != nil {
 		t.Fatalf("write policy target: %v", err)
 	}

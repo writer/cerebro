@@ -34,6 +34,19 @@ type cerebroEntityHistoryRequest struct {
 	RecordedAt string `json:"recorded_at"`
 }
 
+type cerebroReconstructRequest struct {
+	EntityID   string `json:"entity_id"`
+	Timestamp  string `json:"timestamp"`
+	RecordedAt string `json:"recorded_at"`
+}
+
+type cerebroTimelineRequest struct {
+	EntityID   string `json:"entity_id"`
+	From       string `json:"from"`
+	To         string `json:"to"`
+	RecordedAt string `json:"recorded_at"`
+}
+
 func (a *App) toolCerebroGraphChangelog(_ context.Context, args json.RawMessage) (string, error) {
 	var req cerebroGraphChangelogRequest
 	if err := decodeToolArgs(args, &req); err != nil {
@@ -110,6 +123,107 @@ func (a *App) toolCerebroEntityHistory(_ context.Context, args json.RawMessage) 
 	to, err := parseToolRequiredRFC3339(toRaw, "to")
 	if err != nil {
 		return "", err
+	}
+
+	record, ok := entities.GetEntityTimeDiff(g, entityID, from, to, recordedAt)
+	if !ok {
+		return "", fmt.Errorf("entity not found: %s", entityID)
+	}
+	return marshalToolResponse(record)
+}
+
+func (a *App) toolCerebroReconstruct(_ context.Context, args json.RawMessage) (string, error) {
+	var req cerebroReconstructRequest
+	if err := decodeToolArgs(args, &req); err != nil {
+		return "", err
+	}
+
+	g, err := a.requireReadableSecurityGraph()
+	if err != nil {
+		return "", err
+	}
+	entityID := strings.TrimSpace(req.EntityID)
+	if entityID == "" {
+		return "", fmt.Errorf("entity_id is required")
+	}
+	timestamp, err := parseToolRequiredRFC3339(strings.TrimSpace(req.Timestamp), "timestamp")
+	if err != nil {
+		return "", err
+	}
+	recordedAt, err := parseToolOptionalRFC3339(req.RecordedAt)
+	if err != nil {
+		return "", fmt.Errorf("recorded_at must be RFC3339")
+	}
+
+	record, ok := entities.GetEntityRecordAtTime(g, entityID, timestamp, recordedAt)
+	if !ok {
+		return "", fmt.Errorf("entity not found: %s", entityID)
+	}
+	return marshalToolResponse(record)
+}
+
+func (a *App) toolCerebroTimeline(_ context.Context, args json.RawMessage) (string, error) {
+	var req cerebroTimelineRequest
+	if err := decodeToolArgs(args, &req); err != nil {
+		return "", err
+	}
+
+	g, err := a.requireReadableSecurityGraph()
+	if err != nil {
+		return "", err
+	}
+	entityID := strings.TrimSpace(req.EntityID)
+	if entityID == "" {
+		return "", fmt.Errorf("entity_id is required")
+	}
+	from, err := parseToolRequiredRFC3339(strings.TrimSpace(req.From), "from")
+	if err != nil {
+		return "", err
+	}
+	to, err := parseToolRequiredRFC3339(strings.TrimSpace(req.To), "to")
+	if err != nil {
+		return "", err
+	}
+	if to.Before(from) {
+		return "", fmt.Errorf("to must be greater than or equal to from")
+	}
+	recordedAt, err := parseToolOptionalRFC3339(req.RecordedAt)
+	if err != nil {
+		return "", fmt.Errorf("recorded_at must be RFC3339")
+	}
+
+	record, ok := entities.GetEntityTimeline(g, entityID, from, to, recordedAt)
+	if !ok {
+		return "", fmt.Errorf("entity not found: %s", entityID)
+	}
+	return marshalToolResponse(record)
+}
+
+func (a *App) toolCerebroDiff(_ context.Context, args json.RawMessage) (string, error) {
+	var req cerebroTimelineRequest
+	if err := decodeToolArgs(args, &req); err != nil {
+		return "", err
+	}
+
+	g, err := a.requireReadableSecurityGraph()
+	if err != nil {
+		return "", err
+	}
+	entityID := strings.TrimSpace(req.EntityID)
+	if entityID == "" {
+		return "", fmt.Errorf("entity_id is required")
+	}
+	from, err := parseToolRequiredRFC3339(strings.TrimSpace(req.From), "from")
+	if err != nil {
+		return "", err
+	}
+	to, err := parseToolRequiredRFC3339(strings.TrimSpace(req.To), "to")
+	if err != nil {
+		return "", err
+	}
+	recordedAt, err := parseToolOptionalRFC3339(req.RecordedAt)
+	if err != nil {
+		return "", fmt.Errorf("recorded_at must be RFC3339")
 	}
 
 	record, ok := entities.GetEntityTimeDiff(g, entityID, from, to, recordedAt)

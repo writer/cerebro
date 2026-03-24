@@ -16,7 +16,8 @@ func TestEngineLoadPolicies(t *testing.T) {
 		"description": "Test description",
 		"effect": "forbid",
 		"resource": "aws::s3::bucket",
-		"conditions": ["public == true"],
+		"condition_format": "cel",
+		"conditions": ["resource.public == true"],
 		"severity": "high",
 		"tags": ["test"]
 	}`
@@ -50,12 +51,13 @@ func TestEngineLoadPolicies(t *testing.T) {
 func TestEngineEvaluateAsset(t *testing.T) {
 	engine := NewEngine()
 	engine.AddPolicy(&Policy{
-		ID:          "no-public-buckets",
-		Name:        "No Public Buckets",
-		Description: "S3 buckets should not be public",
-		Effect:      "forbid",
-		Conditions:  []string{"public == true"},
-		Severity:    "critical",
+		ID:              "no-public-buckets",
+		Name:            "No Public Buckets",
+		Description:     "S3 buckets should not be public",
+		Effect:          "forbid",
+		ConditionFormat: ConditionFormatCEL,
+		Conditions:      []string{"resource.public == true"},
+		Severity:        "critical",
 	})
 
 	tests := []struct {
@@ -65,12 +67,12 @@ func TestEngineEvaluateAsset(t *testing.T) {
 	}{
 		{
 			name:         "public bucket - violation",
-			asset:        map[string]interface{}{"_cq_id": "123", "name": "my-bucket", "public": "true"},
+			asset:        map[string]interface{}{"_cq_id": "123", "name": "my-bucket", "public": true},
 			wantFindings: 1,
 		},
 		{
 			name:         "private bucket - no violation",
-			asset:        map[string]interface{}{"_cq_id": "456", "name": "private-bucket", "public": "false"},
+			asset:        map[string]interface{}{"_cq_id": "456", "name": "private-bucket", "public": false},
 			wantFindings: 0,
 		},
 	}
@@ -120,18 +122,21 @@ func TestConditionEvaluation(t *testing.T) {
 		asset     map[string]interface{}
 		want      bool
 	}{
-		{"enabled == true", map[string]interface{}{"enabled": "true"}, true},
-		{"enabled == true", map[string]interface{}{"enabled": "false"}, false},
-		{"enabled != true", map[string]interface{}{"enabled": "false"}, true},
-		{"enabled != true", map[string]interface{}{"enabled": "true"}, false},
-		{"missing == true", map[string]interface{}{"other": "value"}, false},
+		{"cmp_eq(path(resource, \"enabled\"), true)", map[string]interface{}{"enabled": "true"}, true},
+		{"cmp_eq(path(resource, \"enabled\"), true)", map[string]interface{}{"enabled": "false"}, false},
+		{"cmp_ne(path(resource, \"enabled\"), true)", map[string]interface{}{"enabled": "false"}, true},
+		{"cmp_ne(path(resource, \"enabled\"), true)", map[string]interface{}{"enabled": "true"}, false},
+		{"cmp_eq(path(resource, \"missing\"), true)", map[string]interface{}{"other": "value"}, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.condition, func(t *testing.T) {
-			got := evaluateCondition(tt.condition, tt.asset)
+			got, err := evaluateConditionExpression(tt.condition, tt.asset)
+			if err != nil {
+				t.Fatalf("evaluateConditionExpression(%q) failed: %v", tt.condition, err)
+			}
 			if got != tt.want {
-				t.Errorf("evaluateCondition(%q, %v) = %v, want %v", tt.condition, tt.asset, got, tt.want)
+				t.Errorf("evaluateConditionExpression(%q, %v) = %v, want %v", tt.condition, tt.asset, got, tt.want)
 			}
 		})
 	}

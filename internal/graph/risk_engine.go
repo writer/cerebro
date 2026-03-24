@@ -542,11 +542,7 @@ func (r *RiskEngine) checkCompliance(report *SecurityReport) []*ComplianceGap {
 	// Generic - MFA for admins
 	for _, node := range r.graph.GetAllNodes() {
 		if node.Kind == NodeKindUser {
-			mfaEnabled := false
-			if mfa, ok := node.Properties["mfa_enabled"].(bool); ok {
-				mfaEnabled = mfa
-			}
-			if !mfaEnabled {
+			if !nodePropertyBool(node, "mfa_enabled") {
 				// Check if user has admin access
 				for _, edge := range r.graph.GetOutEdges(node.ID) {
 					if edge.Kind == EdgeKindCanAdmin {

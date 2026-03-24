@@ -207,8 +207,8 @@ func TestReplayGraphMutationRecordsRebuildsCheckpointedGraph(t *testing.T) {
 	if !ok {
 		t.Fatal("replayed graph missing workload:payments")
 	}
-	if got := payments.Properties["internet_exposed"]; got != true {
-		t.Fatalf("payments.Properties[internet_exposed] = %v, want true", got)
+	if got, ok := payments.PropertyValue("internet_exposed"); !ok || got != true {
+		t.Fatalf("payments.PropertyValue(internet_exposed) = %#v, %v; want true,true", got, ok)
 	}
 	if _, ok := replayed.GetNode("workload:queue"); ok {
 		t.Fatal("replayed graph unexpectedly retained removed node")

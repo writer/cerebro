@@ -24,6 +24,7 @@ import (
 var defaultMappingsYAML []byte
 
 var templatePattern = regexp.MustCompile(`{{\s*([^{}]+)\s*}}`)
+var wholeTemplatePattern = regexp.MustCompile(`^{{\s*([^{}]+)\s*}}$`)
 
 type IdentityResolver func(raw string, evt events.CloudEvent) string
 
@@ -308,7 +309,8 @@ func (m *Mapper) Apply(g *graph.Graph, evt events.CloudEvent) (ApplyResult, erro
 			if provider == "" {
 				provider = sourceSystemFromEvent(evt)
 			}
-			properties := m.renderProperties(nodeDef.Properties, context, evt)
+			nodeContext := contextWithExistingNode(context, lookupValidationNode(g, stagedNodes, nodeID))
+			properties := m.renderProperties(nodeDef.Properties, nodeContext, evt)
 			ensureTemporalAndProvenance(properties, evt, mapping, contract)
 			node := &graph.Node{
 				ID:         nodeID,
@@ -434,12 +436,29 @@ func (m *Mapper) renderProperties(raw map[string]any, context map[string]any, ev
 		}
 		switch typed := value.(type) {
 		case string:
-			out[key] = m.renderTemplate(typed, context, evt)
+			out[key] = m.renderPropertyValue(typed, context, evt)
 		default:
 			out[key] = typed
 		}
 	}
 	return out
+}
+
+func (m *Mapper) renderPropertyValue(raw string, context map[string]any, evt events.CloudEvent) any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !strings.Contains(raw, "{{") {
+		return raw
+	}
+	matches := wholeTemplatePattern.FindStringSubmatch(raw)
+	if len(matches) == 2 {
+		expression := strings.TrimSpace(matches[1])
+		if expression != "" && !strings.HasPrefix(expression, "resolve(") {
+			if value, ok := cloneStructuredTemplateValue(contextValue(context, expression)); ok {
+				return value
+			}
+		}
+	}
+	return m.renderTemplate(raw, context, evt)
 }
 
 func (m *Mapper) conditionMatches(raw string, context map[string]any, evt events.CloudEvent) bool {
@@ -505,6 +524,24 @@ func eventContext(evt events.CloudEvent) map[string]any {
 		"tenant_id": evt.TenantID,
 		"data":      evt.Data,
 	}
+}
+
+func contextWithExistingNode(context map[string]any, node *graph.Node) map[string]any {
+	if node == nil {
+		return context
+	}
+	withExisting := make(map[string]any, len(context)+1)
+	for key, value := range context {
+		withExisting[key] = value
+	}
+	withExisting["existing"] = map[string]any{
+		"id":         node.ID,
+		"kind":       string(node.Kind),
+		"name":       node.Name,
+		"provider":   node.Provider,
+		"properties": node.PropertyMap(),
+	}
+	return withExisting
 }
 
 func contextValue(context map[string]any, pathExpr string) any {
@@ -785,6 +822,35 @@ func valueToString(value any) string {
 		return fmt.Sprintf("%v", typed)
 	default:
 		return ""
+	}
+}
+
+func cloneStructuredTemplateValue(value any) (any, bool) {
+	switch typed := value.(type) {
+	case []string:
+		return append([]string(nil), typed...), true
+	case []any:
+		out := make([]any, 0, len(typed))
+		for _, item := range typed {
+			if cloned, ok := cloneStructuredTemplateValue(item); ok {
+				out = append(out, cloned)
+				continue
+			}
+			out = append(out, item)
+		}
+		return out, true
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for key, item := range typed {
+			if cloned, ok := cloneStructuredTemplateValue(item); ok {
+				out[key] = cloned
+				continue
+			}
+			out[key] = item
+		}
+		return out, true
+	default:
+		return nil, false
 	}
 }
 

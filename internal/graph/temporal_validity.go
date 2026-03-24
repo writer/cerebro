@@ -578,6 +578,11 @@ func graphObservedAt(node *Node) (time.Time, bool) {
 	if props, ok := node.AttackSequenceProperties(); ok && !props.ObservedAt.IsZero() {
 		return props.ObservedAt, true
 	}
+	if props, ok := node.MetadataProperties(); ok {
+		if ts, ok := metadataPropertyTime(props, metadataPropertyKeyObservedAt); ok {
+			return ts, true
+		}
+	}
 	if ts, ok := temporalPropertyTime(node.Properties, "observed_at"); ok {
 		return ts, true
 	}
@@ -651,6 +656,11 @@ func nodePropertyTime(node *Node, key string) (time.Time, bool) {
 			if !props.TransactionFrom.IsZero() {
 				return props.TransactionFrom.UTC(), true
 			}
+		}
+	}
+	if props, ok := node.MetadataProperties(); ok {
+		if ts, ok := metadataPropertyTime(props, key); ok {
+			return ts, true
 		}
 	}
 	return temporalPropertyTime(node.Properties, key)

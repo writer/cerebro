@@ -125,6 +125,42 @@
       "execution_kind": "direct_tool"
     },
     {
+      "id": "cerebro_ai_workloads",
+      "version": "1.0.0",
+      "tool_name": "cerebro.ai_workloads",
+      "sdk_method": "ai_workloads",
+      "title": "Ai Workloads",
+      "description": "Inventory graph-detected AI workloads, shadow AI indicators, data exposure, and provider-key hygiene risks",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "include_shadow": {
+            "default": true,
+            "description": "When false, filter self-hosted shadow AI workloads out of the returned workload list.",
+            "type": "boolean"
+          },
+          "max_workloads": {
+            "default": 50,
+            "description": "Maximum workloads to return (1-200)",
+            "type": "integer"
+          },
+          "min_risk_score": {
+            "default": 0,
+            "description": "Minimum AI workload risk score to include (0-100)",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "include_shadow": true,
+        "max_workloads": 50,
+        "min_risk_score": 0
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
       "id": "cerebro_annotate",
       "version": "1.0.0",
       "tool_name": "cerebro.annotate_entity",
@@ -561,15 +597,25 @@
     },
     {
       "id": "cerebro_correlate_events",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "tool_name": "cerebro.correlate_events",
       "sdk_method": "correlate_events",
       "title": "Correlate Events",
-      "description": "Find temporal causal chains and anomaly signals around one event or entity",
+      "description": "Find temporal event correlations, multi-step causal chains, and anomaly signals around one event or entity",
       "category": "query",
       "required_permission": "sdk.context.read",
       "input_schema": {
         "properties": {
+          "direction": {
+            "default": "both",
+            "description": "Traversal direction when mode=chains.",
+            "enum": [
+              "upstream",
+              "downstream",
+              "both"
+            ],
+            "type": "string"
+          },
           "entity_id": {
             "description": "Optional entity ID (for example service:payments) to scope correlated events.",
             "type": "string"
@@ -580,7 +626,7 @@
           },
           "include_anomalies": {
             "default": false,
-            "description": "Include anomaly summaries for the same event/entity context.",
+            "description": "Include anomaly summaries for the same event/entity context when mode=correlations.",
             "type": "boolean"
           },
           "limit": {
@@ -588,19 +634,46 @@
             "description": "Maximum number of correlations/anomalies to return (1-200).",
             "type": "integer"
           },
+          "max_depth": {
+            "default": 4,
+            "description": "Maximum causal chain depth when mode=chains.",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "correlations",
+            "description": "Choose single-edge correlations or multi-step causal chain traversal.",
+            "enum": [
+              "correlations",
+              "chains"
+            ],
+            "type": "string"
+          },
           "pattern_id": {
             "description": "Optional built-in correlation pattern filter applied after event_id/entity_id scoping.",
+            "type": "string"
+          },
+          "since": {
+            "description": "Optional RFC3339 lower bound for effect event time.",
+            "type": "string"
+          },
+          "until": {
+            "description": "Optional RFC3339 upper bound for effect event time.",
             "type": "string"
           }
         },
         "type": "object"
       },
       "example_input": {
+        "direction": "both",
         "entity_id": "service:payments",
         "event_id": "event_id",
         "include_anomalies": false,
         "limit": 25,
-        "pattern_id": "pattern_id"
+        "max_depth": 4,
+        "mode": "correlations",
+        "pattern_id": "pattern_id",
+        "since": "since",
+        "until": "until"
       },
       "execution_kind": "direct_tool"
     },
@@ -690,6 +763,49 @@
         "target_ids": [],
         "valid_from": "valid_from",
         "valid_to": "valid_to"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_diff",
+      "version": "1.0.0",
+      "tool_name": "cerebro.diff",
+      "sdk_method": "diff",
+      "title": "Diff",
+      "description": "Diff one entity across two historical times",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "entity_id": {
+            "description": "Stable entity identifier.",
+            "type": "string"
+          },
+          "from": {
+            "description": "RFC3339 start timestamp for one entity diff window.",
+            "type": "string"
+          },
+          "recorded_at": {
+            "description": "Optional RFC3339 system-time selector.",
+            "type": "string"
+          },
+          "to": {
+            "description": "RFC3339 end timestamp for one entity diff window.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "entity_id": "service:payments",
+        "from": "from",
+        "recorded_at": "recorded_at",
+        "to": "to"
       },
       "execution_kind": "direct_tool"
     },
@@ -1120,6 +1236,35 @@
       "execution_kind": "direct_tool"
     },
     {
+      "id": "cerebro_key_person_risk",
+      "version": "1.0.0",
+      "tool_name": "cerebro.key_person_risk",
+      "sdk_method": "key_person_risk",
+      "title": "Key Person Risk",
+      "description": "Rank key-person risk from orphaned systems, customer exposure, ARR at risk, and recovery drag",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "default": 10,
+            "description": "Maximum ranked people to return (1-100).",
+            "type": "integer"
+          },
+          "person_id": {
+            "description": "Optional person identifier to focus the report on one departure scenario.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "example_input": {
+        "limit": 10,
+        "person_id": "person_id"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
       "id": "cerebro_leverage",
       "version": "1.0.0",
       "tool_name": "cerebro.graph_leverage_report",
@@ -1177,6 +1322,45 @@
         "recent_window_hours": 24,
         "since_version": 1,
         "stale_after_hours": 720
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_nlq",
+      "version": "1.0.0",
+      "tool_name": "cerebro.nl_query",
+      "sdk_method": "nlq",
+      "title": "Natural Language Security Query",
+      "description": "Translate a natural-language security question into a bounded read-only graph/query plan and optionally execute it",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "context": {
+            "description": "Optional follow-up context containing a previous_plan payload returned by an earlier NL query.",
+            "type": "object"
+          },
+          "preview_only": {
+            "default": false,
+            "description": "When true, return only the generated read-only plan without executing it.",
+            "type": "boolean"
+          },
+          "question": {
+            "description": "Natural-language security question, for example 'which internet-facing instances have critical unpatched CVEs?'",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "context": {
+          "example": true
+        },
+        "preview_only": false,
+        "question": "question"
       },
       "execution_kind": "direct_tool"
     },
@@ -1367,6 +1551,43 @@
         "history_limit": 20,
         "since_version": 1,
         "stale_after_hours": 720
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_reconstruct",
+      "version": "1.0.0",
+      "tool_name": "cerebro.reconstruct",
+      "sdk_method": "reconstruct",
+      "title": "Reconstruct",
+      "description": "Reconstruct one entity at a point in time using temporal history",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "entity_id": {
+            "description": "Stable entity identifier.",
+            "type": "string"
+          },
+          "recorded_at": {
+            "description": "Optional RFC3339 system-time selector.",
+            "type": "string"
+          },
+          "timestamp": {
+            "description": "RFC3339 point-in-time selector for one reconstructed entity state.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "entity_id": "service:payments",
+        "recorded_at": "recorded_at",
+        "timestamp": "timestamp"
       },
       "execution_kind": "direct_tool"
     },
@@ -1698,6 +1919,49 @@
       "input_schema": {
         "properties": {},
         "type": "object"
+      },
+      "execution_kind": "direct_tool"
+    },
+    {
+      "id": "cerebro_timeline",
+      "version": "1.0.0",
+      "tool_name": "cerebro.timeline",
+      "sdk_method": "timeline",
+      "title": "Timeline",
+      "description": "Show one entity's property and lifecycle changes across a time window",
+      "category": "query",
+      "required_permission": "sdk.context.read",
+      "input_schema": {
+        "properties": {
+          "entity_id": {
+            "description": "Stable entity identifier.",
+            "type": "string"
+          },
+          "from": {
+            "description": "RFC3339 start timestamp for one entity timeline window.",
+            "type": "string"
+          },
+          "recorded_at": {
+            "description": "Optional RFC3339 system-time selector.",
+            "type": "string"
+          },
+          "to": {
+            "description": "RFC3339 end timestamp for one entity timeline window.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id",
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "example_input": {
+        "entity_id": "service:payments",
+        "from": "from",
+        "recorded_at": "recorded_at",
+        "to": "to"
       },
       "execution_kind": "direct_tool"
     }

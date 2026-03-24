@@ -29,6 +29,14 @@ func (a *App) enrichSecurityGraphWithDSPMResult(target *dspm.ScanTarget, result 
 	if len(props) == 0 {
 		return
 	}
+	if !a.retainHotSecurityGraph() {
+		if _, err := a.MutateSecurityGraphMaybe(context.Background(), func(g *graph.Graph) (bool, error) {
+			return applyDSPMPropertiesToGraph(g, target, exactNodeIDs, fallbackNames, props), nil
+		}); err != nil && a.Logger != nil {
+			a.Logger.Warn("failed to enrich persistent security graph with DSPM result", "target_id", target.ID, "error", err)
+		}
+		return
+	}
 
 	current := a.CurrentSecurityGraph()
 	var (

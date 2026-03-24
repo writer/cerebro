@@ -265,7 +265,7 @@ func IdentityReviewQueue(g *Graph, opts IdentityReviewQueueOptions) []IdentityRe
 		item := IdentityReviewQueueItem{
 			AliasNodeID:        alias.ID,
 			AliasName:          firstNonEmpty(alias.Name, alias.ID),
-			SourceSystem:       normalizeIdentitySystem(identityAnyToString(alias.Properties["source_system"])),
+			SourceSystem:       normalizeIdentitySystem(nodePropertyString(alias, "source_system")),
 			CurrentCanonicalID: currentCanonical,
 			CandidateCount:     len(candidates),
 			Candidates:         candidates,
@@ -321,7 +321,7 @@ func BuildIdentityCalibrationReport(g *Graph, opts IdentityCalibrationOptions) I
 		if alias == nil {
 			continue
 		}
-		source := normalizeIdentitySystem(identityAnyToString(alias.Properties["source_system"]))
+		source := normalizeIdentitySystem(nodePropertyString(alias, "source_system"))
 		if source == "" {
 			source = "unknown"
 		}
@@ -426,20 +426,20 @@ func identityAssertionFromAliasNode(alias *Node) IdentityAliasAssertion {
 		return assertion
 	}
 	assertion.AliasID = strings.TrimSpace(alias.ID)
-	assertion.SourceSystem = normalizeIdentitySystem(identityAnyToString(alias.Properties["source_system"]))
-	assertion.SourceEventID = strings.TrimSpace(identityAnyToString(alias.Properties["source_event_id"]))
-	assertion.ExternalID = normalizeIdentityToken(identityAnyToString(alias.Properties["external_id"]))
-	assertion.AliasType = strings.TrimSpace(identityAnyToString(alias.Properties["alias_type"]))
-	assertion.CanonicalHint = strings.TrimSpace(identityAnyToString(alias.Properties["canonical_hint"]))
-	assertion.Email = normalizePersonEmail(identityAnyToString(alias.Properties["email"]))
-	assertion.Name = strings.TrimSpace(identityAnyToString(alias.Properties["name"]))
-	if observedAt, ok := temporalPropertyTime(alias.Properties, "observed_at"); ok {
+	assertion.SourceSystem = normalizeIdentitySystem(nodePropertyString(alias, "source_system"))
+	assertion.SourceEventID = nodePropertyString(alias, "source_event_id")
+	assertion.ExternalID = normalizeIdentityToken(nodePropertyString(alias, "external_id"))
+	assertion.AliasType = nodePropertyString(alias, "alias_type")
+	assertion.CanonicalHint = nodePropertyString(alias, "canonical_hint")
+	assertion.Email = normalizePersonEmail(nodePropertyString(alias, "email"))
+	assertion.Name = nodePropertyString(alias, "name")
+	if observedAt, ok := nodePropertyTime(alias, "observed_at"); ok {
 		assertion.ObservedAt = observedAt.UTC()
 	}
 	if assertion.ObservedAt.IsZero() {
 		assertion.ObservedAt = time.Now().UTC()
 	}
-	assertion.Confidence = toFloat(identityAnyToString(alias.Properties["confidence"]))
+	assertion.Confidence = nodePropertyFloat(alias, "confidence")
 	if assertion.Confidence <= 0 {
 		assertion.Confidence = 0.95
 	}

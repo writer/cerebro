@@ -26,8 +26,10 @@ type GraphStore interface {
 	UpsertEdge(ctx context.Context, edge *Edge) error
 	UpsertEdgesBatch(ctx context.Context, edges []*Edge) error
 	DeleteNode(ctx context.Context, id string) error
+	DeleteEdge(ctx context.Context, id string) error
 
 	LookupNode(ctx context.Context, id string) (*Node, bool, error)
+	LookupEdge(ctx context.Context, id string) (*Edge, bool, error)
 	LookupOutEdges(ctx context.Context, nodeID string) ([]*Edge, error)
 	LookupInEdges(ctx context.Context, nodeID string) ([]*Edge, error)
 	LookupNodesByKind(ctx context.Context, kinds ...NodeKind) ([]*Node, error)
@@ -100,6 +102,35 @@ func (g *Graph) DeleteNode(ctx context.Context, id string) error {
 	return nil
 }
 
+func (g *Graph) DeleteEdge(ctx context.Context, id string) error {
+	if err := graphStoreContextErr(ctx); err != nil {
+		return err
+	}
+	if g == nil {
+		return ErrStoreUnavailable
+	}
+	if id == "" {
+		return nil
+	}
+	var change *GraphChange
+	g.mu.Lock()
+	if edge := g.edgeByID[id]; g.markEdgeDeletedLocked(edge) {
+		g.markGraphEdgeMutationLocked()
+		change = &GraphChange{
+			Type:     GraphChangeEdgeRemoved,
+			EdgeID:   edge.ID,
+			SourceID: edge.Source,
+			TargetID: edge.Target,
+			EdgeKind: edge.Kind,
+		}
+	}
+	g.mu.Unlock()
+	if change != nil {
+		g.emitGraphChanges(*change)
+	}
+	return nil
+}
+
 func (g *Graph) LookupNode(ctx context.Context, id string) (*Node, bool, error) {
 	if err := graphStoreContextErr(ctx); err != nil {
 		return nil, false, err
@@ -109,6 +140,22 @@ func (g *Graph) LookupNode(ctx context.Context, id string) (*Node, bool, error) 
 	}
 	node, ok := g.GetNode(id)
 	return node, ok, nil
+}
+
+func (g *Graph) LookupEdge(ctx context.Context, id string) (*Edge, bool, error) {
+	if err := graphStoreContextErr(ctx); err != nil {
+		return nil, false, err
+	}
+	if g == nil {
+		return nil, false, ErrStoreUnavailable
+	}
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	edge := g.edgeByID[id]
+	if !g.activeEdgeLocked(edge) {
+		return nil, false, nil
+	}
+	return edge, true, nil
 }
 
 func (g *Graph) LookupOutEdges(ctx context.Context, nodeID string) ([]*Edge, error) {

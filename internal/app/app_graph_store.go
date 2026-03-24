@@ -41,21 +41,25 @@ func (a *App) CurrentSecurityGraphStore() graph.GraphStore {
 	if a == nil {
 		return nil
 	}
-	return tieredGraphStore{
-		layers: []graphStoreLayer{
-			{
-				writable: true,
-				resolve: func(ctx context.Context) (graph.GraphStore, error) {
-					return resolveCurrentGraphStore(ctx, a.CurrentSecurityGraph())
-				},
-			},
-			{
-				resolve: func(ctx context.Context) (graph.GraphStore, error) {
-					return a.currentPassiveSnapshotStore(ctx)
-				},
-			},
+	layers := make([]graphStoreLayer, 0, 3)
+	layers = append(layers, graphStoreLayer{
+		writable: true,
+		resolve: func(ctx context.Context) (graph.GraphStore, error) {
+			return a.currentConfiguredSecurityGraphStore(ctx)
 		},
-	}
+	})
+	layers = append(layers, graphStoreLayer{
+		writable: true,
+		resolve: func(ctx context.Context) (graph.GraphStore, error) {
+			return resolveCurrentGraphStore(ctx, a.currentLiveSecurityGraph())
+		},
+	})
+	layers = append(layers, graphStoreLayer{
+		resolve: func(ctx context.Context) (graph.GraphStore, error) {
+			return a.currentPassiveSnapshotStore(ctx)
+		},
+	})
+	return tieredGraphStore{layers: layers}
 }
 
 func (a *App) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphStore {
@@ -72,7 +76,16 @@ func (a *App) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphSto
 		layers: []graphStoreLayer{
 			{
 				resolve: func(ctx context.Context) (graph.GraphStore, error) {
-					return liveResolver.ResolveCurrent(ctx, a.CurrentSecurityGraph(), func() *graph.Graph {
+					store, err := a.currentConfiguredSnapshotGraphStore(graph.WithTenantScope(ctx, tenantID))
+					if err != nil {
+						return nil, err
+					}
+					return passiveResolver.Resolve(ctx, store)
+				},
+			},
+			{
+				resolve: func(ctx context.Context) (graph.GraphStore, error) {
+					return liveResolver.ResolveCurrent(ctx, a.currentLiveSecurityGraph(), func() *graph.Graph {
 						return a.CurrentSecurityGraphForTenant(tenantID)
 					})
 				},
@@ -135,12 +148,28 @@ func (s tieredGraphStore) DeleteNode(ctx context.Context, id string) error {
 	return store.DeleteNode(ctx, id)
 }
 
+func (s tieredGraphStore) DeleteEdge(ctx context.Context, id string) error {
+	store, err := s.currentGraphStoreForWrite(ctx)
+	if err != nil {
+		return err
+	}
+	return store.DeleteEdge(ctx, id)
+}
+
 func (s tieredGraphStore) LookupNode(ctx context.Context, id string) (*graph.Node, bool, error) {
 	store, err := s.currentGraphStore(ctx)
 	if err != nil {
 		return nil, false, err
 	}
 	return store.LookupNode(ctx, id)
+}
+
+func (s tieredGraphStore) LookupEdge(ctx context.Context, id string) (*graph.Edge, bool, error) {
+	store, err := s.currentGraphStore(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	return store.LookupEdge(ctx, id)
 }
 
 func (s tieredGraphStore) LookupOutEdges(ctx context.Context, nodeID string) ([]*graph.Edge, error) {
@@ -291,6 +320,16 @@ func resolveCurrentGraphStore(ctx context.Context, current *graph.Graph) (graph.
 		return nil, graph.ErrStoreUnavailable
 	}
 	return current, nil
+}
+
+func (a *App) currentConfiguredSecurityGraphStore(ctx context.Context) (graph.GraphStore, error) {
+	if err := graphStoreContextErr(ctx); err != nil {
+		return nil, err
+	}
+	if a == nil || a.configuredSecurityGraphStore == nil || !a.configuredSecurityGraphReady {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return a.configuredSecurityGraphStore, nil
 }
 
 func resolveTenantGraphStore(ctx context.Context, current *graph.Graph, tenantID string) (graph.GraphStore, error) {
@@ -444,11 +483,22 @@ func (a *App) currentPassiveSnapshotGraphStore(ctx context.Context) (*graph.Snap
 	return snapshotStore, nil
 }
 
+func (a *App) currentConfiguredSnapshotGraphStore(ctx context.Context) (*graph.SnapshotGraphStore, error) {
+	snapshot, err := a.currentConfiguredSecurityGraphSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if snapshot == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return graph.NewSnapshotGraphStore(snapshot), nil
+}
+
 func (a *App) currentWarmTenantGraphStore(ctx context.Context, tenantID string) (graph.GraphStore, error) {
 	if err := graphStoreContextErr(ctx); err != nil {
 		return nil, err
 	}
-	if a == nil {
+	if a == nil || !a.retainHotSecurityGraph() {
 		return nil, graph.ErrStoreUnavailable
 	}
 	manager := a.ensureTenantSecurityGraphShards()

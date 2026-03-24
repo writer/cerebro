@@ -386,15 +386,15 @@ func TestMaterializeRunsIntoGraphClosesOlderScans(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected first run node %q", first.ID)
 	}
-	if got := graphValueString(firstNode.Properties["valid_to"]); got == "" {
-		t.Fatalf("expected first run valid_to to be populated, got %#v", firstNode.Properties)
+	if got := graphNodePropertyString(firstNode, "valid_to"); got == "" {
+		t.Fatalf("expected first run valid_to to be populated, got %#v", firstNode.PropertyMap())
 	}
 	secondNode, ok := g.GetNode(second.ID)
 	if !ok {
 		t.Fatalf("expected second run node %q", second.ID)
 	}
-	if got := graphValueString(secondNode.Properties["valid_to"]); got != "" {
-		t.Fatalf("expected latest run valid_to to be empty, got %#v", secondNode.Properties)
+	if got := graphNodePropertyString(secondNode, "valid_to"); got != "" {
+		t.Fatalf("expected latest run valid_to to be empty, got %#v", secondNode.PropertyMap())
 	}
 }
 
@@ -1267,23 +1267,23 @@ func TestMaterializeRunsIntoGraphKeepsTechnologyNodesCanonicalAcrossWorkloads(t 
 	if !ok {
 		t.Fatalf("expected technology node %q", techID)
 	}
-	if got := graphValueString(techNode.Properties["source_event_id"]); got != "" {
-		t.Fatalf("expected canonical technology node to omit source_event_id, got %#v", techNode.Properties)
+	if got := graphNodePropertyString(techNode, "source_event_id"); got != "" {
+		t.Fatalf("expected canonical technology node to omit source_event_id, got %#v", techNode.PropertyMap())
 	}
-	if got := graphValueString(techNode.Properties["source_system"]); got != graphMaterializationSourceSystem {
-		t.Fatalf("expected canonical technology node source_system=%q, got %#v", graphMaterializationSourceSystem, techNode.Properties)
+	if got := graphNodePropertyString(techNode, "source_system"); got != graphMaterializationSourceSystem {
+		t.Fatalf("expected canonical technology node source_system=%q, got %#v", graphMaterializationSourceSystem, techNode.PropertyMap())
 	}
-	if got := graphValueString(techNode.Properties["observed_at"]); got != formatTime(observedAt(firstRun)) {
-		t.Fatalf("expected canonical technology node observed_at=%q, got %#v", formatTime(observedAt(firstRun)), techNode.Properties)
+	if got := graphNodePropertyString(techNode, "observed_at"); got != formatTime(observedAt(firstRun)) {
+		t.Fatalf("expected canonical technology node observed_at=%q, got %#v", formatTime(observedAt(firstRun)), techNode.PropertyMap())
 	}
-	if got := graphValueString(techNode.Properties["valid_from"]); got != formatTime(runValidFrom(firstRun, observedAt(firstRun))) {
-		t.Fatalf("expected canonical technology node valid_from=%q, got %#v", formatTime(runValidFrom(firstRun, observedAt(firstRun))), techNode.Properties)
+	if got := graphNodePropertyString(techNode, "valid_from"); got != formatTime(runValidFrom(firstRun, observedAt(firstRun))) {
+		t.Fatalf("expected canonical technology node valid_from=%q, got %#v", formatTime(runValidFrom(firstRun, observedAt(firstRun))), techNode.PropertyMap())
 	}
-	if got := graphValueString(techNode.Properties["recorded_at"]); got != formatTime(observedAt(firstRun)) {
-		t.Fatalf("expected canonical technology node recorded_at=%q, got %#v", formatTime(observedAt(firstRun)), techNode.Properties)
+	if got := graphNodePropertyString(techNode, "recorded_at"); got != formatTime(observedAt(firstRun)) {
+		t.Fatalf("expected canonical technology node recorded_at=%q, got %#v", formatTime(observedAt(firstRun)), techNode.PropertyMap())
 	}
-	if got := graphValueString(techNode.Properties["transaction_from"]); got != formatTime(observedAt(firstRun)) {
-		t.Fatalf("expected canonical technology node transaction_from=%q, got %#v", formatTime(observedAt(firstRun)), techNode.Properties)
+	if got := graphNodePropertyString(techNode, "transaction_from"); got != formatTime(observedAt(firstRun)) {
+		t.Fatalf("expected canonical technology node transaction_from=%q, got %#v", formatTime(observedAt(firstRun)), techNode.PropertyMap())
 	}
 	if got := graphValueString(techNode.Properties["file_path"]); got != "" {
 		t.Fatalf("expected canonical technology node to omit workload file_path, got %#v", techNode.Properties)
@@ -1349,14 +1349,14 @@ func TestMaterializeRunsIntoGraphAcceptsCanonicalTechnologyNodesUnderSchemaEnfor
 	if !ok {
 		t.Fatalf("expected technology node %q to survive schema enforcement", techID)
 	}
-	if got := graphValueString(techNode.Properties["observed_at"]); got != formatTime(observedAt(earlierRun)) {
-		t.Fatalf("expected earliest observed_at to be preserved, got %#v", techNode.Properties)
+	if got := graphNodePropertyString(techNode, "observed_at"); got != formatTime(observedAt(earlierRun)) {
+		t.Fatalf("expected earliest observed_at to be preserved, got %#v", techNode.PropertyMap())
 	}
-	if got := graphValueString(techNode.Properties["valid_from"]); got != formatTime(runValidFrom(earlierRun, observedAt(earlierRun))) {
-		t.Fatalf("expected earliest valid_from to be preserved, got %#v", techNode.Properties)
+	if got := graphNodePropertyString(techNode, "valid_from"); got != formatTime(runValidFrom(earlierRun, observedAt(earlierRun))) {
+		t.Fatalf("expected earliest valid_from to be preserved, got %#v", techNode.PropertyMap())
 	}
-	if got := graphValueString(techNode.Properties["source_event_id"]); got != "" {
-		t.Fatalf("expected canonical technology node to omit workload-specific source_event_id, got %#v", techNode.Properties)
+	if got := graphNodePropertyString(techNode, "source_event_id"); got != "" {
+		t.Fatalf("expected canonical technology node to omit workload-specific source_event_id, got %#v", techNode.PropertyMap())
 	}
 }
 
@@ -1588,6 +1588,17 @@ func graphValueString(value any) string {
 	default:
 		return ""
 	}
+}
+
+func graphNodePropertyString(node *graph.Node, key string) string {
+	if node == nil {
+		return ""
+	}
+	value, ok := node.PropertyValue(key)
+	if !ok {
+		return ""
+	}
+	return graphValueString(value)
 }
 
 func findOutEdge(g *graph.Graph, source string, kind graph.EdgeKind, target string) *graph.Edge {

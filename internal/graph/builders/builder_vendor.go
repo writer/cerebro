@@ -373,12 +373,12 @@ func vendorTargetIsSensitive(node *Node) bool {
 	if node == nil {
 		return false
 	}
-	switch strings.ToLower(propertyString(node.Properties, "data_classification")) {
+	switch strings.ToLower(node.PropertyString("data_classification")) {
 	case "confidential", "restricted", "sensitive":
 		return true
 	}
 	for _, key := range []string{"contains_pii", "contains_phi", "contains_pci", "contains_secrets"} {
-		if value, ok := node.Properties[key].(bool); ok && value {
+		if value, ok := node.PropertyBool(key); ok && value {
 			return true
 		}
 	}
@@ -776,7 +776,7 @@ func vendorIdentityForNode(node *Node) (vendorIdentity, bool) {
 			return vendorIdentity{}, false
 		}
 		principalType := strings.ToLower(strings.TrimSpace(firstNonEmpty(
-			propertyString(node.Properties, "identity_type"),
+			node.PropertyString("identity_type"),
 			propertyString(node.Properties, "type"),
 		)))
 		if strings.Contains(principalType, "managed") {

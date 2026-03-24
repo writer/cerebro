@@ -179,6 +179,50 @@ func (a *App) cerebroTools() []agents.Tool {
 			Handler: a.toolCerebroGraphLeverageReport,
 		},
 		{
+			Name:        "cerebro.key_person_risk",
+			Description: "Rank key-person risk from orphaned systems, customer exposure, ARR at risk, and recovery drag",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"person_id": map[string]any{
+						"type":        "string",
+						"description": "Optional person identifier to focus the report on one departure scenario.",
+					},
+					"limit": map[string]any{
+						"type":        "integer",
+						"description": "Maximum ranked people to return (1-100).",
+						"default":     10,
+					},
+				},
+			},
+			Handler: a.toolCerebroKeyPersonRisk,
+		},
+		{
+			Name:        "cerebro.ai_workloads",
+			Description: "Inventory graph-detected AI workloads, shadow AI indicators, data exposure, and provider-key hygiene risks",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"max_workloads": map[string]any{
+						"type":        "integer",
+						"description": "Maximum workloads to return (1-200)",
+						"default":     50,
+					},
+					"min_risk_score": map[string]any{
+						"type":        "integer",
+						"description": "Minimum AI workload risk score to include (0-100)",
+						"default":     0,
+					},
+					"include_shadow": map[string]any{
+						"type":        "boolean",
+						"description": "When false, filter self-hosted shadow AI workloads out of the returned workload list.",
+						"default":     true,
+					},
+				},
+			},
+			Handler: a.toolCerebroAIWorkloads,
+		},
+		{
 			Name:        "cerebro.graph_query_templates",
 			Description: "List reusable graph investigation templates for analysts and agents",
 			Parameters: map[string]any{
@@ -186,6 +230,30 @@ func (a *App) cerebroTools() []agents.Tool {
 				"properties": map[string]any{},
 			},
 			Handler: a.toolCerebroGraphQueryTemplates,
+		},
+		{
+			Name:        "cerebro.nl_query",
+			Description: "Translate a natural-language security question into a bounded read-only graph/query plan and optionally execute it",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"question": map[string]any{
+						"type":        "string",
+						"description": "Natural-language security question, for example 'which internet-facing instances have critical unpatched CVEs?'",
+					},
+					"preview_only": map[string]any{
+						"type":        "boolean",
+						"description": "When true, return only the generated read-only plan without executing it.",
+						"default":     false,
+					},
+					"context": map[string]any{
+						"type":        "object",
+						"description": "Optional follow-up context containing a previous_plan payload returned by an earlier NL query.",
+					},
+				},
+				"required": []string{"question"},
+			},
+			Handler: a.toolCerebroNaturalLanguageQuery,
 		},
 		{
 			Name:        "cerebro.execution_status",
@@ -295,6 +363,83 @@ func (a *App) cerebroTools() []agents.Tool {
 				"required": []string{"entity_id"},
 			},
 			Handler: a.toolCerebroEntityHistory,
+		},
+		{
+			Name:        "cerebro.reconstruct",
+			Description: "Reconstruct one entity at a point in time using temporal history",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"entity_id": map[string]any{
+						"type":        "string",
+						"description": "Stable entity identifier.",
+					},
+					"timestamp": map[string]any{
+						"type":        "string",
+						"description": "RFC3339 point-in-time selector for one reconstructed entity state.",
+					},
+					"recorded_at": map[string]any{
+						"type":        "string",
+						"description": "Optional RFC3339 system-time selector.",
+					},
+				},
+				"required": []string{"entity_id", "timestamp"},
+			},
+			Handler: a.toolCerebroReconstruct,
+		},
+		{
+			Name:        "cerebro.timeline",
+			Description: "Show one entity's property and lifecycle changes across a time window",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"entity_id": map[string]any{
+						"type":        "string",
+						"description": "Stable entity identifier.",
+					},
+					"from": map[string]any{
+						"type":        "string",
+						"description": "RFC3339 start timestamp for one entity timeline window.",
+					},
+					"to": map[string]any{
+						"type":        "string",
+						"description": "RFC3339 end timestamp for one entity timeline window.",
+					},
+					"recorded_at": map[string]any{
+						"type":        "string",
+						"description": "Optional RFC3339 system-time selector.",
+					},
+				},
+				"required": []string{"entity_id", "from", "to"},
+			},
+			Handler: a.toolCerebroTimeline,
+		},
+		{
+			Name:        "cerebro.diff",
+			Description: "Diff one entity across two historical times",
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"entity_id": map[string]any{
+						"type":        "string",
+						"description": "Stable entity identifier.",
+					},
+					"from": map[string]any{
+						"type":        "string",
+						"description": "RFC3339 start timestamp for one entity diff window.",
+					},
+					"to": map[string]any{
+						"type":        "string",
+						"description": "RFC3339 end timestamp for one entity diff window.",
+					},
+					"recorded_at": map[string]any{
+						"type":        "string",
+						"description": "Optional RFC3339 system-time selector.",
+					},
+				},
+				"required": []string{"entity_id", "from", "to"},
+			},
+			Handler: a.toolCerebroDiff,
 		},
 		{
 			Name:        "evaluate_policy",
@@ -621,10 +766,16 @@ func (a *App) cerebroTools() []agents.Tool {
 		},
 		{
 			Name:        "cerebro.correlate_events",
-			Description: "Find temporal causal chains and anomaly signals around one event or entity",
+			Description: "Find temporal event correlations, multi-step causal chains, and anomaly signals around one event or entity",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
+					"mode": map[string]any{
+						"type":        "string",
+						"enum":        []string{"correlations", "chains"},
+						"description": "Choose single-edge correlations or multi-step causal chain traversal.",
+						"default":     "correlations",
+					},
 					"event_id": map[string]any{
 						"type":        "string",
 						"description": "Optional event node ID to expand into the local causal neighborhood.",
@@ -642,9 +793,28 @@ func (a *App) cerebroTools() []agents.Tool {
 						"description": "Maximum number of correlations/anomalies to return (1-200).",
 						"default":     25,
 					},
+					"direction": map[string]any{
+						"type":        "string",
+						"enum":        []string{"upstream", "downstream", "both"},
+						"description": "Traversal direction when mode=chains.",
+						"default":     "both",
+					},
+					"max_depth": map[string]any{
+						"type":        "integer",
+						"description": "Maximum causal chain depth when mode=chains.",
+						"default":     4,
+					},
+					"since": map[string]any{
+						"type":        "string",
+						"description": "Optional RFC3339 lower bound for effect event time.",
+					},
+					"until": map[string]any{
+						"type":        "string",
+						"description": "Optional RFC3339 upper bound for effect event time.",
+					},
 					"include_anomalies": map[string]any{
 						"type":        "boolean",
-						"description": "Include anomaly summaries for the same event/entity context.",
+						"description": "Include anomaly summaries for the same event/entity context when mode=correlations.",
 						"default":     false,
 					},
 				},

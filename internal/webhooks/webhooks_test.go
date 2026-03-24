@@ -4,17 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
+const testPublicWebhookBaseURL = "https://93.184.216.34"
+
 func TestServiceRegisterWebhook(t *testing.T) {
 	svc := NewService()
 
-	webhook, err := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "secret123")
+	webhook, err := svc.RegisterWebhook(testPublicWebhookBaseURL+"/hook", []EventType{EventFindingCreated}, "secret123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -22,8 +27,8 @@ func TestServiceRegisterWebhook(t *testing.T) {
 	if webhook.ID == "" {
 		t.Error("expected webhook ID to be set")
 	}
-	if webhook.URL != "https://example.com/hook" {
-		t.Errorf("expected URL 'https://example.com/hook', got '%s'", webhook.URL)
+	if webhook.URL != testPublicWebhookBaseURL+"/hook" {
+		t.Errorf("expected URL %q, got %q", testPublicWebhookBaseURL+"/hook", webhook.URL)
 	}
 	if !webhook.Enabled {
 		t.Error("expected webhook to be enabled")
@@ -41,8 +46,8 @@ func TestServiceRegisterWebhook_SSRFProtection(t *testing.T) {
 		url     string
 		wantErr bool
 	}{
-		{"valid HTTPS", "https://example.com/hook", false},
-		{"HTTP not allowed", "http://example.com/hook", true},
+		{"valid HTTPS", testPublicWebhookBaseURL + "/hook", false},
+		{"HTTP not allowed", "http://93.184.216.34/hook", true},
 		{"localhost blocked", "https://localhost/hook", true},
 		{"loopback blocked", "https://127.0.0.1/hook", true},
 		{"metadata service blocked", "https://169.254.169.254/latest/meta-data/", true},
@@ -64,7 +69,7 @@ func TestServiceRegisterWebhook_SSRFProtection(t *testing.T) {
 func TestServiceGetWebhook(t *testing.T) {
 	svc := NewService()
 
-	webhook, _ := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "")
+	webhook, _ := svc.RegisterWebhook(testPublicWebhookBaseURL+"/hook", []EventType{EventFindingCreated}, "")
 
 	got, ok := svc.GetWebhook(webhook.ID)
 	if !ok {
@@ -83,8 +88,8 @@ func TestServiceGetWebhook(t *testing.T) {
 func TestServiceListWebhooks(t *testing.T) {
 	svc := NewService()
 
-	_, _ = svc.RegisterWebhook("https://example.com/hook1", []EventType{EventFindingCreated}, "")
-	_, _ = svc.RegisterWebhook("https://example.com/hook2", []EventType{EventScanCompleted}, "")
+	_, _ = svc.RegisterWebhook(testPublicWebhookBaseURL+"/hook1", []EventType{EventFindingCreated}, "")
+	_, _ = svc.RegisterWebhook(testPublicWebhookBaseURL+"/hook2", []EventType{EventScanCompleted}, "")
 
 	webhooks := svc.ListWebhooks()
 	if len(webhooks) != 2 {
@@ -95,7 +100,7 @@ func TestServiceListWebhooks(t *testing.T) {
 func TestServiceDisableWebhook(t *testing.T) {
 	svc := NewService()
 
-	webhook, _ := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "")
+	webhook, _ := svc.RegisterWebhook(testPublicWebhookBaseURL+"/hook", []EventType{EventFindingCreated}, "")
 
 	if !svc.DisableWebhook(webhook.ID) {
 		t.Error("expected DisableWebhook to return true")
@@ -114,7 +119,7 @@ func TestServiceDisableWebhook(t *testing.T) {
 func TestServiceDeleteWebhook(t *testing.T) {
 	svc := NewService()
 
-	webhook, _ := svc.RegisterWebhook("https://example.com/hook", []EventType{EventFindingCreated}, "")
+	webhook, _ := svc.RegisterWebhook(testPublicWebhookBaseURL+"/hook", []EventType{EventFindingCreated}, "")
 
 	if !svc.DeleteWebhook(webhook.ID) {
 		t.Error("expected DeleteWebhook to return true")
@@ -253,6 +258,175 @@ func TestServiceDeliveries(t *testing.T) {
 	}
 }
 
+func TestServiceEmitBlocksSSRFOnDelivery(t *testing.T) {
+	svc := NewService()
+
+	var transportCalls int32
+	svc.client.Transport = roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		atomic.AddInt32(&transportCalls, 1)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+		}, nil
+	})
+
+	webhook := &Webhook{
+		ID:        "wh-internal",
+		URL:       "https://127.0.0.1/internal",
+		Events:    []EventType{EventFindingCreated},
+		Enabled:   true,
+		CreatedAt: time.Now().UTC(),
+	}
+	svc.webhooks[webhook.ID] = webhook
+
+	err := svc.EmitWithErrors(context.Background(), EventFindingCreated, map[string]interface{}{"finding_id": "f-1"})
+	if err == nil {
+		t.Fatal("expected delivery to reject internal webhook URL")
+	}
+	if !errors.Is(err, ErrInvalidWebhookURL) {
+		t.Fatalf("expected invalid webhook URL error, got %v", err)
+	}
+	if got := atomic.LoadInt32(&transportCalls); got != 0 {
+		t.Fatalf("expected no HTTP delivery attempt, got %d transport calls", got)
+	}
+
+	deliveries := svc.GetDeliveries(webhook.ID, 10)
+	if len(deliveries) != 1 {
+		t.Fatalf("expected one failed delivery record, got %d", len(deliveries))
+	}
+	if deliveries[0].Success {
+		t.Fatal("expected delivery record to be unsuccessful")
+	}
+	if deliveries[0].ResponseStatus != 0 {
+		t.Fatalf("expected no HTTP status for blocked delivery, got %d", deliveries[0].ResponseStatus)
+	}
+}
+
+func TestServiceEmitRetriesTransientHTTPFailuresWithBackoff(t *testing.T) {
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := atomic.AddInt32(&calls, 1)
+		if attempt < 3 {
+			http.Error(w, "retry later", http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	svc := NewServiceForTesting()
+	svc.maxDeliveryAttempts = 3
+	svc.baseRetryDelay = 10 * time.Millisecond
+	var sleeps []time.Duration
+	svc.sleep = func(delay time.Duration) {
+		sleeps = append(sleeps, delay)
+	}
+
+	webhook, _ := svc.RegisterWebhook(server.URL, []EventType{EventFindingCreated}, "")
+	if err := svc.EmitWithErrors(context.Background(), EventFindingCreated, map[string]interface{}{"finding_id": "f-1"}); err != nil {
+		t.Fatalf("expected eventual success, got %v", err)
+	}
+
+	if got := atomic.LoadInt32(&calls); got != 3 {
+		t.Fatalf("expected 3 delivery attempts, got %d", got)
+	}
+	if !slices.Equal(sleeps, []time.Duration{10 * time.Millisecond, 20 * time.Millisecond}) {
+		t.Fatalf("unexpected retry schedule: %v", sleeps)
+	}
+
+	deliveries := svc.GetDeliveries(webhook.ID, 10)
+	if len(deliveries) != 3 {
+		t.Fatalf("expected 3 delivery records, got %d", len(deliveries))
+	}
+	if !deliveries[0].Success {
+		t.Fatal("expected final delivery to be successful")
+	}
+	if deliveries[1].Success || deliveries[2].Success {
+		t.Fatal("expected earlier retry records to be failures")
+	}
+}
+
+func TestServiceEmitRetriesTransportErrorsThenSucceeds(t *testing.T) {
+	var calls int32
+	svc := NewServiceForTesting()
+	svc.maxDeliveryAttempts = 2
+	svc.baseRetryDelay = 5 * time.Millisecond
+	var sleeps []time.Duration
+	svc.sleep = func(delay time.Duration) {
+		sleeps = append(sleeps, delay)
+	}
+	svc.client.Transport = roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			return nil, errors.New("connection reset by peer")
+		}
+		return &http.Response{
+			StatusCode: http.StatusAccepted,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+		}, nil
+	})
+
+	webhook, _ := svc.RegisterWebhook("https://93.184.216.34/hook", []EventType{EventFindingCreated}, "")
+	if err := svc.EmitWithErrors(context.Background(), EventFindingCreated, map[string]interface{}{"finding_id": "f-1"}); err != nil {
+		t.Fatalf("expected eventual success, got %v", err)
+	}
+
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("expected 2 delivery attempts, got %d", got)
+	}
+	if !slices.Equal(sleeps, []time.Duration{5 * time.Millisecond}) {
+		t.Fatalf("unexpected retry schedule: %v", sleeps)
+	}
+
+	deliveries := svc.GetDeliveries(webhook.ID, 10)
+	if len(deliveries) != 2 {
+		t.Fatalf("expected 2 delivery records, got %d", len(deliveries))
+	}
+	if !deliveries[0].Success {
+		t.Fatal("expected final retry to succeed")
+	}
+	if deliveries[1].ResponseStatus != 0 || deliveries[1].Success {
+		t.Fatalf("expected first attempt to record transport failure, got %#v", deliveries[1])
+	}
+}
+
+func TestServiceEmitDoesNotRetryClientErrors(t *testing.T) {
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		http.Error(w, "bad request", http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	svc := NewServiceForTesting()
+	svc.maxDeliveryAttempts = 3
+	svc.baseRetryDelay = 10 * time.Millisecond
+	var sleeps []time.Duration
+	svc.sleep = func(delay time.Duration) {
+		sleeps = append(sleeps, delay)
+	}
+
+	webhook, _ := svc.RegisterWebhook(server.URL, []EventType{EventFindingCreated}, "")
+	err := svc.EmitWithErrors(context.Background(), EventFindingCreated, map[string]interface{}{"finding_id": "f-1"})
+	if err == nil {
+		t.Fatal("expected delivery error")
+	}
+
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("expected exactly 1 delivery attempt, got %d", got)
+	}
+	if len(sleeps) != 0 {
+		t.Fatalf("expected no retry sleeps, got %v", sleeps)
+	}
+
+	deliveries := svc.GetDeliveries(webhook.ID, 10)
+	if len(deliveries) != 1 {
+		t.Fatalf("expected 1 delivery record, got %d", len(deliveries))
+	}
+	if deliveries[0].ResponseStatus != http.StatusBadRequest {
+		t.Fatalf("expected 400 delivery record, got %d", deliveries[0].ResponseStatus)
+	}
+}
+
 func TestVerifySignature(t *testing.T) {
 	payload := []byte(`{"type":"test"}`)
 	secret := "mysecret"
@@ -272,6 +446,12 @@ func TestVerifySignature(t *testing.T) {
 	if VerifySignature(payload, validSig, "wrongsecret") {
 		t.Error("expected wrong secret to fail verification")
 	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func TestValidateWebhookURL(t *testing.T) {
@@ -319,13 +499,13 @@ func TestRegisterWebhookSSRFProtection(t *testing.T) {
 	}
 
 	// Should reject invalid events
-	_, err = svc.RegisterWebhook("https://example.com/hook", []EventType{"invalid.event"}, "")
+	_, err = svc.RegisterWebhook(testPublicWebhookBaseURL+"/hook", []EventType{"invalid.event"}, "")
 	if err == nil {
 		t.Error("expected error for invalid event type")
 	}
 
 	// Should reject empty events
-	_, err = svc.RegisterWebhook("https://example.com/hook", []EventType{}, "")
+	_, err = svc.RegisterWebhook(testPublicWebhookBaseURL+"/hook", []EventType{}, "")
 	if err == nil {
 		t.Error("expected error for empty events")
 	}

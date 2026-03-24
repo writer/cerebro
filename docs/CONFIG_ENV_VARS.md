@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **360**
+Total variables: **389**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -37,7 +37,7 @@ Total variables: **360**
 | `AUTH0_CLIENT_ID` | `getEnv` | `""` | `Auth0ClientID` | `-` |
 | `AUTH0_CLIENT_SECRET` | `getEnv` | `""` | `Auth0ClientSecret` | `-` |
 | `AUTH0_DOMAIN` | `getEnv` | `""` | `Auth0Domain` | `-` |
-| `AWS_REGION` | `getEnv` | `""`, `"us-east-1"` | `JobRegion`, `S3InputRegion` | `-` |
+| `AWS_REGION` | `getEnv` | `""`, `"us-east-1"` | `GraphStoreNeptuneRegion`, `GraphStoreSecondaryNeptuneRegion`, `JobRegion`, `S3InputRegion` | `-` |
 | `AZURE_CLIENT_ID` | `getEnv` | `""` | `AzureClientID` | `-` |
 | `AZURE_CLIENT_SECRET` | `getEnv` | `""` | `AzureClientSecret` | `-` |
 | `AZURE_SUBSCRIPTION_ID` | `getEnv` | `""` | `AzureSubscriptionID` | `-` |
@@ -148,6 +148,34 @@ Total variables: **360**
 | `GRAPH_SNAPSHOT_MAX_RETAINED` | `getEnvInt` | `10` | `GraphSnapshotMaxRetained` | `-` |
 | `GRAPH_SNAPSHOT_PATH` | `getEnv` | `filepath.Join(".cerebro", "graph-snapshots")` | `GraphSnapshotPath` | `-` |
 | `GRAPH_SNAPSHOT_REPLICA_URI` | `getEnv` | `""` | `GraphSnapshotReplicaURI` | `-` |
+| `GRAPH_STORE_ALLOW_IN_MEMORY` | `getEnvBool` | `runningUnderGoTest()` | `GraphStoreAllowInMemory` | `GRAPH_STORE_BACKEND=memory is restricted to tests and explicit local opt-in` |
+| `GRAPH_STORE_BACKEND` | `getEnv` | `defaultGraphStoreBackend()` | `GraphStoreBackend` | `GRAPH_STORE_BACKEND=memory is restricted to tests and explicit local opt-in`, `must be one of memory, neptune, spanner`, `when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required`, `when GRAPH_STORE_BACKEND=spanner, the Cloud Spanner database is required and optional bootstrap reuses the bundled graph-store schema DDL` |
+| `GRAPH_STORE_DUAL_WRITE_MODE` | `getEnv` | `""` | `GraphStoreDualWriteMode` | `when a secondary backend is configured, dual-write mode must be valid and best-effort reconciliation must have a queue path` |
+| `GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH` | `getEnv` | `filepath.Join(".cerebro", "graph-dual-write", "reconciliation.json")` | `GraphStoreDualWriteReconciliationPath` | `when a secondary backend is configured, dual-write mode must be valid and best-effort reconciliation must have a queue path` |
+| `GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE` | `getEnvInt` | `100` | `GraphStoreDualWriteReplayBatchSize` | `-` |
+| `GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED` | `getEnvBool` | `true` | `GraphStoreDualWriteReplayEnabled` | `-` |
+| `GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL` | `getEnvDuration` | `30 * time.Second` | `GraphStoreDualWriteReplayInterval` | `-` |
+| `GRAPH_STORE_NEPTUNE_ENDPOINT` | `getEnv` | `""` | `GraphStoreNeptuneEndpoint` | `when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required` |
+| `GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT` | `getEnvDuration` | `defaultNeptunePool.DrainTimeout` | `GraphStoreNeptunePoolDrainTimeout` | `-` |
+| `GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL` | `getEnvDuration` | `defaultNeptunePool.HealthCheckInterval` | `GraphStoreNeptunePoolHealthCheckInterval` | `-` |
+| `GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT` | `getEnvDuration` | `defaultNeptunePool.HealthCheckTimeout` | `GraphStoreNeptunePoolHealthCheckTimeout` | `-` |
+| `GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_LIFETIME` | `getEnvDuration` | `defaultNeptunePool.MaxClientLifetime` | `GraphStoreNeptunePoolMaxClientLifetime` | `-` |
+| `GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_USES` | `getEnvInt` | `defaultNeptunePool.MaxClientUses` | `GraphStoreNeptunePoolMaxClientUses` | `-` |
+| `GRAPH_STORE_NEPTUNE_POOL_SIZE` | `getEnvInt` | `defaultNeptunePool.Size` | `GraphStoreNeptunePoolSize` | `-` |
+| `GRAPH_STORE_NEPTUNE_REGION` | `getEnv` | `getEnv("AWS_REGION", "us-east-1")` | `GraphStoreNeptuneRegion`, `GraphStoreSecondaryNeptuneRegion` | `-` |
+| `GRAPH_STORE_SECONDARY_BACKEND` | `getEnv` | `""` | `GraphStoreSecondaryBackend` | `must be empty or one of neptune, spanner`, `when a secondary backend is configured, dual-write mode must be valid and best-effort reconciliation must have a queue path` |
+| `GRAPH_STORE_SECONDARY_NEPTUNE_ENDPOINT` | `getEnv` | `""` | `GraphStoreSecondaryNeptuneEndpoint` | `-` |
+| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT` | `getEnvDuration` | `defaultNeptunePool.DrainTimeout` | `GraphStoreSecondaryNeptunePoolDrainTimeout` | `-` |
+| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL` | `getEnvDuration` | `defaultNeptunePool.HealthCheckInterval` | `GraphStoreSecondaryNeptunePoolHealthCheckInterval` | `-` |
+| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT` | `getEnvDuration` | `defaultNeptunePool.HealthCheckTimeout` | `GraphStoreSecondaryNeptunePoolHealthCheckTimeout` | `-` |
+| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME` | `getEnvDuration` | `defaultNeptunePool.MaxClientLifetime` | `GraphStoreSecondaryNeptunePoolMaxClientLifetime` | `-` |
+| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES` | `getEnvInt` | `defaultNeptunePool.MaxClientUses` | `GraphStoreSecondaryNeptunePoolMaxClientUses` | `-` |
+| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE` | `getEnvInt` | `defaultNeptunePool.Size` | `GraphStoreSecondaryNeptunePoolSize` | `-` |
+| `GRAPH_STORE_SECONDARY_NEPTUNE_REGION` | `getEnv` | `getEnv("GRAPH_STORE_NEPTUNE_REGION", getEnv("AWS_REGION", "us-east-1"))` | `GraphStoreSecondaryNeptuneRegion` | `-` |
+| `GRAPH_STORE_SECONDARY_SPANNER_AUTO_BOOTSTRAP` | `getEnvBool` | `false` | `GraphStoreSecondarySpannerAutoBootstrap` | `-` |
+| `GRAPH_STORE_SECONDARY_SPANNER_DATABASE` | `getEnv` | `""` | `GraphStoreSecondarySpannerDatabase` | `-` |
+| `GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP` | `getEnvBool` | `false` | `GraphStoreSpannerAutoBootstrap` | `when GRAPH_STORE_BACKEND=spanner, the Cloud Spanner database is required and optional bootstrap reuses the bundled graph-store schema DDL` |
+| `GRAPH_STORE_SPANNER_DATABASE` | `getEnv` | `""` | `GraphStoreSpannerDatabase` | `when GRAPH_STORE_BACKEND=spanner, the Cloud Spanner database is required and optional bootstrap reuses the bundled graph-store schema DDL` |
 | `GRAPH_TENANT_SHARD_IDLE_TTL` | `getEnvDuration` | `defaultGraphTenantShardIdleTTL` | `GraphTenantShardIdleTTL` | `must be greater than 0` |
 | `GRAPH_TENANT_WARM_SHARD_MAX_RETAINED` | `getEnvInt` | `defaultGraphTenantWarmShardMaxRetained` | `GraphTenantWarmShardMaxRetained` | `must be greater than 0` |
 | `GRAPH_TENANT_WARM_SHARD_TTL` | `getEnvDuration` | `defaultGraphTenantWarmShardTTL` | `GraphTenantWarmShardTTL` | `must be greater than 0` |
@@ -301,6 +329,7 @@ Total variables: **360**
 | `SCAN_INTERVAL` | `getEnv` | `""` | `ScanInterval` | `-` |
 | `SCAN_MAX_CONCURRENCY` | `getEnvInt` | `6` | `ScanMaxConcurrent` | `-` |
 | `SCAN_MIN_CONCURRENCY` | `getEnvInt` | `2` | `ScanMinConcurrent` | `-` |
+| `SCAN_POLICIES_PATH` | `getEnv` | `""` | `ScanPoliciesPath` | `-` |
 | `SCAN_RETRY_ATTEMPTS` | `getEnvInt` | `3` | `ScanRetryAttempts` | `-` |
 | `SCAN_RETRY_BACKOFF` | `getEnvDuration` | `2 * time.Second` | `ScanRetryBackoff` | `-` |
 | `SCAN_RETRY_MAX_BACKOFF` | `getEnvDuration` | `30 * time.Second` | `ScanRetryMaxBackoff` | `-` |

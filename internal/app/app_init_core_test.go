@@ -263,8 +263,8 @@ func TestInitIdentityGraphResolverUsesPersistedSnapshotWhenLiveGraphUnavailable(
 	a.GraphSnapshots = mustPersistToolGraph(t, g)
 	a.initIdentity()
 
-	if a.CurrentSecurityGraph() != nil {
-		t.Fatalf("expected no live security graph, got %p", a.CurrentSecurityGraph())
+	if a.currentLiveSecurityGraph() != nil {
+		t.Fatalf("expected no hot security graph, got %p", a.currentLiveSecurityGraph())
 	}
 
 	review, err := a.Identity.CreateReview(graph.WithTenantScope(context.Background(), "tenant-a"), &identity.AccessReview{

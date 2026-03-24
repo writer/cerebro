@@ -136,9 +136,9 @@ func (e *ToxicCombinationEngine) ruleS3PublicBucketWithSensitiveData() *ToxicCom
 
 			// Check if bucket contains sensitive data
 			hasSensitiveData := false
-			dataClassification, _ := node.Properties["data_classification"].(string)
-			containsPII, _ := node.Properties["contains_pii"].(bool)
-			containsSecrets, _ := node.Properties["contains_secrets"].(bool)
+			dataClassification := node.PropertyString("data_classification")
+			containsPII, _ := node.PropertyBool("contains_pii")
+			containsSecrets, _ := node.PropertyBool("contains_secrets")
 
 			if dataClassification == "confidential" || dataClassification == "restricted" ||
 				containsPII || containsSecrets {

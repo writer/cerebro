@@ -12,7 +12,7 @@ func TestListQueryPolicies_Sorted(t *testing.T) {
 	engine := NewEngine()
 	engine.AddPolicy(&Policy{ID: "z-policy", Name: "Z", Description: "desc", Severity: "high", Query: "SELECT id FROM assets"})
 	engine.AddPolicy(&Policy{ID: "a-policy", Name: "A", Description: "desc", Severity: "high", Query: "SELECT id FROM assets"})
-	engine.AddPolicy(&Policy{ID: "condition-policy", Name: "C", Description: "desc", Severity: "high", Resource: "aws::s3::bucket", Conditions: []string{"public == true"}})
+	engine.AddPolicy(&Policy{ID: "condition-policy", Name: "C", Description: "desc", Severity: "high", Resource: "aws::s3::bucket", Conditions: []string{"resource.public == true"}})
 
 	policies := engine.ListQueryPolicies()
 	if len(policies) != 2 {

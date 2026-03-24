@@ -402,6 +402,22 @@ func lookupToolContractOverride(name string) (toolContractOverride, bool) {
 			Category:           "query",
 			RequiredPermission: "sdk.context.read",
 		},
+		"cerebro.nl_query": {
+			ID:                 "cerebro_nlq",
+			Version:            "1.0.0",
+			SDKMethod:          "nlq",
+			Title:              "Natural Language Security Query",
+			Category:           "query",
+			RequiredPermission: "sdk.context.read",
+		},
+		"cerebro.correlate_events": {
+			ID:                 "cerebro_correlate_events",
+			Version:            "2.0.0",
+			SDKMethod:          "correlate_events",
+			Title:              "Correlate Events",
+			Category:           "query",
+			RequiredPermission: "sdk.context.read",
+		},
 		"evaluate_policy": {
 			ID:                 "cerebro_check",
 			Version:            "1.0.0",

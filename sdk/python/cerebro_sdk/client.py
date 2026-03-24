@@ -80,6 +80,10 @@ class Client:
         return self.call_tool("cerebro_actuate_recommendation", args)
 
 
+    def ai_workloads(self, args: Any) -> Any:
+        return self.call_tool("cerebro_ai_workloads", args)
+
+
     def annotate(self, args: Any) -> Any:
         return self.call_tool("cerebro_annotate", args)
 
@@ -120,6 +124,10 @@ class Client:
         return self.call_tool("cerebro_decide", args)
 
 
+    def diff(self, args: Any) -> Any:
+        return self.call_tool("cerebro_diff", args)
+
+
     def entity_history(self, args: Any) -> Any:
         return self.call_tool("cerebro_entity_history", args)
 
@@ -152,8 +160,16 @@ class Client:
         return self.call_tool("cerebro_identity_review", args)
 
 
+    def key_person_risk(self, args: Any) -> Any:
+        return self.call_tool("cerebro_key_person_risk", args)
+
+
     def leverage(self, args: Any) -> Any:
         return self.call_tool("cerebro_leverage", args)
+
+
+    def nlq(self, args: Any) -> Any:
+        return self.call_tool("cerebro_nlq", args)
 
 
     def observe(self, args: Any) -> Any:
@@ -166,6 +182,10 @@ class Client:
 
     def quality(self, args: Any) -> Any:
         return self.call_tool("cerebro_quality", args)
+
+
+    def reconstruct(self, args: Any) -> Any:
+        return self.call_tool("cerebro_reconstruct", args)
 
 
     def report(self, args: Any) -> Any:
@@ -190,6 +210,10 @@ class Client:
 
     def templates(self, args: Any) -> Any:
         return self.call_tool("cerebro_templates", args)
+
+
+    def timeline(self, args: Any) -> Any:
+        return self.call_tool("cerebro_timeline", args)
 
 
     def _request_json(self, method: str, path: str, body: Optional[Any] = None, headers: Optional[Dict[str, str]] = None):

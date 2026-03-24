@@ -183,6 +183,8 @@ func normalizeDistributionName(value string) string {
 		return "rhel"
 	case "amzn", "amazon", "amazonlinux":
 		return "amzn"
+	case "windows", "win":
+		return "windows"
 	default:
 		return strings.ToLower(strings.TrimSpace(value))
 	}
@@ -271,9 +273,63 @@ func comparePackageVersions(ecosystem, left, right string) (int, bool) {
 	switch normalizeEcosystem(ecosystem) {
 	case "apk":
 		return compareAPKVersions(left, right)
+	case "windows":
+		return compareWindowsVersions(left, right)
 	default:
 		return compareSemverLooseVersions(left, right)
 	}
+}
+
+func compareWindowsVersions(left, right string) (int, bool) {
+	leftParts, ok := parseWindowsVersion(left)
+	if !ok {
+		return 0, false
+	}
+	rightParts, ok := parseWindowsVersion(right)
+	if !ok {
+		return 0, false
+	}
+	maxLen := len(leftParts)
+	if len(rightParts) > maxLen {
+		maxLen = len(rightParts)
+	}
+	for i := 0; i < maxLen; i++ {
+		var leftValue, rightValue int
+		if i < len(leftParts) {
+			leftValue = leftParts[i]
+		}
+		if i < len(rightParts) {
+			rightValue = rightParts[i]
+		}
+		switch {
+		case leftValue < rightValue:
+			return -1, true
+		case leftValue > rightValue:
+			return 1, true
+		}
+	}
+	return 0, true
+}
+
+func parseWindowsVersion(value string) ([]int, bool) {
+	value = strings.TrimSpace(strings.TrimPrefix(value, "v"))
+	if value == "" {
+		return nil, false
+	}
+	parts := strings.Split(value, ".")
+	out := make([]int, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, false
+		}
+		number, err := strconv.Atoi(part)
+		if err != nil {
+			return nil, false
+		}
+		out = append(out, number)
+	}
+	return out, len(out) > 0
 }
 
 func compareSemverLooseVersions(left, right string) (int, bool) {
@@ -430,6 +486,8 @@ func normalizeEcosystem(value string) string {
 		return "maven"
 	case "nuget":
 		return "nuget"
+	case "windows", "win", "pe":
+		return "windows"
 	case "apk":
 		return "apk"
 	case "alpine":

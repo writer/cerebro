@@ -17,7 +17,7 @@ That has been the right tradeoff while the graph substrate was still moving. It 
 
 1. At what resource tier does the current hot graph become expensive enough that it should stop being the only authoritative runtime representation?
 2. Which operation fails first: build/index, query latency, copy-on-write mutation, or snapshot/diff?
-3. What should Cerebro build next: external graph DB, sharded in-memory graph, or a hybrid model with durable graph backing?
+3. What should Cerebro build next: external graph DB, sharded persistent graph services, or a hybrid model with durable graph backing?
 
 ## Executable Profiling Surface
 
@@ -121,16 +121,16 @@ That is already enough to reject two bad instincts:
 
 The recommended scale path is:
 
-### 1. Hybrid hot graph + durable graph backing
+### 1. Durable graph backend + materialized read views
 
-Keep a hot in-memory graph for low-latency read patterns:
+Keep the authoritative graph state in Neptune or Spanner, and materialize read views only where they are still needed:
 
 - entity search
 - typed facets
 - knowledge reads
 - attack-path / blast-radius style traversals
 
-But stop treating that hot graph as the only durable runtime artifact.
+Do not treat any process-local graph view as the durable runtime artifact.
 
 The full graph state should move toward:
 
