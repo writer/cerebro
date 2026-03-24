@@ -37,6 +37,22 @@ type blockingAutonomousActionHandler struct {
 	once    sync.Once
 }
 
+type snapshotFailingGraphQueryStore struct {
+	graph.GraphStore
+	snapshotCalls int
+	extractCalls  int
+}
+
+func (s *snapshotFailingGraphQueryStore) Snapshot(context.Context) (*graph.Snapshot, error) {
+	s.snapshotCalls++
+	return nil, fmt.Errorf("snapshot unavailable")
+}
+
+func (s *snapshotFailingGraphQueryStore) ExtractSubgraph(ctx context.Context, rootID string, opts graph.ExtractSubgraphOptions) (*graph.Graph, error) {
+	s.extractCalls++
+	return s.GraphStore.ExtractSubgraph(ctx, rootID, opts)
+}
+
 func (h *recordingAutonomousActionHandler) KillProcess(context.Context, string, int) error {
 	return nil
 }
@@ -534,6 +550,48 @@ func TestCerebroGraphQueryPathsTool(t *testing.T) {
 	}
 	if count, ok := payload["count"].(float64); !ok || count < 1 {
 		t.Fatalf("expected at least one path, got %#v", payload["count"])
+	}
+}
+
+func TestCerebroGraphQueryPathsToolUsesStoreWhenGraphMaterializationUnavailable(t *testing.T) {
+	base := graph.New()
+	base.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
+	base.AddNode(&graph.Node{ID: "role:admin", Kind: graph.NodeKindRole, Name: "Admin Role"})
+	base.AddNode(&graph.Node{ID: "db:prod", Kind: graph.NodeKindDatabase, Name: "Prod DB", Risk: graph.RiskCritical})
+	base.AddEdge(&graph.Edge{ID: "alice-role", Source: "user:alice", Target: "role:admin", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow})
+	base.AddEdge(&graph.Edge{ID: "role-db", Source: "role:admin", Target: "db:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	base.BuildIndex()
+
+	store := &snapshotFailingGraphQueryStore{GraphStore: base}
+	application := &App{
+		configuredSecurityGraphStore: store,
+		configuredSecurityGraphReady: true,
+	}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.graph_query")
+	if tool == nil {
+		t.Fatal("expected graph_query tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"mode":"paths","node_id":"user:alice","target_id":"db:prod","k":2,"max_depth":6}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if payload["mode"] != "paths" {
+		t.Fatalf("expected paths mode, got %#v", payload["mode"])
+	}
+	if count, ok := payload["count"].(float64); !ok || count < 1 {
+		t.Fatalf("expected at least one path, got %#v", payload["count"])
+	}
+	if store.snapshotCalls != 0 {
+		t.Fatalf("expected no snapshot calls, got %d", store.snapshotCalls)
+	}
+	if store.extractCalls == 0 {
+		t.Fatal("expected store-native extract subgraph path")
 	}
 }
 

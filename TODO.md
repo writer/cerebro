@@ -17,6 +17,7 @@ Current progress:
 - [x] Keep `GRAPH_STORE_BACKEND=neptune` as the graph runtime production switch.
 - [x] Make tenant-scoped configured graph-store reads prefer the configured backend when it natively supports tenant scope instead of snapshot materialization.
 - [x] Route store-native blast-radius and neighbors tool reads through `GraphStore` instead of forcing a graph view first.
+- [x] Route non-temporal graph-query tool and platform API neighbors/paths through `GraphStore` instead of forcing full graph materialization first.
 - [x] Run focused validators for the touched graph/app/api packages plus changed-file DevEx and OSS audit checks.
 - [ ] Remove remaining backend read paths that still materialize full graph views through `currentOrStoredGraphView`, `snapshotBackedGraphView`, `currentOrStoredSecurityGraphView`, or `requireReadableSecurityGraph`.
 - [ ] Carve explicit relational, jobs, and messaging seams around Postgres / Spanner and Postgres / NATS / NATS.

@@ -1802,12 +1802,16 @@ func (a *App) toolCerebroGraphQuery(ctx context.Context, args json.RawMessage) (
 	asOfRaw := strings.TrimSpace(req.AsOf)
 	fromRaw := strings.TrimSpace(req.From)
 	toRaw := strings.TrimSpace(req.To)
-	if asOfRaw == "" && fromRaw == "" && toRaw == "" && req.Mode == "neighbors" {
+	if asOfRaw == "" && fromRaw == "" && toRaw == "" {
 		store, err := a.requireReadableSecurityGraphStore()
-		if err != nil {
-			return "", err
+		if err == nil {
+			switch req.Mode {
+			case "neighbors":
+				return a.runNeighborsQueryStore(ctx, store, req, temporalScope)
+			case "paths", "path":
+				return a.runPathsQueryStore(ctx, store, req, temporalScope)
+			}
 		}
-		return a.runNeighborsQueryStore(ctx, store, req, temporalScope)
 	}
 
 	g, err := a.requireReadableSecurityGraph()
@@ -1999,6 +2003,49 @@ func (a *App) runNeighborsQueryStore(ctx context.Context, store graph.GraphStore
 		"limit":     limit,
 		"truncated": total > len(results),
 		"neighbors": results,
+	})
+}
+
+func (a *App) runPathsQueryStore(ctx context.Context, store graph.GraphStore, req cerebroGraphQueryRequest, temporalScope map[string]any) (string, error) {
+	if req.TargetID == "" {
+		return "", fmt.Errorf("target_id is required for paths mode")
+	}
+	if _, ok, err := store.LookupNode(ctx, req.NodeID); err != nil {
+		return "", a.sanitizeReadableSecurityGraphError(err)
+	} else if !ok {
+		return "", fmt.Errorf("node not found in selected scope: %s", req.NodeID)
+	}
+	if _, ok, err := store.LookupNode(ctx, req.TargetID); err != nil {
+		return "", a.sanitizeReadableSecurityGraphError(err)
+	} else if !ok {
+		return "", fmt.Errorf("target node not found: %s", req.TargetID)
+	}
+
+	k := clampInt(req.K, 3, 1, 10)
+	maxDepth := clampInt(req.MaxDepth, 6, 1, 12)
+	queryGraph, err := store.ExtractSubgraph(ctx, req.NodeID, graph.ExtractSubgraphOptions{
+		MaxDepth:  maxDepth,
+		Direction: graph.ExtractSubgraphDirectionOutgoing,
+	})
+	if err != nil {
+		return "", a.sanitizeReadableSecurityGraphError(err)
+	}
+	if queryGraph == nil {
+		return "", a.sanitizeReadableSecurityGraphError(graph.ErrStoreUnavailable)
+	}
+
+	simulator := risk.NewAttackPathSimulator(queryGraph)
+	paths := simulator.KShortestPaths(req.NodeID, req.TargetID, k, maxDepth)
+
+	return marshalToolResponse(map[string]any{
+		"mode":      "paths",
+		"source_id": req.NodeID,
+		"target_id": req.TargetID,
+		"temporal":  temporalScope,
+		"k":         k,
+		"max_depth": maxDepth,
+		"count":     len(paths),
+		"paths":     paths,
 	})
 }
 

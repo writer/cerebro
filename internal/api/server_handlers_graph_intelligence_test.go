@@ -22,6 +22,7 @@ import (
 
 type stubGraphIntelligenceService struct {
 	graph             *graph.Graph
+	store             graph.GraphStore
 	mapperInitialized bool
 	mapperValidation  string
 	deadLetterPath    string
@@ -32,6 +33,10 @@ type stubGraphIntelligenceService struct {
 
 func (s stubGraphIntelligenceService) CurrentGraph(context.Context) (*graph.Graph, error) {
 	return s.graph, nil
+}
+
+func (s stubGraphIntelligenceService) CurrentGraphStore(context.Context) (graph.GraphStore, error) {
+	return s.store, nil
 }
 
 func (s stubGraphIntelligenceService) MapperInitialized() bool {
@@ -52,6 +57,22 @@ func (s stubGraphIntelligenceService) MapperStats() graphingest.MapperStats {
 
 func (s stubGraphIntelligenceService) MapperContractCatalog(_ time.Time) (graphingest.ContractCatalog, bool) {
 	return s.contractCatalog, s.hasCatalog
+}
+
+type snapshotFailingGraphIntelligenceStore struct {
+	graph.GraphStore
+	snapshotCalls int
+	extractCalls  int
+}
+
+func (s *snapshotFailingGraphIntelligenceStore) Snapshot(context.Context) (*graph.Snapshot, error) {
+	s.snapshotCalls++
+	return nil, fmt.Errorf("snapshot unavailable")
+}
+
+func (s *snapshotFailingGraphIntelligenceStore) ExtractSubgraph(ctx context.Context, rootID string, opts graph.ExtractSubgraphOptions) (*graph.Graph, error) {
+	s.extractCalls++
+	return s.GraphStore.ExtractSubgraph(ctx, rootID, opts)
 }
 
 func TestGraphIntelligenceInsightsEndpoint(t *testing.T) {
@@ -3399,6 +3420,57 @@ func TestPlatformGraphQueryEndpoint_NeighborsAndPaths(t *testing.T) {
 
 	if got := neighbors.Header().Get("Deprecation"); got != "" {
 		t.Fatalf("did not expect deprecation header on platform graph query endpoint, got %q", got)
+	}
+}
+
+func TestPlatformGraphQueryEndpoint_UsesStoreWhenGraphUnavailable(t *testing.T) {
+	s := newTestServer(t)
+	base := graph.New()
+	base.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
+	base.AddNode(&graph.Node{ID: "role:admin", Kind: graph.NodeKindRole, Name: "Admin"})
+	base.AddNode(&graph.Node{ID: "db:prod", Kind: graph.NodeKindDatabase, Name: "Prod", Risk: graph.RiskCritical})
+	base.AddEdge(&graph.Edge{ID: "alice-admin", Source: "user:alice", Target: "role:admin", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow})
+	base.AddEdge(&graph.Edge{ID: "admin-db", Source: "role:admin", Target: "db:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	base.BuildIndex()
+
+	store := &snapshotFailingGraphIntelligenceStore{GraphStore: base}
+	s.graphIntelligence = stubGraphIntelligenceService{store: store}
+
+	neighbors := do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=neighbors&node_id=user:alice&direction=out&limit=10", nil)
+	if neighbors.Code != http.StatusOK {
+		t.Fatalf("expected 200 neighbors from store-backed path, got %d: %s", neighbors.Code, neighbors.Body.String())
+	}
+	neighborsBody := decodeJSON(t, neighbors)
+	if neighborsBody["mode"] != "neighbors" {
+		t.Fatalf("expected neighbors mode, got %#v", neighborsBody["mode"])
+	}
+	if count, ok := neighborsBody["count"].(float64); !ok || count < 1 {
+		t.Fatalf("expected at least one neighbor, got %#v", neighborsBody["count"])
+	}
+
+	paths := do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=paths&node_id=user:alice&target_id=db:prod&k=2&max_depth=6", nil)
+	if paths.Code != http.StatusOK {
+		t.Fatalf("expected 200 paths from store-backed path, got %d: %s", paths.Code, paths.Body.String())
+	}
+	pathsBody := decodeJSON(t, paths)
+	if pathsBody["mode"] != "paths" {
+		t.Fatalf("expected paths mode, got %#v", pathsBody["mode"])
+	}
+	if count, ok := pathsBody["count"].(float64); !ok || count < 1 {
+		t.Fatalf("expected at least one path, got %#v", pathsBody["count"])
+	}
+	explain, ok := pathsBody["explain"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected explain payload for store-backed paths, got %#v", pathsBody["explain"])
+	}
+	if _, ok := explain["path_step_count"].(float64); !ok {
+		t.Fatalf("expected explain.path_step_count, got %#v", explain["path_step_count"])
+	}
+	if store.snapshotCalls != 0 {
+		t.Fatalf("expected no snapshot calls, got %d", store.snapshotCalls)
+	}
+	if store.extractCalls == 0 {
+		t.Fatal("expected store-native extract subgraph path")
 	}
 }
 
