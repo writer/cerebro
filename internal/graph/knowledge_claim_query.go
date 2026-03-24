@@ -298,26 +298,26 @@ func buildClaimRecord(g *Graph, claim *Node, validAt, recordedAt time.Time, conf
 		ObjectValue:   strings.TrimSpace(readString(claim.Properties, "object_value")),
 		Status:        normalizeClaimStatus(readString(claim.Properties, "status")),
 		Summary:       strings.TrimSpace(readString(claim.Properties, "summary")),
-		Confidence:    readFloat(claim.Properties, "confidence"),
-		SourceSystem:  firstNonEmpty(strings.TrimSpace(readString(claim.Properties, "source_system")), strings.TrimSpace(claim.Provider)),
-		SourceEventID: strings.TrimSpace(readString(claim.Properties, "source_event_id")),
+		Confidence:    nodePropertyFloat(claim, "confidence"),
+		SourceSystem:  firstNonEmpty(nodePropertyString(claim, "source_system"), strings.TrimSpace(claim.Provider)),
+		SourceEventID: nodePropertyString(claim, "source_event_id"),
 	}
 	if ts, ok := graphObservedAt(claim); ok {
 		record.ObservedAt = ts
 	}
-	if ts, ok := temporalPropertyTime(claim.Properties, "valid_from"); ok {
+	if ts, ok := nodePropertyTime(claim, "valid_from"); ok {
 		record.ValidFrom = ts
 	}
-	if ts, ok := temporalPropertyTime(claim.Properties, "valid_to"); ok {
+	if ts, ok := nodePropertyTime(claim, "valid_to"); ok {
 		record.ValidTo = &ts
 	}
-	if ts, ok := temporalPropertyTime(claim.Properties, "recorded_at"); ok {
+	if ts, ok := nodePropertyTime(claim, "recorded_at"); ok {
 		record.RecordedAt = ts
 	}
-	if ts, ok := temporalPropertyTime(claim.Properties, "transaction_from"); ok {
+	if ts, ok := nodePropertyTime(claim, "transaction_from"); ok {
 		record.TransactionFrom = ts
 	}
-	if ts, ok := temporalPropertyTime(claim.Properties, "transaction_to"); ok {
+	if ts, ok := nodePropertyTime(claim, "transaction_to"); ok {
 		record.TransactionTo = &ts
 	}
 

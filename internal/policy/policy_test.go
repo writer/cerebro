@@ -12,7 +12,7 @@ func TestEngineUpdateAndDeletePolicy(t *testing.T) {
 		Name:       "Old Name",
 		Effect:     "forbid",
 		Resource:   "aws::s3::bucket",
-		Conditions: []string{"public == true"},
+		Conditions: []string{"resource.public == true"},
 		Severity:   "high",
 	})
 
@@ -20,7 +20,7 @@ func TestEngineUpdateAndDeletePolicy(t *testing.T) {
 		Name:       "Updated Name",
 		Effect:     "forbid",
 		Resource:   "aws::s3::bucket",
-		Conditions: []string{"public == false"},
+		Conditions: []string{"resource.public == false"},
 		Severity:   "critical",
 	}
 
@@ -102,6 +102,42 @@ func TestPolicyCELConditions(t *testing.T) {
 	}
 }
 
+func TestAddPolicyDefaultsMissingConditionFormatToCEL(t *testing.T) {
+	engine := NewEngine()
+	engine.AddPolicy(&Policy{
+		ID:          "default-cel-policy",
+		Name:        "Default CEL policy",
+		Description: "test",
+		Effect:      "forbid",
+		Resource:    "aws::s3::bucket",
+		Conditions: []string{
+			"resource.public == true",
+		},
+		Severity: "high",
+	})
+
+	p, ok := engine.GetPolicy("default-cel-policy")
+	if !ok {
+		t.Fatal("expected policy to be stored")
+	}
+	if p.ConditionFormat != ConditionFormatCEL {
+		t.Fatalf("expected default condition format %q, got %q", ConditionFormatCEL, p.ConditionFormat)
+	}
+
+	findings, err := engine.EvaluateAsset(context.Background(), map[string]interface{}{
+		"_cq_id":    "bucket-default-cel",
+		"_cq_table": "aws_s3_buckets",
+		"type":      "aws::s3::bucket",
+		"public":    true,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAsset failed: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+}
+
 func TestPublicVMPolicies(t *testing.T) {
 	engine := NewEngine()
 
@@ -112,7 +148,7 @@ func TestPublicVMPolicies(t *testing.T) {
 		Description: "A publicly exposed virtual machine has administrative privileges",
 		Effect:      "forbid",
 		Resource:    "compute::instance",
-		Conditions:  []string{"is_public == true", "has_admin_role == true"},
+		Conditions:  []string{"resource.is_public == true", "resource.has_admin_role == true"},
 		Severity:    "critical",
 	})
 
@@ -126,8 +162,8 @@ func TestPublicVMPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":         "vm-123",
 				"type":           "compute::instance",
-				"is_public":      "true",
-				"has_admin_role": "true",
+				"is_public":      true,
+				"has_admin_role": true,
 			},
 			wantFindings: 1,
 		},
@@ -136,8 +172,8 @@ func TestPublicVMPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":         "vm-456",
 				"type":           "compute::instance",
-				"is_public":      "false",
-				"has_admin_role": "true",
+				"is_public":      false,
+				"has_admin_role": true,
 			},
 			wantFindings: 0,
 		},
@@ -146,8 +182,8 @@ func TestPublicVMPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":         "vm-789",
 				"type":           "compute::instance",
-				"is_public":      "true",
-				"has_admin_role": "false",
+				"is_public":      true,
+				"has_admin_role": false,
 			},
 			wantFindings: 0,
 		},
@@ -175,7 +211,7 @@ func TestSecretsDetection(t *testing.T) {
 		Description: "A resource contains cleartext cloud credentials that grant high privileges",
 		Effect:      "forbid",
 		Resource:    "*",
-		Conditions:  []string{"has_cleartext_keys == true", "grants_high_privilege == true"},
+		Conditions:  []string{"resource.has_cleartext_keys == true", "resource.grants_high_privilege == true"},
 		Severity:    "critical",
 	})
 
@@ -188,8 +224,8 @@ func TestSecretsDetection(t *testing.T) {
 			name: "cleartext keys with high privilege - violation",
 			asset: map[string]interface{}{
 				"_cq_id":                "secret-123",
-				"has_cleartext_keys":    "true",
-				"grants_high_privilege": "true",
+				"has_cleartext_keys":    true,
+				"grants_high_privilege": true,
 			},
 			wantFindings: 1,
 		},
@@ -197,8 +233,8 @@ func TestSecretsDetection(t *testing.T) {
 			name: "no cleartext keys - no violation",
 			asset: map[string]interface{}{
 				"_cq_id":                "secret-456",
-				"has_cleartext_keys":    "false",
-				"grants_high_privilege": "true",
+				"has_cleartext_keys":    false,
+				"grants_high_privilege": true,
 			},
 			wantFindings: 0,
 		},
@@ -226,7 +262,7 @@ func TestIdentityPolicies(t *testing.T) {
 		Description: "An inactive AWS user with admin privileges does not have MFA enabled",
 		Effect:      "forbid",
 		Resource:    "aws::iam::user",
-		Conditions:  []string{"has_admin_role == true", "mfa_enabled == false", "is_inactive == true"},
+		Conditions:  []string{"resource.has_admin_role == true", "resource.mfa_enabled == false", "resource.is_inactive == true"},
 		Severity:    "critical",
 	})
 
@@ -240,9 +276,9 @@ func TestIdentityPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":         "user-123",
 				"type":           "aws::iam::user",
-				"has_admin_role": "true",
-				"mfa_enabled":    "false",
-				"is_inactive":    "true",
+				"has_admin_role": true,
+				"mfa_enabled":    false,
+				"is_inactive":    true,
 			},
 			wantFindings: 1,
 		},
@@ -251,9 +287,9 @@ func TestIdentityPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":         "user-456",
 				"type":           "aws::iam::user",
-				"has_admin_role": "true",
-				"mfa_enabled":    "false",
-				"is_inactive":    "false",
+				"has_admin_role": true,
+				"mfa_enabled":    false,
+				"is_inactive":    false,
 			},
 			wantFindings: 0,
 		},
@@ -262,9 +298,9 @@ func TestIdentityPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":         "user-789",
 				"type":           "aws::iam::user",
-				"has_admin_role": "true",
-				"mfa_enabled":    "true",
-				"is_inactive":    "true",
+				"has_admin_role": true,
+				"mfa_enabled":    true,
+				"is_inactive":    true,
 			},
 			wantFindings: 0,
 		},
@@ -292,7 +328,7 @@ func TestVulnerabilityPolicies(t *testing.T) {
 		Description: "A publicly exposed resource is vulnerable to Log4Shell",
 		Effect:      "forbid",
 		Resource:    "compute::instance",
-		Conditions:  []string{"is_public == true", "has_log4shell == true"},
+		Conditions:  []string{"resource.is_public == true", "resource.has_log4shell == true"},
 		Severity:    "critical",
 	})
 
@@ -302,7 +338,7 @@ func TestVulnerabilityPolicies(t *testing.T) {
 		Description: "A publicly exposed VM is vulnerable to OpenSSH RCE",
 		Effect:      "forbid",
 		Resource:    "compute::instance",
-		Conditions:  []string{"is_public == true", "has_cve_2024_6387 == true"},
+		Conditions:  []string{"resource.is_public == true", "resource.has_cve_2024_6387 == true"},
 		Severity:    "critical",
 	})
 
@@ -316,8 +352,8 @@ func TestVulnerabilityPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":        "vm-log4j",
 				"type":          "compute::instance",
-				"is_public":     "true",
-				"has_log4shell": "true",
+				"is_public":     true,
+				"has_log4shell": true,
 			},
 			wantFindings: 1,
 		},
@@ -326,8 +362,8 @@ func TestVulnerabilityPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":            "vm-ssh",
 				"type":              "compute::instance",
-				"is_public":         "true",
-				"has_cve_2024_6387": "true",
+				"is_public":         true,
+				"has_cve_2024_6387": true,
 			},
 			wantFindings: 1,
 		},
@@ -336,9 +372,9 @@ func TestVulnerabilityPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":            "vm-private",
 				"type":              "compute::instance",
-				"is_public":         "false",
-				"has_log4shell":     "true",
-				"has_cve_2024_6387": "true",
+				"is_public":         false,
+				"has_log4shell":     true,
+				"has_cve_2024_6387": true,
 			},
 			wantFindings: 0,
 		},
@@ -366,7 +402,7 @@ func TestStoragePolicies(t *testing.T) {
 		Description: "A publicly readable storage bucket contains sensitive data findings",
 		Effect:      "forbid",
 		Resource:    "storage::bucket",
-		Conditions:  []string{"is_public == true", "has_sensitive_data == true"},
+		Conditions:  []string{"resource.is_public == true", "resource.has_sensitive_data == true"},
 		Severity:    "critical",
 	})
 
@@ -380,8 +416,8 @@ func TestStoragePolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":             "bucket-123",
 				"type":               "storage::bucket",
-				"is_public":          "true",
-				"has_sensitive_data": "true",
+				"is_public":          true,
+				"has_sensitive_data": true,
 			},
 			wantFindings: 1,
 		},
@@ -390,8 +426,8 @@ func TestStoragePolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":             "bucket-456",
 				"type":               "storage::bucket",
-				"is_public":          "false",
-				"has_sensitive_data": "true",
+				"is_public":          false,
+				"has_sensitive_data": true,
 			},
 			wantFindings: 0,
 		},
@@ -400,8 +436,8 @@ func TestStoragePolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":             "bucket-789",
 				"type":               "storage::bucket",
-				"is_public":          "true",
-				"has_sensitive_data": "false",
+				"is_public":          true,
+				"has_sensitive_data": false,
 			},
 			wantFindings: 0,
 		},
@@ -429,7 +465,7 @@ func TestKubernetesPolicies(t *testing.T) {
 		Description: "A Kubernetes role uses wildcard permissions which grant overly broad access",
 		Effect:      "forbid",
 		Resource:    "k8s::cluster_role",
-		Conditions:  []string{"has_wildcard_permissions == true"},
+		Conditions:  []string{"resource.has_wildcard_permissions == true"},
 		Severity:    "high",
 	})
 
@@ -443,7 +479,7 @@ func TestKubernetesPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":                   "role-123",
 				"type":                     "k8s::cluster_role",
-				"has_wildcard_permissions": "true",
+				"has_wildcard_permissions": true,
 			},
 			wantFindings: 1,
 		},
@@ -452,7 +488,7 @@ func TestKubernetesPolicies(t *testing.T) {
 			asset: map[string]interface{}{
 				"_cq_id":                   "role-456",
 				"type":                     "k8s::cluster_role",
-				"has_wildcard_permissions": "false",
+				"has_wildcard_permissions": false,
 			},
 			wantFindings: 0,
 		},

@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync api-contract-docs api-contract-docs-check api-contract-compat config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check connector-docs connector-docs-check graph-ontology-guardrails gosec govulncheck devex-codegen devex-codegen-check devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync api-contract-docs api-contract-docs-check api-contract-compat config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check connector-docs connector-docs-check graph-ontology-guardrails gosec govulncheck devex-codegen devex-codegen-check devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks pre-commit verify
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -255,6 +255,19 @@ platform-smoke:
 # Install git hooks
 hooks:
 	./scripts/install_hooks.sh
+
+pre-commit:
+	./scripts/pre_commit_checks.sh
+
+verify:
+	go test -race ./...
+	$(MAKE) lint
+	$(MAKE) api-contract-compat
+	$(MAKE) cloudevents-contract-compat
+	$(MAKE) report-contract-compat
+	$(MAKE) entity-facet-contract-compat
+	$(MAKE) agent-sdk-contract-compat
+	$(MAKE) graph-ontology-guardrails
 
 # Full local setup
 setup: install-deps build hooks

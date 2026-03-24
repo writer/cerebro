@@ -30,7 +30,7 @@ func TestEngineLoadPolicies_ExplicitMappingsOnlyFailsForUnmapped(t *testing.T) {
 		"description": "Policy for explicit mapping mode test",
 		"effect": "forbid",
 		"resource": "unknown::resource",
-		"conditions": ["enabled == true"],
+		"conditions": ["resource.enabled == true"],
 		"severity": "high"
 	}`
 
@@ -58,7 +58,7 @@ func TestEngineLoadPolicies_ExplicitMappingsOnlyAllowsMapped(t *testing.T) {
 		"description": "Policy for explicit mapping mode test",
 		"effect": "forbid",
 		"resource": "aws::s3::bucket",
-		"conditions": ["public == true"],
+		"conditions": ["resource.public == true"],
 		"severity": "high"
 	}`
 

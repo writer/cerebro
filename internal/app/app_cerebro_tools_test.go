@@ -523,6 +523,64 @@ func TestCerebroGraphQueryPathsTool(t *testing.T) {
 	}
 }
 
+func TestCerebroNaturalLanguageQueryTool(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "instance:web-1",
+		Kind:     graph.NodeKindInstance,
+		Name:     "web-1",
+		Provider: "aws",
+		Properties: map[string]any{
+			"internet_exposed": true,
+		},
+	})
+	store := findings.NewStore()
+	store.Upsert(context.Background(), policy.Finding{
+		ID:           "finding:web-1:cve",
+		PolicyID:     "vuln-critical",
+		PolicyName:   "Critical Vulnerability",
+		Severity:     "critical",
+		Description:  "Critical unpatched CVE",
+		ResourceID:   "instance:web-1",
+		ResourceName: "web-1",
+		ResourceType: "instance",
+		Resource:     map[string]any{"id": "instance:web-1"},
+	})
+
+	application := &App{SecurityGraph: g, Findings: store}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.nl_query")
+	if tool == nil {
+		t.Fatal("expected nl_query tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"question":"Which internet-facing instances have critical unpatched CVEs?"}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	plan, ok := payload["plan"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected plan object, got %#v", payload["plan"])
+	}
+	if plan["kind"] != string("entity_findings_query") {
+		t.Fatalf("plan kind = %#v, want entity_findings_query", plan["kind"])
+	}
+	if _, ok := payload["summary"].(string); !ok {
+		t.Fatalf("expected summary, got %#v", payload["summary"])
+	}
+	resultPayload, ok := payload["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected structured result, got %#v", payload["result"])
+	}
+	if got, ok := resultPayload["matching_entities"].(float64); !ok || int(got) != 1 {
+		t.Fatalf("matching_entities = %#v, want 1", resultPayload["matching_entities"])
+	}
+}
+
 func TestCerebroCorrelateEventsTool(t *testing.T) {
 	g := graph.New()
 	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
@@ -592,6 +650,23 @@ func TestCerebroCorrelateEventsTool(t *testing.T) {
 	}
 	if got, ok := summary["correlation_count"].(float64); !ok || int(got) != 2 {
 		t.Fatalf("expected 2 correlations, got %#v", payload)
+	}
+
+	chainResult, err := tool.Handler(context.Background(), json.RawMessage(`{"mode":"chains","event_id":"incident:inc-1","direction":"upstream","max_depth":4,"limit":10}`))
+	if err != nil {
+		t.Fatalf("tool chain mode returned error: %v", err)
+	}
+
+	var chainPayload map[string]any
+	if err := json.Unmarshal([]byte(chainResult), &chainPayload); err != nil {
+		t.Fatalf("decode tool chain payload: %v", err)
+	}
+	chainSummary, ok := chainPayload["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected chain summary object, got %#v", chainPayload["summary"])
+	}
+	if got, ok := chainSummary["chain_count"].(float64); !ok || int(got) != 1 {
+		t.Fatalf("expected 1 upstream chain, got %#v", chainPayload)
 	}
 
 	if _, err := tool.Handler(context.Background(), json.RawMessage(`{"pattern_id":"pr_deploy_chain"}`)); err == nil {
@@ -770,6 +845,80 @@ func TestCerebroGraphLeverageAndQueryTemplateTools(t *testing.T) {
 	}
 	if count, ok := templatesPayload["count"].(float64); !ok || count < 1 {
 		t.Fatalf("expected template count >0, got %#v", templatesPayload["count"])
+	}
+}
+
+func TestCerebroAIWorkloadsTool(t *testing.T) {
+	g := graph.New()
+	g.AddNode(&graph.Node{ID: "internet", Kind: graph.NodeKindInternet, Name: "Internet"})
+	g.AddNode(&graph.Node{
+		ID:       "service:customer-llm-endpoint",
+		Kind:     graph.NodeKindService,
+		Name:     "SageMaker Endpoint",
+		Provider: "aws",
+	})
+	g.AddNode(&graph.Node{
+		ID:   "database:customer-pgvector",
+		Kind: graph.NodeKindDatabase,
+		Name: "Customer pgvector",
+		Properties: map[string]any{
+			"engine":              "pgvector",
+			"data_classification": "confidential",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "workload:research-agent",
+		Kind: graph.NodeKindWorkload,
+		Name: "Research Agent",
+		Properties: map[string]any{
+			"openai_api_key": "sk-test",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "technology:ollama",
+		Kind: graph.NodeKindTechnology,
+		Name: "Ollama",
+	})
+	g.AddEdge(&graph.Edge{ID: "internet-llm", Source: "internet", Target: "service:customer-llm-endpoint", Kind: graph.EdgeKindExposedTo, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "llm-db", Source: "service:customer-llm-endpoint", Target: "database:customer-pgvector", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "agent-ollama", Source: "workload:research-agent", Target: "technology:ollama", Kind: graph.EdgeKindContains, Effect: graph.EdgeEffectAllow})
+
+	application := &App{SecurityGraph: g}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.ai_workloads")
+	if tool == nil {
+		t.Fatal("expected AI workloads tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"max_workloads":10,"min_risk_score":0,"include_shadow":true}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	summary, ok := payload["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", payload["summary"])
+	}
+	if count, ok := summary["workload_count"].(float64); !ok || int(count) != 3 {
+		t.Fatalf("expected workload_count=2, got %#v", summary["workload_count"])
+	}
+	workloads, ok := payload["workloads"].([]any)
+	if !ok || len(workloads) != 3 {
+		t.Fatalf("expected 2 workloads, got %#v", payload["workloads"])
+	}
+}
+
+func TestCerebroAIWorkloadsToolValidation(t *testing.T) {
+	application := &App{SecurityGraph: graph.New()}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.ai_workloads")
+	if tool == nil {
+		t.Fatal("expected AI workloads tool")
+	}
+	if _, err := tool.Handler(context.Background(), json.RawMessage(`{"min_risk_score":101}`)); err == nil {
+		t.Fatal("expected min_risk_score validation error")
 	}
 }
 

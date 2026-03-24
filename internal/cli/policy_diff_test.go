@@ -25,7 +25,7 @@ func TestRunPolicyDiff_JSONWithDryRunAssets(t *testing.T) {
 		"description": "current",
 		"effect": "forbid",
 		"resource": "aws::s3::bucket",
-		"conditions": ["public == true"],
+		"conditions": ["resource.public == true"],
 		"severity": "high"
 	}`
 	candidatePolicy := `{
@@ -34,12 +34,12 @@ func TestRunPolicyDiff_JSONWithDryRunAssets(t *testing.T) {
 		"description": "candidate",
 		"effect": "forbid",
 		"resource": "aws::s3::bucket",
-		"conditions": ["public == false"],
+		"conditions": ["resource.public == false"],
 		"severity": "high"
 	}`
 	assetsFixture := `[
-		{"_cq_id":"bucket-a","_cq_table":"aws_s3_buckets","public":"true"},
-		{"_cq_id":"bucket-b","_cq_table":"aws_s3_buckets","public":"false"}
+		{"_cq_id":"bucket-a","_cq_table":"aws_s3_buckets","public":true},
+		{"_cq_id":"bucket-b","_cq_table":"aws_s3_buckets","public":false}
 	]`
 
 	if err := os.WriteFile(policyPath, []byte(currentPolicy), 0o644); err != nil {

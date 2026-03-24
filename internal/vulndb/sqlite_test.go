@@ -320,3 +320,47 @@ func TestServiceSkipsUnparseableRangeBounds(t *testing.T) {
 		t.Fatalf("expected unparseable range bounds to fail closed, got %#v", matches)
 	}
 }
+
+func TestServiceMatchesWindowsPackageVersions(t *testing.T) {
+	store, err := NewSQLiteStore(t.TempDir() + "/vulndb.db")
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	service := NewService(store)
+
+	if err := store.UpsertAdvisory(context.Background(), Vulnerability{
+		ID:       "GHSA-test-windows",
+		Aliases:  []string{"CVE-2026-4232"},
+		Summary:  "kernel32.dll vulnerable on Windows Server 2022",
+		Severity: "critical",
+	}, []AffectedPackage{{
+		Ecosystem:           "windows",
+		PackageName:         "kernel32.dll",
+		RangeType:           "ECOSYSTEM",
+		Introduced:          "10.0.20348.0",
+		Fixed:               "10.0.20348.4000",
+		Distribution:        "windows",
+		DistributionVersion: "10.0",
+	}}); err != nil {
+		t.Fatalf("UpsertAdvisory windows: %v", err)
+	}
+
+	matches, err := service.MatchPackages(context.Background(), filesystemanalyzer.OSInfo{
+		ID:        "windows",
+		VersionID: "10.0.20348.3321",
+	}, []filesystemanalyzer.PackageRecord{{
+		Ecosystem: "windows",
+		Name:      "kernel32.dll",
+		Version:   "10.0.20348.3321",
+	}})
+	if err != nil {
+		t.Fatalf("MatchPackages windows: %v", err)
+	}
+	if len(matches) != 1 || matches[0].CVE != "CVE-2026-4232" {
+		t.Fatalf("expected Windows advisory match, got %#v", matches)
+	}
+	if matches[0].FixedVersion != "10.0.20348.4000" {
+		t.Fatalf("expected fixed version 10.0.20348.4000, got %#v", matches)
+	}
+}

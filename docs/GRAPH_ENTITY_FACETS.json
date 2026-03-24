@@ -203,6 +203,83 @@
       ]
     },
     {
+      "id": "evaluation_quality",
+      "version": "1.0.0",
+      "title": "Evaluation Quality",
+      "description": "Aggregated outcome and reversal quality signals from evaluation lifecycle events targeting this entity.",
+      "schema_name": "PlatformEntityEvaluationQualityFacet",
+      "schema_url": "urn:cerebro:entity-facet:evaluation-quality:v1",
+      "applicable_kinds": [
+        "application",
+        "bucket",
+        "database",
+        "function",
+        "instance",
+        "repository",
+        "secret",
+        "service",
+        "workload"
+      ],
+      "source_keys": [
+        "target_ids",
+        "evaluation_run_id",
+        "conversation_id",
+        "quality_score",
+        "verdict",
+        "status"
+      ],
+      "fields": [
+        {
+          "key": "evaluation_run_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "conversation_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "decision_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "action_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "outcome_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "positive_outcome_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "negative_outcome_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "reversed_action_count",
+          "value_type": "integer"
+        },
+        {
+          "key": "average_quality_score",
+          "value_type": "number"
+        },
+        {
+          "key": "last_evaluation_run_id",
+          "value_type": "string"
+        },
+        {
+          "key": "last_conversation_id",
+          "value_type": "string"
+        },
+        {
+          "key": "last_observed_at",
+          "value_type": "string"
+        }
+      ]
+    },
+    {
       "id": "exposure",
       "version": "1.0.0",
       "title": "Exposure",

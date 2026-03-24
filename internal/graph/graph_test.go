@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -56,6 +58,86 @@ func TestGraph_AddEdge(t *testing.T) {
 	inEdges := g.GetInEdges("role:admin")
 	if len(inEdges) != 1 {
 		t.Errorf("expected 1 inbound edge, got %d", len(inEdges))
+	}
+}
+
+func TestGraph_ConcurrentAddNodeAndAddEdgeConsistency(t *testing.T) {
+	g := New()
+
+	const pairs = 128
+	var wg sync.WaitGroup
+	wg.Add(pairs)
+
+	for i := 0; i < pairs; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+
+			sourceID := fmt.Sprintf("service:%03d", i)
+			targetID := fmt.Sprintf("database:%03d", i)
+			edgeID := fmt.Sprintf("edge:%03d", i)
+
+			g.AddNode(&Node{ID: sourceID, Kind: NodeKindService, Name: sourceID})
+			g.AddNode(&Node{ID: targetID, Kind: NodeKindDatabase, Name: targetID})
+			g.AddEdge(&Edge{
+				ID:     edgeID,
+				Source: sourceID,
+				Target: targetID,
+				Kind:   EdgeKindCanRead,
+				Effect: EdgeEffectAllow,
+			})
+		}()
+	}
+
+	wg.Wait()
+
+	if got := g.NodeCount(); got != pairs*2 {
+		t.Fatalf("expected %d nodes, got %d", pairs*2, got)
+	}
+	if got := g.EdgeCount(); got != pairs {
+		t.Fatalf("expected %d edges, got %d", pairs, got)
+	}
+	if got := len(g.GetAllNodes()); got != pairs*2 {
+		t.Fatalf("expected %d active nodes from GetAllNodes, got %d", pairs*2, got)
+	}
+
+	allEdges := g.GetAllEdges()
+	totalEdges := 0
+	for i := 0; i < pairs; i++ {
+		sourceID := fmt.Sprintf("service:%03d", i)
+		targetID := fmt.Sprintf("database:%03d", i)
+		edgeID := fmt.Sprintf("edge:%03d", i)
+
+		source, ok := g.GetNode(sourceID)
+		if !ok || source == nil {
+			t.Fatalf("expected source node %q to exist", sourceID)
+		}
+		target, ok := g.GetNode(targetID)
+		if !ok || target == nil {
+			t.Fatalf("expected target node %q to exist", targetID)
+		}
+
+		outEdges := g.GetOutEdges(sourceID)
+		if len(outEdges) != 1 {
+			t.Fatalf("expected one outbound edge for %q, got %d", sourceID, len(outEdges))
+		}
+		if outEdges[0] == nil || outEdges[0].ID != edgeID || outEdges[0].Target != targetID {
+			t.Fatalf("unexpected outbound edge for %q: %+v", sourceID, outEdges[0])
+		}
+
+		inEdges := g.GetInEdges(targetID)
+		if len(inEdges) != 1 {
+			t.Fatalf("expected one inbound edge for %q, got %d", targetID, len(inEdges))
+		}
+		if inEdges[0] == nil || inEdges[0].ID != edgeID || inEdges[0].Source != sourceID {
+			t.Fatalf("unexpected inbound edge for %q: %+v", targetID, inEdges[0])
+		}
+
+		totalEdges += len(allEdges[sourceID])
+	}
+
+	if totalEdges != pairs {
+		t.Fatalf("expected %d total edges from GetAllEdges, got %d", pairs, totalEdges)
 	}
 }
 

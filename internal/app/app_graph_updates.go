@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
@@ -43,6 +44,9 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 		}
 	}
 	start := time.Now()
+	if err := a.prepareSecurityGraphBuilderForIncrementalApply(ctx); err != nil {
+		return graph.GraphMutationSummary{}, err
+	}
 	summary, err := a.SecurityGraphBuilder.ApplyChanges(ctx, time.Time{})
 	if err != nil {
 		a.Logger.Warn("incremental graph apply failed, falling back to full rebuild",
@@ -221,4 +225,52 @@ func (a *App) buildGraphConsistencyCandidate(ctx context.Context) (*graph.Graph,
 
 func errGraphNotInitialized() error {
 	return fmt.Errorf("security graph not initialized")
+}
+
+func (a *App) prepareSecurityGraphBuilderForIncrementalApply(ctx context.Context) error {
+	if a == nil || a.SecurityGraphBuilder == nil || a.retainHotSecurityGraph() {
+		return nil
+	}
+
+	snapshot, err := a.currentIncrementalBuilderSnapshot(ctx)
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("failed to hydrate incremental graph builder from persistent store", "error", err)
+		}
+		return errGraphNotInitialized()
+	}
+
+	if snapshot == nil {
+		empty := graph.New()
+		a.configureGraphRuntimeBehavior(empty)
+		a.SecurityGraphBuilder.ReplaceGraph(empty)
+		return nil
+	}
+
+	base := graph.RestoreFromSnapshot(snapshot)
+	a.configureGraphRuntimeBehavior(base)
+	a.SecurityGraphBuilder.ReplaceGraph(base)
+	return nil
+}
+
+func (a *App) currentIncrementalBuilderSnapshot(ctx context.Context) (*graph.Snapshot, error) {
+	if a == nil {
+		return nil, nil
+	}
+	if snapshot, err := a.currentConfiguredSecurityGraphSnapshot(ctx); err != nil {
+		return nil, err
+	} else if snapshot != nil {
+		return snapshot, nil
+	}
+	if a.GraphSnapshots == nil {
+		return nil, nil
+	}
+	snapshot, _, _, err := a.GraphSnapshots.PeekLatestSnapshot()
+	if err != nil {
+		if isNoSnapshotsGraphStoreErr(err) || strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return snapshot, nil
 }

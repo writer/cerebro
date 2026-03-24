@@ -16,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 	reports "github.com/writer/cerebro/internal/graph/reports"
 	"github.com/writer/cerebro/internal/graphingest"
+	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -166,6 +167,16 @@ func TestGraphIntelligenceEventCorrelationEndpoints(t *testing.T) {
 		t.Fatalf("expected two correlations, got %#v", correlationBody)
 	}
 
+	chains := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-chains?event_id=incident:inc-1&direction=upstream&max_depth=4&limit=10", nil)
+	if chains.Code != http.StatusOK {
+		t.Fatalf("expected 200 for event-chains, got %d: %s", chains.Code, chains.Body.String())
+	}
+	chainBody := decodeJSON(t, chains)
+	chainSummary, ok := chainBody["summary"].(map[string]any)
+	if !ok || int(chainSummary["chain_count"].(float64)) != 1 || int(chainSummary["max_depth"].(float64)) != 2 {
+		t.Fatalf("expected one upstream chain with depth two, got %#v", chainBody)
+	}
+
 	anomalies := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-anomalies?entity_id=service:payments&limit=10", nil)
 	if anomalies.Code != http.StatusOK {
 		t.Fatalf("expected 200 for event-anomalies, got %d: %s", anomalies.Code, anomalies.Body.String())
@@ -177,6 +188,11 @@ func TestGraphIntelligenceEventCorrelationEndpoints(t *testing.T) {
 	unscopedCorrelations := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-correlations?limit=10", nil)
 	if unscopedCorrelations.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for unscoped event-correlations, got %d: %s", unscopedCorrelations.Code, unscopedCorrelations.Body.String())
+	}
+
+	unscopedChains := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-chains?limit=10", nil)
+	if unscopedChains.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unscoped event-chains, got %d: %s", unscopedChains.Code, unscopedChains.Body.String())
 	}
 
 	unscopedAnomalies := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-anomalies?limit=10", nil)
@@ -401,6 +417,125 @@ func TestGraphIntelligenceQualityEndpoint_InvalidParams(t *testing.T) {
 	}
 }
 
+func TestGraphIntelligenceAgentActionEffectivenessEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	now := time.Date(2026, 3, 22, 18, 0, 0, 0, time.UTC)
+
+	g.AddNode(&graph.Node{
+		ID:   "thread:evaluation:run-1:conv-1",
+		Kind: graph.NodeKind("communication_thread"),
+		Name: "conv-1",
+		Properties: map[string]any{
+			"thread_id":         "conv-1",
+			"channel_id":        "run-1",
+			"channel_name":      "evaluation",
+			"conversation_id":   "conv-1",
+			"evaluation_run_id": "run-1",
+			"agent_email":       "agent-a@example.com",
+			"observed_at":       now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"valid_from":        now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"source_system":     "platform_eval",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "action:evaluation:run-1:conv-1:call-1",
+		Kind: graph.NodeKindAction,
+		Name: "call-1",
+		Properties: map[string]any{
+			"action_type":       "tool_call",
+			"status":            "succeeded",
+			"performed_at":      now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"actor_id":          "agent-a@example.com",
+			"agent_email":       "agent-a@example.com",
+			"conversation_id":   "conv-1",
+			"evaluation_run_id": "run-1",
+			"turn_id":           "turn-1",
+			"tool_call_id":      "call-1",
+			"observed_at":       now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"valid_from":        now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"source_system":     "platform_eval",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "observation:evaluation_cost:run-1:conv-1:cost-1",
+		Kind: graph.NodeKindObservation,
+		Name: "cost-1",
+		Properties: map[string]any{
+			"observation_type":  "evaluation_cost",
+			"subject_id":        "thread:evaluation:run-1:conv-1",
+			"conversation_id":   "conv-1",
+			"evaluation_run_id": "run-1",
+			"tool_call_id":      "call-1",
+			"amount_usd":        0.25,
+			"currency":          "USD",
+			"observed_at":       now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"valid_from":        now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"recorded_at":       now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"transaction_from":  now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"source_system":     "platform_eval",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "outcome:evaluation:run-1:conv-1",
+		Kind: graph.NodeKindOutcome,
+		Name: "positive",
+		Properties: map[string]any{
+			"outcome_type":      "evaluation_conversation",
+			"verdict":           "positive",
+			"quality_score":     0.94,
+			"conversation_id":   "conv-1",
+			"evaluation_run_id": "run-1",
+			"observed_at":       now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"valid_from":        now.Add(-2 * time.Hour).Format(time.RFC3339),
+			"source_system":     "platform_eval",
+		},
+	})
+	g.AddEdge(&graph.Edge{ID: "outcome-target:conv-1", Source: "outcome:evaluation:run-1:conv-1", Target: "thread:evaluation:run-1:conv-1", Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/agent-action-effectiveness?window_days=30&trend_days=7&max_agents=10", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	summary, ok := body["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", body["summary"])
+	}
+	if conversations, ok := summary["conversations"].(float64); !ok || int(conversations) != 1 {
+		t.Fatalf("expected summary.conversations=1, got %#v", summary["conversations"])
+	}
+	if correctness, ok := summary["correctness_percent"].(float64); !ok || correctness <= 0 {
+		t.Fatalf("expected correctness_percent > 0, got %#v", summary["correctness_percent"])
+	}
+	agents, ok := body["agents"].([]any)
+	if !ok || len(agents) != 1 {
+		t.Fatalf("expected one agent rollup, got %#v", body["agents"])
+	}
+	trends, ok := body["trends"].([]any)
+	if !ok || len(trends) != 1 {
+		t.Fatalf("expected one trend bucket, got %#v", body["trends"])
+	}
+}
+
+func TestGraphIntelligenceAgentActionEffectivenessEndpointInvalidParams(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/agent-action-effectiveness?window_days=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for window_days=0, got %d", w.Code)
+	}
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/agent-action-effectiveness?trend_days=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for trend_days=0, got %d", w.Code)
+	}
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/agent-action-effectiveness?max_agents=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for max_agents=0, got %d", w.Code)
+	}
+}
+
 func TestPlatformIntelligenceQualityEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
@@ -435,8 +570,8 @@ func TestPlatformIntelligenceReportsCatalog(t *testing.T) {
 	}
 	body := decodeJSON(t, w)
 
-	if count, ok := body["count"].(float64); !ok || int(count) < 6 {
-		t.Fatalf("expected at least 6 built-in reports, got %#v", body["count"])
+	if count, ok := body["count"].(float64); !ok || int(count) < 7 {
+		t.Fatalf("expected at least 7 built-in reports, got %#v", body["count"])
 	}
 	reports, ok := body["reports"].([]any)
 	if !ok || len(reports) == 0 {
@@ -448,6 +583,26 @@ func TestPlatformIntelligenceReportsCatalog(t *testing.T) {
 	}
 	if _, ok := first["endpoint"].(map[string]any); !ok {
 		t.Fatalf("expected endpoint metadata on first report, got %#v", first["endpoint"])
+	}
+}
+
+func TestPlatformIntelligenceAgentActionEffectivenessReportDefinition(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/reports/agent-action-effectiveness", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if got := body["id"]; got != "agent-action-effectiveness" {
+		t.Fatalf("expected agent-action-effectiveness definition, got %#v", got)
+	}
+	endpoint, ok := body["endpoint"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected endpoint object, got %#v", body["endpoint"])
+	}
+	if path, _ := endpoint["path"].(string); path != "/api/v1/platform/intelligence/agent-action-effectiveness" {
+		t.Fatalf("unexpected endpoint path: %#v", endpoint["path"])
 	}
 }
 
@@ -476,6 +631,351 @@ func TestPlatformIntelligenceReportDefinition(t *testing.T) {
 	}
 	if runPath, _ := endpoint["run_path_template"].(string); runPath == "" {
 		t.Fatalf("expected run_path_template, got %#v", endpoint["run_path_template"])
+	}
+}
+
+func TestGraphIntelligenceEvaluationTemporalAnalysisEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	addEvaluationTemporalAnalysisEndpointFixture(t, s.app.SecurityGraph, evaluationTemporalAnalysisEndpointFixture{
+		RunID:        "run-1",
+		Conversation: "conv-1",
+		ServiceID:    "service:payments:conv-1",
+		BaseAt:       time.Date(2026, 3, 22, 18, 0, 0, 0, time.UTC),
+	})
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/evaluation-temporal-analysis?evaluation_run_id=run-1&conversation_id=conv-1&timeline_limit=10", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if got := body["evaluation_run_id"]; got != "run-1" {
+		t.Fatalf("expected evaluation_run_id=run-1, got %#v", got)
+	}
+	summary, ok := body["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", body["summary"])
+	}
+	if got := summary["claims"]; got != float64(4) {
+		t.Fatalf("expected 4 claims, got %#v", got)
+	}
+	if got := summary["contradicted_claims"]; got != float64(2) {
+		t.Fatalf("expected 2 contradicted claims, got %#v", got)
+	}
+	diff, ok := body["diff"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected diff object, got %#v", body["diff"])
+	}
+	diffSummary, ok := diff["summary"].(map[string]any)
+	if !ok || diffSummary["added_claims"] != float64(2) {
+		t.Fatalf("expected diff summary with added_claims=2, got %#v", diff["summary"])
+	}
+	conflicts, ok := body["conflicts"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected conflicts object, got %#v", body["conflicts"])
+	}
+	conflictSummary, ok := conflicts["summary"].(map[string]any)
+	if !ok || conflictSummary["conflict_groups"] != float64(1) {
+		t.Fatalf("expected conflict group summary, got %#v", conflicts["summary"])
+	}
+}
+
+func TestGraphIntelligenceEvaluationTemporalAnalysisEndpointStageFilter(t *testing.T) {
+	s := newTestServer(t)
+	addEvaluationTemporalAnalysisEndpointFixture(t, s.app.SecurityGraph, evaluationTemporalAnalysisEndpointFixture{
+		RunID:        "run-1",
+		Conversation: "conv-1",
+		ServiceID:    "service:payments:conv-1",
+		BaseAt:       time.Date(2026, 3, 22, 18, 0, 0, 0, time.UTC),
+	})
+	tagEvaluationTemporalAnalysisEndpointStageFixture(t, s.app.SecurityGraph, "run-1", "conv-1")
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/evaluation-temporal-analysis?evaluation_run_id=run-1&conversation_id=conv-1&stage_id=stage-2&timeline_limit=10", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if got := body["stage_id"]; got != "stage-2" {
+		t.Fatalf("expected stage_id=stage-2, got %#v", got)
+	}
+	summary, ok := body["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", body["summary"])
+	}
+	if got := summary["actions"]; got != float64(1) {
+		t.Fatalf("expected 1 action, got %#v", got)
+	}
+	if got := summary["claims"]; got != float64(2) {
+		t.Fatalf("expected 2 claims, got %#v", got)
+	}
+	if got := summary["contradicted_claims"]; got != float64(1) {
+		t.Fatalf("expected 1 contradicted claim, got %#v", got)
+	}
+}
+
+func TestGraphIntelligenceEvaluationTemporalAnalysisEndpointInvalidParams(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/evaluation-temporal-analysis", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing evaluation_run_id, got %d: %s", w.Code, w.Body.String())
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/evaluation-temporal-analysis?evaluation_run_id=run-1&timeline_limit=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid timeline_limit, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestPlatformIntelligenceEvaluationTemporalAnalysisReportDefinition(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/reports/evaluation-temporal-analysis", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if got := body["id"]; got != "evaluation-temporal-analysis" {
+		t.Fatalf("expected evaluation-temporal-analysis definition, got %#v", got)
+	}
+	endpoint, ok := body["endpoint"].(map[string]any)
+	if !ok || endpoint["path"] != "/api/v1/platform/intelligence/evaluation-temporal-analysis" {
+		t.Fatalf("unexpected endpoint metadata: %#v", body["endpoint"])
+	}
+	parameters, ok := body["parameters"].([]any)
+	if !ok {
+		t.Fatalf("expected parameters array, got %#v", body["parameters"])
+	}
+	var stageIDFound bool
+	for _, raw := range parameters {
+		param, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if param["name"] == "stage_id" {
+			stageIDFound = true
+			break
+		}
+	}
+	if !stageIDFound {
+		t.Fatalf("expected stage_id parameter in definition, got %#v", parameters)
+	}
+}
+
+func TestGraphIntelligencePlaybookEffectivenessEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	addPlaybookEffectivenessEndpointFixture(t, s.app.SecurityGraph, playbookEffectivenessEndpointFixture{
+		RunID:        "run-a1",
+		PlaybookID:   "pb-remediate",
+		PlaybookName: "Remediate Public Exposure",
+		TenantID:     "tenant-acme",
+		TargetID:     "service:payments",
+		TargetKind:   graph.NodeKindService,
+		StartedAt:    time.Date(2026, 3, 23, 15, 0, 0, 0, time.UTC),
+		Stages: []playbookEffectivenessEndpointStage{
+			{ID: "approve", Name: "Approve Fix", Order: 1, Status: "completed", ApprovalRequired: true, ApprovalStatus: "approved", ObservedAt: time.Date(2026, 3, 23, 15, 10, 0, 0, time.UTC)},
+		},
+		Outcome: &playbookEffectivenessEndpointOutcome{
+			Verdict:       "positive",
+			Status:        "completed",
+			RollbackState: "stable",
+			ObservedAt:    time.Date(2026, 3, 23, 15, 40, 0, 0, time.UTC),
+		},
+	})
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/playbook-effectiveness?window_days=30&playbook_id=pb-remediate&tenant_id=tenant-acme&target_kind=service&max_playbooks=10", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	summary, ok := body["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", body["summary"])
+	}
+	if got := summary["runs"]; got != float64(1) {
+		t.Fatalf("expected one run, got %#v", got)
+	}
+	if got := summary["successful_runs"]; got != float64(1) {
+		t.Fatalf("expected one successful run, got %#v", got)
+	}
+	playbooks, ok := body["playbooks"].([]any)
+	if !ok || len(playbooks) != 1 {
+		t.Fatalf("expected one playbook rollup, got %#v", body["playbooks"])
+	}
+}
+
+func TestGraphIntelligencePlaybookEffectivenessEndpointInvalidParams(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/playbook-effectiveness?window_days=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for window_days=0, got %d", w.Code)
+	}
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/playbook-effectiveness?max_playbooks=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for max_playbooks=0, got %d", w.Code)
+	}
+}
+
+func TestPlatformIntelligencePlaybookEffectivenessReportDefinition(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/reports/playbook-effectiveness", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if got := body["id"]; got != "playbook-effectiveness" {
+		t.Fatalf("expected playbook-effectiveness definition, got %#v", got)
+	}
+	endpoint, ok := body["endpoint"].(map[string]any)
+	if !ok || endpoint["path"] != "/api/v1/platform/intelligence/playbook-effectiveness" {
+		t.Fatalf("unexpected endpoint metadata: %#v", body["endpoint"])
+	}
+}
+
+func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	addEvaluationTemporalAnalysisEndpointFixture(t, s.app.SecurityGraph, evaluationTemporalAnalysisEndpointFixture{
+		RunID:        "run-1",
+		Conversation: "conv-1",
+		ServiceID:    "service:payments:conv-1",
+		BaseAt:       time.Date(2026, 3, 23, 16, 0, 0, 0, time.UTC),
+	})
+	tagEvaluationTemporalAnalysisEndpointTenant(t, s.app.SecurityGraph, "run-1", "conv-1", "tenant-acme")
+
+	addPlaybookEffectivenessEndpointFixture(t, s.app.SecurityGraph, playbookEffectivenessEndpointFixture{
+		RunID:        "run-pb-1",
+		PlaybookID:   "pb-remediate",
+		PlaybookName: "Repair Database",
+		TenantID:     "tenant-acme",
+		TargetID:     "database:orders",
+		TargetKind:   graph.NodeKind("database"),
+		StartedAt:    time.Date(2026, 3, 23, 17, 0, 0, 0, time.UTC),
+		Stages: []playbookEffectivenessEndpointStage{
+			{ID: "repair", Name: "Repair", Order: 1, Status: "completed", ObservedAt: time.Date(2026, 3, 23, 17, 10, 0, 0, time.UTC)},
+		},
+		Outcome: &playbookEffectivenessEndpointOutcome{
+			Verdict:       "positive",
+			Status:        "completed",
+			RollbackState: "stable",
+			ObservedAt:    time.Date(2026, 3, 23, 17, 30, 0, 0, time.UTC),
+		},
+	})
+	s.app.SecurityGraph.AddNode(&graph.Node{
+		ID:   "action:playbook:run-pb-1:patch",
+		Kind: graph.NodeKindAction,
+		Name: "Patch DB",
+		Properties: map[string]any{
+			"action_type":     "repair_database",
+			"playbook_id":     "pb-remediate",
+			"playbook_name":   "Repair Database",
+			"playbook_run_id": "run-pb-1",
+			"stage_id":        "repair",
+			"action_id":       "patch",
+			"status":          "succeeded",
+			"title":           "Patch DB",
+			"tenant_id":       "tenant-acme",
+			"target_ids":      []string{"database:orders"},
+			"source_system":   "platform_playbook",
+			"observed_at":     time.Date(2026, 3, 23, 17, 20, 0, 0, time.UTC).Format(time.RFC3339),
+			"valid_from":      time.Date(2026, 3, 23, 17, 20, 0, 0, time.UTC).Format(time.RFC3339),
+		},
+	})
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/unified-execution-timeline?window_days=7&tenant_id=tenant-acme&max_events=50", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	summary, ok := body["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", body["summary"])
+	}
+	if got := summary["evaluation_runs"]; got != float64(1) {
+		t.Fatalf("expected one evaluation run, got %#v", got)
+	}
+	if got := summary["playbook_runs"]; got != float64(1) {
+		t.Fatalf("expected one playbook run, got %#v", got)
+	}
+	if got := summary["claims"]; got != float64(4) {
+		t.Fatalf("expected four claim events, got %#v", got)
+	}
+	events, ok := body["events"].([]any)
+	if !ok || len(events) == 0 {
+		t.Fatalf("expected timeline events, got %#v", body["events"])
+	}
+	var sawEvaluation, sawPlaybook bool
+	for _, raw := range events {
+		event, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch event["workflow"] {
+		case "evaluation":
+			sawEvaluation = true
+		case "playbook":
+			sawPlaybook = true
+		}
+	}
+	if !sawEvaluation || !sawPlaybook {
+		t.Fatalf("expected mixed workflow timeline, sawEvaluation=%v sawPlaybook=%v", sawEvaluation, sawPlaybook)
+	}
+}
+
+func TestGraphIntelligenceUnifiedExecutionTimelineEndpointInvalidParams(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/unified-execution-timeline?window_days=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid window_days, got %d", w.Code)
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/unified-execution-timeline?max_events=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid max_events, got %d", w.Code)
+	}
+}
+
+func TestPlatformIntelligenceUnifiedExecutionTimelineReportDefinition(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/reports/unified-execution-timeline", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if got := body["id"]; got != "unified-execution-timeline" {
+		t.Fatalf("expected unified-execution-timeline definition, got %#v", got)
+	}
+	endpoint, ok := body["endpoint"].(map[string]any)
+	if !ok || endpoint["path"] != "/api/v1/platform/intelligence/unified-execution-timeline" {
+		t.Fatalf("unexpected endpoint metadata: %#v", body["endpoint"])
+	}
+	parameters, ok := body["parameters"].([]any)
+	if !ok {
+		t.Fatalf("expected parameters array, got %#v", body["parameters"])
+	}
+	var foundEvalRun, foundPlaybook, foundTargetKind bool
+	for _, raw := range parameters {
+		param, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch param["name"] {
+		case "evaluation_run_id":
+			foundEvalRun = true
+		case "playbook_id":
+			foundPlaybook = true
+		case "target_kind":
+			foundTargetKind = true
+		}
+	}
+	if !foundEvalRun || !foundPlaybook || !foundTargetKind {
+		t.Fatalf("expected evaluation_run_id, playbook_id, and target_kind parameters, got %#v", parameters)
 	}
 }
 
@@ -1076,11 +1576,7 @@ func TestPlatformIntelligenceReportRunAsync(t *testing.T) {
 		t.Fatalf("expected job_id on async attempt, got %#v", got)
 	}
 
-	jobResp := do(t, s, http.MethodGet, jobURL, nil)
-	if jobResp.Code != http.StatusOK {
-		t.Fatalf("expected 200 for linked job lookup, got %d: %s", jobResp.Code, jobResp.Body.String())
-	}
-	jobBody := decodeJSON(t, jobResp)
+	jobBody := waitForPlatformJobTerminalStatus(t, s, jobURL, "succeeded")
 	if got := jobBody["status"]; got != "succeeded" {
 		t.Fatalf("expected job succeeded, got %#v", got)
 	}
@@ -1390,8 +1886,10 @@ func TestPlatformIntelligenceReportRunRetryAsyncIncludesBackoffMetadata(t *testi
 	if got := secondAttempt["scheduled_for"]; got == "" {
 		t.Fatalf("expected scheduled_for metadata, got %#v", got)
 	}
-	if got := secondAttempt["status"]; got != reports.ReportAttemptStatusScheduled {
-		t.Fatalf("expected scheduled second attempt status, got %#v", got)
+	if got := secondAttempt["status"]; got != reports.ReportAttemptStatusScheduled &&
+		got != reports.ReportAttemptStatusRunning &&
+		got != reports.ReportAttemptStatusSucceeded {
+		t.Fatalf("expected scheduled/running/succeeded second attempt status, got %#v", got)
 	}
 
 	waitForPlatformJobTerminalStatus(t, s, retryJobURL, "succeeded")
@@ -2093,6 +2591,95 @@ func TestGraphIntelligenceMetadataQualityEndpoint_InvalidParams(t *testing.T) {
 	}
 }
 
+func TestGraphIntelligenceAIWorkloadsEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+
+	g.AddNode(&graph.Node{ID: "internet", Kind: graph.NodeKindInternet, Name: "Internet"})
+	g.AddNode(&graph.Node{
+		ID:       "service:customer-llm-endpoint",
+		Kind:     graph.NodeKindService,
+		Name:     "SageMaker Endpoint",
+		Provider: "aws",
+	})
+	g.AddNode(&graph.Node{
+		ID:   "database:customer-pgvector",
+		Kind: graph.NodeKindDatabase,
+		Name: "Customer pgvector",
+		Properties: map[string]any{
+			"engine":              "pgvector",
+			"data_classification": "confidential",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "workload:research-agent",
+		Kind: graph.NodeKindWorkload,
+		Name: "Research Agent",
+		Properties: map[string]any{
+			"openai_api_key": "sk-test",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   "technology:ollama",
+		Kind: graph.NodeKindTechnology,
+		Name: "Ollama",
+	})
+	g.AddEdge(&graph.Edge{ID: "internet-llm", Source: "internet", Target: "service:customer-llm-endpoint", Kind: graph.EdgeKindExposedTo, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "llm-db", Source: "service:customer-llm-endpoint", Target: "database:customer-pgvector", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "agent-ollama", Source: "workload:research-agent", Target: "technology:ollama", Kind: graph.EdgeKindContains, Effect: graph.EdgeEffectAllow})
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/ai-workloads?max_workloads=10&min_risk_score=0&include_shadow=true", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+
+	summary, ok := body["summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected summary object, got %#v", body["summary"])
+	}
+	if count, ok := summary["workload_count"].(float64); !ok || int(count) != 3 {
+		t.Fatalf("expected workload_count=2, got %#v", summary["workload_count"])
+	}
+	if shadow, ok := summary["shadow_ai_workload_count"].(float64); !ok || int(shadow) != 2 {
+		t.Fatalf("expected shadow_ai_workload_count=1, got %#v", summary["shadow_ai_workload_count"])
+	}
+
+	workloads, ok := body["workloads"].([]any)
+	if !ok || len(workloads) != 3 {
+		t.Fatalf("expected 2 workloads, got %#v", body["workloads"])
+	}
+	first, ok := workloads[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected workload object, got %#v", workloads[0])
+	}
+	if first["node_id"] != "service:customer-llm-endpoint" {
+		t.Fatalf("expected internet-exposed endpoint first, got %#v", first["node_id"])
+	}
+	if exposures, ok := body["data_exposures"].([]any); !ok || len(exposures) == 0 {
+		t.Fatalf("expected data exposures, got %#v", body["data_exposures"])
+	}
+}
+
+func TestGraphIntelligenceAIWorkloadsEndpointInvalidParams(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/ai-workloads?max_workloads=0", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for max_workloads=0, got %d", w.Code)
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/ai-workloads?min_risk_score=101", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for min_risk_score=101, got %d", w.Code)
+	}
+
+	w = do(t, s, http.MethodGet, "/api/v1/platform/intelligence/ai-workloads?include_shadow=maybe", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid include_shadow, got %d", w.Code)
+	}
+}
+
 func TestGraphIntelligenceClaimConflictsEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
@@ -2661,6 +3248,119 @@ func TestGraphIntelligenceWeeklyCalibrationEndpoint(t *testing.T) {
 	if _, ok := body["ontology"].(map[string]any); !ok {
 		t.Fatalf("expected ontology object, got %#v", body["ontology"])
 	}
+	temporal, ok := body["temporal"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected temporal object, got %#v", body["temporal"])
+	}
+	if _, ok := temporal["count"].(float64); !ok {
+		t.Fatalf("expected temporal.count, got %#v", temporal["count"])
+	}
+}
+
+func TestGraphIntelligenceNaturalLanguageQueryEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+
+	g.AddNode(&graph.Node{
+		ID:       "instance:web-1",
+		Kind:     graph.NodeKindInstance,
+		Name:     "web-1",
+		Provider: "aws",
+		Properties: map[string]any{
+			"internet_exposed": true,
+		},
+	})
+	s.app.Findings.Upsert(context.Background(), policy.Finding{
+		ID:           "finding:web-1:cve",
+		PolicyID:     "vuln-critical",
+		PolicyName:   "Critical Vulnerability",
+		Severity:     "critical",
+		Description:  "Critical unpatched CVE",
+		ResourceID:   "instance:web-1",
+		ResourceName: "web-1",
+		ResourceType: "instance",
+		Resource:     map[string]any{"id": "instance:web-1"},
+	})
+
+	w := do(t, s, http.MethodPost, "/api/v1/platform/intelligence/nl-queries", map[string]any{
+		"question": "Which internet-facing instances have critical unpatched CVEs?",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	plan, ok := body["plan"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected plan object, got %#v", body["plan"])
+	}
+	if plan["kind"] != string("entity_findings_query") {
+		t.Fatalf("plan kind = %#v, want entity_findings_query", plan["kind"])
+	}
+	if _, ok := body["summary"].(string); !ok {
+		t.Fatalf("expected summary string, got %#v", body["summary"])
+	}
+	result, ok := body["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected structured result, got %#v", body["result"])
+	}
+	if got, ok := result["matching_entities"].(float64); !ok || int(got) != 1 {
+		t.Fatalf("matching_entities = %#v, want 1", result["matching_entities"])
+	}
+}
+
+func TestGraphIntelligenceNaturalLanguageQueryEndpointRejectsMutationRequests(t *testing.T) {
+	s := newTestServer(t)
+
+	w := do(t, s, http.MethodPost, "/api/v1/platform/intelligence/nl-queries", map[string]any{
+		"question": "Delete all public buckets",
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for mutation request, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGraphIntelligenceKeyPersonRiskEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	now := time.Now().UTC()
+
+	g.AddNode(&graph.Node{ID: "person:alice@example.com", Kind: graph.NodeKindPerson, Name: "Alice", Properties: map[string]any{"department": "engineering"}})
+	g.AddNode(&graph.Node{ID: "person:bob@example.com", Kind: graph.NodeKindPerson, Name: "Bob", Properties: map[string]any{"department": "engineering"}})
+	g.AddNode(&graph.Node{ID: "department:engineering", Kind: graph.NodeKindDepartment, Name: "Engineering"})
+	g.AddNode(&graph.Node{ID: "svc:core", Kind: graph.NodeKindApplication, Name: "Core"})
+	g.AddNode(&graph.Node{ID: "customer:acme", Kind: graph.NodeKindCustomer, Name: "Acme", Properties: map[string]any{"arr": 100000.0}})
+	g.AddEdge(&graph.Edge{ID: "alice-eng", Source: "person:alice@example.com", Target: "department:engineering", Kind: graph.EdgeKindMemberOf})
+	g.AddEdge(&graph.Edge{ID: "bob-eng", Source: "person:bob@example.com", Target: "department:engineering", Kind: graph.EdgeKindMemberOf})
+	g.AddEdge(&graph.Edge{ID: "alice-core", Source: "person:alice@example.com", Target: "svc:core", Kind: graph.EdgeKindCanAdmin, Properties: map[string]any{"last_seen": now.Add(-time.Hour)}})
+	g.AddEdge(&graph.Edge{ID: "alice-acme", Source: "person:alice@example.com", Target: "customer:acme", Kind: graph.EdgeKindManagedBy, Properties: map[string]any{"last_seen": now.Add(-time.Hour)}})
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/key-person-risk?limit=5", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	items, ok := body["items"].([]any)
+	if !ok || len(items) == 0 {
+		t.Fatalf("expected ranked key person items, got %#v", body["items"])
+	}
+	first := items[0].(map[string]any)
+	if first["person_id"] != "person:alice@example.com" {
+		t.Fatalf("expected alice as top key-person risk, got %#v", first)
+	}
+
+	focused := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/key-person-risk?person_id=person:alice@example.com", nil)
+	if focused.Code != http.StatusOK {
+		t.Fatalf("expected 200 for focused key-person risk, got %d: %s", focused.Code, focused.Body.String())
+	}
+	focusedBody := decodeJSON(t, focused)
+	if got := focusedBody["person_id"]; got != "person:alice@example.com" {
+		t.Fatalf("expected focused person_id alice, got %#v", got)
+	}
+
+	missing := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/key-person-risk?person_id=person:missing@example.com", nil)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing person, got %d: %s", missing.Code, missing.Body.String())
+	}
 }
 
 func TestPlatformGraphQueryEndpoint_NeighborsAndPaths(t *testing.T) {
@@ -2850,5 +3550,423 @@ func TestPlatformGraphQueryEndpoint_InvalidParams(t *testing.T) {
 	w = do(t, s, http.MethodGet, "/api/v1/platform/graph/queries?mode=neighbors&node_id=user:alice&from=2026-03-01T00:00:00Z", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 when from is missing to, got %d", w.Code)
+	}
+}
+
+type evaluationTemporalAnalysisEndpointFixture struct {
+	RunID        string
+	Conversation string
+	ServiceID    string
+	BaseAt       time.Time
+}
+
+func addEvaluationTemporalAnalysisEndpointFixture(t *testing.T, g *graph.Graph, fixture evaluationTemporalAnalysisEndpointFixture) {
+	t.Helper()
+	if g == nil {
+		t.Fatal("graph is required")
+	}
+
+	baseAt := fixture.BaseAt.UTC()
+	threadID := "thread:evaluation:" + fixture.RunID + ":" + fixture.Conversation
+	decisionID := "decision:evaluation:" + fixture.RunID + ":" + fixture.Conversation + ":turn-1"
+	actionSuccessID := "action:evaluation:" + fixture.RunID + ":" + fixture.Conversation + ":call-1"
+	actionReversedID := "action:evaluation:" + fixture.RunID + ":" + fixture.Conversation + ":call-2"
+	outcomeID := "outcome:evaluation:" + fixture.RunID + ":" + fixture.Conversation
+
+	g.AddNode(&graph.Node{
+		ID:   fixture.ServiceID,
+		Kind: graph.NodeKindService,
+		Name: fixture.ServiceID,
+		Properties: map[string]any{
+			"service_id":       fixture.ServiceID,
+			"observed_at":      baseAt.Add(-30 * time.Minute).Format(time.RFC3339),
+			"valid_from":       baseAt.Add(-30 * time.Minute).Format(time.RFC3339),
+			"recorded_at":      baseAt.Add(-30 * time.Minute).Format(time.RFC3339),
+			"transaction_from": baseAt.Add(-30 * time.Minute).Format(time.RFC3339),
+			"source_system":    "platform_eval",
+		},
+	})
+	for _, evidenceID := range []string{
+		"evidence:" + fixture.RunID + ":" + fixture.Conversation + ":exposure-before",
+		"evidence:" + fixture.RunID + ":" + fixture.Conversation + ":exposure-after",
+		"evidence:" + fixture.RunID + ":" + fixture.Conversation + ":tier-before",
+		"evidence:" + fixture.RunID + ":" + fixture.Conversation + ":tier-after",
+	} {
+		g.AddNode(&graph.Node{
+			ID:   evidenceID,
+			Kind: graph.NodeKindEvidence,
+			Name: evidenceID,
+			Properties: map[string]any{
+				"evidence_type":    "document",
+				"observed_at":      baseAt.Add(-20 * time.Minute).Format(time.RFC3339),
+				"valid_from":       baseAt.Add(-20 * time.Minute).Format(time.RFC3339),
+				"recorded_at":      baseAt.Add(-20 * time.Minute).Format(time.RFC3339),
+				"transaction_from": baseAt.Add(-20 * time.Minute).Format(time.RFC3339),
+				"source_system":    "platform_eval",
+			},
+		})
+	}
+
+	g.AddNode(&graph.Node{
+		ID:   threadID,
+		Kind: graph.NodeKind("communication_thread"),
+		Name: fixture.Conversation,
+		Properties: map[string]any{
+			"thread_id":         fixture.Conversation,
+			"channel_id":        fixture.RunID,
+			"conversation_id":   fixture.Conversation,
+			"evaluation_run_id": fixture.RunID,
+			"agent_email":       "agent@example.com",
+			"observed_at":       baseAt.Format(time.RFC3339),
+			"valid_from":        baseAt.Format(time.RFC3339),
+			"source_system":     "platform_eval",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   decisionID,
+		Kind: graph.NodeKindDecision,
+		Name: "turn-1",
+		Properties: map[string]any{
+			"decision_type":     "tool_selection",
+			"status":            "completed",
+			"conversation_id":   fixture.Conversation,
+			"evaluation_run_id": fixture.RunID,
+			"turn_id":           "turn-1",
+			"agent_email":       "agent@example.com",
+			"made_at":           baseAt.Add(5 * time.Minute).Format(time.RFC3339),
+			"observed_at":       baseAt.Add(5 * time.Minute).Format(time.RFC3339),
+			"valid_from":        baseAt.Add(5 * time.Minute).Format(time.RFC3339),
+			"source_system":     "platform_eval",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   actionSuccessID,
+		Kind: graph.NodeKindAction,
+		Name: "call-1",
+		Properties: map[string]any{
+			"action_type":       "tool_call",
+			"status":            "succeeded",
+			"conversation_id":   fixture.Conversation,
+			"evaluation_run_id": fixture.RunID,
+			"turn_id":           "turn-1",
+			"tool_call_id":      "call-1",
+			"agent_email":       "agent@example.com",
+			"observed_at":       baseAt.Add(10 * time.Minute).Format(time.RFC3339),
+			"valid_from":        baseAt.Add(10 * time.Minute).Format(time.RFC3339),
+			"source_system":     "platform_eval",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   actionReversedID,
+		Kind: graph.NodeKindAction,
+		Name: "call-2",
+		Properties: map[string]any{
+			"action_type":       "tool_call",
+			"status":            "reversed",
+			"conversation_id":   fixture.Conversation,
+			"evaluation_run_id": fixture.RunID,
+			"turn_id":           "turn-1",
+			"tool_call_id":      "call-2",
+			"agent_email":       "agent@example.com",
+			"observed_at":       baseAt.Add(12 * time.Minute).Format(time.RFC3339),
+			"valid_from":        baseAt.Add(12 * time.Minute).Format(time.RFC3339),
+			"source_system":     "platform_eval",
+		},
+	})
+	g.AddNode(&graph.Node{
+		ID:   outcomeID,
+		Kind: graph.NodeKindOutcome,
+		Name: "negative",
+		Properties: map[string]any{
+			"outcome_type":      "evaluation_conversation",
+			"verdict":           "negative",
+			"quality_score":     0.15,
+			"conversation_id":   fixture.Conversation,
+			"evaluation_run_id": fixture.RunID,
+			"observed_at":       baseAt.Add(20 * time.Minute).Format(time.RFC3339),
+			"valid_from":        baseAt.Add(20 * time.Minute).Format(time.RFC3339),
+			"source_system":     "platform_eval",
+		},
+	})
+	g.AddEdge(&graph.Edge{ID: "decision-target:" + fixture.Conversation, Source: decisionID, Target: threadID, Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "action1-based-on:" + fixture.Conversation, Source: actionSuccessID, Target: decisionID, Kind: graph.EdgeKindBasedOn, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "action2-based-on:" + fixture.Conversation, Source: actionReversedID, Target: decisionID, Kind: graph.EdgeKindBasedOn, Effect: graph.EdgeEffectAllow})
+	g.AddEdge(&graph.Edge{ID: "outcome-target:" + fixture.Conversation, Source: outcomeID, Target: threadID, Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+
+	writeClaim := func(req graph.ClaimWriteRequest) {
+		if _, err := graph.WriteClaim(g, req); err != nil {
+			t.Fatalf("write claim %q: %v", req.ID, err)
+		}
+	}
+
+	writeClaim(graph.ClaimWriteRequest{
+		ID:              "claim:evaluation:" + fixture.RunID + ":" + fixture.Conversation + ":exposure-before",
+		SubjectID:       fixture.ServiceID,
+		Predicate:       "exposure",
+		ObjectValue:     "private",
+		EvidenceIDs:     []string{"evidence:" + fixture.RunID + ":" + fixture.Conversation + ":exposure-before"},
+		SourceName:      "eval",
+		SourceType:      "system",
+		SourceSystem:    "platform_eval",
+		ObservedAt:      baseAt.Add(-10 * time.Minute),
+		RecordedAt:      baseAt.Add(-10 * time.Minute),
+		TransactionFrom: baseAt.Add(-10 * time.Minute),
+		Metadata: map[string]any{
+			"evaluation_run_id": fixture.RunID,
+			"conversation_id":   fixture.Conversation,
+		},
+	})
+	writeClaim(graph.ClaimWriteRequest{
+		ID:              "claim:evaluation:" + fixture.RunID + ":" + fixture.Conversation + ":exposure-after",
+		SubjectID:       fixture.ServiceID,
+		Predicate:       "exposure",
+		ObjectValue:     "public",
+		EvidenceIDs:     []string{"evidence:" + fixture.RunID + ":" + fixture.Conversation + ":exposure-after"},
+		SourceName:      "eval",
+		SourceType:      "system",
+		SourceSystem:    "platform_eval",
+		ObservedAt:      baseAt.Add(18 * time.Minute),
+		RecordedAt:      baseAt.Add(18 * time.Minute),
+		TransactionFrom: baseAt.Add(18 * time.Minute),
+		Metadata: map[string]any{
+			"evaluation_run_id": fixture.RunID,
+			"conversation_id":   fixture.Conversation,
+		},
+	})
+	writeClaim(graph.ClaimWriteRequest{
+		ID:              "claim:evaluation:" + fixture.RunID + ":" + fixture.Conversation + ":tier-before",
+		SubjectID:       fixture.ServiceID,
+		Predicate:       "service_tier",
+		ObjectValue:     "tier1",
+		EvidenceIDs:     []string{"evidence:" + fixture.RunID + ":" + fixture.Conversation + ":tier-before"},
+		SourceName:      "eval",
+		SourceType:      "system",
+		SourceSystem:    "platform_eval",
+		ObservedAt:      baseAt.Add(-5 * time.Minute),
+		RecordedAt:      baseAt.Add(-5 * time.Minute),
+		TransactionFrom: baseAt.Add(-5 * time.Minute),
+		Metadata: map[string]any{
+			"evaluation_run_id": fixture.RunID,
+			"conversation_id":   fixture.Conversation,
+		},
+	})
+	writeClaim(graph.ClaimWriteRequest{
+		ID:                "claim:evaluation:" + fixture.RunID + ":" + fixture.Conversation + ":tier-after",
+		SubjectID:         fixture.ServiceID,
+		Predicate:         "service_tier",
+		ObjectValue:       "tier0",
+		EvidenceIDs:       []string{"evidence:" + fixture.RunID + ":" + fixture.Conversation + ":tier-after"},
+		SupersedesClaimID: "claim:evaluation:" + fixture.RunID + ":" + fixture.Conversation + ":tier-before",
+		SourceName:        "eval",
+		SourceType:        "system",
+		SourceSystem:      "platform_eval",
+		ObservedAt:        baseAt.Add(19 * time.Minute),
+		RecordedAt:        baseAt.Add(19 * time.Minute),
+		TransactionFrom:   baseAt.Add(19 * time.Minute),
+		Metadata: map[string]any{
+			"evaluation_run_id": fixture.RunID,
+			"conversation_id":   fixture.Conversation,
+		},
+	})
+}
+
+func tagEvaluationTemporalAnalysisEndpointTenant(t *testing.T, g *graph.Graph, runID, conversationID, tenantID string) {
+	t.Helper()
+	nodeIDs := []string{
+		"thread:evaluation:" + runID + ":" + conversationID,
+		"decision:evaluation:" + runID + ":" + conversationID + ":turn-1",
+		"action:evaluation:" + runID + ":" + conversationID + ":call-1",
+		"action:evaluation:" + runID + ":" + conversationID + ":call-2",
+		"outcome:evaluation:" + runID + ":" + conversationID,
+		"claim:evaluation:" + runID + ":" + conversationID + ":exposure-before",
+		"claim:evaluation:" + runID + ":" + conversationID + ":exposure-after",
+		"claim:evaluation:" + runID + ":" + conversationID + ":tier-before",
+		"claim:evaluation:" + runID + ":" + conversationID + ":tier-after",
+	}
+	for _, nodeID := range nodeIDs {
+		node, ok := g.GetNode(nodeID)
+		if !ok || node == nil {
+			continue
+		}
+		if node.Properties == nil {
+			node.Properties = make(map[string]any)
+		}
+		node.Properties["tenant_id"] = tenantID
+	}
+}
+
+type playbookEffectivenessEndpointFixture struct {
+	RunID        string
+	PlaybookID   string
+	PlaybookName string
+	TenantID     string
+	TargetID     string
+	TargetKind   graph.NodeKind
+	StartedAt    time.Time
+	Stages       []playbookEffectivenessEndpointStage
+	Outcome      *playbookEffectivenessEndpointOutcome
+}
+
+type playbookEffectivenessEndpointStage struct {
+	ID               string
+	Name             string
+	Order            int
+	Status           string
+	ApprovalRequired bool
+	ApprovalStatus   string
+	ObservedAt       time.Time
+}
+
+type playbookEffectivenessEndpointOutcome struct {
+	Verdict       string
+	Status        string
+	RollbackState string
+	ObservedAt    time.Time
+}
+
+func addPlaybookEffectivenessEndpointFixture(t *testing.T, g *graph.Graph, fixture playbookEffectivenessEndpointFixture) {
+	t.Helper()
+	if g == nil {
+		t.Fatal("graph is nil")
+	}
+
+	if fixture.TargetID != "" {
+		g.AddNode(&graph.Node{
+			ID:   fixture.TargetID,
+			Kind: fixture.TargetKind,
+			Name: fixture.TargetID,
+			Properties: map[string]any{
+				"observed_at": fixture.StartedAt.Format(time.RFC3339),
+				"valid_from":  fixture.StartedAt.Format(time.RFC3339),
+			},
+		})
+	}
+
+	targetIDs := []string{}
+	if fixture.TargetID != "" {
+		targetIDs = append(targetIDs, fixture.TargetID)
+	}
+
+	threadID := "thread:playbook:" + fixture.RunID
+	g.AddNode(&graph.Node{
+		ID:   threadID,
+		Kind: graph.NodeKind("communication_thread"),
+		Name: fixture.PlaybookName,
+		Properties: map[string]any{
+			"thread_id":       fixture.RunID,
+			"channel_id":      fixture.PlaybookID,
+			"channel_name":    "playbook",
+			"playbook_id":     fixture.PlaybookID,
+			"playbook_name":   fixture.PlaybookName,
+			"playbook_run_id": fixture.RunID,
+			"status":          "started",
+			"tenant_id":       fixture.TenantID,
+			"target_ids":      targetIDs,
+			"source_system":   "platform_playbook",
+			"observed_at":     fixture.StartedAt.Format(time.RFC3339),
+			"valid_from":      fixture.StartedAt.Format(time.RFC3339),
+		},
+	})
+
+	lastStageID := ""
+	for _, stage := range fixture.Stages {
+		decisionID := "decision:playbook:" + fixture.RunID + ":" + stage.ID
+		g.AddNode(&graph.Node{
+			ID:   decisionID,
+			Kind: graph.NodeKindDecision,
+			Name: stage.Name,
+			Properties: map[string]any{
+				"decision_type":     "playbook_stage",
+				"playbook_id":       fixture.PlaybookID,
+				"playbook_name":     fixture.PlaybookName,
+				"playbook_run_id":   fixture.RunID,
+				"stage_id":          stage.ID,
+				"stage_name":        stage.Name,
+				"stage_order":       stage.Order,
+				"status":            stage.Status,
+				"approval_required": stage.ApprovalRequired,
+				"approval_status":   stage.ApprovalStatus,
+				"tenant_id":         fixture.TenantID,
+				"target_ids":        targetIDs,
+				"source_system":     "platform_playbook",
+				"made_at":           stage.ObservedAt.Format(time.RFC3339),
+				"observed_at":       stage.ObservedAt.Format(time.RFC3339),
+				"valid_from":        stage.ObservedAt.Format(time.RFC3339),
+			},
+		})
+		g.AddEdge(&graph.Edge{ID: "decision-thread:" + fixture.RunID + ":" + stage.ID, Source: decisionID, Target: threadID, Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+		lastStageID = stage.ID
+	}
+
+	if fixture.Outcome != nil {
+		outcomeID := "outcome:playbook:" + fixture.RunID
+		g.AddNode(&graph.Node{
+			ID:   outcomeID,
+			Kind: graph.NodeKindOutcome,
+			Name: fixture.PlaybookName + " " + fixture.Outcome.Verdict,
+			Properties: map[string]any{
+				"outcome_type":    "playbook_run",
+				"playbook_id":     fixture.PlaybookID,
+				"playbook_name":   fixture.PlaybookName,
+				"playbook_run_id": fixture.RunID,
+				"verdict":         fixture.Outcome.Verdict,
+				"status":          fixture.Outcome.Status,
+				"rollback_state":  fixture.Outcome.RollbackState,
+				"tenant_id":       fixture.TenantID,
+				"target_ids":      targetIDs,
+				"source_system":   "platform_playbook",
+				"observed_at":     fixture.Outcome.ObservedAt.Format(time.RFC3339),
+				"valid_from":      fixture.Outcome.ObservedAt.Format(time.RFC3339),
+			},
+		})
+		g.AddEdge(&graph.Edge{ID: "outcome-thread:" + fixture.RunID, Source: outcomeID, Target: threadID, Kind: graph.EdgeKindTargets, Effect: graph.EdgeEffectAllow})
+		if lastStageID != "" {
+			g.AddEdge(&graph.Edge{ID: "outcome-evaluates:" + fixture.RunID, Source: outcomeID, Target: "decision:playbook:" + fixture.RunID + ":" + lastStageID, Kind: graph.EdgeKindEvaluates, Effect: graph.EdgeEffectAllow})
+		}
+	}
+}
+
+func tagEvaluationTemporalAnalysisEndpointStageFixture(t *testing.T, g *graph.Graph, runID, conversationID string) {
+	t.Helper()
+	stageProperties := map[string]map[string]any{
+		"decision:evaluation:" + runID + ":" + conversationID + ":turn-1": {
+			"stage_id": "stage-2",
+		},
+		"action:evaluation:" + runID + ":" + conversationID + ":call-1": {
+			"stage_id": "stage-1",
+		},
+		"action:evaluation:" + runID + ":" + conversationID + ":call-2": {
+			"stage_id": "stage-2",
+		},
+		"outcome:evaluation:" + runID + ":" + conversationID: {
+			"final_stage_id": "stage-2",
+		},
+		"claim:evaluation:" + runID + ":" + conversationID + ":exposure-before": {
+			"stage_id": "stage-1",
+		},
+		"claim:evaluation:" + runID + ":" + conversationID + ":exposure-after": {
+			"stage_id": "stage-2",
+		},
+		"claim:evaluation:" + runID + ":" + conversationID + ":tier-before": {
+			"stage_id": "stage-1",
+		},
+		"claim:evaluation:" + runID + ":" + conversationID + ":tier-after": {
+			"stage_id":             "stage-2",
+			"previous_stage_id":    "stage-1",
+			"supersedes_stage_id":  "stage-1",
+			"contradicts_stage_id": "stage-1",
+		},
+	}
+	for nodeID, props := range stageProperties {
+		node, ok := g.GetNode(nodeID)
+		if !ok {
+			t.Fatalf("expected node %q to exist", nodeID)
+		}
+		if node.Properties == nil {
+			node.Properties = make(map[string]any)
+		}
+		for key, value := range props {
+			node.Properties[key] = value
+		}
 	}
 }

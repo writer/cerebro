@@ -185,7 +185,7 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
-	working.buildAPIEndpointNodes()
+	working.buildAPIEndpointNodes(ctx)
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
@@ -704,7 +704,7 @@ func isNodePublic(node *Node) bool {
 	if isPublic, ok := node.Properties["public"].(bool); ok && isPublic {
 		return true
 	}
-	if pip := toString(node.Properties["public_ip"]); pip != "" {
+	if pip := node.PropertyString("public_ip"); pip != "" {
 		// Filter out placeholder / empty-like values
 		if isValidPublicIP(pip) {
 			return true

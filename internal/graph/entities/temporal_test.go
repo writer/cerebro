@@ -28,6 +28,8 @@ func TestGetEntityRecordAtTimeAndDiff(t *testing.T) {
 	if !ok || node == nil {
 		t.Fatal("expected seeded node")
 	}
+	node.CreatedAt = base
+	node.UpdatedAt = base.Add(2 * time.Hour)
 	node.PropertyHistory = map[string][]graph.PropertySnapshot{
 		"status": {
 			{Timestamp: base, Value: "healthy"},
@@ -80,6 +82,26 @@ func TestGetEntityRecordAtTimeAndDiff(t *testing.T) {
 	}
 	if !foundStatus || !foundOwner {
 		t.Fatalf("expected status and owner diffs, got %+v", diff.PropertyChanges)
+	}
+
+	timeline, ok := GetEntityTimeline(g, "service:payments", base, base.Add(3*time.Hour), base.Add(3*time.Hour))
+	if !ok {
+		t.Fatal("expected entity timeline")
+	}
+	if len(timeline.Events) < 3 {
+		t.Fatalf("expected multiple timeline events, got %+v", timeline.Events)
+	}
+	if len(timeline.ChangedKeys) != 2 {
+		t.Fatalf("expected status and owner changed keys, got %+v", timeline.ChangedKeys)
+	}
+	if timeline.Events[0].EventType != "entity_created" {
+		t.Fatalf("expected lifecycle event first, got %+v", timeline.Events[0])
+	}
+	if timeline.Events[1].Key != "status" || timeline.Events[1].After != "healthy" {
+		t.Fatalf("expected first property change to capture historical status, got %+v", timeline.Events[1])
+	}
+	if timeline.Events[len(timeline.Events)-1].Key != "status" || timeline.Events[len(timeline.Events)-1].After != "degraded" {
+		t.Fatalf("expected latest property change to capture degraded status, got %+v", timeline.Events[len(timeline.Events)-1])
 	}
 }
 

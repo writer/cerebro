@@ -40,6 +40,27 @@ type EntityTimeDiffRecord struct {
 	PropertyChanges []EntityPropertyDiff `json:"property_changes,omitempty"`
 }
 
+// EntityTimelineEvent captures one property or lifecycle event across a time window.
+type EntityTimelineEvent struct {
+	Timestamp time.Time `json:"timestamp"`
+	EventType string    `json:"event_type"`
+	Key       string    `json:"key,omitempty"`
+	Before    any       `json:"before,omitempty"`
+	After     any       `json:"after,omitempty"`
+}
+
+// EntityTimelineRecord captures one entity timeline across a time window.
+type EntityTimelineRecord struct {
+	EntityID    string                `json:"entity_id"`
+	From        time.Time             `json:"from"`
+	To          time.Time             `json:"to"`
+	RecordedAt  time.Time             `json:"recorded_at"`
+	Before      EntityTimeRecord      `json:"before"`
+	After       EntityTimeRecord      `json:"after"`
+	ChangedKeys []string              `json:"changed_keys,omitempty"`
+	Events      []EntityTimelineEvent `json:"events,omitempty"`
+}
+
 // GetEntityRecordAtTime reconstructs one entity at the requested valid-time slice.
 func GetEntityRecordAtTime(g *Graph, id string, asOf, recordedAt time.Time) (EntityTimeRecord, bool) {
 	if g == nil {
@@ -94,6 +115,56 @@ func GetEntityTimeDiff(g *Graph, id string, from, to, recordedAt time.Time) (Ent
 		After:           after,
 		ChangedKeys:     changedKeys,
 		PropertyChanges: changes,
+	}, true
+}
+
+// GetEntityTimeline returns one entity timeline across the requested valid-time window.
+func GetEntityTimeline(g *Graph, id string, from, to, recordedAt time.Time) (EntityTimelineRecord, bool) {
+	before, beforeOK := GetEntityRecordAtTime(g, id, from, recordedAt)
+	after, afterOK := GetEntityRecordAtTime(g, id, to, recordedAt)
+	events, eventsOK := g.EntityTimeline(id, from, to)
+	if !beforeOK && !afterOK && !eventsOK {
+		return EntityTimelineRecord{}, false
+	}
+	switch {
+	case beforeOK:
+		recordedAt = before.Reconstruction.RecordedAt
+	case afterOK:
+		recordedAt = after.Reconstruction.RecordedAt
+	case recordedAt.IsZero():
+		recordedAt = temporalNowUTC()
+	default:
+		recordedAt = recordedAt.UTC()
+	}
+	if !beforeOK {
+		before = missingEntityTimeRecord(id, from, recordedAt)
+	}
+	if !afterOK {
+		after = missingEntityTimeRecord(id, to, recordedAt)
+	}
+
+	changedKeysSet := make(map[string]struct{}, len(events))
+	for _, event := range events {
+		if event.EventType != "property_changed" || event.Key == "" {
+			continue
+		}
+		changedKeysSet[event.Key] = struct{}{}
+	}
+	changedKeys := make([]string, 0, len(changedKeysSet))
+	for key := range changedKeysSet {
+		changedKeys = append(changedKeys, key)
+	}
+	sort.Strings(changedKeys)
+
+	return EntityTimelineRecord{
+		EntityID:    id,
+		From:        before.Reconstruction.AsOf,
+		To:          after.Reconstruction.AsOf,
+		RecordedAt:  recordedAt.UTC(),
+		Before:      before,
+		After:       after,
+		ChangedKeys: changedKeys,
+		Events:      events,
 	}, true
 }
 
@@ -191,8 +262,8 @@ func entityHistoricalVisibleAtLocked(node *Node, validAt, recordedAt time.Time) 
 	validAt = validAt.UTC()
 	recordedAt = recordedAt.UTC()
 
-	validStart, validEnd := temporalBounds(node.Properties, node.CreatedAt, node.DeletedAt)
-	recordedStart, recordedEnd := recordedBounds(node.Properties, node.CreatedAt, node.DeletedAt)
+	validStart, validEnd := nodeTemporalBounds(node)
+	recordedStart, recordedEnd := nodeRecordedBounds(node)
 	if !temporalContains(validStart, validEnd, validAt) {
 		return false
 	}
@@ -224,6 +295,109 @@ func reconstructNodePropertiesAt(node *Node, asOf, recordedAt time.Time) map[str
 		}
 	}
 	return properties
+}
+
+// EntityTimeline returns one entity's property and lifecycle events across a valid-time window.
+func (g *Graph) EntityTimeline(id string, from, to time.Time) ([]EntityTimelineEvent, bool) {
+	if g == nil {
+		return nil, false
+	}
+	if from.IsZero() {
+		from = temporalNowUTC()
+	}
+	if to.IsZero() {
+		to = temporalNowUTC()
+	}
+	from = from.UTC()
+	to = to.UTC()
+	if to.Before(from) {
+		from, to = to, from
+	}
+
+	g.mu.RLock()
+	node, ok := g.nodes[id]
+	if !ok || node == nil || !entityQueryAllowedNodeKind(node.Kind) {
+		g.mu.RUnlock()
+		return nil, false
+	}
+	createdAt := node.CreatedAt.UTC()
+	var deletedAt time.Time
+	if node.DeletedAt != nil {
+		deletedAt = node.DeletedAt.UTC()
+	}
+	history := clonePropertyHistoryMap(node.PropertyHistory)
+	g.mu.RUnlock()
+
+	events := make([]EntityTimelineEvent, 0)
+	if !createdAt.IsZero() && !createdAt.Before(from) && !createdAt.After(to) {
+		events = append(events, EntityTimelineEvent{
+			Timestamp: createdAt,
+			EventType: "entity_created",
+		})
+	}
+	if !deletedAt.IsZero() && !deletedAt.Before(from) && !deletedAt.After(to) {
+		events = append(events, EntityTimelineEvent{
+			Timestamp: deletedAt,
+			EventType: "entity_deleted",
+		})
+	}
+	for key, snapshots := range history {
+		if len(snapshots) == 0 {
+			continue
+		}
+		copied := append([]PropertySnapshot(nil), snapshots...)
+		sort.SliceStable(copied, func(i, j int) bool {
+			return copied[i].Timestamp.Before(copied[j].Timestamp)
+		})
+		var previous any
+		previousSet := false
+		for _, snapshot := range copied {
+			ts := snapshot.Timestamp.UTC()
+			if !ts.Before(from) && !ts.After(to) {
+				event := EntityTimelineEvent{
+					Timestamp: ts,
+					EventType: "property_changed",
+					Key:       key,
+					After:     cloneAny(snapshot.Value),
+				}
+				if previousSet {
+					event.Before = cloneAny(previous)
+				}
+				if previousSet && reflect.DeepEqual(event.Before, event.After) {
+					previous = snapshot.Value
+					continue
+				}
+				events = append(events, event)
+			}
+			previous = snapshot.Value
+			previousSet = true
+		}
+	}
+	sort.SliceStable(events, func(i, j int) bool {
+		if !events[i].Timestamp.Equal(events[j].Timestamp) {
+			return events[i].Timestamp.Before(events[j].Timestamp)
+		}
+		left := entityTimelineEventOrder(events[i].EventType)
+		right := entityTimelineEventOrder(events[j].EventType)
+		if left != right {
+			return left < right
+		}
+		return events[i].Key < events[j].Key
+	})
+	return events, true
+}
+
+func entityTimelineEventOrder(eventType string) int {
+	switch eventType {
+	case "entity_created":
+		return 0
+	case "property_changed":
+		return 1
+	case "entity_deleted":
+		return 2
+	default:
+		return 3
+	}
 }
 
 func propertyValueAt(node *Node, key string, asOf, recordedAt time.Time) (any, bool) {

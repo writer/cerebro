@@ -41,13 +41,14 @@ func runReactiveMonitorLoop(
 	defer sub.Close()
 
 	var (
-		debounceTimer  *time.Timer
-		debounceTimerC <-chan time.Time
+		debounceTimer   *time.Timer
+		debounceTimerC  <-chan time.Time
+		stalenessTimer  *time.Timer
+		stalenessTimerC <-chan time.Time
+		dirty           bool
 	)
-	stalenessTicker := time.NewTicker(maxStaleness)
-	defer stalenessTicker.Stop()
 
-	resetTimer := func() {
+	resetDebounceTimer := func() {
 		if debounceTimer == nil {
 			debounceTimer = time.NewTimer(debounce)
 		} else {
@@ -62,7 +63,7 @@ func runReactiveMonitorLoop(
 		debounceTimerC = debounceTimer.C
 	}
 
-	stopTimer := func() {
+	stopDebounceTimer := func() {
 		if debounceTimer == nil {
 			return
 		}
@@ -74,7 +75,43 @@ func runReactiveMonitorLoop(
 		}
 		debounceTimerC = nil
 	}
-	defer stopTimer()
+	defer stopDebounceTimer()
+
+	startStalenessTimer := func() {
+		if stalenessTimer == nil {
+			stalenessTimer = time.NewTimer(maxStaleness)
+		} else {
+			if !stalenessTimer.Stop() {
+				select {
+				case <-stalenessTimer.C:
+				default:
+				}
+			}
+			stalenessTimer.Reset(maxStaleness)
+		}
+		stalenessTimerC = stalenessTimer.C
+	}
+
+	stopStalenessTimer := func() {
+		if stalenessTimer == nil {
+			return
+		}
+		if !stalenessTimer.Stop() {
+			select {
+			case <-stalenessTimer.C:
+			default:
+			}
+		}
+		stalenessTimerC = nil
+	}
+	defer stopStalenessTimer()
+
+	scanAndClearDirty := func() {
+		stopDebounceTimer()
+		stopStalenessTimer()
+		dirty = false
+		scan()
+	}
 
 	for {
 		select {
@@ -86,13 +123,15 @@ func runReactiveMonitorLoop(
 			if !ok {
 				return nil
 			}
-			resetTimer()
+			if !dirty {
+				dirty = true
+				startStalenessTimer()
+			}
+			resetDebounceTimer()
 		case <-debounceTimerC:
-			debounceTimerC = nil
-			scan()
-		case <-stalenessTicker.C:
-			stopTimer()
-			scan()
+			scanAndClearDirty()
+		case <-stalenessTimerC:
+			scanAndClearDirty()
 		}
 	}
 }

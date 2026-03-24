@@ -66,6 +66,419 @@
   ],
   "lifecycle_events": [
     {
+      "event_type": "evaluation.agent.cost",
+      "summary": "Evaluation agent cost observation recorded on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/evaluation.agent.cost/v1",
+      "required_data_keys": [
+        "conversation_id",
+        "cost_id",
+        "amount_usd",
+        "currency",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from"
+      ],
+      "optional_data_keys": [
+        "evaluation_run_id",
+        "turn_id",
+        "tool_call_id",
+        "stage_id",
+        "token_count",
+        "model",
+        "target_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_usd": {
+            "type": "number"
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "cost_id": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "evaluation_run_id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "token_count": {
+            "type": "integer"
+          },
+          "tool_call_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "turn_id": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "cost_id",
+          "amount_usd",
+          "currency",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "evaluation.agent.tool_call",
+      "summary": "Evaluation agent tool call recorded on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/evaluation.agent.tool_call/v1",
+      "required_data_keys": [
+        "conversation_id",
+        "turn_id",
+        "tool_call_id",
+        "tool_name",
+        "status",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from"
+      ],
+      "optional_data_keys": [
+        "evaluation_run_id",
+        "agent_id",
+        "agent_email",
+        "stage_id",
+        "stage_name",
+        "tool_version",
+        "latency_ms",
+        "target_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_email": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "evaluation_run_id": {
+            "type": "string"
+          },
+          "latency_ms": {
+            "type": "integer"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "stage_name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "tool_call_id": {
+            "type": "string"
+          },
+          "tool_name": {
+            "type": "string"
+          },
+          "tool_version": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "turn_id": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "turn_id",
+          "tool_call_id",
+          "tool_name",
+          "status",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "evaluation.conversation.completed",
+      "summary": "Evaluation conversation completed and recorded on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/evaluation.conversation.completed/v1",
+      "required_data_keys": [
+        "conversation_id",
+        "evaluation_run_id",
+        "verdict",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from"
+      ],
+      "optional_data_keys": [
+        "agent_id",
+        "agent_email",
+        "summary",
+        "quality_score",
+        "final_stage_id",
+        "target_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_email": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "evaluation_run_id": {
+            "type": "string"
+          },
+          "final_stage_id": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "quality_score": {
+            "type": "number"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "evaluation_run_id",
+          "verdict",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "evaluation.turn.completed",
+      "summary": "Evaluation turn completed and recorded on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/evaluation.turn.completed/v1",
+      "required_data_keys": [
+        "conversation_id",
+        "turn_id",
+        "evaluation_run_id",
+        "decision_type",
+        "status",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from"
+      ],
+      "optional_data_keys": [
+        "agent_id",
+        "agent_email",
+        "rationale",
+        "quality_score",
+        "stage_id",
+        "stage_name",
+        "stage_order",
+        "previous_stage_id",
+        "supersedes_stage_id",
+        "contradicts_stage_id",
+        "target_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_email": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "contradicts_stage_id": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "decision_type": {
+            "type": "string"
+          },
+          "evaluation_run_id": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "previous_stage_id": {
+            "type": "string"
+          },
+          "quality_score": {
+            "type": "number"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "stage_name": {
+            "type": "string"
+          },
+          "stage_order": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "supersedes_stage_id": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "turn_id": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "turn_id",
+          "evaluation_run_id",
+          "decision_type",
+          "status",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
       "event_type": "platform.action.recorded",
       "summary": "Action write recorded on the shared platform workflow layer.",
       "schema_url": "urn:cerebro:events/platform.action.recorded/v1",
@@ -501,6 +914,473 @@
           "outcome_type",
           "verdict",
           "impact_score",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.playbook.action.executed",
+      "summary": "Playbook action execution recorded on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/platform.playbook.action.executed/v1",
+      "required_data_keys": [
+        "playbook_run_id",
+        "stage_id",
+        "action_id",
+        "action_type",
+        "status",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from"
+      ],
+      "optional_data_keys": [
+        "title",
+        "summary",
+        "playbook_id",
+        "playbook_name",
+        "operator_id",
+        "operator_email",
+        "automation_id",
+        "automation_name",
+        "target_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "action_id": {
+            "type": "string"
+          },
+          "action_type": {
+            "type": "string"
+          },
+          "automation_id": {
+            "type": "string"
+          },
+          "automation_name": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operator_email": {
+            "type": "string"
+          },
+          "operator_id": {
+            "type": "string"
+          },
+          "playbook_id": {
+            "type": "string"
+          },
+          "playbook_name": {
+            "type": "string"
+          },
+          "playbook_run_id": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playbook_run_id",
+          "stage_id",
+          "action_id",
+          "action_type",
+          "status",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.playbook.run.completed",
+      "summary": "Playbook run completion recorded on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/platform.playbook.run.completed/v1",
+      "required_data_keys": [
+        "playbook_run_id",
+        "playbook_id",
+        "playbook_name",
+        "verdict",
+        "status",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from"
+      ],
+      "optional_data_keys": [
+        "final_stage_id",
+        "summary",
+        "rollback_state",
+        "completed_stage_count",
+        "skipped_stage_count",
+        "failed_stage_count",
+        "operator_id",
+        "operator_email",
+        "automation_id",
+        "automation_name",
+        "target_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "automation_id": {
+            "type": "string"
+          },
+          "automation_name": {
+            "type": "string"
+          },
+          "completed_stage_count": {
+            "type": "integer"
+          },
+          "failed_stage_count": {
+            "type": "integer"
+          },
+          "final_stage_id": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operator_email": {
+            "type": "string"
+          },
+          "operator_id": {
+            "type": "string"
+          },
+          "playbook_id": {
+            "type": "string"
+          },
+          "playbook_name": {
+            "type": "string"
+          },
+          "playbook_run_id": {
+            "type": "string"
+          },
+          "rollback_state": {
+            "type": "string"
+          },
+          "skipped_stage_count": {
+            "type": "integer"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "playbook_run_id",
+          "playbook_id",
+          "playbook_name",
+          "verdict",
+          "status",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.playbook.run.started",
+      "summary": "Playbook run started on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/platform.playbook.run.started/v1",
+      "required_data_keys": [
+        "playbook_run_id",
+        "playbook_id",
+        "playbook_name",
+        "status",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from"
+      ],
+      "optional_data_keys": [
+        "playbook_version",
+        "trigger_id",
+        "trigger_type",
+        "signal_id",
+        "operator_id",
+        "operator_email",
+        "automation_id",
+        "automation_name",
+        "target_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "automation_id": {
+            "type": "string"
+          },
+          "automation_name": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operator_email": {
+            "type": "string"
+          },
+          "operator_id": {
+            "type": "string"
+          },
+          "playbook_id": {
+            "type": "string"
+          },
+          "playbook_name": {
+            "type": "string"
+          },
+          "playbook_run_id": {
+            "type": "string"
+          },
+          "playbook_version": {
+            "type": "string"
+          },
+          "signal_id": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "trigger_id": {
+            "type": "string"
+          },
+          "trigger_type": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playbook_run_id",
+          "playbook_id",
+          "playbook_name",
+          "status",
+          "source_system",
+          "source_event_id",
+          "observed_at",
+          "valid_from"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "event_type": "platform.playbook.stage.completed",
+      "summary": "Playbook stage completion recorded on the shared platform workflow layer.",
+      "schema_url": "urn:cerebro:events/platform.playbook.stage.completed/v1",
+      "required_data_keys": [
+        "playbook_run_id",
+        "stage_id",
+        "stage_name",
+        "stage_order",
+        "status",
+        "source_system",
+        "source_event_id",
+        "observed_at",
+        "valid_from"
+      ],
+      "optional_data_keys": [
+        "playbook_id",
+        "playbook_name",
+        "previous_stage_id",
+        "retry_of_stage_id",
+        "approval_required",
+        "approval_status",
+        "approver_id",
+        "approver_email",
+        "operator_id",
+        "operator_email",
+        "automation_id",
+        "automation_name",
+        "rationale",
+        "target_ids",
+        "tenant_id",
+        "traceparent"
+      ],
+      "data_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_required": {
+            "type": "boolean"
+          },
+          "approval_status": {
+            "type": "string"
+          },
+          "approver_email": {
+            "type": "string"
+          },
+          "approver_id": {
+            "type": "string"
+          },
+          "automation_id": {
+            "type": "string"
+          },
+          "automation_name": {
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "operator_email": {
+            "type": "string"
+          },
+          "operator_id": {
+            "type": "string"
+          },
+          "playbook_id": {
+            "type": "string"
+          },
+          "playbook_name": {
+            "type": "string"
+          },
+          "playbook_run_id": {
+            "type": "string"
+          },
+          "previous_stage_id": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "retry_of_stage_id": {
+            "type": "string"
+          },
+          "source_event_id": {
+            "type": "string"
+          },
+          "source_system": {
+            "type": "string"
+          },
+          "stage_id": {
+            "type": "string"
+          },
+          "stage_name": {
+            "type": "string"
+          },
+          "stage_order": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "traceparent": {
+            "type": "string"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "playbook_run_id",
+          "stage_id",
+          "stage_name",
+          "stage_order",
+          "status",
           "source_system",
           "source_event_id",
           "observed_at",
@@ -2567,9 +3447,577 @@
         ],
         "type": "object"
       }
+    },
+    {
+      "name": "evaluation_agent_cost",
+      "source_pattern": "evaluation.agent.cost",
+      "domain": "unknown",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "communication_thread",
+        "observation"
+      ],
+      "edge_kinds": [
+        "based_on",
+        "targets"
+      ],
+      "required_data_keys": [
+        "conversation_id",
+        "cost_id",
+        "evaluation_run_id"
+      ],
+      "optional_data_keys": [
+        "amount_usd",
+        "currency",
+        "model",
+        "observed_at",
+        "stage_id",
+        "target_ids",
+        "tenant_id",
+        "token_count",
+        "tool_call_id",
+        "turn_id"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "amount_usd": {},
+          "conversation_id": {},
+          "cost_id": {},
+          "currency": {},
+          "evaluation_run_id": {},
+          "model": {},
+          "observed_at": {},
+          "stage_id": {},
+          "target_ids": {},
+          "tenant_id": {},
+          "token_count": {},
+          "tool_call_id": {},
+          "turn_id": {}
+        },
+        "required": [
+          "conversation_id",
+          "cost_id",
+          "evaluation_run_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "evaluation_agent_tool_call",
+      "source_pattern": "evaluation.agent.tool_call",
+      "domain": "unknown",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "communication_thread",
+        "decision"
+      ],
+      "edge_kinds": [
+        "based_on",
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "conversation_id",
+        "evaluation_run_id",
+        "tool_call_id",
+        "turn_id"
+      ],
+      "optional_data_keys": [
+        "agent_email",
+        "agent_id",
+        "observed_at",
+        "stage_id",
+        "stage_name",
+        "status",
+        "target_ids",
+        "tenant_id",
+        "tool_name"
+      ],
+      "resolve_keys": [
+        "agent_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_email": {},
+          "agent_id": {},
+          "conversation_id": {},
+          "evaluation_run_id": {},
+          "observed_at": {},
+          "stage_id": {},
+          "stage_name": {},
+          "status": {},
+          "target_ids": {},
+          "tenant_id": {},
+          "tool_call_id": {},
+          "tool_name": {},
+          "turn_id": {}
+        },
+        "required": [
+          "conversation_id",
+          "evaluation_run_id",
+          "tool_call_id",
+          "turn_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "evaluation_conversation_completed",
+      "source_pattern": "evaluation.conversation.completed",
+      "domain": "unknown",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "claim",
+        "communication_thread",
+        "outcome",
+        "source"
+      ],
+      "edge_kinds": [
+        "asserted_by",
+        "based_on",
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "conversation_id",
+        "evaluation_run_id"
+      ],
+      "optional_data_keys": [
+        "agent_email",
+        "agent_id",
+        "final_stage_id",
+        "quality_score",
+        "source_system",
+        "summary",
+        "target_ids",
+        "tenant_id",
+        "verdict"
+      ],
+      "resolve_keys": [
+        "agent_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_email": {},
+          "agent_id": {},
+          "conversation_id": {},
+          "evaluation_run_id": {},
+          "final_stage_id": {},
+          "quality_score": {},
+          "source_system": {},
+          "summary": {},
+          "target_ids": {},
+          "tenant_id": {},
+          "verdict": {}
+        },
+        "required": [
+          "conversation_id",
+          "evaluation_run_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "evaluation_turn_completed",
+      "source_pattern": "evaluation.turn.completed",
+      "domain": "unknown",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "claim",
+        "communication_thread",
+        "decision",
+        "evidence",
+        "source"
+      ],
+      "edge_kinds": [
+        "asserted_by",
+        "based_on",
+        "contradicts",
+        "interacted_with",
+        "supersedes",
+        "targets"
+      ],
+      "required_data_keys": [
+        "conversation_id",
+        "evaluation_run_id",
+        "turn_id"
+      ],
+      "optional_data_keys": [
+        "agent_email",
+        "agent_id",
+        "contradicts_stage_id",
+        "decision_type",
+        "observed_at",
+        "previous_stage_id",
+        "rationale",
+        "source_system",
+        "stage_id",
+        "stage_name",
+        "stage_order",
+        "status",
+        "supersedes_stage_id",
+        "target_ids",
+        "tenant_id"
+      ],
+      "resolve_keys": [
+        "agent_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "agent_email": {},
+          "agent_id": {},
+          "contradicts_stage_id": {},
+          "conversation_id": {},
+          "decision_type": {},
+          "evaluation_run_id": {},
+          "observed_at": {},
+          "previous_stage_id": {},
+          "rationale": {},
+          "source_system": {},
+          "stage_id": {},
+          "stage_name": {},
+          "stage_order": {},
+          "status": {},
+          "supersedes_stage_id": {},
+          "target_ids": {},
+          "tenant_id": {},
+          "turn_id": {}
+        },
+        "required": [
+          "conversation_id",
+          "evaluation_run_id",
+          "turn_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "platform_playbook_action_executed",
+      "source_pattern": "platform.playbook.action.executed",
+      "domain": "unknown",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "action",
+        "communication_thread"
+      ],
+      "edge_kinds": [
+        "based_on",
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "action_id",
+        "playbook_run_id",
+        "stage_id"
+      ],
+      "optional_data_keys": [
+        "action_type",
+        "automation_id",
+        "automation_name",
+        "observed_at",
+        "operator_email",
+        "operator_id",
+        "playbook_id",
+        "playbook_name",
+        "source_event_id",
+        "source_system",
+        "status",
+        "summary",
+        "target_ids",
+        "tenant_id",
+        "title"
+      ],
+      "context_keys": [
+        "existing.properties.playbook_version",
+        "existing.properties.signal_id",
+        "existing.properties.trigger_id",
+        "existing.properties.trigger_type"
+      ],
+      "resolve_keys": [
+        "operator_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "action_id": {},
+          "action_type": {},
+          "automation_id": {},
+          "automation_name": {},
+          "observed_at": {},
+          "operator_email": {},
+          "operator_id": {},
+          "playbook_id": {},
+          "playbook_name": {},
+          "playbook_run_id": {},
+          "source_event_id": {},
+          "source_system": {},
+          "stage_id": {},
+          "status": {},
+          "summary": {},
+          "target_ids": {},
+          "tenant_id": {},
+          "title": {}
+        },
+        "required": [
+          "action_id",
+          "playbook_run_id",
+          "stage_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "platform_playbook_run_completed",
+      "source_pattern": "platform.playbook.run.completed",
+      "domain": "unknown",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "communication_thread",
+        "outcome"
+      ],
+      "edge_kinds": [
+        "evaluates",
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "playbook_run_id"
+      ],
+      "optional_data_keys": [
+        "automation_id",
+        "automation_name",
+        "completed_stage_count",
+        "failed_stage_count",
+        "final_stage_id",
+        "operator_email",
+        "operator_id",
+        "playbook_id",
+        "playbook_name",
+        "rollback_state",
+        "skipped_stage_count",
+        "source_event_id",
+        "source_system",
+        "status",
+        "summary",
+        "target_ids",
+        "tenant_id",
+        "verdict"
+      ],
+      "context_keys": [
+        "existing.properties.playbook_version",
+        "existing.properties.signal_id",
+        "existing.properties.trigger_id",
+        "existing.properties.trigger_type"
+      ],
+      "resolve_keys": [
+        "operator_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "automation_id": {},
+          "automation_name": {},
+          "completed_stage_count": {},
+          "failed_stage_count": {},
+          "final_stage_id": {},
+          "operator_email": {},
+          "operator_id": {},
+          "playbook_id": {},
+          "playbook_name": {},
+          "playbook_run_id": {},
+          "rollback_state": {},
+          "skipped_stage_count": {},
+          "source_event_id": {},
+          "source_system": {},
+          "status": {},
+          "summary": {},
+          "target_ids": {},
+          "tenant_id": {},
+          "verdict": {}
+        },
+        "required": [
+          "playbook_run_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "platform_playbook_run_started",
+      "source_pattern": "platform.playbook.run.started",
+      "domain": "unknown",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "communication_thread"
+      ],
+      "edge_kinds": [
+        "interacted_with"
+      ],
+      "required_data_keys": [
+        "playbook_run_id"
+      ],
+      "optional_data_keys": [
+        "automation_id",
+        "automation_name",
+        "operator_email",
+        "operator_id",
+        "playbook_id",
+        "playbook_name",
+        "playbook_version",
+        "signal_id",
+        "source_event_id",
+        "source_system",
+        "status",
+        "target_ids",
+        "tenant_id",
+        "trigger_id",
+        "trigger_type"
+      ],
+      "resolve_keys": [
+        "operator_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "automation_id": {},
+          "automation_name": {},
+          "operator_email": {},
+          "operator_id": {},
+          "playbook_id": {},
+          "playbook_name": {},
+          "playbook_run_id": {},
+          "playbook_version": {},
+          "signal_id": {},
+          "source_event_id": {},
+          "source_system": {},
+          "status": {},
+          "target_ids": {},
+          "tenant_id": {},
+          "trigger_id": {},
+          "trigger_type": {}
+        },
+        "required": [
+          "playbook_run_id"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "name": "platform_playbook_stage_completed",
+      "source_pattern": "platform.playbook.stage.completed",
+      "domain": "unknown",
+      "wildcard_pattern": false,
+      "apiVersion": "cerebro.graphingest/v1alpha1",
+      "contractVersion": "1.0.0",
+      "node_kinds": [
+        "communication_thread",
+        "decision"
+      ],
+      "edge_kinds": [
+        "based_on",
+        "interacted_with",
+        "targets"
+      ],
+      "required_data_keys": [
+        "playbook_run_id",
+        "stage_id"
+      ],
+      "optional_data_keys": [
+        "approval_required",
+        "approval_status",
+        "approver_email",
+        "approver_id",
+        "automation_id",
+        "automation_name",
+        "observed_at",
+        "operator_email",
+        "operator_id",
+        "playbook_id",
+        "playbook_name",
+        "previous_stage_id",
+        "rationale",
+        "retry_of_stage_id",
+        "source_event_id",
+        "source_system",
+        "stage_name",
+        "stage_order",
+        "status",
+        "target_ids",
+        "tenant_id"
+      ],
+      "context_keys": [
+        "existing.properties.playbook_version",
+        "existing.properties.signal_id",
+        "existing.properties.trigger_id",
+        "existing.properties.trigger_type"
+      ],
+      "resolve_keys": [
+        "operator_email"
+      ],
+      "data_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": true,
+        "properties": {
+          "approval_required": {},
+          "approval_status": {},
+          "approver_email": {},
+          "approver_id": {},
+          "automation_id": {},
+          "automation_name": {},
+          "observed_at": {},
+          "operator_email": {},
+          "operator_id": {},
+          "playbook_id": {},
+          "playbook_name": {},
+          "playbook_run_id": {},
+          "previous_stage_id": {},
+          "rationale": {},
+          "retry_of_stage_id": {},
+          "source_event_id": {},
+          "source_system": {},
+          "stage_id": {},
+          "stage_name": {},
+          "stage_order": {},
+          "status": {},
+          "target_ids": {},
+          "tenant_id": {}
+        },
+        "required": [
+          "playbook_run_id",
+          "stage_id"
+        ],
+        "type": "object"
+      }
     }
   ],
   "distinct_required_data": [
+    "action_id",
     "actor_email",
     "agent_email",
     "author_email",
@@ -2578,9 +4026,12 @@
     "check_name",
     "check_run_id",
     "contact_id",
+    "conversation_id",
+    "cost_id",
     "deploy_id",
     "doc_id",
     "editor_email",
+    "evaluation_run_id",
     "event_id",
     "incident_id",
     "issue_key",
@@ -2590,19 +4041,32 @@
     "number",
     "organizer_email",
     "pipeline_id",
+    "playbook_run_id",
     "rep_email",
     "repository",
     "reviewer_email",
     "run_id",
     "service",
+    "stage_id",
     "thread_ts",
     "ticket_id",
+    "tool_call_id",
     "transition_id",
+    "turn_id",
     "update_id",
     "version"
   ],
   "distinct_optional_data": [
+    "action_type",
+    "agent_id",
+    "amount_usd",
+    "approval_required",
+    "approval_status",
+    "approver_email",
+    "approver_id",
     "author",
+    "automation_id",
+    "automation_name",
     "branch",
     "change_summary",
     "channel_name",
@@ -2611,18 +4075,24 @@
     "company_id",
     "company_name",
     "completed_at",
+    "completed_stage_count",
     "conclusion",
     "contact_email",
     "contact_name",
+    "contradicts_stage_id",
+    "currency",
     "customer_id",
     "customer_name",
     "deal_id",
     "deal_name",
     "deal_stage",
+    "decision_type",
     "duration_minutes",
     "ends_at",
     "environment",
     "event_type",
+    "failed_stage_count",
+    "final_stage_id",
     "from_status",
     "issue_type",
     "lead_id",
@@ -2630,16 +4100,34 @@
     "lead_source",
     "logged_at",
     "merged_by",
+    "model",
+    "observed_at",
+    "operator_email",
+    "operator_id",
     "opportunity_amount",
     "opportunity_id",
     "opportunity_name",
     "opportunity_stage",
     "performed_at",
     "pipeline_name",
+    "playbook_id",
+    "playbook_name",
+    "playbook_version",
+    "previous_stage_id",
     "priority",
     "project_key",
+    "quality_score",
+    "rationale",
     "release_version",
+    "retry_of_stage_id",
+    "rollback_state",
     "severity",
+    "signal_id",
+    "skipped_stage_count",
+    "source_event_id",
+    "source_system",
+    "stage_name",
+    "stage_order",
     "started_at",
     "starts_at",
     "state",
@@ -2649,12 +4137,26 @@
     "subscription_name",
     "subscription_plan",
     "summary",
+    "supersedes_stage_id",
+    "target_ids",
+    "tenant_id",
     "text",
     "title",
     "to_status",
+    "token_count",
+    "tool_name",
+    "trigger_id",
+    "trigger_type",
     "update_type",
     "updated_at",
-    "url"
+    "url",
+    "verdict"
+  ],
+  "distinct_context_keys": [
+    "existing.properties.playbook_version",
+    "existing.properties.signal_id",
+    "existing.properties.trigger_id",
+    "existing.properties.trigger_type"
   ],
   "distinct_resolve_keys": [
     "actor_email",
@@ -2662,6 +4164,7 @@
     "author_email",
     "editor_email",
     "merged_by_email",
+    "operator_email",
     "organizer_email",
     "rep_email",
     "reviewer_email"

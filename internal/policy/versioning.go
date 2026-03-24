@@ -341,6 +341,12 @@ func (e *Engine) evaluatePolicyAgainstAssets(ctx context.Context, p *Policy, ass
 	if policyID == "" {
 		policyID = "candidate"
 	}
+	preparedEngine := NewEngine()
+	preparedEngine.AddPolicy(p)
+	preparedPolicy, ok := preparedEngine.GetPolicy(policyID)
+	if !ok {
+		return result, nil
+	}
 
 	for _, asset := range assets {
 		if ctx != nil {
@@ -351,7 +357,7 @@ func (e *Engine) evaluatePolicyAgainstAssets(ctx context.Context, p *Policy, ass
 		if len(asset) == 0 || !policyAppliesToAssetTable(p, asset) {
 			continue
 		}
-		if violation := e.checkAssetViolation(p, asset); violation == "" {
+		if violation := preparedEngine.checkAssetViolation(preparedPolicy, asset); violation == "" {
 			continue
 		}
 		findingID := fmt.Sprintf("%s-%v", policyID, asset["_cq_id"])

@@ -4,16 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/writer/cerebro/internal/executionstore"
 )
 
 const executionNamespace = "workload_scan"
+const distributedDedupNamespace = executionNamespace + "_distributed_dedup"
 
 type RunStore interface {
 	SaveRun(ctx context.Context, run *RunRecord) error
 	LoadRun(ctx context.Context, runID string) (*RunRecord, error)
 	ListRuns(ctx context.Context, opts RunListOptions) ([]RunRecord, error)
+	CompareAndSwapRun(ctx context.Context, current, next *RunRecord) (bool, error)
+	ClaimDistributedDedup(ctx context.Context, dedupKey, runID string, ttl time.Duration) (bool, error)
+	ReleaseDistributedDedup(ctx context.Context, dedupKey string) error
 	AppendEvent(ctx context.Context, runID string, event RunEvent) (RunEvent, error)
 	LoadEvents(ctx context.Context, runID string) ([]RunEvent, error)
 	Close() error
@@ -42,22 +48,11 @@ func (s *SQLiteRunStore) SaveRun(ctx context.Context, run *RunRecord) error {
 	if s == nil || s.store == nil || run == nil {
 		return nil
 	}
-	payload, err := json.Marshal(run)
+	env, err := marshalRunEnvelope(run)
 	if err != nil {
-		return fmt.Errorf("encode workload scan run: %w", err)
+		return err
 	}
-	return s.store.UpsertRun(ctx, executionstore.RunEnvelope{
-		Namespace:   executionNamespace,
-		RunID:       run.ID,
-		Kind:        string(run.Provider),
-		Status:      string(run.Status),
-		Stage:       string(run.Stage),
-		SubmittedAt: run.SubmittedAt,
-		StartedAt:   run.StartedAt,
-		CompletedAt: run.CompletedAt,
-		UpdatedAt:   run.UpdatedAt,
-		Payload:     payload,
-	})
+	return s.store.UpsertRun(ctx, env)
 }
 
 func (s *SQLiteRunStore) LoadRun(ctx context.Context, runID string) (*RunRecord, error) {
@@ -104,6 +99,58 @@ func (s *SQLiteRunStore) ListRuns(ctx context.Context, opts RunListOptions) ([]R
 		runs = append(runs, run)
 	}
 	return runs, nil
+}
+
+func (s *SQLiteRunStore) CompareAndSwapRun(ctx context.Context, current, next *RunRecord) (bool, error) {
+	if s == nil || s.store == nil || current == nil || next == nil {
+		return false, nil
+	}
+	currentEnv, err := marshalRunEnvelope(current)
+	if err != nil {
+		return false, err
+	}
+	nextEnv, err := marshalRunEnvelope(next)
+	if err != nil {
+		return false, err
+	}
+	return s.store.CompareAndSwapRun(ctx, currentEnv, nextEnv)
+}
+
+func (s *SQLiteRunStore) ClaimDistributedDedup(ctx context.Context, dedupKey, runID string, ttl time.Duration) (bool, error) {
+	if s == nil || s.store == nil {
+		return true, nil
+	}
+	dedupKey = strings.TrimSpace(dedupKey)
+	runID = strings.TrimSpace(runID)
+	if dedupKey == "" {
+		return false, fmt.Errorf("distributed dedup key is required")
+	}
+	if ttl <= 0 {
+		ttl = 30 * time.Minute
+	}
+	now := time.Now().UTC()
+	claimed, _, err := s.store.ClaimProcessedEvent(ctx, executionstore.ProcessedEventRecord{
+		Namespace:   distributedDedupNamespace,
+		EventKey:    dedupKey,
+		Status:      executionstore.ProcessedEventStatusProcessing,
+		PayloadHash: runID,
+		FirstSeenAt: now,
+		LastSeenAt:  now,
+		ProcessedAt: now,
+		ExpiresAt:   now.Add(ttl),
+	}, 0)
+	return claimed, err
+}
+
+func (s *SQLiteRunStore) ReleaseDistributedDedup(ctx context.Context, dedupKey string) error {
+	if s == nil || s.store == nil {
+		return nil
+	}
+	dedupKey = strings.TrimSpace(dedupKey)
+	if dedupKey == "" {
+		return nil
+	}
+	return s.store.DeleteProcessedEvent(ctx, distributedDedupNamespace, dedupKey)
 }
 
 func (s *SQLiteRunStore) AppendEvent(ctx context.Context, runID string, event RunEvent) (RunEvent, error) {
@@ -153,6 +200,25 @@ func (s *SQLiteRunStore) Close() error {
 		return nil
 	}
 	return s.store.Close()
+}
+
+func marshalRunEnvelope(run *RunRecord) (executionstore.RunEnvelope, error) {
+	payload, err := json.Marshal(run)
+	if err != nil {
+		return executionstore.RunEnvelope{}, fmt.Errorf("encode workload scan run: %w", err)
+	}
+	return executionstore.RunEnvelope{
+		Namespace:   executionNamespace,
+		RunID:       run.ID,
+		Kind:        string(run.Provider),
+		Status:      string(run.Status),
+		Stage:       string(run.Stage),
+		SubmittedAt: run.SubmittedAt,
+		StartedAt:   run.StartedAt,
+		CompletedAt: run.CompletedAt,
+		UpdatedAt:   run.UpdatedAt,
+		Payload:     payload,
+	}, nil
 }
 
 func runStatusesToStrings(statuses []RunStatus) []string {

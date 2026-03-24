@@ -132,8 +132,13 @@ func (s *Server) listPlatformGraphChangelog(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	filter := parseGraphDiffFilterQuery(r)
+	changelog := s.platformGraphChangelog(r.Context(), now, since, until, limit, filter)
+	s.json(w, http.StatusOK, changelog)
+}
+
+func (s *Server) platformGraphChangelog(ctx context.Context, now, since, until time.Time, limit int, filter graph.GraphDiffFilter) graph.GraphChangelog {
 	changelog := graph.GraphChangelog{
-		GeneratedAt: now,
+		GeneratedAt: now.UTC(),
 		Filter:      filter,
 	}
 	if !since.IsZero() {
@@ -145,7 +150,7 @@ func (s *Server) listPlatformGraphChangelog(w http.ResponseWriter, r *http.Reque
 		changelog.Until = &copy
 	}
 
-	pairs := s.platformGraphSnapshotDiffPairs(r.Context())
+	pairs := s.platformGraphSnapshotDiffPairs(ctx)
 
 	entries := make([]graph.GraphChangelogEntry, 0, limit)
 	for i := len(pairs) - 1; i >= 0; i-- {
@@ -158,7 +163,7 @@ func (s *Server) listPlatformGraphChangelog(w http.ResponseWriter, r *http.Reque
 		if !until.IsZero() && changeTime.After(until) {
 			continue
 		}
-		record, snapshots, _, err := s.platformGraphSnapshotDiffWithSnapshots(r.Context(), fromRecord.ID, toRecord.ID)
+		record, snapshots, _, err := s.platformGraphSnapshotDiffWithSnapshots(ctx, fromRecord.ID, toRecord.ID)
 		if err != nil {
 			continue
 		}
@@ -193,10 +198,9 @@ func (s *Server) listPlatformGraphChangelog(w http.ResponseWriter, r *http.Reque
 			break
 		}
 	}
-
 	changelog.Entries = entries
 	changelog.Count = len(entries)
-	s.json(w, http.StatusOK, changelog)
+	return changelog
 }
 
 func (s *Server) materializePlatformGraphDiff(ctx context.Context, record *graph.GraphSnapshotDiffRecord, jobID string) (*graph.GraphSnapshotDiffRecord, error) {

@@ -5,7 +5,7 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
 - Catalog API version: **cerebro.agent-sdk.contracts/v1alpha1**
 - Catalog kind: **AgentSDKCatalog**
 - MCP protocol version: **2025-06-18**
-- Tools: **30**
+- Tools: **36**
 - Resources: **5**
 - MCP methods + notifications: **7**
 
@@ -15,6 +15,7 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
 |---|---|---|---|---|---|---|---|---|---|
 | `cerebro_access_review` | `1.0.0` | `cerebro.access_review` | `access_review` | `query` | `direct_tool` | false | false | ` ` | `sdk.enforcement.run` |
 | `cerebro_actuate_recommendation` | `1.0.0` | `cerebro.actuate_recommendation` | `actuate_recommendation` | `query` | `direct_tool` | false | false | ` ` | `sdk.worldmodel.write` |
+| `cerebro_ai_workloads` | `1.0.0` | `cerebro.ai_workloads` | `ai_workloads` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_annotate` | `1.0.0` | `cerebro.annotate_entity` | `annotate` | `writeback` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/annotations` | `sdk.worldmodel.write` |
 | `cerebro_autonomous_credential_response` | `1.0.0` | `cerebro.autonomous_credential_response` | `autonomous_credential_response` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_autonomous_workflow_approve` | `1.0.0` | `cerebro.autonomous_workflow_approve` | `autonomous_workflow_approve` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
@@ -23,8 +24,9 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
 | `cerebro_check` | `1.0.0` | `evaluate_policy` | `check` | `enforcement` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/check` | `sdk.enforcement.run` |
 | `cerebro_claim` | `1.0.0` | `cerebro.write_claim` | `claim` | `writeback` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/claims` | `sdk.worldmodel.write` |
 | `cerebro_context` | `1.0.0` | `insight_card` | `context` | `query` | `direct_tool` | false | false | `GET /api/v1/agent-sdk/context/{entity_id}` | `sdk.context.read` |
-| `cerebro_correlate_events` | `1.0.0` | `cerebro.correlate_events` | `correlate_events` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
+| `cerebro_correlate_events` | `2.0.0` | `cerebro.correlate_events` | `correlate_events` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_decide` | `1.0.0` | `cerebro.record_decision` | `decide` | `writeback` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/decisions` | `sdk.worldmodel.write` |
+| `cerebro_diff` | `1.0.0` | `cerebro.diff` | `diff` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_entity_history` | `1.0.0` | `cerebro.entity_history` | `entity_history` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_execution_status` | `2.0.0` | `cerebro.execution_status` | `execution_status` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_findings` | `1.0.0` | `cerebro.findings` | `findings` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
@@ -33,16 +35,20 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
 | `cerebro_graph_simulate` | `1.0.0` | `cerebro.simulate` | `graph_simulate` | `enforcement` | `direct_tool` | false | false | ` ` | `sdk.enforcement.run` |
 | `cerebro_identity_calibration` | `1.0.0` | `cerebro.identity_calibration` | `identity_calibration` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_identity_review` | `1.0.0` | `cerebro.identity_review` | `identity_review` | `query` | `direct_tool` | false | false | ` ` | `sdk.worldmodel.write` |
+| `cerebro_key_person_risk` | `1.0.0` | `cerebro.key_person_risk` | `key_person_risk` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_leverage` | `1.0.0` | `cerebro.graph_leverage_report` | `leverage` | `query` | `direct_tool` | false | false | `GET /api/v1/agent-sdk/leverage` | `sdk.context.read` |
+| `cerebro_nlq` | `1.0.0` | `cerebro.nl_query` | `nlq` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_observe` | `1.0.0` | `cerebro.record_observation` | `observe` | `writeback` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/observations` | `sdk.worldmodel.write` |
 | `cerebro_outcome` | `1.0.0` | `cerebro.record_outcome` | `outcome` | `writeback` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/outcomes` | `sdk.worldmodel.write` |
 | `cerebro_quality` | `1.0.0` | `cerebro.graph_quality_report` | `quality` | `query` | `direct_tool` | false | false | `GET /api/v1/agent-sdk/quality` | `sdk.context.read` |
+| `cerebro_reconstruct` | `1.0.0` | `cerebro.reconstruct` | `reconstruct` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_report` | `2.0.0` | `cerebro.intelligence_report` | `report` | `intelligence` | `report_run` | true | true | `POST /api/v1/agent-sdk/report` | `sdk.context.read` |
 | `cerebro_resolve_identity` | `1.0.0` | `cerebro.resolve_identity` | `resolve_identity` | `writeback` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/identity/resolve` | `sdk.worldmodel.write` |
 | `cerebro_risk_score` | `1.0.0` | `cerebro.risk_score` | `risk_score` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 | `cerebro_simulate` | `2.0.0` | `simulate` | `simulate` | `enforcement` | `direct_tool` | false | false | `POST /api/v1/agent-sdk/simulate` | `sdk.enforcement.run` |
 | `cerebro_split_identity` | `1.0.0` | `cerebro.split_identity` | `split_identity` | `query` | `direct_tool` | false | false | ` ` | `sdk.worldmodel.write` |
 | `cerebro_templates` | `1.0.0` | `cerebro.graph_query_templates` | `templates` | `query` | `direct_tool` | false | false | `GET /api/v1/agent-sdk/templates` | `sdk.context.read` |
+| `cerebro_timeline` | `1.0.0` | `cerebro.timeline` | `timeline` | `query` | `direct_tool` | false | false | ` ` | `sdk.context.read` |
 
 ## Resources
 
@@ -100,6 +106,16 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
   "title": "title",
   "valid_from": "valid_from",
   "valid_to": "valid_to"
+}
+```
+
+### `cerebro_ai_workloads`
+
+```json
+{
+  "include_shadow": true,
+  "max_workloads": 50,
+  "min_risk_score": 0
 }
 ```
 
@@ -234,11 +250,16 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
 
 ```json
 {
+  "direction": "both",
   "entity_id": "service:payments",
   "event_id": "event_id",
   "include_anomalies": false,
   "limit": 25,
-  "pattern_id": "pattern_id"
+  "max_depth": 4,
+  "mode": "correlations",
+  "pattern_id": "pattern_id",
+  "since": "since",
+  "until": "until"
 }
 ```
 
@@ -263,6 +284,17 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
   "target_ids": [],
   "valid_from": "valid_from",
   "valid_to": "valid_to"
+}
+```
+
+### `cerebro_diff`
+
+```json
+{
+  "entity_id": "service:payments",
+  "from": "from",
+  "recorded_at": "recorded_at",
+  "to": "to"
 }
 ```
 
@@ -377,6 +409,15 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
 }
 ```
 
+### `cerebro_key_person_risk`
+
+```json
+{
+  "limit": 10,
+  "person_id": "person_id"
+}
+```
+
 ### `cerebro_leverage`
 
 ```json
@@ -388,6 +429,18 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
   "recent_window_hours": 24,
   "since_version": 1,
   "stale_after_hours": 720
+}
+```
+
+### `cerebro_nlq`
+
+```json
+{
+  "context": {
+    "example": true
+  },
+  "preview_only": false,
+  "question": "question"
 }
 ```
 
@@ -440,6 +493,16 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
   "history_limit": 20,
   "since_version": 1,
   "stale_after_hours": 720
+}
+```
+
+### `cerebro_reconstruct`
+
+```json
+{
+  "entity_id": "service:payments",
+  "recorded_at": "recorded_at",
+  "timestamp": "timestamp"
 }
 ```
 
@@ -520,6 +583,17 @@ Generated from the shared `App.AgentSDKTools()` registry and `internal/agentsdk`
   "reason": "reason",
   "source_event_id": "source_event_id",
   "source_system": "agent"
+}
+```
+
+### `cerebro_timeline`
+
+```json
+{
+  "entity_id": "service:payments",
+  "from": "from",
+  "recorded_at": "recorded_at",
+  "to": "to"
 }
 ```
 

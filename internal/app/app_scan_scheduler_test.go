@@ -61,8 +61,8 @@ func TestRunScheduledGraphAnalyses_UsesPersistedSnapshotWhenLiveGraphUnavailable
 		Severity:    "high",
 		Resource:    "org::system",
 		Conditions: []string{
-			"criticality == 'high'",
-			"bus_factor <= 1",
+			"resource.criticality == 'high'",
+			"resource.bus_factor <= 1",
 		},
 	})
 

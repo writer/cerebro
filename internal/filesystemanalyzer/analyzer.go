@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"debug/pe"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -248,6 +250,23 @@ func (a *Analyzer) Analyze(ctx context.Context, rootfsPath string) (*Report, err
 		if shouldParseOSFile(filePath) {
 			if data, ok, err := readLimitedFile(root, filePath, a.maxFileBytes); err == nil && ok {
 				mergeOSInfo(&inv.os, parseOSInfo(filePath, data))
+			} else if err != nil {
+				inv.metadataErrors = append(inv.metadataErrors, err.Error())
+			}
+		}
+		if shouldInspectPEBinary(filePath, info.Mode(), info.Size(), a.maxFileBytes) {
+			if data, ok, err := readLimitedFile(root, filePath, a.maxFileBytes); err == nil && ok {
+				pkg, findings, osInfo, inspectErr := inspectPEBinary(filePath, data)
+				if inspectErr != nil {
+					inv.metadataErrors = append(inv.metadataErrors, inspectErr.Error())
+				}
+				if pkg != nil {
+					inv.addPackages(*pkg)
+				}
+				if len(findings) > 0 {
+					inv.addConfigs(findings...)
+				}
+				mergeOSInfo(&inv.os, osInfo)
 			} else if err != nil {
 				inv.metadataErrors = append(inv.metadataErrors, err.Error())
 			}
@@ -987,6 +1006,18 @@ func shouldInspectGoImportFile(filePath string, mode fs.FileMode, size int64, ma
 	return strings.EqualFold(path.Ext(filePath), ".go")
 }
 
+func shouldInspectPEBinary(filePath string, mode fs.FileMode, size int64, maxBytes int64) bool {
+	if mode&fs.ModeSymlink != 0 || mode.IsDir() || size <= 0 || size > maxBytes {
+		return false
+	}
+	switch strings.ToLower(path.Ext(strings.TrimSpace(filePath))) {
+	case ".dll", ".exe", ".sys", ".ocx", ".scr", ".cpl":
+		return true
+	default:
+		return false
+	}
+}
+
 func pathHasSegment(filePath, segment string) bool {
 	filePath = strings.Trim(strings.TrimSpace(filePath), "/")
 	segment = strings.Trim(strings.TrimSpace(segment), "/")
@@ -1175,6 +1206,161 @@ func parsePackageRecords(filePath string, data []byte) []PackageRecord {
 		return parsePackagesConfig(filePath, data)
 	default:
 		return nil
+	}
+}
+
+func inspectPEBinary(filePath string, data []byte) (*PackageRecord, []ConfigFinding, OSInfo, error) {
+	if !looksLikePEBinary(data) {
+		return nil, nil, OSInfo{}, nil
+	}
+	file, err := pe.NewFile(bytes.NewReader(data))
+	if err != nil {
+		return nil, nil, OSInfo{}, fmt.Errorf("parse PE %s: %w", filePath, err)
+	}
+	defer func() { _ = file.Close() }()
+
+	version := peBinaryVersion(file)
+	if version == "" {
+		version = "0.0.0.0"
+	}
+	pkg := &PackageRecord{
+		Ecosystem: "windows",
+		Manager:   "pe",
+		Name:      path.Base(filePath),
+		Version:   version,
+		Location:  filePath,
+	}
+
+	osInfo := inferWindowsOSInfo(filePath, version, peMachineArchitecture(file.Machine))
+	signed, sigErr := hasEmbeddedPEAuthenticodeSignature(file, data)
+	findings := make([]ConfigFinding, 0, 1)
+	if sigErr != nil {
+		findings = append(findings, ConfigFinding{
+			ID:           findingID("binary_signature", filePath),
+			Type:         "binary_signature",
+			Severity:     "high",
+			Path:         filePath,
+			Title:        "Windows PE signature metadata is invalid",
+			Description:  firstNonEmpty(sigErr.Error(), "PE binary has invalid Authenticode metadata."),
+			Remediation:  "Rebuild or replace the binary with a trusted Authenticode-signed artifact.",
+			ResourceType: "binary",
+			ArtifactType: "windows_pe",
+			Format:       "pe",
+		})
+	} else if !signed {
+		findings = append(findings, ConfigFinding{
+			ID:           findingID("binary_signature", filePath),
+			Type:         "binary_signature",
+			Severity:     "medium",
+			Path:         filePath,
+			Title:        "Windows PE binary is unsigned",
+			Description:  "PE binary does not contain an embedded Authenticode signature.",
+			Remediation:  "Prefer Authenticode-signed binaries and verify signatures before deployment.",
+			ResourceType: "binary",
+			ArtifactType: "windows_pe",
+			Format:       "pe",
+		})
+	}
+	return pkg, findings, osInfo, nil
+}
+
+func looksLikePEBinary(data []byte) bool {
+	if len(data) < 0x40 || string(data[:2]) != "MZ" {
+		return false
+	}
+	peOffset := int(binary.LittleEndian.Uint32(data[0x3c:]))
+	if peOffset < 0 || peOffset+4 > len(data) {
+		return false
+	}
+	return bytes.Equal(data[peOffset:peOffset+4], []byte("PE\x00\x00"))
+}
+
+func peBinaryVersion(file *pe.File) string {
+	if file == nil {
+		return ""
+	}
+	switch header := file.OptionalHeader.(type) {
+	case *pe.OptionalHeader32:
+		return formatWindowsVersion(header.MajorOperatingSystemVersion, header.MinorOperatingSystemVersion, header.MajorImageVersion, header.MinorImageVersion)
+	case *pe.OptionalHeader64:
+		return formatWindowsVersion(header.MajorOperatingSystemVersion, header.MinorOperatingSystemVersion, header.MajorImageVersion, header.MinorImageVersion)
+	default:
+		return ""
+	}
+}
+
+func formatWindowsVersion(majorOS, minorOS, majorImage, minorImage uint16) string {
+	if majorOS == 0 && minorOS == 0 && majorImage == 0 && minorImage == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d.%d.%d", majorOS, minorOS, majorImage, minorImage)
+}
+
+func inferWindowsOSInfo(filePath, version, architecture string) OSInfo {
+	lowerPath := strings.ToLower(strings.TrimSpace(filePath))
+	if !strings.HasPrefix(lowerPath, "windows/") && !strings.Contains(lowerPath, "/windows/") {
+		return OSInfo{}
+	}
+	info := OSInfo{
+		ID:           "windows",
+		Name:         "Windows",
+		PrettyName:   "Windows",
+		Family:       "windows",
+		Architecture: architecture,
+	}
+	if strings.Contains(lowerPath, "windows/system32/") || strings.Contains(lowerPath, "windows/syswow64/") {
+		info.Version = version
+		info.VersionID = version
+	}
+	return info
+}
+
+func peMachineArchitecture(machine uint16) string {
+	switch machine {
+	case 0x14c:
+		return "386"
+	case 0x8664:
+		return "amd64"
+	case 0xaa64:
+		return "arm64"
+	default:
+		return ""
+	}
+}
+
+func hasEmbeddedPEAuthenticodeSignature(file *pe.File, data []byte) (bool, error) {
+	offset, size, ok := peSecurityDirectory(file)
+	if !ok || size == 0 {
+		return false, nil
+	}
+	if offset == 0 || size < 8 {
+		return false, fmt.Errorf("invalid Authenticode certificate table header")
+	}
+	end := uint64(offset) + uint64(size)
+	if end > uint64(len(data)) {
+		return false, fmt.Errorf("invalid Authenticode certificate table bounds")
+	}
+	cert := data[offset:end]
+	declaredSize := binary.LittleEndian.Uint32(cert[:4])
+	if declaredSize < 8 || uint64(declaredSize) > uint64(size) {
+		return false, fmt.Errorf("invalid Authenticode certificate table size")
+	}
+	return true, nil
+}
+
+func peSecurityDirectory(file *pe.File) (uint32, uint32, bool) {
+	if file == nil {
+		return 0, 0, false
+	}
+	switch header := file.OptionalHeader.(type) {
+	case *pe.OptionalHeader32:
+		entry := header.DataDirectory[4]
+		return entry.VirtualAddress, entry.Size, true
+	case *pe.OptionalHeader64:
+		entry := header.DataDirectory[4]
+		return entry.VirtualAddress, entry.Size, true
+	default:
+		return 0, 0, false
 	}
 }
 

@@ -2,15 +2,21 @@ package workloadscan
 
 import (
 	"context"
+	"encoding/binary"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/writer/cerebro/internal/filesystemanalyzer"
 	"github.com/writer/cerebro/internal/metrics"
+	"github.com/writer/cerebro/internal/scanpolicy"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -157,6 +163,7 @@ type fakeMounter struct {
 	failMount bool
 	unmounted []string
 	mountErr  error
+	mountPath string
 }
 
 func (m *fakeMounter) Mount(_ context.Context, attachment VolumeAttachment, _ SourceVolume) (*MountedVolume, error) {
@@ -166,10 +173,14 @@ func (m *fakeMounter) Mount(_ context.Context, attachment VolumeAttachment, _ So
 	if m.mountErr != nil {
 		return nil, m.mountErr
 	}
+	mountPath := m.mountPath
+	if mountPath == "" {
+		mountPath = "/mnt/" + attachment.VolumeID
+	}
 	return &MountedVolume{
 		VolumeID:   attachment.VolumeID,
 		DevicePath: attachment.DeviceName,
-		MountPath:  "/mnt/" + attachment.VolumeID,
+		MountPath:  mountPath,
 		MountedAt:  time.Now().UTC(),
 	}, nil
 }
@@ -182,10 +193,14 @@ func (m *fakeMounter) Unmount(_ context.Context, mount MountedVolume) error {
 }
 
 type fakeAnalyzer struct {
-	fail bool
+	fail         bool
+	panicMessage string
 }
 
 func (a fakeAnalyzer) Analyze(_ context.Context, input AnalysisInput) (*AnalysisReport, error) {
+	if a.panicMessage != "" {
+		panic(a.panicMessage)
+	}
 	if a.fail {
 		return nil, fmt.Errorf("analyze %s failed", input.Volume.ID)
 	}
@@ -195,6 +210,37 @@ func (a fakeAnalyzer) Analyze(_ context.Context, input AnalysisInput) (*Analysis
 			"volume_id": input.Volume.ID,
 		},
 	}, nil
+}
+
+type fakeScannerProvisioner struct {
+	mu             sync.Mutex
+	host           ScannerHost
+	provisionErr   error
+	releaseErr     error
+	provisionCalls int
+	releaseCalls   int
+	releasedHosts  []ScannerHost
+}
+
+func (p *fakeScannerProvisioner) ProvisionScannerHost(context.Context, ScanRequest) (ScannerHost, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.provisionCalls++
+	if p.provisionErr != nil {
+		return ScannerHost{}, p.provisionErr
+	}
+	return p.host, nil
+}
+
+func (p *fakeScannerProvisioner) ReleaseScannerHost(_ context.Context, host ScannerHost) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.releaseCalls++
+	p.releasedHosts = append(p.releasedHosts, host)
+	if p.releaseErr != nil {
+		return p.releaseErr
+	}
+	return nil
 }
 
 type captureEmitter struct {
@@ -777,6 +823,312 @@ func TestRunnerRunVMScanRecordsFailedMetricWhenFinalSaveFails(t *testing.T) {
 	}
 }
 
+func TestRunnerRunVMScanProvisionsAndReleasesEphemeralScannerHost(t *testing.T) {
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	provider := &fakeProvider{
+		volumes: []SourceVolume{{ID: "vol-a", SizeGiB: 10, Zone: "us-east-1a"}},
+	}
+	provisioner := &fakeScannerProvisioner{
+		host: ScannerHost{HostID: "ephemeral-scan", Region: "us-east-1", Zone: "us-east-1a"},
+	}
+	runner := NewRunner(RunnerOptions{
+		Store:       store,
+		Providers:   []Provider{provider},
+		Mounter:     &fakeMounter{},
+		Analyzer:    fakeAnalyzer{},
+		Provisioner: provisioner,
+	})
+
+	run, err := runner.RunVMScan(context.Background(), ScanRequest{
+		ID:     "workload_scan:ephemeral-success",
+		Target: VMTarget{Provider: ProviderAWS, Region: "us-east-1", InstanceID: "i-target"},
+	})
+	if err != nil {
+		t.Fatalf("run vm scan: %v", err)
+	}
+	if run.ScannerHost.HostID != "ephemeral-scan" {
+		t.Fatalf("expected provisioned scanner host on run, got %#v", run.ScannerHost)
+	}
+	if provisioner.provisionCalls != 1 {
+		t.Fatalf("expected one provision call, got %d", provisioner.provisionCalls)
+	}
+	if provisioner.releaseCalls != 1 {
+		t.Fatalf("expected one release call, got %d", provisioner.releaseCalls)
+	}
+	if len(provisioner.releasedHosts) != 1 || provisioner.releasedHosts[0].HostID != "ephemeral-scan" {
+		t.Fatalf("expected release of provisioned host, got %#v", provisioner.releasedHosts)
+	}
+}
+
+func TestRunnerRunVMScanReleasesEphemeralScannerHostOnFailure(t *testing.T) {
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	provider := &fakeProvider{
+		volumes: []SourceVolume{{ID: "vol-a", SizeGiB: 10, Zone: "us-east-1a"}},
+	}
+	provisioner := &fakeScannerProvisioner{
+		host: ScannerHost{HostID: "ephemeral-scan", Region: "us-east-1", Zone: "us-east-1a"},
+	}
+	runner := NewRunner(RunnerOptions{
+		Store:       store,
+		Providers:   []Provider{provider},
+		Mounter:     &fakeMounter{},
+		Analyzer:    fakeAnalyzer{fail: true},
+		Provisioner: provisioner,
+	})
+
+	run, err := runner.RunVMScan(context.Background(), ScanRequest{
+		ID:     "workload_scan:ephemeral-failure",
+		Target: VMTarget{Provider: ProviderAWS, Region: "us-east-1", InstanceID: "i-target"},
+	})
+	if err == nil {
+		t.Fatal("expected run vm scan to fail")
+	}
+	if run == nil || run.Status != RunStatusFailed {
+		t.Fatalf("expected failed run, got %#v", run)
+	}
+	if provisioner.provisionCalls != 1 {
+		t.Fatalf("expected one provision call, got %d", provisioner.provisionCalls)
+	}
+	if provisioner.releaseCalls != 1 {
+		t.Fatalf("expected one release call, got %d", provisioner.releaseCalls)
+	}
+}
+
+func TestRunnerRunVMScanFailsWhenEphemeralScannerReleaseFails(t *testing.T) {
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	provider := &fakeProvider{
+		volumes: []SourceVolume{{ID: "vol-a", SizeGiB: 10, Zone: "us-east-1a"}},
+	}
+	provisioner := &fakeScannerProvisioner{
+		host:       ScannerHost{HostID: "ephemeral-scan", Region: "us-east-1", Zone: "us-east-1a"},
+		releaseErr: fmt.Errorf("terminate scanner failed"),
+	}
+	runner := NewRunner(RunnerOptions{
+		Store:       store,
+		Providers:   []Provider{provider},
+		Mounter:     &fakeMounter{},
+		Analyzer:    fakeAnalyzer{},
+		Provisioner: provisioner,
+	})
+
+	run, err := runner.RunVMScan(context.Background(), ScanRequest{
+		ID:     "workload_scan:ephemeral-release-failure",
+		Target: VMTarget{Provider: ProviderAWS, Region: "us-east-1", InstanceID: "i-target"},
+	})
+	if err == nil {
+		t.Fatal("expected run vm scan to fail when release fails")
+	}
+	if run == nil {
+		t.Fatal("expected run record when release fails")
+	}
+	if run.Status != RunStatusFailed || run.Stage != RunStageCleanup {
+		t.Fatalf("expected failed cleanup stage after release failure, got status=%s stage=%s", run.Status, run.Stage)
+	}
+	if !strings.Contains(run.Error, "release ephemeral scanner host") {
+		t.Fatalf("expected release failure to be recorded on run, got %q", run.Error)
+	}
+}
+
+func TestRunnerRunVMScanReleasesEphemeralScannerHostOnAnalyzerPanic(t *testing.T) {
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	provider := &fakeProvider{
+		volumes: []SourceVolume{{ID: "vol-a", SizeGiB: 10, Zone: "us-east-1a"}},
+	}
+	provisioner := &fakeScannerProvisioner{
+		host: ScannerHost{HostID: "ephemeral-scan", Region: "us-east-1", Zone: "us-east-1a"},
+	}
+	runner := NewRunner(RunnerOptions{
+		Store:       store,
+		Providers:   []Provider{provider},
+		Mounter:     &fakeMounter{},
+		Analyzer:    fakeAnalyzer{panicMessage: "analyzer exploded"},
+		Provisioner: provisioner,
+	})
+
+	run, err := runner.RunVMScan(context.Background(), ScanRequest{
+		ID:     "workload_scan:ephemeral-panic",
+		Target: VMTarget{Provider: ProviderAWS, Region: "us-east-1", InstanceID: "i-target"},
+	})
+	if err == nil {
+		t.Fatal("expected run vm scan to fail on analyzer panic")
+	}
+	if !strings.Contains(err.Error(), "panic while scanning volume") {
+		t.Fatalf("expected panic error context, got %v", err)
+	}
+	if run == nil || run.Status != RunStatusFailed {
+		t.Fatalf("expected failed run after analyzer panic, got %#v", run)
+	}
+	if provisioner.releaseCalls != 1 {
+		t.Fatalf("expected provisioned host release after panic, got %d", provisioner.releaseCalls)
+	}
+	if len(run.Volumes) != 1 {
+		t.Fatalf("expected one volume record, got %#v", run.Volumes)
+	}
+	cleanup := run.Volumes[0].Cleanup
+	if !cleanup.Unmounted || !cleanup.Detached || !cleanup.DeletedVolume || !cleanup.DeletedSnapshot {
+		t.Fatalf("expected panic path cleanup to complete, got %#v", cleanup)
+	}
+	if !strings.Contains(run.Error, "panic while scanning volume") {
+		t.Fatalf("expected panic recorded on run, got %q", run.Error)
+	}
+}
+
+func TestRunnerRunVMScanAnalyzesWindowsMountedVolume(t *testing.T) {
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	root := t.TempDir()
+	mustWriteBinaryFile(t, filepath.Join(root, "Windows", "System32", "kernel32.dll"), buildMinimalPEBinary(peFixtureOptions{
+		majorOSVersion:    10,
+		minorOSVersion:    0,
+		majorImageVersion: 20348,
+		minorImageVersion: 3321,
+	}))
+
+	provider := &fakeProvider{
+		volumes: []SourceVolume{{ID: "vol-win", SizeGiB: 40, Boot: true}},
+	}
+	runner := NewRunner(RunnerOptions{
+		Store:     store,
+		Providers: []Provider{provider},
+		Mounter:   &fakeMounter{mountPath: root},
+		Analyzer: workloadscanAnalyzerForTest(
+			filesystemanalyzer.New(filesystemanalyzer.Options{}),
+		),
+	})
+
+	run, err := runner.RunVMScan(context.Background(), ScanRequest{
+		ID:          "workload_scan:windows",
+		Target:      VMTarget{Provider: ProviderAWS, Region: "us-east-1", InstanceID: "i-win"},
+		ScannerHost: ScannerHost{HostID: "i-scan", Region: "us-east-1"},
+	})
+	if err != nil {
+		t.Fatalf("run vm scan: %v", err)
+	}
+
+	if len(run.Volumes) != 1 || run.Volumes[0].Analysis == nil || run.Volumes[0].Analysis.Catalog == nil {
+		t.Fatalf("expected embedded workload analysis catalog, got %#v", run.Volumes)
+	}
+	catalog := run.Volumes[0].Analysis.Catalog
+	if catalog.OS.ID != "windows" || catalog.OS.VersionID != "10.0.20348.3321" {
+		t.Fatalf("expected windows os detection, got %#v", catalog.OS)
+	}
+	if len(catalog.Packages) != 1 || catalog.Packages[0].Ecosystem != "windows" || catalog.Packages[0].Name != "kernel32.dll" {
+		t.Fatalf("expected windows package inventory, got %#v", catalog.Packages)
+	}
+	foundUnsigned := false
+	for _, finding := range catalog.Misconfigurations {
+		if finding.Type == "binary_signature" && finding.Path == "Windows/System32/kernel32.dll" {
+			foundUnsigned = true
+			break
+		}
+	}
+	if !foundUnsigned {
+		t.Fatalf("expected unsigned windows binary finding, got %#v", catalog.Misconfigurations)
+	}
+}
+
+func workloadscanAnalyzerForTest(analyzer *filesystemanalyzer.Analyzer) Analyzer {
+	return FilesystemAnalyzer{Analyzer: analyzer}
+}
+
+func mustWriteBinaryFile(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", path, err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", path, err)
+	}
+}
+
+type peFixtureOptions struct {
+	majorOSVersion    uint16
+	minorOSVersion    uint16
+	majorImageVersion uint16
+	minorImageVersion uint16
+}
+
+func buildMinimalPEBinary(opts peFixtureOptions) []byte {
+	const (
+		peHeaderOffset     = 0x80
+		fileHeaderOffset   = peHeaderOffset + 4
+		optionalHeaderSize = 0xF0
+		optionalHeaderOff  = fileHeaderOffset + 20
+		sectionHeaderOff   = optionalHeaderOff + optionalHeaderSize
+		fileAlignment      = 0x200
+		sectionAlignment   = 0x1000
+		textRawOffset      = 0x200
+		textRawSize        = 0x200
+	)
+
+	data := make([]byte, textRawOffset+textRawSize)
+	copy(data[:2], []byte("MZ"))
+	binary.LittleEndian.PutUint32(data[0x3c:], peHeaderOffset)
+	copy(data[peHeaderOffset:], []byte("PE\x00\x00"))
+
+	binary.LittleEndian.PutUint16(data[fileHeaderOffset:], 0x8664)
+	binary.LittleEndian.PutUint16(data[fileHeaderOffset+2:], 1)
+	binary.LittleEndian.PutUint16(data[fileHeaderOffset+16:], optionalHeaderSize)
+	binary.LittleEndian.PutUint16(data[fileHeaderOffset+18:], 0x0022)
+
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff:], 0x20b)
+	data[optionalHeaderOff+2] = 1
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+4:], textRawSize)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+16:], sectionAlignment)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+20:], sectionAlignment)
+	binary.LittleEndian.PutUint64(data[optionalHeaderOff+24:], 0x140000000)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+32:], sectionAlignment)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+36:], fileAlignment)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+40:], opts.majorOSVersion)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+42:], opts.minorOSVersion)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+44:], opts.majorImageVersion)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+46:], opts.minorImageVersion)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+48:], 6)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+50:], 0)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+56:], sectionAlignment+textRawSize)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+60:], fileAlignment)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+68:], 3)
+	binary.LittleEndian.PutUint64(data[optionalHeaderOff+72:], 0x100000)
+	binary.LittleEndian.PutUint64(data[optionalHeaderOff+80:], 0x1000)
+	binary.LittleEndian.PutUint64(data[optionalHeaderOff+88:], 0x100000)
+	binary.LittleEndian.PutUint64(data[optionalHeaderOff+96:], 0x1000)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+108:], 16)
+
+	copy(data[sectionHeaderOff:], []byte(".text\x00\x00\x00"))
+	binary.LittleEndian.PutUint32(data[sectionHeaderOff+8:], 1)
+	binary.LittleEndian.PutUint32(data[sectionHeaderOff+12:], sectionAlignment)
+	binary.LittleEndian.PutUint32(data[sectionHeaderOff+16:], textRawSize)
+	binary.LittleEndian.PutUint32(data[sectionHeaderOff+20:], textRawOffset)
+	binary.LittleEndian.PutUint32(data[sectionHeaderOff+36:], 0x60000020)
+	data[textRawOffset] = 0xc3
+
+	return data
+}
+
 func workloadCounterValue(t *testing.T, vec *prometheus.CounterVec, labels ...string) float64 {
 	t.Helper()
 	counter, err := vec.GetMetricWithLabelValues(labels...)
@@ -859,4 +1211,138 @@ func TestValidateRequestRequiresProviderSpecificScannerCoordinates(t *testing.T)
 			t.Fatal("expected azure validation error")
 		}
 	})
+}
+
+func TestRunnerRunVMScanRejectsPolicyViolationsBeforePersistence(t *testing.T) {
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	policyEngine, err := scanpolicy.NewEngine([]scanpolicy.Policy{{
+		ID:                     "platform-workload-policy",
+		ScanKinds:              []scanpolicy.Kind{scanpolicy.KindWorkload},
+		Teams:                  []string{"platform"},
+		Providers:              []string{"aws"},
+		MaxConcurrentSnapshots: 1,
+	}})
+	if err != nil {
+		t.Fatalf("new policy engine: %v", err)
+	}
+
+	runner := NewRunner(RunnerOptions{
+		Store:           store,
+		PolicyEvaluator: policyEngine,
+	})
+
+	_, err = runner.RunVMScan(context.Background(), ScanRequest{
+		RequestedBy: "user:alice",
+		Target: VMTarget{
+			Provider:   ProviderAWS,
+			Region:     "us-east-1",
+			InstanceID: "i-123",
+		},
+		ScannerHost: ScannerHost{
+			HostID: "scanner-a",
+			Region: "us-east-1",
+		},
+		MaxConcurrentSnapshots: 3,
+		Metadata: map[string]string{
+			"team": "platform",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected policy validation error")
+	}
+
+	var validationErr *scanpolicy.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T", err)
+	}
+
+	runs, err := store.ListRuns(context.Background(), RunListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("list runs: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected no persisted runs, got %d", len(runs))
+	}
+}
+
+func TestRunnerRunClaimedRunRejectsPolicyViolations(t *testing.T) {
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "workload-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	policyEngine, err := scanpolicy.NewEngine([]scanpolicy.Policy{{
+		ID:                     "platform-workload-policy",
+		ScanKinds:              []scanpolicy.Kind{scanpolicy.KindWorkload},
+		Teams:                  []string{"platform"},
+		Providers:              []string{"aws"},
+		MaxConcurrentSnapshots: 1,
+	}})
+	if err != nil {
+		t.Fatalf("new policy engine: %v", err)
+	}
+
+	now := time.Date(2026, 3, 21, 18, 0, 0, 0, time.UTC)
+	run := newRunRecordFromRequest(ScanRequest{
+		ID:          "workload_scan:claimed",
+		RequestedBy: "user:alice",
+		Target: VMTarget{
+			Provider:   ProviderAWS,
+			Region:     "us-east-1",
+			InstanceID: "i-123",
+		},
+		ScannerHost: ScannerHost{
+			HostID: "scanner-a",
+			Region: "us-east-1",
+		},
+		MaxConcurrentSnapshots: 3,
+		Metadata: map[string]string{
+			"team": "platform",
+		},
+		SubmittedAt: now,
+	})
+	run.Status = RunStatusRunning
+	run.Stage = RunStageInventory
+	run.Distributed = &DistributedRunState{GroupID: "group-a"}
+	if err := store.SaveRun(context.Background(), run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+
+	runner := NewRunner(RunnerOptions{
+		Store:           store,
+		PolicyEvaluator: policyEngine,
+		Now: func() time.Time {
+			return now
+		},
+	})
+
+	_, err = runner.RunClaimedRun(context.Background(), run.ID)
+	if err == nil {
+		t.Fatal("expected policy validation error")
+	}
+
+	var validationErr *scanpolicy.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T", err)
+	}
+
+	stored, err := store.LoadRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("load run: %v", err)
+	}
+	if stored == nil {
+		t.Fatal("expected stored run")
+	}
+	if stored.Status != RunStatusFailed {
+		t.Fatalf("expected failed run, got %s", stored.Status)
+	}
+	if stored.Error == "" {
+		t.Fatal("expected persisted policy violation error")
+	}
 }

@@ -428,6 +428,8 @@ func TestPlatformEntityPointInTimeAndDiff(t *testing.T) {
 	if !ok || node == nil {
 		t.Fatal("expected seeded service node")
 	}
+	node.CreatedAt = base
+	node.UpdatedAt = base.Add(2 * time.Hour)
 	node.PropertyHistory = map[string][]graph.PropertySnapshot{
 		"status": []graph.PropertySnapshot{
 			{Timestamp: base, Value: "healthy"},
@@ -469,12 +471,38 @@ func TestPlatformEntityPointInTimeAndDiff(t *testing.T) {
 		t.Fatalf("expected changed_keys, got %#v", diffBody["changed_keys"])
 	}
 
+	timeline := do(t, s, http.MethodGet, "/api/v1/platform/entities/service:payments/timeline?from=2026-03-10T09:00:00Z&to=2026-03-10T12:00:00Z", nil)
+	if timeline.Code != http.StatusOK {
+		t.Fatalf("expected 200 for entity timeline, got %d: %s", timeline.Code, timeline.Body.String())
+	}
+	timelineBody := decodeJSON(t, timeline)
+	events, ok := timelineBody["events"].([]any)
+	if !ok || len(events) < 3 {
+		t.Fatalf("expected timeline events, got %#v", timelineBody["events"])
+	}
+	first := events[0].(map[string]any)
+	if first["event_type"] != "entity_created" {
+		t.Fatalf("expected entity_created lifecycle event, got %#v", first)
+	}
+	last := events[len(events)-1].(map[string]any)
+	if last["key"] != "status" || last["after"] != "degraded" {
+		t.Fatalf("expected latest status change on timeline, got %#v", last)
+	}
+
 	missingTimestamp := do(t, s, http.MethodGet, "/api/v1/platform/entities/service:payments/at", nil)
 	if missingTimestamp.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for missing timestamp, got %d: %s", missingTimestamp.Code, missingTimestamp.Body.String())
 	}
 	if body := decodeJSON(t, missingTimestamp); body["error"] != "timestamp is required" {
 		t.Fatalf("expected missing timestamp error, got %#v", body)
+	}
+
+	invalidTimeline := do(t, s, http.MethodGet, "/api/v1/platform/entities/service:payments/timeline?from=2026-03-10T12:00:00Z&to=2026-03-10T09:00:00Z", nil)
+	if invalidTimeline.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid timeline window, got %d: %s", invalidTimeline.Code, invalidTimeline.Body.String())
+	}
+	if body := decodeJSON(t, invalidTimeline); body["error"] != "to must be greater than or equal to from" {
+		t.Fatalf("expected invalid timeline error, got %#v", body)
 	}
 }
 

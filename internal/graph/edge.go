@@ -54,6 +54,7 @@ const (
 	EdgeKindEvaluates        EdgeKind = "evaluates"
 	EdgeKindHasScan          EdgeKind = "has_scan"
 	EdgeKindFoundVuln        EdgeKind = "found_vulnerability"
+	EdgeKindHasLeakedSecret  EdgeKind = "has_leaked_secret"
 	EdgeKindContainsPkg      EdgeKind = "contains_package"
 	EdgeKindContains         EdgeKind = "contains"
 	EdgeKindAffectedBy       EdgeKind = "affected_by"

@@ -166,13 +166,13 @@ func TestScanAndPersistDSPMFindings_EnrichesSecurityGraphNodes(t *testing.T) {
 		if scanned, _ := node.Properties["dspm_scanned"].(bool); !scanned {
 			t.Fatalf("expected %s graph node to be marked as DSPM scanned", name)
 		}
-		if classification, _ := node.Properties["data_classification"].(string); classification != string(dspm.ClassificationRestricted) {
-			t.Fatalf("expected %s graph node classification %q, got %v", name, dspm.ClassificationRestricted, node.Properties["data_classification"])
+		if classification := node.PropertyString("data_classification"); classification != string(dspm.ClassificationRestricted) {
+			t.Fatalf("expected %s graph node classification %q, got %v", name, dspm.ClassificationRestricted, classification)
 		}
-		if containsPII, _ := node.Properties["contains_pii"].(bool); !containsPII {
+		if containsPII, ok := node.PropertyBool("contains_pii"); !ok || !containsPII {
 			t.Fatalf("expected %s graph node to contain PII", name)
 		}
-		if containsPCI, _ := node.Properties["contains_pci"].(bool); !containsPCI {
+		if containsPCI, ok := node.PropertyBool("contains_pci"); !ok || !containsPCI {
 			t.Fatalf("expected %s graph node to contain PCI", name)
 		}
 	}

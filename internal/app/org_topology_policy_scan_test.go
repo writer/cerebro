@@ -20,8 +20,8 @@ func TestScanOrgTopologyPolicies_ProducesFindingsFromGraphSignals(t *testing.T) 
 		Severity:    "high",
 		Resource:    "org::system",
 		Conditions: []string{
-			"criticality == 'high'",
-			"bus_factor <= 1",
+			"resource.criticality == 'high'",
+			"resource.bus_factor <= 1",
 		},
 	})
 	addOrgTestPolicy(t, engine, &policy.Policy{
@@ -31,8 +31,8 @@ func TestScanOrgTopologyPolicies_ProducesFindingsFromGraphSignals(t *testing.T) 
 		Severity:    "medium",
 		Resource:    "org::team_pair",
 		Conditions: []string{
-			"shared_dependencies > 2",
-			"interaction_edges == 0",
+			"resource.shared_dependencies > 2",
+			"resource.interaction_edges == 0",
 		},
 	})
 	addOrgTestPolicy(t, engine, &policy.Policy{
@@ -42,9 +42,9 @@ func TestScanOrgTopologyPolicies_ProducesFindingsFromGraphSignals(t *testing.T) 
 		Severity:    "high",
 		Resource:    "org::customer_relationship",
 		Conditions: []string{
-			"relationship_strength < 0.3",
-			"previous_strength > 0.7",
-			"renewal_days < 90",
+			"resource.relationship_strength < 0.3",
+			"resource.previous_strength > 0.7",
+			"resource.renewal_days < 90",
 		},
 	})
 	addOrgTestPolicy(t, engine, &policy.Policy{
@@ -54,8 +54,8 @@ func TestScanOrgTopologyPolicies_ProducesFindingsFromGraphSignals(t *testing.T) 
 		Severity:    "medium",
 		Resource:    "org::person",
 		Conditions: []string{
-			"betweenness_centrality > 0.8",
-			"bridged_teams > 1",
+			"resource.betweenness_centrality > 0.8",
+			"resource.bridged_teams > 1",
 		},
 	})
 	addOrgTestPolicy(t, engine, &policy.Policy{
@@ -65,9 +65,9 @@ func TestScanOrgTopologyPolicies_ProducesFindingsFromGraphSignals(t *testing.T) 
 		Severity:    "high",
 		Resource:    "org::person",
 		Conditions: []string{
-			"bus_factor_1_systems > 0",
-			"activity_trend == 'declining'",
-			"tenure_years > 2",
+			"resource.bus_factor_1_systems > 0",
+			"resource.activity_trend == 'declining'",
+			"resource.tenure_years > 2",
 		},
 	})
 	addOrgTestPolicy(t, engine, &policy.Policy{
@@ -77,8 +77,8 @@ func TestScanOrgTopologyPolicies_ProducesFindingsFromGraphSignals(t *testing.T) 
 		Severity:    "high",
 		Resource:    "org::customer_relationship",
 		Conditions: []string{
-			"health_score < 60",
-			"touchpoint_count < 2",
+			"resource.health_score < 60",
+			"resource.touchpoint_count < 2",
 		},
 	})
 
@@ -137,8 +137,8 @@ func TestScanOrgTopologyPolicies_UsesPersistedSnapshotWhenLiveGraphUnavailable(t
 		Severity:    "high",
 		Resource:    "org::system",
 		Conditions: []string{
-			"criticality == 'high'",
-			"bus_factor <= 1",
+			"resource.criticality == 'high'",
+			"resource.bus_factor <= 1",
 		},
 	})
 

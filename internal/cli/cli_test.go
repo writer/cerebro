@@ -107,6 +107,12 @@ func TestPolicyCmd(t *testing.T) {
 	if policyCmd.Use != "policy" {
 		t.Errorf("expected Use 'policy', got %s", policyCmd.Use)
 	}
+
+	for _, sub := range policyCmd.Commands() {
+		if sub.Name() == "convert" {
+			t.Fatal("policy convert subcommand should be retired after CEL migration")
+		}
+	}
 }
 
 func TestQueryCmd(t *testing.T) {
@@ -444,6 +450,72 @@ func TestFunctionScanRequiredFlags(t *testing.T) {
 				t.Fatalf("expected %s flag on %s to be marked required", name, tc.cmd.Name())
 			}
 		}
+	}
+}
+
+func TestRepoScanCommands(t *testing.T) {
+	if repoScanCmd == nil {
+		t.Fatal("repoScanCmd should not be nil")
+	}
+	if repoScanCmd.Name() != "repo-scan" {
+		t.Fatalf("expected repo-scan command, got %s", repoScanCmd.Name())
+	}
+	subcommands := repoScanCmd.Commands()
+	foundList := false
+	foundRun := false
+	for _, cmd := range subcommands {
+		switch cmd.Name() {
+		case "list":
+			foundList = true
+		case "run":
+			foundRun = true
+		}
+	}
+	if !foundList || !foundRun {
+		t.Fatalf("expected repo-scan list/run subcommands, got list=%t run=%t", foundList, foundRun)
+	}
+}
+
+func TestRepoScanRequiredFlags(t *testing.T) {
+	flag := repoScanRunCmd.Flags().Lookup("repo-url")
+	if flag == nil {
+		t.Fatal("expected repo-url flag to exist")
+	}
+	if values, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok || len(values) == 0 {
+		t.Fatalf("expected repo-url flag to be marked required")
+	}
+}
+
+func TestRepoSecretScanCommands(t *testing.T) {
+	if repoSecretScanCmd == nil {
+		t.Fatal("repoSecretScanCmd should not be nil")
+	}
+	if repoSecretScanCmd.Name() != "repo-secret-scan" {
+		t.Fatalf("expected repo-secret-scan command, got %s", repoSecretScanCmd.Name())
+	}
+	subcommands := repoSecretScanCmd.Commands()
+	foundList := false
+	foundRun := false
+	for _, cmd := range subcommands {
+		switch cmd.Name() {
+		case "list":
+			foundList = true
+		case "run":
+			foundRun = true
+		}
+	}
+	if !foundList || !foundRun {
+		t.Fatalf("expected repo-secret-scan list/run subcommands, got list=%t run=%t", foundList, foundRun)
+	}
+}
+
+func TestRepoSecretScanRequiredFlags(t *testing.T) {
+	flag := repoSecretScanRunCmd.Flags().Lookup("repo-url")
+	if flag == nil {
+		t.Fatal("expected repo-url flag to exist")
+	}
+	if values, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok || len(values) == 0 {
+		t.Fatalf("expected repo-url flag to be marked required")
 	}
 }
 
