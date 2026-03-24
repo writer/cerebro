@@ -652,6 +652,26 @@ func (m *LineageMapper) GetLineageByImage(imageDigest string) []*AssetLineage {
 	return assets
 }
 
+// GetLineageByImageDigest returns all assets using a specific container image digest.
+func (m *LineageMapper) GetLineageByImageDigest(imageDigest string) []*AssetLineage {
+	return m.GetLineageByImage(strings.TrimSpace(imageDigest))
+}
+
+// GetLineageByImageURI returns all assets using a specific container image URI.
+func (m *LineageMapper) GetLineageByImageURI(imageURI string) []*AssetLineage {
+	imageURI = strings.ToLower(strings.TrimSpace(imageURI))
+	if imageURI == "" {
+		return nil
+	}
+	var assets []*AssetLineage
+	for _, asset := range m.assets {
+		if strings.ToLower(strings.TrimSpace(asset.ImageURI)) == imageURI {
+			assets = append(assets, asset)
+		}
+	}
+	return assets
+}
+
 // GenerateLineageID creates a unique ID for lineage tracking
 func GenerateLineageID(provider, assetType, assetID string) string {
 	data := fmt.Sprintf("%s:%s:%s", provider, assetType, assetID)

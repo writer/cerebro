@@ -24,20 +24,118 @@ func TestPreCommitHookRunsFastLintOnStagedGoFiles(t *testing.T) {
 	}
 	text := string(content)
 
-	if !strings.Contains(text, "golangci-lint run --fast-only") {
-		t.Fatalf("expected pre-commit hook to run golangci-lint --fast-only")
+	if !strings.Contains(text, "./scripts/pre_commit_checks.sh") {
+		t.Fatalf("expected pre-commit hook to delegate to scripts/pre_commit_checks.sh")
 	}
+}
+
+func TestPreCommitChecksScriptRunsFormattingVetAndIdentifierSafetyChecks(t *testing.T) {
+	root := repoRoot(t)
+	scriptPath := filepath.Join(root, "scripts", "pre_commit_checks.sh")
+	content, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read pre_commit_checks.sh: %v", err)
+	}
+	text := string(content)
+
 	if !strings.Contains(text, "git diff --cached --name-only --diff-filter=ACM -- '*.go'") {
-		t.Fatalf("expected pre-commit hook to lint staged Go files")
+		t.Fatalf("expected pre-commit checks script to inspect staged Go files")
 	}
-	if !strings.Contains(text, "STAGED_PACKAGE_DIRS") {
-		t.Fatalf("expected pre-commit hook to lint staged package directories")
+	if !strings.Contains(text, "STAGED_PATHS=()") {
+		t.Fatalf("expected pre-commit checks script to collect all staged paths")
 	}
 	if strings.Contains(text, "mapfile") {
 		t.Fatalf("expected pre-commit hook to avoid bash 4-only mapfile")
 	}
 	if !strings.Contains(text, "build constraints exclude all Go files") {
 		t.Fatalf("expected pre-commit hook to skip build-ignored generator directories")
+	}
+	if !strings.Contains(text, "gofmt -w") {
+		t.Fatalf("expected pre-commit checks script to run gofmt")
+	}
+	if !strings.Contains(text, "go vet") {
+		t.Fatalf("expected pre-commit checks script to run go vet")
+	}
+	if !strings.Contains(text, `go test "${FILTERED_PACKAGE_DIRS[@]}"`) {
+		t.Fatalf("expected pre-commit checks script to run go test on staged package directories")
+	}
+	if !strings.Contains(text, "golangci-lint run --fast-only") {
+		t.Fatalf("expected pre-commit checks script to run golangci-lint --fast-only")
+	}
+	if !strings.Contains(text, "go run ./scripts/check_graph_id_safety/main.go") {
+		t.Fatalf("expected pre-commit checks script to run graph ID safety checks")
+	}
+	for _, command := range []string{
+		"go run ./scripts/check_api_contract_compat/main.go",
+		"go run ./scripts/check_cloudevents_contract_compat/main.go",
+		"go run ./scripts/check_report_contract_compat/main.go",
+		"go run ./scripts/check_entity_facet_compat/main.go",
+		"go run ./scripts/check_agent_sdk_contract_compat/main.go",
+		"go test ./internal/graphingest -run 'TestMapperContractFixtures|TestMapperSourceDomainCoverageGuardrails' -count=1",
+	} {
+		if !strings.Contains(text, command) {
+			t.Fatalf("expected pre-commit checks script to run %s", command)
+		}
+	}
+	for _, fragment := range []string{
+		"internal/graph/schema/",
+		"internal/graph/store_spanner",
+		"go test ./internal/graph -run TestSpannerWorldModelSchemaStatements -count=1",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("expected pre-commit checks script to include %s", fragment)
+		}
+	}
+}
+
+func TestPreCommitConfigUsesSharedChecksScript(t *testing.T) {
+	root := repoRoot(t)
+	configPath := filepath.Join(root, ".pre-commit-config.yaml")
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read .pre-commit-config.yaml: %v", err)
+	}
+	text := string(content)
+
+	if !strings.Contains(text, "scripts/pre_commit_checks.sh") {
+		t.Fatalf("expected .pre-commit-config.yaml to reference scripts/pre_commit_checks.sh")
+	}
+	if !strings.Contains(text, "pass_filenames: false") {
+		t.Fatalf("expected .pre-commit-config.yaml to disable filename passing for the shared script")
+	}
+}
+
+func TestMakefileDefinesPreCommitTarget(t *testing.T) {
+	root := repoRoot(t)
+	makefilePath := filepath.Join(root, "Makefile")
+	content, err := os.ReadFile(makefilePath)
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	text := string(content)
+
+	if !strings.Contains(text, ".PHONY:") || !strings.Contains(text, " pre-commit") {
+		t.Fatalf("expected Makefile .PHONY declaration to include pre-commit")
+	}
+	if !strings.Contains(text, "\npre-commit:\n\t./scripts/pre_commit_checks.sh") {
+		t.Fatalf("expected Makefile to define a pre-commit target that runs scripts/pre_commit_checks.sh")
+	}
+	if !strings.Contains(text, " verify") {
+		t.Fatalf("expected Makefile .PHONY declaration to include verify")
+	}
+	for _, fragment := range []string{
+		"\nverify:\n\tgo test -race ./...",
+		"\t$(MAKE) lint",
+		"\t$(MAKE) api-contract-compat",
+		"\t$(MAKE) cloudevents-contract-compat",
+		"\t$(MAKE) report-contract-compat",
+		"\t$(MAKE) entity-facet-contract-compat",
+		"\t$(MAKE) agent-sdk-contract-compat",
+		"\t$(MAKE) graph-ontology-guardrails",
+	} {
+		if !strings.Contains(text, fragment) {
+			t.Fatalf("expected Makefile verify target to include %q", fragment)
+		}
 	}
 }
 
@@ -217,6 +315,30 @@ func TestWorkflowsUseGoVersionFileFromGoMod(t *testing.T) {
 		}
 		if strings.Contains(text, "go-version: '1.26.1'") {
 			t.Fatalf("expected workflow %s to avoid hardcoded Go version", rel)
+		}
+	}
+}
+
+func TestWorkflowsAvoidNode20OnlyBuilderAction(t *testing.T) {
+	root := repoRoot(t)
+	workflowFiles := []string{
+		".github/workflows/ci.yml",
+		".github/workflows/release.yml",
+	}
+
+	for _, rel := range workflowFiles {
+		abs := filepath.Join(root, rel)
+		content, err := os.ReadFile(abs)
+		if err != nil {
+			t.Fatalf("read workflow %s: %v", rel, err)
+		}
+		text := string(content)
+
+		if strings.Contains(text, "useblacksmith/setup-docker-builder") {
+			t.Fatalf("expected workflow %s to avoid Node20-only useblacksmith/setup-docker-builder", rel)
+		}
+		if !strings.Contains(text, "docker/setup-buildx-action@") {
+			t.Fatalf("expected workflow %s to use docker/setup-buildx-action", rel)
 		}
 	}
 }

@@ -14,7 +14,7 @@ func TestPublicEndpoints_RemainAccessibleWhenAPIAuthEnabled(t *testing.T) {
 
 	s := NewServer(a)
 
-	publicPaths := []string{"/health", "/ready", "/metrics", "/docs", "/openapi.yaml"}
+	publicPaths := []string{"/health", "/ready", "/metrics", "/docs", "/openapi.yaml", "/api/v1/trust-center", "/api/v1/trust-center/evidence"}
 	for _, path := range publicPaths {
 		w := do(t, s, http.MethodGet, path, nil)
 		if w.Code != http.StatusOK {

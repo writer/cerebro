@@ -21,6 +21,19 @@ type Client interface {
 	GetFileContent(ctx context.Context, repoURL, path string) (string, error)
 }
 
+type CloneOptions struct {
+	Depth int
+	Ref   string
+}
+
+type CloneOptionsClient interface {
+	CloneWithOptions(ctx context.Context, repoURL string, dest string, opts CloneOptions) error
+}
+
+type FetchClient interface {
+	Fetch(ctx context.Context, repoURL string, dest string) error
+}
+
 func NewConfiguredClient(githubToken, gitlabToken, gitlabBaseURL string) Client {
 	var githubClient *GitHubClient
 	if githubToken != "" {
@@ -54,22 +67,48 @@ func NewGitHubClient(token string) *GitHubClient {
 }
 
 func (c *GitHubClient) Clone(ctx context.Context, repoURL string, dest string) error {
+	return c.CloneWithOptions(ctx, repoURL, dest, CloneOptions{})
+}
+
+func (c *GitHubClient) CloneWithOptions(ctx context.Context, repoURL string, dest string, opts CloneOptions) error {
+	if err := ValidateGitRef(opts.Ref); err != nil {
+		return err
+	}
 	// Parse repo URL to get "owner/repo"
 	// Support https://github.com/owner/repo or owner/repo
 	repo := strings.TrimPrefix(repoURL, "https://github.com/")
 	repo = strings.TrimSuffix(repo, ".git")
 
-	cmd := exec.CommandContext(ctx, "gh", "repo", "clone", repo, dest) //#nosec G204 -- args are sanitized repo/dest strings
-	// Pass token via env if needed, but gh CLI usually manages its own auth state
-	// If token is provided explicitly, we can set GH_TOKEN
+	args := []string{"repo", "clone", repo, dest}
+	if opts.Depth > 0 || strings.TrimSpace(opts.Ref) != "" {
+		args = append(args, "--")
+		if opts.Depth > 0 {
+			args = append(args, "--depth", fmt.Sprintf("%d", opts.Depth))
+		}
+		if ref := strings.TrimSpace(opts.Ref); ref != "" {
+			args = append(args, "--branch", ref, "--single-branch")
+		}
+	}
+
+	cmd := exec.CommandContext(ctx, "gh", args...) //#nosec G204 -- args are sanitized repo/dest strings
 	if c.Token != "" {
 		cmd.Env = append(os.Environ(), "GH_TOKEN="+c.Token)
 	}
-
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("gh clone failed: %s: %w", string(out), err)
 	}
 	return nil
+}
+
+func (c *GitHubClient) Fetch(ctx context.Context, repoURL string, dest string) error {
+	cloneURL, err := c.cloneURL(repoURL)
+	if err != nil {
+		return err
+	}
+	if err := c.runGitWithOptionalAuth(ctx, []string{"-C", dest, "remote", "set-url", "origin", cloneURL}); err != nil {
+		return err
+	}
+	return c.runGitWithOptionalAuth(ctx, []string{"-C", dest, "fetch", "--prune", "--tags", "origin"})
 }
 
 func (c *GitHubClient) GetFileContent(ctx context.Context, repoURL, path string) (string, error) {
@@ -108,6 +147,63 @@ func (c *GitHubClient) GetFileContent(ctx context.Context, repoURL, path string)
 	return string(outRaw), nil
 }
 
+func (c *GitHubClient) cloneURL(repoURL string) (string, error) {
+	repoURL = strings.TrimSpace(repoURL)
+	if repoURL == "" {
+		return "", errors.New("repo URL is required")
+	}
+	if strings.HasPrefix(repoURL, "git@github.com:") {
+		repoURL = "https://github.com/" + strings.TrimPrefix(repoURL, "git@github.com:")
+	}
+	if strings.HasPrefix(repoURL, "http://") || strings.HasPrefix(repoURL, "https://") || strings.HasPrefix(repoURL, "ssh://") {
+		parsed, err := url.Parse(repoURL)
+		if err != nil {
+			return "", fmt.Errorf("invalid github repo URL: %w", err)
+		}
+		if parsed.Hostname() != "" && !isGitHubHost(parsed.Hostname()) {
+			return "", fmt.Errorf("repo host %q is not github", parsed.Hostname())
+		}
+		pathPart := strings.TrimPrefix(parsed.Path, "/")
+		if pathPart == "" {
+			return "", errors.New("github repo URL missing path")
+		}
+		if !strings.HasSuffix(pathPart, ".git") {
+			pathPart += ".git"
+		}
+		return "https://github.com/" + pathPart, nil
+	}
+	repo := strings.TrimPrefix(repoURL, "github.com/")
+	repo = strings.TrimPrefix(repo, "/")
+	repo = strings.TrimSuffix(repo, ".git")
+	if repo == "" {
+		return "", errors.New("github repo path is required")
+	}
+	return "https://github.com/" + repo + ".git", nil
+}
+
+func (c *GitHubClient) runGitWithOptionalAuth(ctx context.Context, args []string) error {
+	cmd := exec.CommandContext(ctx, "git", args...) //#nosec G204 -- fixed binary/args
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cleanup := func() {}
+	if c.Token != "" {
+		askPassPath, err := gitAskPassScriptWithUsername("x-access-token", "GITHUB_TOKEN")
+		if err != nil {
+			return err
+		}
+		cleanup = func() { _ = os.Remove(askPassPath) }
+		cmd.Env = append(cmd.Env,
+			"GITHUB_TOKEN="+c.Token,
+			"GIT_ASKPASS="+askPassPath,
+			"GIT_ASKPASS_REQUIRE=force",
+		)
+	}
+	defer cleanup()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git command failed: %s: %w", string(out), err)
+	}
+	return nil
+}
+
 type GitLabClient struct {
 	Token      string
 	BaseURL    string
@@ -122,16 +218,32 @@ func NewGitLabClient(token, baseURL string) *GitLabClient {
 }
 
 func (c *GitLabClient) Clone(ctx context.Context, repoURL string, dest string) error {
+	return c.CloneWithOptions(ctx, repoURL, dest, CloneOptions{})
+}
+
+func (c *GitLabClient) CloneWithOptions(ctx context.Context, repoURL string, dest string, opts CloneOptions) error {
+	if err := ValidateGitRef(opts.Ref); err != nil {
+		return err
+	}
 	cloneURL, err := c.cloneURL(repoURL)
 	if err != nil {
 		return err
 	}
 
-	cmd := exec.CommandContext(ctx, "git", "clone", cloneURL, dest) //#nosec G204 -- args are sanitized repo/dest strings
+	args := []string{"clone"}
+	if opts.Depth > 0 {
+		args = append(args, "--depth", fmt.Sprintf("%d", opts.Depth))
+	}
+	if ref := strings.TrimSpace(opts.Ref); ref != "" {
+		args = append(args, "--branch", ref, "--single-branch")
+	}
+	args = append(args, cloneURL, dest)
+
+	cmd := exec.CommandContext(ctx, "git", args...) //#nosec G204 -- args are sanitized repo/dest strings
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	cleanup := func() {}
 	if c.Token != "" {
-		askPassPath, err := gitAskPassScript("GITLAB_TOKEN")
+		askPassPath, err := gitAskPassScriptWithUsername("oauth2", "GITLAB_TOKEN")
 		if err != nil {
 			return err
 		}
@@ -144,9 +256,20 @@ func (c *GitLabClient) Clone(ctx context.Context, repoURL string, dest string) e
 	}
 	defer cleanup()
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git clone failed: %s: %w", c.redactToken(string(out)), err)
+		return fmt.Errorf("git clone failed: %s: %w", string(out), err)
 	}
 	return nil
+}
+
+func (c *GitLabClient) Fetch(ctx context.Context, repoURL string, dest string) error {
+	cloneURL, err := c.cloneURL(repoURL)
+	if err != nil {
+		return err
+	}
+	if err := c.runGitWithOptionalAuth(ctx, []string{"-C", dest, "remote", "set-url", "origin", cloneURL}); err != nil {
+		return err
+	}
+	return c.runGitWithOptionalAuth(ctx, []string{"-C", dest, "fetch", "--prune", "--tags", "origin"})
 }
 
 func (c *GitLabClient) GetFileContent(ctx context.Context, repoURL, filePath string) (string, error) {
@@ -302,7 +425,7 @@ func (c *GitLabClient) cloneURL(repoURL string) (string, error) {
 	return base.String(), nil
 }
 
-func gitAskPassScript(tokenEnv string) (string, error) {
+func gitAskPassScriptWithUsername(username, tokenEnv string) (string, error) {
 	file, err := os.CreateTemp("", "gitlab-askpass-*")
 	if err != nil {
 		return "", fmt.Errorf("create askpass script: %w", err)
@@ -310,11 +433,11 @@ func gitAskPassScript(tokenEnv string) (string, error) {
 	path := file.Name()
 	script := fmt.Sprintf(`#!/bin/sh
 case "$1" in
-*Username*) echo "oauth2" ;;
+*Username*) echo %q ;;
 *Password*) echo "${%s}" ;;
 *) echo "" ;;
 esac
-`, tokenEnv)
+`, username, tokenEnv)
 	if _, err := file.WriteString(script); err != nil {
 		_ = file.Close()
 		_ = os.Remove(path)
@@ -330,6 +453,29 @@ esac
 		return "", fmt.Errorf("close askpass script: %w", err)
 	}
 	return path, nil
+}
+
+func (c *GitLabClient) runGitWithOptionalAuth(ctx context.Context, args []string) error {
+	cmd := exec.CommandContext(ctx, "git", args...) //#nosec G204 -- fixed binary/args
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cleanup := func() {}
+	if c.Token != "" {
+		askPassPath, err := gitAskPassScriptWithUsername("oauth2", "GITLAB_TOKEN")
+		if err != nil {
+			return err
+		}
+		cleanup = func() { _ = os.Remove(askPassPath) }
+		cmd.Env = append(cmd.Env,
+			"GITLAB_TOKEN="+c.Token,
+			"GIT_ASKPASS="+askPassPath,
+			"GIT_ASKPASS_REQUIRE=force",
+		)
+	}
+	defer cleanup()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git command failed: %s: %w", c.redactToken(string(out)), err)
+	}
+	return nil
 }
 
 func (c *GitLabClient) doRequest(ctx context.Context, endpoint string) (*http.Response, error) {
@@ -392,9 +538,16 @@ func NewMultiClient(github *GitHubClient, gitlab *GitLabClient) *MultiClient {
 }
 
 func (c *MultiClient) Clone(ctx context.Context, repoURL string, dest string) error {
+	return c.CloneWithOptions(ctx, repoURL, dest, CloneOptions{})
+}
+
+func (c *MultiClient) CloneWithOptions(ctx context.Context, repoURL string, dest string, opts CloneOptions) error {
 	client, err := c.clientForRepo(repoURL)
 	if err != nil {
 		return err
+	}
+	if withOptions, ok := client.(CloneOptionsClient); ok {
+		return withOptions.CloneWithOptions(ctx, repoURL, dest, opts)
 	}
 	return client.Clone(ctx, repoURL, dest)
 }
@@ -405,6 +558,18 @@ func (c *MultiClient) GetFileContent(ctx context.Context, repoURL, filePath stri
 		return "", err
 	}
 	return client.GetFileContent(ctx, repoURL, filePath)
+}
+
+func (c *MultiClient) Fetch(ctx context.Context, repoURL string, dest string) error {
+	client, err := c.clientForRepo(repoURL)
+	if err != nil {
+		return err
+	}
+	fetcher, ok := client.(FetchClient)
+	if !ok {
+		return errors.New("selected scm client does not support fetch")
+	}
+	return fetcher.Fetch(ctx, repoURL, dest)
 }
 
 func (c *MultiClient) clientForRepo(repoURL string) (Client, error) {
@@ -480,10 +645,50 @@ func NewLocalClient(basePath string) *LocalClient {
 }
 
 func (c *LocalClient) Clone(ctx context.Context, repoURL, dest string) error {
-	cmd := exec.CommandContext(ctx, "git", "clone", repoURL, dest) //#nosec G204 -- args are sanitized repo/dest strings
+	return c.CloneWithOptions(ctx, repoURL, dest, CloneOptions{})
+}
+
+func (c *LocalClient) CloneWithOptions(ctx context.Context, repoURL, dest string, opts CloneOptions) error {
+	if err := ValidateGitRef(opts.Ref); err != nil {
+		return err
+	}
+	args := []string{"clone"}
+	if opts.Depth > 0 {
+		args = append(args, "--depth", fmt.Sprintf("%d", opts.Depth))
+	}
+	if ref := strings.TrimSpace(opts.Ref); ref != "" {
+		args = append(args, "--branch", ref, "--single-branch")
+	}
+	args = append(args, localCloneURL(repoURL, opts.Depth > 0), dest)
+
+	cmd := exec.CommandContext(ctx, "git", args...) //#nosec G204 -- args are sanitized repo/dest strings
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git clone failed: %s: %w", string(out), err)
+	}
+	return nil
+}
+
+func localCloneURL(repoURL string, shallow bool) string {
+	repoURL = strings.TrimSpace(repoURL)
+	if !shallow {
+		return repoURL
+	}
+	if strings.Contains(repoURL, "://") || strings.HasPrefix(repoURL, "git@") {
+		return repoURL
+	}
+	absPath, err := filepath.Abs(repoURL)
+	if err != nil {
+		return repoURL
+	}
+	return "file://" + filepath.ToSlash(absPath)
+}
+
+func (c *LocalClient) Fetch(ctx context.Context, repoURL, dest string) error {
+	cmd := exec.CommandContext(ctx, "git", "-C", dest, "fetch", "--prune", "--tags", "origin") //#nosec G204 -- args are sanitized repo/dest strings
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git fetch failed: %s: %w", string(out), err)
 	}
 	return nil
 }
@@ -565,6 +770,52 @@ func isRemoteRepoURL(repoURL string) bool {
 	default:
 		return false
 	}
+}
+
+type AutoClient struct {
+	Local  *LocalClient
+	Remote Client
+}
+
+func NewAutoClient(remote Client) *AutoClient {
+	return &AutoClient{
+		Local:  NewLocalClient(""),
+		Remote: remote,
+	}
+}
+
+func (c *AutoClient) Clone(ctx context.Context, repoURL string, dest string) error {
+	client := c.clientForRepo(repoURL)
+	return client.Clone(ctx, repoURL, dest)
+}
+
+func (c *AutoClient) Fetch(ctx context.Context, repoURL string, dest string) error {
+	client := c.clientForRepo(repoURL)
+	fetcher, ok := client.(FetchClient)
+	if !ok {
+		return errors.New("selected scm client does not support fetch")
+	}
+	return fetcher.Fetch(ctx, repoURL, dest)
+}
+
+func (c *AutoClient) GetFileContent(ctx context.Context, repoURL, path string) (string, error) {
+	client := c.clientForRepo(repoURL)
+	return client.GetFileContent(ctx, repoURL, path)
+}
+
+func (c *AutoClient) clientForRepo(repoURL string) Client {
+	if !isRemoteRepoURL(strings.TrimSpace(repoURL)) && !strings.HasPrefix(strings.TrimSpace(repoURL), "github.com/") && !strings.HasPrefix(strings.TrimSpace(repoURL), "gitlab.com/") {
+		if c.Local != nil {
+			return c.Local
+		}
+	}
+	if c.Remote != nil {
+		return c.Remote
+	}
+	if c.Local != nil {
+		return c.Local
+	}
+	return NewLocalClient("")
 }
 
 // AnalysisResult represents findings from code analysis

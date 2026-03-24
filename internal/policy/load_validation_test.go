@@ -32,7 +32,8 @@ func TestEngineLoadPolicies_SkipsMetadataFiles(t *testing.T) {
 		"severity": "high",
 		"effect": "forbid",
 		"resource": "aws::s3::bucket",
-		"conditions": ["public == true"]
+		"condition_format": "cel",
+		"conditions": ["resource.public == true"]
 	}`)
 
 	engine := NewEngine()
@@ -57,7 +58,8 @@ func TestEngineLoadPolicies_RejectsMissingRequiredFields(t *testing.T) {
 		"name": "Missing Description",
 		"severity": "high",
 		"resource": "aws::s3::bucket",
-		"conditions": ["public == true"]
+		"condition_format": "cel",
+		"conditions": ["resource.public == true"]
 	}`)
 
 	engine := NewEngine()
@@ -79,7 +81,8 @@ func TestEngineLoadPolicies_RejectsMixedQueryAndConditions(t *testing.T) {
 		"description": "invalid shape",
 		"severity": "high",
 		"resource": "aws::s3::bucket",
-		"conditions": ["public == true"],
+		"condition_format": "cel",
+		"conditions": ["resource.public == true"],
 		"query": "SELECT * FROM aws_s3_buckets"
 	}`)
 
@@ -102,7 +105,8 @@ func TestEngineLoadPolicies_RejectsDuplicatePolicyIDs(t *testing.T) {
 		"description": "first",
 		"severity": "high",
 		"resource": "aws::s3::bucket",
-		"conditions": ["public == true"]
+		"condition_format": "cel",
+		"conditions": ["resource.public == true"]
 	}`)
 
 	writePolicyFile(t, dir, "b.json", `{
@@ -111,7 +115,8 @@ func TestEngineLoadPolicies_RejectsDuplicatePolicyIDs(t *testing.T) {
 		"description": "second",
 		"severity": "high",
 		"resource": "aws::ec2::instance",
-		"conditions": ["public_ip exists"]
+		"condition_format": "cel",
+		"conditions": ["resource.public_ip != null"]
 	}`)
 
 	engine := NewEngine()
@@ -133,7 +138,8 @@ func TestEngineLoadPolicies_NormalizesSeverity(t *testing.T) {
 		"description": "test",
 		"severity": "CRITICAL",
 		"resource": "aws::s3::bucket",
-		"conditions": ["public == true"]
+		"condition_format": "cel",
+		"conditions": ["resource.public == true"]
 	}`)
 
 	engine := NewEngine()
@@ -159,7 +165,8 @@ func TestEngineLoadPolicies_RejectsUnsupportedSeverity(t *testing.T) {
 		"description": "test",
 		"severity": "urgent",
 		"resource": "aws::s3::bucket",
-		"conditions": ["public == true"]
+		"condition_format": "cel",
+		"conditions": ["resource.public == true"]
 	}`)
 
 	engine := NewEngine()
@@ -196,6 +203,55 @@ func TestEngineLoadPolicies_NormalizesConditionFormat(t *testing.T) {
 	}
 	if p.ConditionFormat != ConditionFormatCEL {
 		t.Fatalf("expected condition format %q, got %q", ConditionFormatCEL, p.ConditionFormat)
+	}
+}
+
+func TestEngineLoadPolicies_DefaultsConditionFormatToCEL(t *testing.T) {
+	dir := t.TempDir()
+
+	writePolicyFile(t, dir, "policy.json", `{
+		"id": "default-cel-format",
+		"name": "Default CEL Format",
+		"description": "test",
+		"severity": "high",
+		"resource": "aws::s3::bucket",
+		"conditions": ["resource.public == true"]
+	}`)
+
+	engine := NewEngine()
+	if err := engine.LoadPolicies(dir); err != nil {
+		t.Fatalf("LoadPolicies failed: %v", err)
+	}
+
+	p, ok := engine.GetPolicy("default-cel-format")
+	if !ok {
+		t.Fatal("expected policy to load")
+	}
+	if p.ConditionFormat != ConditionFormatCEL {
+		t.Fatalf("expected default condition format %q, got %q", ConditionFormatCEL, p.ConditionFormat)
+	}
+}
+
+func TestEngineLoadPolicies_RejectsLegacyConditionFormat(t *testing.T) {
+	dir := t.TempDir()
+
+	writePolicyFile(t, dir, "policy.json", `{
+		"id": "legacy-format",
+		"name": "Legacy Format",
+		"description": "test",
+		"severity": "high",
+		"resource": "aws::s3::bucket",
+		"condition_format": "legacy",
+		"conditions": ["public == true"]
+	}`)
+
+	engine := NewEngine()
+	err := engine.LoadPolicies(dir)
+	if err == nil {
+		t.Fatal("expected legacy condition format error")
+	}
+	if !strings.Contains(err.Error(), "legacy condition_format is no longer supported") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

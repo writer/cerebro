@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"net/http"
 	"testing"
@@ -9,13 +10,15 @@ import (
 
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/graph/builders"
 )
 
 type stubGraphRuntime struct {
-	freshness app.GraphFreshnessStatus
-	graph     *graph.Graph
-	store     graph.GraphStore
-	tryApply  func(context.Context, string) (graph.GraphMutationSummary, bool, error)
+	freshness      app.GraphFreshnessStatus
+	graph          *graph.Graph
+	store          graph.GraphStore
+	healthSnapshot app.GraphHealthSnapshot
+	tryApply       func(context.Context, string) (graph.GraphMutationSummary, bool, error)
 }
 
 func (s stubGraphRuntime) CurrentSecurityGraph() *graph.Graph { return s.graph }
@@ -34,6 +37,21 @@ func (s stubGraphRuntime) CurrentRetentionStatus() app.RetentionStatus { return 
 
 func (s stubGraphRuntime) GraphFreshnessStatusSnapshot(_ time.Time) app.GraphFreshnessStatus {
 	return s.freshness
+}
+
+func (s stubGraphRuntime) GraphHealthSnapshot(now time.Time) app.GraphHealthSnapshot {
+	snapshot := s.healthSnapshot
+	if snapshot.EvaluatedAt.IsZero() {
+		snapshot.EvaluatedAt = now.UTC()
+	}
+	if s.graph != nil {
+		snapshot.NodeCount = s.graph.NodeCount()
+		snapshot.EdgeCount = s.graph.EdgeCount()
+		if snapshot.TierDistribution.Hot == 0 {
+			snapshot.TierDistribution.Hot = 1
+		}
+	}
+	return snapshot
 }
 
 func (s stubGraphRuntime) RebuildSecurityGraph(_ context.Context) error { return nil }
@@ -83,6 +101,12 @@ func (m *mutatingFallbackGraphRuntime) TryApplySecurityGraphChanges(_ context.Co
 }
 
 func (m *mutatingFallbackGraphRuntime) CanApplySecurityGraphChanges() bool { return true }
+
+type emptyBuilderDataSource struct{}
+
+func (emptyBuilderDataSource) Query(context.Context, string, ...any) (*builders.DataQueryResult, error) {
+	return &builders.DataQueryResult{Rows: []map[string]any{}}, nil
+}
 
 func TestNewServerWithDependencies_UsesGraphRuntimeWithoutApp(t *testing.T) {
 	s := NewServerWithDependencies(serverDependencies{
@@ -187,5 +211,133 @@ func TestGraphRuntimeAdapterCanApplySecurityGraphChangesAfterFallbackRefresh(t *
 	}
 	if !runtime.CanApplySecurityGraphChanges() {
 		t.Fatal("expected fallback apply capability after refresh")
+	}
+}
+
+func TestServerDependenciesGraphHealthSnapshotEstimatesMemoryFromGraphCounts(t *testing.T) {
+	current := graph.New()
+	current.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService})
+	current.AddNode(&graph.Node{ID: "bucket:prod", Kind: graph.NodeKindBucket})
+	current.AddEdge(&graph.Edge{ID: "edge:read", Source: "service:payments", Target: "bucket:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+
+	snapshot := serverDependencies{SecurityGraph: current}.GraphHealthSnapshot(time.Date(2026, time.March, 20, 18, 0, 0, 0, time.UTC))
+	expected := app.EstimateGraphMemoryUsageBytes(current.NodeCount(), current.EdgeCount())
+
+	if snapshot.MemoryUsageEstimateBytes != expected {
+		t.Fatalf("MemoryUsageEstimateBytes = %d, want %d", snapshot.MemoryUsageEstimateBytes, expected)
+	}
+}
+
+func TestServerDependenciesGraphHealthSnapshotEmptyGraphIsNotHot(t *testing.T) {
+	snapshot := serverDependencies{SecurityGraph: graph.New()}.GraphHealthSnapshot(time.Date(2026, time.March, 20, 18, 0, 0, 0, time.UTC))
+
+	if snapshot.TierDistribution.Hot != 0 {
+		t.Fatalf("TierDistribution.Hot = %d, want 0", snapshot.TierDistribution.Hot)
+	}
+}
+
+func TestGraphRuntimeAdapterGraphHealthSnapshotNilReceiver(t *testing.T) {
+	var runtime *graphRuntimeAdapter
+
+	snapshot := runtime.GraphHealthSnapshot(time.Date(2026, time.March, 20, 18, 0, 0, 0, time.UTC))
+	if snapshot != (app.GraphHealthSnapshot{}) {
+		t.Fatalf("GraphHealthSnapshot() = %+v, want zero value", snapshot)
+	}
+}
+
+func TestGraphRuntimeAdapterGraphHealthSnapshotRecalculatesMemoryEstimate(t *testing.T) {
+	now := time.Date(2026, time.March, 20, 18, 0, 0, 0, time.UTC)
+
+	providerGraph := graph.New()
+	providerGraph.AddNode(&graph.Node{ID: "service:provider", Kind: graph.NodeKindService})
+
+	localGraph := graph.New()
+	localGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService})
+	localGraph.AddNode(&graph.Node{ID: "bucket:prod", Kind: graph.NodeKindBucket})
+	localGraph.AddEdge(&graph.Edge{ID: "edge:read", Source: "service:payments", Target: "bucket:prod", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
+
+	runtime := &graphRuntimeAdapter{
+		deps: &serverDependencies{
+			SecurityGraph:        localGraph,
+			SecurityGraphBuilder: &builders.Builder{},
+		},
+		fallback: stubGraphRuntime{
+			graph: providerGraph,
+			healthSnapshot: app.GraphHealthSnapshot{
+				MemoryUsageEstimateBytes: app.EstimateGraphMemoryUsageBytes(providerGraph.NodeCount(), providerGraph.EdgeCount()),
+			},
+		},
+	}
+
+	snapshot := runtime.GraphHealthSnapshot(now)
+	expected := app.EstimateGraphMemoryUsageBytes(localGraph.NodeCount(), localGraph.EdgeCount())
+
+	if snapshot.NodeCount != localGraph.NodeCount() || snapshot.EdgeCount != localGraph.EdgeCount() {
+		t.Fatalf("snapshot counts = (%d,%d), want (%d,%d)", snapshot.NodeCount, snapshot.EdgeCount, localGraph.NodeCount(), localGraph.EdgeCount())
+	}
+	if snapshot.MemoryUsageEstimateBytes != expected {
+		t.Fatalf("MemoryUsageEstimateBytes = %d, want %d", snapshot.MemoryUsageEstimateBytes, expected)
+	}
+}
+
+func TestGraphRuntimeAdapterGraphHealthSnapshotEmptyLocalGraphIsNotHot(t *testing.T) {
+	now := time.Date(2026, time.March, 20, 18, 0, 0, 0, time.UTC)
+
+	t.Run("with provider snapshot", func(t *testing.T) {
+		runtime := &graphRuntimeAdapter{
+			deps: &serverDependencies{
+				SecurityGraph:        graph.New(),
+				SecurityGraphBuilder: &builders.Builder{},
+			},
+			fallback: stubGraphRuntime{},
+		}
+
+		snapshot := runtime.GraphHealthSnapshot(now)
+		if snapshot.TierDistribution.Hot != 0 {
+			t.Fatalf("TierDistribution.Hot = %d, want 0", snapshot.TierDistribution.Hot)
+		}
+	})
+
+	t.Run("without provider snapshot", func(t *testing.T) {
+		runtime := &graphRuntimeAdapter{
+			deps: &serverDependencies{
+				SecurityGraph: graph.New(),
+			},
+		}
+
+		snapshot := runtime.GraphHealthSnapshot(now)
+		if snapshot.TierDistribution.Hot != 0 {
+			t.Fatalf("TierDistribution.Hot = %d, want 0", snapshot.TierDistribution.Hot)
+		}
+	})
+}
+
+func TestGraphRuntimeAdapterGraphHealthSnapshotFallbackUsesLocalBuilderLastMutation(t *testing.T) {
+	now := time.Date(2026, time.March, 20, 18, 0, 0, 0, time.UTC)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	builder := builders.NewBuilder(emptyBuilderDataSource{}, logger)
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	lastMutationAt := builder.LastMutation().Until
+	if lastMutationAt.IsZero() {
+		t.Fatal("expected local builder to record a last mutation time")
+	}
+
+	localGraph := graph.New()
+	localGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService})
+
+	runtime := &graphRuntimeAdapter{
+		deps: &serverDependencies{
+			SecurityGraph:        localGraph,
+			SecurityGraphBuilder: builder,
+		},
+		fallback: &mutatingFallbackGraphRuntime{current: graph.New()},
+	}
+
+	snapshot := runtime.GraphHealthSnapshot(now)
+	if !snapshot.LastMutationAt.Equal(lastMutationAt.UTC()) {
+		t.Fatalf("LastMutationAt = %s, want %s", snapshot.LastMutationAt, lastMutationAt.UTC())
 	}
 }

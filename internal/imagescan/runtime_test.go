@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/scanner"
+	"github.com/writer/cerebro/internal/scanpolicy"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -137,6 +139,56 @@ func TestSQLiteRunStoreRoundTripAndEvents(t *testing.T) {
 	}
 	if len(events) != 1 || events[0].Message != "analysis started" {
 		t.Fatalf("unexpected stored events: %#v", events)
+	}
+}
+
+func TestRunImageScanSelectsRegistryClientByHost(t *testing.T) {
+	east := &fakeRegistry{
+		name: "ecr",
+		host: "111111111111.dkr.ecr.us-east-1.amazonaws.com",
+		manifest: &scanner.ImageManifest{
+			Digest: "sha256:east",
+			Config: scanner.ImageConfig{OS: "linux", Architecture: "amd64"},
+		},
+	}
+	west := &fakeRegistry{
+		name: "ecr",
+		host: "222222222222.dkr.ecr.us-west-2.amazonaws.com",
+		manifest: &scanner.ImageManifest{
+			Digest: "sha256:west",
+			Config: scanner.ImageConfig{OS: "linux", Architecture: "amd64"},
+		},
+	}
+
+	runner := NewRunner(RunnerOptions{
+		Registries: []scanner.RegistryClient{east, west},
+		Now: func() time.Time {
+			return time.Date(2026, 3, 21, 12, 0, 0, 0, time.UTC)
+		},
+	})
+
+	run, err := runner.RunImageScan(context.Background(), ScanRequest{
+		RequestedBy: "ops@example.com",
+		Target: ScanTarget{
+			Registry:     RegistryECR,
+			RegistryHost: west.host,
+			Repository:   "payments/api",
+			Tag:          "latest",
+		},
+		DryRun:      true,
+		SubmittedAt: time.Date(2026, 3, 21, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("run image scan: %v", err)
+	}
+	if run == nil || run.Manifest == nil {
+		t.Fatalf("expected manifest to be recorded, got %#v", run)
+	}
+	if got := run.Manifest.Digest; got != "sha256:west" {
+		t.Fatalf("expected west registry manifest, got %q", got)
+	}
+	if got := run.Target.RegistryHost; got != west.host {
+		t.Fatalf("expected run host %q, got %q", west.host, got)
 	}
 }
 
@@ -552,6 +604,60 @@ func TestRunnerRunImageScanSanitizesPersistedAndEmittedErrors(t *testing.T) {
 	errorValue, _ := failedPayload["error"].(string)
 	if strings.Contains(errorValue, "X-Amz-Signature=secret") || strings.Contains(errorValue, "X-Amz-Credential=creds") {
 		t.Fatalf("expected emitted failure payload to redact presigned query params, got %q", errorValue)
+	}
+}
+
+func TestRunnerRunImageScanRejectsPolicyViolationsBeforePersistence(t *testing.T) {
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "image-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	allowKeepFilesystem := false
+	policyEngine, err := scanpolicy.NewEngine([]scanpolicy.Policy{{
+		ID:                  "platform-image-policy",
+		ScanKinds:           []scanpolicy.Kind{scanpolicy.KindImage},
+		Teams:               []string{"platform"},
+		RequireRequestedBy:  true,
+		RequiredMetadata:    []string{"team", "change_ticket"},
+		AllowKeepFilesystem: &allowKeepFilesystem,
+	}})
+	if err != nil {
+		t.Fatalf("new policy engine: %v", err)
+	}
+
+	runner := NewRunner(RunnerOptions{
+		Store:           store,
+		PolicyEvaluator: policyEngine,
+	})
+
+	_, err = runner.RunImageScan(context.Background(), ScanRequest{
+		Target: ScanTarget{
+			Registry:   RegistryECR,
+			Repository: "demo",
+			Tag:        "latest",
+		},
+		KeepFilesystem: true,
+		Metadata: map[string]string{
+			"team": "platform",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected policy validation error")
+	}
+
+	var validationErr *scanpolicy.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T", err)
+	}
+
+	runs, err := store.ListRuns(context.Background(), RunListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("list runs: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected no persisted runs, got %d", len(runs))
 	}
 }
 

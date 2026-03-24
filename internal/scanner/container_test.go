@@ -601,6 +601,96 @@ func TestGCRClientDownloadBlobQualifiesRepository(t *testing.T) {
 	}
 }
 
+func TestDockerHubClientSuccess(t *testing.T) {
+	manifestPayload := registryManifest{
+		MediaType: "application/vnd.docker.distribution.manifest.v2+json",
+		Layers: []struct {
+			MediaType string `json:"mediaType"`
+			Digest    string `json:"digest"`
+			Size      int64  `json:"size"`
+		}{
+			{MediaType: "application/vnd.docker.image.rootfs.diff.tar.gzip", Digest: "sha256:hub", Size: 12},
+		},
+	}
+	manifestBytes, err := json.Marshal(manifestPayload)
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			if got := r.URL.Query().Get("scope"); got != "repository:library/nginx:pull" {
+				t.Fatalf("unexpected token scope %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"token": "hub-token"})
+		case "/v2/namespaces/library/repositories":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results": []map[string]any{
+					{"name": "nginx"},
+				},
+			})
+		case "/v2/namespaces/library/repositories/nginx/tags":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results": []map[string]any{
+					{
+						"name":         "latest",
+						"last_updated": "2026-03-21T00:00:00Z",
+						"full_size":    42,
+						"images": []map[string]any{
+							{"digest": "sha256:hub"},
+						},
+					},
+				},
+			})
+		case "/v2/library/nginx/manifests/latest":
+			if r.Header.Get("Authorization") != "Bearer hub-token" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Docker-Content-Digest", "sha256:hub")
+			w.Header().Set("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
+			_, _ = w.Write(manifestBytes)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewDockerHubClient("library")
+	client.SetAPIBaseURL(server.URL)
+	client.SetRegistryBaseURL(server.URL)
+	client.SetAuthBaseURL(server.URL + "/token")
+	client.client = server.Client()
+
+	repos, err := client.ListRepositories(context.Background())
+	if err != nil {
+		t.Fatalf("ListRepositories: %v", err)
+	}
+	if len(repos) != 1 || repos[0].Name != "library/nginx" {
+		t.Fatalf("unexpected repositories: %#v", repos)
+	}
+
+	tags, err := client.ListTags(context.Background(), "library/nginx")
+	if err != nil {
+		t.Fatalf("ListTags: %v", err)
+	}
+	if len(tags) != 1 || tags[0].Digest != "sha256:hub" {
+		t.Fatalf("unexpected tags: %#v", tags)
+	}
+
+	manifest, err := client.GetManifest(context.Background(), "library/nginx", "latest")
+	if err != nil {
+		t.Fatalf("GetManifest: %v", err)
+	}
+	if manifest.Digest != "sha256:hub" {
+		t.Fatalf("unexpected digest %q", manifest.Digest)
+	}
+	if got := client.QualifyImageRef("nginx", "latest"); got != "docker.io/library/nginx:latest" {
+		t.Fatalf("unexpected qualified ref %q", got)
+	}
+}
+
 func TestECRClientDownloadBlobSanitizesPresignedURLTransportErrors(t *testing.T) {
 	originalClient := http.DefaultClient
 	http.DefaultClient = &http.Client{

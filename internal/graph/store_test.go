@@ -31,6 +31,13 @@ func TestGraphStoreCRUDAndSnapshot(t *testing.T) {
 	if !ok || node == nil || node.ID != alice.ID {
 		t.Fatalf("LookupNode() = (%#v, %v), want %q", node, ok, alice.ID)
 	}
+	storedEdge, ok, err := store.LookupEdge(ctx, edge.ID)
+	if err != nil {
+		t.Fatalf("LookupEdge() error = %v", err)
+	}
+	if !ok || storedEdge == nil || storedEdge.ID != edge.ID {
+		t.Fatalf("LookupEdge() = (%#v, %v), want %q", storedEdge, ok, edge.ID)
+	}
 
 	nodesByKind, err := store.LookupNodesByKind(ctx, NodeKindPerson)
 	if err != nil {
@@ -78,6 +85,22 @@ func TestGraphStoreCRUDAndSnapshot(t *testing.T) {
 	}
 	if snapshot == nil || len(snapshot.Nodes) != 2 || len(snapshot.Edges) != 1 {
 		t.Fatalf("Snapshot() = %#v, want 2 nodes and 1 edge", snapshot)
+	}
+
+	if err := store.DeleteEdge(ctx, edge.ID); err != nil {
+		t.Fatalf("DeleteEdge() error = %v", err)
+	}
+	if _, ok, err := store.LookupEdge(ctx, edge.ID); err != nil {
+		t.Fatalf("LookupEdge(after remove) error = %v", err)
+	} else if ok {
+		t.Fatal("expected removed edge to be absent")
+	}
+	edgeCount, err = store.CountEdges(ctx)
+	if err != nil {
+		t.Fatalf("CountEdges(after remove) error = %v", err)
+	}
+	if edgeCount != 0 {
+		t.Fatalf("CountEdges(after remove) = %d, want 0", edgeCount)
 	}
 
 	if err := store.DeleteNode(ctx, alice.ID); err != nil {

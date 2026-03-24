@@ -36,10 +36,13 @@ type Server struct {
 	graphRisk                graphRiskService
 	graphIntelligence        graphIntelligenceService
 	graphWriteback           graphWritebackService
+	forensics                forensicsService
 	agentSDKAdmin            agentSDKAdminService
 	lineage                  lineageService
 	orgAnalysis              orgAnalysisService
+	orgPolicies              orgPolicyService
 	platformExecutions       platformExecutionService
+	platformScanAudit        platformScanAuditService
 	platformKnowledge        platformKnowledgeService
 	platformWorkloadScan     platformWorkloadScanService
 	rbacAdmin                rbacAdminService
@@ -150,9 +153,21 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if orgAnalysis == nil {
 		orgAnalysis = newOrgAnalysisService(&deps)
 	}
+	orgPolicies := deps.orgPolicies
+	if orgPolicies == nil {
+		orgPolicies = newOrgPolicyService(&deps)
+	}
+	forensics := deps.forensics
+	if forensics == nil {
+		forensics = newForensicsService(&deps)
+	}
 	platformExecutions := deps.platformExecutions
 	if platformExecutions == nil {
 		platformExecutions = newPlatformExecutionService(&deps)
+	}
+	platformScanAudit := deps.platformScanAudit
+	if platformScanAudit == nil {
+		platformScanAudit = newPlatformScanAuditService(&deps)
 	}
 	platformWorkloadScan := deps.platformWorkloadScan
 	if platformWorkloadScan == nil {
@@ -190,7 +205,10 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		graphIntelligence:      newGraphIntelligenceService(&deps),
 		lineage:                lineage,
 		orgAnalysis:            orgAnalysis,
+		orgPolicies:            orgPolicies,
+		forensics:              forensics,
 		platformExecutions:     platformExecutions,
+		platformScanAudit:      platformScanAudit,
 		platformKnowledge:      platformKnowledge,
 		platformWorkloadScan:   platformWorkloadScan,
 		rbacAdmin:              rbacAdmin,
@@ -243,13 +261,18 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		}
 	}
 	s.platformReportHandlers = map[string]http.HandlerFunc{
-		"insights":           s.graphIntelligenceInsights,
-		"quality":            s.graphIntelligenceQuality,
-		"metadata-quality":   s.graphIntelligenceMetadataQuality,
-		"claim-conflicts":    s.graphIntelligenceClaimConflicts,
-		"entity-summary":     s.graphIntelligenceEntitySummary,
-		"leverage":           s.graphIntelligenceLeverage,
-		"calibration-weekly": s.graphIntelligenceWeeklyCalibration,
+		"agent-action-effectiveness":   s.graphIntelligenceAgentActionEffectiveness,
+		"playbook-effectiveness":       s.graphIntelligencePlaybookEffectiveness,
+		"unified-execution-timeline":   s.graphIntelligenceUnifiedExecutionTimeline,
+		"evaluation-temporal-analysis": s.graphIntelligenceEvaluationTemporalAnalysis,
+		"insights":                     s.graphIntelligenceInsights,
+		"quality":                      s.graphIntelligenceQuality,
+		"ai-workloads":                 s.graphIntelligenceAIWorkloads,
+		"metadata-quality":             s.graphIntelligenceMetadataQuality,
+		"claim-conflicts":              s.graphIntelligenceClaimConflicts,
+		"entity-summary":               s.graphIntelligenceEntitySummary,
+		"leverage":                     s.graphIntelligenceLeverage,
+		"calibration-weekly":           s.graphIntelligenceWeeklyCalibration,
 	}
 	s.setupMiddleware()
 	s.setupRoutes()
@@ -388,7 +411,7 @@ func skipGraphBuildWarningHeaders(path string) bool {
 	case "/health", "/ready", "/status", "/metrics",
 		"/api/v1/status/freshness",
 		"/api/v1/admin/health", "/api/v1/admin/sync/status",
-		"/api/v1/scheduler/status", "/api/v1/graph/ingest/health",
+		"/api/v1/scheduler/status", "/api/v1/graph/health", "/api/v1/graph/ingest/health",
 		"/api/v1/graph/schema/health":
 		return true
 	default:

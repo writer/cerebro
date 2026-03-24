@@ -67,19 +67,24 @@ func (q *traversalWorkQueue) seedContiguous(itemCount int) {
 }
 
 func (q *traversalWorkQueue) next(worker int) (int, bool) {
+	item, ok, _ := q.nextWithSteal(worker)
+	return item, ok
+}
+
+func (q *traversalWorkQueue) nextWithSteal(worker int) (int, bool, bool) {
 	if q == nil || worker < 0 || worker >= len(q.deques) {
-		return 0, false
+		return 0, false, false
 	}
 	if item, ok := q.deques[worker].popBottom(); ok {
-		return item, true
+		return item, true, false
 	}
 	for offset := 1; offset < len(q.deques); offset++ {
 		victim := (worker + offset) % len(q.deques)
 		if item, ok := q.deques[victim].stealTop(); ok {
-			return item, true
+			return item, true, true
 		}
 	}
-	return 0, false
+	return 0, false, false
 }
 
 func (q *traversalWorkQueue) push(worker, item int) bool {

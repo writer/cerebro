@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseGitleaksOutput(t *testing.T) {
@@ -67,6 +68,44 @@ func TestParseGitleaksOutput(t *testing.T) {
 	}
 }
 
+func TestParseGitleaksGitOutputIncludesCommitContext(t *testing.T) {
+	raw := []byte(`[
+		{
+			"RuleID": "GitHub",
+			"Description": "GitHub token",
+			"StartLine": 4,
+			"Match": "ghp_1234567890abcdefghijklmn",
+			"Secret": "ghp_1234567890abcdefghijklmn",
+			"File": "app/.env",
+			"Commit": "abc123def456",
+			"Author": "Alice Example",
+			"Email": "alice@example.com",
+			"Date": "2026-03-18T10:00:00Z"
+		}
+	]`)
+
+	result, err := parseGitleaksGitOutput(raw)
+	if err != nil {
+		t.Fatalf("parseGitleaksGitOutput: %v", err)
+	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected one finding, got %#v", result)
+	}
+	finding := result.Findings[0]
+	if finding.Type != "github_token" {
+		t.Fatalf("expected github token type, got %#v", finding)
+	}
+	if finding.CommitSHA != "abc123def456" || finding.AuthorName != "Alice Example" || finding.AuthorEmail != "alice@example.com" {
+		t.Fatalf("expected commit context, got %#v", finding)
+	}
+	if finding.CommittedAt == nil || finding.CommittedAt.UTC().Format(time.RFC3339) != "2026-03-18T10:00:00Z" {
+		t.Fatalf("expected committed_at, got %#v", finding.CommittedAt)
+	}
+	if strings.Contains(finding.Match, "ghp_1234567890abcdefghijklmn") {
+		t.Fatalf("expected secret match to be fingerprinted, got %#v", finding)
+	}
+}
+
 func TestGitleaksScannerScanFilesystem(t *testing.T) {
 	script := "#!/bin/sh\n" +
 		"found_report_path=0\n" +
@@ -93,6 +132,39 @@ func TestGitleaksScannerScanFilesystem(t *testing.T) {
 	}
 	if result.Findings[0].Type != "github_token" {
 		t.Fatalf("expected github token mapping, got %#v", result.Findings[0])
+	}
+}
+
+func TestGitleaksGitScannerScanGitHistory(t *testing.T) {
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" != \"git\" ]; then\n" +
+		"  echo expected git subcommand >&2\n" +
+		"  exit 2\n" +
+		"fi\n" +
+		"found_report_path=0\n" +
+		"while [ \"$#\" -gt 0 ]; do\n" +
+		"  if [ \"$1\" = \"--report-path\" ] && [ \"$2\" = \"-\" ]; then\n" +
+		"    found_report_path=1\n" +
+		"    break\n" +
+		"  fi\n" +
+		"  shift\n" +
+		"done\n" +
+		"if [ \"$found_report_path\" -ne 1 ]; then\n" +
+		"  echo missing --report-path - >&2\n" +
+		"  exit 2\n" +
+		"fi\n" +
+		"printf '%s' '[{\"RuleID\":\"AWS Access Key\",\"Description\":\"AWS key\",\"StartLine\":1,\"Match\":\"AKIA1234567890ABCDEF\",\"Secret\":\"AKIA1234567890ABCDEF\",\"File\":\"app/.env\",\"Commit\":\"abc123\",\"Author\":\"Alice\",\"Email\":\"alice@example.com\",\"Date\":\"2026-03-18T10:00:00Z\"}]'\n"
+	path := writeSecretScannerExecutable(t, script)
+
+	result, err := NewGitleaksGitScanner(path).ScanGitHistory(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatalf("ScanGitHistory: %v", err)
+	}
+	if result.Engine != "gitleaks" || len(result.Findings) != 1 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if result.Findings[0].CommitSHA != "abc123" {
+		t.Fatalf("expected commit metadata, got %#v", result.Findings[0])
 	}
 }
 

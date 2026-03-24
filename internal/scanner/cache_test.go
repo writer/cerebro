@@ -55,7 +55,7 @@ func TestScannerWithCache(t *testing.T) {
 	engine.AddPolicy(&policy.Policy{
 		ID:         "pub-check",
 		Effect:     "forbid",
-		Conditions: []string{"public == true"},
+		Conditions: []string{"resource.public == true"},
 		Severity:   "high",
 	})
 
@@ -64,8 +64,8 @@ func TestScannerWithCache(t *testing.T) {
 	s.SetCache(c)
 
 	assets := []map[string]interface{}{
-		{"_cq_id": "1", "name": "pub-bucket", "public": "true"},
-		{"_cq_id": "2", "name": "priv-bucket", "public": "false"},
+		{"_cq_id": "1", "name": "pub-bucket", "public": true},
+		{"_cq_id": "2", "name": "priv-bucket", "public": false},
 	}
 
 	// First scan: all cache misses
@@ -107,7 +107,7 @@ func TestScannerCacheCountersArePerScan(t *testing.T) {
 	engine.AddPolicy(&policy.Policy{
 		ID:         "pub-check",
 		Effect:     "forbid",
-		Conditions: []string{"public == true"},
+		Conditions: []string{"resource.public == true"},
 		Severity:   "high",
 	})
 
@@ -116,7 +116,7 @@ func TestScannerCacheCountersArePerScan(t *testing.T) {
 	s.SetCache(c)
 
 	assets := []map[string]interface{}{
-		{"_cq_id": "1", "name": "bucket", "public": "true"},
+		{"_cq_id": "1", "name": "bucket", "public": true},
 	}
 
 	// First scan populates the cache
@@ -145,7 +145,7 @@ func TestScannerCacheInvalidatesWhenPoliciesChange(t *testing.T) {
 	engine.AddPolicy(&policy.Policy{
 		ID:         "pub-check",
 		Effect:     "forbid",
-		Conditions: []string{"public == true"},
+		Conditions: []string{"resource.public == true"},
 		Severity:   "high",
 	})
 
@@ -154,7 +154,7 @@ func TestScannerCacheInvalidatesWhenPoliciesChange(t *testing.T) {
 	s.SetCache(c)
 
 	assets := []map[string]interface{}{
-		{"_cq_id": "1", "name": "bucket", "public": "true"},
+		{"_cq_id": "1", "name": "bucket", "public": true},
 	}
 
 	_ = s.ScanAssets(context.Background(), assets)
@@ -166,7 +166,7 @@ func TestScannerCacheInvalidatesWhenPoliciesChange(t *testing.T) {
 	engine.AddPolicy(&policy.Policy{
 		ID:         "name-check",
 		Effect:     "forbid",
-		Conditions: []string{"name == 'bucket'"},
+		Conditions: []string{"resource.name == 'bucket'"},
 		Severity:   "medium",
 	})
 

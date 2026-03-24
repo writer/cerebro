@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 	"time"
@@ -54,12 +55,23 @@ func (a *App) setGraphBuildState(state GraphBuildState, builtAt time.Time, err e
 }
 
 func (a *App) CurrentSecurityGraph() *graph.Graph {
+	if current := a.currentLiveSecurityGraph(); current != nil {
+		return current
+	}
 	if a == nil {
 		return nil
 	}
-	a.securityGraphInitMu.RLock()
-	defer a.securityGraphInitMu.RUnlock()
-	return a.SecurityGraph
+	if view, err := a.currentConfiguredSecurityGraphView(context.Background()); err == nil && view != nil {
+		return view
+	}
+	view, err := a.storedSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error) {
+		snapshot, _, _, err := store.PeekLatestSnapshot()
+		return snapshot, err
+	})
+	if err != nil {
+		return nil
+	}
+	return view
 }
 
 func (a *App) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
@@ -67,18 +79,32 @@ func (a *App) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
 		return nil
 	}
 	tenantID = strings.TrimSpace(tenantID)
-	current := a.CurrentSecurityGraph()
 	if tenantID == "" {
-		return current
+		return a.CurrentSecurityGraph()
 	}
-	manager := a.ensureTenantSecurityGraphShards()
-	if manager == nil {
-		if current == nil {
-			return nil
+	current := a.currentLiveSecurityGraph()
+	if a.retainHotSecurityGraph() {
+		manager := a.ensureTenantSecurityGraphShards()
+		if manager != nil {
+			if scoped := manager.GraphForTenant(current, tenantID); scoped != nil {
+				return scoped
+			}
 		}
-		return current.SubgraphForTenant(tenantID)
 	}
-	return manager.GraphForTenant(current, tenantID)
+	current = a.CurrentSecurityGraph()
+	if current == nil {
+		return nil
+	}
+	return current.SubgraphForTenant(tenantID)
+}
+
+func (a *App) currentLiveSecurityGraph() *graph.Graph {
+	if a == nil {
+		return nil
+	}
+	a.securityGraphInitMu.RLock()
+	defer a.securityGraphInitMu.RUnlock()
+	return a.SecurityGraph
 }
 
 func (a *App) setSecurityGraph(g *graph.Graph) {
@@ -101,6 +127,55 @@ func (a *App) setSecurityGraph(g *graph.Graph) {
 	if manager := a.currentTenantSecurityGraphShards(); manager != nil {
 		manager.SetSource(g)
 	}
+}
+
+func (a *App) publishSecurityGraphRuntimeView(g *graph.Graph) {
+	if a == nil {
+		return
+	}
+
+	a.securityGraphInitMu.Lock()
+	defer a.securityGraphInitMu.Unlock()
+
+	if a.retainHotSecurityGraph() {
+		a.SecurityGraph = g
+		if g == nil {
+			metrics.SetGraphCounts(0, 0)
+			a.Propagation = nil
+			if manager := a.currentTenantSecurityGraphShards(); manager != nil {
+				manager.SetSource(nil)
+			}
+			return
+		}
+		metrics.SetGraphCounts(g.NodeCount(), g.EdgeCount())
+		a.Propagation = graph.NewPropagationEngine(g)
+		if manager := a.currentTenantSecurityGraphShards(); manager != nil {
+			manager.SetSource(g)
+		}
+		return
+	}
+
+	a.SecurityGraph = nil
+	a.Propagation = nil
+	if manager := a.currentTenantSecurityGraphShards(); manager != nil {
+		manager.SetSource(nil)
+	}
+	if g == nil {
+		metrics.SetGraphCounts(0, 0)
+		a.releaseBuilderGraphRuntimeLocked()
+		return
+	}
+	metrics.SetGraphCounts(g.NodeCount(), g.EdgeCount())
+	a.releaseBuilderGraphRuntimeLocked()
+}
+
+func (a *App) releaseBuilderGraphRuntimeLocked() {
+	if a == nil || a.retainHotSecurityGraph() || a.SecurityGraphBuilder == nil {
+		return
+	}
+	placeholder := graph.New()
+	a.configureGraphRuntimeBehavior(placeholder)
+	a.SecurityGraphBuilder.ReplaceGraph(placeholder)
 }
 
 func (a *App) GraphBuildSnapshot() GraphBuildSnapshot {

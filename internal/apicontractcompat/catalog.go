@@ -322,6 +322,7 @@ func parseRequestContract(root map[string]any, raw any) *RequestContract {
 		contentTypes = append(contentTypes, strings.TrimSpace(contentType))
 		media := mapFromAny(rawMedia)
 		flattenSchema(root, media["schema"], "", false, fields)
+		collectRequiredSchemaFields(root, media["schema"], "", nil, fields)
 	}
 	sort.Strings(contentTypes)
 	requiredFields := make([]FieldContract, 0)
@@ -333,6 +334,39 @@ func parseRequestContract(root map[string]any, raw any) *RequestContract {
 	}
 	sort.Slice(requiredFields, func(i, j int) bool { return requiredFields[i].Path < requiredFields[j].Path })
 	return &RequestContract{ContentTypes: contentTypes, RequiredFields: requiredFields}
+}
+
+func collectRequiredSchemaFields(root map[string]any, raw any, path string, inheritedProperties map[string]any, fields map[string]fieldMeta) {
+	schema := resolveSchemaRef(root, mapFromAny(raw))
+	if len(schema) == 0 {
+		return
+	}
+	properties := mapFromAny(schema["properties"])
+	if len(properties) == 0 {
+		properties = inheritedProperties
+	}
+	if len(properties) > 0 {
+		for key := range requiredKeys(schema["required"]) {
+			propertySchema, ok := properties[key]
+			if !ok {
+				continue
+			}
+			childPath := key
+			if path != "" {
+				childPath = path + "." + key
+			}
+			flattenSchema(root, propertySchema, childPath, true, fields)
+		}
+	}
+	for _, key := range []string{"allOf", "oneOf", "anyOf"} {
+		variants, ok := schema[key].([]any)
+		if !ok {
+			continue
+		}
+		for _, variant := range variants {
+			collectRequiredSchemaFields(root, variant, path, properties, fields)
+		}
+	}
 }
 
 func parseSuccessResponses(root map[string]any, raw any) []ResponseContract {

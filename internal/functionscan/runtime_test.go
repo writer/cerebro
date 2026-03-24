@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/scanner"
+	"github.com/writer/cerebro/internal/scanpolicy"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -368,6 +370,59 @@ func TestLocalMaterializerRejectsOversizedDownload(t *testing.T) {
 	}
 	if _, statErr := os.Stat(rootfsPath); !os.IsNotExist(statErr) {
 		t.Fatalf("expected rootfs path cleanup after failure, got %v", statErr)
+	}
+}
+
+func TestRunnerRunFunctionScanRejectsPolicyViolationsBeforePersistence(t *testing.T) {
+	store, err := NewSQLiteRunStore(filepath.Join(t.TempDir(), "function-scan.db"))
+	if err != nil {
+		t.Fatalf("new sqlite run store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	allowDryRun := false
+	policyEngine, err := scanpolicy.NewEngine([]scanpolicy.Policy{{
+		ID:          "platform-function-policy",
+		ScanKinds:   []scanpolicy.Kind{scanpolicy.KindFunction},
+		Teams:       []string{"platform"},
+		AllowDryRun: &allowDryRun,
+	}})
+	if err != nil {
+		t.Fatalf("new policy engine: %v", err)
+	}
+
+	runner := NewRunner(RunnerOptions{
+		Store:           store,
+		PolicyEvaluator: policyEngine,
+	})
+
+	_, err = runner.RunFunctionScan(context.Background(), ScanRequest{
+		RequestedBy: "user:alice",
+		Target: FunctionTarget{
+			Provider:     ProviderAWS,
+			Region:       "us-east-1",
+			FunctionName: "demo",
+		},
+		DryRun: true,
+		Metadata: map[string]string{
+			"team": "platform",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected policy validation error")
+	}
+
+	var validationErr *scanpolicy.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T", err)
+	}
+
+	runs, err := store.ListRuns(context.Background(), RunListOptions{Limit: 10})
+	if err != nil {
+		t.Fatalf("list runs: %v", err)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("expected no persisted runs, got %d", len(runs))
 	}
 }
 

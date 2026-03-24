@@ -345,7 +345,7 @@ func (a *App) graphTenantWarmShardPath() string {
 }
 
 func (a *App) ensureTenantSecurityGraphShards() *tenantGraphShardManager {
-	if a == nil {
+	if a == nil || !a.retainHotSecurityGraph() {
 		return nil
 	}
 	a.tenantShardMu.Lock()

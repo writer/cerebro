@@ -92,6 +92,104 @@ func TestCerebroEntityHistoryTool(t *testing.T) {
 	}
 }
 
+func TestCerebroTemporalAliasTools(t *testing.T) {
+	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
+	g := graph.New()
+	g.AddNode(&graph.Node{
+		ID:       "service:payments",
+		Kind:     graph.NodeKindService,
+		Name:     "Payments",
+		Provider: "aws",
+		Properties: map[string]any{
+			"status":           "degraded",
+			"owner":            "team-payments",
+			"observed_at":      base.Add(2 * time.Hour).Format(time.RFC3339),
+			"valid_from":       base.Format(time.RFC3339),
+			"recorded_at":      base.Format(time.RFC3339),
+			"transaction_from": base.Format(time.RFC3339),
+		},
+	})
+	node, ok := g.GetNode("service:payments")
+	if !ok || node == nil {
+		t.Fatal("expected seeded service node")
+	}
+	node.CreatedAt = base
+	node.UpdatedAt = base.Add(2 * time.Hour)
+	node.PropertyHistory = map[string][]graph.PropertySnapshot{
+		"status": {
+			{Timestamp: base, Value: "healthy"},
+			{Timestamp: base.Add(2 * time.Hour), Value: "degraded"},
+		},
+		"owner": {
+			{Timestamp: base.Add(2 * time.Hour), Value: "team-payments"},
+		},
+	}
+
+	application := &App{SecurityGraph: g, Config: &Config{}}
+
+	reconstructTool := findCerebroTool(application.AgentSDKTools(), "cerebro.reconstruct")
+	if reconstructTool == nil {
+		t.Fatal("expected cerebro.reconstruct tool")
+	}
+	reconstructResult, err := reconstructTool.Handler(context.Background(), json.RawMessage(`{
+		"entity_id":"service:payments",
+		"timestamp":"2026-03-10T09:30:00Z"
+	}`))
+	if err != nil {
+		t.Fatalf("reconstruct returned error: %v", err)
+	}
+	var reconstructPayload map[string]any
+	if err := json.Unmarshal([]byte(reconstructResult), &reconstructPayload); err != nil {
+		t.Fatalf("decode reconstruct payload: %v", err)
+	}
+	reconstructEntity := reconstructPayload["entity"].(map[string]any)
+	reconstructProperties := reconstructEntity["properties"].(map[string]any)
+	if got := reconstructProperties["status"]; got != "healthy" {
+		t.Fatalf("expected reconstruct status healthy, got %#v", got)
+	}
+
+	timelineTool := findCerebroTool(application.AgentSDKTools(), "cerebro.timeline")
+	if timelineTool == nil {
+		t.Fatal("expected cerebro.timeline tool")
+	}
+	timelineResult, err := timelineTool.Handler(context.Background(), json.RawMessage(`{
+		"entity_id":"service:payments",
+		"from":"2026-03-10T09:00:00Z",
+		"to":"2026-03-10T12:00:00Z"
+	}`))
+	if err != nil {
+		t.Fatalf("timeline returned error: %v", err)
+	}
+	var timelinePayload map[string]any
+	if err := json.Unmarshal([]byte(timelineResult), &timelinePayload); err != nil {
+		t.Fatalf("decode timeline payload: %v", err)
+	}
+	events, ok := timelinePayload["events"].([]any)
+	if !ok || len(events) < 3 {
+		t.Fatalf("expected timeline events, got %#v", timelinePayload["events"])
+	}
+
+	diffTool := findCerebroTool(application.AgentSDKTools(), "cerebro.diff")
+	if diffTool == nil {
+		t.Fatal("expected cerebro.diff tool")
+	}
+	diffResult, err := diffTool.Handler(context.Background(), json.RawMessage(`{
+		"entity_id":"service:payments",
+		"from":"2026-03-10T09:00:00Z",
+		"to":"2026-03-10T11:30:00Z"
+	}`))
+	if err != nil {
+		t.Fatalf("diff returned error: %v", err)
+	}
+	var diffPayload map[string]any
+	if err := json.Unmarshal([]byte(diffResult), &diffPayload); err != nil {
+		t.Fatalf("decode diff payload: %v", err)
+	}
+	if diffPayload["entity_id"] != "service:payments" {
+		t.Fatalf("expected diff entity_id service:payments, got %#v", diffPayload["entity_id"])
+	}
+}
+
 func TestCerebroEntityHistoryToolUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
 	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
 	g := graph.New()

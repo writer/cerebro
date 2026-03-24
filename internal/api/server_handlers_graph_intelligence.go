@@ -111,6 +111,97 @@ func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *ht
 	s.json(w, http.StatusOK, result)
 }
 
+func (s *Server) graphIntelligenceEventChains(w http.ResponseWriter, r *http.Request) {
+	g := s.currentGraphIntelligenceGraph(r.Context())
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	limit := 25
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			s.error(w, http.StatusBadRequest, "limit must be between 1 and 200")
+			return
+		}
+		limit = parsed
+	}
+
+	maxDepth := 4
+	if raw := strings.TrimSpace(r.URL.Query().Get("max_depth")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 6 {
+			s.error(w, http.StatusBadRequest, "max_depth must be between 1 and 6")
+			return
+		}
+		maxDepth = parsed
+	}
+
+	var since time.Time
+	if raw := strings.TrimSpace(r.URL.Query().Get("since")); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			s.error(w, http.StatusBadRequest, "since must be RFC3339")
+			return
+		}
+		since = parsed
+	}
+
+	var until time.Time
+	if raw := strings.TrimSpace(r.URL.Query().Get("until")); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			s.error(w, http.StatusBadRequest, "until must be RFC3339")
+			return
+		}
+		until = parsed
+	}
+
+	direction := "both"
+	if raw := strings.TrimSpace(r.URL.Query().Get("direction")); raw != "" {
+		switch raw {
+		case "upstream", "downstream", "both":
+			direction = raw
+		default:
+			s.error(w, http.StatusBadRequest, "direction must be one of upstream, downstream, or both")
+			return
+		}
+	}
+
+	eventID := strings.TrimSpace(r.URL.Query().Get("event_id"))
+	entityID := strings.TrimSpace(r.URL.Query().Get("entity_id"))
+	patternID := strings.TrimSpace(r.URL.Query().Get("pattern_id"))
+	if eventID == "" && entityID == "" {
+		s.error(w, http.StatusBadRequest, "event_id or entity_id is required")
+		return
+	}
+	if eventID != "" {
+		if _, ok := g.GetNode(eventID); !ok {
+			s.error(w, http.StatusNotFound, "event not found in selected scope")
+			return
+		}
+	}
+	if entityID != "" {
+		if _, ok := g.GetNode(entityID); !ok {
+			s.error(w, http.StatusNotFound, "entity not found in selected scope")
+			return
+		}
+	}
+
+	result := graph.QueryEventCorrelationChains(g, time.Now().UTC(), graph.EventCorrelationChainQuery{
+		EventID:   eventID,
+		EntityID:  entityID,
+		PatternID: patternID,
+		Direction: direction,
+		Limit:     limit,
+		MaxDepth:  maxDepth,
+		Since:     since,
+		Until:     until,
+	})
+	s.json(w, http.StatusOK, result)
+}
+
 func (s *Server) graphIntelligenceEventAnomalies(w http.ResponseWriter, r *http.Request) {
 	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
@@ -310,6 +401,126 @@ func (s *Server) graphIntelligenceQuality(w http.ResponseWriter, r *http.Request
 	s.json(w, http.StatusOK, report)
 }
 
+func (s *Server) graphIntelligenceAgentActionEffectiveness(w http.ResponseWriter, r *http.Request) {
+	g := s.currentGraphIntelligenceGraph(r.Context())
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	windowDays := 30
+	if raw := strings.TrimSpace(r.URL.Query().Get("window_days")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 365 {
+			s.error(w, http.StatusBadRequest, "window_days must be between 1 and 365")
+			return
+		}
+		windowDays = parsed
+	}
+
+	trendDays := 7
+	if raw := strings.TrimSpace(r.URL.Query().Get("trend_days")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 90 {
+			s.error(w, http.StatusBadRequest, "trend_days must be between 1 and 90")
+			return
+		}
+		trendDays = parsed
+	}
+
+	maxAgents := 25
+	if raw := strings.TrimSpace(r.URL.Query().Get("max_agents")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			s.error(w, http.StatusBadRequest, "max_agents must be between 1 and 200")
+			return
+		}
+		maxAgents = parsed
+	}
+
+	report := reports.BuildAgentActionEffectivenessReport(g, reports.AgentActionEffectivenessReportOptions{
+		Window:    time.Duration(windowDays) * 24 * time.Hour,
+		TrendDays: trendDays,
+		MaxAgents: maxAgents,
+	})
+	s.json(w, http.StatusOK, report)
+}
+
+func (s *Server) graphIntelligencePlaybookEffectiveness(w http.ResponseWriter, r *http.Request) {
+	g := s.currentGraphIntelligenceGraph(r.Context())
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	windowDays := 30
+	if raw := strings.TrimSpace(r.URL.Query().Get("window_days")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 365 {
+			s.error(w, http.StatusBadRequest, "window_days must be between 1 and 365")
+			return
+		}
+		windowDays = parsed
+	}
+
+	maxPlaybooks := 25
+	if raw := strings.TrimSpace(r.URL.Query().Get("max_playbooks")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			s.error(w, http.StatusBadRequest, "max_playbooks must be between 1 and 200")
+			return
+		}
+		maxPlaybooks = parsed
+	}
+
+	report := reports.BuildPlaybookEffectivenessReport(g, reports.PlaybookEffectivenessReportOptions{
+		Window:       time.Duration(windowDays) * 24 * time.Hour,
+		PlaybookID:   strings.TrimSpace(r.URL.Query().Get("playbook_id")),
+		TenantID:     strings.TrimSpace(r.URL.Query().Get("tenant_id")),
+		TargetKind:   strings.TrimSpace(r.URL.Query().Get("target_kind")),
+		MaxPlaybooks: maxPlaybooks,
+	})
+	s.json(w, http.StatusOK, report)
+}
+
+func (s *Server) graphIntelligenceUnifiedExecutionTimeline(w http.ResponseWriter, r *http.Request) {
+	g := s.currentGraphIntelligenceGraph(r.Context())
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	windowDays := 30
+	if raw := strings.TrimSpace(r.URL.Query().Get("window_days")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 365 {
+			s.error(w, http.StatusBadRequest, "window_days must be between 1 and 365")
+			return
+		}
+		windowDays = parsed
+	}
+
+	maxEvents := 200
+	if raw := strings.TrimSpace(r.URL.Query().Get("max_events")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 1000 {
+			s.error(w, http.StatusBadRequest, "max_events must be between 1 and 1000")
+			return
+		}
+		maxEvents = parsed
+	}
+
+	report := reports.BuildUnifiedExecutionTimelineReport(g, reports.UnifiedExecutionTimelineReportOptions{
+		Window:          time.Duration(windowDays) * 24 * time.Hour,
+		TenantID:        strings.TrimSpace(r.URL.Query().Get("tenant_id")),
+		TargetKind:      strings.TrimSpace(r.URL.Query().Get("target_kind")),
+		PlaybookID:      strings.TrimSpace(r.URL.Query().Get("playbook_id")),
+		EvaluationRunID: strings.TrimSpace(r.URL.Query().Get("evaluation_run_id")),
+		MaxEvents:       maxEvents,
+	})
+	s.json(w, http.StatusOK, report)
+}
+
 func (s *Server) graphIntelligenceMetadataQuality(w http.ResponseWriter, r *http.Request) {
 	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
@@ -329,6 +540,85 @@ func (s *Server) graphIntelligenceMetadataQuality(w http.ResponseWriter, r *http
 
 	report := reports.BuildGraphMetadataQualityReport(g, reports.GraphMetadataQualityReportOptions{
 		TopKinds: topKinds,
+	})
+	s.json(w, http.StatusOK, report)
+}
+
+func (s *Server) graphIntelligenceAIWorkloads(w http.ResponseWriter, r *http.Request) {
+	g := s.currentGraphIntelligenceGraph(r.Context())
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	maxWorkloads := 50
+	if raw := strings.TrimSpace(r.URL.Query().Get("max_workloads")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			s.error(w, http.StatusBadRequest, "max_workloads must be between 1 and 200")
+			return
+		}
+		maxWorkloads = parsed
+	}
+
+	minRiskScore := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("min_risk_score")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 || parsed > 100 {
+			s.error(w, http.StatusBadRequest, "min_risk_score must be between 0 and 100")
+			return
+		}
+		minRiskScore = parsed
+	}
+
+	includeShadow := true
+	if raw := strings.TrimSpace(r.URL.Query().Get("include_shadow")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			s.error(w, http.StatusBadRequest, "include_shadow must be a boolean")
+			return
+		}
+		includeShadow = parsed
+	}
+
+	report := reports.BuildAIWorkloadInventoryReport(g, reports.AIWorkloadInventoryReportOptions{
+		MaxWorkloads:  maxWorkloads,
+		MinRiskScore:  minRiskScore,
+		IncludeShadow: includeShadow,
+	})
+	s.json(w, http.StatusOK, report)
+}
+
+func (s *Server) graphIntelligenceEvaluationTemporalAnalysis(w http.ResponseWriter, r *http.Request) {
+	g := s.currentGraphIntelligenceGraph(r.Context())
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	evaluationRunID := strings.TrimSpace(r.URL.Query().Get("evaluation_run_id"))
+	if evaluationRunID == "" {
+		s.error(w, http.StatusBadRequest, "evaluation_run_id is required")
+		return
+	}
+	conversationID := strings.TrimSpace(r.URL.Query().Get("conversation_id"))
+	stageID := strings.TrimSpace(r.URL.Query().Get("stage_id"))
+
+	timelineLimit := 25
+	if raw := strings.TrimSpace(r.URL.Query().Get("timeline_limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 100 {
+			s.error(w, http.StatusBadRequest, "timeline_limit must be between 1 and 100")
+			return
+		}
+		timelineLimit = parsed
+	}
+
+	report := reports.BuildEvaluationTemporalAnalysisReport(g, reports.EvaluationTemporalAnalysisReportOptions{
+		EvaluationRunID: evaluationRunID,
+		ConversationID:  conversationID,
+		StageID:         stageID,
+		TimelineLimit:   timelineLimit,
 	})
 	s.json(w, http.StatusOK, report)
 }
@@ -446,6 +736,32 @@ func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.R
 	})
 	if !ok {
 		s.error(w, http.StatusNotFound, "entity not found")
+		return
+	}
+	s.json(w, http.StatusOK, report)
+}
+
+func (s *Server) graphIntelligenceKeyPersonRisk(w http.ResponseWriter, r *http.Request) {
+	g := s.currentGraphIntelligenceGraph(r.Context())
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
+	}
+
+	limit := 10
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 100 {
+			s.error(w, http.StatusBadRequest, "limit must be between 1 and 100")
+			return
+		}
+		limit = parsed
+	}
+
+	personID := strings.TrimSpace(r.URL.Query().Get("person_id"))
+	report := reports.BuildKeyPersonRiskReport(g, time.Now().UTC(), personID, limit)
+	if personID != "" && report.Count == 0 {
+		s.error(w, http.StatusNotFound, "person not found")
 		return
 	}
 	s.json(w, http.StatusOK, report)
@@ -744,6 +1060,18 @@ func (s *Server) graphIntelligenceWeeklyCalibration(w http.ResponseWriter, r *ht
 		QueueLimit:       queueLimit,
 		SuggestThreshold: 0.55,
 	})
+	report.Temporal = reports.BuildWeeklyCalibrationTemporalSummary(
+		report.GeneratedAt,
+		windowDays,
+		s.platformGraphChangelog(
+			r.Context(),
+			report.GeneratedAt,
+			report.GeneratedAt.Add(-time.Duration(windowDays)*24*time.Hour),
+			report.GeneratedAt,
+			10,
+			graph.GraphDiffFilter{},
+		).Entries,
+	)
 	s.json(w, http.StatusOK, report)
 }
 

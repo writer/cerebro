@@ -338,6 +338,8 @@ func isPublicEndpoint(path string) bool {
 		path == "/metrics" ||
 		path == "/docs" ||
 		path == "/openapi.yaml" ||
+		path == "/api/v1/trust-center" ||
+		path == "/api/v1/trust-center/evidence" ||
 		path == "/.well-known/oauth-protected-resource"
 }
 
@@ -400,6 +402,8 @@ func routePermission(method, path string) string {
 			return "platform.intelligence.run"
 		}
 		return "platform.intelligence.read"
+	case strings.HasPrefix(path, "/api/v1/platform/scan-audit"):
+		return "platform.jobs.read"
 	case strings.HasPrefix(path, "/api/v1/platform/executions"):
 		return "platform.jobs.read"
 	case strings.HasPrefix(path, "/api/v1/platform/jobs"):
@@ -510,6 +514,11 @@ func routePermission(method, path string) string {
 		}
 	case strings.HasPrefix(path, "/api/v1/incidents"):
 		if isWrite {
+			return "security.incidents.manage"
+		}
+		return "security.incidents.read"
+	case strings.HasPrefix(path, "/api/v1/forensics"):
+		if isWrite || isExport {
 			return "security.incidents.manage"
 		}
 		return "security.incidents.read"

@@ -118,16 +118,32 @@ func (g *Graph) applyEdgeSchemaValidationLocked(edge *Edge) bool {
 		return true
 	}
 
+	// Canonicalize identity fields so counting matches schema validation
+	// normalization (TrimSpace on kind) and persisted edge values.
+	canonicalSource := strings.TrimSpace(edge.Source)
+	canonicalTarget := strings.TrimSpace(edge.Target)
+	canonicalKind := EdgeKind(strings.TrimSpace(string(edge.Kind)))
+	canonicalID := strings.TrimSpace(edge.ID)
+
 	var source *Node
-	if node, ok := g.nodes[edge.Source]; ok && node != nil && node.DeletedAt == nil {
+	if node, ok := g.nodes[canonicalSource]; ok && node != nil && node.DeletedAt == nil {
 		source = node
 	}
 	var target *Node
-	if node, ok := g.nodes[edge.Target]; ok && node != nil && node.DeletedAt == nil {
+	if node, ok := g.nodes[canonicalTarget]; ok && node != nil && node.DeletedAt == nil {
 		target = node
 	}
 
 	issues := ValidateEdgeAgainstSchema(edge, source, target)
+	if len(issues) == 0 {
+		issues = append(issues, ValidateEdgeCardinalityAgainstSchema(
+			edge,
+			source,
+			target,
+			g.countActiveOutgoingEdgesByKindLocked(canonicalSource, canonicalKind, canonicalID),
+			g.countActiveIncomingEdgesByKindLocked(canonicalTarget, canonicalKind, canonicalID),
+		)...)
+	}
 	if len(issues) == 0 {
 		return true
 	}
@@ -168,4 +184,32 @@ func (g *Graph) recordEdgeSchemaIssuesLocked(issues []SchemaValidationIssue, rej
 	for _, issue := range issues {
 		g.schemaValidationStats.EdgeWarningByCode[string(issue.Code)]++
 	}
+}
+
+func (g *Graph) countActiveOutgoingEdgesByKindLocked(nodeID string, kind EdgeKind, excludeEdgeID string) int {
+	count := 0
+	for _, edge := range g.outEdges[nodeID] {
+		if edge == nil || edge.DeletedAt != nil || edge.Kind != kind {
+			continue
+		}
+		if excludeEdgeID != "" && edge.ID == excludeEdgeID {
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+func (g *Graph) countActiveIncomingEdgesByKindLocked(nodeID string, kind EdgeKind, excludeEdgeID string) int {
+	count := 0
+	for _, edge := range g.inEdges[nodeID] {
+		if edge == nil || edge.DeletedAt != nil || edge.Kind != kind {
+			continue
+		}
+		if excludeEdgeID != "" && edge.ID == excludeEdgeID {
+			continue
+		}
+		count++
+	}
+	return count
 }

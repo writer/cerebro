@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/filesystemanalyzer"
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/scanner"
+	"github.com/writer/cerebro/internal/scanpolicy"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -45,6 +46,11 @@ type Mounter interface {
 
 type Analyzer interface {
 	Analyze(ctx context.Context, input AnalysisInput) (*AnalysisReport, error)
+}
+
+type ScannerProvisioner interface {
+	ProvisionScannerHost(ctx context.Context, req ScanRequest) (ScannerHost, error)
+	ReleaseScannerHost(ctx context.Context, host ScannerHost) error
 }
 
 type attachmentSlotProvider interface {
@@ -110,6 +116,8 @@ type RunnerOptions struct {
 	CleanupTimeout         time.Duration
 	Retry                  scanner.RetryOptions
 	Now                    func() time.Time
+	PolicyEvaluator        scanpolicy.Evaluator
+	Provisioner            ScannerProvisioner
 }
 
 type Runner struct {
@@ -123,6 +131,8 @@ type Runner struct {
 	cleanupTimeout         time.Duration
 	retry                  scanner.RetryOptions
 	now                    func() time.Time
+	policyEvaluator        scanpolicy.Evaluator
+	provisioner            ScannerProvisioner
 }
 
 func NewRunner(opts RunnerOptions) *Runner {
@@ -149,6 +159,10 @@ func NewRunner(opts RunnerOptions) *Runner {
 	if analyzer == nil {
 		analyzer = NoopAnalyzer{}
 	}
+	now := opts.Now
+	if now == nil {
+		now = time.Now
+	}
 	return &Runner{
 		store:                  opts.Store,
 		providers:              providers,
@@ -159,7 +173,9 @@ func NewRunner(opts RunnerOptions) *Runner {
 		maxConcurrentSnapshots: maxConcurrent,
 		cleanupTimeout:         cleanupTimeout,
 		retry:                  defaultWorkloadRetryOptions(opts.Retry),
-		now:                    time.Now,
+		now:                    now,
+		policyEvaluator:        opts.PolicyEvaluator,
+		provisioner:            opts.Provisioner,
 	}
 }
 
@@ -176,36 +192,104 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (result *RunRec
 	if req.SubmittedAt.IsZero() {
 		req.SubmittedAt = r.now().UTC()
 	}
+	req, ephemeralScanner, err := r.ensureScannerHost(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if !ephemeralScanner {
+			return
+		}
+		releaseErr := r.releaseScannerHost(context.Background(), req.ScannerHost)
+		if releaseErr == nil {
+			if result != nil {
+				r.recordRunEvent(context.Background(), result, result.Status, RunStageCleanup, "ephemeral scanner host released", map[string]any{
+					"scanner_host_id": req.ScannerHost.HostID,
+				})
+			}
+			return
+		}
+		releaseErr = fmt.Errorf("release ephemeral scanner host %s: %w", req.ScannerHost.HostID, releaseErr)
+		if result != nil {
+			failedRun, failErr := r.failRun(context.Background(), result, RunStageCleanup, releaseErr)
+			result = failedRun
+			if failErr != nil {
+				if err != nil {
+					err = errors.Join(err, failErr)
+				} else {
+					err = failErr
+				}
+				return
+			}
+		}
+		if err != nil {
+			err = errors.Join(err, releaseErr)
+		} else {
+			err = releaseErr
+		}
+	}()
+	if err := r.validateRequest(req); err != nil {
+		return nil, err
+	}
 	provider, ok := r.providers[req.Target.Provider]
 	if !ok {
 		return nil, fmt.Errorf("no workload scan provider configured for %s", req.Target.Provider)
 	}
-	if err := validateRequest(req); err != nil {
-		return nil, err
-	}
-	run := &RunRecord{
-		ID:          req.ID,
-		Provider:    req.Target.Provider,
-		Status:      RunStatusQueued,
-		Stage:       RunStageQueued,
-		Target:      req.Target,
-		ScannerHost: req.ScannerHost,
-		RequestedBy: strings.TrimSpace(req.RequestedBy),
-		DryRun:      req.DryRun,
-		Metadata:    cloneStringMap(req.Metadata),
-		Priority:    ClonePriorityAssessment(req.Priority),
-		SubmittedAt: req.SubmittedAt.UTC(),
-		UpdatedAt:   req.SubmittedAt.UTC(),
-	}
+	run := newRunRecordFromRequest(req)
 	if err := r.saveRun(ctx, run); err != nil {
 		return nil, err
 	}
+	if ephemeralScanner {
+		r.recordRunEvent(ctx, run, run.Status, run.Stage, "ephemeral scanner host provisioned", map[string]any{
+			"scanner_host_id": req.ScannerHost.HostID,
+		})
+	}
 	r.recordRunEvent(ctx, run, RunStatusQueued, RunStageQueued, "workload scan queued", nil)
+	return r.executeRun(ctx, provider, req, run, false)
+}
 
+func (r *Runner) RunClaimedRun(ctx context.Context, runID string) (result *RunRecord, err error) {
+	if r == nil {
+		return nil, fmt.Errorf("workload scan runner is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if r.store == nil {
+		return nil, fmt.Errorf("workload scan store is not configured")
+	}
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return nil, fmt.Errorf("workload scan run id is required")
+	}
+	run, err := r.store.LoadRun(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	if run == nil {
+		return nil, fmt.Errorf("workload scan run not found: %s", runID)
+	}
+	if run.Status != RunStatusRunning || run.Stage != RunStageInventory {
+		return nil, fmt.Errorf("workload scan run %s is not claimed for distributed execution", runID)
+	}
+	req := scanRequestFromRun(run)
+	if err := r.validateRequest(req); err != nil {
+		return r.failRun(ctx, run, run.Stage, err)
+	}
+	provider, ok := r.providers[run.Target.Provider]
+	if !ok {
+		return r.failRun(ctx, run, run.Stage, fmt.Errorf("no workload scan provider configured for %s", run.Target.Provider))
+	}
+	return r.executeRun(ctx, provider, req, run, true)
+}
+
+func (r *Runner) executeRun(ctx context.Context, provider Provider, req ScanRequest, run *RunRecord, alreadyClaimed bool) (result *RunRecord, err error) {
 	started := r.now().UTC()
 	run.Status = RunStatusRunning
 	run.Stage = RunStageInventory
-	run.StartedAt = &started
+	if run.StartedAt == nil {
+		run.StartedAt = &started
+	}
 	run.UpdatedAt = started
 	if err := r.saveRun(ctx, run); err != nil {
 		return nil, err
@@ -220,6 +304,10 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (result *RunRec
 			finishRunObservation(status)
 		}
 	}()
+	if alreadyClaimed && run.Distributed != nil && run.Distributed.ClaimedAt == nil {
+		claimedAt := started
+		run.Distributed.ClaimedAt = &claimedAt
+	}
 	r.recordRunEvent(ctx, run, RunStatusRunning, RunStageInventory, "inventorying attached volumes", nil)
 	r.emitLifecycleEvent(ctx, webhooks.EventSecurityWorkloadScanStarted, run, nil)
 	r.logger.Info("workload scan started",
@@ -271,6 +359,7 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (result *RunRec
 		r.recordRunEvent(ctx, run, run.Status, run.Stage, "dry-run completed", nil)
 		r.emitLifecycleEvent(ctx, webhooks.EventSecurityWorkloadScanCompleted, run, nil)
 		r.emitGenericScanCompleted(ctx, run)
+		r.releaseDistributedDedup(ctx, run)
 		r.logger.Info("workload scan dry-run completed", "run_id", run.ID, "provider", run.Provider, "volume_count", run.Summary.VolumeCount)
 		return run, nil
 	}
@@ -332,6 +421,7 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (result *RunRec
 	r.recordRunEvent(ctx, run, run.Status, run.Stage, "workload scan completed", nil)
 	r.emitLifecycleEvent(ctx, webhooks.EventSecurityWorkloadScanCompleted, run, nil)
 	r.emitGenericScanCompleted(ctx, run)
+	r.releaseDistributedDedup(ctx, run)
 	r.logger.Info("workload scan completed",
 		"run_id", run.ID,
 		"provider", run.Provider,
@@ -341,6 +431,41 @@ func (r *Runner) RunVMScan(ctx context.Context, req ScanRequest) (result *RunRec
 		"finding_count", run.Summary.Findings,
 	)
 	return run, nil
+}
+
+func newRunRecordFromRequest(req ScanRequest) *RunRecord {
+	return &RunRecord{
+		ID:                     req.ID,
+		Provider:               req.Target.Provider,
+		Status:                 RunStatusQueued,
+		Stage:                  RunStageQueued,
+		Target:                 req.Target,
+		ScannerHost:            req.ScannerHost,
+		RequestedBy:            strings.TrimSpace(req.RequestedBy),
+		DryRun:                 req.DryRun,
+		MaxConcurrentSnapshots: req.MaxConcurrentSnapshots,
+		Metadata:               cloneStringMap(req.Metadata),
+		Priority:               ClonePriorityAssessment(req.Priority),
+		SubmittedAt:            req.SubmittedAt.UTC(),
+		UpdatedAt:              req.SubmittedAt.UTC(),
+	}
+}
+
+func scanRequestFromRun(run *RunRecord) ScanRequest {
+	if run == nil {
+		return ScanRequest{}
+	}
+	return ScanRequest{
+		ID:                     run.ID,
+		RequestedBy:            strings.TrimSpace(run.RequestedBy),
+		Target:                 run.Target,
+		ScannerHost:            run.ScannerHost,
+		MaxConcurrentSnapshots: run.MaxConcurrentSnapshots,
+		DryRun:                 run.DryRun,
+		Metadata:               cloneStringMap(run.Metadata),
+		Priority:               ClonePriorityAssessment(run.Priority),
+		SubmittedAt:            run.SubmittedAt,
+	}
 }
 
 func (r *Runner) Reconcile(ctx context.Context, olderThan time.Duration) ([]RunRecord, error) {
@@ -417,8 +542,16 @@ func (r *Runner) Reconcile(ctx context.Context, olderThan time.Duration) ([]RunR
 	return reconciled, nil
 }
 
-func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanRequest, run *RunRecord, idx int, attachmentSlots chan int, runMu *sync.Mutex) error {
+func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanRequest, run *RunRecord, idx int, attachmentSlots chan int, runMu *sync.Mutex) (err error) {
 	source := run.Volumes[idx].Source
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			stage := currentVolumeStage(run, idx, runMu)
+			panicErr := fmt.Errorf("panic while scanning volume %s: %v", source.ID, recovered)
+			cleanupErr := r.cleanupVolume(run, idx, provider, runMu)
+			err = r.failVolume(ctx, run, idx, runMu, stage, joinErrors([]error{panicErr, cleanupErr}))
+		}
+	}()
 	r.updateVolume(ctx, run, idx, runMu, func(volume *VolumeScanRecord) {
 		volume.Status = RunStatusRunning
 		volume.Stage = RunStageSnapshot
@@ -560,6 +693,22 @@ func (r *Runner) processVolume(ctx context.Context, provider Provider, req ScanR
 		volume.UpdatedAt = completed
 	}, "volume scan completed", nil)
 	return nil
+}
+
+func currentVolumeStage(run *RunRecord, idx int, runMu *sync.Mutex) RunStage {
+	if run == nil || runMu == nil {
+		return RunStageFailed
+	}
+	runMu.Lock()
+	defer runMu.Unlock()
+	if idx < 0 || idx >= len(run.Volumes) {
+		return RunStageFailed
+	}
+	stage := run.Volumes[idx].Stage
+	if stage == "" {
+		return RunStageFailed
+	}
+	return stage
 }
 
 func (r *Runner) cleanupVolume(run *RunRecord, idx int, provider Provider, runMu *sync.Mutex) error {
@@ -723,6 +872,7 @@ func (r *Runner) failRun(ctx context.Context, run *RunRecord, stage RunStage, er
 	r.emitLifecycleEvent(ctx, webhooks.EventSecurityWorkloadScanFailed, run, map[string]any{
 		"error": run.Error,
 	})
+	r.releaseDistributedDedup(ctx, run)
 	if saveErr != nil {
 		return run, errors.Join(err, saveErr)
 	}
@@ -788,6 +938,15 @@ func (r *Runner) saveRun(ctx context.Context, run *RunRecord) error {
 		return nil
 	}
 	return r.store.SaveRun(ctx, run)
+}
+
+func (r *Runner) releaseDistributedDedup(ctx context.Context, run *RunRecord) {
+	if r.store == nil || run == nil || run.Distributed == nil {
+		return
+	}
+	if err := r.store.ReleaseDistributedDedup(ctx, run.Distributed.DedupKey); err != nil {
+		r.logger.Warn("failed to release workload scan distributed dedup", "run_id", run.ID, "error", err)
+	}
 }
 
 func (r *Runner) recordRunEvent(ctx context.Context, run *RunRecord, status RunStatus, stage RunStage, message string, data map[string]any) {
@@ -926,45 +1085,128 @@ func gibHours(sizeGiB int64, start, end time.Time) float64 {
 	return (float64(sizeGiB) * end.Sub(start).Hours())
 }
 
-func validateRequest(req ScanRequest) error {
-	if req.Target.Provider == "" {
+func validateTarget(target VMTarget) error {
+	if target.Provider == "" {
 		return fmt.Errorf("target provider is required")
 	}
-	if strings.TrimSpace(req.Target.Region) == "" {
+	if strings.TrimSpace(target.Region) == "" {
 		return fmt.Errorf("target region is required")
 	}
-	if strings.TrimSpace(req.ScannerHost.HostID) == "" {
-		return fmt.Errorf("scanner host id is required")
-	}
-	if strings.TrimSpace(req.ScannerHost.Region) == "" {
-		return fmt.Errorf("scanner host region is required")
-	}
-	if !strings.EqualFold(strings.TrimSpace(req.Target.Region), strings.TrimSpace(req.ScannerHost.Region)) {
-		return fmt.Errorf("scanner host region %s must match target region %s", req.ScannerHost.Region, req.Target.Region)
-	}
-	switch req.Target.Provider {
+	switch target.Provider {
 	case ProviderAWS:
-		if strings.TrimSpace(req.Target.InstanceID) == "" {
+		if strings.TrimSpace(target.InstanceID) == "" {
 			return fmt.Errorf("aws target instance id is required")
 		}
 	case ProviderGCP:
-		if strings.TrimSpace(req.Target.ProjectID) == "" || strings.TrimSpace(req.Target.Zone) == "" || strings.TrimSpace(req.Target.InstanceName) == "" {
+		if strings.TrimSpace(target.ProjectID) == "" || strings.TrimSpace(target.Zone) == "" || strings.TrimSpace(target.InstanceName) == "" {
 			return fmt.Errorf("gcp target project id, zone, and instance name are required")
 		}
-		if strings.TrimSpace(req.ScannerHost.Zone) == "" {
+	case ProviderAzure:
+		if strings.TrimSpace(target.SubscriptionID) == "" || strings.TrimSpace(target.ResourceGroup) == "" || strings.TrimSpace(target.InstanceName) == "" {
+			return fmt.Errorf("azure target subscription id, resource group, and instance name are required")
+		}
+	default:
+		return fmt.Errorf("unsupported provider %s", target.Provider)
+	}
+	return nil
+}
+
+func validateScannerHost(target VMTarget, host ScannerHost) error {
+	if strings.TrimSpace(host.HostID) == "" {
+		return fmt.Errorf("scanner host id is required")
+	}
+	if strings.TrimSpace(host.Region) == "" {
+		return fmt.Errorf("scanner host region is required")
+	}
+	if !strings.EqualFold(strings.TrimSpace(target.Region), strings.TrimSpace(host.Region)) {
+		return fmt.Errorf("scanner host region %s must match target region %s", host.Region, target.Region)
+	}
+	switch target.Provider {
+	case ProviderAWS:
+	case ProviderGCP:
+		if strings.TrimSpace(host.Zone) == "" {
 			return fmt.Errorf("gcp scanner host zone is required")
 		}
 	case ProviderAzure:
-		if strings.TrimSpace(req.Target.SubscriptionID) == "" || strings.TrimSpace(req.Target.ResourceGroup) == "" || strings.TrimSpace(req.Target.InstanceName) == "" {
-			return fmt.Errorf("azure target subscription id, resource group, and instance name are required")
-		}
-		if strings.TrimSpace(req.ScannerHost.ResourceGroup) == "" {
+		if strings.TrimSpace(host.ResourceGroup) == "" {
 			return fmt.Errorf("azure scanner host resource group is required")
 		}
-	default:
-		return fmt.Errorf("unsupported provider %s", req.Target.Provider)
 	}
 	return nil
+}
+
+func validateRequest(req ScanRequest) error {
+	if err := validateTarget(req.Target); err != nil {
+		return err
+	}
+	return validateScannerHost(req.Target, req.ScannerHost)
+}
+
+func (r *Runner) validateRequest(req ScanRequest) error {
+	if err := validateRequest(req); err != nil {
+		return err
+	}
+	if r == nil || r.policyEvaluator == nil {
+		return nil
+	}
+	maxConcurrent := req.MaxConcurrentSnapshots
+	if maxConcurrent <= 0 {
+		maxConcurrent = r.maxConcurrentSnapshots
+	}
+	return r.policyEvaluator.Validate(scanpolicy.Request{
+		Kind:                   scanpolicy.KindWorkload,
+		Team:                   scanpolicy.TeamFromMetadata(req.Metadata),
+		RequestedBy:            strings.TrimSpace(req.RequestedBy),
+		Metadata:               cloneStringMap(req.Metadata),
+		Provider:               string(req.Target.Provider),
+		DryRun:                 req.DryRun,
+		MaxConcurrentSnapshots: maxConcurrent,
+	})
+}
+
+func (r *Runner) ensureScannerHost(ctx context.Context, req ScanRequest) (ScanRequest, bool, error) {
+	if strings.TrimSpace(req.ScannerHost.HostID) != "" || req.DryRun {
+		return req, false, nil
+	}
+	if r == nil || r.provisioner == nil {
+		return req, false, nil
+	}
+	if err := validateTarget(req.Target); err != nil {
+		return req, false, err
+	}
+	host, err := r.provisioner.ProvisionScannerHost(ctx, req)
+	if err != nil {
+		return req, false, fmt.Errorf("provision scanner host for %s target %s: %w", req.Target.Provider, req.Target.Identity(), err)
+	}
+	if strings.TrimSpace(host.Region) == "" {
+		host.Region = strings.TrimSpace(req.Target.Region)
+	}
+	if strings.TrimSpace(host.AccountID) == "" {
+		host.AccountID = strings.TrimSpace(req.Target.AccountID)
+	}
+	if strings.TrimSpace(host.ProjectID) == "" {
+		host.ProjectID = strings.TrimSpace(req.Target.ProjectID)
+	}
+	if strings.TrimSpace(host.SubscriptionID) == "" {
+		host.SubscriptionID = strings.TrimSpace(req.Target.SubscriptionID)
+	}
+	if strings.TrimSpace(host.ResourceGroup) == "" {
+		host.ResourceGroup = strings.TrimSpace(req.Target.ResourceGroup)
+	}
+	req.ScannerHost = host
+	return req, true, nil
+}
+
+func (r *Runner) releaseScannerHost(ctx context.Context, host ScannerHost) error {
+	if r == nil || r.provisioner == nil || strings.TrimSpace(host.HostID) == "" {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	releaseCtx, cancel := context.WithTimeout(ctx, r.cleanupTimeout)
+	defer cancel()
+	return r.provisioner.ReleaseScannerHost(releaseCtx, host)
 }
 
 func allVolumesTerminal(volumes []VolumeScanRecord) bool {

@@ -190,6 +190,9 @@ func topStrings(values []string, limit int) []string {
 // Close cleanly shuts down all services
 
 func (a *App) Close() error {
+	if a == nil {
+		return nil
+	}
 	var errs []error
 	shutdownTimeout := a.Config.ShutdownTimeoutOrDefault()
 
@@ -316,6 +319,11 @@ func (a *App) Close() error {
 	if a.Webhooks != nil {
 		if err := a.Webhooks.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("webhooks: %w", err))
+		}
+	}
+	if a.configuredSecurityGraphClose != nil {
+		if err := a.configuredSecurityGraphClose(); err != nil {
+			errs = append(errs, fmt.Errorf("configured graph store: %w", err))
 		}
 	}
 

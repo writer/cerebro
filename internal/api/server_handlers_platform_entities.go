@@ -183,6 +183,46 @@ func (s *Server) getPlatformEntityTimeDiff(w http.ResponseWriter, r *http.Reques
 	s.json(w, http.StatusOK, record)
 }
 
+func (s *Server) getPlatformEntityTimeline(w http.ResponseWriter, r *http.Request) {
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+
+	entityID := strings.TrimSpace(chi.URLParam(r, "entity_id"))
+	if entityID == "" {
+		s.error(w, http.StatusBadRequest, "entity id required")
+		return
+	}
+	from, err := parseRequiredRFC3339Query(r, "from")
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	to, err := parseRequiredRFC3339Query(r, "to")
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if to.Before(from) {
+		s.error(w, http.StatusBadRequest, "to must be greater than or equal to from")
+		return
+	}
+	recordedAt, err := parseOptionalRFC3339Query(r, "recorded_at")
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	record, ok := entities.GetEntityTimeline(g, entityID, from, to, recordedAt)
+	if !ok {
+		s.error(w, http.StatusNotFound, "entity not found")
+		return
+	}
+	s.json(w, http.StatusOK, record)
+}
+
 func parsePlatformEntityQueryOptions(r *http.Request) (entities.EntityQueryOptions, error) {
 	query := r.URL.Query()
 	opts := entities.EntityQueryOptions{

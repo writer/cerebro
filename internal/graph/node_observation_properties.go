@@ -81,6 +81,16 @@ func (n *Node) PropertyValue(key string) (any, bool) {
 			return value, true
 		}
 	}
+	if props, ok := n.MetadataProperties(); ok {
+		if value, ok := metadataPropertyValue(props, key); ok {
+			return value, true
+		}
+	}
+	if props, ok := n.CommonProperties(); ok {
+		if value, ok := commonPropertyValue(props, key); ok {
+			return value, true
+		}
+	}
 	if n.Properties == nil {
 		return nil, false
 	}
@@ -116,9 +126,7 @@ func hydrateNodeTypedProperties(node *Node) {
 			node.observationProps = nil
 		}
 		stripObservationPropertyKeys(node.Properties)
-		if len(node.Properties) == 0 {
-			node.Properties = nil
-		}
+		node.metadataProps = nil
 		node.attackSequenceProps = nil
 	case NodeKindAttackSequence:
 		props, ok := attackSequencePropertiesFromMap(node.Properties)
@@ -134,13 +142,33 @@ func hydrateNodeTypedProperties(node *Node) {
 			node.attackSequenceProps = nil
 		}
 		stripAttackSequencePropertyKeys(node.Properties)
+		node.metadataProps = nil
+		node.observationProps = nil
+	default:
+		if props, ok := nodeMetadataPropertiesFromMap(node.Properties); ok {
+			node.metadataProps = ptrNodeMetadataProperties(props)
+			stripPromotedMetadataPropertyKeys(node.Properties, props)
+		} else {
+			node.metadataProps = nil
+		}
+		node.observationProps = nil
+		node.attackSequenceProps = nil
+	}
+	commonProps, ok := commonNodePropertiesFromMap(node.Properties)
+	if !ok && node.commonProps != nil {
+		commonProps = cloneNodeCommonProperties(*node.commonProps)
+		ok = commonProps.present != 0
+	}
+	if ok {
+		node.commonProps = ptrNodeCommonProperties(commonProps)
+	} else {
+		node.commonProps = nil
+	}
+	if node.Properties != nil {
+		stripCommonPropertyKeys(node.Properties)
 		if len(node.Properties) == 0 {
 			node.Properties = nil
 		}
-		node.observationProps = nil
-	default:
-		node.observationProps = nil
-		node.attackSequenceProps = nil
 	}
 }
 
@@ -230,6 +258,18 @@ func cloneNodeProperties(node *Node) map[string]any {
 		return nil
 	}
 	properties := cloneAnyMap(node.Properties)
+	if props, ok := node.MetadataProperties(); ok {
+		if properties == nil {
+			properties = make(map[string]any, 9)
+		}
+		materializeNodeMetadataProperties(properties, props)
+	}
+	if props, ok := node.CommonProperties(); ok {
+		if properties == nil {
+			properties = make(map[string]any, 10)
+		}
+		materializeCommonProperties(properties, props)
+	}
 	if props, ok := node.ObservationProperties(); ok {
 		if properties == nil {
 			properties = make(map[string]any, 12)

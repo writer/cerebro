@@ -5,6 +5,581 @@ mappings:
   # pull_request, incident, deployment_run, meeting, document, communication_thread,
   # action, evidence) over generic activity nodes so downstream graph intelligence can
   # reason by ontology type.
+  - name: platform_playbook_run_started
+    source: platform.playbook.run.started
+    nodes:
+      - id: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: communication_thread
+        name: '{{data.playbook_name}}'
+        provider: platform_playbook
+        properties:
+          thread_id: '{{data.playbook_run_id}}'
+          channel_id: '{{data.playbook_id}}'
+          channel_name: playbook
+          source_system: '{{data.source_system}}'
+          source_event_id: '{{data.source_event_id}}'
+          playbook_id: '{{data.playbook_id}}'
+          playbook_name: '{{data.playbook_name}}'
+          playbook_run_id: '{{data.playbook_run_id}}'
+          playbook_version: '{{data.playbook_version}}'
+          status: '{{data.status}}'
+          trigger_id: '{{data.trigger_id}}'
+          trigger_type: '{{data.trigger_type}}'
+          signal_id: '{{data.signal_id}}'
+          operator_id: '{{data.operator_id}}'
+          operator_email: '{{data.operator_email}}'
+          automation_id: '{{data.automation_id}}'
+          automation_name: '{{data.automation_name}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+    edges:
+      - when: '{{data.operator_email}}'
+        source: '{{resolve(data.operator_email)}}'
+        target: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: interacted_with
+        effect: allow
+  - name: platform_playbook_stage_completed
+    source: platform.playbook.stage.completed
+    nodes:
+      - id: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: communication_thread
+        name: '{{data.playbook_name}}'
+        provider: platform_playbook
+        properties:
+          thread_id: '{{data.playbook_run_id}}'
+          channel_id: '{{data.playbook_id}}'
+          channel_name: playbook
+          source_system: '{{data.source_system}}'
+          source_event_id: '{{data.source_event_id}}'
+          playbook_id: '{{data.playbook_id}}'
+          playbook_name: '{{data.playbook_name}}'
+          playbook_run_id: '{{data.playbook_run_id}}'
+          playbook_version: '{{existing.properties.playbook_version}}'
+          trigger_id: '{{existing.properties.trigger_id}}'
+          trigger_type: '{{existing.properties.trigger_type}}'
+          signal_id: '{{existing.properties.signal_id}}'
+          status: in_progress
+          operator_id: '{{data.operator_id}}'
+          operator_email: '{{data.operator_email}}'
+          automation_id: '{{data.automation_id}}'
+          automation_name: '{{data.automation_name}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+      - id: 'decision:playbook:{{data.playbook_run_id}}:{{data.stage_id}}'
+        kind: decision
+        name: '{{data.stage_name}}'
+        provider: platform_playbook
+        properties:
+          decision_type: playbook_stage
+          source_system: '{{data.source_system}}'
+          source_event_id: '{{data.source_event_id}}'
+          playbook_id: '{{data.playbook_id}}'
+          playbook_name: '{{data.playbook_name}}'
+          playbook_run_id: '{{data.playbook_run_id}}'
+          stage_id: '{{data.stage_id}}'
+          stage_name: '{{data.stage_name}}'
+          stage_order: '{{data.stage_order}}'
+          status: '{{data.status}}'
+          approval_required: '{{data.approval_required}}'
+          approval_status: '{{data.approval_status}}'
+          approver_id: '{{data.approver_id}}'
+          approver_email: '{{data.approver_email}}'
+          previous_stage_id: '{{data.previous_stage_id}}'
+          retry_of_stage_id: '{{data.retry_of_stage_id}}'
+          rationale: '{{data.rationale}}'
+          made_at: '{{data.observed_at}}'
+          operator_id: '{{data.operator_id}}'
+          operator_email: '{{data.operator_email}}'
+          automation_id: '{{data.automation_id}}'
+          automation_name: '{{data.automation_name}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+    edges:
+      - when: '{{data.operator_email}}'
+        source: '{{resolve(data.operator_email)}}'
+        target: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: interacted_with
+        effect: allow
+      - source: 'decision:playbook:{{data.playbook_run_id}}:{{data.stage_id}}'
+        target: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.previous_stage_id}}'
+        source: 'decision:playbook:{{data.playbook_run_id}}:{{data.stage_id}}'
+        target: 'decision:playbook:{{data.playbook_run_id}}:{{data.previous_stage_id}}'
+        kind: based_on
+        effect: allow
+      - when: '{{data.retry_of_stage_id}}'
+        source: 'decision:playbook:{{data.playbook_run_id}}:{{data.stage_id}}'
+        target: 'decision:playbook:{{data.playbook_run_id}}:{{data.retry_of_stage_id}}'
+        kind: based_on
+        effect: allow
+  - name: platform_playbook_action_executed
+    source: platform.playbook.action.executed
+    nodes:
+      - id: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: communication_thread
+        name: '{{data.playbook_name}}'
+        provider: platform_playbook
+        properties:
+          thread_id: '{{data.playbook_run_id}}'
+          channel_id: '{{data.playbook_id}}'
+          channel_name: playbook
+          source_system: '{{data.source_system}}'
+          source_event_id: '{{data.source_event_id}}'
+          playbook_id: '{{data.playbook_id}}'
+          playbook_name: '{{data.playbook_name}}'
+          playbook_run_id: '{{data.playbook_run_id}}'
+          playbook_version: '{{existing.properties.playbook_version}}'
+          trigger_id: '{{existing.properties.trigger_id}}'
+          trigger_type: '{{existing.properties.trigger_type}}'
+          signal_id: '{{existing.properties.signal_id}}'
+          status: in_progress
+          operator_id: '{{data.operator_id}}'
+          operator_email: '{{data.operator_email}}'
+          automation_id: '{{data.automation_id}}'
+          automation_name: '{{data.automation_name}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+      - id: 'action:playbook:{{data.playbook_run_id}}:{{data.action_id}}'
+        kind: action
+        name: '{{data.title}}'
+        provider: platform_playbook
+        properties:
+          action_type: '{{data.action_type}}'
+          source_system: '{{data.source_system}}'
+          source_event_id: '{{data.source_event_id}}'
+          playbook_id: '{{data.playbook_id}}'
+          playbook_name: '{{data.playbook_name}}'
+          playbook_run_id: '{{data.playbook_run_id}}'
+          stage_id: '{{data.stage_id}}'
+          action_id: '{{data.action_id}}'
+          status: '{{data.status}}'
+          title: '{{data.title}}'
+          summary: '{{data.summary}}'
+          performed_at: '{{data.observed_at}}'
+          actor_id: '{{resolve(data.operator_email)}}'
+          operator_id: '{{data.operator_id}}'
+          operator_email: '{{data.operator_email}}'
+          automation_id: '{{data.automation_id}}'
+          automation_name: '{{data.automation_name}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+    edges:
+      - when: '{{data.operator_email}}'
+        source: '{{resolve(data.operator_email)}}'
+        target: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: interacted_with
+        effect: allow
+      - source: 'action:playbook:{{data.playbook_run_id}}:{{data.action_id}}'
+        target: 'decision:playbook:{{data.playbook_run_id}}:{{data.stage_id}}'
+        kind: based_on
+        effect: allow
+      - source: 'action:playbook:{{data.playbook_run_id}}:{{data.action_id}}'
+        target: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: targets
+        effect: allow
+  - name: platform_playbook_run_completed
+    source: platform.playbook.run.completed
+    nodes:
+      - id: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: communication_thread
+        name: '{{data.playbook_name}}'
+        provider: platform_playbook
+        properties:
+          thread_id: '{{data.playbook_run_id}}'
+          channel_id: '{{data.playbook_id}}'
+          channel_name: playbook
+          source_system: '{{data.source_system}}'
+          source_event_id: '{{data.source_event_id}}'
+          playbook_id: '{{data.playbook_id}}'
+          playbook_name: '{{data.playbook_name}}'
+          playbook_run_id: '{{data.playbook_run_id}}'
+          playbook_version: '{{existing.properties.playbook_version}}'
+          trigger_id: '{{existing.properties.trigger_id}}'
+          trigger_type: '{{existing.properties.trigger_type}}'
+          signal_id: '{{existing.properties.signal_id}}'
+          status: '{{data.status}}'
+          operator_id: '{{data.operator_id}}'
+          operator_email: '{{data.operator_email}}'
+          automation_id: '{{data.automation_id}}'
+          automation_name: '{{data.automation_name}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+      - id: 'outcome:playbook:{{data.playbook_run_id}}'
+        kind: outcome
+        name: '{{data.playbook_name}} {{data.verdict}}'
+        provider: platform_playbook
+        properties:
+          outcome_type: playbook_run
+          source_system: '{{data.source_system}}'
+          source_event_id: '{{data.source_event_id}}'
+          playbook_id: '{{data.playbook_id}}'
+          playbook_name: '{{data.playbook_name}}'
+          playbook_run_id: '{{data.playbook_run_id}}'
+          verdict: '{{data.verdict}}'
+          status: '{{data.status}}'
+          summary: '{{data.summary}}'
+          rollback_state: '{{data.rollback_state}}'
+          final_stage_id: '{{data.final_stage_id}}'
+          completed_stage_count: '{{data.completed_stage_count}}'
+          skipped_stage_count: '{{data.skipped_stage_count}}'
+          failed_stage_count: '{{data.failed_stage_count}}'
+          operator_id: '{{data.operator_id}}'
+          operator_email: '{{data.operator_email}}'
+          automation_id: '{{data.automation_id}}'
+          automation_name: '{{data.automation_name}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+    edges:
+      - when: '{{data.operator_email}}'
+        source: '{{resolve(data.operator_email)}}'
+        target: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: interacted_with
+        effect: allow
+      - source: 'outcome:playbook:{{data.playbook_run_id}}'
+        target: 'thread:playbook:{{data.playbook_run_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.final_stage_id}}'
+        source: 'outcome:playbook:{{data.playbook_run_id}}'
+        target: 'decision:playbook:{{data.playbook_run_id}}:{{data.final_stage_id}}'
+        kind: evaluates
+        effect: allow
+  - name: evaluation_conversation_completed
+    source: evaluation.conversation.completed
+    nodes:
+      - id: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: communication_thread
+        name: 'Evaluation conversation {{data.conversation_id}}'
+        provider: platform_eval
+        properties:
+          thread_id: '{{data.conversation_id}}'
+          channel_id: '{{data.evaluation_run_id}}'
+          channel_name: evaluation
+          conversation_id: '{{data.conversation_id}}'
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          agent_id: '{{data.agent_id}}'
+          agent_email: '{{data.agent_email}}'
+          verdict: '{{data.verdict}}'
+          summary: '{{data.summary}}'
+          final_stage_id: '{{data.final_stage_id}}'
+          tenant_id: '{{data.tenant_id}}'
+      - when: '{{data.agent_email}}'
+        id: 'source:evaluation_agent:{{data.agent_email}}'
+        kind: source
+        name: '{{data.agent_email}}'
+        provider: platform_eval
+        properties:
+          source_type: model
+          canonical_name: '{{data.agent_email}}'
+          trust_tier: derived
+          source_system: '{{data.source_system}}'
+      - id: 'outcome:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: outcome
+        name: 'Conversation {{data.verdict}}'
+        provider: platform_eval
+        properties:
+          outcome_type: evaluation_conversation
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          conversation_id: '{{data.conversation_id}}'
+          verdict: '{{data.verdict}}'
+          quality_score: '{{data.quality_score}}'
+          final_stage_id: '{{data.final_stage_id}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+      - id: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:final'
+        kind: claim
+        name: 'Conversation {{data.verdict}}'
+        provider: platform_eval
+        properties:
+          claim_type: classification
+          subject_id: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+          predicate: evaluation_conversation_verdict
+          object_value: '{{data.verdict}}'
+          status: asserted
+          summary: '{{data.summary}}'
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          conversation_id: '{{data.conversation_id}}'
+          final_stage_id: '{{data.final_stage_id}}'
+          tenant_id: '{{data.tenant_id}}'
+    edges:
+      - when: '{{data.agent_email}}'
+        source: '{{resolve(data.agent_email)}}'
+        target: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: interacted_with
+        effect: allow
+      - source: 'outcome:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        target: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: targets
+        effect: allow
+      - source: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:final'
+        target: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.agent_email}}'
+        source: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:final'
+        target: 'source:evaluation_agent:{{data.agent_email}}'
+        kind: asserted_by
+        effect: allow
+      - when: '{{data.final_stage_id}}'
+        source: 'outcome:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        target: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.final_stage_id}}'
+        kind: based_on
+        effect: allow
+      - when: '{{data.final_stage_id}}'
+        source: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:final'
+        target: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.final_stage_id}}'
+        kind: based_on
+        effect: allow
+  - name: evaluation_turn_completed
+    source: evaluation.turn.completed
+    nodes:
+      - id: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: communication_thread
+        name: 'Evaluation conversation {{data.conversation_id}}'
+        provider: platform_eval
+        properties:
+          thread_id: '{{data.conversation_id}}'
+          channel_id: '{{data.evaluation_run_id}}'
+          channel_name: evaluation
+          conversation_id: '{{data.conversation_id}}'
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          tenant_id: '{{data.tenant_id}}'
+      - when: '{{data.agent_email}}'
+        id: 'source:evaluation_agent:{{data.agent_email}}'
+        kind: source
+        name: '{{data.agent_email}}'
+        provider: platform_eval
+        properties:
+          source_type: model
+          canonical_name: '{{data.agent_email}}'
+          trust_tier: derived
+          source_system: '{{data.source_system}}'
+      - when: '{{data.stage_id}}'
+        id: 'evidence:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        kind: evidence
+        name: '{{data.stage_name}} rationale'
+        provider: platform_eval
+        properties:
+          evidence_type: evaluation_rationale
+          detail: '{{data.rationale}}'
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          conversation_id: '{{data.conversation_id}}'
+          turn_id: '{{data.turn_id}}'
+          stage_id: '{{data.stage_id}}'
+          stage_name: '{{data.stage_name}}'
+          tenant_id: '{{data.tenant_id}}'
+      - when: '{{data.stage_id}}'
+        id: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        kind: claim
+        name: '{{data.stage_name}}'
+        provider: platform_eval
+        properties:
+          claim_type: classification
+          subject_id: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+          predicate: evaluation_stage_result
+          object_value: '{{data.status}}'
+          status: asserted
+          summary: '{{data.rationale}}'
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          conversation_id: '{{data.conversation_id}}'
+          turn_id: '{{data.turn_id}}'
+          stage_id: '{{data.stage_id}}'
+          stage_name: '{{data.stage_name}}'
+          stage_order: '{{data.stage_order}}'
+          previous_stage_id: '{{data.previous_stage_id}}'
+          supersedes_stage_id: '{{data.supersedes_stage_id}}'
+          contradicts_stage_id: '{{data.contradicts_stage_id}}'
+          tenant_id: '{{data.tenant_id}}'
+      - id: 'decision:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.turn_id}}'
+        kind: decision
+        name: '{{data.decision_type}}'
+        provider: platform_eval
+        properties:
+          decision_type: '{{data.decision_type}}'
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          conversation_id: '{{data.conversation_id}}'
+          turn_id: '{{data.turn_id}}'
+          status: '{{data.status}}'
+          made_at: '{{data.observed_at}}'
+          rationale: '{{data.rationale}}'
+          agent_id: '{{data.agent_id}}'
+          agent_email: '{{data.agent_email}}'
+          stage_id: '{{data.stage_id}}'
+          stage_name: '{{data.stage_name}}'
+          stage_order: '{{data.stage_order}}'
+          previous_stage_id: '{{data.previous_stage_id}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+    edges:
+      - when: '{{data.agent_email}}'
+        source: '{{resolve(data.agent_email)}}'
+        target: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: interacted_with
+        effect: allow
+      - source: 'decision:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.turn_id}}'
+        target: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.stage_id}}'
+        source: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        target: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.stage_id}} && {{data.agent_email}}'
+        source: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        target: 'source:evaluation_agent:{{data.agent_email}}'
+        kind: asserted_by
+        effect: allow
+      - when: '{{data.stage_id}}'
+        source: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        target: 'evidence:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        kind: based_on
+        effect: allow
+      - when: '{{data.stage_id}}'
+        source: 'evidence:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        target: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.previous_stage_id}}'
+        source: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        target: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.previous_stage_id}}'
+        kind: based_on
+        effect: allow
+      - when: '{{data.supersedes_stage_id}}'
+        source: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        target: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.supersedes_stage_id}}'
+        kind: supersedes
+        effect: allow
+      - when: '{{data.contradicts_stage_id}}'
+        source: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        target: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.contradicts_stage_id}}'
+        kind: contradicts
+        effect: allow
+  - name: evaluation_agent_tool_call
+    source: evaluation.agent.tool_call
+    nodes:
+      - id: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: communication_thread
+        name: 'Evaluation conversation {{data.conversation_id}}'
+        provider: platform_eval
+        properties:
+          thread_id: '{{data.conversation_id}}'
+          channel_id: '{{data.evaluation_run_id}}'
+          channel_name: evaluation
+          conversation_id: '{{data.conversation_id}}'
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          tenant_id: '{{data.tenant_id}}'
+      - id: 'decision:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.turn_id}}'
+        kind: decision
+        name: 'Turn {{data.turn_id}}'
+        provider: platform_eval
+        properties:
+          decision_type: tool_call_context
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          conversation_id: '{{data.conversation_id}}'
+          turn_id: '{{data.turn_id}}'
+          status: completed
+          made_at: '{{data.observed_at}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+      - id: 'action:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.tool_call_id}}'
+        kind: action
+        name: '{{data.tool_name}}'
+        provider: platform_eval
+        properties:
+          action_type: tool_call
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          conversation_id: '{{data.conversation_id}}'
+          turn_id: '{{data.turn_id}}'
+          tool_call_id: '{{data.tool_call_id}}'
+          tool_name: '{{data.tool_name}}'
+          status: '{{data.status}}'
+          performed_at: '{{data.observed_at}}'
+          actor_id: '{{resolve(data.agent_email)}}'
+          agent_id: '{{data.agent_id}}'
+          agent_email: '{{data.agent_email}}'
+          stage_id: '{{data.stage_id}}'
+          stage_name: '{{data.stage_name}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+    edges:
+      - when: '{{data.agent_email}}'
+        source: '{{resolve(data.agent_email)}}'
+        target: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: interacted_with
+        effect: allow
+      - source: 'action:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.tool_call_id}}'
+        target: 'decision:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.turn_id}}'
+        kind: based_on
+        effect: allow
+      - when: '{{data.stage_id}}'
+        source: 'action:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.tool_call_id}}'
+        target: 'claim:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.stage_id}}'
+        kind: based_on
+        effect: allow
+      - source: 'action:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.tool_call_id}}'
+        target: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: targets
+        effect: allow
+  - name: evaluation_agent_cost
+    source: evaluation.agent.cost
+    nodes:
+      - id: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: communication_thread
+        name: 'Evaluation conversation {{data.conversation_id}}'
+        provider: platform_eval
+        properties:
+          thread_id: '{{data.conversation_id}}'
+          channel_id: '{{data.evaluation_run_id}}'
+          channel_name: evaluation
+          conversation_id: '{{data.conversation_id}}'
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          tenant_id: '{{data.tenant_id}}'
+      - when: '{{data.tool_call_id}}'
+        id: 'action:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.tool_call_id}}'
+        kind: action
+        name: 'Tool call {{data.tool_call_id}}'
+        provider: platform_eval
+        properties:
+          action_type: tool_call
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          conversation_id: '{{data.conversation_id}}'
+          turn_id: '{{data.turn_id}}'
+          tool_call_id: '{{data.tool_call_id}}'
+          status: completed
+          performed_at: '{{data.observed_at}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+      - id: 'observation:evaluation_cost:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.cost_id}}'
+        kind: observation
+        name: 'Cost {{data.cost_id}}'
+        provider: platform_eval
+        properties:
+          observation_type: evaluation_cost
+          subject_id: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+          evaluation_run_id: '{{data.evaluation_run_id}}'
+          conversation_id: '{{data.conversation_id}}'
+          turn_id: '{{data.turn_id}}'
+          cost_id: '{{data.cost_id}}'
+          stage_id: '{{data.stage_id}}'
+          amount_usd: '{{data.amount_usd}}'
+          currency: '{{data.currency}}'
+          token_count: '{{data.token_count}}'
+          model: '{{data.model}}'
+          target_ids: '{{data.target_ids}}'
+          tenant_id: '{{data.tenant_id}}'
+    edges:
+      - source: 'observation:evaluation_cost:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.cost_id}}'
+        target: 'thread:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}'
+        kind: targets
+        effect: allow
+      - when: '{{data.tool_call_id}}'
+        source: 'observation:evaluation_cost:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.cost_id}}'
+        target: 'action:evaluation:{{data.evaluation_run_id}}:{{data.conversation_id}}:{{data.tool_call_id}}'
+        kind: based_on
+        effect: allow
   - name: github_pr_merged
     source: ensemble.tap.github.pull_request.merged
     nodes:

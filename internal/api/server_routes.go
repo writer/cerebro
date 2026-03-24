@@ -128,6 +128,10 @@ func (s *Server) setupRoutes() {
 			r.Get("/compliance/{framework}", s.frameworkComplianceReport)
 		})
 
+		// Public trust center endpoints
+		r.Get("/trust-center", s.trustCenterSnapshot)
+		r.Get("/trust-center/evidence", s.trustCenterEvidenceCatalog)
+
 		// Compliance endpoints
 		r.Route("/compliance", func(r chi.Router) {
 			r.Get("/frameworks", s.listFrameworks)
@@ -155,6 +159,15 @@ func (s *Server) setupRoutes() {
 			r.Post("/", s.createIncident)
 			r.Get("/playbooks", s.listPlaybooks)
 			r.Get("/playbooks/{id}", s.getPlaybook)
+		})
+
+		r.Route("/forensics", func(r chi.Router) {
+			r.Post("/capture", s.createForensicCapture)
+			r.Get("/captures", s.listForensicCaptures)
+			r.Get("/captures/{capture_id}", s.getForensicCapture)
+			r.Post("/evidence", s.recordRemediationEvidence)
+			r.Get("/evidence/{evidence_id}", s.getRemediationEvidence)
+			r.Get("/evidence/{evidence_id}/export", s.exportForensicEvidence)
 		})
 
 		// Ticketing endpoints
@@ -355,6 +368,10 @@ func (s *Server) setupRoutes() {
 		// Shared platform primitives
 		r.Route("/platform", func(r chi.Router) {
 			r.Get("/executions", s.listPlatformExecutions)
+			r.Get("/scan-audit/findings", s.listPlatformScanAuditFindings)
+			r.Get("/scan-audit", s.listPlatformScanAudit)
+			r.Get("/scan-audit/{namespace}/{run_id}", s.getPlatformScanAudit)
+			r.Get("/scan-audit/{namespace}/{run_id}/export", s.exportPlatformScanAudit)
 			r.Get("/workload-scan/targets", s.listPlatformWorkloadScanTargets)
 			r.Get("/entities", s.listPlatformEntities)
 			r.Get("/entities/search", s.searchPlatformEntities)
@@ -363,6 +380,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/entities/facets/{facet_id}", s.getPlatformEntityFacet)
 			r.Get("/entities/{entity_id}/at", s.getPlatformEntityAtTime)
 			r.Get("/entities/{entity_id}/diff", s.getPlatformEntityTimeDiff)
+			r.Get("/entities/{entity_id}/timeline", s.getPlatformEntityTimeline)
 			r.Get("/entities/{entity_id}", s.getPlatformEntity)
 			r.Route("/graph", func(r chi.Router) {
 				r.Get("/queries", s.platformGraphQueriesGet)
@@ -402,12 +420,20 @@ func (s *Server) setupRoutes() {
 				r.Get("/reports/{id}/runs/report_run:{run_id:[A-Za-z0-9-]+}/stream", s.streamPlatformIntelligenceReportRun)
 				r.Get("/event-patterns", s.graphIntelligenceEventPatterns)
 				r.Get("/event-correlations", s.graphIntelligenceEventCorrelations)
+				r.Get("/event-chains", s.graphIntelligenceEventChains)
 				r.Get("/event-anomalies", s.graphIntelligenceEventAnomalies)
+				r.Post("/nl-queries", s.graphIntelligenceNaturalLanguageQueries)
+				r.Get("/agent-action-effectiveness", s.graphIntelligenceAgentActionEffectiveness)
+				r.Get("/playbook-effectiveness", s.graphIntelligencePlaybookEffectiveness)
+				r.Get("/unified-execution-timeline", s.graphIntelligenceUnifiedExecutionTimeline)
 				r.Get("/insights", s.graphIntelligenceInsights)
 				r.Get("/quality", s.graphIntelligenceQuality)
+				r.Get("/evaluation-temporal-analysis", s.graphIntelligenceEvaluationTemporalAnalysis)
+				r.Get("/ai-workloads", s.graphIntelligenceAIWorkloads)
 				r.Get("/metadata-quality", s.graphIntelligenceMetadataQuality)
 				r.Get("/claim-conflicts", s.graphIntelligenceClaimConflicts)
 				r.Get("/entity-summary", s.graphIntelligenceEntitySummary)
+				r.Get("/key-person-risk", s.graphIntelligenceKeyPersonRisk)
 				r.Get("/leverage", s.graphIntelligenceLeverage)
 				r.Get("/calibration/weekly", s.graphIntelligenceWeeklyCalibration)
 			})
@@ -444,6 +470,7 @@ func (s *Server) setupRoutes() {
 
 		// Graph platform endpoints
 		r.Route("/graph", func(r chi.Router) {
+			r.Get("/health", s.graphHealth)
 			r.Get("/stats", s.graphStats)
 			r.Get("/ingest/health", s.graphIngestHealth)
 			r.Get("/ingest/dead-letter", s.graphIngestDeadLetter)
@@ -466,7 +493,9 @@ func (s *Server) setupRoutes() {
 			r.Post("/evaluate-change", s.evaluateGraphChange)
 
 			// Risk Intelligence endpoints
+			r.Get("/api-surface", s.apiSurface)
 			r.Get("/risk-report", s.riskReport)
+			r.Get("/vendors", s.vendorRiskReport)
 			r.Get("/risk-feedback", s.graphRiskFeedback)
 			r.Get("/outcomes", s.listGraphOutcomes)
 			r.Post("/outcomes", s.recordGraphOutcome)
@@ -504,6 +533,17 @@ func (s *Server) setupRoutes() {
 
 		// Organizational flow endpoints
 		r.Route("/org", func(r chi.Router) {
+			r.Route("/policies", func(r chi.Router) {
+				r.Get("/templates", s.listOrgPolicyTemplates)
+				r.Get("/program-status", s.orgPolicyProgramStatus)
+				r.Get("/review-schedule", s.orgPolicyReviewSchedule)
+				r.Post("/", s.upsertOrgPolicy)
+				r.Get("/{id}/acknowledgment-status", s.orgPolicyAcknowledgmentStatus)
+				r.Get("/{id}/assignees", s.orgPolicyAssignees)
+				r.Get("/{id}/reminders", s.orgPolicyReminders)
+				r.Get("/{id}/versions", s.orgPolicyVersionHistory)
+				r.Post("/{id}/acknowledge", s.acknowledgeOrgPolicy)
+			})
 			r.Get("/expertise/queries", s.whoKnows)
 			r.Post("/team-recommendations", s.recommendTeam)
 			r.Post("/reorg-simulations", s.simulateReorg)

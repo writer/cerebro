@@ -32,8 +32,8 @@ func TestGraphApplyDelta_MutatesNodesAndEdges(t *testing.T) {
 	if !ok {
 		t.Fatal("expected existing user node")
 	}
-	if got, _ := user.Properties["mfa_enabled"].(bool); !got {
-		t.Fatalf("expected modified mfa_enabled=true, got %v", user.Properties["mfa_enabled"])
+	if got, ok := user.PropertyValue("mfa_enabled"); !ok || got != true {
+		t.Fatalf("expected modified mfa_enabled=true, got %#v, %v", got, ok)
 	}
 
 	edges := g.GetOutEdges("user-1")

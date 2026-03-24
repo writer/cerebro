@@ -35,6 +35,7 @@ type graphRiskService interface {
 	ReverseAccess(ctx context.Context, resourceID string, maxDepth int) (*risk.ReverseAccessResult, error)
 	Rebuild(ctx context.Context) (*graphRebuildResponse, error)
 	RiskReport(ctx context.Context) (*risk.SecurityReport, error)
+	APISurface(ctx context.Context, opts graph.APISurfaceReportOptions) (*graph.APISurfaceReport, error)
 	ToxicCombinations(ctx context.Context) ([]*risk.ToxicCombination, error)
 	AttackPaths(ctx context.Context, maxDepth int) (*risk.SimulationResult, error)
 	SimulateAttackPathFix(ctx context.Context, nodeID string) (*risk.FixSimulation, error)
@@ -43,6 +44,7 @@ type graphRiskService interface {
 	AnalyzePeerGroups(ctx context.Context, minSimilarity float64, minGroupSize int) (*graph.PeerGroupAnalysis, []*graph.OutlierNode, error)
 	EffectivePermissions(ctx context.Context, principalID string, evalCtx *graph.PermissionEvaluationContext) (*graph.EffectivePermissions, error)
 	ComparePermissions(ctx context.Context, principal1, principal2 string) (*graph.AccessComparison, error)
+	VendorRiskReport(ctx context.Context, opts graph.VendorRiskReportOptions) (*graph.VendorRiskReport, error)
 }
 
 type serverGraphRiskService struct {
@@ -142,6 +144,15 @@ func (s serverGraphRiskService) RiskReport(ctx context.Context) (*risk.SecurityR
 	return report, nil
 }
 
+func (s serverGraphRiskService) APISurface(ctx context.Context, opts graph.APISurfaceReportOptions) (*graph.APISurfaceReport, error) {
+	g, err := s.tenantAnalysisGraph(ctx)
+	if err != nil {
+		return nil, err
+	}
+	report := graph.AnalyzeAPISurface(g, opts)
+	return &report, nil
+}
+
 func (s serverGraphRiskService) ToxicCombinations(ctx context.Context) ([]*risk.ToxicCombination, error) {
 	g, err := s.tenantAnalysisGraph(ctx)
 	if err != nil {
@@ -210,6 +221,15 @@ func (s serverGraphRiskService) ComparePermissions(ctx context.Context, principa
 		return nil, err
 	}
 	return graph.CompareAccess(g, principal1, principal2), nil
+}
+
+func (s serverGraphRiskService) VendorRiskReport(ctx context.Context, opts graph.VendorRiskReportOptions) (*graph.VendorRiskReport, error) {
+	g, err := s.tenantAnalysisGraph(ctx)
+	if err != nil {
+		return nil, err
+	}
+	report := graph.BuildVendorRiskReport(g, opts)
+	return &report, nil
 }
 
 func (s serverGraphRiskService) tenantGraph(ctx context.Context) *graph.Graph {

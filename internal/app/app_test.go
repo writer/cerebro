@@ -186,6 +186,54 @@ func TestLoadConfigCrossTenantIngestControls(t *testing.T) {
 	}
 }
 
+func TestLoadConfigGraphStoreBackendControls(t *testing.T) {
+	t.Setenv("GRAPH_STORE_BACKEND", "spanner")
+	t.Setenv("GRAPH_STORE_SPANNER_DATABASE", "projects/test/instances/dev/databases/cerebro")
+	t.Setenv("GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP", "true")
+
+	cfg := LoadConfig()
+	if cfg.GraphStoreBackend != "spanner" {
+		t.Fatalf("expected graph store backend spanner, got %q", cfg.GraphStoreBackend)
+	}
+	if cfg.GraphStoreSpannerDatabase != "projects/test/instances/dev/databases/cerebro" {
+		t.Fatalf("expected spanner database to be set, got %q", cfg.GraphStoreSpannerDatabase)
+	}
+	if !cfg.GraphStoreSpannerAutoBootstrap {
+		t.Fatal("expected spanner auto bootstrap to be enabled")
+	}
+}
+
+func TestLoadConfigGraphStoreBackendDefaultsToMemoryInTests(t *testing.T) {
+	cfg := LoadConfig()
+	if cfg.GraphStoreBackend != "memory" {
+		t.Fatalf("expected test graph store backend memory, got %q", cfg.GraphStoreBackend)
+	}
+	if !cfg.GraphStoreAllowInMemory {
+		t.Fatal("expected test graph runtime to allow in-memory backend")
+	}
+}
+
+func TestDefaultGraphStoreBackendForProcess(t *testing.T) {
+	if got := defaultGraphStoreBackendForProcess(true); got != "memory" {
+		t.Fatalf("defaultGraphStoreBackendForProcess(test) = %q, want memory", got)
+	}
+	if got := defaultGraphStoreBackendForProcess(false); got != "spanner" {
+		t.Fatalf("defaultGraphStoreBackendForProcess(production) = %q, want spanner", got)
+	}
+}
+
+func TestAllowInMemoryGraphStoreForProcess(t *testing.T) {
+	if !allowInMemoryGraphStoreForProcess(true, false) {
+		t.Fatal("expected test process to allow in-memory graph store")
+	}
+	if allowInMemoryGraphStoreForProcess(false, false) {
+		t.Fatal("expected production process to reject in-memory graph store without explicit opt-in")
+	}
+	if !allowInMemoryGraphStoreForProcess(false, true) {
+		t.Fatal("expected explicit production opt-in to allow in-memory graph store")
+	}
+}
+
 func TestLoadConfigPlatformReportPersistencePaths(t *testing.T) {
 	t.Setenv("PLATFORM_REPORT_RUN_STATE_FILE", "/tmp/cerebro-report-runs.json")
 	t.Setenv("PLATFORM_REPORT_SNAPSHOT_PATH", "/tmp/cerebro-report-snapshots")
@@ -312,6 +360,15 @@ func TestLoadConfigFunctionScanPathsAndControls(t *testing.T) {
 	}
 	if cfg.FunctionScanClamAVBinary != "/usr/local/bin/clamscan-function" {
 		t.Fatalf("expected function scan clamav binary override, got %q", cfg.FunctionScanClamAVBinary)
+	}
+}
+
+func TestLoadConfigScanPolicyPath(t *testing.T) {
+	t.Setenv("SCAN_POLICIES_PATH", "/tmp/cerebro-scan-policies")
+
+	cfg := LoadConfig()
+	if cfg.ScanPoliciesPath != "/tmp/cerebro-scan-policies" {
+		t.Fatalf("expected scan policies path override, got %q", cfg.ScanPoliciesPath)
 	}
 }
 
@@ -794,6 +851,62 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 		"GRAPH_TENANT_WARM_SHARD_MAX_RETAINED must be > 0",
 		"GRAPH_PROPERTY_HISTORY_MAX_ENTRIES must be >= 0",
 		"GRAPH_PROPERTY_HISTORY_TTL must be >= 0",
+	}
+	for _, want := range wantProblems {
+		found := false
+		for _, problem := range validationErr.Problems {
+			if strings.Contains(problem, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected validation problem containing %q, got %#v", want, validationErr.Problems)
+		}
+	}
+}
+
+func TestLoadConfigValidateGraphStoreBackendRequirements(t *testing.T) {
+	t.Setenv("GRAPH_STORE_BACKEND", "spanner")
+	t.Setenv("GRAPH_STORE_SPANNER_DATABASE", "")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+	if !strings.Contains(err.Error(), "GRAPH_STORE_SPANNER_DATABASE is required when GRAPH_STORE_BACKEND=spanner") {
+		t.Fatalf("expected graph store backend validation failure, got %v", err)
+	}
+}
+
+func TestLoadConfigValidateNeptunePoolControls(t *testing.T) {
+	t.Setenv("GRAPH_STORE_BACKEND", "neptune")
+	t.Setenv("GRAPH_STORE_NEPTUNE_ENDPOINT", "https://example.neptune.amazonaws.com")
+	t.Setenv("GRAPH_STORE_NEPTUNE_POOL_SIZE", "0")
+	t.Setenv("GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL", "15s")
+	t.Setenv("GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT", "0s")
+	t.Setenv("GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_LIFETIME", "-1s")
+	t.Setenv("GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_USES", "-1")
+	t.Setenv("GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT", "0s")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+
+	var validationErr *ConfigValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ConfigValidationError, got %T", err)
+	}
+
+	wantProblems := []string{
+		"GRAPH_STORE_NEPTUNE_POOL_SIZE must be > 0",
+		"GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT must be > 0",
+		"GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_LIFETIME must be >= 0",
+		"GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_USES must be >= 0",
+		"GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT must be > 0",
 	}
 	for _, want := range wantProblems {
 		found := false

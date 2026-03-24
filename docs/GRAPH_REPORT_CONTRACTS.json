@@ -4,6 +4,473 @@
   "generated_at": "0001-01-01T00:00:00Z",
   "reports": [
     {
+      "id": "agent-action-effectiveness",
+      "version": "1.0.0",
+      "title": "Agent Action Effectiveness",
+      "category": "decision_support",
+      "description": "Evaluation rollups showing successful versus reversed actions, cost-to-outcome efficiency, and correctness trends across agents and time windows.",
+      "result_schema": "reports.AgentActionEffectivenessReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/agent-action-effectiveness",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "window"
+      ],
+      "parameters": [
+        {
+          "name": "window_days",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Conversation window in days to include in the report."
+        },
+        {
+          "name": "trend_days",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Number of daily buckets to include in the trend output."
+        },
+        {
+          "name": "max_agents",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum number of agent rollups to return."
+        }
+      ],
+      "measures": [
+        {
+          "id": "conversation_count",
+          "label": "Conversations",
+          "value_type": "integer",
+          "description": "Evaluation conversations included in the selected window."
+        },
+        {
+          "id": "successful_action_count",
+          "label": "Successful Actions",
+          "value_type": "integer",
+          "description": "Agent actions that aligned with positive conversation outcomes."
+        },
+        {
+          "id": "reversed_action_count",
+          "label": "Reversed Actions",
+          "value_type": "integer",
+          "description": "Actions explicitly reverted or later invalidated by negative outcomes."
+        },
+        {
+          "id": "cost_per_successful_conversation_usd",
+          "label": "Cost Per Successful Conversation",
+          "value_type": "number",
+          "unit": "usd",
+          "description": "Total evaluation cost divided by positive conversation outcomes."
+        },
+        {
+          "id": "correctness_percent",
+          "label": "Correctness",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of evaluation conversations that ended in positive outcomes."
+        },
+        {
+          "id": "average_quality_score",
+          "label": "Average Quality Score",
+          "value_type": "number",
+          "unit": "score",
+          "description": "Average conversation quality score from evaluation outcomes."
+        }
+      ],
+      "sections": [
+        {
+          "key": "summary",
+          "title": "Summary",
+          "kind": "scorecard",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "conversation_count",
+            "successful_action_count",
+            "reversed_action_count",
+            "cost_per_successful_conversation_usd",
+            "correctness_percent",
+            "average_quality_score"
+          ]
+        },
+        {
+          "key": "agents",
+          "title": "Agent Rollups",
+          "kind": "breakdown_table",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "description": "Per-agent outcome, cost, and reversal rollups."
+        },
+        {
+          "key": "trends",
+          "title": "Correctness Trends",
+          "kind": "timeseries",
+          "envelope_kind": "object",
+          "description": "Daily correctness, reversal, and cost-to-outcome trends."
+        },
+        {
+          "key": "reversals",
+          "title": "Reversals",
+          "kind": "ranked_findings",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "description": "Most recent reversed or later-invalidated actions."
+        },
+        {
+          "key": "recommendations",
+          "title": "Recommendations",
+          "kind": "action_list",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "description": "Suggested remediation or tuning actions for weak-performing agent flows."
+        }
+      ],
+      "checks": [
+        {
+          "id": "agent_correctness",
+          "title": "Agent Correctness",
+          "severity": "high",
+          "description": "Agent actions should consistently lead to positive conversation outcomes."
+        },
+        {
+          "id": "action_reversals",
+          "title": "Action Reversals",
+          "severity": "high",
+          "description": "Explicit reversals and negative post-action outcomes should remain low."
+        },
+        {
+          "id": "cost_efficiency",
+          "title": "Cost Efficiency",
+          "severity": "medium",
+          "description": "Cost per successful conversation should remain within the expected operating envelope."
+        }
+      ]
+    },
+    {
+      "id": "playbook-effectiveness",
+      "version": "1.0.0",
+      "title": "Playbook Effectiveness",
+      "category": "decision_support",
+      "description": "Workflow execution rollups showing completion, outcome durability, approval friction, repeated remediation, and failure hot spots across playbooks, targets, and tenants.",
+      "result_schema": "reports.PlaybookEffectivenessReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/playbook-effectiveness",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "window"
+      ],
+      "parameters": [
+        {
+          "name": "window_days",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Run window in days to include in the report."
+        },
+        {
+          "name": "playbook_id",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional playbook identifier to scope one playbook."
+        },
+        {
+          "name": "tenant_id",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional tenant identifier to scope one tenant."
+        },
+        {
+          "name": "target_kind",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional ontology target kind to scope runs that touched that kind."
+        },
+        {
+          "name": "max_playbooks",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum number of per-playbook rollups to return."
+        }
+      ],
+      "measures": [
+        {
+          "id": "playbook_run_count",
+          "label": "Runs",
+          "value_type": "integer",
+          "description": "Playbook runs included in the selected window."
+        },
+        {
+          "id": "playbook_completion_rate_percent",
+          "label": "Completion Rate",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of playbook runs with terminal outcomes."
+        },
+        {
+          "id": "playbook_success_rate_percent",
+          "label": "Success Rate",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of playbook runs ending in positive outcomes."
+        },
+        {
+          "id": "playbook_rollback_rate_percent",
+          "label": "Rollback Rate",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of completed playbook runs ending in rollback or reversal signals."
+        },
+        {
+          "id": "playbook_average_completion_minutes",
+          "label": "Average Completion Time",
+          "value_type": "number",
+          "unit": "minutes",
+          "description": "Average time between run start and terminal outcome."
+        },
+        {
+          "id": "playbook_approval_bottleneck_count",
+          "label": "Approval Bottlenecks",
+          "value_type": "integer",
+          "description": "Approval-required stages that created friction or blocked progress."
+        },
+        {
+          "id": "playbook_repeat_execution_rate_percent",
+          "label": "Repeat Execution Rate",
+          "value_type": "number",
+          "unit": "percent",
+          "description": "Share of runs that repeated remediation on the same targets."
+        }
+      ],
+      "sections": [
+        {
+          "key": "summary",
+          "title": "Summary",
+          "kind": "scorecard",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "playbook_run_count",
+            "playbook_completion_rate_percent",
+            "playbook_success_rate_percent",
+            "playbook_rollback_rate_percent",
+            "playbook_average_completion_minutes",
+            "playbook_approval_bottleneck_count",
+            "playbook_repeat_execution_rate_percent"
+          ]
+        },
+        {
+          "key": "playbooks",
+          "title": "Playbooks",
+          "kind": "breakdown_table",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "description": "Per-playbook execution quality, rollback, and repeat-target rollups."
+        },
+        {
+          "key": "stages",
+          "title": "Stages",
+          "kind": "breakdown_table",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "description": "Per-stage failure and approval-friction rollups."
+        },
+        {
+          "key": "target_kinds",
+          "title": "Target Kinds",
+          "kind": "breakdown_table",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "description": "Effectiveness breakdown by targeted ontology kind."
+        },
+        {
+          "key": "tenants",
+          "title": "Tenants",
+          "kind": "breakdown_table",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "description": "Effectiveness breakdown by tenant."
+        },
+        {
+          "key": "failure_steps",
+          "title": "Failure Steps",
+          "kind": "ranked_findings",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "description": "Stages that most often failed across the selected playbook runs."
+        },
+        {
+          "key": "recommendations",
+          "title": "Recommendations",
+          "kind": "action_list",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "description": "Suggested remediation for unstable or high-friction playbooks."
+        }
+      ],
+      "checks": [
+        {
+          "id": "playbook_completion",
+          "title": "Playbook Completion",
+          "severity": "high",
+          "description": "Playbook runs should reliably reach terminal outcomes."
+        },
+        {
+          "id": "playbook_rollbacks",
+          "title": "Playbook Rollbacks",
+          "severity": "high",
+          "description": "Completed playbooks should not frequently require rollback or reversal."
+        },
+        {
+          "id": "playbook_approval_friction",
+          "title": "Playbook Approval Friction",
+          "severity": "medium",
+          "description": "Approval-required stages should not become a systemic bottleneck."
+        }
+      ]
+    },
+    {
+      "id": "unified-execution-timeline",
+      "version": "1.0.0",
+      "title": "Unified Execution Timeline",
+      "category": "knowledge",
+      "description": "Chronological workflow timeline across evaluation and playbook runs, including scoped communication threads, stage decisions, actions, outcomes, and directly supporting evidence and claims.",
+      "result_schema": "reports.UnifiedExecutionTimelineReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/unified-execution-timeline",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "window",
+        "bitemporal"
+      ],
+      "parameters": [
+        {
+          "name": "window_days",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Timeline window in days to include."
+        },
+        {
+          "name": "tenant_id",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional tenant identifier to scope one tenant."
+        },
+        {
+          "name": "target_kind",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional ontology target kind to scope one workflow family."
+        },
+        {
+          "name": "playbook_id",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional playbook identifier to scope playbook runs."
+        },
+        {
+          "name": "evaluation_run_id",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional evaluation run identifier to scope one evaluation run."
+        },
+        {
+          "name": "max_events",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum number of timeline events to return."
+        }
+      ],
+      "measures": [
+        {
+          "id": "timeline_event_count",
+          "label": "Timeline Events",
+          "value_type": "integer",
+          "description": "Returned chronological events after scope and limit filters."
+        },
+        {
+          "id": "timeline_evaluation_run_count",
+          "label": "Evaluation Runs",
+          "value_type": "integer",
+          "description": "Evaluation runs represented in the returned timeline."
+        },
+        {
+          "id": "timeline_playbook_run_count",
+          "label": "Playbook Runs",
+          "value_type": "integer",
+          "description": "Playbook runs represented in the returned timeline."
+        },
+        {
+          "id": "timeline_claim_count",
+          "label": "Claims",
+          "value_type": "integer",
+          "description": "Claim events represented in the returned timeline."
+        },
+        {
+          "id": "timeline_evidence_count",
+          "label": "Evidence",
+          "value_type": "integer",
+          "description": "Direct evidence events represented in the returned timeline."
+        }
+      ],
+      "sections": [
+        {
+          "key": "summary",
+          "title": "Summary",
+          "kind": "scorecard",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "timeline_event_count",
+            "timeline_evaluation_run_count",
+            "timeline_playbook_run_count",
+            "timeline_claim_count",
+            "timeline_evidence_count"
+          ]
+        },
+        {
+          "key": "events",
+          "title": "Timeline",
+          "kind": "timeline_collection",
+          "envelope_kind": "object",
+          "description": "Chronological workflow events across the selected evaluation and playbook scopes."
+        }
+      ],
+      "checks": [
+        {
+          "id": "timeline_scope_isolation",
+          "title": "Timeline Scope Isolation",
+          "severity": "high",
+          "description": "Tenant and workflow filters should isolate timeline output cleanly."
+        },
+        {
+          "id": "timeline_support_coverage",
+          "title": "Timeline Support Coverage",
+          "severity": "medium",
+          "description": "Workflow timelines should include directly supporting claims and evidence when available."
+        },
+        {
+          "id": "timeline_stage_continuity",
+          "title": "Timeline Stage Continuity",
+          "severity": "medium",
+          "description": "Missing stage identifiers should not drop workflow events from the timeline."
+        }
+      ]
+    },
+    {
       "id": "insights",
       "version": "1.0.0",
       "title": "Decision Intelligence",
@@ -372,6 +839,148 @@
       ]
     },
     {
+      "id": "ai-workloads",
+      "version": "1.0.0",
+      "title": "AI Workload Inventory",
+      "category": "security_posture",
+      "description": "Inventory graph-detected AI workloads across cloud-managed services, self-hosted frameworks, vector stores, data exposure, and shadow AI signals.",
+      "result_schema": "reports.AIWorkloadInventoryReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/ai-workloads",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "parameters": [
+        {
+          "name": "max_workloads",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum AI workloads to return (1-200)."
+        },
+        {
+          "name": "min_risk_score",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Minimum AI workload risk score to include (0-100)."
+        },
+        {
+          "name": "include_shadow",
+          "in": "query",
+          "value_type": "boolean",
+          "description": "When false, filter self-hosted shadow AI workloads out of the returned inventory."
+        }
+      ],
+      "measures": [
+        {
+          "id": "workload_count",
+          "label": "AI Workloads",
+          "value_type": "integer",
+          "description": "Total detected AI workloads before filtering."
+        },
+        {
+          "id": "high_risk_workload_count",
+          "label": "High-Risk AI Workloads",
+          "value_type": "integer",
+          "description": "Detected AI workloads with critical or high risk posture."
+        },
+        {
+          "id": "shadow_ai_workload_count",
+          "label": "Shadow AI",
+          "value_type": "integer",
+          "description": "Self-hosted AI workloads outside the cloud-managed AI service footprint."
+        },
+        {
+          "id": "internet_exposed_workload_count",
+          "label": "Internet-Exposed AI",
+          "value_type": "integer",
+          "description": "Detected AI workloads reachable from the internet."
+        },
+        {
+          "id": "sensitive_data_workload_count",
+          "label": "Sensitive Data Reach",
+          "value_type": "integer",
+          "description": "Detected AI workloads with graph-visible access into sensitive data stores."
+        }
+      ],
+      "sections": [
+        {
+          "key": "summary",
+          "title": "Summary",
+          "kind": "scorecard",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "workload_count",
+            "high_risk_workload_count",
+            "shadow_ai_workload_count",
+            "internet_exposed_workload_count",
+            "sensitive_data_workload_count"
+          ]
+        },
+        {
+          "key": "workloads",
+          "title": "Inventory",
+          "kind": "ranked_findings",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "description": "Detected AI workloads sorted by graph-derived risk posture."
+        },
+        {
+          "key": "data_exposures",
+          "title": "Data Exposure",
+          "kind": "breakdown_table",
+          "envelope_kind": "distribution",
+          "envelope_schema": "PlatformDistributionEnvelope",
+          "description": "AI workloads with sensitive data reach, public exposure, or plaintext provider-key signals."
+        },
+        {
+          "key": "shadow_ai_workloads",
+          "title": "Shadow AI",
+          "kind": "ranked_findings",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "description": "Self-hosted AI workloads inferred from framework, runtime, vector-store, or credential indicators."
+        },
+        {
+          "key": "recommendations",
+          "title": "Recommendations",
+          "kind": "action_list",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "description": "Prioritized AI-SPM remediation guidance derived from graph posture."
+        }
+      ],
+      "checks": [
+        {
+          "id": "internet_exposure",
+          "title": "Internet Exposure",
+          "severity": "high",
+          "description": "AI-serving paths should not be exposed without strong ingress controls."
+        },
+        {
+          "id": "plaintext_provider_keys",
+          "title": "Provider Key Hygiene",
+          "severity": "high",
+          "description": "AI provider credentials should not appear directly on workload metadata."
+        },
+        {
+          "id": "shadow_ai",
+          "title": "Shadow AI Detection",
+          "severity": "medium",
+          "description": "Self-hosted AI indicators should be inventoried and owned."
+        },
+        {
+          "id": "sensitive_data_scope",
+          "title": "Sensitive Data Scope",
+          "severity": "medium",
+          "description": "AI workloads should be scoped away from unnecessary sensitive data stores."
+        }
+      ]
+    },
+    {
       "id": "metadata-quality",
       "version": "1.0.0",
       "title": "Metadata Quality",
@@ -501,6 +1110,150 @@
           "key": "kinds.annotations",
           "scope": "kinds[]",
           "description": "Attach source-specific repair hints or owner routing information."
+        }
+      ]
+    },
+    {
+      "id": "evaluation-temporal-analysis",
+      "version": "1.0.0",
+      "title": "Evaluation Temporal Analysis",
+      "category": "knowledge",
+      "description": "Evaluation-run contradiction, supersession, and pre/post action world-state diff analysis over scoped claims and evidence timelines.",
+      "result_schema": "reports.EvaluationTemporalAnalysisReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/evaluation-temporal-analysis",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "bitemporal",
+        "window"
+      ],
+      "parameters": [
+        {
+          "name": "evaluation_run_id",
+          "in": "query",
+          "value_type": "string",
+          "required": true,
+          "description": "Evaluation run identifier to analyze."
+        },
+        {
+          "name": "conversation_id",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional conversation identifier to scope one conversation inside the run."
+        },
+        {
+          "name": "stage_id",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional stage identifier to scope one evaluation stage inside the selected conversation or run."
+        },
+        {
+          "name": "timeline_limit",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum timeline entries to include per scoped claim."
+        }
+      ],
+      "measures": [
+        {
+          "id": "evaluation_claim_count",
+          "label": "Scoped Claims",
+          "value_type": "integer",
+          "description": "Claims linked to the selected evaluation scope."
+        },
+        {
+          "id": "evaluation_contradicted_claim_count",
+          "label": "Contradicted Claims",
+          "value_type": "integer",
+          "description": "Scoped claims contradicted by later world-model facts."
+        },
+        {
+          "id": "evaluation_superseded_claim_count",
+          "label": "Superseded Claims",
+          "value_type": "integer",
+          "description": "Scoped claims later superseded by newer claims."
+        },
+        {
+          "id": "evaluation_reversed_action_count",
+          "label": "Reversed Actions",
+          "value_type": "integer",
+          "description": "Evaluation actions explicitly reversed or rolled back."
+        },
+        {
+          "id": "evaluation_added_claim_count",
+          "label": "Added Claims",
+          "value_type": "integer",
+          "description": "Claims added between the pre-action and post-action world-state slices."
+        }
+      ],
+      "sections": [
+        {
+          "key": "summary",
+          "title": "Summary",
+          "kind": "scorecard",
+          "envelope_kind": "summary",
+          "envelope_schema": "PlatformSummaryEnvelope",
+          "measures": [
+            "evaluation_claim_count",
+            "evaluation_contradicted_claim_count",
+            "evaluation_superseded_claim_count",
+            "evaluation_reversed_action_count",
+            "evaluation_added_claim_count"
+          ]
+        },
+        {
+          "key": "diff",
+          "title": "World Diff",
+          "kind": "knowledge_diff",
+          "envelope_kind": "object",
+          "description": "Knowledge-layer changes between the pre-action and post-action world-state slices."
+        },
+        {
+          "key": "conflicts",
+          "title": "Conflicts",
+          "kind": "contradiction_groups",
+          "envelope_kind": "object",
+          "description": "Contradictions and supportability issues in the scoped claim set."
+        },
+        {
+          "key": "claims",
+          "title": "Claim Timelines",
+          "kind": "timeline_collection",
+          "envelope_kind": "object",
+          "description": "Scoped claim explanations and timelines linked to the evaluation run."
+        },
+        {
+          "key": "recommendations",
+          "title": "Recommendations",
+          "kind": "action_list",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "description": "Suggested remediation or adjudication steps for scoped eval contradictions."
+        }
+      ],
+      "checks": [
+        {
+          "id": "evaluation_contradictions",
+          "title": "Evaluation Contradictions",
+          "severity": "high",
+          "description": "Evaluation-linked claims should not be contradicted by later world facts."
+        },
+        {
+          "id": "evaluation_supersessions",
+          "title": "Evaluation Supersessions",
+          "severity": "medium",
+          "description": "Earlier evaluation claims being superseded indicates the agent model drifted over time."
+        },
+        {
+          "id": "evaluation_reversals",
+          "title": "Evaluation Reversals",
+          "severity": "high",
+          "description": "Agent-driven actions should not require later reversal."
         }
       ]
     },
@@ -1091,7 +1844,7 @@
       "version": "1.0.0",
       "title": "Weekly Calibration",
       "category": "calibration",
-      "description": "Weekly slice combining outcome backtest, identity calibration status, and ontology trend context.",
+      "description": "Weekly slice combining outcome backtest, identity calibration status, ontology trend context, and a temporal changelog summary.",
       "result_schema": "reports.WeeklyCalibrationReport",
       "endpoint": {
         "method": "GET",
@@ -1170,6 +1923,12 @@
           "value_type": "number",
           "unit": "percent",
           "description": "Ontology trend coverage for the selected trend horizon."
+        },
+        {
+          "id": "change_count",
+          "label": "Tracked Changes",
+          "value_type": "integer",
+          "description": "Number of graph changelog entries captured in the weekly window."
         }
       ],
       "sections": [
@@ -1207,6 +1966,15 @@
           "measures": [
             "canonical_kind_coverage_percent"
           ]
+        },
+        {
+          "key": "temporal",
+          "title": "Temporal Changelog",
+          "kind": "changelog_summary",
+          "envelope_kind": "object",
+          "measures": [
+            "change_count"
+          ]
         }
       ],
       "checks": [
@@ -1236,6 +2004,96 @@
           "description": "Attach historical benchmark bands or model baselines."
         }
       ]
+    },
+    {
+      "id": "key-person-risk",
+      "version": "1.0.0",
+      "title": "Key Person Risk",
+      "category": "business_context",
+      "description": "Rank likely single-person failures by orphaned systems, customer exposure, ARR at risk, and recovery drag.",
+      "result_schema": "reports.KeyPersonRiskReport",
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/v1/platform/intelligence/key-person-risk",
+        "synchronous": true,
+        "job_capable": true,
+        "run_method": "POST",
+        "run_path_template": "/api/v1/platform/intelligence/reports/{id}/runs"
+      },
+      "temporal_modes": [
+        "snapshot"
+      ],
+      "parameters": [
+        {
+          "name": "person_id",
+          "in": "query",
+          "value_type": "string",
+          "description": "Optional person identifier to focus the report on one departure scenario."
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "value_type": "integer",
+          "description": "Maximum ranked people to include."
+        }
+      ],
+      "measures": [
+        {
+          "id": "score",
+          "label": "Risk Score",
+          "value_type": "number",
+          "unit": "score",
+          "description": "Composite single-person-failure score."
+        },
+        {
+          "id": "affected_arr",
+          "label": "Affected ARR",
+          "value_type": "number",
+          "unit": "currency",
+          "description": "ARR tied to customers that would lose a direct owner."
+        },
+        {
+          "id": "systems_bus_factor_0",
+          "label": "Orphaned Systems",
+          "value_type": "integer",
+          "description": "Systems that would drop to zero active owners."
+        },
+        {
+          "id": "customers_no_contact",
+          "label": "Customers Without Contact",
+          "value_type": "integer",
+          "description": "Customers that would lose a direct human contact."
+        }
+      ],
+      "sections": [
+        {
+          "key": "items",
+          "title": "Ranked People",
+          "kind": "ranked_backlog",
+          "envelope_kind": "ranking",
+          "envelope_schema": "PlatformRankingEnvelope",
+          "measures": [
+            "score",
+            "affected_arr",
+            "systems_bus_factor_0",
+            "customers_no_contact"
+          ]
+        }
+      ],
+      "checks": [
+        {
+          "id": "single_person_failure",
+          "title": "Single Person Failure",
+          "severity": "high",
+          "description": "Critical systems and customer relationships should not hinge on one person."
+        },
+        {
+          "id": "customer_exposure",
+          "title": "Customer Exposure",
+          "severity": "high",
+          "description": "Person departures that strand customer ownership or ARR should be escalated."
+        }
+      ]
     }
   ],
   "measures": [
@@ -1247,11 +2105,31 @@
       "description": "Share of actions linked to targets, decisions, and outcomes."
     },
     {
+      "id": "affected_arr",
+      "label": "Affected ARR",
+      "value_type": "number",
+      "unit": "currency",
+      "description": "ARR tied to customers that would lose a direct owner."
+    },
+    {
+      "id": "average_quality_score",
+      "label": "Average Quality Score",
+      "value_type": "number",
+      "unit": "score",
+      "description": "Average conversation quality score from evaluation outcomes."
+    },
+    {
       "id": "canonical_kind_coverage_percent",
       "label": "Canonical Kind Coverage",
       "value_type": "number",
       "unit": "percent",
       "description": "Share of nodes using canonical ontology kinds."
+    },
+    {
+      "id": "change_count",
+      "label": "Tracked Changes",
+      "value_type": "integer",
+      "description": "Number of graph changelog entries captured in the weekly window."
     },
     {
       "id": "closure_rate_percent",
@@ -1287,6 +2165,26 @@
       "description": "Schema conformance across graph writes."
     },
     {
+      "id": "conversation_count",
+      "label": "Conversations",
+      "value_type": "integer",
+      "description": "Evaluation conversations included in the selected window."
+    },
+    {
+      "id": "correctness_percent",
+      "label": "Correctness",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of evaluation conversations that ended in positive outcomes."
+    },
+    {
+      "id": "cost_per_successful_conversation_usd",
+      "label": "Cost Per Successful Conversation",
+      "value_type": "number",
+      "unit": "usd",
+      "description": "Total evaluation cost divided by positive conversation outcomes."
+    },
+    {
       "id": "coverage",
       "label": "Coverage",
       "value_type": "number",
@@ -1301,6 +2199,12 @@
       "description": "Ontology coverage across node and edge kinds."
     },
     {
+      "id": "customers_no_contact",
+      "label": "Customers Without Contact",
+      "value_type": "integer",
+      "description": "Customers that would lose a direct human contact."
+    },
+    {
       "id": "disputed_claims",
       "label": "Disputed Claims",
       "value_type": "integer",
@@ -1312,6 +2216,36 @@
       "value_type": "number",
       "unit": "percent",
       "description": "Share of enum-like values matching the allowed value set."
+    },
+    {
+      "id": "evaluation_added_claim_count",
+      "label": "Added Claims",
+      "value_type": "integer",
+      "description": "Claims added between the pre-action and post-action world-state slices."
+    },
+    {
+      "id": "evaluation_claim_count",
+      "label": "Scoped Claims",
+      "value_type": "integer",
+      "description": "Claims linked to the selected evaluation scope."
+    },
+    {
+      "id": "evaluation_contradicted_claim_count",
+      "label": "Contradicted Claims",
+      "value_type": "integer",
+      "description": "Scoped claims contradicted by later world-model facts."
+    },
+    {
+      "id": "evaluation_reversed_action_count",
+      "label": "Reversed Actions",
+      "value_type": "integer",
+      "description": "Evaluation actions explicitly reversed or rolled back."
+    },
+    {
+      "id": "evaluation_superseded_claim_count",
+      "label": "Superseded Claims",
+      "value_type": "integer",
+      "description": "Scoped claims later superseded by newer claims."
     },
     {
       "id": "evidence_count",
@@ -1332,6 +2266,18 @@
       "value_type": "number",
       "unit": "percent",
       "description": "Recency-adjusted freshness for the selected scope."
+    },
+    {
+      "id": "high_risk_workload_count",
+      "label": "High-Risk AI Workloads",
+      "value_type": "integer",
+      "description": "Detected AI workloads with critical or high risk posture."
+    },
+    {
+      "id": "internet_exposed_workload_count",
+      "label": "Internet-Exposed AI",
+      "value_type": "integer",
+      "description": "Detected AI workloads reachable from the internet."
     },
     {
       "id": "leverage_score",
@@ -1368,6 +2314,53 @@
       "description": "Number of outcomes in the calibration window."
     },
     {
+      "id": "playbook_approval_bottleneck_count",
+      "label": "Approval Bottlenecks",
+      "value_type": "integer",
+      "description": "Approval-required stages that created friction or blocked progress."
+    },
+    {
+      "id": "playbook_average_completion_minutes",
+      "label": "Average Completion Time",
+      "value_type": "number",
+      "unit": "minutes",
+      "description": "Average time between run start and terminal outcome."
+    },
+    {
+      "id": "playbook_completion_rate_percent",
+      "label": "Completion Rate",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of playbook runs with terminal outcomes."
+    },
+    {
+      "id": "playbook_repeat_execution_rate_percent",
+      "label": "Repeat Execution Rate",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of runs that repeated remediation on the same targets."
+    },
+    {
+      "id": "playbook_rollback_rate_percent",
+      "label": "Rollback Rate",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of completed playbook runs ending in rollback or reversal signals."
+    },
+    {
+      "id": "playbook_run_count",
+      "label": "Runs",
+      "value_type": "integer",
+      "description": "Playbook runs included in the selected window."
+    },
+    {
+      "id": "playbook_success_rate_percent",
+      "label": "Success Rate",
+      "value_type": "number",
+      "unit": "percent",
+      "description": "Share of playbook runs ending in positive outcomes."
+    },
+    {
       "id": "precision_percent",
       "label": "Identity Precision",
       "value_type": "number",
@@ -1393,6 +2386,12 @@
       "value_type": "number",
       "unit": "percent",
       "description": "Coverage for metadata keys marked required by ontology profiles."
+    },
+    {
+      "id": "reversed_action_count",
+      "label": "Reversed Actions",
+      "value_type": "integer",
+      "description": "Actions explicitly reverted or later invalidated by negative outcomes."
     },
     {
       "id": "review_coverage_percent",
@@ -1422,6 +2421,25 @@
       "description": "Share of writes conforming to schema contracts."
     },
     {
+      "id": "score",
+      "label": "Risk Score",
+      "value_type": "number",
+      "unit": "score",
+      "description": "Composite single-person-failure score."
+    },
+    {
+      "id": "sensitive_data_workload_count",
+      "label": "Sensitive Data Reach",
+      "value_type": "integer",
+      "description": "Detected AI workloads with graph-visible access into sensitive data stores."
+    },
+    {
+      "id": "shadow_ai_workload_count",
+      "label": "Shadow AI",
+      "value_type": "integer",
+      "description": "Self-hosted AI workloads outside the cloud-managed AI service footprint."
+    },
+    {
       "id": "sourceless_claims",
       "label": "Sourceless Claims",
       "value_type": "integer",
@@ -1440,10 +2458,52 @@
       "description": "Promoted subresources attached to the entity for explanation and provenance."
     },
     {
+      "id": "successful_action_count",
+      "label": "Successful Actions",
+      "value_type": "integer",
+      "description": "Agent actions that aligned with positive conversation outcomes."
+    },
+    {
       "id": "supported_claims",
       "label": "Supported Claims",
       "value_type": "integer",
       "description": "Active posture claims with evidence support."
+    },
+    {
+      "id": "systems_bus_factor_0",
+      "label": "Orphaned Systems",
+      "value_type": "integer",
+      "description": "Systems that would drop to zero active owners."
+    },
+    {
+      "id": "timeline_claim_count",
+      "label": "Claims",
+      "value_type": "integer",
+      "description": "Claim events represented in the returned timeline."
+    },
+    {
+      "id": "timeline_evaluation_run_count",
+      "label": "Evaluation Runs",
+      "value_type": "integer",
+      "description": "Evaluation runs represented in the returned timeline."
+    },
+    {
+      "id": "timeline_event_count",
+      "label": "Timeline Events",
+      "value_type": "integer",
+      "description": "Returned chronological events after scope and limit filters."
+    },
+    {
+      "id": "timeline_evidence_count",
+      "label": "Evidence",
+      "value_type": "integer",
+      "description": "Direct evidence events represented in the returned timeline."
+    },
+    {
+      "id": "timeline_playbook_run_count",
+      "label": "Playbook Runs",
+      "value_type": "integer",
+      "description": "Playbook runs represented in the returned timeline."
     },
     {
       "id": "timestamp_validity_percent",
@@ -1457,14 +2517,32 @@
       "label": "Unsupported Claims",
       "value_type": "integer",
       "description": "Active claims with no evidence support."
+    },
+    {
+      "id": "workload_count",
+      "label": "AI Workloads",
+      "value_type": "integer",
+      "description": "Total detected AI workloads before filtering."
     }
   ],
   "checks": [
+    {
+      "id": "action_reversals",
+      "title": "Action Reversals",
+      "severity": "high",
+      "description": "Explicit reversals and negative post-action outcomes should remain low."
+    },
     {
       "id": "actuation_closure",
       "title": "Actuation Closure",
       "severity": "medium",
       "description": "Actions should land with targets, decisions, and outcomes."
+    },
+    {
+      "id": "agent_correctness",
+      "title": "Agent Correctness",
+      "severity": "high",
+      "description": "Agent actions should consistently lead to positive conversation outcomes."
     },
     {
       "id": "canonical_identity",
@@ -1485,16 +2563,46 @@
       "description": "Contradiction groups should remain bounded for key subject predicates."
     },
     {
+      "id": "cost_efficiency",
+      "title": "Cost Efficiency",
+      "severity": "medium",
+      "description": "Cost per successful conversation should remain within the expected operating envelope."
+    },
+    {
       "id": "counterfactual_readiness",
       "title": "Counterfactual Readiness",
       "severity": "medium",
       "description": "Counterfactual output depends on simulation-ready graph coverage."
     },
     {
+      "id": "customer_exposure",
+      "title": "Customer Exposure",
+      "severity": "high",
+      "description": "Person departures that strand customer ownership or ARR should be escalated."
+    },
+    {
       "id": "enum_validity",
       "title": "Enum Validity",
       "severity": "medium",
       "description": "Ontology-enumerated values should be normalized consistently."
+    },
+    {
+      "id": "evaluation_contradictions",
+      "title": "Evaluation Contradictions",
+      "severity": "high",
+      "description": "Evaluation-linked claims should not be contradicted by later world facts."
+    },
+    {
+      "id": "evaluation_reversals",
+      "title": "Evaluation Reversals",
+      "severity": "high",
+      "description": "Agent-driven actions should not require later reversal."
+    },
+    {
+      "id": "evaluation_supersessions",
+      "title": "Evaluation Supersessions",
+      "severity": "medium",
+      "description": "Earlier evaluation claims being superseded indicates the agent model drifted over time."
     },
     {
       "id": "facet_coverage",
@@ -1527,6 +2635,12 @@
       "description": "Identity calibration requires regular reviewer decisions."
     },
     {
+      "id": "internet_exposure",
+      "title": "Internet Exposure",
+      "severity": "high",
+      "description": "AI-serving paths should not be exposed without strong ingress controls."
+    },
+    {
       "id": "metadata_profiles",
       "title": "Metadata Profiles",
       "severity": "high",
@@ -1557,6 +2671,30 @@
       "description": "Outcome coverage and signal backtesting must remain large enough for calibration."
     },
     {
+      "id": "plaintext_provider_keys",
+      "title": "Provider Key Hygiene",
+      "severity": "high",
+      "description": "AI provider credentials should not appear directly on workload metadata."
+    },
+    {
+      "id": "playbook_approval_friction",
+      "title": "Playbook Approval Friction",
+      "severity": "medium",
+      "description": "Approval-required stages should not become a systemic bottleneck."
+    },
+    {
+      "id": "playbook_completion",
+      "title": "Playbook Completion",
+      "severity": "high",
+      "description": "Playbook runs should reliably reach terminal outcomes."
+    },
+    {
+      "id": "playbook_rollbacks",
+      "title": "Playbook Rollbacks",
+      "severity": "high",
+      "description": "Completed playbooks should not frequently require rollback or reversal."
+    },
+    {
       "id": "posture_support",
       "title": "Posture Support",
       "severity": "high",
@@ -1573,6 +2711,24 @@
       "title": "Schema Conformance",
       "severity": "high",
       "description": "Confidence should be reduced when ontology writes are invalid or drifting."
+    },
+    {
+      "id": "sensitive_data_scope",
+      "title": "Sensitive Data Scope",
+      "severity": "medium",
+      "description": "AI workloads should be scoped away from unnecessary sensitive data stores."
+    },
+    {
+      "id": "shadow_ai",
+      "title": "Shadow AI Detection",
+      "severity": "medium",
+      "description": "Self-hosted AI indicators should be inventoried and owned."
+    },
+    {
+      "id": "single_person_failure",
+      "title": "Single Person Failure",
+      "severity": "high",
+      "description": "Critical systems and customer relationships should not hinge on one person."
     },
     {
       "id": "source_attribution",
@@ -1603,6 +2759,24 @@
       "title": "Temporal Metadata",
       "severity": "high",
       "description": "Missing observed and valid timestamps weaken point-in-time reasoning."
+    },
+    {
+      "id": "timeline_scope_isolation",
+      "title": "Timeline Scope Isolation",
+      "severity": "high",
+      "description": "Tenant and workflow filters should isolate timeline output cleanly."
+    },
+    {
+      "id": "timeline_stage_continuity",
+      "title": "Timeline Stage Continuity",
+      "severity": "medium",
+      "description": "Missing stage identifiers should not drop workflow events from the timeline."
+    },
+    {
+      "id": "timeline_support_coverage",
+      "title": "Timeline Support Coverage",
+      "severity": "medium",
+      "description": "Workflow timelines should include directly supporting claims and evidence when available."
     },
     {
       "id": "timestamp_validity",

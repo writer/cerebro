@@ -144,7 +144,7 @@ func BuildGraphMetadataQualityReport(g *Graph, opts GraphMetadataQualityReportOp
 		for _, key := range profile.RequiredKeys {
 			requiredChecks++
 			acc.ChecksTotal++
-			if metadataValuePresent(node.Properties, key) {
+			if value, ok := node.PropertyValue(key); ok && metadataSingleValuePresent(value) {
 				continue
 			}
 			requiredMissing++
@@ -153,10 +153,7 @@ func BuildGraphMetadataQualityReport(g *Graph, opts GraphMetadataQualityReportOp
 		}
 
 		for _, key := range profile.TimestampKeys {
-			if node.Properties == nil {
-				continue
-			}
-			value, ok := node.Properties[key]
+			value, ok := node.PropertyValue(key)
 			if !ok || value == nil {
 				continue
 			}
@@ -171,10 +168,7 @@ func BuildGraphMetadataQualityReport(g *Graph, opts GraphMetadataQualityReportOp
 		}
 
 		for key, allowed := range profile.EnumValues {
-			if node.Properties == nil {
-				continue
-			}
-			value, ok := node.Properties[key]
+			value, ok := node.PropertyValue(key)
 			if !ok || value == nil {
 				continue
 			}
@@ -346,12 +340,8 @@ func metadataPriorityRank(priority string) int {
 	}
 }
 
-func metadataValuePresent(properties map[string]any, key string) bool {
-	if properties == nil {
-		return false
-	}
-	value, ok := properties[key]
-	if !ok || value == nil {
+func metadataSingleValuePresent(value any) bool {
+	if value == nil {
 		return false
 	}
 	if typed, ok := value.(string); ok {

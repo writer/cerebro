@@ -147,6 +147,11 @@ export class Client {
   }
 
 
+  async aiWorkloads(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_ai_workloads", args);
+  }
+
+
   async annotate(args: unknown): Promise<ToolCallResponse> {
     return this.callTool("cerebro_annotate", args);
   }
@@ -197,6 +202,11 @@ export class Client {
   }
 
 
+  async diff(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_diff", args);
+  }
+
+
   async entityHistory(args: unknown): Promise<ToolCallResponse> {
     return this.callTool("cerebro_entity_history", args);
   }
@@ -237,8 +247,18 @@ export class Client {
   }
 
 
+  async keyPersonRisk(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_key_person_risk", args);
+  }
+
+
   async leverage(args: unknown): Promise<ToolCallResponse> {
     return this.callTool("cerebro_leverage", args);
+  }
+
+
+  async nlq(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_nlq", args);
   }
 
 
@@ -254,6 +274,11 @@ export class Client {
 
   async quality(args: unknown): Promise<ToolCallResponse> {
     return this.callTool("cerebro_quality", args);
+  }
+
+
+  async reconstruct(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_reconstruct", args);
   }
 
 
@@ -284,6 +309,11 @@ export class Client {
 
   async templates(args: unknown): Promise<ToolCallResponse> {
     return this.callTool("cerebro_templates", args);
+  }
+
+
+  async timeline(args: unknown): Promise<ToolCallResponse> {
+    return this.callTool("cerebro_timeline", args);
   }
 
 

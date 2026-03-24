@@ -134,6 +134,8 @@ type Node struct {
 	PropertyHistory     map[string][]PropertySnapshot `json:"property_history,omitempty"`
 	ordinal             NodeOrdinal                   `json:"-"`
 	propertyColumns     *PropertyColumns              `json:"-"`
+	metadataProps       *NodeMetadataProperties       `json:"-"`
+	commonProps         *NodeCommonProperties         `json:"-"`
 	observationProps    *ObservationProperties        `json:"-"`
 	attackSequenceProps *AttackSequenceProperties     `json:"-"`
 }

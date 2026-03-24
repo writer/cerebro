@@ -234,6 +234,10 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	cfg := app.LoadConfig()
+	policyEvaluator, err := loadScanPolicyEvaluator(cfg)
+	if err != nil {
+		return err
+	}
 	store, err := workloadscan.NewSQLiteRunStore(resolveWorkloadScanStateFile(cfg))
 	if err != nil {
 		return err
@@ -263,6 +267,7 @@ func runWorkloadScanAWS(cmd *cobra.Command, args []string) error {
 		Events:                 emitter,
 		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
 		CleanupTimeout:         resolveWorkloadScanCleanupTimeout(cfg),
+		PolicyEvaluator:        policyEvaluator,
 	})
 	priority, err := parseWorkloadScanPriorityOverride(workloadScanPriorityOverride)
 	if err != nil {
@@ -302,6 +307,10 @@ func runWorkloadScanGCP(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	cfg := app.LoadConfig()
+	policyEvaluator, err := loadScanPolicyEvaluator(cfg)
+	if err != nil {
+		return err
+	}
 	store, err := workloadscan.NewSQLiteRunStore(resolveWorkloadScanStateFile(cfg))
 	if err != nil {
 		return err
@@ -331,6 +340,7 @@ func runWorkloadScanGCP(cmd *cobra.Command, args []string) error {
 		Events:                 emitter,
 		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
 		CleanupTimeout:         resolveWorkloadScanCleanupTimeout(cfg),
+		PolicyEvaluator:        policyEvaluator,
 	})
 
 	targetZone := strings.TrimSpace(workloadScanGCPZone)
@@ -368,6 +378,10 @@ func runWorkloadScanAzure(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	cfg := app.LoadConfig()
+	policyEvaluator, err := loadScanPolicyEvaluator(cfg)
+	if err != nil {
+		return err
+	}
 	store, err := workloadscan.NewSQLiteRunStore(resolveWorkloadScanStateFile(cfg))
 	if err != nil {
 		return err
@@ -397,6 +411,7 @@ func runWorkloadScanAzure(cmd *cobra.Command, args []string) error {
 		Events:                 emitter,
 		MaxConcurrentSnapshots: resolveWorkloadScanMaxConcurrent(cfg),
 		CleanupTimeout:         resolveWorkloadScanCleanupTimeout(cfg),
+		PolicyEvaluator:        policyEvaluator,
 	})
 
 	region := strings.TrimSpace(workloadScanAzureRegion)

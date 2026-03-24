@@ -167,9 +167,9 @@ func buildFindingEvidenceBasedOnEdge(node *graph.Node, finding *runtime.RuntimeF
 		"source_system": runtimeFindingEvidenceSourceSystem,
 	}
 	addMetadataString(properties, "source_event_id", strings.TrimSpace(finding.ID))
-	addMetadataString(properties, "observed_at", metadataString(node.Properties, "observed_at"))
-	addMetadataString(properties, "valid_from", metadataString(node.Properties, "valid_from"))
-	addMetadataString(properties, "runtime_source", metadataString(node.Properties, "runtime_source"))
+	addMetadataString(properties, "observed_at", graphNodePropertyString(node, "observed_at"))
+	addMetadataString(properties, "valid_from", graphNodePropertyString(node, "valid_from"))
+	addMetadataString(properties, "runtime_source", graphNodePropertyString(node, "runtime_source"))
 
 	return &graph.Edge{
 		ID:         node.ID + "->" + observationID + ":" + string(graph.EdgeKindBasedOn),

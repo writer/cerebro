@@ -63,6 +63,8 @@ type Engine struct {
 	mu          sync.RWMutex             // Protects policies/history maps
 }
 
+var celResourcePathPattern = regexp.MustCompile(`(?:path|exists_path)\(\s*resource\s*,\s*"((?:[^"\\]|\\.)*)"\s*\)`)
+
 // Policy defines a security policy rule. Policies specify what configurations
 // are permitted or forbidden for cloud resources.
 //
@@ -82,7 +84,7 @@ type Policy struct {
 	Action          string    `json:"action"`                     // What action is being evaluated
 	Resource        string    `json:"resource"`                   // Resource type pattern (e.g., "aws::s3::bucket")
 	Conditions      []string  `json:"conditions"`                 // Conditions that must be true for policy to match
-	ConditionFormat string    `json:"condition_format,omitempty"` // "legacy" or "cel"
+	ConditionFormat string    `json:"condition_format,omitempty"` // "cel" for executable policies; defaults to CEL when omitted
 	Severity        string    `json:"severity"`                   // critical, high, medium, low
 	Tags            []string  `json:"tags"`                       // Tags for categorization
 	Raw             string    `json:"raw,omitempty"`              // Raw Cedar policy text (optional)
@@ -330,8 +332,11 @@ func validateLoadedPolicy(policyDef *Policy, path string) error {
 	if !isValidSeverity(policyDef.Severity) {
 		return fmt.Errorf("invalid policy %s (%s): unsupported severity %q (allowed: critical, high, medium, low)", path, policyDef.ID, policyDef.Severity)
 	}
+	if policyDef.ConditionFormat == ConditionFormatLegacy {
+		return fmt.Errorf("invalid policy %s (%s): legacy condition_format is no longer supported", path, policyDef.ID)
+	}
 	if !validConditionFormat(policyDef.ConditionFormat) {
-		return fmt.Errorf("invalid policy %s (%s): unsupported condition_format %q (allowed: legacy, cel)", path, policyDef.ID, policyDef.ConditionFormat)
+		return fmt.Errorf("invalid policy %s (%s): unsupported condition_format %q (allowed: cel)", path, policyDef.ID, policyDef.ConditionFormat)
 	}
 
 	hasQuery := policyDef.Query != ""
@@ -584,6 +589,8 @@ func extractConditionFields(condition string) []string {
 		return nil
 	}
 
+	condition = strings.ReplaceAll(condition, "||", " OR ")
+	condition = strings.ReplaceAll(condition, "&&", " AND ")
 	condition = normalizeLogicalOperators(condition)
 
 	condition = trimOuterParens(condition)
@@ -604,45 +611,81 @@ func extractConditionFields(condition string) []string {
 		return fields
 	}
 
+	if fields := extractCELResourceConditionFields(condition); len(fields) > 0 {
+		return fields
+	}
+
 	if field, _, _, ok := parseAnyCondition(condition); ok {
-		return []string{strings.TrimSpace(field)}
+		return []string{normalizeConditionField(field)}
 	}
 
 	if field, _, _, ok := parseInCondition(condition); ok {
-		return []string{strings.TrimSpace(field)}
+		return []string{normalizeConditionField(field)}
 	}
 
 	if field, _, _, ok := parseMatchesCondition(condition); ok {
-		return []string{strings.TrimSpace(field)}
+		return []string{normalizeConditionField(field)}
 	}
 
 	if field, _, _, ok := parseContainsCondition(condition); ok {
-		return []string{strings.TrimSpace(field)}
+		return []string{normalizeConditionField(field)}
 	}
 
 	for _, op := range []string{"==", "!=", ">=", "<=", ">", "<"} {
 		if parts := strings.SplitN(condition, op, 2); len(parts) == 2 {
-			return []string{strings.TrimSpace(parts[0])}
+			return []string{normalizeConditionField(parts[0])}
 		}
 	}
 	if parts := splitTopLevelFold(condition, " starts_with "); len(parts) == 2 {
-		return []string{strings.TrimSpace(parts[0])}
+		return []string{normalizeConditionField(parts[0])}
 	}
 	if strings.Contains(strings.ToLower(condition), " contains ") {
 		parts := splitTopLevelFold(condition, " contains ")
 		if len(parts) == 2 {
-			return []string{strings.TrimSpace(parts[0])}
+			return []string{normalizeConditionField(parts[0])}
 		}
 	}
 	lower := strings.ToLower(condition)
 	if strings.HasSuffix(lower, " not exists") {
-		return []string{strings.TrimSpace(condition[:len(condition)-len(" not exists")])}
+		return []string{normalizeConditionField(condition[:len(condition)-len(" not exists")])}
 	}
 	if strings.HasSuffix(lower, " exists") {
-		return []string{strings.TrimSpace(condition[:len(condition)-len(" exists")])}
+		return []string{normalizeConditionField(condition[:len(condition)-len(" exists")])}
 	}
 
 	return nil
+}
+
+func extractCELResourceConditionFields(condition string) []string {
+	matches := celResourcePathPattern.FindAllStringSubmatch(condition, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	fields := make([]string, 0, len(matches))
+	seen := make(map[string]struct{}, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		field := strings.ReplaceAll(match[1], `\"`, `"`)
+		field = normalizeConditionField(field)
+		if field == "" {
+			continue
+		}
+		if _, ok := seen[field]; ok {
+			continue
+		}
+		seen[field] = struct{}{}
+		fields = append(fields, field)
+	}
+	return fields
+}
+
+func normalizeConditionField(field string) string {
+	field = strings.TrimSpace(field)
+	field = strings.TrimPrefix(field, "resource.")
+	return field
 }
 
 func topLevelConditionField(field string) string {
@@ -804,153 +847,13 @@ func (e *Engine) checkAssetViolation(p *Policy, asset map[string]interface{}) st
 	if len(p.Conditions) == 0 {
 		return ""
 	}
-	switch normalizeConditionFormat(p.ConditionFormat) {
-	case ConditionFormatCEL:
-		if !e.evaluateCELConditions(p, asset) {
-			return ""
-		}
-	default:
-		for _, cond := range p.Conditions {
-			if !evaluateCondition(cond, asset) {
-				return "" // If any condition doesn't match, no violation
-			}
-		}
+	if normalizeConditionFormat(p.ConditionFormat) != ConditionFormatCEL {
+		return ""
+	}
+	if !e.evaluateCELConditions(p, asset) {
+		return ""
 	}
 	return p.Description // All conditions matched - violation
-}
-
-func evaluateCondition(condition string, asset map[string]interface{}) bool {
-	condition = strings.TrimSpace(condition)
-	if condition == "" {
-		return false
-	}
-
-	condition = normalizeLogicalOperators(condition)
-
-	condition = trimOuterParens(condition)
-
-	// Handle OR (any sub-condition true -> true)
-	if parts := splitTopLevel(condition, " OR "); len(parts) > 1 {
-		for _, part := range parts {
-			if evaluateCondition(part, asset) {
-				return true
-			}
-		}
-		return false
-	}
-
-	// Handle AND (all sub-conditions true -> true)
-	if parts := splitTopLevel(condition, " AND "); len(parts) > 1 {
-		for _, part := range parts {
-			if !evaluateCondition(part, asset) {
-				return false
-			}
-		}
-		return true
-	}
-
-	if field, inner, negated, ok := parseAnyCondition(condition); ok {
-		match := anyValueMatches(getNestedValue(asset, field), inner)
-		if negated {
-			return !match
-		}
-		return match
-	}
-
-	if field, values, negated, ok := parseInCondition(condition); ok {
-		match := valueInList(getNestedValue(asset, field), values)
-		if negated {
-			return !match
-		}
-		return match
-	}
-
-	if field, pattern, negated, ok := parseMatchesCondition(condition); ok {
-		match := valueMatchesPattern(getNestedValue(asset, field), pattern)
-		if negated {
-			return !match
-		}
-		return match
-	}
-
-	if field, expected, negated, ok := parseContainsCondition(condition); ok {
-		match := evaluateContainsCondition(asset, field, expected)
-		if negated {
-			return !match
-		}
-		return match
-	}
-
-	if field, notNull, ok := parseNullCondition(condition); ok {
-		exists := getNestedValue(asset, field) != nil
-		if notNull {
-			return exists
-		}
-		return !exists
-	}
-
-	if field, suffix, negated, ok := parseEndsWithCondition(condition); ok {
-		match := valueEndsWith(getNestedValue(asset, field), trimQuotes(suffix))
-		if negated {
-			return !match
-		}
-		return match
-	}
-
-	if field, ok := parseReferenceBucketWithPublicAccessCondition(condition); ok {
-		return referencesPublicBucket(asset, field)
-	}
-
-	if field, expected, operator, ok := parseComparisonCondition(condition); ok {
-		val := getNestedValue(asset, field)
-		return compareValues(val, resolveComparisonExpectedValue(asset, expected), operator)
-	}
-
-	// Handle starts_with
-	if strings.Contains(condition, " starts_with ") {
-		parts := strings.SplitN(condition, " starts_with ", 2)
-		if len(parts) == 2 {
-			field := strings.TrimSpace(parts[0])
-			prefix := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-			val := getNestedValue(asset, field)
-			if s, ok := val.(string); ok {
-				return strings.HasPrefix(s, prefix)
-			}
-		}
-	}
-
-	// Handle not exists check
-	lower := strings.ToLower(condition)
-	if strings.HasSuffix(lower, " not exists") {
-		field := strings.TrimSpace(condition[:len(condition)-len(" not exists")])
-		val := getNestedValue(asset, field)
-		return val == nil
-	}
-	// Handle exists check
-	if strings.HasSuffix(lower, " exists") {
-		field := strings.TrimSpace(condition[:len(condition)-len(" exists")])
-		val := getNestedValue(asset, field)
-		return val != nil
-	}
-
-	return false
-}
-
-func parseComparisonCondition(condition string) (string, string, string, bool) {
-	for _, operator := range []string{">=", "<=", "==", "!=", "=", ">", "<"} {
-		if parts := splitTopLevel(condition, operator); len(parts) == 2 {
-			field := strings.TrimSpace(parts[0])
-			expected := strings.TrimSpace(parts[1])
-			if field == "" || expected == "" {
-				return "", "", "", false
-			}
-			if operator == "=" {
-				operator = "=="
-			}
-			return field, expected, operator, true
-		}
-	}
-	return "", "", "", false
 }
 
 func normalizeLogicalOperators(condition string) string {
@@ -1226,56 +1129,6 @@ func parseContainsCondition(condition string) (string, string, bool, bool) {
 		return field, value, false, field != "" && value != ""
 	}
 	return "", "", false, false
-}
-
-func evaluateContainsCondition(asset map[string]interface{}, field string, expected string) bool {
-	expected = strings.TrimSpace(expected)
-	if expected == "" {
-		return false
-	}
-
-	if mapped, ok := parseLegacyObjectLiteral(expected); ok {
-		return valueContainsExpected(getNestedValue(asset, field), mapped)
-	}
-
-	if !isQuoted(expected) && isOuterParens(expected) {
-		inner := trimOuterParens(expected)
-		if shouldTreatContainsInnerAsCondition(inner) {
-			return anyValueMatches(getNestedValue(asset, field), inner)
-		}
-		if mapped, ok := parseLegacyObjectLiteral(inner); ok {
-			return valueContainsExpected(getNestedValue(asset, field), mapped)
-		}
-		return valueContainsExpected(getNestedValue(asset, field), trimQuotes(inner))
-	}
-
-	return valueContainsExpected(getNestedValue(asset, field), trimQuotes(expected))
-}
-
-func anyValueMatches(value interface{}, condition string) bool {
-	if value == nil {
-		return false
-	}
-
-	switch typed := value.(type) {
-	case []interface{}:
-		for _, item := range typed {
-			if anyValueMatches(item, condition) {
-				return true
-			}
-		}
-		return false
-	case map[string]interface{}:
-		return evaluateCondition(condition, typed)
-	case string:
-		parsed := tryParseJSON(typed)
-		if parsed != nil {
-			return anyValueMatches(parsed, condition)
-		}
-		return false
-	default:
-		return false
-	}
 }
 
 func valueInList(value interface{}, list []string) bool {
@@ -1653,13 +1506,6 @@ func compareValues(val interface{}, expected interface{}, operator string) bool 
 	}
 
 	return false
-}
-
-func parseFloat64(s string) (float64, error) {
-	s = strings.TrimSpace(s)
-	var f float64
-	_, err := fmt.Sscanf(s, "%f", &f)
-	return f, err
 }
 
 // extractResourceID extracts the resource identifier from an asset

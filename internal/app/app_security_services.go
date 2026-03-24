@@ -175,6 +175,8 @@ func (a *App) initHealth() {
 
 	a.Health.Register("graph_ontology_slo", a.graphOntologySLOHealthCheck())
 	a.Health.Register("graph_writer_lease", a.graphWriterLeaseHealthCheck())
+	a.Health.Register("graph_runtime", a.graphRuntimeHealthCheck())
+	a.Health.Register("graph_dual_write_reconciliation", a.graphDualWriteReconciliationHealthCheck())
 	a.Health.Register("graph_build", func(_ context.Context) health.CheckResult {
 		start := time.Now().UTC()
 		result := health.CheckResult{
@@ -535,7 +537,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 
 	if a.Warehouse == nil {
 		a.Logger.Warn("security graph disabled - warehouse not configured")
-		a.Propagation = nil
+		a.publishSecurityGraphRuntimeView(nil)
 		a.graphCancel = nil
 		close(a.graphReady)
 		return
@@ -545,7 +547,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
 	securityGraph := a.SecurityGraphBuilder.Graph()
 	a.configureGraphRuntimeBehavior(securityGraph)
-	a.setSecurityGraph(securityGraph)
+	a.publishSecurityGraphRuntimeView(securityGraph)
 	if a.GraphSnapshots != nil {
 		recovered, record, recoverySource, err := a.GraphSnapshots.LoadLatestSnapshot()
 		if err != nil {
@@ -553,7 +555,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		} else if recovered != nil {
 			recoveredGraph := graph.RestoreFromSnapshot(recovered)
 			a.configureGraphRuntimeBehavior(recoveredGraph)
-			a.setSecurityGraph(recoveredGraph)
+			a.publishSecurityGraphRuntimeView(recoveredGraph)
 			if record != nil && record.BuiltAt != nil {
 				a.setGraphBuildState(GraphBuildSuccess, record.BuiltAt.UTC(), nil)
 			}
@@ -731,9 +733,49 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 			"package_vulnerability_edges", materialized.PackageVulnEdges,
 		)
 	}
+	if materialized, err := a.materializePersistedRepositoryHistoryScans(ctx, securityGraph); err != nil {
+		a.Logger.Warn("failed to materialize persisted repository history scans into security graph", "error", err)
+	} else if materialized.RunsMaterialized > 0 {
+		a.Logger.Info("materialized repository history scans into security graph",
+			"runs", materialized.RunsMaterialized,
+			"repositories", materialized.RepositoryNodesUpserted,
+			"secrets", materialized.SecretNodesUpserted,
+			"authors", materialized.AuthorNodesUpserted,
+			"repo_secret_edges", materialized.RepositorySecretEdges,
+			"author_secret_edges", materialized.AuthorSecretEdges,
+			"service_secret_edges", materialized.ServiceSecretEdges,
+		)
+	}
+	if materialized, err := a.materializePersistedImageScans(ctx, securityGraph); err != nil {
+		a.Logger.Warn("failed to materialize persisted image scans into security graph", "error", err)
+	} else if materialized.RunsMaterialized > 0 {
+		a.Logger.Info("materialized persisted image scans into security graph",
+			"runs", materialized.RunsMaterialized,
+			"registries", materialized.RegistryNodesUpserted,
+			"images", materialized.ImageNodesUpserted,
+			"runtime_links", materialized.RuntimeLinksCreated,
+		)
+	}
+	if materialized, err := a.materializePersistedForensics(ctx, securityGraph); err != nil {
+		a.Logger.Warn("failed to materialize persisted forensic evidence into security graph", "error", err)
+	} else if materialized.CapturesMaterialized > 0 || materialized.EvidenceMaterialized > 0 {
+		a.Logger.Info("materialized forensic evidence into security graph",
+			"captures", materialized.CapturesMaterialized,
+			"evidence", materialized.EvidenceMaterialized,
+			"workloads", materialized.WorkloadNodesUpserted,
+			"incidents", materialized.IncidentNodesUpserted,
+			"evidence_nodes", materialized.EvidenceNodesUpserted,
+			"action_nodes", materialized.ActionNodesUpserted,
+			"edges", materialized.EdgesCreated,
+		)
+	}
 	a.rematerializeEventCorrelations(securityGraph, "graph_activation")
 	a.configureGraphRuntimeBehavior(securityGraph)
-	a.setSecurityGraph(securityGraph)
+	if err := a.syncConfiguredSecurityGraphStore(ctx, securityGraph); err != nil {
+		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+		return graph.Metadata{}, err
+	}
+	a.publishSecurityGraphRuntimeView(securityGraph)
 	if a.GraphSnapshots != nil && !graphReplicaReplayEnabled(ctx) {
 		if record, err := a.GraphSnapshots.SaveGraph(securityGraph); err != nil {
 			if record != nil {

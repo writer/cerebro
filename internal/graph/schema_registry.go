@@ -48,6 +48,7 @@ const (
 	SchemaIssueUnknownSourceKind       SchemaValidationIssueCode = "unknown_source_kind"
 	SchemaIssueUnknownTargetKind       SchemaValidationIssueCode = "unknown_target_kind"
 	SchemaIssueRelationshipNotAllowed  SchemaValidationIssueCode = "relationship_not_allowed"
+	SchemaIssueCardinalityExceeded     SchemaValidationIssueCode = "cardinality_exceeded"
 )
 
 // NodeMetadataProfile defines per-kind metadata requirements and validation hints.
@@ -58,6 +59,12 @@ type NodeMetadataProfile struct {
 	EnumValues    map[string][]string `json:"enum_values,omitempty"`
 }
 
+// RelationshipCardinality defines optional relationship-count limits for one node kind.
+type RelationshipCardinality struct {
+	MaxOutgoing int `json:"max_outgoing,omitempty"`
+	MaxIncoming int `json:"max_incoming,omitempty"`
+}
+
 // IsZero allows json omitempty to elide empty metadata profiles.
 func (p NodeMetadataProfile) IsZero() bool {
 	return !hasNodeMetadataProfile(p)
@@ -65,14 +72,16 @@ func (p NodeMetadataProfile) IsZero() bool {
 
 // NodeKindDefinition describes one node kind schema registration.
 type NodeKindDefinition struct {
-	Kind               NodeKind             `json:"kind"`
-	Categories         []NodeKindCategory   `json:"categories,omitempty"`
-	Properties         map[string]string    `json:"properties,omitempty"`
-	RequiredProperties []string             `json:"required_properties,omitempty"`
-	Relationships      []EdgeKind           `json:"relationships,omitempty"`
-	Capabilities       []NodeKindCapability `json:"capabilities,omitempty"`
-	MetadataProfile    NodeMetadataProfile  `json:"metadata_profile,omitempty"`
-	Description        string               `json:"description,omitempty"`
+	Kind                    NodeKind                             `json:"kind"`
+	Categories              []NodeKindCategory                   `json:"categories,omitempty"`
+	Properties              map[string]string                    `json:"properties,omitempty"`
+	RequiredProperties      []string                             `json:"required_properties,omitempty"`
+	Relationships           []EdgeKind                           `json:"relationships,omitempty"`
+	RelationshipTargets     map[EdgeKind][]NodeKind              `json:"relationship_targets,omitempty"`
+	RelationshipCardinality map[EdgeKind]RelationshipCardinality `json:"relationship_cardinality,omitempty"`
+	Capabilities            []NodeKindCapability                 `json:"capabilities,omitempty"`
+	MetadataProfile         NodeMetadataProfile                  `json:"metadata_profile,omitempty"`
+	Description             string                               `json:"description,omitempty"`
 }
 
 // EdgeKindDefinition describes one edge kind schema registration.
@@ -91,6 +100,21 @@ type SchemaValidationIssue struct {
 }
 
 func (i SchemaValidationIssue) Error() string { return i.Message }
+
+// SchemaValidationError aggregates one or more ontology validation failures.
+type SchemaValidationError struct {
+	Issues []SchemaValidationIssue
+}
+
+func (e *SchemaValidationError) Error() string {
+	if e == nil || len(e.Issues) == 0 {
+		return "schema validation failed"
+	}
+	if len(e.Issues) == 1 {
+		return e.Issues[0].Error()
+	}
+	return fmt.Sprintf("%s (%d more issues)", e.Issues[0].Error(), len(e.Issues)-1)
+}
 
 // SchemaChange captures one schema version change.
 type SchemaChange struct {
@@ -225,6 +249,11 @@ func ValidateNodeAgainstSchema(node *Node) []SchemaValidationIssue {
 // ValidateEdgeAgainstSchema validates one edge against the current schema.
 func ValidateEdgeAgainstSchema(edge *Edge, source *Node, target *Node) []SchemaValidationIssue {
 	return GlobalSchemaRegistry().ValidateEdge(edge, source, target)
+}
+
+// ValidateEdgeCardinalityAgainstSchema validates edge counts against the current schema.
+func ValidateEdgeCardinalityAgainstSchema(edge *Edge, source *Node, target *Node, outgoingCount, incomingCount int) []SchemaValidationIssue {
+	return GlobalSchemaRegistry().ValidateEdgeCardinality(edge, source, target, outgoingCount, incomingCount)
 }
 
 // RegisterNodeKindDefinition registers or updates one node kind definition in this registry.
@@ -730,6 +759,7 @@ func (r *SchemaRegistry) ValidateEdge(edge *Edge, source *Node, target *Node) []
 		})
 	}
 
+	targetKindKnown := false
 	if target == nil {
 		issues = append(issues, SchemaValidationIssue{
 			Code:     SchemaIssueMissingTargetNode,
@@ -744,6 +774,8 @@ func (r *SchemaRegistry) ValidateEdge(edge *Edge, source *Node, target *Node) []
 			Kind:     string(target.Kind),
 			Message:  fmt.Sprintf("target node kind %q is not registered", target.Kind),
 		})
+	} else {
+		targetKindKnown = true
 	}
 
 	if sourceKindKnown && kind != "" && len(sourceDef.Relationships) > 0 && !sliceContainsEdgeKind(sourceDef.Relationships, kind) {
@@ -754,7 +786,59 @@ func (r *SchemaRegistry) ValidateEdge(edge *Edge, source *Node, target *Node) []
 			Message:  fmt.Sprintf("edge kind %q is not allowed from source kind %q", kind, source.Kind),
 		})
 	}
+	if sourceKindKnown && targetKindKnown && kind != "" {
+		if allowedTargets, ok := sourceDef.RelationshipTargets[kind]; ok && len(allowedTargets) > 0 && !sliceContainsNodeKind(allowedTargets, target.Kind) {
+			issues = append(issues, SchemaValidationIssue{
+				Code:     SchemaIssueRelationshipNotAllowed,
+				EntityID: edge.ID,
+				Kind:     string(kind),
+				Message:  fmt.Sprintf("edge kind %q from source kind %q does not allow target kind %q", kind, source.Kind, target.Kind),
+			})
+		}
+	}
 
+	return issues
+}
+
+// ValidateEdgeCardinality validates one edge against source and target relationship limits.
+func (r *SchemaRegistry) ValidateEdgeCardinality(edge *Edge, source *Node, target *Node, outgoingCount, incomingCount int) []SchemaValidationIssue {
+	if edge == nil {
+		return nil
+	}
+
+	kind := EdgeKind(strings.TrimSpace(string(edge.Kind)))
+	if kind == "" {
+		return nil
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	issues := make([]SchemaValidationIssue, 0)
+	if source != nil {
+		if def, ok := r.nodeKinds[source.Kind]; ok {
+			if limits, ok := def.RelationshipCardinality[kind]; ok && limits.MaxOutgoing > 0 && outgoingCount >= limits.MaxOutgoing {
+				issues = append(issues, SchemaValidationIssue{
+					Code:     SchemaIssueCardinalityExceeded,
+					EntityID: edge.ID,
+					Kind:     string(kind),
+					Message:  fmt.Sprintf("edge kind %q exceeds outgoing cardinality for source kind %q", kind, source.Kind),
+				})
+			}
+		}
+	}
+	if target != nil {
+		if def, ok := r.nodeKinds[target.Kind]; ok {
+			if limits, ok := def.RelationshipCardinality[kind]; ok && limits.MaxIncoming > 0 && incomingCount >= limits.MaxIncoming {
+				issues = append(issues, SchemaValidationIssue{
+					Code:     SchemaIssueCardinalityExceeded,
+					EntityID: edge.ID,
+					Kind:     string(kind),
+					Message:  fmt.Sprintf("edge kind %q exceeds incoming cardinality for target kind %q", kind, target.Kind),
+				})
+			}
+		}
+	}
 	return issues
 }
 
@@ -863,6 +947,8 @@ func normalizeNodeKindDefinition(def NodeKindDefinition) (NodeKindDefinition, er
 		}
 		relationships = append(relationships, trimmed)
 	}
+	relationshipCardinality := normalizeRelationshipCardinality(def.RelationshipCardinality)
+	relationshipTargets := normalizeRelationshipTargets(def.RelationshipTargets)
 
 	capabilities := make([]NodeKindCapability, 0, len(def.Capabilities))
 	for _, capability := range def.Capabilities {
@@ -875,14 +961,16 @@ func normalizeNodeKindDefinition(def NodeKindDefinition) (NodeKindDefinition, er
 	metadataProfile := normalizeNodeMetadataProfile(def.MetadataProfile)
 
 	return NodeKindDefinition{
-		Kind:               kind,
-		Categories:         uniqueSortedNodeCategories(categories),
-		Properties:         props,
-		RequiredProperties: uniqueSortedStrings(required),
-		Relationships:      uniqueSortedEdgeKinds(relationships),
-		Capabilities:       uniqueSortedNodeCapabilities(capabilities),
-		MetadataProfile:    metadataProfile,
-		Description:        strings.TrimSpace(def.Description),
+		Kind:                    kind,
+		Categories:              uniqueSortedNodeCategories(categories),
+		Properties:              props,
+		RequiredProperties:      uniqueSortedStrings(required),
+		Relationships:           uniqueSortedEdgeKinds(relationships),
+		RelationshipTargets:     relationshipTargets,
+		RelationshipCardinality: relationshipCardinality,
+		Capabilities:            uniqueSortedNodeCapabilities(capabilities),
+		MetadataProfile:         metadataProfile,
+		Description:             strings.TrimSpace(def.Description),
 	}, nil
 }
 
@@ -979,6 +1067,8 @@ func mergeNodeKindDefinitions(existing NodeKindDefinition, incoming NodeKindDefi
 	merged.Categories = uniqueSortedNodeCategories(append(merged.Categories, incoming.Categories...))
 	merged.RequiredProperties = uniqueSortedStrings(append(merged.RequiredProperties, incoming.RequiredProperties...))
 	merged.Relationships = uniqueSortedEdgeKinds(append(merged.Relationships, incoming.Relationships...))
+	merged.RelationshipTargets = mergeRelationshipTargets(merged.RelationshipTargets, incoming.RelationshipTargets)
+	merged.RelationshipCardinality = mergeRelationshipCardinality(merged.RelationshipCardinality, incoming.RelationshipCardinality)
 	merged.Capabilities = uniqueSortedNodeCapabilities(append(merged.Capabilities, incoming.Capabilities...))
 	merged.MetadataProfile = mergeNodeMetadataProfiles(merged.MetadataProfile, incoming.MetadataProfile)
 
@@ -1031,13 +1121,15 @@ func mergeNodeMetadataProfiles(existing NodeMetadataProfile, incoming NodeMetada
 
 func cloneNodeKindDefinition(def NodeKindDefinition) NodeKindDefinition {
 	cloned := NodeKindDefinition{
-		Kind:               def.Kind,
-		Categories:         append([]NodeKindCategory(nil), def.Categories...),
-		RequiredProperties: append([]string(nil), def.RequiredProperties...),
-		Relationships:      append([]EdgeKind(nil), def.Relationships...),
-		Capabilities:       append([]NodeKindCapability(nil), def.Capabilities...),
-		MetadataProfile:    cloneNodeMetadataProfile(def.MetadataProfile),
-		Description:        def.Description,
+		Kind:                    def.Kind,
+		Categories:              append([]NodeKindCategory(nil), def.Categories...),
+		RequiredProperties:      append([]string(nil), def.RequiredProperties...),
+		Relationships:           append([]EdgeKind(nil), def.Relationships...),
+		RelationshipTargets:     cloneRelationshipTargets(def.RelationshipTargets),
+		RelationshipCardinality: cloneRelationshipCardinality(def.RelationshipCardinality),
+		Capabilities:            append([]NodeKindCapability(nil), def.Capabilities...),
+		MetadataProfile:         cloneNodeMetadataProfile(def.MetadataProfile),
+		Description:             def.Description,
 	}
 	if def.Properties != nil {
 		cloned.Properties = make(map[string]string, len(def.Properties))
@@ -1115,8 +1207,125 @@ func compatibilityWarningsForNodeUpdate(existing NodeKindDefinition, incoming No
 		}
 		warnings = append(warnings, fmt.Sprintf("node kind %q changed metadata enum %q from %s to %s", existing.Kind, key, strings.Join(existingValues, "|"), strings.Join(incomingValues, "|")))
 	}
+	if !reflect.DeepEqual(existing.RelationshipCardinality, incoming.RelationshipCardinality) {
+		warnings = append(warnings, fmt.Sprintf("node kind %q relationship cardinality changed", existing.Kind))
+	}
+	if !reflect.DeepEqual(existing.RelationshipTargets, incoming.RelationshipTargets) {
+		warnings = append(warnings, fmt.Sprintf("node kind %q relationship targets changed", existing.Kind))
+	}
 
 	return uniqueSortedStrings(warnings)
+}
+
+func normalizeRelationshipTargets(values map[EdgeKind][]NodeKind) map[EdgeKind][]NodeKind {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[EdgeKind][]NodeKind, len(values))
+	for kind, targets := range values {
+		trimmedKind := EdgeKind(strings.TrimSpace(string(kind)))
+		if trimmedKind == "" {
+			continue
+		}
+		normalizedTargets := make([]NodeKind, 0, len(targets))
+		for _, target := range targets {
+			trimmedTarget := NodeKind(strings.TrimSpace(string(target)))
+			if trimmedTarget == "" {
+				continue
+			}
+			normalizedTargets = append(normalizedTargets, trimmedTarget)
+		}
+		normalizedTargets = uniqueSortedNodeKinds(normalizedTargets)
+		if len(normalizedTargets) == 0 {
+			continue
+		}
+		out[trimmedKind] = normalizedTargets
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func mergeRelationshipTargets(existing, incoming map[EdgeKind][]NodeKind) map[EdgeKind][]NodeKind {
+	if len(existing) == 0 && len(incoming) == 0 {
+		return nil
+	}
+	merged := cloneRelationshipTargets(existing)
+	if merged == nil {
+		merged = make(map[EdgeKind][]NodeKind)
+	}
+	for kind, targets := range incoming {
+		merged[kind] = append([]NodeKind(nil), targets...)
+	}
+	return normalizeRelationshipTargets(merged)
+}
+
+func cloneRelationshipTargets(values map[EdgeKind][]NodeKind) map[EdgeKind][]NodeKind {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[EdgeKind][]NodeKind, len(values))
+	for kind, targets := range values {
+		out[kind] = append([]NodeKind(nil), targets...)
+	}
+	return out
+}
+
+func normalizeRelationshipCardinality(values map[EdgeKind]RelationshipCardinality) map[EdgeKind]RelationshipCardinality {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[EdgeKind]RelationshipCardinality, len(values))
+	for kind, limits := range values {
+		trimmed := EdgeKind(strings.TrimSpace(string(kind)))
+		if trimmed == "" {
+			continue
+		}
+		normalized := RelationshipCardinality{
+			MaxOutgoing: limits.MaxOutgoing,
+			MaxIncoming: limits.MaxIncoming,
+		}
+		if normalized.MaxOutgoing < 0 {
+			normalized.MaxOutgoing = 0
+		}
+		if normalized.MaxIncoming < 0 {
+			normalized.MaxIncoming = 0
+		}
+		if normalized.MaxOutgoing == 0 && normalized.MaxIncoming == 0 {
+			continue
+		}
+		out[trimmed] = normalized
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func mergeRelationshipCardinality(existing, incoming map[EdgeKind]RelationshipCardinality) map[EdgeKind]RelationshipCardinality {
+	if len(existing) == 0 && len(incoming) == 0 {
+		return nil
+	}
+	merged := cloneRelationshipCardinality(existing)
+	if merged == nil {
+		merged = make(map[EdgeKind]RelationshipCardinality)
+	}
+	for kind, limits := range incoming {
+		merged[kind] = limits
+	}
+	return normalizeRelationshipCardinality(merged)
+}
+
+func cloneRelationshipCardinality(values map[EdgeKind]RelationshipCardinality) map[EdgeKind]RelationshipCardinality {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[EdgeKind]RelationshipCardinality, len(values))
+	for kind, limits := range values {
+		out[kind] = limits
+	}
+	return out
 }
 
 func parsePropertyTypeSpec(spec string) ([]string, bool) {
@@ -1261,6 +1470,15 @@ func matchesPropertyType(value any, expectedType string) bool {
 }
 
 func sliceContainsEdgeKind(values []EdgeKind, target EdgeKind) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func sliceContainsNodeKind(values []NodeKind, target NodeKind) bool {
 	for _, value := range values {
 		if value == target {
 			return true
@@ -1630,14 +1848,21 @@ var builtInNodeKinds = []NodeKindDefinition{
 		Categories:   []NodeKindCategory{NodeCategoryResource},
 		Capabilities: []NodeKindCapability{NodeCapabilityInternetExposable},
 		Properties: map[string]string{
-			"url":             "string",
-			"scheme":          "string",
-			"host":            "string",
-			"path":            "string",
-			"public":          "boolean",
-			"exposure_source": "string",
+			"url":              "string",
+			"scheme":           "string",
+			"host":             "string",
+			"path":             "string",
+			"method":           "string",
+			"public":           "boolean",
+			"auth_type":        "string",
+			"api_key_required": "boolean",
+			"cors_permissive":  "boolean",
+			"exposure_source":  "string",
+			"provider_service": "string",
+			"backend_targets":  "array",
 		},
 		RequiredProperties: []string{"url", "scheme", "host"},
+		Relationships:      []EdgeKind{EdgeKindServes, EdgeKindTargets, EdgeKindCalls, EdgeKindExposedTo},
 		MetadataProfile:    writeMetadataProfile(nil, nil),
 	},
 	{
@@ -1882,6 +2107,9 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"package_name", "version", "ecosystem", "observed_at", "valid_from", "recorded_at", "transaction_from"},
 		Relationships:      []EdgeKind{EdgeKindAffectedBy, EdgeKindBasedOn},
+		RelationshipTargets: map[EdgeKind][]NodeKind{
+			EdgeKindAffectedBy: {NodeKindVulnerability},
+		},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from", "recorded_at", "transaction_from"},
 			nil,
@@ -2174,6 +2402,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"made_at":         "string",
 			"made_by":         "string",
 			"rationale":       "string",
+			"target_ids":      "array",
 			"source_system":   "string",
 			"source_event_id": "string",
 			"observed_at":     "string",
@@ -2186,7 +2415,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
-				"status": {"proposed", "approved", "rejected", "deferred", "cancelled", "in_progress", "completed"},
+				"status": {"proposed", "approved", "rejected", "deferred", "cancelled", "in_progress", "completed", "failed", "skipped"},
 			},
 		),
 	},
@@ -2197,6 +2426,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"outcome_type":    "string",
 			"verdict":         "string",
 			"impact_score":    "number",
+			"target_ids":      "array",
 			"source_system":   "string",
 			"source_event_id": "string",
 			"observed_at":     "string",
@@ -2205,7 +2435,11 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"confidence":      "number",
 		},
 		RequiredProperties: []string{"outcome_type", "verdict", "observed_at", "valid_from"},
-		Relationships:      []EdgeKind{EdgeKindEvaluates, EdgeKindTargets},
+		Relationships:      []EdgeKind{EdgeKindEvaluates, EdgeKindTargets, EdgeKindBasedOn},
+		RelationshipTargets: map[EdgeKind][]NodeKind{
+			EdgeKindEvaluates: {NodeKindDecision},
+			EdgeKindBasedOn:   {NodeKindClaim, NodeKindEvidence},
+		},
 		MetadataProfile: writeMetadataProfile(
 			[]string{"source_system", "observed_at", "valid_from"},
 			map[string][]string{
@@ -2240,6 +2474,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"observation_type":           "string",
 			"subject_id":                 "string",
 			"detail":                     "string",
+			"target_ids":                 "array",
 			"source_system":              "string",
 			"source_event_id":            "string",
 			"observed_at":                "string",
@@ -2373,6 +2608,7 @@ var builtInNodeKinds = []NodeKindDefinition{
 			"status":          "string",
 			"performed_at":    "string",
 			"actor_id":        "string",
+			"target_ids":      "array",
 			"source_system":   "string",
 			"source_event_id": "string",
 			"observed_at":     "string",
@@ -2382,7 +2618,10 @@ var builtInNodeKinds = []NodeKindDefinition{
 		},
 		RequiredProperties: []string{"action_type", "status", "observed_at", "valid_from"},
 		Relationships:      []EdgeKind{EdgeKindTargets, EdgeKindEvaluates, EdgeKindBasedOn, EdgeKindInteractedWith},
-		MetadataProfile:    writeMetadataProfile([]string{"source_system", "observed_at", "valid_from"}, nil),
+		RelationshipTargets: map[EdgeKind][]NodeKind{
+			EdgeKindBasedOn: {NodeKindDecision, NodeKindEvidence, NodeKindClaim},
+		},
+		MetadataProfile: writeMetadataProfile([]string{"source_system", "observed_at", "valid_from"}, nil),
 	},
 	{Kind: NodeKindDepartment, Categories: []NodeKindCategory{NodeCategoryBusiness}},
 	{Kind: NodeKindLocation, Categories: []NodeKindCategory{NodeCategoryBusiness}},

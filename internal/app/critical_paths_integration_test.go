@@ -173,7 +173,7 @@ func TestCriticalPath_PolicyEvaluationToRemediationAction(t *testing.T) {
 		Description: "Buckets must not be public",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == true"},
+		Conditions:  []string{"resource.public == true"},
 		Severity:    "critical",
 	})
 

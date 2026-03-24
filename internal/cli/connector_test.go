@@ -177,6 +177,61 @@ func TestRunConnectorScaffoldWritesAWSBundle(t *testing.T) {
 	}
 }
 
+func TestRunConnectorScaffoldWritesGCPBundle(t *testing.T) {
+	state := snapshotConnectorTestState()
+	defer restoreConnectorTestState(state)
+
+	connectorOutput = FormatTable
+	connectorScaffoldOutputDir = t.TempDir()
+	connectorGCPProjectID = "evalops-prod"
+	connectorGCPServiceAccountID = "cerebro-scan"
+	connectorGCPCustomRoleID = "cerebroSnapshot"
+	connectorGCPEnableWIF = true
+	connectorGCPWIFPoolID = "cerebro-pool"
+	connectorGCPWIFProviderID = "cerebro-provider"
+	connectorGCPWIFIssuerURI = "https://issuer.example.com"
+	connectorGCPWIFAudience = "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/cerebro/providers/main"
+	connectorGCPPrincipalSubject = "repo:evalops/cerebro:ref:refs/heads/main"
+
+	if err := runConnectorScaffold(nil, []string{"gcp"}); err != nil {
+		t.Fatalf("runConnectorScaffold: %v", err)
+	}
+	for _, rel := range []string{"gcp/main.tf", "gcp/variables.tf", "gcp/outputs.tf", "gcp/README.md"} {
+		if _, err := os.Stat(filepath.Join(connectorScaffoldOutputDir, filepath.FromSlash(rel))); err != nil {
+			t.Fatalf("expected generated file %s: %v", rel, err)
+		}
+	}
+}
+
+func TestRunConnectorScaffoldWritesAzureBundle(t *testing.T) {
+	state := snapshotConnectorTestState()
+	defer restoreConnectorTestState(state)
+
+	connectorOutput = FormatTable
+	connectorScaffoldOutputDir = t.TempDir()
+	connectorAzureSubscriptionID = "00000000-0000-0000-0000-000000000123"
+	connectorAzureTenantID = "00000000-0000-0000-0000-000000000456"
+	connectorAzureLocation = "westus2"
+	connectorAzureDisplayName = "cerebro-prod"
+	connectorAzureCustomRoleName = "Cerebro Snapshot Operator"
+
+	if err := runConnectorScaffold(nil, []string{"azure"}); err != nil {
+		t.Fatalf("runConnectorScaffold: %v", err)
+	}
+	for _, rel := range []string{
+		"azure/arm-template.json",
+		"azure/parameters.example.json",
+		"azure/main.tf",
+		"azure/variables.tf",
+		"azure/outputs.tf",
+		"azure/README.md",
+	} {
+		if _, err := os.Stat(filepath.Join(connectorScaffoldOutputDir, filepath.FromSlash(rel))); err != nil {
+			t.Fatalf("expected generated file %s: %v", rel, err)
+		}
+	}
+}
+
 func TestRunConnectorValidateDispatchesAWS(t *testing.T) {
 	state := snapshotConnectorTestState()
 	defer restoreConnectorTestState(state)
@@ -202,6 +257,62 @@ func TestRunConnectorValidateDispatchesAWS(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("expected AWS validation function to be called")
+	}
+}
+
+func TestRunConnectorValidateDispatchesGCP(t *testing.T) {
+	state := snapshotConnectorTestState()
+	defer restoreConnectorTestState(state)
+
+	called := false
+	connectorOutput = FormatTable
+	runGCPConnectorValidateFn = func(context.Context) (connectorValidationReport, error) {
+		called = true
+		return connectorValidationReport{
+			Provider:    "gcp",
+			StartedAt:   time.Now().UTC(),
+			CompletedAt: time.Now().UTC(),
+			Duration:    "1ms",
+			Success:     true,
+			Checks:      []connectorValidationCheck{{ID: "auth", Status: "passed", Detail: "ok"}},
+		}, nil
+	}
+
+	cmd := connectorValidateCmd
+	cmd.SetContext(context.Background())
+	if err := runConnectorValidate(cmd, []string{"gcp"}); err != nil {
+		t.Fatalf("runConnectorValidate: %v", err)
+	}
+	if !called {
+		t.Fatal("expected GCP validation function to be called")
+	}
+}
+
+func TestRunConnectorValidateDispatchesAzure(t *testing.T) {
+	state := snapshotConnectorTestState()
+	defer restoreConnectorTestState(state)
+
+	called := false
+	connectorOutput = FormatTable
+	runAzureConnectorValidateFn = func(context.Context) (connectorValidationReport, error) {
+		called = true
+		return connectorValidationReport{
+			Provider:    "azure",
+			StartedAt:   time.Now().UTC(),
+			CompletedAt: time.Now().UTC(),
+			Duration:    "1ms",
+			Success:     true,
+			Checks:      []connectorValidationCheck{{ID: "auth", Status: "passed", Detail: "ok"}},
+		}, nil
+	}
+
+	cmd := connectorValidateCmd
+	cmd.SetContext(context.Background())
+	if err := runConnectorValidate(cmd, []string{"azure"}); err != nil {
+		t.Fatalf("runConnectorValidate: %v", err)
+	}
+	if !called {
+		t.Fatal("expected Azure validation function to be called")
 	}
 }
 

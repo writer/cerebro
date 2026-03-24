@@ -136,7 +136,7 @@ func TestDryRunPolicyChange_SendsCandidateAndAssets(t *testing.T) {
 		Name:       "Candidate",
 		Effect:     "forbid",
 		Resource:   "aws::s3::bucket",
-		Conditions: []string{"public == false"},
+		Conditions: []string{"resource.public == false"},
 		Severity:   "high",
 	}, []map[string]interface{}{{"_cq_id": "a"}}, 0)
 	if err != nil {

@@ -58,25 +58,25 @@ func buildKnowledgeSourceRecord(g *Graph, node *Node, validAt, recordedAt time.T
 		URL:              strings.TrimSpace(readString(node.Properties, "url")),
 		TrustTier:        strings.ToLower(strings.TrimSpace(readString(node.Properties, "trust_tier"))),
 		ReliabilityScore: readFloat(node.Properties, "reliability_score"),
-		SourceSystem:     firstNonEmpty(strings.TrimSpace(readString(node.Properties, "source_system")), strings.TrimSpace(node.Provider)),
-		SourceEventID:    strings.TrimSpace(readString(node.Properties, "source_event_id")),
+		SourceSystem:     firstNonEmpty(nodePropertyString(node, "source_system"), strings.TrimSpace(node.Provider)),
+		SourceEventID:    nodePropertyString(node, "source_event_id"),
 	}
 	if ts, ok := graphObservedAt(node); ok {
 		record.ObservedAt = ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "valid_from"); ok {
+	if ts, ok := nodePropertyTime(node, "valid_from"); ok {
 		record.ValidFrom = ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "valid_to"); ok {
+	if ts, ok := nodePropertyTime(node, "valid_to"); ok {
 		record.ValidTo = &ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "recorded_at"); ok {
+	if ts, ok := nodePropertyTime(node, "recorded_at"); ok {
 		record.RecordedAt = ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "transaction_from"); ok {
+	if ts, ok := nodePropertyTime(node, "transaction_from"); ok {
 		record.TransactionFrom = ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "transaction_to"); ok {
+	if ts, ok := nodePropertyTime(node, "transaction_to"); ok {
 		record.TransactionTo = &ts
 	}
 

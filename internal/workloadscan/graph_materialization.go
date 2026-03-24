@@ -936,10 +936,10 @@ func earliestMetadataTimestamp(existing *graph.Node, key string, incoming time.T
 
 func highestMetadataConfidence(existing *graph.Node, incoming float64) float64 {
 	best := incoming
-	if existing == nil || existing.Properties == nil {
+	if existing == nil {
 		return best
 	}
-	raw, ok := existing.Properties["confidence"]
+	raw, ok := existing.PropertyValue("confidence")
 	if !ok || raw == nil {
 		return best
 	}
@@ -965,10 +965,10 @@ func highestMetadataConfidence(existing *graph.Node, incoming float64) float64 {
 }
 
 func existingNodePropertyTime(node *graph.Node, key string) (time.Time, bool) {
-	if node == nil || node.Properties == nil {
+	if node == nil {
 		return time.Time{}, false
 	}
-	raw, ok := node.Properties[key]
+	raw, ok := node.PropertyValue(key)
 	if !ok || raw == nil {
 		return time.Time{}, false
 	}

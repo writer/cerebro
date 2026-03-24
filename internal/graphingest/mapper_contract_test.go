@@ -123,8 +123,8 @@ func TestMapperContractFixtures(t *testing.T) {
 					t.Fatalf("expected node %q kind %q, got %q", expectedNode.ID, wantKind, node.Kind)
 				}
 				for _, key := range []string{"source_system", "source_event_id", "observed_at", "valid_from", "recorded_at", "transaction_from", "confidence"} {
-					if _, ok := node.Properties[key]; !ok {
-						t.Fatalf("expected node %q metadata key %q, got %#v", expectedNode.ID, key, node.Properties)
+					if _, ok := node.PropertyValue(key); !ok {
+						t.Fatalf("expected node %q metadata key %q, got %#v", expectedNode.ID, key, node.PropertyMap())
 					}
 				}
 			}

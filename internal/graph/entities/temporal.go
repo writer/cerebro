@@ -14,6 +14,8 @@ type (
 	EntityTimeRecord         = graph.EntityTimeRecord
 	EntityPropertyDiff       = graph.EntityPropertyDiff
 	EntityTimeDiffRecord     = graph.EntityTimeDiffRecord
+	EntityTimelineEvent      = graph.EntityTimelineEvent
+	EntityTimelineRecord     = graph.EntityTimelineRecord
 )
 
 const NodeKindService = graph.NodeKindService
@@ -26,4 +28,8 @@ func GetEntityRecordAtTime(g *graph.Graph, id string, asOf, recordedAt time.Time
 
 func GetEntityTimeDiff(g *graph.Graph, id string, from, to, recordedAt time.Time) (EntityTimeDiffRecord, bool) {
 	return graph.GetEntityTimeDiff(g, id, from, to, recordedAt)
+}
+
+func GetEntityTimeline(g *graph.Graph, id string, from, to, recordedAt time.Time) (EntityTimelineRecord, bool) {
+	return graph.GetEntityTimeline(g, id, from, to, recordedAt)
 }

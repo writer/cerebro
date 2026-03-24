@@ -776,12 +776,7 @@ func (e *ToxicCombinationEngine) ruleAdminWithNoMFA() *ToxicCombinationRule {
 			}
 
 			// Check MFA status
-			mfaEnabled := false
-			if mfa, ok := node.Properties["mfa_enabled"].(bool); ok {
-				mfaEnabled = mfa
-			}
-
-			if mfaEnabled {
+			if nodePropertyBool(node, "mfa_enabled") {
 				return nil
 			}
 

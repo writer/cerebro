@@ -260,8 +260,8 @@ func TestGraphMutationLogCheckpointReplayMatchesLiveGraph(t *testing.T) {
 	if !ok {
 		t.Fatal("expected replayed node to exist")
 	}
-	if got := node.Properties["internet_exposed"]; got != true {
-		t.Fatalf("node.Properties[internet_exposed] = %#v, want true", got)
+	if got, ok := node.PropertyValue("internet_exposed"); !ok || got != true {
+		t.Fatalf("node.PropertyValue(internet_exposed) = %#v, %v; want true,true", got, ok)
 	}
 }
 
@@ -346,8 +346,8 @@ func TestGraphMutationLogRestoreGraphFromSnapshotAtSequence(t *testing.T) {
 	if !ok {
 		t.Fatal("expected user:payments to exist")
 	}
-	if got := paymentsNode.Properties["internet_exposed"]; got != true {
-		t.Fatalf("payments.Properties[internet_exposed] = %#v, want true", got)
+	if got, ok := paymentsNode.PropertyValue("internet_exposed"); !ok || got != true {
+		t.Fatalf("payments.PropertyValue(internet_exposed) = %#v, %v; want true,true", got, ok)
 	}
 
 	recovered, err = log.RestoreGraphFromSnapshot(checkpoint, 1, 5)

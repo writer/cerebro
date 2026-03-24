@@ -14,6 +14,7 @@ import (
 
 	"github.com/writer/cerebro/internal/filesystemanalyzer"
 	"github.com/writer/cerebro/internal/scanner"
+	"github.com/writer/cerebro/internal/scanpolicy"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -140,25 +141,27 @@ func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*
 }
 
 type RunnerOptions struct {
-	Store          RunStore
-	Providers      []Provider
-	Materializer   Materializer
-	Analyzer       Analyzer
-	Events         EventEmitter
-	Logger         *slog.Logger
-	CleanupTimeout time.Duration
-	Now            func() time.Time
+	Store           RunStore
+	Providers       []Provider
+	Materializer    Materializer
+	Analyzer        Analyzer
+	Events          EventEmitter
+	Logger          *slog.Logger
+	CleanupTimeout  time.Duration
+	Now             func() time.Time
+	PolicyEvaluator scanpolicy.Evaluator
 }
 
 type Runner struct {
-	store          RunStore
-	providers      map[ProviderKind]Provider
-	materializer   Materializer
-	analyzer       Analyzer
-	events         EventEmitter
-	logger         *slog.Logger
-	cleanupTimeout time.Duration
-	now            func() time.Time
+	store           RunStore
+	providers       map[ProviderKind]Provider
+	materializer    Materializer
+	analyzer        Analyzer
+	events          EventEmitter
+	logger          *slog.Logger
+	cleanupTimeout  time.Duration
+	now             func() time.Time
+	policyEvaluator scanpolicy.Evaluator
 }
 
 func NewRunner(opts RunnerOptions) *Runner {
@@ -186,14 +189,15 @@ func NewRunner(opts RunnerOptions) *Runner {
 		now = time.Now
 	}
 	return &Runner{
-		store:          opts.Store,
-		providers:      providers,
-		materializer:   opts.Materializer,
-		analyzer:       analyzer,
-		events:         opts.Events,
-		logger:         logger,
-		cleanupTimeout: cleanupTimeout,
-		now:            now,
+		store:           opts.Store,
+		providers:       providers,
+		materializer:    opts.Materializer,
+		analyzer:        analyzer,
+		events:          opts.Events,
+		logger:          logger,
+		cleanupTimeout:  cleanupTimeout,
+		now:             now,
+		policyEvaluator: opts.PolicyEvaluator,
 	}
 }
 
@@ -204,7 +208,7 @@ func (r *Runner) RunFunctionScan(ctx context.Context, req ScanRequest) (*RunReco
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := validateRequest(req); err != nil {
+	if err := r.validateRequest(req); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(req.ID) == "" {
@@ -427,6 +431,24 @@ func validateRequest(req ScanRequest) error {
 		return fmt.Errorf("function scan target identity is required")
 	}
 	return nil
+}
+
+func (r *Runner) validateRequest(req ScanRequest) error {
+	if err := validateRequest(req); err != nil {
+		return err
+	}
+	if r == nil || r.policyEvaluator == nil {
+		return nil
+	}
+	return r.policyEvaluator.Validate(scanpolicy.Request{
+		Kind:           scanpolicy.KindFunction,
+		Team:           scanpolicy.TeamFromMetadata(req.Metadata),
+		RequestedBy:    strings.TrimSpace(req.RequestedBy),
+		Metadata:       cloneStringMap(req.Metadata),
+		Provider:       string(req.Target.Provider),
+		DryRun:         req.DryRun,
+		KeepFilesystem: req.KeepFilesystem,
+	})
 }
 
 func cleanupFilesystem(ctx context.Context, materializer Materializer, artifact *FilesystemArtifact, run *RunRecord, now func() time.Time) {

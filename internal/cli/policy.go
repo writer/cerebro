@@ -64,24 +64,11 @@ Examples:
 	RunE: runPolicyDiff,
 }
 
-var policyConvertCmd = &cobra.Command{
-	Use:   "convert [policy-file]",
-	Short: "Convert legacy policy conditions to CEL",
-	Long: `Convert a legacy JSON policy file from the hand-rolled condition DSL to CEL.
-
-By default the converted policy JSON is written to stdout. Use --write to update
-the source file in place.`,
-	Args: cobra.ExactArgs(1),
-	RunE: runPolicyConvert,
-}
-
 var (
 	policyValidateOutput string
 	policyTestOutput     string
 	policyDiffOutput     string
 	policyDiffAssetFile  string
-	policyConvertOutput  string
-	policyConvertWrite   bool
 )
 
 var runPolicyListDirectFn = runPolicyListDirect
@@ -94,15 +81,12 @@ func init() {
 	policyCmd.AddCommand(policyValidateCmd)
 	policyCmd.AddCommand(policyTestCmd)
 	policyCmd.AddCommand(policyDiffCmd)
-	policyCmd.AddCommand(policyConvertCmd)
 
 	policyListCmd.Flags().StringVarP(&policyOutput, "output", "o", "table", "Output format (table,json,wide)")
 	policyValidateCmd.Flags().StringVarP(&policyValidateOutput, "output", "o", "text", "Output format (text,json)")
 	policyTestCmd.Flags().StringVarP(&policyTestOutput, "output", "o", "text", "Output format (text,json)")
 	policyDiffCmd.Flags().StringVarP(&policyDiffOutput, "output", "o", "text", "Output format (text,json)")
 	policyDiffCmd.Flags().StringVar(&policyDiffAssetFile, "assets", "", "Optional JSON asset fixture (object or array) for dry-run impact preview")
-	policyConvertCmd.Flags().StringVarP(&policyConvertOutput, "output", "o", FormatJSON, "Output format (json,text)")
-	policyConvertCmd.Flags().BoolVar(&policyConvertWrite, "write", false, "Overwrite the source policy file with converted CEL conditions")
 }
 
 func policiesPath() string {
@@ -578,65 +562,6 @@ func runPolicyDiffDirect(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Removed findings: %d\n", len(impact.RemovedFindingIDs))
 	}
 
-	return nil
-}
-
-func runPolicyConvert(cmd *cobra.Command, args []string) error {
-	path := strings.TrimSpace(args[0])
-	if path == "" {
-		return fmt.Errorf("policy file is required")
-	}
-
-	data, err := os.ReadFile(path) // #nosec G304 -- policy path is explicitly provided by the caller
-	if err != nil {
-		return fmt.Errorf("read policy file: %w", err)
-	}
-
-	var candidate policy.Policy
-	if err := json.Unmarshal(data, &candidate); err != nil {
-		return fmt.Errorf("parse policy file: %w", err)
-	}
-
-	converted, err := policy.ConvertPolicyToCEL(&candidate)
-	if err != nil {
-		return fmt.Errorf("convert policy to CEL: %w", err)
-	}
-
-	output, err := json.MarshalIndent(converted, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal converted policy: %w", err)
-	}
-	output = append(output, '\n')
-
-	if policyConvertWrite {
-		if err := os.WriteFile(path, output, 0o600); err != nil {
-			return fmt.Errorf("write converted policy: %w", err)
-		}
-	}
-
-	if policyConvertOutput == FormatJSON {
-		if policyConvertWrite {
-			return JSONOutput(map[string]interface{}{
-				"policy_file":      path,
-				"converted":        true,
-				"condition_format": converted.ConditionFormat,
-				"condition_count":  len(converted.Conditions),
-				"written_in_place": true,
-			})
-		}
-		_, err = os.Stdout.Write(output)
-		return err
-	}
-
-	if policyConvertWrite {
-		Success("Converted %s to CEL in place", path)
-		fmt.Printf("  Condition format: %s\n", converted.ConditionFormat)
-		fmt.Printf("  Conditions:       %d\n", len(converted.Conditions))
-		return nil
-	}
-
-	fmt.Printf("Converted %s to CEL\n\n", path)
-	fmt.Print(string(output))
 	return nil
 }
 
