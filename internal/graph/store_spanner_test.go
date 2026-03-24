@@ -317,7 +317,7 @@ func TestSpannerGraphStoreTraversalsMatchInMemoryAtZeroDepth(t *testing.T) {
 	}
 }
 
-func TestSpannerGraphStoreCascadingBlastRadiusFallsBackToSnapshotMaterialization(t *testing.T) {
+func TestSpannerGraphStoreCascadingBlastRadiusUsesTraversalGraph(t *testing.T) {
 	base := New()
 	base.AddNode(contractStoreTestNode("user:alice", NodeKindUser, "Alice"))
 	base.AddNode(contractStoreTestNode("service:api", NodeKindService, "API"))
@@ -326,11 +326,15 @@ func TestSpannerGraphStoreCascadingBlastRadiusFallsBackToSnapshotMaterialization
 	adapter := &fakeSpannerAdapter{store: GraphStore(base)}
 	store := NewSpannerGraphStore(adapter)
 
-	if _, err := store.CascadingBlastRadius(context.Background(), "user:alice", 2); err != nil {
+	result, err := store.CascadingBlastRadius(context.Background(), "user:alice", 2)
+	if err != nil {
 		t.Fatalf("CascadingBlastRadius() error = %v", err)
 	}
-	if adapter.snapshotCalls == 0 {
-		t.Fatal("expected CascadingBlastRadius() to use explicit snapshot fallback")
+	if result.TotalImpact != 1 {
+		t.Fatalf("CascadingBlastRadius().TotalImpact = %d, want 1", result.TotalImpact)
+	}
+	if adapter.snapshotCalls != 0 {
+		t.Fatalf("expected CascadingBlastRadius() to avoid snapshot fallback, snapshotCalls=%d", adapter.snapshotCalls)
 	}
 }
 

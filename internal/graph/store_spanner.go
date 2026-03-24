@@ -334,7 +334,7 @@ func (s *SpannerGraphStore) EffectiveAccess(ctx context.Context, principalID, re
 }
 
 func (s *SpannerGraphStore) CascadingBlastRadius(ctx context.Context, sourceID string, maxDepth int) (*CascadingBlastRadiusResult, error) {
-	view, err := s.materializedSnapshotStore(ctx)
+	view, err := s.traversalGraph(ctx, sourceID, spannerTraversalDirectionOutgoing, normalizeTraversalDepthWithDefault(maxDepth, defaultExtractSubgraphMaxDepth))
 	if err != nil {
 		return nil, err
 	}
@@ -347,14 +347,6 @@ func (s *SpannerGraphStore) ExtractSubgraph(ctx context.Context, rootID string, 
 		return nil, err
 	}
 	return view.ExtractSubgraph(ctx, rootID, opts)
-}
-
-func (s *SpannerGraphStore) materializedSnapshotStore(ctx context.Context) (*SnapshotGraphStore, error) {
-	snapshot, err := s.Snapshot(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return NewSnapshotGraphStore(snapshot), nil
 }
 
 func (s *SpannerGraphStore) traversalGraph(ctx context.Context, rootID string, direction spannerTraversalDirection, maxDepth int) (*Graph, error) {
@@ -1032,7 +1024,7 @@ func spannerRowToNode(row *spanner.Row) (*Node, error) {
 		return nil, nil
 	}
 	var (
-		id                    string
+		rawNodeID             string
 		kind                  string
 		name                  spanner.NullString
 		tenantID              spanner.NullString
@@ -1051,14 +1043,14 @@ func spannerRowToNode(row *spanner.Row) (*Node, error) {
 		propertyHistoryRaw    spanner.NullString
 	)
 	if err := row.Columns(
-		&id, &kind, &name, &tenantID, &provider, &account, &region, &propertiesJSON,
+		&rawNodeID, &kind, &name, &tenantID, &provider, &account, &region, &propertiesJSON,
 		&tagsJSON, &risk, &findingsJSON, &createdAt, &updatedAt, &deletedAt, &version,
 		&previousPropertiesRaw, &propertyHistoryRaw,
 	); err != nil {
 		return nil, err
 	}
 	node := &Node{
-		ID:        id,
+		ID:        rawNodeID,
 		Kind:      NodeKind(kind),
 		Name:      name.StringVal,
 		TenantID:  tenantID.StringVal,
@@ -1098,7 +1090,7 @@ func spannerRowToEdge(row *spanner.Row) (*Edge, error) {
 		return nil, nil
 	}
 	var (
-		id             string
+		rawEdgeID      string
 		sourceID       string
 		targetID       string
 		kind           string
@@ -1110,11 +1102,11 @@ func spannerRowToEdge(row *spanner.Row) (*Edge, error) {
 		deletedAt      spanner.NullTime
 		version        int64
 	)
-	if err := row.Columns(&id, &sourceID, &targetID, &kind, &effect, &priority, &propertiesJSON, &risk, &createdAt, &deletedAt, &version); err != nil {
+	if err := row.Columns(&rawEdgeID, &sourceID, &targetID, &kind, &effect, &priority, &propertiesJSON, &risk, &createdAt, &deletedAt, &version); err != nil {
 		return nil, err
 	}
 	edge := &Edge{
-		ID:        id,
+		ID:        rawEdgeID,
 		Source:    sourceID,
 		Target:    targetID,
 		Kind:      EdgeKind(kind),
