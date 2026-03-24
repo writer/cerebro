@@ -653,6 +653,36 @@ func TestCerebroNaturalLanguageQueryTool(t *testing.T) {
 	}
 }
 
+func TestCerebroNaturalLanguageQueryToolPreviewDoesNotRequireGraph(t *testing.T) {
+	application := &App{}
+	tool := findCerebroTool(application.cerebroTools(), "cerebro.nl_query")
+	if tool == nil {
+		t.Fatal("expected nl_query tool")
+	}
+
+	result, err := tool.Handler(context.Background(), json.RawMessage(`{"question":"Which internet-facing instances have critical unpatched CVEs?","preview_only":true}`))
+	if err != nil {
+		t.Fatalf("tool returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result), &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if previewOnly, ok := payload["preview_only"].(bool); !ok || !previewOnly {
+		t.Fatalf("preview_only = %#v, want true", payload["preview_only"])
+	}
+	if _, ok := payload["plan"].(map[string]any); !ok {
+		t.Fatalf("expected plan object, got %#v", payload["plan"])
+	}
+	if _, ok := payload["summary"]; ok {
+		t.Fatalf("did not expect summary for preview-only response, got %#v", payload["summary"])
+	}
+	if _, ok := payload["result"]; ok {
+		t.Fatalf("did not expect result for preview-only response, got %#v", payload["result"])
+	}
+}
+
 func TestCerebroCorrelateEventsTool(t *testing.T) {
 	g := graph.New()
 	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)

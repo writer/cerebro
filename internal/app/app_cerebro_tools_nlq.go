@@ -27,11 +27,6 @@ func (a *App) toolCerebroNaturalLanguageQuery(ctx context.Context, args json.Raw
 		return "", fmt.Errorf("question is required")
 	}
 
-	g, err := a.requireReadableSecurityGraph()
-	if err != nil {
-		return "", err
-	}
-
 	translator := nlq.NewTranslator(nlq.DefaultSchemaContext(), a.nlqCompletionProvider())
 	plan, err := translator.Translate(ctx, nlq.TranslateRequest{
 		Question: req.Question,
@@ -50,6 +45,10 @@ func (a *App) toolCerebroNaturalLanguageQuery(ctx context.Context, args json.Raw
 	}
 
 	if !req.PreviewOnly {
+		g, err := a.requireReadableSecurityGraph()
+		if err != nil {
+			return "", err
+		}
 		executor := &nlq.Executor{
 			Graph:    g,
 			Findings: a.Findings,
