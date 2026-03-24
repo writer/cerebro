@@ -12,12 +12,6 @@ import (
 // Visualization endpoints (Mermaid)
 
 func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
-	if err != nil {
-		s.errorFromErr(w, err)
-		return
-	}
-
 	pathIndex := chi.URLParam(r, "id")
 	idx, err := strconv.Atoi(pathIndex)
 	if err != nil || idx < 0 {
@@ -25,12 +19,42 @@ func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	simulator := risk.NewAttackPathSimulator(g)
-	result := simulator.Simulate(6)
+	var (
+		g      *graph.Graph
+		result *risk.SimulationResult
+	)
+	if live := s.currentTenantSecurityGraph(r.Context()); live != nil {
+		g = live
+		result = risk.NewAttackPathSimulator(live).Simulate(6)
+	} else {
+		store := s.currentTenantSecurityGraphStore(r.Context())
+		if store == nil {
+			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+			return
+		}
+		queryStore, ok := graph.AsAttackPathQueryStore(store)
+		if !ok {
+			result, err = graph.SimulateAttackPathsFromStore(r.Context(), store, 6)
+		} else {
+			result, err = queryStore.AttackPaths(r.Context(), 6)
+		}
+		if err != nil {
+			s.errorFromErr(w, err)
+			return
+		}
+	}
 
 	if idx >= len(result.Paths) {
 		s.error(w, http.StatusNotFound, "attack path not found")
 		return
+	}
+	if g == nil {
+		store := s.currentTenantSecurityGraphStore(r.Context())
+		g, err = graph.BuildAttackPathViewGraph(r.Context(), store, result.Paths[idx])
+		if err != nil {
+			s.errorFromErr(w, err)
+			return
+		}
 	}
 
 	exporter := graph.NewMermaidExporter(g)

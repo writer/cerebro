@@ -182,6 +182,29 @@ func TestVisualizeAttackPathUsesGraphStoreSnapshotWhenRawGraphUnavailable(t *tes
 	}
 }
 
+func TestVisualizeAttackPathUsesStoreQueryWhenSnapshotMaterializationUnavailable(t *testing.T) {
+	store := &snapshotFailingExtractableGraphStore{GraphStore: buildGraphStoreVisualizationTestGraph()}
+	s := newStoreBackedGraphServer(t, store)
+
+	resp := do(t, s, http.MethodGet, "/api/v1/graph/visualize/attack-path/0", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected attack-path visualization 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	body := resp.Body.String()
+	if !strings.Contains(body, "```mermaid") || !strings.Contains(body, "Production Database") {
+		t.Fatalf("expected mermaid attack path output, got %q", body)
+	}
+	if store.snapshotCalls != 0 {
+		t.Fatalf("expected attack-path visualization to avoid snapshot fallback, got %d snapshot calls", store.snapshotCalls)
+	}
+	if store.attackPathCalls == 0 {
+		t.Fatal("expected attack-path visualization to use store-native attack path queries")
+	}
+	if store.extractCalls == 0 {
+		t.Fatal("expected attack-path visualization to extract bounded store subgraphs")
+	}
+}
+
 func TestVisualizeToxicCombinationUsesGraphStoreSnapshotWhenRawGraphUnavailable(t *testing.T) {
 	g := buildGraphStoreVisualizationTestGraph()
 	results := graph.NewToxicCombinationEngine().Analyze(g)
