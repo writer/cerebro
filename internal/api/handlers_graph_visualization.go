@@ -12,7 +12,7 @@ import (
 // Visualization endpoints (Mermaid)
 
 func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	g, err := s.currentTenantSecurityGraphView(r.Context())
 	if err != nil {
 		s.errorFromErr(w, err)
 		return
@@ -42,7 +42,7 @@ func (s *Server) visualizeAttackPath(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) visualizeToxicCombination(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	g, err := s.currentTenantSecurityGraphView(r.Context())
 	if err != nil {
 		s.errorFromErr(w, err)
 		return
@@ -112,7 +112,7 @@ func (s *Server) visualizeBlastRadius(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) visualizeReport(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphSnapshotView(r.Context())
+	g, err := s.currentTenantSecurityGraphView(r.Context())
 	if err != nil {
 		s.errorFromErr(w, err)
 		return

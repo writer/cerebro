@@ -28,6 +28,19 @@ func newStoreBackedGraphServer(t *testing.T, store graph.GraphStore) *Server {
 	return s
 }
 
+func newLiveGraphServer(t *testing.T, g *graph.Graph, store graph.GraphStore) *Server {
+	t.Helper()
+	s := NewServerWithDependencies(serverDependencies{
+		Config: &app.Config{},
+		graphRuntime: stubGraphRuntime{
+			graph: g,
+			store: store,
+		},
+	})
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
 func buildGraphStoreTraversalTestGraph() *graph.Graph {
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
@@ -164,5 +177,37 @@ func TestVisualizeReportReturnsServiceUnavailableWhenStoreSnapshotMissing(t *tes
 	resp := do(t, s, http.MethodGet, "/api/v1/graph/visualize/report", nil)
 	if resp.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected report visualization 503, got %d: %s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestVisualizationEndpointsPreferLiveGraphWhenAvailable(t *testing.T) {
+	g := buildGraphStoreVisualizationTestGraph()
+	results := graph.NewToxicCombinationEngine().Analyze(g)
+	if len(results) == 0 {
+		t.Fatal("expected at least one toxic combination in test graph")
+	}
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "attack path", path: "/api/v1/graph/visualize/attack-path/0"},
+		{name: "toxic combination", path: "/api/v1/graph/visualize/toxic-combination/" + results[0].ID},
+		{name: "report", path: "/api/v1/graph/visualize/report"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &countingSnapshotStore{GraphStore: g}
+			s := newLiveGraphServer(t, g, store)
+
+			resp := do(t, s, http.MethodGet, tc.path, nil)
+			if resp.Code != http.StatusOK {
+				t.Fatalf("expected visualization 200, got %d: %s", resp.Code, resp.Body.String())
+			}
+			if got := store.count.Load(); got != 0 {
+				t.Fatalf("expected live graph to avoid snapshot reads, got %d snapshot calls", got)
+			}
+		})
 	}
 }
