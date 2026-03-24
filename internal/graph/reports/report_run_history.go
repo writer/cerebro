@@ -137,6 +137,15 @@ type ReportRunControl struct {
 
 // BuildReportLineage returns the graph lineage context associated with one report execution.
 func BuildReportLineage(g *Graph, definition ReportDefinition) ReportLineage {
+	if g == nil {
+		return BuildReportLineageFromMetadata(Metadata{}, definition)
+	}
+	return BuildReportLineageFromMetadata(g.Metadata(), definition)
+}
+
+// BuildReportLineageFromMetadata returns the graph lineage context associated
+// with one report execution from already-resolved graph metadata.
+func BuildReportLineageFromMetadata(meta Metadata, definition ReportDefinition) ReportLineage {
 	lineage := ReportLineage{
 		OntologyContractVersion: GraphOntologyContractVersion,
 		ReportDefinitionVersion: strings.TrimSpace(definition.Version),
@@ -145,10 +154,6 @@ func BuildReportLineage(g *Graph, definition ReportDefinition) ReportLineage {
 		lineage.ReportDefinitionVersion = DefaultReportDefinitionVersion
 	}
 	lineage.GraphSchemaVersion = SchemaVersion()
-	if g == nil {
-		return lineage
-	}
-	meta := g.Metadata()
 	if !meta.BuiltAt.IsZero() {
 		builtAt := meta.BuiltAt.UTC()
 		lineage.GraphBuiltAt = &builtAt

@@ -172,11 +172,14 @@ func (s *Server) currentPlatformSecurityGraphView(ctx context.Context) (*graph.G
 }
 
 func (s *Server) currentPlatformReportLineage(ctx context.Context, definition reports.ReportDefinition) reports.ReportLineage {
-	g, err := s.currentPlatformSecurityGraphView(ctx)
-	if err != nil {
-		return reports.BuildReportLineage(nil, definition)
+	if s == nil || s.app == nil {
+		return reports.BuildReportLineageFromMetadata(reports.Metadata{}, definition)
 	}
-	return reports.BuildReportLineage(g, definition)
+	meta, err := currentOrStoredGraphMetadata(ctx, s.app.CurrentSecurityGraph(), s.app.CurrentSecurityGraphStore())
+	if err != nil {
+		return reports.BuildReportLineageFromMetadata(reports.Metadata{}, definition)
+	}
+	return reports.BuildReportLineageFromMetadata(meta, definition)
 }
 
 func (s *Server) platformWriteClaim(w http.ResponseWriter, r *http.Request) {

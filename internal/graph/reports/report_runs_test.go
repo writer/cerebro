@@ -139,6 +139,33 @@ func TestBuildReportLineageAndStoragePolicy(t *testing.T) {
 	}
 }
 
+func TestBuildReportLineageFromMetadata(t *testing.T) {
+	meta := Metadata{
+		BuiltAt:   time.Date(2026, 3, 10, 4, 30, 0, 0, time.UTC),
+		NodeCount: 12,
+		EdgeCount: 7,
+		Providers: []string{"github", "okta"},
+		Accounts:  []string{"acct-a"},
+	}
+
+	lineage := BuildReportLineageFromMetadata(meta, ReportDefinition{ID: "quality", Version: "2.1.0"})
+	if lineage.GraphSnapshotID == "" {
+		t.Fatal("expected graph snapshot id")
+	}
+	if lineage.GraphBuiltAt == nil || !lineage.GraphBuiltAt.Equal(meta.BuiltAt) {
+		t.Fatalf("expected graph built at %s, got %+v", meta.BuiltAt, lineage.GraphBuiltAt)
+	}
+	if lineage.GraphSchemaVersion == 0 {
+		t.Fatal("expected graph schema version")
+	}
+	if lineage.OntologyContractVersion == "" {
+		t.Fatal("expected ontology contract version")
+	}
+	if lineage.ReportDefinitionVersion != "2.1.0" {
+		t.Fatalf("expected report definition version 2.1.0, got %q", lineage.ReportDefinitionVersion)
+	}
+}
+
 func TestBuildReportSectionResultsIncludesLineageAndTruncationSignals(t *testing.T) {
 	g := New()
 	g.AddNode(&Node{ID: "claim:payments:tier", Kind: NodeKindClaim, Name: "Payments tier claim"})

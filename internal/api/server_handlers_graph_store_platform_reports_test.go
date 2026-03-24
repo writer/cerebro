@@ -66,6 +66,25 @@ func TestPlatformIntelligenceReportRunSyncUsesGraphStoreWhenRawGraphUnavailable(
 	}
 }
 
+func TestCurrentPlatformReportLineageUsesStoreMetadataWhenSnapshotMaterializationUnavailable(t *testing.T) {
+	store := &snapshotFailingMetadataStore{GraphStore: buildGraphStorePlatformReportTestGraph()}
+	s := newStoreBackedGraphServerWithExecutionStore(t, store)
+
+	lineage := s.currentPlatformReportLineage(context.Background(), reports.ReportDefinition{ID: "quality", Version: "2.1.0"})
+	if lineage.GraphSnapshotID == "" {
+		t.Fatalf("expected graph_snapshot_id from store metadata lineage, got %#v", lineage)
+	}
+	if lineage.GraphBuiltAt == nil || lineage.GraphBuiltAt.IsZero() {
+		t.Fatalf("expected graph built_at from store metadata lineage, got %#v", lineage.GraphBuiltAt)
+	}
+	if store.snapshotCalls != 0 {
+		t.Fatalf("expected currentPlatformReportLineage to avoid snapshot fallback, got %d snapshot calls", store.snapshotCalls)
+	}
+	if store.metadataCalls == 0 {
+		t.Fatal("expected currentPlatformReportLineage to use store metadata")
+	}
+}
+
 func TestPlatformIntelligenceReportRunRetrySyncUsesGraphStoreWhenRawGraphUnavailable(t *testing.T) {
 	s := newStoreBackedGraphServerWithExecutionStore(t, buildGraphStorePlatformReportTestGraph())
 
