@@ -400,13 +400,17 @@ func TestAnalyzerExtractsResolvableSecretReferences(t *testing.T) {
 
 func TestAnalyzerDetectsExpandedSecretPatternsAndDockerRegistryCredentials(t *testing.T) {
 	root := t.TempDir()
+	stripeKey := "sk" + "_live_" + "1234567890abcdefghijklmnop"
+	twilioKey := "SK" + strings.Repeat("01234567", 4)
+	sendgridKey := "SG." + "ABCDEFGHIJKLMNOP" + "." + "QRSTUVWXYZabcdefghi"
+	mailgunKey := "key-" + strings.Repeat("01234567", 4)
 	mustWriteFile(t, filepath.Join(root, "workspace", ".env"), strings.Join([]string{
 		"GITLAB_TOKEN=glpat-1234567890abcdefghijklmn",
 		"NPM_TOKEN=npm_1234567890abcdefghijklmnopqrstuvwxyz",
-		"STRIPE_KEY=sk_live_1234567890abcdefghijklmnop",
-		"TWILIO_KEY=SK0123456789abcdef0123456789abcdef",
-		"SENDGRID_KEY=SG.ABCDEFGHIJKLMNOP.QRSTUVWXYZabcdefghi",
-		"MAILGUN_KEY=key-0123456789abcdef0123456789abcdef",
+		"STRIPE_KEY=" + stripeKey,
+		"TWILIO_KEY=" + twilioKey,
+		"SENDGRID_KEY=" + sendgridKey,
+		"MAILGUN_KEY=" + mailgunKey,
 		"JWT_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiYWRtaW4iOnRydWV9.c2lnbmF0dXJlLXNlY3JldC12YWx1ZQ",
 	}, "\n"))
 	mustWriteFile(t, filepath.Join(root, "root", ".docker", "config.json"), `{
@@ -459,12 +463,16 @@ func TestAnalyzerDetectsExpandedSecretPatternsAndDockerRegistryCredentials(t *te
 
 func TestAnalyzerDetectsExpandedCloudSecretFamiliesAndSkipsPlaceholders(t *testing.T) {
 	root := t.TempDir()
+	stripeKey := "sk" + "_live_" + "1234567890abcdefghijklmnop"
 	twilioKey := "SK" + strings.Repeat("01234567", 4)
+	sendgridKey := "SG." + "abcdefghijklmnop" + "." + "ABCDEFGHIJKLMNOP"
+	gcpAPIKey := "AIza" + "12345678901234567890123456789012345"
+	googleOAuthSecret := "GOCSPX-" + "1234567890abcdefghijklmnop"
 	mustWriteFile(t, filepath.Join(root, "app", ".env"), strings.Join([]string{
-		"STRIPE_SECRET_KEY=sk_live_1234567890abcdefghijklmnop",
-		"SENDGRID_API_KEY=SG.abcdefghijklmnop.ABCDEFGHIJKLMNOP",
-		"GCP_API_KEY=AIza12345678901234567890123456789012345",
-		"GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-1234567890abcdefghijklmnop",
+		"STRIPE_SECRET_KEY=" + stripeKey,
+		"SENDGRID_API_KEY=" + sendgridKey,
+		"GCP_API_KEY=" + gcpAPIKey,
+		"GOOGLE_OAUTH_CLIENT_SECRET=" + googleOAuthSecret,
 		"TWILIO_API_KEY=" + twilioKey,
 		"AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=opsstore;AccountKey=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=;EndpointSuffix=core.windows.net",
 		"JWT_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2lzc3Vlci5leGFtcGxlLmNvbSIsInN1YiI6InN2Yy1hY2NvdW50IiwiZXhwIjoyMDAwMDAwMDAwfQ.c2lnbmF0dXJl",
