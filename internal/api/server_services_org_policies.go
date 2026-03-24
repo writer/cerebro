@@ -30,6 +30,11 @@ type serverOrgPolicyService struct {
 	deps *serverDependencies
 }
 
+var orgPolicyReadSubgraphOptions = graph.ExtractSubgraphOptions{
+	MaxDepth:  2,
+	Direction: graph.ExtractSubgraphDirectionBoth,
+}
+
 func newOrgPolicyService(deps *serverDependencies) orgPolicyService {
 	return serverOrgPolicyService{deps: deps}
 }
@@ -121,7 +126,7 @@ func (s serverOrgPolicyService) ProgramStatus(ctx context.Context, framework str
 }
 
 func (s serverOrgPolicyService) PolicyStatus(ctx context.Context, policyID string) (*graph.OrganizationalPolicyAcknowledgmentReport, error) {
-	g, err := s.tenantGraph(ctx)
+	g, err := s.policyGraph(ctx, policyID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +135,7 @@ func (s serverOrgPolicyService) PolicyStatus(ctx context.Context, policyID strin
 }
 
 func (s serverOrgPolicyService) PolicyAssignees(ctx context.Context, policyID string) (*graph.OrganizationalPolicyAssigneeRosterReport, error) {
-	g, err := s.tenantGraph(ctx)
+	g, err := s.policyGraph(ctx, policyID)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +144,7 @@ func (s serverOrgPolicyService) PolicyAssignees(ctx context.Context, policyID st
 }
 
 func (s serverOrgPolicyService) PolicyReminders(ctx context.Context, policyID string) (*graph.OrganizationalPolicyReminderReport, error) {
-	g, err := s.tenantGraph(ctx)
+	g, err := s.policyGraph(ctx, policyID)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +153,7 @@ func (s serverOrgPolicyService) PolicyReminders(ctx context.Context, policyID st
 }
 
 func (s serverOrgPolicyService) PolicyVersionHistory(ctx context.Context, policyID string) ([]graph.OrganizationalPolicyVersionHistoryEntry, error) {
-	g, err := s.tenantGraph(ctx)
+	g, err := s.policyGraph(ctx, policyID)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +172,28 @@ func (s serverOrgPolicyService) ReviewSchedule(ctx context.Context, asOf time.Ti
 
 func (s serverOrgPolicyService) tenantGraph(ctx context.Context) (*graph.Graph, error) {
 	return currentOrStoredTenantGraphView(ctx, s.deps)
+}
+
+func (s serverOrgPolicyService) policyGraph(ctx context.Context, policyID string) (*graph.Graph, error) {
+	if s.deps == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	tenantID := currentTenantScopeID(ctx)
+	if current := s.deps.CurrentSecurityGraphForTenant(tenantID); current != nil {
+		return graph.ExtractSubgraph(current, strings.TrimSpace(policyID), orgPolicyReadSubgraphOptions), nil
+	}
+	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
+	if store == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	view, err := store.ExtractSubgraph(ctx, strings.TrimSpace(policyID), orgPolicyReadSubgraphOptions)
+	if err != nil {
+		return nil, err
+	}
+	if view == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return view, nil
 }
 
 func wrapOrgPolicyError(op cerrors.Op, err error) error {
