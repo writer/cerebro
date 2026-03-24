@@ -462,6 +462,159 @@ func TestTelemetryIngestPersistsRunMetadataAndCheckpoint(t *testing.T) {
 	}
 }
 
+func TestTelemetryIngestNormalizesAWSVPCFlowLogs(t *testing.T) {
+	a := newTestApp(t)
+	s := NewServer(a)
+
+	w := do(t, s, http.MethodPost, "/api/v1/telemetry/ingest", map[string]any{
+		"adapter_source": "aws_vpc_flow_logs",
+		"payload": map[string]any{
+			"owner":       "123456789012",
+			"logGroup":    "vpc-flow-logs",
+			"logStream":   "eni/eni-0123456789abcdef0",
+			"messageType": "DATA_MESSAGE",
+			"logEvents": []map[string]any{
+				{
+					"id":        "cwl-event-1",
+					"timestamp": 1712700060000,
+					"message":   "2 123456789012 eni-0123456789abcdef0 10.0.1.25 34.235.12.8 44321 443 6 10 840 1712700000 1712700060 ACCEPT OK",
+				},
+			},
+		},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	runID, ok := body["run_id"].(string)
+	if !ok || runID == "" {
+		t.Fatalf("expected run_id in response, got %#v", body["run_id"])
+	}
+	if got := body["processed"]; got != float64(1) && got != 1 {
+		t.Fatalf("processed = %#v, want 1", got)
+	}
+	if got := body["duplicates"]; got != float64(0) && got != 0 {
+		t.Fatalf("duplicates = %#v, want 0", got)
+	}
+
+	run, err := a.RuntimeIngest.LoadRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("LoadRun: %v", err)
+	}
+	if run == nil {
+		t.Fatal("expected persisted run")
+	}
+	if run.Source != "aws_vpc_flow_logs" {
+		t.Fatalf("source = %q, want aws_vpc_flow_logs", run.Source)
+	}
+	if run.Status != runtime.IngestRunStatusCompleted {
+		t.Fatalf("status = %q, want %q", run.Status, runtime.IngestRunStatusCompleted)
+	}
+	if run.ObservationCount != 1 {
+		t.Fatalf("observation_count = %d, want 1", run.ObservationCount)
+	}
+	if run.FindingCount != 0 {
+		t.Fatalf("finding_count = %d, want 0", run.FindingCount)
+	}
+	if run.LastCheckpoint == nil || run.LastCheckpoint.Cursor != "aws_vpc_flow_logs:cwl-event-1" {
+		t.Fatalf("last checkpoint = %#v, want aws_vpc_flow_logs:cwl-event-1", run.LastCheckpoint)
+	}
+
+	events, err := a.RuntimeIngest.LoadEvents(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("LoadEvents: %v", err)
+	}
+	if len(events) != 4 {
+		t.Fatalf("len(events) = %d, want 4", len(events))
+	}
+	if events[1].Type != "observation_processed" {
+		t.Fatalf("events[1].Type = %q, want observation_processed", events[1].Type)
+	}
+	if got := events[1].Data["kind"]; got != string(runtime.ObservationKindNetworkFlow) {
+		t.Fatalf("events[1].Data[kind] = %#v, want network_flow", got)
+	}
+	if got := events[1].Data["resource_id"]; got != "eni:eni-0123456789abcdef0" {
+		t.Fatalf("events[1].Data[resource_id] = %#v, want eni:eni-0123456789abcdef0", got)
+	}
+}
+
+func TestTelemetryIngestDedupesAWSVPCFlowLogsByObservationID(t *testing.T) {
+	a := newTestApp(t)
+	s := NewServer(a)
+
+	request := map[string]any{
+		"adapter_source": "aws_vpc_flow_logs",
+		"payload": map[string]any{
+			"owner":       "123456789012",
+			"logGroup":    "vpc-flow-logs",
+			"logStream":   "eni/eni-0123456789abcdef0",
+			"messageType": "DATA_MESSAGE",
+			"logEvents": []map[string]any{
+				{
+					"id":        "cwl-event-dup-1",
+					"timestamp": 1712700060000,
+					"message":   "2 123456789012 eni-0123456789abcdef0 10.0.1.25 34.235.12.8 44321 443 6 10 840 1712700000 1712700060 ACCEPT OK",
+				},
+			},
+		},
+	}
+
+	first := do(t, s, http.MethodPost, "/api/v1/telemetry/ingest", request)
+	if first.Code != http.StatusOK {
+		t.Fatalf("expected first request to succeed, got %d: %s", first.Code, first.Body.String())
+	}
+
+	second := do(t, s, http.MethodPost, "/api/v1/telemetry/ingest", request)
+	if second.Code != http.StatusOK {
+		t.Fatalf("expected duplicate request to succeed, got %d: %s", second.Code, second.Body.String())
+	}
+
+	body := decodeJSON(t, second)
+	if got := body["processed"]; got != float64(0) && got != 0 {
+		t.Fatalf("processed = %#v, want 0", got)
+	}
+	if got := body["duplicates"]; got != float64(1) && got != 1 {
+		t.Fatalf("duplicates = %#v, want 1", got)
+	}
+
+	runID, ok := body["run_id"].(string)
+	if !ok || runID == "" {
+		t.Fatalf("expected duplicate response run_id, got %#v", body["run_id"])
+	}
+	run, err := a.RuntimeIngest.LoadRun(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("LoadRun: %v", err)
+	}
+	if run == nil || run.LastCheckpoint == nil {
+		t.Fatalf("expected duplicate ingest run checkpoint, got %#v", run)
+	}
+	if got := run.LastCheckpoint.Metadata["duplicate_events"]; got != "1" {
+		t.Fatalf("duplicate_events = %q, want 1", got)
+	}
+}
+
+func TestTelemetryIngestRejectsMixedEventsAndAdapterPayload(t *testing.T) {
+	a := newTestApp(t)
+	s := NewServer(a)
+
+	w := do(t, s, http.MethodPost, "/api/v1/telemetry/ingest", map[string]any{
+		"adapter_source": "aws_vpc_flow_logs",
+		"payload":        "2 123456789012 eni-0123456789abcdef0 10.0.1.25 34.235.12.8 44321 443 6 10 840 1712700000 1712700060 ACCEPT OK",
+		"events": []map[string]any{
+			{"id": "evt-1"},
+		},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if got := body["error"]; got != "invalid payload" {
+		t.Fatalf("error = %#v, want invalid payload", got)
+	}
+}
+
 func TestTelemetryIngestTracksRejectedObservationsSeparately(t *testing.T) {
 	a := newTestApp(t)
 	s := NewServer(a)

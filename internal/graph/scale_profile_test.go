@@ -135,11 +135,11 @@ func TestSyntheticWorkloadsDoNotAllLookInternetFacing(t *testing.T) {
 			continue
 		}
 		workloadCount++
-		if publicFacing(node.Kind, node.Properties) {
+		if publicFacing(node.Kind, node.PropertyMap()) {
 			exposedWorkloadCount++
 		}
-		if exposed, ok := node.Properties["internet_exposed"].(bool); ok && !exposed {
-			if publicIP, ok := node.Properties["public_ip"].(string); ok && publicIP != "" {
+		if exposed, ok := node.PropertyValue("internet_exposed"); ok && exposed == false {
+			if publicIP, ok := node.PropertyValue("public_ip"); ok && publicIP != "" {
 				t.Fatalf("expected non-exposed synthetic workload %s to omit public_ip, got %s", node.ID, publicIP)
 			}
 		}

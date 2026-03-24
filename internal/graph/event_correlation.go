@@ -12,6 +12,8 @@ const (
 
 	eventCorrelationDefaultLimit          = 25
 	eventCorrelationMaxLimit              = 200
+	eventCorrelationDefaultChainDepth     = 4
+	eventCorrelationMaxChainDepth         = 6
 	eventCorrelationNeighborhoodDepth     = 3
 	eventCorrelationCurrentWindow         = 7 * 24 * time.Hour
 	eventCorrelationBaselineWindow        = 28 * 24 * time.Hour
@@ -72,17 +74,21 @@ type EventReference struct {
 
 // EventCorrelationRecord captures one derived causal edge between two events.
 type EventCorrelationRecord struct {
-	ID              string         `json:"id"`
-	PatternID       string         `json:"pattern_id"`
-	PatternName     string         `json:"pattern_name"`
-	Description     string         `json:"description,omitempty"`
-	EdgeKind        EdgeKind       `json:"edge_kind"`
-	Cause           EventReference `json:"cause"`
-	Effect          EventReference `json:"effect"`
-	SharedTargetIDs []string       `json:"shared_target_ids,omitempty"`
-	GapSeconds      int64          `json:"gap_seconds"`
-	WindowSeconds   int64          `json:"window_seconds"`
-	Score           float64        `json:"score"`
+	ID               string         `json:"id"`
+	PatternID        string         `json:"pattern_id"`
+	PatternName      string         `json:"pattern_name"`
+	Description      string         `json:"description,omitempty"`
+	EdgeKind         EdgeKind       `json:"edge_kind"`
+	Cause            EventReference `json:"cause"`
+	Effect           EventReference `json:"effect"`
+	SharedTargetIDs  []string       `json:"shared_target_ids,omitempty"`
+	GapSeconds       int64          `json:"gap_seconds"`
+	WindowSeconds    int64          `json:"window_seconds"`
+	Score            float64        `json:"score"`
+	Confidence       float64        `json:"confidence"`
+	CandidateCount   int            `json:"candidate_count,omitempty"`
+	ScopeOverlap     float64        `json:"scope_overlap,omitempty"`
+	AmbiguityPenalty float64        `json:"ambiguity_penalty,omitempty"`
 }
 
 // EventCorrelationResult is the query/tool response for event correlation lookup.
@@ -92,6 +98,44 @@ type EventCorrelationResult struct {
 	Summary      EventCorrelationSummary  `json:"summary"`
 	Correlations []EventCorrelationRecord `json:"correlations,omitempty"`
 	Anomalies    []EventAnomaly           `json:"anomalies,omitempty"`
+}
+
+// EventCorrelationChainQuery traverses materialized causal edges into explicit chains.
+type EventCorrelationChainQuery struct {
+	EventID   string    `json:"event_id,omitempty"`
+	EntityID  string    `json:"entity_id,omitempty"`
+	PatternID string    `json:"pattern_id,omitempty"`
+	Direction string    `json:"direction,omitempty"`
+	Limit     int       `json:"limit,omitempty"`
+	MaxDepth  int       `json:"max_depth,omitempty"`
+	Since     time.Time `json:"since,omitempty"`
+	Until     time.Time `json:"until,omitempty"`
+}
+
+// EventCorrelationChainSummary captures top-line chain traversal metrics.
+type EventCorrelationChainSummary struct {
+	SeedCount    int `json:"seed_count"`
+	ChainCount   int `json:"chain_count"`
+	MaxDepth     int `json:"max_depth"`
+	PatternCount int `json:"pattern_count"`
+}
+
+// EventCorrelationChain captures one traversed causal path.
+type EventCorrelationChain struct {
+	ID           string                   `json:"id"`
+	Direction    string                   `json:"direction"`
+	Depth        int                      `json:"depth"`
+	Score        float64                  `json:"score"`
+	Events       []EventReference         `json:"events"`
+	Correlations []EventCorrelationRecord `json:"correlations"`
+}
+
+// EventCorrelationChainResult returns bounded causal paths rooted in one event or entity scope.
+type EventCorrelationChainResult struct {
+	GeneratedAt time.Time                    `json:"generated_at"`
+	Query       EventCorrelationChainQuery   `json:"query"`
+	Summary     EventCorrelationChainSummary `json:"summary"`
+	Chains      []EventCorrelationChain      `json:"chains,omitempty"`
 }
 
 // EventAnomaly describes an event-frequency deviation for one event/context scope.
@@ -145,6 +189,16 @@ type eventCorrelationCandidate struct {
 	contextIDs   []string
 }
 
+type eventCorrelationCauseSelection struct {
+	cause            *eventCorrelationCandidate
+	sharedTargetIDs  []string
+	gap              time.Duration
+	candidateCount   int
+	scopeOverlap     float64
+	ambiguityPenalty float64
+	confidence       float64
+}
+
 type eventAnomalyWindow struct {
 	current  int
 	baseline int
@@ -170,6 +224,38 @@ var builtInEventCorrelationRules = []eventCorrelationRule{
 	},
 	{
 		definition: EventCorrelationPatternDefinition{
+			ID:                "pipeline_deploy_chain",
+			Name:              "Pipeline Run Gates Deployment",
+			Description:       "Completed pipeline_run activity followed by one deployment_run on the same service within 45 minutes.",
+			CauseKind:         NodeKindPipelineRun,
+			EffectKind:        NodeKindDeploymentRun,
+			EdgeKind:          EdgeKindTriggeredBy,
+			MaxGap:            (45 * time.Minute).String(),
+			MaxGapSeconds:     int64((45 * time.Minute).Seconds()),
+			SharedTargetKinds: []NodeKind{NodeKindService},
+			Severity:          "medium",
+		},
+		maxGap:             45 * time.Minute,
+		causeAllowedStatus: []string{"completed", "success", "successful", "succeeded"},
+	},
+	{
+		definition: EventCorrelationPatternDefinition{
+			ID:                "check_deploy_chain",
+			Name:              "Check Run Gates Deployment",
+			Description:       "Completed check_run activity followed by one deployment_run on the same service within 30 minutes.",
+			CauseKind:         NodeKindCheckRun,
+			EffectKind:        NodeKindDeploymentRun,
+			EdgeKind:          EdgeKindTriggeredBy,
+			MaxGap:            (30 * time.Minute).String(),
+			MaxGapSeconds:     int64((30 * time.Minute).Seconds()),
+			SharedTargetKinds: []NodeKind{NodeKindService},
+			Severity:          "medium",
+		},
+		maxGap:             30 * time.Minute,
+		causeAllowedStatus: []string{"completed", "success", "successful", "succeeded", "passed", "neutral"},
+	},
+	{
+		definition: EventCorrelationPatternDefinition{
 			ID:                "deploy_incident_chain",
 			Name:              "Deployment Precedes Incident",
 			Description:       "One deployment_run followed by one incident on the same service within 1 hour.",
@@ -184,12 +270,57 @@ var builtInEventCorrelationRules = []eventCorrelationRule{
 		maxGap:             time.Hour,
 		causeAllowedStatus: []string{"completed", "success", "successful", "succeeded", "failed", "failure", "error", "cancelled"},
 	},
+	{
+		definition: EventCorrelationPatternDefinition{
+			ID:                "incident_decision_chain",
+			Name:              "Incident Drives Decision",
+			Description:       "Incident activity followed by one decision on the same service within 6 hours.",
+			CauseKind:         NodeKindIncident,
+			EffectKind:        NodeKindDecision,
+			EdgeKind:          EdgeKindTriggeredBy,
+			MaxGap:            (6 * time.Hour).String(),
+			MaxGapSeconds:     int64((6 * time.Hour).Seconds()),
+			SharedTargetKinds: []NodeKind{NodeKindService},
+			Severity:          "high",
+		},
+		maxGap: 6 * time.Hour,
+	},
+	{
+		definition: EventCorrelationPatternDefinition{
+			ID:                "decision_action_chain",
+			Name:              "Decision Triggers Action",
+			Description:       "Decision activity followed by one action on the same service within 6 hours.",
+			CauseKind:         NodeKindDecision,
+			EffectKind:        NodeKindAction,
+			EdgeKind:          EdgeKindTriggeredBy,
+			MaxGap:            (6 * time.Hour).String(),
+			MaxGapSeconds:     int64((6 * time.Hour).Seconds()),
+			SharedTargetKinds: []NodeKind{NodeKindService},
+			Severity:          "medium",
+		},
+		maxGap: 6 * time.Hour,
+	},
+	{
+		definition: EventCorrelationPatternDefinition{
+			ID:                "action_outcome_chain",
+			Name:              "Action Produces Outcome",
+			Description:       "Action activity followed by one outcome on the same service within 24 hours.",
+			CauseKind:         NodeKindAction,
+			EffectKind:        NodeKindOutcome,
+			EdgeKind:          EdgeKindCausedBy,
+			MaxGap:            (24 * time.Hour).String(),
+			MaxGapSeconds:     int64((24 * time.Hour).Seconds()),
+			SharedTargetKinds: []NodeKind{NodeKindService},
+			Severity:          "medium",
+		},
+		maxGap: 24 * time.Hour,
+	},
 }
 
 // IsEventCorrelationNodeKind returns true when a node kind participates in built-in event-correlation rules.
 func IsEventCorrelationNodeKind(kind NodeKind) bool {
 	switch kind {
-	case NodeKindPullRequest, NodeKindDeploymentRun, NodeKindIncident:
+	case NodeKindPullRequest, NodeKindCheckRun, NodeKindPipelineRun, NodeKindDeploymentRun, NodeKindIncident, NodeKindDecision, NodeKindAction, NodeKindOutcome:
 		return true
 	default:
 		return false
@@ -308,6 +439,111 @@ func QueryEventCorrelations(g *Graph, now time.Time, query EventCorrelationQuery
 	return result
 }
 
+// QueryEventCorrelationChains traverses explicit causal paths over materialized event-correlation edges.
+func QueryEventCorrelationChains(g *Graph, now time.Time, query EventCorrelationChainQuery) EventCorrelationChainResult {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	query.EventID = strings.TrimSpace(query.EventID)
+	query.EntityID = strings.TrimSpace(query.EntityID)
+	query.PatternID = strings.TrimSpace(query.PatternID)
+	query.Direction = normalizeEventChainDirection(query.Direction)
+	query.Limit = clampEventCorrelationLimit(query.Limit)
+	query.MaxDepth = clampEventCorrelationChainDepth(query.MaxDepth)
+
+	result := EventCorrelationChainResult{
+		GeneratedAt: now.UTC(),
+		Query:       query,
+	}
+	if g == nil {
+		return result
+	}
+
+	patterns := eventCorrelationPatternDefinitions()
+	filteredPatterns := make([]EventCorrelationPatternDefinition, 0, len(patterns))
+	for _, pattern := range patterns {
+		if query.PatternID != "" && pattern.ID != query.PatternID {
+			continue
+		}
+		filteredPatterns = append(filteredPatterns, pattern)
+	}
+	result.Summary.PatternCount = len(filteredPatterns)
+
+	records := collectEventCorrelationRecords(g, filteredPatterns)
+	filtered := make([]EventCorrelationRecord, 0, len(records))
+	for _, record := range records {
+		if !query.Since.IsZero() && record.Effect.ObservedAt.Before(query.Since.UTC()) {
+			continue
+		}
+		if !query.Until.IsZero() && record.Effect.ObservedAt.After(query.Until.UTC()) {
+			continue
+		}
+		filtered = append(filtered, record)
+	}
+
+	seeds := eventCorrelationSeedEventIDs(g, query.EventID, query.EntityID)
+	result.Summary.SeedCount = len(seeds)
+	if len(seeds) == 0 {
+		return result
+	}
+
+	eventRefs := make(map[string]EventReference, len(filtered)*2)
+	upstream := make(map[string][]EventCorrelationRecord)
+	downstream := make(map[string][]EventCorrelationRecord)
+	for _, record := range filtered {
+		eventRefs[record.Cause.ID] = record.Cause
+		eventRefs[record.Effect.ID] = record.Effect
+		upstream[record.Effect.ID] = append(upstream[record.Effect.ID], record)
+		downstream[record.Cause.ID] = append(downstream[record.Cause.ID], record)
+	}
+	for _, seedID := range seeds {
+		if _, ok := eventRefs[seedID]; ok {
+			continue
+		}
+		if node, ok := g.GetNode(seedID); ok && node != nil {
+			eventRefs[seedID] = eventReferenceFromNode(node)
+		}
+	}
+	for nodeID := range upstream {
+		sortEventCorrelationRecordsForTraversal(upstream[nodeID])
+	}
+	for nodeID := range downstream {
+		sortEventCorrelationRecordsForTraversal(downstream[nodeID])
+	}
+
+	var chains []EventCorrelationChain
+	directions := []string{query.Direction}
+	if query.Direction == "both" {
+		directions = []string{"upstream", "downstream"}
+	}
+	for _, direction := range directions {
+		for _, seedID := range seeds {
+			visited := map[string]struct{}{seedID: {}}
+			dfsEventCorrelationChains(seedID, direction, query.MaxDepth, visited, []string{seedID}, nil, eventRefs, upstream, downstream, &chains)
+		}
+	}
+	sort.Slice(chains, func(i, j int) bool {
+		if chains[i].Score != chains[j].Score {
+			return chains[i].Score > chains[j].Score
+		}
+		if chains[i].Depth != chains[j].Depth {
+			return chains[i].Depth > chains[j].Depth
+		}
+		return chains[i].ID < chains[j].ID
+	})
+	if len(chains) > query.Limit {
+		chains = chains[:query.Limit]
+	}
+	result.Chains = chains
+	result.Summary.ChainCount = len(chains)
+	for _, chain := range chains {
+		if chain.Depth > result.Summary.MaxDepth {
+			result.Summary.MaxDepth = chain.Depth
+		}
+	}
+	return result
+}
+
 func eventCorrelationPatternDefinitions() []EventCorrelationPatternDefinition {
 	patterns := make([]EventCorrelationPatternDefinition, 0, len(builtInEventCorrelationRules))
 	for _, rule := range builtInEventCorrelationRules {
@@ -374,24 +610,25 @@ func materializeEventCorrelationRule(g *Graph, rule eventCorrelationRule, candid
 		if !eventCorrelationCandidateAllowed(effect, rule.effectAllowedStatus) {
 			continue
 		}
-		cause, sharedTargetIDs, gap := selectBestEventCorrelationCause(effect, causesByContext, rule.maxGap)
-		if cause == nil || cause.node.ID == effect.node.ID {
+		selection := selectBestEventCorrelationCause(effect, causesByContext, rule.maxGap)
+		if selection.cause == nil || selection.cause.node.ID == effect.node.ID {
 			continue
 		}
-		edge := buildEventCorrelationEdge(rule.definition, *cause, effect, sharedTargetIDs, gap, now)
+		edge := buildEventCorrelationEdge(rule.definition, *selection.cause, effect, selection, now)
 		g.AddEdge(edge)
 		created++
 	}
 	return created
 }
 
-func selectBestEventCorrelationCause(effect eventCorrelationCandidate, causesByContext map[string][]eventCorrelationCandidate, maxGap time.Duration) (*eventCorrelationCandidate, []string, time.Duration) {
+func selectBestEventCorrelationCause(effect eventCorrelationCandidate, causesByContext map[string][]eventCorrelationCandidate, maxGap time.Duration) eventCorrelationCauseSelection {
 	var (
-		bestCause      *eventCorrelationCandidate
-		bestShared     []string
-		bestGap        time.Duration
+		bestSelection  eventCorrelationCauseSelection
+		bestBaseScore  = -1.0
 		bestObservedAt time.Time
+		secondBestBase = -1.0
 		seenCauseByID  = make(map[string]struct{})
+		candidates     = make([]eventCorrelationCauseSelection, 0)
 	)
 	for _, contextID := range effect.contextIDs {
 		causes := causesByContext[contextID]
@@ -412,19 +649,39 @@ func selectBestEventCorrelationCause(effect eventCorrelationCandidate, causesByC
 			if len(shared) == 0 {
 				continue
 			}
-			if bestCause == nil ||
-				gap < bestGap ||
-				(gap == bestGap && cause.observedAt.After(bestObservedAt)) ||
-				(gap == bestGap && cause.observedAt.Equal(bestObservedAt) && cause.node.ID < bestCause.node.ID) {
-				copyCause := cause
-				bestCause = &copyCause
-				bestShared = shared
-				bestGap = gap
+			proximityScore := eventCorrelationProximityScore(gap, maxGap)
+			scopeOverlap := eventCorrelationScopeOverlap(effect.contextIDs, cause.contextIDs)
+			baseScore := (proximityScore * 0.65) + (scopeOverlap * 0.35)
+			copyCause := cause
+			candidates = append(candidates, eventCorrelationCauseSelection{
+				cause:           &copyCause,
+				sharedTargetIDs: shared,
+				gap:             gap,
+				scopeOverlap:    scopeOverlap,
+				confidence:      baseScore,
+			})
+			if baseScore > bestBaseScore ||
+				(baseScore == bestBaseScore && gap < bestSelection.gap) ||
+				(baseScore == bestBaseScore && gap == bestSelection.gap && cause.observedAt.After(bestObservedAt)) ||
+				(baseScore == bestBaseScore && gap == bestSelection.gap && cause.observedAt.Equal(bestObservedAt) && cause.node.ID < bestSelection.cause.node.ID) {
+				if bestBaseScore > secondBestBase {
+					secondBestBase = bestBaseScore
+				}
+				bestBaseScore = baseScore
+				bestSelection = candidates[len(candidates)-1]
 				bestObservedAt = cause.observedAt
+			} else if baseScore > secondBestBase {
+				secondBestBase = baseScore
 			}
 		}
 	}
-	return bestCause, bestShared, bestGap
+	if bestSelection.cause == nil {
+		return eventCorrelationCauseSelection{}
+	}
+	bestSelection.candidateCount = len(candidates)
+	bestSelection.ambiguityPenalty = eventCorrelationAmbiguityPenalty(len(candidates), bestBaseScore, secondBestBase)
+	bestSelection.confidence = clampUnit(bestSelection.confidence * (1 - bestSelection.ambiguityPenalty))
+	return bestSelection
 }
 
 func collectEventCorrelationCandidates(g *Graph) map[NodeKind][]eventCorrelationCandidate {
@@ -441,7 +698,7 @@ func collectEventCorrelationCandidates(g *Graph) map[NodeKind][]eventCorrelation
 			continue
 		}
 		validFrom := observedAt
-		if ts, ok := temporalPropertyTime(node.Properties, "valid_from"); ok {
+		if ts, ok := nodePropertyTime(node, "valid_from"); ok {
 			validFrom = ts
 		}
 		candidates[node.Kind] = append(candidates[node.Kind], eventCorrelationCandidate{
@@ -449,7 +706,7 @@ func collectEventCorrelationCandidates(g *Graph) map[NodeKind][]eventCorrelation
 			observedAt:   observedAt.UTC(),
 			validFrom:    validFrom.UTC(),
 			status:       normalizeEventStatus(node),
-			sourceSystem: strings.TrimSpace(stringProperty(node.Properties, "source_system")),
+			sourceSystem: nodePropertyString(node, "source_system"),
 			contextIDs:   eventCorrelationContextIDs(g, node),
 		})
 	}
@@ -485,17 +742,21 @@ func collectEventCorrelationRecords(g *Graph, patterns []EventCorrelationPattern
 				continue
 			}
 			record := EventCorrelationRecord{
-				ID:              edge.ID,
-				PatternID:       patternID,
-				PatternName:     pattern.Name,
-				Description:     pattern.Description,
-				EdgeKind:        edge.Kind,
-				Cause:           eventReferenceFromNode(causeNode),
-				Effect:          eventReferenceFromNode(effectNode),
-				SharedTargetIDs: uniqueSortedStrings(anySliceStrings(edge.Properties["shared_target_ids"])),
-				GapSeconds:      int64(readFloat64Property(edge.Properties, "gap_seconds")),
-				WindowSeconds:   int64(readFloat64Property(edge.Properties, "window_seconds")),
-				Score:           readFloat64Property(edge.Properties, "score"),
+				ID:               edge.ID,
+				PatternID:        patternID,
+				PatternName:      pattern.Name,
+				Description:      pattern.Description,
+				EdgeKind:         edge.Kind,
+				Cause:            eventReferenceFromNode(causeNode),
+				Effect:           eventReferenceFromNode(effectNode),
+				SharedTargetIDs:  uniqueSortedStrings(anySliceStrings(edge.Properties["shared_target_ids"])),
+				GapSeconds:       int64(readFloat64Property(edge.Properties, "gap_seconds")),
+				WindowSeconds:    int64(readFloat64Property(edge.Properties, "window_seconds")),
+				Score:            readFloat64Property(edge.Properties, "score"),
+				Confidence:       readFloat64Property(edge.Properties, "confidence"),
+				CandidateCount:   int(readFloat64Property(edge.Properties, "candidate_count")),
+				ScopeOverlap:     readFloat64Property(edge.Properties, "scope_overlap"),
+				AmbiguityPenalty: readFloat64Property(edge.Properties, "ambiguity_penalty"),
 			}
 			records = append(records, record)
 		}
@@ -642,7 +903,7 @@ func detectEventAnomalies(g *Graph, now time.Time, allowedContextIDs map[string]
 		status := normalizeEventStatus(node)
 		contextIDs := eventCorrelationContextIDs(g, node)
 		if len(contextIDs) == 0 {
-			contextIDs = []string{strings.TrimSpace(stringProperty(node.Properties, "source_system"))}
+			contextIDs = []string{nodePropertyString(node, "source_system")}
 		}
 		for _, contextID := range contextIDs {
 			if len(allowedContextIDs) > 0 {
@@ -664,7 +925,7 @@ func detectEventAnomalies(g *Graph, now time.Time, allowedContextIDs map[string]
 						ID:                  "event_anomaly:" + strings.ReplaceAll(key, "|", ":"),
 						EventKind:           node.Kind,
 						EntityID:            contextID,
-						SourceSystem:        strings.TrimSpace(stringProperty(node.Properties, "source_system")),
+						SourceSystem:        nodePropertyString(node, "source_system"),
 						Status:              strings.TrimSpace(status),
 						CurrentWindowStart:  currentStart.UTC(),
 						CurrentWindowEnd:    now.UTC(),
@@ -756,16 +1017,9 @@ func eventAnomalySeverityRank(severity string) int {
 	}
 }
 
-func buildEventCorrelationEdge(pattern EventCorrelationPatternDefinition, cause, effect eventCorrelationCandidate, sharedTargetIDs []string, gap time.Duration, now time.Time) *Edge {
+func buildEventCorrelationEdge(pattern EventCorrelationPatternDefinition, cause, effect eventCorrelationCandidate, selection eventCorrelationCauseSelection, now time.Time) *Edge {
 	if now.IsZero() {
 		now = time.Now().UTC()
-	}
-	score := 1.0
-	if pattern.MaxGapSeconds > 0 {
-		score = 1.0 - (float64(gap) / float64(time.Duration(pattern.MaxGapSeconds)*time.Second))
-		if score < 0 {
-			score = 0
-		}
 	}
 	properties := map[string]any{
 		"source_system":     eventCorrelationSourceSystem,
@@ -776,10 +1030,14 @@ func buildEventCorrelationEdge(pattern EventCorrelationPatternDefinition, cause,
 		"transaction_from":  now.UTC().Format(time.RFC3339),
 		"pattern_id":        pattern.ID,
 		"pattern_name":      pattern.Name,
-		"shared_target_ids": sharedTargetIDs,
-		"gap_seconds":       int64(gap.Seconds()),
+		"shared_target_ids": selection.sharedTargetIDs,
+		"gap_seconds":       int64(selection.gap.Seconds()),
 		"window_seconds":    pattern.MaxGapSeconds,
-		"score":             score,
+		"score":             selection.confidence,
+		"confidence":        selection.confidence,
+		"candidate_count":   selection.candidateCount,
+		"scope_overlap":     selection.scopeOverlap,
+		"ambiguity_penalty": selection.ambiguityPenalty,
 	}
 	return &Edge{
 		ID:         eventCorrelationEdgeID(pattern.ID, effect.node.ID, cause.node.ID),
@@ -836,7 +1094,7 @@ func eventCorrelationContextIDs(g *Graph, node *Node) []string {
 		}
 		set[targetID] = struct{}{}
 	}
-	if serviceID := strings.TrimSpace(stringProperty(node.Properties, "service_id")); serviceID != "" {
+	if serviceID := nodePropertyString(node, "service_id"); serviceID != "" {
 		if strings.Contains(serviceID, ":") {
 			set[serviceID] = struct{}{}
 		} else {
@@ -856,14 +1114,14 @@ func eventReferenceFromNode(node *Node) EventReference {
 		Name:         node.Name,
 		Provider:     node.Provider,
 		Account:      node.Account,
-		ServiceID:    strings.TrimSpace(stringProperty(node.Properties, "service_id")),
+		ServiceID:    nodePropertyString(node, "service_id"),
 		Status:       normalizeEventStatus(node),
-		SourceSystem: strings.TrimSpace(stringProperty(node.Properties, "source_system")),
+		SourceSystem: nodePropertyString(node, "source_system"),
 	}
 	if ts, ok := graphObservedAt(node); ok {
 		ref.ObservedAt = ts
 	}
-	if ts, ok := temporalPropertyTime(node.Properties, "valid_from"); ok {
+	if ts, ok := nodePropertyTime(node, "valid_from"); ok {
 		ref.ValidFrom = ts
 	}
 	return ref
@@ -906,6 +1164,183 @@ func clampEventCorrelationLimit(limit int) int {
 		return eventCorrelationMaxLimit
 	}
 	return limit
+}
+
+func clampEventCorrelationChainDepth(depth int) int {
+	if depth <= 0 {
+		return eventCorrelationDefaultChainDepth
+	}
+	if depth > eventCorrelationMaxChainDepth {
+		return eventCorrelationMaxChainDepth
+	}
+	return depth
+}
+
+func normalizeEventChainDirection(direction string) string {
+	switch strings.ToLower(strings.TrimSpace(direction)) {
+	case "upstream", "downstream", "both":
+		return strings.ToLower(strings.TrimSpace(direction))
+	default:
+		return "both"
+	}
+}
+
+func eventCorrelationProximityScore(gap, maxGap time.Duration) float64 {
+	if maxGap <= 0 {
+		return 1
+	}
+	score := 1.0 - (float64(gap) / float64(maxGap))
+	return clampUnit(score)
+}
+
+func eventCorrelationScopeOverlap(left, right []string) float64 {
+	if len(left) == 0 || len(right) == 0 {
+		return 0
+	}
+	leftSet := make(map[string]struct{}, len(left))
+	for _, value := range left {
+		leftSet[value] = struct{}{}
+	}
+	union := len(leftSet)
+	shared := 0
+	seenRight := make(map[string]struct{}, len(right))
+	for _, value := range right {
+		if _, ok := seenRight[value]; ok {
+			continue
+		}
+		seenRight[value] = struct{}{}
+		if _, ok := leftSet[value]; ok {
+			shared++
+			continue
+		}
+		union++
+	}
+	if union == 0 {
+		return 0
+	}
+	return float64(shared) / float64(union)
+}
+
+func eventCorrelationAmbiguityPenalty(candidateCount int, bestBaseScore, secondBestBase float64) float64 {
+	if candidateCount <= 1 {
+		return 0
+	}
+	penalty := float64(candidateCount-1) * 0.08
+	if bestBaseScore-secondBestBase <= 0.10 {
+		penalty += 0.10
+	}
+	if penalty > 0.45 {
+		penalty = 0.45
+	}
+	return penalty
+}
+
+func eventCorrelationSeedEventIDs(g *Graph, eventID, entityID string) []string {
+	if g == nil {
+		return nil
+	}
+	if eventID != "" {
+		if _, ok := g.GetNode(eventID); ok {
+			return []string{eventID}
+		}
+		return nil
+	}
+	seeds := make(map[string]struct{})
+	entityID = strings.TrimSpace(entityID)
+	for _, node := range g.GetAllNodes() {
+		if node == nil || !IsEventCorrelationNodeKind(node.Kind) {
+			continue
+		}
+		for _, contextID := range eventCorrelationContextIDs(g, node) {
+			if contextID == entityID {
+				seeds[node.ID] = struct{}{}
+				break
+			}
+		}
+	}
+	return sortedStringSet(seeds)
+}
+
+func sortEventCorrelationRecordsForTraversal(records []EventCorrelationRecord) {
+	sort.Slice(records, func(i, j int) bool {
+		if records[i].Confidence != records[j].Confidence {
+			return records[i].Confidence > records[j].Confidence
+		}
+		if records[i].GapSeconds != records[j].GapSeconds {
+			return records[i].GapSeconds < records[j].GapSeconds
+		}
+		return records[i].ID < records[j].ID
+	})
+}
+
+func dfsEventCorrelationChains(currentID, direction string, remainingDepth int, visited map[string]struct{}, eventIDs []string, edges []EventCorrelationRecord, eventRefs map[string]EventReference, upstream, downstream map[string][]EventCorrelationRecord, out *[]EventCorrelationChain) {
+	if remainingDepth <= 0 {
+		emitEventCorrelationChain(direction, eventIDs, edges, eventRefs, out)
+		return
+	}
+	nextEdges := eventCorrelationNextEdges(currentID, direction, upstream, downstream)
+	advanced := false
+	for _, edge := range nextEdges {
+		nextID := edge.Cause.ID
+		if direction == "downstream" {
+			nextID = edge.Effect.ID
+		}
+		if nextID == currentID {
+			continue
+		}
+		if _, ok := visited[nextID]; ok {
+			continue
+		}
+		advanced = true
+		visited[nextID] = struct{}{}
+		dfsEventCorrelationChains(nextID, direction, remainingDepth-1, visited, append(append([]string(nil), eventIDs...), nextID), append(append([]EventCorrelationRecord(nil), edges...), edge), eventRefs, upstream, downstream, out)
+		delete(visited, nextID)
+	}
+	if !advanced {
+		emitEventCorrelationChain(direction, eventIDs, edges, eventRefs, out)
+	}
+}
+
+func eventCorrelationNextEdges(currentID, direction string, upstream, downstream map[string][]EventCorrelationRecord) []EventCorrelationRecord {
+	switch direction {
+	case "upstream":
+		return upstream[currentID]
+	case "downstream":
+		return downstream[currentID]
+	default:
+		return nil
+	}
+}
+
+func emitEventCorrelationChain(direction string, eventIDs []string, edges []EventCorrelationRecord, eventRefs map[string]EventReference, out *[]EventCorrelationChain) {
+	if len(edges) == 0 {
+		return
+	}
+	events := make([]EventReference, 0, len(eventIDs))
+	for _, eventID := range eventIDs {
+		ref, ok := eventRefs[eventID]
+		if !ok {
+			continue
+		}
+		events = append(events, ref)
+	}
+	if len(events) == 0 {
+		return
+	}
+	score := 0.0
+	for _, edge := range edges {
+		score += edge.Confidence
+	}
+	score = score / float64(len(edges))
+	chainID := "event_chain:" + direction + ":" + strings.Join(eventIDs, "->")
+	*out = append(*out, EventCorrelationChain{
+		ID:           chainID,
+		Direction:    direction,
+		Depth:        len(edges),
+		Score:        score,
+		Events:       events,
+		Correlations: append([]EventCorrelationRecord(nil), edges...),
+	})
 }
 
 func stringProperty(properties map[string]any, key string) string {

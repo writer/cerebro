@@ -88,6 +88,92 @@ func TestBuildContractCatalogIncludesLifecycleEvents(t *testing.T) {
 	}
 }
 
+func TestBuildContractCatalogIncludesEvaluationMappings(t *testing.T) {
+	config, err := LoadDefaultConfig()
+	if err != nil {
+		t.Fatalf("load default config failed: %v", err)
+	}
+
+	catalog := BuildContractCatalog(config, time.Date(2026, 3, 9, 22, 0, 0, 0, time.UTC))
+	required := map[string][]string{
+		"evaluation_conversation_completed": {"conversation_id", "evaluation_run_id"},
+		"evaluation_turn_completed":         {"conversation_id", "turn_id", "evaluation_run_id"},
+		"evaluation_agent_tool_call":        {"conversation_id", "turn_id", "tool_call_id", "evaluation_run_id"},
+		"evaluation_agent_cost":             {"conversation_id", "cost_id", "evaluation_run_id"},
+	}
+	optional := map[string][]string{
+		"evaluation_conversation_completed": {"verdict", "summary", "target_ids", "final_stage_id"},
+		"evaluation_turn_completed": {
+			"decision_type",
+			"rationale",
+			"target_ids",
+			"stage_id",
+			"stage_name",
+			"stage_order",
+			"previous_stage_id",
+			"supersedes_stage_id",
+			"contradicts_stage_id",
+		},
+		"evaluation_agent_tool_call": {"tool_name", "status", "target_ids", "stage_id", "stage_name"},
+		"evaluation_agent_cost":      {"amount_usd", "currency", "target_ids", "stage_id"},
+	}
+
+	for mappingName, requiredKeys := range required {
+		contract := findMappingContract(catalog.Mappings, mappingName)
+		if contract == nil {
+			t.Fatalf("expected mapping contract %q", mappingName)
+		}
+		for _, key := range requiredKeys {
+			if !containsContractString(contract.RequiredDataKeys, key) {
+				t.Fatalf("expected %q required keys to include %q, got %#v", mappingName, key, contract.RequiredDataKeys)
+			}
+		}
+		for _, key := range optional[mappingName] {
+			if !containsContractString(contract.OptionalDataKeys, key) {
+				t.Fatalf("expected %q optional keys to include %q, got %#v", mappingName, key, contract.OptionalDataKeys)
+			}
+		}
+	}
+}
+
+func TestBuildContractCatalogIncludesPlaybookMappings(t *testing.T) {
+	config, err := LoadDefaultConfig()
+	if err != nil {
+		t.Fatalf("load default config failed: %v", err)
+	}
+
+	catalog := BuildContractCatalog(config, time.Date(2026, 3, 23, 1, 0, 0, 0, time.UTC))
+	required := map[string][]string{
+		"platform_playbook_run_started":     {"playbook_run_id"},
+		"platform_playbook_stage_completed": {"playbook_run_id", "stage_id"},
+		"platform_playbook_action_executed": {"playbook_run_id", "stage_id", "action_id"},
+		"platform_playbook_run_completed":   {"playbook_run_id"},
+	}
+	optional := map[string][]string{
+		"platform_playbook_run_started":     {"playbook_id", "playbook_name", "operator_email", "automation_id", "target_ids"},
+		"platform_playbook_stage_completed": {"stage_name", "stage_order", "previous_stage_id", "retry_of_stage_id", "approval_status", "target_ids"},
+		"platform_playbook_action_executed": {"action_type", "title", "summary", "operator_email", "target_ids"},
+		"platform_playbook_run_completed":   {"playbook_id", "playbook_name", "verdict", "final_stage_id", "rollback_state", "target_ids"},
+	}
+
+	for mappingName, requiredKeys := range required {
+		contract := findMappingContract(catalog.Mappings, mappingName)
+		if contract == nil {
+			t.Fatalf("expected mapping contract %q", mappingName)
+		}
+		for _, key := range requiredKeys {
+			if !containsContractString(contract.RequiredDataKeys, key) {
+				t.Fatalf("expected %q required keys to include %q, got %#v", mappingName, key, contract.RequiredDataKeys)
+			}
+		}
+		for _, key := range optional[mappingName] {
+			if !containsContractString(contract.OptionalDataKeys, key) {
+				t.Fatalf("expected %q optional keys to include %q, got %#v", mappingName, key, contract.OptionalDataKeys)
+			}
+		}
+	}
+}
+
 func TestValidateEventAgainstMappingContract(t *testing.T) {
 	config := MappingConfig{
 		Mappings: []EventMapping{
@@ -251,4 +337,13 @@ func containsContractString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func findMappingContract(contracts []MappingContract, name string) *MappingContract {
+	for i := range contracts {
+		if contracts[i].Name == name {
+			return &contracts[i]
+		}
+	}
+	return nil
 }

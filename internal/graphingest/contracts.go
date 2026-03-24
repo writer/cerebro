@@ -644,6 +644,7 @@ func normalizeTemplateExpression(expr string) (string, bool, bool) {
 
 	rootKeys := map[string]struct{}{
 		"id":        {},
+		"existing":  {},
 		"source":    {},
 		"type":      {},
 		"subject":   {},
@@ -709,7 +710,7 @@ func addAllRefs(refs []templateRef, required bool, requiredData, optionalData, c
 
 func isEnvelopeContextKey(key string) bool {
 	switch strings.TrimSpace(key) {
-	case "id", "source", "type", "subject", "time", "tenant_id":
+	case "existing", "id", "source", "type", "subject", "time", "tenant_id":
 		return true
 	default:
 		return false

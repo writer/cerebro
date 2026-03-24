@@ -355,6 +355,110 @@ func TestGetClaimGroupRecordIncludesSingleValueGroups(t *testing.T) {
 	}
 }
 
+func TestQueryClaimGroupsFiltersNeedsAdjudicationWithPagination(t *testing.T) {
+	g := New()
+	baseAt := time.Date(2026, 3, 11, 9, 0, 0, 0, time.UTC)
+
+	for _, serviceID := range []string{"service:payments", "service:checkout", "service:auth"} {
+		g.AddNode(&Node{ID: serviceID, Kind: NodeKindService, Name: serviceID, Properties: knowledgeTestProperties(baseAt)})
+	}
+	for _, personID := range []string{"person:alice@example.com", "person:bob@example.com", "person:carol@example.com", "person:dave@example.com", "person:erin@example.com"} {
+		g.AddNode(&Node{ID: personID, Kind: NodeKindPerson, Name: personID, Properties: knowledgeTestProperties(baseAt)})
+	}
+
+	writeOwnerClaim := func(id, subjectID, ownerID string, observedAt time.Time) {
+		t.Helper()
+		if _, err := WriteClaim(g, ClaimWriteRequest{
+			ID:              id,
+			SubjectID:       subjectID,
+			Predicate:       "owner",
+			ObjectID:        ownerID,
+			ObservedAt:      observedAt,
+			ValidFrom:       observedAt,
+			RecordedAt:      observedAt,
+			TransactionFrom: observedAt,
+			SourceSystem:    "api",
+		}); err != nil {
+			t.Fatalf("write owner claim %q: %v", id, err)
+		}
+	}
+
+	writeOwnerClaim("claim:payments:alice", "service:payments", "person:alice@example.com", baseAt.Add(3*time.Hour))
+	writeOwnerClaim("claim:payments:bob", "service:payments", "person:bob@example.com", baseAt.Add(3*time.Hour))
+	writeOwnerClaim("claim:checkout:carol", "service:checkout", "person:carol@example.com", baseAt.Add(2*time.Hour))
+	writeOwnerClaim("claim:checkout:dave", "service:checkout", "person:dave@example.com", baseAt.Add(2*time.Hour))
+	writeOwnerClaim("claim:auth:erin", "service:auth", "person:erin@example.com", baseAt.Add(time.Hour))
+
+	needsAdjudication := true
+	result := QueryClaimGroups(g, ClaimGroupQueryOptions{
+		NeedsAdjudication:  &needsAdjudication,
+		IncludeSingleValue: true,
+		ValidAt:            baseAt.Add(4 * time.Hour),
+		RecordedAt:         baseAt.Add(4 * time.Hour),
+		Limit:              1,
+		Offset:             1,
+	})
+
+	if result.Summary.MatchedGroups != 2 {
+		t.Fatalf("expected two matched groups before pagination, got %+v", result.Summary)
+	}
+	if result.Summary.GroupsNeedingAdjudication != 2 {
+		t.Fatalf("expected two groups needing adjudication, got %+v", result.Summary)
+	}
+	if result.Count != 1 || len(result.Groups) != 1 {
+		t.Fatalf("expected one paginated group, got count=%d groups=%+v", result.Count, result.Groups)
+	}
+	if result.Pagination.Total != 2 || result.Pagination.Offset != 1 || result.Pagination.Limit != 1 || result.Pagination.HasMore {
+		t.Fatalf("unexpected pagination metadata: %+v", result.Pagination)
+	}
+	if result.Groups[0].SubjectID != "service:checkout" {
+		t.Fatalf("expected checkout group at offset 1 after sort, got %+v", result.Groups[0])
+	}
+	if !result.Groups[0].Derived.NeedsAdjudication {
+		t.Fatalf("expected paginated group to need adjudication, got %+v", result.Groups[0].Derived)
+	}
+}
+
+func TestQueryClaimGroupsReturnsEmptyCollectionForNoMatches(t *testing.T) {
+	g := New()
+	baseAt := time.Date(2026, 3, 11, 9, 0, 0, 0, time.UTC)
+	g.AddNode(&Node{ID: "service:payments", Kind: NodeKindService, Name: "Payments", Properties: knowledgeTestProperties(baseAt)})
+	g.AddNode(&Node{ID: "person:alice@example.com", Kind: NodeKindPerson, Name: "Alice", Properties: knowledgeTestProperties(baseAt)})
+
+	if _, err := WriteClaim(g, ClaimWriteRequest{
+		ID:              "claim:payments:owner:alice",
+		SubjectID:       "service:payments",
+		Predicate:       "owner",
+		ObjectID:        "person:alice@example.com",
+		ObservedAt:      baseAt,
+		ValidFrom:       baseAt,
+		RecordedAt:      baseAt,
+		TransactionFrom: baseAt,
+		SourceSystem:    "api",
+	}); err != nil {
+		t.Fatalf("write claim: %v", err)
+	}
+
+	needsAdjudication := true
+	result := QueryClaimGroups(g, ClaimGroupQueryOptions{
+		NeedsAdjudication:  &needsAdjudication,
+		IncludeSingleValue: true,
+		ValidAt:            baseAt.Add(time.Hour),
+		RecordedAt:         baseAt.Add(time.Hour),
+		Limit:              5,
+	})
+
+	if result.Count != 0 || len(result.Groups) != 0 {
+		t.Fatalf("expected no matching groups, got %+v", result.Groups)
+	}
+	if result.Summary.MatchedGroups != 0 || result.Summary.GroupsNeedingAdjudication != 0 {
+		t.Fatalf("expected empty summary for no matches, got %+v", result.Summary)
+	}
+	if result.Pagination.Total != 0 || result.Pagination.HasMore {
+		t.Fatalf("unexpected pagination for no matches: %+v", result.Pagination)
+	}
+}
+
 func TestAdjudicateClaimGroupBuildsNewCanonicalClaimVersion(t *testing.T) {
 	g := New()
 	baseAt := time.Date(2026, 3, 10, 8, 0, 0, 0, time.UTC)

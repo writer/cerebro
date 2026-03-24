@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -361,7 +362,8 @@ func (g *Graph) SetNodeProperty(id string, key string, value any) bool {
 			g.mu.Unlock()
 			return false
 		}
-	} else if !setObservationPropertyValue(node, key, value) {
+	} else if setNodeCommonPropertyValue(node, key, value) {
+	} else if !setNodeMetadataPropertyValue(node, key, value) {
 		if node.Properties == nil {
 			node.Properties = make(map[string]any)
 		}
@@ -795,18 +797,18 @@ func (g *Graph) buildIndexLocked() {
 
 // isInternetFacing checks if a node is exposed to the internet
 func (g *Graph) isInternetFacing(node *Node) bool {
-	if node == nil || node.Properties == nil {
+	if node == nil {
 		return false
 	}
 
 	// Check for common internet exposure indicators
-	if exposed, ok := node.Properties["internet_exposed"].(bool); ok && exposed {
+	if nodePropertyBool(node, "internet_exposed") {
 		return true
 	}
-	if public, ok := node.Properties["public"].(bool); ok && public {
+	if nodePropertyBool(node, "public") {
 		return true
 	}
-	if publicIP, ok := node.Properties["public_ip"].(string); ok && publicIP != "" {
+	if publicIP := nodePropertyString(node, "public_ip"); publicIP != "" {
 		return true
 	}
 
@@ -814,19 +816,21 @@ func (g *Graph) isInternetFacing(node *Node) bool {
 	if !NodeKindHasCapability(node.Kind, NodeCapabilityInternetExposable) {
 		return false
 	}
-	if nodeType, ok := node.Properties["type"].(string); ok {
+	if nodeType := nodePropertyString(node, "type"); nodeType != "" {
 		if nodeType == "load_balancer" || nodeType == "api_gateway" || nodeType == "cdn" {
 			return true
 		}
 	}
-	if publicIP, ok := node.Properties["public_ip_address"].(string); ok && publicIP != "" {
+	if publicIP := nodePropertyString(node, "public_ip_address"); publicIP != "" {
 		return true
 	}
-	if funcURL, ok := node.Properties["function_url"].(string); ok && funcURL != "" {
+	if funcURL := nodePropertyString(node, "function_url"); funcURL != "" {
 		return true
 	}
-	if public, ok := node.Properties["public_access_block_enabled"].(bool); ok && !public {
-		return true
+	if hasValue, ok := node.PropertyValue("public_access_block_enabled"); ok {
+		if public, ok := hasValue.(bool); ok && !public {
+			return true
+		}
 	}
 
 	return false
@@ -843,12 +847,8 @@ func (g *Graph) isCrownJewel(node *Node) bool {
 		return true
 	}
 
-	if node.Properties == nil {
-		return false
-	}
-
 	// Contains sensitive data
-	if dataClass, ok := node.Properties["data_classification"].(string); ok {
+	if dataClass := nodePropertyString(node, "data_classification"); dataClass != "" {
 		if dataClass == "confidential" || dataClass == "restricted" || dataClass == "sensitive" {
 			return true
 		}
@@ -856,15 +856,15 @@ func (g *Graph) isCrownJewel(node *Node) bool {
 
 	// Use schema capabilities instead of hardcoded kind checks.
 	if NodeKindHasCapability(node.Kind, NodeCapabilitySensitiveData) {
-		if containsPII, ok := node.Properties["contains_pii"].(bool); ok && containsPII {
+		if nodePropertyBool(node, "contains_pii") {
 			return true
 		}
-		if env, ok := node.Properties["environment"].(string); ok && env == "production" {
+		if env := nodePropertyString(node, "environment"); env == "production" {
 			return true
 		}
 	}
 	if NodeKindHasCapability(node.Kind, NodeCapabilityPrivilegedIdentity) {
-		if admin, ok := node.Properties["is_admin"].(bool); ok && admin {
+		if nodePropertyBool(node, "is_admin") {
 			return true
 		}
 	}
@@ -1193,6 +1193,13 @@ func removeIndexedNodeLocked(nodes []*Node, nodeID string) []*Node {
 }
 
 func (g *Graph) addEdgeLocked(edge *Edge) bool {
+	// Canonicalize identity fields so stored edges use canonical values,
+	// ensuring consistent cardinality counting and deduplication.
+	edge.Source = strings.TrimSpace(edge.Source)
+	edge.Target = strings.TrimSpace(edge.Target)
+	edge.Kind = EdgeKind(strings.TrimSpace(string(edge.Kind)))
+	edge.ID = strings.TrimSpace(edge.ID)
+
 	if !g.applyEdgeSchemaValidationLocked(edge) {
 		return false
 	}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -100,6 +101,106 @@ func (s *Server) rebuildGraph(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) riskReport(w http.ResponseWriter, r *http.Request) {
 	report, err := s.graphRisk.RiskReport(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	s.json(w, http.StatusOK, report)
+}
+
+func (s *Server) vendorRiskReport(w http.ResponseWriter, r *http.Request) {
+	opts, err := vendorRiskReportOptionsFromRequest(r)
+	if err != nil {
+		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	report, err := s.graphRisk.VendorRiskReport(r.Context(), opts)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	s.json(w, http.StatusOK, report)
+}
+
+func vendorRiskReportOptionsFromRequest(r *http.Request) (graph.VendorRiskReportOptions, error) {
+	opts := graph.VendorRiskReportOptions{
+		IncludeAlerts: true,
+	}
+	query := r.URL.Query()
+	if raw := strings.TrimSpace(query.Get("min_score")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 0 || value > 100 {
+			return graph.VendorRiskReportOptions{}, fmt.Errorf("min_score must be between 0 and 100")
+		}
+		opts.MinRiskScore = value
+	}
+	if raw := splitCSVQuery(query.Get("risk")); len(raw) > 0 {
+		levels := make([]graph.RiskLevel, 0, len(raw))
+		for _, value := range raw {
+			levels = append(levels, graph.RiskLevel(value))
+		}
+		opts.RiskLevels = levels
+	}
+	opts.VerificationStatuses = splitCSVQuery(query.Get("verification_status"))
+	opts.Categories = splitCSVQuery(query.Get("category"))
+	opts.PermissionLevels = splitCSVQuery(query.Get("permission_level"))
+	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 200 {
+			return graph.VendorRiskReportOptions{}, fmt.Errorf("limit must be between 1 and 200")
+		}
+		opts.Limit = value
+	}
+	if raw := strings.TrimSpace(query.Get("include_alerts")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return graph.VendorRiskReportOptions{}, fmt.Errorf("include_alerts must be a boolean")
+		}
+		opts.IncludeAlerts = value
+	}
+	if raw := strings.TrimSpace(query.Get("window_days")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 365 {
+			return graph.VendorRiskReportOptions{}, fmt.Errorf("window_days must be between 1 and 365")
+		}
+		opts.MonitoringWindow = time.Duration(value) * 24 * time.Hour
+	}
+	return opts, nil
+}
+
+func splitCSVQuery(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			values = append(values, part)
+		}
+	}
+	return values
+}
+
+func (s *Server) apiSurface(w http.ResponseWriter, r *http.Request) {
+	opts := graph.APISurfaceReportOptions{MaxDepth: 4}
+	if includeInternal := strings.TrimSpace(r.URL.Query().Get("include_internal")); includeInternal != "" {
+		opts.IncludeInternal = strings.EqualFold(includeInternal, "true") || includeInternal == "1"
+	}
+	if depthStr := r.URL.Query().Get("max_depth"); depthStr != "" {
+		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 && d <= 10 {
+			opts.MaxDepth = d
+		}
+	}
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			opts.Limit = l
+		}
+	}
+
+	report, err := s.graphRisk.APISurface(r.Context(), opts)
 	if err != nil {
 		s.errorFromErr(w, err)
 		return

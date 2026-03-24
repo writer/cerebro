@@ -11,9 +11,10 @@ import (
 type RegistryKind string
 
 const (
-	RegistryECR RegistryKind = "ecr"
-	RegistryGCR RegistryKind = "gcr"
-	RegistryACR RegistryKind = "acr"
+	RegistryDockerHub RegistryKind = "dockerhub"
+	RegistryECR       RegistryKind = "ecr"
+	RegistryGCR       RegistryKind = "gcr"
+	RegistryACR       RegistryKind = "acr"
 )
 
 type RunStatus string

@@ -13,6 +13,7 @@ type SnapshotGraphStore struct {
 
 	indexesOnce sync.Once
 	nodeByID    map[string]*Node
+	edgeByID    map[string]*Edge
 	outEdges    map[string][]*Edge
 	inEdges     map[string][]*Edge
 	nodesByKind map[NodeKind][]*Node
@@ -50,6 +51,10 @@ func (s *SnapshotGraphStore) DeleteNode(ctx context.Context, _ string) error {
 	return snapshotGraphStoreWriteErr(ctx, s)
 }
 
+func (s *SnapshotGraphStore) DeleteEdge(ctx context.Context, _ string) error {
+	return snapshotGraphStoreWriteErr(ctx, s)
+}
+
 func (s *SnapshotGraphStore) LookupNode(ctx context.Context, id string) (*Node, bool, error) {
 	if err := graphStoreContextErr(ctx); err != nil {
 		return nil, false, err
@@ -60,6 +65,18 @@ func (s *SnapshotGraphStore) LookupNode(ctx context.Context, id string) (*Node, 
 	s.ensureIndexes()
 	node, ok := s.nodeByID[id]
 	return node, ok, nil
+}
+
+func (s *SnapshotGraphStore) LookupEdge(ctx context.Context, id string) (*Edge, bool, error) {
+	if err := graphStoreContextErr(ctx); err != nil {
+		return nil, false, err
+	}
+	if s == nil || s.snapshot == nil {
+		return nil, false, ErrStoreUnavailable
+	}
+	s.ensureIndexes()
+	edge, ok := s.edgeByID[id]
+	return edge, ok, nil
 }
 
 func (s *SnapshotGraphStore) LookupOutEdges(ctx context.Context, nodeID string) ([]*Edge, error) {
@@ -185,6 +202,7 @@ func (s *SnapshotGraphStore) ExtractSubgraph(ctx context.Context, rootID string,
 func (s *SnapshotGraphStore) ensureIndexes() {
 	s.indexesOnce.Do(func() {
 		s.nodeByID = make(map[string]*Node)
+		s.edgeByID = make(map[string]*Edge)
 		s.outEdges = make(map[string][]*Edge)
 		s.inEdges = make(map[string][]*Edge)
 		s.nodesByKind = make(map[NodeKind][]*Node)
@@ -210,6 +228,9 @@ func (s *SnapshotGraphStore) ensureIndexes() {
 			}
 			if _, ok := s.nodeByID[edge.Target]; !ok {
 				continue
+			}
+			if edge.ID != "" {
+				s.edgeByID[edge.ID] = edge
 			}
 			s.outEdges[edge.Source] = append(s.outEdges[edge.Source], edge)
 			s.inEdges[edge.Target] = append(s.inEdges[edge.Target], edge)

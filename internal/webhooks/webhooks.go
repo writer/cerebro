@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -155,6 +156,10 @@ const (
 	EventPlatformDecisionRecorded           EventType = "platform.decision.recorded"
 	EventPlatformOutcomeRecorded            EventType = "platform.outcome.recorded"
 	EventPlatformActionRecorded             EventType = "platform.action.recorded"
+	EventPlatformPlaybookRunStarted         EventType = "platform.playbook.run.started"
+	EventPlatformPlaybookStageCompleted     EventType = "platform.playbook.stage.completed"
+	EventPlatformPlaybookActionExecuted     EventType = "platform.playbook.action.executed"
+	EventPlatformPlaybookRunCompleted       EventType = "platform.playbook.run.completed"
 	EventPlatformReportRunQueued            EventType = "platform.report_run.queued"
 	EventPlatformReportRunStarted           EventType = "platform.report_run.started"
 	EventPlatformReportRunCompleted         EventType = "platform.report_run.completed"
@@ -163,6 +168,10 @@ const (
 	EventPlatformReportSectionEmitted       EventType = "platform.report_run.section_emitted"
 	EventPlatformReportSnapshotMaterialized EventType = "platform.report_snapshot.materialized"
 	EventPlatformGraphChangelogComputed     EventType = "platform.graph_changelog.computed"
+	EventEvaluationTurnCompleted            EventType = "evaluation.turn.completed"
+	EventEvaluationConversationCompleted    EventType = "evaluation.conversation.completed"
+	EventEvaluationAgentToolCall            EventType = "evaluation.agent.tool_call"
+	EventEvaluationAgentCost                EventType = "evaluation.agent.cost"
 	EventSecurityWorkloadScanStarted        EventType = "security.workload_scan.started"
 	EventSecurityWorkloadScanCompleted      EventType = "security.workload_scan.completed"
 	EventSecurityWorkloadScanFailed         EventType = "security.workload_scan.failed"
@@ -210,6 +219,10 @@ var defaultEventTypes = []EventType{
 	EventPlatformDecisionRecorded,
 	EventPlatformOutcomeRecorded,
 	EventPlatformActionRecorded,
+	EventPlatformPlaybookRunStarted,
+	EventPlatformPlaybookStageCompleted,
+	EventPlatformPlaybookActionExecuted,
+	EventPlatformPlaybookRunCompleted,
 	EventPlatformReportRunQueued,
 	EventPlatformReportRunStarted,
 	EventPlatformReportRunCompleted,
@@ -218,6 +231,10 @@ var defaultEventTypes = []EventType{
 	EventPlatformReportSectionEmitted,
 	EventPlatformReportSnapshotMaterialized,
 	EventPlatformGraphChangelogComputed,
+	EventEvaluationTurnCompleted,
+	EventEvaluationConversationCompleted,
+	EventEvaluationAgentToolCall,
+	EventEvaluationAgentCost,
 	EventSecurityWorkloadScanStarted,
 	EventSecurityWorkloadScanCompleted,
 	EventSecurityWorkloadScanFailed,
@@ -238,6 +255,9 @@ func DefaultEventTypes() []EventType {
 const (
 	defaultDeliveryConcurrency = 5
 	webhookDNSLookupTimeout    = 5 * time.Second
+	defaultDeliveryAttempts    = 3
+	defaultRetryDelay          = 250 * time.Millisecond
+	defaultMaxRetryDelay       = 2 * time.Second
 )
 
 // Webhook represents a webhook configuration
@@ -296,10 +316,14 @@ type Service struct {
 	deliveries          []Delivery
 	client              *http.Client
 	deliveryConcurrency int
+	maxDeliveryAttempts int
+	baseRetryDelay      time.Duration
+	maxRetryDelay       time.Duration
 	eventPublisher      EventPublisher
 	subscribers         []EventSubscriber
 	mu                  sync.RWMutex
 	skipValidation      bool // For testing only - allows localhost URLs
+	sleep               func(time.Duration)
 }
 
 func NewService() *Service {
@@ -311,6 +335,9 @@ func NewService() *Service {
 			Timeout: 30 * time.Second,
 		},
 		deliveryConcurrency: defaultDeliveryConcurrency,
+		maxDeliveryAttempts: defaultDeliveryAttempts,
+		baseRetryDelay:      defaultRetryDelay,
+		maxRetryDelay:       defaultMaxRetryDelay,
 	}
 }
 
@@ -461,10 +488,15 @@ func isValidEventType(e EventType) bool {
 		EventRiskScoreChanged, EventToxicCombinationDetected, EventToxicCombinationResolved,
 		EventApprovalRequested, EventCohortOutlierDetected, EventComplianceScoreChanged,
 		EventPlatformClaimWritten, EventPlatformClaimAdjudicated, EventPlatformDecisionRecorded,
-		EventPlatformOutcomeRecorded, EventPlatformActionRecorded, EventPlatformReportRunQueued,
-		EventPlatformReportRunStarted, EventPlatformReportRunCompleted, EventPlatformReportRunFailed,
+		EventPlatformOutcomeRecorded, EventPlatformActionRecorded,
+		EventPlatformPlaybookRunStarted, EventPlatformPlaybookStageCompleted,
+		EventPlatformPlaybookActionExecuted, EventPlatformPlaybookRunCompleted,
+		EventPlatformReportRunQueued, EventPlatformReportRunStarted,
+		EventPlatformReportRunCompleted, EventPlatformReportRunFailed,
 		EventPlatformReportRunCanceled, EventPlatformReportSectionEmitted,
 		EventPlatformReportSnapshotMaterialized, EventPlatformGraphChangelogComputed,
+		EventEvaluationTurnCompleted, EventEvaluationConversationCompleted,
+		EventEvaluationAgentToolCall, EventEvaluationAgentCost,
 		EventSecurityWorkloadScanStarted, EventSecurityWorkloadScanCompleted,
 		EventSecurityWorkloadScanFailed, EventSecurityWorkloadScanReconciled,
 		EventSecurityImageScanStarted, EventSecurityImageScanCompleted,
@@ -590,63 +622,166 @@ func (s *Service) isSubscribed(webhook *Webhook, eventType EventType) bool {
 }
 
 func (s *Service) deliver(ctx context.Context, webhook *Webhook, event Event) error {
-	start := time.Now()
+	recordDelivery := func(start time.Time, payload []byte, status int, body string, success bool) {
+		s.mu.Lock()
+		s.deliveries = append(s.deliveries, Delivery{
+			ID:             uuid.New().String(),
+			WebhookID:      webhook.ID,
+			EventType:      event.Type,
+			Payload:        payload,
+			ResponseStatus: status,
+			ResponseBody:   body,
+			DeliveredAt:    time.Now(),
+			DurationMs:     time.Since(start).Milliseconds(),
+			Success:        success,
+		})
+		if len(s.deliveries) > 1000 {
+			s.deliveries = s.deliveries[len(s.deliveries)-1000:]
+		}
+		s.mu.Unlock()
+	}
 
 	payload, err := json.Marshal(event)
 	if err != nil {
+		recordDelivery(time.Now(), nil, 0, err.Error(), false)
 		return err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", webhook.URL, bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Cerebro-Event", string(event.Type))
-	req.Header.Set("X-Cerebro-Delivery", event.ID)
-
-	// Sign payload if secret is configured
-	if webhook.Secret != "" {
-		signature := s.sign(payload, webhook.Secret)
-		req.Header.Set("X-Cerebro-Signature", signature)
-	}
-
-	resp, err := s.client.Do(req)
-
-	delivery := Delivery{
-		ID:          uuid.New().String(),
-		WebhookID:   webhook.ID,
-		EventType:   event.Type,
-		Payload:     payload,
-		DeliveredAt: time.Now(),
-		DurationMs:  time.Since(start).Milliseconds(),
-	}
-
-	var deliveryErr error
-	if err != nil {
-		delivery.ResponseStatus = 0
-		delivery.ResponseBody = err.Error()
-		delivery.Success = false
-		deliveryErr = err
-	} else {
-		defer func() { _ = resp.Body.Close() }()
-		delivery.ResponseStatus = resp.StatusCode
-		delivery.Success = resp.StatusCode >= 200 && resp.StatusCode < 300
-		if !delivery.Success {
-			deliveryErr = fmt.Errorf("webhook %s returned status %d", webhook.ID, resp.StatusCode)
+	if !s.skipValidation {
+		if err := ValidateWebhookURL(webhook.URL); err != nil {
+			recordDelivery(time.Now(), payload, 0, err.Error(), false)
+			return err
 		}
 	}
 
-	s.mu.Lock()
-	s.deliveries = append(s.deliveries, delivery)
-	// Keep only last 1000 deliveries
-	if len(s.deliveries) > 1000 {
-		s.deliveries = s.deliveries[len(s.deliveries)-1000:]
+	attempts := s.maxDeliveryAttempts
+	if attempts < 1 {
+		attempts = 1
 	}
-	s.mu.Unlock()
 
-	return deliveryErr
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		attemptStart := time.Now()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook.URL, bytes.NewReader(payload))
+		if err != nil {
+			recordDelivery(attemptStart, payload, 0, err.Error(), false)
+			return err
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Cerebro-Event", string(event.Type))
+		req.Header.Set("X-Cerebro-Delivery", event.ID)
+		if webhook.Secret != "" {
+			req.Header.Set("X-Cerebro-Signature", s.sign(payload, webhook.Secret))
+		}
+
+		resp, err := s.client.Do(req)
+		status := 0
+		responseBody := ""
+		success := false
+		if err != nil {
+			lastErr = err
+			responseBody = err.Error()
+		} else {
+			bodyBytes, readErr := func() ([]byte, error) {
+				defer func() { _ = resp.Body.Close() }()
+				return io.ReadAll(resp.Body)
+			}()
+			status = resp.StatusCode
+			responseBody = string(bodyBytes)
+			success = status >= 200 && status < 300 && readErr == nil
+			switch {
+			case readErr != nil:
+				lastErr = readErr
+				responseBody = readErr.Error()
+			case success:
+				lastErr = nil
+			default:
+				lastErr = fmt.Errorf("webhook %s returned status %d", webhook.ID, status)
+			}
+		}
+
+		recordDelivery(attemptStart, payload, status, responseBody, success)
+		if lastErr == nil {
+			return nil
+		}
+		if attempt == attempts || !shouldRetryDelivery(status, lastErr) {
+			return lastErr
+		}
+		if err := sleepWithContext(ctx, s.sleep, retryDelayForAttempt(attempt, s.baseRetryDelay, s.maxRetryDelay)); err != nil {
+			return errors.Join(lastErr, err)
+		}
+	}
+
+	return lastErr
+}
+
+func shouldRetryDelivery(status int, err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if status == http.StatusTooManyRequests || status == http.StatusRequestTimeout {
+		return true
+	}
+	if status >= 500 {
+		return true
+	}
+	if status > 0 {
+		return false
+	}
+	return true
+}
+
+func retryDelayForAttempt(attempt int, base, max time.Duration) time.Duration {
+	if base <= 0 {
+		base = defaultRetryDelay
+	}
+	if max <= 0 {
+		max = defaultMaxRetryDelay
+	}
+	delay := base
+	for i := 1; i < attempt; i++ {
+		if delay >= max {
+			return max
+		}
+		delay *= 2
+		if delay > max {
+			return max
+		}
+	}
+	return delay
+}
+
+func sleepWithContext(ctx context.Context, sleepFn func(time.Duration), delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	if sleepFn != nil {
+		if ctx != nil {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+		}
+		sleepFn(delay)
+		if ctx != nil {
+			return ctx.Err()
+		}
+		return nil
+	}
+	if ctx == nil {
+		time.Sleep(delay)
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *Service) sign(payload []byte, secret string) string {

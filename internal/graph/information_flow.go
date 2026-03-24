@@ -557,9 +557,18 @@ func shortestPathBetweenSets(adjacency map[string]map[string]struct{}, sources, 
 		}
 	}
 
-	queue := make([]NodeOrdinal, 0, len(sources))
 	visited := newOrdinalVisitSet(nodeIDs)
 	prev := make(map[NodeOrdinal]NodeOrdinal, len(adjacency))
+	targetOrdinals := make(map[NodeOrdinal]struct{}, len(targets))
+	frontier := make([]informationPathFrontierItem, 0, len(sources))
+
+	for _, target := range sortedSet(targets) {
+		targetOrdinal, ok := nodeIDs.Lookup(target)
+		if !ok {
+			continue
+		}
+		targetOrdinals[targetOrdinal] = struct{}{}
+	}
 
 	for _, source := range sortedSet(sources) {
 		if _, exists := adjacency[source]; !exists {
@@ -569,37 +578,91 @@ func shortestPathBetweenSets(adjacency map[string]map[string]struct{}, sources, 
 		if !ok || !visited.markOrdinal(sourceOrdinal) {
 			continue
 		}
-		queue = append(queue, sourceOrdinal)
+		frontier = append(frontier, informationPathFrontierItem{ordinal: sourceOrdinal})
 		prev[sourceOrdinal] = InvalidNodeOrdinal
 		if _, isTarget := targets[source]; isTarget {
 			return []string{source}
 		}
 	}
-	if len(queue) == 0 {
+	if len(frontier) == 0 {
 		return nil
 	}
 
-	for head := 0; head < len(queue); head++ {
-		currentOrdinal := queue[head]
-		current, ok := nodeIDs.Resolve(currentOrdinal)
-		if !ok {
-			continue
+	for len(frontier) > 0 {
+		process := func(item informationPathFrontierItem) informationPathExpansion {
+			return expandInformationPathFrontierItem(adjacency, nodeIDs, targetOrdinals, item, visited.hasOrdinal)
+		}
+		stop := func(expansion informationPathExpansion) bool {
+			return expansion.foundOrdinal != InvalidNodeOrdinal
 		}
 
-		for _, neighbor := range sortedSet(adjacency[current]) {
-			neighborOrdinal, ok := nodeIDs.Lookup(neighbor)
-			if !ok || !visited.markOrdinal(neighborOrdinal) {
-				continue
-			}
-			prev[neighborOrdinal] = currentOrdinal
-			if _, isTarget := targets[neighbor]; isTarget {
-				return rebuildInformationOrdinalPath(prev, neighborOrdinal, nodeIDs)
-			}
-			queue = append(queue, neighborOrdinal)
+		var expansions []informationPathExpansion
+		parallelThreshold := traversalWorkerCount(len(frontier)) * 1024
+		if parallelThreshold < 512 {
+			parallelThreshold = 512
 		}
+		if len(frontier) < parallelThreshold {
+			expansions = sequentialMapOrderedUntil(frontier, process, stop)
+		} else {
+			expansions = parallelMapOrderedUntil(frontier, process, stop)
+		}
+
+		nextFrontier := make([]informationPathFrontierItem, 0, len(expansions))
+		for _, expansion := range expansions {
+			if expansion.foundOrdinal != InvalidNodeOrdinal {
+				prev[expansion.foundOrdinal] = expansion.currentOrdinal
+				return rebuildInformationOrdinalPath(prev, expansion.foundOrdinal, nodeIDs)
+			}
+			for _, nextOrdinal := range expansion.nextOrdinals {
+				if !visited.markOrdinal(nextOrdinal) {
+					continue
+				}
+				prev[nextOrdinal] = expansion.currentOrdinal
+				nextFrontier = append(nextFrontier, informationPathFrontierItem{ordinal: nextOrdinal})
+			}
+		}
+		frontier = nextFrontier
 	}
 
 	return nil
+}
+
+type informationPathFrontierItem struct {
+	ordinal NodeOrdinal
+}
+
+type informationPathExpansion struct {
+	currentOrdinal NodeOrdinal
+	foundOrdinal   NodeOrdinal
+	nextOrdinals   []NodeOrdinal
+}
+
+func expandInformationPathFrontierItem(adjacency map[string]map[string]struct{}, nodeIDs *NodeIDIndex, targets map[NodeOrdinal]struct{}, item informationPathFrontierItem, isVisited func(NodeOrdinal) bool) informationPathExpansion {
+	expansion := informationPathExpansion{
+		currentOrdinal: item.ordinal,
+		foundOrdinal:   InvalidNodeOrdinal,
+	}
+	if nodeIDs == nil || len(adjacency) == 0 || item.ordinal == InvalidNodeOrdinal {
+		return expansion
+	}
+
+	current, ok := nodeIDs.Resolve(item.ordinal)
+	if !ok {
+		return expansion
+	}
+
+	for _, neighbor := range sortedSet(adjacency[current]) {
+		neighborOrdinal, ok := nodeIDs.Lookup(neighbor)
+		if !ok || (isVisited != nil && isVisited(neighborOrdinal)) {
+			continue
+		}
+		if _, isTarget := targets[neighborOrdinal]; isTarget {
+			expansion.foundOrdinal = neighborOrdinal
+			return expansion
+		}
+		expansion.nextOrdinals = append(expansion.nextOrdinals, neighborOrdinal)
+	}
+	return expansion
 }
 
 func rebuildInformationOrdinalPath(prev map[NodeOrdinal]NodeOrdinal, destination NodeOrdinal, nodeIDs *NodeIDIndex) []string {

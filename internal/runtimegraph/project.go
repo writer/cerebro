@@ -66,7 +66,7 @@ func MaterializeObservationsIntoGraph(g *graph.Graph, observations []*runtime.Ru
 			continue
 		}
 
-		if _, ok := g.GetNode(req.SubjectID); !ok {
+		if _, ok := g.GetNode(req.SubjectID); !ok && !ensureObservationSubjectNode(g, normalized, req.SubjectID) {
 			result.ObservationsSkipped++
 			result.MissingSubjects++
 			result.LastError = ErrMissingObservationSubject
@@ -637,10 +637,10 @@ func deploymentRunObservedAt(node *graph.Node) (time.Time, bool) {
 	if node == nil {
 		return time.Time{}, false
 	}
-	if ts, ok := propertyTime(node.Properties, "observed_at"); ok {
+	if ts, ok := graphNodePropertyTime(node, "observed_at"); ok {
 		return ts.UTC(), true
 	}
-	if ts, ok := propertyTime(node.Properties, "valid_from"); ok {
+	if ts, ok := graphNodePropertyTime(node, "valid_from"); ok {
 		return ts.UTC(), true
 	}
 	if !node.CreatedAt.IsZero() {
@@ -688,6 +688,26 @@ func propertyString(properties map[string]any, key string) string {
 	default:
 		return ""
 	}
+}
+
+func graphNodePropertyTime(node *graph.Node, key string) (time.Time, bool) {
+	if node == nil {
+		return time.Time{}, false
+	}
+	if value, ok := node.PropertyValue(key); ok {
+		return propertyTime(map[string]any{key: value}, key)
+	}
+	return propertyTime(node.Properties, key)
+}
+
+func graphNodePropertyString(node *graph.Node, key string) string {
+	if node == nil {
+		return ""
+	}
+	if value, ok := node.PropertyValue(key); ok {
+		return propertyString(map[string]any{key: value}, key)
+	}
+	return propertyString(node.Properties, key)
 }
 
 func parseRFC3339Time(value string) (time.Time, bool) {
@@ -770,12 +790,12 @@ func observationKubernetesAuditCandidate(g *graph.Graph, observationNodeID strin
 			auditObservedAt = auditProps.ValidFrom
 		}
 		if auditObservedAt.IsZero() {
-			auditObservedAt, ok = propertyTime(node.Properties, "observed_at")
+			auditObservedAt, ok = graphNodePropertyTime(node, "observed_at")
 		} else {
 			ok = true
 		}
 		if !ok {
-			auditObservedAt, ok = propertyTime(node.Properties, "valid_from")
+			auditObservedAt, ok = graphNodePropertyTime(node, "valid_from")
 		}
 		if !ok || auditObservedAt.After(observation.ObservedAt) {
 			continue

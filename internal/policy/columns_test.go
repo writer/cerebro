@@ -11,19 +11,19 @@ func TestExtractConditionFields(t *testing.T) {
 		fields    []string
 	}{
 		{
-			condition: "subject_kind IN ('User', 'ServiceAccount')",
+			condition: `in_list(path(resource, "subject_kind"), ["User", "ServiceAccount"])`,
 			fields:    []string{"subject_kind"},
 		},
 		{
-			condition: "risk_reasons CONTAINS 'secret_access'",
+			condition: `contains_value(path(resource, "risk_reasons"), "secret_access")`,
 			fields:    []string{"risk_reasons"},
 		},
 		{
-			condition: "(wildcard_verbs == true OR wildcard_resources == true)",
+			condition: `(cmp_eq(path(resource, "wildcard_verbs"), true)) || (cmp_eq(path(resource, "wildcard_resources"), true))`,
 			fields:    []string{"wildcard_verbs", "wildcard_resources"},
 		},
 		{
-			condition: "labels['pod-security.kubernetes.io/enforce'] == null",
+			condition: `cmp_eq(path(resource, "labels['pod-security.kubernetes.io/enforce']"), null)`,
 			fields:    []string{"labels['pod-security.kubernetes.io/enforce']"},
 		},
 	}
@@ -41,19 +41,19 @@ func TestColumnsForTable(t *testing.T) {
 	e.AddPolicy(&Policy{
 		ID:         "p1",
 		Resource:   "aws::s3::bucket",
-		Conditions: []string{"public == true", "encryption_enabled != false"},
+		Conditions: []string{`cmp_eq(path(resource, "public"), true)`, `cmp_ne(path(resource, "encryption_enabled"), false)`},
 		Severity:   "high",
 	})
 	e.AddPolicy(&Policy{
 		ID:         "p2",
 		Resource:   "aws::s3::bucket",
-		Conditions: []string{"versioning_enabled == false"},
+		Conditions: []string{`cmp_eq(path(resource, "versioning_enabled"), false)`},
 		Severity:   "medium",
 	})
 	e.AddPolicy(&Policy{
 		ID:         "p3",
 		Resource:   "aws::iam::role",
-		Conditions: []string{"assume_role_policy contains \"*\""},
+		Conditions: []string{`contains_value(path(resource, "assume_role_policy"), "*")`},
 		Severity:   "critical",
 	})
 
@@ -91,7 +91,7 @@ func TestColumnsForTable_NestedField(t *testing.T) {
 	e.AddPolicy(&Policy{
 		ID:         "p1",
 		Resource:   "aws::s3::bucket",
-		Conditions: []string{"config.public_access.enabled == true"},
+		Conditions: []string{`cmp_eq(path(resource, "config.public_access.enabled"), true)`},
 		Severity:   "high",
 	})
 
@@ -113,16 +113,16 @@ func TestColumnsForTable_BracketAndOrConditions(t *testing.T) {
 		ID:       "p1",
 		Resource: "k8s::rbac::risky_binding",
 		Conditions: []string{
-			"subject_kind IN ('User', 'ServiceAccount')",
-			"(wildcard_verbs == true OR wildcard_resources == true)",
-			"risk_reasons CONTAINS 'secret_access'",
+			`in_list(path(resource, "subject_kind"), ["User", "ServiceAccount"])`,
+			`(cmp_eq(path(resource, "wildcard_verbs"), true)) || (cmp_eq(path(resource, "wildcard_resources"), true))`,
+			`contains_value(path(resource, "risk_reasons"), "secret_access")`,
 		},
 		Severity: "low",
 	})
 	e.AddPolicy(&Policy{
 		ID:         "p2",
 		Resource:   "k8s::namespace",
-		Conditions: []string{"labels['pod-security.kubernetes.io/enforce'] == null"},
+		Conditions: []string{`cmp_eq(path(resource, "labels['pod-security.kubernetes.io/enforce']"), null)`},
 		Severity:   "low",
 	})
 

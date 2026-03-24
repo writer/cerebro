@@ -39,6 +39,13 @@ func TestSnapshotGraphStoreServesColdReadsWithoutMaterializingView(t *testing.T)
 	if len(outEdges) != 1 || outEdges[0].Target != "service:payments" {
 		t.Fatalf("LookupOutEdges(user:alice) = %#v, want service edge", outEdges)
 	}
+	edge, ok, err := store.LookupEdge(context.Background(), "edge:user-service")
+	if err != nil || !ok {
+		t.Fatalf("LookupEdge(edge:user-service) = (%v, %v), want present; err=%v", ok, err, err)
+	}
+	if edge.Target != "service:payments" {
+		t.Fatalf("LookupEdge(edge:user-service) target = %q, want service:payments", edge.Target)
+	}
 
 	nodeCount, err := store.CountNodes(context.Background())
 	if err != nil {
@@ -78,6 +85,9 @@ func TestSnapshotGraphStoreRejectsWritesAndLazilyBuildsTraversalView(t *testing.
 
 	if err := store.UpsertNode(context.Background(), &Node{ID: "service:new", Kind: NodeKindService}); !errors.Is(err, ErrStoreReadOnly) {
 		t.Fatalf("UpsertNode() error = %v, want ErrStoreReadOnly", err)
+	}
+	if err := store.DeleteEdge(context.Background(), "edge:user-service"); !errors.Is(err, ErrStoreReadOnly) {
+		t.Fatalf("DeleteEdge() error = %v, want ErrStoreReadOnly", err)
 	}
 
 	result, err := store.BlastRadius(context.Background(), "user:alice", 1)

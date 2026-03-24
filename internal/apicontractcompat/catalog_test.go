@@ -132,3 +132,65 @@ components:
 	assertChange("removed_success_status_code")
 	assertChange("removed_response_field")
 }
+
+func TestBuildCatalogIncludesRequiredFieldsFromTopLevelOneOfRequestVariants(t *testing.T) {
+	yaml := []byte(`
+openapi: 3.0.3
+paths:
+  /api/v1/telemetry/ingest:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                events:
+                  type: array
+                  items:
+                    type: object
+                adapter_source:
+                  type: string
+                payload:
+                  oneOf:
+                    - type: string
+                    - type: object
+                      additionalProperties: true
+              oneOf:
+                - required: [events]
+                - required: [adapter_source, payload]
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+components:
+  schemas: {}
+`)
+
+	catalog, err := BuildCatalogFromYAML(yaml, time.Date(2026, 3, 21, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("BuildCatalogFromYAML: %v", err)
+	}
+	if len(catalog.Endpoints) != 1 || catalog.Endpoints[0].Request == nil {
+		t.Fatalf("expected one endpoint with request contract, got %#v", catalog.Endpoints)
+	}
+
+	got := make(map[string]string, len(catalog.Endpoints[0].Request.RequiredFields))
+	for _, field := range catalog.Endpoints[0].Request.RequiredFields {
+		got[field.Path] = field.Type
+	}
+	for path, wantType := range map[string]string{
+		"events":         "array",
+		"events[]":       "object",
+		"adapter_source": "string",
+		"payload":        "union(object|string)",
+	} {
+		if got[path] != wantType {
+			t.Fatalf("required field %q = %q, want %q (all fields: %#v)", path, got[path], wantType, catalog.Endpoints[0].Request.RequiredFields)
+		}
+	}
+}

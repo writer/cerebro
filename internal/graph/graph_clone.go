@@ -64,6 +64,12 @@ func cloneNodeForGraphClone(node *Node) *Node {
 	cloned.Tags = cloneStringMap(node.Tags)
 	cloned.Findings = append([]string(nil), node.Findings...)
 	cloned.propertyColumns = node.propertyColumns
+	if node.metadataProps != nil {
+		cloned.metadataProps = ptrNodeMetadataProperties(*node.metadataProps)
+	}
+	if node.commonProps != nil {
+		cloned.commonProps = ptrNodeCommonProperties(*node.commonProps)
+	}
 	if node.observationProps != nil {
 		cloned.observationProps = ptrObservationProperties(*node.observationProps)
 	}

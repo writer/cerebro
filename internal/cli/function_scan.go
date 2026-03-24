@@ -187,6 +187,10 @@ func runFunctionScan(parent context.Context, target functionscan.FunctionTarget,
 	defer cancel()
 
 	cfg := app.LoadConfig()
+	policyEvaluator, err := loadScanPolicyEvaluator(cfg)
+	if err != nil {
+		return err
+	}
 	store, err := functionscan.NewSQLiteRunStore(resolveFunctionScanStateFile(cfg))
 	if err != nil {
 		return err
@@ -213,12 +217,13 @@ func runFunctionScan(parent context.Context, target functionscan.FunctionTarget,
 	}
 
 	runner := functionscan.NewRunner(functionscan.RunnerOptions{
-		Store:          store,
-		Providers:      []functionscan.Provider{provider},
-		Materializer:   functionscan.NewLocalMaterializer(resolveFunctionScanRootFSBasePath(cfg)),
-		Analyzer:       functionscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
-		Events:         emitter,
-		CleanupTimeout: resolveFunctionScanCleanupTimeout(cfg),
+		Store:           store,
+		Providers:       []functionscan.Provider{provider},
+		Materializer:    functionscan.NewLocalMaterializer(resolveFunctionScanRootFSBasePath(cfg)),
+		Analyzer:        functionscan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
+		Events:          emitter,
+		CleanupTimeout:  resolveFunctionScanCleanupTimeout(cfg),
+		PolicyEvaluator: policyEvaluator,
 	})
 
 	run, runErr := runner.RunFunctionScan(ctx, functionscan.ScanRequest{

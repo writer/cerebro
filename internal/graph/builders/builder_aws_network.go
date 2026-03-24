@@ -297,20 +297,23 @@ func awsNodeHasDirectInternetEndpoint(node *Node) bool {
 	if node == nil {
 		return false
 	}
-	if pip := toString(node.Properties["public_ip"]); isValidPublicIP(pip) {
+	if pip := node.PropertyString("public_ip"); isValidPublicIP(pip) {
 		return true
 	}
-	return toBool(node.Properties["public"])
+	if value, ok := node.PropertyBool("public"); ok {
+		return value
+	}
+	return false
 }
 
 func awsNodePublicEndpoint(node *Node) string {
 	if node == nil {
 		return ""
 	}
-	if pip := toString(node.Properties["public_ip"]); isValidPublicIP(pip) {
+	if pip := node.PropertyString("public_ip"); isValidPublicIP(pip) {
 		return pip
 	}
-	if toBool(node.Properties["public"]) {
+	if value, ok := node.PropertyBool("public"); ok && value {
 		return "publicly_accessible"
 	}
 	return ""

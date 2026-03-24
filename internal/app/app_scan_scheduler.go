@@ -186,6 +186,8 @@ type scheduledGraphAnalysisSummary struct {
 	graphPaths              int
 	orgTopologyFindingCount int
 	orgTopologyErrorCount   int
+	apiSurfaceFindingCount  int
+	apiSurfaceErrorCount    int
 }
 
 func (a *App) currentOrStoredScheduledScanGraphView(ctx context.Context, tuning ScanTuning) *graph.Graph {
@@ -193,7 +195,7 @@ func (a *App) currentOrStoredScheduledScanGraphView(ctx context.Context, tuning 
 		return nil
 	}
 
-	if a.CurrentSecurityGraph() != nil {
+	if a.currentLiveSecurityGraph() != nil {
 		graphCtx := ctx
 		cancel := func() {}
 		if tuning.GraphWaitTimeout > 0 {
@@ -204,7 +206,7 @@ func (a *App) currentOrStoredScheduledScanGraphView(ctx context.Context, tuning 
 		if !graphReady {
 			return nil
 		}
-		return a.CurrentSecurityGraph()
+		return a.currentLiveSecurityGraph()
 	}
 
 	securityGraph, err := a.currentOrStoredSecurityGraphView()
@@ -252,6 +254,18 @@ func (a *App) runScheduledGraphAnalyses(ctx context.Context, tuning ScanTuning, 
 		a.upsertFindingAndRemediate(ctx, finding)
 	}
 
+	apiSurfaceResult := a.ScanAPISurfaceFindings(ctx)
+	summary.apiSurfaceFindingCount = len(apiSurfaceResult.Findings)
+	summary.apiSurfaceErrorCount = len(apiSurfaceResult.Errors)
+	for _, errMsg := range apiSurfaceResult.Errors {
+		if a.Logger != nil {
+			a.Logger.Warn("api surface analysis failed", "error", errMsg)
+		}
+	}
+	for _, finding := range apiSurfaceResult.Findings {
+		a.upsertFindingAndRemediate(ctx, finding)
+	}
+
 	return summary
 }
 
@@ -270,6 +284,8 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	var queryPolicyErrorCount int
 	var orgTopologyFindingCount int
 	var orgTopologyErrorCount int
+	var apiSurfaceFindingCount int
+	var apiSurfaceErrorCount int
 	var relationshipCount int
 	var graphToxicCount int
 	var graphPaths int
@@ -506,11 +522,16 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	graphPaths = graphSummary.graphPaths
 	orgTopologyFindingCount = graphSummary.orgTopologyFindingCount
 	orgTopologyErrorCount = graphSummary.orgTopologyErrorCount
+	apiSurfaceFindingCount = graphSummary.apiSurfaceFindingCount
+	apiSurfaceErrorCount = graphSummary.apiSurfaceErrorCount
 	if graphToxicCount > 0 {
 		totalViolations += int64(graphToxicCount)
 	}
 	if orgTopologyFindingCount > 0 {
 		totalViolations += int64(orgTopologyFindingCount)
+	}
+	if apiSurfaceFindingCount > 0 {
+		totalViolations += int64(apiSurfaceFindingCount)
 	}
 	if relationshipCount > 0 || graphToxicCount > 0 {
 		a.Logger.Info("toxic combination analysis complete",
@@ -523,6 +544,12 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		a.Logger.Info("org topology policy scan complete",
 			"findings", orgTopologyFindingCount,
 			"errors", orgTopologyErrorCount,
+		)
+	}
+	if apiSurfaceFindingCount > 0 || apiSurfaceErrorCount > 0 {
+		a.Logger.Info("api surface analysis complete",
+			"findings", apiSurfaceFindingCount,
+			"errors", apiSurfaceErrorCount,
 		)
 	}
 
@@ -553,6 +580,8 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 			"query_policy_errors":      queryPolicyErrorCount,
 			"org_topology_findings":    orgTopologyFindingCount,
 			"org_topology_errors":      orgTopologyErrorCount,
+			"api_surface_findings":     apiSurfaceFindingCount,
+			"api_surface_errors":       apiSurfaceErrorCount,
 			"relationship_toxic_count": relationshipCount,
 			"graph_toxic_count":        graphToxicCount,
 			"graph_attack_paths":       graphPaths,

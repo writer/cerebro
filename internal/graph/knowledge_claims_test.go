@@ -71,11 +71,11 @@ func TestWriteClaimCreatesClaimSourceAndEvidenceLinks(t *testing.T) {
 	if claimNode.Kind != NodeKindClaim {
 		t.Fatalf("expected claim kind, got %q", claimNode.Kind)
 	}
-	if got := readString(claimNode.Properties, "recorded_at"); got == "" {
-		t.Fatalf("expected recorded_at on claim, got %#v", claimNode.Properties)
+	if got, ok := claimNode.PropertyValue("recorded_at"); !ok || readString(map[string]any{"recorded_at": got}, "recorded_at") == "" {
+		t.Fatalf("expected recorded_at on claim, got %#v", claimNode.PropertyMap())
 	}
-	if got := readString(claimNode.Properties, "transaction_from"); got == "" {
-		t.Fatalf("expected transaction_from on claim, got %#v", claimNode.Properties)
+	if got, ok := claimNode.PropertyValue("transaction_from"); !ok || readString(map[string]any{"transaction_from": got}, "transaction_from") == "" {
+		t.Fatalf("expected transaction_from on claim, got %#v", claimNode.PropertyMap())
 	}
 	if result.SourceID == "" {
 		t.Fatal("expected source id")

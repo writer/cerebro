@@ -1,7 +1,6 @@
 package builders
 
 import (
-	"fmt"
 	"strings"
 	"time"
 	"unicode"
@@ -50,27 +49,6 @@ func queryRowString(row map[string]any, key string) string {
 func queryRow(row map[string]any, key string) any {
 	value, _ := queryRowValue(row, key)
 	return value
-}
-
-func readString(values map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if values == nil {
-			return ""
-		}
-		if value, ok := values[key]; ok {
-			switch typed := value.(type) {
-			case string:
-				if strings.TrimSpace(typed) != "" {
-					return strings.TrimSpace(typed)
-				}
-			case fmt.Stringer:
-				return strings.TrimSpace(typed.String())
-			default:
-				return strings.TrimSpace(fmt.Sprintf("%v", typed))
-			}
-		}
-	}
-	return ""
 }
 
 func slugifyKnowledgeKey(value string) string {

@@ -64,134 +64,138 @@ func TestEvaluateConditionOperators(t *testing.T) {
 	}{
 		{
 			name:      "in operator",
-			condition: "status.addresses ANY (type == 'ExternalIP' AND address NOT MATCHES '^10\\.')",
+			condition: `list_value(path(resource, "status.addresses")).exists(item, cmp_eq(path(item, "type"), "ExternalIP") && !matches_value(path(item, "address"), "^10\\."))`,
 			want:      true,
 		},
 		{
 			name:      "not in operator",
-			condition: "role NOT IN ('guest')",
+			condition: `!in_list(path(resource, "role"), ["guest"])`,
 			want:      true,
 		},
 		{
 			name:      "in array",
-			condition: "ports IN ('22', '3389')",
+			condition: `in_list(path(resource, "ports"), ["22", "3389"])`,
 			want:      true,
 		},
 		{
 			name:      "matches operator",
-			condition: "name MATCHES '.*admin'",
+			condition: `matches_value(path(resource, "name"), ".*admin")`,
 			want:      true,
 		},
 		{
 			name:      "not matches operator",
-			condition: "name NOT MATCHES '^test-'",
+			condition: `!matches_value(path(resource, "name"), "^test-")`,
 			want:      true,
 		},
 		{
 			name:      "matches array",
-			condition: "tags MATCHES 'prod'",
+			condition: `matches_value(path(resource, "tags"), "prod")`,
 			want:      true,
 		},
 		{
 			name:      "any with contains",
-			condition: "rules ANY (resources CONTAINS '*' OR verbs CONTAINS '*')",
+			condition: `list_value(path(resource, "rules")).exists(item, contains_value(path(item, "resources"), "*") || contains_value(path(item, "verbs"), "*"))`,
 			want:      true,
 		},
 		{
 			name:      "not any",
-			condition: "rules NOT ANY (resources CONTAINS 'secrets')",
+			condition: `!list_value(path(resource, "rules")).exists(item, contains_value(path(item, "resources"), "secrets"))`,
 			want:      true,
 		},
 		{
 			name:      "nested any",
-			condition: `status.addresses ANY (type == 'ExternalIP' AND address NOT MATCHES '^10\.')`,
+			condition: `list_value(path(resource, "status.addresses")).exists(item, cmp_eq(path(item, "type"), "ExternalIP") && !matches_value(path(item, "address"), "^10\\."))`,
 			want:      true,
 		},
 		{
 			name:      "bracketed key",
-			condition: "metadata.annotations['nginx.ingress.kubernetes.io/auth-type'] == null",
+			condition: `cmp_eq(path(resource, "metadata.annotations['nginx.ingress.kubernetes.io/auth-type']"), null)`,
 			want:      true,
 		},
 		{
 			name:      "greater or equal numeric comparison",
-			condition: "open_port >= 22",
+			condition: `cmp_ge(path(resource, "open_port"), 22)`,
 			want:      true,
 		},
 		{
 			name:      "less or equal numeric comparison",
-			condition: "cpu_threshold <= 1",
+			condition: `cmp_le(path(resource, "cpu_threshold"), 1)`,
 			want:      true,
 		},
 		{
 			name:      "not exists true for missing field",
-			condition: "metadata.annotations['missing'] not exists",
+			condition: `!exists_path(resource, "metadata.annotations['missing']")`,
 			want:      true,
 		},
 		{
 			name:      "not exists false for existing field",
-			condition: "role not exists",
+			condition: `!exists_path(resource, "role")`,
 			want:      false,
 		},
 		{
 			name:      "single equals comparison",
-			condition: "role = 'admin'",
+			condition: `cmp_eq(path(resource, "role"), "admin")`,
 			want:      true,
 		},
 		{
 			name:      "is null operator",
-			condition: "metadata.annotations['nginx.ingress.kubernetes.io/auth-type'] IS NULL",
+			condition: `cmp_eq(path(resource, "metadata.annotations['nginx.ingress.kubernetes.io/auth-type']"), null)`,
 			want:      true,
 		},
 		{
 			name:      "is not null operator",
-			condition: "deployment_date IS NOT NULL",
+			condition: `exists_path(resource, "deployment_date")`,
 			want:      true,
 		},
 		{
 			name:      "not contains object literal",
-			condition: "default_actions not contains { type: 'authenticate-oidc' }",
+			condition: `!contains_value(path(resource, "default_actions"), {"type": "authenticate-oidc"})`,
 			want:      true,
 		},
 		{
 			name:      "contains literal in parens",
-			condition: "policy_document contains ('*')",
+			condition: `contains_value(path(resource, "policy_document"), "*")`,
 			want:      true,
 		},
 		{
 			name:      "contains bare word in parens as literal",
-			condition: "identifiers CONTAINS (bucket)",
+			condition: `contains_value(path(resource, "identifiers"), "bucket")`,
 			want:      true,
 		},
 		{
 			name:      "ends with operator",
-			condition: "service_account_email ends_with '-compute@developer.gserviceaccount.com'",
+			condition: `ends_with_value(path(resource, "service_account_email"), "-compute@developer.gserviceaccount.com")`,
 			want:      true,
 		},
 		{
 			name:      "missing field reference compares as null",
-			condition: "metadata.annotations['nginx.ingress.kubernetes.io/auth-type'] == missing_field",
+			condition: `cmp_eq(path(resource, "metadata.annotations['nginx.ingress.kubernetes.io/auth-type']"), path(resource, "missing_field"))`,
 			want:      true,
 		},
 		{
 			name:      "field to field time comparison",
-			condition: "risk_assessment_date > deployment_date",
+			condition: `cmp_gt(path(resource, "risk_assessment_date"), path(resource, "deployment_date"))`,
 			want:      true,
 		},
 		{
 			name:      "relative time comparison",
-			condition: "created_at < NOW() - INTERVAL '48 hours'",
+			condition: `cmp_lt(path(resource, "created_at"), "NOW() - INTERVAL '48 hours'")`,
 			want:      true,
 		},
 		{
 			name:      "references public bucket",
-			condition: "training_data_config.s3_uri references bucket with public access",
+			condition: `references_public_bucket(resource, "training_data_config.s3_uri")`,
 			want:      true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := evaluateCondition(tt.condition, asset); got != tt.want {
+			got, err := evaluateConditionExpression(tt.condition, asset)
+			if err != nil {
+				t.Fatalf("evaluateConditionExpression(%q): %v", tt.condition, err)
+			}
+			if got != tt.want {
 				t.Fatalf("condition %q: expected %v, got %v", tt.condition, tt.want, got)
 			}
 		})

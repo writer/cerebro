@@ -51,6 +51,12 @@ var imageScanRunACRCmd = &cobra.Command{
 	RunE:  runImageScanACR,
 }
 
+var imageScanSweepCmd = &cobra.Command{
+	Use:   "sweep",
+	Short: "Discover registries and sweep them for new images",
+	RunE:  runImageScanSweep,
+}
+
 var (
 	imageScanOutput            string
 	imageScanStateFile         string
@@ -78,6 +84,13 @@ var (
 	imageScanACRPassword       string
 	imageScanACRBaseURL        string
 	imageScanACRSubscriptionID string
+	imageScanSweepStaleAfter   time.Duration
+	imageScanSweepAWSRegions   []string
+	imageScanSweepDiscoverAWS  bool
+	imageScanSweepGCPProjects  []string
+	imageScanSweepLegacyGCR    bool
+	imageScanSweepAzureSubs    []string
+	imageScanSweepDockerHubs   []string
 )
 
 func init() {
@@ -96,6 +109,17 @@ func init() {
 	imageScanRunCmd.PersistentFlags().BoolVar(&imageScanDryRun, "dry-run", false, "Resolve manifest only; do not materialize or analyze")
 	imageScanRunCmd.PersistentFlags().BoolVar(&imageScanKeepFilesystem, "keep-filesystem", false, "Retain the materialized rootfs after completion")
 	imageScanRunCmd.PersistentFlags().StringSliceVar(&imageScanMetadataPairs, "metadata", nil, "Optional metadata entries (key=value)")
+
+	imageScanSweepCmd.Flags().StringVar(&imageScanRequestedBy, "requested-by", "", "Optional operator identity recorded on each discovered run")
+	imageScanSweepCmd.Flags().BoolVar(&imageScanDryRun, "dry-run", false, "Resolve manifests only; do not materialize or analyze")
+	imageScanSweepCmd.Flags().StringSliceVar(&imageScanMetadataPairs, "metadata", nil, "Optional metadata entries (key=value)")
+	imageScanSweepCmd.Flags().DurationVar(&imageScanSweepStaleAfter, "stale-after", 90*24*time.Hour, "Mark images older than this duration as stale")
+	imageScanSweepCmd.Flags().BoolVar(&imageScanSweepDiscoverAWS, "discover-aws", false, "Discover accessible ECR registries with the configured AWS credentials")
+	imageScanSweepCmd.Flags().StringSliceVar(&imageScanSweepAWSRegions, "aws-region", nil, "Explicit AWS regions to include in the sweep")
+	imageScanSweepCmd.Flags().StringSliceVar(&imageScanSweepGCPProjects, "gcp-project", nil, "GCP project IDs whose registries should be discovered")
+	imageScanSweepCmd.Flags().BoolVar(&imageScanSweepLegacyGCR, "include-legacy-gcr", false, "Also probe legacy gcr.io registry hosts for discovered GCP projects")
+	imageScanSweepCmd.Flags().StringSliceVar(&imageScanSweepAzureSubs, "azure-subscription-id", nil, "Azure subscription IDs whose ACR registries should be discovered")
+	imageScanSweepCmd.Flags().StringSliceVar(&imageScanSweepDockerHubs, "dockerhub-namespace", nil, "Docker Hub namespaces to enumerate")
 
 	imageScanRunECRCmd.Flags().StringVar(&imageScanECRRegion, "region", "", "AWS region containing the target ECR repository")
 	imageScanRunECRCmd.Flags().StringVar(&imageScanECRAccountID, "account-id", "", "Optional AWS account ID owning the target registry")
@@ -124,6 +148,7 @@ func init() {
 	imageScanRunCmd.AddCommand(imageScanRunGCRCmd)
 	imageScanRunCmd.AddCommand(imageScanRunACRCmd)
 	imageScanCmd.AddCommand(imageScanRunCmd)
+	imageScanCmd.AddCommand(imageScanSweepCmd)
 }
 
 func bindImageReferenceFlags(cmd *cobra.Command) {
@@ -193,6 +218,10 @@ func runImageScan(parent context.Context, target imagescan.ScanTarget, client sc
 	defer cancel()
 
 	cfg := app.LoadConfig()
+	policyEvaluator, err := loadScanPolicyEvaluator(cfg)
+	if err != nil {
+		return err
+	}
 	store, err := imagescan.NewSQLiteRunStore(resolveImageScanStateFile(cfg))
 	if err != nil {
 		return err
@@ -211,12 +240,13 @@ func runImageScan(parent context.Context, target imagescan.ScanTarget, client sc
 	defer func() { _ = vulnDBCloser.Close() }()
 
 	runner := imagescan.NewRunner(imagescan.RunnerOptions{
-		Store:          store,
-		Registries:     []scanner.RegistryClient{client},
-		Materializer:   imagescan.NewLocalMaterializer(resolveImageScanRootFSBasePath(cfg)),
-		Analyzer:       imagescan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
-		Events:         emitter,
-		CleanupTimeout: resolveImageScanCleanupTimeout(cfg),
+		Store:           store,
+		Registries:      []scanner.RegistryClient{client},
+		Materializer:    imagescan.NewLocalMaterializer(resolveImageScanRootFSBasePath(cfg)),
+		Analyzer:        imagescan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
+		Events:          emitter,
+		CleanupTimeout:  resolveImageScanCleanupTimeout(cfg),
+		PolicyEvaluator: policyEvaluator,
 	})
 
 	run, runErr := runner.RunImageScan(ctx, imagescan.ScanRequest{
@@ -233,6 +263,77 @@ func runImageScan(parent context.Context, target imagescan.ScanTarget, client sc
 		}
 	}
 	return runErr
+}
+
+func runImageScanSweep(cmd *cobra.Command, _ []string) error {
+	ctx, cancel := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	discovered, err := scanner.DiscoverRegistryClients(ctx, scanner.RegistryDiscoveryOptions{
+		DockerHubNamespaces:   imageScanSweepDockerHubs,
+		AWSRegions:            imageScanSweepAWSRegions,
+		DiscoverAWSRegistries: imageScanSweepDiscoverAWS,
+		GCPProjects:           imageScanSweepGCPProjects,
+		IncludeLegacyGCR:      imageScanSweepLegacyGCR,
+		AzureSubscriptionIDs:  imageScanSweepAzureSubs,
+	})
+	if err != nil {
+		return err
+	}
+	if len(discovered) == 0 {
+		return fmt.Errorf("no registries discovered; provide at least one registry source")
+	}
+
+	cfg := app.LoadConfig()
+	policyEvaluator, err := loadScanPolicyEvaluator(cfg)
+	if err != nil {
+		return err
+	}
+	store, err := imagescan.NewSQLiteRunStore(resolveImageScanStateFile(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+
+	emitter, err := newWorkloadScanEmitter(cfg, slog.Default())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = emitter.Close() }()
+	filesystemAnalyzer, vulnDBCloser, err := buildFilesystemAnalyzer(cfg, resolveImageScanTrivyBinary(cfg), resolveImageScanGitleaksBinary(cfg), resolveImageScanClamAVBinary(cfg))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = vulnDBCloser.Close() }()
+
+	runner := imagescan.NewRunner(imagescan.RunnerOptions{
+		Store:           store,
+		Registries:      discovered,
+		Materializer:    imagescan.NewLocalMaterializer(resolveImageScanRootFSBasePath(cfg)),
+		Analyzer:        imagescan.FilesystemAnalyzer{Analyzer: filesystemAnalyzer},
+		Events:          emitter,
+		CleanupTimeout:  resolveImageScanCleanupTimeout(cfg),
+		PolicyEvaluator: policyEvaluator,
+	})
+
+	reports := make([]imagescan.SweepReport, 0, len(discovered))
+	for _, client := range discovered {
+		report, err := runner.RunRegistrySweep(ctx, imagescan.SweepRequest{
+			Registry:     imagescan.RegistryKind(client.Name()),
+			RegistryHost: client.RegistryHost(),
+			RequestedBy:  imageScanRequestedBy,
+			DryRun:       imageScanDryRun,
+			Metadata:     parseMetadataPairs(imageScanMetadataPairs),
+			StaleAfter:   imageScanSweepStaleAfter,
+		})
+		if err != nil {
+			return err
+		}
+		if report != nil {
+			reports = append(reports, *report)
+		}
+	}
+	return renderImageSweepReports(reports)
 }
 
 func renderImageRuns(runs []imagescan.RunRecord) error {
@@ -284,6 +385,29 @@ func renderImageRun(run imagescan.RunRecord) error {
 	if run.Error != "" {
 		fmt.Printf("Error:       %s\n", run.Error)
 	}
+	return nil
+}
+
+func renderImageSweepReports(reports []imagescan.SweepReport) error {
+	if imageScanOutput == FormatJSON {
+		return JSONOutput(reports)
+	}
+	if len(reports) == 0 {
+		fmt.Println("No registry sweep results.")
+		return nil
+	}
+	tw := NewTableWriter(os.Stdout, "Registry", "Scanned", "Skipped", "Stale", "Started", "Completed")
+	for _, report := range reports {
+		tw.AddRow(
+			string(report.Registry),
+			fmt.Sprintf("%d", report.Scanned),
+			fmt.Sprintf("%d", report.Skipped),
+			fmt.Sprintf("%d", report.Stale),
+			report.StartedAt.Format(time.RFC3339),
+			report.CompletedAt.Format(time.RFC3339),
+		)
+	}
+	tw.Render()
 	return nil
 }
 

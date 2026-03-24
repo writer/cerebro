@@ -524,7 +524,7 @@ func recommendScalePath(measurements []ScaleProfileMeasurement) (string, string)
 	maxMeasurement := measurements[len(measurements)-1]
 	switch {
 	case maxMeasurement.HeapAllocBytes >= 1536*1024*1024 || maxMeasurement.CopyOnWriteDurationMS >= 1500:
-		return "hybrid_persistent_graph", "The hot in-memory graph is approaching an unsafe single-process budget. Keep hot indexes in memory, move snapshots and historical graph state to durable backing storage, and avoid deepening SQLite-only execution paths."
+		return "hybrid_persistent_graph", "Process-local graph materialization is approaching an unsafe single-process budget. Keep the authoritative graph in durable backing storage, materialize only the indexes or subgraphs needed for active reads, and avoid deepening SQLite-only execution paths."
 	case maxMeasurement.HeapAllocBytes >= 512*1024*1024 || maxMeasurement.CopyOnWriteDurationMS >= 250:
 		return "tenant_sharded_hot_graph", "Single-node in-memory remains viable for smaller tenants, but large tenants need tenant/account partitioning plus read replicas and object-backed snapshots before pushing further scale."
 	default:

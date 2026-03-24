@@ -230,6 +230,14 @@ type AnalysisReport struct {
 	Metadata     map[string]any             `json:"metadata,omitempty"`
 }
 
+type DistributedRunState struct {
+	GroupID    string     `json:"group_id,omitempty"`
+	DedupKey   string     `json:"dedup_key,omitempty"`
+	AssignedAt *time.Time `json:"assigned_at,omitempty"`
+	ClaimedAt  *time.Time `json:"claimed_at,omitempty"`
+	ClaimedBy  string     `json:"claimed_by,omitempty"`
+}
+
 type CostBreakdown struct {
 	SnapshotGiBHours float64 `json:"snapshot_gib_hours,omitempty"`
 	VolumeGiBHours   float64 `json:"volume_gib_hours,omitempty"`
@@ -282,23 +290,25 @@ type RunEvent struct {
 }
 
 type RunRecord struct {
-	ID          string              `json:"id"`
-	Provider    ProviderKind        `json:"provider"`
-	Status      RunStatus           `json:"status"`
-	Stage       RunStage            `json:"stage"`
-	Target      VMTarget            `json:"target"`
-	ScannerHost ScannerHost         `json:"scanner_host"`
-	RequestedBy string              `json:"requested_by,omitempty"`
-	DryRun      bool                `json:"dry_run,omitempty"`
-	Metadata    map[string]string   `json:"metadata,omitempty"`
-	Priority    *PriorityAssessment `json:"priority,omitempty"`
-	SubmittedAt time.Time           `json:"submitted_at"`
-	StartedAt   *time.Time          `json:"started_at,omitempty"`
-	CompletedAt *time.Time          `json:"completed_at,omitempty"`
-	UpdatedAt   time.Time           `json:"updated_at"`
-	Error       string              `json:"error,omitempty"`
-	Summary     RunSummary          `json:"summary"`
-	Volumes     []VolumeScanRecord  `json:"volumes,omitempty"`
+	ID                     string               `json:"id"`
+	Provider               ProviderKind         `json:"provider"`
+	Status                 RunStatus            `json:"status"`
+	Stage                  RunStage             `json:"stage"`
+	Target                 VMTarget             `json:"target"`
+	ScannerHost            ScannerHost          `json:"scanner_host"`
+	RequestedBy            string               `json:"requested_by,omitempty"`
+	DryRun                 bool                 `json:"dry_run,omitempty"`
+	MaxConcurrentSnapshots int                  `json:"max_concurrent_snapshots,omitempty"`
+	Metadata               map[string]string    `json:"metadata,omitempty"`
+	Priority               *PriorityAssessment  `json:"priority,omitempty"`
+	SubmittedAt            time.Time            `json:"submitted_at"`
+	StartedAt              *time.Time           `json:"started_at,omitempty"`
+	CompletedAt            *time.Time           `json:"completed_at,omitempty"`
+	UpdatedAt              time.Time            `json:"updated_at"`
+	Error                  string               `json:"error,omitempty"`
+	Summary                RunSummary           `json:"summary"`
+	Volumes                []VolumeScanRecord   `json:"volumes,omitempty"`
+	Distributed            *DistributedRunState `json:"distributed,omitempty"`
 }
 
 type RunListOptions struct {

@@ -221,6 +221,7 @@ func normalizeGraphMutationNode(node *Node) *Node {
 	}
 	node.ordinal = InvalidNodeOrdinal
 	node.propertyColumns = nil
+	node.commonProps = nil
 	node.observationProps = nil
 	node.attackSequenceProps = nil
 	node.Properties = normalizeGraphMutationMap(node.Properties)

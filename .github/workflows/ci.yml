@@ -30,14 +30,14 @@ jobs:
 
       - name: Restore Go module cache
         id: go-mod-cache
-        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ~/go/pkg/mod
           key: go-mod-${{ runner.os }}-${{ hashFiles('go.sum') }}
 
       - name: Restore Go build cache (shard)
         id: go-build-cache
-        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ~/.cache/go-build
           key: go-build-${{ runner.os }}-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}
@@ -56,7 +56,7 @@ jobs:
           go test -v -race -coverprofile="coverage-${{ matrix.shard_index }}.out" "${selected[@]}"
 
       - name: Upload coverage
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
         with:
           files: ./coverage-${{ matrix.shard_index }}.out
           flags: shard-${{ matrix.shard_index }}
@@ -64,14 +64,14 @@ jobs:
 
       - name: Save Go module cache
         if: matrix.shard_index == 0 && steps.go-mod-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ~/go/pkg/mod
           key: go-mod-${{ runner.os }}-${{ hashFiles('go.sum') }}
 
       - name: Save Go build cache (shard)
         if: steps.go-build-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: ~/.cache/go-build
           key: go-build-${{ runner.os }}-shard-${{ matrix.shard_index }}-${{ hashFiles('go.sum') }}
@@ -133,7 +133,9 @@ jobs:
           awk -v total="$total" -v min="$MIN_COVERAGE" 'BEGIN { exit ((total + 0) < (min + 0)) }'
           python3 - <<'PY'
           import re
+          import subprocess
           import sys
+          import tempfile
           from pathlib import Path
 
           required = {
@@ -157,12 +159,40 @@ jobs:
                   continue
               observed[m.group(1)] = float(m.group(2))
 
+          total_pattern = re.compile(r"^total:\s+\(statements\)\s+([0-9.]+)%$")
+
+          def fallback_package_coverage(pkg: str) -> float:
+              with tempfile.NamedTemporaryFile(suffix=".out") as profile:
+                  subprocess.run(
+                      ["go", "test", f"-coverprofile={profile.name}", pkg],
+                      check=True,
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.STDOUT,
+                      text=True,
+                  )
+                  result = subprocess.run(
+                      ["go", "tool", "cover", f"-func={profile.name}"],
+                      check=True,
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.STDOUT,
+                      text=True,
+                  )
+              for line in result.stdout.splitlines():
+                  m = total_pattern.match(line.strip())
+                  if m:
+                      return float(m.group(1))
+              raise RuntimeError("fallback coverage probe produced no total coverage line")
+
           failures = []
           for pkg, minimum in required.items():
               value = observed.get(pkg)
               if value is None:
-                  failures.append(f"{pkg}: missing coverage output")
-                  continue
+                  try:
+                      value = fallback_package_coverage(pkg)
+                      observed[pkg] = value
+                  except Exception as exc:  # pragma: no cover - exercised in CI
+                      failures.append(f"{pkg}: missing coverage output ({exc})")
+                      continue
               if value < minimum:
                   failures.append(f"{pkg}: {value:.1f}% < {minimum:.1f}%")
 
@@ -521,6 +551,8 @@ jobs:
       - name: API auth end-to-end smoke
         shell: bash
         env:
+          GRAPH_STORE_BACKEND: "memory"
+          GRAPH_STORE_ALLOW_IN_MEMORY: "true"
           LOG_LEVEL: error
           API_PORT: "18080"
           API_AUTH_ENABLED: "true"
@@ -630,6 +662,8 @@ jobs:
       - name: RBAC role matrix smoke
         shell: bash
         env:
+          GRAPH_STORE_BACKEND: "memory"
+          GRAPH_STORE_ALLOW_IN_MEMORY: "true"
           LOG_LEVEL: error
           API_PORT: "18081"
           API_AUTH_ENABLED: "true"
@@ -707,6 +741,9 @@ jobs:
   scan-smoke-local:
     name: scan-smoke-local
     runs-on: ubuntu-latest
+    env:
+      GRAPH_STORE_BACKEND: "memory"
+      GRAPH_STORE_ALLOW_IN_MEMORY: "true"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -876,6 +913,9 @@ jobs:
             --format table \
             --exit-code 1 \
             --ignore-unfixed \
+            --timeout 15m \
+            --db-repository public.ecr.aws/aquasecurity/trivy-db:2 \
+            --db-repository ghcr.io/aquasecurity/trivy-db:2 \
             --vuln-type os,library \
             --severity CRITICAL,HIGH \
             cerebro:ci
@@ -910,8 +950,8 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Build and validate amd64 runtime image
         shell: bash

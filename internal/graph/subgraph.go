@@ -40,14 +40,6 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 		maxNodes = int(^uint(0) >> 1)
 	}
 
-	nodesToCopy := make(map[string]*Node)
-	edgesToCopy := make(map[*Edge]struct{})
-	clonedNodes := make([]*Node, 0, 16)
-	clonedEdges := make([]*Edge, 0, 16)
-	seen := newOrdinalVisitSet(nil)
-	queue := make([]subgraphQueueItem, 0, 16)
-	queueHead := 0
-
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	root, ok := g.nodes[rootID]
@@ -55,68 +47,101 @@ func ExtractSubgraph(g *Graph, rootID string, opts ExtractSubgraphOptions) *Grap
 		return subgraph
 	}
 
-	nodesToCopy[rootID] = root
-	seen.markNode(rootID, root.ordinal)
-	queue = append(queue, subgraphQueueItem{nodeID: rootID, depth: 0})
-
-	visitEdges := func(current string, depth int, edges []*Edge, nextNodeID func(*Edge) string) {
-		for _, edge := range edges {
-			if !g.activeEdgeLocked(edge) {
-				continue
-			}
-			if opts.EdgeFilter != nil && !opts.EdgeFilter(edge) {
-				continue
-			}
-
-			neighborID := nextNodeID(edge)
-			neighbor, ok := g.nodes[neighborID]
-			if !ok || neighbor == nil || neighbor.DeletedAt != nil {
-				continue
-			}
-
-			if !seen.hasNode(neighborID, neighbor.ordinal) {
-				if depth >= maxDepth || len(nodesToCopy) >= maxNodes {
-					continue
-				}
-				seen.markNode(neighborID, neighbor.ordinal)
-				nodesToCopy[neighborID] = neighbor
-				queue = append(queue, subgraphQueueItem{nodeID: neighborID, depth: depth + 1})
-			}
-
-			if _, ok := nodesToCopy[neighborID]; ok {
-				edgesToCopy[edge] = struct{}{}
-			}
-		}
+	snapshot := g.csrEdges
+	if snapshot == nil {
+		snapshot = newCSREdgeSnapshotLocked(g)
+	}
+	if snapshot == nil {
+		return subgraph
 	}
 
-	for queueHead < len(queue) {
-		item := queue[queueHead]
-		queueHead++
+	traverser := ParallelTraverser{
+		MaxDepth:  maxDepth,
+		Direction: parallelTraversalDirectionForExtract(opts.Direction),
+		Filter: func(edge *Edge, current *Node, next *Node, currentOrdinal, nextOrdinal NodeOrdinal, depth int) bool {
+			if edge == nil || !g.activeEdgeLocked(edge) {
+				return false
+			}
+			if opts.EdgeFilter != nil && !opts.EdgeFilter(edge) {
+				return false
+			}
+			return true
+		},
+	}
+	// Preserve the existing callback contract for EdgeFilter callers by keeping
+	// the traversal single-threaded whenever a filter function is present.
+	if opts.EdgeFilter != nil {
+		traverser.Workers = 1
+	}
 
+	result := traverser.traverseSnapshot(g, snapshot, rootID)
+	if len(result.Visits) == 0 {
+		return subgraph
+	}
+	if len(result.Visits) > maxNodes {
+		result.Visits = result.Visits[:maxNodes]
+	}
+
+	nodesToCopy := make(map[string]*Node, len(result.Visits))
+	retainedOrdinals := make(map[NodeOrdinal]struct{}, len(result.Visits))
+	for _, visit := range result.Visits {
+		if visit.Node == nil || visit.Node.DeletedAt != nil {
+			continue
+		}
+		nodesToCopy[visit.NodeID] = visit.Node
+		retainedOrdinals[visit.Ordinal] = struct{}{}
+	}
+	if len(nodesToCopy) == 0 {
+		return subgraph
+	}
+
+	edgesToCopy := make(map[*Edge]struct{})
+	for _, visit := range result.Visits {
+		if _, ok := retainedOrdinals[visit.Ordinal]; !ok {
+			continue
+		}
 		if opts.Direction == ExtractSubgraphDirectionBoth || opts.Direction == ExtractSubgraphDirectionOutgoing {
-			visitEdges(item.nodeID, item.depth, g.outEdges[item.nodeID], func(edge *Edge) string {
-				return edge.Target
+			snapshot.forEachOutEdgeOrdinal(visit.Ordinal, func(edge *Edge, nextOrdinal NodeOrdinal, _ string) bool {
+				if _, ok := retainedOrdinals[nextOrdinal]; !ok {
+					return true
+				}
+				if opts.EdgeFilter != nil && !opts.EdgeFilter(edge) {
+					return true
+				}
+				edgesToCopy[edge] = struct{}{}
+				return true
 			})
 		}
 		if opts.Direction == ExtractSubgraphDirectionBoth || opts.Direction == ExtractSubgraphDirectionIncoming {
-			visitEdges(item.nodeID, item.depth, g.inEdges[item.nodeID], func(edge *Edge) string {
-				return edge.Source
+			snapshot.forEachInEdgeOrdinal(visit.Ordinal, func(edge *Edge, nextOrdinal NodeOrdinal, _ string) bool {
+				if _, ok := retainedOrdinals[nextOrdinal]; !ok {
+					return true
+				}
+				if opts.EdgeFilter != nil && !opts.EdgeFilter(edge) {
+					return true
+				}
+				edgesToCopy[edge] = struct{}{}
+				return true
 			})
 		}
 	}
 
 	for _, node := range nodesToCopy {
-		clonedNodes = append(clonedNodes, cloneNode(node))
+		subgraph.AddNode(cloneNode(node))
 	}
 	for edge := range edgesToCopy {
-		clonedEdges = append(clonedEdges, cloneEdge(edge))
-	}
-
-	for _, node := range clonedNodes {
-		subgraph.AddNode(node)
-	}
-	for _, edge := range clonedEdges {
-		subgraph.AddEdge(edge)
+		subgraph.AddEdge(cloneEdge(edge))
 	}
 	return subgraph
+}
+
+func parallelTraversalDirectionForExtract(direction ExtractSubgraphDirection) ParallelTraversalDirection {
+	switch direction {
+	case ExtractSubgraphDirectionOutgoing:
+		return ParallelTraversalDirectionOutgoing
+	case ExtractSubgraphDirectionIncoming:
+		return ParallelTraversalDirectionIncoming
+	default:
+		return ParallelTraversalDirectionBoth
+	}
 }

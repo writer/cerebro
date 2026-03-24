@@ -163,7 +163,7 @@ func (sim *AttackPathSimulator) calculateExploitability() {
 		}
 
 		// Increase for weak auth
-		if mfa, ok := node.Properties["mfa_enabled"].(bool); ok && !mfa {
+		if mfa, ok := node.PropertyBool("mfa_enabled"); ok && !mfa {
 			score += 0.2
 		}
 
@@ -855,24 +855,36 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 	visitedBits := sim.newVisitedBits(entry.ID)
 
 	for depth := 0; depth < maxLen && len(frontier) > 0; depth++ {
-		expansions := parallelProcessOrdered(frontier, func(current shortestPathState) []shortestPathExpansion {
-			return sim.expandShortestPathFrontierItem(current, entry, target, avoidNodes, avoidEdges)
+		isVisited := func(nodeID string) bool {
+			return sim.isVisited(visitedBits, nodeID)
+		}
+		expansions := parallelMapOrderedUntil(frontier, func(current shortestPathState) []shortestPathExpansion {
+			return sim.expandShortestPathFrontierItem(current, entry, target, isVisited, avoidNodes, avoidEdges)
+		}, func(expansions []shortestPathExpansion) bool {
+			for _, expansion := range expansions {
+				if expansion.found != nil {
+					return true
+				}
+			}
+			return false
 		})
 
 		nextFrontier := make([]shortestPathState, 0, len(expansions))
-		for _, expansion := range expansions {
-			if expansion.found != nil {
-				sim.scorePath(expansion.found)
-				return expansion.found
+		for _, local := range expansions {
+			for _, expansion := range local {
+				if expansion.found != nil {
+					sim.scorePath(expansion.found)
+					return expansion.found
+				}
+				if !expansion.hasNext {
+					continue
+				}
+				if sim.isVisited(visitedBits, expansion.next.nodeID) {
+					continue
+				}
+				sim.markVisited(visitedBits, expansion.next.nodeID)
+				nextFrontier = append(nextFrontier, expansion.next)
 			}
-			if !expansion.hasNext {
-				continue
-			}
-			if sim.isVisited(visitedBits, expansion.next.nodeID) {
-				continue
-			}
-			sim.markVisited(visitedBits, expansion.next.nodeID)
-			nextFrontier = append(nextFrontier, expansion.next)
 		}
 		frontier = nextFrontier
 	}
@@ -880,10 +892,10 @@ func (sim *AttackPathSimulator) findShortestPathAvoiding(entry, target *Node, ma
 	return nil
 }
 
-func (sim *AttackPathSimulator) expandShortestPathFrontierItem(current shortestPathState, entry, target *Node, avoidNodes ordinalVisitSet, avoidEdges map[NodeOrdinal]ordinalVisitSet) []shortestPathExpansion {
+func (sim *AttackPathSimulator) expandShortestPathFrontierItem(current shortestPathState, entry, target *Node, isVisited func(string) bool, avoidNodes ordinalVisitSet, avoidEdges map[NodeOrdinal]ordinalVisitSet) []shortestPathExpansion {
 	currentOrdinal, _ := sim.nodeIDs.Lookup(current.nodeID)
 	removedTargets := avoidEdges[currentOrdinal]
-	expansions := make([]shortestPathExpansion, 0, len(sim.graph.GetOutEdges(current.nodeID)))
+	expansions := make([]shortestPathExpansion, 0)
 
 	sim.forEachOutEdge(current.nodeID, func(targetOrdinal NodeOrdinal, targetID string, kind EdgeKind, effect EdgeEffect) bool {
 		if effect == EdgeEffectDeny {
@@ -893,6 +905,9 @@ func (sim *AttackPathSimulator) expandShortestPathFrontierItem(current shortestP
 			return true
 		}
 		if removedTargets.hasOrdinal(targetOrdinal) {
+			return true
+		}
+		if targetID != target.ID && isVisited != nil && isVisited(targetID) {
 			return true
 		}
 
@@ -922,6 +937,8 @@ func (sim *AttackPathSimulator) expandShortestPathFrontierItem(current shortestP
 				Steps:      newPath,
 				Length:     len(newPath),
 			}
+			expansions = append(expansions, expansion)
+			return false
 		} else {
 			expansion.next = shortestPathState{
 				nodeID: targetID,

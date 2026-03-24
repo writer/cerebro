@@ -39,10 +39,24 @@ type (
 	OutcomeEvent                  = risk.OutcomeEvent
 	GraphSnapshotRecord           = graph.GraphSnapshotRecord
 	GraphSnapshotCollection       = graph.GraphSnapshotCollection
+	GraphSnapshotDiffSummary      = graph.GraphSnapshotDiffSummary
+	GraphChangelogEntry           = graph.GraphChangelogEntry
+	ClaimRecord                   = graph.ClaimRecord
+	ClaimTimeline                 = graph.ClaimTimeline
+	ClaimTimelineOptions          = graph.ClaimTimelineOptions
+	ClaimExplanation              = graph.ClaimExplanation
+	ClaimConflictReport           = graph.ClaimConflictReport
+	ClaimConflictReportSummary    = graph.ClaimConflictReportSummary
+	ClaimConflictReportOptions    = graph.ClaimConflictReportOptions
+	KnowledgeDiffSummary          = graph.KnowledgeDiffSummary
+	KnowledgeDiffCollection       = graph.KnowledgeDiffCollection
+	KnowledgeDiffQueryOptions     = graph.KnowledgeDiffQueryOptions
 	RiskEngine                    = risk.RiskEngine
 	SecurityReport                = risk.SecurityReport
 	RankedRisk                    = risk.RankedRisk
 	Chokepoint                    = risk.Chokepoint
+	KeyPersonRiskReport           = graph.KeyPersonRiskReport
+	KeyPersonRiskSummary          = graph.KeyPersonRiskSummary
 	EntityFacetDefinition         = entities.EntityFacetDefinition
 	EntityPostureSummary          = entities.EntityPostureSummary
 	SchemaKindCount               = graph.SchemaKindCount
@@ -63,10 +77,22 @@ const (
 	NodeKindPerson                = graph.NodeKindPerson
 	NodeKindIdentityAlias         = graph.NodeKindIdentityAlias
 	NodeKindRole                  = graph.NodeKindRole
+	NodeKindServiceAccount        = graph.NodeKindServiceAccount
 	NodeKindService               = graph.NodeKindService
 	NodeKindWorkload              = graph.NodeKindWorkload
+	NodeKindAPIEndpoint           = graph.NodeKindAPIEndpoint
 	NodeKindBucket                = graph.NodeKindBucket
 	NodeKindDatabase              = graph.NodeKindDatabase
+	NodeKindSecret                = graph.NodeKindSecret
+	NodeKindFunction              = graph.NodeKindFunction
+	NodeKindInstance              = graph.NodeKindInstance
+	NodeKindApplication           = graph.NodeKindApplication
+	NodeKindPackage               = graph.NodeKindPackage
+	NodeKindTechnology            = graph.NodeKindTechnology
+	NodeKindPod                   = graph.NodeKindPod
+	NodeKindDeployment            = graph.NodeKindDeployment
+	NodeKindThread                = graph.NodeKindThread
+	NodeKindInternet              = graph.NodeKindInternet
 	NodeKindCompany               = graph.NodeKindCompany
 	NodeKindVendor                = graph.NodeKindVendor
 	NodeKindActivity              = graph.NodeKindActivity
@@ -86,6 +112,10 @@ const (
 	EdgeKindCanAssume             = graph.EdgeKindCanAssume
 	EdgeKindCanRead               = graph.EdgeKindCanRead
 	EdgeKindCanWrite              = graph.EdgeKindCanWrite
+	EdgeKindExposedTo             = graph.EdgeKindExposedTo
+	EdgeKindRuns                  = graph.EdgeKindRuns
+	EdgeKindContains              = graph.EdgeKindContains
+	EdgeKindContainsPkg           = graph.EdgeKindContainsPkg
 	EdgeKindTargets               = graph.EdgeKindTargets
 	EdgeKindBasedOn               = graph.EdgeKindBasedOn
 	EdgeKindExecutedBy            = graph.EdgeKindExecutedBy
@@ -109,9 +139,14 @@ var (
 	GetEntityRecord                    = entities.GetEntityRecord
 	AnalyzeSchemaHealth                = graph.AnalyzeSchemaHealth
 	BuildIdentityCalibrationReport     = graph.BuildIdentityCalibrationReport
+	BuildClaimConflictReport           = graph.BuildClaimConflictReport
 	CurrentGraphSnapshotRecord         = graph.CurrentGraphSnapshotRecord
+	BuildKeyPersonRiskReport           = graph.BuildKeyPersonRiskReport
 	DefaultGraphQueryTemplates         = graph.DefaultGraphQueryTemplates
+	DiffKnowledgeGraphs                = graph.DiffKnowledgeGraphs
+	ExplainClaim                       = graph.ExplainClaim
 	GlobalSchemaRegistry               = graph.GlobalSchemaRegistry
+	GetClaimTimeline                   = graph.GetClaimTimeline
 	GraphSnapshotCollectionFromRecords = graph.GraphSnapshotCollectionFromRecords
 	IsNodeKindInCategory               = graph.IsNodeKindInCategory
 	NewRiskEngine                      = risk.NewRiskEngine
@@ -276,6 +311,16 @@ func graphNodePropertyString(node *Node, key string) string {
 		return strings.TrimSpace(identityAnyToString(value))
 	}
 	return strings.TrimSpace(identityAnyToString(node.Properties[key]))
+}
+
+func graphNodePropertyTime(node *Node, key string) (time.Time, bool) {
+	if node == nil {
+		return time.Time{}, false
+	}
+	if value, ok := node.PropertyValue(key); ok {
+		return graphValueTime(value)
+	}
+	return temporalPropertyTime(node.Properties, key)
 }
 
 func cloneAnyMap(values map[string]any) map[string]any {

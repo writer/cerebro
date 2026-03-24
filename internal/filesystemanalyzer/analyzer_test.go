@@ -2,6 +2,7 @@ package filesystemanalyzer
 
 import (
 	"context"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,22 @@ func (s stubMalwareScanner) ScanData(context.Context, []byte, string) (*scanner.
 		return nil, s.err
 	}
 	return s.result, nil
+}
+
+type captureVulnerabilityMatcher struct {
+	gotOS       OSInfo
+	gotPackages []PackageRecord
+	result      []scanner.ImageVulnerability
+	err         error
+}
+
+func (m *captureVulnerabilityMatcher) MatchPackages(_ context.Context, os OSInfo, packages []PackageRecord) ([]scanner.ImageVulnerability, error) {
+	m.gotOS = os
+	m.gotPackages = append([]PackageRecord(nil), packages...)
+	if m.err != nil {
+		return nil, m.err
+	}
+	return append([]scanner.ImageVulnerability(nil), m.result...), nil
 }
 
 func TestAnalyzerCatalogsPackagesSecretsAndConfigs(t *testing.T) {
@@ -109,6 +126,88 @@ func TestAnalyzerIncludesVulnerabilityScannerResults(t *testing.T) {
 	}
 	if len(report.Vulnerabilities) != 1 || len(report.Findings) == 0 {
 		t.Fatalf("expected vulnerability scanner results, got %#v %#v", report.Vulnerabilities, report.Findings)
+	}
+}
+
+func TestAnalyzerDetectsWindowsPEPackagesAndUnsignedBinaryFindings(t *testing.T) {
+	root := t.TempDir()
+	mustWriteBinaryFile(t, filepath.Join(root, "Windows", "System32", "kernel32.dll"), buildMinimalPEBinary(peFixtureOptions{
+		majorOSVersion:    10,
+		minorOSVersion:    0,
+		majorImageVersion: 20348,
+		minorImageVersion: 3321,
+	}))
+
+	matcher := &captureVulnerabilityMatcher{
+		result: []scanner.ImageVulnerability{{
+			ID:               "vulndb:CVE-2026-2320:kernel32.dll",
+			CVE:              "CVE-2026-2320",
+			Severity:         "critical",
+			Package:          "kernel32.dll",
+			InstalledVersion: "10.0.20348.3321",
+			FixedVersion:     "10.0.20348.4000",
+			Description:      "Windows PE test vulnerability",
+		}},
+	}
+
+	report, err := New(Options{VulnerabilityMatcher: matcher}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if report.OS.ID != "windows" || report.OS.VersionID != "10.0.20348.3321" {
+		t.Fatalf("expected Windows OS detection from PE metadata, got %#v", report.OS)
+	}
+	if matcher.gotOS.ID != "windows" || matcher.gotOS.VersionID != "10.0.20348.3321" {
+		t.Fatalf("expected matcher to receive Windows OS context, got %#v", matcher.gotOS)
+	}
+	if len(report.Packages) != 1 {
+		t.Fatalf("expected one Windows PE package, got %#v", report.Packages)
+	}
+	pkg := report.Packages[0]
+	if pkg.Ecosystem != "windows" || pkg.Manager != "pe" || pkg.Name != "kernel32.dll" || pkg.Version != "10.0.20348.3321" {
+		t.Fatalf("unexpected Windows PE package: %#v", pkg)
+	}
+	if len(matcher.gotPackages) != 1 || matcher.gotPackages[0].Name != "kernel32.dll" {
+		t.Fatalf("expected matcher to receive Windows PE package, got %#v", matcher.gotPackages)
+	}
+	if len(report.Vulnerabilities) != 1 || report.Vulnerabilities[0].CVE != "CVE-2026-2320" {
+		t.Fatalf("expected Windows vulnerability match, got %#v", report.Vulnerabilities)
+	}
+
+	foundUnsigned := false
+	for _, finding := range report.Misconfigurations {
+		if finding.Type == "binary_signature" && finding.Path == "Windows/System32/kernel32.dll" {
+			foundUnsigned = true
+			break
+		}
+	}
+	if !foundUnsigned {
+		t.Fatalf("expected unsigned Windows binary finding, got %#v", report.Misconfigurations)
+	}
+}
+
+func TestAnalyzerSkipsBinarySignatureFindingForSignedPEBinary(t *testing.T) {
+	root := t.TempDir()
+	mustWriteBinaryFile(t, filepath.Join(root, "Program Files", "Contoso", "signed.exe"), buildMinimalPEBinary(peFixtureOptions{
+		majorOSVersion:    10,
+		minorOSVersion:    0,
+		majorImageVersion: 20348,
+		minorImageVersion: 3321,
+		signed:            true,
+	}))
+
+	report, err := New(Options{}).Analyze(context.Background(), root)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	for _, finding := range report.Misconfigurations {
+		if finding.Type == "binary_signature" {
+			t.Fatalf("expected embedded signature to suppress unsigned finding, got %#v", report.Misconfigurations)
+		}
+	}
+	if len(report.Packages) != 1 || report.Packages[0].Version != "10.0.20348.3321" {
+		t.Fatalf("expected signed PE to still be inventoried, got %#v", report.Packages)
 	}
 }
 
@@ -683,4 +782,95 @@ func mustWriteFile(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile(%s): %v", path, err)
 	}
+}
+
+func mustWriteBinaryFile(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s): %v", path, err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("WriteFile(%s): %v", path, err)
+	}
+}
+
+type peFixtureOptions struct {
+	majorOSVersion    uint16
+	minorOSVersion    uint16
+	majorImageVersion uint16
+	minorImageVersion uint16
+	signed            bool
+}
+
+func buildMinimalPEBinary(opts peFixtureOptions) []byte {
+	const (
+		dosHeaderSize      = 0x80
+		peHeaderOffset     = 0x80
+		fileHeaderOffset   = peHeaderOffset + 4
+		optionalHeaderSize = 0xF0
+		optionalHeaderOff  = fileHeaderOffset + 20
+		sectionHeaderOff   = optionalHeaderOff + optionalHeaderSize
+		fileAlignment      = 0x200
+		sectionAlignment   = 0x1000
+		textRawOffset      = 0x200
+		textRawSize        = 0x200
+		certOffset         = 0x400
+		certSize           = 0x20
+	)
+
+	fileSize := textRawOffset + textRawSize
+	if opts.signed {
+		fileSize = certOffset + certSize
+	}
+	data := make([]byte, fileSize)
+	copy(data[:2], []byte("MZ"))
+	binary.LittleEndian.PutUint32(data[0x3c:], peHeaderOffset)
+	copy(data[peHeaderOffset:], []byte("PE\x00\x00"))
+
+	binary.LittleEndian.PutUint16(data[fileHeaderOffset:], 0x8664)
+	binary.LittleEndian.PutUint16(data[fileHeaderOffset+2:], 1)
+	binary.LittleEndian.PutUint16(data[fileHeaderOffset+16:], optionalHeaderSize)
+	binary.LittleEndian.PutUint16(data[fileHeaderOffset+18:], 0x0022)
+
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff:], 0x20b)
+	data[optionalHeaderOff+2] = 1
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+4:], textRawSize)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+16:], sectionAlignment)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+20:], sectionAlignment)
+	binary.LittleEndian.PutUint64(data[optionalHeaderOff+24:], 0x140000000)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+32:], sectionAlignment)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+36:], fileAlignment)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+40:], opts.majorOSVersion)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+42:], opts.minorOSVersion)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+44:], opts.majorImageVersion)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+46:], opts.minorImageVersion)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+48:], 6)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+50:], 0)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+56:], sectionAlignment+textRawSize)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+60:], fileAlignment)
+	binary.LittleEndian.PutUint16(data[optionalHeaderOff+68:], 3)
+	binary.LittleEndian.PutUint64(data[optionalHeaderOff+72:], 0x100000)
+	binary.LittleEndian.PutUint64(data[optionalHeaderOff+80:], 0x1000)
+	binary.LittleEndian.PutUint64(data[optionalHeaderOff+88:], 0x100000)
+	binary.LittleEndian.PutUint64(data[optionalHeaderOff+96:], 0x1000)
+	binary.LittleEndian.PutUint32(data[optionalHeaderOff+108:], 16)
+	if opts.signed {
+		securityDirectoryOff := optionalHeaderOff + 112 + (4 * 8)
+		binary.LittleEndian.PutUint32(data[securityDirectoryOff:], certOffset)
+		binary.LittleEndian.PutUint32(data[securityDirectoryOff+4:], certSize)
+		binary.LittleEndian.PutUint32(data[certOffset:], certSize)
+		binary.LittleEndian.PutUint16(data[certOffset+4:], 0x0200)
+		binary.LittleEndian.PutUint16(data[certOffset+6:], 0x0002)
+	}
+
+	copy(data[sectionHeaderOff:], []byte(".text\x00\x00\x00"))
+	binary.LittleEndian.PutUint32(data[sectionHeaderOff+8:], 1)
+	binary.LittleEndian.PutUint32(data[sectionHeaderOff+12:], sectionAlignment)
+	binary.LittleEndian.PutUint32(data[sectionHeaderOff+16:], textRawSize)
+	binary.LittleEndian.PutUint32(data[sectionHeaderOff+20:], textRawOffset)
+	binary.LittleEndian.PutUint32(data[sectionHeaderOff+36:], 0x60000020)
+	data[textRawOffset] = 0xc3
+
+	_ = dosHeaderSize
+	return data
 }

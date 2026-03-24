@@ -233,7 +233,7 @@ func buildGraphTemporalQuality(g *Graph, nodes []*Node, edgesBySource map[string
 		if _, ok := graphObservedAt(node); ok {
 			nodeObserved++
 		}
-		if _, ok := temporalPropertyTime(node.Properties, "valid_from"); ok || !node.CreatedAt.IsZero() {
+		if _, ok := graphNodePropertyTime(node, "valid_from"); ok || !node.CreatedAt.IsZero() {
 			nodeValidFrom++
 		}
 	}

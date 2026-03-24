@@ -3,6 +3,7 @@ package graph
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -149,6 +150,32 @@ var defaultEntityFacetDefinitions = []EntityFacetDefinition{
 			{Key: "contains_pci", ValueType: "boolean"},
 			{Key: "contains_secrets", ValueType: "boolean"},
 			{Key: "classification", ValueType: "string"},
+		},
+	},
+	{
+		ID:          "evaluation_quality",
+		Version:     "1.0.0",
+		Title:       "Evaluation Quality",
+		Description: "Aggregated outcome and reversal quality signals from evaluation lifecycle events targeting this entity.",
+		SchemaName:  "PlatformEntityEvaluationQualityFacet",
+		SchemaURL:   "urn:cerebro:entity-facet:evaluation-quality:v1",
+		ApplicableKinds: []NodeKind{
+			NodeKindApplication, NodeKindBucket, NodeKindDatabase, NodeKindFunction, NodeKindInstance, NodeKindRepository, NodeKindSecret, NodeKindService, NodeKindWorkload,
+		},
+		SourceKeys: []string{"target_ids", "evaluation_run_id", "conversation_id", "quality_score", "verdict", "status"},
+		Fields: []EntityFacetFieldDefinition{
+			{Key: "evaluation_run_count", ValueType: "integer"},
+			{Key: "conversation_count", ValueType: "integer"},
+			{Key: "decision_count", ValueType: "integer"},
+			{Key: "action_count", ValueType: "integer"},
+			{Key: "outcome_count", ValueType: "integer"},
+			{Key: "positive_outcome_count", ValueType: "integer"},
+			{Key: "negative_outcome_count", ValueType: "integer"},
+			{Key: "reversed_action_count", ValueType: "integer"},
+			{Key: "average_quality_score", ValueType: "number"},
+			{Key: "last_evaluation_run_id", ValueType: "string"},
+			{Key: "last_conversation_id", ValueType: "string"},
+			{Key: "last_observed_at", ValueType: "string"},
 		},
 	},
 	{
@@ -522,6 +549,8 @@ func materializeEntityFacet(g *Graph, node *Node, validAt, recordedAt time.Time,
 		return materializeExposureFacet(g, node, validAt, recordedAt, def, claimIndex)
 	case "data_sensitivity":
 		return materializeDataSensitivityFacet(node, def, claimIndex)
+	case "evaluation_quality":
+		return materializeEvaluationQualityFacet(g, node, validAt, recordedAt, def)
 	case "workload_security":
 		return materializeWorkloadSecurityFacet(g, node, validAt, recordedAt, def)
 	case "bucket_public_access":
@@ -710,6 +739,185 @@ func materializeDataSensitivityFacet(node *Node, def EntityFacetDefinition, clai
 	}, true
 }
 
+func materializeEvaluationQualityFacet(g *Graph, node *Node, validAt, recordedAt time.Time, def EntityFacetDefinition) (EntityFacetRecord, bool) {
+	if g == nil || node == nil {
+		return EntityFacetRecord{}, false
+	}
+
+	runIDs := make(map[string]struct{})
+	conversationIDs := make(map[string]struct{})
+	decisionCount := 0
+	actionCount := 0
+	outcomeCount := 0
+	positiveOutcomes := 0
+	negativeOutcomes := 0
+	reversedActions := 0
+	qualitySum := 0.0
+	qualityCount := 0
+	lastObservedAt := time.Time{}
+	lastRunID := ""
+	lastConversationID := ""
+
+	recordMatch := func(candidate *Node) {
+		if candidate == nil {
+			return
+		}
+		if visible, ok := g.GetNodeBitemporal(candidate.ID, validAt, recordedAt); !ok || visible == nil {
+			return
+		}
+		targeted := false
+		for _, targetID := range stringSliceFromValue(candidate.Properties["target_ids"]) {
+			if strings.TrimSpace(targetID) == strings.TrimSpace(node.ID) {
+				targeted = true
+				break
+			}
+		}
+		if !targeted {
+			return
+		}
+
+		runID := strings.TrimSpace(readString(candidate.Properties, "evaluation_run_id"))
+		conversationID := strings.TrimSpace(readString(candidate.Properties, "conversation_id"))
+		if runID != "" {
+			runIDs[runID] = struct{}{}
+		}
+		if conversationID != "" {
+			conversationIDs[conversationID] = struct{}{}
+		}
+
+		observedAt, _ := graphObservedAt(candidate)
+		if !observedAt.IsZero() && (lastObservedAt.IsZero() || observedAt.After(lastObservedAt)) {
+			lastObservedAt = observedAt
+			lastRunID = runID
+			lastConversationID = conversationID
+		}
+
+		switch candidate.Kind {
+		case NodeKindDecision:
+			decisionCount++
+		case NodeKindAction:
+			actionCount++
+			if evaluationQualityActionReversed(readString(candidate.Properties, "status")) {
+				reversedActions++
+			}
+		case NodeKindOutcome:
+			outcomeCount++
+			switch evaluationQualityOutcomeVerdict(readString(candidate.Properties, "verdict")) {
+			case "positive":
+				positiveOutcomes++
+			case "negative":
+				negativeOutcomes++
+			}
+			if score, ok := evaluationQualityScore(candidate.Properties["quality_score"]); ok {
+				qualitySum += score
+				qualityCount++
+			}
+		}
+	}
+
+	for _, candidate := range g.GetNodesByKind(NodeKindDecision, NodeKindAction, NodeKindOutcome) {
+		recordMatch(candidate)
+	}
+
+	if len(runIDs) == 0 && len(conversationIDs) == 0 && decisionCount == 0 && actionCount == 0 && outcomeCount == 0 {
+		return EntityFacetRecord{
+			ID:         def.ID,
+			Title:      def.Title,
+			SchemaName: def.SchemaName,
+			SchemaURL:  def.SchemaURL,
+			Status:     "missing",
+			Assessment: "unknown",
+			Summary:    "No targeted evaluation lifecycle signals attached",
+			SourceKeys: append([]string(nil), def.SourceKeys...),
+		}, true
+	}
+
+	assessment := "info"
+	switch {
+	case negativeOutcomes > 0 || reversedActions > 0:
+		assessment = "warn"
+	case positiveOutcomes > 0:
+		assessment = "pass"
+	}
+
+	fields := map[string]any{
+		"evaluation_run_count":   len(runIDs),
+		"conversation_count":     len(conversationIDs),
+		"decision_count":         decisionCount,
+		"action_count":           actionCount,
+		"outcome_count":          outcomeCount,
+		"positive_outcome_count": positiveOutcomes,
+		"negative_outcome_count": negativeOutcomes,
+		"reversed_action_count":  reversedActions,
+		"last_evaluation_run_id": lastRunID,
+		"last_conversation_id":   lastConversationID,
+		"last_observed_at":       formatWorkloadSecurityFacetTime(lastObservedAt),
+	}
+	if qualityCount > 0 {
+		fields["average_quality_score"] = qualitySum / float64(qualityCount)
+	}
+
+	return EntityFacetRecord{
+		ID:         def.ID,
+		Title:      def.Title,
+		SchemaName: def.SchemaName,
+		SchemaURL:  def.SchemaURL,
+		Status:     "present",
+		Assessment: assessment,
+		Summary: fmt.Sprintf(
+			"%d evaluation run(s), %d conversation(s), %d positive outcome(s), %d negative outcome(s), %d reversed action(s)",
+			len(runIDs), len(conversationIDs), positiveOutcomes, negativeOutcomes, reversedActions,
+		),
+		SourceKeys: append([]string(nil), def.SourceKeys...),
+		Fields:     fields,
+	}, true
+}
+
+func evaluationQualityActionReversed(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "reversed", "reverted", "rolled_back", "rolled-back":
+		return true
+	default:
+		return false
+	}
+}
+
+func evaluationQualityOutcomeVerdict(verdict string) string {
+	switch strings.ToLower(strings.TrimSpace(verdict)) {
+	case "positive":
+		return "positive"
+	case "negative":
+		return "negative"
+	default:
+		return ""
+	}
+}
+
+func evaluationQualityScore(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, true
+	case float32:
+		return float64(typed), true
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case string:
+		typed = strings.TrimSpace(typed)
+		if typed == "" {
+			return 0, false
+		}
+		parsed, err := strconv.ParseFloat(typed, 64)
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
+	}
+}
+
 func materializeWorkloadSecurityFacet(g *Graph, node *Node, validAt, recordedAt time.Time, def EntityFacetDefinition) (EntityFacetRecord, bool) {
 	if g == nil || node == nil {
 		return EntityFacetRecord{}, false
@@ -840,7 +1048,7 @@ func latestWorkloadScanNodeAt(g *Graph, entityID string, validAt, recordedAt tim
 		}
 		candidateAt, _ := temporalPropertyTime(node.Properties, "completed_at")
 		if candidateAt.IsZero() {
-			candidateAt, _ = temporalPropertyTime(node.Properties, "observed_at")
+			candidateAt, _ = nodePropertyTime(node, "observed_at")
 		}
 		if latest == nil || candidateAt.After(latestAt) {
 			latest = node

@@ -110,8 +110,8 @@ func (e *ToxicCombinationEngine) ruleGCPPublicGCSBucket() *ToxicCombinationRule 
 
 			// Check for sensitive data indicators
 			hasSensitiveData := false
-			dataClassification, _ := node.Properties["data_classification"].(string)
-			containsPII, _ := node.Properties["contains_pii"].(bool)
+			dataClassification := node.PropertyString("data_classification")
+			containsPII, _ := node.PropertyBool("contains_pii")
 
 			if dataClassification == "confidential" || dataClassification == "restricted" || containsPII {
 				hasSensitiveData = true
