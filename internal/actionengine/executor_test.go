@@ -79,6 +79,7 @@ func TestExecutorApprovalFlowAndStorePersistence(t *testing.T) {
 	}
 	if loaded == nil {
 		t.Fatal("expected persisted execution")
+		return
 	}
 	if loaded.Status != StatusCompleted {
 		t.Fatalf("persisted status = %s, want %s", loaded.Status, StatusCompleted)
