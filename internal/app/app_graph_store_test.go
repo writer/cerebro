@@ -24,6 +24,36 @@ func (r *recordingSnapshotGraphStore) Snapshot(ctx context.Context) (*graph.Snap
 	return r.snapshot, nil
 }
 
+type recordingTenantScopedGraphStore struct {
+	graph.GraphStore
+	source        *graph.Graph
+	scope         graph.TenantReadScope
+	snapshotCalls int
+}
+
+func (r *recordingTenantScopedGraphStore) SupportsTenantReadScope() bool {
+	return true
+}
+
+func (r *recordingTenantScopedGraphStore) LookupNode(ctx context.Context, id string) (*graph.Node, bool, error) {
+	scope, _ := graph.TenantReadScopeFromContext(ctx)
+	r.scope = scope
+	if r.source == nil {
+		return nil, false, graph.ErrStoreUnavailable
+	}
+	reader, err := r.source.NewTenantReader(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	node, ok := reader.GetNode(id)
+	return node, ok, nil
+}
+
+func (r *recordingTenantScopedGraphStore) Snapshot(ctx context.Context) (*graph.Snapshot, error) {
+	r.snapshotCalls++
+	return r.GraphStore.Snapshot(ctx)
+}
+
 func TestCurrentSecurityGraphStoreTracksLiveGraphSwap(t *testing.T) {
 	application := &App{}
 
@@ -405,6 +435,40 @@ func TestCurrentSecurityGraphStoreForTenantUsesPersistedSnapshotWhenLiveGraphUna
 	status := store.Status()
 	if status.LastRecoveredSnapshot != "" || status.LastRecoverySource != "" {
 		t.Fatalf("expected passive snapshot read to avoid recovery bookkeeping, got %+v", status)
+	}
+}
+
+func TestCurrentSecurityGraphStoreForTenantPrefersConfiguredTenantScopedBackend(t *testing.T) {
+	source := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 23, 0, 0, 0, time.UTC))
+	snapshot, err := source.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	recording := &recordingTenantScopedGraphStore{
+		GraphStore: graph.NewSnapshotGraphStore(snapshot),
+		source:     source,
+	}
+	application := &App{}
+	application.configuredSecurityGraphStore = recording
+	application.configuredSecurityGraphReady = true
+
+	store := application.CurrentSecurityGraphStoreForTenant("tenant-a")
+	if store == nil {
+		t.Fatal("expected tenant-scoped graph store")
+	}
+	if _, ok, err := store.LookupNode(context.Background(), "service:tenant-a"); err != nil || !ok {
+		t.Fatalf("LookupNode(tenant-a) = (%v, %v), want present; err=%v", ok, err, err)
+	}
+	if _, ok, err := store.LookupNode(context.Background(), "service:tenant-b"); err != nil {
+		t.Fatalf("LookupNode(tenant-b) error = %v", err)
+	} else if ok {
+		t.Fatal("expected tenant-scoped backend reads to exclude foreign-tenant nodes")
+	}
+	if got := recording.scope.TenantIDs; !reflect.DeepEqual(got, []string{"tenant-a"}) {
+		t.Fatalf("configured backend scope = %#v, want [tenant-a]", got)
+	}
+	if recording.snapshotCalls != 0 {
+		t.Fatalf("configured backend snapshot calls = %d, want 0", recording.snapshotCalls)
 	}
 }
 

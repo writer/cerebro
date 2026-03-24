@@ -104,6 +104,7 @@ type DualWriteGraphStore struct {
 }
 
 var _ GraphStore = (*DualWriteGraphStore)(nil)
+var _ TenantScopeAwareGraphStore = (*DualWriteGraphStore)(nil)
 
 func NewDualWriteGraphStore(primary, secondary GraphStore, options DualWriteGraphStoreOptions) GraphStore {
 	if primary == nil || secondary == nil {
@@ -118,6 +119,13 @@ func NewDualWriteGraphStore(primary, secondary GraphStore, options DualWriteGrap
 		secondary:  secondary,
 		options:    options,
 	}
+}
+
+func (s *DualWriteGraphStore) SupportsTenantReadScope() bool {
+	if s == nil {
+		return false
+	}
+	return SupportsTenantReadScope(s.GraphStore)
 }
 
 func (s *DualWriteGraphStore) UpsertNode(ctx context.Context, node *Node) error {

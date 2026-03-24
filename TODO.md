@@ -5,6 +5,24 @@ Owner: @haasonsaas
 Mode: implement in full, keep CI green
 Status: executed end-to-end via PR workflow
 
+## Neptune-native runtime refactor (2026-03-24)
+
+Target runtime shape:
+- Graph database: Neptune or Spanner
+- Relational database: Postgres or Spanner
+- Jobs/task management: Postgres / NATS
+- Message queue / pub-sub: NATS
+
+Current progress:
+- [x] Keep `GRAPH_STORE_BACKEND=neptune` as the graph runtime production switch.
+- [x] Make tenant-scoped configured graph-store reads prefer the configured backend when it natively supports tenant scope instead of snapshot materialization.
+- [x] Route store-native blast-radius and neighbors tool reads through `GraphStore` instead of forcing a graph view first.
+- [x] Run focused validators for the touched graph/app/api packages plus changed-file DevEx and OSS audit checks.
+- [ ] Remove remaining backend read paths that still materialize full graph views through `currentOrStoredGraphView`, `snapshotBackedGraphView`, `currentOrStoredSecurityGraphView`, or `requireReadableSecurityGraph`.
+- [ ] Carve explicit relational, jobs, and messaging seams around Postgres / Spanner and Postgres / NATS / NATS.
+- [ ] Preserve existing API behavior, tenant scoping, and auth semantics through the runtime refactor.
+- [ ] Run validators and capture the architecture summary, removed materialization points, validation results, and remaining gaps.
+
 ## Deep Review Cycle 249 - Agent Tool Approval TTL Config (2026-03-19)
 
 ### Review findings

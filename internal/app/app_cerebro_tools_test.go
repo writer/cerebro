@@ -330,6 +330,20 @@ func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *tes
 			},
 		},
 		{
+			name: "graph query neighbors",
+			tool: "cerebro.graph_query",
+			args: `{"mode":"neighbors","node_id":"user:alice","direction":"out","limit":10}`,
+			assert: func(t *testing.T, payload map[string]any) {
+				t.Helper()
+				if payload["mode"] != "neighbors" {
+					t.Fatalf("expected neighbors mode, got %#v", payload["mode"])
+				}
+				if count, ok := payload["count"].(float64); !ok || count < 1 {
+					t.Fatalf("expected at least one neighbor, got %#v", payload["count"])
+				}
+			},
+		},
+		{
 			name: "risk score",
 			tool: "cerebro.risk_score",
 			args: `{"entity_id":"db:prod","include_overall":true}`,

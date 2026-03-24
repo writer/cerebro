@@ -334,9 +334,14 @@ type neptuneExplainExecutor interface {
 }
 
 var _ GraphStore = (*NeptuneGraphStore)(nil)
+var _ TenantScopeAwareGraphStore = (*NeptuneGraphStore)(nil)
 
 func NewNeptuneGraphStore(exec NeptuneOpenCypherExecutor) *NeptuneGraphStore {
 	return &NeptuneGraphStore{exec: exec}
+}
+
+func (s *NeptuneGraphStore) SupportsTenantReadScope() bool {
+	return true
 }
 
 func (s *NeptuneGraphStore) ExplainQuery(ctx context.Context, query string, params map[string]any, mode NeptuneExplainMode) (*NeptuneQueryAnalysis, error) {
@@ -1591,7 +1596,7 @@ func neptuneDecodeNode(record map[string]any) (*Node, error) {
 		return nil, nil
 	}
 	node := &Node{
-		ID:                 strings.TrimSpace(readString(record, "id")),
+		ID:                 neptuneNodeID(record),
 		Kind:               NodeKind(strings.TrimSpace(readString(record, "kind"))),
 		Name:               readString(record, "name"),
 		TenantID:           readString(record, "tenant_id"),
@@ -1636,7 +1641,7 @@ func neptuneDecodeEdge(record map[string]any) (*Edge, error) {
 		return nil, nil
 	}
 	edge := &Edge{
-		ID:        strings.TrimSpace(readString(record, "id")),
+		ID:        neptuneEdgeID(record),
 		Source:    strings.TrimSpace(readString(record, "source")),
 		Target:    strings.TrimSpace(readString(record, "target")),
 		Kind:      EdgeKind(strings.TrimSpace(readString(record, "kind"))),
@@ -1654,6 +1659,14 @@ func neptuneDecodeEdge(record map[string]any) (*Edge, error) {
 		return nil, fmt.Errorf("decode edge properties: %w", err)
 	}
 	return edge, nil
+}
+
+func neptuneNodeID(record map[string]any) string {
+	return strings.TrimSpace(readString(record, "id"))
+}
+
+func neptuneEdgeID(record map[string]any) string {
+	return strings.TrimSpace(readString(record, "id"))
 }
 
 func neptuneInt(value any) int {

@@ -121,15 +121,33 @@ func (a *App) requireReadableSecurityGraph() (*graph.Graph, error) {
 	}
 	g, err := a.currentOrStoredSecurityGraphView()
 	if err != nil {
-		if a.Logger != nil {
-			a.Logger.Warn("failed to resolve readable security graph", "error", err)
-		}
-		return nil, fmt.Errorf("security graph not initialized")
+		return nil, a.sanitizeReadableSecurityGraphError(err)
 	}
 	if g == nil {
 		return nil, fmt.Errorf("security graph not initialized")
 	}
 	return g, nil
+}
+
+func (a *App) requireReadableSecurityGraphStore() (graph.GraphStore, error) {
+	if a == nil {
+		return nil, fmt.Errorf("security graph not initialized")
+	}
+	store := a.CurrentSecurityGraphStore()
+	if store == nil {
+		return nil, fmt.Errorf("security graph not initialized")
+	}
+	return store, nil
+}
+
+func (a *App) sanitizeReadableSecurityGraphError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if a != nil && a.Logger != nil {
+		a.Logger.Warn("failed to resolve readable security graph", "error", err)
+	}
+	return fmt.Errorf("security graph not initialized")
 }
 
 func (a *App) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph {

@@ -76,6 +76,11 @@ func (a *App) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphSto
 		layers: []graphStoreLayer{
 			{
 				resolve: func(ctx context.Context) (graph.GraphStore, error) {
+					return a.currentConfiguredTenantSecurityGraphStore(ctx, tenantID)
+				},
+			},
+			{
+				resolve: func(ctx context.Context) (graph.GraphStore, error) {
 					store, err := a.currentConfiguredSnapshotGraphStore(graph.WithTenantScope(ctx, tenantID))
 					if err != nil {
 						return nil, err
@@ -492,6 +497,23 @@ func (a *App) currentConfiguredSnapshotGraphStore(ctx context.Context) (*graph.S
 		return nil, graph.ErrStoreUnavailable
 	}
 	return graph.NewSnapshotGraphStore(snapshot), nil
+}
+
+func (a *App) currentConfiguredTenantSecurityGraphStore(ctx context.Context, tenantID string) (graph.GraphStore, error) {
+	if err := graphStoreContextErr(ctx); err != nil {
+		return nil, err
+	}
+	if a == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	store, err := a.currentConfiguredSecurityGraphStore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !graph.SupportsTenantReadScope(store) {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return graph.NewTenantScopedReadOnlyGraphStore(store, tenantID), nil
 }
 
 func (a *App) currentWarmTenantGraphStore(ctx context.Context, tenantID string) (graph.GraphStore, error) {

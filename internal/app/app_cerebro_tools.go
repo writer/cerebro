@@ -912,6 +912,12 @@ type cerebroGraphQueryRequest struct {
 	To        string `json:"to"`
 }
 
+type neighborQueryResult struct {
+	Direction string      `json:"direction"`
+	Edge      *graph.Edge `json:"edge"`
+	Node      *graph.Node `json:"node,omitempty"`
+}
+
 func (a *App) toolCerebroSimulate(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
@@ -1243,7 +1249,7 @@ func buildScenarioSimulationDelta(g *graph.Graph, scenario string, target string
 		edges = append(edges, graph.EdgeMutation{
 			Action: "add",
 			Edge: &graph.Edge{
-				ID:     fmt.Sprintf("simulate:%s:member_of:%s", target, toTeam),
+				ID:     simulationTeamMemberOfEdgeID(target, toTeam),
 				Source: target,
 				Target: toTeam,
 				Kind:   graph.EdgeKindMemberOf,
@@ -1271,6 +1277,10 @@ func buildScenarioSimulationDelta(g *graph.Graph, scenario string, target string
 	default:
 		return graph.GraphDelta{}, fmt.Errorf("unsupported scenario %q", scenario)
 	}
+}
+
+func simulationTeamMemberOfEdgeID(target, teamID string) string {
+	return fmt.Sprintf("simulate:%s:member_of:%s", target, teamID)
 }
 
 func normalizeInsightSections(raw []string) map[string]bool {
@@ -1713,8 +1723,8 @@ func simulationRecommendation(result *graph.GraphSimulationResult) string {
 	return "safe_to_proceed"
 }
 
-func (a *App) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireReadableSecurityGraph()
+func (a *App) toolCerebroBlastRadius(ctx context.Context, args json.RawMessage) (string, error) {
+	store, err := a.requireReadableSecurityGraphStore()
 	if err != nil {
 		return "", err
 	}
@@ -1732,7 +1742,10 @@ func (a *App) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (s
 	}
 	req.MaxDepth = clampInt(req.MaxDepth, 3, 1, 10)
 
-	result := risk.BlastRadius(g, req.PrincipalID, req.MaxDepth)
+	result, err := store.BlastRadius(ctx, req.PrincipalID, req.MaxDepth)
+	if err != nil {
+		return "", a.sanitizeReadableSecurityGraphError(err)
+	}
 	return marshalToolResponse(result)
 }
 
@@ -1769,12 +1782,7 @@ func (a *App) toolCerebroRiskScore(_ context.Context, args json.RawMessage) (str
 	return marshalToolResponse(response)
 }
 
-func (a *App) toolCerebroGraphQuery(_ context.Context, args json.RawMessage) (string, error) {
-	g, err := a.requireReadableSecurityGraph()
-	if err != nil {
-		return "", err
-	}
-
+func (a *App) toolCerebroGraphQuery(ctx context.Context, args json.RawMessage) (string, error) {
 	var req cerebroGraphQueryRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
@@ -1789,10 +1797,25 @@ func (a *App) toolCerebroGraphQuery(_ context.Context, args json.RawMessage) (st
 		return "", fmt.Errorf("node_id is required")
 	}
 
-	queryGraph := g
 	temporalScope := map[string]any{}
 
 	asOfRaw := strings.TrimSpace(req.AsOf)
+	fromRaw := strings.TrimSpace(req.From)
+	toRaw := strings.TrimSpace(req.To)
+	if asOfRaw == "" && fromRaw == "" && toRaw == "" && req.Mode == "neighbors" {
+		store, err := a.requireReadableSecurityGraphStore()
+		if err != nil {
+			return "", err
+		}
+		return a.runNeighborsQueryStore(ctx, store, req, temporalScope)
+	}
+
+	g, err := a.requireReadableSecurityGraph()
+	if err != nil {
+		return "", err
+	}
+
+	queryGraph := g
 	if asOfRaw != "" {
 		asOf, err := time.Parse(time.RFC3339, asOfRaw)
 		if err != nil {
@@ -1802,8 +1825,6 @@ func (a *App) toolCerebroGraphQuery(_ context.Context, args json.RawMessage) (st
 		queryGraph = g.SubgraphAt(asOf.UTC())
 	}
 
-	fromRaw := strings.TrimSpace(req.From)
-	toRaw := strings.TrimSpace(req.To)
 	if fromRaw != "" || toRaw != "" {
 		if fromRaw == "" || toRaw == "" {
 			return "", fmt.Errorf("both from and to are required when specifying a temporal window")
@@ -1845,17 +1866,11 @@ func (a *App) runNeighborsQuery(g *graph.Graph, req cerebroGraphQueryRequest, te
 	}
 	limit := clampInt(req.Limit, 25, 1, 200)
 
-	type neighborResult struct {
-		Direction string      `json:"direction"`
-		Edge      *graph.Edge `json:"edge"`
-		Node      *graph.Node `json:"node,omitempty"`
-	}
-
-	results := make([]neighborResult, 0)
+	results := make([]neighborQueryResult, 0)
 	if direction == "out" || direction == "both" {
 		for _, edge := range g.GetOutEdges(req.NodeID) {
 			targetNode, _ := g.GetNode(edge.Target)
-			results = append(results, neighborResult{
+			results = append(results, neighborQueryResult{
 				Direction: "out",
 				Edge:      edge,
 				Node:      targetNode,
@@ -1865,7 +1880,90 @@ func (a *App) runNeighborsQuery(g *graph.Graph, req cerebroGraphQueryRequest, te
 	if direction == "in" || direction == "both" {
 		for _, edge := range g.GetInEdges(req.NodeID) {
 			sourceNode, _ := g.GetNode(edge.Source)
-			results = append(results, neighborResult{
+			results = append(results, neighborQueryResult{
+				Direction: "in",
+				Edge:      edge,
+				Node:      sourceNode,
+			})
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Direction == results[j].Direction {
+			if results[i].Edge.Source == results[j].Edge.Source {
+				if results[i].Edge.Target == results[j].Edge.Target {
+					return string(results[i].Edge.Kind) < string(results[j].Edge.Kind)
+				}
+				return results[i].Edge.Target < results[j].Edge.Target
+			}
+			return results[i].Edge.Source < results[j].Edge.Source
+		}
+		return results[i].Direction < results[j].Direction
+	})
+
+	total := len(results)
+	if len(results) > limit {
+		results = results[:limit]
+	}
+
+	return marshalToolResponse(map[string]any{
+		"mode":      "neighbors",
+		"node_id":   req.NodeID,
+		"direction": direction,
+		"temporal":  temporalScope,
+		"total":     total,
+		"count":     len(results),
+		"limit":     limit,
+		"truncated": total > len(results),
+		"neighbors": results,
+	})
+}
+
+func (a *App) runNeighborsQueryStore(ctx context.Context, store graph.GraphStore, req cerebroGraphQueryRequest, temporalScope map[string]any) (string, error) {
+	direction := strings.ToLower(strings.TrimSpace(req.Direction))
+	if direction == "" {
+		direction = "both"
+	}
+	if direction != "out" && direction != "in" && direction != "both" {
+		return "", fmt.Errorf("direction must be one of out, in, both")
+	}
+	limit := clampInt(req.Limit, 25, 1, 200)
+
+	if _, ok, err := store.LookupNode(ctx, req.NodeID); err != nil {
+		return "", a.sanitizeReadableSecurityGraphError(err)
+	} else if !ok {
+		return "", fmt.Errorf("node not found in selected scope: %s", req.NodeID)
+	}
+
+	results := make([]neighborQueryResult, 0)
+	if direction == "out" || direction == "both" {
+		edges, err := store.LookupOutEdges(ctx, req.NodeID)
+		if err != nil {
+			return "", a.sanitizeReadableSecurityGraphError(err)
+		}
+		for _, edge := range edges {
+			targetNode, _, err := store.LookupNode(ctx, edge.Target)
+			if err != nil {
+				return "", a.sanitizeReadableSecurityGraphError(err)
+			}
+			results = append(results, neighborQueryResult{
+				Direction: "out",
+				Edge:      edge,
+				Node:      targetNode,
+			})
+		}
+	}
+	if direction == "in" || direction == "both" {
+		edges, err := store.LookupInEdges(ctx, req.NodeID)
+		if err != nil {
+			return "", a.sanitizeReadableSecurityGraphError(err)
+		}
+		for _, edge := range edges {
+			sourceNode, _, err := store.LookupNode(ctx, edge.Source)
+			if err != nil {
+				return "", a.sanitizeReadableSecurityGraphError(err)
+			}
+			results = append(results, neighborQueryResult{
 				Direction: "in",
 				Edge:      edge,
 				Node:      sourceNode,
