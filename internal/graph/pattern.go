@@ -281,14 +281,14 @@ func patternNodeFieldValue(node *Node, field string) (any, bool) {
 		return node.Version, true
 	}
 
+	if value, ok := node.PropertyValue(field); ok {
+		return value, true
+	}
+	if value, ok := node.PropertyValue(normalized); ok {
+		return value, true
+	}
 	if node.Properties == nil {
 		return nil, false
-	}
-	if value, ok := node.Properties[field]; ok {
-		return value, true
-	}
-	if value, ok := node.Properties[normalized]; ok {
-		return value, true
 	}
 	for key, value := range node.Properties {
 		if strings.EqualFold(key, field) {

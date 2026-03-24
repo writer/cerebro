@@ -39,15 +39,19 @@ const (
 	attackSequencePropertyKeyConfidence            = "confidence"
 )
 
-// PropertyColumns keeps promoted observation and attack-sequence properties in
+// PropertyColumns keeps promoted metadata, common scalar, observation, and attack-sequence properties in
 // graph-owned typed columns keyed by node ordinal.
 type PropertyColumns struct {
+	metadata        *ColumnStore
+	common          *ColumnStore
 	observations    *ColumnStore
 	attackSequences *ColumnStore
 }
 
 func NewPropertyColumns() *PropertyColumns {
 	return &PropertyColumns{
+		metadata:        NewColumnStore(),
+		common:          NewColumnStore(),
 		observations:    NewColumnStore(),
 		attackSequences: NewColumnStore(),
 	}
@@ -58,6 +62,8 @@ func (c *PropertyColumns) Clone() *PropertyColumns {
 		return nil
 	}
 	return &PropertyColumns{
+		metadata:        c.metadata.Clone(),
+		common:          c.common.Clone(),
 		observations:    c.observations.Clone(),
 		attackSequences: c.attackSequences.Clone(),
 	}
@@ -67,8 +73,216 @@ func (c *PropertyColumns) ClearOrdinal(ordinal NodeOrdinal) {
 	if c == nil {
 		return
 	}
+	c.ClearMetadataProperties(ordinal)
+	c.ClearCommonProperties(ordinal)
 	c.ClearObservationProperties(ordinal)
 	c.ClearAttackSequenceProperties(ordinal)
+}
+
+func (c *PropertyColumns) MetadataProperties(ordinal NodeOrdinal) (NodeMetadataProperties, bool) {
+	if c == nil || c.metadata == nil || ordinal == InvalidNodeOrdinal {
+		return NodeMetadataProperties{}, false
+	}
+	var props NodeMetadataProperties
+	if value, ok := c.metadata.String(metadataPropertyKeySourceSystem, ordinal); ok {
+		props.SourceSystem = value
+		props.present |= metadataPropertySourceSystem
+	}
+	if value, ok := c.metadata.String(metadataPropertyKeySourceEventID, ordinal); ok {
+		props.SourceEventID = value
+		props.present |= metadataPropertySourceEventID
+	}
+	if value, ok := c.metadata.Float64(metadataPropertyKeyConfidence, ordinal); ok {
+		props.Confidence = value
+		props.present |= metadataPropertyConfidence
+	}
+	if ts, ok := propertyColumnTime(c.metadata, metadataPropertyKeyObservedAt, ordinal); ok {
+		props.ObservedAt = ts
+		props.present |= metadataPropertyObservedAt
+	}
+	if ts, ok := propertyColumnTime(c.metadata, metadataPropertyKeyValidFrom, ordinal); ok {
+		props.ValidFrom = ts
+		props.present |= metadataPropertyValidFrom
+	}
+	if ts, ok := propertyColumnTime(c.metadata, metadataPropertyKeyValidTo, ordinal); ok {
+		props.ValidTo = &ts
+		props.present |= metadataPropertyValidTo
+	}
+	if ts, ok := propertyColumnTime(c.metadata, metadataPropertyKeyRecordedAt, ordinal); ok {
+		props.RecordedAt = ts
+		props.present |= metadataPropertyRecordedAt
+	}
+	if ts, ok := propertyColumnTime(c.metadata, metadataPropertyKeyTransactionFrom, ordinal); ok {
+		props.TransactionFrom = ts
+		props.present |= metadataPropertyTransactionFrom
+	}
+	if ts, ok := propertyColumnTime(c.metadata, metadataPropertyKeyTransactionTo, ordinal); ok {
+		props.TransactionTo = &ts
+		props.present |= metadataPropertyTransactionTo
+	}
+	if props.present == 0 {
+		return NodeMetadataProperties{}, false
+	}
+	return props, true
+}
+
+func (c *PropertyColumns) SetMetadataProperties(ordinal NodeOrdinal, props NodeMetadataProperties) {
+	if c == nil || c.metadata == nil || ordinal == InvalidNodeOrdinal {
+		return
+	}
+	c.ClearMetadataProperties(ordinal)
+	if props.present == 0 {
+		return
+	}
+	if props.present&metadataPropertySourceSystem != 0 {
+		c.metadata.SetString(metadataPropertyKeySourceSystem, ordinal, props.SourceSystem)
+	}
+	if props.present&metadataPropertySourceEventID != 0 {
+		c.metadata.SetString(metadataPropertyKeySourceEventID, ordinal, props.SourceEventID)
+	}
+	if props.present&metadataPropertyConfidence != 0 {
+		c.metadata.SetFloat64(metadataPropertyKeyConfidence, ordinal, props.Confidence)
+	}
+	if props.present&metadataPropertyObservedAt != 0 {
+		setPropertyColumnTime(c.metadata, metadataPropertyKeyObservedAt, ordinal, props.ObservedAt)
+	}
+	if props.present&metadataPropertyValidFrom != 0 {
+		setPropertyColumnTime(c.metadata, metadataPropertyKeyValidFrom, ordinal, props.ValidFrom)
+	}
+	if props.present&metadataPropertyValidTo != 0 && props.ValidTo != nil {
+		setPropertyColumnTime(c.metadata, metadataPropertyKeyValidTo, ordinal, *props.ValidTo)
+	}
+	if props.present&metadataPropertyRecordedAt != 0 {
+		setPropertyColumnTime(c.metadata, metadataPropertyKeyRecordedAt, ordinal, props.RecordedAt)
+	}
+	if props.present&metadataPropertyTransactionFrom != 0 {
+		setPropertyColumnTime(c.metadata, metadataPropertyKeyTransactionFrom, ordinal, props.TransactionFrom)
+	}
+	if props.present&metadataPropertyTransactionTo != 0 && props.TransactionTo != nil {
+		setPropertyColumnTime(c.metadata, metadataPropertyKeyTransactionTo, ordinal, *props.TransactionTo)
+	}
+}
+
+func (c *PropertyColumns) ClearMetadataProperties(ordinal NodeOrdinal) {
+	if c == nil || c.metadata == nil {
+		return
+	}
+	c.metadata.ClearString(metadataPropertyKeySourceSystem, ordinal)
+	c.metadata.ClearString(metadataPropertyKeySourceEventID, ordinal)
+	c.metadata.ClearFloat64(metadataPropertyKeyConfidence, ordinal)
+	clearPropertyColumnTime(c.metadata, metadataPropertyKeyObservedAt, ordinal)
+	clearPropertyColumnTime(c.metadata, metadataPropertyKeyValidFrom, ordinal)
+	clearPropertyColumnTime(c.metadata, metadataPropertyKeyValidTo, ordinal)
+	clearPropertyColumnTime(c.metadata, metadataPropertyKeyRecordedAt, ordinal)
+	clearPropertyColumnTime(c.metadata, metadataPropertyKeyTransactionFrom, ordinal)
+	clearPropertyColumnTime(c.metadata, metadataPropertyKeyTransactionTo, ordinal)
+}
+
+func (c *PropertyColumns) CommonProperties(ordinal NodeOrdinal) (NodeCommonProperties, bool) {
+	if c == nil || c.common == nil || ordinal == InvalidNodeOrdinal {
+		return NodeCommonProperties{}, false
+	}
+	var props NodeCommonProperties
+	if value, ok := c.common.String(commonPropertyKeyServiceID, ordinal); ok {
+		props.ServiceID = value
+		props.present |= commonPropertyServiceID
+	}
+	if value, ok := c.common.String(commonPropertyKeyPublicIP, ordinal); ok {
+		props.PublicIP = value
+		props.present |= commonPropertyPublicIP
+	}
+	if value, ok := c.common.String(commonPropertyKeyDataClassification, ordinal); ok {
+		props.DataClassification = value
+		props.present |= commonPropertyDataClassification
+	}
+	if value, ok := c.common.String(commonPropertyKeyIdentityType, ordinal); ok {
+		props.IdentityType = value
+		props.present |= commonPropertyIdentityType
+	}
+	if value, ok := c.common.Bool(commonPropertyKeyInternetExposed, ordinal); ok {
+		props.InternetExposed = value
+		props.present |= commonPropertyInternetExposed
+	}
+	if value, ok := c.common.Bool(commonPropertyKeyMFAEnabled, ordinal); ok {
+		props.MFAEnabled = value
+		props.present |= commonPropertyMFAEnabled
+	}
+	if value, ok := c.common.Bool(commonPropertyKeyContainsPII, ordinal); ok {
+		props.ContainsPII = value
+		props.present |= commonPropertyContainsPII
+	}
+	if value, ok := c.common.Bool(commonPropertyKeyContainsPHI, ordinal); ok {
+		props.ContainsPHI = value
+		props.present |= commonPropertyContainsPHI
+	}
+	if value, ok := c.common.Bool(commonPropertyKeyContainsPCI, ordinal); ok {
+		props.ContainsPCI = value
+		props.present |= commonPropertyContainsPCI
+	}
+	if value, ok := c.common.Bool(commonPropertyKeyContainsSecrets, ordinal); ok {
+		props.ContainsSecrets = value
+		props.present |= commonPropertyContainsSecrets
+	}
+	if props.present == 0 {
+		return NodeCommonProperties{}, false
+	}
+	return props, true
+}
+
+func (c *PropertyColumns) SetCommonProperties(ordinal NodeOrdinal, props NodeCommonProperties) {
+	if c == nil || c.common == nil || ordinal == InvalidNodeOrdinal {
+		return
+	}
+	c.ClearCommonProperties(ordinal)
+	if props.present == 0 {
+		return
+	}
+	if props.present&commonPropertyServiceID != 0 {
+		c.common.SetString(commonPropertyKeyServiceID, ordinal, props.ServiceID)
+	}
+	if props.present&commonPropertyPublicIP != 0 {
+		c.common.SetString(commonPropertyKeyPublicIP, ordinal, props.PublicIP)
+	}
+	if props.present&commonPropertyDataClassification != 0 {
+		c.common.SetString(commonPropertyKeyDataClassification, ordinal, props.DataClassification)
+	}
+	if props.present&commonPropertyIdentityType != 0 {
+		c.common.SetString(commonPropertyKeyIdentityType, ordinal, props.IdentityType)
+	}
+	if props.present&commonPropertyInternetExposed != 0 {
+		c.common.SetBool(commonPropertyKeyInternetExposed, ordinal, props.InternetExposed)
+	}
+	if props.present&commonPropertyMFAEnabled != 0 {
+		c.common.SetBool(commonPropertyKeyMFAEnabled, ordinal, props.MFAEnabled)
+	}
+	if props.present&commonPropertyContainsPII != 0 {
+		c.common.SetBool(commonPropertyKeyContainsPII, ordinal, props.ContainsPII)
+	}
+	if props.present&commonPropertyContainsPHI != 0 {
+		c.common.SetBool(commonPropertyKeyContainsPHI, ordinal, props.ContainsPHI)
+	}
+	if props.present&commonPropertyContainsPCI != 0 {
+		c.common.SetBool(commonPropertyKeyContainsPCI, ordinal, props.ContainsPCI)
+	}
+	if props.present&commonPropertyContainsSecrets != 0 {
+		c.common.SetBool(commonPropertyKeyContainsSecrets, ordinal, props.ContainsSecrets)
+	}
+}
+
+func (c *PropertyColumns) ClearCommonProperties(ordinal NodeOrdinal) {
+	if c == nil || c.common == nil {
+		return
+	}
+	c.common.ClearString(commonPropertyKeyServiceID, ordinal)
+	c.common.ClearString(commonPropertyKeyPublicIP, ordinal)
+	c.common.ClearString(commonPropertyKeyDataClassification, ordinal)
+	c.common.ClearString(commonPropertyKeyIdentityType, ordinal)
+	c.common.ClearBool(commonPropertyKeyInternetExposed, ordinal)
+	c.common.ClearBool(commonPropertyKeyMFAEnabled, ordinal)
+	c.common.ClearBool(commonPropertyKeyContainsPII, ordinal)
+	c.common.ClearBool(commonPropertyKeyContainsPHI, ordinal)
+	c.common.ClearBool(commonPropertyKeyContainsPCI, ordinal)
+	c.common.ClearBool(commonPropertyKeyContainsSecrets, ordinal)
 }
 
 func (c *PropertyColumns) ObservationProperties(ordinal NodeOrdinal) (ObservationProperties, bool) {
@@ -417,11 +631,17 @@ func (g *Graph) bindNodePropertyColumnsLocked(node *Node) {
 		return
 	}
 	var (
+		metadataProps       NodeMetadataProperties
+		hasMetadataProps    bool
+		commonProps         NodeCommonProperties
+		hasCommonProps      bool
 		observationProps    ObservationProperties
 		hasObservationProps bool
 		attackSequenceProps AttackSequenceProperties
 		hasAttackProps      bool
 	)
+	metadataProps, hasMetadataProps = bindableNodeMetadataProperties(node)
+	commonProps, hasCommonProps = bindableNodeCommonProperties(node)
 	if node.Kind == NodeKindObservation {
 		observationProps, hasObservationProps = bindableObservationProperties(node)
 	}
@@ -431,6 +651,16 @@ func (g *Graph) bindNodePropertyColumnsLocked(node *Node) {
 
 	node.propertyColumns = g.propertyColumns
 	if g.propertyColumns == nil || node.ordinal == InvalidNodeOrdinal {
+		if hasMetadataProps {
+			node.metadataProps = ptrNodeMetadataProperties(metadataProps)
+		} else {
+			node.metadataProps = nil
+		}
+		if hasCommonProps {
+			node.commonProps = ptrNodeCommonProperties(commonProps)
+		} else {
+			node.commonProps = nil
+		}
 		if hasObservationProps {
 			node.observationProps = ptrObservationProperties(observationProps)
 		} else {
@@ -445,12 +675,20 @@ func (g *Graph) bindNodePropertyColumnsLocked(node *Node) {
 	}
 
 	g.propertyColumns.ClearOrdinal(node.ordinal)
+	if hasMetadataProps {
+		g.propertyColumns.SetMetadataProperties(node.ordinal, metadataProps)
+	}
+	if hasCommonProps {
+		g.propertyColumns.SetCommonProperties(node.ordinal, commonProps)
+	}
 	if hasObservationProps {
 		g.propertyColumns.SetObservationProperties(node.ordinal, observationProps)
 	}
 	if hasAttackProps {
 		g.propertyColumns.SetAttackSequenceProperties(node.ordinal, attackSequenceProps)
 	}
+	node.metadataProps = nil
+	node.commonProps = nil
 	node.observationProps = nil
 	node.attackSequenceProps = nil
 }

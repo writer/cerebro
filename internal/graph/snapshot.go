@@ -859,6 +859,7 @@ func cloneNode(node *Node) *Node {
 	cloned.Findings = append([]string(nil), node.Findings...)
 	cloned.ordinal = InvalidNodeOrdinal
 	cloned.propertyColumns = nil
+	cloned.commonProps = nil
 	cloned.observationProps = nil
 	cloned.attackSequenceProps = nil
 	return &cloned

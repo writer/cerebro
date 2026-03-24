@@ -265,6 +265,62 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		}
 	}
 
+	threadDef, ok := defByKind[NodeKindThread]
+	if !ok {
+		t.Fatal("expected communication_thread definition")
+	}
+	for _, property := range []string{"thread_id", "channel_id", "observed_at", "valid_from"} {
+		if !containsRequiredProperty(threadDef.RequiredProperties, property) {
+			t.Fatalf("expected communication_thread required property %q, got %#v", property, threadDef.RequiredProperties)
+		}
+	}
+	for _, relationship := range []EdgeKind{EdgeKindTargets, EdgeKindInteractedWith, EdgeKindBasedOn} {
+		if !containsEdgeKind(threadDef.Relationships, relationship) {
+			t.Fatalf("expected communication_thread relationship %q, got %#v", relationship, threadDef.Relationships)
+		}
+	}
+	for _, key := range []string{"source_system", "observed_at", "valid_from"} {
+		if !containsRequiredProperty(threadDef.MetadataProfile.RequiredKeys, key) {
+			t.Fatalf("expected communication_thread metadata required key %q, got %#v", key, threadDef.MetadataProfile.RequiredKeys)
+		}
+	}
+	for _, key := range []string{"observed_at", "valid_from", "valid_to", "recorded_at", "transaction_from", "transaction_to"} {
+		if !containsRequiredProperty(threadDef.MetadataProfile.TimestampKeys, key) {
+			t.Fatalf("expected communication_thread metadata timestamp key %q, got %#v", key, threadDef.MetadataProfile.TimestampKeys)
+		}
+	}
+
+	outcomeDef, ok := defByKind[NodeKindOutcome]
+	if !ok {
+		t.Fatal("expected outcome definition")
+	}
+	for _, property := range []string{"outcome_type", "verdict", "observed_at", "valid_from"} {
+		if !containsRequiredProperty(outcomeDef.RequiredProperties, property) {
+			t.Fatalf("expected outcome required property %q, got %#v", property, outcomeDef.RequiredProperties)
+		}
+	}
+	for _, relationship := range []EdgeKind{EdgeKindEvaluates, EdgeKindTargets} {
+		if !containsEdgeKind(outcomeDef.Relationships, relationship) {
+			t.Fatalf("expected outcome relationship %q, got %#v", relationship, outcomeDef.Relationships)
+		}
+	}
+	for _, key := range []string{"source_system", "observed_at", "valid_from"} {
+		if !containsRequiredProperty(outcomeDef.MetadataProfile.RequiredKeys, key) {
+			t.Fatalf("expected outcome metadata required key %q, got %#v", key, outcomeDef.MetadataProfile.RequiredKeys)
+		}
+	}
+	for _, key := range []string{"observed_at", "valid_from", "valid_to", "recorded_at", "transaction_from", "transaction_to"} {
+		if !containsRequiredProperty(outcomeDef.MetadataProfile.TimestampKeys, key) {
+			t.Fatalf("expected outcome metadata timestamp key %q, got %#v", key, outcomeDef.MetadataProfile.TimestampKeys)
+		}
+	}
+	verdictValues := outcomeDef.MetadataProfile.EnumValues["verdict"]
+	for _, verdict := range []string{"positive", "negative", "neutral", "mixed", "unknown"} {
+		if !sliceContainsString(verdictValues, verdict) {
+			t.Fatalf("expected outcome verdict enum %q, got %#v", verdict, verdictValues)
+		}
+	}
+
 	claimDef, ok := defByKind[NodeKindClaim]
 	if !ok {
 		t.Fatal("expected claim definition")
@@ -288,6 +344,73 @@ func TestSchemaRegistry_IntelligenceSpineBuiltins(t *testing.T) {
 		if !containsRequiredProperty(sourceDef.RequiredProperties, property) {
 			t.Fatalf("expected source required property %q, got %#v", property, sourceDef.RequiredProperties)
 		}
+	}
+}
+
+func TestSchemaRegistry_BuiltInRelationshipTargets(t *testing.T) {
+	reg := GlobalSchemaRegistry()
+
+	defByKind := make(map[NodeKind]NodeKindDefinition)
+	for _, def := range reg.ListNodeKinds() {
+		defByKind[def.Kind] = def
+	}
+
+	actionDef := defByKind[NodeKindAction]
+	if !containsNodeKind(actionDef.RelationshipTargets[EdgeKindBasedOn], NodeKindDecision) {
+		t.Fatalf("expected action based_on targets to include decision, got %#v", actionDef.RelationshipTargets[EdgeKindBasedOn])
+	}
+	if !containsNodeKind(actionDef.RelationshipTargets[EdgeKindBasedOn], NodeKindEvidence) {
+		t.Fatalf("expected action based_on targets to include evidence, got %#v", actionDef.RelationshipTargets[EdgeKindBasedOn])
+	}
+
+	outcomeDef := defByKind[NodeKindOutcome]
+	if !containsNodeKind(outcomeDef.RelationshipTargets[EdgeKindEvaluates], NodeKindDecision) {
+		t.Fatalf("expected outcome evaluates targets to include decision, got %#v", outcomeDef.RelationshipTargets[EdgeKindEvaluates])
+	}
+
+	packageDef := defByKind[NodeKindPackage]
+	if !containsNodeKind(packageDef.RelationshipTargets[EdgeKindAffectedBy], NodeKindVulnerability) {
+		t.Fatalf("expected package affected_by targets to include vulnerability, got %#v", packageDef.RelationshipTargets[EdgeKindAffectedBy])
+	}
+}
+
+func TestSchemaRegistry_ValidateEdgeRejectsTargetKindMismatch(t *testing.T) {
+	reg := GlobalSchemaRegistry()
+
+	validAction := reg.ValidateEdge(
+		&Edge{ID: "edge:action-valid", Source: "action:1", Target: "decision:1", Kind: EdgeKindBasedOn},
+		&Node{ID: "action:1", Kind: NodeKindAction},
+		&Node{ID: "decision:1", Kind: NodeKindDecision},
+	)
+	if len(validAction) != 0 {
+		t.Fatalf("expected action based_on decision to validate, got %#v", validAction)
+	}
+
+	invalidAction := reg.ValidateEdge(
+		&Edge{ID: "edge:action-invalid", Source: "action:1", Target: "thread:1", Kind: EdgeKindBasedOn},
+		&Node{ID: "action:1", Kind: NodeKindAction},
+		&Node{ID: "thread:1", Kind: NodeKindThread},
+	)
+	if !hasIssueCode(invalidAction, SchemaIssueRelationshipNotAllowed) {
+		t.Fatalf("expected action based_on thread to be rejected, got %#v", invalidAction)
+	}
+
+	validPackage := reg.ValidateEdge(
+		&Edge{ID: "edge:pkg-valid", Source: "package:1", Target: "vuln:1", Kind: EdgeKindAffectedBy},
+		&Node{ID: "package:1", Kind: NodeKindPackage},
+		&Node{ID: "vuln:1", Kind: NodeKindVulnerability},
+	)
+	if len(validPackage) != 0 {
+		t.Fatalf("expected package affected_by vulnerability to validate, got %#v", validPackage)
+	}
+
+	invalidPackage := reg.ValidateEdge(
+		&Edge{ID: "edge:pkg-invalid", Source: "package:1", Target: "thread:1", Kind: EdgeKindAffectedBy},
+		&Node{ID: "package:1", Kind: NodeKindPackage},
+		&Node{ID: "thread:1", Kind: NodeKindThread},
+	)
+	if !hasIssueCode(invalidPackage, SchemaIssueRelationshipNotAllowed) {
+		t.Fatalf("expected package affected_by thread to be rejected, got %#v", invalidPackage)
 	}
 }
 
@@ -577,6 +700,15 @@ func containsEdgeKind(values []EdgeKind, target EdgeKind) bool {
 }
 
 func containsRequiredProperty(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func containsNodeKind(values []NodeKind, target NodeKind) bool {
 	for _, value := range values {
 		if value == target {
 			return true

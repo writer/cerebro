@@ -489,9 +489,9 @@ func TestListPolicies_Empty(t *testing.T) {
 
 func TestListPolicies_Pagination(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Policy.AddPolicy(&policy.Policy{ID: "policy-1", Name: "Policy 1", Effect: "forbid", Resource: "aws::s3::bucket", Conditions: []string{"public == true"}, Severity: "high"})
-	s.app.Policy.AddPolicy(&policy.Policy{ID: "policy-2", Name: "Policy 2", Effect: "forbid", Resource: "aws::s3::bucket", Conditions: []string{"public == true"}, Severity: "high"})
-	s.app.Policy.AddPolicy(&policy.Policy{ID: "policy-3", Name: "Policy 3", Effect: "forbid", Resource: "aws::s3::bucket", Conditions: []string{"public == true"}, Severity: "high"})
+	s.app.Policy.AddPolicy(&policy.Policy{ID: "policy-1", Name: "Policy 1", Effect: "forbid", Resource: "aws::s3::bucket", Conditions: []string{"resource.public == true"}, Severity: "high"})
+	s.app.Policy.AddPolicy(&policy.Policy{ID: "policy-2", Name: "Policy 2", Effect: "forbid", Resource: "aws::s3::bucket", Conditions: []string{"resource.public == true"}, Severity: "high"})
+	s.app.Policy.AddPolicy(&policy.Policy{ID: "policy-3", Name: "Policy 3", Effect: "forbid", Resource: "aws::s3::bucket", Conditions: []string{"resource.public == true"}, Severity: "high"})
 
 	w := do(t, s, "GET", "/api/v1/policies/?limit=2&offset=1", nil)
 	if w.Code != http.StatusOK {
@@ -527,7 +527,7 @@ func TestCreateAndGetPolicy(t *testing.T) {
 		Description: "test policy",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == true"},
+		Conditions:  []string{"resource.public == true"},
 		Severity:    "high",
 	}
 
@@ -562,7 +562,7 @@ func TestPolicyUpdateAndDelete(t *testing.T) {
 		Description: "original policy",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == true"},
+		Conditions:  []string{"resource.public == true"},
 		Severity:    "high",
 	})
 	if create.Code != http.StatusCreated {
@@ -574,7 +574,7 @@ func TestPolicyUpdateAndDelete(t *testing.T) {
 		Description: "updated policy",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == false"},
+		Conditions:  []string{"resource.public == false"},
 		Severity:    "critical",
 	})
 	if update.Code != http.StatusOK {
@@ -631,7 +631,7 @@ func TestPolicyVersionsAndRollback(t *testing.T) {
 		Description: "version 1",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == true"},
+		Conditions:  []string{"resource.public == true"},
 		Severity:    "high",
 	})
 	if create.Code != http.StatusCreated {
@@ -643,7 +643,7 @@ func TestPolicyVersionsAndRollback(t *testing.T) {
 		Description: "version 2",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == false"},
+		Conditions:  []string{"resource.public == false"},
 		Severity:    "critical",
 	})
 	if update.Code != http.StatusOK {
@@ -688,7 +688,7 @@ func TestPolicyDryRun_DoesNotPersistChanges(t *testing.T) {
 		Description: "current",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == true"},
+		Conditions:  []string{"resource.public == true"},
 		Severity:    "high",
 	})
 	if create.Code != http.StatusCreated {
@@ -701,12 +701,12 @@ func TestPolicyDryRun_DoesNotPersistChanges(t *testing.T) {
 			"description": "candidate",
 			"effect":      "forbid",
 			"resource":    "aws::s3::bucket",
-			"conditions":  []string{"public == false"},
+			"conditions":  []string{"resource.public == false"},
 			"severity":    "high",
 		},
 		"assets": []map[string]interface{}{
-			{"_cq_id": "bucket-a", "_cq_table": "aws_s3_buckets", "public": "true"},
-			{"_cq_id": "bucket-b", "_cq_table": "aws_s3_buckets", "public": "false"},
+			{"_cq_id": "bucket-a", "_cq_table": "aws_s3_buckets", "public": true},
+			{"_cq_id": "bucket-b", "_cq_table": "aws_s3_buckets", "public": false},
 		},
 	})
 	if dryRun.Code != http.StatusOK {
@@ -736,7 +736,7 @@ func TestPolicyDryRun_DoesNotPersistChanges(t *testing.T) {
 		t.Fatalf("expected persisted policy name to remain Current, got %v", body["name"])
 	}
 	conditions, ok := body["conditions"].([]interface{})
-	if !ok || len(conditions) != 1 || conditions[0] != "public == true" {
+	if !ok || len(conditions) != 1 || conditions[0] != "resource.public == true" {
 		t.Fatalf("expected original conditions to remain, got %v", body["conditions"])
 	}
 }
@@ -817,7 +817,7 @@ func TestCreatePolicyThenScanFindings(t *testing.T) {
 		Description: "findings scan test policy",
 		Effect:      "forbid",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"public == true"},
+		Conditions:  []string{"resource.public == true"},
 		Severity:    "high",
 	}
 	w := do(t, s, "POST", "/api/v1/policies/", p)
@@ -1151,7 +1151,7 @@ func TestSyncScanFindingsPreAuditExport_Smoke(t *testing.T) {
 		Description: "root access key should not exist",
 		Severity:    "critical",
 		Resource:    "aws::s3::bucket",
-		Conditions:  []string{"_cq_id exists"},
+		Conditions:  []string{"resource._cq_id != null"},
 	})
 
 	result := s.app.Scanner.ScanAssets(context.Background(), []map[string]interface{}{{

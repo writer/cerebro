@@ -714,7 +714,10 @@ func TestBuilderApplyChangesRefreshesDerivedKnowledge(t *testing.T) {
 		if claim == nil {
 			continue
 		}
-		if claim.Properties["subject_id"] == bucketID && claim.Properties["predicate"] == "versioning_enabled" && claim.Properties["source_system"] == entityAssetNormalizerSourceSystem {
+		subjectID, _ := claim.PropertyValue("subject_id")
+		predicate, _ := claim.PropertyValue("predicate")
+		sourceSystem, _ := claim.PropertyValue("source_system")
+		if subjectID == bucketID && predicate == "versioning_enabled" && sourceSystem == entityAssetNormalizerSourceSystem {
 			bucketClaim = claim
 			break
 		}

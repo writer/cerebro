@@ -229,6 +229,30 @@ func (m *TierManager) Evict(now time.Time) int {
 	return evicted
 }
 
+func (m *TierManager) HotCount() int {
+	if m == nil {
+		return 0
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	count := 0
+	for _, entry := range m.hot {
+		if entry.graph != nil {
+			count++
+		}
+	}
+	return count
+}
+
+func (m *TierManager) WarmBasePath() string {
+	if m == nil {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return strings.TrimSpace(m.warmBasePath)
+}
+
 func (m *TierManager) currentTime() time.Time {
 	if m == nil || m.now == nil {
 		return time.Now().UTC()

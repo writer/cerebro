@@ -129,7 +129,10 @@ type serverDependencies struct {
 	graphWriteback        graphWritebackService
 	lineage               lineageService
 	orgAnalysis           orgAnalysisService
+	orgPolicies           orgPolicyService
+	forensics             forensicsService
 	platformExecutions    platformExecutionService
+	platformScanAudit     platformScanAuditService
 	platformKnowledge     platformKnowledgeService
 	platformWorkloadScan  platformWorkloadScanService
 	rbacAdmin             rbacAdminService
@@ -282,6 +285,41 @@ func (d serverDependencies) GraphFreshnessStatusSnapshot(now time.Time) app.Grap
 	return d.graphRuntime.GraphFreshnessStatusSnapshot(now)
 }
 
+func (d serverDependencies) GraphHealthSnapshot(now time.Time) app.GraphHealthSnapshot {
+	if runtime, ok := d.graphRuntime.(interface {
+		GraphHealthSnapshot(time.Time) app.GraphHealthSnapshot
+	}); ok {
+		return runtime.GraphHealthSnapshot(now)
+	}
+
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	snapshot := app.GraphHealthSnapshot{
+		EvaluatedAt: now,
+		WriterLease: app.GraphWriterLeaseStatus{Enabled: false, Role: app.GraphWriterRoleDisabled},
+	}
+	if current := d.CurrentSecurityGraph(); current != nil {
+		snapshot.NodeCount = current.NodeCount()
+		snapshot.EdgeCount = current.EdgeCount()
+		if snapshot.NodeCount > 0 {
+			snapshot.TierDistribution.Hot = 1
+		}
+	}
+	if d.GraphSnapshots != nil {
+		if records, err := d.GraphSnapshots.ListGraphSnapshotRecords(); err == nil {
+			snapshot.SnapshotCount = len(records)
+			snapshot.TierDistribution.Cold = len(records)
+		}
+	}
+	if snapshot.NodeCount > 0 || snapshot.EdgeCount > 0 {
+		snapshot.MemoryUsageEstimateBytes = app.EstimateGraphMemoryUsageBytes(snapshot.NodeCount, snapshot.EdgeCount)
+	}
+	return snapshot
+}
+
 func (d serverDependencies) RebuildSecurityGraph(ctx context.Context) error {
 	if d.graphRuntime == nil {
 		return errors.New("security graph runtime not configured")
@@ -400,18 +438,18 @@ func (r *graphRuntimeAdapter) useLocalGraph() bool {
 	if r == nil || r.deps == nil {
 		return false
 	}
-	if r.deps.SecurityGraphBuilder != nil {
-		return true
-	}
 	if r.fallback != nil {
-		return false
+		return r.originalBuilder == nil && r.deps.SecurityGraphBuilder != nil && (r.deps.SecurityGraph != nil || r.deps.SecurityGraphBuilder != nil)
 	}
-	return r.deps.SecurityGraph != nil
+	return r.deps.SecurityGraph != nil || r.deps.SecurityGraphBuilder != nil
 }
 
 func (r *graphRuntimeAdapter) CurrentSecurityGraph() *graph.Graph {
 	if r == nil {
 		return nil
+	}
+	if local := r.detachedLocalGraph(); local != nil {
+		return local
 	}
 	if r.useLocalGraph() && r.deps != nil {
 		return r.deps.SecurityGraph
@@ -429,6 +467,9 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraphStore() graph.GraphStore {
 	if r == nil {
 		return nil
 	}
+	if local := r.detachedLocalGraph(); local != nil {
+		return local
+	}
 	if r.useLocalGraph() && r.deps != nil && r.deps.SecurityGraph != nil {
 		return r.deps.SecurityGraph
 	}
@@ -441,6 +482,9 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraphStore() graph.GraphStore {
 }
 
 func (r *graphRuntimeAdapter) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
+	if local := r.detachedLocalGraph(); local != nil {
+		return local.SubgraphForTenant(tenantID)
+	}
 	if r.useLocalGraph() && r.deps != nil {
 		if r.deps.SecurityGraph == nil {
 			return nil
@@ -463,6 +507,9 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraphStoreForTenant(tenantID string
 	tenantID = strings.TrimSpace(tenantID)
 	if tenantID == "" {
 		return r.CurrentSecurityGraphStore()
+	}
+	if local := r.detachedLocalGraph(); local != nil {
+		return local.SubgraphForTenant(tenantID)
 	}
 	if r.useLocalGraph() && r.deps != nil {
 		if r.deps.SecurityGraph == nil {
@@ -509,6 +556,55 @@ func (r *graphRuntimeAdapter) GraphFreshnessStatusSnapshot(now time.Time) app.Gr
 		return app.GraphFreshnessStatus{}
 	}
 	return r.fallback.GraphFreshnessStatusSnapshot(now)
+}
+
+func (r *graphRuntimeAdapter) GraphHealthSnapshot(now time.Time) app.GraphHealthSnapshot {
+	if r == nil {
+		return app.GraphHealthSnapshot{}
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	if provider, ok := r.fallback.(interface {
+		GraphHealthSnapshot(time.Time) app.GraphHealthSnapshot
+	}); ok {
+		snapshot := provider.GraphHealthSnapshot(now)
+		if current := r.CurrentSecurityGraph(); current != nil {
+			snapshot.NodeCount = current.NodeCount()
+			snapshot.EdgeCount = current.EdgeCount()
+			if snapshot.TierDistribution.Hot == 0 && snapshot.NodeCount > 0 {
+				snapshot.TierDistribution.Hot = 1
+			}
+		}
+		snapshot.MemoryUsageEstimateBytes = app.EstimateGraphMemoryUsageBytes(snapshot.NodeCount, snapshot.EdgeCount)
+		if builder := r.localBuilder(); builder != nil {
+			if last := builder.LastMutation().Until; !last.IsZero() {
+				snapshot.LastMutationAt = last.UTC()
+			}
+		}
+		return snapshot
+	}
+
+	snapshot := app.GraphHealthSnapshot{
+		EvaluatedAt: now,
+		WriterLease: app.GraphWriterLeaseStatus{Enabled: false, Role: app.GraphWriterRoleDisabled},
+	}
+	if current := r.CurrentSecurityGraph(); current != nil {
+		snapshot.NodeCount = current.NodeCount()
+		snapshot.EdgeCount = current.EdgeCount()
+		if snapshot.NodeCount > 0 {
+			snapshot.TierDistribution.Hot = 1
+		}
+		snapshot.MemoryUsageEstimateBytes = app.EstimateGraphMemoryUsageBytes(snapshot.NodeCount, snapshot.EdgeCount)
+	}
+	if builder := r.localBuilder(); builder != nil {
+		if last := builder.LastMutation().Until; !last.IsZero() {
+			snapshot.LastMutationAt = last.UTC()
+		}
+	}
+	return snapshot
 }
 
 func (r *graphRuntimeAdapter) RebuildSecurityGraph(ctx context.Context) error {
@@ -640,4 +736,14 @@ func (r *graphRuntimeAdapter) setSnapshot(state app.GraphBuildState, builtAt tim
 	} else {
 		r.snapshot.LastError = ""
 	}
+}
+
+func (r *graphRuntimeAdapter) detachedLocalGraph() *graph.Graph {
+	if r == nil || r.deps == nil || r.deps.SecurityGraph == nil || r.deps.SecurityGraphBuilder == nil {
+		return nil
+	}
+	if r.fallback != nil && r.originalBuilder != nil {
+		return nil
+	}
+	return r.deps.SecurityGraph
 }

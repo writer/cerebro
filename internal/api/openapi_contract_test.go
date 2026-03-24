@@ -203,6 +203,17 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
+			name:         "telemetry adapter ingest contract",
+			method:       http.MethodPost,
+			pathTemplate: "/api/v1/telemetry/ingest",
+			requestPath:  "/api/v1/telemetry/ingest",
+			body: map[string]interface{}{
+				"adapter_source": "aws_vpc_flow_logs",
+				"payload":        "2 123456789012 eni-0123456789abcdef0 10.0.1.25 34.235.12.8 44321 443 6 10 840 1712700000 1712700060 ACCEPT OK",
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
 			name:           "policies list contract",
 			method:         http.MethodGet,
 			pathTemplate:   "/api/v1/policies",
@@ -214,7 +225,7 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			method:         http.MethodPost,
 			pathTemplate:   "/api/v1/policies",
 			requestPath:    "/api/v1/policies/",
-			body:           map[string]interface{}{"id": "openapi-policy", "name": "OpenAPI Policy", "description": "OpenAPI policy contract", "effect": "forbid", "resource": "aws::s3::bucket", "conditions": []string{"public == true"}, "severity": "high"},
+			body:           map[string]interface{}{"id": "openapi-policy", "name": "OpenAPI Policy", "description": "OpenAPI policy contract", "effect": "forbid", "resource": "aws::s3::bucket", "conditions": []string{"resource.public == true"}, "severity": "high"},
 			expectedStatus: http.StatusCreated,
 		},
 		{
@@ -360,6 +371,20 @@ func TestOpenAPIContract_CriticalRoutes(t *testing.T) {
 			method:         http.MethodGet,
 			pathTemplate:   "/api/v1/platform/workload-scan/targets",
 			requestPath:    "/api/v1/platform/workload-scan/targets",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "platform scan audit list contract",
+			method:         http.MethodGet,
+			pathTemplate:   "/api/v1/platform/scan-audit",
+			requestPath:    "/api/v1/platform/scan-audit",
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "platform scan audit findings contract",
+			method:         http.MethodGet,
+			pathTemplate:   "/api/v1/platform/scan-audit/findings",
+			requestPath:    "/api/v1/platform/scan-audit/findings",
 			expectedStatus: http.StatusOK,
 		},
 	}

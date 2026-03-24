@@ -194,6 +194,11 @@ func TestGraphIntelligenceHandlersUseTenantScopedGraph(t *testing.T) {
 	if resp.Code != http.StatusNotFound {
 		t.Fatalf("expected tenant-scoped event correlation lookup to hide foreign tenant event, got %d: %s", resp.Code, resp.Body.String())
 	}
+
+	resp = doWithTenantContext(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-chains?event_id=incident:tenant-b:1&limit=10", nil, "tenant-a")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected tenant-scoped event chain lookup to hide foreign tenant event, got %d: %s", resp.Code, resp.Body.String())
+	}
 }
 
 func TestGraphIntelligenceHandlersUseTenantScopedStoreBackedGraph(t *testing.T) {
@@ -246,6 +251,11 @@ func TestGraphIntelligenceHandlersUseTenantScopedStoreBackedGraph(t *testing.T) 
 	resp := doWithTenantContext(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-correlations?event_id=incident:tenant-b:1&limit=10", nil, "tenant-a")
 	if resp.Code != http.StatusNotFound {
 		t.Fatalf("expected tenant-scoped store-backed event correlation lookup to hide foreign tenant event, got %d: %s", resp.Code, resp.Body.String())
+	}
+
+	resp = doWithTenantContext(t, s, http.MethodGet, "/api/v1/platform/intelligence/event-chains?event_id=incident:tenant-b:1&limit=10", nil, "tenant-a")
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected tenant-scoped store-backed event chain lookup to hide foreign tenant event, got %d: %s", resp.Code, resp.Body.String())
 	}
 }
 

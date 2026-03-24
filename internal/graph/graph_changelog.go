@@ -157,7 +157,7 @@ func SummarizeGraphDiffAttribution(diff GraphDiff) GraphDiffAttribution {
 		if node.Kind != "" {
 			kinds[node.Kind] = struct{}{}
 		}
-		if sourceSystem := strings.ToLower(strings.TrimSpace(readString(node.Properties, "source_system"))); sourceSystem != "" {
+		if sourceSystem := strings.ToLower(strings.TrimSpace(nodePropertyString(node, "source_system"))); sourceSystem != "" {
 			sourceSystems[sourceSystem] = struct{}{}
 		}
 	}

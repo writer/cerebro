@@ -126,6 +126,60 @@ func TestReactiveMonitorLoopScansAtMaxStalenessUnderContinuousChanges(t *testing
 	waitForMonitorStop(t, errCh)
 }
 
+func TestReactiveMonitorLoopDoesNotRescanWhenIdleAfterDebouncedChange(t *testing.T) {
+	g := New()
+	stopCh := make(chan struct{})
+	var scans atomic.Int32
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runReactiveMonitorLoop(context.Background(), g, stopCh, 40*time.Millisecond, GraphChangeFilter{
+			NodeKinds: []NodeKind{NodeKindUser},
+		}, func() {
+			scans.Add(1)
+		})
+	}()
+
+	waitForScanCount(t, &scans, 1, time.Second)
+
+	g.AddNode(&Node{ID: "user:idle", Kind: NodeKindUser, Name: "idle"})
+
+	waitForScanCount(t, &scans, 2, time.Second)
+	assertScanCountStays(t, &scans, 2, 70*time.Millisecond)
+
+	close(stopCh)
+	waitForMonitorStop(t, errCh)
+}
+
+func TestReactiveMonitorLoopCoalescesBurstIntoSingleFollowUpScan(t *testing.T) {
+	g := New()
+	stopCh := make(chan struct{})
+	var scans atomic.Int32
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runReactiveMonitorLoop(context.Background(), g, stopCh, 40*time.Millisecond, GraphChangeFilter{
+			NodeKinds: []NodeKind{NodeKindUser},
+		}, func() {
+			scans.Add(1)
+		})
+	}()
+
+	waitForScanCount(t, &scans, 1, time.Second)
+
+	g.AddNode(&Node{ID: "user:burst:1", Kind: NodeKindUser, Name: "burst"})
+	time.Sleep(5 * time.Millisecond)
+	g.AddNode(&Node{ID: "user:burst:2", Kind: NodeKindUser, Name: "burst"})
+	time.Sleep(5 * time.Millisecond)
+	g.AddNode(&Node{ID: "user:burst:3", Kind: NodeKindUser, Name: "burst"})
+
+	waitForScanCount(t, &scans, 2, time.Second)
+	assertScanCountStays(t, &scans, 2, 70*time.Millisecond)
+
+	close(stopCh)
+	waitForMonitorStop(t, errCh)
+}
+
 func startMonitor(t *testing.T, start func(context.Context) error) <-chan error {
 	t.Helper()
 	errCh := make(chan error, 1)

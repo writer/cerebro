@@ -20,13 +20,23 @@ type WeeklyCalibrationReportOptions struct {
 
 // WeeklyCalibrationReport is the typed weekly calibration payload exposed by platform intelligence APIs.
 type WeeklyCalibrationReport struct {
-	GeneratedAt  time.Time                 `json:"generated_at"`
-	WindowDays   int                       `json:"window_days"`
-	TrendDays    int                       `json:"trend_days"`
-	Profile      string                    `json:"profile,omitempty"`
-	RiskFeedback OutcomeFeedbackReport     `json:"risk_feedback"`
-	Identity     IdentityCalibrationReport `json:"identity"`
-	Ontology     GraphOntologySLO          `json:"ontology"`
+	GeneratedAt  time.Time                        `json:"generated_at"`
+	WindowDays   int                              `json:"window_days"`
+	TrendDays    int                              `json:"trend_days"`
+	Profile      string                           `json:"profile,omitempty"`
+	RiskFeedback OutcomeFeedbackReport            `json:"risk_feedback"`
+	Identity     IdentityCalibrationReport        `json:"identity"`
+	Ontology     GraphOntologySLO                 `json:"ontology"`
+	Temporal     WeeklyCalibrationTemporalSummary `json:"temporal"`
+}
+
+// WeeklyCalibrationTemporalSummary captures the weekly changelog slice promoted into calibration reports.
+type WeeklyCalibrationTemporalSummary struct {
+	Since   time.Time                `json:"since"`
+	Until   time.Time                `json:"until"`
+	Count   int                      `json:"count"`
+	Summary GraphSnapshotDiffSummary `json:"summary"`
+	Entries []GraphChangelogEntry    `json:"entries,omitempty"`
 }
 
 // BuildWeeklyCalibrationReport returns a typed weekly calibration slice across outcome, identity, and ontology quality.
@@ -58,6 +68,7 @@ func BuildWeeklyCalibrationReport(g *Graph, engine *RiskEngine, opts WeeklyCalib
 		WindowDays:  windowDays,
 		TrendDays:   trendDays,
 		Profile:     opts.Profile,
+		Temporal:    BuildWeeklyCalibrationTemporalSummary(now, windowDays, nil),
 	}
 	if g == nil {
 		return report
@@ -75,4 +86,32 @@ func BuildWeeklyCalibrationReport(g *Graph, engine *RiskEngine, opts WeeklyCalib
 	})
 	report.Ontology = BuildGraphOntologySLO(g, now, trendDays)
 	return report
+}
+
+// BuildWeeklyCalibrationTemporalSummary aggregates a bounded graph changelog window for weekly calibration.
+func BuildWeeklyCalibrationTemporalSummary(now time.Time, windowDays int, entries []GraphChangelogEntry) WeeklyCalibrationTemporalSummary {
+	now = now.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if windowDays <= 0 {
+		windowDays = defaultWeeklyCalibrationWindowDays
+	}
+	summary := WeeklyCalibrationTemporalSummary{
+		Since: now.Add(-time.Duration(windowDays) * 24 * time.Hour),
+		Until: now,
+		Count: len(entries),
+	}
+	if len(entries) == 0 {
+		return summary
+	}
+	summary.Entries = append([]GraphChangelogEntry(nil), entries...)
+	for _, entry := range entries {
+		summary.Summary.NodesAdded += entry.Summary.NodesAdded
+		summary.Summary.NodesRemoved += entry.Summary.NodesRemoved
+		summary.Summary.NodesModified += entry.Summary.NodesModified
+		summary.Summary.EdgesAdded += entry.Summary.EdgesAdded
+		summary.Summary.EdgesRemoved += entry.Summary.EdgesRemoved
+	}
+	return summary
 }

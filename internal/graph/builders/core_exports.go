@@ -40,6 +40,7 @@ const (
 	EdgeKindReportsTo      = graph.EdgeKindReportsTo
 	EdgeKindResolvesTo     = graph.EdgeKindResolvesTo
 	EdgeKindServes         = graph.EdgeKindServes
+	EdgeKindTargets        = graph.EdgeKindTargets
 
 	NodeKindAPIEndpoint        = graph.NodeKindAPIEndpoint
 	NodeKindApplication        = graph.NodeKindApplication

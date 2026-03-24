@@ -369,6 +369,33 @@ func TestCorrelationRefreshMetrics(t *testing.T) {
 	}
 }
 
+func TestGraphDualWriteReconciliationMetrics(t *testing.T) {
+	Register()
+
+	beforeEnqueued := counterValue(t, GraphDualWriteReconciliationEventsTotal, "enqueued")
+	beforeDeadLettered := counterValue(t, GraphDualWriteReconciliationEventsTotal, "dead_lettered")
+
+	RecordGraphDualWriteReconciliationEvent("enqueued")
+	RecordGraphDualWriteReconciliationEvent("dead_lettered")
+	SetGraphDualWriteReconciliationQueueDepths(3, 2, 1)
+
+	if got := counterValue(t, GraphDualWriteReconciliationEventsTotal, "enqueued"); got != beforeEnqueued+1 {
+		t.Fatalf("expected enqueue counter to increase by 1, got before=%v after=%v", beforeEnqueued, got)
+	}
+	if got := counterValue(t, GraphDualWriteReconciliationEventsTotal, "dead_lettered"); got != beforeDeadLettered+1 {
+		t.Fatalf("expected dead-letter counter to increase by 1, got before=%v after=%v", beforeDeadLettered, got)
+	}
+	if got := gaugeVecValue(t, GraphDualWriteReconciliationQueueDepth, "pending"); got != 3 {
+		t.Fatalf("expected pending depth 3, got %v", got)
+	}
+	if got := gaugeVecValue(t, GraphDualWriteReconciliationQueueDepth, "leased"); got != 2 {
+		t.Fatalf("expected leased depth 2, got %v", got)
+	}
+	if got := gaugeVecValue(t, GraphDualWriteReconciliationQueueDepth, "dead_letter"); got != 1 {
+		t.Fatalf("expected dead-letter depth 1, got %v", got)
+	}
+}
+
 func TestSetGraphLastUpdateDoesNotRegress(t *testing.T) {
 	Register()
 	graphLastUpdateUnixNano.Store(0)

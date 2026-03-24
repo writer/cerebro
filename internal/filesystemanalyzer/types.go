@@ -19,6 +19,10 @@ type SecretScanner interface {
 	ScanFilesystem(ctx context.Context, rootfsPath string) (*SecretScanResult, error)
 }
 
+type GitHistoryScanner interface {
+	ScanGitHistory(ctx context.Context, repoPath string) (*GitHistoryScanResult, error)
+}
+
 type Options struct {
 	VulnerabilityScanner scanner.FilesystemScanner
 	VulnerabilityMatcher PackageVulnerabilityMatcher
@@ -81,11 +85,35 @@ type SecretScanResult struct {
 	Findings []SecretFinding `json:"findings,omitempty"`
 }
 
+type GitHistoryFinding struct {
+	ID                 string            `json:"id"`
+	Type               string            `json:"type"`
+	Severity           string            `json:"severity"`
+	Path               string            `json:"path"`
+	Line               int               `json:"line,omitempty"`
+	Match              string            `json:"match,omitempty"`
+	Description        string            `json:"description,omitempty"`
+	References         []SecretReference `json:"references,omitempty"`
+	CommitSHA          string            `json:"commit_sha,omitempty"`
+	AuthorName         string            `json:"author_name,omitempty"`
+	AuthorEmail        string            `json:"author_email,omitempty"`
+	CommittedAt        *time.Time        `json:"committed_at,omitempty"`
+	Verified           bool              `json:"verified,omitempty"`
+	VerificationStatus string            `json:"verification_status,omitempty"`
+}
+
+type GitHistoryScanResult struct {
+	Engine   string              `json:"engine,omitempty"`
+	Findings []GitHistoryFinding `json:"findings,omitempty"`
+}
+
 type ConfigFinding struct {
 	ID           string `json:"id"`
 	Type         string `json:"type"`
 	Severity     string `json:"severity"`
 	Path         string `json:"path"`
+	Line         int    `json:"line,omitempty"`
+	EndLine      int    `json:"end_line,omitempty"`
 	Title        string `json:"title"`
 	Description  string `json:"description,omitempty"`
 	Remediation  string `json:"remediation,omitempty"`

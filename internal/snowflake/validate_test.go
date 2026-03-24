@@ -170,3 +170,37 @@ func TestValidateTableName_Empty(t *testing.T) {
 		t.Error("ValidateTableName('') should return error")
 	}
 }
+
+func TestValidateQualifiedSchemaRef(t *testing.T) {
+	ref, err := ValidateQualifiedSchemaRef(" cerebro . app ")
+	if err != nil {
+		t.Fatalf("ValidateQualifiedSchemaRef returned error: %v", err)
+	}
+	if ref != "CEREBRO.APP" {
+		t.Fatalf("unexpected normalized schema ref %q", ref)
+	}
+
+	if _, err := ValidateQualifiedSchemaRef("justdb"); err == nil {
+		t.Fatal("expected malformed schema ref to fail")
+	}
+	if _, err := ValidateQualifiedSchemaRef("db.bad schema"); err == nil {
+		t.Fatal("expected invalid schema name to fail")
+	}
+}
+
+func TestSafeQualifiedTableRef(t *testing.T) {
+	ref, err := SafeQualifiedTableRef("cerebro.app", "risk_engine_state")
+	if err != nil {
+		t.Fatalf("SafeQualifiedTableRef returned error: %v", err)
+	}
+	if ref != "CEREBRO.APP.RISK_ENGINE_STATE" {
+		t.Fatalf("unexpected qualified table ref %q", ref)
+	}
+
+	if _, err := SafeQualifiedTableRef("bad schema", "risk_engine_state"); err == nil {
+		t.Fatal("expected invalid schema ref to fail")
+	}
+	if _, err := SafeQualifiedTableRef("cerebro.app", "bad;table"); err == nil {
+		t.Fatal("expected invalid table name to fail")
+	}
+}

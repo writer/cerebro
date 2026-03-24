@@ -328,7 +328,10 @@ func removeNodesBySourceSystems(g *Graph, sourceSystems ...string) int {
 		if node == nil {
 			continue
 		}
-		sourceSystem := strings.TrimSpace(readString(node.Properties, "source_system"))
+		sourceSystem := ""
+		if value, ok := node.PropertyValue("source_system"); ok {
+			sourceSystem = strings.TrimSpace(fmt.Sprintf("%v", value))
+		}
 		if _, ok := allowed[sourceSystem]; !ok {
 			continue
 		}
@@ -374,7 +377,7 @@ func (b *Builder) rebuildEdges(ctx context.Context) error {
 		return err
 	}
 
-	b.buildAPIEndpointNodes()
+	b.buildAPIEndpointNodes(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}

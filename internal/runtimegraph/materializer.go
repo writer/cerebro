@@ -25,6 +25,7 @@ func FinalizeMaterializedGraph(g *graph.Graph, now time.Time) {
 	}
 	CompactHistoricalObservations(g, now, DefaultObservationCompactionPolicy())
 	MaterializeObservationSequences(g, now, DefaultObservationSequencePolicy())
+	MaterializeObservedTrafficIntoGraph(g)
 	g.BuildIndex()
 	refreshMaterializedGraphMetadata(g, now)
 }
@@ -185,6 +186,10 @@ func observationMetadata(observation *runtime.RuntimeObservation, correlationKey
 	addMetadataString(metadata, "file_path", filePath(observation))
 	addMetadataString(metadata, "network_protocol", networkProtocol(observation))
 	addMetadataString(metadata, "network_domain", networkDomain(observation))
+	addMetadataString(metadata, "network_src_ip", networkSrcIP(observation))
+	addMetadataString(metadata, "network_dst_ip", networkDstIP(observation))
+	addMetadataInt(metadata, "network_src_port", networkSrcPort(observation))
+	addMetadataInt(metadata, "network_dst_port", networkDstPort(observation))
 	addMetadataString(metadata, "audit_verb", auditVerb(observation))
 	addMetadataString(metadata, "audit_resource", auditResource(observation))
 	addMetadataString(metadata, "audit_user", auditUser(observation))
@@ -200,6 +205,11 @@ func observationMetadata(observation *runtime.RuntimeObservation, correlationKey
 		"severity",
 	} {
 		addMetadataString(metadata, key, metadataString(observation.Metadata, key))
+	}
+	for _, key := range []string{"bytes", "packets", "flow_start_unix", "flow_end_unix"} {
+		if value, ok := normalizeMetadataInt64(observation.Metadata[key]); ok {
+			metadata[key] = value
+		}
 	}
 	if len(observation.Tags) > 0 {
 		metadata["tags"] = append([]string(nil), observation.Tags...)
@@ -247,6 +257,34 @@ func networkDomain(observation *runtime.RuntimeObservation) string {
 		return ""
 	}
 	return observation.Network.Domain
+}
+
+func networkSrcIP(observation *runtime.RuntimeObservation) string {
+	if observation == nil || observation.Network == nil {
+		return ""
+	}
+	return observation.Network.SrcIP
+}
+
+func networkDstIP(observation *runtime.RuntimeObservation) string {
+	if observation == nil || observation.Network == nil {
+		return ""
+	}
+	return observation.Network.DstIP
+}
+
+func networkSrcPort(observation *runtime.RuntimeObservation) int {
+	if observation == nil || observation.Network == nil {
+		return 0
+	}
+	return observation.Network.SrcPort
+}
+
+func networkDstPort(observation *runtime.RuntimeObservation) int {
+	if observation == nil || observation.Network == nil {
+		return 0
+	}
+	return observation.Network.DstPort
 }
 
 func traceID(observation *runtime.RuntimeObservation) string {
@@ -318,10 +356,31 @@ func addMetadataString(metadata map[string]any, key, value string) {
 	}
 }
 
+func addMetadataInt(metadata map[string]any, key string, value int) {
+	if value > 0 {
+		metadata[key] = value
+	}
+}
+
 func metadataString(metadata map[string]any, key string) string {
 	if len(metadata) == 0 {
 		return ""
 	}
 	value, _ := metadata[key].(string)
 	return strings.TrimSpace(value)
+}
+
+func normalizeMetadataInt64(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case int:
+		return int64(typed), true
+	case int32:
+		return int64(typed), true
+	case int64:
+		return typed, true
+	case float64:
+		return int64(typed), true
+	default:
+		return 0, false
+	}
 }

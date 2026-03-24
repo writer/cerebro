@@ -23,10 +23,12 @@ func newPolicyConditionEnv() (*cel.Env, error) {
 
 func normalizeConditionFormat(format string) string {
 	switch strings.ToLower(strings.TrimSpace(format)) {
-	case "", ConditionFormatLegacy:
-		return ConditionFormatLegacy
+	case "":
+		return ConditionFormatCEL
 	case ConditionFormatCEL:
 		return ConditionFormatCEL
+	case ConditionFormatLegacy:
+		return ConditionFormatLegacy
 	default:
 		return strings.ToLower(strings.TrimSpace(format))
 	}
@@ -167,4 +169,39 @@ func (e *Engine) evaluateCELConditions(p *Policy, asset map[string]interface{}) 
 		}
 	}
 	return true
+}
+
+func evaluateConditionExpression(condition string, asset map[string]interface{}) (bool, error) {
+	env, err := newPolicyConditionEnv()
+	if err != nil {
+		return false, fmt.Errorf("initialize CEL environment: %w", err)
+	}
+
+	trimmed := strings.TrimSpace(condition)
+	if trimmed == "" {
+		return false, nil
+	}
+
+	ast, issues := env.Compile(trimmed)
+	if issues != nil && issues.Err() != nil {
+		return false, issues.Err()
+	}
+	if ast.OutputType() != cel.BoolType {
+		return false, fmt.Errorf("condition must evaluate to a boolean")
+	}
+
+	program, err := env.Program(ast, cel.EvalOptions(cel.OptOptimize))
+	if err != nil {
+		return false, err
+	}
+	out, _, err := program.Eval(map[string]any{"resource": asset})
+	if err != nil {
+		return false, err
+	}
+
+	matched, ok := out.Value().(bool)
+	if !ok {
+		return false, fmt.Errorf("condition result was %T, want bool", out.Value())
+	}
+	return matched, nil
 }

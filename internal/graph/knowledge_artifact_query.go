@@ -226,9 +226,9 @@ func buildKnowledgeArtifactRecord(g *Graph, node *Node, validAt, recordedAt time
 		Kind:          node.Kind,
 		SubjectID:     strings.TrimSpace(readString(node.Properties, "subject_id")),
 		Detail:        strings.TrimSpace(readString(node.Properties, "detail")),
-		SourceSystem:  firstNonEmpty(strings.TrimSpace(readString(node.Properties, "source_system")), strings.TrimSpace(node.Provider)),
-		SourceEventID: strings.TrimSpace(readString(node.Properties, "source_event_id")),
-		Confidence:    readFloat(node.Properties, "confidence"),
+		SourceSystem:  firstNonEmpty(nodePropertyString(node, "source_system"), strings.TrimSpace(node.Provider)),
+		SourceEventID: nodePropertyString(node, "source_event_id"),
+		Confidence:    nodePropertyFloat(node, "confidence"),
 	}
 	switch node.Kind {
 	case NodeKindObservation:

@@ -372,14 +372,24 @@ func (s *Server) ingestTelemetry(w http.ResponseWriter, r *http.Request) {
 	dedupeStore := s.runtimeIngestStore()
 
 	var payload struct {
-		Events       []runtime.RuntimeEvent `json:"events"`
-		Node         string                 `json:"node"`
-		Cluster      string                 `json:"cluster"`
-		AgentVersion string                 `json:"agent_version"`
+		Events        []runtime.RuntimeEvent `json:"events"`
+		Node          string                 `json:"node"`
+		Cluster       string                 `json:"cluster"`
+		AgentVersion  string                 `json:"agent_version"`
+		AdapterSource string                 `json:"adapter_source"`
+		Payload       json.RawMessage        `json:"payload"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid payload")
+		return
+	}
+	if strings.TrimSpace(payload.AdapterSource) != "" {
+		if len(payload.Events) > 0 {
+			s.error(w, http.StatusBadRequest, "invalid payload")
+			return
+		}
+		s.ingestTelemetryAdapterPayload(w, r, strings.TrimSpace(payload.AdapterSource), payload.Payload, payload.Cluster, payload.Node, payload.AgentVersion)
 		return
 	}
 

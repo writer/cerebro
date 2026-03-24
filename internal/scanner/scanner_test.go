@@ -19,17 +19,17 @@ func TestScanAssets(t *testing.T) {
 		Name:        "Public Check",
 		Description: "Check for public resources",
 		Effect:      "forbid",
-		Conditions:  []string{"public == true"},
+		Conditions:  []string{"resource.public == true"},
 		Severity:    "high",
 	})
 
 	scanner := NewScanner(engine, ScanConfig{Workers: 4, BatchSize: 10}, logger)
 
 	assets := []map[string]interface{}{
-		{"_cq_id": "1", "name": "public-bucket", "public": "true"},
-		{"_cq_id": "2", "name": "private-bucket", "public": "false"},
-		{"_cq_id": "3", "name": "another-public", "public": "true"},
-		{"_cq_id": "4", "name": "private-2", "public": "false"},
+		{"_cq_id": "1", "name": "public-bucket", "public": true},
+		{"_cq_id": "2", "name": "private-bucket", "public": false},
+		{"_cq_id": "3", "name": "another-public", "public": true},
+		{"_cq_id": "4", "name": "private-2", "public": false},
 	}
 
 	result := scanner.ScanAssets(context.Background(), assets)
@@ -87,7 +87,7 @@ func BenchmarkScanAssets(b *testing.B) {
 	engine := policy.NewEngine()
 	engine.AddPolicy(&policy.Policy{
 		ID:         "bench-policy",
-		Conditions: []string{"public == true"},
+		Conditions: []string{"resource.public == true"},
 		Severity:   "high",
 	})
 
@@ -95,9 +95,9 @@ func BenchmarkScanAssets(b *testing.B) {
 
 	assets := make([]map[string]interface{}, 1000)
 	for i := range assets {
-		public := "false"
+		public := false
 		if i%10 == 0 {
-			public = "true"
+			public = true
 		}
 		assets[i] = map[string]interface{}{"_cq_id": i, "name": "asset", "public": public}
 	}

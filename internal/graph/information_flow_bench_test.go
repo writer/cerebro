@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
 )
 
@@ -35,13 +36,31 @@ func BenchmarkShortestPathBetweenSets(b *testing.B) {
 	sources := map[string]struct{}{"source": {}}
 	targets := map[string]struct{}{"target": {}}
 
-	b.ReportAllocs()
-	b.ResetTimer()
+	configs := []struct {
+		name    string
+		workers int
+	}{
+		{name: "workers_1", workers: 1},
+		{name: "workers_auto", workers: runtime.GOMAXPROCS(0)},
+	}
 
-	for i := 0; i < b.N; i++ {
-		path := shortestPathBetweenSets(adjacency, sources, targets)
-		if len(path) == 0 {
-			b.Fatal("expected path")
-		}
+	for _, config := range configs {
+		b.Run(config.name, func(b *testing.B) {
+			previous := parallelTraversalWorkerOverride
+			parallelTraversalWorkerOverride = config.workers
+			defer func() {
+				parallelTraversalWorkerOverride = previous
+			}()
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				path := shortestPathBetweenSets(adjacency, sources, targets)
+				if len(path) == 0 {
+					b.Fatal("expected path")
+				}
+			}
+		})
 	}
 }

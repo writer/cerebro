@@ -1,14 +1,11 @@
 openapi: 3.0.3
 info:
   title: Cerebro API
-  description: 'Cerebro is a graph and intelligence platform with security/CSPM as the first
-    major application surface. It provides:
+  description: 'Cerebro is a graph and intelligence platform with security/CSPM as the first major application surface. It provides:
 
-    - A shared graph substrate with ontology, provenance, temporal semantics, ingest,
-    identity resolution, and simulation primitives
+    - A shared graph substrate with ontology, provenance, temporal semantics, ingest, identity resolution, and simulation primitives
 
-    - Security workflows for policy scanning, findings, compliance, attack-path analysis,
-    runtime detection/response, and remediation
+    - Security workflows for policy scanning, findings, compliance, attack-path analysis, runtime detection/response, and remediation
 
     - Org-intelligence workflows built on the same graph substrate
 
@@ -769,6 +766,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuditPackage'
+  /api/v1/trust-center:
+    get:
+      tags:
+        - TrustCenter
+      summary: Get public trust center snapshot
+      description: Return a public-facing trust center snapshot with live compliance posture, subprocessors, security practices, and evidence catalog.
+      responses:
+        '200':
+          description: Trust center snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrustCenterSnapshotResponse'
+  /api/v1/trust-center/evidence:
+    get:
+      tags:
+        - TrustCenter
+      summary: List public trust center evidence catalog
+      description: Return the catalog of public and NDA-gated evidence artifacts exposed through the trust center.
+      responses:
+        '200':
+          description: Trust center evidence catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrustCenterEvidenceCatalogResponse'
   /api/v1/identity/stale-access:
     get:
       tags:
@@ -1510,7 +1533,7 @@ paths:
       tags:
         - Graph
       summary: Add attack graph node
-      description: Add a node to the in-memory attack graph.
+      description: Add a node to the configured attack graph backend.
       requestBody:
         required: true
         content:
@@ -2413,6 +2436,122 @@ paths:
         '503':
           description: Graph unavailable
           content: *id001
+  /api/v1/graph/vendors:
+    get:
+      tags:
+        - Graph
+      summary: List vendor risk inventory
+      description: Return auto-discovered third-party vendors, their graph-derived risk posture, and recent risk/access change alerts.
+      parameters:
+        - name: min_score
+          in: query
+          required: false
+          description: Minimum vendor risk score to include (0-100).
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+        - name: risk
+          in: query
+          required: false
+          description: Comma-separated risk levels to include.
+          schema:
+            type: string
+        - name: verification_status
+          in: query
+          required: false
+          description: Comma-separated verification statuses to include.
+          schema:
+            type: string
+        - name: category
+          in: query
+          required: false
+          description: Comma-separated vendor categories to include.
+          schema:
+            type: string
+        - name: permission_level
+          in: query
+          required: false
+          description: Comma-separated permission levels to include.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum vendors to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: include_alerts
+          in: query
+          required: false
+          description: Include recent risk/access change alerts.
+          schema:
+            type: boolean
+            default: true
+        - name: window_days
+          in: query
+          required: false
+          description: Lookback window for change alerts in days.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+      responses:
+        '200':
+          description: Vendor inventory and risk assessment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphVendorRiskReportResponse'
+        '400':
+          description: Invalid query parameter
+          content: *id001
+        '503':
+          description: Graph unavailable
+          content: *id001
+  /api/v1/graph/api-surface:
+    get:
+      tags:
+        - Graph
+      summary: List discovered API endpoints and exposed backend reachability
+      description: Return provider-discovered API endpoints, their exposure metadata, reachable backend resources, and derived attack-surface findings.
+      parameters:
+        - name: include_internal
+          in: query
+          required: false
+          description: Include non-public/internal-only endpoints in the response.
+          schema:
+            type: boolean
+        - name: max_depth
+          in: query
+          required: false
+          description: Reachability traversal depth used when summarizing what each endpoint can access.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 4
+        - name: limit
+          in: query
+          required: false
+          description: Optional maximum number of endpoints to return.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: API surface report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphAPISurfaceResponse'
+        '503':
+          description: Graph unavailable
+          content: *id001
   /api/v1/graph/risk-feedback:
     get:
       tags:
@@ -2706,6 +2845,93 @@ paths:
         '503':
           description: Graph unavailable
           content: *id001
+  /api/v1/graph/health:
+    get:
+      tags:
+        - Graph
+      summary: Get graph health snapshot
+      description: Return live graph counts, snapshot inventory, writer lease status, tier distribution, and a memory usage estimate.
+      responses:
+        '200':
+          description: Graph health snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - evaluated_at
+                  - node_count
+                  - edge_count
+                  - snapshot_count
+                  - writer_lease
+                  - tier_distribution
+                  - memory_usage_estimate_bytes
+                properties:
+                  evaluated_at:
+                    type: string
+                    format: date-time
+                  node_count:
+                    type: integer
+                  edge_count:
+                    type: integer
+                  snapshot_count:
+                    type: integer
+                  last_mutation_at:
+                    type: string
+                    format: date-time
+                  writer_lease:
+                    type: object
+                    required:
+                      - enabled
+                      - role
+                    properties:
+                      enabled:
+                        type: boolean
+                      role:
+                        type: string
+                        enum:
+                          - disabled
+                          - writer
+                          - follower
+                      lease_name:
+                        type: string
+                      owner_id:
+                        type: string
+                      lease_holder_id:
+                        type: string
+                      lease_until:
+                        type: string
+                        format: date-time
+                      last_heartbeat_at:
+                        type: string
+                        format: date-time
+                      last_transition_at:
+                        type: string
+                        format: date-time
+                      last_error:
+                        type: string
+                  tier_distribution:
+                    type: object
+                    required:
+                      - hot
+                      - warm
+                      - cold
+                    properties:
+                      hot:
+                        type: integer
+                      warm:
+                        type: integer
+                      cold:
+                        type: integer
+                  memory_usage_estimate_bytes:
+                    type: integer
+                    format: int64
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/graph/ingest/health:
     get:
       tags:
@@ -3170,6 +3396,177 @@ paths:
                 additionalProperties: true
         '404':
           description: Playbook not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/forensics/capture:
+    post:
+      tags:
+        - Runtime
+      summary: Create forensic capture
+      description: Preserve workload snapshot evidence for an incident or remediation workflow.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForensicsCaptureRequest'
+      responses:
+        '201':
+          description: Forensic capture created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForensicsCaptureRecord'
+        '400':
+          description: Invalid capture request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Forensics unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/forensics/captures:
+    get:
+      tags:
+        - Runtime
+      summary: List forensic captures
+      description: List preserved forensic capture records.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - name: incident_id
+          in: query
+          schema:
+            type: string
+        - name: workload_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            description: Comma-separated capture statuses.
+      responses:
+        '200':
+          description: Forensic capture collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForensicsCaptureCollection'
+        '503':
+          description: Forensics unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/forensics/captures/{capture_id}:
+    get:
+      tags:
+        - Runtime
+      summary: Get forensic capture
+      description: Return a single forensic capture record.
+      parameters:
+        - name: capture_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Forensic capture
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForensicsCaptureRecord'
+        '404':
+          description: Forensic capture not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/forensics/evidence:
+    post:
+      tags:
+        - Runtime
+      summary: Record remediation evidence
+      description: Persist a before-action-after remediation evidence record.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForensicsRemediationEvidenceRequest'
+      responses:
+        '201':
+          description: Remediation evidence recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForensicsRemediationEvidenceRecord'
+        '400':
+          description: Invalid remediation evidence payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Forensics unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/forensics/evidence/{evidence_id}:
+    get:
+      tags:
+        - Runtime
+      summary: Get remediation evidence
+      description: Return one remediation evidence record.
+      parameters:
+        - name: evidence_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Remediation evidence record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForensicsRemediationEvidenceRecord'
+        '404':
+          description: Remediation evidence not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/forensics/evidence/{evidence_id}/export:
+    get:
+      tags:
+        - Runtime
+      summary: Export forensic evidence package
+      description: Export an evidence package suitable for incident response or compliance review.
+      parameters:
+        - name: evidence_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Exported forensic evidence package
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForensicsEvidencePackage'
+        '404':
+          description: Remediation evidence not found
           content:
             application/json:
               schema:
@@ -6607,7 +7004,7 @@ paths:
     get:
       tags:
         - Platform
-      summary: Query derived event correlation chains
+      summary: Query derived event correlation links
       description: Returns materialized causal event links for one event or entity neighborhood, with optional scoped anomaly summaries.
       parameters:
         - name: event_id
@@ -6659,11 +7056,97 @@ paths:
             format: date-time
       responses:
         '200':
-          description: Correlated event chains
+          description: Correlated event links
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/EventCorrelationResult'
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/event-chains:
+    get:
+      tags:
+        - Platform
+      summary: Traverse multi-step event correlation chains
+      description: Returns bounded upstream or downstream causal chains for one event or entity scope without requiring clients to recompute transitive lineage.
+      parameters:
+        - name: event_id
+          in: query
+          required: false
+          description: Event node ID seed for causal chain traversal. Either `event_id` or `entity_id` is required.
+          schema:
+            type: string
+        - name: entity_id
+          in: query
+          required: false
+          description: Entity ID scope (for example `service:payments`) used to seed causal chain traversal. Either `event_id` or `entity_id` is required.
+          schema:
+            type: string
+        - name: pattern_id
+          in: query
+          required: false
+          description: Optional built-in correlation pattern filter applied before traversal.
+          schema:
+            type: string
+        - name: direction
+          in: query
+          required: false
+          description: Traverse upstream causes, downstream effects, or both.
+          schema:
+            type: string
+            enum:
+              - upstream
+              - downstream
+              - both
+            default: both
+        - name: max_depth
+          in: query
+          required: false
+          description: Maximum number of causal edges per returned chain (1-6).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 6
+            default: 4
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of returned chains (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: since
+          in: query
+          required: false
+          description: Optional RFC3339 lower bound for effect event time.
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          required: false
+          description: Optional RFC3339 upper bound for effect event time.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Correlated event chains
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventCorrelationChainResult'
         '400':
           description: Invalid query parameter
           content:
@@ -6718,6 +7201,37 @@ paths:
                 $ref: '#/components/schemas/EventAnomalyCollection'
         '400':
           description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/nl-queries:
+    post:
+      tags:
+        - Platform
+      summary: Translate and optionally execute a natural-language graph query
+      description: Accept a bounded read-only natural-language security question, return the generated plan for transparency, and optionally execute it against the current graph scope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformNaturalLanguageQueryRequest'
+      responses:
+        '200':
+          description: Natural-language graph query response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformNaturalLanguageQueryResponse'
+        '400':
+          description: Invalid request or disallowed mutation-style question
           content:
             application/json:
               schema:
@@ -6866,6 +7380,116 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/agent-action-effectiveness:
+    get:
+      tags:
+        - Platform
+      summary: Build agent action effectiveness intelligence KPIs
+      description: Return evaluation rollups showing successful versus reversed actions, cost-to-outcome efficiency, and correctness trends across agents and time windows.
+      parameters:
+        - name: window_days
+          in: query
+          required: false
+          description: Conversation window in days to include in the report (1-365).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+        - name: trend_days
+          in: query
+          required: false
+          description: Number of daily buckets to include in the trend output (1-90).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+        - name: max_agents
+          in: query
+          required: false
+          description: Maximum number of agent rollups to return (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: Agent action effectiveness report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentActionEffectivenessReport'
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/playbook-effectiveness:
+    get:
+      tags:
+        - Platform
+      summary: Build playbook effectiveness intelligence KPIs
+      description: Return workflow execution rollups showing completion, outcome durability, approval friction, repeated remediation, and failure hot spots across playbooks, targets, and tenants.
+      parameters:
+        - name: window_days
+          in: query
+          required: false
+          description: Run window in days to include in the report (1-365).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+        - name: playbook_id
+          in: query
+          required: false
+          description: Optional playbook identifier to scope one playbook.
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          required: false
+          description: Optional tenant identifier to scope one tenant.
+          schema:
+            type: string
+        - name: target_kind
+          in: query
+          required: false
+          description: Optional ontology target kind to scope runs touching that kind.
+          schema:
+            type: string
+        - name: max_playbooks
+          in: query
+          required: false
+          description: Maximum number of per-playbook rollups to return (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: Playbook effectiveness report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybookEffectivenessReport'
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/intelligence/metadata-quality:
     get:
       tags:
@@ -6888,6 +7512,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GraphMetadataQualityReport'
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/ai-workloads:
+    get:
+      tags:
+        - Platform
+      summary: Inventory graph-detected AI workloads
+      description: Return AI workload inventory, shadow-AI indicators, data exposure, and provider-key hygiene posture derived from the security graph.
+      parameters:
+        - name: max_workloads
+          in: query
+          required: false
+          description: Maximum AI workloads to return (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: min_risk_score
+          in: query
+          required: false
+          description: Minimum AI workload risk score to include (0-100).
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+        - name: include_shadow
+          in: query
+          required: false
+          description: When false, filter self-hosted shadow AI workloads out of the returned inventory.
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: AI workload inventory report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIWorkloadInventoryReport'
         '400':
           description: Invalid query parameter
           content:
@@ -6962,6 +7634,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/evaluation-temporal-analysis:
+    get:
+      tags:
+        - Platform
+      summary: Build temporal contradiction analysis for one evaluation run
+      description: Return evaluation-scoped claim contradictions, supersessions, action reversals, and world-state diffs derived from evaluation lifecycle world-model nodes.
+      parameters:
+        - name: evaluation_run_id
+          in: query
+          required: true
+          description: Evaluation run identifier emitted on evaluation world-model claims, decisions, actions, and outcomes.
+          schema:
+            type: string
+        - name: conversation_id
+          in: query
+          required: false
+          description: Optional conversation identifier to narrow the analysis to one conversation within the evaluation run.
+          schema:
+            type: string
+        - name: stage_id
+          in: query
+          required: false
+          description: Optional stage identifier to narrow the analysis to one evaluation stage within the selected conversation or run.
+          schema:
+            type: string
+        - name: timeline_limit
+          in: query
+          required: false
+          description: Maximum number of timeline entries returned per scoped claim (1-100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Evaluation temporal analysis report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationTemporalAnalysisReport'
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/platform/intelligence/entity-summary:
     get:
       tags:
@@ -7008,6 +7732,52 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/key-person-risk:
+    get:
+      tags:
+        - Platform
+      summary: Build key person risk report
+      description: Rank likely single-person failures by orphaned systems, customer exposure, ARR at risk, and recovery drag.
+      parameters:
+        - name: person_id
+          in: query
+          required: false
+          description: Optional person identifier to focus the report on one departure scenario.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum ranked people to include (1-100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Key person risk report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyPersonRiskReport'
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Person not found
           content:
             application/json:
               schema:
@@ -7104,7 +7874,7 @@ paths:
       tags:
         - Platform
       summary: Build weekly graph calibration report
-      description: Return a weekly calibration slice combining risk feedback backtest, identity calibration status, and ontology SLO trend context.
+      description: Return a weekly calibration slice combining risk feedback backtest, identity calibration status, ontology SLO trend context, and a weekly temporal changelog summary.
       parameters:
         - name: window_days
           in: query
@@ -7227,6 +7997,209 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           description: Failed to load shared execution state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/scan-audit:
+    get:
+      tags:
+        - Platform
+      summary: List scan audit records across shared scan execution namespaces
+      parameters:
+        - name: namespace
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated scan namespaces.
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated statuses to include.
+        - name: exclude_status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated statuses to exclude.
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - updated
+              - submitted
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Scan audit record collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformScanAuditCollection'
+        '400':
+          description: Invalid scan audit query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to load scan audit state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/scan-audit/findings:
+    get:
+      tags:
+        - Platform
+      summary: List unified scan findings correlated across scan namespaces
+      parameters:
+        - name: namespace
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated scan namespaces.
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated severities to include.
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional comma-separated finding kinds to include.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Unified scan finding collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformScanAuditUnifiedFindingCollection'
+        '400':
+          description: Invalid unified finding query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to load unified finding state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/scan-audit/{namespace}/{run_id}:
+    get:
+      tags:
+        - Platform
+      summary: Get one scan audit record
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Scan audit record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformScanAuditRecord'
+        '400':
+          description: Invalid scan audit identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Scan audit record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to load scan audit state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/scan-audit/{namespace}/{run_id}/export:
+    get:
+      tags:
+        - Platform
+      summary: Export one scan audit record as a ZIP package
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Exported scan audit package
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid scan audit identifier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Scan audit record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to export scan audit state
           content:
             application/json:
               schema:
@@ -7661,6 +8634,63 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlatformEntityTimeDiffRecord'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Entity not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/platform/entities/{entity_id}/timeline:
+    get:
+      tags:
+        - Platform
+      summary: Get one entity timeline
+      description: Return one entity's property and lifecycle changes across a fact-time window, preserving reconstructed before and after states.
+      parameters:
+        - name: entity_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: true
+          description: RFC3339 start fact-time selector.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          description: RFC3339 end fact-time selector.
+          schema:
+            type: string
+            format: date-time
+        - name: recorded_at
+          in: query
+          description: Optional RFC3339 system-time selector.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Entity timeline
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformEntityTimelineRecord'
         '400':
           description: Invalid query parameters
           content:
@@ -9133,6 +10163,299 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/org/policies:
+    post:
+      tags:
+        - Org
+      summary: Create or update an organizational policy registry entry
+      description: Upsert one organizational policy definition, optionally instantiating it from a built-in compliance template and assigning departments or people who must acknowledge it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Policy registry update result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid organizational policy payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/org/policies/templates:
+    get:
+      tags:
+        - Org
+      summary: List organizational policy templates
+      description: Return the built-in policy template catalog, optionally filtered to one framework family such as SOC 2 or ISO 27001.
+      parameters:
+        - name: framework
+          in: query
+          required: false
+          description: Optional canonical framework family filter.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organizational policy templates
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/org/policies/program-status:
+    get:
+      tags:
+        - Org
+      summary: Summarize policy acknowledgment coverage across the program
+      description: Return aggregate acknowledgment posture across all registered organizational policies, optionally scoped to one framework family.
+      parameters:
+        - name: framework
+          in: query
+          required: false
+          description: Optional canonical framework family filter.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Program-level organizational policy status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/org/policies/review-schedule:
+    get:
+      tags:
+        - Org
+      summary: List organizational policies due for review
+      description: Return review cadence and due-date posture for all organizational policies with a configured review cycle.
+      parameters:
+        - name: as_of
+          in: query
+          required: false
+          description: Optional RFC3339 timestamp used as the review schedule baseline.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Organizational policy review schedule
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid as_of timestamp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/org/policies/{id}/acknowledge:
+    post:
+      tags:
+        - Org
+      summary: Record one employee acknowledgment for a policy
+      description: Write one current-version policy acknowledgment edge from a person to an organizational policy.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Policy node ID.
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Organizational policy acknowledgment result
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Invalid acknowledgment payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Policy or person not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/org/policies/{id}/acknowledgment-status:
+    get:
+      tags:
+        - Org
+      summary: Get acknowledgment coverage for one policy
+      description: Return current-version acknowledgment coverage for one policy, including department rollups and pending people.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Policy node ID.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organizational policy acknowledgment status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404':
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/org/policies/{id}/assignees:
+    get:
+      tags:
+        - Org
+      summary: List current assignees for one policy
+      description: Return the current assignee roster for one policy, including direct versus department-based assignment provenance and acknowledgment state.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Policy node ID.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organizational policy assignee roster
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404':
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/org/policies/{id}/reminders:
+    get:
+      tags:
+        - Org
+      summary: List reminder candidates for one policy
+      description: Return people who still need reminders for the current policy version, including stale acknowledgments from older versions.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Policy node ID.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organizational policy reminder candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404':
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/org/policies/{id}/versions:
+    get:
+      tags:
+        - Org
+      summary: List tracked policy versions and diffs
+      description: Return version history for one organizational policy, including changed fields between revisions.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Policy node ID.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Organizational policy version history
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404':
+          description: Policy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/org/team-recommendations:
     post:
       tags:
@@ -9666,6 +10989,72 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/platform/intelligence/unified-execution-timeline:
+    get:
+      tags:
+        - Platform
+      summary: Build a unified execution timeline across evaluation and playbook workflows
+      description: Return one chronological execution timeline across evaluation and playbook workflows, including communication, decisions, actions, outcomes, claims, and directly linked evidence.
+      parameters:
+        - name: window_days
+          in: query
+          required: false
+          description: Timeline window in days to include in the report (1-365).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+        - name: max_events
+          in: query
+          required: false
+          description: Maximum number of events to return in chronological order (1-1000).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+        - name: tenant_id
+          in: query
+          required: false
+          description: Optional tenant identifier to scope the timeline to one tenant.
+          schema:
+            type: string
+        - name: target_kind
+          in: query
+          required: false
+          description: Optional ontology target kind to scope events touching that kind.
+          schema:
+            type: string
+        - name: playbook_id
+          in: query
+          required: false
+          description: Optional playbook identifier to scope one playbook workflow.
+          schema:
+            type: string
+        - name: evaluation_run_id
+          in: query
+          required: false
+          description: Optional evaluation run identifier to scope one evaluation workflow.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Unified execution timeline report
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Graph platform is not initialized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -9748,6 +11137,272 @@ components:
                 type: object
         freshness:
           $ref: '#/components/schemas/PlatformGraphFreshnessStatus'
+    ForensicsCaptureRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - target
+      properties:
+        id:
+          type: string
+        incident_id:
+          type: string
+        workload_id:
+          type: string
+        requested_by:
+          type: string
+        reason:
+          type: string
+        retention_days:
+          type: integer
+        metadata:
+          type: object
+          additionalProperties: true
+        target:
+          $ref: '#/components/schemas/ForensicsWorkloadTarget'
+    ForensicsCaptureCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        captures:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForensicsCaptureRecord'
+    ForensicsCaptureRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        incident_id:
+          type: string
+        workload_id:
+          type: string
+        status:
+          type: string
+        requested_by:
+          type: string
+        reason:
+          type: string
+        retention_days:
+          type: integer
+        submitted_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        retain_until:
+          type: string
+          format: date-time
+          nullable: true
+        error:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        target:
+          $ref: '#/components/schemas/ForensicsWorkloadTarget'
+        snapshots:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForensicsSnapshotArtifact'
+        chain_of_custody:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForensicsCustodyEvent'
+    ForensicsRemediationEvidenceRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        incident_id:
+          type: string
+        workload_id:
+          type: string
+        before_capture_id:
+          type: string
+        after_capture_id:
+          type: string
+        remediation_execution_id:
+          type: string
+        action_summary:
+          type: string
+        actor:
+          type: string
+        status:
+          type: string
+        notes:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    ForensicsRemediationEvidenceRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        incident_id:
+          type: string
+        workload_id:
+          type: string
+        before_capture_id:
+          type: string
+        after_capture_id:
+          type: string
+        remediation_execution_id:
+          type: string
+        action_summary:
+          type: string
+        actor:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        notes:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        chain_of_custody:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForensicsCustodyEvent'
+    ForensicsEvidencePackage:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        incident_id:
+          type: string
+        workload_id:
+          type: string
+        remediation_evidence:
+          $ref: '#/components/schemas/ForensicsRemediationEvidenceRecord'
+        remediation_execution:
+          $ref: '#/components/schemas/ForensicsRemediationExecutionSummary'
+        captures:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForensicsCaptureRecord'
+        chain_of_custody:
+          type: array
+          items:
+            $ref: '#/components/schemas/ForensicsCustodyEvent'
+    ForensicsRemediationExecutionSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        rule_id:
+          type: string
+        rule_name:
+          type: string
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        error:
+          type: string
+    ForensicsCustodyEvent:
+      type: object
+      additionalProperties: false
+      properties:
+        step:
+          type: string
+        actor:
+          type: string
+        location:
+          type: string
+        detail:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    ForensicsSnapshotArtifact:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        volume_id:
+          type: string
+        account_id:
+          type: string
+        project_id:
+          type: string
+        region:
+          type: string
+        zone:
+          type: string
+        size_gib:
+          type: integer
+        encrypted:
+          type: boolean
+        scope:
+          type: string
+        shared:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        ready_at:
+          type: string
+          format: date-time
+          nullable: true
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    ForensicsWorkloadTarget:
+      type: object
+      additionalProperties: false
+      properties:
+        provider:
+          type: string
+        account_id:
+          type: string
+        project_id:
+          type: string
+        subscription_id:
+          type: string
+        resource_group:
+          type: string
+        region:
+          type: string
+        zone:
+          type: string
+        instance_id:
+          type: string
+        instance_name:
+          type: string
     PlatformGraphFreshnessStatus:
       type: object
       additionalProperties: false
@@ -11223,6 +12878,344 @@ components:
     GraphRiskReportResponse:
       type: object
       additionalProperties: true
+    GraphVendorRiskReportResponse:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        filters:
+          $ref: '#/components/schemas/GraphVendorRiskFilters'
+        summary:
+          $ref: '#/components/schemas/GraphVendorRiskSummary'
+        count:
+          type: integer
+        total_count:
+          type: integer
+        vendors:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphVendorRiskRecord'
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphVendorRiskAlert'
+    GraphVendorRiskFilters:
+      type: object
+      properties:
+        min_risk_score:
+          type: integer
+        risk_levels:
+          type: array
+          items:
+            type: string
+        verification_statuses:
+          type: array
+          items:
+            type: string
+        categories:
+          type: array
+          items:
+            type: string
+        permission_levels:
+          type: array
+          items:
+            type: string
+        limit:
+          type: integer
+        include_alerts:
+          type: boolean
+        monitoring_window_days:
+          type: integer
+    GraphVendorRiskSummary:
+      type: object
+      properties:
+        vendor_count:
+          type: integer
+        returned_count:
+          type: integer
+        risk_counts:
+          type: object
+          additionalProperties:
+            type: integer
+        verification_counts:
+          type: object
+          additionalProperties:
+            type: integer
+        category_counts:
+          type: object
+          additionalProperties:
+            type: integer
+        permission_counts:
+          type: object
+          additionalProperties:
+            type: integer
+        average_risk_score:
+          type: number
+        max_risk_score:
+          type: integer
+        total_accessible_resources:
+          type: integer
+        total_sensitive_resources:
+          type: integer
+        total_dependent_principals:
+          type: integer
+        total_dependent_users:
+          type: integer
+        total_dependent_groups:
+          type: integer
+        total_dependent_service_accounts:
+          type: integer
+        alert_count:
+          type: integer
+    GraphVendorRiskRecord:
+      type: object
+      properties:
+        vendor_id:
+          type: string
+        name:
+          type: string
+        risk_level:
+          type: string
+        risk_score:
+          type: integer
+        vendor_category:
+          type: string
+        verification_status:
+          type: string
+        permission_level:
+          type: string
+        source_providers:
+          type: array
+          items:
+            type: string
+        integration_types:
+          type: array
+          items:
+            type: string
+        owner_organization_ids:
+          type: array
+          items:
+            type: string
+        accessible_resource_kinds:
+          type: array
+          items:
+            type: string
+        verified_publisher_ids:
+          type: array
+          items:
+            type: string
+        verified_publisher_names:
+          type: array
+          items:
+            type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        managed_node_count:
+          type: integer
+        managed_application_count:
+          type: integer
+        managed_service_account_count:
+          type: integer
+        accessible_resource_count:
+          type: integer
+        sensitive_resource_count:
+          type: integer
+        read_access_count:
+          type: integer
+        write_access_count:
+          type: integer
+        admin_access_count:
+          type: integer
+        dependent_principal_count:
+          type: integer
+        dependent_user_count:
+          type: integer
+        dependent_group_count:
+          type: integer
+        dependent_service_account_count:
+          type: integer
+        delegated_grant_count:
+          type: integer
+        delegated_admin_consent_count:
+          type: integer
+        delegated_principal_consent_count:
+          type: integer
+        delegated_scope_count:
+          type: integer
+        active_grant_count:
+          type: integer
+        admin_grant_count:
+          type: integer
+        principal_grant_count:
+          type: integer
+        recent_oauth_activity_count:
+          type: integer
+        recent_oauth_authorize_event_count:
+          type: integer
+        recent_oauth_revoke_event_count:
+          type: integer
+        anonymous_application_count:
+          type: integer
+        native_application_count:
+          type: integer
+        verified_publisher_count:
+          type: integer
+        unverified_integration_count:
+          type: integer
+        app_role_assignment_required_count:
+          type: integer
+        app_role_assignment_optional_count:
+          type: integer
+        last_grant_updated_at:
+          type: string
+          format: date-time
+        last_oauth_activity_at:
+          type: string
+          format: date-time
+        risk_drivers:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphVendorRiskDriver'
+    GraphVendorRiskDriver:
+      type: object
+      properties:
+        type:
+          type: string
+        severity:
+          type: string
+        summary:
+          type: string
+        value:
+          type: integer
+    GraphVendorRiskAlert:
+      type: object
+      properties:
+        vendor_id:
+          type: string
+        vendor_name:
+          type: string
+        type:
+          type: string
+        severity:
+          type: string
+        summary:
+          type: string
+        current_value:
+          type: number
+        previous_value:
+          type: number
+        delta:
+          type: number
+        observed_at:
+          type: string
+          format: date-time
+    GraphAPISurfaceResponse:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        summary:
+          $ref: '#/components/schemas/GraphAPISurfaceSummary'
+        endpoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphAPISurfaceEndpoint'
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphAPISurfaceFinding'
+    GraphAPISurfaceSummary:
+      type: object
+      properties:
+        endpoint_count:
+          type: integer
+        public_endpoint_count:
+          type: integer
+        internal_endpoint_count:
+          type: integer
+        no_auth_finding_count:
+          type: integer
+        cors_finding_count:
+          type: integer
+        providers:
+          type: array
+          items:
+            type: string
+    GraphAPISurfaceEndpoint:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+        method:
+          type: string
+        host:
+          type: string
+        path:
+          type: string
+        provider:
+          type: string
+        account:
+          type: string
+        region:
+          type: string
+        public:
+          type: boolean
+        auth_type:
+          type: string
+        api_key_required:
+          type: boolean
+        cors_permissive:
+          type: boolean
+        exposure_source:
+          type: string
+        provider_service:
+          type: string
+        served_by:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphAPISurfaceNodeRef'
+        backend_targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphAPISurfaceNodeRef'
+        reachable_resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphAPISurfaceNodeRef'
+    GraphAPISurfaceNodeRef:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+        name:
+          type: string
+        risk:
+          type: string
+    GraphAPISurfaceFinding:
+      type: object
+      properties:
+        id:
+          type: string
+        endpoint_id:
+          type: string
+        category:
+          type: string
+        severity:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
     GraphRiskFeedbackResponse:
       type: object
       additionalProperties: true
@@ -11260,6 +13253,140 @@ components:
           items:
             type: object
             additionalProperties: true
+    TrustCenterSnapshotResponse:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        summary:
+          $ref: '#/components/schemas/TrustCenterSummary'
+        frameworks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustCenterFrameworkSummary'
+        security_practices:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustCenterSecurityPractice'
+        subprocessors:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustCenterSubprocessor'
+        evidence_catalog:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustCenterEvidenceDocument'
+    TrustCenterSummary:
+      type: object
+      properties:
+        framework_count:
+          type: integer
+        average_compliance_score:
+          type: number
+        passing_framework_count:
+          type: integer
+        attention_framework_count:
+          type: integer
+        subprocessor_count:
+          type: integer
+        high_risk_vendor_count:
+          type: integer
+        evidence_document_count:
+          type: integer
+    TrustCenterFrameworkSummary:
+      type: object
+      properties:
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        version:
+          type: string
+        compliance_score:
+          type: number
+        passing_controls:
+          type: integer
+        total_controls:
+          type: integer
+        status:
+          type: string
+        last_assessed_at:
+          type: string
+          format: date-time
+    TrustCenterSecurityPractice:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        evidence_controls:
+          type: array
+          items:
+            type: string
+    TrustCenterSubprocessor:
+      type: object
+      properties:
+        vendor_id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        verification_status:
+          type: string
+        permission_level:
+          type: string
+        risk_level:
+          type: string
+        risk_score:
+          type: integer
+        accessible_resource_kinds:
+          type: array
+          items:
+            type: string
+        source_providers:
+          type: array
+          items:
+            type: string
+    TrustCenterEvidenceCatalogResponse:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustCenterEvidenceDocument'
+    TrustCenterEvidenceDocument:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        framework_id:
+          type: string
+        framework_name:
+          type: string
+        delivery:
+          type: string
+        requires_nda:
+          type: boolean
+        public_path:
+          type: string
+        authenticated_export_path:
+          type: string
     GraphRuleDiscoveryRunRequest:
       type: object
       properties:
@@ -11739,26 +13866,48 @@ components:
           type: string
     TelemetryIngestRequest:
       type: object
-      required:
-        - events
+      description: Accept either normalized runtime events via `events` or a raw adapter payload via `adapter_source` and `payload`.
       properties:
         events:
           type: array
           items:
             $ref: '#/components/schemas/RuntimeEventIngestRequest'
+        adapter_source:
+          type: string
+          enum:
+            - aws_vpc_flow_logs
+        payload:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
         node:
           type: string
         cluster:
           type: string
         agent_version:
           type: string
+      oneOf:
+        - required:
+            - events
+        - required:
+            - adapter_source
+            - payload
     TelemetryIngestResponse:
       type: object
       required:
         - processed
+        - rejected
+        - duplicates
         - findings
       properties:
+        run_id:
+          type: string
         processed:
+          type: integer
+        rejected:
+          type: integer
+        duplicates:
           type: integer
         findings:
           type: integer
@@ -13804,6 +15953,48 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PlatformEntityPropertyDiff'
+    PlatformEntityTimelineEvent:
+      type: object
+      additionalProperties: false
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+        key:
+          type: string
+        before:
+          $ref: '#/components/schemas/FlexibleValue'
+        after:
+          $ref: '#/components/schemas/FlexibleValue'
+    PlatformEntityTimelineRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        entity_id:
+          type: string
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+        before:
+          $ref: '#/components/schemas/PlatformEntityTimeRecord'
+        after:
+          $ref: '#/components/schemas/PlatformEntityTimeRecord'
+        changed_keys:
+          type: array
+          items:
+            type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformEntityTimelineEvent'
     PlatformEntityTemporalMetadata:
       type: object
       additionalProperties: false
@@ -14038,6 +16229,33 @@ components:
         include_anomalies:
           type: boolean
           default: false
+    EventCorrelationChainQuery:
+      type: object
+      additionalProperties: false
+      properties:
+        event_id:
+          type: string
+        entity_id:
+          type: string
+        pattern_id:
+          type: string
+        direction:
+          type: string
+          enum:
+            - upstream
+            - downstream
+            - both
+          default: both
+        limit:
+          type: integer
+        max_depth:
+          type: integer
+        since:
+          type: string
+          format: date-time
+        until:
+          type: string
+          format: date-time
     EventCorrelationSummary:
       type: object
       additionalProperties: false
@@ -14102,6 +16320,14 @@ components:
           type: integer
         score:
           type: number
+        confidence:
+          type: number
+        candidate_count:
+          type: integer
+        scope_overlap:
+          type: number
+        ambiguity_penalty:
+          type: number
     EventAnomaly:
       type: object
       additionalProperties: false
@@ -14161,6 +16387,57 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EventAnomaly'
+    EventCorrelationChainSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        seed_count:
+          type: integer
+        chain_count:
+          type: integer
+        max_depth:
+          type: integer
+        pattern_count:
+          type: integer
+    EventCorrelationChain:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        direction:
+          type: string
+          enum:
+            - upstream
+            - downstream
+            - both
+        depth:
+          type: integer
+        score:
+          type: number
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventReference'
+        correlations:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventCorrelationRecord'
+    EventCorrelationChainResult:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        query:
+          $ref: '#/components/schemas/EventCorrelationChainQuery'
+        summary:
+          $ref: '#/components/schemas/EventCorrelationChainSummary'
+        chains:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventCorrelationChain'
     EventAnomalyCollection:
       type: object
       additionalProperties: false
@@ -14180,6 +16457,41 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EventAnomaly'
+    PlatformNaturalLanguageQueryRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - question
+      properties:
+        question:
+          type: string
+        preview_only:
+          type: boolean
+          default: false
+        context:
+          type: object
+          additionalProperties: true
+          description: Optional follow-up context carrying the previous plan payload returned by an earlier NL query.
+    PlatformNaturalLanguageQueryResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        question:
+          type: string
+        plan:
+          type: object
+          additionalProperties: true
+        generated_query:
+          type: string
+        read_only:
+          type: boolean
+        preview_only:
+          type: boolean
+        summary:
+          type: string
+        result:
+          type: object
+          additionalProperties: true
     PlatformEntitySummaryReport:
       type: object
       additionalProperties: false
@@ -15208,6 +17520,273 @@ components:
       required:
         - count
         - executions
+    PlatformScanAuditArtifactRetention:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+        count:
+          type: integer
+        retained:
+          type: boolean
+      required:
+        - type
+        - retained
+    PlatformScanAuditRetentionPolicy:
+      type: object
+      additionalProperties: false
+      properties:
+        storage_class:
+          type: string
+        retention_tier:
+          type: string
+        retention_days:
+          type: integer
+        retain_until:
+          type: string
+          format: date-time
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformScanAuditArtifactRetention'
+      required:
+        - storage_class
+        - retention_tier
+    PlatformScanAuditException:
+      type: object
+      additionalProperties: false
+      properties:
+        source:
+          type: string
+        status:
+          type: string
+        stage:
+          type: string
+        message:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time
+      required:
+        - source
+        - message
+        - recorded_at
+    PlatformScanAuditEvent:
+      type: object
+      additionalProperties: false
+      properties:
+        sequence:
+          type: integer
+        status:
+          type: string
+        stage:
+          type: string
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        recorded_at:
+          type: string
+          format: date-time
+      required:
+        - sequence
+        - recorded_at
+    PlatformScanAuditRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        namespace:
+          type: string
+        run_id:
+          type: string
+        kind:
+          type: string
+        status:
+          type: string
+        stage:
+          type: string
+        submitted_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        requested_by:
+          type: string
+        provider:
+          type: string
+        target:
+          type: string
+        configuration:
+          type: object
+          additionalProperties: true
+        results:
+          type: object
+          additionalProperties: true
+        exceptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformScanAuditException'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformScanAuditEvent'
+        retention:
+          $ref: '#/components/schemas/PlatformScanAuditRetentionPolicy'
+      required:
+        - namespace
+        - run_id
+        - kind
+        - status
+        - stage
+        - submitted_at
+        - updated_at
+        - retention
+    PlatformScanAuditCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformScanAuditRecord'
+      required:
+        - generated_at
+        - count
+        - records
+    PlatformScanAuditUnifiedFindingOccurrence:
+      type: object
+      additionalProperties: false
+      properties:
+        namespace:
+          type: string
+        run_id:
+          type: string
+        scan_kind:
+          type: string
+        detection_kind:
+          type: string
+        target:
+          type: string
+        severity:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        cve:
+          type: string
+        package:
+          type: string
+        installed_version:
+          type: string
+        fixed_version:
+          type: string
+        path:
+          type: string
+        resource_type:
+          type: string
+        artifact_type:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+      required:
+        - namespace
+        - run_id
+        - scan_kind
+        - detection_kind
+        - severity
+        - observed_at
+    PlatformScanAuditUnifiedFinding:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        asset_key:
+          type: string
+        kind:
+          type: string
+        severity:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        cve:
+          type: string
+        package:
+          type: string
+        fixed_version:
+          type: string
+        namespaces:
+          type: array
+          items:
+            type: string
+        scan_kinds:
+          type: array
+          items:
+            type: string
+        detection_kinds:
+          type: array
+          items:
+            type: string
+        targets:
+          type: array
+          items:
+            type: string
+        occurrence_count:
+          type: integer
+        first_seen:
+          type: string
+          format: date-time
+        last_seen:
+          type: string
+          format: date-time
+        occurrences:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformScanAuditUnifiedFindingOccurrence'
+      required:
+        - id
+        - asset_key
+        - kind
+        - severity
+        - title
+        - occurrence_count
+        - first_seen
+        - last_seen
+    PlatformScanAuditUnifiedFindingCollection:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformScanAuditUnifiedFinding'
+      required:
+        - generated_at
+        - count
+        - findings
     WorkloadScanVMTarget:
       type: object
       additionalProperties: false
@@ -15606,9 +18185,11 @@ components:
     PlatformReportResult:
       oneOf:
         - $ref: '#/components/schemas/IntelligenceReport'
+        - $ref: '#/components/schemas/AgentActionEffectivenessReport'
         - $ref: '#/components/schemas/GraphQualityReport'
         - $ref: '#/components/schemas/GraphMetadataQualityReport'
         - $ref: '#/components/schemas/ClaimConflictReport'
+        - $ref: '#/components/schemas/EvaluationTemporalAnalysisReport'
         - $ref: '#/components/schemas/GraphLeverageReport'
         - $ref: '#/components/schemas/WeeklyCalibrationReport'
     PlatformReportRunSummary:
@@ -17194,6 +19775,470 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/GraphQualityRecommendation'
+    AgentActionEffectivenessSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        conversations:
+          type: integer
+        agents:
+          type: integer
+        tool_calls:
+          type: integer
+        successful_actions:
+          type: integer
+        reversed_actions:
+          type: integer
+        positive_outcomes:
+          type: integer
+        negative_outcomes:
+          type: integer
+        total_cost_usd:
+          type: number
+        cost_per_successful_conversation:
+          type: number
+        correctness_percent:
+          type: number
+        average_quality_score:
+          type: number
+    AgentActionEffectivenessRollup:
+      type: object
+      additionalProperties: false
+      properties:
+        agent:
+          type: string
+        conversations:
+          type: integer
+        tool_calls:
+          type: integer
+        successful_actions:
+          type: integer
+        reversed_actions:
+          type: integer
+        positive_outcomes:
+          type: integer
+        negative_outcomes:
+          type: integer
+        total_cost_usd:
+          type: number
+        cost_per_successful_conversation:
+          type: number
+        correctness_percent:
+          type: number
+        average_quality_score:
+          type: number
+    AgentActionEffectivenessTrend:
+      type: object
+      additionalProperties: false
+      properties:
+        date:
+          type: string
+        conversations:
+          type: integer
+        tool_calls:
+          type: integer
+        positive_outcomes:
+          type: integer
+        reversed_actions:
+          type: integer
+        total_cost_usd:
+          type: number
+        cost_per_successful_conversation:
+          type: number
+        correctness_percent:
+          type: number
+        average_quality_score:
+          type: number
+    AgentActionReversal:
+      type: object
+      additionalProperties: false
+      properties:
+        action_id:
+          type: string
+        agent:
+          type: string
+        evaluation_run_id:
+          type: string
+        conversation_id:
+          type: string
+        status:
+          type: string
+        verdict:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+    AgentActionEffectivenessRecommendation:
+      type: object
+      additionalProperties: false
+      properties:
+        priority:
+          type: string
+        title:
+          type: string
+        detail:
+          type: string
+        suggested_action:
+          type: string
+    AgentActionEffectivenessReport:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        summary:
+          $ref: '#/components/schemas/AgentActionEffectivenessSummary'
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentActionEffectivenessRollup'
+        trends:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentActionEffectivenessTrend'
+        reversals:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentActionReversal'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentActionEffectivenessRecommendation'
+    PlaybookEffectivenessSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        runs:
+          type: integer
+        completed_runs:
+          type: integer
+        successful_runs:
+          type: integer
+        failed_runs:
+          type: integer
+        rollback_runs:
+          type: integer
+        approval_bottlenecks:
+          type: integer
+        repeated_target_executions:
+          type: integer
+        completion_rate_percent:
+          type: number
+        success_rate_percent:
+          type: number
+        rollback_rate_percent:
+          type: number
+        repeat_execution_rate_percent:
+          type: number
+        average_completion_minutes:
+          type: number
+        median_successful_completion_minutes:
+          type: number
+    PlaybookEffectivenessPlaybookRollup:
+      type: object
+      additionalProperties: false
+      properties:
+        playbook_id:
+          type: string
+        playbook_name:
+          type: string
+        runs:
+          type: integer
+        completed_runs:
+          type: integer
+        successful_runs:
+          type: integer
+        failed_runs:
+          type: integer
+        rollback_runs:
+          type: integer
+        approval_bottlenecks:
+          type: integer
+        repeated_target_executions:
+          type: integer
+        completion_rate_percent:
+          type: number
+        success_rate_percent:
+          type: number
+        rollback_rate_percent:
+          type: number
+        repeat_execution_rate_percent:
+          type: number
+        average_completion_minutes:
+          type: number
+        median_successful_completion_minutes:
+          type: number
+    PlaybookEffectivenessStageRollup:
+      type: object
+      additionalProperties: false
+      properties:
+        playbook_id:
+          type: string
+        playbook_name:
+          type: string
+        stage_id:
+          type: string
+        stage_name:
+          type: string
+        executions:
+          type: integer
+        failures:
+          type: integer
+        skipped:
+          type: integer
+        approval_bottlenecks:
+          type: integer
+        failure_rate_percent:
+          type: number
+    PlaybookEffectivenessTargetKindRollup:
+      type: object
+      additionalProperties: false
+      properties:
+        target_kind:
+          type: string
+        runs:
+          type: integer
+        successful_runs:
+          type: integer
+        rollback_runs:
+          type: integer
+        success_rate_percent:
+          type: number
+        rollback_rate_percent:
+          type: number
+    PlaybookEffectivenessTenantRollup:
+      type: object
+      additionalProperties: false
+      properties:
+        tenant_id:
+          type: string
+        runs:
+          type: integer
+        successful_runs:
+          type: integer
+        rollback_runs:
+          type: integer
+        success_rate_percent:
+          type: number
+        rollback_rate_percent:
+          type: number
+    PlaybookFailureStepRollup:
+      type: object
+      additionalProperties: false
+      properties:
+        playbook_id:
+          type: string
+        playbook_name:
+          type: string
+        stage_id:
+          type: string
+        stage_name:
+          type: string
+        failures:
+          type: integer
+    PlaybookEffectivenessRecommendation:
+      type: object
+      additionalProperties: false
+      properties:
+        priority:
+          type: string
+        title:
+          type: string
+        detail:
+          type: string
+        suggested_action:
+          type: string
+    PlaybookEffectivenessReport:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        summary:
+          $ref: '#/components/schemas/PlaybookEffectivenessSummary'
+        playbooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaybookEffectivenessPlaybookRollup'
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaybookEffectivenessStageRollup'
+        target_kinds:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaybookEffectivenessTargetKindRollup'
+        tenants:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaybookEffectivenessTenantRollup'
+        failure_steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaybookFailureStepRollup'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaybookEffectivenessRecommendation'
+    AIWorkloadSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        workload_count:
+          type: integer
+        returned_workload_count:
+          type: integer
+        high_risk_workload_count:
+          type: integer
+        internet_exposed_workload_count:
+          type: integer
+        shadow_ai_workload_count:
+          type: integer
+        sensitive_data_workload_count:
+          type: integer
+        plaintext_key_workload_count:
+          type: integer
+        cloud_managed_workload_count:
+          type: integer
+        self_hosted_workload_count:
+          type: integer
+    AIWorkloadRiskDriver:
+      type: object
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+        severity:
+          type: string
+        summary:
+          type: string
+        value:
+          type: integer
+    AIWorkloadRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        node_id:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+        provider:
+          type: string
+        deployment_model:
+          type: string
+        ai_service_type:
+          type: string
+        risk_level:
+          type: string
+        risk_score:
+          type: integer
+        shadow_ai:
+          type: boolean
+        internet_exposed:
+          type: boolean
+        sensitive_data_access:
+          type: boolean
+        data_store_count:
+          type: integer
+        sensitive_data_store_count:
+          type: integer
+        plaintext_provider_keys:
+          type: array
+          items:
+            type: string
+        data_store_kinds:
+          type: array
+          items:
+            type: string
+        sensitive_data_store_ids:
+          type: array
+          items:
+            type: string
+        admin_identity_ids:
+          type: array
+          items:
+            type: string
+        detector_sources:
+          type: array
+          items:
+            type: string
+        indicators:
+          type: array
+          items:
+            type: string
+        risk_drivers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AIWorkloadRiskDriver'
+    AIWorkloadExposure:
+      type: object
+      additionalProperties: false
+      properties:
+        workload_id:
+          type: string
+        workload_name:
+          type: string
+        ai_service_type:
+          type: string
+        risk_level:
+          type: string
+        risk_score:
+          type: integer
+        internet_exposed:
+          type: boolean
+        sensitive_data_store_count:
+          type: integer
+        sensitive_data_store_ids:
+          type: array
+          items:
+            type: string
+        plaintext_provider_keys:
+          type: array
+          items:
+            type: string
+    AIWorkloadRecommendation:
+      type: object
+      additionalProperties: false
+      properties:
+        priority:
+          type: string
+        category:
+          type: string
+        title:
+          type: string
+        detail:
+          type: string
+        suggested_action:
+          type: string
+    AIWorkloadInventoryReport:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        summary:
+          $ref: '#/components/schemas/AIWorkloadSummary'
+        workloads:
+          type: array
+          items:
+            $ref: '#/components/schemas/AIWorkloadRecord'
+        data_exposures:
+          type: array
+          items:
+            $ref: '#/components/schemas/AIWorkloadExposure'
+        shadow_ai_workloads:
+          type: array
+          items:
+            $ref: '#/components/schemas/AIWorkloadRecord'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AIWorkloadRecommendation'
     GraphMetadataQualitySummary:
       type: object
       additionalProperties: false
@@ -17359,6 +20404,87 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ClaimConflictRecommendation'
+    EvaluationTemporalAnalysisWindow:
+      type: object
+      additionalProperties: false
+      properties:
+        pre_action_at:
+          type: string
+          format: date-time
+        post_action_at:
+          type: string
+          format: date-time
+    EvaluationTemporalAnalysisSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        conversations:
+          type: integer
+        decisions:
+          type: integer
+        actions:
+          type: integer
+        outcomes:
+          type: integer
+        claims:
+          type: integer
+        contradicted_claims:
+          type: integer
+        superseded_claims:
+          type: integer
+        reversed_actions:
+          type: integer
+    EvaluationScopedClaimAnalysis:
+      type: object
+      additionalProperties: false
+      properties:
+        claim:
+          $ref: '#/components/schemas/PlatformClaimRecord'
+        explanation:
+          $ref: '#/components/schemas/PlatformClaimExplanation'
+        timeline:
+          $ref: '#/components/schemas/PlatformClaimTimeline'
+    EvaluationTemporalAnalysisRecommendation:
+      type: object
+      additionalProperties: false
+      properties:
+        priority:
+          type: string
+        title:
+          type: string
+        detail:
+          type: string
+        suggested_action:
+          type: string
+    EvaluationTemporalAnalysisReport:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        evaluation_run_id:
+          type: string
+        conversation_id:
+          type: string
+        stage_id:
+          type: string
+        window:
+          $ref: '#/components/schemas/EvaluationTemporalAnalysisWindow'
+        summary:
+          $ref: '#/components/schemas/EvaluationTemporalAnalysisSummary'
+        diff:
+          $ref: '#/components/schemas/PlatformKnowledgeDiffCollection'
+        conflicts:
+          $ref: '#/components/schemas/ClaimConflictReport'
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluationScopedClaimAnalysis'
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluationTemporalAnalysisRecommendation'
     IdentityResolutionCandidate:
       type: object
       additionalProperties: false
@@ -17689,6 +20815,77 @@ components:
           $ref: '#/components/schemas/IdentityCalibrationReport'
         ontology:
           $ref: '#/components/schemas/GraphOntologySLO'
+        temporal:
+          $ref: '#/components/schemas/WeeklyCalibrationTemporalSummary'
+    WeeklyCalibrationTemporalSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        since:
+          type: string
+          format: date-time
+        until:
+          type: string
+          format: date-time
+        count:
+          type: integer
+        summary:
+          $ref: '#/components/schemas/PlatformGraphSnapshotDiffSummary'
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformGraphChangelogEntry'
+    KeyPersonRiskSummary:
+      type: object
+      additionalProperties: false
+      properties:
+        person_id:
+          type: string
+        person_name:
+          type: string
+        department:
+          type: string
+        score:
+          type: number
+        risk:
+          type: string
+        systems_bus_factor_0:
+          type: integer
+        systems_bus_factor_1:
+          type: integer
+        customers_no_contact:
+          type: integer
+        affected_arr:
+          type: number
+        broken_bridge_count:
+          type: integer
+        secrets_known_count:
+          type: integer
+        access_to_revoke_count:
+          type: integer
+        knowledge_recovery_weeks:
+          type: integer
+        suggested_successors:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+    KeyPersonRiskReport:
+      type: object
+      additionalProperties: false
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        person_id:
+          type: string
+        count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/KeyPersonRiskSummary'
     PlatformReportCatalog:
       type: object
       additionalProperties: false

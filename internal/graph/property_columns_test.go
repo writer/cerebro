@@ -134,3 +134,51 @@ func TestPropertyColumnsZeroTimesRoundTrip(t *testing.T) {
 		t.Fatalf("SequenceStart = %s, want zero time", attackSequenceProps.SequenceStart)
 	}
 }
+
+func TestPropertyColumnsMetadataRoundTrip(t *testing.T) {
+	columns := NewPropertyColumns()
+	ordinal := NodeOrdinal(15)
+	observedAt := time.Date(2026, 3, 21, 9, 0, 0, 0, time.UTC)
+	validTo := observedAt.Add(2 * time.Hour)
+	transactionTo := observedAt.Add(3 * time.Hour)
+
+	columns.SetMetadataProperties(ordinal, NodeMetadataProperties{
+		SourceSystem:    "github",
+		SourceEventID:   "evt-15",
+		Confidence:      0.88,
+		ObservedAt:      observedAt,
+		ValidFrom:       observedAt,
+		ValidTo:         &validTo,
+		RecordedAt:      observedAt.Add(time.Minute),
+		TransactionFrom: observedAt.Add(time.Minute),
+		TransactionTo:   &transactionTo,
+		present: metadataPropertySourceSystem |
+			metadataPropertySourceEventID |
+			metadataPropertyConfidence |
+			metadataPropertyObservedAt |
+			metadataPropertyValidFrom |
+			metadataPropertyValidTo |
+			metadataPropertyRecordedAt |
+			metadataPropertyTransactionFrom |
+			metadataPropertyTransactionTo,
+	})
+
+	props, ok := columns.MetadataProperties(ordinal)
+	if !ok {
+		t.Fatal("expected stored metadata properties")
+	}
+	if props.SourceSystem != "github" || props.SourceEventID != "evt-15" {
+		t.Fatalf("unexpected metadata properties: %+v", props)
+	}
+	if props.ValidTo == nil || !props.ValidTo.Equal(validTo) {
+		t.Fatalf("ValidTo = %v, want %v", props.ValidTo, validTo)
+	}
+	if props.TransactionTo == nil || !props.TransactionTo.Equal(transactionTo) {
+		t.Fatalf("TransactionTo = %v, want %v", props.TransactionTo, transactionTo)
+	}
+
+	columns.ClearMetadataProperties(ordinal)
+	if _, ok := columns.MetadataProperties(ordinal); ok {
+		t.Fatal("expected metadata properties to clear")
+	}
+}

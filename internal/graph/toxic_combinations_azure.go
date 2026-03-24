@@ -18,7 +18,7 @@ func (e *ToxicCombinationEngine) ruleAzureManagedIdentityOverprivileged() *Toxic
 			}
 
 			// Check if this is a managed identity
-			identityType, _ := node.Properties["identity_type"].(string)
+			identityType := node.PropertyString("identity_type")
 			if identityType != "SystemAssigned" && identityType != "UserAssigned" {
 				return nil
 			}
@@ -102,7 +102,7 @@ func (e *ToxicCombinationEngine) ruleAzurePublicStorageBlob() *ToxicCombinationR
 
 			// Check for sensitive data indicators
 			hasSensitiveData := false
-			dataClassification, _ := node.Properties["data_classification"].(string)
+			dataClassification := node.PropertyString("data_classification")
 			if dataClassification == "confidential" || dataClassification == "restricted" {
 				hasSensitiveData = true
 			}

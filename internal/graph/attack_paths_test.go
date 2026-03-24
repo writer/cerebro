@@ -121,6 +121,46 @@ func TestAttackPathSimulatorFindShortestPathParallelMatchesSequentialWideFrontie
 	}
 }
 
+func TestAttackPathSimulatorExpandShortestPathFrontierSkipsVisitedNodes(t *testing.T) {
+	g := New()
+	g.AddNode(&Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet"})
+	g.AddNode(&Node{ID: "role", Kind: NodeKindRole, Name: "Role"})
+	g.AddNode(&Node{ID: "db", Kind: NodeKindDatabase, Name: "DB", Risk: RiskCritical})
+	g.AddEdge(&Edge{ID: "internet-role", Source: "internet", Target: "role", Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow})
+	g.AddEdge(&Edge{ID: "internet-db", Source: "internet", Target: "db", Kind: EdgeKindCanRead, Effect: EdgeEffectAllow})
+
+	sim := NewAttackPathSimulator(g)
+	entry, ok := g.GetNode("internet")
+	if !ok {
+		t.Fatal("expected internet node")
+	}
+	target, ok := g.GetNode("db")
+	if !ok {
+		t.Fatal("expected db node")
+	}
+
+	visited := sim.newVisitedBits("internet")
+	sim.markVisited(visited, "role")
+
+	expansions := sim.expandShortestPathFrontierItem(
+		shortestPathState{nodeID: "internet"},
+		entry,
+		target,
+		func(nodeID string) bool {
+			return sim.isVisited(visited, nodeID)
+		},
+		ordinalVisitSet{},
+		nil,
+	)
+
+	if len(expansions) != 1 {
+		t.Fatalf("expected only unvisited neighbor expansion, got %d", len(expansions))
+	}
+	if expansions[0].found == nil || expansions[0].found.Target.ID != "db" {
+		t.Fatalf("expected only db expansion, got %#v", expansions[0])
+	}
+}
+
 func runAttackShortestPathWithWorkers(graph *Graph, workers int) *ScoredAttackPath {
 	previous := parallelTraversalWorkerOverride
 	parallelTraversalWorkerOverride = workers

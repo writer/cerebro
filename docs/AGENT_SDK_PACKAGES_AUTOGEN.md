@@ -2,7 +2,7 @@
 
 Generated from `docs/AGENT_SDK_CONTRACTS.json` via `go run ./scripts/generate_agent_sdk_packages/main.go`.
 
-- Tool bindings: **30**
+- Tool bindings: **36**
 - Package paths:
   - `sdk/go/cerebro`
   - `sdk/python/cerebro_sdk`
@@ -15,6 +15,7 @@ Generated from `docs/AGENT_SDK_CONTRACTS.json` via `go run ./scripts/generate_ag
 |---|---|---|---|
 | `cerebro_access_review` | `AccessReview` | `access_review` | `accessReview` |
 | `cerebro_actuate_recommendation` | `ActuateRecommendation` | `actuate_recommendation` | `actuateRecommendation` |
+| `cerebro_ai_workloads` | `AiWorkloads` | `ai_workloads` | `aiWorkloads` |
 | `cerebro_annotate` | `Annotate` | `annotate` | `annotate` |
 | `cerebro_autonomous_credential_response` | `AutonomousCredentialResponse` | `autonomous_credential_response` | `autonomousCredentialResponse` |
 | `cerebro_autonomous_workflow_approve` | `AutonomousWorkflowApprove` | `autonomous_workflow_approve` | `autonomousWorkflowApprove` |
@@ -25,6 +26,7 @@ Generated from `docs/AGENT_SDK_CONTRACTS.json` via `go run ./scripts/generate_ag
 | `cerebro_context` | `Context` | `context` | `context` |
 | `cerebro_correlate_events` | `CorrelateEvents` | `correlate_events` | `correlateEvents` |
 | `cerebro_decide` | `Decide` | `decide` | `decide` |
+| `cerebro_diff` | `Diff` | `diff` | `diff` |
 | `cerebro_entity_history` | `EntityHistory` | `entity_history` | `entityHistory` |
 | `cerebro_execution_status` | `ExecutionStatus` | `execution_status` | `executionStatus` |
 | `cerebro_findings` | `Findings` | `findings` | `findings` |
@@ -33,16 +35,20 @@ Generated from `docs/AGENT_SDK_CONTRACTS.json` via `go run ./scripts/generate_ag
 | `cerebro_graph_simulate` | `GraphSimulate` | `graph_simulate` | `graphSimulate` |
 | `cerebro_identity_calibration` | `IdentityCalibration` | `identity_calibration` | `identityCalibration` |
 | `cerebro_identity_review` | `IdentityReview` | `identity_review` | `identityReview` |
+| `cerebro_key_person_risk` | `KeyPersonRisk` | `key_person_risk` | `keyPersonRisk` |
 | `cerebro_leverage` | `Leverage` | `leverage` | `leverage` |
+| `cerebro_nlq` | `Nlq` | `nlq` | `nlq` |
 | `cerebro_observe` | `Observe` | `observe` | `observe` |
 | `cerebro_outcome` | `Outcome` | `outcome` | `outcome` |
 | `cerebro_quality` | `Quality` | `quality` | `quality` |
+| `cerebro_reconstruct` | `Reconstruct` | `reconstruct` | `reconstruct` |
 | `cerebro_report` | `Report` | `report` | `report` |
 | `cerebro_resolve_identity` | `ResolveIdentity` | `resolve_identity` | `resolveIdentity` |
 | `cerebro_risk_score` | `RiskScore` | `risk_score` | `riskScore` |
 | `cerebro_simulate` | `Simulate` | `simulate` | `simulate` |
 | `cerebro_split_identity` | `SplitIdentity` | `split_identity` | `splitIdentity` |
 | `cerebro_templates` | `Templates` | `templates` | `templates` |
+| `cerebro_timeline` | `Timeline` | `timeline` | `timeline` |
 
 ## Notes
 

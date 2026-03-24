@@ -2,6 +2,7 @@ package graph
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -105,20 +106,33 @@ func TestShortestPathBetweenSetsHandlesWideOrdinalPath(t *testing.T) {
 	link(fmt.Sprintf("node-%d", chainLen-1), "target")
 	link(fmt.Sprintf("node-%d", chainLen-1), "node-10")
 
-	path := shortestPathBetweenSets(
-		adjacency,
-		map[string]struct{}{"source": {}},
-		map[string]struct{}{"target": {}},
-	)
-	if len(path) != chainLen+2 {
-		t.Fatalf("expected %d path nodes, got %d", chainLen+2, len(path))
+	sources := map[string]struct{}{"source": {}}
+	targets := map[string]struct{}{"target": {}}
+
+	single := runShortestPathBetweenSetsWithWorkers(adjacency, sources, targets, 1)
+	parallel := runShortestPathBetweenSetsWithWorkers(adjacency, sources, targets, 8)
+
+	if !reflect.DeepEqual(single, parallel) {
+		t.Fatalf("parallel shortest path mismatch: single=%v parallel=%v", single, parallel)
 	}
-	if path[0] != "source" || path[len(path)-1] != "target" {
-		t.Fatalf("unexpected endpoints: %#v", path)
+	if len(parallel) != chainLen+2 {
+		t.Fatalf("expected %d path nodes, got %d", chainLen+2, len(parallel))
 	}
-	if path[65] != "node-64" || path[70] != "node-69" {
-		t.Fatalf("unexpected wide path reconstruction: %#v", path)
+	if parallel[0] != "source" || parallel[len(parallel)-1] != "target" {
+		t.Fatalf("unexpected endpoints: %#v", parallel)
 	}
+	if parallel[65] != "node-64" || parallel[70] != "node-69" {
+		t.Fatalf("unexpected wide path reconstruction: %#v", parallel)
+	}
+}
+
+func runShortestPathBetweenSetsWithWorkers(adjacency map[string]map[string]struct{}, sources, targets map[string]struct{}, workers int) []string {
+	previous := parallelTraversalWorkerOverride
+	parallelTraversalWorkerOverride = workers
+	defer func() {
+		parallelTraversalWorkerOverride = previous
+	}()
+	return shortestPathBetweenSets(adjacency, sources, targets)
 }
 
 func buildInformationFlowFixtureGraph(now time.Time) *Graph {

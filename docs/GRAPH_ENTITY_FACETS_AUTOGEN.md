@@ -4,7 +4,7 @@ Generated from the built-in entity facet registry via `go run ./scripts/generate
 
 - Catalog API version: **cerebro.entity-facets/v1alpha1**
 - Catalog kind: **EntityFacetContractCatalog**
-- Facets: **8**
+- Facets: **9**
 
 | ID | Version | Schema Name | Schema URL | Applicable Kinds | Claim Predicates | Source Keys |
 |---|---|---|---|---|---|---|
@@ -13,6 +13,7 @@ Generated from the built-in entity facet registry via `go run ./scripts/generate
 | `bucket_public_access` | `1.0.0` | `PlatformBucketPublicAccessFacet` | `urn:cerebro:entity-facet:bucket-public-access:v1` | `bucket` | `public_access`, `internet_exposed` | `public`, `public_access`, `block_public_acls`, `block_public_policy`, `restrict_public_buckets`, `public_access_prevention`, `all_users_access`, `all_authenticated_users_access`, `anonymous_access` |
 | `bucket_versioning` | `1.0.0` | `PlatformBucketVersioningFacet` | `urn:cerebro:entity-facet:bucket-versioning:v1` | `bucket` | `versioning_enabled` | `versioning`, `versioning_status`, `mfa_delete` |
 | `data_sensitivity` | `1.0.0` | `PlatformEntityDataSensitivityFacet` | `urn:cerebro:entity-facet:data-sensitivity:v1` | `bucket`, `database`, `secret`, `service` | `contains_sensitive_data`, `data_classification` | `contains_pii`, `contains_phi`, `contains_pci`, `contains_secrets`, `data_classification` |
+| `evaluation_quality` | `1.0.0` | `PlatformEntityEvaluationQualityFacet` | `urn:cerebro:entity-facet:evaluation-quality:v1` | `application`, `bucket`, `database`, `function`, `instance`, `repository`, `secret`, `service`, `workload` | - | `target_ids`, `evaluation_run_id`, `conversation_id`, `quality_score`, `verdict`, `status` |
 | `exposure` | `1.0.0` | `PlatformEntityExposureFacet` | `urn:cerebro:entity-facet:exposure:v1` | `bucket`, `database`, `function`, `instance`, `network`, `service` | `public_access`, `internet_exposed` | `public`, `public_access`, `internet_accessible`, `publicly_accessible` |
 | `ownership` | `1.0.0` | `PlatformEntityOwnershipFacet` | `urn:cerebro:entity-facet:ownership:v1` | - | `owner`, `managed_by` | - |
 | `workload_security` | `1.1.0` | `PlatformWorkloadSecurityFacet` | `urn:cerebro:entity-facet:workload-security:v1` | `instance`, `function`, `workload` | - | - |
@@ -72,6 +73,25 @@ Sensitivity signals derived from tags, raw properties, and normalized sensitivit
 | `contains_pci` | `boolean` | - |
 | `contains_secrets` | `boolean` | - |
 | `classification` | `string` | - |
+
+### `evaluation_quality`
+
+Aggregated outcome and reversal quality signals from evaluation lifecycle events targeting this entity.
+
+| Field | Value Type | Description |
+|---|---|---|
+| `evaluation_run_count` | `integer` | - |
+| `conversation_count` | `integer` | - |
+| `decision_count` | `integer` | - |
+| `action_count` | `integer` | - |
+| `outcome_count` | `integer` | - |
+| `positive_outcome_count` | `integer` | - |
+| `negative_outcome_count` | `integer` | - |
+| `reversed_action_count` | `integer` | - |
+| `average_quality_score` | `number` | - |
+| `last_evaluation_run_id` | `string` | - |
+| `last_conversation_id` | `string` | - |
+| `last_observed_at` | `string` | - |
 
 ### `exposure`
 

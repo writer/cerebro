@@ -14,6 +14,7 @@ import (
 
 	"github.com/writer/cerebro/internal/filesystemanalyzer"
 	"github.com/writer/cerebro/internal/scanner"
+	"github.com/writer/cerebro/internal/scanpolicy"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -88,34 +89,37 @@ func (a FilesystemAnalyzer) Analyze(ctx context.Context, input AnalysisInput) (*
 }
 
 type RunnerOptions struct {
-	Store          RunStore
-	Registries     []scanner.RegistryClient
-	Materializer   Materializer
-	Analyzer       Analyzer
-	Events         EventEmitter
-	Logger         *slog.Logger
-	CleanupTimeout time.Duration
-	Now            func() time.Time
+	Store           RunStore
+	Registries      []scanner.RegistryClient
+	Materializer    Materializer
+	Analyzer        Analyzer
+	Events          EventEmitter
+	Logger          *slog.Logger
+	CleanupTimeout  time.Duration
+	Now             func() time.Time
+	PolicyEvaluator scanpolicy.Evaluator
 }
 
 type Runner struct {
-	store          RunStore
-	registries     map[RegistryKind]scanner.RegistryClient
-	materializer   Materializer
-	analyzer       Analyzer
-	events         EventEmitter
-	logger         *slog.Logger
-	cleanupTimeout time.Duration
-	now            func() time.Time
+	store           RunStore
+	registries      map[RegistryKind][]scanner.RegistryClient
+	materializer    Materializer
+	analyzer        Analyzer
+	events          EventEmitter
+	logger          *slog.Logger
+	cleanupTimeout  time.Duration
+	now             func() time.Time
+	policyEvaluator scanpolicy.Evaluator
 }
 
 func NewRunner(opts RunnerOptions) *Runner {
-	registries := make(map[RegistryKind]scanner.RegistryClient, len(opts.Registries))
+	registries := make(map[RegistryKind][]scanner.RegistryClient, len(opts.Registries))
 	for _, client := range opts.Registries {
 		if client == nil {
 			continue
 		}
-		registries[RegistryKind(client.Name())] = client
+		kind := RegistryKind(client.Name())
+		registries[kind] = append(registries[kind], client)
 	}
 	logger := opts.Logger
 	if logger == nil {
@@ -134,14 +138,15 @@ func NewRunner(opts RunnerOptions) *Runner {
 		now = time.Now
 	}
 	return &Runner{
-		store:          opts.Store,
-		registries:     registries,
-		materializer:   opts.Materializer,
-		analyzer:       analyzer,
-		events:         opts.Events,
-		logger:         logger,
-		cleanupTimeout: cleanupTimeout,
-		now:            now,
+		store:           opts.Store,
+		registries:      registries,
+		materializer:    opts.Materializer,
+		analyzer:        analyzer,
+		events:          opts.Events,
+		logger:          logger,
+		cleanupTimeout:  cleanupTimeout,
+		now:             now,
+		policyEvaluator: opts.PolicyEvaluator,
 	}
 }
 
@@ -152,7 +157,7 @@ func (r *Runner) RunImageScan(ctx context.Context, req ScanRequest) (*RunRecord,
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := validateRequest(req); err != nil {
+	if err := r.validateRequest(req); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(req.ID) == "" {
@@ -161,9 +166,9 @@ func (r *Runner) RunImageScan(ctx context.Context, req ScanRequest) (*RunRecord,
 	if req.SubmittedAt.IsZero() {
 		req.SubmittedAt = r.now().UTC()
 	}
-	client, ok := r.registries[req.Target.Registry]
-	if !ok {
-		return nil, fmt.Errorf("no registry client configured for %s", req.Target.Registry)
+	client, err := r.resolveRegistryClient(req.Target.Registry, req.Target.RegistryHost)
+	if err != nil {
+		return nil, err
 	}
 
 	run := &RunRecord{
@@ -274,6 +279,29 @@ func (r *Runner) RunImageScan(ctx context.Context, req ScanRequest) (*RunRecord,
 	}
 
 	return r.completeRun(ctx, run, "image scan completed")
+}
+
+func (r *Runner) resolveRegistryClient(kind RegistryKind, registryHost string) (scanner.RegistryClient, error) {
+	if r == nil {
+		return nil, fmt.Errorf("image scan runner is nil")
+	}
+	clients := r.registries[kind]
+	if len(clients) == 0 {
+		return nil, fmt.Errorf("no registry client configured for %s", kind)
+	}
+	host := normalizeRegistryHost(registryHost)
+	if host != "" {
+		for _, client := range clients {
+			if normalizeRegistryHost(client.RegistryHost()) == host {
+				return client, nil
+			}
+		}
+		return nil, fmt.Errorf("no registry client configured for %s host %s", kind, host)
+	}
+	if len(clients) == 1 {
+		return clients[0], nil
+	}
+	return nil, fmt.Errorf("multiple registry clients configured for %s; registry host is required", kind)
 }
 
 func (r *Runner) analyze(ctx context.Context, client scanner.RegistryClient, run *RunRecord) (*AnalysisReport, error) {
@@ -408,6 +436,24 @@ func validateRequest(req ScanRequest) error {
 		return fmt.Errorf("image scan tag or digest is required")
 	}
 	return nil
+}
+
+func (r *Runner) validateRequest(req ScanRequest) error {
+	if err := validateRequest(req); err != nil {
+		return err
+	}
+	if r == nil || r.policyEvaluator == nil {
+		return nil
+	}
+	return r.policyEvaluator.Validate(scanpolicy.Request{
+		Kind:           scanpolicy.KindImage,
+		Team:           scanpolicy.TeamFromMetadata(req.Metadata),
+		RequestedBy:    strings.TrimSpace(req.RequestedBy),
+		Metadata:       cloneStringMap(req.Metadata),
+		Registry:       string(req.Target.Registry),
+		DryRun:         req.DryRun,
+		KeepFilesystem: req.KeepFilesystem,
+	})
 }
 
 func cleanupFilesystem(ctx context.Context, materializer Materializer, artifact *FilesystemArtifact, run *RunRecord, now func() time.Time) {

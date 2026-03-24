@@ -4,7 +4,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 
 - Node kinds: **72**
 - Edge kinds: **50**
-- Mapping rules: **13**
+- Mapping rules: **21**
 - Source domains: **9**
 
 ## Node Kinds
@@ -14,7 +14,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `action` | business | `action_type`, `observed_at`, `status`, `valid_from` | `based_on`, `evaluates`, `interacted_with`, `targets` |
 | `activity` | business | - | - |
 | `any` | - | - | - |
-| `api_endpoint` | resource | `host`, `scheme`, `url` | - |
+| `api_endpoint` | resource | `host`, `scheme`, `url` | `calls`, `exposed_to`, `serves`, `targets` |
 | `application` | resource | - | - |
 | `attack_sequence` | business | `observed_at`, `recorded_at`, `sequence_end`, `sequence_start`, `sequence_type`, `transaction_from`, `valid_from`, `workload_ref` | `based_on`, `contains` |
 | `bucket` | resource | - | `configures`, `depends_on`, `exposed_to`, `managed_by`, `owns`, `targets` |
@@ -57,7 +57,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `observation` | business | `observation_type`, `observed_at`, `recorded_at`, `subject_id`, `transaction_from`, `valid_from` | `asserted_by`, `based_on`, `corroborates`, `targets` |
 | `opportunity` | business | - | - |
 | `organization` | resource | `organization_id`, `resource_name` | - |
-| `outcome` | business | `observed_at`, `outcome_type`, `valid_from`, `verdict` | `evaluates`, `targets` |
+| `outcome` | business | `observed_at`, `outcome_type`, `valid_from`, `verdict` | `based_on`, `evaluates`, `targets` |
 | `package` | resource | `ecosystem`, `observed_at`, `package_name`, `recorded_at`, `transaction_from`, `valid_from`, `version` | `affected_by`, `based_on` |
 | `permission_boundary` | - | - | - |
 | `persistent_volume` | kubernetes, resource | - | - |
@@ -99,7 +99,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 | `check_run` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `conclusion`=`action_required`, `cancelled`, `failure`, `neutral`, `skipped`, `stale`, `startup_failure`, `success`, `timed_out`<br>`status`=`completed`, `in_progress`, `queued` |
 | `claim` | `observed_at`, `recorded_at`, `source_system`, `transaction_from`, `valid_from` | `confidence`, `source_event_id`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `claim_type`=`attribute`, `classification`, `existence`, `relation`<br>`status`=`asserted`, `corrected`, `disputed`, `refuted`, `retracted`, `superseded` |
 | `communication_thread` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
-| `decision` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `status`=`approved`, `cancelled`, `completed`, `deferred`, `in_progress`, `proposed`, `rejected` |
+| `decision` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `status`=`approved`, `cancelled`, `completed`, `deferred`, `failed`, `in_progress`, `proposed`, `rejected`, `skipped` |
 | `deployment_run` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | `environment`=`dev`, `prod`, `production`, `qa`, `sandbox`, `staging`, `test`<br>`status`=`cancelled`, `completed`, `error`, `failed`, `failure`, `in_progress`, `pending`, `queued`, `running`, `succeeded`, `success`, `successful` |
 | `document` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
 | `evidence` | `observed_at`, `source_system`, `valid_from` | `confidence`, `recorded_at`, `source_event_id`, `transaction_from`, `transaction_to`, `valid_to` | `observed_at`, `recorded_at`, `transaction_from`, `transaction_to`, `valid_from`, `valid_to` | - |
@@ -198,7 +198,7 @@ Generated from `graph.RegisteredNodeKinds()`, `graph.RegisteredEdgeKinds()`, and
 
 ## Unmapped Built-in Node Kinds
 
-Total unmapped kinds: **49**
+Total unmapped kinds: **44**
 
 - `activity`
 - `api_endpoint`
@@ -210,12 +210,10 @@ Total unmapped kinds: **49**
 - `bucket_policy_statement`
 - `bucket_public_access_block`
 - `bucket_versioning_config`
-- `claim`
 - `cluster_role`
 - `cluster_role_binding`
 - `configmap`
 - `database`
-- `decision`
 - `department`
 - `deployment`
 - `folder`
@@ -228,9 +226,7 @@ Total unmapped kinds: **49**
 - `location`
 - `namespace`
 - `network`
-- `observation`
 - `organization`
-- `outcome`
 - `package`
 - `permission_boundary`
 - `persistent_volume`
@@ -243,7 +239,6 @@ Total unmapped kinds: **49**
 - `scp`
 - `secret`
 - `service_account`
-- `source`
 - `technology`
 - `user`
 - `vendor`

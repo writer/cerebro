@@ -4,7 +4,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 
 - Catalog API version: **devex.cerebro/v1alpha1**
 - Catalog kind: **HTTPAPIContractCatalog**
-- Endpoints: **303**
+- Endpoints: **336**
 
 ## Endpoint Summary
 
@@ -49,8 +49,13 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/findings/export` | 5 | 0 | `200` |
 | `GET /api/v1/findings/stats` | 0 | 0 | `200` |
 | `GET /api/v1/findings/{id}` | 0 | 0 | `200` |
+| `GET /api/v1/forensics/captures` | 4 | 0 | `200` |
+| `GET /api/v1/forensics/captures/{capture_id}` | 0 | 0 | `200` |
+| `GET /api/v1/forensics/evidence/{evidence_id}` | 0 | 0 | `200` |
+| `GET /api/v1/forensics/evidence/{evidence_id}/export` | 0 | 0 | `200` |
 | `GET /api/v1/graph/access-reviews` | 0 | 0 | `200` |
 | `GET /api/v1/graph/access-reviews/{id}` | 0 | 0 | `200` |
+| `GET /api/v1/graph/api-surface` | 3 | 0 | `200` |
 | `GET /api/v1/graph/attack-paths` | 3 | 0 | `200` |
 | `GET /api/v1/graph/attack-paths/{id}/simulate-fix` | 0 | 0 | `200` |
 | `GET /api/v1/graph/blast-radius/{principalId}` | 1 | 0 | `200` |
@@ -60,6 +65,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/graph/cross-tenant/matches` | 2 | 0 | `200` |
 | `GET /api/v1/graph/cross-tenant/patterns` | 1 | 0 | `200` |
 | `GET /api/v1/graph/effective-permissions/{principalId}` | 0 | 0 | `200` |
+| `GET /api/v1/graph/health` | 0 | 0 | `200` |
 | `GET /api/v1/graph/identity/calibration` | 3 | 0 | `200` |
 | `GET /api/v1/graph/ingest/contracts` | 0 | 0 | `200` |
 | `GET /api/v1/graph/ingest/dead-letter` | 7 | 0 | `200` |
@@ -75,6 +81,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/graph/schema/health` | 2 | 0 | `200` |
 | `GET /api/v1/graph/stats` | 0 | 0 | `200` |
 | `GET /api/v1/graph/toxic-combinations` | 2 | 0 | `200` |
+| `GET /api/v1/graph/vendors` | 8 | 0 | `200` |
 | `GET /api/v1/graph/visualize/attack-path/{id}` | 0 | 0 | `200` |
 | `GET /api/v1/graph/visualize/blast-radius/{principalId}` | 0 | 0 | `200` |
 | `GET /api/v1/graph/visualize/report` | 0 | 0 | `200` |
@@ -98,6 +105,13 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/org/meeting-insights` | 1 | 0 | `200` |
 | `GET /api/v1/org/meetings/{id}/analysis` | 0 | 0 | `200` |
 | `GET /api/v1/org/onboarding/{id}/plan` | 0 | 0 | `200` |
+| `GET /api/v1/org/policies/program-status` | 1 | 0 | `200` |
+| `GET /api/v1/org/policies/review-schedule` | 1 | 0 | `200` |
+| `GET /api/v1/org/policies/templates` | 1 | 0 | `200` |
+| `GET /api/v1/org/policies/{id}/acknowledgment-status` | 0 | 0 | `200` |
+| `GET /api/v1/org/policies/{id}/assignees` | 0 | 0 | `200` |
+| `GET /api/v1/org/policies/{id}/reminders` | 0 | 0 | `200` |
+| `GET /api/v1/org/policies/{id}/versions` | 0 | 0 | `200` |
 | `GET /api/v1/org/recommended-connections` | 1 | 0 | `200` |
 | `GET /api/v1/platform/entities` | 16 | 0 | `200` |
 | `GET /api/v1/platform/entities/facets` | 0 | 0 | `200` |
@@ -107,6 +121,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/platform/entities/{entity_id}` | 2 | 0 | `200` |
 | `GET /api/v1/platform/entities/{entity_id}/at` | 2 | 0 | `200` |
 | `GET /api/v1/platform/entities/{entity_id}/diff` | 3 | 0 | `200` |
+| `GET /api/v1/platform/entities/{entity_id}/timeline` | 3 | 0 | `200` |
 | `GET /api/v1/platform/executions` | 7 | 0 | `200` |
 | `GET /api/v1/platform/graph/changelog` | 7 | 0 | `200` |
 | `GET /api/v1/platform/graph/diffs/{diff_id}` | 0 | 0 | `200` |
@@ -118,19 +133,25 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/platform/graph/snapshots/{snapshot_id}/ancestry` | 0 | 0 | `200` |
 | `GET /api/v1/platform/graph/snapshots/{snapshot_id}/diffs/{other_snapshot_id}` | 0 | 0 | `200` |
 | `GET /api/v1/platform/graph/templates` | 0 | 0 | `200` |
+| `GET /api/v1/platform/intelligence/agent-action-effectiveness` | 3 | 0 | `200` |
+| `GET /api/v1/platform/intelligence/ai-workloads` | 3 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/benchmark-packs` | 0 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/benchmark-packs/{pack_id}` | 0 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/calibration/weekly` | 5 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/checks` | 0 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/claim-conflicts` | 5 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/entity-summary` | 4 | 0 | `200` |
+| `GET /api/v1/platform/intelligence/evaluation-temporal-analysis` | 4 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/event-anomalies` | 4 | 0 | `200` |
+| `GET /api/v1/platform/intelligence/event-chains` | 8 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/event-correlations` | 7 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/event-patterns` | 0 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/insights` | 8 | 0 | `200` |
+| `GET /api/v1/platform/intelligence/key-person-risk` | 2 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/leverage` | 7 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/measures` | 0 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/metadata-quality` | 1 | 0 | `200` |
+| `GET /api/v1/platform/intelligence/playbook-effectiveness` | 5 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/quality` | 3 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/reports` | 0 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/reports/{id}` | 0 | 0 | `200` |
@@ -145,6 +166,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/platform/intelligence/section-envelopes/{envelope_id}` | 0 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/section-fragments` | 0 | 0 | `200` |
 | `GET /api/v1/platform/intelligence/section-fragments/{fragment_id}` | 0 | 0 | `200` |
+| `GET /api/v1/platform/intelligence/unified-execution-timeline` | 6 | 0 | `200` |
 | `GET /api/v1/platform/jobs/{id}` | 0 | 0 | `200` |
 | `GET /api/v1/platform/knowledge/claim-diffs` | 16 | 0 | `200` |
 | `GET /api/v1/platform/knowledge/claim-groups` | 10 | 0 | `200` |
@@ -159,6 +181,10 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/platform/knowledge/evidence/{evidence_id}` | 2 | 0 | `200` |
 | `GET /api/v1/platform/knowledge/observations` | 8 | 0 | `200` |
 | `GET /api/v1/platform/knowledge/observations/{observation_id}` | 2 | 0 | `200` |
+| `GET /api/v1/platform/scan-audit` | 6 | 0 | `200` |
+| `GET /api/v1/platform/scan-audit/findings` | 5 | 0 | `200` |
+| `GET /api/v1/platform/scan-audit/{namespace}/{run_id}` | 0 | 0 | `200` |
+| `GET /api/v1/platform/scan-audit/{namespace}/{run_id}/export` | 0 | 0 | `200` |
 | `GET /api/v1/platform/workload-scan/targets` | 3 | 0 | `200` |
 | `GET /api/v1/policies` | 0 | 0 | `200` |
 | `GET /api/v1/policies/{id}` | 0 | 0 | `200` |
@@ -195,6 +221,8 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /api/v1/threatintel/stats` | 0 | 0 | `200` |
 | `GET /api/v1/tickets` | 2 | 0 | `200` |
 | `GET /api/v1/tickets/{id}` | 0 | 0 | `200` |
+| `GET /api/v1/trust-center` | 0 | 0 | `200` |
+| `GET /api/v1/trust-center/evidence` | 0 | 0 | `200` |
 | `GET /api/v1/webhooks` | 0 | 0 | `200` |
 | `GET /api/v1/webhooks/{id}` | 0 | 0 | `200` |
 | `GET /api/v1/webhooks/{id}/deliveries` | 0 | 0 | `200` |
@@ -228,6 +256,8 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `POST /api/v1/findings/{id}/resolve` | 0 | 0 | `200` |
 | `POST /api/v1/findings/{id}/suppress` | 0 | 0 | `200` |
 | `POST /api/v1/findings/{id}/tickets` | 0 | 1 | `200` |
+| `POST /api/v1/forensics/capture` | 0 | 1 | `201` |
+| `POST /api/v1/forensics/evidence` | 0 | 0 | `201` |
 | `POST /api/v1/graph/access-reviews` | 0 | 0 | `201` |
 | `POST /api/v1/graph/access-reviews/{id}/items/{itemId}/decide` | 0 | 0 | `200` |
 | `POST /api/v1/graph/access-reviews/{id}/start` | 0 | 0 | `200` |
@@ -255,10 +285,13 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `POST /api/v1/lineage/drift/{assetId}` | 0 | 2 | `200` |
 | `POST /api/v1/mcp` | 0 | 2 | `200` |
 | `POST /api/v1/notifications/test` | 0 | 0 | `200` |
+| `POST /api/v1/org/policies` | 0 | 0 | `200` |
+| `POST /api/v1/org/policies/{id}/acknowledge` | 0 | 0 | `200` |
 | `POST /api/v1/org/reorg-simulations` | 0 | 2 | `200` |
 | `POST /api/v1/org/team-recommendations` | 0 | 2 | `200` |
 | `POST /api/v1/platform/graph/diffs` | 0 | 2 | `200`, `202` |
 | `POST /api/v1/platform/graph/queries` | 0 | 1 | `200` |
+| `POST /api/v1/platform/intelligence/nl-queries` | 0 | 1 | `200` |
 | `POST /api/v1/platform/intelligence/reports/{id}/runs` | 0 | 1 | `201`, `202` |
 | `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:cancel` | 0 | 0 | `200`, `202` |
 | `POST /api/v1/platform/intelligence/reports/{id}/runs/{run_id}:retry` | 0 | 1 | `200`, `202` |
@@ -300,7 +333,7 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `POST /api/v1/sync/gcp` | 0 | 1 | `200` |
 | `POST /api/v1/sync/gcp-asset` | 0 | 2 | `200` |
 | `POST /api/v1/sync/k8s` | 0 | 0 | `200` |
-| `POST /api/v1/telemetry/ingest` | 0 | 2 | `200` |
+| `POST /api/v1/telemetry/ingest` | 0 | 4 | `200` |
 | `POST /api/v1/threatintel/feeds/{id}/sync` | 0 | 0 | `200` |
 | `POST /api/v1/tickets` | 0 | 1 | `201` |
 | `POST /api/v1/tickets/{id}/close` | 0 | 0 | `200` |
