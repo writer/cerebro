@@ -53,9 +53,26 @@ func NewBuilder(source DataSource, logger *slog.Logger) *Builder {
 // discoverTables queries information_schema once to learn which tables exist with data.
 // If discovery fails or returns nothing, availableTables stays nil (optimistic: query everything).
 func (b *Builder) discoverTables(ctx context.Context) {
+	if catalog, ok := b.source.(interface {
+		ListAvailableTables(context.Context) ([]string, error)
+	}); ok {
+		tables, err := catalog.ListAvailableTables(ctx)
+		if err == nil && len(tables) > 0 {
+			b.availableTables = make(map[string]bool, len(tables))
+			for _, table := range tables {
+				name := strings.ToUpper(strings.TrimSpace(table))
+				if name == "" {
+					continue
+				}
+				b.availableTables[name] = true
+			}
+			b.logger.Debug("discovered populated tables", "count", len(b.availableTables))
+			return
+		}
+	}
 	result, err := b.source.Query(ctx, `
 		SELECT table_name FROM information_schema.tables
-		WHERE table_schema = 'RAW' AND row_count > 0
+		WHERE table_type = 'BASE TABLE'
 	`)
 	if err != nil || len(result.Rows) == 0 {
 		b.logger.Debug("table discovery unavailable, will query all tables")

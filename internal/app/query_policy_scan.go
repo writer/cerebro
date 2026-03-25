@@ -9,12 +9,11 @@ import (
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const (
-	queryPolicyDefaultRowLimit = snowflake.MaxReadOnlyQueryLimit
+	queryPolicyDefaultRowLimit = warehouse.MaxReadOnlyQueryLimit
 	queryPolicyMetaFindingID   = "query-result-limit"
 )
 
@@ -68,12 +67,12 @@ func (a *App) ScanQueryPolicies(ctx context.Context) QueryPolicyScanResult {
 			}
 		}
 
-		boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(queryPolicy.Query, rowLimit)
+		boundedQuery, boundedLimit, err := warehouse.BuildReadOnlyLimitedQuery(queryPolicy.Query, rowLimit)
 		if err != nil {
 			return nil, fmt.Errorf("invalid read-only query: %w", err)
 		}
 
-		queryCtx, cancel := context.WithTimeout(runCtx, snowflake.ClampReadOnlyQueryTimeout(0))
+		queryCtx, cancel := context.WithTimeout(runCtx, warehouse.ClampReadOnlyQueryTimeout(0))
 		defer cancel()
 
 		queryResult, attempts, err := scanner.WithRetryValue(queryCtx, tuning.RetryOptions, func() (*warehouse.QueryResult, error) {
@@ -164,7 +163,7 @@ func (a *App) queryPolicyRowLimit() int {
 	if a != nil && a.Config != nil && a.Config.QueryPolicyRowLimit > 0 {
 		rowLimit = a.Config.QueryPolicyRowLimit
 	}
-	return snowflake.ClampReadOnlyQueryLimit(rowLimit)
+	return warehouse.ClampReadOnlyQueryLimit(rowLimit)
 }
 
 func (a *App) queryPolicyAllowlist(ctx context.Context) map[string]struct{} {

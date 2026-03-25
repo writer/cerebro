@@ -35,6 +35,9 @@ type PostgresClient struct {
 
 // NewPostgresClient creates a new Postgres client wrapping an existing *sql.DB.
 func NewPostgresClient(db *sql.DB, schema, appSchema string) *PostgresClient {
+	if schema == "" {
+		schema = AssetSchemaName
+	}
 	if appSchema == "" {
 		appSchema = SchemaName
 	}

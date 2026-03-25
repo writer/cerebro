@@ -4,12 +4,13 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
-// SnowflakeSource adapts the Snowflake client to the DataSource interface
+// SnowflakeSource adapts the legacy Snowflake warehouse client to the DataSource interface.
 type SnowflakeSource struct {
 	client              warehouse.QueryWarehouse
 	normalizeTableNames bool
@@ -38,7 +39,7 @@ func normalizeTableNames(query string) string {
 	})
 }
 
-// Query executes a query against Snowflake
+// Query executes a query against Snowflake.
 func (s *SnowflakeSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
 	normalizedQuery := query
 	if s.normalizeTableNames {
@@ -55,4 +56,9 @@ func (s *SnowflakeSource) Query(ctx context.Context, query string, args ...any) 
 		Rows:    result.Rows,
 		Count:   result.Count,
 	}, nil
+}
+
+// HistoricalQuery executes a time-travel query against Snowflake.
+func (s *SnowflakeSource) HistoricalQuery(ctx context.Context, timestamp time.Time, query string, args ...any) (*DataQueryResult, error) {
+	return s.Query(ctx, applyTimeTravelClauses(query, timestamp), args...)
 }

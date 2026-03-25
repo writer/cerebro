@@ -30,7 +30,7 @@ func (a *App) initPostgres(ctx context.Context) error {
 		return nil
 	}
 
-	db, err := sql.Open("postgres", a.Config.DatabaseURL)
+	db, err := sql.Open("pgx", a.Config.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
@@ -46,7 +46,7 @@ func (a *App) initPostgres(ctx context.Context) error {
 	db.SetConnMaxLifetime(5 * time.Minute)
 
 	a.PostgresDB = db
-	a.PostgresClient = postgres.NewPostgresClient(db, "cerebro", "cerebro")
+	a.PostgresClient = postgres.NewPostgresClient(db, postgres.AssetSchemaName, postgres.SchemaName)
 	a.Warehouse = a.PostgresClient
 
 	// Bootstrap schema and tables

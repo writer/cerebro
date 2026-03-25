@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"testing"
 )
 
@@ -75,17 +76,17 @@ func TestPolicyHistoryUpsertValidation(t *testing.T) {
 	repo := NewPolicyHistoryRepository(client)
 
 	// nil record
-	if err := repo.Upsert(nil, nil); err == nil {
+	if err := repo.Upsert(context.TODO(), nil); err == nil {
 		t.Error("expected error for nil record")
 	}
 
 	// empty policy ID
-	if err := repo.Upsert(nil, &PolicyHistoryRecord{PolicyID: "", Version: 1}); err == nil {
+	if err := repo.Upsert(context.TODO(), &PolicyHistoryRecord{PolicyID: "", Version: 1}); err == nil {
 		t.Error("expected error for empty policy ID")
 	}
 
 	// zero version
-	if err := repo.Upsert(nil, &PolicyHistoryRecord{PolicyID: "p1", Version: 0}); err == nil {
+	if err := repo.Upsert(context.TODO(), &PolicyHistoryRecord{PolicyID: "p1", Version: 0}); err == nil {
 		t.Error("expected error for zero version")
 	}
 }
@@ -125,7 +126,7 @@ func TestNormalizeJSONB(t *testing.T) {
 func TestRetentionDeleteBeforeValidation(t *testing.T) {
 	// nil repository
 	var r *RetentionRepository
-	_, err := r.deleteBefore(nil, "audit_log", "timestamp", fixedTime())
+	_, err := r.deleteBefore(context.TODO(), "audit_log", "timestamp", fixedTime())
 	if err == nil {
 		t.Error("expected error for nil repository")
 	}

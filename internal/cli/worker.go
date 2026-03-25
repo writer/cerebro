@@ -70,12 +70,11 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 
 	// Open Postgres connection for job store.
-	// NOTE: The "postgres" driver must be registered elsewhere (e.g. via pgx/v5/stdlib).
-	db, err := sql.Open("postgres", application.Config.JobDatabaseURL)
+	db, err := sql.Open("pgx", application.Config.JobDatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open job database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := jobs.NewPostgresStore(db)
 	if err := store.EnsureSchema(ctx); err != nil {
@@ -144,7 +143,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	// Create security tools for job execution
 	tools := agents.NewSecurityTools(
-		application.Snowflake,
+		application.Warehouse,
 		application.Findings,
 		application.Policy,
 		scm.NewConfiguredClient(

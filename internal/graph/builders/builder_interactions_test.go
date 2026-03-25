@@ -58,7 +58,7 @@ func TestBuilderBuild_AddsPersonInteractionEdges(t *testing.T) {
 		JOIN okta_system_logs b ON a.target_id = b.target_id AND a.actor_id < b.actor_id
 		WHERE a.actor_id IS NOT NULL AND b.actor_id IS NOT NULL
 		  AND a.target_id IS NOT NULL
-		  AND ABS(DATEDIFF('hour', a.published, b.published)) < 24
+		  AND a.published BETWEEN b.published - INTERVAL '24 hours' AND b.published + INTERVAL '24 hours'
 		GROUP BY a.actor_id, b.actor_id
 	`, &DataQueryResult{
 		Rows: []map[string]any{

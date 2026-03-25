@@ -9,6 +9,9 @@ import (
 
 // Schema definitions for Cerebro tables in Postgres.
 const (
+	// AssetSchemaName is the default Postgres schema for raw warehouse tables.
+	AssetSchemaName = "public"
+
 	// SchemaName is the default Postgres schema for Cerebro app tables.
 	SchemaName = "cerebro"
 )

@@ -612,12 +612,11 @@ func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) err
 	}
 
 	// Open Postgres connection for job store.
-	// NOTE: The "postgres" driver must be registered elsewhere (e.g. via pgx/v5/stdlib).
-	db, err := sql.Open("postgres", dbURL)
+	db, err := sql.Open("pgx", dbURL)
 	if err != nil {
 		return fmt.Errorf("open job database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := jobs.NewPostgresStore(db)
 	if err := store.EnsureSchema(ctx); err != nil {

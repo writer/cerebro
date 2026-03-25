@@ -239,7 +239,7 @@ func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 		return fmt.Errorf("postgres rotation requires DATABASE_URL")
 	}
 
-	newDB, err := sql.Open("postgres", cfg.DatabaseURL)
+	newDB, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
@@ -252,7 +252,7 @@ func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 	newDB.SetMaxIdleConns(10)
 	newDB.SetConnMaxLifetime(5 * time.Minute)
 
-	newClient := postgres.NewPostgresClient(newDB, "cerebro", "cerebro")
+	newClient := postgres.NewPostgresClient(newDB, postgres.AssetSchemaName, postgres.SchemaName)
 
 	oldDB := a.PostgresDB
 	a.PostgresDB = newDB

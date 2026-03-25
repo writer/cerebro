@@ -13,7 +13,6 @@ import (
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/scheduler"
-	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
 	"github.com/writer/cerebro/internal/warehouse"
 )
@@ -272,7 +271,7 @@ func (a *App) runScheduledGraphAnalyses(ctx context.Context, tuning ScanTuning, 
 
 func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	if a.Warehouse == nil {
-		return fmt.Errorf("snowflake not configured")
+		return fmt.Errorf("warehouse not configured")
 	}
 
 	scanStart := time.Now()
@@ -710,7 +709,7 @@ func (a *App) resolveScanTables(ctx context.Context) []string {
 	filtered, skipped := filterTablesByAvailability(tables, available)
 	if len(available) > 0 {
 		if skipped > 0 {
-			a.Logger.Info("skipped tables not present in snowflake", "skipped", skipped)
+			a.Logger.Info("skipped tables not present in warehouse", "skipped", skipped)
 		}
 		return filtered
 	}
@@ -750,7 +749,7 @@ func isScannableTable(table string) bool {
 	if strings.HasPrefix(table, "cerebro_") {
 		return false
 	}
-	if err := snowflake.ValidateTableNameStrict(table); err != nil {
+	if err := warehouse.ValidateTableNameStrict(table); err != nil {
 		return false
 	}
 	return true

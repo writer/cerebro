@@ -21,7 +21,7 @@ import (
 
 func (s *Server) detectStaleAccess(w http.ResponseWriter, r *http.Request) {
 	if s.app.Warehouse == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		s.error(w, http.StatusServiceUnavailable, "warehouse not configured")
 		return
 	}
 
@@ -504,7 +504,7 @@ func (s *Server) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		s.json(w, http.StatusOK, map[string]interface{}{
 			"logs":       []interface{}{},
 			"count":      0,
-			"message":    "snowflake not configured",
+			"message":    "database not configured",
 			"pagination": PaginationResponse{Limit: limit, Offset: offset, HasMore: false},
 		})
 		return

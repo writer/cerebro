@@ -10,7 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scm"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 // PolicyEvaluator captures the policy evaluation surface the agent tools need.
@@ -22,18 +22,18 @@ var _ PolicyEvaluator = (*policy.Engine)(nil)
 
 // SecurityTools provides investigation tools for agents
 type SecurityTools struct {
-	snowflake *snowflake.Client
-	findings  findings.FindingStore
-	policies  PolicyEvaluator
-	scm       scm.Client
+	assets   warehouse.DataWarehouse
+	findings findings.FindingStore
+	policies PolicyEvaluator
+	scm      scm.Client
 }
 
-func NewSecurityTools(sf *snowflake.Client, fs findings.FindingStore, pe PolicyEvaluator, sc scm.Client) *SecurityTools {
+func NewSecurityTools(assets warehouse.DataWarehouse, fs findings.FindingStore, pe PolicyEvaluator, sc scm.Client) *SecurityTools {
 	return &SecurityTools{
-		snowflake: sf,
-		findings:  fs,
-		policies:  pe,
-		scm:       sc,
+		assets:   assets,
+		findings: fs,
+		policies: pe,
+		scm:      sc,
 	}
 }
 
@@ -361,19 +361,19 @@ func (st *SecurityTools) queryAssets(ctx context.Context, args json.RawMessage) 
 		return "", err
 	}
 
-	boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(params.Query, params.Limit)
+	boundedQuery, boundedLimit, err := warehouse.BuildReadOnlyLimitedQuery(params.Query, params.Limit)
 	if err != nil {
 		return "", err
 	}
 
-	if st.snowflake == nil {
-		return "", fmt.Errorf("snowflake not configured")
+	if st.assets == nil {
+		return "", fmt.Errorf("warehouse not configured")
 	}
 
-	queryCtx, cancel := context.WithTimeout(ctx, snowflake.ClampReadOnlyQueryTimeout(params.TimeoutSeconds))
+	queryCtx, cancel := context.WithTimeout(ctx, warehouse.ClampReadOnlyQueryTimeout(params.TimeoutSeconds))
 	defer cancel()
 
-	result, err := st.snowflake.Query(queryCtx, boundedQuery)
+	result, err := st.assets.Query(queryCtx, boundedQuery)
 	if err != nil {
 		return "", err
 	}
@@ -437,11 +437,11 @@ func (st *SecurityTools) getAssetContext(ctx context.Context, args json.RawMessa
 		return "", err
 	}
 
-	if st.snowflake == nil {
-		return "", fmt.Errorf("snowflake not configured")
+	if st.assets == nil {
+		return "", fmt.Errorf("warehouse not configured")
 	}
 
-	asset, err := st.snowflake.GetAssetByID(ctx, params.AssetType, params.AssetID)
+	asset, err := st.assets.GetAssetByID(ctx, params.AssetType, params.AssetID)
 	if err != nil {
 		return "", err
 	}

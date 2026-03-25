@@ -544,7 +544,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		return
 	}
 
-	source := builders.NewPostgresSource(a.Warehouse)
+	source := builders.NewWarehouseSource(a.Warehouse)
 	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
 	securityGraph := a.SecurityGraphBuilder.Graph()
 	a.configureGraphRuntimeBehavior(securityGraph)

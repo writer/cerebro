@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestQueryAssetsRejectsUnsafeQuery(t *testing.T) {
@@ -14,17 +14,17 @@ func TestQueryAssetsRejectsUnsafeQuery(t *testing.T) {
 	args := json.RawMessage(`{"query":"DROP TABLE users"}`)
 
 	_, err := st.queryAssets(context.Background(), args)
-	if !errors.Is(err, snowflake.ErrNonSelectQuery) {
+	if !errors.Is(err, warehouse.ErrNonSelectQuery) {
 		t.Fatalf("expected ErrNonSelectQuery, got %v", err)
 	}
 }
 
-func TestQueryAssetsRequiresSnowflakeForValidQuery(t *testing.T) {
+func TestQueryAssetsRequiresWarehouseForValidQuery(t *testing.T) {
 	st := &SecurityTools{}
 	args := json.RawMessage(`{"query":"SELECT * FROM users"}`)
 
 	_, err := st.queryAssets(context.Background(), args)
-	if err == nil || err.Error() != "snowflake not configured" {
-		t.Fatalf("expected snowflake not configured error, got %v", err)
+	if err == nil || err.Error() != "warehouse not configured" {
+		t.Fatalf("expected warehouse not configured error, got %v", err)
 	}
 }

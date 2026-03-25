@@ -5,7 +5,7 @@
 // The App struct holds references to all services organized into categories:
 //
 // Core Services:
-//   - Snowflake: Data warehouse client for asset and findings storage
+//   - Warehouse: Raw asset warehouse client for inventory, graph building, and policy scans
 //   - Policy: Security policy engine for evaluating cloud resources
 //   - Findings: Durable findings store with semantic and exact-ID deduplication
 //   - Scanner: Asset scanner that applies policies to cloud resources
@@ -29,7 +29,7 @@
 //   - Remediation: Auto-remediation playbooks
 //
 // The New() function initializes all services based on environment configuration.
-// Services gracefully handle missing configuration (e.g., no Snowflake connection).
+// Services gracefully handle missing configuration (e.g., no warehouse connection).
 //
 //go:generate sh -c "cd ../.. && go run ./scripts/generate_config_docs/main.go"
 package app
@@ -200,7 +200,7 @@ type App struct {
 	apiCredentialStore               *apiauth.ManagedCredentialStore
 	secretsLoader                    secretsLoader
 
-	// Cached table list from Snowflake (shared by graph builder + policy coverage)
+	// Cached table list from the warehouse (shared by graph builder + policy coverage)
 	AvailableTables []string
 }
 

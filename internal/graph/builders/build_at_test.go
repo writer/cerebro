@@ -24,7 +24,28 @@ func (s *captureQuerySource) Query(ctx context.Context, query string, args ...an
 	return &DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
-func (s *captureQuerySource) allQueries() []string {
+type captureHistoricalSource struct {
+	mu      sync.Mutex
+	queries []string
+}
+
+var _ DataSource = (*captureHistoricalSource)(nil)
+var _ HistoricalDataSource = (*captureHistoricalSource)(nil)
+
+func (s *captureHistoricalSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
+	_ = ctx
+	_ = args
+	s.mu.Lock()
+	s.queries = append(s.queries, query)
+	s.mu.Unlock()
+	return &DataQueryResult{Rows: []map[string]any{}}, nil
+}
+
+func (s *captureHistoricalSource) HistoricalQuery(ctx context.Context, timestamp time.Time, query string, args ...any) (*DataQueryResult, error) {
+	return s.Query(ctx, applyTimeTravelClauses(query, timestamp), args...)
+}
+
+func (s *captureHistoricalSource) allQueries() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]string, len(s.queries))
@@ -51,8 +72,18 @@ func TestApplyTimeTravelClauses(t *testing.T) {
 	}
 }
 
-func TestBuilderBuildAt_RewritesQueriesWithTimeTravel(t *testing.T) {
+func TestBuilderBuildAt_RejectsUnsupportedSources(t *testing.T) {
 	source := &captureQuerySource{}
+	builder := NewBuilder(source, nil)
+	ts := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
+
+	if _, err := builder.BuildAt(context.Background(), ts); err == nil {
+		t.Fatal("expected BuildAt to reject sources without historical query support")
+	}
+}
+
+func TestBuilderBuildAt_RewritesQueriesWithTimeTravel(t *testing.T) {
+	source := &captureHistoricalSource{}
 	builder := NewBuilder(source, nil)
 	ts := time.Date(2026, 3, 7, 0, 0, 0, 0, time.UTC)
 

@@ -8,15 +8,23 @@ import (
 	"time"
 )
 
-// BuildAt constructs a graph from table state at a historical timestamp using
-// Snowflake time-travel table clauses.
+type HistoricalDataSource interface {
+	HistoricalQuery(ctx context.Context, timestamp time.Time, query string, args ...any) (*DataQueryResult, error)
+}
+
+// BuildAt constructs a graph from table state at a historical timestamp when
+// the backing data source supports historical warehouse reads.
 func (b *Builder) BuildAt(ctx context.Context, timestamp time.Time) (*Graph, error) {
 	if timestamp.IsZero() {
 		return nil, fmt.Errorf("timestamp is required")
 	}
+	historicalSource, ok := b.source.(HistoricalDataSource)
+	if !ok {
+		return nil, fmt.Errorf("historical graph builds are not supported by the current warehouse source")
+	}
 
-	timeTravelBuilder := NewBuilder(&timeTravelDataSource{
-		base:      b.source,
+	timeTravelBuilder := NewBuilder(&historicalDataSource{
+		base:      historicalSource,
 		timestamp: timestamp.UTC(),
 	}, b.logger)
 	if err := timeTravelBuilder.Build(ctx); err != nil {
@@ -25,14 +33,13 @@ func (b *Builder) BuildAt(ctx context.Context, timestamp time.Time) (*Graph, err
 	return timeTravelBuilder.Graph(), nil
 }
 
-type timeTravelDataSource struct {
-	base      DataSource
+type historicalDataSource struct {
+	base      HistoricalDataSource
 	timestamp time.Time
 }
 
-func (s *timeTravelDataSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
-	rewritten := applyTimeTravelClauses(query, s.timestamp)
-	return s.base.Query(ctx, rewritten, args...)
+func (s *historicalDataSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
+	return s.base.HistoricalQuery(ctx, s.timestamp, query, args...)
 }
 
 var timeTravelClausePattern = regexp.MustCompile(`(?i)\b(FROM|JOIN|UPDATE|INTO)\s+([a-z][a-z0-9_\.]*)`)
