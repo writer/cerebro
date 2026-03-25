@@ -736,6 +736,9 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 	}
 
 	securityGraph := builder.Graph()
+	if err := a.requireGraphWriterLease("rebuild security graph"); err != nil {
+		return err
+	}
 	meta, err := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if err != nil {
 		return err

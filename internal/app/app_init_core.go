@@ -35,7 +35,7 @@ func (a *App) initPostgres(ctx context.Context) error {
 		return nil
 	}
 
-	db, err := sql.Open("postgres", databaseURL)
+	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}

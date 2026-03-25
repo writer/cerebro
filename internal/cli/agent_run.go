@@ -154,9 +154,8 @@ func runDistributedAgentFlow(ctx context.Context, application *app.App, tools *a
 		return fmt.Errorf("no resources to enqueue")
 	}
 
-	// Open Postgres connection for job store.
-	// NOTE: The "postgres" driver must be registered elsewhere (e.g. via pgx/v5/stdlib).
-	db, err := sql.Open("postgres", application.Config.JobDatabaseURL)
+	// Open Postgres connection for job store using the pgx database/sql driver.
+	db, err := sql.Open("pgx", application.Config.JobDatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open job database: %w", err)
 	}
