@@ -31,6 +31,7 @@ func (s stubGraphMutator) MutateSecurityGraph(_ context.Context, mutate func(*gr
 type platformKnowledgeStoreFixture struct {
 	graph         *graph.Graph
 	aliceClaimID  string
+	evidenceID    string
 	observationID string
 }
 
@@ -43,6 +44,7 @@ func buildGraphStorePlatformKnowledgeFixture(t *testing.T) platformKnowledgeStor
 	return platformKnowledgeStoreFixture{
 		graph:         s.app.SecurityGraph.Clone(),
 		aliceClaimID:  aliceClaimID,
+		evidenceID:    "evidence:runbook",
 		observationID: observationID,
 	}
 }
@@ -99,6 +101,72 @@ func TestPlatformKnowledgeReadHandlersUseGraphStoreWhenRawGraphUnavailable(t *te
 	}
 }
 
+func TestPlatformKnowledgeDetailHandlersUseStoreSubgraphWhenSnapshotsUnavailable(t *testing.T) {
+	fixture := buildGraphStorePlatformKnowledgeFixture(t)
+	s := newStoreBackedGraphServer(t, nilSnapshotGraphStore{GraphStore: fixture.graph})
+
+	claim := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/claims/"+fixture.aliceClaimID, nil)
+	if claim.Code != http.StatusOK {
+		t.Fatalf("expected claim detail 200, got %d: %s", claim.Code, claim.Body.String())
+	}
+	claimBody := decodeJSON(t, claim)
+	if claimBody["id"] != fixture.aliceClaimID {
+		t.Fatalf("expected claim detail from store subgraph, got %#v", claimBody)
+	}
+	claimDerived, ok := claimBody["derived"].(map[string]any)
+	if !ok || claimDerived["supported"] != true || claimDerived["conflicted"] != true {
+		t.Fatalf("expected supported conflicting claim detail, got %#v", claimBody["derived"])
+	}
+
+	evidence := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/evidence/"+fixture.evidenceID, nil)
+	if evidence.Code != http.StatusOK {
+		t.Fatalf("expected evidence detail 200, got %d: %s", evidence.Code, evidence.Body.String())
+	}
+	evidenceBody := decodeJSON(t, evidence)
+	if evidenceBody["kind"] != string(graph.NodeKindEvidence) {
+		t.Fatalf("expected evidence detail from store subgraph, got %#v", evidenceBody)
+	}
+
+	observation := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/observations/"+fixture.observationID, nil)
+	if observation.Code != http.StatusOK {
+		t.Fatalf("expected observation detail 200, got %d: %s", observation.Code, observation.Body.String())
+	}
+	observationBody := decodeJSON(t, observation)
+	if observationBody["kind"] != string(graph.NodeKindObservation) {
+		t.Fatalf("expected observation detail from store subgraph, got %#v", observationBody)
+	}
+
+	explanation := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/claims/"+fixture.aliceClaimID+"/explanation", nil)
+	if explanation.Code != http.StatusOK {
+		t.Fatalf("expected claim explanation 200, got %d: %s", explanation.Code, explanation.Body.String())
+	}
+	explanationBody := decodeJSON(t, explanation)
+	whyTrue, ok := explanationBody["why_true"].([]any)
+	if !ok || len(whyTrue) == 0 {
+		t.Fatalf("expected explanation content from store subgraph, got %#v", explanationBody)
+	}
+
+	timeline := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/claims/"+fixture.aliceClaimID+"/timeline", nil)
+	if timeline.Code != http.StatusOK {
+		t.Fatalf("expected claim timeline 200, got %d: %s", timeline.Code, timeline.Body.String())
+	}
+	timelineBody := decodeJSON(t, timeline)
+	timelineSummary, ok := timelineBody["summary"].(map[string]any)
+	if !ok || timelineSummary["total_entries"].(float64) < 1 {
+		t.Fatalf("expected timeline content from store subgraph, got %#v", timelineBody)
+	}
+
+	proofs := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/claims/"+fixture.aliceClaimID+"/proofs", nil)
+	if proofs.Code != http.StatusOK {
+		t.Fatalf("expected claim proofs 200, got %d: %s", proofs.Code, proofs.Body.String())
+	}
+	proofsBody := decodeJSON(t, proofs)
+	proofSummary, ok := proofsBody["summary"].(map[string]any)
+	if !ok || proofSummary["total_proofs"].(float64) < 1 {
+		t.Fatalf("expected proof fragments from store subgraph, got %#v", proofsBody)
+	}
+}
+
 func TestPlatformKnowledgeReadHandlersPreferLiveGraphOverSnapshotWhenAvailable(t *testing.T) {
 	fixture := buildGraphStorePlatformKnowledgeFixture(t)
 	s := NewServerWithDependencies(serverDependencies{
@@ -113,6 +181,37 @@ func TestPlatformKnowledgeReadHandlersPreferLiveGraphOverSnapshotWhenAvailable(t
 	resp := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/claims?subject_id=service:payments&predicate=owner&include_resolved=true", nil)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected claim list 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestPlatformKnowledgeDetailHandlersPreferLiveGraphOverSnapshotWhenAvailable(t *testing.T) {
+	fixture := buildGraphStorePlatformKnowledgeFixture(t)
+	store := &countingSnapshotStore{GraphStore: fixture.graph}
+	s := NewServerWithDependencies(serverDependencies{
+		Config: &app.Config{},
+		graphRuntime: stubGraphRuntime{
+			graph: fixture.graph,
+			store: store,
+		},
+	})
+	t.Cleanup(func() { s.Close() })
+
+	for _, path := range []string{
+		"/api/v1/platform/knowledge/claims/" + fixture.aliceClaimID,
+		"/api/v1/platform/knowledge/evidence/" + fixture.evidenceID,
+		"/api/v1/platform/knowledge/observations/" + fixture.observationID,
+		"/api/v1/platform/knowledge/claims/" + fixture.aliceClaimID + "/explanation",
+		"/api/v1/platform/knowledge/claims/" + fixture.aliceClaimID + "/timeline",
+		"/api/v1/platform/knowledge/claims/" + fixture.aliceClaimID + "/proofs",
+	} {
+		resp := do(t, s, http.MethodGet, path, nil)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("expected 200 for %s, got %d: %s", path, resp.Code, resp.Body.String())
+		}
+	}
+
+	if got := store.count.Load(); got != 0 {
+		t.Fatalf("expected live graph detail handlers to avoid snapshots, got %d snapshot calls", got)
 	}
 }
 
