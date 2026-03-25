@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/graph"
 )
 
@@ -101,5 +102,48 @@ func TestEntityImpactHandlersUseGraphStoreWhenRawGraphUnavailable(t *testing.T) 
 	paths, ok := impactBody["paths"].([]any)
 	if !ok || len(paths) == 0 {
 		t.Fatalf("expected impact paths from store-backed handler, got %#v", impactBody)
+	}
+}
+
+func TestEntityImpactAnalysisUsesStoreSubgraphWhenSnapshotsUnavailable(t *testing.T) {
+	s := newStoreBackedGraphServer(t, nilSnapshotGraphStore{GraphStore: buildGraphStoreEntityImpactTestGraph()})
+
+	impact := do(t, s, http.MethodPost, "/api/v1/impact-analysis", map[string]any{
+		"start_node": "subscription-1",
+		"scenario":   "revenue_impact",
+		"max_depth":  4,
+	})
+	if impact.Code != http.StatusOK {
+		t.Fatalf("expected impact analysis 200, got %d: %s", impact.Code, impact.Body.String())
+	}
+	impactBody := decodeJSON(t, impact)
+	paths, ok := impactBody["paths"].([]any)
+	if !ok || len(paths) == 0 {
+		t.Fatalf("expected impact paths from store subgraph, got %#v", impactBody)
+	}
+}
+
+func TestEntityImpactAnalysisPrefersLiveGraphOverSnapshotWhenAvailable(t *testing.T) {
+	graphView := buildGraphStoreEntityImpactTestGraph()
+	store := &countingSnapshotStore{GraphStore: graphView}
+	s := NewServerWithDependencies(serverDependencies{
+		Config: &app.Config{},
+		graphRuntime: stubGraphRuntime{
+			graph: graphView,
+			store: store,
+		},
+	})
+	t.Cleanup(func() { s.Close() })
+
+	impact := do(t, s, http.MethodPost, "/api/v1/impact-analysis", map[string]any{
+		"start_node": "subscription-1",
+		"scenario":   "revenue_impact",
+		"max_depth":  4,
+	})
+	if impact.Code != http.StatusOK {
+		t.Fatalf("expected impact analysis 200, got %d: %s", impact.Code, impact.Body.String())
+	}
+	if got := store.count.Load(); got != 0 {
+		t.Fatalf("expected live graph impact analysis to avoid snapshots, got %d snapshot calls", got)
 	}
 }

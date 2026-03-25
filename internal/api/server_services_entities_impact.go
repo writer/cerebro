@@ -39,12 +39,31 @@ func (s serverEntitiesImpactService) GetEntityOutlierScore(ctx context.Context, 
 }
 
 func (s serverEntitiesImpactService) AnalyzeImpact(ctx context.Context, startNodeID string, scenario graph.ImpactScenario, maxDepth int) (*graph.ImpactAnalysisResult, error) {
-	view, err := currentOrStoredTenantGraphView(ctx, s.deps)
+	view, err := s.impactGraph(ctx, startNodeID, maxDepth)
 	if err != nil {
 		return nil, err
 	}
 	analyzer := graph.NewImpactPathAnalyzer(view)
 	return analyzer.Analyze(startNodeID, scenario, maxDepth), nil
+}
+
+func (s serverEntitiesImpactService) impactGraph(ctx context.Context, startNodeID string, maxDepth int) (*graph.Graph, error) {
+	if s.deps == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	tenantID := currentTenantScopeID(ctx)
+	opts := graph.ExtractSubgraphOptions{
+		MaxDepth:  maxDepth,
+		Direction: graph.ExtractSubgraphDirectionOutgoing,
+	}
+	if current := s.deps.CurrentSecurityGraphForTenant(tenantID); current != nil {
+		return graph.ExtractSubgraph(current, startNodeID, opts), nil
+	}
+	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
+	if store == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return store.ExtractSubgraph(ctx, startNodeID, opts)
 }
 
 var _ entitiesImpactService = serverEntitiesImpactService{}
