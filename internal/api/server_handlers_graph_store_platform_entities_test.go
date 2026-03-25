@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/graph"
 )
 
@@ -50,13 +51,16 @@ func buildGraphStorePlatformEntitiesTestGraph(t *testing.T) *graph.Graph {
 		Risk:     graph.RiskLow,
 		Tags:     map[string]string{"env": "prod"},
 		Properties: map[string]any{
-			"bucket_name":       "audit-logs",
-			"encrypted":         true,
-			"block_public_acls": true,
-			"observed_at":       base.UTC().Format(time.RFC3339),
-			"valid_from":        base.UTC().Format(time.RFC3339),
-			"recorded_at":       base.UTC().Format(time.RFC3339),
-			"transaction_from":  base.UTC().Format(time.RFC3339),
+			"bucket_name":         "audit-logs",
+			"encrypted":           true,
+			"block_public_acls":   true,
+			"block_public_policy": true,
+			"logging_enabled":     true,
+			"versioning_status":   "Enabled",
+			"observed_at":         base.UTC().Format(time.RFC3339),
+			"valid_from":          base.UTC().Format(time.RFC3339),
+			"recorded_at":         base.UTC().Format(time.RFC3339),
+			"transaction_from":    base.UTC().Format(time.RFC3339),
 		},
 	})
 	g.AddNode(&graph.Node{
@@ -85,6 +89,20 @@ func buildGraphStorePlatformEntitiesTestGraph(t *testing.T) *graph.Graph {
 		Effect:     graph.EdgeEffectAllow,
 		Properties: cloneJSONMap(baseProps),
 	})
+	if _, err := graph.WriteClaim(g, graph.ClaimWriteRequest{
+		ID:              "claim:audit-logs:encrypted:true",
+		SubjectID:       "arn:aws:s3:::audit-logs",
+		Predicate:       "encrypted",
+		ObjectValue:     "true",
+		SourceSystem:    "aws",
+		ObservedAt:      base.Add(time.Hour),
+		ValidFrom:       base.Add(time.Hour),
+		RecordedAt:      base.Add(time.Hour),
+		TransactionFrom: base.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("write claim: %v", err)
+	}
+	graph.NormalizeEntityAssetSupport(g, base.Add(90*time.Minute))
 	g.BuildIndex()
 
 	node, ok := g.GetNode("service:payments")
@@ -188,5 +206,42 @@ func TestPlatformEntityHandlersUseGraphStoreWhenRawGraphUnavailable(t *testing.T
 	timelineBody := decodeJSON(t, timeline)
 	if got := len(timelineBody["events"].([]any)); got < 3 {
 		t.Fatalf("expected store-backed timeline events, got %#v", timelineBody)
+	}
+}
+
+func TestPlatformEntitySummaryUsesStoreSubgraphWhenSnapshotsUnavailable(t *testing.T) {
+	s := newStoreBackedGraphServer(t, nilSnapshotGraphStore{GraphStore: buildGraphStorePlatformEntitiesTestGraph(t)})
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/entity-summary?entity_id=arn:aws:s3:::audit-logs&max_posture_claims=1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected store-backed entity summary 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if overview, ok := body["overview"].(map[string]any); !ok || overview["headline"] != "Audit Logs" {
+		t.Fatalf("unexpected store-backed overview: %#v", body["overview"])
+	}
+	if posture, ok := body["posture"].(map[string]any); !ok || len(posture["claims"].([]any)) != 1 {
+		t.Fatalf("unexpected store-backed posture section: %#v", body["posture"])
+	}
+	if subresources, ok := body["subresources"].(map[string]any); !ok || len(subresources["items"].([]any)) == 0 {
+		t.Fatalf("unexpected store-backed subresources section: %#v", body["subresources"])
+	}
+}
+
+func TestPlatformEntitySummaryPrefersLiveGraphOverSnapshotWhenAvailable(t *testing.T) {
+	graphView := buildGraphStorePlatformEntitiesTestGraph(t)
+	store := &countingSnapshotStore{GraphStore: graphView}
+	s := NewServerWithDependencies(serverDependencies{
+		Config:       &app.Config{},
+		graphRuntime: stubGraphRuntime{graph: graphView, store: store},
+	})
+	t.Cleanup(func() { s.Close() })
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/entity-summary?entity_id=arn:aws:s3:::audit-logs&max_posture_claims=1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected live-graph entity summary 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := store.count.Load(); got != 0 {
+		t.Fatalf("expected live graph to avoid snapshot materialization, got %d snapshot calls", got)
 	}
 }

@@ -34,6 +34,16 @@ func (s stubGraphIntelligenceService) CurrentGraph(context.Context) (*graph.Grap
 	return s.graph, nil
 }
 
+func (s stubGraphIntelligenceService) CurrentEntityGraph(_ context.Context, entityID string, validAt, recordedAt time.Time, maxDepth int) (*graph.Graph, error) {
+	if s.graph == nil {
+		return nil, nil
+	}
+	if !validAt.IsZero() || !recordedAt.IsZero() {
+		return s.graph, nil
+	}
+	return graph.ExtractSubgraph(s.graph, entityID, graph.ExtractSubgraphOptions{MaxDepth: maxDepth}), nil
+}
+
 func (s stubGraphIntelligenceService) MapperInitialized() bool {
 	return s.mapperInitialized
 }
@@ -287,6 +297,26 @@ func TestGraphIntelligenceHandlersUseServiceInterface(t *testing.T) {
 	contractsBody := decodeJSON(t, contracts)
 	if contractsBody["source"] != "runtime_mapper" {
 		t.Fatalf("expected runtime mapper contract source, got %#v", contractsBody["source"])
+	}
+}
+
+func TestGraphIntelligenceEntitySummaryUsesServiceInterface(t *testing.T) {
+	s := newTestServer(t)
+	s.graphIntelligence = stubGraphIntelligenceService{
+		graph: buildGraphStorePlatformEntitiesTestGraph(t),
+	}
+	s.app.SecurityGraph = nil
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/entity-summary?entity_id=arn:aws:s3:::audit-logs&max_posture_claims=1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for service-backed entity summary, got %d: %s", w.Code, w.Body.String())
+	}
+	body := decodeJSON(t, w)
+	if overview, ok := body["overview"].(map[string]any); !ok || overview["headline"] != "Audit Logs" {
+		t.Fatalf("unexpected service-backed overview: %#v", body["overview"])
+	}
+	if posture, ok := body["posture"].(map[string]any); !ok || len(posture["claims"].([]any)) != 1 {
+		t.Fatalf("unexpected service-backed posture section: %#v", body["posture"])
 	}
 }
 
