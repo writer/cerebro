@@ -117,6 +117,72 @@ func TestRollbackPolicyRecompilesCELConditions(t *testing.T) {
 	}
 }
 
+func TestRollbackPolicyPreservesCELProgramsOnFailure(t *testing.T) {
+	engine := NewEngine()
+
+	// Version 1: a deliberately invalid CEL expression that will fail compilation.
+	// We inject it directly into the history so the engine never tries to compile it
+	// during AddPolicy (which would reject it).  This simulates a historical version
+	// whose condition was valid under a previous schema but is now unparseable.
+	engine.AddPolicy(&Policy{
+		ID:              "policy-cel-guard",
+		Name:            "Good CEL v2",
+		Description:     "working policy",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		ConditionFormat: ConditionFormatCEL,
+		Conditions:      []string{"resource.public == true"},
+		Severity:        "high",
+	})
+
+	// Manually inject a bad historical version 0 into the event history so that
+	// RollbackPolicy can find it but recompilation will fail.
+	engine.mu.Lock()
+	badPolicy := &Policy{
+		ID:              "policy-cel-guard",
+		Version:         0,
+		Name:            "Bad CEL v0",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		ConditionFormat: ConditionFormatCEL,
+		Conditions:      []string{"%%%invalid-cel-expression%%%"},
+		Severity:        "high",
+	}
+	if engine.history == nil {
+		engine.history = make(map[string][]PolicyEvent)
+	}
+	engine.history["policy-cel-guard"] = append(
+		[]PolicyEvent{{
+			PolicyID:  "policy-cel-guard",
+			Version:   0,
+			Content:   clonePolicy(badPolicy),
+			EventType: PolicyEventCreated,
+		}},
+		engine.history["policy-cel-guard"]...,
+	)
+	engine.mu.Unlock()
+
+	// Attempt rollback to the bad version — this must fail.
+	_, err := engine.RollbackPolicy("policy-cel-guard", 0)
+	if err == nil {
+		t.Fatal("expected rollback to fail for invalid CEL condition")
+	}
+
+	// The active policy's compiled CEL programs must still work.
+	findings, evalErr := engine.EvaluateAsset(context.Background(), map[string]interface{}{
+		"_cq_id":    "bucket-1",
+		"_cq_table": "aws_s3_buckets",
+		"type":      "aws::s3::bucket",
+		"public":    true,
+	})
+	if evalErr != nil {
+		t.Fatalf("EvaluateAsset failed after bad rollback: %v", evalErr)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding after failed rollback (CEL programs preserved), got %d", len(findings))
+	}
+}
+
 func TestDiffPolicies_TracksChangedFields(t *testing.T) {
 	before := &Policy{
 		ID:          "policy-diff",
