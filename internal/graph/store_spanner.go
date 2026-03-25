@@ -388,11 +388,14 @@ func spannerTenantScopeEnabled(ctx context.Context) bool {
 }
 
 func spannerNodeVisibleForTenantScope(ctx context.Context, node *Node) bool {
-	if node == nil || node.DeletedAt != nil {
+	if node == nil {
 		return false
 	}
 	if !spannerTenantScopeEnabled(ctx) {
 		return true
+	}
+	if node.DeletedAt != nil {
+		return false
 	}
 	tenantID := nodeTenantID(node)
 	if tenantID == "" {
@@ -1309,8 +1312,8 @@ func spannerRowToEdge(row *spanner.Row) (*Edge, error) {
 	}
 	edge := &Edge{
 		ID:        spannerEdgeID(id),
-		Source:    sourceID,
-		Target:    targetID,
+		Source:    spannerNodeID(sourceID),
+		Target:    spannerNodeID(targetID),
 		Kind:      EdgeKind(kind),
 		Effect:    EdgeEffect(effect.StringVal),
 		Priority:  int(priority),
