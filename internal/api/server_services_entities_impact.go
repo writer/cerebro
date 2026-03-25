@@ -43,6 +43,9 @@ func (s serverEntitiesImpactService) AnalyzeImpact(ctx context.Context, startNod
 	if err != nil {
 		return nil, err
 	}
+	if view == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
 	analyzer := graph.NewImpactPathAnalyzer(view)
 	return analyzer.Analyze(startNodeID, scenario, maxDepth), nil
 }
