@@ -675,6 +675,7 @@ func TestTelemetryIngestTracksRejectedObservationsSeparately(t *testing.T) {
 	}
 	if run == nil {
 		t.Fatal("expected persisted run")
+		return
 	}
 	if run.Status != runtime.IngestRunStatusCompleted {
 		t.Fatalf("status = %q, want %q", run.Status, runtime.IngestRunStatusCompleted)
@@ -776,6 +777,7 @@ func TestIngestRuntimeEventMarksDuplicateSourcePayloads(t *testing.T) {
 	}
 	if run == nil {
 		t.Fatal("expected duplicate run")
+		return
 	}
 	if run.Status != runtime.IngestRunStatusCompleted {
 		t.Fatalf("status = %q, want %q", run.Status, runtime.IngestRunStatusCompleted)
@@ -1035,6 +1037,7 @@ func TestTelemetryIngestSuppressesDuplicateSourcePayloadsInBatch(t *testing.T) {
 	}
 	if run == nil {
 		t.Fatal("expected persisted run")
+		return
 	}
 	if run.ObservationCount != 1 {
 		t.Fatalf("observation_count = %d, want 1", run.ObservationCount)
