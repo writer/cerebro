@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -726,7 +727,15 @@ func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.R
 	}
 
 	g, err := s.graphIntelligenceEntityGraph(r.Context(), entityID, validAt, recordedAt)
-	if g == nil || err != nil {
+	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+			return
+		}
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
 		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
 		return
 	}
