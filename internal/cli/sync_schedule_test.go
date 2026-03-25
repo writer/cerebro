@@ -268,8 +268,8 @@ func TestExecuteScheduledSync_RoutesByProvider(t *testing.T) {
 }
 
 func TestExecuteScheduledSync_UsesWorkerForNativeProviders(t *testing.T) {
-	t.Setenv("JOB_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789012/test")
-	t.Setenv("JOB_TABLE_NAME", "jobs")
+	t.Setenv("JOB_DATABASE_URL", "postgres://localhost:5432/jobs")
+	t.Setenv("NATS_URLS", "nats://localhost:4222")
 
 	originalAWSSync := executeAWSSyncFn
 	originalGCPSync := executeGCPSyncFn

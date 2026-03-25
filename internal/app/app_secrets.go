@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/apiauth"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/postgres"
 )
 
 type secretsLoader interface {
@@ -172,24 +173,23 @@ func (a *App) ReloadSecrets(ctx context.Context) error {
 	}
 
 	apiCredentialsChanged := !apiauth.EqualCredentials(a.APICredentialsSnapshot(), next.APICredentials)
-	snowflakeChanged := snowflakeCredentialsChanged(current, next)
+	postgresChanged := postgresCredentialsChanged(current, next)
 	providersChanged := providerConfigsChanged(current, next)
 
-	if !apiCredentialsChanged && !snowflakeChanged && !providersChanged {
+	if !apiCredentialsChanged && !postgresChanged && !providersChanged {
 		return nil
 	}
 
-	if snowflakeChanged {
-		if err := a.rotateSnowflakeClient(ctx, next); err != nil {
-			return fmt.Errorf("rotate snowflake credentials: %w", err)
+	if postgresChanged {
+		if err := a.rotatePostgresClient(ctx, next); err != nil {
+			return fmt.Errorf("rotate postgres credentials: %w", err)
 		}
-		a.logSecretRotation(ctx, "snowflake_credentials_rotated", map[string]interface{}{
-			"account":   strings.TrimSpace(next.SnowflakeAccount),
-			"warehouse": strings.TrimSpace(next.SnowflakeWarehouse),
+		a.logSecretRotation(ctx, "postgres_credentials_rotated", map[string]interface{}{
+			"database_url_changed": true,
 		})
 	}
 
-	if providersChanged || snowflakeChanged {
+	if providersChanged || postgresChanged {
 		a.rebuildProviders(ctx, next)
 		a.logSecretRotation(ctx, "provider_credentials_reloaded", map[string]interface{}{
 			"provider_count": len(a.Providers.List()),
@@ -213,27 +213,21 @@ func (a *App) ReloadSecrets(ctx context.Context) error {
 	if a.Logger != nil {
 		a.Logger.Info("secret reload completed",
 			"api_credentials_changed", apiCredentialsChanged,
-			"snowflake_changed", snowflakeChanged,
+			"postgres_changed", postgresChanged,
 			"providers_changed", providersChanged,
 		)
 	}
 	return nil
 }
 
-func snowflakeCredentialsChanged(current, next *Config) bool {
+func postgresCredentialsChanged(current, next *Config) bool {
 	if current == nil || next == nil {
 		return current != next
 	}
-	return current.SnowflakeAccount != next.SnowflakeAccount ||
-		current.SnowflakeUser != next.SnowflakeUser ||
-		current.SnowflakePrivateKey != next.SnowflakePrivateKey ||
-		current.SnowflakeDatabase != next.SnowflakeDatabase ||
-		current.SnowflakeSchema != next.SnowflakeSchema ||
-		current.SnowflakeWarehouse != next.SnowflakeWarehouse ||
-		current.SnowflakeRole != next.SnowflakeRole
+	return current.DatabaseURL != next.DatabaseURL
 }
 
-func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
+func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 	if a == nil || cfg == nil {
 		return nil
 	}
@@ -241,50 +235,47 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 		ctx = context.Background()
 	}
 
-	if strings.TrimSpace(cfg.SnowflakePrivateKey) == "" ||
-		strings.TrimSpace(cfg.SnowflakeAccount) == "" ||
-		strings.TrimSpace(cfg.SnowflakeUser) == "" {
-		return fmt.Errorf("snowflake rotation requires SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
+	if strings.TrimSpace(cfg.DatabaseURL) == "" {
+		return fmt.Errorf("postgres rotation requires DATABASE_URL")
 	}
 
-	newClient, err := snowflake.NewClient(snowflake.ClientConfig{
-		Account:    cfg.SnowflakeAccount,
-		User:       cfg.SnowflakeUser,
-		PrivateKey: cfg.SnowflakePrivateKey,
-		Database:   cfg.SnowflakeDatabase,
-		Schema:     cfg.SnowflakeSchema,
-		Warehouse:  cfg.SnowflakeWarehouse,
-		Role:       cfg.SnowflakeRole,
-	})
+	newDB, err := sql.Open("postgres", cfg.DatabaseURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("open postgres: %w", err)
 	}
-	if err := newClient.Ping(ctx); err != nil {
-		_ = newClient.Close()
-		return err
+	if err := newDB.PingContext(ctx); err != nil {
+		_ = newDB.Close()
+		return fmt.Errorf("ping postgres: %w", err)
 	}
 
-	oldClient := a.Snowflake
-	a.Snowflake = newClient
+	newDB.SetMaxOpenConns(25)
+	newDB.SetMaxIdleConns(10)
+	newDB.SetConnMaxLifetime(5 * time.Minute)
+
+	newClient := postgres.NewPostgresClient(newDB, "cerebro", "cerebro")
+
+	oldDB := a.PostgresDB
+	a.PostgresDB = newDB
+	a.PostgresClient = newClient
 	a.Warehouse = newClient
 	a.initRepositories()
 
 	if a.ScanWatermarks != nil {
-		a.ScanWatermarks.SetDB(newClient.DB())
+		a.ScanWatermarks.SetDB(newDB)
 		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil && a.Logger != nil {
-			a.Logger.Warn("failed to reload scan watermarks after snowflake rotation", "error", err)
+			a.Logger.Warn("failed to reload scan watermarks after postgres rotation", "error", err)
 		}
 	}
 
-	if a.SnowflakeFindings != nil {
-		a.SnowflakeFindings.SetConnection(newClient.DB(), newClient.Database(), newClient.Schema())
-		if err := a.SnowflakeFindings.Load(ctx); err != nil && a.Logger != nil {
-			a.Logger.Warn("failed to reload findings after snowflake rotation", "error", err)
+	if a.PostgresFindings != nil {
+		a.PostgresFindings.SetConnection(newDB, newClient.AppSchema())
+		if err := a.PostgresFindings.Load(ctx); err != nil && a.Logger != nil {
+			a.Logger.Warn("failed to reload findings after postgres rotation", "error", err)
 		}
 	}
 
 	if a.Agents != nil {
-		store, err := agents.NewSnowflakeSessionStore(newClient)
+		store, err := agents.NewPostgresSessionStore(newDB, newClient.AppSchema())
 		if err != nil {
 			if a.Logger != nil {
 				a.Logger.Warn("failed to rotate agent session store", "error", err)
@@ -300,9 +291,9 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 	}
 	a.initSecurityGraph(ctx)
 
-	if oldClient != nil {
-		if err := oldClient.Close(); err != nil && a.Logger != nil {
-			a.Logger.Warn("failed to close previous snowflake client after rotation", "error", err)
+	if oldDB != nil {
+		if err := oldDB.Close(); err != nil && a.Logger != nil {
+			a.Logger.Warn("failed to close previous postgres connection after rotation", "error", err)
 		}
 	}
 
@@ -322,7 +313,7 @@ func (a *App) logSecretRotation(ctx context.Context, action string, details map[
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	entry := &snowflake.AuditEntry{
+	entry := &postgres.AuditEntry{
 		Action:       action,
 		ActorID:      "system:secrets-reloader",
 		ActorType:    "system",

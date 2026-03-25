@@ -10,7 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func sevRank(sev string) int {
@@ -549,7 +549,7 @@ func toInt(v interface{}) int {
 	return 0
 }
 
-func filterCDCEvents(events []snowflake.CDCEvent) ([]string, time.Time) {
+func filterCDCEvents(events []warehouse.CDCEvent) ([]string, time.Time) {
 	ids := make([]string, 0, len(events))
 	var maxTime time.Time
 	for _, event := range events {

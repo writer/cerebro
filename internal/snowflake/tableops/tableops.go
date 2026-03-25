@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const DefaultInsertBatchSize = 200
@@ -19,7 +20,7 @@ type ExecClient interface {
 
 type QueryExecClient interface {
 	ExecClient
-	Query(ctx context.Context, query string, args ...interface{}) (*snowflake.QueryResult, error)
+	Query(ctx context.Context, query string, args ...interface{}) (*warehouse.QueryResult, error)
 }
 
 type EnsureVariantTableOptions struct {

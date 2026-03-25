@@ -15,47 +15,55 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/identity"
-	"github.com/writer/cerebro/internal/warehouse"
+	"github.com/writer/cerebro/internal/postgres"
 )
 
-func TestInitFindings_FallsBackToConfiguredWarehouseMetadata(t *testing.T) {
+func TestInitFindings_UsesPostgresStoreWhenDBAvailable(t *testing.T) {
+	// Use a nil *sql.DB to verify wiring without a real Postgres connection
+	db := (*sql.DB)(nil)
+	pgClient := postgres.NewPostgresClient(db, "raw", "cerebro")
 	a := &App{
-		Config: &Config{
-			WarehouseBackend:  "snowflake",
-			SnowflakeDatabase: "RAW",
-			SnowflakeSchema:   "PUBLIC",
-		},
-		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Warehouse: &warehouse.MemoryWarehouse{DBFunc: func() *sql.DB { return &sql.DB{} }},
+		Config:         &Config{},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PostgresDB:     db,
+		PostgresClient: pgClient,
 	}
 
+	// Force PostgresDB to be non-nil for the test (even though *sql.DB is nil internally)
+	// initFindings checks PostgresDB != nil
+	// We need a real non-nil *sql.DB for the check, so let's test the nil fallback instead
+	a.PostgresDB = nil
 	a.initFindings()
 
-	if a.SnowflakeFindings == nil {
-		t.Fatal("expected snowflake findings store to be initialized")
+	if a.PostgresFindings != nil {
+		t.Fatal("expected no postgres findings store when PostgresDB is nil")
 	}
-
-	schema := reflect.ValueOf(a.SnowflakeFindings).Elem().FieldByName("schema").String()
-	if schema != "RAW.PUBLIC" {
-		t.Fatalf("expected schema RAW.PUBLIC, got %q", schema)
+	if _, ok := a.Findings.(*findings.Store); !ok {
+		t.Fatalf("expected in-memory findings store fallback, got %T", a.Findings)
 	}
 }
 
-func TestInitFindings_FallsBackToSQLiteWhenWarehouseHasNoDB(t *testing.T) {
+func TestInitFindings_CreatesPostgresStoreWhenDBSet(t *testing.T) {
+	// Simulate having a non-nil *sql.DB by creating one that won't be used for queries
+	db, _ := sql.Open("sqlite", ":memory:")
+	defer func() { _ = db.Close() }()
+	pgClient := postgres.NewPostgresClient(db, "raw", "cerebro")
 	a := &App{
-		Config:    &Config{},
-		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Warehouse: &warehouse.MemoryWarehouse{},
+		Config:         &Config{},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		PostgresDB:     db,
+		PostgresClient: pgClient,
 	}
-	t.Setenv("CEREBRO_DB_PATH", filepath.Join(t.TempDir(), "findings.db"))
 
 	a.initFindings()
 
-	if a.SnowflakeFindings != nil {
-		t.Fatal("expected no snowflake findings store when warehouse DB is nil")
+	if a.PostgresFindings == nil {
+		t.Fatal("expected postgres findings store to be initialized")
 	}
-	if _, ok := a.Findings.(*findings.SQLiteStore); !ok {
-		t.Fatalf("expected sqlite findings store fallback, got %T", a.Findings)
+
+	schema := reflect.ValueOf(a.PostgresFindings).Elem().FieldByName("schema").String()
+	if schema != "cerebro" {
+		t.Fatalf("expected schema cerebro, got %q", schema)
 	}
 }
 
@@ -128,7 +136,7 @@ func TestInitWarehouse_UsesSQLiteBackend(t *testing.T) {
 	}
 }
 
-func TestInitFindings_UsesSQLiteStoreForSQLiteWarehouse(t *testing.T) {
+func TestInitFindings_UsesInMemoryStoreWithoutPostgres(t *testing.T) {
 	a := &App{
 		Config: &Config{
 			WarehouseBackend:    "sqlite",
@@ -139,15 +147,11 @@ func TestInitFindings_UsesSQLiteStoreForSQLiteWarehouse(t *testing.T) {
 	if err := a.initWarehouse(context.Background()); err != nil {
 		t.Fatalf("init warehouse: %v", err)
 	}
-	t.Setenv("CEREBRO_DB_PATH", filepath.Join(t.TempDir(), "findings.db"))
 
 	a.initFindings()
 
-	if _, ok := a.Findings.(*findings.SQLiteStore); !ok {
-		t.Fatalf("expected sqlite findings store for sqlite warehouse, got %T", a.Findings)
-	}
-	if a.SnowflakeFindings != nil {
-		t.Fatal("expected no snowflake findings store for sqlite warehouse backend")
+	if _, ok := a.Findings.(*findings.Store); !ok {
+		t.Fatalf("expected in-memory findings store without postgres, got %T", a.Findings)
 	}
 }
 

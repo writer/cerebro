@@ -44,8 +44,13 @@ func (a *App) initialize(ctx context.Context) error {
 }
 
 func (a *App) initPhase1(ctx context.Context) error {
-	if err := runInitErrorStep("warehouse", func() error { return a.initWarehouse(ctx) }); err != nil {
-		a.Logger.Warn("warehouse initialization failed", "error", err, "backend", a.Config.WarehouseBackend)
+	if err := runInitErrorStep("postgres", func() error { return a.initPostgres(ctx) }); err != nil {
+		a.Logger.Warn("postgres initialization failed", "error", err)
+	}
+	if a.Warehouse == nil {
+		if err := runInitErrorStep("warehouse", func() error { return a.initWarehouse(ctx) }); err != nil {
+			a.Logger.Warn("warehouse initialization failed", "error", err)
+		}
 	}
 	if err := runInitErrorStep("policy", a.initPolicy); err != nil {
 		return err
@@ -79,7 +84,7 @@ func (a *App) initPhase2a(ctx context.Context) error {
 		{name: "providers", run: func(taskCtx context.Context) { a.initProviders(taskCtx) }},
 		{name: "scheduler", run: func(taskCtx context.Context) { a.initScheduler(taskCtx) }},
 		{name: "repositories", run: func(context.Context) { a.initRepositories() }},
-		{name: "snowflake_findings", run: func(taskCtx context.Context) { a.initSnowflakeFindings(taskCtx) }},
+		{name: "postgres_findings", run: func(taskCtx context.Context) { a.initPostgresFindings(taskCtx) }},
 		{name: "scan_watermarks", run: func(taskCtx context.Context) { a.initScanWatermarks(taskCtx) }},
 		{name: "threatintel", run: func(context.Context) { a.initThreatIntel(ctx) }},
 		{name: "available_tables", run: func(taskCtx context.Context) { a.initAvailableTables(taskCtx) }},

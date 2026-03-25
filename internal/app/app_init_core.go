@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,52 +17,55 @@ import (
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/ticketing"
 	"github.com/writer/cerebro/internal/warehouse"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
+func (a *App) initPostgres(ctx context.Context) error {
+	if a.Config.DatabaseURL == "" {
+		a.Logger.Warn("DATABASE_URL not set, running without database")
+		return nil
+	}
+
+	db, err := sql.Open("postgres", a.Config.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("open postgres: %w", err)
+	}
+
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("ping postgres: %w", err)
+	}
+
+	// Connection pool settings
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
+	a.PostgresDB = db
+	a.PostgresClient = postgres.NewPostgresClient(db, "cerebro", "cerebro")
+	a.Warehouse = a.PostgresClient
+
+	// Bootstrap schema and tables
+	if err := a.PostgresClient.Bootstrap(ctx); err != nil {
+		a.Logger.Warn("failed to bootstrap postgres schema", "error", err)
+	}
+
+	return nil
+}
+
 func (a *App) initWarehouse(ctx context.Context) error {
 	switch strings.ToLower(strings.TrimSpace(a.Config.WarehouseBackend)) {
-	case "", "snowflake":
-		return a.initSnowflake(ctx)
 	case "sqlite":
 		return a.initSQLiteWarehouse(ctx)
 	case "postgres":
 		return a.initPostgresWarehouse(ctx)
 	default:
-		return fmt.Errorf("unsupported warehouse backend %q", a.Config.WarehouseBackend)
+		return a.initSQLiteWarehouse(ctx)
 	}
-}
-
-func (a *App) initSnowflake(ctx context.Context) error {
-	// Require key-pair auth
-	if a.Config.SnowflakePrivateKey == "" || a.Config.SnowflakeAccount == "" || a.Config.SnowflakeUser == "" {
-		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
-	}
-
-	client, err := snowflake.NewClient(snowflake.ClientConfig{
-		Account:    a.Config.SnowflakeAccount,
-		User:       a.Config.SnowflakeUser,
-		PrivateKey: a.Config.SnowflakePrivateKey,
-		Database:   a.Config.SnowflakeDatabase,
-		Schema:     a.Config.SnowflakeSchema,
-		Warehouse:  a.Config.SnowflakeWarehouse,
-		Role:       a.Config.SnowflakeRole,
-	})
-	if err != nil {
-		return err
-	}
-
-	if err := client.Ping(ctx); err != nil {
-		return err
-	}
-
-	a.Snowflake = client
-	a.Warehouse = client
-	return nil
 }
 
 func (a *App) initSQLiteWarehouse(_ context.Context) error {
@@ -114,60 +115,26 @@ func (a *App) initPolicy() error {
 }
 
 func (a *App) initFindings() {
-	warehouseDB := (*sql.DB)(nil)
-	if a.Warehouse != nil {
-		warehouseDB = a.Warehouse.DB()
-	}
-	warehouseBackend := strings.ToLower(strings.TrimSpace(a.Config.WarehouseBackend))
-	if warehouseBackend == "" {
-		warehouseBackend = "snowflake"
-		if a.Snowflake == nil {
-			warehouseBackend = "sqlite"
+	// When Postgres is available, use PostgresStore as primary
+	if a.PostgresDB != nil {
+		schemaName := "cerebro"
+		if a.PostgresClient != nil {
+			if candidate := strings.TrimSpace(a.PostgresClient.AppSchema()); candidate != "" {
+				schemaName = candidate
+			}
 		}
-	}
-
-	// Findings persistence is still Snowflake-specific today. For non-Snowflake
-	// warehouse backends, keep using the local SQLite findings store instead of
-	// routing through Snowflake SQL semantics on an incompatible backend.
-	if warehouseBackend != "snowflake" || a.Warehouse == nil || warehouseDB == nil {
-		dbPath := filepath.Join(findings.DefaultFilePath(), "cerebro.db")
-		if path := os.Getenv("CEREBRO_DB_PATH"); path != "" {
-			dbPath = path
-		}
-
-		store, err := findings.NewSQLiteStore(dbPath)
-		if err != nil {
-			a.Logger.Warn("failed to initialize sqlite findings store, falling back to in-memory", "error", err)
-			a.Findings = a.newInMemoryFindingsStore()
-			a.configureFindingAttestation()
-			return
-		}
-		store.SetSemanticDedup(a.Config.FindingsSemanticDedupEnabled)
-		a.Findings = store
+		pgStore := findings.NewPostgresStore(a.PostgresDB, schemaName)
+		pgStore.SetSemanticDedup(a.Config.FindingsSemanticDedupEnabled)
+		a.Findings = pgStore
+		a.PostgresFindings = pgStore
 		a.configureFindingAttestation()
-		a.Logger.Info("using sqlite findings store", "path", dbPath)
+		a.Logger.Info("using postgres findings store")
 		return
 	}
-	// When Snowflake is available, create SnowflakeStore as primary
-	// This will be loaded from Snowflake in initSnowflakeFindings
-	databaseName := strings.TrimSpace(a.Config.SnowflakeDatabase)
-	schemaName := strings.TrimSpace(a.Config.SnowflakeSchema)
-	if candidate := strings.TrimSpace(a.Warehouse.Database()); candidate != "" {
-		databaseName = candidate
-	}
-	if candidate := strings.TrimSpace(a.Warehouse.Schema()); candidate != "" {
-		schemaName = candidate
-	}
-	snowflakeStore := findings.NewSnowflakeStore(
-		warehouseDB,
-		databaseName,
-		schemaName,
-	)
-	snowflakeStore.SetSemanticDedup(a.Config.FindingsSemanticDedupEnabled)
-	a.Findings = snowflakeStore
-	a.SnowflakeFindings = snowflakeStore
+
+	// Fall back to in-memory store when no database is available
+	a.Findings = a.newInMemoryFindingsStore()
 	a.configureFindingAttestation()
-	a.Logger.Info("using snowflake findings store")
 }
 
 func (a *App) newInMemoryFindingsStore() *findings.Store {
@@ -227,6 +194,10 @@ func (a *App) configureFindingAttestation() {
 		configured = true
 	}
 	if store, ok := a.Findings.(*findings.SnowflakeStore); ok {
+		store.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
+		configured = true
+	}
+	if store, ok := a.Findings.(*findings.PostgresStore); ok {
 		store.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
 		configured = true
 	}

@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/writer/cerebro/internal/cerrors"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const (
@@ -61,12 +62,8 @@ type Client struct {
 	cdcSchemaReady bool
 }
 
-// QueryResult holds query results in a structured format.
-type QueryResult struct {
-	Columns []string                 `json:"columns"`
-	Rows    []map[string]interface{} `json:"rows"`
-	Count   int                      `json:"count"`
-}
+// QueryResult is an alias for warehouse.QueryResult for backward compatibility.
+type QueryResult = warehouse.QueryResult
 
 // NewClient creates a new Snowflake client using key-pair authentication.
 // Requires Account, User, and PrivateKey to be set.

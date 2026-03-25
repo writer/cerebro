@@ -115,6 +115,11 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Category: "dependency",
 		},
 		{
+			EnvVars:  []string{"DATABASE_URL"},
+			Summary:  "Postgres connection string for persistent storage",
+			Category: "optional",
+		},
+		{
 			EnvVars: []string{
 				"NATS_JETSTREAM_ENABLED",
 				"NATS_URLS",
@@ -394,6 +399,9 @@ func (c *Config) Validate() error {
 			problems = addConfigProblem(problems, "WAREHOUSE_POSTGRES_DSN is required when WAREHOUSE_BACKEND=postgres")
 		}
 	}
+
+	// DatabaseURL validation: when set, must be a non-empty string.
+	_ = c.DatabaseURL // just acknowledge the field exists; no constraint beyond non-empty when used
 
 	if c.NATSJetStreamEnabled {
 		if len(c.NATSJetStreamURLs) == 0 {

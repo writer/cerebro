@@ -109,11 +109,11 @@ func (a *App) initHealth() {
 	a.Health = health.NewRegistry()
 
 	// Register health checks for all services
-	a.Health.Register("snowflake", health.PingCheck("snowflake", func(ctx context.Context) error {
-		if a.Snowflake == nil {
+	a.Health.Register("postgres", health.PingCheck("postgres", func(ctx context.Context) error {
+		if a.PostgresDB == nil {
 			return fmt.Errorf("not configured")
 		}
-		return a.Snowflake.Ping(ctx)
+		return a.PostgresDB.PingContext(ctx)
 	}))
 
 	a.Health.Register("policy_engine", health.PingCheck("policy_engine", func(ctx context.Context) error {
@@ -536,14 +536,15 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	a.setGraphBuildState(GraphBuildNotStarted, time.Time{}, nil)
 
 	if a.Warehouse == nil {
-		a.Logger.Warn("security graph disabled - warehouse not configured")
+		a.Logger.Warn("security graph disabled - database not configured")
+		a.Propagation = nil
 		a.publishSecurityGraphRuntimeView(nil)
 		a.graphCancel = nil
 		close(a.graphReady)
 		return
 	}
 
-	source := builders.NewSnowflakeSource(a.Warehouse)
+	source := builders.NewPostgresSource(a.Warehouse)
 	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
 	securityGraph := a.SecurityGraphBuilder.Graph()
 	a.configureGraphRuntimeBehavior(securityGraph)

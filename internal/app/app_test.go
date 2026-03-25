@@ -21,7 +21,6 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -1483,8 +1482,8 @@ func TestScanQueryPolicies_DedupAndSuppressionFlow(t *testing.T) {
 		executeReadOnlyQueryFn = originalExecuteReadOnlyQueryFn
 	})
 
-	executeReadOnlyQueryFn = func(context.Context, warehouse.QueryWarehouse, string) (*snowflake.QueryResult, error) {
-		return &snowflake.QueryResult{Rows: []map[string]interface{}{
+	executeReadOnlyQueryFn = func(context.Context, warehouse.QueryWarehouse, string) (*warehouse.QueryResult, error) {
+		return &warehouse.QueryResult{Rows: []map[string]interface{}{
 			{"_cq_id": "asset-1", "_cq_table": "assets", "name": "Asset 1"},
 			{"id": "asset-1", "_cq_table": "assets", "name": "Asset 1 duplicate"},
 		}}, nil
@@ -1556,9 +1555,9 @@ func TestScanQueryPolicies_SkipsDisallowedTables(t *testing.T) {
 	})
 
 	queryCallCount := 0
-	executeReadOnlyQueryFn = func(context.Context, warehouse.QueryWarehouse, string) (*snowflake.QueryResult, error) {
+	executeReadOnlyQueryFn = func(context.Context, warehouse.QueryWarehouse, string) (*warehouse.QueryResult, error) {
 		queryCallCount++
-		return &snowflake.QueryResult{}, nil
+		return &warehouse.QueryResult{}, nil
 	}
 
 	engine := policy.NewEngine()
@@ -1597,9 +1596,9 @@ func TestScanQueryPolicies_AddsTruncationMetaFinding(t *testing.T) {
 	})
 
 	observedQuery := ""
-	executeReadOnlyQueryFn = func(_ context.Context, _ warehouse.QueryWarehouse, query string) (*snowflake.QueryResult, error) {
+	executeReadOnlyQueryFn = func(_ context.Context, _ warehouse.QueryWarehouse, query string) (*warehouse.QueryResult, error) {
 		observedQuery = query
-		return &snowflake.QueryResult{Rows: []map[string]interface{}{
+		return &warehouse.QueryResult{Rows: []map[string]interface{}{
 			{"_cq_id": "asset-1", "_cq_table": "assets", "name": "Asset 1"},
 			{"_cq_id": "asset-2", "_cq_table": "assets", "name": "Asset 2"},
 		}}, nil

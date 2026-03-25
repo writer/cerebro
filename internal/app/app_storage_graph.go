@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/snowflake"
 )
 
 func (a *App) initRepositories() {
@@ -19,34 +19,34 @@ func (a *App) initRepositories() {
 	a.RiskEngineStateRepo = nil
 	a.RetentionRepo = nil
 
-	if a.Snowflake == nil {
+	if a.PostgresClient == nil {
 		return
 	}
-	a.FindingsRepo = snowflake.NewFindingRepository(a.Snowflake)
-	a.TicketsRepo = snowflake.NewTicketRepository(a.Snowflake)
-	a.AuditRepo = snowflake.NewAuditRepository(a.Snowflake)
-	a.PolicyHistoryRepo = snowflake.NewPolicyHistoryRepository(a.Snowflake)
-	a.RiskEngineStateRepo = snowflake.NewRiskEngineStateRepository(a.Snowflake)
-	a.RetentionRepo = snowflake.NewRetentionRepository(a.Snowflake)
+	a.FindingsRepo = postgres.NewFindingRepository(a.PostgresClient)
+	a.TicketsRepo = postgres.NewTicketRepository(a.PostgresClient)
+	a.AuditRepo = postgres.NewAuditRepository(a.PostgresClient)
+	a.PolicyHistoryRepo = postgres.NewPolicyHistoryRepository(a.PostgresClient)
+	a.RiskEngineStateRepo = postgres.NewRiskEngineStateRepository(a.PostgresClient)
+	a.RetentionRepo = postgres.NewRetentionRepository(a.PostgresClient)
 }
 
-func (a *App) initSnowflakeFindings(ctx context.Context) {
-	if a.Snowflake == nil || a.SnowflakeFindings == nil {
+func (a *App) initPostgresFindings(ctx context.Context) {
+	if a.PostgresDB == nil || a.PostgresFindings == nil {
 		return
 	}
 
-	// Load existing findings from Snowflake
-	// SnowflakeStore is already created in initFindings when Snowflake is available
-	if err := a.SnowflakeFindings.Load(ctx); err != nil {
-		a.Logger.Warn("failed to load findings from snowflake", "error", err)
+	// Load existing findings from Postgres
+	// PostgresStore is already created in initFindings when Postgres is available
+	if err := a.PostgresFindings.Load(ctx); err != nil {
+		a.Logger.Warn("failed to load findings from postgres", "error", err)
 	} else {
-		a.Logger.Info("loaded findings from snowflake", "count", a.SnowflakeFindings.Stats().Total)
+		a.Logger.Info("loaded findings from postgres", "count", a.PostgresFindings.Stats().Total)
 	}
 }
 
 func (a *App) initScanWatermarks(ctx context.Context) {
-	if a.Warehouse != nil && a.Warehouse.DB() != nil {
-		a.ScanWatermarks = scanner.NewWatermarkStore(a.Warehouse.DB())
+	if a.PostgresDB != nil {
+		a.ScanWatermarks = scanner.NewWatermarkStore(a.PostgresDB)
 		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil {
 			a.Logger.Warn("failed to load scan watermarks", "error", err)
 		}
@@ -59,10 +59,10 @@ func (a *App) initScanWatermarks(ctx context.Context) {
 // initAvailableTables caches the warehouse table list for reuse by graph builder and policy validation.
 
 func (a *App) initAvailableTables(ctx context.Context) {
-	if a.Warehouse == nil {
+	if a.PostgresClient == nil {
 		return
 	}
-	tables, err := a.Warehouse.ListAvailableTables(ctx)
+	tables, err := a.PostgresClient.ListAvailableTables(ctx)
 	if err != nil {
 		a.Logger.Warn("failed to list available tables", "error", err)
 		return
@@ -74,7 +74,7 @@ func (a *App) initAvailableTables(ctx context.Context) {
 
 func (a *App) validatePolicyCoverage(_ context.Context) error {
 	if a.Warehouse == nil {
-		a.Logger.Warn("skipping policy coverage validation - warehouse not configured")
+		a.Logger.Warn("skipping policy coverage validation - database not configured")
 		return nil
 	}
 
@@ -269,10 +269,10 @@ func (a *App) Close() error {
 
 	a.stopThreatIntelSync()
 
-	// Close Snowflake connection
-	if a.Snowflake != nil {
-		if err := a.Snowflake.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("snowflake: %w", err))
+	// Close Postgres connection
+	if a.PostgresDB != nil {
+		if err := a.PostgresDB.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("postgres: %w", err))
 		}
 	}
 	if closer, ok := a.Warehouse.(interface{ Close() error }); ok {

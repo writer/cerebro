@@ -36,6 +36,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -61,6 +62,7 @@ import (
 	"github.com/writer/cerebro/internal/lineage"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/remediation"
 	"github.com/writer/cerebro/internal/runtime"
@@ -91,6 +93,8 @@ type App struct {
 	Logger *slog.Logger
 
 	// Core services
+	PostgresDB     *sql.DB
+	PostgresClient *postgres.PostgresClient
 	Snowflake      *snowflake.Client
 	Warehouse      warehouse.DataWarehouse
 	Policy         *policy.Engine
@@ -116,16 +120,16 @@ type App struct {
 	Notifications  *notifications.Manager
 	Scheduler      *scheduler.Scheduler
 
-	// Repositories (for Snowflake persistence)
-	FindingsRepo        *snowflake.FindingRepository
-	TicketsRepo         *snowflake.TicketRepository
-	AuditRepo           *snowflake.AuditRepository
-	PolicyHistoryRepo   *snowflake.PolicyHistoryRepository
-	RiskEngineStateRepo *snowflake.RiskEngineStateRepository
+	// Repositories (for Postgres persistence)
+	FindingsRepo        *postgres.FindingRepository
+	TicketsRepo         *postgres.TicketRepository
+	AuditRepo           *postgres.AuditRepository
+	PolicyHistoryRepo   *postgres.PolicyHistoryRepository
+	RiskEngineStateRepo *postgres.RiskEngineStateRepository
 	RetentionRepo       retentionCleaner
 
-	// Snowflake-backed stores (when available)
-	SnowflakeFindings *findings.SnowflakeStore
+	// Postgres-backed stores (when available)
+	PostgresFindings *findings.PostgresStore
 
 	// Incremental scanning
 	ScanWatermarks *scanner.WatermarkStore
@@ -275,7 +279,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 	}
 
 	logger.Info("application initialized",
-		"snowflake", app.Snowflake != nil,
+		"postgres", app.PostgresDB != nil,
 		"policies", len(app.Policy.ListPolicies()),
 	)
 	app.startSecretsReloader(ctx)

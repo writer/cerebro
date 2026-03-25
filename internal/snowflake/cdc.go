@@ -2,27 +2,16 @@ package snowflake
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
-// CDCEvent represents a change data capture event for an asset table.
-type CDCEvent struct {
-	EventID     string
-	TableName   string
-	ResourceID  string
-	ChangeType  string
-	Provider    string
-	Region      string
-	AccountID   string
-	Payload     interface{}
-	PayloadHash string
-	EventTime   time.Time
-}
+// CDCEvent is an alias for warehouse.CDCEvent for backward compatibility.
+type CDCEvent = warehouse.CDCEvent
 
 // EnsureCDCEventsTable creates the CDC_EVENTS table if it does not exist.
 // Uses mutex + flag so transient failures don't permanently poison the cache.
@@ -185,10 +174,9 @@ func cdcEventFromRow(row map[string]interface{}) CDCEvent {
 }
 
 // BuildCDCEventID builds a deterministic CDC event identifier.
+// Deprecated: Use warehouse.BuildCDCEventID directly.
 func BuildCDCEventID(table, resourceID, changeType, payloadHash string, eventTime time.Time) string {
-	seed := fmt.Sprintf("%s|%s|%s|%s|%s", table, resourceID, changeType, payloadHash, eventTime.UTC().Format(time.RFC3339Nano))
-	sum := sha256.Sum256([]byte(seed))
-	return hex.EncodeToString(sum[:])
+	return warehouse.BuildCDCEventID(table, resourceID, changeType, payloadHash, eventTime)
 }
 
 func sqlStringOrNull(value string) string {

@@ -11,6 +11,7 @@ import (
 
 	apiclient "github.com/writer/cerebro/internal/client"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 var queryCmd = &cobra.Command{
@@ -113,7 +114,7 @@ func runQueryDirect(cmd *cobra.Command, args []string) error {
 	return renderQueryResult(result)
 }
 
-func renderQueryResult(result *snowflake.QueryResult) error {
+func renderQueryResult(result *warehouse.QueryResult) error {
 	switch queryFormat {
 	case "json":
 		return JSONOutput(map[string]interface{}{

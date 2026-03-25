@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -475,13 +474,13 @@ func TestExtractAzureRelationships_UsesStableOAuthGrantColumns(t *testing.T) {
 	var sawGrantQuery bool
 	sf := &warehouse.MemoryWarehouse{
 		SchemaValue: "RAW",
-		QueryFunc: func(_ context.Context, query string, args ...any) (*snowflake.QueryResult, error) {
+		QueryFunc: func(_ context.Context, query string, args ...any) (*warehouse.QueryResult, error) {
 			if strings.Contains(query, "FROM INFORMATION_SCHEMA.COLUMNS") {
 				table := strings.ToUpper(args[0].(string))
 				if table != "ENTRA_OAUTH2_PERMISSION_GRANTS" {
-					return &snowflake.QueryResult{Rows: nil}, nil
+					return &warehouse.QueryResult{Rows: nil}, nil
 				}
-				return &snowflake.QueryResult{Rows: []map[string]any{
+				return &warehouse.QueryResult{Rows: []map[string]any{
 					{"column_name": "ID"},
 					{"column_name": "CLIENT_ID"},
 					{"column_name": "CONSENT_TYPE"},
@@ -495,7 +494,7 @@ func TestExtractAzureRelationships_UsesStableOAuthGrantColumns(t *testing.T) {
 				if strings.Contains(query, "START_TIME") || strings.Contains(query, "EXPIRY_TIME") {
 					t.Fatalf("expected stable OAuth grant query to avoid removed timestamp columns, got %q", query)
 				}
-				return &snowflake.QueryResult{Rows: []map[string]any{{
+				return &warehouse.QueryResult{Rows: []map[string]any{{
 					"id":           "grant-1",
 					"client_id":    "sp-client-1",
 					"consent_type": "Principal",
@@ -504,7 +503,7 @@ func TestExtractAzureRelationships_UsesStableOAuthGrantColumns(t *testing.T) {
 					"scope":        "Mail.Read",
 				}}}, nil
 			}
-			return &snowflake.QueryResult{Rows: nil}, nil
+			return &warehouse.QueryResult{Rows: nil}, nil
 		},
 	}
 

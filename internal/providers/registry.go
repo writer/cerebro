@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/postgres"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -181,7 +181,7 @@ type BaseProvider struct {
 	provType   ProviderType
 	config     map[string]interface{}
 	configured bool
-	snowflake  *snowflake.Client
+	pgClient   *postgres.PostgresClient
 	mu         sync.RWMutex
 }
 

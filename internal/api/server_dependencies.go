@@ -26,12 +26,12 @@ import (
 	"github.com/writer/cerebro/internal/lineage"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/remediation"
 	"github.com/writer/cerebro/internal/runtime"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/scheduler"
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/threatintel"
 	"github.com/writer/cerebro/internal/ticketing"
 	"github.com/writer/cerebro/internal/warehouse"
@@ -79,7 +79,7 @@ type serverDependencies struct {
 	Config *app.Config
 	Logger *slog.Logger
 
-	Snowflake      *snowflake.Client
+	PostgresClient *postgres.PostgresClient
 	Warehouse      warehouse.DataWarehouse
 	Policy         *policy.Engine
 	Findings       findings.FindingStore
@@ -98,9 +98,9 @@ type serverDependencies struct {
 	Notifications  *notifications.Manager
 	Scheduler      *scheduler.Scheduler
 
-	AuditRepo           *snowflake.AuditRepository
-	PolicyHistoryRepo   *snowflake.PolicyHistoryRepository
-	RiskEngineStateRepo *snowflake.RiskEngineStateRepository
+	AuditRepo           *postgres.AuditRepository
+	PolicyHistoryRepo   *postgres.PolicyHistoryRepository
+	RiskEngineStateRepo *postgres.RiskEngineStateRepository
 	ScanWatermarks      *scanner.WatermarkStore
 
 	RBAC           *auth.RBAC
@@ -162,7 +162,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 	deps := serverDependencies{
 		Config:               application.Config,
 		Logger:               application.Logger,
-		Snowflake:            application.Snowflake,
+		PostgresClient:       application.PostgresClient,
 		Warehouse:            application.Warehouse,
 		Policy:               application.Policy,
 		Findings:             application.Findings,

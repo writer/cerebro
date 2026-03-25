@@ -511,7 +511,7 @@ func (r *RelationshipExtractor) getTableColumnSet(ctx context.Context, table str
 	return columns, nil
 }
 
-func (r *RelationshipExtractor) queryRowsForTable(ctx context.Context, table, query string, args ...interface{}) (*snowflake.QueryResult, bool, error) {
+func (r *RelationshipExtractor) queryRowsForTable(ctx context.Context, table, query string, args ...interface{}) (*warehouse.QueryResult, bool, error) {
 	columnSet, err := r.getTableColumnSet(ctx, table)
 	if err != nil {
 		return nil, false, err

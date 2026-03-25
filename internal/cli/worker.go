@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/spf13/cobra"
 
 	"github.com/writer/cerebro/internal/agents"
@@ -28,9 +30,6 @@ var workerCmd = &cobra.Command{
 }
 
 var (
-	workerQueueURL          string
-	workerTableName         string
-	workerRegion            string
 	workerConcurrency       int
 	workerVisibilityTimeout string
 	workerJobTimeout        string
@@ -45,14 +44,11 @@ var (
 func init() {
 	rootCmd.AddCommand(workerCmd)
 
-	workerCmd.Flags().StringVar(&workerQueueURL, "queue-url", "", "SQS queue URL")
-	workerCmd.Flags().StringVar(&workerTableName, "table", "", "DynamoDB table name")
-	workerCmd.Flags().StringVar(&workerRegion, "region", "", "AWS region override")
 	workerCmd.Flags().IntVar(&workerConcurrency, "concurrency", 0, "Number of concurrent job workers")
-	workerCmd.Flags().StringVar(&workerVisibilityTimeout, "visibility-timeout", "", "SQS visibility timeout (e.g. 60s)")
+	workerCmd.Flags().StringVar(&workerVisibilityTimeout, "visibility-timeout", "", "Visibility timeout (e.g. 60s)")
 	workerCmd.Flags().StringVar(&workerJobTimeout, "job-timeout", "", "Maximum time per job (e.g. 5m)")
 	workerCmd.Flags().StringVar(&workerDrainTimeout, "drain-timeout", "", "Graceful shutdown drain timeout (e.g. 30s)")
-	workerCmd.Flags().StringVar(&workerPollWait, "poll-wait", "", "SQS long poll wait time (e.g. 20s)")
+	workerCmd.Flags().StringVar(&workerPollWait, "poll-wait", "", "Poll wait time (e.g. 20s)")
 	workerCmd.Flags().IntVar(&workerHealthPort, "health-port", 8081, "HTTP port for health check endpoints")
 }
 
@@ -66,26 +62,44 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = application.Close() }()
 
-	queueURL := workerQueueURL
-	if queueURL == "" {
-		queueURL = application.Config.JobQueueURL
+	if application.Config.JobDatabaseURL == "" {
+		return fmt.Errorf("JOB_DATABASE_URL is required")
 	}
-	if queueURL == "" {
-		return fmt.Errorf("queue url required")
-	}
-
-	tableName := workerTableName
-	if tableName == "" {
-		tableName = application.Config.JobTableName
-	}
-	if tableName == "" {
-		return fmt.Errorf("table name required")
+	if len(application.Config.NATSJetStreamURLs) == 0 {
+		return fmt.Errorf("NATS_URLS is required")
 	}
 
-	region := workerRegion
-	if region == "" {
-		region = application.Config.JobRegion
+	// Open Postgres connection for job store.
+	// NOTE: The "postgres" driver must be registered elsewhere (e.g. via pgx/v5/stdlib).
+	db, err := sql.Open("postgres", application.Config.JobDatabaseURL)
+	if err != nil {
+		return fmt.Errorf("open job database: %w", err)
 	}
+	defer db.Close()
+
+	store := jobs.NewPostgresStore(db)
+	if err := store.EnsureSchema(ctx); err != nil {
+		return fmt.Errorf("ensure job schema: %w", err)
+	}
+
+	// Connect to NATS and obtain JetStream context.
+	nc, err := nats.Connect(strings.Join(application.Config.NATSJetStreamURLs, ","))
+	if err != nil {
+		return fmt.Errorf("connect to NATS: %w", err)
+	}
+	defer nc.Close()
+
+	js, err := nc.JetStream()
+	if err != nil {
+		return fmt.Errorf("obtain JetStream context: %w", err)
+	}
+
+	queue := jobs.NewNATSQueue(js, jobs.NATSQueueConfig{
+		Stream:       "CEREBRO_JOBS",
+		Subject:      "cerebro.jobs",
+		Consumer:     "job-worker",
+		CreateStream: true,
+	})
 
 	visibilityTimeout := application.Config.JobVisibilityTimeout
 	if workerVisibilityTimeout != "" {
@@ -128,14 +142,6 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		concurrency = application.Config.JobWorkerConcurrency
 	}
 
-	awsCfg, err := jobs.LoadAWSConfig(ctx, region)
-	if err != nil {
-		return err
-	}
-
-	queue := jobs.NewSQSQueue(awsCfg, queueURL)
-	store := jobs.NewDynamoStore(awsCfg, tableName)
-
 	// Create security tools for job execution
 	tools := agents.NewSecurityTools(
 		application.Snowflake,
@@ -156,7 +162,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	// Create metrics collector
 	metrics := jobs.NewMetrics(application.Logger, jobs.MetricsConfig{
 		Namespace: "Cerebro/Worker",
-		WorkerID:  fmt.Sprintf("worker-%s", region),
+		WorkerID:  "job-worker",
 	})
 
 	// Create circuit breaker
@@ -177,13 +183,12 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		CircuitBreaker:    circuit,
 	}
 
-	idempotencyTable := application.Config.JobIdempotencyTableName
-	if idempotencyTable != "" {
-		workerOpts.Idempotency = jobs.NewDynamoIdempotencyStore(awsCfg, idempotencyTable)
-		application.Logger.Info("idempotency store enabled", "table", idempotencyTable)
-	} else {
-		application.Logger.Warn("no JOB_IDEMPOTENCY_TABLE_NAME configured; running without idempotency protection")
+	idempStore := jobs.NewPostgresIdempotencyStore(db)
+	if err := idempStore.EnsureSchema(ctx); err != nil {
+		return fmt.Errorf("ensure idempotency schema: %w", err)
 	}
+	workerOpts.Idempotency = idempStore
+	application.Logger.Info("idempotency store enabled (postgres)")
 
 	workerService := jobs.NewWorker(queue, store, registry, workerOpts)
 
@@ -198,7 +203,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		_ = healthServer.Shutdown(shutdownCtx)
 	}()
 
-	Info("Worker started (queue=%s table=%s concurrency=%d health=:%d)", queueURL, tableName, concurrency, workerHealthPort)
+	Info("Worker started (db=%s nats=%s concurrency=%d health=:%d)", application.Config.JobDatabaseURL, strings.Join(application.Config.NATSJetStreamURLs, ","), concurrency, workerHealthPort)
 	return workerService.Start(ctx)
 }
 

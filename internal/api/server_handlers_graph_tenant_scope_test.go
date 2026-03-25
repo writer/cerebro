@@ -12,7 +12,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/postgres"
 )
 
 func doWithTenantContext(t *testing.T, s *Server, method, path string, body any, tenantID string) *httptest.ResponseRecorder {
@@ -328,7 +328,7 @@ func TestCrossTenantReadOperationsEmitAuditAndMetrics(t *testing.T) {
 func TestRiskReportPersistsOnlyForGlobalRequests(t *testing.T) {
 	s := newTestServer(t)
 	seedGraphRiskFeedbackGraph(s.app.SecurityGraph)
-	s.app.RiskEngineStateRepo = &snowflake.RiskEngineStateRepository{}
+	s.app.RiskEngineStateRepo = &postgres.RiskEngineStateRepository{}
 
 	saveFailed := metrics.GraphStatePersistenceTotal.WithLabelValues("save_failed")
 	before := &dto.Metric{}

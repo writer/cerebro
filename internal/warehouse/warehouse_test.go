@@ -3,8 +3,6 @@ package warehouse
 import (
 	"context"
 	"testing"
-
-	"github.com/writer/cerebro/internal/snowflake"
 )
 
 func TestMemoryWarehouseRecordsCalls(t *testing.T) {
@@ -26,7 +24,7 @@ func TestMemoryWarehouseRecordsCalls(t *testing.T) {
 
 func TestMemoryWarehouseTracksCDCEvents(t *testing.T) {
 	store := &MemoryWarehouse{}
-	events := []snowflake.CDCEvent{{TableName: "AWS_IAM_USERS", ResourceID: "user-1"}}
+	events := []CDCEvent{{TableName: "AWS_IAM_USERS", ResourceID: "user-1"}}
 	if err := store.InsertCDCEvents(context.Background(), events); err != nil {
 		t.Fatalf("insert cdc events: %v", err)
 	}

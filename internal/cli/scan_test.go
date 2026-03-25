@@ -7,7 +7,7 @@ import (
 
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestResourceToTables_KnownMappings(t *testing.T) {
@@ -214,7 +214,7 @@ func TestToxicWatermark_AdvancesToDataCursor(t *testing.T) {
 
 func TestFilterCDCEvents(t *testing.T) {
 	now := time.Now().UTC()
-	events := []snowflake.CDCEvent{
+	events := []warehouse.CDCEvent{
 		{ResourceID: "r1", ChangeType: "update", EventTime: now.Add(-2 * time.Hour)},
 		{ResourceID: "r2", ChangeType: "create", EventTime: now.Add(-1 * time.Hour)},
 		{ResourceID: "r3", ChangeType: "delete", EventTime: now}, // removed -- skipped

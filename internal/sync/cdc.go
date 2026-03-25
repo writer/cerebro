@@ -3,7 +3,7 @@ package sync
 import (
 	"time"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const (
@@ -22,7 +22,7 @@ func buildRowLookup(rows []map[string]interface{}) map[string]map[string]interfa
 	return lookup
 }
 
-func buildCDCEventsFromChanges(table, provider, region, account string, changes *ChangeSet, rows map[string]map[string]interface{}, syncTime time.Time, hashFunc func(map[string]interface{}) string) []snowflake.CDCEvent {
+func buildCDCEventsFromChanges(table, provider, region, account string, changes *ChangeSet, rows map[string]map[string]interface{}, syncTime time.Time, hashFunc func(map[string]interface{}) string) []warehouse.CDCEvent {
 	if changes == nil {
 		return nil
 	}
@@ -32,7 +32,7 @@ func buildCDCEventsFromChanges(table, provider, region, account string, changes 
 		eventTime = time.Now().UTC()
 	}
 
-	events := make([]snowflake.CDCEvent, 0, len(changes.Added)+len(changes.Modified)+len(changes.Removed))
+	events := make([]warehouse.CDCEvent, 0, len(changes.Added)+len(changes.Modified)+len(changes.Removed))
 	appendEvent := func(changeType, id string, row map[string]interface{}) {
 		payload := interface{}(nil)
 		payloadHash := ""
@@ -52,8 +52,8 @@ func buildCDCEventsFromChanges(table, provider, region, account string, changes 
 			}
 		}
 
-		events = append(events, snowflake.CDCEvent{
-			EventID:     snowflake.BuildCDCEventID(table, id, changeType, payloadHash, eventTime),
+		events = append(events, warehouse.CDCEvent{
+			EventID:     warehouse.BuildCDCEventID(table, id, changeType, payloadHash, eventTime),
 			TableName:   table,
 			ResourceID:  id,
 			ChangeType:  changeType,

@@ -11,39 +11,40 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/writer/cerebro/internal/snowflake"
-	"github.com/writer/cerebro/internal/snowflake/tableops"
+	"github.com/writer/cerebro/internal/postgres"
+	"github.com/writer/cerebro/internal/postgres/tableops"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const providerInsertBatchSize = 200
 
-type providerSnowflakeClient interface {
+type providerDBClient interface {
 	Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	Query(ctx context.Context, query string, args ...interface{}) (*snowflake.QueryResult, error)
+	Query(ctx context.Context, query string, args ...interface{}) (*warehouse.QueryResult, error)
 }
 
-func (b *BaseProvider) SetSnowflakeClient(client *snowflake.Client) {
+func (b *BaseProvider) SetPostgresClient(client *postgres.PostgresClient) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.snowflake = client
+	b.pgClient = client
 }
 
-func (b *BaseProvider) getSnowflakeClient() *snowflake.Client {
+func (b *BaseProvider) getPostgresClient() *postgres.PostgresClient {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return b.snowflake
+	return b.pgClient
 }
 
 func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows []map[string]interface{}) (*TableResult, error) {
 	result := &TableResult{Name: schema.Name, Rows: int64(len(rows))}
-	sf := b.getSnowflakeClient()
-	if sf == nil {
+	pg := b.getPostgresClient()
+	if pg == nil {
 		result.Inserted = result.Rows
 		return result, nil
 	}
 
 	columns := schemaColumnNames(schema.Columns)
-	if err := ensureProviderTable(ctx, sf, schema.Name, columns); err != nil {
+	if err := ensureProviderTable(ctx, pg, schema.Name, columns); err != nil {
 		return result, err
 	}
 
@@ -52,15 +53,15 @@ func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows [
 		result.Rows = int64(len(prepared))
 	}
 
-	existingIDs, err := listProviderExistingIDs(ctx, sf, schema.Name)
+	existingIDs, err := listProviderExistingIDs(ctx, pg, schema.Name)
 	if err != nil {
 		return result, err
 	}
 
 	newIDs := providerRowIDSet(prepared)
 
-	// Atomic upsert via MERGE - no delete-before-insert window.
-	if err := mergeProviderRows(ctx, sf, schema.Name, prepared); err != nil {
+	// Atomic upsert via INSERT ON CONFLICT - no delete-before-insert window.
+	if err := mergeProviderRows(ctx, pg, schema.Name, prepared); err != nil {
 		return result, err
 	}
 
@@ -70,7 +71,7 @@ func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows [
 			removedIDs[id] = struct{}{}
 		}
 	}
-	if err := deleteProviderRowsByID(ctx, sf, schema.Name, removedIDs); err != nil {
+	if err := deleteProviderRowsByID(ctx, pg, schema.Name, removedIDs); err != nil {
 		return result, err
 	}
 
@@ -88,8 +89,8 @@ func schemaColumnNames(columns []ColumnSchema) []string {
 	return names
 }
 
-func ensureProviderTable(ctx context.Context, sf providerSnowflakeClient, table string, columns []string) error {
-	err := tableops.EnsureVariantTable(ctx, sf, table, columns, tableops.EnsureVariantTableOptions{
+func ensureProviderTable(ctx context.Context, pg providerDBClient, table string, columns []string) error {
+	err := tableops.EnsureTable(ctx, pg, table, columns, tableops.EnsureVariantTableOptions{
 		AddMissingColumns: true,
 	})
 	if err == nil {
@@ -101,13 +102,13 @@ func ensureProviderTable(ctx context.Context, sf providerSnowflakeClient, table 
 	return err
 }
 
-func listProviderExistingIDs(ctx context.Context, sf providerSnowflakeClient, table string) (map[string]struct{}, error) {
-	if err := snowflake.ValidateTableName(table); err != nil {
+func listProviderExistingIDs(ctx context.Context, pg providerDBClient, table string) (map[string]struct{}, error) {
+	if err := postgres.ValidateTableName(table); err != nil {
 		return nil, fmt.Errorf("invalid table name %s: %w", table, err)
 	}
 
-	query := fmt.Sprintf("SELECT _CQ_ID FROM %s", table)
-	result, err := sf.Query(ctx, query)
+	query := fmt.Sprintf("SELECT _cq_id FROM %s", table)
+	result, err := pg.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("list existing provider rows: %w", err)
 	}
@@ -137,11 +138,11 @@ func providerRowIDSet(rows []map[string]interface{}) map[string]struct{} {
 	return ids
 }
 
-func deleteProviderRowsByID(ctx context.Context, sf providerSnowflakeClient, table string, ids map[string]struct{}) error {
+func deleteProviderRowsByID(ctx context.Context, pg providerDBClient, table string, ids map[string]struct{}) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	if err := snowflake.ValidateTableName(table); err != nil {
+	if err := postgres.ValidateTableName(table); err != nil {
 		return fmt.Errorf("invalid table name %s: %w", table, err)
 	}
 
@@ -164,13 +165,15 @@ func deleteProviderRowsByID(ctx context.Context, sf providerSnowflakeClient, tab
 		}
 
 		batch := keys[start:end]
-		placeholders := strings.TrimRight(strings.Repeat("?,", len(batch)), ",")
+		// Use $N placeholders for Postgres
+		placeholders := make([]string, len(batch))
 		args := make([]interface{}, 0, len(batch))
-		for _, id := range batch {
+		for i, id := range batch {
+			placeholders[i] = fmt.Sprintf("$%d", i+1)
 			args = append(args, id)
 		}
-		query := fmt.Sprintf("DELETE FROM %s WHERE _CQ_ID IN (%s)", table, placeholders)
-		if _, err := sf.Exec(ctx, query, args...); err != nil {
+		query := fmt.Sprintf("DELETE FROM %s WHERE _cq_id IN (%s)", table, strings.Join(placeholders, ","))
+		if _, err := pg.Exec(ctx, query, args...); err != nil {
 			return fmt.Errorf("delete provider rows by id: %w", err)
 		}
 	}
@@ -296,8 +299,8 @@ func formatProviderIDValue(value interface{}) string {
 	}
 }
 
-func mergeProviderRows(ctx context.Context, sf providerSnowflakeClient, table string, rows []map[string]interface{}) error {
-	return tableops.MergeVariantRowsBatch(ctx, sf, table, rows, nil, providerInsertBatchSize)
+func mergeProviderRows(ctx context.Context, pg providerDBClient, table string, rows []map[string]interface{}) error {
+	return tableops.MergeRowsBatch(ctx, pg, table, rows, nil, providerInsertBatchSize)
 }
 
 func hashProviderRow(row map[string]interface{}) string {

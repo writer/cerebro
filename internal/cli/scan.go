@@ -17,8 +17,8 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 var scanCmd = &cobra.Command{
@@ -967,7 +967,7 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 		batchSize = scanner.DefaultIncrementalConfig().BatchSize
 	}
 
-	filter := snowflake.AssetFilter{Limit: batchSize, Columns: columns}
+	filter := warehouse.AssetFilter{Limit: batchSize, Columns: columns}
 	useCDC := false
 	var cdcCursor time.Time
 	var cdcIDs []string
@@ -977,7 +977,7 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 			filter.Since = wm.LastScanTime
 			filter.SinceID = wm.LastScanID
 
-			cdcEvents, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]snowflake.CDCEvent, error) {
+			cdcEvents, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]warehouse.CDCEvent, error) {
 				return application.Snowflake.GetCDCEvents(tableCtx, table, wm.LastScanTime, batchSize)
 			})
 			profile.RetryAttempts += retryCount(attempts)

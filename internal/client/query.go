@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 type QueryRequest struct {
@@ -13,8 +13,8 @@ type QueryRequest struct {
 	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
 }
 
-func (c *Client) Query(ctx context.Context, req QueryRequest) (*snowflake.QueryResult, error) {
-	var resp snowflake.QueryResult
+func (c *Client) Query(ctx context.Context, req QueryRequest) (*warehouse.QueryResult, error) {
+	var resp warehouse.QueryResult
 	if err := c.doJSON(ctx, http.MethodPost, "/api/v1/query", nil, req, &resp); err != nil {
 		return nil, err
 	}

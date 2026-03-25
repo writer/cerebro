@@ -4,13 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"sync"
-
-	"github.com/writer/cerebro/internal/snowflake"
 )
 
 // QueryWarehouse is the narrow query surface used by graph and scanner code.
 type QueryWarehouse interface {
-	Query(ctx context.Context, query string, args ...any) (*snowflake.QueryResult, error)
+	Query(ctx context.Context, query string, args ...any) (*QueryResult, error)
 }
 
 // ExecWarehouse is the mutation surface used by sync and warehouse table helpers.
@@ -29,7 +27,7 @@ type SchemaWarehouse interface {
 // AssetWarehouse exposes higher-level asset retrieval helpers still used by API handlers.
 type AssetWarehouse interface {
 	ListTables(ctx context.Context) ([]string, error)
-	GetAssets(ctx context.Context, table string, filter snowflake.AssetFilter) ([]map[string]interface{}, error)
+	GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error)
 	GetAssetByID(ctx context.Context, table, id string) (map[string]interface{}, error)
 }
 
@@ -41,7 +39,7 @@ type DiscoveryWarehouse interface {
 
 // CDCWarehouse is the write surface used to persist CDC events during sync.
 type CDCWarehouse interface {
-	InsertCDCEvents(ctx context.Context, events []snowflake.CDCEvent) error
+	InsertCDCEvents(ctx context.Context, events []CDCEvent) error
 }
 
 // SyncWarehouse is the concrete sync/scanner dependency slice.
@@ -59,8 +57,6 @@ type DataWarehouse interface {
 	DiscoveryWarehouse
 }
 
-var _ DataWarehouse = (*snowflake.Client)(nil)
-
 // RecordedCall captures a query or exec invocation for tests.
 type RecordedCall struct {
 	Statement string
@@ -69,13 +65,13 @@ type RecordedCall struct {
 
 // MemoryWarehouse is a test double that satisfies the warehouse interfaces without an external database.
 type MemoryWarehouse struct {
-	QueryFunc           func(ctx context.Context, query string, args ...any) (*snowflake.QueryResult, error)
+	QueryFunc           func(ctx context.Context, query string, args ...any) (*QueryResult, error)
 	ExecFunc            func(ctx context.Context, query string, args ...any) (sql.Result, error)
-	InsertCDCEventsFunc func(ctx context.Context, events []snowflake.CDCEvent) error
+	InsertCDCEventsFunc func(ctx context.Context, events []CDCEvent) error
 	ListTablesFunc      func(ctx context.Context) ([]string, error)
 	ListAvailableFunc   func(ctx context.Context) ([]string, error)
 	DescribeColumnsFunc func(ctx context.Context, table string) ([]string, error)
-	GetAssetsFunc       func(ctx context.Context, table string, filter snowflake.AssetFilter) ([]map[string]interface{}, error)
+	GetAssetsFunc       func(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error)
 	GetAssetByIDFunc    func(ctx context.Context, table, id string) (map[string]interface{}, error)
 	DBFunc              func() *sql.DB
 	DatabaseValue       string
@@ -85,15 +81,15 @@ type MemoryWarehouse struct {
 	mu         sync.Mutex
 	Queries    []RecordedCall
 	Execs      []RecordedCall
-	CDCBatches [][]snowflake.CDCEvent
+	CDCBatches [][]CDCEvent
 }
 
-func (m *MemoryWarehouse) Query(ctx context.Context, query string, args ...any) (*snowflake.QueryResult, error) {
+func (m *MemoryWarehouse) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
 	m.recordQuery(query, args)
 	if m.QueryFunc != nil {
 		return m.QueryFunc(ctx, query, args...)
 	}
-	return &snowflake.QueryResult{}, nil
+	return &QueryResult{}, nil
 }
 
 func (m *MemoryWarehouse) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
@@ -104,9 +100,9 @@ func (m *MemoryWarehouse) Exec(ctx context.Context, query string, args ...any) (
 	return memoryResult(0), nil
 }
 
-func (m *MemoryWarehouse) InsertCDCEvents(ctx context.Context, events []snowflake.CDCEvent) error {
+func (m *MemoryWarehouse) InsertCDCEvents(ctx context.Context, events []CDCEvent) error {
 	m.mu.Lock()
-	m.CDCBatches = append(m.CDCBatches, append([]snowflake.CDCEvent(nil), events...))
+	m.CDCBatches = append(m.CDCBatches, append([]CDCEvent(nil), events...))
 	m.mu.Unlock()
 	if m.InsertCDCEventsFunc != nil {
 		return m.InsertCDCEventsFunc(ctx, events)
@@ -135,7 +131,7 @@ func (m *MemoryWarehouse) DescribeColumns(ctx context.Context, table string) ([]
 	return []string{}, nil
 }
 
-func (m *MemoryWarehouse) GetAssets(ctx context.Context, table string, filter snowflake.AssetFilter) ([]map[string]interface{}, error) {
+func (m *MemoryWarehouse) GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error) {
 	if _, err := normalizeAssetTableName(table); err != nil {
 		return nil, err
 	}

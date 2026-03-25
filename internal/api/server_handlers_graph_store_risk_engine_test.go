@@ -10,7 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/graph"
 	risk "github.com/writer/cerebro/internal/graph/risk"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/postgres"
 )
 
 func buildGraphStoreRiskEngineStateTestGraph() *graph.Graph {
@@ -340,7 +340,7 @@ func TestGraphRiskEngineDoesNotRestoreStaleInMemoryStateAcrossChangedStoreSnapsh
 		snapshots:  []*graph.Snapshot{firstSnapshot, secondSnapshot},
 	}
 	s := newStoreBackedGraphServer(t, store)
-	s.app.RiskEngineStateRepo = &snowflake.RiskEngineStateRepository{}
+	s.app.RiskEngineStateRepo = &postgres.RiskEngineStateRepository{}
 
 	first := s.graphRiskEngine(context.Background())
 	if first == nil {

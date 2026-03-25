@@ -14,7 +14,9 @@ import (
 
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
@@ -207,7 +209,7 @@ func (s *Server) listAssets(w http.ResponseWriter, r *http.Request) {
 	table := chi.URLParam(r, "table")
 	limit := queryPositiveInt(r, "limit", 100)
 
-	assets, err := s.app.Warehouse.GetAssets(r.Context(), table, snowflake.AssetFilter{
+	assets, err := s.app.Warehouse.GetAssets(r.Context(), table, warehouse.AssetFilter{
 		Limit:   limit,
 		Account: r.URL.Query().Get("account"),
 		Region:  r.URL.Query().Get("region"),
@@ -474,7 +476,7 @@ func (s *Server) persistPolicyHistory(ctx context.Context, policyID string) erro
 			pinnedVersion = &pinned
 		}
 
-		if err := s.app.PolicyHistoryRepo.Upsert(ctx, &snowflake.PolicyHistoryRecord{
+		if err := s.app.PolicyHistoryRepo.Upsert(ctx, &postgres.PolicyHistoryRecord{
 			PolicyID:      event.PolicyID,
 			Version:       event.Version,
 			Content:       content,
@@ -524,7 +526,7 @@ func (s *Server) loadPolicyDryRunAssets(ctx context.Context, current, candidate 
 
 	assets := make([]map[string]interface{}, 0, limit*len(tables))
 	for table := range tables {
-		rows, err := s.app.Warehouse.GetAssets(ctx, table, snowflake.AssetFilter{Limit: limit})
+		rows, err := s.app.Warehouse.GetAssets(ctx, table, warehouse.AssetFilter{Limit: limit})
 		if err != nil {
 			s.app.Logger.Warn("dry-run asset load failed", "table", table, "error", err)
 			continue
@@ -660,7 +662,7 @@ func (s *Server) logPolicyEvaluationDecision(ctx context.Context, r *http.Reques
 	}
 	resourceID := strings.TrimSpace(stringValue(req.Resource["id"]))
 
-	entry := &snowflake.AuditEntry{
+	entry := &postgres.AuditEntry{
 		Action:       "policy.evaluate",
 		ActorID:      actorID,
 		ActorType:    "user",

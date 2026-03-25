@@ -9,10 +9,10 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/scheduler"
-	"github.com/writer/cerebro/internal/snowflake"
 )
 
 type noopRetentionCleaner struct{}
@@ -38,9 +38,9 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 	schedulerSvc := &scheduler.Scheduler{}
 	rbac := auth.NewRBAC()
 	securityGraph := graph.New()
-	findingsRepo := &snowflake.FindingRepository{}
-	riskEngineStateRepo := &snowflake.RiskEngineStateRepository{}
-	snowflakeStore := &findings.SnowflakeStore{}
+	findingsRepo := &postgres.FindingRepository{}
+	riskEngineStateRepo := &postgres.RiskEngineStateRepository{}
+	pgStore := &findings.PostgresStore{}
 	retention := noopRetentionCleaner{}
 
 	application := &App{
@@ -53,7 +53,7 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 		SecurityGraph:       securityGraph,
 		FindingsRepo:        findingsRepo,
 		RiskEngineStateRepo: riskEngineStateRepo,
-		SnowflakeFindings:   snowflakeStore,
+		PostgresFindings:    pgStore,
 		RetentionRepo:       retention,
 	}
 
@@ -91,8 +91,8 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 	if storage.RiskEngineStateRepo != riskEngineStateRepo {
 		t.Fatal("storage services should expose risk engine state repository")
 	}
-	if storage.SnowflakeFindings != snowflakeStore {
-		t.Fatal("storage services should expose Snowflake findings store")
+	if storage.PostgresFindings != pgStore {
+		t.Fatal("storage services should expose Postgres findings store")
 	}
 	if storage.RetentionRepo != retention {
 		t.Fatal("storage services should expose retention cleaner")

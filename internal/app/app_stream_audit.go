@@ -11,7 +11,7 @@ import (
 
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/graph/builders"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 type auditMutationRecord struct {
@@ -70,10 +70,10 @@ func (a *App) handleAuditMutationCloudEvent(ctx context.Context, evt events.Clou
 		return nil
 	}
 
-	cdcEvents := make([]snowflake.CDCEvent, 0, len(mutations))
+	cdcEvents := make([]warehouse.CDCEvent, 0, len(mutations))
 	for _, mutation := range mutations {
 		payloadHash := hashAuditMutationPayload(mutation.Payload)
-		cdcEvents = append(cdcEvents, snowflake.CDCEvent{
+		cdcEvents = append(cdcEvents, warehouse.CDCEvent{
 			EventID:     mutation.EventID,
 			TableName:   mutation.TableName,
 			ResourceID:  mutation.ResourceID,

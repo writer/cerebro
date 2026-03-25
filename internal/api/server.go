@@ -21,8 +21,8 @@ import (
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/metrics"
+	"github.com/writer/cerebro/internal/postgres"
 	cerebroruntime "github.com/writer/cerebro/internal/runtime"
-	"github.com/writer/cerebro/internal/snowflake"
 )
 
 // Server is the fully wired API server
@@ -77,7 +77,7 @@ type Server struct {
 }
 
 type auditLogWriter interface {
-	Log(ctx context.Context, entry *snowflake.AuditEntry) error
+	Log(ctx context.Context, entry *postgres.AuditEntry) error
 }
 
 var runtimeNumGoroutine = goruntime.NumGoroutine
@@ -628,28 +628,28 @@ func (s *Server) adminHealth(w http.ResponseWriter, r *http.Request) {
 		"timestamp": time.Now().UTC(),
 	}
 
-	// Snowflake status
-	if s.app.Snowflake != nil {
+	// Postgres status
+	if s.app.PostgresClient != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), s.healthCheckTimeout())
 		start := time.Now()
-		err := s.app.Snowflake.Ping(ctx)
+		err := s.app.PostgresClient.Ping(ctx)
 		cancel()
 		latency := time.Since(start).Milliseconds()
 
 		if err != nil {
-			health["snowflake"] = map[string]interface{}{
+			health["postgres"] = map[string]interface{}{
 				"status":     "unhealthy",
 				"error":      err.Error(),
 				"latency_ms": latency,
 			}
 		} else {
-			health["snowflake"] = map[string]interface{}{
+			health["postgres"] = map[string]interface{}{
 				"status":     "healthy",
 				"latency_ms": latency,
 			}
 		}
 	} else {
-		health["snowflake"] = map[string]interface{}{"status": "not_configured"}
+		health["postgres"] = map[string]interface{}{"status": "not_configured"}
 	}
 
 	// Findings stats

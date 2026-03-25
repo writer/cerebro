@@ -16,12 +16,12 @@ import (
 	"github.com/writer/cerebro/internal/lineage"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/remediation"
 	"github.com/writer/cerebro/internal/runtime"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/scheduler"
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/threatintel"
 	"github.com/writer/cerebro/internal/ticketing"
 	"github.com/writer/cerebro/internal/warehouse"
@@ -30,14 +30,14 @@ import (
 
 // CoreServices groups policy evaluation and scanning primitives.
 type CoreServices struct {
-	Snowflake     *snowflake.Client
-	Warehouse     warehouse.DataWarehouse
-	Policy        *policy.Engine
-	Findings      findings.FindingStore
-	Scanner       *scanner.Scanner
-	DSPM          *dspm.Scanner
-	Cache         *cache.PolicyCache
-	ScanWatermark *scanner.WatermarkStore
+	PostgresClient *postgres.PostgresClient
+	Warehouse      warehouse.DataWarehouse
+	Policy         *policy.Engine
+	Findings       findings.FindingStore
+	Scanner        *scanner.Scanner
+	DSPM           *dspm.Scanner
+	Cache          *cache.PolicyCache
+	ScanWatermark  *scanner.WatermarkStore
 }
 
 // FeatureServices groups optional product integrations and orchestrators.
@@ -74,25 +74,25 @@ type SecurityServices struct {
 
 // StorageServices groups data repositories and durable stores.
 type StorageServices struct {
-	FindingsRepo        *snowflake.FindingRepository
-	TicketsRepo         *snowflake.TicketRepository
-	AuditRepo           *snowflake.AuditRepository
-	PolicyHistoryRepo   *snowflake.PolicyHistoryRepository
-	RiskEngineStateRepo *snowflake.RiskEngineStateRepository
+	FindingsRepo        *postgres.FindingRepository
+	TicketsRepo         *postgres.TicketRepository
+	AuditRepo           *postgres.AuditRepository
+	PolicyHistoryRepo   *postgres.PolicyHistoryRepository
+	RiskEngineStateRepo *postgres.RiskEngineStateRepository
 	RetentionRepo       retentionCleaner
-	SnowflakeFindings   *findings.SnowflakeStore
+	PostgresFindings    *findings.PostgresStore
 }
 
 func (a *App) CoreServices() CoreServices {
 	return CoreServices{
-		Snowflake:     a.Snowflake,
-		Warehouse:     a.Warehouse,
-		Policy:        a.Policy,
-		Findings:      a.Findings,
-		Scanner:       a.Scanner,
-		DSPM:          a.DSPM,
-		Cache:         a.Cache,
-		ScanWatermark: a.ScanWatermarks,
+		PostgresClient: a.PostgresClient,
+		Warehouse:      a.Warehouse,
+		Policy:         a.Policy,
+		Findings:       a.Findings,
+		Scanner:        a.Scanner,
+		DSPM:           a.DSPM,
+		Cache:          a.Cache,
+		ScanWatermark:  a.ScanWatermarks,
 	}
 }
 
@@ -138,6 +138,6 @@ func (a *App) StorageServices() StorageServices {
 		PolicyHistoryRepo:   a.PolicyHistoryRepo,
 		RiskEngineStateRepo: a.RiskEngineStateRepo,
 		RetentionRepo:       a.RetentionRepo,
-		SnowflakeFindings:   a.SnowflakeFindings,
+		PostgresFindings:    a.PostgresFindings,
 	}
 }

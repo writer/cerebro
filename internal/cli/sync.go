@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 var syncCmd = &cobra.Command{
@@ -1054,7 +1055,7 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 		}
 
 		columns := application.ScanColumnsForTable(tableCtx, table)
-		filter := snowflake.AssetFilter{Limit: batchSize, Columns: columns}
+		filter := warehouse.AssetFilter{Limit: batchSize, Columns: columns}
 		var cursorTime time.Time
 		var cursorID string
 		useCursorPaging := false

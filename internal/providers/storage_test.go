@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 type fakeSnowflakeResult struct{}
@@ -23,7 +23,7 @@ func (fakeSnowflakeResult) RowsAffected() (int64, error) { return 0, nil }
 type fakeSnowflakeClient struct {
 	execErr     error
 	queryErr    error
-	queryReply  *snowflake.QueryResult
+	queryReply  *warehouse.QueryResult
 	execQueries []string
 }
 
@@ -35,14 +35,14 @@ func (f *fakeSnowflakeClient) Exec(ctx context.Context, query string, args ...in
 	return fakeSnowflakeResult{}, nil
 }
 
-func (f *fakeSnowflakeClient) Query(ctx context.Context, query string, args ...interface{}) (*snowflake.QueryResult, error) {
+func (f *fakeSnowflakeClient) Query(ctx context.Context, query string, args ...interface{}) (*warehouse.QueryResult, error) {
 	if f.queryErr != nil {
 		return nil, f.queryErr
 	}
 	if f.queryReply != nil {
 		return f.queryReply, nil
 	}
-	return &snowflake.QueryResult{Rows: []map[string]interface{}{}}, nil
+	return &warehouse.QueryResult{Rows: []map[string]interface{}{}}, nil
 }
 
 func TestEnsureProviderTable_PropagatesColumnError(t *testing.T) {
@@ -94,7 +94,7 @@ func TestNoUppercaseQueryRowKeyAccessInProviderStorage(t *testing.T) {
 }
 
 func TestEnsureProviderTable_UsesIdempotentAlter(t *testing.T) {
-	client := &fakeSnowflakeClient{queryReply: &snowflake.QueryResult{Rows: []map[string]interface{}{
+	client := &fakeSnowflakeClient{queryReply: &warehouse.QueryResult{Rows: []map[string]interface{}{
 		{"column_name": "_CQ_ID"},
 	}}}
 
@@ -104,7 +104,7 @@ func TestEnsureProviderTable_UsesIdempotentAlter(t *testing.T) {
 
 	foundIDAlter := false
 	for _, query := range client.execQueries {
-		if strings.Contains(query, "ALTER TABLE okta_users ADD COLUMN IF NOT EXISTS ID VARIANT") {
+		if strings.Contains(query, "ADD COLUMN IF NOT EXISTS id JSONB") || strings.Contains(query, "ADD COLUMN IF NOT EXISTS ID VARIANT") {
 			foundIDAlter = true
 			break
 		}
@@ -115,7 +115,7 @@ func TestEnsureProviderTable_UsesIdempotentAlter(t *testing.T) {
 }
 
 func TestEnsureProviderTable_SkipsExistingColumnsCaseInsensitive(t *testing.T) {
-	client := &fakeSnowflakeClient{queryReply: &snowflake.QueryResult{Rows: []map[string]interface{}{
+	client := &fakeSnowflakeClient{queryReply: &warehouse.QueryResult{Rows: []map[string]interface{}{
 		{"COLUMN_NAME": "ID"},
 		{"column_name": "_CQ_HASH"},
 	}}}

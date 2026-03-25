@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -139,14 +138,14 @@ func TestIncrementalStartTime_ForceFullBackfillBypassesWatermarkLookup(t *testin
 func TestQueryLatestTableSyncTime_UsesWarehouseInterface(t *testing.T) {
 	expected := time.Date(2026, 3, 10, 12, 34, 56, 0, time.UTC)
 	store := &warehouse.MemoryWarehouse{
-		QueryFunc: func(_ context.Context, query string, args ...any) (*snowflake.QueryResult, error) {
+		QueryFunc: func(_ context.Context, query string, args ...any) (*warehouse.QueryResult, error) {
 			if !strings.Contains(query, "WHERE REGION = ?") {
 				t.Fatalf("expected regional filter in query, got %q", query)
 			}
 			if len(args) != 1 || args[0] != "us-east-1" {
 				t.Fatalf("expected region arg us-east-1, got %#v", args)
 			}
-			return &snowflake.QueryResult{
+			return &warehouse.QueryResult{
 				Rows: []map[string]any{{"SYNC_TIME": expected.Format(time.RFC3339Nano)}},
 			}, nil
 		},

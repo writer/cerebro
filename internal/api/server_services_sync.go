@@ -9,8 +9,8 @@ import (
 
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/graph"
-	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 var errSyncSnowflakeUnavailable = errors.New("snowflake not configured")
@@ -66,7 +66,7 @@ func newSyncHandlerService(deps *serverDependencies) syncHandlerService {
 }
 
 func (s serverSyncHandlerService) BackfillRelationshipIDs(ctx context.Context, batchSize int) (syncBackfillResult, error) {
-	client, err := s.snowflake()
+	client, err := s.warehouse()
 	if err != nil {
 		return syncBackfillResult{}, err
 	}
@@ -84,7 +84,7 @@ func (s serverSyncHandlerService) BackfillRelationshipIDs(ctx context.Context, b
 }
 
 func (s serverSyncHandlerService) SyncAzure(ctx context.Context, req azureSyncRequest) (syncRunResult, error) {
-	client, err := s.snowflake()
+	client, err := s.warehouse()
 	if err != nil {
 		return syncRunResult{}, err
 	}
@@ -99,7 +99,7 @@ func (s serverSyncHandlerService) SyncAzure(ctx context.Context, req azureSyncRe
 }
 
 func (s serverSyncHandlerService) SyncK8s(ctx context.Context, req k8sSyncRequest) (syncRunResult, error) {
-	client, err := s.snowflake()
+	client, err := s.warehouse()
 	if err != nil {
 		return syncRunResult{}, err
 	}
@@ -114,7 +114,7 @@ func (s serverSyncHandlerService) SyncK8s(ctx context.Context, req k8sSyncReques
 }
 
 func (s serverSyncHandlerService) SyncAWS(ctx context.Context, req awsSyncRequest) (awsSyncRunResult, error) {
-	client, err := s.snowflake()
+	client, err := s.warehouse()
 	if err != nil {
 		return awsSyncRunResult{}, err
 	}
@@ -134,7 +134,7 @@ func (s serverSyncHandlerService) SyncAWS(ctx context.Context, req awsSyncReques
 }
 
 func (s serverSyncHandlerService) SyncAWSOrg(ctx context.Context, req awsOrgSyncRequest) (awsOrgSyncRunResult, error) {
-	client, err := s.snowflake()
+	client, err := s.warehouse()
 	if err != nil {
 		return awsOrgSyncRunResult{}, err
 	}
@@ -153,7 +153,7 @@ func (s serverSyncHandlerService) SyncAWSOrg(ctx context.Context, req awsOrgSync
 }
 
 func (s serverSyncHandlerService) SyncGCP(ctx context.Context, req gcpSyncRequest) (gcpSyncRunResult, error) {
-	client, err := s.snowflake()
+	client, err := s.warehouse()
 	if err != nil {
 		return gcpSyncRunResult{}, err
 	}
@@ -173,7 +173,7 @@ func (s serverSyncHandlerService) SyncGCP(ctx context.Context, req gcpSyncReques
 }
 
 func (s serverSyncHandlerService) SyncGCPAsset(ctx context.Context, req gcpAssetSyncRequest) (syncRunResult, error) {
-	client, err := s.snowflake()
+	client, err := s.warehouse()
 	if err != nil {
 		return syncRunResult{}, err
 	}
@@ -187,11 +187,11 @@ func (s serverSyncHandlerService) SyncGCPAsset(ctx context.Context, req gcpAsset
 	}, nil
 }
 
-func (s serverSyncHandlerService) snowflake() (*snowflake.Client, error) {
-	if s.deps == nil || s.deps.Snowflake == nil {
+func (s serverSyncHandlerService) warehouse() (warehouse.DataWarehouse, error) {
+	if s.deps == nil || s.deps.Warehouse == nil {
 		return nil, errSyncSnowflakeUnavailable
 	}
-	return s.deps.Snowflake, nil
+	return s.deps.Warehouse, nil
 }
 
 func (s serverSyncHandlerService) logger() *slog.Logger {

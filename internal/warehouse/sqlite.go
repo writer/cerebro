@@ -14,8 +14,6 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
-
-	"github.com/writer/cerebro/internal/snowflake"
 )
 
 var sqliteIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -102,13 +100,13 @@ func (w *SQLiteWarehouse) Close() error {
 	return w.db.Close()
 }
 
-func (w *SQLiteWarehouse) Query(ctx context.Context, query string, args ...any) (*snowflake.QueryResult, error) {
+func (w *SQLiteWarehouse) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
 	if w == nil || w.db == nil {
 		return nil, fmt.Errorf("sqlite warehouse is not initialized")
 	}
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return &snowflake.QueryResult{}, nil
+		return &QueryResult{}, nil
 	}
 	if isInformationSchemaTablesQuery(query) {
 		return w.queryInformationSchemaTables(ctx)
@@ -197,7 +195,7 @@ func (w *SQLiteWarehouse) DescribeColumns(ctx context.Context, table string) ([]
 	return columns, rows.Err()
 }
 
-func (w *SQLiteWarehouse) GetAssets(ctx context.Context, table string, filter snowflake.AssetFilter) ([]map[string]interface{}, error) {
+func (w *SQLiteWarehouse) GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error) {
 	if w == nil {
 		return nil, fmt.Errorf("sqlite warehouse is not initialized")
 	}
@@ -271,7 +269,7 @@ func (w *SQLiteWarehouse) GetAssetByID(ctx context.Context, table, id string) (m
 	return result.Rows[0], nil
 }
 
-func (w *SQLiteWarehouse) InsertCDCEvents(ctx context.Context, events []snowflake.CDCEvent) error {
+func (w *SQLiteWarehouse) InsertCDCEvents(ctx context.Context, events []CDCEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -301,7 +299,7 @@ func (w *SQLiteWarehouse) InsertCDCEvents(ctx context.Context, events []snowflak
 		}
 		eventID := strings.TrimSpace(event.EventID)
 		if eventID == "" {
-			eventID = snowflake.BuildCDCEventID(event.TableName, event.ResourceID, event.ChangeType, event.PayloadHash, eventTime)
+			eventID = BuildCDCEventID(event.TableName, event.ResourceID, event.ChangeType, event.PayloadHash, eventTime)
 		}
 		payload := []byte("{}")
 		if event.Payload != nil {
@@ -359,7 +357,7 @@ func (w *SQLiteWarehouse) ensureCDCEventsTable(ctx context.Context) error {
 	return nil
 }
 
-func (w *SQLiteWarehouse) queryInformationSchemaTables(ctx context.Context) (*snowflake.QueryResult, error) {
+func (w *SQLiteWarehouse) queryInformationSchemaTables(ctx context.Context) (*QueryResult, error) {
 	tables, err := w.listUserTables(ctx)
 	if err != nil {
 		return nil, err
@@ -368,7 +366,7 @@ func (w *SQLiteWarehouse) queryInformationSchemaTables(ctx context.Context) (*sn
 	for _, table := range tables {
 		rows = append(rows, map[string]interface{}{"table_name": table})
 	}
-	return &snowflake.QueryResult{
+	return &QueryResult{
 		Columns: []string{"table_name"},
 		Rows:    rows,
 		Count:   len(rows),
@@ -410,7 +408,7 @@ func isInformationSchemaTablesQuery(query string) bool {
 	return strings.Contains(normalized, "from information_schema.tables")
 }
 
-func scanRows(rows *sql.Rows) (*snowflake.QueryResult, error) {
+func scanRows(rows *sql.Rows) (*QueryResult, error) {
 	columns, err := rows.Columns()
 	if err != nil {
 		return nil, err
@@ -425,7 +423,7 @@ func scanRows(rows *sql.Rows) (*snowflake.QueryResult, error) {
 		valuePtrs[i] = &values[i]
 	}
 
-	result := &snowflake.QueryResult{
+	result := &QueryResult{
 		Columns: columns,
 		Rows:    make([]map[string]interface{}, 0, 32),
 	}

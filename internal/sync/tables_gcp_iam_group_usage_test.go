@@ -11,7 +11,6 @@ import (
 
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
 	"cloud.google.com/go/iam/apiv1/iampb"
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -60,14 +59,14 @@ func TestGCPSyncTableSkipsSentinelWithoutDelete(t *testing.T) {
 
 func TestGCPSyncTablePartialFetchDoesNotDeleteScopedRows(t *testing.T) {
 	store := &warehouse.MemoryWarehouse{
-		QueryFunc: func(_ context.Context, query string, _ ...any) (*snowflake.QueryResult, error) {
+		QueryFunc: func(_ context.Context, query string, _ ...any) (*warehouse.QueryResult, error) {
 			if strings.Contains(strings.ToLower(query), "select _cq_id, _cq_hash from "+gcpIAMGroupPermissionUsageTable) {
-				return &snowflake.QueryResult{Rows: []map[string]any{{
+				return &warehouse.QueryResult{Rows: []map[string]any{{
 					"_cq_id":   "project-123|ops@example.com|storage.buckets.get",
 					"_cq_hash": "stale-hash",
 				}}}, nil
 			}
-			return &snowflake.QueryResult{}, nil
+			return &warehouse.QueryResult{}, nil
 		},
 	}
 	e := &GCPSyncEngine{
@@ -114,7 +113,7 @@ func TestGCPSyncTablePartialFetchDoesNotDeleteScopedRows(t *testing.T) {
 
 func TestFetchWorkspaceGroupMembersExpandsNestedGroups(t *testing.T) {
 	store := &warehouse.MemoryWarehouse{
-		QueryFunc: func(_ context.Context, _ string, args ...any) (*snowflake.QueryResult, error) {
+		QueryFunc: func(_ context.Context, _ string, args ...any) (*warehouse.QueryResult, error) {
 			rows := make([]map[string]any, 0)
 			for _, arg := range args {
 				group, _ := arg.(string)
@@ -130,7 +129,7 @@ func TestFetchWorkspaceGroupMembersExpandsNestedGroups(t *testing.T) {
 					)
 				}
 			}
-			return &snowflake.QueryResult{Rows: rows}, nil
+			return &warehouse.QueryResult{Rows: rows}, nil
 		},
 	}
 

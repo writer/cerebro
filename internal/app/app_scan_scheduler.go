@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/scheduler"
 	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func (a *App) initScheduler(_ context.Context) {
@@ -303,7 +304,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 
 		// Build filter with incremental scanning support
 		columns := a.ScanColumnsForTable(tableCtx, table)
-		filter := snowflake.AssetFilter{Limit: batchSize, Columns: columns}
+		filter := warehouse.AssetFilter{Limit: batchSize, Columns: columns}
 		var cursorTime time.Time
 		var cursorID string
 		useCursorPaging := false
@@ -560,10 +561,10 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		}
 	}
 
-	// Sync to Snowflake if available
-	if a.SnowflakeFindings != nil {
-		if err := a.SnowflakeFindings.Sync(ctx); err != nil {
-			a.Logger.Warn("failed to sync findings to snowflake", "error", err)
+	// Sync to Postgres if available
+	if a.PostgresFindings != nil {
+		if err := a.PostgresFindings.Sync(ctx); err != nil {
+			a.Logger.Warn("failed to sync findings to postgres", "error", err)
 		}
 	}
 

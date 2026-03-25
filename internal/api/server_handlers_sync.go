@@ -18,8 +18,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	orgtypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -57,7 +57,7 @@ type azureSyncRequest struct {
 	Validate                bool     `json:"validate"`
 }
 
-var runAzureSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+var runAzureSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req azureSyncRequest) ([]nativesync.SyncResult, error) {
 	opts := []nativesync.AzureEngineOption{}
 	switch len(req.Subscriptions) {
 	case 1:
@@ -146,7 +146,7 @@ type k8sSyncRequest struct {
 	Validate    bool     `json:"validate"`
 }
 
-var runK8sSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
+var runK8sSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
 	opts := []nativesync.K8sEngineOption{}
 	if req.Kubeconfig != "" {
 		opts = append(opts, nativesync.WithK8sKubeconfig(req.Kubeconfig))
@@ -232,7 +232,7 @@ type awsSyncOutcome struct {
 	RelationshipsSkippedReason string
 }
 
-var runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+var runAWSSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 	loadOptions := make([]func(*config.LoadOptions) error, 0, 2)
 	if req.Profile != "" {
 		loadOptions = append(loadOptions, config.WithSharedConfigProfile(req.Profile))
@@ -364,7 +364,7 @@ type awsOrgSyncOutcome struct {
 	AccountErrors []string
 }
 
-var runAWSOrgSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+var runAWSOrgSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
 	loadOptions := make([]func(*config.LoadOptions) error, 0, 2)
 	if req.Profile != "" {
 		loadOptions = append(loadOptions, config.WithSharedConfigProfile(req.Profile))
@@ -660,7 +660,7 @@ type gcpSyncOutcome struct {
 	RelationshipsSkippedReason string
 }
 
-var runGCPSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+var runGCPSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req gcpSyncRequest) (*gcpSyncOutcome, error) {
 	if req.Project == "" {
 		return nil, fmt.Errorf("project is required")
 	}
@@ -767,7 +767,7 @@ type gcpAssetSyncRequest struct {
 	Validate     bool     `json:"validate"`
 }
 
-var runGCPAssetSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+var runGCPAssetSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
 	organization := strings.TrimSpace(req.Organization)
 	if len(req.Projects) == 0 && organization == "" {
 		return nil, fmt.Errorf("projects or organization are required")

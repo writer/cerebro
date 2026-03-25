@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -37,11 +36,11 @@ func TestListTables_UsesWarehouseInterface(t *testing.T) {
 func TestExecuteQuery_UsesWarehouseInterface(t *testing.T) {
 	a := newTestApp(t)
 	store := &warehouse.MemoryWarehouse{
-		QueryFunc: func(_ context.Context, query string, _ ...any) (*snowflake.QueryResult, error) {
+		QueryFunc: func(_ context.Context, query string, _ ...any) (*warehouse.QueryResult, error) {
 			if !strings.Contains(strings.ToLower(query), "limit 10") {
 				t.Fatalf("expected bounded query to include limit 10, got %q", query)
 			}
-			return &snowflake.QueryResult{
+			return &warehouse.QueryResult{
 				Rows:  []map[string]any{{"id": "row-1"}},
 				Count: 1,
 			}, nil
@@ -65,7 +64,7 @@ func TestExecuteQuery_UsesWarehouseInterface(t *testing.T) {
 func TestListAssets_UsesWarehouseInterface(t *testing.T) {
 	a := newTestApp(t)
 	a.Warehouse = &warehouse.MemoryWarehouse{
-		GetAssetsFunc: func(_ context.Context, table string, filter snowflake.AssetFilter) ([]map[string]interface{}, error) {
+		GetAssetsFunc: func(_ context.Context, table string, filter warehouse.AssetFilter) ([]map[string]interface{}, error) {
 			if table != "aws_s3_buckets" {
 				t.Fatalf("expected aws_s3_buckets table, got %q", table)
 			}

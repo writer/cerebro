@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
+
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 type Asset struct {
@@ -17,19 +18,8 @@ type Asset struct {
 	Properties map[string]interface{} `json:"properties"`
 }
 
-type AssetFilter struct {
-	Provider       string
-	Type           string
-	Account        string
-	Region         string
-	Limit          int
-	Offset         int // Deprecated: use cursor fields instead
-	Since          time.Time
-	SinceID        string
-	Columns        []string  // If set, only SELECT these columns instead of *
-	CursorSyncTime time.Time // Keyset cursor: sync time of last seen row
-	CursorID       string    // Keyset cursor: _cq_id of last seen row
-}
+// AssetFilter is an alias for warehouse.AssetFilter for backward compatibility.
+type AssetFilter = warehouse.AssetFilter
 
 func selectClause(columns []string) string {
 	if len(columns) == 0 {

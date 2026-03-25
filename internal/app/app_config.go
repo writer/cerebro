@@ -46,6 +46,9 @@ type Config struct {
 	WarehouseSQLitePath  string
 	WarehousePostgresDSN string
 
+	// Database (Postgres)
+	DatabaseURL string
+
 	// Snowflake (key-pair auth only)
 	SnowflakeAccount    string
 	SnowflakeUser       string
@@ -447,15 +450,12 @@ type Config struct {
 	FindingAttestationTimeout          time.Duration
 	FindingAttestationAttestReobserved bool
 
-	// Distributed jobs
-	JobQueueURL             string
-	JobTableName            string
-	JobRegion               string
-	JobWorkerConcurrency    int
-	JobVisibilityTimeout    time.Duration
-	JobPollWait             time.Duration
-	JobMaxAttempts          int
-	JobIdempotencyTableName string
+	// Distributed jobs (Postgres + NATS)
+	JobDatabaseURL       string
+	JobWorkerConcurrency int
+	JobVisibilityTimeout time.Duration
+	JobPollWait          time.Duration
+	JobMaxAttempts       int
 
 	// Rate Limiting
 	RateLimitEnabled        bool
@@ -610,6 +610,7 @@ func LoadConfig() *Config {
 				WarehouseBackend:                         strings.ToLower(strings.TrimSpace(getEnv("WAREHOUSE_BACKEND", defaultWarehouseBackend))),
 				WarehouseSQLitePath:                      getEnv("WAREHOUSE_SQLITE_PATH", defaultWarehouseSQLitePath),
 				WarehousePostgresDSN:                     getEnv("WAREHOUSE_POSTGRES_DSN", ""),
+				DatabaseURL:                              getEnv("DATABASE_URL", ""),
 				SnowflakeAccount:                         snowflakeAccount,
 				SnowflakeUser:                            snowflakeUser,
 				SnowflakePrivateKey:                      snowflakePrivateKey,
@@ -880,14 +881,11 @@ func LoadConfig() *Config {
 				FindingAttestationLogURL:                 getEnv("FINDING_ATTESTATION_LOG_URL", ""),
 				FindingAttestationTimeout:                getEnvDuration("FINDING_ATTESTATION_TIMEOUT", 3*time.Second),
 				FindingAttestationAttestReobserved:       getEnvBool("FINDING_ATTESTATION_ATTEST_REOBSERVED", false),
-				JobQueueURL:                              getEnv("JOB_QUEUE_URL", ""),
-				JobTableName:                             getEnv("JOB_TABLE_NAME", ""),
-				JobRegion:                                getEnv("JOB_REGION", getEnv("AWS_REGION", "")),
+				JobDatabaseURL:                           getEnv("JOB_DATABASE_URL", ""),
 				JobWorkerConcurrency:                     getEnvInt("JOB_WORKER_CONCURRENCY", 4),
 				JobVisibilityTimeout:                     getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
 				JobPollWait:                              getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
 				JobMaxAttempts:                           getEnvInt("JOB_MAX_ATTEMPTS", 3),
-				JobIdempotencyTableName:                  getEnv("JOB_IDEMPOTENCY_TABLE_NAME", ""),
 				RateLimitEnabled:                         getEnvBool("RATE_LIMIT_ENABLED", false),
 				RateLimitRequests:                        getEnvInt("RATE_LIMIT_REQUESTS", 1000),
 				RateLimitWindow:                          getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),

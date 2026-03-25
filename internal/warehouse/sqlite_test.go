@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/writer/cerebro/internal/snowflake"
 )
 
 func TestSQLiteWarehouseQueryAndDiscovery(t *testing.T) {
@@ -62,7 +60,7 @@ func TestSQLiteWarehouseInsertCDCEvents(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 
 	ctx := context.Background()
-	event := snowflake.CDCEvent{
+	event := CDCEvent{
 		TableName:  "aws_iam_users",
 		ResourceID: "arn:aws:iam::123:user/alice",
 		ChangeType: "upsert",
@@ -71,7 +69,7 @@ func TestSQLiteWarehouseInsertCDCEvents(t *testing.T) {
 		Payload:    map[string]any{"arn": "arn:aws:iam::123:user/alice"},
 		EventTime:  time.Date(2026, 3, 13, 8, 0, 0, 0, time.UTC),
 	}
-	if err := store.InsertCDCEvents(ctx, []snowflake.CDCEvent{event, event}); err != nil {
+	if err := store.InsertCDCEvents(ctx, []CDCEvent{event, event}); err != nil {
 		t.Fatalf("insert cdc events: %v", err)
 	}
 
@@ -114,7 +112,7 @@ func TestSQLiteWarehouseRejectsNonAssetTables(t *testing.T) {
 	if _, err := store.Exec(ctx, `CREATE TABLE cdc_events (id TEXT)`); err != nil {
 		t.Fatalf("create internal table: %v", err)
 	}
-	if _, err := store.GetAssets(ctx, "cdc_events", snowflake.AssetFilter{Limit: 1}); err == nil {
+	if _, err := store.GetAssets(ctx, "cdc_events", AssetFilter{Limit: 1}); err == nil {
 		t.Fatal("expected non-asset table to be rejected")
 	}
 }

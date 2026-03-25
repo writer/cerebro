@@ -18,7 +18,7 @@ const (
 	queryPolicyMetaFindingID   = "query-result-limit"
 )
 
-var executeReadOnlyQueryFn = func(ctx context.Context, client warehouse.QueryWarehouse, query string) (*snowflake.QueryResult, error) {
+var executeReadOnlyQueryFn = func(ctx context.Context, client warehouse.QueryWarehouse, query string) (*warehouse.QueryResult, error) {
 	return client.Query(ctx, query)
 }
 
@@ -76,7 +76,7 @@ func (a *App) ScanQueryPolicies(ctx context.Context) QueryPolicyScanResult {
 		queryCtx, cancel := context.WithTimeout(runCtx, snowflake.ClampReadOnlyQueryTimeout(0))
 		defer cancel()
 
-		queryResult, attempts, err := scanner.WithRetryValue(queryCtx, tuning.RetryOptions, func() (*snowflake.QueryResult, error) {
+		queryResult, attempts, err := scanner.WithRetryValue(queryCtx, tuning.RetryOptions, func() (*warehouse.QueryResult, error) {
 			return executeReadOnlyQueryFn(queryCtx, a.Warehouse, boundedQuery)
 		})
 		if attempts > 1 {

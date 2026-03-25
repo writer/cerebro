@@ -11,8 +11,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
-
-	"github.com/writer/cerebro/internal/snowflake"
 )
 
 type PostgresWarehouseConfig struct {
@@ -95,13 +93,13 @@ func (w *PostgresWarehouse) Close() error {
 	return w.db.Close()
 }
 
-func (w *PostgresWarehouse) Query(ctx context.Context, query string, args ...any) (*snowflake.QueryResult, error) {
+func (w *PostgresWarehouse) Query(ctx context.Context, query string, args ...any) (*QueryResult, error) {
 	if w == nil || w.db == nil {
 		return nil, fmt.Errorf("postgres warehouse is not initialized")
 	}
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return &snowflake.QueryResult{}, nil
+		return &QueryResult{}, nil
 	}
 	rows, err := w.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -184,7 +182,7 @@ func (w *PostgresWarehouse) DescribeColumns(ctx context.Context, table string) (
 	return columns, rows.Err()
 }
 
-func (w *PostgresWarehouse) GetAssets(ctx context.Context, table string, filter snowflake.AssetFilter) ([]map[string]interface{}, error) {
+func (w *PostgresWarehouse) GetAssets(ctx context.Context, table string, filter AssetFilter) ([]map[string]interface{}, error) {
 	if w == nil {
 		return nil, fmt.Errorf("postgres warehouse is not initialized")
 	}
@@ -260,7 +258,7 @@ func (w *PostgresWarehouse) GetAssetByID(ctx context.Context, table, id string) 
 	return result.Rows[0], nil
 }
 
-func (w *PostgresWarehouse) InsertCDCEvents(ctx context.Context, events []snowflake.CDCEvent) error {
+func (w *PostgresWarehouse) InsertCDCEvents(ctx context.Context, events []CDCEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -291,7 +289,7 @@ func (w *PostgresWarehouse) InsertCDCEvents(ctx context.Context, events []snowfl
 		}
 		eventID := strings.TrimSpace(event.EventID)
 		if eventID == "" {
-			eventID = snowflake.BuildCDCEventID(event.TableName, event.ResourceID, event.ChangeType, event.PayloadHash, eventTime)
+			eventID = BuildCDCEventID(event.TableName, event.ResourceID, event.ChangeType, event.PayloadHash, eventTime)
 		}
 		payload := []byte("{}")
 		if event.Payload != nil {

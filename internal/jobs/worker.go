@@ -8,12 +8,10 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/aws/smithy-go"
 	"github.com/google/uuid"
 )
 
@@ -635,24 +633,11 @@ func isTerminalVisibilityError(err error) bool {
 		return false
 	}
 
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		code := strings.ToLower(strings.TrimSpace(apiErr.ErrorCode()))
-		msg := strings.ToLower(strings.TrimSpace(apiErr.ErrorMessage()))
-		switch code {
-		case "receipthandleisinvalid", "aws.simplequeueservice.nonexistentqueue", "awssimplequeueservice.nonexistentqueue":
-			return true
-		case "invalidparametervalue":
-			if strings.Contains(msg, "receipthandle") || strings.Contains(msg, "message does not exist") || strings.Contains(msg, "not available for visibility timeout change") {
-				return true
-			}
-		}
+	var te TerminalQueueError
+	if errors.As(err, &te) {
+		return te.IsTerminal()
 	}
-
-	normalized := strings.ToLower(err.Error())
-	return strings.Contains(normalized, "receipthandle is invalid") ||
-		strings.Contains(normalized, "message does not exist or is not available for visibility timeout change") ||
-		strings.Contains(normalized, "aws.simplequeueservice.nonexistentqueue")
+	return false
 }
 
 func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle string, jobErr error, timedOut bool, idempotencyKey, correlationID string) {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 
@@ -588,7 +590,7 @@ func isNativeScheduleProvider(provider string) bool {
 }
 
 func nativeSyncWorkerConfigured() bool {
-	return firstNonEmptyEnv("JOB_QUEUE_URL") != "" && firstNonEmptyEnv("JOB_TABLE_NAME") != ""
+	return firstNonEmptyEnv("JOB_DATABASE_URL") != "" && firstNonEmptyEnv("NATS_URLS") != ""
 }
 
 func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) error {
@@ -600,20 +602,47 @@ func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) err
 		waitTimeout = time.Duration(timeoutSeconds) * time.Second
 	}
 
-	queueURL := firstNonEmptyEnv("JOB_QUEUE_URL")
-	tableName := firstNonEmptyEnv("JOB_TABLE_NAME")
-	if queueURL == "" || tableName == "" {
-		return fmt.Errorf("JOB_QUEUE_URL and JOB_TABLE_NAME are required for worker native sync")
+	dbURL := firstNonEmptyEnv("JOB_DATABASE_URL")
+	if dbURL == "" {
+		return fmt.Errorf("JOB_DATABASE_URL is required for worker native sync")
+	}
+	natsURLs := firstNonEmptyEnv("NATS_URLS")
+	if natsURLs == "" {
+		return fmt.Errorf("NATS_URLS is required for worker native sync")
 	}
 
-	region := firstNonEmptyEnv("JOB_REGION", "AWS_REGION")
-	awsCfg, err := jobs.LoadAWSConfig(ctx, region)
+	// Open Postgres connection for job store.
+	// NOTE: The "postgres" driver must be registered elsewhere (e.g. via pgx/v5/stdlib).
+	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		return fmt.Errorf("load worker queue AWS config: %w", err)
+		return fmt.Errorf("open job database: %w", err)
+	}
+	defer db.Close()
+
+	store := jobs.NewPostgresStore(db)
+	if err := store.EnsureSchema(ctx); err != nil {
+		return fmt.Errorf("ensure job schema: %w", err)
 	}
 
-	queue := jobs.NewSQSQueue(awsCfg, queueURL)
-	store := jobs.NewDynamoStore(awsCfg, tableName)
+	// Connect to NATS and obtain JetStream context.
+	nc, err := nats.Connect(natsURLs)
+	if err != nil {
+		return fmt.Errorf("connect to NATS: %w", err)
+	}
+	defer nc.Close()
+
+	js, err := nc.JetStream()
+	if err != nil {
+		return fmt.Errorf("obtain JetStream context: %w", err)
+	}
+
+	queue := jobs.NewNATSQueue(js, jobs.NATSQueueConfig{
+		Stream:       "CEREBRO_JOBS",
+		Subject:      "cerebro.jobs",
+		Consumer:     "job-worker",
+		CreateStream: true,
+	})
+
 	manager := jobs.NewManager(queue, store, slog.Default())
 
 	job, err := manager.EnqueueNativeSync(ctx, jobs.NativeSyncPayload{
