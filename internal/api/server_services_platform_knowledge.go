@@ -16,7 +16,7 @@ var (
 )
 
 const (
-	platformKnowledgeClaimSubgraphDepth    = 2
+	platformKnowledgeClaimSubgraphDepth    = 3
 	platformKnowledgeArtifactSubgraphDepth = 1
 )
 
