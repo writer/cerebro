@@ -227,6 +227,7 @@ func TestIngestRuntimeEventPersistsIngestRun(t *testing.T) {
 	}
 	if run == nil {
 		t.Fatal("expected persisted run")
+		return
 	}
 	if run.Source != "runtime_event" {
 		t.Fatalf("source = %q, want runtime_event", run.Source)
@@ -418,6 +419,7 @@ func TestTelemetryIngestPersistsRunMetadataAndCheckpoint(t *testing.T) {
 	}
 	if run == nil {
 		t.Fatal("expected persisted run")
+		return
 	}
 	if run.Source != "telemetry" {
 		t.Fatalf("source = %q, want telemetry", run.Source)
@@ -504,6 +506,7 @@ func TestTelemetryIngestNormalizesAWSVPCFlowLogs(t *testing.T) {
 	}
 	if run == nil {
 		t.Fatal("expected persisted run")
+		return
 	}
 	if run.Source != "aws_vpc_flow_logs" {
 		t.Fatalf("source = %q, want aws_vpc_flow_logs", run.Source)
