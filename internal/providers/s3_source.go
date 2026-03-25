@@ -194,22 +194,15 @@ func (p *S3SourceProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncRes
 			break
 		}
 
-		objects, err := p.listObjectsWithPrefix(ctx, prefix, remaining)
+		objects, err := p.listObjectsWithPrefix(ctx, prefix, remaining, seen)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("prefix %q: %v", prefix, err))
 			continue
 		}
 
+		processedObjects += len(objects)
+
 		for _, object := range objects {
-			dedupKey := object.Key + "\x00" + object.ETag
-			if _, dup := seen[dedupKey]; dup {
-				continue
-			}
-			seen[dedupKey] = struct{}{}
-			processedObjects++
-			if processedObjects > p.maxObjects {
-				break
-			}
 			parsed, parseErr := p.parseObject(ctx, object)
 
 			objectRow := map[string]interface{}{
@@ -293,7 +286,7 @@ func (p *S3SourceProvider) syncSourceTable(ctx context.Context, tableName string
 	return p.syncTable(ctx, schema, rows)
 }
 
-func (p *S3SourceProvider) listObjectsWithPrefix(ctx context.Context, prefix string, maxObjects int) ([]s3ObjectMeta, error) {
+func (p *S3SourceProvider) listObjectsWithPrefix(ctx context.Context, prefix string, maxObjects int, seen map[string]struct{}) ([]s3ObjectMeta, error) {
 	objects := make([]s3ObjectMeta, 0)
 	if maxObjects < 1 {
 		return objects, nil
@@ -320,6 +313,12 @@ func (p *S3SourceProvider) listObjectsWithPrefix(ctx context.Context, prefix str
 				lastModified := aws.ToTime(object.LastModified).UTC()
 				etag = fmt.Sprintf("fallback-%d-%d", aws.ToInt64(object.Size), lastModified.UnixNano())
 			}
+
+			dedupKey := key + "\x00" + etag
+			if _, dup := seen[dedupKey]; dup {
+				continue
+			}
+			seen[dedupKey] = struct{}{}
 
 			objects = append(objects, s3ObjectMeta{
 				Key:          key,
