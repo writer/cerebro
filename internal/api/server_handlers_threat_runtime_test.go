@@ -591,6 +591,7 @@ func TestTelemetryIngestDedupesAWSVPCFlowLogsByObservationID(t *testing.T) {
 	}
 	if run == nil || run.LastCheckpoint == nil {
 		t.Fatalf("expected duplicate ingest run checkpoint, got %#v", run)
+		return
 	}
 	if got := run.LastCheckpoint.Metadata["duplicate_events"]; got != "1" {
 		t.Fatalf("duplicate_events = %q, want 1", got)
@@ -688,6 +689,7 @@ func TestTelemetryIngestTracksRejectedObservationsSeparately(t *testing.T) {
 	}
 	if run.LastCheckpoint == nil {
 		t.Fatal("expected checkpoint")
+		return
 	}
 	if got := run.LastCheckpoint.Metadata["processed_events"]; got != "1" {
 		t.Fatalf("checkpoint processed_events = %q, want 1", got)
@@ -790,6 +792,7 @@ func TestIngestRuntimeEventMarksDuplicateSourcePayloads(t *testing.T) {
 	}
 	if run.LastCheckpoint == nil {
 		t.Fatal("expected duplicate checkpoint")
+		return
 	}
 	if got := run.LastCheckpoint.Metadata["processed_events"]; got != "0" {
 		t.Fatalf("checkpoint processed_events = %q, want 0", got)
@@ -1047,6 +1050,7 @@ func TestTelemetryIngestSuppressesDuplicateSourcePayloadsInBatch(t *testing.T) {
 	}
 	if run.LastCheckpoint == nil {
 		t.Fatal("expected checkpoint")
+		return
 	}
 	if got := run.LastCheckpoint.Metadata["processed_events"]; got != "1" {
 		t.Fatalf("checkpoint processed_events = %q, want 1", got)
@@ -1147,6 +1151,7 @@ func TestTelemetryIngestRejectsEventWhenDuplicateCheckFails(t *testing.T) {
 	}
 	if run == nil {
 		t.Fatal("expected persisted run")
+		return
 	}
 	if run.Status != runtime.IngestRunStatusCompleted {
 		t.Fatalf("status = %q, want %q", run.Status, runtime.IngestRunStatusCompleted)
@@ -1307,6 +1312,7 @@ func TestTelemetryIngestRejectsEventWhenMarkProcessedFails(t *testing.T) {
 	}
 	if run == nil {
 		t.Fatal("expected persisted run")
+		return
 	}
 	if run.Status != runtime.IngestRunStatusCompleted {
 		t.Fatalf("status = %q, want %q", run.Status, runtime.IngestRunStatusCompleted)
@@ -1605,6 +1611,7 @@ func TestRuntimeIngestSessionRecordObservationUsesProcessingTimeForRunUpdates(t 
 	}
 	if session == nil || session.run == nil {
 		t.Fatal("expected runtime ingest session")
+		return
 	}
 
 	historicalObservedAt := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -1656,6 +1663,7 @@ func TestEnrichRuntimeObservationPreservesExistingClusterAndNodeMetadata(t *test
 	enriched := enrichRuntimeObservation(observation, "payload-cluster", "payload-node", "1.4.2")
 	if enriched == nil {
 		t.Fatal("expected enriched observation")
+		return
 	}
 	if enriched.Cluster != "event-cluster" {
 		t.Fatalf("cluster = %q, want %q", enriched.Cluster, "event-cluster")
@@ -1691,6 +1699,7 @@ func TestRuntimeIngestSessionCompleteFailsWhenReloadLosesCheckpointedRun(t *test
 	err := session.complete(context.Background(), runtime.IngestCheckpoint{Cursor: "evt-1"})
 	if err == nil {
 		t.Fatal("expected complete to fail when reloading checkpointed run returns nil")
+		return
 	}
 	if err.Error() != "reload runtime ingest run: missing run after checkpoint save" {
 		t.Fatalf("complete error = %q, want missing run reload error", err.Error())
@@ -1738,6 +1747,7 @@ func TestIngestRuntimeEventContinuesWhenRunPersistenceFails(t *testing.T) {
 	}
 	if s.app.RuntimeRespond == nil {
 		t.Fatal("expected runtime response engine")
+		return
 	}
 	if got := len(s.app.RuntimeRespond.ListExecutions(10)); got != 1 {
 		t.Fatalf("response executions = %d, want 1", got)
