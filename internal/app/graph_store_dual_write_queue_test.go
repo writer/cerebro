@@ -105,6 +105,8 @@ func TestGraphStoreDualWriteSQLiteQueueMutationMethodsIgnoreStatsObservationErro
 func TestGraphStoreDualWriteReconciliationQueueCrashSafeRecoveryViaLeaseExpiry(t *testing.T) {
 	t.Parallel()
 
+	const leaseTTL = 200 * time.Millisecond
+
 	path := filepath.Join(t.TempDir(), "dual-write-queue.sqlite")
 	queue, err := newGraphStoreDualWriteReconciliationQueue(path)
 	if err != nil {
@@ -138,7 +140,7 @@ func TestGraphStoreDualWriteReconciliationQueueCrashSafeRecoveryViaLeaseExpiry(t
 		}
 	}()
 
-	leases, err := crashed.Lease(context.Background(), "worker-a", 1, 25*time.Millisecond)
+	leases, err := crashed.Lease(context.Background(), "worker-a", 1, leaseTTL)
 	if err != nil {
 		t.Fatalf("Lease(worker-a) error = %v", err)
 	}
@@ -154,7 +156,7 @@ func TestGraphStoreDualWriteReconciliationQueueCrashSafeRecoveryViaLeaseExpiry(t
 		t.Fatalf("Lease(worker-b) = %#v, want no items before lease expiry", secondAttempt)
 	}
 
-	time.Sleep(40 * time.Millisecond)
+	time.Sleep(leaseTTL + 100*time.Millisecond)
 
 	recovered, err := newGraphStoreDualWriteReconciliationQueue(path)
 	if err != nil {
@@ -187,6 +189,8 @@ func TestGraphStoreDualWriteReconciliationQueueCrashSafeRecoveryViaLeaseExpiry(t
 func TestGraphStoreDualWriteReconciliationQueueStatsTreatExpiredLeaseAsPending(t *testing.T) {
 	t.Parallel()
 
+	const leaseTTL = 200 * time.Millisecond
+
 	queue, err := newGraphStoreDualWriteReconciliationQueue(filepath.Join(t.TempDir(), "dual-write-queue.sqlite"))
 	if err != nil {
 		t.Fatalf("newGraphStoreDualWriteReconciliationQueue() error = %v", err)
@@ -211,7 +215,7 @@ func TestGraphStoreDualWriteReconciliationQueueStatsTreatExpiredLeaseAsPending(t
 		t.Fatalf("Enqueue() error = %v", err)
 	}
 
-	leases, err := queue.Lease(context.Background(), "worker-a", 1, 25*time.Millisecond)
+	leases, err := queue.Lease(context.Background(), "worker-a", 1, leaseTTL)
 	if err != nil {
 		t.Fatalf("Lease() error = %v", err)
 	}
@@ -219,7 +223,7 @@ func TestGraphStoreDualWriteReconciliationQueueStatsTreatExpiredLeaseAsPending(t
 		t.Fatalf("Lease() returned %d items, want 1", len(leases))
 	}
 
-	time.Sleep(40 * time.Millisecond)
+	time.Sleep(leaseTTL + 100*time.Millisecond)
 
 	stats, err := queue.Stats(context.Background())
 	if err != nil {
