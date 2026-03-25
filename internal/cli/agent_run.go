@@ -80,7 +80,7 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 		application.Config.GitLabToken,
 		application.Config.GitLabBaseURL,
 	)
-	tools := agents.NewSecurityTools(application.Snowflake, application.Findings, application.Policy, scmClient)
+	tools := agents.NewSecurityTools(application.Warehouse, application.Findings, application.Policy, scmClient)
 	useDistributed := agentRunDistributed || (application.Config.JobDatabaseURL != "" && len(application.Config.NATSJetStreamURLs) > 0)
 	if useDistributed {
 		return runDistributedAgentFlow(ctx, application, tools)
@@ -160,7 +160,9 @@ func runDistributedAgentFlow(ctx context.Context, application *app.App, tools *a
 	if err != nil {
 		return fmt.Errorf("open job database: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	store := jobs.NewPostgresStore(db)
 	if err := store.EnsureSchema(ctx); err != nil {

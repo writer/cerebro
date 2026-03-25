@@ -15,7 +15,7 @@ func newTestPostgresIdempotencyStore(t *testing.T) *PostgresIdempotencyStore {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	store := NewPostgresIdempotencyStore(db)
 	if err := store.EnsureSchema(context.Background()); err != nil {

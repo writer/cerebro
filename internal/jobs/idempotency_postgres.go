@@ -85,16 +85,22 @@ func (s *PostgresIdempotencyStore) MarkProcessing(ctx context.Context, messageID
 
 	// If the record is not completed and has expired, take it over.
 	if existingExpiry < now {
-		_, err = s.db.ExecContext(ctx,
+		res, err := s.db.ExecContext(ctx,
 			`UPDATE job_idempotency
 			 SET status = 'processing', worker_id = $1, processed_at = $2, expires_at = $3
-			 WHERE message_id = $4`,
-			workerID, now, expiresAt, messageID,
+			 WHERE message_id = $4
+			   AND status <> $5
+			   AND expires_at < $6`,
+			workerID, now, expiresAt, messageID, idempotencyStatusCompleted, now,
 		)
 		if err != nil {
 			return false, fmt.Errorf("replace expired idempotency record: %w", err)
 		}
-		return true, nil
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return false, fmt.Errorf("check expired takeover rows affected: %w", err)
+		}
+		return rows > 0, nil
 	}
 
 	// Record exists, not completed, and not expired – another worker owns it.

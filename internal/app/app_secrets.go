@@ -257,7 +257,11 @@ func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 	oldDB := a.PostgresDB
 	a.PostgresDB = newDB
 	a.PostgresClient = newClient
-	a.Warehouse = newClient
+	if strings.TrimSpace(a.Config.DatabaseURL) != "" {
+		a.Warehouse = newClient
+	} else {
+		a.Warehouse = nil
+	}
 	a.initRepositories()
 
 	if a.ScanWatermarks != nil {

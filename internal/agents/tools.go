@@ -11,6 +11,7 @@ import (
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scm"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 // PolicyEvaluator captures the policy evaluation surface the agent tools need.
@@ -22,15 +23,15 @@ var _ PolicyEvaluator = (*policy.Engine)(nil)
 
 // SecurityTools provides investigation tools for agents
 type SecurityTools struct {
-	snowflake *snowflake.Client
+	warehouse warehouse.DataWarehouse
 	findings  findings.FindingStore
 	policies  PolicyEvaluator
 	scm       scm.Client
 }
 
-func NewSecurityTools(sf *snowflake.Client, fs findings.FindingStore, pe PolicyEvaluator, sc scm.Client) *SecurityTools {
+func NewSecurityTools(wh warehouse.DataWarehouse, fs findings.FindingStore, pe PolicyEvaluator, sc scm.Client) *SecurityTools {
 	return &SecurityTools{
-		snowflake: sf,
+		warehouse: wh,
 		findings:  fs,
 		policies:  pe,
 		scm:       sc,
@@ -366,14 +367,14 @@ func (st *SecurityTools) queryAssets(ctx context.Context, args json.RawMessage) 
 		return "", err
 	}
 
-	if st.snowflake == nil {
-		return "", fmt.Errorf("snowflake not configured")
+	if st.warehouse == nil {
+		return "", fmt.Errorf("warehouse not configured")
 	}
 
 	queryCtx, cancel := context.WithTimeout(ctx, snowflake.ClampReadOnlyQueryTimeout(params.TimeoutSeconds))
 	defer cancel()
 
-	result, err := st.snowflake.Query(queryCtx, boundedQuery)
+	result, err := st.warehouse.Query(queryCtx, boundedQuery)
 	if err != nil {
 		return "", err
 	}
@@ -437,11 +438,11 @@ func (st *SecurityTools) getAssetContext(ctx context.Context, args json.RawMessa
 		return "", err
 	}
 
-	if st.snowflake == nil {
-		return "", fmt.Errorf("snowflake not configured")
+	if st.warehouse == nil {
+		return "", fmt.Errorf("warehouse not configured")
 	}
 
-	asset, err := st.snowflake.GetAssetByID(ctx, params.AssetType, params.AssetID)
+	asset, err := st.warehouse.GetAssetByID(ctx, params.AssetType, params.AssetID)
 	if err != nil {
 		return "", err
 	}

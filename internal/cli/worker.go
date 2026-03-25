@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
 	"sort"
@@ -75,7 +76,9 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("open job database: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	store := jobs.NewPostgresStore(db)
 	if err := store.EnsureSchema(ctx); err != nil {
@@ -144,7 +147,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	// Create security tools for job execution
 	tools := agents.NewSecurityTools(
-		application.Snowflake,
+		application.Warehouse,
 		application.Findings,
 		application.Policy,
 		scm.NewConfiguredClient(
@@ -203,8 +206,31 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		_ = healthServer.Shutdown(shutdownCtx)
 	}()
 
-	Info("Worker started (db=%s nats=%s concurrency=%d health=:%d)", application.Config.JobDatabaseURL, strings.Join(application.Config.NATSJetStreamURLs, ","), concurrency, workerHealthPort)
+	Info("Worker started (db=%s nats=%s concurrency=%d health=:%d)", summarizeDatabaseTarget(application.Config.JobDatabaseURL), strings.Join(application.Config.NATSJetStreamURLs, ","), concurrency, workerHealthPort)
 	return workerService.Start(ctx)
+}
+
+func summarizeDatabaseTarget(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "unset"
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed == nil {
+		return "configured"
+	}
+	host := strings.TrimSpace(parsed.Host)
+	path := strings.TrimPrefix(strings.TrimSpace(parsed.Path), "/")
+	switch {
+	case host != "" && path != "":
+		return host + "/" + path
+	case host != "":
+		return host
+	case path != "":
+		return path
+	default:
+		return "configured"
+	}
 }
 
 func newNativeSyncJobHandler(application *app.App) jobs.JobHandler {

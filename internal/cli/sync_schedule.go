@@ -617,7 +617,9 @@ func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) err
 	if err != nil {
 		return fmt.Errorf("open job database: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	store := jobs.NewPostgresStore(db)
 	if err := store.EnsureSchema(ctx); err != nil {

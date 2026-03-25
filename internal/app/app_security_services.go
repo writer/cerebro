@@ -535,20 +535,41 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	a.graphReady = make(chan struct{})
 	a.setGraphBuildState(GraphBuildNotStarted, time.Time{}, nil)
 
+	if a.retainsBuilderState() {
+		a.SecurityGraphBuilder = a.newSecurityGraphBuilder()
+		if a.SecurityGraphBuilder != nil {
+			securityGraph := a.SecurityGraphBuilder.Graph()
+			a.configureGraphRuntimeBehavior(securityGraph)
+			a.setSecurityGraph(securityGraph)
+		}
+	} else {
+		a.SecurityGraphBuilder = nil
+	}
+
 	if a.Warehouse == nil {
-		a.Logger.Warn("security graph disabled - database not configured")
-		a.Propagation = nil
-		a.publishSecurityGraphRuntimeView(nil)
+		if securityGraph, err := a.currentConfiguredSecurityGraphView(context.Background()); err == nil && securityGraph != nil {
+			a.publishSecurityGraphRuntimeView(securityGraph)
+			meta := securityGraph.Metadata()
+			a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
+			a.Logger.Info("security graph loaded from configured store",
+				"nodes", securityGraph.NodeCount(),
+				"edges", securityGraph.EdgeCount(),
+			)
+		} else {
+			a.Logger.Warn("security graph disabled - database not configured")
+			a.Propagation = nil
+			a.publishSecurityGraphRuntimeView(nil)
+		}
 		a.graphCancel = nil
 		close(a.graphReady)
 		return
 	}
 
-	source := builders.NewPostgresSource(a.Warehouse)
-	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
-	securityGraph := a.SecurityGraphBuilder.Graph()
-	a.configureGraphRuntimeBehavior(securityGraph)
-	a.publishSecurityGraphRuntimeView(securityGraph)
+	if a.SecurityGraphBuilder != nil {
+		securityGraph := a.SecurityGraphBuilder.Graph()
+		a.configureGraphRuntimeBehavior(securityGraph)
+		a.publishSecurityGraphRuntimeView(securityGraph)
+	}
 	if a.GraphSnapshots != nil {
 		recovered, record, recoverySource, err := a.GraphSnapshots.LoadLatestSnapshot()
 		if err != nil {
@@ -576,7 +597,6 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		close(a.graphReady)
 		return
 	}
-
 	graphCtx, cancel := context.WithCancel(backgroundWorkContext(ctx))
 	a.graphCtx = graphCtx
 	a.graphCancel = cancel
@@ -588,23 +608,23 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		a.graphUpdateMu.Lock()
 		defer a.graphUpdateMu.Unlock()
 
-		if err := a.SecurityGraphBuilder.Build(graphCtx); err != nil {
+		builder := a.SecurityGraphBuilder
+		if builder == nil {
+			builder = a.newSecurityGraphBuilder()
+		}
+		if builder == nil {
+			err := fmt.Errorf("security graph not initialized")
+			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+			a.Logger.Error("failed to initialize security graph builder", "error", err)
+			return
+		}
+
+		if err := builder.Build(graphCtx); err != nil {
 			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 			a.Logger.Error("failed to build security graph", "error", err)
 			return
 		}
-		builtGraph := a.SecurityGraphBuilder.Graph()
-		meta, err := a.activateBuiltSecurityGraph(graphCtx, builtGraph)
-		if err != nil {
-			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
-			a.Logger.Error("failed to activate security graph", "error", err)
-			return
-		}
-		a.Logger.Info("security graph built",
-			"nodes", meta.NodeCount,
-			"edges", meta.EdgeCount,
-			"duration", meta.BuildDuration,
-		)
+		builtGraph := builder.Graph()
 		if a.Config != nil && a.Config.GraphMigrateLegacyActivityOnStart {
 			migration := graph.MigrateLegacyActivityNodes(builtGraph, graph.LegacyActivityMigrationOptions{Now: time.Now().UTC()})
 			if migration.Migrated > 0 || migration.Scanned > 0 {
@@ -616,11 +636,34 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 				)
 			}
 		}
+		meta, err := a.activateBuiltSecurityGraph(graphCtx, builtGraph)
+		if err != nil {
+			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+			a.Logger.Error("failed to activate security graph", "error", err)
+			return
+		}
+		a.Logger.Info("security graph built",
+			"nodes", meta.NodeCount,
+			"edges", meta.EdgeCount,
+			"duration", meta.BuildDuration,
+		)
 
 		emitCtx := graphCtx
 		a.emitGraphRebuiltEvent(emitCtx, meta, meta.BuildDuration)
-		a.emitGraphMutationEvent(emitCtx, a.SecurityGraphBuilder.LastMutation(), "startup")
+		a.emitGraphMutationEvent(emitCtx, builder.LastMutation(), "startup")
 	}()
+}
+
+func (a *App) retainsBuilderState() bool {
+	return a != nil && a.retainHotSecurityGraph()
+}
+
+func (a *App) newSecurityGraphBuilder() *builders.Builder {
+	if a == nil || a.Warehouse == nil {
+		return nil
+	}
+	source := builders.NewPostgresSource(a.Warehouse)
+	return builders.NewBuilder(source, a.Logger)
 }
 
 func backgroundWorkContext(ctx context.Context) context.Context {
@@ -671,7 +714,11 @@ func (a *App) WaitForGraph(ctx context.Context) bool {
 // RebuildSecurityGraph triggers a rebuild of the security graph
 
 func (a *App) RebuildSecurityGraph(ctx context.Context) error {
-	if a.SecurityGraphBuilder == nil {
+	builder := a.SecurityGraphBuilder
+	if builder == nil {
+		builder = a.newSecurityGraphBuilder()
+	}
+	if builder == nil {
 		return fmt.Errorf("security graph not initialized")
 	}
 	if err := a.requireGraphWriterLease("rebuild security graph"); err != nil {
@@ -683,15 +730,12 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 
 	start := time.Now()
 	a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
-	if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
+	if err := builder.Build(ctx); err != nil {
 		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 		return err
 	}
 
-	securityGraph := a.SecurityGraphBuilder.Graph()
-	if err := a.requireGraphWriterLease("rebuild security graph"); err != nil {
-		return err
-	}
+	securityGraph := builder.Graph()
 	meta, err := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if err != nil {
 		return err
@@ -704,7 +748,7 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 
 	duration := time.Since(start)
 	a.emitGraphRebuiltEvent(ctx, meta, duration)
-	a.emitGraphMutationEvent(ctx, a.SecurityGraphBuilder.LastMutation(), "manual_rebuild")
+	a.emitGraphMutationEvent(ctx, builder.LastMutation(), "manual_rebuild")
 
 	return nil
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 // ApplySecurityGraphChanges applies CDC-backed graph mutations and falls back to
 // a copy-on-write full rebuild only when incremental mutation fails.
 func (a *App) ApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, error) {
-	if a == nil || a.SecurityGraphBuilder == nil {
+	if a == nil || (a.SecurityGraphBuilder == nil && a.Warehouse == nil) {
 		return graph.GraphMutationSummary{}, errGraphNotInitialized()
 	}
 
@@ -25,7 +26,7 @@ func (a *App) ApplySecurityGraphChanges(ctx context.Context, trigger string) (gr
 // TryApplySecurityGraphChanges attempts a non-blocking graph update. It returns
 // applied=false when another graph update already owns the mutation lock.
 func (a *App) TryApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, bool, error) {
-	if a == nil || a.SecurityGraphBuilder == nil {
+	if a == nil || (a.SecurityGraphBuilder == nil && a.Warehouse == nil) {
 		return graph.GraphMutationSummary{}, false, errGraphNotInitialized()
 	}
 	if !a.graphUpdateMu.TryLock() {
@@ -44,12 +45,45 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 		}
 	}
 	start := time.Now()
+	logger := a.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if a.SecurityGraphBuilder == nil {
+		builder := a.newSecurityGraphBuilder()
+		if builder == nil {
+			return graph.GraphMutationSummary{}, errGraphNotInitialized()
+		}
+		a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
+		if err := builder.Build(ctx); err != nil {
+			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+			return graph.GraphMutationSummary{}, err
+		}
+		securityGraph := builder.Graph()
+		meta, err := a.activateBuiltSecurityGraph(ctx, securityGraph)
+		if err != nil {
+			return graph.GraphMutationSummary{}, err
+		}
+		summary := builder.LastMutation()
+		duration := time.Since(start)
+		logger.Info("security graph rebuilt",
+			"trigger", trigger,
+			"nodes", meta.NodeCount,
+			"edges", meta.EdgeCount,
+			"duration", duration,
+		)
+		if !graphReplicaReplayEnabled(ctx) {
+			a.emitGraphRebuiltEvent(ctx, meta, duration)
+			a.emitGraphMutationEvent(ctx, summary, trigger)
+		}
+		return summary, nil
+	}
 	if err := a.prepareSecurityGraphBuilderForIncrementalApply(ctx); err != nil {
 		return graph.GraphMutationSummary{}, err
 	}
 	summary, err := a.SecurityGraphBuilder.ApplyChanges(ctx, time.Time{})
 	if err != nil {
-		a.Logger.Warn("incremental graph apply failed, falling back to full rebuild",
+		logger.Warn("incremental graph apply failed, falling back to full rebuild",
 			"trigger", trigger,
 			"error", err,
 		)
@@ -67,7 +101,7 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 
 		summary = a.SecurityGraphBuilder.LastMutation()
 		duration := time.Since(start)
-		a.Logger.Info("security graph rebuilt after incremental apply failure",
+		logger.Info("security graph rebuilt after incremental apply failure",
 			"trigger", trigger,
 			"nodes", meta.NodeCount,
 			"edges", meta.EdgeCount,
@@ -85,7 +119,7 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 		if currentGraph != nil {
 			a.setGraphBuildState(GraphBuildSuccess, currentGraph.Metadata().BuiltAt, nil)
 		}
-		a.Logger.Info("security graph incremental update skipped - no CDC events found", "trigger", trigger)
+		logger.Info("security graph incremental update skipped - no CDC events found", "trigger", trigger)
 		return summary, nil
 	}
 
@@ -100,7 +134,7 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 		return graph.GraphMutationSummary{}, activateErr
 	}
 
-	a.Logger.Info("security graph incrementally updated",
+	logger.Info("security graph incrementally updated",
 		"trigger", trigger,
 		"events", summary.EventsProcessed,
 		"nodes_added", summary.NodesAdded,
@@ -149,6 +183,10 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 	a.graphConsistencyMu.Unlock()
 
 	go func(checkCtx context.Context, cancel context.CancelFunc) {
+		logger := a.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
 		defer a.graphConsistencyWG.Done()
 		defer func() {
 			a.graphConsistencyMu.Lock()
@@ -160,7 +198,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 
 		candidate, err := a.buildGraphConsistencyCandidate(checkCtx)
 		if err != nil {
-			a.Logger.Warn("graph consistency check failed to build candidate",
+			logger.Warn("graph consistency check failed to build candidate",
 				"trigger", trigger,
 				"error", err,
 			)
@@ -174,7 +212,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 
 		diff := graph.DiffSnapshots(graph.CreateSnapshot(live), graph.CreateSnapshot(candidate))
 		if !graphDiffHasChanges(diff) {
-			a.Logger.Info("graph consistency check passed",
+			logger.Info("graph consistency check passed",
 				"trigger", trigger,
 				"interval", interval,
 				"tables", summary.Tables,
@@ -182,7 +220,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 			return
 		}
 
-		a.Logger.Warn("graph consistency drift detected",
+		logger.Warn("graph consistency drift detected",
 			"trigger", trigger,
 			"interval", interval,
 			"tables", summary.Tables,
