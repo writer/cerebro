@@ -120,13 +120,10 @@ func TestRollbackPolicyRecompilesCELConditions(t *testing.T) {
 func TestRollbackPolicyPreservesCELProgramsOnFailure(t *testing.T) {
 	engine := NewEngine()
 
-	// Version 1: a deliberately invalid CEL expression that will fail compilation.
-	// We inject it directly into the history so the engine never tries to compile it
-	// during AddPolicy (which would reject it).  This simulates a historical version
-	// whose condition was valid under a previous schema but is now unparseable.
+	// Add a good policy first — this becomes version 1 and compiles valid CEL programs.
 	engine.AddPolicy(&Policy{
 		ID:              "policy-cel-guard",
-		Name:            "Good CEL v2",
+		Name:            "Good CEL v1",
 		Description:     "working policy",
 		Effect:          "forbid",
 		Resource:        "aws::s3::bucket",
@@ -135,13 +132,16 @@ func TestRollbackPolicyPreservesCELProgramsOnFailure(t *testing.T) {
 		Severity:        "high",
 	})
 
-	// Manually inject a bad historical version 0 into the event history so that
-	// RollbackPolicy can find it but recompilation will fail.
+	// Manually inject a bad historical entry at version 2 into the event history so
+	// that RollbackPolicy can find it but recompilation will fail.  This simulates a
+	// historical version whose condition was valid under a previous schema but is now
+	// unparseable.  We use version 2 (> 0) so RollbackPolicy passes its early
+	// validation and actually reaches the CEL compilation path.
 	engine.mu.Lock()
 	badPolicy := &Policy{
 		ID:              "policy-cel-guard",
-		Version:         0,
-		Name:            "Bad CEL v0",
+		Version:         2,
+		Name:            "Bad CEL v2",
 		Effect:          "forbid",
 		Resource:        "aws::s3::bucket",
 		ConditionFormat: ConditionFormatCEL,
@@ -152,23 +152,28 @@ func TestRollbackPolicyPreservesCELProgramsOnFailure(t *testing.T) {
 		engine.history = make(map[string][]PolicyEvent)
 	}
 	engine.history["policy-cel-guard"] = append(
-		[]PolicyEvent{{
+		engine.history["policy-cel-guard"],
+		PolicyEvent{
 			PolicyID:  "policy-cel-guard",
-			Version:   0,
+			Version:   2,
 			Content:   clonePolicy(badPolicy),
 			EventType: PolicyEventCreated,
-		}},
-		engine.history["policy-cel-guard"]...,
+		},
 	)
 	engine.mu.Unlock()
 
-	// Attempt rollback to the bad version — this must fail.
-	_, err := engine.RollbackPolicy("policy-cel-guard", 0)
+	// Attempt rollback to the bad version — this must fail due to CEL compilation,
+	// NOT due to version validation.
+	_, err := engine.RollbackPolicy("policy-cel-guard", 2)
 	if err == nil {
 		t.Fatal("expected rollback to fail for invalid CEL condition")
 	}
+	if strings.Contains(err.Error(), "version must be positive") {
+		t.Fatalf("rollback failed for wrong reason (version validation instead of CEL): %v", err)
+	}
 
-	// The active policy's compiled CEL programs must still work.
+	// The active policy's compiled CEL programs must still work — the key behaviour
+	// is that a failed rollback restores previously compiled programs.
 	findings, evalErr := engine.EvaluateAsset(context.Background(), map[string]interface{}{
 		"_cq_id":    "bucket-1",
 		"_cq_table": "aws_s3_buckets",
