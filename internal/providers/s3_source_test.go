@@ -140,6 +140,48 @@ func TestS3SourceProviderSyncRespectsGlobalMaxObjectsAcrossPrefixes(t *testing.T
 	}
 }
 
+func TestS3SourceProviderSyncDeduplicatesOverlappingPrefixes(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 3, 5, 3, 0, 0, 0, time.UTC)
+	shared := types.Object{Key: aws.String("alerts/2026/event1.jsonl"), ETag: aws.String("\"e1\""), Size: aws.Int64(10), LastModified: aws.Time(now)}
+
+	fake := &fakeS3Client{
+		listByPrefix: map[string]*s3.ListObjectsV2Output{
+			"alerts/":      {Contents: []types.Object{shared}},
+			"alerts/2026/": {Contents: []types.Object{shared}},
+		},
+		getBodyFn: map[string]func() *s3.GetObjectOutput{
+			"alerts/2026/event1.jsonl": func() *s3.GetObjectOutput {
+				return &s3.GetObjectOutput{Body: io.NopCloser(strings.NewReader("{\"type\":\"alert\"}\n"))}
+			},
+		},
+	}
+
+	p := NewS3SourceProvider("sentinelone")
+	p.bucket = "s1-bucket"
+	p.prefixes = []string{"alerts/", "alerts/2026/"}
+	p.maxObjects = 5
+	p.client = fake
+
+	result, err := p.Sync(context.Background(), SyncOptions{FullSync: true})
+	if err != nil {
+		t.Fatalf("sync failed: %v", err)
+	}
+
+	rowsByTable := make(map[string]int64)
+	for _, table := range result.Tables {
+		rowsByTable[table.Name] = table.Rows
+	}
+
+	if rowsByTable["s3_sentinelone_objects"] != 1 {
+		t.Fatalf("objects rows = %d, want 1 (duplicate should be deduped)", rowsByTable["s3_sentinelone_objects"])
+	}
+	if rowsByTable["s3_sentinelone_records"] != 1 {
+		t.Fatalf("records rows = %d, want 1", rowsByTable["s3_sentinelone_records"])
+	}
+}
+
 func TestS3SourceProviderSyncNoPrefix(t *testing.T) {
 	t.Parallel()
 

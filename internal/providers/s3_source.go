@@ -186,6 +186,7 @@ func (p *S3SourceProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncRes
 	objectRows := make([]map[string]interface{}, 0)
 	recordRows := make([]map[string]interface{}, 0)
 	processedObjects := 0
+	seen := make(map[string]struct{})
 
 	for _, prefix := range prefixes {
 		remaining := p.maxObjects - processedObjects
@@ -198,9 +199,17 @@ func (p *S3SourceProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncRes
 			result.Errors = append(result.Errors, fmt.Sprintf("prefix %q: %v", prefix, err))
 			continue
 		}
-		processedObjects += len(objects)
 
 		for _, object := range objects {
+			dedupKey := object.Key + "\x00" + object.ETag
+			if _, dup := seen[dedupKey]; dup {
+				continue
+			}
+			seen[dedupKey] = struct{}{}
+			processedObjects++
+			if processedObjects > p.maxObjects {
+				break
+			}
 			parsed, parseErr := p.parseObject(ctx, object)
 
 			objectRow := map[string]interface{}{
