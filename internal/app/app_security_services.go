@@ -608,23 +608,19 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		a.graphUpdateMu.Lock()
 		defer a.graphUpdateMu.Unlock()
 
-		builder := a.SecurityGraphBuilder
-		if builder == nil {
-			builder = a.newSecurityGraphBuilder()
-		}
-		if builder == nil {
+		if a.SecurityGraphBuilder == nil {
 			err := fmt.Errorf("security graph not initialized")
 			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 			a.Logger.Error("failed to initialize security graph builder", "error", err)
 			return
 		}
 
-		if err := builder.Build(graphCtx); err != nil {
+		if err := a.SecurityGraphBuilder.Build(graphCtx); err != nil {
 			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 			a.Logger.Error("failed to build security graph", "error", err)
 			return
 		}
-		builtGraph := builder.Graph()
+		builtGraph := a.SecurityGraphBuilder.Graph()
 		if a.Config != nil && a.Config.GraphMigrateLegacyActivityOnStart {
 			migration := graph.MigrateLegacyActivityNodes(builtGraph, graph.LegacyActivityMigrationOptions{Now: time.Now().UTC()})
 			if migration.Migrated > 0 || migration.Scanned > 0 {
@@ -650,7 +646,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 
 		emitCtx := graphCtx
 		a.emitGraphRebuiltEvent(emitCtx, meta, meta.BuildDuration)
-		a.emitGraphMutationEvent(emitCtx, builder.LastMutation(), "startup")
+		a.emitGraphMutationEvent(emitCtx, a.SecurityGraphBuilder.LastMutation(), "startup")
 	}()
 }
 
@@ -714,11 +710,7 @@ func (a *App) WaitForGraph(ctx context.Context) bool {
 // RebuildSecurityGraph triggers a rebuild of the security graph
 
 func (a *App) RebuildSecurityGraph(ctx context.Context) error {
-	builder := a.SecurityGraphBuilder
-	if builder == nil {
-		builder = a.newSecurityGraphBuilder()
-	}
-	if builder == nil {
+	if a.SecurityGraphBuilder == nil {
 		return fmt.Errorf("security graph not initialized")
 	}
 	if err := a.requireGraphWriterLease("rebuild security graph"); err != nil {
@@ -730,12 +722,12 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 
 	start := time.Now()
 	a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
-	if err := builder.Build(ctx); err != nil {
+	if err := a.SecurityGraphBuilder.Build(ctx); err != nil {
 		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 		return err
 	}
 
-	securityGraph := builder.Graph()
+	securityGraph := a.SecurityGraphBuilder.Graph()
 	if err := a.requireGraphWriterLease("rebuild security graph"); err != nil {
 		return err
 	}
@@ -751,7 +743,7 @@ func (a *App) RebuildSecurityGraph(ctx context.Context) error {
 
 	duration := time.Since(start)
 	a.emitGraphRebuiltEvent(ctx, meta, duration)
-	a.emitGraphMutationEvent(ctx, builder.LastMutation(), "manual_rebuild")
+	a.emitGraphMutationEvent(ctx, a.SecurityGraphBuilder.LastMutation(), "manual_rebuild")
 
 	return nil
 }

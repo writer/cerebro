@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/policy"
+	"github.com/writer/cerebro/internal/postgres"
 )
 
 // PostgresStore persists findings to PostgreSQL with local cache
@@ -66,13 +67,18 @@ func (s *PostgresStore) qualifiedTable() string {
 	if s.schema == "" {
 		return "findings"
 	}
-	return s.schema + ".findings"
+	safeTableRef, err := postgres.SafeQualifiedTableRef(strings.TrimSpace(s.schema), "findings")
+	if err != nil {
+		return "findings"
+	}
+	return safeTableRef
 }
 
 // Load fetches all findings from Postgres into cache
 func (s *PostgresStore) Load(ctx context.Context) error {
 	table := s.qualifiedTable()
 
+	// #nosec G202 -- table is built by qualifiedTable from validated identifiers only.
 	query := `
 		SELECT id, policy_id, policy_name, severity, status,
 			   resource_id, resource_type, resource_data, description,
@@ -432,6 +438,7 @@ func (s *PostgresStore) Sync(ctx context.Context) error {
 			)
 		}
 
+		// #nosec G202 -- table is validated by qualifiedTable and valuePlaceholders are generated positional parameters.
 		upsert := `
 			INSERT INTO ` + table + ` (
 				id, policy_id, policy_name, severity, status,

@@ -67,11 +67,11 @@ func (a *App) initScheduler(_ context.Context) {
 	}
 
 	a.Scheduler.AddJob("graph-rebuild", graphInterval, func(ctx context.Context) error {
-		if a.Warehouse == nil && a.SecurityGraphBuilder == nil {
+		if a.SecurityGraphBuilder == nil {
 			return nil
 		}
 
-		if a.SecurityGraphBuilder != nil && !a.SecurityGraphBuilder.HasChanges(ctx) {
+		if !a.SecurityGraphBuilder.HasChanges(ctx) {
 			a.Logger.Info("security graph rebuild skipped - no data changes detected")
 			return nil
 		}

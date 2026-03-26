@@ -90,6 +90,7 @@ func (s *PostgresWatermarkStore) PersistWatermarks(ctx context.Context) error {
 			args = append(args, wm.Table, wm.LastScanTime, wm.LastScanID, wm.RowsScanned)
 		}
 
+		// #nosec G202 -- valuePlaceholders are generated positional parameters, not user-controlled SQL fragments.
 		upsert := `
 			INSERT INTO cerebro_scan_watermarks (table_name, last_scan_time, last_scan_id, rows_scanned)
 			VALUES ` + strings.Join(valuePlaceholders, ",") + `

@@ -1,10 +1,12 @@
 package app
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/writer/cerebro/internal/events"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestParseAuditMutationCloudEventUsesTableAwareResourceIDs(t *testing.T) {
@@ -103,5 +105,45 @@ func TestParseAuditMutationCloudEventSkipsInvalidBatchRecordsAndNormalizesDelete
 	}
 	if got := result.Mutations[0].ResourceID; got != "" {
 		t.Fatalf("expected removal mutation to allow empty resource_id, got %q", got)
+	}
+}
+
+func TestHandleAuditMutationCloudEventSkipsGraphApplyWithoutBuilder(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(ctx context.Context, query string, args ...any) (*warehouse.QueryResult, error) {
+			t.Fatalf("unexpected warehouse query without graph builder: %q", query)
+			return nil, nil
+		},
+	}
+	application := &App{Warehouse: store}
+
+	evt := events.CloudEvent{
+		ID:     "evt-audit-runtime-1",
+		Source: "urn:test:audit",
+		Type:   "aws.cloudtrail.asset.changed",
+		Time:   time.Date(2026, 3, 14, 14, 0, 0, 0, time.UTC),
+		Data: map[string]any{
+			"mutations": []any{
+				map[string]any{
+					"table_name":  "aws_s3_buckets",
+					"change_type": "added",
+					"payload": map[string]any{
+						"arn":    "arn:aws:s3:::audit-bucket",
+						"name":   "audit-bucket",
+						"region": "us-east-1",
+					},
+				},
+			},
+		},
+	}
+
+	if err := application.handleAuditMutationCloudEvent(context.Background(), evt); err != nil {
+		t.Fatalf("handleAuditMutationCloudEvent failed: %v", err)
+	}
+	if len(store.CDCBatches) != 1 {
+		t.Fatalf("expected one CDC batch, got %d", len(store.CDCBatches))
+	}
+	if len(store.Queries) != 0 {
+		t.Fatalf("expected no warehouse graph queries, got %#v", store.Queries)
 	}
 }

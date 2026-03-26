@@ -9,6 +9,7 @@ import (
 
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/graph/builders"
+	"github.com/writer/cerebro/internal/warehouse"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -250,5 +251,69 @@ func TestRebuildSecurityGraphUpdatesGraphBuildState(t *testing.T) {
 
 	if snapshot := app.GraphBuildSnapshot(); snapshot.State != GraphBuildSuccess {
 		t.Fatalf("expected graph build state success after rebuild, got %#v", snapshot)
+	}
+}
+
+func TestApplySecurityGraphChangesRequiresConfiguredBuilder(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(ctx context.Context, query string, args ...any) (*warehouse.QueryResult, error) {
+			t.Fatalf("unexpected warehouse query without configured graph builder: %q", query)
+			return nil, nil
+		},
+	}
+	app := &App{
+		Config:    &Config{},
+		Logger:    schedulerDigestTestLogger(),
+		Warehouse: store,
+	}
+
+	if _, err := app.ApplySecurityGraphChanges(context.Background(), "test"); err == nil {
+		t.Fatal("expected ApplySecurityGraphChanges to fail without configured graph builder")
+	}
+	if _, applied, err := app.TryApplySecurityGraphChanges(context.Background(), "test"); err == nil {
+		t.Fatal("expected TryApplySecurityGraphChanges to fail without configured graph builder")
+	} else if applied {
+		t.Fatal("expected TryApplySecurityGraphChanges to report not applied without configured graph builder")
+	}
+}
+
+func TestRebuildSecurityGraphRequiresConfiguredBuilder(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(ctx context.Context, query string, args ...any) (*warehouse.QueryResult, error) {
+			t.Fatalf("unexpected warehouse query without configured graph builder: %q", query)
+			return nil, nil
+		},
+	}
+	app := &App{
+		Config:    &Config{},
+		Logger:    schedulerDigestTestLogger(),
+		Warehouse: store,
+	}
+
+	if err := app.RebuildSecurityGraph(context.Background()); err == nil {
+		t.Fatal("expected RebuildSecurityGraph to fail without configured graph builder")
+	}
+}
+
+func TestInitScheduler_GraphRebuildSkipsWithoutBuilder(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		QueryFunc: func(ctx context.Context, query string, args ...any) (*warehouse.QueryResult, error) {
+			t.Fatalf("unexpected warehouse query without configured graph builder: %q", query)
+			return nil, nil
+		},
+	}
+	app := &App{
+		Config:    &Config{},
+		Logger:    schedulerDigestTestLogger(),
+		Warehouse: store,
+	}
+	app.initScheduler(context.Background())
+
+	job, ok := app.Scheduler.GetJob("graph-rebuild")
+	if !ok {
+		t.Fatal("expected graph-rebuild job to exist")
+	}
+	if err := job.Handler(context.Background()); err != nil {
+		t.Fatalf("graph-rebuild handler returned error: %v", err)
 	}
 }

@@ -13,7 +13,7 @@ import (
 // ApplySecurityGraphChanges applies CDC-backed graph mutations and falls back to
 // a copy-on-write full rebuild only when incremental mutation fails.
 func (a *App) ApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, error) {
-	if a == nil || (a.SecurityGraphBuilder == nil && a.Warehouse == nil) {
+	if a == nil || a.SecurityGraphBuilder == nil {
 		return graph.GraphMutationSummary{}, errGraphNotInitialized()
 	}
 
@@ -26,7 +26,7 @@ func (a *App) ApplySecurityGraphChanges(ctx context.Context, trigger string) (gr
 // TryApplySecurityGraphChanges attempts a non-blocking graph update. It returns
 // applied=false when another graph update already owns the mutation lock.
 func (a *App) TryApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, bool, error) {
-	if a == nil || (a.SecurityGraphBuilder == nil && a.Warehouse == nil) {
+	if a == nil || a.SecurityGraphBuilder == nil {
 		return graph.GraphMutationSummary{}, false, errGraphNotInitialized()
 	}
 	if !a.graphUpdateMu.TryLock() {
@@ -48,35 +48,6 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 	logger := a.Logger
 	if logger == nil {
 		logger = slog.Default()
-	}
-	if a.SecurityGraphBuilder == nil {
-		builder := a.newSecurityGraphBuilder()
-		if builder == nil {
-			return graph.GraphMutationSummary{}, errGraphNotInitialized()
-		}
-		a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
-		if err := builder.Build(ctx); err != nil {
-			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
-			return graph.GraphMutationSummary{}, err
-		}
-		securityGraph := builder.Graph()
-		meta, err := a.activateBuiltSecurityGraph(ctx, securityGraph)
-		if err != nil {
-			return graph.GraphMutationSummary{}, err
-		}
-		summary := builder.LastMutation()
-		duration := time.Since(start)
-		logger.Info("security graph rebuilt",
-			"trigger", trigger,
-			"nodes", meta.NodeCount,
-			"edges", meta.EdgeCount,
-			"duration", duration,
-		)
-		if !graphReplicaReplayEnabled(ctx) {
-			a.emitGraphRebuiltEvent(ctx, meta, duration)
-			a.emitGraphMutationEvent(ctx, summary, trigger)
-		}
-		return summary, nil
 	}
 	if err := a.prepareSecurityGraphBuilderForIncrementalApply(ctx); err != nil {
 		return graph.GraphMutationSummary{}, err

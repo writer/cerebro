@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
@@ -55,4 +56,8 @@ func (s *SnowflakeSource) Query(ctx context.Context, query string, args ...any) 
 		Rows:    result.Rows,
 		Count:   result.Count,
 	}, nil
+}
+
+func (s *SnowflakeSource) HistoricalQuery(ctx context.Context, timestamp time.Time, query string, args ...any) (*DataQueryResult, error) {
+	return s.Query(ctx, applyTimeTravelClauses(query, timestamp), args...)
 }

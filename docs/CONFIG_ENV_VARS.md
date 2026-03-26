@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **389**
+Total variables: **387**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -37,7 +37,7 @@ Total variables: **389**
 | `AUTH0_CLIENT_ID` | `getEnv` | `""` | `Auth0ClientID` | `-` |
 | `AUTH0_CLIENT_SECRET` | `getEnv` | `""` | `Auth0ClientSecret` | `-` |
 | `AUTH0_DOMAIN` | `getEnv` | `""` | `Auth0Domain` | `-` |
-| `AWS_REGION` | `getEnv` | `""`, `"us-east-1"` | `GraphStoreNeptuneRegion`, `GraphStoreSecondaryNeptuneRegion`, `JobRegion`, `S3InputRegion` | `-` |
+| `AWS_REGION` | `getEnv` | `"us-east-1"` | `GraphStoreNeptuneRegion`, `GraphStoreSecondaryNeptuneRegion`, `S3InputRegion` | `-` |
 | `AZURE_CLIENT_ID` | `getEnv` | `""` | `AzureClientID` | `-` |
 | `AZURE_CLIENT_SECRET` | `getEnv` | `""` | `AzureClientSecret` | `-` |
 | `AZURE_SUBSCRIPTION_ID` | `getEnv` | `""` | `AzureSubscriptionID` | `-` |
@@ -83,6 +83,7 @@ Total variables: **389**
 | `CROWDSTRIKE_CLIENT_SECRET` | `getEnv` | `""` | `CrowdStrikeClientSecret` | `-` |
 | `CYBERARK_API_TOKEN` | `getEnv` | `""` | `CyberArkAPIToken` | `-` |
 | `CYBERARK_URL` | `getEnv` | `""` | `CyberArkURL` | `-` |
+| `DATABASE_URL` | `getEnv` | `""` | `DatabaseURL` | `Postgres connection string for persistent storage` |
 | `DATADOG_API_KEY` | `getEnv` | `""` | `DatadogAPIKey` | `-` |
 | `DATADOG_APP_KEY` | `getEnv` | `""` | `DatadogAppKey` | `-` |
 | `DATADOG_SITE` | `getEnv` | `"datadoghq.com"` | `DatadogSite` | `-` |
@@ -202,12 +203,9 @@ Total variables: **389**
 | `JIRA_CLOSE_TRANSITIONS` | `getEnv` | `"Done,Closed,Resolve Issue"` | `JiraCloseTransitions` | `-` |
 | `JIRA_EMAIL` | `getEnv` | `""` | `JiraEmail` | `-` |
 | `JIRA_PROJECT` | `getEnv` | `"SEC"` | `JiraProject` | `-` |
-| `JOB_IDEMPOTENCY_TABLE_NAME` | `getEnv` | `""` | `JobIdempotencyTableName` | `-` |
+| `JOB_DATABASE_URL` | `getEnv` | `""` | `JobDatabaseURL` | `-` |
 | `JOB_MAX_ATTEMPTS` | `getEnvInt` | `3` | `JobMaxAttempts` | `-` |
 | `JOB_POLL_WAIT` | `getEnvDuration` | `10 * time.Second` | `JobPollWait` | `-` |
-| `JOB_QUEUE_URL` | `getEnv` | `""` | `JobQueueURL` | `-` |
-| `JOB_REGION` | `getEnv` | `getEnv("AWS_REGION", "")` | `JobRegion` | `-` |
-| `JOB_TABLE_NAME` | `getEnv` | `""` | `JobTableName` | `-` |
 | `JOB_VISIBILITY_TIMEOUT` | `getEnvDuration` | `30 * time.Second` | `JobVisibilityTimeout` | `-` |
 | `JOB_WORKER_CONCURRENCY` | `getEnvInt` | `4` | `JobWorkerConcurrency` | `-` |
 | `JUMPCLOUD_API_TOKEN` | `getEnv` | `""` | `JumpCloudAPIToken` | `-` |

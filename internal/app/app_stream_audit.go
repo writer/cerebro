@@ -98,7 +98,7 @@ func (a *App) handleAuditMutationCloudEvent(ctx context.Context, evt events.Clou
 		)
 	}
 
-	if !a.isSecurityGraphReady() {
+	if !a.isSecurityGraphReady() || a.SecurityGraphBuilder == nil {
 		return nil
 	}
 	summary, applied, err := a.TryApplySecurityGraphChanges(ctx, "audit_event")

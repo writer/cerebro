@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
+
+	"github.com/writer/cerebro/internal/postgres"
 )
 
 // PostgresSessionStore persists agent sessions to PostgreSQL.
@@ -18,8 +21,13 @@ type PostgresSessionStore struct {
 // The schema parameter should be a simple schema name (e.g. "cerebro").
 func NewPostgresSessionStore(db *sql.DB, schema string) (*PostgresSessionStore, error) {
 	tableRef := "agent_sessions"
+	schema = strings.TrimSpace(schema)
 	if schema != "" {
-		tableRef = schema + ".agent_sessions"
+		safeTableRef, err := postgres.SafeQualifiedTableRef(schema, "agent_sessions")
+		if err != nil {
+			return nil, err
+		}
+		tableRef = safeTableRef
 	}
 
 	store := &PostgresSessionStore{
@@ -27,6 +35,7 @@ func NewPostgresSessionStore(db *sql.DB, schema string) (*PostgresSessionStore, 
 		tableRef: tableRef,
 	}
 
+	// #nosec G202 -- tableRef is either a constant or built from validated identifiers via postgres.SafeQualifiedTableRef.
 	createTableQuery := `
 		CREATE TABLE IF NOT EXISTS ` + store.tableRef + ` (
 			id TEXT PRIMARY KEY,
@@ -65,6 +74,7 @@ func (s *PostgresSessionStore) Save(ctx context.Context, session *Session) error
 		contextJSON = []byte("{}")
 	}
 
+	// #nosec G202 -- tableRef is either a constant or built from validated identifiers via postgres.SafeQualifiedTableRef.
 	query := `
 		INSERT INTO ` + s.tableRef + ` (
 			id, agent_id, user_id, status, messages, context, created_at, updated_at
@@ -94,6 +104,7 @@ func (s *PostgresSessionStore) Save(ctx context.Context, session *Session) error
 
 // Get retrieves a session by ID from Postgres.
 func (s *PostgresSessionStore) Get(ctx context.Context, id string) (*Session, error) {
+	// #nosec G202 -- tableRef is either a constant or built from validated identifiers via postgres.SafeQualifiedTableRef.
 	query := `
 		SELECT id, agent_id, user_id, status, messages, context, created_at, updated_at
 		FROM ` + s.tableRef + `
