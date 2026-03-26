@@ -360,6 +360,127 @@ func TestGraphIntelligenceEntitySummaryPreservesEvaluationQualityWhenScoped(t *t
 	t.Fatalf("expected evaluation_quality facet in entity summary, got %#v", items)
 }
 
+func TestGraphIntelligenceEntitySummaryPreservesWorkloadSecurityWhenScoped(t *testing.T) {
+	s := newTestServer(t)
+	base := time.Date(2026, 3, 22, 22, 0, 0, 0, time.UTC)
+	entityID := "arn:aws:ec2:us-east-1:123456789012:instance/i-payments"
+
+	fullGraph := graph.New()
+	fullGraph.AddNode(&graph.Node{
+		ID:        entityID,
+		Kind:      graph.NodeKindInstance,
+		Name:      "i-payments",
+		Provider:  "aws",
+		Account:   "123456789012",
+		Region:    "us-east-1",
+		CreatedAt: base,
+		UpdatedAt: base,
+		Properties: map[string]any{
+			"observed_at": base.Format(time.RFC3339),
+			"valid_from":  base.Format(time.RFC3339),
+		},
+	})
+	fullGraph.AddNode(&graph.Node{
+		ID:        "role:hop-1",
+		Kind:      graph.NodeKindRole,
+		Name:      "hop-1",
+		Provider:  "aws",
+		Account:   "123456789012",
+		CreatedAt: base,
+		UpdatedAt: base,
+	})
+	fullGraph.AddNode(&graph.Node{
+		ID:        "role:hop-2",
+		Kind:      graph.NodeKindRole,
+		Name:      "hop-2",
+		Provider:  "aws",
+		Account:   "123456789012",
+		CreatedAt: base,
+		UpdatedAt: base,
+	})
+	fullGraph.AddNode(&graph.Node{
+		ID:        "role:hop-3",
+		Kind:      graph.NodeKindRole,
+		Name:      "hop-3",
+		Provider:  "aws",
+		Account:   "123456789012",
+		CreatedAt: base,
+		UpdatedAt: base,
+	})
+	fullGraph.AddNode(&graph.Node{
+		ID:        "database:payments-sensitive",
+		Kind:      graph.NodeKindDatabase,
+		Name:      "payments-sensitive",
+		Provider:  "aws",
+		Account:   "123456789012",
+		Region:    "us-east-1",
+		CreatedAt: base,
+		UpdatedAt: base,
+		Properties: map[string]any{
+			"contains_pii": true,
+			"observed_at":  base.Format(time.RFC3339),
+			"valid_from":   base.Format(time.RFC3339),
+		},
+	})
+	fullGraph.AddNode(&graph.Node{
+		ID:        "workload_scan:i-payments",
+		Kind:      graph.NodeKindWorkloadScan,
+		Name:      "i-payments scan",
+		CreatedAt: base,
+		UpdatedAt: base,
+		Properties: map[string]any{
+			"completed_at":                           base.Format(time.RFC3339),
+			"observed_at":                            base.Format(time.RFC3339),
+			"valid_from":                             base.Format(time.RFC3339),
+			"vulnerability_count":                    1,
+			"reachable_vulnerability_count":          1,
+			"critical_vulnerability_count":           1,
+			"reachable_critical_vulnerability_count": 1,
+		},
+	})
+	fullGraph.AddEdge(&graph.Edge{ID: entityID + "->workload_scan:i-payments:has_scan", Source: entityID, Target: "workload_scan:i-payments", Kind: graph.EdgeKindHasScan, Effect: graph.EdgeEffectAllow, CreatedAt: base})
+	fullGraph.AddEdge(&graph.Edge{ID: entityID + "->role:hop-1:can_assume", Source: entityID, Target: "role:hop-1", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow, CreatedAt: base})
+	fullGraph.AddEdge(&graph.Edge{ID: "role:hop-1->role:hop-2:can_assume", Source: "role:hop-1", Target: "role:hop-2", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow, CreatedAt: base})
+	fullGraph.AddEdge(&graph.Edge{ID: "role:hop-2->role:hop-3:can_assume", Source: "role:hop-2", Target: "role:hop-3", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow, CreatedAt: base})
+	fullGraph.AddEdge(&graph.Edge{ID: "role:hop-3->database:payments-sensitive:can_admin", Source: "role:hop-3", Target: "database:payments-sensitive", Kind: graph.EdgeKindCanAdmin, Effect: graph.EdgeEffectAllow, CreatedAt: base})
+	fullGraph.BuildIndex()
+
+	scopedGraph := graph.ExtractSubgraph(fullGraph, entityID, graph.ExtractSubgraphOptions{MaxDepth: 3})
+	s.graphIntelligence = stubGraphIntelligenceService{
+		currentGraph: scopedGraph,
+		entityGraph:  fullGraph,
+	}
+	s.app.SecurityGraph = nil
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/entity-summary?entity_id="+entityID, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for service-backed entity summary, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	facets, ok := body["facets"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected facets block, got %#v", body["facets"])
+	}
+	items, ok := facets["items"].([]any)
+	if !ok {
+		t.Fatalf("expected facet items, got %#v", facets["items"])
+	}
+
+	for _, item := range items {
+		record, ok := item.(map[string]any)
+		if !ok || record["id"] != "workload_security" {
+			continue
+		}
+		if record["summary"] != "Critical workload vulnerabilities combine with reachable attack-path context" {
+			t.Fatalf("expected workload_security facet to retain hop-4 blast-radius context, got %#v", record)
+		}
+		return
+	}
+
+	t.Fatalf("expected workload_security facet in entity summary, got %#v", items)
+}
+
 func TestGraphIntelligenceInsightsEndpoint_InvalidParams(t *testing.T) {
 	s := newTestServer(t)
 
