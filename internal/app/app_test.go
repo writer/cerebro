@@ -780,15 +780,15 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_DefaultsToSnowflakeBackendWhenAuthPresent(t *testing.T) {
+func TestLoadConfig_DoesNotInferSnowflakeWarehouseBackendFromAuth(t *testing.T) {
 	t.Setenv("WAREHOUSE_BACKEND", "")
 	t.Setenv("SNOWFLAKE_ACCOUNT", "acct")
 	t.Setenv("SNOWFLAKE_USER", "user")
 	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----")
 
 	cfg := LoadConfig()
-	if cfg.WarehouseBackend != "snowflake" {
-		t.Fatalf("expected snowflake warehouse backend with auth present, got %q", cfg.WarehouseBackend)
+	if cfg.WarehouseBackend != "sqlite" {
+		t.Fatalf("expected test default warehouse backend sqlite when backend is not explicitly configured, got %q", cfg.WarehouseBackend)
 	}
 }
 

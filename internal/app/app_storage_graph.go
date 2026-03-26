@@ -273,6 +273,7 @@ func (a *App) Close() error {
 		if err := a.configuredSecurityGraphClose(); err != nil {
 			errs = append(errs, fmt.Errorf("graph store: %w", err))
 		}
+		a.configuredSecurityGraphClose = nil
 	}
 
 	// Close Postgres connection
@@ -327,12 +328,6 @@ func (a *App) Close() error {
 			errs = append(errs, fmt.Errorf("webhooks: %w", err))
 		}
 	}
-	if a.configuredSecurityGraphClose != nil {
-		if err := a.configuredSecurityGraphClose(); err != nil {
-			errs = append(errs, fmt.Errorf("configured graph store: %w", err))
-		}
-	}
-
 	// Stop scheduler if running
 	if a.Scheduler != nil {
 		a.Scheduler.Stop()

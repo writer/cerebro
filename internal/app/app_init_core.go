@@ -24,14 +24,20 @@ import (
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
-func (a *App) initPostgres(ctx context.Context) error {
-	warehouseURL := strings.TrimSpace(a.Config.DatabaseURL)
-	databaseURL := warehouseURL
-	if databaseURL == "" {
-		databaseURL = strings.TrimSpace(a.Config.JobDatabaseURL)
+func effectivePostgresURL(cfg *Config) string {
+	if cfg == nil {
+		return ""
 	}
+	if jobURL := strings.TrimSpace(cfg.JobDatabaseURL); jobURL != "" {
+		return jobURL
+	}
+	return strings.TrimSpace(cfg.DatabaseURL)
+}
+
+func (a *App) initPostgres(ctx context.Context) error {
+	databaseURL := effectivePostgresURL(a.Config)
 	if databaseURL == "" {
-		a.Logger.Warn("DATABASE_URL not set, running without database")
+		a.Logger.Warn("JOB_DATABASE_URL/DATABASE_URL not set, running without postgres")
 		return nil
 	}
 
@@ -52,11 +58,7 @@ func (a *App) initPostgres(ctx context.Context) error {
 
 	a.PostgresDB = db
 	a.PostgresClient = postgres.NewPostgresClient(db, "cerebro", "cerebro")
-	if warehouseURL != "" {
-		a.Warehouse = a.PostgresClient
-	} else {
-		a.Warehouse = nil
-	}
+	a.Warehouse = nil
 
 	// Bootstrap schema and tables
 	if err := a.PostgresClient.Bootstrap(ctx); err != nil {
@@ -68,12 +70,17 @@ func (a *App) initPostgres(ctx context.Context) error {
 
 func (a *App) initWarehouse(ctx context.Context) error {
 	switch strings.ToLower(strings.TrimSpace(a.Config.WarehouseBackend)) {
+	case "":
+		a.Warehouse = nil
+		return nil
 	case "sqlite":
 		return a.initSQLiteWarehouse(ctx)
 	case "postgres":
 		return a.initPostgresWarehouse(ctx)
+	case "snowflake":
+		return fmt.Errorf("warehouse backend %q is no longer supported", "snowflake")
 	default:
-		return a.initSQLiteWarehouse(ctx)
+		return fmt.Errorf("unsupported warehouse backend %q", strings.TrimSpace(a.Config.WarehouseBackend))
 	}
 }
 

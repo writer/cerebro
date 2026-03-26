@@ -535,15 +535,11 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	a.graphReady = make(chan struct{})
 	a.setGraphBuildState(GraphBuildNotStarted, time.Time{}, nil)
 
-	if a.retainsBuilderState() {
-		a.SecurityGraphBuilder = a.newSecurityGraphBuilder()
-		if a.SecurityGraphBuilder != nil {
-			securityGraph := a.SecurityGraphBuilder.Graph()
-			a.configureGraphRuntimeBehavior(securityGraph)
-			a.setSecurityGraph(securityGraph)
-		}
-	} else {
-		a.SecurityGraphBuilder = nil
+	a.SecurityGraphBuilder = a.newSecurityGraphBuilder()
+	if a.retainsBuilderState() && a.SecurityGraphBuilder != nil {
+		securityGraph := a.SecurityGraphBuilder.Graph()
+		a.configureGraphRuntimeBehavior(securityGraph)
+		a.setSecurityGraph(securityGraph)
 	}
 
 	if a.Warehouse == nil {
@@ -556,7 +552,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 				"edges", securityGraph.EdgeCount(),
 			)
 		} else {
-			a.Logger.Warn("security graph disabled - database not configured")
+			a.Logger.Warn("security graph disabled - warehouse not configured")
 			a.Propagation = nil
 			a.publishSecurityGraphRuntimeView(nil)
 		}

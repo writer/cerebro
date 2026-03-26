@@ -24,9 +24,9 @@ type scanPreflightResult struct {
 	Ready               bool     `json:"ready"`
 	Mode                string   `json:"mode"`
 	Message             string   `json:"message"`
-	SnowflakeConfigured bool     `json:"snowflake_configured"`
-	SnowflakeConnected  bool     `json:"snowflake_connected"`
-	MissingSnowflakeEnv []string `json:"missing_snowflake_env,omitempty"`
+	WarehouseConfigured bool     `json:"warehouse_configured"`
+	WarehouseConnected  bool     `json:"warehouse_connected"`
+	MissingWarehouseEnv []string `json:"missing_warehouse_env,omitempty"`
 	LocalDatasetLoaded  bool     `json:"local_dataset_loaded"`
 	LocalDatasetTables  int      `json:"local_dataset_tables,omitempty"`
 	LocalDatasetSource  string   `json:"local_dataset_source,omitempty"`
@@ -208,7 +208,11 @@ func sortedDatasetTables(dataset *localScanDataset) []string {
 }
 
 func evaluateScanPreflight(application *app.App, dataset *localScanDataset) scanPreflightResult {
-	missing := missingSnowflakeEnv(application.Config)
+	var cfg *app.Config
+	if application != nil {
+		cfg = application.Config
+	}
+	missing := missingWarehouseEnv(cfg)
 	localTables := 0
 	localSource := ""
 	if dataset != nil {
@@ -217,9 +221,9 @@ func evaluateScanPreflight(application *app.App, dataset *localScanDataset) scan
 	}
 
 	result := scanPreflightResult{
-		SnowflakeConfigured: len(missing) == 0,
-		SnowflakeConnected:  application.Snowflake != nil,
-		MissingSnowflakeEnv: missing,
+		WarehouseConfigured: len(missing) == 0,
+		WarehouseConnected:  application != nil && application.Warehouse != nil,
+		MissingWarehouseEnv: missing,
 		LocalDatasetLoaded:  localTables > 0,
 		LocalDatasetTables:  localTables,
 		LocalDatasetSource:  localSource,
@@ -232,37 +236,39 @@ func evaluateScanPreflight(application *app.App, dataset *localScanDataset) scan
 		return result
 	}
 
-	result.Mode = "snowflake"
-	if result.SnowflakeConnected {
+	result.Mode = "warehouse"
+	if result.WarehouseConnected {
 		result.Ready = true
-		result.Message = "ready: snowflake scan mode available"
+		result.Message = "ready: warehouse scan mode available"
 		return result
 	}
 
-	if len(result.MissingSnowflakeEnv) > 0 {
-		result.Message = fmt.Sprintf("missing required snowflake env vars: %s", strings.Join(result.MissingSnowflakeEnv, ", "))
+	if len(result.MissingWarehouseEnv) > 0 {
+		result.Message = fmt.Sprintf("missing required warehouse env vars: %s", strings.Join(result.MissingWarehouseEnv, ", "))
 	} else {
-		result.Message = "snowflake credentials are set but connection failed"
+		result.Message = "warehouse is configured but connection failed"
 	}
 	return result
 }
 
-func missingSnowflakeEnv(cfg *app.Config) []string {
+func missingWarehouseEnv(cfg *app.Config) []string {
 	if cfg == nil {
-		return []string{"SNOWFLAKE_PRIVATE_KEY", "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"}
+		return []string{"WAREHOUSE_BACKEND"}
 	}
 
-	missing := make([]string, 0, 3)
-	if strings.TrimSpace(cfg.SnowflakePrivateKey) == "" {
-		missing = append(missing, "SNOWFLAKE_PRIVATE_KEY")
+	switch strings.ToLower(strings.TrimSpace(cfg.WarehouseBackend)) {
+	case "":
+		return []string{"WAREHOUSE_BACKEND"}
+	case "sqlite":
+		if strings.TrimSpace(cfg.WarehouseSQLitePath) == "" {
+			return []string{"WAREHOUSE_SQLITE_PATH"}
+		}
+	case "postgres":
+		if strings.TrimSpace(cfg.WarehousePostgresDSN) == "" {
+			return []string{"WAREHOUSE_POSTGRES_DSN"}
+		}
 	}
-	if strings.TrimSpace(cfg.SnowflakeAccount) == "" {
-		missing = append(missing, "SNOWFLAKE_ACCOUNT")
-	}
-	if strings.TrimSpace(cfg.SnowflakeUser) == "" {
-		missing = append(missing, "SNOWFLAKE_USER")
-	}
-	return missing
+	return nil
 }
 
 func runScanPreflight(application *app.App, dataset *localScanDataset) error {
@@ -277,14 +283,14 @@ func runScanPreflight(application *app.App, dataset *localScanDataset) error {
 		fmt.Println(strings.Repeat("-", 40))
 		fmt.Printf("Mode:                %s\n", result.Mode)
 		fmt.Printf("Ready:               %t\n", result.Ready)
-		fmt.Printf("Snowflake connected: %t\n", result.SnowflakeConnected)
+		fmt.Printf("Warehouse connected: %t\n", result.WarehouseConnected)
 		fmt.Printf("Local dataset:       %t\n", result.LocalDatasetLoaded)
 		if result.LocalDatasetLoaded {
 			fmt.Printf("  Tables:            %d\n", result.LocalDatasetTables)
 			fmt.Printf("  Source:            %s\n", result.LocalDatasetSource)
 		}
-		if len(result.MissingSnowflakeEnv) > 0 {
-			fmt.Printf("Missing env vars:    %s\n", strings.Join(result.MissingSnowflakeEnv, ", "))
+		if len(result.MissingWarehouseEnv) > 0 {
+			fmt.Printf("Missing env vars:    %s\n", strings.Join(result.MissingWarehouseEnv, ", "))
 		}
 		fmt.Printf("Message:             %s\n", result.Message)
 	}

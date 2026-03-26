@@ -93,14 +93,14 @@ func TestEvaluateScanPreflight_WithLocalDataset(t *testing.T) {
 	}
 }
 
-func TestEvaluateScanPreflight_MissingSnowflake(t *testing.T) {
+func TestEvaluateScanPreflight_MissingWarehouse(t *testing.T) {
 	application := &app.App{Config: &app.Config{}}
 
 	result := evaluateScanPreflight(application, nil)
 	if result.Ready {
 		t.Fatalf("expected preflight not ready, got ready: %+v", result)
 	}
-	if len(result.MissingSnowflakeEnv) != 3 {
-		t.Fatalf("expected 3 missing env vars, got %v", result.MissingSnowflakeEnv)
+	if len(result.MissingWarehouseEnv) != 1 || result.MissingWarehouseEnv[0] != "WAREHOUSE_BACKEND" {
+		t.Fatalf("expected missing warehouse backend, got %v", result.MissingWarehouseEnv)
 	}
 }

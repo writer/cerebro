@@ -255,10 +255,10 @@ func runMultiAccountAWSSyncDirect(ctx context.Context, start time.Time, profiles
 			region = "us-east-1"
 		}
 
-		sfClient, err := createSnowflakeClient()
+		sfClient, closeWarehouse, err := openCLIWarehouse()
 		if err != nil {
-			Warning("Failed to create Snowflake client for profile %s: %v", profile, err)
-			syncErrs = append(syncErrs, fmt.Errorf("profile %s: create snowflake client: %w", profile, err))
+			Warning("Failed to open warehouse for profile %s: %v", profile, err)
+			syncErrs = append(syncErrs, fmt.Errorf("profile %s: open warehouse: %w", profile, err))
 			continue
 		}
 
@@ -278,7 +278,7 @@ func runMultiAccountAWSSyncDirect(ctx context.Context, start time.Time, profiles
 
 		syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
 		results, err := syncer.SyncAllWithConfig(ctx, awsCfg)
-		_ = sfClient.Close()
+		_ = closeWarehouse()
 		totalResults = append(totalResults, results...)
 
 		if err != nil {
@@ -445,11 +445,11 @@ func runNativeSyncDirect(ctx context.Context, start time.Time) error {
 		Info("Filtering AWS tables: %s", strings.Join(tableFilter, ", "))
 	}
 
-	client, err := createSnowflakeClient()
+	client, closeWarehouse, err := openCLIWarehouse()
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeWarehouse() }()
 
 	opts := []nativesync.EngineOption{}
 	if syncConcurrency > 0 {

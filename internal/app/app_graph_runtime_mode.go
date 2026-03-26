@@ -26,6 +26,13 @@ func defaultGraphStoreBackend() string {
 	return defaultGraphStoreBackendForProcess(runningUnderGoTest())
 }
 
+func defaultWarehouseBackendForProcess(testProcess bool) string {
+	if testProcess {
+		return "sqlite"
+	}
+	return ""
+}
+
 func allowInMemoryGraphStoreForProcess(testProcess, explicit bool) bool {
 	return testProcess || explicit
 }

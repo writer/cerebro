@@ -255,7 +255,7 @@ func newNativeSyncJobHandler(application *app.App) jobs.JobHandler {
 			Table:    req.Table,
 		}
 
-		err := runNativeSyncForJobFn(ctx, provider, schedule)
+		err := runNativeSyncForJobFn(ctx, application, provider, schedule)
 		if err != nil {
 			return "", err
 		}
@@ -294,20 +294,18 @@ func newNativeSyncJobHandler(application *app.App) jobs.JobHandler {
 	}
 }
 
-func runNativeSyncForJob(ctx context.Context, provider string, schedule *SyncSchedule) error {
-	client, err := createSnowflakeClient()
-	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+func runNativeSyncForJob(ctx context.Context, application *app.App, provider string, schedule *SyncSchedule) error {
+	if application == nil || application.Warehouse == nil {
+		return fmt.Errorf("warehouse not configured")
 	}
-	defer func() { _ = client.Close() }()
 
 	switch provider {
 	case "aws":
-		return executeAWSSync(ctx, client, schedule)
+		return executeAWSSync(ctx, application.Warehouse, schedule)
 	case "gcp":
-		return executeGCPSync(ctx, client, schedule)
+		return executeGCPSync(ctx, application.Warehouse, schedule)
 	case "azure":
-		return executeAzureSync(ctx, client, schedule)
+		return executeAzureSync(ctx, application.Warehouse, schedule)
 	default:
 		return fmt.Errorf("unsupported native sync provider %q", provider)
 	}

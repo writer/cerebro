@@ -13,7 +13,6 @@ import (
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/scheduler"
-	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
 	"github.com/writer/cerebro/internal/warehouse"
 )
@@ -750,7 +749,7 @@ func isScannableTable(table string) bool {
 	if strings.HasPrefix(table, "cerebro_") {
 		return false
 	}
-	if err := snowflake.ValidateTableNameStrict(table); err != nil {
+	if err := warehouse.ValidateTableNameStrict(table); err != nil {
 		return false
 	}
 	return true

@@ -24,7 +24,7 @@ import (
 var scanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Scan assets against security policies",
-	Long: `Scan cloud assets from Snowflake against Cedar security policies.
+	Long: `Scan cloud assets from the configured warehouse against Cedar security policies.
 
 Examples:
   cerebro scan                           # Scan all tables
@@ -70,8 +70,13 @@ func init() {
 	scanCmd.Flags().BoolVar(&scanUseGraph, "graph", true, "Use security graph for enhanced analysis (attack paths, blast radius)")
 	scanCmd.Flags().BoolVar(&scanExtractRelationships, "extract-relationships", false, "Extract resource relationships before scanning")
 	scanCmd.Flags().BoolVar(&scanPreflight, "preflight", false, "Validate scan prerequisites and exit")
-	scanCmd.Flags().StringVar(&scanLocalFixture, "local-fixture", "", "Path to local scan fixture JSON (table->assets) for scanning without Snowflake")
+	scanCmd.Flags().StringVar(&scanLocalFixture, "local-fixture", "", "Path to local scan fixture JSON (table->assets) for scanning without a configured warehouse")
 	scanCmd.Flags().StringVar(&scanSnapshotDir, "snapshot-dir", "", "Directory containing provider snapshot JSON files (<table>.json) for local scan mode")
+}
+
+type scanCDCWarehouse interface {
+	GetCDCEvents(ctx context.Context, table string, since time.Time, limit int) ([]warehouse.CDCEvent, error)
+	GetAssetsByIDs(ctx context.Context, table string, ids []string, columns []string) ([]map[string]interface{}, error)
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
@@ -117,7 +122,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return runScanPreflight(application, localDataset)
 	}
 
-	if application.Snowflake == nil && !localMode && (mode == cliExecutionModeDirect || !apiCompatible || apiFallbackToDirect) {
+	if application.Warehouse == nil && !localMode && (mode == cliExecutionModeDirect || !apiCompatible || apiFallbackToDirect) {
 		preflight := evaluateScanPreflight(application, nil)
 		return fmt.Errorf("scan preflight failed: %s (run 'cerebro scan --preflight' for details)", preflight.Message)
 	}
@@ -128,11 +133,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Extract relationships if requested
 	if scanExtractRelationships {
-		if application.Snowflake == nil {
-			Warning("Skipping relationship extraction in local scan mode (Snowflake not configured)")
+		if application.Warehouse == nil {
+			Warning("Skipping relationship extraction (warehouse not configured)")
 		} else {
 			Info("Extracting resource relationships from synced data...")
-			relExtractor := nativesync.NewRelationshipExtractor(application.Snowflake, application.Logger)
+			relExtractor := nativesync.NewRelationshipExtractor(application.Warehouse, application.Logger)
 			relCount, err := relExtractor.ExtractAndPersist(ctx)
 			if err != nil {
 				Warning("Relationship extraction had errors: %v", err)
@@ -169,8 +174,8 @@ func runScan(cmd *cobra.Command, args []string) error {
 	if localMode {
 		availableTables = sortedDatasetTables(localDataset)
 		application.AvailableTables = append([]string(nil), availableTables...)
-	} else if application.Snowflake != nil {
-		if tables, err := application.Snowflake.ListAvailableTables(ctx); err == nil {
+	} else if application.Warehouse != nil {
+		if tables, err := application.Warehouse.ListAvailableTables(ctx); err == nil {
 			application.AvailableTables = tables
 			availableTables = tables
 		} else {
@@ -197,7 +202,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		tables = nativesync.SupportedTableNames()
 	}
 
-	// Filter to only tables that actually exist in Snowflake
+	// Filter to only tables that actually exist in the configured warehouse
 	if len(availableSet) > 0 {
 		var valid []string
 		skipped := 0
@@ -212,7 +217,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			if localMode {
 				Info("Skipped %d tables not present in local dataset", skipped)
 			} else {
-				Info("Skipped %d tables not present in Snowflake", skipped)
+				Info("Skipped %d tables not present in the configured warehouse", skipped)
 			}
 		}
 		tables = valid
@@ -310,14 +315,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 	sqlToxicRiskSets := make(map[string][]map[string]bool)
 
 	// Relationship-based toxic combination detection (SQL query approach)
-	if !localMode && scanToxicCombos && application.Snowflake != nil {
+	if !localMode && scanToxicCombos && application.Warehouse != nil {
 		var toxicCursor *scanner.ToxicScanCursor
 		if application.ScanWatermarks != nil {
 			if wm := application.ScanWatermarks.GetWatermark("_toxic_relationships"); wm != nil {
 				toxicCursor = &scanner.ToxicScanCursor{SinceTime: wm.LastScanTime, SinceID: wm.LastScanID}
 			}
 		}
-		toxicResult, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Snowflake, toxicCursor)
+		toxicResult, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Warehouse, toxicCursor)
 		if err != nil {
 			Warning("Failed to detect toxic combinations from relationships: %v", err)
 		} else if len(toxicResult.Findings) > 0 {
@@ -935,7 +940,7 @@ func runScanViaAPI(ctx context.Context, tables []string) error {
 	return nil
 }
 
-// scanOneTable fetches assets from one Snowflake table, evaluates policies, and returns results.
+// scanOneTable fetches assets from one warehouse table, evaluates policies, and returns results.
 func scanOneTable(ctx context.Context, application *app.App, table string, full bool, limit int, toxicCombos, graphAvailable bool, tuning app.ScanTuning) (scanned, violations int64, findings []map[string]interface{}, profile scanner.TableScanProfile) {
 	fmt.Printf("\n%s Scanning %s...\n", color(colorCyan, "→"), table)
 
@@ -971,14 +976,15 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 	useCDC := false
 	var cdcCursor time.Time
 	var cdcIDs []string
+	cdcWarehouse, _ := any(application.Warehouse).(scanCDCWarehouse)
 
-	if !full && application.ScanWatermarks != nil {
+	if !full && application.ScanWatermarks != nil && cdcWarehouse != nil {
 		if wm := application.ScanWatermarks.GetWatermark(table); wm != nil {
 			filter.Since = wm.LastScanTime
 			filter.SinceID = wm.LastScanID
 
 			cdcEvents, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]warehouse.CDCEvent, error) {
-				return application.Snowflake.GetCDCEvents(tableCtx, table, wm.LastScanTime, batchSize)
+				return cdcWarehouse.GetCDCEvents(tableCtx, table, wm.LastScanTime, batchSize)
 			})
 			profile.RetryAttempts += retryCount(attempts)
 			if err != nil {
@@ -1005,7 +1011,7 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 		}
 
 		assets, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]map[string]interface{}, error) {
-			return application.Snowflake.GetAssetsByIDs(tableCtx, table, cdcIDs, columns)
+			return cdcWarehouse.GetAssetsByIDs(tableCtx, table, cdcIDs, columns)
 		})
 		profile.RetryAttempts += retryCount(attempts)
 		if err != nil {
@@ -1055,7 +1061,7 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 			}
 
 			assets, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]map[string]interface{}, error) {
-				return application.Snowflake.GetAssets(tableCtx, table, filter)
+				return application.Warehouse.GetAssets(tableCtx, table, filter)
 			})
 			profile.RetryAttempts += retryCount(attempts)
 			if err != nil {

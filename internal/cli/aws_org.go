@@ -250,15 +250,15 @@ func runAWSOrgSyncDirect(ctx context.Context, start time.Time) error {
 				accountCfg = assumedCfg
 			}
 
-			sfClient, err := createSnowflakeClient()
+			sfClient, closeWarehouse, err := openCLIWarehouse()
 			if err != nil {
 				mu.Lock()
-				errs = append(errs, fmt.Errorf("account %s: create snowflake client: %w", account.ID, err))
+				errs = append(errs, fmt.Errorf("account %s: open warehouse: %w", account.ID, err))
 				mu.Unlock()
-				Warning("Failed to create Snowflake client for account %s: %v", account.ID, err)
+				Warning("Failed to open warehouse for account %s: %v", account.ID, err)
 				return nil
 			}
-			defer func() { _ = sfClient.Close() }()
+			defer func() { _ = closeWarehouse() }()
 
 			syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
 			accountResults, syncErr := syncer.SyncAllWithConfig(ctx, accountCfg)
@@ -307,11 +307,11 @@ func runAWSOrgValidation(ctx context.Context, start time.Time, cfg aws.Config, r
 		Info("Filtering AWS tables: %s", strings.Join(tableFilter, ", "))
 	}
 
-	client, err := createSnowflakeClient()
+	client, closeWarehouse, err := openCLIWarehouse()
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeWarehouse() }()
 
 	opts := buildAWSEngineOptions(region, tableFilter)
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)

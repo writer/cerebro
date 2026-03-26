@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestQueryAssetsRejectsUnsafeQuery(t *testing.T) {
@@ -14,7 +14,7 @@ func TestQueryAssetsRejectsUnsafeQuery(t *testing.T) {
 	args := json.RawMessage(`{"query":"DROP TABLE users"}`)
 
 	_, err := st.queryAssets(context.Background(), args)
-	if !errors.Is(err, snowflake.ErrNonSelectQuery) {
+	if !errors.Is(err, warehouse.ErrNonSelectQuery) {
 		t.Fatalf("expected ErrNonSelectQuery, got %v", err)
 	}
 }

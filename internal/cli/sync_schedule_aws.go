@@ -16,12 +16,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 	"golang.org/x/sync/errgroup"
 )
 
-func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
+func executeAWSSync(ctx context.Context, client warehouse.SyncWarehouse, schedule *SyncSchedule) error {
 	Info("[%s] Executing AWS sync...", schedule.Name)
 	spec := parseScheduledSyncSpec(schedule.Table)
 
@@ -72,7 +72,7 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 	return runScheduledAWSNativeSyncFn(ctx, client, awsCfg, spec.TableFilter)
 }
 
-func runScheduledAWSNativeSync(ctx context.Context, client *snowflake.Client, awsCfg aws.Config, tableFilter []string) error {
+func runScheduledAWSNativeSync(ctx context.Context, client warehouse.SyncWarehouse, awsCfg aws.Config, tableFilter []string) error {
 	var opts []nativesync.EngineOption
 	if len(tableFilter) > 0 {
 		opts = append(opts, nativesync.WithTableFilter(tableFilter))
@@ -83,7 +83,7 @@ func runScheduledAWSNativeSync(ctx context.Context, client *snowflake.Client, aw
 	return err
 }
 
-func runScheduledAWSOrgSync(ctx context.Context, client *snowflake.Client, awsCfg aws.Config, spec scheduledSyncSpec) error {
+func runScheduledAWSOrgSync(ctx context.Context, client warehouse.SyncWarehouse, awsCfg aws.Config, spec scheduledSyncSpec) error {
 	orgCfg := awsCfg.Copy()
 	if strings.TrimSpace(orgCfg.Region) == "" {
 		orgCfg.Region = "us-east-1"

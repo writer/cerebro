@@ -90,11 +90,11 @@ func runAzureSyncDirect(ctx context.Context, start time.Time, tableFilter []stri
 	if err != nil {
 		return err
 	}
-	client, err := createSnowflakeClient()
+	client, closeWarehouse, err := openCLIWarehouse()
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeWarehouse() }()
 
 	opts := []nativesync.AzureEngineOption{}
 	switch len(explicitSubscriptions) {

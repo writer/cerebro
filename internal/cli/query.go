@@ -10,14 +10,13 @@ import (
 	"github.com/spf13/cobra"
 
 	apiclient "github.com/writer/cerebro/internal/client"
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
 var queryCmd = &cobra.Command{
 	Use:   "query [sql]",
-	Short: "Execute SQL query against Snowflake",
-	Long: `Execute a SQL query against the Snowflake data warehouse.
+	Short: "Execute SQL query against the configured warehouse",
+	Long: `Execute a SQL query against the configured asset warehouse.
 
 The query results are displayed in table format by default, with support
 for JSON and CSV output. A LIMIT clause is automatically appended if not present.
@@ -77,33 +76,18 @@ func runQuery(cmd *cobra.Command, args []string) error {
 }
 
 func runQueryDirect(cmd *cobra.Command, args []string) error {
-	dsnCfg := snowflake.DSNConfigFromEnv()
-	if missing := dsnCfg.MissingFields(); len(missing) > 0 {
-		return fmt.Errorf("snowflake not configured: set %s", strings.Join(missing, ", "))
-	}
-
-	client, err := snowflake.NewClient(snowflake.ClientConfig{
-		Account:    dsnCfg.Account,
-		User:       dsnCfg.User,
-		PrivateKey: dsnCfg.PrivateKey,
-		Database:   dsnCfg.Database,
-		Schema:     dsnCfg.Schema,
-		Warehouse:  dsnCfg.Warehouse,
-		Role:       dsnCfg.Role,
-	})
+	client, closeWarehouse, err := openCLIWarehouse()
 	if err != nil {
-		return fmt.Errorf("connect to snowflake: %w", err)
+		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeWarehouse() }()
 
-	query := strings.Join(args, " ")
-	upperQuery := strings.ToUpper(strings.TrimSpace(query))
-	// Only add LIMIT to SELECT queries that don't already have one
-	if strings.HasPrefix(upperQuery, "SELECT") && !strings.Contains(upperQuery, "LIMIT") && queryLimit > 0 {
-		query = fmt.Sprintf("%s LIMIT %d", query, queryLimit)
+	query, _, err := warehouse.BuildReadOnlyLimitedQuery(strings.Join(args, " "), queryLimit)
+	if err != nil {
+		return err
 	}
 
-	ctx, cancel := context.WithTimeout(commandContextOrBackground(cmd), 60*time.Second)
+	ctx, cancel := context.WithTimeout(commandContextOrBackground(cmd), warehouse.ClampReadOnlyQueryTimeout(60))
 	defer cancel()
 
 	result, err := client.Query(ctx, query)

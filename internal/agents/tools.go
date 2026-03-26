@@ -10,7 +10,6 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scm"
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -362,7 +361,7 @@ func (st *SecurityTools) queryAssets(ctx context.Context, args json.RawMessage) 
 		return "", err
 	}
 
-	boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(params.Query, params.Limit)
+	boundedQuery, boundedLimit, err := warehouse.BuildReadOnlyLimitedQuery(params.Query, params.Limit)
 	if err != nil {
 		return "", err
 	}
@@ -371,7 +370,7 @@ func (st *SecurityTools) queryAssets(ctx context.Context, args json.RawMessage) 
 		return "", fmt.Errorf("warehouse not configured")
 	}
 
-	queryCtx, cancel := context.WithTimeout(ctx, snowflake.ClampReadOnlyQueryTimeout(params.TimeoutSeconds))
+	queryCtx, cancel := context.WithTimeout(ctx, warehouse.ClampReadOnlyQueryTimeout(params.TimeoutSeconds))
 	defer cancel()
 
 	result, err := st.warehouse.Query(queryCtx, boundedQuery)

@@ -290,11 +290,11 @@ func runGCPSyncDirect(
 	runSecuritySync bool,
 	tableFilterSet map[string]struct{},
 ) error {
-	client, err := createSnowflakeClient()
+	client, closeWarehouse, err := openCLIWarehouse()
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeWarehouse() }()
 
 	if runNativeSync {
 		if err := preflightGCPProjectAccessFn(ctx, gcpProjectPreflightSpec{
@@ -474,11 +474,11 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
 	}
 
-	client, err := createSnowflakeClient()
+	client, closeWarehouse, err := openCLIWarehouse()
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeWarehouse() }()
 
 	if syncValidate {
 		if len(projects) == 0 {
@@ -725,11 +725,11 @@ func runGCPAssetAPISyncDirect(
 	runNativeSync bool,
 	runSecuritySync bool,
 ) error {
-	client, err := createSnowflakeClient()
+	client, closeWarehouse, err := openCLIWarehouse()
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeWarehouse() }()
 
 	var syncErrs []error
 

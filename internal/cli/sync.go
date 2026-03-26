@@ -20,15 +20,14 @@ import (
 	"github.com/writer/cerebro/internal/app"
 	apiclient "github.com/writer/cerebro/internal/client"
 	"github.com/writer/cerebro/internal/scanner"
-	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
 var syncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "Sync cloud assets to Snowflake",
-	Long: `Sync cloud assets from AWS, GCP, Azure, or Kubernetes to Snowflake using Cerebro's native scanners.
+	Short: "Sync cloud assets to the configured warehouse",
+	Long: `Sync cloud assets from AWS, GCP, Azure, or Kubernetes to the configured warehouse using Cerebro's native scanners.
 
 Examples:
   cerebro sync                                    # Sync AWS (default)
@@ -42,7 +41,7 @@ Examples:
 
 var syncBackfillRelationshipsCmd = &cobra.Command{
 	Use:   "backfill-relationships",
-	Short: "Normalize relationship IDs in Snowflake",
+	Short: "Normalize relationship IDs in the configured warehouse",
 	Long: `Normalize existing relationship IDs to remove JSON/map wrappers.
 
 This command re-computes relationship IDs from normalized source/target IDs and
@@ -163,7 +162,7 @@ func init() {
 	syncCmd.Flags().StringVar(&syncTable, "table", "", "Sync only specific table(s), comma-separated (e.g., aws_iam_accounts)")
 	syncCmd.Flags().StringVarP(&syncOutput, "output", "o", "table", "Output format (table, json)")
 	syncCmd.Flags().StringVar(&syncReportFile, "report-file", "", "Write sync/preflight JSON summary to a file path")
-	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate Snowflake tables without fetching resources")
+	syncCmd.Flags().BoolVar(&syncValidate, "validate", false, "Validate warehouse tables without fetching resources")
 	syncCmd.Flags().StringVar(&syncAuthMode, "auth-mode", "auto", "Auth mode: auto, credentials, impersonation, wif, adc")
 	syncCmd.Flags().BoolVar(&syncShowAuthChain, "show-auth-chain", false, "Print resolved authentication chain before execution")
 	syncCmd.Flags().StringVar(&syncGCPCredentialsFile, "gcp-credentials-file", "", "Path to GCP credentials JSON file (service-account or external-account config)")
@@ -682,11 +681,11 @@ func runBackfillRelationshipsDirect(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	client, err := createSnowflakeClient()
+	client, closeWarehouse, err := openCLIWarehouse()
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeWarehouse() }()
 
 	extractor := nativesync.NewRelationshipExtractor(client, slog.Default())
 	stats, err := extractor.BackfillNormalizedRelationshipIDs(ctx, syncBackfillBatchSize)
@@ -955,27 +954,10 @@ func isScannableTable(table string) bool {
 	if strings.HasPrefix(table, "cerebro_") {
 		return false
 	}
-	if err := snowflake.ValidateTableNameStrict(table); err != nil {
+	if err := warehouse.ValidateTableNameStrict(table); err != nil {
 		return false
 	}
 	return true
-}
-
-func createSnowflakeClient() (*snowflake.Client, error) {
-	cfg := snowflake.DSNConfigFromEnv()
-	if missing := cfg.MissingFields(); len(missing) > 0 {
-		return nil, fmt.Errorf("snowflake not configured: set %s", strings.Join(missing, ", "))
-	}
-
-	return snowflake.NewClient(snowflake.ClientConfig{
-		Account:    cfg.Account,
-		User:       cfg.User,
-		PrivateKey: cfg.PrivateKey,
-		Database:   cfg.Database,
-		Schema:     cfg.Schema,
-		Warehouse:  cfg.Warehouse,
-		Role:       cfg.Role,
-	})
 }
 
 func runPostSyncScan(ctx context.Context, tableFilter []string) error {
@@ -987,13 +969,13 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 	}
 	defer func() { _ = application.Close() }()
 
-	if application.Snowflake == nil {
-		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
+	if application.Warehouse == nil {
+		return fmt.Errorf("warehouse not configured")
 	}
 
 	availableTables := application.AvailableTables
-	if application.Snowflake != nil {
-		if refreshed, err := application.Snowflake.ListAvailableTables(ctx); err == nil {
+	if application.Warehouse != nil {
+		if refreshed, err := application.Warehouse.ListAvailableTables(ctx); err == nil {
 			application.AvailableTables = refreshed
 			availableTables = refreshed
 		} else {
@@ -1023,7 +1005,7 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 
 	tables, skipped := filterAvailableTables(tables, availableTables)
 	if skipped > 0 {
-		Info("Skipped %d tables not present in Snowflake", skipped)
+		Info("Skipped %d tables not present in the configured warehouse", skipped)
 	}
 
 	fmt.Println("Scanning synced assets...")
@@ -1078,7 +1060,7 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 				filter.Offset = offset
 			}
 			assets, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]map[string]interface{}, error) {
-				return application.Snowflake.GetAssets(tableCtx, table, filter)
+				return application.Warehouse.GetAssets(tableCtx, table, filter)
 			})
 			tableProfile.RetryAttempts += retryCount(attempts)
 			if err != nil {
@@ -1170,14 +1152,14 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 
 	sqlToxicRiskSets := make(map[string][]map[string]bool)
 	relationshipCount := 0
-	if application.Snowflake != nil {
+	if application.Warehouse != nil {
 		var toxicCursor *scanner.ToxicScanCursor
 		if application.ScanWatermarks != nil {
 			if wm := application.ScanWatermarks.GetWatermark("_toxic_relationships"); wm != nil {
 				toxicCursor = &scanner.ToxicScanCursor{SinceTime: wm.LastScanTime, SinceID: wm.LastScanID}
 			}
 		}
-		toxicResult, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Snowflake, toxicCursor)
+		toxicResult, err := scanner.DetectRelationshipToxicCombinations(ctx, application.Warehouse, toxicCursor)
 		if err != nil {
 			Warning("Failed to detect toxic combinations from relationships: %v", err)
 		} else {

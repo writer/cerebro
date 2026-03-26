@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/agents"
@@ -224,7 +223,7 @@ func postgresCredentialsChanged(current, next *Config) bool {
 	if current == nil || next == nil {
 		return current != next
 	}
-	return current.DatabaseURL != next.DatabaseURL
+	return effectivePostgresURL(current) != effectivePostgresURL(next)
 }
 
 func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
@@ -235,11 +234,12 @@ func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 		ctx = context.Background()
 	}
 
-	if strings.TrimSpace(cfg.DatabaseURL) == "" {
-		return fmt.Errorf("postgres rotation requires DATABASE_URL")
+	databaseURL := effectivePostgresURL(cfg)
+	if databaseURL == "" {
+		return fmt.Errorf("postgres rotation requires JOB_DATABASE_URL or DATABASE_URL")
 	}
 
-	newDB, err := sql.Open("pgx", cfg.DatabaseURL)
+	newDB, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
@@ -257,11 +257,6 @@ func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 	oldDB := a.PostgresDB
 	a.PostgresDB = newDB
 	a.PostgresClient = newClient
-	if strings.TrimSpace(a.Config.DatabaseURL) != "" {
-		a.Warehouse = newClient
-	} else {
-		a.Warehouse = nil
-	}
 	a.initRepositories()
 
 	if a.ScanWatermarks != nil {

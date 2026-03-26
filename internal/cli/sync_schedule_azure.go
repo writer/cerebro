@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
-func executeAzureSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
+func executeAzureSync(ctx context.Context, client warehouse.SyncWarehouse, schedule *SyncSchedule) error {
 	spec := parseScheduledSyncSpec(schedule.Table)
 	subscriptions := uniqueNonEmpty(append(append([]string{}, spec.AzureSubscriptions...), spec.AzureSubscription))
 	if len(subscriptions) == 0 {

@@ -16,8 +16,8 @@ import (
 	securitycenter "cloud.google.com/go/securitycenter/apiv1"
 	"cloud.google.com/go/securitycenter/apiv1/securitycenterpb"
 	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -40,7 +40,7 @@ type gcpProjectPreflightSpec struct {
 	ClientOptions  []option.ClientOption
 }
 
-func executeGCPSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
+func executeGCPSync(ctx context.Context, client warehouse.SyncWarehouse, schedule *SyncSchedule) error {
 	spec := parseScheduledSyncSpec(schedule.Table)
 	authConfig, err := applyScheduledGCPAuthFn(spec)
 	if err != nil {
@@ -576,7 +576,7 @@ func detectGCPCredentialsType(raw []byte, source string) (option.CredentialsType
 	}
 }
 
-func runScheduledGCPNativeSync(ctx context.Context, client *snowflake.Client, projectID string, tableFilter []string) error {
+func runScheduledGCPNativeSync(ctx context.Context, client warehouse.SyncWarehouse, projectID string, tableFilter []string) error {
 	opts := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
 	if len(tableFilter) > 0 {
 		opts = append(opts, nativesync.WithGCPTableFilter(tableFilter))
@@ -586,7 +586,7 @@ func runScheduledGCPNativeSync(ctx context.Context, client *snowflake.Client, pr
 	return err
 }
 
-func runScheduledGCPSecuritySync(ctx context.Context, client *snowflake.Client, projectID, orgID string, tableFilter []string) error {
+func runScheduledGCPSecuritySync(ctx context.Context, client warehouse.SyncWarehouse, projectID, orgID string, tableFilter []string) error {
 	secOpts := []nativesync.GCPSecurityOption{}
 	if len(tableFilter) > 0 {
 		secOpts = append(secOpts, nativesync.WithGCPSecurityTableFilter(tableFilter))

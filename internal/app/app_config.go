@@ -10,7 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/secretsource"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 // Config holds all application configuration
@@ -577,10 +577,7 @@ func LoadConfig() *Config {
 			snowflakeAccount := getEnv("SNOWFLAKE_ACCOUNT", "")
 			snowflakeUser := getEnv("SNOWFLAKE_USER", "")
 			snowflakePrivateKey := normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", ""))
-			defaultWarehouseBackend := "sqlite"
-			if strings.TrimSpace(snowflakeAccount) != "" || strings.TrimSpace(snowflakeUser) != "" || strings.TrimSpace(snowflakePrivateKey) != "" {
-				defaultWarehouseBackend = "snowflake"
-			}
+			defaultWarehouseBackend := defaultWarehouseBackendForProcess(runningUnderGoTest())
 			defaultWarehouseSQLitePath := filepath.Join(filepath.Dir(findings.DefaultFilePath()), "warehouse.db")
 			defaultNeptunePool := graph.DefaultNeptuneDataExecutorPoolConfig()
 
@@ -619,7 +616,7 @@ func LoadConfig() *Config {
 				SnowflakeWarehouse:                       getEnv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
 				SnowflakeRole:                            getEnv("SNOWFLAKE_ROLE", ""),
 				PoliciesPath:                             getEnv("POLICIES_PATH", "policies"),
-				QueryPolicyRowLimit:                      getEnvInt("QUERY_POLICY_ROW_LIMIT", snowflake.MaxReadOnlyQueryLimit),
+				QueryPolicyRowLimit:                      getEnvInt("QUERY_POLICY_ROW_LIMIT", warehouse.MaxReadOnlyQueryLimit),
 				AnthropicAPIKey:                          getEnv("ANTHROPIC_API_KEY", ""),
 				OpenAIAPIKey:                             getEnv("OPENAI_API_KEY", ""),
 				JiraBaseURL:                              getEnv("JIRA_BASE_URL", ""),

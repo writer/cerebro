@@ -338,9 +338,11 @@ func (c *Config) Validate() error {
 	}
 
 	switch strings.ToLower(strings.TrimSpace(c.WarehouseBackend)) {
-	case "", "snowflake", "sqlite", "postgres":
+	case "", "sqlite", "postgres":
+	case "snowflake":
+		problems = addConfigProblem(problems, "WAREHOUSE_BACKEND=snowflake is no longer supported")
 	default:
-		problems = addConfigProblem(problems, "WAREHOUSE_BACKEND must be one of snowflake, sqlite, postgres")
+		problems = addConfigProblem(problems, "WAREHOUSE_BACKEND must be one of sqlite, postgres")
 	}
 
 	switch strings.ToLower(strings.TrimSpace(c.CredentialSource)) {
@@ -372,11 +374,7 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	hasSnowflakeAuth := strings.TrimSpace(c.SnowflakeAccount) != "" ||
-		strings.TrimSpace(c.SnowflakeUser) != "" ||
-		strings.TrimSpace(c.SnowflakePrivateKey) != ""
-	requiresSnowflakeAuth := strings.EqualFold(strings.TrimSpace(c.WarehouseBackend), "snowflake") || hasSnowflakeAuth
-	if requiresSnowflakeAuth {
+	if strings.EqualFold(strings.TrimSpace(c.WarehouseBackend), "snowflake") {
 		if strings.TrimSpace(c.SnowflakeAccount) == "" {
 			problems = addConfigProblem(problems, "SNOWFLAKE_ACCOUNT is required when the Snowflake warehouse backend is configured")
 		}

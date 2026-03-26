@@ -15,7 +15,6 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/postgres"
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -41,7 +40,7 @@ func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
 
 	for _, table := range tables {
 		// Validate table name (these are hardcoded above, but validate for safety)
-		if err := snowflake.ValidateTableName(table); err != nil {
+		if err := warehouse.ValidateTableName(table); err != nil {
 			continue
 		}
 		query := fmt.Sprintf("SELECT MAX(_cq_sync_time) as last_sync FROM %s", table)
@@ -175,13 +174,13 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(req.Query, req.Limit)
+	boundedQuery, boundedLimit, err := warehouse.BuildReadOnlyLimitedQuery(req.Query, req.Limit)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	queryCtx, cancel := context.WithTimeout(r.Context(), snowflake.ClampReadOnlyQueryTimeout(req.TimeoutSeconds))
+	queryCtx, cancel := context.WithTimeout(r.Context(), warehouse.ClampReadOnlyQueryTimeout(req.TimeoutSeconds))
 	defer cancel()
 
 	result, err := s.app.Warehouse.Query(queryCtx, boundedQuery)
