@@ -86,6 +86,30 @@ func TestNew_MissingSnowflakeConfigStartsWithSQLiteWarehouse(t *testing.T) {
 	}
 }
 
+func TestNew_ExplicitSnowflakeBackendFailsFastWhenSnowflakeInitFails(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "not-a-valid-private-key")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "acct")
+	t.Setenv("SNOWFLAKE_USER", "user")
+	t.Setenv("API_AUTH_ENABLED", "false")
+	t.Setenv("API_KEYS", "")
+	t.Setenv("WAREHOUSE_BACKEND", "snowflake")
+	t.Setenv("WAREHOUSE_SQLITE_PATH", filepath.Join(tempDir, "warehouse.db"))
+	t.Setenv("EXECUTION_STORE_FILE", filepath.Join(tempDir, "executions.db"))
+	t.Setenv("GRAPH_SNAPSHOT_PATH", filepath.Join(tempDir, "graph-snapshots"))
+	t.Setenv("PLATFORM_REPORT_RUN_STATE_FILE", filepath.Join(tempDir, "report-runs.json"))
+	t.Setenv("PLATFORM_REPORT_SNAPSHOT_PATH", filepath.Join(tempDir, "report-snapshots"))
+	t.Setenv("CEREBRO_DB_PATH", filepath.Join(tempDir, "findings.db"))
+
+	_, err := New(context.Background())
+	if err == nil {
+		t.Fatal("expected startup to fail fast when WAREHOUSE_BACKEND=snowflake but snowflake initialization fails")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "snowflake") {
+		t.Fatalf("expected snowflake initialization error, got: %v", err)
+	}
+}
+
 func TestInitRBAC_InvalidStateFileFallsBackToInMemory(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "rbac-state.json")
 	if err := os.WriteFile(statePath, []byte("invalid-json"), 0o600); err != nil {
