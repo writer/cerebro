@@ -22,6 +22,8 @@ import (
 
 type stubGraphIntelligenceService struct {
 	graph             *graph.Graph
+	currentGraph      *graph.Graph
+	entityGraph       *graph.Graph
 	mapperInitialized bool
 	mapperValidation  string
 	deadLetterPath    string
@@ -31,6 +33,16 @@ type stubGraphIntelligenceService struct {
 }
 
 func (s stubGraphIntelligenceService) CurrentGraph(context.Context) (*graph.Graph, error) {
+	if s.currentGraph != nil {
+		return s.currentGraph, nil
+	}
+	return s.graph, nil
+}
+
+func (s stubGraphIntelligenceService) CurrentEntityGraph(_ context.Context, _ string, _, _ time.Time) (*graph.Graph, error) {
+	if s.entityGraph != nil {
+		return s.entityGraph, nil
+	}
 	return s.graph, nil
 }
 
@@ -288,6 +300,64 @@ func TestGraphIntelligenceHandlersUseServiceInterface(t *testing.T) {
 	if contractsBody["source"] != "runtime_mapper" {
 		t.Fatalf("expected runtime mapper contract source, got %#v", contractsBody["source"])
 	}
+}
+
+func TestGraphIntelligenceEntitySummaryPreservesEvaluationQualityWhenScoped(t *testing.T) {
+	s := newTestServer(t)
+	fullGraph := buildGraphStorePlatformEntitiesTestGraph(t)
+	base := time.Date(2026, 3, 22, 21, 0, 0, 0, time.UTC)
+
+	fullGraph.AddNode(&graph.Node{
+		ID:        "outcome:evaluation:run-1:conv-1",
+		Kind:      graph.NodeKindOutcome,
+		Name:      "positive",
+		CreatedAt: base,
+		UpdatedAt: base,
+		Properties: map[string]any{
+			"evaluation_run_id": "run-1",
+			"conversation_id":   "conv-1",
+			"verdict":           "positive",
+			"quality_score":     0.8,
+			"target_ids":        []string{"service:payments"},
+			"observed_at":       base.Format(time.RFC3339),
+			"valid_from":        base.Format(time.RFC3339),
+		},
+	})
+
+	scopedGraph := graph.ExtractSubgraph(fullGraph, "service:payments", graph.ExtractSubgraphOptions{MaxDepth: 3})
+	s.graphIntelligence = stubGraphIntelligenceService{
+		currentGraph: scopedGraph,
+		entityGraph:  fullGraph,
+	}
+	s.app.SecurityGraph = nil
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/entity-summary?entity_id=service:payments", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for service-backed entity summary, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	facets, ok := body["facets"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected facets block, got %#v", body["facets"])
+	}
+	items, ok := facets["items"].([]any)
+	if !ok {
+		t.Fatalf("expected facet items, got %#v", facets["items"])
+	}
+
+	for _, item := range items {
+		record, ok := item.(map[string]any)
+		if !ok || record["id"] != "evaluation_quality" {
+			continue
+		}
+		if record["summary"] == "No targeted evaluation lifecycle signals attached" {
+			t.Fatalf("expected evaluation_quality facet to retain targeted evaluation signals, got %#v", record)
+		}
+		return
+	}
+
+	t.Fatalf("expected evaluation_quality facet in entity summary, got %#v", items)
 }
 
 func TestGraphIntelligenceInsightsEndpoint_InvalidParams(t *testing.T) {

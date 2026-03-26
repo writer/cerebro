@@ -13,6 +13,7 @@ import (
 // and mapper primitives consumed by the graph-intelligence routes.
 type graphIntelligenceService interface {
 	CurrentGraph(ctx context.Context) (*graph.Graph, error)
+	CurrentEntityGraph(ctx context.Context, entityID string, validAt, recordedAt time.Time) (*graph.Graph, error)
 	MapperInitialized() bool
 	MapperValidationMode() string
 	MapperDeadLetterPath() string
@@ -34,6 +35,10 @@ func (s serverGraphIntelligenceService) CurrentGraph(ctx context.Context) (*grap
 	}
 	tenantID := currentTenantScopeID(ctx)
 	return currentOrStoredGraphView(ctx, s.deps.CurrentSecurityGraphForTenant(tenantID), s.deps.CurrentSecurityGraphStoreForTenant(tenantID))
+}
+
+func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, _ string, _, _ time.Time) (*graph.Graph, error) {
+	return s.CurrentGraph(ctx)
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {
