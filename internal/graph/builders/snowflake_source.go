@@ -2,6 +2,7 @@ package builders
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -13,12 +14,27 @@ import (
 type SnowflakeSource struct {
 	client              warehouse.QueryWarehouse
 	normalizeTableNames bool
+	cdcEventsTableRef   string
+	useDollarBinds      bool
 }
 
 // NewSnowflakeSource creates a new Snowflake data source
 func NewSnowflakeSource(client warehouse.QueryWarehouse) *SnowflakeSource {
 	_, shouldNormalize := client.(*snowflake.Client)
-	return &SnowflakeSource{client: client, normalizeTableNames: shouldNormalize}
+	source := &SnowflakeSource{client: client, normalizeTableNames: shouldNormalize}
+
+	if dialectSource, ok := client.(interface{ Dialect() string }); ok && strings.EqualFold(strings.TrimSpace(dialectSource.Dialect()), "postgres") {
+		source.useDollarBinds = true
+		source.cdcEventsTableRef = "cerebro.cdc_events"
+		if schemaSource, ok := client.(interface{ AppSchema() string }); ok {
+			schema := strings.TrimSpace(schemaSource.AppSchema())
+			if schema != "" && snowflake.ValidateTableName(schema) == nil {
+				source.cdcEventsTableRef = strings.ToLower(schema) + ".cdc_events"
+			}
+		}
+	}
+
+	return source
 }
 
 // tableNamePattern matches table names in common clauses (FROM/JOIN/UPDATE/INTO)
@@ -55,4 +71,18 @@ func (s *SnowflakeSource) Query(ctx context.Context, query string, args ...any) 
 		Rows:    result.Rows,
 		Count:   result.Count,
 	}, nil
+}
+
+func (s *SnowflakeSource) cdcEventsTable() string {
+	if strings.TrimSpace(s.cdcEventsTableRef) != "" {
+		return s.cdcEventsTableRef
+	}
+	return "CDC_EVENTS"
+}
+
+func (s *SnowflakeSource) cdcPlaceholder(index int) string {
+	if s.useDollarBinds {
+		return fmt.Sprintf("$%d", index)
+	}
+	return "?"
 }

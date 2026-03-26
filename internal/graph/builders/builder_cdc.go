@@ -82,6 +82,25 @@ func queryCDCWatermark(current cdcWatermark, since time.Time) cdcWatermark {
 	return queryWatermark
 }
 
+type cdcQuerySource interface {
+	cdcEventsTable() string
+	cdcPlaceholder(index int) string
+}
+
+func cdcEventsTable(source DataSource) string {
+	if source, ok := source.(cdcQuerySource); ok {
+		return source.cdcEventsTable()
+	}
+	return "CDC_EVENTS"
+}
+
+func cdcPlaceholder(source DataSource, index int) string {
+	if source, ok := source.(cdcQuerySource); ok {
+		return source.cdcPlaceholder(index)
+	}
+	return "?"
+}
+
 // ApplyChanges updates the current graph from CDC_EVENTS without full node reload.
 func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutationSummary, error) {
 	if ctx == nil {
@@ -241,10 +260,10 @@ func (b *Builder) ApplyChanges(ctx context.Context, since time.Time) (GraphMutat
 }
 
 func (b *Builder) queryCDCEvents(ctx context.Context, since cdcWatermark) ([]cdcEvent, error) {
-	query := `
+	query := fmt.Sprintf(`
 		SELECT event_id, table_name, resource_id, change_type, provider, region, account_id, payload, event_time,
 		       COALESCE(ingested_at, event_time) AS ingested_at
-		FROM CDC_EVENTS`
+		FROM %s`, cdcEventsTable(b.source))
 	args := make([]any, 0, 6)
 	since = effectiveCDCWatermark(time.Time{}, since)
 	if !since.EventTime.IsZero() {
@@ -252,12 +271,19 @@ func (b *Builder) queryCDCEvents(ctx context.Context, since cdcWatermark) ([]cdc
 		if sinceIngestedAt.IsZero() {
 			sinceIngestedAt = since.EventTime
 		}
-		query += `
+		query += fmt.Sprintf(`
 		WHERE (
-			event_time > ?
-			OR (event_time = ? AND COALESCE(ingested_at, event_time) > ?)
-			OR (event_time = ? AND COALESCE(ingested_at, event_time) = ? AND event_id > ?)
-		)`
+			event_time > %s
+			OR (event_time = %s AND COALESCE(ingested_at, event_time) > %s)
+			OR (event_time = %s AND COALESCE(ingested_at, event_time) = %s AND event_id > %s)
+		)`,
+			cdcPlaceholder(b.source, 1),
+			cdcPlaceholder(b.source, 2),
+			cdcPlaceholder(b.source, 3),
+			cdcPlaceholder(b.source, 4),
+			cdcPlaceholder(b.source, 5),
+			cdcPlaceholder(b.source, 6),
+		)
 		args = append(args,
 			since.EventTime,
 			since.EventTime,
@@ -294,12 +320,12 @@ func (b *Builder) queryCDCEvents(ctx context.Context, since cdcWatermark) ([]cdc
 }
 
 func (b *Builder) queryLatestCDCWatermark(ctx context.Context) (cdcWatermark, error) {
-	result, err := b.source.Query(ctx, `
+	result, err := b.source.Query(ctx, fmt.Sprintf(`
 		SELECT event_time, COALESCE(ingested_at, event_time) AS ingested_at, event_id
-		FROM CDC_EVENTS
+		FROM %s
 		ORDER BY event_time DESC, ingested_at DESC, event_id DESC
 		LIMIT 1
-	`)
+	`, cdcEventsTable(b.source)))
 	if err != nil || len(result.Rows) == 0 {
 		return cdcWatermark{}, err
 	}
