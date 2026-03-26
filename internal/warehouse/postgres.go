@@ -146,10 +146,6 @@ func (w *PostgresWarehouse) AppSchema() string {
 	return w.appSchema
 }
 
-func (w *PostgresWarehouse) Dialect() string {
-	return "postgres"
-}
-
 func (w *PostgresWarehouse) ListTables(ctx context.Context) ([]string, error) {
 	return w.listUserTables(ctx)
 }
