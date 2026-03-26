@@ -102,9 +102,25 @@ func (a *App) currentLiveSecurityGraph() *graph.Graph {
 	if a == nil {
 		return nil
 	}
+	if a.configuredSecurityGraphStore != nil {
+		view, err := a.currentConfiguredSecurityGraphView(context.Background())
+		if err == nil && view != nil {
+			a.setSecurityGraph(view)
+			return view
+		}
+	}
 	a.securityGraphInitMu.RLock()
-	defer a.securityGraphInitMu.RUnlock()
-	return a.SecurityGraph
+	current := a.SecurityGraph
+	a.securityGraphInitMu.RUnlock()
+	if current != nil {
+		return current
+	}
+	view, err := a.currentConfiguredSecurityGraphView(context.Background())
+	if err != nil || view == nil {
+		return nil
+	}
+	a.setSecurityGraph(view)
+	return view
 }
 
 func (a *App) setSecurityGraph(g *graph.Graph) {

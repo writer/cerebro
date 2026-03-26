@@ -80,7 +80,7 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 		application.Config.GitLabToken,
 		application.Config.GitLabBaseURL,
 	)
-	tools := agents.NewSecurityTools(application.Snowflake, application.Findings, application.Policy, scmClient)
+	tools := agents.NewSecurityTools(application.Warehouse, application.Findings, application.Policy, scmClient)
 	useDistributed := agentRunDistributed || (application.Config.JobDatabaseURL != "" && len(application.Config.NATSJetStreamURLs) > 0)
 	if useDistributed {
 		return runDistributedAgentFlow(ctx, application, tools)
@@ -154,13 +154,14 @@ func runDistributedAgentFlow(ctx context.Context, application *app.App, tools *a
 		return fmt.Errorf("no resources to enqueue")
 	}
 
-	// Open Postgres connection for job store.
-	// NOTE: The "postgres" driver must be registered elsewhere (e.g. via pgx/v5/stdlib).
-	db, err := sql.Open("postgres", application.Config.JobDatabaseURL)
+	// Open Postgres connection for job store using the pgx database/sql driver.
+	db, err := sql.Open("pgx", application.Config.JobDatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open job database: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	store := jobs.NewPostgresStore(db)
 	if err := store.EnsureSchema(ctx); err != nil {

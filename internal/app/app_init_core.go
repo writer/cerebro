@@ -25,12 +25,17 @@ import (
 )
 
 func (a *App) initPostgres(ctx context.Context) error {
-	if a.Config.DatabaseURL == "" {
+	warehouseURL := strings.TrimSpace(a.Config.DatabaseURL)
+	databaseURL := warehouseURL
+	if databaseURL == "" {
+		databaseURL = strings.TrimSpace(a.Config.JobDatabaseURL)
+	}
+	if databaseURL == "" {
 		a.Logger.Warn("DATABASE_URL not set, running without database")
 		return nil
 	}
 
-	db, err := sql.Open("postgres", a.Config.DatabaseURL)
+	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
@@ -47,7 +52,11 @@ func (a *App) initPostgres(ctx context.Context) error {
 
 	a.PostgresDB = db
 	a.PostgresClient = postgres.NewPostgresClient(db, "cerebro", "cerebro")
-	a.Warehouse = a.PostgresClient
+	if warehouseURL != "" {
+		a.Warehouse = a.PostgresClient
+	} else {
+		a.Warehouse = nil
+	}
 
 	// Bootstrap schema and tables
 	if err := a.PostgresClient.Bootstrap(ctx); err != nil {

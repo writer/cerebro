@@ -705,7 +705,7 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 		return
 	}
 
-	// Retryable failure - use SQS visibility timeout for backoff
+	// Retryable failure - delegate delayed redelivery to the queue backend.
 	// Calculate delay and extend visibility so message reappears after delay
 	_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
 
@@ -721,10 +721,9 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 		return
 	}
 
-	// Use ChangeMessageVisibility to implement backoff delay
-	// Message will become visible again after the delay
+	// Queue-native delayed retry (NakWithDelay for JetStream).
 	delay := w.calculateBackoff(job.Attempt)
-	if err := w.queue.ExtendVisibility(ctx, receiptHandle, delay); err != nil {
+	if err := w.queue.Retry(ctx, receiptHandle, delay); err != nil {
 		w.logError("failed to set retry delay", err,
 			"job_id", job.ID,
 			"delay", delay,

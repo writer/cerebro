@@ -19,12 +19,12 @@ func TestQueryAssetsRejectsUnsafeQuery(t *testing.T) {
 	}
 }
 
-func TestQueryAssetsRequiresSnowflakeForValidQuery(t *testing.T) {
+func TestQueryAssetsRequiresWarehouseForValidQuery(t *testing.T) {
 	st := &SecurityTools{}
 	args := json.RawMessage(`{"query":"SELECT * FROM users"}`)
 
 	_, err := st.queryAssets(context.Background(), args)
-	if err == nil || err.Error() != "snowflake not configured" {
-		t.Fatalf("expected snowflake not configured error, got %v", err)
+	if err == nil || err.Error() != "warehouse not configured" {
+		t.Fatalf("expected warehouse not configured error, got %v", err)
 	}
 }

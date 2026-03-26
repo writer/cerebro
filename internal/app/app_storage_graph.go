@@ -59,7 +59,7 @@ func (a *App) initScanWatermarks(ctx context.Context) {
 // initAvailableTables caches the warehouse table list for reuse by graph builder and policy validation.
 
 func (a *App) initAvailableTables(ctx context.Context) {
-	if a.PostgresClient == nil {
+	if a.PostgresClient == nil || a.Warehouse == nil {
 		return
 	}
 	tables, err := a.PostgresClient.ListAvailableTables(ctx)
@@ -268,6 +268,12 @@ func (a *App) Close() error {
 	a.stopSecretsReloader()
 
 	a.stopThreatIntelSync()
+
+	if a.configuredSecurityGraphClose != nil {
+		if err := a.configuredSecurityGraphClose(); err != nil {
+			errs = append(errs, fmt.Errorf("graph store: %w", err))
+		}
+	}
 
 	// Close Postgres connection
 	if a.PostgresDB != nil {

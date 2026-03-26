@@ -219,3 +219,20 @@ func (q *NATSQueue) ExtendVisibilityBatch(ctx context.Context, receiptHandles []
 	}
 	return succeeded, failed, err
 }
+
+// Retry schedules redelivery using JetStream's NakWithDelay support.
+func (q *NATSQueue) Retry(_ context.Context, receiptHandle string, delay time.Duration) error {
+	if receiptHandle == "" {
+		return fmt.Errorf("receipt handle required")
+	}
+	v, ok := q.pending.Load(receiptHandle)
+	if !ok {
+		return fmt.Errorf("nats: unknown receipt handle %q", receiptHandle)
+	}
+	msg := v.(*nats.Msg)
+	if err := msg.NakWithDelay(delay); err != nil {
+		return fmt.Errorf("nats: retry receipt %s: %w", receiptHandle, err)
+	}
+	q.pending.Delete(receiptHandle)
+	return nil
+}

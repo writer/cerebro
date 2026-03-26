@@ -16,6 +16,7 @@ type MockQueue struct {
 	messages        []QueueMessage
 	deleted         []string
 	extendedHandles []string
+	retriedHandles  []string
 	extendErrors    []error
 	extendCalls     int
 	enqueuedMsgs    []JobMessage
@@ -96,6 +97,13 @@ func (m *MockQueue) ExtendVisibilityBatch(ctx context.Context, receiptHandles []
 	defer m.mu.Unlock()
 	m.extendedHandles = append(m.extendedHandles, receiptHandles...)
 	return len(receiptHandles), 0, nil
+}
+
+func (m *MockQueue) Retry(ctx context.Context, receiptHandle string, delay time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.retriedHandles = append(m.retriedHandles, receiptHandle)
+	return nil
 }
 
 func (m *MockQueue) AddMessage(jobID string) {

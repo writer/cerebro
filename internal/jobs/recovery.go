@@ -124,12 +124,6 @@ func (s *OrphanedJobScanner) logError(msg string, err error, args ...any) {
 	}
 }
 
-func (s *OrphanedJobScanner) logWarn(msg string, args ...any) {
-	if s.logger != nil {
-		s.logger.Warn(msg, args...)
-	}
-}
-
 // DLQConsumer processes messages from the dead letter queue.
 type DLQConsumer struct {
 	dlqQueue          Queue // The DLQ

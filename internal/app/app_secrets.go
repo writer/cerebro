@@ -239,7 +239,7 @@ func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 		return fmt.Errorf("postgres rotation requires DATABASE_URL")
 	}
 
-	newDB, err := sql.Open("postgres", cfg.DatabaseURL)
+	newDB, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
@@ -257,7 +257,11 @@ func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 	oldDB := a.PostgresDB
 	a.PostgresDB = newDB
 	a.PostgresClient = newClient
-	a.Warehouse = newClient
+	if strings.TrimSpace(a.Config.DatabaseURL) != "" {
+		a.Warehouse = newClient
+	} else {
+		a.Warehouse = nil
+	}
 	a.initRepositories()
 
 	if a.ScanWatermarks != nil {
