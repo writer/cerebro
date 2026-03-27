@@ -24,6 +24,7 @@ import (
 	providerregistry "github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 var syncScheduleCmd = &cobra.Command{
@@ -427,7 +428,7 @@ shutdown:
 	return nil
 }
 
-func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
+func runScheduledSync(store warehouse.SyncWarehouse, schedule *SyncSchedule) {
 	start := scheduleNowFn()
 	persistCtx := context.Background()
 	scheduleKey := strings.ToLower(strings.TrimSpace(schedule.Name))
@@ -439,7 +440,7 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 		schedule.LastRun = start
 		schedule.LastStatus = "skipped: previous run still active"
 		schedule.UpdatedAt = scheduleNowFn().UTC()
-		_ = saveScheduleFn(persistCtx, client, schedule)
+		_ = saveScheduleFn(persistCtx, nil, schedule)
 		Warning("[%s] Skipping scheduled sync: previous run is still active", schedule.Name)
 		slog.Default().Info("scheduled_sync_audit", "event", "skip_overlap", "schedule", schedule.Name, "provider", strings.ToLower(strings.TrimSpace(schedule.Provider)))
 		return
@@ -452,7 +453,7 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 		schedule.LastRun = start
 		schedule.LastStatus = fmt.Sprintf("failed: %v", err)
 		schedule.UpdatedAt = scheduleNowFn().UTC()
-		_ = saveScheduleFn(persistCtx, client, schedule)
+		_ = saveScheduleFn(persistCtx, nil, schedule)
 		Warning("[%s] Scheduled sync configuration invalid: %v", schedule.Name, err)
 		slog.Default().Error("scheduled_sync_audit", "event", "config_error", "schedule", schedule.Name, "provider", strings.ToLower(strings.TrimSpace(schedule.Provider)), "error", err)
 		return
@@ -469,7 +470,7 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 	// Update last run time
 	schedule.LastRun = start
 	schedule.LastStatus = "running"
-	_ = saveScheduleFn(persistCtx, client, schedule)
+	_ = saveScheduleFn(persistCtx, nil, schedule)
 
 	// Build sync command args based on provider
 	var syncErr error
@@ -480,7 +481,7 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 	attempts := 0
 	for attempt := 1; attempt <= attemptLimit; attempt++ {
 		attempts = attempt
-		syncErr = executeScheduledSyncFn(runCtx, client, schedule)
+		syncErr = executeScheduledSyncFn(runCtx, store, schedule)
 		if syncErr == nil {
 			break
 		}
@@ -515,7 +516,7 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 	}
 
 	schedule.UpdatedAt = scheduleNowFn().UTC()
-	_ = saveScheduleFn(persistCtx, client, schedule)
+	_ = saveScheduleFn(persistCtx, nil, schedule)
 
 	attrs := []any{
 		"event", "finish",
@@ -531,7 +532,7 @@ func runScheduledSync(client *snowflake.Client, schedule *SyncSchedule) {
 	slog.Default().Info("scheduled_sync_audit", attrs...)
 }
 
-func executeScheduledSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
+func executeScheduledSync(ctx context.Context, store warehouse.SyncWarehouse, schedule *SyncSchedule) error {
 	provider := strings.ToLower(strings.TrimSpace(schedule.Provider))
 	if isNativeScheduleProvider(provider) && nativeSyncWorkerConfigured() {
 		return enqueueScheduledNativeSyncFn(ctx, schedule)
@@ -539,14 +540,27 @@ func executeScheduledSync(ctx context.Context, client *snowflake.Client, schedul
 
 	switch provider {
 	case "aws":
-		return executeAWSSyncFn(ctx, client, schedule)
+		return executeAWSSyncFn(ctx, store, schedule)
 	case "gcp":
-		return executeGCPSyncFn(ctx, client, schedule)
+		return executeGCPSyncFn(ctx, store, schedule)
 	case "azure":
-		return executeAzureSyncFn(ctx, client, schedule)
+		return executeAzureSyncFn(ctx, store, schedule)
 	default:
-		return executeProviderSyncFn(ctx, client, schedule)
+		return executeProviderSyncFn(ctx, store, schedule)
 	}
+}
+
+func ensureSyncWarehouse(ctx context.Context, store warehouse.SyncWarehouse) (warehouse.SyncWarehouse, func(), error) {
+	if store != nil {
+		return store, func() {}, nil
+	}
+	opened, err := openSyncWarehouseFn(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return opened, func() {
+		_ = closeSyncWarehouse(opened)
+	}, nil
 }
 
 func isNativeScheduleProvider(provider string) bool {
@@ -684,7 +698,7 @@ func parseBoundedPositiveIntDirective(raw, name string, min, max int) (int, erro
 	return value, nil
 }
 
-func executeProviderSync(ctx context.Context, _ *snowflake.Client, schedule *SyncSchedule) error {
+func executeProviderSync(ctx context.Context, _ warehouse.SyncWarehouse, schedule *SyncSchedule) error {
 	providerName := strings.ToLower(strings.TrimSpace(schedule.Provider))
 	Info("[%s] Executing provider sync for %s...", schedule.Name, providerName)
 
@@ -1153,36 +1167,4 @@ func deleteSchedule(ctx context.Context, _ *snowflake.Client, name string) error
 	}
 	defer func() { _ = store.Close() }()
 	return store.Delete(ctx, name)
-}
-
-func createSnowflakeClientForSchedule() (*snowflake.Client, error) {
-	cfg := snowflake.DSNConfigFromEnv()
-	if missing := cfg.MissingFields(); len(missing) > 0 {
-		return nil, fmt.Errorf("snowflake not configured: set %s", strings.Join(missing, ", "))
-	}
-
-	return snowflake.NewClient(snowflake.ClientConfig{
-		Account:    cfg.Account,
-		User:       cfg.User,
-		PrivateKey: cfg.PrivateKey,
-		Database:   cfg.Database,
-		Schema:     cfg.Schema,
-		Warehouse:  cfg.Warehouse,
-		Role:       cfg.Role,
-	})
-}
-
-func ensureSnowflakeClientForDirectScheduledSync(client *snowflake.Client, provider string) (*snowflake.Client, func(), error) {
-	if client != nil {
-		return client, func() {}, nil
-	}
-
-	opened, err := createSnowflakeClientForSchedule()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect to Snowflake for direct %s scheduled sync: %w", provider, err)
-	}
-
-	return opened, func() {
-		_ = opened.Close()
-	}, nil
 }

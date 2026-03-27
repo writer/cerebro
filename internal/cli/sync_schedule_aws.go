@@ -16,12 +16,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 	"golang.org/x/sync/errgroup"
 )
 
-func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
+func executeAWSSync(ctx context.Context, store warehouse.SyncWarehouse, schedule *SyncSchedule) error {
 	Info("[%s] Executing AWS sync...", schedule.Name)
 	spec := parseScheduledSyncSpec(schedule.Table)
 
@@ -66,35 +66,35 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 		return err
 	}
 	if spec.AWSOrg {
-		return runScheduledAWSOrgSyncFn(ctx, client, awsCfg, spec)
+		return runScheduledAWSOrgSyncFn(ctx, store, awsCfg, spec)
 	}
 
-	return runScheduledAWSNativeSyncFn(ctx, client, awsCfg, spec.TableFilter)
+	return runScheduledAWSNativeSyncFn(ctx, store, awsCfg, spec.TableFilter)
 }
 
-func runScheduledAWSNativeSync(ctx context.Context, client *snowflake.Client, awsCfg aws.Config, tableFilter []string) error {
-	client, closeClient, err := ensureSnowflakeClientForDirectScheduledSync(client, "aws")
+func runScheduledAWSNativeSync(ctx context.Context, store warehouse.SyncWarehouse, awsCfg aws.Config, tableFilter []string) error {
+	store, closeStore, err := ensureSyncWarehouse(ctx, store)
 	if err != nil {
 		return err
 	}
-	defer closeClient()
+	defer closeStore()
 
 	var opts []nativesync.EngineOption
 	if len(tableFilter) > 0 {
 		opts = append(opts, nativesync.WithTableFilter(tableFilter))
 	}
 
-	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
+	syncer := nativesync.NewSyncEngine(store, slog.Default(), opts...)
 	_, err = syncer.SyncAllWithConfig(ctx, awsCfg)
 	return err
 }
 
-func runScheduledAWSOrgSync(ctx context.Context, client *snowflake.Client, awsCfg aws.Config, spec scheduledSyncSpec) error {
-	client, closeClient, err := ensureSnowflakeClientForDirectScheduledSync(client, "aws")
+func runScheduledAWSOrgSync(ctx context.Context, store warehouse.SyncWarehouse, awsCfg aws.Config, spec scheduledSyncSpec) error {
+	store, closeStore, err := ensureSyncWarehouse(ctx, store)
 	if err != nil {
 		return err
 	}
-	defer closeClient()
+	defer closeStore()
 
 	orgCfg := awsCfg.Copy()
 	if strings.TrimSpace(orgCfg.Region) == "" {
@@ -197,7 +197,7 @@ func runScheduledAWSOrgSync(ctx context.Context, client *snowflake.Client, awsCf
 				accountCfg = assumedCfg
 			}
 
-			syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
+			syncer := nativesync.NewSyncEngine(store, slog.Default(), opts...)
 			accountResults, syncErr := syncer.SyncAllWithConfig(ctx, accountCfg)
 
 			mu.Lock()
