@@ -18,12 +18,14 @@ while IFS= read -r path; do
 done <<< "$(git diff --cached --name-only --diff-filter=ACM -- '*.go' | grep -v '^vendor/' || true)"
 
 GRAPH_ID_SAFETY_FILES=()
-for path in "${STAGED_FILES[@]}"; do
-  if [[ "$path" == *_test.go ]]; then
-    continue
-  fi
-  GRAPH_ID_SAFETY_FILES+=("$path")
-done
+if [ "${#STAGED_FILES[@]}" -gt 0 ]; then
+  for path in "${STAGED_FILES[@]}"; do
+    if [[ "$path" == *_test.go ]]; then
+      continue
+    fi
+    GRAPH_ID_SAFETY_FILES+=("$path")
+  done
+fi
 
 has_staged_path_matching() {
   local pattern="$1"
