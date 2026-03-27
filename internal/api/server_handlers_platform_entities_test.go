@@ -11,6 +11,37 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 )
 
+type recordingEntitySearchBackend struct {
+	searchTenantID  string
+	searchOpts      graph.EntitySearchOptions
+	searchFn        func(context.Context, string, graph.EntitySearchOptions) (graph.EntitySearchCollection, error)
+	suggestTenantID string
+	suggestOpts     graph.EntitySuggestOptions
+	suggestFn       func(context.Context, string, graph.EntitySuggestOptions) (graph.EntitySuggestCollection, error)
+}
+
+func (b *recordingEntitySearchBackend) Backend() graph.EntitySearchBackendType {
+	return graph.EntitySearchBackendOpenSearch
+}
+
+func (b *recordingEntitySearchBackend) Search(ctx context.Context, tenantID string, opts graph.EntitySearchOptions) (graph.EntitySearchCollection, error) {
+	b.searchTenantID = tenantID
+	b.searchOpts = opts
+	if b.searchFn != nil {
+		return b.searchFn(ctx, tenantID, opts)
+	}
+	return graph.EntitySearchCollection{}, nil
+}
+
+func (b *recordingEntitySearchBackend) Suggest(ctx context.Context, tenantID string, opts graph.EntitySuggestOptions) (graph.EntitySuggestCollection, error) {
+	b.suggestTenantID = tenantID
+	b.suggestOpts = opts
+	if b.suggestFn != nil {
+		return b.suggestFn(ctx, tenantID, opts)
+	}
+	return graph.EntitySuggestCollection{}, nil
+}
+
 func TestPlatformEntitiesListAndDetail(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
@@ -301,6 +332,84 @@ func TestPlatformEntitySearchAndSuggest(t *testing.T) {
 	suggestion := suggestBody["suggestions"].([]any)[0].(map[string]any)
 	if suggestion["entity_id"] != "person:alice@example.com" {
 		t.Fatalf("expected alice suggestion, got %#v", suggestion)
+	}
+}
+
+func TestPlatformEntitySearchAndSuggestUseConfiguredBackend(t *testing.T) {
+	app := newTestApp(t)
+	backend := &recordingEntitySearchBackend{
+		searchFn: func(_ context.Context, _ string, opts graph.EntitySearchOptions) (graph.EntitySearchCollection, error) {
+			return graph.EntitySearchCollection{
+				GeneratedAt: time.Now().UTC(),
+				Query:       opts.Query,
+				Fuzzy:       opts.Fuzzy,
+				Count:       1,
+				Results: []graph.EntitySearchResult{
+					{
+						Entity: graph.EntityRecord{
+							ID:   "arn:aws:s3:::audit-logs",
+							Kind: graph.NodeKindBucket,
+							Name: "Audit Logs",
+						},
+						Score: 9,
+					},
+				},
+			}, nil
+		},
+		suggestFn: func(_ context.Context, _ string, opts graph.EntitySuggestOptions) (graph.EntitySuggestCollection, error) {
+			return graph.EntitySuggestCollection{
+				GeneratedAt: time.Now().UTC(),
+				Prefix:      opts.Prefix,
+				Count:       1,
+				Suggestions: []graph.EntitySuggestion{
+					{
+						EntityID: "arn:aws:s3:::audit-logs",
+						Kind:     graph.NodeKindBucket,
+						Name:     "Audit Logs",
+						Value:    "Audit Logs",
+					},
+				},
+			}, nil
+		},
+	}
+
+	deps := newServerDependenciesFromApp(app)
+	deps.entitySearchBackend = backend
+	s := NewServerWithDependencies(deps)
+	t.Cleanup(func() { s.Close() })
+
+	searchReq := httptest.NewRequest(http.MethodGet, "/api/v1/platform/entities/search?q=audit&kind=bucket&limit=7&fuzzy=true", nil)
+	searchReq = searchReq.WithContext(context.WithValue(searchReq.Context(), contextKeyTenant, "tenant-a"))
+	searchResp := httptest.NewRecorder()
+	s.ServeHTTP(searchResp, searchReq)
+	if searchResp.Code != http.StatusOK {
+		t.Fatalf("expected backend search 200, got %d: %s", searchResp.Code, searchResp.Body.String())
+	}
+	if backend.searchTenantID != "tenant-a" {
+		t.Fatalf("expected tenant scope to be forwarded to backend, got %q", backend.searchTenantID)
+	}
+	if backend.searchOpts.Query != "audit" || backend.searchOpts.Limit != 7 || !backend.searchOpts.Fuzzy {
+		t.Fatalf("unexpected search opts forwarded to backend: %#v", backend.searchOpts)
+	}
+	if len(backend.searchOpts.Kinds) != 1 || backend.searchOpts.Kinds[0] != graph.NodeKindBucket {
+		t.Fatalf("unexpected search kinds forwarded to backend: %#v", backend.searchOpts.Kinds)
+	}
+
+	suggestReq := httptest.NewRequest(http.MethodGet, "/api/v1/platform/entities/suggest?prefix=aud&kind=bucket&limit=6", nil)
+	suggestReq = suggestReq.WithContext(context.WithValue(suggestReq.Context(), contextKeyTenant, "tenant-a"))
+	suggestResp := httptest.NewRecorder()
+	s.ServeHTTP(suggestResp, suggestReq)
+	if suggestResp.Code != http.StatusOK {
+		t.Fatalf("expected backend suggest 200, got %d: %s", suggestResp.Code, suggestResp.Body.String())
+	}
+	if backend.suggestTenantID != "tenant-a" {
+		t.Fatalf("expected tenant scope to be forwarded to suggest backend, got %q", backend.suggestTenantID)
+	}
+	if backend.suggestOpts.Prefix != "aud" || backend.suggestOpts.Limit != 6 {
+		t.Fatalf("unexpected suggest opts forwarded to backend: %#v", backend.suggestOpts)
+	}
+	if len(backend.suggestOpts.Kinds) != 1 || backend.suggestOpts.Kinds[0] != graph.NodeKindBucket {
+		t.Fatalf("unexpected suggest kinds forwarded to backend: %#v", backend.suggestOpts.Kinds)
 	}
 }
 

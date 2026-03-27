@@ -116,6 +116,7 @@ type serverDependencies struct {
 
 	SecurityGraph        *graph.Graph
 	SecurityGraphBuilder *builders.Builder
+	entitySearchBackend  graph.EntitySearchBackend
 
 	graphRuntime          graphRuntimeService
 	graphMutator          graphMutationService
@@ -196,6 +197,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		SecurityGraphBuilder: application.SecurityGraphBuilder,
 		graphMutator:         application,
 		apiCredentials:       application,
+		entitySearchBackend:  application.CurrentEntitySearchBackend(),
 		agentSDKToolSource:   application,
 	}
 	deps.graphRuntime = &graphRuntimeAdapter{

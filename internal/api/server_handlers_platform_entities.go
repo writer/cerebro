@@ -37,30 +37,48 @@ func (s *Server) listPlatformEntities(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) searchPlatformEntities(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphView(r.Context())
-	if err != nil {
-		s.errorFromErr(w, err)
-		return
-	}
-
 	opts, err := parsePlatformEntitySearchOptions(r)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if s != nil && s.app != nil && s.app.entitySearchBackend != nil {
+		results, err := s.app.entitySearchBackend.Search(r.Context(), currentTenantScopeID(r.Context()), opts)
+		if err == nil {
+			s.json(w, http.StatusOK, results)
+			return
+		}
+		if s.app.Logger != nil {
+			s.app.Logger.Warn("entity search backend failed; falling back to graph search", "backend", s.app.entitySearchBackend.Backend(), "error", err)
+		}
+	}
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, entities.SearchEntities(g, opts))
 }
 
 func (s *Server) suggestPlatformEntities(w http.ResponseWriter, r *http.Request) {
-	g, err := s.currentTenantSecurityGraphView(r.Context())
-	if err != nil {
-		s.errorFromErr(w, err)
-		return
-	}
-
 	opts, err := parsePlatformEntitySuggestOptions(r)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if s != nil && s.app != nil && s.app.entitySearchBackend != nil {
+		results, err := s.app.entitySearchBackend.Suggest(r.Context(), currentTenantScopeID(r.Context()), opts)
+		if err == nil {
+			s.json(w, http.StatusOK, results)
+			return
+		}
+		if s.app.Logger != nil {
+			s.app.Logger.Warn("entity suggest backend failed; falling back to graph search", "backend", s.app.entitySearchBackend.Backend(), "error", err)
+		}
+	}
+	g, err := s.currentTenantSecurityGraphView(r.Context())
+	if err != nil {
+		s.errorFromErr(w, err)
 		return
 	}
 	s.json(w, http.StatusOK, entities.SuggestEntities(g, opts))

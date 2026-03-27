@@ -143,57 +143,60 @@ type App struct {
 	RuntimeRespond      *runtime.ResponseEngine
 
 	// Security Graph
-	SecurityGraph                    *graph.Graph
-	configuredSecurityGraphStore     graph.GraphStore
-	configuredSecurityGraphClose     func() error
-	configuredSecurityGraphReady     bool
-	graphStoreBackendProviderFactory graphStoreBackendProviderFactory
-	SecurityGraphBuilder             *builders.Builder
-	Propagation                      *graph.PropagationEngine
-	graphReady                       chan struct{} // closed when initial graph build completes
-	graphCtx                         context.Context
-	graphCancel                      context.CancelFunc
-	graphUpdateMu                    sync.Mutex
-	graphBuildMu                     sync.RWMutex
-	graphBuildState                  GraphBuildState
-	graphBuildLastAt                 time.Time
-	graphBuildErr                    string
-	graphConsistencyMu               sync.Mutex
-	graphConsistencyLast             time.Time
-	graphConsistencyRun              bool
-	graphConsistencyCancel           context.CancelFunc
-	graphConsistencyWG               sync.WaitGroup
-	graphWriterLease                 *graphWriterLeaseManager
-	graphWriterLeaseTransitionWG     sync.WaitGroup
-	tenantShardMu                    sync.Mutex
-	tenantSecurityGraphShards        *tenantGraphShardManager
-	passiveSnapshotStoreMu           sync.RWMutex
-	passiveSnapshotStoreOwner        *graph.GraphPersistenceStore
-	passiveSnapshotStoreSource       string
-	passiveSnapshotStoreID           string
-	passiveSnapshotStoreStatusID     string
-	passiveSnapshotStore             *graph.SnapshotGraphStore
-	eventCorrelationRefreshQueue     *eventCorrelationRefreshQueue
-	eventCorrelationRefreshCancel    context.CancelFunc
-	eventCorrelationRefreshWG        sync.WaitGroup
-	threatIntelSyncCancel            context.CancelFunc
-	threatIntelSyncWG                sync.WaitGroup
-	traceShutdown                    func(context.Context) error
-	secretsReloadCancel              context.CancelFunc
-	secretsReloadWG                  sync.WaitGroup
-	tapMapperOnce                    sync.Once
-	tapMapperErr                     error
-	tapResolveGraphMu                sync.RWMutex
-	tapResolveGraph                  *graph.Graph
-	tapConsumerMu                    sync.Mutex
-	tapConsumerDurable               string
-	tapConsumerSubjects              []string
-	securityGraphInitMu              sync.RWMutex
-	reloadMu                         sync.Mutex
-	apiKeys                          atomic.Value // map[string]string
-	apiCredentials                   atomic.Value // map[string]apiauth.Credential
-	apiCredentialStore               *apiauth.ManagedCredentialStore
-	secretsLoader                    secretsLoader
+	SecurityGraph                      *graph.Graph
+	configuredEntitySearchBackend      graph.EntitySearchBackend
+	configuredEntitySearchClose        func() error
+	entitySearchBackendProviderFactory entitySearchBackendProviderFactory
+	configuredSecurityGraphStore       graph.GraphStore
+	configuredSecurityGraphClose       func() error
+	configuredSecurityGraphReady       bool
+	graphStoreBackendProviderFactory   graphStoreBackendProviderFactory
+	SecurityGraphBuilder               *builders.Builder
+	Propagation                        *graph.PropagationEngine
+	graphReady                         chan struct{} // closed when initial graph build completes
+	graphCtx                           context.Context
+	graphCancel                        context.CancelFunc
+	graphUpdateMu                      sync.Mutex
+	graphBuildMu                       sync.RWMutex
+	graphBuildState                    GraphBuildState
+	graphBuildLastAt                   time.Time
+	graphBuildErr                      string
+	graphConsistencyMu                 sync.Mutex
+	graphConsistencyLast               time.Time
+	graphConsistencyRun                bool
+	graphConsistencyCancel             context.CancelFunc
+	graphConsistencyWG                 sync.WaitGroup
+	graphWriterLease                   *graphWriterLeaseManager
+	graphWriterLeaseTransitionWG       sync.WaitGroup
+	tenantShardMu                      sync.Mutex
+	tenantSecurityGraphShards          *tenantGraphShardManager
+	passiveSnapshotStoreMu             sync.RWMutex
+	passiveSnapshotStoreOwner          *graph.GraphPersistenceStore
+	passiveSnapshotStoreSource         string
+	passiveSnapshotStoreID             string
+	passiveSnapshotStoreStatusID       string
+	passiveSnapshotStore               *graph.SnapshotGraphStore
+	eventCorrelationRefreshQueue       *eventCorrelationRefreshQueue
+	eventCorrelationRefreshCancel      context.CancelFunc
+	eventCorrelationRefreshWG          sync.WaitGroup
+	threatIntelSyncCancel              context.CancelFunc
+	threatIntelSyncWG                  sync.WaitGroup
+	traceShutdown                      func(context.Context) error
+	secretsReloadCancel                context.CancelFunc
+	secretsReloadWG                    sync.WaitGroup
+	tapMapperOnce                      sync.Once
+	tapMapperErr                       error
+	tapResolveGraphMu                  sync.RWMutex
+	tapResolveGraph                    *graph.Graph
+	tapConsumerMu                      sync.Mutex
+	tapConsumerDurable                 string
+	tapConsumerSubjects                []string
+	securityGraphInitMu                sync.RWMutex
+	reloadMu                           sync.Mutex
+	apiKeys                            atomic.Value // map[string]string
+	apiCredentials                     atomic.Value // map[string]apiauth.Credential
+	apiCredentialStore                 *apiauth.ManagedCredentialStore
+	secretsLoader                      secretsLoader
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string

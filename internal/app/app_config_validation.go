@@ -192,6 +192,14 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Summary:  "when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required",
 			Category: "dependency",
 		},
+		{EnvVars: []string{"GRAPH_SEARCH_BACKEND"}, Summary: "must be one of graph, opensearch", Category: "enum"},
+		{
+			EnvVars:  []string{"GRAPH_SEARCH_BACKEND", "GRAPH_SEARCH_OPENSEARCH_ENDPOINT", "GRAPH_SEARCH_OPENSEARCH_REGION", "GRAPH_SEARCH_OPENSEARCH_INDEX"},
+			Summary:  "when GRAPH_SEARCH_BACKEND=opensearch, the OpenSearch endpoint, region, and index are required",
+			Category: "dependency",
+		},
+		{EnvVars: []string{"GRAPH_SEARCH_REQUEST_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"GRAPH_SEARCH_MAX_CANDIDATES"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"GRAPH_TENANT_SHARD_IDLE_TTL"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"GRAPH_TENANT_WARM_SHARD_TTL"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"GRAPH_TENANT_WARM_SHARD_MAX_RETAINED"}, Summary: "must be greater than 0", Category: "range"},
@@ -570,6 +578,28 @@ func (c *Config) Validate() error {
 	}
 	if c.GraphStoreNeptunePoolDrainTimeout <= 0 {
 		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT must be > 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	switch c.graphSearchBackend() {
+	case graph.EntitySearchBackendGraph, graph.EntitySearchBackendOpenSearch:
+	default:
+		problems = addConfigProblem(problems, "GRAPH_SEARCH_BACKEND must be one of graph, opensearch")
+	}
+	if c.graphSearchBackend() == graph.EntitySearchBackendOpenSearch {
+		if strings.TrimSpace(c.GraphSearchOpenSearchEndpoint) == "" {
+			problems = addConfigProblem(problems, "GRAPH_SEARCH_OPENSEARCH_ENDPOINT is required when GRAPH_SEARCH_BACKEND=opensearch")
+		}
+		if strings.TrimSpace(c.GraphSearchOpenSearchRegion) == "" {
+			problems = addConfigProblem(problems, "GRAPH_SEARCH_OPENSEARCH_REGION is required when GRAPH_SEARCH_BACKEND=opensearch")
+		}
+		if strings.TrimSpace(c.GraphSearchOpenSearchIndex) == "" {
+			problems = addConfigProblem(problems, "GRAPH_SEARCH_OPENSEARCH_INDEX is required when GRAPH_SEARCH_BACKEND=opensearch")
+		}
+	}
+	if c.GraphSearchRequestTimeout <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_SEARCH_REQUEST_TIMEOUT must be > 0")
+	}
+	if c.GraphSearchMaxCandidates <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_SEARCH_MAX_CANDIDATES must be > 0")
 	}
 	switch strings.ToLower(strings.TrimSpace(c.GraphSchemaValidationMode)) {
 	case "", string(graph.SchemaValidationOff), string(graph.SchemaValidationWarn), string(graph.SchemaValidationEnforce):
