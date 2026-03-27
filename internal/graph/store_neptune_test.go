@@ -1041,7 +1041,7 @@ func TestNeptuneGraphStoreTraversalMethodsUseBoundedTraversalQueries(t *testing.
 	})
 }
 
-func TestNeptuneGraphStoreEnsureIndexesCreatesCoreAndTemporalEdgeIndexes(t *testing.T) {
+func TestNeptuneGraphStoreEnsureIndexesIsNoOp(t *testing.T) {
 	exec := &fakeNeptuneExecutor{}
 	store := NewNeptuneGraphStore(exec)
 
@@ -1049,30 +1049,8 @@ func TestNeptuneGraphStoreEnsureIndexesCreatesCoreAndTemporalEdgeIndexes(t *test
 		t.Fatalf("EnsureIndexes() error = %v", err)
 	}
 
-	if len(exec.calls) < 10 {
-		t.Fatalf("EnsureIndexes() executed %d statements, want core and temporal index DDL", len(exec.calls))
-	}
-
-	wantFragments := []string{
-		"FOR (n:" + neptuneNodeLabel + ") ON (n.id)",
-		"FOR (n:" + neptuneNodeLabel + ") ON (n.kind)",
-		"FOR (n:" + neptuneNodeLabel + ") ON (n.tenant_id)",
-		"FOR (n:" + neptuneNodeLabel + ") ON (n.deleted_at)",
-		"FOR ()-[r:" + neptuneEdgeType + "]-() ON (r.id)",
-		"FOR ()-[r:" + neptuneEdgeType + "]-() ON (r.kind)",
-		"FOR ()-[r:" + neptuneEdgeType + "]-() ON (r.deleted_at)",
-		"FOR ()-[r:" + neptuneEdgeType + "]-() ON (r.observed_at)",
-		"FOR ()-[r:" + neptuneEdgeType + "]-() ON (r.valid_from)",
-		"FOR ()-[r:" + neptuneEdgeType + "]-() ON (r.valid_to)",
-		"FOR ()-[r:" + neptuneEdgeType + "]-() ON (r.expires_at)",
-		"FOR ()-[r:" + neptuneEdgeType + "]-() ON (r.recorded_at)",
-		"FOR ()-[r:" + neptuneEdgeType + "]-() ON (r.transaction_from)",
-		"FOR ()-[r:" + neptuneEdgeType + "]-() ON (r.transaction_to)",
-	}
-	for _, fragment := range wantFragments {
-		if !neptuneCallsContainFragment(exec.calls, fragment) {
-			t.Fatalf("EnsureIndexes() missing index DDL fragment %q in calls %#v", fragment, neptuneCallQueries(exec.calls))
-		}
+	if len(exec.calls) != 0 {
+		t.Fatalf("EnsureIndexes() executed %d statements, want 0", len(exec.calls))
 	}
 }
 
@@ -1622,15 +1600,6 @@ func newTemporalTraversalTestGraph() *Graph {
 		g.AddEdge(edge)
 	}
 	return g
-}
-
-func neptuneCallsContainFragment(calls []fakeNeptuneCall, fragment string) bool {
-	for _, call := range calls {
-		if strings.Contains(call.query, fragment) {
-			return true
-		}
-	}
-	return false
 }
 
 func neptuneCallQueries(calls []fakeNeptuneCall) []string {
