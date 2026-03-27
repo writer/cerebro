@@ -1602,15 +1602,6 @@ func newTemporalTraversalTestGraph() *Graph {
 	return g
 }
 
-func neptuneCallsContainFragment(calls []fakeNeptuneCall, fragment string) bool {
-	for _, call := range calls {
-		if strings.Contains(call.query, fragment) {
-			return true
-		}
-	}
-	return false
-}
-
 func neptuneCallQueries(calls []fakeNeptuneCall) []string {
 	out := make([]string, 0, len(calls))
 	for _, call := range calls {
