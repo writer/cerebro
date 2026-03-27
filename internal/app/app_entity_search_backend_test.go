@@ -143,7 +143,47 @@ func TestInitEntitySearchBackendReturnsProviderErrors(t *testing.T) {
 	}
 }
 
-func TestInitEntitySearchBackendReturnsReadinessErrors(t *testing.T) {
+func TestInitEntitySearchBackendAllowsBootstrapPendingReadiness(t *testing.T) {
+	t.Parallel()
+
+	closeCalls := 0
+	provider := &fakeEntitySearchBackendProvider{
+		backend: graph.EntitySearchBackendOpenSearch,
+		handle: entitySearchBackendHandle{
+			Backend: &fakeEntitySearchBackend{
+				checkErr: &graph.EntitySearchBootstrapPendingError{
+					Backend: graph.EntitySearchBackendOpenSearch,
+					Reason:  "index bootstrap pending",
+				},
+			},
+			Close: func() error {
+				closeCalls++
+				return nil
+			},
+		},
+	}
+	app := &App{
+		Config: &Config{GraphSearchBackend: string(graph.EntitySearchBackendOpenSearch)},
+		entitySearchBackendProviderFactory: func(_ *App, backend graph.EntitySearchBackendType) (entitySearchBackendProvider, error) {
+			if backend != graph.EntitySearchBackendOpenSearch {
+				t.Fatalf("provider factory backend = %q, want %q", backend, graph.EntitySearchBackendOpenSearch)
+			}
+			return provider, nil
+		},
+	}
+
+	if err := app.initEntitySearchBackend(context.Background()); err != nil {
+		t.Fatalf("initEntitySearchBackend() error = %v", err)
+	}
+	if app.CurrentEntitySearchBackend() == nil {
+		t.Fatal("expected bootstrap-pending backend to remain configured")
+	}
+	if closeCalls != 0 {
+		t.Fatalf("close calls = %d, want 0", closeCalls)
+	}
+}
+
+func TestInitEntitySearchBackendReturnsNonBootstrapReadinessErrors(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("opensearch unavailable")
@@ -187,12 +227,13 @@ func (s *snapshotCountingHydrationStore) Snapshot(ctx context.Context) (*graph.S
 	return s.GraphStore.Snapshot(ctx)
 }
 
-func TestHydrateCurrentEntitySearchRecordUsesConfiguredStoreWithoutSnapshots(t *testing.T) {
+func TestResolveCurrentEntitySearchGraphUsesConfiguredView(t *testing.T) {
 	t.Parallel()
 
 	backing := graph.New()
 	backing.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments", TenantID: "tenant-a"})
 	backing.AddNode(&graph.Node{ID: "service:shared", Kind: graph.NodeKindService, Name: "Shared"})
+	backing.AddNode(&graph.Node{ID: "service:tenant-b", Kind: graph.NodeKindService, Name: "Tenant B", TenantID: "tenant-b"})
 	backing.AddEdge(&graph.Edge{
 		ID:     "service:payments->service:shared:depends_on",
 		Source: "service:payments",
@@ -207,22 +248,28 @@ func TestHydrateCurrentEntitySearchRecordUsesConfiguredStoreWithoutSnapshots(t *
 		configuredSecurityGraphReady: true,
 	}
 
-	record, ok, err := app.hydrateCurrentEntitySearchRecord(context.Background(), "tenant-a", "service:payments")
+	view, err := app.resolveCurrentEntitySearchGraph(context.Background(), "tenant-a")
 	if err != nil {
-		t.Fatalf("hydrateCurrentEntitySearchRecord() error = %v", err)
+		t.Fatalf("resolveCurrentEntitySearchGraph() error = %v", err)
 	}
-	if !ok {
-		t.Fatal("expected tenant-scoped entity record")
+	if view == nil {
+		t.Fatal("expected tenant-scoped graph view")
 	}
-	if got := record.ID; got != "service:payments" {
-		t.Fatalf("record id = %q, want service:payments", got)
+	if _, ok := view.GetNode("service:payments"); !ok {
+		t.Fatal("expected tenant node in resolved view")
 	}
-	if got := store.snapshotCount.Load(); got != 0 {
-		t.Fatalf("expected configured hydration to avoid snapshots, got %d snapshot calls", got)
+	if _, ok := view.GetNode("service:shared"); !ok {
+		t.Fatal("expected shared node in resolved view")
+	}
+	if _, ok := view.GetNode("service:tenant-b"); ok {
+		t.Fatal("expected foreign tenant node to be excluded from resolved view")
+	}
+	if got := store.snapshotCount.Load(); got != 1 {
+		t.Fatalf("expected one configured snapshot per graph resolution, got %d", got)
 	}
 }
 
-func TestHydrateCurrentEntitySearchRecordAllowsSharedOnlyTenantData(t *testing.T) {
+func TestResolveCurrentEntitySearchGraphAllowsSharedOnlyTenantData(t *testing.T) {
 	t.Parallel()
 
 	backing := graph.New()
@@ -233,14 +280,14 @@ func TestHydrateCurrentEntitySearchRecordAllowsSharedOnlyTenantData(t *testing.T
 		configuredSecurityGraphReady: true,
 	}
 
-	record, ok, err := app.hydrateCurrentEntitySearchRecord(context.Background(), "tenant-missing", "service:shared")
+	view, err := app.resolveCurrentEntitySearchGraph(context.Background(), "tenant-missing")
 	if err != nil {
-		t.Fatalf("hydrateCurrentEntitySearchRecord() error = %v", err)
+		t.Fatalf("resolveCurrentEntitySearchGraph() error = %v", err)
 	}
-	if !ok {
-		t.Fatal("expected shared entity to hydrate for tenant-scoped request")
+	if view == nil {
+		t.Fatal("expected shared-only graph view for tenant-scoped request")
 	}
-	if got := record.ID; got != "service:shared" {
-		t.Fatalf("record id = %q, want service:shared", got)
+	if _, ok := view.GetNode("service:shared"); !ok {
+		t.Fatal("expected shared entity in resolved graph view")
 	}
 }

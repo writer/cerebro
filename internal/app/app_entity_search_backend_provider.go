@@ -56,7 +56,7 @@ func (p *openSearchEntitySearchBackendProvider) Open(ctx context.Context, app *A
 		Index:         app.Config.GraphSearchOpenSearchIndex,
 		HTTPClient:    &http.Client{Timeout: app.Config.GraphSearchRequestTimeout},
 		Credentials:   awsCfg.Credentials,
-		HydrateEntity: app.hydrateCurrentEntitySearchRecord,
+		ResolveGraph:  app.resolveCurrentEntitySearchGraph,
 		MaxCandidates: app.Config.GraphSearchMaxCandidates,
 	})
 	if err != nil {

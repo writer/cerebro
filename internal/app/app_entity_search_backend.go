@@ -35,7 +35,12 @@ func (a *App) initEntitySearchBackend(ctx context.Context) error {
 	}
 	if checker, ok := handle.Backend.(entitySearchBackendChecker); ok {
 		if err := checker.Check(ctx); err != nil {
-			return closeEntitySearchHandle(handle, err)
+			if !graph.IsEntitySearchBootstrapPending(err) {
+				return closeEntitySearchHandle(handle, err)
+			}
+			if a.Logger != nil {
+				a.Logger.Warn("entity search backend bootstrap pending; falling back to graph reads until the search index is ready", "backend", provider.Backend(), "error", err)
+			}
 		}
 	}
 
@@ -68,69 +73,75 @@ func closeEntitySearchHandle(handle entitySearchBackendHandle, base error) error
 	return base
 }
 
-func (a *App) hydrateCurrentEntitySearchRecord(ctx context.Context, tenantID, id string) (graph.EntityRecord, bool, error) {
-	id = strings.TrimSpace(id)
+func (a *App) resolveCurrentEntitySearchGraph(ctx context.Context, tenantID string) (*graph.Graph, error) {
 	tenantID = strings.TrimSpace(tenantID)
-	if id == "" {
-		return graph.EntityRecord{}, false, nil
-	}
 	if a == nil {
-		return graph.EntityRecord{}, false, graph.ErrStoreUnavailable
+		return nil, graph.ErrStoreUnavailable
 	}
 
 	if current := a.currentLiveSecurityGraph(); current != nil {
-		return hydrateCurrentEntitySearchRecordFromStore(ctx, current, tenantID, id)
+		if tenantID == "" {
+			return current, nil
+		}
+		view := a.CurrentSecurityGraphForTenant(tenantID)
+		if view == nil {
+			return nil, graph.ErrStoreUnavailable
+		}
+		return view, nil
 	}
 
 	if tenantID != "" {
 		if store, err := a.currentWarmTenantGraphStore(ctx, tenantID); err == nil && store != nil {
-			return hydrateCurrentEntitySearchRecordFromStore(ctx, store, "", id)
+			return entitySearchGraphFromWarmStore(ctx, store)
 		} else if err != nil && !errors.Is(err, graph.ErrStoreUnavailable) {
-			return graph.EntityRecord{}, false, err
+			return nil, err
 		}
 	}
 
-	if store, err := a.currentConfiguredSecurityGraphStore(ctx); err == nil && store != nil {
-		return hydrateCurrentEntitySearchRecordFromStore(ctx, store, tenantID, id)
-	} else if err != nil && !errors.Is(err, graph.ErrStoreUnavailable) {
-		return graph.EntityRecord{}, false, err
+	if view, err := a.currentConfiguredSecurityGraphView(ctx); err != nil {
+		return nil, err
+	} else if view != nil {
+		return scopeEntitySearchGraphView(view, tenantID), nil
 	}
 
-	if store, err := a.currentPassiveSnapshotStore(ctx); err == nil && store != nil {
-		return hydrateCurrentEntitySearchRecordFromStore(ctx, store, tenantID, id)
-	} else if err != nil && !errors.Is(err, graph.ErrStoreUnavailable) {
-		return graph.EntityRecord{}, false, err
+	view, err := a.storedSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error) {
+		snapshot, _, _, err := store.PeekLatestSnapshot()
+		return snapshot, err
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	return graph.EntityRecord{}, false, graph.ErrStoreUnavailable
+	if view != nil {
+		return scopeEntitySearchGraphView(view, tenantID), nil
+	}
+	return nil, graph.ErrStoreUnavailable
 }
 
-func hydrateCurrentEntitySearchRecordFromStore(ctx context.Context, store graph.GraphStore, tenantID, id string) (graph.EntityRecord, bool, error) {
-	id = strings.TrimSpace(id)
+func scopeEntitySearchGraphView(view *graph.Graph, tenantID string) *graph.Graph {
 	tenantID = strings.TrimSpace(tenantID)
-	if id == "" {
-		return graph.EntityRecord{}, false, nil
-	}
-	if store == nil {
-		return graph.EntityRecord{}, false, graph.ErrStoreUnavailable
+	if view == nil {
+		return nil
 	}
 	if tenantID == "" {
-		return graph.GetCurrentEntityRecordFromStore(ctx, store, id)
+		return view
 	}
+	return view.SubgraphForTenant(tenantID)
+}
 
+func entitySearchGraphFromWarmStore(ctx context.Context, store graph.GraphStore) (*graph.Graph, error) {
 	switch typed := store.(type) {
 	case *graph.Graph:
-		return graph.GetCurrentEntityRecordFromStore(ctx, typed.SubgraphForTenant(tenantID), id)
+		return typed, nil
 	case *graph.SnapshotGraphStore:
 		snapshot, err := typed.Snapshot(ctx)
 		if err != nil {
-			return graph.EntityRecord{}, false, err
+			return nil, err
 		}
 		if snapshot == nil {
-			return graph.EntityRecord{}, false, graph.ErrStoreUnavailable
+			return nil, graph.ErrStoreUnavailable
 		}
-		return graph.GetCurrentEntityRecordFromStore(ctx, graph.GraphViewFromSnapshot(snapshot).SubgraphForTenant(tenantID), id)
+		return graph.GraphViewFromSnapshot(snapshot), nil
 	default:
-		return graph.GetCurrentEntityRecordFromStore(graph.WithTenantScope(ctx, tenantID), store, id)
+		return nil, graph.ErrStoreUnavailable
 	}
 }

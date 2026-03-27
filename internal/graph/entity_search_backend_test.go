@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,16 +15,6 @@ import (
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 )
-
-type snapshotCountingSearchStore struct {
-	GraphStore
-	snapshotCount atomic.Int32
-}
-
-func (s *snapshotCountingSearchStore) Snapshot(ctx context.Context) (*Snapshot, error) {
-	s.snapshotCount.Add(1)
-	return s.GraphStore.Snapshot(ctx)
-}
 
 type noopOpenSearchSigner struct{}
 
@@ -45,11 +36,11 @@ func TestParseEntitySearchBackend(t *testing.T) {
 	}
 }
 
-func TestOpenSearchEntitySearchBackendSearchHydratesCurrentStateWithoutSnapshots(t *testing.T) {
+func TestOpenSearchEntitySearchBackendSearchResolvesGraphOncePerRequest(t *testing.T) {
 	t.Parallel()
 
-	backing := New()
-	backing.AddNode(&Node{
+	tenantGraph := New()
+	tenantGraph.AddNode(&Node{
 		ID:       "service:payments",
 		Kind:     NodeKindService,
 		Name:     "Payments",
@@ -57,8 +48,9 @@ func TestOpenSearchEntitySearchBackendSearchHydratesCurrentStateWithoutSnapshots
 		Account:  "123456789012",
 		Region:   "us-east-1",
 		Risk:     RiskHigh,
+		TenantID: "tenant-a",
 	})
-	backing.AddNode(&Node{
+	tenantGraph.AddNode(&Node{
 		ID:       "database:payments",
 		Kind:     NodeKindDatabase,
 		Name:     "Payments DB",
@@ -66,16 +58,40 @@ func TestOpenSearchEntitySearchBackendSearchHydratesCurrentStateWithoutSnapshots
 		Account:  "123456789012",
 		Region:   "us-east-1",
 		Risk:     RiskMedium,
+		TenantID: "tenant-a",
 	})
-	backing.AddEdge(&Edge{
+	tenantGraph.AddEdge(&Edge{
 		ID:     "service:payments->database:payments:depends_on",
 		Source: "service:payments",
 		Target: "database:payments",
 		Kind:   EdgeKindDependsOn,
 		Effect: EdgeEffectAllow,
 	})
+	tenantGraph.AddNode(&Node{
+		ID:       "service:billing",
+		Kind:     NodeKindService,
+		Name:     "Billing",
+		Provider: "aws",
+		TenantID: "tenant-a",
+	})
+	for i := 0; i < 600; i++ {
+		nodeID := fmt.Sprintf("database:payments:%03d", i)
+		tenantGraph.AddNode(&Node{
+			ID:       nodeID,
+			Kind:     NodeKindDatabase,
+			Name:     fmt.Sprintf("Payments Replica %03d", i),
+			Provider: "aws",
+			TenantID: "tenant-a",
+		})
+		tenantGraph.AddEdge(&Edge{
+			ID:     fmt.Sprintf("service:payments->%s:depends_on", nodeID),
+			Source: "service:payments",
+			Target: nodeID,
+			Kind:   EdgeKindDependsOn,
+			Effect: EdgeEffectAllow,
+		})
+	}
 
-	store := &snapshotCountingSearchStore{GraphStore: backing}
 	var requestBody string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -84,10 +100,11 @@ func TestOpenSearchEntitySearchBackendSearchHydratesCurrentStateWithoutSnapshots
 		}
 		requestBody = string(body)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_score":9.5,"_source":{"graphId":"claim:payments:owner","kind":"claim","name":"owner"}},{"_score":8.5,"_source":{"graphId":"service:payments","kind":"service","name":"Payments","provider":"aws","account":"123456789012","region":"us-east-1"}}]}}`)
+		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_score":9.5,"_source":{"graphId":"claim:payments:owner","kind":"claim","name":"owner"}},{"_score":8.5,"_source":{"graphId":"service:payments","kind":"service","name":"Payments","provider":"aws","account":"123456789012","region":"us-east-1"}},{"_score":7.5,"_source":{"graphId":"service:billing","kind":"service","name":"Billing","provider":"aws","account":"123456789012","region":"us-east-1"}}]}}`)
 	}))
 	defer server.Close()
 
+	var resolveCalls atomic.Int32
 	backend, err := NewOpenSearchEntitySearchBackend(OpenSearchEntitySearchBackendOptions{
 		Endpoint:    server.URL,
 		Region:      "us-east-1",
@@ -95,8 +112,9 @@ func TestOpenSearchEntitySearchBackendSearchHydratesCurrentStateWithoutSnapshots
 		HTTPClient:  server.Client(),
 		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
 		Signer:      noopOpenSearchSigner{},
-		HydrateEntity: func(ctx context.Context, _ string, id string) (EntityRecord, bool, error) {
-			return GetCurrentEntityRecordFromStore(ctx, store, id)
+		ResolveGraph: func(context.Context, string) (*Graph, error) {
+			resolveCalls.Add(1)
+			return tenantGraph.SubgraphForTenant("tenant-a"), nil
 		},
 	})
 	if err != nil {
@@ -105,33 +123,32 @@ func TestOpenSearchEntitySearchBackendSearchHydratesCurrentStateWithoutSnapshots
 
 	results, err := backend.Search(context.Background(), "tenant-a", EntitySearchOptions{
 		Query: "payments",
-		Kinds: []NodeKind{NodeKindService},
 		Limit: 5,
 		Fuzzy: true,
 	})
 	if err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
-	if results.Count != 1 {
-		t.Fatalf("Search().Count = %d, want 1", results.Count)
+	if results.Count != 2 {
+		t.Fatalf("Search().Count = %d, want 2", results.Count)
+	}
+	if got := resolveCalls.Load(); got != 1 {
+		t.Fatalf("ResolveGraph() call count = %d, want 1", got)
 	}
 	if got := results.Results[0].Entity.ID; got != "service:payments" {
 		t.Fatalf("Search() entity id = %q, want service:payments", got)
 	}
-	if got := results.Results[0].Entity.Links.OutgoingCount; got != 1 {
-		t.Fatalf("Search() outgoing count = %d, want 1", got)
+	if got := results.Results[0].Entity.Links.OutgoingCount; got != 601 {
+		t.Fatalf("Search() outgoing count = %d, want 601", got)
 	}
-	if got := store.snapshotCount.Load(); got != 0 {
-		t.Fatalf("expected search hydration to avoid snapshots, got %d snapshot calls", got)
-	}
-	for _, fragment := range []string{`"entityKind":"node"`, `"tenantId":"tenant-a"`, `"kind":["service"]`, `"fuzziness":"AUTO"`} {
+	for _, fragment := range []string{`"entityKind":"node"`, `"tenantId":"tenant-a"`, `"must_not"`, `"claim"`, `"fuzziness":"AUTO"`} {
 		if !strings.Contains(requestBody, fragment) {
 			t.Fatalf("expected OpenSearch request to contain %q, got %s", fragment, requestBody)
 		}
 	}
 }
 
-func TestOpenSearchEntitySearchBackendUsesSearchableKindAllowlistWhenKindsOmitted(t *testing.T) {
+func TestOpenSearchEntitySearchBackendUsesDeniedKindsFilterWhenKindsOmitted(t *testing.T) {
 	t.Parallel()
 
 	var requestBody string
@@ -153,8 +170,8 @@ func TestOpenSearchEntitySearchBackendUsesSearchableKindAllowlistWhenKindsOmitte
 		HTTPClient:  server.Client(),
 		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
 		Signer:      noopOpenSearchSigner{},
-		HydrateEntity: func(context.Context, string, string) (EntityRecord, bool, error) {
-			return EntityRecord{}, false, nil
+		ResolveGraph: func(context.Context, string) (*Graph, error) {
+			return New(), nil
 		},
 	})
 	if err != nil {
@@ -164,13 +181,13 @@ func TestOpenSearchEntitySearchBackendUsesSearchableKindAllowlistWhenKindsOmitte
 	if _, err := backend.Search(context.Background(), "tenant-a", EntitySearchOptions{Query: "payments", Limit: 5}); err != nil {
 		t.Fatalf("Search() error = %v", err)
 	}
-	if !strings.Contains(requestBody, `"terms":{"kind":[`) {
-		t.Fatalf("expected OpenSearch request to include a searchable kind allowlist, got %s", requestBody)
-	}
-	for _, disallowed := range []string{`"claim"`, `"evidence"`, `"observation"`, `"bucket_policy_statement"`} {
-		if strings.Contains(requestBody, disallowed) {
-			t.Fatalf("expected OpenSearch request to exclude non-searchable kind %q, got %s", disallowed, requestBody)
+	for _, fragment := range []string{`"must_not"`, `"claim"`, `"evidence"`, `"observation"`} {
+		if !strings.Contains(requestBody, fragment) {
+			t.Fatalf("expected OpenSearch request to contain %q, got %s", fragment, requestBody)
 		}
+	}
+	if strings.Contains(requestBody, `"service"`) {
+		t.Fatalf("expected omitted-kind search to avoid registry-derived allowlists, got %s", requestBody)
 	}
 }
 
@@ -192,8 +209,9 @@ func TestOpenSearchEntitySearchBackendReturnsEmptyForDisallowedRequestedKinds(t 
 		HTTPClient:  server.Client(),
 		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
 		Signer:      noopOpenSearchSigner{},
-		HydrateEntity: func(context.Context, string, string) (EntityRecord, bool, error) {
-			return EntityRecord{}, false, nil
+		ResolveGraph: func(context.Context, string) (*Graph, error) {
+			t.Fatal("ResolveGraph() should not be called when all requested kinds are disallowed")
+			return nil, nil
 		},
 	})
 	if err != nil {
@@ -216,8 +234,15 @@ func TestOpenSearchEntitySearchBackendReturnsEmptyForDisallowedRequestedKinds(t 
 	}
 }
 
-func TestOpenSearchEntitySearchBackendSuggestsEntityNamesAndIDs(t *testing.T) {
+func TestOpenSearchEntitySearchBackendSuggestRevalidatesCurrentState(t *testing.T) {
 	t.Parallel()
+
+	current := New()
+	current.AddNode(&Node{
+		ID:   "service:payments",
+		Kind: NodeKindService,
+		Name: "Payments API",
+	})
 
 	var requestBody string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -227,7 +252,57 @@ func TestOpenSearchEntitySearchBackendSuggestsEntityNamesAndIDs(t *testing.T) {
 		}
 		requestBody = string(body)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_score":4.2,"_source":{"graphId":"service:payments","kind":"service","name":"Payments"}}]}}`)
+		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_score":5.2,"_source":{"graphId":"service:deleted","kind":"service","name":"Deleted Service"}},{"_score":4.2,"_source":{"graphId":"service:payments","kind":"service","name":"Payments"}}]}}`)
+	}))
+	defer server.Close()
+
+	var resolveCalls atomic.Int32
+	backend, err := NewOpenSearchEntitySearchBackend(OpenSearchEntitySearchBackendOptions{
+		Endpoint:    server.URL,
+		Region:      "us-east-1",
+		Index:       "entity-search",
+		HTTPClient:  server.Client(),
+		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
+		Signer:      noopOpenSearchSigner{},
+		ResolveGraph: func(context.Context, string) (*Graph, error) {
+			resolveCalls.Add(1)
+			return current, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewOpenSearchEntitySearchBackend() error = %v", err)
+	}
+
+	results, err := backend.Suggest(context.Background(), "tenant-a", EntitySuggestOptions{
+		Prefix: "pay",
+		Limit:  5,
+	})
+	if err != nil {
+		t.Fatalf("Suggest() error = %v", err)
+	}
+	if results.Count != 1 {
+		t.Fatalf("Suggest().Count = %d, want 1", results.Count)
+	}
+	if got := resolveCalls.Load(); got != 1 {
+		t.Fatalf("ResolveGraph() call count = %d, want 1", got)
+	}
+	if got := results.Suggestions[0].Value; got != "Payments API" {
+		t.Fatalf("Suggest() value = %q, want Payments API", got)
+	}
+	for _, fragment := range []string{`"name.keyword"`, `"graphId"`, `"entityKind":"node"`, `"tenantId":"tenant-a"`} {
+		if !strings.Contains(requestBody, fragment) {
+			t.Fatalf("expected OpenSearch suggest request to contain %q, got %s", fragment, requestBody)
+		}
+	}
+}
+
+func TestOpenSearchEntitySearchBackendCheckReturnsBootstrapPendingWhenIndexMissing(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"error":{"type":"index_not_found_exception","reason":"no such index [entity-search]"},"status":404}`)
 	}))
 	defer server.Close()
 
@@ -238,32 +313,17 @@ func TestOpenSearchEntitySearchBackendSuggestsEntityNamesAndIDs(t *testing.T) {
 		HTTPClient:  server.Client(),
 		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
 		Signer:      noopOpenSearchSigner{},
-		HydrateEntity: func(context.Context, string, string) (EntityRecord, bool, error) {
-			return EntityRecord{}, false, nil
+		ResolveGraph: func(context.Context, string) (*Graph, error) {
+			return New(), nil
 		},
 	})
 	if err != nil {
 		t.Fatalf("NewOpenSearchEntitySearchBackend() error = %v", err)
 	}
 
-	results, err := backend.Suggest(context.Background(), "tenant-a", EntitySuggestOptions{
-		Prefix: "service:",
-		Kinds:  []NodeKind{NodeKindService},
-		Limit:  5,
-	})
-	if err != nil {
-		t.Fatalf("Suggest() error = %v", err)
-	}
-	if results.Count != 1 {
-		t.Fatalf("Suggest().Count = %d, want 1", results.Count)
-	}
-	if got := results.Suggestions[0].Value; got != "service:payments" {
-		t.Fatalf("Suggest() value = %q, want service:payments", got)
-	}
-	for _, fragment := range []string{`"name.keyword"`, `"graphId"`, `"entityKind":"node"`, `"tenantId":"tenant-a"`} {
-		if !strings.Contains(requestBody, fragment) {
-			t.Fatalf("expected OpenSearch suggest request to contain %q, got %s", fragment, requestBody)
-		}
+	err = backend.Check(context.Background())
+	if !IsEntitySearchBootstrapPending(err) {
+		t.Fatalf("Check() error = %v, want bootstrap-pending error", err)
 	}
 }
 
@@ -285,8 +345,8 @@ func TestOpenSearchEntitySearchBackendCheckProbesIndex(t *testing.T) {
 		HTTPClient:  server.Client(),
 		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
 		Signer:      noopOpenSearchSigner{},
-		HydrateEntity: func(context.Context, string, string) (EntityRecord, bool, error) {
-			return EntityRecord{}, false, nil
+		ResolveGraph: func(context.Context, string) (*Graph, error) {
+			return New(), nil
 		},
 	})
 	if err != nil {

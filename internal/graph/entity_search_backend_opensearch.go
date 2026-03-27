@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,7 +33,7 @@ type OpenSearchEntitySearchBackendOptions struct {
 	HTTPClient    *http.Client
 	Credentials   aws.CredentialsProvider
 	Signer        openSearchHTTPSigner
-	HydrateEntity func(context.Context, string, string) (EntityRecord, bool, error)
+	ResolveGraph  func(context.Context, string) (*Graph, error)
 	Now           func() time.Time
 	MaxCandidates int
 }
@@ -44,7 +45,7 @@ type OpenSearchEntitySearchBackend struct {
 	httpClient    *http.Client
 	credentials   aws.CredentialsProvider
 	signer        openSearchHTTPSigner
-	hydrateEntity func(context.Context, string, string) (EntityRecord, bool, error)
+	resolveGraph  func(context.Context, string) (*Graph, error)
 	now           func() time.Time
 	maxCandidates int
 }
@@ -68,6 +69,11 @@ type openSearchEntityDocument struct {
 	Provider string   `json:"provider"`
 	Account  string   `json:"account"`
 	Region   string   `json:"region"`
+}
+
+type openSearchResponseError struct {
+	StatusCode int
+	Body       string
 }
 
 func NewOpenSearchEntitySearchBackend(opts OpenSearchEntitySearchBackendOptions) (*OpenSearchEntitySearchBackend, error) {
@@ -99,8 +105,8 @@ func NewOpenSearchEntitySearchBackend(opts OpenSearchEntitySearchBackendOptions)
 	if opts.Signer == nil {
 		opts.Signer = v4.NewSigner()
 	}
-	if opts.HydrateEntity == nil {
-		return nil, fmt.Errorf("opensearch entity hydrator is required")
+	if opts.ResolveGraph == nil {
+		return nil, fmt.Errorf("opensearch graph resolver is required")
 	}
 	if opts.Now == nil {
 		opts.Now = temporalNowUTC
@@ -115,7 +121,7 @@ func NewOpenSearchEntitySearchBackend(opts OpenSearchEntitySearchBackendOptions)
 		httpClient:    opts.HTTPClient,
 		credentials:   opts.Credentials,
 		signer:        opts.Signer,
-		hydrateEntity: opts.HydrateEntity,
+		resolveGraph:  opts.ResolveGraph,
 		now:           opts.Now,
 		maxCandidates: opts.MaxCandidates,
 	}, nil
@@ -135,19 +141,27 @@ func (b *OpenSearchEntitySearchBackend) Search(ctx context.Context, tenantID str
 	if query.Query == "" {
 		return result, nil
 	}
-	allowedKinds, ok := openSearchAllowedEntityKinds(query.Kinds)
+	requestedKinds, ok := openSearchRequestedEntityKinds(query.Kinds)
 	if !ok {
 		return result, nil
 	}
-	allowedKindSet := openSearchEntityKindSet(allowedKinds)
+	requestedKindSet := openSearchEntityKindSet(requestedKinds)
 
-	hits, err := b.searchHits(ctx, tenantID, query, allowedKinds, allowedKindSet)
+	hits, err := b.searchHits(ctx, tenantID, query, requestedKinds, requestedKindSet)
 	if err != nil {
 		return result, err
 	}
 	if len(hits) == 0 {
 		return result, nil
 	}
+	view, err := b.resolveGraph(ctx, strings.TrimSpace(tenantID))
+	if err != nil {
+		return result, err
+	}
+	if view == nil {
+		return result, ErrStoreUnavailable
+	}
+	now := b.now().UTC()
 
 	results := make([]EntitySearchResult, 0, min(query.Limit, len(hits)))
 	seen := make(map[string]struct{}, len(hits))
@@ -157,11 +171,8 @@ func (b *OpenSearchEntitySearchBackend) Search(ctx context.Context, tenantID str
 		}
 		seen[hit.EntityID] = struct{}{}
 
-		record, ok, err := b.hydrateEntity(ctx, strings.TrimSpace(tenantID), hit.EntityID)
-		if err != nil {
-			return result, err
-		}
-		if !ok {
+		record, ok := GetEntityRecord(view, hit.EntityID, now, now)
+		if !ok || !openSearchEntityKindAllowed(record.Kind, requestedKindSet) {
 			continue
 		}
 		results = append(results, EntitySearchResult{
@@ -201,40 +212,52 @@ func (b *OpenSearchEntitySearchBackend) Suggest(ctx context.Context, tenantID st
 	if query.Prefix == "" {
 		return result, nil
 	}
-	allowedKinds, ok := openSearchAllowedEntityKinds(query.Kinds)
+	requestedKinds, ok := openSearchRequestedEntityKinds(query.Kinds)
 	if !ok {
 		return result, nil
 	}
-	allowedKindSet := openSearchEntityKindSet(allowedKinds)
+	requestedKindSet := openSearchEntityKindSet(requestedKinds)
 
 	var response openSearchEntitySearchResponse
-	if err := b.executeSearch(ctx, b.buildSuggestRequest(strings.TrimSpace(tenantID), query, allowedKinds), &response); err != nil {
+	if err := b.executeSearch(ctx, b.buildSuggestRequest(strings.TrimSpace(tenantID), query, requestedKinds), &response); err != nil {
 		return result, err
 	}
+	if len(response.Hits.Hits) == 0 {
+		return result, nil
+	}
+	view, err := b.resolveGraph(ctx, strings.TrimSpace(tenantID))
+	if err != nil {
+		return result, err
+	}
+	if view == nil {
+		return result, ErrStoreUnavailable
+	}
+	now := b.now().UTC()
 
 	normalizedPrefix := entitySearchNormalize(query.Prefix)
 	suggestions := make([]EntitySuggestion, 0, len(response.Hits.Hits)*2)
 	seen := make(map[string]struct{}, len(response.Hits.Hits)*2)
 	for _, hit := range response.Hits.Hits {
-		if !openSearchEntityKindAllowed(hit.Source.Kind, allowedKindSet) {
-			continue
-		}
 		entityID := strings.TrimSpace(firstNonEmpty(hit.Source.GraphID, hit.ID))
 		if entityID == "" {
 			continue
 		}
+		record, ok := GetEntityRecord(view, entityID, now, now)
+		if !ok || !openSearchEntityKindAllowed(record.Kind, requestedKindSet) {
+			continue
+		}
 		candidates := []EntitySuggestion{
 			{
-				EntityID: entityID,
-				Kind:     hit.Source.Kind,
-				Name:     strings.TrimSpace(hit.Source.Name),
-				Value:    strings.TrimSpace(hit.Source.Name),
+				EntityID: record.ID,
+				Kind:     record.Kind,
+				Name:     strings.TrimSpace(record.Name),
+				Value:    strings.TrimSpace(record.Name),
 			},
 			{
-				EntityID: entityID,
-				Kind:     hit.Source.Kind,
-				Name:     strings.TrimSpace(hit.Source.Name),
-				Value:    entityID,
+				EntityID: record.ID,
+				Kind:     record.Kind,
+				Name:     strings.TrimSpace(record.Name),
+				Value:    record.ID,
 			},
 		}
 		for _, suggestion := range candidates {
@@ -279,15 +302,25 @@ type openSearchEntitySearchHit struct {
 	MatchedFields []string
 }
 
-func (b *OpenSearchEntitySearchBackend) searchHits(ctx context.Context, tenantID string, query EntitySearchOptions, allowedKinds []NodeKind, allowedKindSet map[NodeKind]struct{}) ([]openSearchEntitySearchHit, error) {
+func (e *openSearchResponseError) Error() string {
+	if e == nil {
+		return "opensearch request failed"
+	}
+	if e.Body == "" {
+		return fmt.Sprintf("opensearch request failed: status=%d", e.StatusCode)
+	}
+	return fmt.Sprintf("opensearch request failed: status=%d body=%s", e.StatusCode, e.Body)
+}
+
+func (b *OpenSearchEntitySearchBackend) searchHits(ctx context.Context, tenantID string, query EntitySearchOptions, requestedKinds []NodeKind, requestedKindSet map[NodeKind]struct{}) ([]openSearchEntitySearchHit, error) {
 	var response openSearchEntitySearchResponse
-	if err := b.executeSearch(ctx, b.buildSearchRequest(strings.TrimSpace(tenantID), query, allowedKinds), &response); err != nil {
+	if err := b.executeSearch(ctx, b.buildSearchRequest(strings.TrimSpace(tenantID), query, requestedKinds), &response); err != nil {
 		return nil, err
 	}
 
 	hits := make([]openSearchEntitySearchHit, 0, len(response.Hits.Hits))
 	for _, hit := range response.Hits.Hits {
-		if !openSearchEntityKindAllowed(hit.Source.Kind, allowedKindSet) {
+		if !openSearchEntityKindAllowed(hit.Source.Kind, requestedKindSet) {
 			continue
 		}
 		entityID := strings.TrimSpace(firstNonEmpty(hit.Source.GraphID, hit.ID))
@@ -341,7 +374,10 @@ func (b *OpenSearchEntitySearchBackend) executeSearch(ctx context.Context, paylo
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
-		return fmt.Errorf("opensearch request failed: status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return &openSearchResponseError{
+			StatusCode: resp.StatusCode,
+			Body:       strings.TrimSpace(string(body)),
+		}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("decode opensearch response: %w", err)
@@ -350,23 +386,29 @@ func (b *OpenSearchEntitySearchBackend) executeSearch(ctx context.Context, paylo
 }
 
 func (b *OpenSearchEntitySearchBackend) Check(ctx context.Context) error {
-	allowedKinds, ok := openSearchAllowedEntityKinds(nil)
-	if !ok {
-		return fmt.Errorf("no searchable entity kinds configured")
-	}
 	var response openSearchEntitySearchResponse
-	return b.executeSearch(ctx, map[string]any{
+	if err := b.executeSearch(ctx, map[string]any{
 		"size":             0,
 		"track_total_hits": false,
 		"query": map[string]any{
 			"bool": map[string]any{
-				"filter": openSearchEntitySearchFilters("", allowedKinds),
+				"filter": openSearchEntitySearchFilters("", nil),
 			},
 		},
-	}, &response)
+	}, &response); err != nil {
+		if openSearchIndexBootstrapPending(err) {
+			return &EntitySearchBootstrapPendingError{
+				Backend: EntitySearchBackendOpenSearch,
+				Reason:  "OpenSearch index bootstrap pending",
+				Cause:   err,
+			}
+		}
+		return err
+	}
+	return nil
 }
 
-func (b *OpenSearchEntitySearchBackend) buildSearchRequest(tenantID string, query EntitySearchOptions, allowedKinds []NodeKind) map[string]any {
+func (b *OpenSearchEntitySearchBackend) buildSearchRequest(tenantID string, query EntitySearchOptions, requestedKinds []NodeKind) map[string]any {
 	should := []any{
 		map[string]any{
 			"multi_match": map[string]any{
@@ -408,7 +450,7 @@ func (b *OpenSearchEntitySearchBackend) buildSearchRequest(tenantID string, quer
 		"_source":          []string{"graphId", "kind", "name", "provider", "account", "region"},
 		"query": map[string]any{
 			"bool": map[string]any{
-				"filter":               openSearchEntitySearchFilters(tenantID, allowedKinds),
+				"filter":               openSearchEntitySearchFilters(tenantID, requestedKinds),
 				"should":               should,
 				"minimum_should_match": 1,
 			},
@@ -416,7 +458,7 @@ func (b *OpenSearchEntitySearchBackend) buildSearchRequest(tenantID string, quer
 	}
 }
 
-func (b *OpenSearchEntitySearchBackend) buildSuggestRequest(tenantID string, query EntitySuggestOptions, allowedKinds []NodeKind) map[string]any {
+func (b *OpenSearchEntitySearchBackend) buildSuggestRequest(tenantID string, query EntitySuggestOptions, requestedKinds []NodeKind) map[string]any {
 	should := []any{
 		map[string]any{
 			"wildcard": map[string]any{
@@ -446,7 +488,7 @@ func (b *OpenSearchEntitySearchBackend) buildSuggestRequest(tenantID string, que
 		"_source":          []string{"graphId", "kind", "name"},
 		"query": map[string]any{
 			"bool": map[string]any{
-				"filter":               openSearchEntitySearchFilters(tenantID, allowedKinds),
+				"filter":               openSearchEntitySearchFilters(tenantID, requestedKinds),
 				"should":               should,
 				"minimum_should_match": 1,
 			},
@@ -454,7 +496,7 @@ func (b *OpenSearchEntitySearchBackend) buildSuggestRequest(tenantID string, que
 	}
 }
 
-func openSearchEntitySearchFilters(tenantID string, kinds []NodeKind) []any {
+func openSearchEntitySearchFilters(tenantID string, requestedKinds []NodeKind) []any {
 	filters := []any{
 		map[string]any{
 			"term": map[string]any{
@@ -462,14 +504,30 @@ func openSearchEntitySearchFilters(tenantID string, kinds []NodeKind) []any {
 			},
 		},
 	}
-	values := make([]string, 0, len(kinds))
-	for _, kind := range kinds {
+	values := make([]string, 0, len(requestedKinds))
+	for _, kind := range requestedKinds {
 		values = append(values, string(kind))
 	}
 	if len(values) > 0 {
 		filters = append(filters, map[string]any{
 			"terms": map[string]any{
 				"kind": values,
+			},
+		})
+	} else if disallowed := entityQueryDisallowedNodeKinds(); len(disallowed) > 0 {
+		excluded := make([]string, 0, len(disallowed))
+		for _, kind := range disallowed {
+			excluded = append(excluded, string(kind))
+		}
+		filters = append(filters, map[string]any{
+			"bool": map[string]any{
+				"must_not": []any{
+					map[string]any{
+						"terms": map[string]any{
+							"kind": excluded,
+						},
+					},
+				},
 			},
 		})
 	}
@@ -589,7 +647,7 @@ func openSearchGraphIDWildcardClause(value string, leading, trailing bool, boost
 	}
 }
 
-func openSearchAllowedEntityKinds(requested []NodeKind) ([]NodeKind, bool) {
+func openSearchRequestedEntityKinds(requested []NodeKind) ([]NodeKind, bool) {
 	if len(requested) > 0 {
 		allowed := make([]NodeKind, 0, len(requested))
 		for _, kind := range uniqueSortedNodeKinds(requested) {
@@ -599,15 +657,7 @@ func openSearchAllowedEntityKinds(requested []NodeKind) ([]NodeKind, bool) {
 		}
 		return allowed, len(allowed) > 0
 	}
-	registered := RegisteredNodeKinds()
-	allowed := make([]NodeKind, 0, len(registered))
-	for _, def := range registered {
-		if entityQueryAllowedNodeKind(def.Kind) {
-			allowed = append(allowed, def.Kind)
-		}
-	}
-	allowed = uniqueSortedNodeKinds(allowed)
-	return allowed, len(allowed) > 0
+	return nil, true
 }
 
 func openSearchEntityKindSet(kinds []NodeKind) map[NodeKind]struct{} {
@@ -624,4 +674,16 @@ func openSearchEntityKindAllowed(kind NodeKind, allowed map[NodeKind]struct{}) b
 	}
 	_, ok := allowed[kind]
 	return ok
+}
+
+func openSearchIndexBootstrapPending(err error) bool {
+	var responseErr *openSearchResponseError
+	if !errors.As(err, &responseErr) {
+		return false
+	}
+	if responseErr.StatusCode != http.StatusNotFound && responseErr.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	body := strings.ToLower(responseErr.Body)
+	return strings.Contains(body, "index_not_found_exception") || strings.Contains(body, "resource_not_found_exception")
 }
