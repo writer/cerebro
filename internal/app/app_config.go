@@ -465,78 +465,60 @@ type Config struct {
 	CORSAllowedOrigins      []string
 
 	// API Authentication
-	APIAuthEnabled                                    bool
-	APIKeys                                           map[string]string
-	APICredentials                                    map[string]apiauth.Credential
-	APICredentialStateFile                            string
-	APIAuthorizationServers                           []string
-	SecretsReloadInterval                             time.Duration
-	RBACStateFile                                     string
-	PlatformReportRunStateFile                        string
-	PlatformReportSnapshotPath                        string
-	GraphCrossTenantRequireSignedIngest               bool
-	GraphCrossTenantSigningKey                        string
-	GraphCrossTenantSignatureSkew                     time.Duration
-	GraphCrossTenantReplayTTL                         time.Duration
-	GraphCrossTenantMinTenants                        int
-	GraphCrossTenantMinSupport                        int
-	GraphStoreBackend                                 string
-	GraphStoreAllowInMemory                           bool
-	GraphStoreNeptuneEndpoint                         string
-	GraphStoreNeptuneRegion                           string
-	GraphStoreNeptunePoolSize                         int
-	GraphStoreNeptunePoolHealthCheckInterval          time.Duration
-	GraphStoreNeptunePoolHealthCheckTimeout           time.Duration
-	GraphStoreNeptunePoolMaxClientLifetime            time.Duration
-	GraphStoreNeptunePoolMaxClientUses                int
-	GraphStoreNeptunePoolDrainTimeout                 time.Duration
-	GraphStoreSpannerDatabase                         string
-	GraphStoreSpannerAutoBootstrap                    bool
-	GraphStoreSecondaryBackend                        string
-	GraphStoreSecondaryNeptuneEndpoint                string
-	GraphStoreSecondaryNeptuneRegion                  string
-	GraphStoreSecondaryNeptunePoolSize                int
-	GraphStoreSecondaryNeptunePoolHealthCheckInterval time.Duration
-	GraphStoreSecondaryNeptunePoolHealthCheckTimeout  time.Duration
-	GraphStoreSecondaryNeptunePoolMaxClientLifetime   time.Duration
-	GraphStoreSecondaryNeptunePoolMaxClientUses       int
-	GraphStoreSecondaryNeptunePoolDrainTimeout        time.Duration
-	GraphStoreSecondarySpannerDatabase                string
-	GraphStoreSecondarySpannerAutoBootstrap           bool
-	GraphStoreDualWriteMode                           string
-	GraphStoreDualWriteReconciliationPath             string
-	GraphStoreDualWriteReplayEnabled                  bool
-	GraphStoreDualWriteReplayInterval                 time.Duration
-	GraphStoreDualWriteReplayBatchSize                int
-	GraphSnapshotPath                                 string
-	GraphSnapshotMaxRetained                          int
-	GraphSnapshotReplicaURI                           string
-	GraphWriterLeaseEnabled                           bool
-	GraphWriterLeaseBucket                            string
-	GraphWriterLeaseName                              string
-	GraphWriterLeaseOwnerID                           string
-	GraphWriterLeaseTTL                               time.Duration
-	GraphWriterLeaseHeartbeat                         time.Duration
-	GraphTenantShardIdleTTL                           time.Duration
-	GraphTenantWarmShardTTL                           time.Duration
-	GraphTenantWarmShardMaxRetained                   int
-	GraphPropertyHistoryMaxEntries                    int
-	GraphPropertyHistoryTTL                           time.Duration
-	GraphSchemaValidationMode                         string
-	GraphEventMapperValidationMode                    string
-	GraphEventMapperDeadLetterPath                    string
-	GraphMigrateLegacyActivityOnStart                 bool
-	GraphConsistencyCheckEnabled                      bool
-	GraphConsistencyCheckInterval                     time.Duration
-	GraphConsistencyCheckTimeout                      time.Duration
-	GraphPostSyncUpdateTimeout                        time.Duration
-	GraphRiskEngineStateTimeout                       time.Duration
-	GraphFreshnessDefaultSLA                          time.Duration
-	GraphFreshnessProviderSLAs                        map[string]time.Duration
-	GraphOntologyFallbackWarnPct                      float64
-	GraphOntologyFallbackCriticalPct                  float64
-	GraphOntologySchemaValidWarnPct                   float64
-	GraphOntologySchemaValidCriticalPct               float64
+	APIAuthEnabled                           bool
+	APIKeys                                  map[string]string
+	APICredentials                           map[string]apiauth.Credential
+	APICredentialStateFile                   string
+	APIAuthorizationServers                  []string
+	SecretsReloadInterval                    time.Duration
+	RBACStateFile                            string
+	PlatformReportRunStateFile               string
+	PlatformReportSnapshotPath               string
+	GraphCrossTenantRequireSignedIngest      bool
+	GraphCrossTenantSigningKey               string
+	GraphCrossTenantSignatureSkew            time.Duration
+	GraphCrossTenantReplayTTL                time.Duration
+	GraphCrossTenantMinTenants               int
+	GraphCrossTenantMinSupport               int
+	GraphStoreBackend                        string
+	GraphStoreAllowInMemory                  bool
+	GraphStoreNeptuneEndpoint                string
+	GraphStoreNeptuneRegion                  string
+	GraphStoreNeptunePoolSize                int
+	GraphStoreNeptunePoolHealthCheckInterval time.Duration
+	GraphStoreNeptunePoolHealthCheckTimeout  time.Duration
+	GraphStoreNeptunePoolMaxClientLifetime   time.Duration
+	GraphStoreNeptunePoolMaxClientUses       int
+	GraphStoreNeptunePoolDrainTimeout        time.Duration
+	GraphSnapshotPath                        string
+	GraphSnapshotMaxRetained                 int
+	GraphSnapshotReplicaURI                  string
+	GraphWriterLeaseEnabled                  bool
+	GraphWriterLeaseBucket                   string
+	GraphWriterLeaseName                     string
+	GraphWriterLeaseOwnerID                  string
+	GraphWriterLeaseTTL                      time.Duration
+	GraphWriterLeaseHeartbeat                time.Duration
+	GraphTenantShardIdleTTL                  time.Duration
+	GraphTenantWarmShardTTL                  time.Duration
+	GraphTenantWarmShardMaxRetained          int
+	GraphPropertyHistoryMaxEntries           int
+	GraphPropertyHistoryTTL                  time.Duration
+	GraphSchemaValidationMode                string
+	GraphEventMapperValidationMode           string
+	GraphEventMapperDeadLetterPath           string
+	GraphMigrateLegacyActivityOnStart        bool
+	GraphConsistencyCheckEnabled             bool
+	GraphConsistencyCheckInterval            time.Duration
+	GraphConsistencyCheckTimeout             time.Duration
+	GraphPostSyncUpdateTimeout               time.Duration
+	GraphRiskEngineStateTimeout              time.Duration
+	GraphFreshnessDefaultSLA                 time.Duration
+	GraphFreshnessProviderSLAs               map[string]time.Duration
+	GraphOntologyFallbackWarnPct             float64
+	GraphOntologyFallbackCriticalPct         float64
+	GraphOntologySchemaValidWarnPct          float64
+	GraphOntologySchemaValidCriticalPct      float64
 
 	// Threat intel background sync
 	ThreatIntelSyncTimeout  time.Duration
@@ -918,57 +900,39 @@ func LoadConfig() *Config {
 				GraphStoreNeptunePoolMaxClientLifetime:   getEnvDuration("GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_LIFETIME", defaultNeptunePool.MaxClientLifetime),
 				GraphStoreNeptunePoolMaxClientUses:       getEnvInt("GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_USES", defaultNeptunePool.MaxClientUses),
 				GraphStoreNeptunePoolDrainTimeout:        getEnvDuration("GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT", defaultNeptunePool.DrainTimeout),
-				GraphStoreSpannerDatabase:                getEnv("GRAPH_STORE_SPANNER_DATABASE", ""),
-				GraphStoreSpannerAutoBootstrap:           getEnvBool("GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP", false),
-				GraphStoreSecondaryBackend:               getEnv("GRAPH_STORE_SECONDARY_BACKEND", ""),
-				GraphStoreSecondaryNeptuneEndpoint:       getEnv("GRAPH_STORE_SECONDARY_NEPTUNE_ENDPOINT", ""),
-				GraphStoreSecondaryNeptuneRegion:         getEnv("GRAPH_STORE_SECONDARY_NEPTUNE_REGION", ""),
-				GraphStoreSecondaryNeptunePoolSize:       getEnvInt("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE", 0),
-				GraphStoreSecondaryNeptunePoolHealthCheckInterval: getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL", 0),
-				GraphStoreSecondaryNeptunePoolHealthCheckTimeout:  getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT", 0),
-				GraphStoreSecondaryNeptunePoolMaxClientLifetime:   getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME", 0),
-				GraphStoreSecondaryNeptunePoolMaxClientUses:       getEnvInt("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES", 0),
-				GraphStoreSecondaryNeptunePoolDrainTimeout:        getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT", 0),
-				GraphStoreSecondarySpannerDatabase:                getEnv("GRAPH_STORE_SECONDARY_SPANNER_DATABASE", ""),
-				GraphStoreSecondarySpannerAutoBootstrap:           getEnvBool("GRAPH_STORE_SECONDARY_SPANNER_AUTO_BOOTSTRAP", false),
-				GraphStoreDualWriteMode:                           getEnv("GRAPH_STORE_DUAL_WRITE_MODE", ""),
-				GraphStoreDualWriteReconciliationPath:             getEnv("GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH", ""),
-				GraphStoreDualWriteReplayEnabled:                  getEnvBool("GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED", false),
-				GraphStoreDualWriteReplayInterval:                 getEnvDuration("GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL", 0),
-				GraphStoreDualWriteReplayBatchSize:                getEnvInt("GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE", 0),
-				GraphSnapshotPath:                                 getEnv("GRAPH_SNAPSHOT_PATH", filepath.Join(".cerebro", "graph-snapshots")),
-				GraphSnapshotMaxRetained:                          getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
-				GraphSnapshotReplicaURI:                           getEnv("GRAPH_SNAPSHOT_REPLICA_URI", ""),
-				GraphWriterLeaseEnabled:                           getEnvBool("GRAPH_WRITER_LEASE_ENABLED", false),
-				GraphWriterLeaseBucket:                            getEnv("GRAPH_WRITER_LEASE_BUCKET", defaultGraphWriterLeaseBucket),
-				GraphWriterLeaseName:                              getEnv("GRAPH_WRITER_LEASE_NAME", defaultGraphWriterLeaseName),
-				GraphWriterLeaseOwnerID:                           getEnv("GRAPH_WRITER_LEASE_OWNER_ID", defaultGraphWriterLeaseOwnerID()),
-				GraphWriterLeaseTTL:                               getEnvDuration("GRAPH_WRITER_LEASE_TTL", 15*time.Second),
-				GraphWriterLeaseHeartbeat:                         getEnvDuration("GRAPH_WRITER_LEASE_HEARTBEAT", 5*time.Second),
-				GraphTenantShardIdleTTL:                           getEnvDuration("GRAPH_TENANT_SHARD_IDLE_TTL", defaultGraphTenantShardIdleTTL),
-				GraphTenantWarmShardTTL:                           getEnvDuration("GRAPH_TENANT_WARM_SHARD_TTL", defaultGraphTenantWarmShardTTL),
-				GraphTenantWarmShardMaxRetained:                   getEnvInt("GRAPH_TENANT_WARM_SHARD_MAX_RETAINED", defaultGraphTenantWarmShardMaxRetained),
-				GraphPropertyHistoryMaxEntries:                    getEnvInt("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", graph.DefaultTemporalHistoryMaxEntries),
-				GraphPropertyHistoryTTL:                           getEnvDuration("GRAPH_PROPERTY_HISTORY_TTL", graph.DefaultTemporalHistoryTTL),
-				GraphSchemaValidationMode:                         getEnv("GRAPH_SCHEMA_VALIDATION_MODE", "warn"),
-				GraphEventMapperValidationMode:                    getEnv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "enforce"),
-				GraphEventMapperDeadLetterPath:                    getEnv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", filepath.Join(findings.DefaultFilePath(), "graph-event-mapper.dlq.jsonl")),
-				GraphMigrateLegacyActivityOnStart:                 getEnvBool("GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START", false),
-				GraphConsistencyCheckEnabled:                      getEnvBool("GRAPH_CONSISTENCY_CHECK_ENABLED", false),
-				GraphConsistencyCheckInterval:                     getEnvDuration("GRAPH_CONSISTENCY_CHECK_INTERVAL", 6*time.Hour),
-				GraphConsistencyCheckTimeout:                      getEnvDuration("GRAPH_CONSISTENCY_CHECK_TIMEOUT", defaultGraphConsistencyCheckTimeout),
-				GraphPostSyncUpdateTimeout:                        getEnvDuration("GRAPH_POST_SYNC_UPDATE_TIMEOUT", defaultGraphPostSyncUpdateTimeout),
-				GraphRiskEngineStateTimeout:                       getEnvDuration("GRAPH_RISK_ENGINE_STATE_TIMEOUT", defaultGraphRiskEngineStateTimeout),
-				GraphFreshnessDefaultSLA:                          getEnvDuration("CEREBRO_GRAPH_FRESHNESS_DEFAULT_SLA", 6*time.Hour),
-				GraphFreshnessProviderSLAs:                        parseDurationEnvMap("CEREBRO_FRESHNESS_SLA_"),
-				GraphOntologyFallbackWarnPct:                      getEnvFloat("GRAPH_ONTOLOGY_FALLBACK_WARN_PERCENT", 12),
-				GraphOntologyFallbackCriticalPct:                  getEnvFloat("GRAPH_ONTOLOGY_FALLBACK_CRITICAL_PERCENT", 25),
-				GraphOntologySchemaValidWarnPct:                   getEnvFloat("GRAPH_ONTOLOGY_SCHEMA_VALID_WARN_PERCENT", 98),
-				GraphOntologySchemaValidCriticalPct:               getEnvFloat("GRAPH_ONTOLOGY_SCHEMA_VALID_CRITICAL_PERCENT", 92),
-				ThreatIntelSyncTimeout:                            getEnvDuration("CEREBRO_THREAT_INTEL_SYNC_TIMEOUT", defaultThreatIntelSyncTimeout),
-				ThreatIntelSyncMaxAge:                             getEnvDuration("CEREBRO_THREAT_INTEL_SYNC_MAX_AGE", defaultThreatIntelSyncMaxAge),
-				ThreatIntelSyncAttempts:                           getEnvInt("CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS", defaultThreatIntelSyncAttempts),
-				ThreatIntelSyncBackoff:                            getEnvDuration("CEREBRO_THREAT_INTEL_SYNC_BACKOFF", defaultThreatIntelSyncBackoff),
+				GraphSnapshotPath:                        getEnv("GRAPH_SNAPSHOT_PATH", filepath.Join(".cerebro", "graph-snapshots")),
+				GraphSnapshotMaxRetained:                 getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
+				GraphSnapshotReplicaURI:                  getEnv("GRAPH_SNAPSHOT_REPLICA_URI", ""),
+				GraphWriterLeaseEnabled:                  getEnvBool("GRAPH_WRITER_LEASE_ENABLED", false),
+				GraphWriterLeaseBucket:                   getEnv("GRAPH_WRITER_LEASE_BUCKET", defaultGraphWriterLeaseBucket),
+				GraphWriterLeaseName:                     getEnv("GRAPH_WRITER_LEASE_NAME", defaultGraphWriterLeaseName),
+				GraphWriterLeaseOwnerID:                  getEnv("GRAPH_WRITER_LEASE_OWNER_ID", defaultGraphWriterLeaseOwnerID()),
+				GraphWriterLeaseTTL:                      getEnvDuration("GRAPH_WRITER_LEASE_TTL", 15*time.Second),
+				GraphWriterLeaseHeartbeat:                getEnvDuration("GRAPH_WRITER_LEASE_HEARTBEAT", 5*time.Second),
+				GraphTenantShardIdleTTL:                  getEnvDuration("GRAPH_TENANT_SHARD_IDLE_TTL", defaultGraphTenantShardIdleTTL),
+				GraphTenantWarmShardTTL:                  getEnvDuration("GRAPH_TENANT_WARM_SHARD_TTL", defaultGraphTenantWarmShardTTL),
+				GraphTenantWarmShardMaxRetained:          getEnvInt("GRAPH_TENANT_WARM_SHARD_MAX_RETAINED", defaultGraphTenantWarmShardMaxRetained),
+				GraphPropertyHistoryMaxEntries:           getEnvInt("GRAPH_PROPERTY_HISTORY_MAX_ENTRIES", graph.DefaultTemporalHistoryMaxEntries),
+				GraphPropertyHistoryTTL:                  getEnvDuration("GRAPH_PROPERTY_HISTORY_TTL", graph.DefaultTemporalHistoryTTL),
+				GraphSchemaValidationMode:                getEnv("GRAPH_SCHEMA_VALIDATION_MODE", "warn"),
+				GraphEventMapperValidationMode:           getEnv("GRAPH_EVENT_MAPPER_VALIDATION_MODE", "enforce"),
+				GraphEventMapperDeadLetterPath:           getEnv("GRAPH_EVENT_MAPPER_DEAD_LETTER_PATH", filepath.Join(findings.DefaultFilePath(), "graph-event-mapper.dlq.jsonl")),
+				GraphMigrateLegacyActivityOnStart:        getEnvBool("GRAPH_MIGRATE_LEGACY_ACTIVITY_ON_START", false),
+				GraphConsistencyCheckEnabled:             getEnvBool("GRAPH_CONSISTENCY_CHECK_ENABLED", false),
+				GraphConsistencyCheckInterval:            getEnvDuration("GRAPH_CONSISTENCY_CHECK_INTERVAL", 6*time.Hour),
+				GraphConsistencyCheckTimeout:             getEnvDuration("GRAPH_CONSISTENCY_CHECK_TIMEOUT", defaultGraphConsistencyCheckTimeout),
+				GraphPostSyncUpdateTimeout:               getEnvDuration("GRAPH_POST_SYNC_UPDATE_TIMEOUT", defaultGraphPostSyncUpdateTimeout),
+				GraphRiskEngineStateTimeout:              getEnvDuration("GRAPH_RISK_ENGINE_STATE_TIMEOUT", defaultGraphRiskEngineStateTimeout),
+				GraphFreshnessDefaultSLA:                 getEnvDuration("CEREBRO_GRAPH_FRESHNESS_DEFAULT_SLA", 6*time.Hour),
+				GraphFreshnessProviderSLAs:               parseDurationEnvMap("CEREBRO_FRESHNESS_SLA_"),
+				GraphOntologyFallbackWarnPct:             getEnvFloat("GRAPH_ONTOLOGY_FALLBACK_WARN_PERCENT", 12),
+				GraphOntologyFallbackCriticalPct:         getEnvFloat("GRAPH_ONTOLOGY_FALLBACK_CRITICAL_PERCENT", 25),
+				GraphOntologySchemaValidWarnPct:          getEnvFloat("GRAPH_ONTOLOGY_SCHEMA_VALID_WARN_PERCENT", 98),
+				GraphOntologySchemaValidCriticalPct:      getEnvFloat("GRAPH_ONTOLOGY_SCHEMA_VALID_CRITICAL_PERCENT", 92),
+				ThreatIntelSyncTimeout:                   getEnvDuration("CEREBRO_THREAT_INTEL_SYNC_TIMEOUT", defaultThreatIntelSyncTimeout),
+				ThreatIntelSyncMaxAge:                    getEnvDuration("CEREBRO_THREAT_INTEL_SYNC_MAX_AGE", defaultThreatIntelSyncMaxAge),
+				ThreatIntelSyncAttempts:                  getEnvInt("CEREBRO_THREAT_INTEL_SYNC_ATTEMPTS", defaultThreatIntelSyncAttempts),
+				ThreatIntelSyncBackoff:                   getEnvDuration("CEREBRO_THREAT_INTEL_SYNC_BACKOFF", defaultThreatIntelSyncBackoff),
 			}
 		})
 	})

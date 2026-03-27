@@ -204,23 +204,6 @@ func TestInitHealthRegistersGraphPersistenceCheck(t *testing.T) {
 	}
 }
 
-func TestInitHealthRegistersGraphDualWriteReconciliationCheck(t *testing.T) {
-	application := &App{
-		Config: &Config{},
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-	}
-	application.initHealth()
-
-	results := application.Health.RunAll(context.Background())
-	check, ok := results["graph_dual_write_reconciliation"]
-	if !ok {
-		t.Fatal("expected graph_dual_write_reconciliation health check to be registered")
-	}
-	if check.Status != health.StatusHealthy {
-		t.Fatalf("expected graph_dual_write_reconciliation health to be healthy when disabled, got %#v", check)
-	}
-}
-
 func TestGraphPersistenceHealthDegradesOnReplicaSyncFailure(t *testing.T) {
 	localDir := t.TempDir()
 	badReplicaBase := filepath.Join(t.TempDir(), "replica-file")

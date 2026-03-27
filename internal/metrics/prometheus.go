@@ -712,22 +712,6 @@ var (
 		},
 	)
 
-	GraphDualWriteReconciliationQueueDepth = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "cerebro_graph_dual_write_reconciliation_queue_depth",
-			Help: "Current graph dual-write reconciliation queue depth by state",
-		},
-		[]string{"state"},
-	)
-
-	GraphDualWriteReconciliationEventsTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "cerebro_graph_dual_write_reconciliation_events_total",
-			Help: "Total graph dual-write reconciliation queue events by result",
-		},
-		[]string{"result"},
-	)
-
 	// Build info
 	BuildInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -845,8 +829,6 @@ func Register() {
 			GraphWriterActive,
 			GraphWriterLeaseRemainingSeconds,
 			GraphReplicaLagMutations,
-			GraphDualWriteReconciliationQueueDepth,
-			GraphDualWriteReconciliationEventsTotal,
 			// Build
 			BuildInfo,
 		)
@@ -1134,29 +1116,6 @@ func SetGraphReplicaLagMutations(lag int) {
 		lag = 0
 	}
 	GraphReplicaLagMutations.Set(float64(lag))
-}
-
-func SetGraphDualWriteReconciliationQueueDepths(pending, leased, deadLettered int) {
-	if pending < 0 {
-		pending = 0
-	}
-	if leased < 0 {
-		leased = 0
-	}
-	if deadLettered < 0 {
-		deadLettered = 0
-	}
-	GraphDualWriteReconciliationQueueDepth.WithLabelValues("pending").Set(float64(pending))
-	GraphDualWriteReconciliationQueueDepth.WithLabelValues("leased").Set(float64(leased))
-	GraphDualWriteReconciliationQueueDepth.WithLabelValues("dead_letter").Set(float64(deadLettered))
-}
-
-func RecordGraphDualWriteReconciliationEvent(result string) {
-	result = strings.TrimSpace(strings.ToLower(result))
-	if result == "" {
-		result = "unknown"
-	}
-	GraphDualWriteReconciliationEventsTotal.WithLabelValues(result).Inc()
 }
 
 func RecordJetStreamPublish(stream, result string) {

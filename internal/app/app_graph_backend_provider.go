@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"cloud.google.com/go/spanner"
-	databaseadmin "cloud.google.com/go/spanner/admin/database/apiv1"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/neptunedata"
@@ -29,11 +27,8 @@ type graphStoreBackendProviderFactory func(app *App, backend graph.StoreBackend)
 
 type neptuneGraphStoreBackendProvider struct{}
 
-type spannerGraphStoreBackendProvider struct{}
-
 var (
 	_ graphStoreBackendProvider = (*neptuneGraphStoreBackendProvider)(nil)
-	_ graphStoreBackendProvider = (*spannerGraphStoreBackendProvider)(nil)
 )
 
 func (a *App) resolveGraphStoreBackendProvider(backend graph.StoreBackend) (graphStoreBackendProvider, error) {
@@ -97,66 +92,6 @@ func (p *neptuneGraphStoreBackendProvider) LogFields(app *App) []any {
 	return []any{
 		"endpoint", strings.TrimSpace(app.Config.GraphStoreNeptuneEndpoint),
 		"region", region,
-	}
-}
-
-func (p *spannerGraphStoreBackendProvider) Backend() graph.StoreBackend {
-	return graph.StoreBackendSpanner
-}
-
-func (p *spannerGraphStoreBackendProvider) Open(ctx context.Context, app *App) (graphStoreBackendHandle, error) {
-	if app == nil || app.Config == nil {
-		return graphStoreBackendHandle{}, graph.ErrStoreUnavailable
-	}
-	database := strings.TrimSpace(app.Config.GraphStoreSpannerDatabase)
-	client, err := spanner.NewClient(ctx, database)
-	if err != nil {
-		return graphStoreBackendHandle{}, fmt.Errorf("connect spanner graph store: %w", err)
-	}
-	var (
-		adminClient *databaseadmin.DatabaseAdminClient
-		ddlApplier  graph.SpannerDDLApplier
-	)
-	if app.Config.GraphStoreSpannerAutoBootstrap {
-		adminClient, err = databaseadmin.NewDatabaseAdminClient(ctx)
-		if err != nil {
-			client.Close()
-			return graphStoreBackendHandle{}, fmt.Errorf("create spanner database admin client: %w", err)
-		}
-		ddlApplier = graph.NewCloudSpannerDDLApplier(adminClient)
-	}
-	closeFn := func() error {
-		var errs []error
-		if adminClient != nil {
-			if err := adminClient.Close(); err != nil {
-				errs = append(errs, err)
-			}
-		}
-		client.Close()
-		if len(errs) == 0 {
-			return nil
-		}
-		return fmt.Errorf("close spanner graph store admin client: %v", errs)
-	}
-	store := graph.NewSpannerGraphStore(graph.NewCloudSpannerGraphStoreAdapter(client, database, ddlApplier))
-	if app.Config.GraphStoreSpannerAutoBootstrap {
-		if err := store.EnsureIndexes(ctx); err != nil {
-			return graphStoreBackendHandle{}, closeHandle(graphStoreBackendHandle{Close: closeFn}, fmt.Errorf("bootstrap spanner graph store schema: %w", err))
-		}
-	}
-	return graphStoreBackendHandle{
-		Store: store,
-		Close: closeFn,
-	}, nil
-}
-
-func (p *spannerGraphStoreBackendProvider) LogFields(app *App) []any {
-	if app == nil || app.Config == nil {
-		return nil
-	}
-	return []any{
-		"database", strings.TrimSpace(app.Config.GraphStoreSpannerDatabase),
-		"auto_bootstrap", app.Config.GraphStoreSpannerAutoBootstrap,
 	}
 }
 

@@ -3,9 +3,7 @@ package app
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/writer/cerebro/internal/graph"
 )
@@ -135,68 +133,5 @@ func TestInitConfiguredSecurityGraphStoreRejectsUnsupportedBackend(t *testing.T)
 
 	if err := app.initConfiguredSecurityGraphStore(context.Background()); err == nil {
 		t.Fatal("expected initConfiguredSecurityGraphStore() to reject unsupported backend")
-	}
-}
-
-func TestInitConfiguredSecurityGraphStoreIgnoresDualWriteSettings(t *testing.T) {
-	t.Parallel()
-
-	primaryCloseCalls := 0
-	primaryProvider := &fakeGraphStoreBackendProvider{
-		backend: graph.StoreBackendNeptune,
-		handle: graphStoreBackendHandle{
-			Store: graph.New(),
-			Close: func() error {
-				primaryCloseCalls++
-				return nil
-			},
-		},
-	}
-	secondaryProvider := &fakeGraphStoreBackendProvider{
-		backend: graph.StoreBackendNeptune,
-		handle: graphStoreBackendHandle{
-			Store: graph.New(),
-			Close: func() error { return nil },
-		},
-	}
-
-	app := &App{
-		Config: &Config{
-			GraphStoreBackend:                          string(graph.StoreBackendNeptune),
-			GraphStoreNeptuneEndpoint:                  "https://example.neptune.amazonaws.com",
-			GraphStoreSecondaryBackend:                 string(graph.StoreBackendNeptune),
-			GraphStoreSecondaryNeptuneEndpoint:         "https://example.neptune.amazonaws.com",
-			GraphStoreSecondaryNeptuneRegion:           "us-east-1",
-			GraphStoreSecondaryNeptunePoolSize:         1,
-			GraphStoreSecondaryNeptunePoolDrainTimeout: time.Second,
-			GraphStoreDualWriteMode:                    string(graph.DualWriteModeBestEffort),
-			GraphStoreDualWriteReconciliationPath:      filepath.Join(t.TempDir(), "dual-write-queue.json"),
-		},
-	}
-
-	app.graphStoreBackendProviderFactory = func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
-		if backend != graph.StoreBackendNeptune {
-			return nil, errors.New("unexpected backend")
-		}
-		if primaryProvider.opened == 0 {
-			return primaryProvider, nil
-		}
-		return secondaryProvider, nil
-	}
-
-	if err := app.initConfiguredSecurityGraphStore(context.Background()); err != nil {
-		t.Fatalf("initConfiguredSecurityGraphStore() error = %v", err)
-	}
-	if _, ok := app.configuredSecurityGraphStore.(*graph.DualWriteGraphStore); ok {
-		t.Fatalf("configuredSecurityGraphStore = %T, want direct neptune store", app.configuredSecurityGraphStore)
-	}
-	if err := app.configuredSecurityGraphClose(); err != nil {
-		t.Fatalf("configuredSecurityGraphClose() error = %v", err)
-	}
-	if primaryCloseCalls != 1 {
-		t.Fatalf("close calls primary=%d, want 1", primaryCloseCalls)
-	}
-	if secondaryProvider.opened != 0 {
-		t.Fatalf("expected secondary provider to remain unused, opened=%d", secondaryProvider.opened)
 	}
 }

@@ -176,7 +176,6 @@ func (a *App) initHealth() {
 	a.Health.Register("graph_ontology_slo", a.graphOntologySLOHealthCheck())
 	a.Health.Register("graph_writer_lease", a.graphWriterLeaseHealthCheck())
 	a.Health.Register("graph_runtime", a.graphRuntimeHealthCheck())
-	a.Health.Register("graph_dual_write_reconciliation", a.graphDualWriteReconciliationHealthCheck())
 	a.Health.Register("graph_build", func(_ context.Context) health.CheckResult {
 		start := time.Now().UTC()
 		result := health.CheckResult{

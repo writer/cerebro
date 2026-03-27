@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **393**
+Total variables: **371**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -150,11 +150,6 @@ Total variables: **393**
 | `GRAPH_SNAPSHOT_REPLICA_URI` | `getEnv` | `""` | `GraphSnapshotReplicaURI` | `-` |
 | `GRAPH_STORE_ALLOW_IN_MEMORY` | `getEnvBool` | `false` | `GraphStoreAllowInMemory` | `is not supported` |
 | `GRAPH_STORE_BACKEND` | `getEnv` | `defaultGraphStoreBackend()` | `GraphStoreBackend` | `must be neptune`, `when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required` |
-| `GRAPH_STORE_DUAL_WRITE_MODE` | `getEnv` | `""` | `GraphStoreDualWriteMode` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH` | `getEnv` | `""` | `GraphStoreDualWriteReconciliationPath` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE` | `getEnvInt` | `0` | `GraphStoreDualWriteReplayBatchSize` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED` | `getEnvBool` | `false` | `GraphStoreDualWriteReplayEnabled` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL` | `getEnvDuration` | `0` | `GraphStoreDualWriteReplayInterval` | `secondary graph-store and dual-write settings are not supported` |
 | `GRAPH_STORE_NEPTUNE_ENDPOINT` | `getEnv` | `""` | `GraphStoreNeptuneEndpoint` | `when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required` |
 | `GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT` | `getEnvDuration` | `defaultNeptunePool.DrainTimeout` | `GraphStoreNeptunePoolDrainTimeout` | `-` |
 | `GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL` | `getEnvDuration` | `defaultNeptunePool.HealthCheckInterval` | `GraphStoreNeptunePoolHealthCheckInterval` | `-` |
@@ -163,19 +158,6 @@ Total variables: **393**
 | `GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_USES` | `getEnvInt` | `defaultNeptunePool.MaxClientUses` | `GraphStoreNeptunePoolMaxClientUses` | `-` |
 | `GRAPH_STORE_NEPTUNE_POOL_SIZE` | `getEnvInt` | `defaultNeptunePool.Size` | `GraphStoreNeptunePoolSize` | `-` |
 | `GRAPH_STORE_NEPTUNE_REGION` | `getEnv` | `getEnv("AWS_REGION", "us-east-1")` | `GraphStoreNeptuneRegion` | `-` |
-| `GRAPH_STORE_SECONDARY_BACKEND` | `getEnv` | `""` | `GraphStoreSecondaryBackend` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SECONDARY_NEPTUNE_ENDPOINT` | `getEnv` | `""` | `GraphStoreSecondaryNeptuneEndpoint` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT` | `getEnvDuration` | `0` | `GraphStoreSecondaryNeptunePoolDrainTimeout` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL` | `getEnvDuration` | `0` | `GraphStoreSecondaryNeptunePoolHealthCheckInterval` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT` | `getEnvDuration` | `0` | `GraphStoreSecondaryNeptunePoolHealthCheckTimeout` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME` | `getEnvDuration` | `0` | `GraphStoreSecondaryNeptunePoolMaxClientLifetime` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES` | `getEnvInt` | `0` | `GraphStoreSecondaryNeptunePoolMaxClientUses` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE` | `getEnvInt` | `0` | `GraphStoreSecondaryNeptunePoolSize` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SECONDARY_NEPTUNE_REGION` | `getEnv` | `""` | `GraphStoreSecondaryNeptuneRegion` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SECONDARY_SPANNER_AUTO_BOOTSTRAP` | `getEnvBool` | `false` | `GraphStoreSecondarySpannerAutoBootstrap` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SECONDARY_SPANNER_DATABASE` | `getEnv` | `""` | `GraphStoreSecondarySpannerDatabase` | `secondary graph-store and dual-write settings are not supported` |
-| `GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP` | `getEnvBool` | `false` | `GraphStoreSpannerAutoBootstrap` | `Spanner graph-store settings are not supported` |
-| `GRAPH_STORE_SPANNER_DATABASE` | `getEnv` | `""` | `GraphStoreSpannerDatabase` | `Spanner graph-store settings are not supported` |
 | `GRAPH_TENANT_SHARD_IDLE_TTL` | `getEnvDuration` | `defaultGraphTenantShardIdleTTL` | `GraphTenantShardIdleTTL` | `must be greater than 0` |
 | `GRAPH_TENANT_WARM_SHARD_MAX_RETAINED` | `getEnvInt` | `defaultGraphTenantWarmShardMaxRetained` | `GraphTenantWarmShardMaxRetained` | `must be greater than 0` |
 | `GRAPH_TENANT_WARM_SHARD_TTL` | `getEnvDuration` | `defaultGraphTenantWarmShardTTL` | `GraphTenantWarmShardTTL` | `must be greater than 0` |
@@ -203,15 +185,11 @@ Total variables: **393**
 | `JIRA_EMAIL` | `getEnv` | `""` | `JiraEmail` | `-` |
 | `JIRA_PROJECT` | `getEnv` | `"SEC"` | `JiraProject` | `-` |
 | `JOB_DATABASE_URL` | `getEnv` | `""` | `JobDatabaseURL` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
-| `JOB_IDEMPOTENCY_TABLE_NAME` | `` | `` | `-` | `legacy SQS/Dynamo job settings are not supported; use JOB_DATABASE_URL with JOB_NATS_STREAM, JOB_NATS_SUBJECT, and JOB_NATS_CONSUMER` |
 | `JOB_MAX_ATTEMPTS` | `getEnvInt` | `3` | `JobMaxAttempts` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
 | `JOB_NATS_CONSUMER` | `getEnv` | `"job-worker"` | `JobNATSConsumer` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
 | `JOB_NATS_STREAM` | `getEnv` | `"CEREBRO_JOBS"` | `JobNATSStream` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
 | `JOB_NATS_SUBJECT` | `getEnv` | `"cerebro.jobs"` | `JobNATSSubject` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
 | `JOB_POLL_WAIT` | `getEnvDuration` | `10 * time.Second` | `JobPollWait` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
-| `JOB_QUEUE_URL` | `` | `` | `-` | `legacy SQS/Dynamo job settings are not supported; use JOB_DATABASE_URL with JOB_NATS_STREAM, JOB_NATS_SUBJECT, and JOB_NATS_CONSUMER` |
-| `JOB_REGION` | `` | `` | `-` | `legacy SQS/Dynamo job settings are not supported; use JOB_DATABASE_URL with JOB_NATS_STREAM, JOB_NATS_SUBJECT, and JOB_NATS_CONSUMER` |
-| `JOB_TABLE_NAME` | `` | `` | `-` | `legacy SQS/Dynamo job settings are not supported; use JOB_DATABASE_URL with JOB_NATS_STREAM, JOB_NATS_SUBJECT, and JOB_NATS_CONSUMER` |
 | `JOB_VISIBILITY_TIMEOUT` | `getEnvDuration` | `30 * time.Second` | `JobVisibilityTimeout` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
 | `JOB_WORKER_CONCURRENCY` | `getEnvInt` | `4` | `JobWorkerConcurrency` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
 | `JUMPCLOUD_API_TOKEN` | `getEnv` | `""` | `JumpCloudAPIToken` | `-` |

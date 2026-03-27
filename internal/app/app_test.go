@@ -186,20 +186,16 @@ func TestLoadConfigCrossTenantIngestControls(t *testing.T) {
 	}
 }
 
-func TestLoadConfigGraphStoreBackendControls(t *testing.T) {
-	t.Setenv("GRAPH_STORE_BACKEND", "spanner")
+func TestLoadConfigValidateRejectsLegacyGraphStoreSettings(t *testing.T) {
 	t.Setenv("GRAPH_STORE_SPANNER_DATABASE", "projects/test/instances/dev/databases/cerebro")
-	t.Setenv("GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP", "true")
 
 	cfg := LoadConfig()
-	if cfg.GraphStoreBackend != "spanner" {
-		t.Fatalf("expected graph store backend spanner, got %q", cfg.GraphStoreBackend)
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
 	}
-	if cfg.GraphStoreSpannerDatabase != "projects/test/instances/dev/databases/cerebro" {
-		t.Fatalf("expected spanner database to be set, got %q", cfg.GraphStoreSpannerDatabase)
-	}
-	if !cfg.GraphStoreSpannerAutoBootstrap {
-		t.Fatal("expected spanner auto bootstrap to be enabled")
+	if !strings.Contains(err.Error(), "Spanner graph-store settings are not supported") {
+		t.Fatalf("expected spanner validation failure, got %v", err)
 	}
 }
 
@@ -890,6 +886,19 @@ func TestLoadConfigValidateRejectsLegacyJobQueueSettings(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "legacy SQS/Dynamo job settings are not supported") {
 		t.Fatalf("expected legacy job runtime validation failure, got %v", err)
+	}
+}
+
+func TestLoadConfigValidateRejectsLegacyGraphFailoverSettings(t *testing.T) {
+	t.Setenv("GRAPH_STORE_SECONDARY_BACKEND", "neptune")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+	if !strings.Contains(err.Error(), "secondary graph-store and dual-write settings are not supported") {
+		t.Fatalf("expected legacy graph failover validation failure, got %v", err)
 	}
 }
 

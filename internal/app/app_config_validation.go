@@ -175,11 +175,6 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Category: "dependency",
 		},
 		{
-			EnvVars:  []string{"JOB_QUEUE_URL", "JOB_TABLE_NAME", "JOB_REGION", "JOB_IDEMPOTENCY_TABLE_NAME"},
-			Summary:  "legacy SQS/Dynamo job settings are not supported; use JOB_DATABASE_URL with JOB_NATS_STREAM, JOB_NATS_SUBJECT, and JOB_NATS_CONSUMER",
-			Category: "dependency",
-		},
-		{
 			EnvVars:  []string{"FINDING_ATTESTATION_ENABLED", "FINDING_ATTESTATION_SIGNING_KEY", "FINDING_ATTESTATION_TIMEOUT"},
 			Summary:  "when FINDING_ATTESTATION_ENABLED=true, the signing key is required and timeout must be positive",
 			Category: "dependency",
@@ -206,33 +201,6 @@ func ConfigValidationRules() []ConfigValidationRule {
 		{
 			EnvVars:  []string{"GRAPH_STORE_BACKEND", "GRAPH_STORE_NEPTUNE_ENDPOINT"},
 			Summary:  "when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required",
-			Category: "dependency",
-		},
-		{
-			EnvVars:  []string{"GRAPH_STORE_SPANNER_DATABASE", "GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP"},
-			Summary:  "Spanner graph-store settings are not supported",
-			Category: "dependency",
-		},
-		{
-			EnvVars: []string{
-				"GRAPH_STORE_SECONDARY_BACKEND",
-				"GRAPH_STORE_SECONDARY_NEPTUNE_ENDPOINT",
-				"GRAPH_STORE_SECONDARY_NEPTUNE_REGION",
-				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE",
-				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL",
-				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT",
-				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME",
-				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES",
-				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT",
-				"GRAPH_STORE_SECONDARY_SPANNER_DATABASE",
-				"GRAPH_STORE_SECONDARY_SPANNER_AUTO_BOOTSTRAP",
-				"GRAPH_STORE_DUAL_WRITE_MODE",
-				"GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH",
-				"GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED",
-				"GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL",
-				"GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE",
-			},
-			Summary:  "secondary graph-store and dual-write settings are not supported",
 			Category: "dependency",
 		},
 		{EnvVars: []string{"GRAPH_TENANT_SHARD_IDLE_TTL"}, Summary: "must be greater than 0", Category: "range"},
@@ -621,25 +589,27 @@ func (c *Config) Validate() error {
 	if c.GraphStoreNeptunePoolDrainTimeout <= 0 {
 		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT must be > 0 when GRAPH_STORE_BACKEND=neptune")
 	}
-	if strings.TrimSpace(c.GraphStoreSpannerDatabase) != "" || c.GraphStoreSpannerAutoBootstrap {
+	if hasNonEmptyEnv("GRAPH_STORE_SPANNER_DATABASE", "GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP") {
 		problems = addConfigProblem(problems, "Spanner graph-store settings are not supported")
 	}
-	if strings.TrimSpace(c.GraphStoreSecondaryBackend) != "" ||
-		strings.TrimSpace(c.GraphStoreSecondaryNeptuneEndpoint) != "" ||
-		strings.TrimSpace(c.GraphStoreSecondaryNeptuneRegion) != "" ||
-		c.GraphStoreSecondaryNeptunePoolSize != 0 ||
-		c.GraphStoreSecondaryNeptunePoolHealthCheckInterval != 0 ||
-		c.GraphStoreSecondaryNeptunePoolHealthCheckTimeout != 0 ||
-		c.GraphStoreSecondaryNeptunePoolMaxClientLifetime != 0 ||
-		c.GraphStoreSecondaryNeptunePoolMaxClientUses != 0 ||
-		c.GraphStoreSecondaryNeptunePoolDrainTimeout != 0 ||
-		strings.TrimSpace(c.GraphStoreSecondarySpannerDatabase) != "" ||
-		c.GraphStoreSecondarySpannerAutoBootstrap ||
-		strings.TrimSpace(c.GraphStoreDualWriteMode) != "" ||
-		strings.TrimSpace(c.GraphStoreDualWriteReconciliationPath) != "" ||
-		c.GraphStoreDualWriteReplayEnabled ||
-		c.GraphStoreDualWriteReplayInterval != 0 ||
-		c.GraphStoreDualWriteReplayBatchSize != 0 {
+	if hasNonEmptyEnv(
+		"GRAPH_STORE_SECONDARY_BACKEND",
+		"GRAPH_STORE_SECONDARY_NEPTUNE_ENDPOINT",
+		"GRAPH_STORE_SECONDARY_NEPTUNE_REGION",
+		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE",
+		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL",
+		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT",
+		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME",
+		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES",
+		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT",
+		"GRAPH_STORE_SECONDARY_SPANNER_DATABASE",
+		"GRAPH_STORE_SECONDARY_SPANNER_AUTO_BOOTSTRAP",
+		"GRAPH_STORE_DUAL_WRITE_MODE",
+		"GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH",
+		"GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED",
+		"GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL",
+		"GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE",
+	) {
 		problems = addConfigProblem(problems, "secondary graph-store and dual-write settings are not supported")
 	}
 

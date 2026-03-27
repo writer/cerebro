@@ -17,7 +17,6 @@ func (a *App) initConfiguredSecurityGraphStore(ctx context.Context) error {
 		a.configuredSecurityGraphStore = nil
 		a.configuredSecurityGraphClose = nil
 		a.configuredSecurityGraphReady = false
-		a.graphStoreDualWriteReplayQueue = nil
 		return nil
 	}
 	provider, err := a.resolveGraphStoreBackendProvider(backend)
@@ -27,10 +26,6 @@ func (a *App) initConfiguredSecurityGraphStore(ctx context.Context) error {
 	handle, err := provider.Open(ctx, a)
 	if err != nil {
 		return err
-	}
-	handle, dualWriteLogFields, err := a.wrapConfiguredSecurityGraphStoreWithDualWrite(ctx, handle)
-	if err != nil {
-		return closeHandle(handle, err)
 	}
 	ready, err := a.probeConfiguredSecurityGraphStore(ctx, handle.Store)
 	if err != nil {
@@ -42,7 +37,6 @@ func (a *App) initConfiguredSecurityGraphStore(ctx context.Context) error {
 	if a.Logger != nil {
 		args := []any{"backend", provider.Backend(), "ready", ready}
 		args = append(args, provider.LogFields(a)...)
-		args = append(args, dualWriteLogFields...)
 		a.Logger.Info("configured graph store backend", args...)
 	}
 	return nil

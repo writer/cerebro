@@ -89,7 +89,7 @@ func (q *NATSQueue) Enqueue(ctx context.Context, msg JobMessage) error {
 // EnqueueWithDelay publishes msg to the JetStream subject.
 //
 // NOTE: NATS JetStream does not support per-message publish-time delays the
-// way SQS does.  The delay parameter is therefore *not* applied at publish
+// way lease/visibility based queues often do. The delay parameter is therefore *not* applied at publish
 // time.  For retry back-off, the consumer side uses NakWithDelay when
 // redelivering messages.  Callers that depend on publish-time delays should
 // be aware of this limitation.

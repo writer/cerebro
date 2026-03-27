@@ -40,23 +40,6 @@ func (c *Config) graphStoreBackend() graph.StoreBackend {
 	return graph.ParseStoreBackend(c.GraphStoreBackend)
 }
 
-func (c *Config) graphStoreSecondaryBackend() graph.StoreBackend {
-	return ""
-}
-
-func (c *Config) graphStoreDualWriteMode() graph.DualWriteMode {
-	_ = c
-	return graph.DualWriteModePrimaryOnly
-}
-
-func (c *Config) dualWriteGraphStoreEnabled() bool {
-	return false
-}
-
-func (c *Config) secondaryGraphStoreConfig() *Config {
-	return c
-}
-
 func (a *App) retainHotSecurityGraph() bool {
 	_ = a
 	return runningUnderGoTest()

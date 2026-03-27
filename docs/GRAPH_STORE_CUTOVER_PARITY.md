@@ -59,7 +59,6 @@ The report-parity harness currently supports:
 
 Follow-on work should add:
 
-- dual-write fan-out for graph mutations
 - operator-facing parity diff tooling and metrics
 - backfill verification over snapshot exports/imports
 - staged rollout controls and rollback guidance

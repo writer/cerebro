@@ -98,7 +98,7 @@ func (s *OrphanedJobScanner) recoverJob(ctx context.Context, job *Job) error {
 		return fmt.Errorf("failed to reset job status: %w", err)
 	}
 
-	// Re-enqueue with attempt number for proper FIFO deduplication
+	// Re-enqueue with the current attempt number so queue deduplication stays stable.
 	if err := s.queue.Enqueue(ctx, JobMessage{
 		JobID:         job.ID,
 		GroupID:       job.GroupID,
@@ -271,13 +271,13 @@ func (c *DLQConsumer) ReplayMessage(ctx context.Context, msg QueueMessage) error
 			c.logError("failed to reset job for replay", err, "job_id", jobMsg.JobID)
 			// Continue anyway - maybe job was already reset
 		}
-		// Get current attempt count for deduplication
+		// Get current attempt count for deduplication.
 		if job, err := c.store.GetJob(ctx, jobMsg.JobID); err == nil {
 			attempt = job.Attempt
 		}
 	}
 
-	// Enqueue to main queue with updated attempt for FIFO deduplication
+	// Enqueue to the main queue with the updated attempt number for deduplication.
 	replayMsg := JobMessage{
 		JobID:         jobMsg.JobID,
 		GroupID:       jobMsg.GroupID,
