@@ -147,7 +147,6 @@ type App struct {
 	configuredSecurityGraphStore     graph.GraphStore
 	configuredSecurityGraphClose     func() error
 	configuredSecurityGraphReady     bool
-	graphStoreDualWriteReplayQueue   graphStoreDualWriteReplayQueue
 	graphStoreBackendProviderFactory graphStoreBackendProviderFactory
 	SecurityGraphBuilder             *builders.Builder
 	Propagation                      *graph.PropagationEngine

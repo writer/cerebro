@@ -545,106 +545,8 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build
-        run: go build -o cerebro ./cmd/cerebro
-
-      - name: API auth end-to-end smoke
-        shell: bash
-        env:
-          GRAPH_STORE_BACKEND: "memory"
-          GRAPH_STORE_ALLOW_IN_MEMORY: "true"
-          LOG_LEVEL: error
-          API_PORT: "18080"
-          API_AUTH_ENABLED: "true"
-          API_KEYS: "smoke-key:smoke-admin"
-          RBAC_STATE_FILE: "/tmp/cerebro-rbac-smoke.json"
-        run: |
-          set -euo pipefail
-          cat > "$RBAC_STATE_FILE" <<'JSON'
-          {
-            "users": {
-              "smoke-admin": {
-                "id": "smoke-admin",
-                "email": "smoke-admin@example.com",
-                "name": "Smoke Admin",
-                "role_ids": ["admin"]
-              }
-            }
-          }
-          JSON
-
-          ./cerebro serve > /tmp/cerebro-api-auth-smoke.log 2>&1 &
-          server_pid=$!
-          cleanup() {
-            kill "$server_pid" >/dev/null 2>&1 || true
-            wait "$server_pid" >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          for i in $(seq 1 45); do
-            if curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
-              break
-            fi
-            sleep 1
-          done
-          curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null
-
-          unauth_status=$(curl -sS -o /tmp/api-auth-smoke-unauth.json -w "%{http_code}" \
-            "http://127.0.0.1:${API_PORT}/api/v1/policies/")
-          if [ "$unauth_status" != "401" ]; then
-            echo "expected 401 for unauthenticated request, got $unauth_status"
-            cat /tmp/cerebro-api-auth-smoke.log || true
-            exit 1
-          fi
-
-          auth_status=$(curl -sS -H "Authorization: Bearer smoke-key" -o /tmp/api-auth-smoke-auth.json -w "%{http_code}" \
-            "http://127.0.0.1:${API_PORT}/api/v1/policies/")
-          if [ "$auth_status" -ne "200" ]; then
-            echo "expected 200 for authenticated request, got $auth_status"
-            cat /tmp/cerebro-api-auth-smoke.log || true
-            exit 1
-          fi
-
-          xkey_status=$(curl -sS -H "X-API-Key: smoke-key" -o /tmp/api-auth-smoke-xkey.json -w "%{http_code}" \
-            "http://127.0.0.1:${API_PORT}/api/v1/policies/")
-          if [ "$xkey_status" -ne "200" ]; then
-            echo "expected 200 for X-API-Key request, got $xkey_status"
-            cat /tmp/cerebro-api-auth-smoke.log || true
-            exit 1
-          fi
-
-          malformed_auth_status=$(curl -sS \
-            -H "Authorization: Token malformed" \
-            -H "X-API-Key: smoke-key" \
-            -o /tmp/api-auth-smoke-malformed-auth.json \
-            -w "%{http_code}" \
-            "http://127.0.0.1:${API_PORT}/api/v1/policies/")
-          if [ "$malformed_auth_status" != "401" ]; then
-            echo "expected 401 for malformed Authorization header, got $malformed_auth_status"
-            cat /tmp/cerebro-api-auth-smoke.log || true
-            exit 1
-          fi
-
-          conflicting_headers_status=$(curl -sS \
-            -H "Authorization: Bearer smoke-key" \
-            -H "X-API-Key: not-smoke-key" \
-            -o /tmp/api-auth-smoke-conflicting-headers.json \
-            -w "%{http_code}" \
-            "http://127.0.0.1:${API_PORT}/api/v1/policies/")
-          if [ "$conflicting_headers_status" != "401" ]; then
-            echo "expected 401 for conflicting auth headers, got $conflicting_headers_status"
-            cat /tmp/cerebro-api-auth-smoke.log || true
-            exit 1
-          fi
-          for public_path in /metrics /docs /openapi.yaml; do
-            public_status=$(curl -sS -o "/tmp/api-auth-smoke-public-$(echo "$public_path" | tr '/.' '__').json" -w "%{http_code}" \
-              "http://127.0.0.1:${API_PORT}${public_path}")
-            if [ "$public_status" -ne "200" ]; then
-              echo "expected 200 for public endpoint ${public_path}, got $public_status"
-              cat /tmp/cerebro-api-auth-smoke.log || true
-              exit 1
-            fi
-          done
+      - name: API auth smoke tests
+        run: go test ./internal/api -run 'TestAuthMiddleware_BlocksUnauthenticated|TestAuthMiddleware_AllowsAuthenticated|TestPublicEndpoints_RemainAccessibleWhenAPIAuthEnabled|TestExtractAPIKey|TestAPIKeyAuth_RejectsMalformedAuthorizationEvenWithXAPIKey|TestAPIKeyAuth_RejectsConflictingCredentials|TestAPIKeyAuth_AllowsMatchingCredentialsFromBothHeaders' -count=1
   api-auth-rbac-smoke:
     name: api-auth-rbac-smoke
     runs-on: ubuntu-latest
@@ -656,94 +558,12 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build
-        run: go build -o cerebro ./cmd/cerebro
-
-      - name: RBAC role matrix smoke
-        shell: bash
-        env:
-          GRAPH_STORE_BACKEND: "memory"
-          GRAPH_STORE_ALLOW_IN_MEMORY: "true"
-          LOG_LEVEL: error
-          API_PORT: "18081"
-          API_AUTH_ENABLED: "true"
-          API_KEYS: "viewer-key:viewer-1,analyst-key:analyst-1,admin-key:admin-1"
-          RBAC_STATE_FILE: "/tmp/cerebro-rbac-role-smoke.json"
-        run: |
-          set -euo pipefail
-          cat > "$RBAC_STATE_FILE" <<'JSON'
-          {
-            "users": {
-              "viewer-1": {
-                "id": "viewer-1",
-                "email": "viewer@example.com",
-                "name": "Viewer",
-                "role_ids": ["viewer"]
-              },
-              "analyst-1": {
-                "id": "analyst-1",
-                "email": "analyst@example.com",
-                "name": "Analyst",
-                "role_ids": ["analyst"]
-              },
-              "admin-1": {
-                "id": "admin-1",
-                "email": "admin@example.com",
-                "name": "Admin",
-                "role_ids": ["admin"]
-              }
-            }
-          }
-          JSON
-
-          ./cerebro serve > /tmp/cerebro-api-auth-rbac-smoke.log 2>&1 &
-          server_pid=$!
-          cleanup() {
-            kill "$server_pid" >/dev/null 2>&1 || true
-            wait "$server_pid" >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-
-          for i in $(seq 1 45); do
-            if curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1; then
-              break
-            fi
-            sleep 1
-          done
-          curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null
-
-          endpoint="http://127.0.0.1:${API_PORT}/api/v1/agents/sessions"
-          payload='{"agent_id":"missing-agent"}'
-
-          viewer_status=$(curl -sS -H "Authorization: Bearer viewer-key" -H "Content-Type: application/json" \
-            -d "$payload" -o /tmp/api-auth-rbac-viewer.json -w "%{http_code}" "$endpoint")
-          analyst_status=$(curl -sS -H "Authorization: Bearer analyst-key" -H "Content-Type: application/json" \
-            -d "$payload" -o /tmp/api-auth-rbac-analyst.json -w "%{http_code}" "$endpoint")
-          admin_status=$(curl -sS -H "Authorization: Bearer admin-key" -H "Content-Type: application/json" \
-            -d "$payload" -o /tmp/api-auth-rbac-admin.json -w "%{http_code}" "$endpoint")
-
-          if [ "$viewer_status" != "403" ]; then
-            echo "expected viewer to receive 403, got $viewer_status"
-            cat /tmp/cerebro-api-auth-rbac-smoke.log || true
-            exit 1
-          fi
-          if [ "$analyst_status" = "403" ]; then
-            echo "expected analyst to pass RBAC (non-403), got $analyst_status"
-            cat /tmp/cerebro-api-auth-rbac-smoke.log || true
-            exit 1
-          fi
-          if [ "$admin_status" = "403" ]; then
-            echo "expected admin to pass RBAC (non-403), got $admin_status"
-            cat /tmp/cerebro-api-auth-rbac-smoke.log || true
-            exit 1
-          fi
+      - name: RBAC role matrix smoke tests
+        run: go test ./internal/api -run 'TestAuthMiddleware_RBACProtectsAgentRoutes|TestAuthMiddleware_RBACAgentReadWriteByRole|TestAuthMiddleware_RBACRouteMatrix' -count=1
 
   scan-smoke-local:
     name: scan-smoke-local
     runs-on: ubuntu-latest
-    env:
-      GRAPH_STORE_BACKEND: "memory"
-      GRAPH_STORE_ALLOW_IN_MEMORY: "true"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -752,49 +572,8 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build
-        run: go build -o cerebro ./cmd/cerebro
-
-      - name: Scan preflight (local dataset)
-        env:
-          LOG_LEVEL: error
-        run: ./cerebro scan --preflight --local-fixture internal/cli/testdata/scan_smoke_fixture.json --output json
-
-      - name: Local scan smoke
-        shell: bash
-        env:
-          LOG_LEVEL: error
-        run: |
-          set -euo pipefail
-          ./cerebro scan --local-fixture internal/cli/testdata/scan_smoke_fixture.json --output json --graph=false --toxic-combos=false > /tmp/scan-output.txt
-          python3 - <<'PY'
-          import json, sys
-          from pathlib import Path
-
-          raw = Path('/tmp/scan-output.txt').read_text()
-
-          # Try full output as JSON first (clean case).
-          try:
-              payload = json.loads(raw)
-          except json.JSONDecodeError:
-              # Output has non-JSON preamble (log lines). Find the first '{' that
-              # starts the JSON object and parse from there.
-              payload = None
-              idx = raw.find('{')
-              if idx >= 0:
-                  try:
-                      payload = json.loads(raw[idx:])
-                  except json.JSONDecodeError:
-                      pass
-              if payload is None:
-                  print('ERROR: no valid JSON found in scan output', file=sys.stderr)
-                  print('--- first 2000 chars ---', file=sys.stderr)
-                  print(raw[:2000], file=sys.stderr)
-                  sys.exit(1)
-
-          if payload.get('scanned', 0) <= 0:
-              raise SystemExit('expected scanned > 0 in local smoke scan')
-          PY
+      - name: Local scan smoke tests
+        run: go test ./internal/cli -run 'TestEvaluateScanPreflight_WithLocalDataset|TestRunScan_LocalModePersistsFindingsAndWatermarksAcrossRestart' -count=1
 
   lint:
     runs-on: ubuntu-latest

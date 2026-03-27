@@ -77,15 +77,6 @@ func TestPreCommitChecksScriptRunsFormattingVetAndIdentifierSafetyChecks(t *test
 			t.Fatalf("expected pre-commit checks script to run %s", command)
 		}
 	}
-	for _, fragment := range []string{
-		"internal/graph/schema/",
-		"internal/graph/store_spanner",
-		"go test ./internal/graph -run TestSpannerWorldModelSchemaStatements -count=1",
-	} {
-		if !strings.Contains(text, fragment) {
-			t.Fatalf("expected pre-commit checks script to include %s", fragment)
-		}
-	}
 }
 
 func TestPreCommitConfigUsesSharedChecksScript(t *testing.T) {

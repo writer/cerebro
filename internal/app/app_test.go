@@ -186,51 +186,19 @@ func TestLoadConfigCrossTenantIngestControls(t *testing.T) {
 	}
 }
 
-func TestLoadConfigGraphStoreBackendControls(t *testing.T) {
-	t.Setenv("GRAPH_STORE_BACKEND", "spanner")
-	t.Setenv("GRAPH_STORE_SPANNER_DATABASE", "projects/test/instances/dev/databases/cerebro")
-	t.Setenv("GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP", "true")
-
+func TestLoadConfigGraphStoreBackendDefaultsToNeptune(t *testing.T) {
 	cfg := LoadConfig()
-	if cfg.GraphStoreBackend != "spanner" {
-		t.Fatalf("expected graph store backend spanner, got %q", cfg.GraphStoreBackend)
-	}
-	if cfg.GraphStoreSpannerDatabase != "projects/test/instances/dev/databases/cerebro" {
-		t.Fatalf("expected spanner database to be set, got %q", cfg.GraphStoreSpannerDatabase)
-	}
-	if !cfg.GraphStoreSpannerAutoBootstrap {
-		t.Fatal("expected spanner auto bootstrap to be enabled")
-	}
-}
-
-func TestLoadConfigGraphStoreBackendDefaultsToMemoryInTests(t *testing.T) {
-	cfg := LoadConfig()
-	if cfg.GraphStoreBackend != "memory" {
-		t.Fatalf("expected test graph store backend memory, got %q", cfg.GraphStoreBackend)
-	}
-	if !cfg.GraphStoreAllowInMemory {
-		t.Fatal("expected test graph runtime to allow in-memory backend")
+	if cfg.GraphStoreBackend != "neptune" {
+		t.Fatalf("expected graph store backend neptune, got %q", cfg.GraphStoreBackend)
 	}
 }
 
 func TestDefaultGraphStoreBackendForProcess(t *testing.T) {
-	if got := defaultGraphStoreBackendForProcess(true); got != "memory" {
-		t.Fatalf("defaultGraphStoreBackendForProcess(test) = %q, want memory", got)
+	if got := defaultGraphStoreBackendForProcess(true); got != "neptune" {
+		t.Fatalf("defaultGraphStoreBackendForProcess(test) = %q, want neptune", got)
 	}
-	if got := defaultGraphStoreBackendForProcess(false); got != "spanner" {
-		t.Fatalf("defaultGraphStoreBackendForProcess(production) = %q, want spanner", got)
-	}
-}
-
-func TestAllowInMemoryGraphStoreForProcess(t *testing.T) {
-	if !allowInMemoryGraphStoreForProcess(true, false) {
-		t.Fatal("expected test process to allow in-memory graph store")
-	}
-	if allowInMemoryGraphStoreForProcess(false, false) {
-		t.Fatal("expected production process to reject in-memory graph store without explicit opt-in")
-	}
-	if !allowInMemoryGraphStoreForProcess(false, true) {
-		t.Fatal("expected explicit production opt-in to allow in-memory graph store")
+	if got := defaultGraphStoreBackendForProcess(false); got != "neptune" {
+		t.Fatalf("defaultGraphStoreBackendForProcess(production) = %q, want neptune", got)
 	}
 }
 
@@ -866,17 +834,47 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 	}
 }
 
-func TestLoadConfigValidateGraphStoreBackendRequirements(t *testing.T) {
-	t.Setenv("GRAPH_STORE_BACKEND", "spanner")
-	t.Setenv("GRAPH_STORE_SPANNER_DATABASE", "")
-
+func TestLoadConfigValidateDistributedJobsRequirePostgresAndNATS(t *testing.T) {
 	cfg := LoadConfig()
+	cfg.JobDatabaseURL = "postgres://jobs:jobs@localhost:5432/cerebro?sslmode=disable"
+	cfg.NATSJetStreamURLs = nil
+
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
 	}
-	if !strings.Contains(err.Error(), "GRAPH_STORE_SPANNER_DATABASE is required when GRAPH_STORE_BACKEND=spanner") {
-		t.Fatalf("expected graph store backend validation failure, got %v", err)
+
+	var validationErr *ConfigValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ConfigValidationError, got %T", err)
+	}
+
+	found := false
+	for _, problem := range validationErr.Problems {
+		if strings.Contains(problem, "NATS_URLS must include at least one URL when JOB_DATABASE_URL is configured") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected distributed jobs validation failure, got %#v", validationErr.Problems)
+	}
+}
+
+func TestLoadConfigValidateRejectsUnsupportedGraphStoreBackends(t *testing.T) {
+	for _, backend := range []string{"legacy", "memory"} {
+		t.Run(backend, func(t *testing.T) {
+			t.Setenv("GRAPH_STORE_BACKEND", backend)
+
+			cfg := LoadConfig()
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatal("expected config validation error")
+			}
+			if !strings.Contains(err.Error(), "GRAPH_STORE_BACKEND must be neptune") {
+				t.Fatalf("expected graph store backend validation failure, got %v", err)
+			}
+		})
 	}
 }
 

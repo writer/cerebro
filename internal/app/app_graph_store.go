@@ -612,14 +612,6 @@ func passiveSnapshotStoreCacheID(source string, record *graph.GraphSnapshotRecor
 			return id
 		}
 	}
-	switch strings.TrimSpace(source) {
-	case "local":
-		return strings.TrimSpace(status.LastPersistedSnapshot)
-	case "replica":
-		return strings.TrimSpace(status.LastReplicatedSnapshot)
-	}
-	if id := strings.TrimSpace(status.LastPersistedSnapshot); id != "" {
-		return id
-	}
-	return strings.TrimSpace(status.LastReplicatedSnapshot)
+	_ = source
+	return strings.TrimSpace(status.LastPersistedSnapshot)
 }

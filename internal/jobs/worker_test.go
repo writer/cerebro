@@ -5,13 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/aws/smithy-go"
 )
 
 // MockQueue implements Queue interface for testing
@@ -20,6 +17,7 @@ type MockQueue struct {
 	messages        []QueueMessage
 	deleted         []string
 	extendedHandles []string
+	retriedHandles  []string
 	extendErrors    []error
 	extendCalls     int
 	enqueuedMsgs    []JobMessage
@@ -102,6 +100,13 @@ func (m *MockQueue) ExtendVisibilityBatch(ctx context.Context, receiptHandles []
 	return len(receiptHandles), 0, nil
 }
 
+func (m *MockQueue) Retry(ctx context.Context, receiptHandle string, delay time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.retriedHandles = append(m.retriedHandles, receiptHandle)
+	return nil
+}
+
 func (m *MockQueue) AddMessage(jobID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -114,24 +119,11 @@ func (m *MockQueue) AddMessage(jobID string) {
 }
 
 type mockAPIError struct {
-	code string
-	msg  string
+	msg string
 }
 
 func (e mockAPIError) Error() string {
-	return fmt.Sprintf("%s: %s", e.code, e.msg)
-}
-
-func (e mockAPIError) ErrorCode() string {
-	return e.code
-}
-
-func (e mockAPIError) ErrorMessage() string {
 	return e.msg
-}
-
-func (e mockAPIError) ErrorFault() smithy.ErrorFault {
-	return smithy.FaultClient
 }
 
 // MockStore implements Store interface for testing
@@ -553,29 +545,29 @@ func TestIsTerminalVisibilityError(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "receipt handle invalid code",
-			err:  mockAPIError{code: "ReceiptHandleIsInvalid", msg: "invalid handle"},
+			name: "unknown receipt handle",
+			err:  mockAPIError{msg: "nats: unknown receipt handle \"missing\""},
 			want: true,
 		},
 		{
-			name: "invalid parameter value with receipt handle message",
-			err:  mockAPIError{code: "InvalidParameterValue", msg: "Value ... for parameter ReceiptHandle is invalid"},
+			name: "receipt handle required",
+			err:  mockAPIError{msg: "receipt handle required"},
 			want: true,
 		},
 		{
-			name: "wrapped non-existent queue code",
-			err:  fmt.Errorf("wrapped: %w", mockAPIError{code: "AWS.SimpleQueueService.NonExistentQueue", msg: "queue not found"}),
+			name: "wrapped unknown receipt handle",
+			err:  fmt.Errorf("wrapped: %w", mockAPIError{msg: "nats: unknown receipt handle \"missing\""}),
 			want: true,
-		},
-		{
-			name: "non terminal API error",
-			err:  mockAPIError{code: "ThrottlingException", msg: "slow down"},
-			want: false,
 		},
 		{
 			name: "plain string fallback",
 			err:  errors.New("message does not exist or is not available for visibility timeout change"),
 			want: true,
+		},
+		{
+			name: "non terminal error",
+			err:  mockAPIError{msg: "slow down"},
+			want: false,
 		},
 	}
 
@@ -590,7 +582,7 @@ func TestIsTerminalVisibilityError(t *testing.T) {
 
 func TestRunHeartbeat_DisablesQueueVisibilityOnTerminalErrorButExtendsLease(t *testing.T) {
 	queue := &MockQueue{
-		extendErrors: []error{mockAPIError{code: "ReceiptHandleIsInvalid", msg: "invalid receipt"}},
+		extendErrors: []error{mockAPIError{msg: "nats: unknown receipt handle \"invalid\""}},
 	}
 	store := NewMockStore()
 	worker := NewWorker(queue, store, NewJobRegistry(), WorkerOptions{
@@ -784,27 +776,6 @@ func TestIdempotencyStore(t *testing.T) {
 	}
 	if processed {
 		t.Error("NoOp should always return false for IsProcessed")
-	}
-}
-
-func TestFIFOQueueDetection(t *testing.T) {
-	// Can't actually test SQS, but test the detection logic
-	tests := []struct {
-		url      string
-		expected bool
-	}{
-		{"https://sqs.us-east-1.amazonaws.com/123456789/my-queue", false},
-		{"https://sqs.us-east-1.amazonaws.com/123456789/my-queue.fifo", true},
-		{"", false},
-		{"short", false},
-	}
-
-	for _, tc := range tests {
-		// Can't call NewSQSQueue without AWS config, but can test the detection
-		isFIFO := strings.HasSuffix(tc.url, ".fifo")
-		if isFIFO != tc.expected {
-			t.Errorf("URL %q: expected FIFO=%v, got %v", tc.url, tc.expected, isFIFO)
-		}
 	}
 }
 
