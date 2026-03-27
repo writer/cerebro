@@ -4,70 +4,77 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log/slog"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
-
 	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/warehouse"
+	"github.com/writer/cerebro/internal/snowflake"
 )
+
+const postgresFindingsTable = "cerebro_findings"
 
 type PostgresStore struct {
 	db               *sql.DB
-	mu               sync.RWMutex
-	logger           *slog.Logger
+	cache            map[string]*Finding
+	semanticIndex    map[string]string
+	dirty            map[string]bool
 	attestor         FindingAttestor
 	attestReobserved bool
 	semanticDedup    bool
-	schema           string
-	tableName        string
-	ownsDB           bool
+	rewriteSQL       func(string) string
+	mu               sync.RWMutex
+	syncedAt         time.Time
 }
 
-func NewPostgresStore(dsn, schema string) (*PostgresStore, error) {
-	db, err := sql.Open("pgx", strings.TrimSpace(dsn))
-	if err != nil {
-		return nil, fmt.Errorf("open postgres database: %w", err)
+func NewPostgresStore(db *sql.DB) *PostgresStore {
+	return &PostgresStore{
+		db:            db,
+		cache:         make(map[string]*Finding),
+		semanticIndex: make(map[string]string),
+		dirty:         make(map[string]bool),
+		semanticDedup: DefaultSemanticDedupEnabled,
 	}
-	store, err := NewPostgresStoreWithDB(db, schema)
-	if err != nil {
-		_ = db.Close()
+}
+
+func NewPostgresStoreWithDB(db *sql.DB, _ string) (*PostgresStore, error) {
+	if db == nil {
+		return nil, fmt.Errorf("postgres findings store is not initialized")
+	}
+	store := NewPostgresStore(db)
+	if err := store.EnsureSchema(context.Background()); err != nil {
 		return nil, err
 	}
-	store.ownsDB = true
 	return store, nil
 }
 
-func NewPostgresStoreWithDB(db *sql.DB, schema string) (*PostgresStore, error) {
-	if db == nil {
-		return nil, fmt.Errorf("postgres database is nil")
+func (s *PostgresStore) EnsureSchema(ctx context.Context) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("postgres findings store is not initialized")
 	}
-	schema = strings.TrimSpace(schema)
-	if schema == "" {
-		schema = "public"
-	}
-
-	store := &PostgresStore{
-		db:            db,
-		logger:        slog.Default(),
-		semanticDedup: DefaultSemanticDedupEnabled,
-		schema:        schema,
-		tableName:     schema + ".findings",
-	}
-	if err := store.initSchema(); err != nil {
-		return nil, fmt.Errorf("init schema: %w", err)
-	}
-	return store, nil
-}
-
-func (s *PostgresStore) SetLogger(logger *slog.Logger) {
-	s.logger = logger
+	_, err := s.db.ExecContext(ctx, s.q(`
+CREATE TABLE IF NOT EXISTS `+postgresFindingsTable+` (
+	id TEXT PRIMARY KEY,
+	policy_id TEXT NOT NULL,
+	policy_name TEXT NOT NULL,
+	severity TEXT NOT NULL,
+	status TEXT NOT NULL,
+	resource_id TEXT,
+	resource_type TEXT,
+	resource_data TEXT,
+	description TEXT,
+	remediation TEXT,
+	metadata TEXT NOT NULL DEFAULT '{}',
+	first_seen TIMESTAMP NOT NULL,
+	last_seen TIMESTAMP NOT NULL,
+	resolved_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_`+postgresFindingsTable+`_status ON `+postgresFindingsTable+` (status);
+CREATE INDEX IF NOT EXISTS idx_`+postgresFindingsTable+`_severity ON `+postgresFindingsTable+` (severity);
+CREATE INDEX IF NOT EXISTS idx_`+postgresFindingsTable+`_policy_id ON `+postgresFindingsTable+` (policy_id);
+`))
+	return err
 }
 
 func (s *PostgresStore) SetAttestor(attestor FindingAttestor, attestReobserved bool) {
@@ -81,98 +88,135 @@ func (s *PostgresStore) SetSemanticDedup(enabled bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.semanticDedup = enabled
+	s.rebuildSemanticIndexLocked()
 }
 
-func (s *PostgresStore) initSchema() error {
-	if s == nil || s.db == nil {
-		return fmt.Errorf("postgres store is not initialized")
-	}
-	createSchema := fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, s.schema)
-	if _, err := s.db.ExecContext(context.Background(), createSchema); err != nil {
+func (s *PostgresStore) Load(ctx context.Context) error {
+	if err := s.EnsureSchema(ctx); err != nil {
 		return err
 	}
-	schema := fmt.Sprintf(`
-	CREATE TABLE IF NOT EXISTS %s (
-		id TEXT PRIMARY KEY,
-		policy_id TEXT NOT NULL,
-		policy_name TEXT NOT NULL,
-		severity TEXT NOT NULL,
-		status TEXT NOT NULL,
-		resource_id TEXT,
-		resource_type TEXT,
-		resource_data JSONB,
-		description TEXT,
-		metadata JSONB,
-		first_seen TIMESTAMPTZ NOT NULL,
-		last_seen TIMESTAMPTZ NOT NULL,
-		resolved_at TIMESTAMPTZ
-	);
-	CREATE INDEX IF NOT EXISTS idx_findings_status ON %s (status);
-	CREATE INDEX IF NOT EXISTS idx_findings_severity ON %s (severity);
-	CREATE INDEX IF NOT EXISTS idx_findings_policy_id ON %s (policy_id);
-	`, s.tableName, s.tableName, s.tableName, s.tableName)
-	if _, err := s.db.ExecContext(context.Background(), schema); err != nil {
-		return err
-	}
-	_, err := s.db.ExecContext(context.Background(), fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS metadata JSONB`, s.tableName))
-	return err
-}
 
-func (s *PostgresStore) q(query string) string {
-	return warehouse.RewriteQueryForDialect(query, warehouse.DialectPostgres)
-}
-
-func (s *PostgresStore) findSemanticMatchTx(ctx context.Context, tx *sql.Tx, pf policy.Finding, semanticKey string) (*Finding, error) {
-	if !findingNeedsSemanticMatch(s.semanticDedup, semanticKey) {
-		return nil, nil
-	}
-
-	resourceID := strings.TrimSpace(pf.ResourceID)
-	if resourceID == "" {
-		resourceID = extractResourceID(pf.Resource)
-	}
-	resourceType := strings.TrimSpace(pf.ResourceType)
-	if resourceType == "" {
-		resourceType = extractResourceType(pf.Resource)
-	}
-
-	query := fmt.Sprintf(`
-		SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen, resolved_at
-		FROM %s
-		WHERE LOWER(severity) = LOWER(?)
-	`, s.tableName)
-	args := []any{pf.Severity}
-	switch {
-	case resourceID != "":
-		query += " AND resource_id = ?"
-		args = append(args, resourceID)
-	case resourceType != "":
-		query += " AND resource_type = ?"
-		args = append(args, resourceType)
-	default:
-		return nil, nil
-	}
-	query += " ORDER BY first_seen ASC, id ASC"
-
-	rows, err := tx.QueryContext(ctx, s.q(query), args...)
+	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	rows, err := s.db.QueryContext(ctx, s.q(`
+SELECT id, policy_id, policy_name, severity, status,
+	   resource_id, resource_type, resource_data, description,
+	   remediation, metadata, first_seen, last_seen, resolved_at
+FROM `+postgresFindingsTable+`
+WHERE UPPER(status) != 'RESOLVED' OR resolved_at > $1
+ORDER BY last_seen DESC
+LIMIT 10000
+`), cutoff)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("load findings: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.cache = make(map[string]*Finding)
+	s.semanticIndex = make(map[string]string)
+	s.dirty = make(map[string]bool)
+
 	for rows.Next() {
-		f, err := scanSQLiteFinding(rows)
-		if err != nil {
-			return nil, err
+		var finding Finding
+		var resourceData sql.NullString
+		var remediation sql.NullString
+		var metadataData string
+		var resolvedAt sql.NullTime
+
+		if err := rows.Scan(
+			&finding.ID,
+			&finding.PolicyID,
+			&finding.PolicyName,
+			&finding.Severity,
+			&finding.Status,
+			&finding.ResourceID,
+			&finding.ResourceType,
+			&resourceData,
+			&finding.Description,
+			&remediation,
+			&metadataData,
+			&finding.FirstSeen,
+			&finding.LastSeen,
+			&resolvedAt,
+		); err != nil {
+			return err
 		}
-		if semanticKeyForFinding(f) == semanticKey {
-			return f, nil
+
+		if resolvedAt.Valid {
+			ts := resolvedAt.Time.UTC()
+			finding.ResolvedAt = &ts
 		}
+		if resourceData.Valid && strings.TrimSpace(resourceData.String) != "" {
+			if err := parseResourceData(&finding, []byte(resourceData.String)); err != nil {
+				return fmt.Errorf("parse resource data for finding %s: %w", finding.ID, err)
+			}
+		}
+		if remediation.Valid {
+			finding.Remediation = remediation.String
+		}
+		applyFindingMetadata(&finding, []byte(metadataData))
+		finding.Status = normalizeStatus(finding.Status)
+		EnrichFinding(&finding)
+
+		s.cache[finding.ID] = &finding
+		s.indexSemanticFindingLocked(&finding)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+
+	s.syncedAt = time.Now().UTC()
+	return rows.Err()
+}
+
+func (s *PostgresStore) ImportRecords(ctx context.Context, records []*snowflake.FindingRecord) error {
+	if len(records) == 0 {
+		return nil
 	}
-	return nil, nil
+
+	s.mu.Lock()
+	for _, record := range records {
+		if record == nil || strings.TrimSpace(record.ID) == "" {
+			continue
+		}
+		oldKey := ""
+		if existing, ok := s.cache[record.ID]; ok {
+			oldKey = existing.SemanticKey
+		}
+		finding := &Finding{
+			ID:           record.ID,
+			PolicyID:     record.PolicyID,
+			PolicyName:   record.PolicyName,
+			Severity:     record.Severity,
+			Status:       normalizeStatus(record.Status),
+			ResourceID:   record.ResourceID,
+			ResourceType: record.ResourceType,
+			Resource:     record.ResourceData,
+			Description:  record.Description,
+			Remediation:  record.Remediation,
+			FirstSeen:    record.FirstSeen.UTC(),
+			LastSeen:     record.LastSeen.UTC(),
+		}
+		if record.ResolvedAt != nil {
+			ts := record.ResolvedAt.UTC()
+			finding.ResolvedAt = &ts
+		}
+		if len(record.Metadata) > 0 {
+			applyFindingMetadata(finding, record.Metadata)
+		}
+		if len(record.ResourceData) > 0 {
+			resourceJSON, err := json.Marshal(record.ResourceData)
+			if err == nil {
+				finding.resourceJSONRaw = cloneBytes(resourceJSON)
+			}
+		}
+		EnrichFinding(finding)
+		s.cache[finding.ID] = finding
+		s.syncSemanticIndexLocked(finding, oldKey)
+		s.dirty[finding.ID] = true
+	}
+	s.mu.Unlock()
+
+	return s.Sync(ctx)
 }
 
 func (s *PostgresStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
@@ -182,177 +226,69 @@ func (s *PostgresStore) Upsert(ctx context.Context, pf policy.Finding) *Finding 
 	now := time.Now()
 	semanticKey := semanticKeyForPolicyFinding(pf)
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		s.logger.Error("failed to begin transaction", "error", err)
-		return nil
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	existing, err := scanSQLiteFinding(tx.QueryRowContext(ctx, s.q(fmt.Sprintf(`
-		SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen, resolved_at
-		FROM %s
-		WHERE id = ?
-	`, s.tableName)), pf.ID))
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		s.logger.Error("failed to query finding", "error", err, "finding_id", pf.ID)
-		return nil
-	}
-
-	if errors.Is(err, sql.ErrNoRows) {
-		existing, err = s.findSemanticMatchTx(ctx, tx, pf, semanticKey)
-		if err != nil {
-			s.logger.Error("failed to query semantic finding match", "error", err, "finding_id", pf.ID)
-			return nil
+	if existing, ok := s.cache[pf.ID]; ok {
+		oldKey := existing.SemanticKey
+		previousStatus := applyPolicyFindingUpdate(existing, pf, now)
+		applySemanticObservation(existing, pf, semanticKey)
+		s.syncSemanticIndexLocked(existing, oldKey)
+		EnrichFinding(existing)
+		eventType := upsertAttestationEvent(true, previousStatus, s.attestReobserved)
+		if eventType != "" {
+			_ = attestFindingEvent(ctx, s.attestor, existing, eventType, now)
 		}
+		s.dirty[existing.ID] = true
+		return existing
 	}
-
-	if existing == nil {
-		f := newFindingFromPolicyFinding(pf, now)
-		applySemanticObservation(f, pf, semanticKey)
-		EnrichFinding(f)
-		if attestErr := attestFindingEvent(ctx, s.attestor, f, upsertAttestationEvent(false, "", s.attestReobserved), now); attestErr != nil {
-			s.logger.Warn("finding attestation append failed", "error", attestErr, "finding_id", f.ID)
+	if match := s.findSemanticMatchLocked(semanticKey); match != nil {
+		oldKey := match.SemanticKey
+		previousStatus := applyPolicyFindingUpdate(match, pf, now)
+		applySemanticObservation(match, pf, semanticKey)
+		s.syncSemanticIndexLocked(match, oldKey)
+		EnrichFinding(match)
+		eventType := upsertAttestationEvent(true, previousStatus, s.attestReobserved)
+		if eventType != "" {
+			_ = attestFindingEvent(ctx, s.attestor, match, eventType, now)
 		}
-
-		resourceData, _ := json.Marshal(f.Resource)
-		metadataData, _ := buildFindingMetadata(f)
-
-		_, err = tx.ExecContext(ctx, s.q(fmt.Sprintf(`
-			INSERT INTO %s (id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, s.tableName)), f.ID, f.PolicyID, f.PolicyName, f.Severity, f.Status, f.ResourceID, f.ResourceType, resourceData, f.Description, metadataData, f.FirstSeen, f.LastSeen)
-		if err != nil {
-			s.logger.Error("failed to insert finding", "error", err, "finding_id", pf.ID)
-			return nil
-		}
-		if commitErr := tx.Commit(); commitErr != nil {
-			s.logger.Error("failed to commit insert", "error", commitErr, "finding_id", pf.ID)
-			return nil
-		}
-		return f
+		s.dirty[match.ID] = true
+		return match
 	}
 
-	previousStatus := applyPolicyFindingUpdate(existing, pf, now)
-	applySemanticObservation(existing, pf, semanticKey)
-	EnrichFinding(existing)
-	eventType := upsertAttestationEvent(true, previousStatus, s.attestReobserved)
-	if eventType != "" {
-		if attestErr := attestFindingEvent(ctx, s.attestor, existing, eventType, now); attestErr != nil {
-			s.logger.Warn("finding attestation append failed", "error", attestErr, "finding_id", existing.ID)
-		}
-	}
+	finding := newFindingFromPolicyFinding(pf, now)
+	applySemanticObservation(finding, pf, semanticKey)
+	EnrichFinding(finding)
+	_ = attestFindingEvent(ctx, s.attestor, finding, upsertAttestationEvent(false, "", s.attestReobserved), now)
 
-	resourceData, _ := json.Marshal(existing.Resource)
-	metadataData, _ := buildFindingMetadata(existing)
-
-	_, err = tx.ExecContext(ctx, s.q(fmt.Sprintf(`
-		UPDATE %s
-		SET policy_id = ?, policy_name = ?, severity = ?, status = ?, resource_id = ?, resource_type = ?, resource_data = ?, description = ?, metadata = ?, last_seen = ?, resolved_at = ?
-		WHERE id = ?
-	`, s.tableName)),
-		existing.PolicyID,
-		existing.PolicyName,
-		existing.Severity,
-		existing.Status,
-		existing.ResourceID,
-		existing.ResourceType,
-		resourceData,
-		existing.Description,
-		metadataData,
-		now,
-		existing.ResolvedAt,
-		existing.ID,
-	)
-	if err != nil {
-		s.logger.Error("failed to update finding", "error", err, "finding_id", pf.ID)
-		return nil
-	}
-	if err := tx.Commit(); err != nil {
-		s.logger.Error("failed to commit update", "error", err, "finding_id", pf.ID)
-		return nil
-	}
-
-	return existing
+	s.cache[pf.ID] = finding
+	s.indexSemanticFindingLocked(finding)
+	s.dirty[pf.ID] = true
+	return finding
 }
 
 func (s *PostgresStore) Get(id string) (*Finding, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	f, err := scanSQLiteFinding(s.db.QueryRowContext(context.Background(), s.q(fmt.Sprintf(`
-		SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen, resolved_at
-		FROM %s
-		WHERE id = ?
-	`, s.tableName)), id))
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, false
-	}
-	if err != nil {
-		s.logger.Error("failed to get finding", "error", err, "finding_id", id)
-		return nil, false
-	}
-	EnrichFinding(f)
-	return f, true
+	finding, ok := s.cache[id]
+	return finding, ok
 }
 
 func (s *PostgresStore) Update(id string, mutate func(*Finding) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	tx, err := s.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	f, err := scanSQLiteFinding(tx.QueryRowContext(context.Background(), s.q(fmt.Sprintf(`
-		SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen, resolved_at
-		FROM %s
-		WHERE id = ?
-	`, s.tableName)), id))
-	if errors.Is(err, sql.ErrNoRows) {
+	finding, ok := s.cache[id]
+	if !ok {
 		return ErrIssueNotFound
 	}
-	if err != nil {
-		return fmt.Errorf("query finding: %w", err)
-	}
-
-	if err := mutate(f); err != nil {
+	oldKey := finding.SemanticKey
+	if err := mutate(finding); err != nil {
 		return err
 	}
-
-	refreshFindingSemanticState(f)
-	f.Status = normalizeStatus(f.Status)
-	EnrichFinding(f)
-
-	resourceData, _ := json.Marshal(f.Resource)
-	metadataData, _ := buildFindingMetadata(f)
-
-	_, err = tx.ExecContext(context.Background(), s.q(fmt.Sprintf(`
-		UPDATE %s
-		SET policy_id = ?, policy_name = ?, severity = ?, status = ?, resource_id = ?, resource_type = ?, resource_data = ?, description = ?, metadata = ?, last_seen = ?, resolved_at = ?
-		WHERE id = ?
-	`, s.tableName)),
-		f.PolicyID,
-		f.PolicyName,
-		f.Severity,
-		f.Status,
-		f.ResourceID,
-		f.ResourceType,
-		resourceData,
-		f.Description,
-		metadataData,
-		f.LastSeen,
-		f.ResolvedAt,
-		f.ID,
-	)
-	if err != nil {
-		return fmt.Errorf("update finding: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit update: %w", err)
-	}
+	invalidateResourceJSONCache(finding)
+	finding.Status = normalizeStatus(finding.Status)
+	refreshFindingSemanticState(finding)
+	s.syncSemanticIndexLocked(finding, oldKey)
+	EnrichFinding(finding)
+	s.dirty[id] = true
 	return nil
 }
 
@@ -360,64 +296,31 @@ func (s *PostgresStore) List(filter FindingFilter) []*Finding {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	query := fmt.Sprintf("SELECT id, policy_id, policy_name, severity, status, resource_id, resource_type, resource_data, description, metadata, first_seen, last_seen, resolved_at FROM %s WHERE 1=1", s.tableName)
-	var args []interface{}
-
-	if filter.Severity != "" {
-		query += " AND severity = ?"
-		args = append(args, filter.Severity)
-	}
-	if filter.Status != "" {
-		query += " AND UPPER(status) = ?"
-		args = append(args, strings.ToUpper(filter.Status))
-	}
-	if filter.PolicyID != "" {
-		query += " AND policy_id = ?"
-		args = append(args, filter.PolicyID)
-	}
-
-	query += " ORDER BY first_seen DESC"
-	applyDBPagination := strings.TrimSpace(filter.SignalType) == "" &&
-		strings.TrimSpace(filter.Domain) == "" &&
-		strings.TrimSpace(filter.TenantID) == ""
-	if applyDBPagination {
-		if filter.Limit > 0 {
-			query += " LIMIT ?"
-			args = append(args, filter.Limit)
-		}
-		if filter.Offset > 0 {
-			query += " OFFSET ?"
-			args = append(args, filter.Offset)
-		}
-	}
-
-	rows, err := s.db.QueryContext(context.Background(), s.q(query), args...)
-	if err != nil {
-		s.logger.Error("failed to list findings", "error", err)
-		return []*Finding{}
-	}
-	defer func() { _ = rows.Close() }()
-
-	result := make([]*Finding, 0, 100)
-	for rows.Next() {
-		f, err := scanSQLiteFinding(rows)
-		if err != nil {
+	statusFilter := normalizeStatus(filter.Status)
+	result := make([]*Finding, 0)
+	for _, finding := range s.cache {
+		if filter.Severity != "" && finding.Severity != filter.Severity {
 			continue
 		}
-		EnrichFinding(f)
-		if filter.SignalType != "" && !strings.EqualFold(f.SignalType, filter.SignalType) {
+		if statusFilter != "" && normalizeStatus(finding.Status) != statusFilter {
 			continue
 		}
-		if filter.Domain != "" && !strings.EqualFold(f.Domain, filter.Domain) {
+		if filter.PolicyID != "" && finding.PolicyID != filter.PolicyID {
 			continue
 		}
-		if filter.TenantID != "" && !strings.EqualFold(strings.TrimSpace(f.TenantID), strings.TrimSpace(filter.TenantID)) {
+		if filter.TenantID != "" && !strings.EqualFold(strings.TrimSpace(finding.TenantID), strings.TrimSpace(filter.TenantID)) {
 			continue
 		}
-		result = append(result, f)
+		if filter.SignalType != "" && !strings.EqualFold(finding.SignalType, filter.SignalType) {
+			continue
+		}
+		if filter.Domain != "" && !strings.EqualFold(finding.Domain, filter.Domain) {
+			continue
+		}
+		result = append(result, finding)
 	}
 
-	if !applyDBPagination && (filter.Offset > 0 || filter.Limit > 0) {
+	if filter.Offset > 0 || filter.Limit > 0 {
 		if filter.Offset >= len(result) {
 			return []*Finding{}
 		}
@@ -432,37 +335,31 @@ func (s *PostgresStore) List(filter FindingFilter) []*Finding {
 }
 
 func (s *PostgresStore) Count(filter FindingFilter) int {
-	if strings.TrimSpace(filter.SignalType) != "" ||
-		strings.TrimSpace(filter.Domain) != "" ||
-		strings.TrimSpace(filter.TenantID) != "" {
-		filter.Limit = 0
-		filter.Offset = 0
-		return len(s.List(filter))
-	}
-
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE 1=1", s.tableName)
-	var args []interface{}
-
-	if filter.Severity != "" {
-		query += " AND severity = ?"
-		args = append(args, filter.Severity)
-	}
-	if filter.Status != "" {
-		query += " AND UPPER(status) = ?"
-		args = append(args, strings.ToUpper(filter.Status))
-	}
-	if filter.PolicyID != "" {
-		query += " AND policy_id = ?"
-		args = append(args, filter.PolicyID)
-	}
-
-	var count int
-	if err := s.db.QueryRowContext(context.Background(), s.q(query), args...).Scan(&count); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to count findings: %v\n", err)
-		return 0
+	statusFilter := normalizeStatus(filter.Status)
+	count := 0
+	for _, finding := range s.cache {
+		if filter.Severity != "" && finding.Severity != filter.Severity {
+			continue
+		}
+		if statusFilter != "" && normalizeStatus(finding.Status) != statusFilter {
+			continue
+		}
+		if filter.PolicyID != "" && finding.PolicyID != filter.PolicyID {
+			continue
+		}
+		if filter.TenantID != "" && !strings.EqualFold(strings.TrimSpace(finding.TenantID), strings.TrimSpace(filter.TenantID)) {
+			continue
+		}
+		if filter.SignalType != "" && !strings.EqualFold(finding.SignalType, filter.SignalType) {
+			continue
+		}
+		if filter.Domain != "" && !strings.EqualFold(finding.Domain, filter.Domain) {
+			continue
+		}
+		count++
 	}
 	return count
 }
@@ -471,25 +368,35 @@ func (s *PostgresStore) Resolve(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
-	res, err := s.db.ExecContext(context.Background(), s.q(fmt.Sprintf("UPDATE %s SET status = 'RESOLVED', resolved_at = ? WHERE id = ?", s.tableName)), now, id)
-	if err != nil {
+	finding, ok := s.cache[id]
+	if !ok {
 		return false
 	}
-	rows, _ := res.RowsAffected()
-	return rows > 0
+	now := time.Now()
+	finding.Status = "RESOLVED"
+	finding.ResolvedAt = &now
+	finding.SnoozedUntil = nil
+	finding.StatusChangedAt = &now
+	finding.UpdatedAt = now
+	s.dirty[id] = true
+	return true
 }
 
 func (s *PostgresStore) Suppress(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	res, err := s.db.ExecContext(context.Background(), s.q(fmt.Sprintf("UPDATE %s SET status = 'SUPPRESSED' WHERE id = ?", s.tableName)), id)
-	if err != nil {
+	finding, ok := s.cache[id]
+	if !ok {
 		return false
 	}
-	rows, _ := res.RowsAffected()
-	return rows > 0
+	now := time.Now()
+	finding.Status = "SUPPRESSED"
+	finding.SnoozedUntil = nil
+	finding.StatusChangedAt = &now
+	finding.UpdatedAt = now
+	s.dirty[id] = true
+	return true
 }
 
 func (s *PostgresStore) Stats() Stats {
@@ -503,51 +410,213 @@ func (s *PostgresStore) Stats() Stats {
 		BySignalType: make(map[string]int),
 		ByDomain:     make(map[string]int),
 	}
-
-	rows, _ := s.db.QueryContext(context.Background(), fmt.Sprintf("SELECT severity, UPPER(status), policy_id, metadata FROM %s", s.tableName))
-	if rows == nil {
-		return stats
-	}
-	defer func() { _ = rows.Close() }()
-
-	for rows.Next() {
-		var severity string
-		var status string
-		var policyID string
-		var metadataData []byte
-		if err := rows.Scan(&severity, &status, &policyID, &metadataData); err != nil {
-			continue
-		}
-
+	for _, finding := range s.cache {
 		stats.Total++
-		stats.BySeverity[severity]++
-		stats.ByStatus[status]++
-		stats.ByPolicy[policyID]++
-
-		var f Finding
-		applyFindingMetadata(&f, metadataData)
-		signalType := strings.ToLower(strings.TrimSpace(f.SignalType))
+		stats.BySeverity[finding.Severity]++
+		stats.ByStatus[normalizeStatus(finding.Status)]++
+		stats.ByPolicy[finding.PolicyID]++
+		signalType := strings.ToLower(strings.TrimSpace(finding.SignalType))
 		if signalType == "" {
 			signalType = SignalTypeSecurity
 		}
 		stats.BySignalType[signalType]++
-		domain := strings.ToLower(strings.TrimSpace(f.Domain))
+		domain := strings.ToLower(strings.TrimSpace(finding.Domain))
 		if domain == "" {
 			domain = DomainInfra
 		}
 		stats.ByDomain[domain]++
 	}
-
 	return stats
 }
 
-func (s *PostgresStore) Sync(context.Context) error {
+func (s *PostgresStore) Sync(ctx context.Context) error {
+	if err := s.EnsureSchema(ctx); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	dirtyIDs := make([]string, 0, len(s.dirty))
+	for id := range s.dirty {
+		dirtyIDs = append(dirtyIDs, id)
+	}
+	s.mu.Unlock()
+
+	if len(dirtyIDs) == 0 {
+		return nil
+	}
+
+	findings := make([]*Finding, 0, len(dirtyIDs))
+	for _, id := range dirtyIDs {
+		s.mu.RLock()
+		finding, ok := s.cache[id]
+		s.mu.RUnlock()
+		if ok {
+			findings = append(findings, finding)
+		}
+	}
+	if len(findings) == 0 {
+		return nil
+	}
+
+	const batchSize = 100
+	for start := 0; start < len(findings); start += batchSize {
+		end := start + batchSize
+		if end > len(findings) {
+			end = len(findings)
+		}
+		batch := findings[start:end]
+		if err := s.syncBatch(ctx, batch); err != nil {
+			return err
+		}
+
+		s.mu.Lock()
+		for _, finding := range batch {
+			delete(s.dirty, finding.ID)
+		}
+		s.mu.Unlock()
+	}
+
+	s.syncedAt = time.Now().UTC()
 	return nil
 }
 
-func (s *PostgresStore) Close() error {
-	if s == nil || s.db == nil || !s.ownsDB {
+func (s *PostgresStore) syncBatch(ctx context.Context, batch []*Finding) error {
+	args := make([]any, 0, len(batch)*14)
+	values := make([]string, 0, len(batch))
+	for _, finding := range batch {
+		resourceJSON, err := resourceJSONForSync(finding)
+		if err != nil {
+			return fmt.Errorf("marshal resource data for finding %s: %w", finding.ID, err)
+		}
+		metadataJSON, err := buildFindingMetadata(finding)
+		if err != nil {
+			return err
+		}
+		if len(metadataJSON) == 0 {
+			metadataJSON = []byte("{}")
+		}
+
+		var resolvedAt any
+		if finding.ResolvedAt != nil {
+			resolvedAt = finding.ResolvedAt.UTC()
+		}
+
+		values = append(values, placeholderTuple(len(args)+1, 14))
+		args = append(args,
+			finding.ID,
+			finding.PolicyID,
+			finding.PolicyName,
+			finding.Severity,
+			normalizeStatus(finding.Status),
+			finding.ResourceID,
+			finding.ResourceType,
+			string(resourceJSON),
+			finding.Description,
+			finding.Remediation,
+			string(metadataJSON),
+			finding.FirstSeen.UTC(),
+			finding.LastSeen.UTC(),
+			resolvedAt,
+		)
+	}
+
+	_, err := s.db.ExecContext(ctx, s.q(`
+INSERT INTO `+postgresFindingsTable+` (
+	id, policy_id, policy_name, severity, status,
+	resource_id, resource_type, resource_data, description,
+	remediation, metadata, first_seen, last_seen, resolved_at
+) VALUES `+strings.Join(values, ",")+`
+ON CONFLICT (id) DO UPDATE SET
+	policy_id = EXCLUDED.policy_id,
+	policy_name = EXCLUDED.policy_name,
+	severity = EXCLUDED.severity,
+	status = EXCLUDED.status,
+	resource_id = EXCLUDED.resource_id,
+	resource_type = EXCLUDED.resource_type,
+	resource_data = EXCLUDED.resource_data,
+	description = EXCLUDED.description,
+	remediation = EXCLUDED.remediation,
+	metadata = EXCLUDED.metadata,
+	first_seen = EXCLUDED.first_seen,
+	last_seen = EXCLUDED.last_seen,
+	resolved_at = EXCLUDED.resolved_at
+`), args...)
+	if err != nil {
+		return fmt.Errorf("sync findings batch: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) SyncedAt() time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.syncedAt
+}
+
+func (s *PostgresStore) DirtyCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.dirty)
+}
+
+func (s *PostgresStore) q(query string) string {
+	if s != nil && s.rewriteSQL != nil {
+		return s.rewriteSQL(query)
+	}
+	return query
+}
+
+func (s *PostgresStore) findSemanticMatchLocked(semanticKey string) *Finding {
+	if !findingNeedsSemanticMatch(s.semanticDedup, semanticKey) {
 		return nil
 	}
-	return s.db.Close()
+	id, ok := s.semanticIndex[semanticKey]
+	if !ok {
+		return nil
+	}
+	return s.cache[id]
 }
+
+func (s *PostgresStore) syncSemanticIndexLocked(finding *Finding, oldKey string) {
+	if !s.semanticDedup {
+		return
+	}
+	ensureFindingSemanticState(finding)
+	oldKey = strings.TrimSpace(oldKey)
+	if oldKey != "" && oldKey != finding.SemanticKey && s.semanticIndex[oldKey] == finding.ID {
+		delete(s.semanticIndex, oldKey)
+	}
+	if strings.TrimSpace(finding.SemanticKey) != "" {
+		s.semanticIndex[finding.SemanticKey] = finding.ID
+	}
+}
+
+func (s *PostgresStore) indexSemanticFindingLocked(finding *Finding) {
+	if !s.semanticDedup {
+		return
+	}
+	ensureFindingSemanticState(finding)
+	if strings.TrimSpace(finding.SemanticKey) != "" {
+		s.semanticIndex[finding.SemanticKey] = finding.ID
+	}
+}
+
+func (s *PostgresStore) rebuildSemanticIndexLocked() {
+	s.semanticIndex = make(map[string]string, len(s.cache))
+	if !s.semanticDedup {
+		return
+	}
+	for _, finding := range s.cache {
+		s.indexSemanticFindingLocked(finding)
+	}
+}
+
+func placeholderTuple(start, count int) string {
+	parts := make([]string, count)
+	for idx := 0; idx < count; idx++ {
+		parts[idx] = fmt.Sprintf("$%d", start+idx)
+	}
+	return "(" + strings.Join(parts, ", ") + ")"
+}
+
+var _ FindingStore = (*PostgresStore)(nil)

@@ -99,11 +99,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 			return nil
 		},
 		func() error {
-			if application.Findings != nil {
+			if syncer, ok := application.Findings.(interface{ Sync(context.Context) error }); ok {
 				application.Logger.Info("syncing findings before shutdown")
 				syncCtx, syncCancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer syncCancel()
-				return application.Findings.Sync(syncCtx)
+				return syncer.Sync(syncCtx)
 			}
 			return nil
 		},

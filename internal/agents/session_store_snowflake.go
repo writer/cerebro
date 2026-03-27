@@ -114,6 +114,44 @@ func (s *SnowflakeSessionStore) Get(ctx context.Context, id string) (*Session, e
 
 	row := s.db.QueryRowContext(ctx, query, id)
 
+	session, err := scanSnowflakeSession(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return session, nil
+}
+
+func (s *SnowflakeSessionStore) ListAll(ctx context.Context) ([]*Session, error) {
+	// #nosec G202 -- s.tableRef is validated by snowflake.SafeTableRef before interpolation.
+	query := `
+		SELECT id, agent_id, user_id, status, messages, context, created_at, updated_at
+		FROM ` + s.tableRef + `
+		ORDER BY updated_at DESC
+	`
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	sessions := make([]*Session, 0)
+	for rows.Next() {
+		session, err := scanSnowflakeSession(rows)
+		if err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, rows.Err()
+}
+
+func scanSnowflakeSession(row interface {
+	Scan(dest ...any) error
+}) (*Session, error) {
 	var session Session
 	var messagesRaw any
 	var contextRaw any
@@ -131,9 +169,6 @@ func (s *SnowflakeSessionStore) Get(ctx context.Context, id string) (*Session, e
 		&updatedAt,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
 		return nil, err
 	}
 

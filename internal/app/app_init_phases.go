@@ -65,6 +65,9 @@ func (a *App) initPhase1(ctx context.Context) error {
 func (a *App) initPhase2a(ctx context.Context) error {
 	a.initExecutionStore()
 	a.initGraphPersistenceStore()
+	if err := runInitErrorStep("app_state_db", func() error { return a.initAppStateDB(ctx) }); err != nil {
+		return err
+	}
 	if err := runInitErrorStep("graph_store_backend", func() error { return a.initConfiguredSecurityGraphStore(ctx) }); err != nil {
 		return err
 	}
@@ -97,6 +100,9 @@ func (a *App) initPhase2a(ctx context.Context) error {
 		{name: "available_tables", run: func(taskCtx context.Context) { a.initAvailableTables(taskCtx) }},
 	}); err != nil {
 		return fmt.Errorf("phase 2a init failed: %w", err)
+	}
+	if err := runInitErrorStep("app_state_migration", func() error { return a.migrateAppState(ctx) }); err != nil {
+		return err
 	}
 	return nil
 }
