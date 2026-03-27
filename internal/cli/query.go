@@ -9,14 +9,15 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/writer/cerebro/internal/app"
 	apiclient "github.com/writer/cerebro/internal/client"
 	"github.com/writer/cerebro/internal/snowflake"
 )
 
 var queryCmd = &cobra.Command{
 	Use:   "query [sql]",
-	Short: "Execute SQL query against Snowflake",
-	Long: `Execute a SQL query against the Snowflake data warehouse.
+	Short: "Execute SQL query against the configured warehouse",
+	Long: `Execute a SQL query against the configured warehouse.
 
 The query results are displayed in table format by default, with support
 for JSON and CSV output. A LIMIT clause is automatically appended if not present.
@@ -76,24 +77,16 @@ func runQuery(cmd *cobra.Command, args []string) error {
 }
 
 func runQueryDirect(cmd *cobra.Command, args []string) error {
-	dsnCfg := snowflake.DSNConfigFromEnv()
-	if missing := dsnCfg.MissingFields(); len(missing) > 0 {
-		return fmt.Errorf("snowflake not configured: set %s", strings.Join(missing, ", "))
-	}
-
-	client, err := snowflake.NewClient(snowflake.ClientConfig{
-		Account:    dsnCfg.Account,
-		User:       dsnCfg.User,
-		PrivateKey: dsnCfg.PrivateKey,
-		Database:   dsnCfg.Database,
-		Schema:     dsnCfg.Schema,
-		Warehouse:  dsnCfg.Warehouse,
-		Role:       dsnCfg.Role,
-	})
+	queryWarehouse, err := app.OpenWarehouse(commandContextOrBackground(cmd), nil, nil)
 	if err != nil {
-		return fmt.Errorf("connect to snowflake: %w", err)
+		return fmt.Errorf("failed to initialize warehouse: %w", err)
 	}
-	defer func() { _ = client.Close() }()
+	if queryWarehouse == nil {
+		return fmt.Errorf("warehouse not configured")
+	}
+	if closer, ok := queryWarehouse.(interface{ Close() error }); ok {
+		defer func() { _ = closer.Close() }()
+	}
 
 	query := strings.Join(args, " ")
 	upperQuery := strings.ToUpper(strings.TrimSpace(query))
@@ -105,7 +98,7 @@ func runQueryDirect(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(commandContextOrBackground(cmd), 60*time.Second)
 	defer cancel()
 
-	result, err := client.Query(ctx, query)
+	result, err := queryWarehouse.Query(ctx, query)
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}

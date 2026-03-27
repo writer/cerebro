@@ -77,7 +77,7 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 		application.Config.GitLabToken,
 		application.Config.GitLabBaseURL,
 	)
-	tools := agents.NewSecurityTools(application.Snowflake, application.Findings, application.Policy, scmClient)
+	tools := agents.NewSecurityTools(application.Warehouse, application.Findings, application.Policy, scmClient)
 	useDistributed := agentRunDistributed || distributedJobsConfigured(application.Config)
 	if useDistributed {
 		return runDistributedAgentFlow(ctx, application, tools)
