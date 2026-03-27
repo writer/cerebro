@@ -491,7 +491,6 @@ type Config struct {
 	GraphStoreNeptunePoolDrainTimeout        time.Duration
 	GraphSnapshotPath                        string
 	GraphSnapshotMaxRetained                 int
-	GraphSnapshotReplicaURI                  string
 	GraphWriterLeaseEnabled                  bool
 	GraphWriterLeaseBucket                   string
 	GraphWriterLeaseName                     string
@@ -900,7 +899,6 @@ func LoadConfig() *Config {
 				GraphStoreNeptunePoolDrainTimeout:        getEnvDuration("GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT", defaultNeptunePool.DrainTimeout),
 				GraphSnapshotPath:                        getEnv("GRAPH_SNAPSHOT_PATH", filepath.Join(".cerebro", "graph-snapshots")),
 				GraphSnapshotMaxRetained:                 getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
-				GraphSnapshotReplicaURI:                  getEnv("GRAPH_SNAPSHOT_REPLICA_URI", ""),
 				GraphWriterLeaseEnabled:                  getEnvBool("GRAPH_WRITER_LEASE_ENABLED", false),
 				GraphWriterLeaseBucket:                   getEnv("GRAPH_WRITER_LEASE_BUCKET", defaultGraphWriterLeaseBucket),
 				GraphWriterLeaseName:                     getEnv("GRAPH_WRITER_LEASE_NAME", defaultGraphWriterLeaseName),

@@ -1,6 +1,9 @@
 package graph
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalizeScaleProfileSpec(t *testing.T) {
 	spec := NormalizeScaleProfileSpec(ScaleProfileSpec{
@@ -74,6 +77,46 @@ func TestProfileSyntheticScaleRejectsUnboundedInputs(t *testing.T) {
 		QueryIterations: maxScaleProfileQueryIterations + 1,
 	}); err == nil {
 		t.Fatal("expected query-iteration error")
+	}
+}
+
+func TestRecommendScalePathPrefersNeptuneAlignedGuidance(t *testing.T) {
+	tests := []struct {
+		name        string
+		measurement ScaleProfileMeasurement
+		wantPath    string
+		wantPhrase  string
+	}{
+		{
+			name:        "single node hot graph",
+			measurement: ScaleProfileMeasurement{HeapAllocBytes: 64 * 1024 * 1024, CopyOnWriteDurationMS: 12},
+			wantPath:    "single_node_hot_graph",
+			wantPhrase:  "rely on Neptune as the durable system of record",
+		},
+		{
+			name:        "tenant sharded hot graph",
+			measurement: ScaleProfileMeasurement{HeapAllocBytes: 768 * 1024 * 1024, CopyOnWriteDurationMS: 300},
+			wantPath:    "tenant_sharded_hot_graph",
+			wantPhrase:  "Neptune-backed reads",
+		},
+		{
+			name:        "hybrid persistent graph",
+			measurement: ScaleProfileMeasurement{HeapAllocBytes: 2 * 1024 * 1024 * 1024, CopyOnWriteDurationMS: 1600},
+			wantPath:    "hybrid_persistent_graph",
+			wantPhrase:  "durable backing storage",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path, recommendation := recommendScalePath([]ScaleProfileMeasurement{tt.measurement})
+			if path != tt.wantPath {
+				t.Fatalf("recommendScalePath() path = %q, want %q", path, tt.wantPath)
+			}
+			if recommendation == "" || !strings.Contains(recommendation, tt.wantPhrase) {
+				t.Fatalf("recommendScalePath() recommendation = %q, want phrase %q", recommendation, tt.wantPhrase)
+			}
+		})
 	}
 }
 

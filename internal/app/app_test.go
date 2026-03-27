@@ -834,6 +834,33 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 	}
 }
 
+func TestLoadConfigValidateDistributedJobsRequirePostgresAndNATS(t *testing.T) {
+	cfg := LoadConfig()
+	cfg.JobDatabaseURL = "postgres://jobs:jobs@localhost:5432/cerebro?sslmode=disable"
+	cfg.NATSJetStreamURLs = nil
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+
+	var validationErr *ConfigValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ConfigValidationError, got %T", err)
+	}
+
+	found := false
+	for _, problem := range validationErr.Problems {
+		if strings.Contains(problem, "NATS_URLS must include at least one URL when JOB_DATABASE_URL is configured") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected distributed jobs validation failure, got %#v", validationErr.Problems)
+	}
+}
+
 func TestLoadConfigValidateRejectsUnsupportedGraphStoreBackends(t *testing.T) {
 	for _, backend := range []string{"legacy", "memory"} {
 		t.Run(backend, func(t *testing.T) {

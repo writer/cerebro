@@ -2,18 +2,13 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/health"
-	"github.com/writer/cerebro/internal/metrics"
 )
-
-var errTapGraphConsumerAuditMutationDeferred = errors.New("tap graph consumer follower replica deferred audit mutation event until writer lease is held")
 
 func (a *App) initTapGraphConsumer(ctx context.Context) {
 	if a == nil || a.Config == nil {
@@ -38,6 +33,9 @@ func (a *App) startTapGraphConsumer(ctx context.Context) {
 	if !a.Config.NATSConsumerEnabled {
 		return
 	}
+	if !a.graphWriterLeaseAllowsWrites() {
+		return
+	}
 	a.tapConsumerMu.Lock()
 	defer a.tapConsumerMu.Unlock()
 	durable := a.tapGraphConsumerDurable()
@@ -56,12 +54,8 @@ func (a *App) startTapGraphConsumer(ctx context.Context) {
 	if len(subjects) == 0 {
 		return
 	}
-	var consumer atomic.Pointer[events.Consumer]
 	handler := func(handlerCtx context.Context, evt events.CloudEvent) error {
-		currentConsumer := consumer.Load()
-		err := a.handleTapGraphConsumerEvent(handlerCtx, evt)
-		a.updateGraphReplicaLagMetric(currentConsumer)
-		return err
+		return a.handleTapGraphConsumerEvent(handlerCtx, evt)
 	}
 
 	created, err := events.NewJetStreamConsumer(events.ConsumerConfig{
@@ -98,17 +92,14 @@ func (a *App) startTapGraphConsumer(ctx context.Context) {
 		a.Logger.Warn("failed to initialize tap graph consumer", "error", err)
 		return
 	}
-	consumer.Store(created)
 	a.TapConsumer = created
 	a.tapConsumerDurable = durable
 	a.tapConsumerSubjects = append([]string(nil), subjects...)
-	a.updateGraphReplicaLagMetric(created)
 	a.initEventCorrelationRefreshLoop(ctx)
 	if a.Health != nil {
 		a.Health.Register("tap_consumer", func(_ context.Context) health.CheckResult {
 			start := time.Now().UTC()
 			snapshot := created.HealthSnapshot(start)
-			a.updateGraphReplicaLagMetric(created)
 			status := health.StatusHealthy
 			message := "consumer healthy"
 			graphStaleness := snapshot.GraphStaleness
@@ -154,23 +145,7 @@ func (a *App) startTapGraphConsumer(ctx context.Context) {
 }
 
 func (a *App) handleTapGraphConsumerEvent(ctx context.Context, evt events.CloudEvent) error {
-	if !a.graphWriterLeaseAllowsWrites() {
-		if isAuditMutationEventType(cloudEventType(evt)) {
-			return events.RetryWithDelay(errTapGraphConsumerAuditMutationDeferred, a.tapGraphAuditMutationRetryDelay())
-		}
-		ctx = withGraphReplicaReplay(ctx)
-	}
 	return a.handleGraphCloudEvent(ctx, evt)
-}
-
-func (a *App) tapGraphAuditMutationRetryDelay() time.Duration {
-	if a == nil || a.Config == nil {
-		return 0
-	}
-	if a.Config.GraphWriterLeaseHeartbeat > 0 {
-		return a.Config.GraphWriterLeaseHeartbeat
-	}
-	return a.Config.NATSConsumerFetchTimeout
 }
 
 func (a *App) stopTapGraphConsumer(ctx context.Context) error {
@@ -191,7 +166,6 @@ func (a *App) stopTapGraphConsumerLocked(ctx context.Context) error {
 		a.TapConsumer = nil
 		a.tapConsumerDurable = ""
 		a.tapConsumerSubjects = nil
-		metrics.SetGraphReplicaLagMutations(0)
 	}()
 	if consumer == nil {
 		return nil
@@ -210,42 +184,14 @@ func (a *App) tapGraphConsumerSubjects() []string {
 	if a == nil || a.Config == nil {
 		return nil
 	}
-	subjects := normalizeTapGraphConsumerSubjects(a.Config.NATSConsumerSubjects)
-	if len(subjects) == 0 {
-		return nil
-	}
-	if !a.Config.GraphWriterLeaseEnabled || a.graphWriterLeaseAllowsWrites() {
-		return subjects
-	}
-	filtered := make([]string, 0, len(subjects))
-	for _, subject := range subjects {
-		if isFollowerTapGraphConsumerSubject(subject) {
-			filtered = append(filtered, subject)
-		}
-	}
-	return filtered
+	return normalizeTapGraphConsumerSubjects(a.Config.NATSConsumerSubjects)
 }
 
 func (a *App) tapGraphConsumerDurable() string {
 	if a == nil || a.Config == nil {
 		return ""
 	}
-	base := strings.TrimSpace(a.Config.NATSConsumerDurable)
-	if !a.Config.GraphWriterLeaseEnabled {
-		return base
-	}
-	owner := strings.TrimSpace(a.Config.GraphWriterLeaseOwnerID)
-	if host, _, ok := strings.Cut(owner, ":"); ok && strings.TrimSpace(host) != "" {
-		owner = strings.TrimSpace(host)
-	}
-	owner = sanitizeJetStreamConsumerName(owner)
-	if owner == "" {
-		return base
-	}
-	if base == "" {
-		return owner
-	}
-	return base + "_" + owner
+	return strings.TrimSpace(a.Config.NATSConsumerDurable)
 }
 
 func (a *App) tapGraphConsumerConfigMatchesLocked(durable string, subjects []string) bool {
@@ -288,44 +234,4 @@ func tapGraphConsumerSubjectsEqual(left, right []string) bool {
 		}
 	}
 	return true
-}
-
-func isFollowerTapGraphConsumerSubject(subject string) bool {
-	subject = strings.ToLower(strings.TrimSpace(subject))
-	return strings.HasPrefix(subject, "ensemble.tap.")
-}
-
-func sanitizeJetStreamConsumerName(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	var b strings.Builder
-	for _, r := range value {
-		switch {
-		case r >= 'a' && r <= 'z':
-			b.WriteRune(r)
-		case r >= 'A' && r <= 'Z':
-			b.WriteRune(r)
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '-' || r == '_':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('_')
-		}
-	}
-	return strings.Trim(b.String(), "_")
-}
-
-func (a *App) updateGraphReplicaLagMetric(consumer *events.Consumer) {
-	if consumer == nil {
-		metrics.SetGraphReplicaLagMutations(0)
-		return
-	}
-	if a == nil || a.Config == nil || !a.Config.GraphWriterLeaseEnabled || a.graphWriterLeaseAllowsWrites() {
-		metrics.SetGraphReplicaLagMutations(0)
-		return
-	}
-	metrics.SetGraphReplicaLagMutations(consumer.HealthSnapshot(time.Now().UTC()).ConsumerLag)
 }

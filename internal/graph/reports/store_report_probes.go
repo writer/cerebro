@@ -6,8 +6,8 @@ import (
 	graph "github.com/writer/cerebro/internal/graph"
 )
 
-// ClaimConflictReportParityProbe builds a reusable claim-conflict parity probe.
-func ClaimConflictReportParityProbe(name string, opts ClaimConflictReportOptions) graph.StoreReportProbe {
+// ClaimConflictReportProbe builds a reusable claim-conflict snapshot report probe.
+func ClaimConflictReportProbe(name string, opts ClaimConflictReportOptions) graph.StoreReportProbe {
 	now := time.Now().UTC()
 	if opts.ValidAt.IsZero() {
 		opts.ValidAt = now
@@ -23,8 +23,8 @@ func ClaimConflictReportParityProbe(name string, opts ClaimConflictReportOptions
 	}
 }
 
-// EntitySummaryReportParityProbe builds a reusable entity-summary parity probe.
-func EntitySummaryReportParityProbe(name string, opts EntitySummaryReportOptions) graph.StoreReportProbe {
+// EntitySummaryReportProbe builds a reusable entity-summary snapshot report probe.
+func EntitySummaryReportProbe(name string, opts EntitySummaryReportOptions) graph.StoreReportProbe {
 	now := time.Now().UTC()
 	if opts.ValidAt.IsZero() {
 		opts.ValidAt = now
@@ -47,8 +47,8 @@ func EntitySummaryReportParityProbe(name string, opts EntitySummaryReportOptions
 	}
 }
 
-// EvaluationTemporalAnalysisReportParityProbe builds a reusable evaluation-temporal parity probe.
-func EvaluationTemporalAnalysisReportParityProbe(name string, opts EvaluationTemporalAnalysisReportOptions) graph.StoreReportProbe {
+// EvaluationTemporalAnalysisReportProbe builds a reusable evaluation-temporal snapshot report probe.
+func EvaluationTemporalAnalysisReportProbe(name string, opts EvaluationTemporalAnalysisReportOptions) graph.StoreReportProbe {
 	if opts.Now.IsZero() {
 		opts.Now = time.Now().UTC()
 	}
@@ -60,8 +60,8 @@ func EvaluationTemporalAnalysisReportParityProbe(name string, opts EvaluationTem
 	}
 }
 
-// PlaybookEffectivenessReportParityProbe builds a reusable playbook-effectiveness parity probe.
-func PlaybookEffectivenessReportParityProbe(name string, opts PlaybookEffectivenessReportOptions) graph.StoreReportProbe {
+// PlaybookEffectivenessReportProbe builds a reusable playbook-effectiveness snapshot report probe.
+func PlaybookEffectivenessReportProbe(name string, opts PlaybookEffectivenessReportOptions) graph.StoreReportProbe {
 	if opts.Now.IsZero() {
 		opts.Now = time.Now().UTC()
 	}
