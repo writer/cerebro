@@ -193,6 +193,35 @@ func TestLoadConfigGraphStoreBackendDefaultsToNeptune(t *testing.T) {
 	}
 }
 
+func TestLoadConfigGraphSearchOpenSearchSettings(t *testing.T) {
+	t.Setenv("GRAPH_SEARCH_BACKEND", "opensearch")
+	t.Setenv("GRAPH_SEARCH_OPENSEARCH_ENDPOINT", "https://search.example.com")
+	t.Setenv("AWS_REGION", "us-west-2")
+	t.Setenv("GRAPH_SEARCH_OPENSEARCH_INDEX", "cerebro-entities")
+	t.Setenv("GRAPH_SEARCH_REQUEST_TIMEOUT", "7s")
+	t.Setenv("GRAPH_SEARCH_MAX_CANDIDATES", "123")
+
+	cfg := LoadConfig()
+	if cfg.GraphSearchBackend != "opensearch" {
+		t.Fatalf("expected graph search backend opensearch, got %q", cfg.GraphSearchBackend)
+	}
+	if cfg.GraphSearchOpenSearchEndpoint != "https://search.example.com" {
+		t.Fatalf("expected graph search endpoint override, got %q", cfg.GraphSearchOpenSearchEndpoint)
+	}
+	if cfg.GraphSearchOpenSearchRegion != "us-west-2" {
+		t.Fatalf("expected graph search region fallback from AWS_REGION, got %q", cfg.GraphSearchOpenSearchRegion)
+	}
+	if cfg.GraphSearchOpenSearchIndex != "cerebro-entities" {
+		t.Fatalf("expected graph search index override, got %q", cfg.GraphSearchOpenSearchIndex)
+	}
+	if cfg.GraphSearchRequestTimeout != 7*time.Second {
+		t.Fatalf("expected graph search timeout 7s, got %s", cfg.GraphSearchRequestTimeout)
+	}
+	if cfg.GraphSearchMaxCandidates != 123 {
+		t.Fatalf("expected graph search max candidates 123, got %d", cfg.GraphSearchMaxCandidates)
+	}
+}
+
 func TestDefaultGraphStoreBackendForProcess(t *testing.T) {
 	if got := defaultGraphStoreBackendForProcess(true); got != "neptune" {
 		t.Fatalf("defaultGraphStoreBackendForProcess(test) = %q, want neptune", got)
@@ -875,6 +904,56 @@ func TestLoadConfigValidateRejectsUnsupportedGraphStoreBackends(t *testing.T) {
 				t.Fatalf("expected graph store backend validation failure, got %v", err)
 			}
 		})
+	}
+}
+
+func TestLoadConfigValidateRejectsUnsupportedGraphSearchBackends(t *testing.T) {
+	t.Setenv("GRAPH_SEARCH_BACKEND", "legacy")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+	if !strings.Contains(err.Error(), "GRAPH_SEARCH_BACKEND must be one of graph, opensearch") {
+		t.Fatalf("expected graph search backend validation failure, got %v", err)
+	}
+}
+
+func TestLoadConfigValidateOpenSearchGraphSearchControls(t *testing.T) {
+	t.Setenv("GRAPH_SEARCH_BACKEND", "opensearch")
+	t.Setenv("GRAPH_SEARCH_REQUEST_TIMEOUT", "0s")
+	t.Setenv("GRAPH_SEARCH_MAX_CANDIDATES", "0")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+
+	var validationErr *ConfigValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ConfigValidationError, got %T", err)
+	}
+
+	wantProblems := []string{
+		"GRAPH_SEARCH_OPENSEARCH_ENDPOINT is required when GRAPH_SEARCH_BACKEND=opensearch",
+		"GRAPH_SEARCH_OPENSEARCH_REGION is required when GRAPH_SEARCH_BACKEND=opensearch",
+		"GRAPH_SEARCH_OPENSEARCH_INDEX is required when GRAPH_SEARCH_BACKEND=opensearch",
+		"GRAPH_SEARCH_REQUEST_TIMEOUT must be > 0",
+		"GRAPH_SEARCH_MAX_CANDIDATES must be > 0",
+	}
+	for _, want := range wantProblems {
+		found := false
+		for _, problem := range validationErr.Problems {
+			if strings.Contains(problem, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected validation problem containing %q, got %#v", want, validationErr.Problems)
+		}
 	}
 }
 

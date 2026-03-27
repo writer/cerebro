@@ -71,6 +71,9 @@ func (a *App) initPhase2a(ctx context.Context) error {
 	if err := runInitErrorStep("graph_writer_lease", func() error { return a.initGraphWriterLease(ctx) }); err != nil {
 		return err
 	}
+	if err := runInitErrorStep("entity_search_backend", func() error { return a.initEntitySearchBackend(ctx) }); err != nil {
+		return err
+	}
 
 	if err := runInitTasksConcurrently(ctx, []concurrentInitTask{
 		{name: "cache", run: func(context.Context) { a.initCache() }},

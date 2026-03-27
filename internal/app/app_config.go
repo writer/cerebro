@@ -489,6 +489,12 @@ type Config struct {
 	GraphStoreNeptunePoolMaxClientLifetime   time.Duration
 	GraphStoreNeptunePoolMaxClientUses       int
 	GraphStoreNeptunePoolDrainTimeout        time.Duration
+	GraphSearchBackend                       string
+	GraphSearchOpenSearchEndpoint            string
+	GraphSearchOpenSearchRegion              string
+	GraphSearchOpenSearchIndex               string
+	GraphSearchRequestTimeout                time.Duration
+	GraphSearchMaxCandidates                 int
 	GraphSnapshotPath                        string
 	GraphSnapshotMaxRetained                 int
 	GraphWriterLeaseEnabled                  bool
@@ -897,6 +903,12 @@ func LoadConfig() *Config {
 				GraphStoreNeptunePoolMaxClientLifetime:   getEnvDuration("GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_LIFETIME", defaultNeptunePool.MaxClientLifetime),
 				GraphStoreNeptunePoolMaxClientUses:       getEnvInt("GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_USES", defaultNeptunePool.MaxClientUses),
 				GraphStoreNeptunePoolDrainTimeout:        getEnvDuration("GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT", defaultNeptunePool.DrainTimeout),
+				GraphSearchBackend:                       getEnv("GRAPH_SEARCH_BACKEND", defaultGraphSearchBackend()),
+				GraphSearchOpenSearchEndpoint:            getEnv("GRAPH_SEARCH_OPENSEARCH_ENDPOINT", ""),
+				GraphSearchOpenSearchRegion:              getEnv("GRAPH_SEARCH_OPENSEARCH_REGION", getEnv("AWS_REGION", "")),
+				GraphSearchOpenSearchIndex:               getEnv("GRAPH_SEARCH_OPENSEARCH_INDEX", ""),
+				GraphSearchRequestTimeout:                getEnvDuration("GRAPH_SEARCH_REQUEST_TIMEOUT", 5*time.Second),
+				GraphSearchMaxCandidates:                 getEnvInt("GRAPH_SEARCH_MAX_CANDIDATES", 100),
 				GraphSnapshotPath:                        getEnv("GRAPH_SNAPSHOT_PATH", filepath.Join(".cerebro", "graph-snapshots")),
 				GraphSnapshotMaxRetained:                 getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
 				GraphWriterLeaseEnabled:                  getEnvBool("GRAPH_WRITER_LEASE_ENABLED", false),

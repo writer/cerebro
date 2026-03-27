@@ -321,6 +321,11 @@ func (a *App) Close() error {
 			errs = append(errs, fmt.Errorf("webhooks: %w", err))
 		}
 	}
+	if a.configuredEntitySearchClose != nil {
+		if err := a.configuredEntitySearchClose(); err != nil {
+			errs = append(errs, fmt.Errorf("configured entity search backend: %w", err))
+		}
+	}
 	if a.configuredSecurityGraphClose != nil {
 		if err := a.configuredSecurityGraphClose(); err != nil {
 			errs = append(errs, fmt.Errorf("configured graph store: %w", err))

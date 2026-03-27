@@ -24,6 +24,10 @@ func defaultGraphStoreBackend() string {
 	return defaultGraphStoreBackendForProcess(runningUnderGoTest())
 }
 
+func defaultGraphSearchBackend() string {
+	return string(graph.EntitySearchBackendGraph)
+}
+
 func (c *Config) graphStoreBackend() graph.StoreBackend {
 	if c == nil {
 		return graph.ParseStoreBackend(defaultGraphStoreBackend())
@@ -32,6 +36,16 @@ func (c *Config) graphStoreBackend() graph.StoreBackend {
 		return graph.ParseStoreBackend(defaultGraphStoreBackend())
 	}
 	return graph.ParseStoreBackend(c.GraphStoreBackend)
+}
+
+func (c *Config) graphSearchBackend() graph.EntitySearchBackendType {
+	if c == nil {
+		return graph.ParseEntitySearchBackend(defaultGraphSearchBackend())
+	}
+	if strings.TrimSpace(c.GraphSearchBackend) == "" {
+		return graph.ParseEntitySearchBackend(defaultGraphSearchBackend())
+	}
+	return graph.ParseEntitySearchBackend(c.GraphSearchBackend)
 }
 
 func (c *Config) allowMissingGraphStoreEndpoint() bool {
