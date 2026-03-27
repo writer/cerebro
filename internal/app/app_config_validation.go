@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/writer/cerebro/internal/graph"
@@ -50,6 +51,15 @@ func normalizeConfigProblems(problems []string) []string {
 
 func addConfigProblem(problems []string, format string, args ...any) []string {
 	return append(problems, fmt.Sprintf(format, args...))
+}
+
+func hasNonEmptyEnv(names ...string) bool {
+	for _, name := range names {
+		if strings.TrimSpace(os.Getenv(name)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // ConfigValidationRules returns the catalog of startup validation rules used by Config.Validate.
@@ -150,6 +160,26 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Category: "dependency",
 		},
 		{
+			EnvVars: []string{
+				"JOB_DATABASE_URL",
+				"NATS_URLS",
+				"JOB_NATS_STREAM",
+				"JOB_NATS_SUBJECT",
+				"JOB_NATS_CONSUMER",
+				"JOB_WORKER_CONCURRENCY",
+				"JOB_VISIBILITY_TIMEOUT",
+				"JOB_POLL_WAIT",
+				"JOB_MAX_ATTEMPTS",
+			},
+			Summary:  "when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive",
+			Category: "dependency",
+		},
+		{
+			EnvVars:  []string{"JOB_QUEUE_URL", "JOB_TABLE_NAME", "JOB_REGION", "JOB_IDEMPOTENCY_TABLE_NAME"},
+			Summary:  "legacy SQS/Dynamo job settings are not supported; use JOB_DATABASE_URL with JOB_NATS_STREAM, JOB_NATS_SUBJECT, and JOB_NATS_CONSUMER",
+			Category: "dependency",
+		},
+		{
 			EnvVars:  []string{"FINDING_ATTESTATION_ENABLED", "FINDING_ATTESTATION_SIGNING_KEY", "FINDING_ATTESTATION_TIMEOUT"},
 			Summary:  "when FINDING_ATTESTATION_ENABLED=true, the signing key is required and timeout must be positive",
 			Category: "dependency",
@@ -171,30 +201,38 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Summary:  "when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true, signing key is required and skew/TTL/support thresholds must be positive",
 			Category: "dependency",
 		},
-		{EnvVars: []string{"GRAPH_STORE_BACKEND"}, Summary: "must be one of memory, neptune, spanner", Category: "enum"},
-		{
-			EnvVars:  []string{"GRAPH_STORE_BACKEND", "GRAPH_STORE_ALLOW_IN_MEMORY"},
-			Summary:  "GRAPH_STORE_BACKEND=memory is restricted to tests and explicit local opt-in",
-			Category: "dependency",
-		},
+		{EnvVars: []string{"GRAPH_STORE_BACKEND"}, Summary: "must be neptune", Category: "enum"},
+		{EnvVars: []string{"GRAPH_STORE_ALLOW_IN_MEMORY"}, Summary: "is not supported", Category: "dependency"},
 		{
 			EnvVars:  []string{"GRAPH_STORE_BACKEND", "GRAPH_STORE_NEPTUNE_ENDPOINT"},
 			Summary:  "when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required",
 			Category: "dependency",
 		},
 		{
-			EnvVars:  []string{"GRAPH_STORE_BACKEND", "GRAPH_STORE_SPANNER_DATABASE", "GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP"},
-			Summary:  "when GRAPH_STORE_BACKEND=spanner, the Cloud Spanner database is required and optional bootstrap reuses the bundled graph-store schema DDL",
+			EnvVars:  []string{"GRAPH_STORE_SPANNER_DATABASE", "GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP"},
+			Summary:  "Spanner graph-store settings are not supported",
 			Category: "dependency",
 		},
 		{
-			EnvVars:  []string{"GRAPH_STORE_SECONDARY_BACKEND"},
-			Summary:  "must be empty or one of neptune, spanner",
-			Category: "enum",
-		},
-		{
-			EnvVars:  []string{"GRAPH_STORE_SECONDARY_BACKEND", "GRAPH_STORE_DUAL_WRITE_MODE", "GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH"},
-			Summary:  "when a secondary backend is configured, dual-write mode must be valid and best-effort reconciliation must have a queue path",
+			EnvVars: []string{
+				"GRAPH_STORE_SECONDARY_BACKEND",
+				"GRAPH_STORE_SECONDARY_NEPTUNE_ENDPOINT",
+				"GRAPH_STORE_SECONDARY_NEPTUNE_REGION",
+				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE",
+				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL",
+				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT",
+				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME",
+				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES",
+				"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT",
+				"GRAPH_STORE_SECONDARY_SPANNER_DATABASE",
+				"GRAPH_STORE_SECONDARY_SPANNER_AUTO_BOOTSTRAP",
+				"GRAPH_STORE_DUAL_WRITE_MODE",
+				"GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH",
+				"GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED",
+				"GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL",
+				"GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE",
+			},
+			Summary:  "secondary graph-store and dual-write settings are not supported",
 			Category: "dependency",
 		},
 		{EnvVars: []string{"GRAPH_TENANT_SHARD_IDLE_TTL"}, Summary: "must be greater than 0", Category: "range"},
@@ -503,7 +541,7 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	if strings.TrimSpace(c.JobQueueURL) != "" || strings.TrimSpace(c.JobTableName) != "" || strings.TrimSpace(c.JobRegion) != "" || strings.TrimSpace(c.JobIdempotencyTableName) != "" {
+	if hasNonEmptyEnv("JOB_QUEUE_URL", "JOB_TABLE_NAME", "JOB_REGION", "JOB_IDEMPOTENCY_TABLE_NAME") {
 		problems = addConfigProblem(problems, "legacy SQS/Dynamo job settings are not supported; use JOB_DATABASE_URL with JOB_NATS_STREAM, JOB_NATS_SUBJECT, and JOB_NATS_CONSUMER")
 	}
 

@@ -880,6 +880,19 @@ func TestLoadConfigValidateGraphStoreBackendRequirements(t *testing.T) {
 	}
 }
 
+func TestLoadConfigValidateRejectsLegacyJobQueueSettings(t *testing.T) {
+	t.Setenv("JOB_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789012/jobs")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+	if !strings.Contains(err.Error(), "legacy SQS/Dynamo job settings are not supported") {
+		t.Fatalf("expected legacy job runtime validation failure, got %v", err)
+	}
+}
+
 func TestLoadConfigValidateNeptunePoolControls(t *testing.T) {
 	t.Setenv("GRAPH_STORE_BACKEND", "neptune")
 	t.Setenv("GRAPH_STORE_NEPTUNE_ENDPOINT", "https://example.neptune.amazonaws.com")

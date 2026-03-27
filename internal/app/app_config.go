@@ -448,18 +448,14 @@ type Config struct {
 	FindingAttestationAttestReobserved bool
 
 	// Distributed jobs
-	JobDatabaseURL          string
-	JobNATSStream           string
-	JobNATSSubject          string
-	JobNATSConsumer         string
-	JobQueueURL             string
-	JobTableName            string
-	JobRegion               string
-	JobWorkerConcurrency    int
-	JobVisibilityTimeout    time.Duration
-	JobPollWait             time.Duration
-	JobMaxAttempts          int
-	JobIdempotencyTableName string
+	JobDatabaseURL       string
+	JobNATSStream        string
+	JobNATSSubject       string
+	JobNATSConsumer      string
+	JobWorkerConcurrency int
+	JobVisibilityTimeout time.Duration
+	JobPollWait          time.Duration
+	JobMaxAttempts       int
 
 	// Rate Limiting
 	RateLimitEnabled        bool
@@ -888,14 +884,10 @@ func LoadConfig() *Config {
 				JobNATSStream:                            getEnv("JOB_NATS_STREAM", "CEREBRO_JOBS"),
 				JobNATSSubject:                           getEnv("JOB_NATS_SUBJECT", "cerebro.jobs"),
 				JobNATSConsumer:                          getEnv("JOB_NATS_CONSUMER", "job-worker"),
-				JobQueueURL:                              getEnv("JOB_QUEUE_URL", ""),
-				JobTableName:                             getEnv("JOB_TABLE_NAME", ""),
-				JobRegion:                                getEnv("JOB_REGION", ""),
 				JobWorkerConcurrency:                     getEnvInt("JOB_WORKER_CONCURRENCY", 4),
 				JobVisibilityTimeout:                     getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
 				JobPollWait:                              getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
 				JobMaxAttempts:                           getEnvInt("JOB_MAX_ATTEMPTS", 3),
-				JobIdempotencyTableName:                  getEnv("JOB_IDEMPOTENCY_TABLE_NAME", ""),
 				RateLimitEnabled:                         getEnvBool("RATE_LIMIT_ENABLED", false),
 				RateLimitRequests:                        getEnvInt("RATE_LIMIT_REQUESTS", 1000),
 				RateLimitWindow:                          getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
