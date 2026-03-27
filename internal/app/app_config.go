@@ -448,6 +448,10 @@ type Config struct {
 	FindingAttestationAttestReobserved bool
 
 	// Distributed jobs
+	JobDatabaseURL          string
+	JobNATSStream           string
+	JobNATSSubject          string
+	JobNATSConsumer         string
 	JobQueueURL             string
 	JobTableName            string
 	JobRegion               string
@@ -880,9 +884,13 @@ func LoadConfig() *Config {
 				FindingAttestationLogURL:                 getEnv("FINDING_ATTESTATION_LOG_URL", ""),
 				FindingAttestationTimeout:                getEnvDuration("FINDING_ATTESTATION_TIMEOUT", 3*time.Second),
 				FindingAttestationAttestReobserved:       getEnvBool("FINDING_ATTESTATION_ATTEST_REOBSERVED", false),
+				JobDatabaseURL:                           getEnv("JOB_DATABASE_URL", ""),
+				JobNATSStream:                            getEnv("JOB_NATS_STREAM", "CEREBRO_JOBS"),
+				JobNATSSubject:                           getEnv("JOB_NATS_SUBJECT", "cerebro.jobs"),
+				JobNATSConsumer:                          getEnv("JOB_NATS_CONSUMER", "job-worker"),
 				JobQueueURL:                              getEnv("JOB_QUEUE_URL", ""),
 				JobTableName:                             getEnv("JOB_TABLE_NAME", ""),
-				JobRegion:                                getEnv("JOB_REGION", getEnv("AWS_REGION", "")),
+				JobRegion:                                getEnv("JOB_REGION", ""),
 				JobWorkerConcurrency:                     getEnvInt("JOB_WORKER_CONCURRENCY", 4),
 				JobVisibilityTimeout:                     getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
 				JobPollWait:                              getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
@@ -909,7 +917,7 @@ func LoadConfig() *Config {
 				GraphCrossTenantMinTenants:               getEnvInt("GRAPH_CROSS_TENANT_MIN_TENANTS", 2),
 				GraphCrossTenantMinSupport:               getEnvInt("GRAPH_CROSS_TENANT_MIN_SUPPORT", 2),
 				GraphStoreBackend:                        getEnv("GRAPH_STORE_BACKEND", defaultGraphStoreBackend()),
-				GraphStoreAllowInMemory:                  getEnvBool("GRAPH_STORE_ALLOW_IN_MEMORY", runningUnderGoTest()),
+				GraphStoreAllowInMemory:                  getEnvBool("GRAPH_STORE_ALLOW_IN_MEMORY", false),
 				GraphStoreNeptuneEndpoint:                getEnv("GRAPH_STORE_NEPTUNE_ENDPOINT", ""),
 				GraphStoreNeptuneRegion:                  getEnv("GRAPH_STORE_NEPTUNE_REGION", getEnv("AWS_REGION", "us-east-1")),
 				GraphStoreNeptunePoolSize:                getEnvInt("GRAPH_STORE_NEPTUNE_POOL_SIZE", defaultNeptunePool.Size),
@@ -922,20 +930,20 @@ func LoadConfig() *Config {
 				GraphStoreSpannerAutoBootstrap:           getEnvBool("GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP", false),
 				GraphStoreSecondaryBackend:               getEnv("GRAPH_STORE_SECONDARY_BACKEND", ""),
 				GraphStoreSecondaryNeptuneEndpoint:       getEnv("GRAPH_STORE_SECONDARY_NEPTUNE_ENDPOINT", ""),
-				GraphStoreSecondaryNeptuneRegion:         getEnv("GRAPH_STORE_SECONDARY_NEPTUNE_REGION", getEnv("GRAPH_STORE_NEPTUNE_REGION", getEnv("AWS_REGION", "us-east-1"))),
-				GraphStoreSecondaryNeptunePoolSize:       getEnvInt("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE", defaultNeptunePool.Size),
-				GraphStoreSecondaryNeptunePoolHealthCheckInterval: getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL", defaultNeptunePool.HealthCheckInterval),
-				GraphStoreSecondaryNeptunePoolHealthCheckTimeout:  getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT", defaultNeptunePool.HealthCheckTimeout),
-				GraphStoreSecondaryNeptunePoolMaxClientLifetime:   getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME", defaultNeptunePool.MaxClientLifetime),
-				GraphStoreSecondaryNeptunePoolMaxClientUses:       getEnvInt("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES", defaultNeptunePool.MaxClientUses),
-				GraphStoreSecondaryNeptunePoolDrainTimeout:        getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT", defaultNeptunePool.DrainTimeout),
+				GraphStoreSecondaryNeptuneRegion:         getEnv("GRAPH_STORE_SECONDARY_NEPTUNE_REGION", ""),
+				GraphStoreSecondaryNeptunePoolSize:       getEnvInt("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE", 0),
+				GraphStoreSecondaryNeptunePoolHealthCheckInterval: getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL", 0),
+				GraphStoreSecondaryNeptunePoolHealthCheckTimeout:  getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT", 0),
+				GraphStoreSecondaryNeptunePoolMaxClientLifetime:   getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME", 0),
+				GraphStoreSecondaryNeptunePoolMaxClientUses:       getEnvInt("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES", 0),
+				GraphStoreSecondaryNeptunePoolDrainTimeout:        getEnvDuration("GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT", 0),
 				GraphStoreSecondarySpannerDatabase:                getEnv("GRAPH_STORE_SECONDARY_SPANNER_DATABASE", ""),
 				GraphStoreSecondarySpannerAutoBootstrap:           getEnvBool("GRAPH_STORE_SECONDARY_SPANNER_AUTO_BOOTSTRAP", false),
 				GraphStoreDualWriteMode:                           getEnv("GRAPH_STORE_DUAL_WRITE_MODE", ""),
-				GraphStoreDualWriteReconciliationPath:             getEnv("GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH", filepath.Join(".cerebro", "graph-dual-write", "reconciliation.json")),
-				GraphStoreDualWriteReplayEnabled:                  getEnvBool("GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED", true),
-				GraphStoreDualWriteReplayInterval:                 getEnvDuration("GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL", 30*time.Second),
-				GraphStoreDualWriteReplayBatchSize:                getEnvInt("GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE", 100),
+				GraphStoreDualWriteReconciliationPath:             getEnv("GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH", ""),
+				GraphStoreDualWriteReplayEnabled:                  getEnvBool("GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED", false),
+				GraphStoreDualWriteReplayInterval:                 getEnvDuration("GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL", 0),
+				GraphStoreDualWriteReplayBatchSize:                getEnvInt("GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE", 0),
 				GraphSnapshotPath:                                 getEnv("GRAPH_SNAPSHOT_PATH", filepath.Join(".cerebro", "graph-snapshots")),
 				GraphSnapshotMaxRetained:                          getEnvInt("GRAPH_SNAPSHOT_MAX_RETAINED", 10),
 				GraphSnapshotReplicaURI:                           getEnv("GRAPH_SNAPSHOT_REPLICA_URI", ""),

@@ -213,6 +213,7 @@ func (c *Config) Validate() error {
 	}
 
 	problems := append([]string(nil), c.loadProblems...)
+	testProcess := runningUnderGoTest()
 
 	if c.Port < 1 || c.Port > 65535 {
 		problems = addConfigProblem(problems, "API_PORT must be between 1 and 65535")
@@ -475,6 +476,37 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if strings.TrimSpace(c.JobDatabaseURL) != "" {
+		if len(c.NATSJetStreamURLs) == 0 {
+			problems = addConfigProblem(problems, "NATS_URLS must include at least one URL when JOB_DATABASE_URL is configured")
+		}
+		if strings.TrimSpace(c.JobNATSStream) == "" {
+			problems = addConfigProblem(problems, "JOB_NATS_STREAM is required when JOB_DATABASE_URL is configured")
+		}
+		if strings.TrimSpace(c.JobNATSSubject) == "" {
+			problems = addConfigProblem(problems, "JOB_NATS_SUBJECT is required when JOB_DATABASE_URL is configured")
+		}
+		if strings.TrimSpace(c.JobNATSConsumer) == "" {
+			problems = addConfigProblem(problems, "JOB_NATS_CONSUMER is required when JOB_DATABASE_URL is configured")
+		}
+		if c.JobWorkerConcurrency <= 0 {
+			problems = addConfigProblem(problems, "JOB_WORKER_CONCURRENCY must be > 0 when JOB_DATABASE_URL is configured")
+		}
+		if c.JobVisibilityTimeout <= 0 {
+			problems = addConfigProblem(problems, "JOB_VISIBILITY_TIMEOUT must be > 0 when JOB_DATABASE_URL is configured")
+		}
+		if c.JobPollWait <= 0 {
+			problems = addConfigProblem(problems, "JOB_POLL_WAIT must be > 0 when JOB_DATABASE_URL is configured")
+		}
+		if c.JobMaxAttempts <= 0 {
+			problems = addConfigProblem(problems, "JOB_MAX_ATTEMPTS must be > 0 when JOB_DATABASE_URL is configured")
+		}
+	}
+
+	if strings.TrimSpace(c.JobQueueURL) != "" || strings.TrimSpace(c.JobTableName) != "" || strings.TrimSpace(c.JobRegion) != "" || strings.TrimSpace(c.JobIdempotencyTableName) != "" {
+		problems = addConfigProblem(problems, "legacy SQS/Dynamo job settings are not supported; use JOB_DATABASE_URL with JOB_NATS_STREAM, JOB_NATS_SUBJECT, and JOB_NATS_CONSUMER")
+	}
+
 	if c.FindingAttestationEnabled {
 		if strings.TrimSpace(c.FindingAttestationSigningKey) == "" {
 			problems = addConfigProblem(problems, "FINDING_ATTESTATION_SIGNING_KEY is required when FINDING_ATTESTATION_ENABLED=true")
@@ -524,98 +556,53 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	switch c.graphStoreBackend() {
-	case graph.StoreBackendMemory, graph.StoreBackendNeptune, graph.StoreBackendSpanner:
-	default:
-		problems = addConfigProblem(problems, "GRAPH_STORE_BACKEND must be one of memory, neptune, spanner")
+	if c.graphStoreBackend() != graph.StoreBackendNeptune {
+		problems = addConfigProblem(problems, "GRAPH_STORE_BACKEND must be neptune")
 	}
-	switch c.graphStoreBackend() {
-	case graph.StoreBackendMemory:
-		if !c.allowInMemoryGraphStore() {
-			problems = addConfigProblem(problems, "GRAPH_STORE_BACKEND=memory is restricted to tests and explicit local opt-in; set GRAPH_STORE_ALLOW_IN_MEMORY=true to override")
-		}
-	case graph.StoreBackendNeptune:
-		if strings.TrimSpace(c.GraphStoreNeptuneEndpoint) == "" {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_ENDPOINT is required when GRAPH_STORE_BACKEND=neptune")
-		}
-		if c.GraphStoreNeptunePoolSize <= 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_SIZE must be > 0 when GRAPH_STORE_BACKEND=neptune")
-		}
-		if c.GraphStoreNeptunePoolHealthCheckInterval < 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL must be >= 0 when GRAPH_STORE_BACKEND=neptune")
-		}
-		if c.GraphStoreNeptunePoolHealthCheckInterval > 0 && c.GraphStoreNeptunePoolHealthCheckTimeout <= 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT must be > 0 when GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL>0")
-		}
-		if c.GraphStoreNeptunePoolMaxClientLifetime < 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_LIFETIME must be >= 0 when GRAPH_STORE_BACKEND=neptune")
-		}
-		if c.GraphStoreNeptunePoolMaxClientUses < 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_USES must be >= 0 when GRAPH_STORE_BACKEND=neptune")
-		}
-		if c.GraphStoreNeptunePoolDrainTimeout <= 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT must be > 0 when GRAPH_STORE_BACKEND=neptune")
-		}
-	case graph.StoreBackendSpanner:
-		if strings.TrimSpace(c.GraphStoreSpannerDatabase) == "" {
-			problems = addConfigProblem(problems, "GRAPH_STORE_SPANNER_DATABASE is required when GRAPH_STORE_BACKEND=spanner")
-		}
+	if c.GraphStoreAllowInMemory {
+		problems = addConfigProblem(problems, "GRAPH_STORE_ALLOW_IN_MEMORY is not supported")
 	}
-
-	switch c.graphStoreSecondaryBackend() {
-	case "", graph.StoreBackendNeptune, graph.StoreBackendSpanner:
-	default:
-		problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_BACKEND must be empty or one of neptune, spanner")
+	if !testProcess && strings.TrimSpace(c.GraphStoreNeptuneEndpoint) == "" {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_ENDPOINT is required when GRAPH_STORE_BACKEND=neptune")
 	}
-	if c.dualWriteGraphStoreEnabled() {
-		if c.graphStoreSecondaryBackend() == c.graphStoreBackend() {
-			problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_BACKEND must differ from GRAPH_STORE_BACKEND")
-		}
-		switch c.graphStoreSecondaryBackend() {
-		case graph.StoreBackendNeptune:
-			if strings.TrimSpace(c.GraphStoreSecondaryNeptuneEndpoint) == "" {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_ENDPOINT is required when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-			if c.GraphStoreSecondaryNeptunePoolSize <= 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE must be > 0 when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-			if c.GraphStoreSecondaryNeptunePoolHealthCheckInterval < 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL must be >= 0 when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-			if c.GraphStoreSecondaryNeptunePoolHealthCheckInterval > 0 && c.GraphStoreSecondaryNeptunePoolHealthCheckTimeout <= 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT must be > 0 when GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL>0")
-			}
-			if c.GraphStoreSecondaryNeptunePoolMaxClientLifetime < 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME must be >= 0 when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-			if c.GraphStoreSecondaryNeptunePoolMaxClientUses < 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES must be >= 0 when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-			if c.GraphStoreSecondaryNeptunePoolDrainTimeout <= 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT must be > 0 when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-		case graph.StoreBackendSpanner:
-			if strings.TrimSpace(c.GraphStoreSecondarySpannerDatabase) == "" {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_SPANNER_DATABASE is required when GRAPH_STORE_SECONDARY_BACKEND=spanner")
-			}
-		}
-		if !c.graphStoreDualWriteMode().Valid() {
-			problems = addConfigProblem(problems, "GRAPH_STORE_DUAL_WRITE_MODE must be one of primary_only, best_effort_dual_write, strict_dual_write")
-		}
-		if c.graphStoreDualWriteMode() == graph.DualWriteModeBestEffort && strings.TrimSpace(c.GraphStoreDualWriteReconciliationPath) == "" {
-			problems = addConfigProblem(problems, "GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH is required when GRAPH_STORE_DUAL_WRITE_MODE=best_effort_dual_write")
-		}
-		if c.GraphStoreDualWriteReplayEnabled {
-			if strings.TrimSpace(c.GraphStoreDualWriteReconciliationPath) == "" {
-				problems = addConfigProblem(problems, "GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH is required when GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED=true")
-			}
-			if c.GraphStoreDualWriteReplayInterval <= 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL must be > 0 when GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED=true")
-			}
-			if c.GraphStoreDualWriteReplayBatchSize <= 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE must be > 0 when GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED=true")
-			}
-		}
+	if c.GraphStoreNeptunePoolSize <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_SIZE must be > 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	if c.GraphStoreNeptunePoolHealthCheckInterval < 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL must be >= 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	if c.GraphStoreNeptunePoolHealthCheckInterval > 0 && c.GraphStoreNeptunePoolHealthCheckTimeout <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT must be > 0 when GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL>0")
+	}
+	if c.GraphStoreNeptunePoolMaxClientLifetime < 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_LIFETIME must be >= 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	if c.GraphStoreNeptunePoolMaxClientUses < 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_USES must be >= 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	if c.GraphStoreNeptunePoolDrainTimeout <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT must be > 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	if strings.TrimSpace(c.GraphStoreSpannerDatabase) != "" || c.GraphStoreSpannerAutoBootstrap {
+		problems = addConfigProblem(problems, "Spanner graph-store settings are not supported")
+	}
+	if strings.TrimSpace(c.GraphStoreSecondaryBackend) != "" ||
+		strings.TrimSpace(c.GraphStoreSecondaryNeptuneEndpoint) != "" ||
+		strings.TrimSpace(c.GraphStoreSecondaryNeptuneRegion) != "" ||
+		c.GraphStoreSecondaryNeptunePoolSize != 0 ||
+		c.GraphStoreSecondaryNeptunePoolHealthCheckInterval != 0 ||
+		c.GraphStoreSecondaryNeptunePoolHealthCheckTimeout != 0 ||
+		c.GraphStoreSecondaryNeptunePoolMaxClientLifetime != 0 ||
+		c.GraphStoreSecondaryNeptunePoolMaxClientUses != 0 ||
+		c.GraphStoreSecondaryNeptunePoolDrainTimeout != 0 ||
+		strings.TrimSpace(c.GraphStoreSecondarySpannerDatabase) != "" ||
+		c.GraphStoreSecondarySpannerAutoBootstrap ||
+		strings.TrimSpace(c.GraphStoreDualWriteMode) != "" ||
+		strings.TrimSpace(c.GraphStoreDualWriteReconciliationPath) != "" ||
+		c.GraphStoreDualWriteReplayEnabled ||
+		c.GraphStoreDualWriteReplayInterval != 0 ||
+		c.GraphStoreDualWriteReplayBatchSize != 0 {
+		problems = addConfigProblem(problems, "secondary graph-store and dual-write settings are not supported")
 	}
 
 	switch strings.ToLower(strings.TrimSpace(c.GraphSchemaValidationMode)) {

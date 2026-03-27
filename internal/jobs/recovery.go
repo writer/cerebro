@@ -3,36 +3,35 @@ package jobs
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/aws/smithy-go"
 )
+
+// OrphanScanner finds jobs that are stuck in "running" state with expired leases.
+type OrphanScanner interface {
+	FindOrphanedJobs(ctx context.Context, limit int) ([]*Job, error)
+}
 
 // OrphanedJobScanner finds and recovers jobs that are stuck in "running" state
 // with expired leases. This handles cases where a worker crashed after claiming
 // a job but before completing it.
 type OrphanedJobScanner struct {
-	store    *DynamoStore
+	store    Store
+	orphans  OrphanScanner
 	queue    Queue
 	logger   *slog.Logger
 	interval time.Duration
 }
 
 // NewOrphanedJobScanner creates a new scanner.
-func NewOrphanedJobScanner(store *DynamoStore, queue Queue, logger *slog.Logger, interval time.Duration) *OrphanedJobScanner {
+func NewOrphanedJobScanner(store Store, orphans OrphanScanner, queue Queue, logger *slog.Logger, interval time.Duration) *OrphanedJobScanner {
 	if interval <= 0 {
 		interval = 5 * time.Minute
 	}
 	return &OrphanedJobScanner{
 		store:    store,
+		orphans:  orphans,
 		queue:    queue,
 		logger:   logger,
 		interval: interval,
@@ -61,7 +60,7 @@ func (s *OrphanedJobScanner) Start(ctx context.Context) {
 func (s *OrphanedJobScanner) scan(ctx context.Context) {
 	s.log("scanning for orphaned jobs")
 
-	jobs, err := s.findOrphanedJobs(ctx)
+	jobs, err := s.orphans.FindOrphanedJobs(ctx, 100)
 	if err != nil {
 		s.logError("failed to scan for orphaned jobs", err)
 		return
@@ -84,114 +83,6 @@ func (s *OrphanedJobScanner) scan(ctx context.Context) {
 	}
 
 	s.log("recovered orphaned jobs", "recovered", recovered, "total", len(jobs))
-}
-
-// findOrphanedJobs queries for jobs in "running" status with expired leases.
-func (s *OrphanedJobScanner) findOrphanedJobs(ctx context.Context) ([]*Job, error) {
-	now := time.Now().UTC().Unix()
-
-	jobs, err := s.queryOrphanedJobs(ctx, now)
-	if err == nil {
-		return jobs, nil
-	}
-	if isMissingIndexError(err) {
-		s.logWarn("status-lease-index unavailable, falling back to scan", "error", err)
-		return s.scanOrphanedJobs(ctx, now)
-	}
-	return nil, err
-}
-
-func (s *OrphanedJobScanner) queryOrphanedJobs(ctx context.Context, now int64) ([]*Job, error) {
-	// Query using GSI on status + lease_expires_at for efficient retrieval
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(s.store.table),
-		IndexName:              aws.String("status-lease-index"),
-		KeyConditionExpression: aws.String("#status = :running AND lease_expires_at BETWEEN :min_lease AND :now"),
-		ExpressionAttributeNames: map[string]string{
-			"#status": "status",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":running":   &types.AttributeValueMemberS{Value: string(StatusRunning)},
-			":min_lease": &types.AttributeValueMemberN{Value: "1"},
-			":now":       &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", now)},
-		},
-		Limit: aws.Int32(100),
-	}
-
-	var jobs []*Job
-	paginator := dynamodb.NewQueryPaginator(s.store.client, input)
-
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, item := range page.Items {
-			var job Job
-			if err := attributevalue.UnmarshalMap(item, &job); err != nil {
-				s.logError("failed to unmarshal job", err)
-				continue
-			}
-			jobs = append(jobs, &job)
-		}
-
-		// Limit total jobs processed per scan
-		if len(jobs) >= 100 {
-			break
-		}
-	}
-
-	return jobs, nil
-}
-
-func (s *OrphanedJobScanner) scanOrphanedJobs(ctx context.Context, now int64) ([]*Job, error) {
-	input := &dynamodb.ScanInput{
-		TableName:        aws.String(s.store.table),
-		FilterExpression: aws.String("#status = :running AND lease_expires_at < :now AND lease_expires_at > :zero"),
-		ExpressionAttributeNames: map[string]string{
-			"#status": "status",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":running": &types.AttributeValueMemberS{Value: string(StatusRunning)},
-			":now":     &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", now)},
-			":zero":    &types.AttributeValueMemberN{Value: "0"},
-		},
-		Limit: aws.Int32(100),
-	}
-
-	var jobs []*Job
-	paginator := dynamodb.NewScanPaginator(s.store.client, input)
-
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, item := range page.Items {
-			var job Job
-			if err := attributevalue.UnmarshalMap(item, &job); err != nil {
-				s.logError("failed to unmarshal job", err)
-				continue
-			}
-			jobs = append(jobs, &job)
-		}
-
-		if len(jobs) >= 100 {
-			break
-		}
-	}
-
-	return jobs, nil
-}
-
-func isMissingIndexError(err error) bool {
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "ValidationException" && strings.Contains(apiErr.ErrorMessage(), "specified index")
-	}
-	return false
 }
 
 // recoverJob resets a job to queued status and re-enqueues it.
@@ -470,11 +361,5 @@ func (c *DLQConsumer) calculateHeartbeatBackoff(failures int) time.Duration {
 func (c *DLQConsumer) logError(msg string, err error, args ...any) {
 	if c.logger != nil {
 		c.logger.Error(msg, append([]any{"error", err}, args...)...)
-	}
-}
-
-func (s *OrphanedJobScanner) logWarn(msg string, args ...any) {
-	if s.logger != nil {
-		s.logger.Warn(msg, args...)
 	}
 }

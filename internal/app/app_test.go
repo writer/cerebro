@@ -203,19 +203,19 @@ func TestLoadConfigGraphStoreBackendControls(t *testing.T) {
 	}
 }
 
-func TestLoadConfigGraphStoreBackendDefaultsToMemoryInTests(t *testing.T) {
+func TestLoadConfigGraphStoreBackendDefaultsToNeptune(t *testing.T) {
 	cfg := LoadConfig()
-	if cfg.GraphStoreBackend != "memory" {
-		t.Fatalf("expected test graph store backend memory, got %q", cfg.GraphStoreBackend)
+	if cfg.GraphStoreBackend != "neptune" {
+		t.Fatalf("expected graph store backend neptune, got %q", cfg.GraphStoreBackend)
 	}
-	if !cfg.GraphStoreAllowInMemory {
-		t.Fatal("expected test graph runtime to allow in-memory backend")
+	if cfg.GraphStoreAllowInMemory {
+		t.Fatal("expected graph runtime to reject in-memory backend")
 	}
 }
 
 func TestDefaultGraphStoreBackendForProcess(t *testing.T) {
-	if got := defaultGraphStoreBackendForProcess(true); got != "memory" {
-		t.Fatalf("defaultGraphStoreBackendForProcess(test) = %q, want memory", got)
+	if got := defaultGraphStoreBackendForProcess(true); got != "neptune" {
+		t.Fatalf("defaultGraphStoreBackendForProcess(test) = %q, want neptune", got)
 	}
 	if got := defaultGraphStoreBackendForProcess(false); got != "neptune" {
 		t.Fatalf("defaultGraphStoreBackendForProcess(production) = %q, want neptune", got)
@@ -223,14 +223,14 @@ func TestDefaultGraphStoreBackendForProcess(t *testing.T) {
 }
 
 func TestAllowInMemoryGraphStoreForProcess(t *testing.T) {
-	if !allowInMemoryGraphStoreForProcess(true, false) {
-		t.Fatal("expected test process to allow in-memory graph store")
+	if allowInMemoryGraphStoreForProcess(true, false) {
+		t.Fatal("expected test process to reject in-memory graph store")
 	}
 	if allowInMemoryGraphStoreForProcess(false, false) {
 		t.Fatal("expected production process to reject in-memory graph store without explicit opt-in")
 	}
-	if !allowInMemoryGraphStoreForProcess(false, true) {
-		t.Fatal("expected explicit production opt-in to allow in-memory graph store")
+	if allowInMemoryGraphStoreForProcess(false, true) {
+		t.Fatal("expected explicit production opt-in to remain disabled")
 	}
 }
 
@@ -875,7 +875,7 @@ func TestLoadConfigValidateGraphStoreBackendRequirements(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected config validation error")
 	}
-	if !strings.Contains(err.Error(), "GRAPH_STORE_SPANNER_DATABASE is required when GRAPH_STORE_BACKEND=spanner") {
+	if !strings.Contains(err.Error(), "GRAPH_STORE_BACKEND must be neptune") {
 		t.Fatalf("expected graph store backend validation failure, got %v", err)
 	}
 }

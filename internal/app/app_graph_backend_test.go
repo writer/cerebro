@@ -41,7 +41,7 @@ func TestInitConfiguredSecurityGraphStoreUsesResolvedProvider(t *testing.T) {
 
 	closeCalls := 0
 	provider := &fakeGraphStoreBackendProvider{
-		backend: graph.StoreBackendSpanner,
+		backend: graph.StoreBackendNeptune,
 		handle: graphStoreBackendHandle{
 			Store: backing,
 			Close: func() error {
@@ -52,10 +52,10 @@ func TestInitConfiguredSecurityGraphStoreUsesResolvedProvider(t *testing.T) {
 	}
 
 	app := &App{
-		Config: &Config{GraphStoreBackend: string(graph.StoreBackendSpanner)},
+		Config: &Config{GraphStoreBackend: string(graph.StoreBackendNeptune)},
 		graphStoreBackendProviderFactory: func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
-			if backend != graph.StoreBackendSpanner {
-				t.Fatalf("provider factory backend = %q, want %q", backend, graph.StoreBackendSpanner)
+			if backend != graph.StoreBackendNeptune {
+				t.Fatalf("provider factory backend = %q, want %q", backend, graph.StoreBackendNeptune)
 			}
 			return provider, nil
 		},
@@ -84,11 +84,11 @@ func TestInitConfiguredSecurityGraphStoreUsesResolvedProvider(t *testing.T) {
 	}
 }
 
-func TestInitConfiguredSecurityGraphStoreClearsConfiguredStoreForMemory(t *testing.T) {
+func TestInitConfiguredSecurityGraphStoreSkipsNeptuneWhenEndpointMissingInTests(t *testing.T) {
 	t.Parallel()
 
 	app := &App{
-		Config:                       &Config{GraphStoreBackend: string(graph.StoreBackendMemory)},
+		Config:                       &Config{GraphStoreBackend: string(graph.StoreBackendNeptune)},
 		configuredSecurityGraphStore: graph.New(),
 		configuredSecurityGraphClose: func() error { return nil },
 		configuredSecurityGraphReady: true,
@@ -138,13 +138,12 @@ func TestInitConfiguredSecurityGraphStoreRejectsUnsupportedBackend(t *testing.T)
 	}
 }
 
-func TestInitConfiguredSecurityGraphStoreWrapsDualWriteSecondaryBackend(t *testing.T) {
+func TestInitConfiguredSecurityGraphStoreIgnoresDualWriteSettings(t *testing.T) {
 	t.Parallel()
 
 	primaryCloseCalls := 0
-	secondaryCloseCalls := 0
 	primaryProvider := &fakeGraphStoreBackendProvider{
-		backend: graph.StoreBackendSpanner,
+		backend: graph.StoreBackendNeptune,
 		handle: graphStoreBackendHandle{
 			Store: graph.New(),
 			Close: func() error {
@@ -157,17 +156,14 @@ func TestInitConfiguredSecurityGraphStoreWrapsDualWriteSecondaryBackend(t *testi
 		backend: graph.StoreBackendNeptune,
 		handle: graphStoreBackendHandle{
 			Store: graph.New(),
-			Close: func() error {
-				secondaryCloseCalls++
-				return nil
-			},
+			Close: func() error { return nil },
 		},
 	}
 
 	app := &App{
 		Config: &Config{
-			GraphStoreBackend:                          string(graph.StoreBackendSpanner),
-			GraphStoreSpannerDatabase:                  "projects/test/instances/dev/databases/primary",
+			GraphStoreBackend:                          string(graph.StoreBackendNeptune),
+			GraphStoreNeptuneEndpoint:                  "https://example.neptune.amazonaws.com",
 			GraphStoreSecondaryBackend:                 string(graph.StoreBackendNeptune),
 			GraphStoreSecondaryNeptuneEndpoint:         "https://example.neptune.amazonaws.com",
 			GraphStoreSecondaryNeptuneRegion:           "us-east-1",
@@ -176,28 +172,31 @@ func TestInitConfiguredSecurityGraphStoreWrapsDualWriteSecondaryBackend(t *testi
 			GraphStoreDualWriteMode:                    string(graph.DualWriteModeBestEffort),
 			GraphStoreDualWriteReconciliationPath:      filepath.Join(t.TempDir(), "dual-write-queue.json"),
 		},
-		graphStoreBackendProviderFactory: func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
-			switch backend {
-			case graph.StoreBackendSpanner:
-				return primaryProvider, nil
-			case graph.StoreBackendNeptune:
-				return secondaryProvider, nil
-			default:
-				return nil, errors.New("unexpected backend")
-			}
-		},
+	}
+
+	app.graphStoreBackendProviderFactory = func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
+		if backend != graph.StoreBackendNeptune {
+			return nil, errors.New("unexpected backend")
+		}
+		if primaryProvider.opened == 0 {
+			return primaryProvider, nil
+		}
+		return secondaryProvider, nil
 	}
 
 	if err := app.initConfiguredSecurityGraphStore(context.Background()); err != nil {
 		t.Fatalf("initConfiguredSecurityGraphStore() error = %v", err)
 	}
-	if _, ok := app.configuredSecurityGraphStore.(*graph.DualWriteGraphStore); !ok {
-		t.Fatalf("configuredSecurityGraphStore = %T, want *graph.DualWriteGraphStore", app.configuredSecurityGraphStore)
+	if _, ok := app.configuredSecurityGraphStore.(*graph.DualWriteGraphStore); ok {
+		t.Fatalf("configuredSecurityGraphStore = %T, want direct neptune store", app.configuredSecurityGraphStore)
 	}
 	if err := app.configuredSecurityGraphClose(); err != nil {
 		t.Fatalf("configuredSecurityGraphClose() error = %v", err)
 	}
-	if primaryCloseCalls != 1 || secondaryCloseCalls != 1 {
-		t.Fatalf("close calls primary=%d secondary=%d, want 1 each", primaryCloseCalls, secondaryCloseCalls)
+	if primaryCloseCalls != 1 {
+		t.Fatalf("close calls primary=%d, want 1", primaryCloseCalls)
+	}
+	if secondaryProvider.opened != 0 {
+		t.Fatalf("expected secondary provider to remain unused, opened=%d", secondaryProvider.opened)
 	}
 }

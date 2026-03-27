@@ -40,7 +40,7 @@ func IsPermanent(err error) bool {
 	return errors.Is(err, ErrPermanent)
 }
 
-// Worker processes jobs from an SQS queue.
+// Worker processes jobs from a queue backend.
 type Worker struct {
 	queue       Queue
 	store       Store
@@ -371,7 +371,7 @@ func (w *Worker) processMessage(ctx context.Context, msg QueueMessage) {
 	}
 
 	// Idempotency check - prevent duplicate processing
-	// Use message ID + job ID as key (handles SQS redelivery)
+	// Use message ID + job ID as key (handles queue redelivery)
 	if msg.ID != "" {
 		idempotencyKey = fmt.Sprintf("%s:%s", msg.ID, jobID)
 	} else {
@@ -434,7 +434,7 @@ func (w *Worker) processMessage(ctx context.Context, msg QueueMessage) {
 		if markErr := w.idempotency.MarkFailed(ctx, idempotencyKey); markErr != nil {
 			w.logWarn("failed to clear idempotency lock for unclaimed job", "job_id", jobID, "error", markErr)
 		}
-		// Determine whether the SQS message is stale so it does not loop.
+		// Determine whether the queue message is stale so it does not loop.
 		existing, getErr := w.store.GetJob(ctx, jobID)
 		if getErr != nil {
 			if errors.Is(getErr, ErrJobNotFound) {
@@ -696,8 +696,8 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 		return
 	}
 
-	// Max retries exceeded - mark failed in DB but DON'T delete message
-	// Let SQS move it to DLQ after visibility timeout expires
+	// Max retries exceeded - mark failed in DB but don't delete the message yet.
+	// A final redelivery will observe the terminal job state and ack the message.
 	if job.Attempt >= job.MaxAttempts {
 		if err := w.store.FailJobOwned(ctx, job.ID, w.workerID, job.Attempt, errMsg); err != nil {
 			if errors.Is(err, ErrJobLeaseLost) {
@@ -711,8 +711,7 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 			)
 		}
 		_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
-		// Don't delete - let SQS redrive to DLQ
-		w.logWarn("job exhausted retries, will move to DLQ",
+		w.logWarn("job exhausted retries; awaiting terminal cleanup",
 			"job_id", job.ID,
 			"attempts", job.Attempt,
 			"correlation_id", correlationID,
@@ -720,8 +719,7 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 		return
 	}
 
-	// Retryable failure - use SQS visibility timeout for backoff
-	// Calculate delay and extend visibility so message reappears after delay
+	// Retryable failure - delegate delayed redelivery to the queue backend.
 	_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
 
 	if err := w.store.RetryJobOwned(ctx, job.ID, w.workerID, job.Attempt, errMsg); err != nil {
@@ -736,10 +734,8 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 		return
 	}
 
-	// Use ChangeMessageVisibility to implement backoff delay
-	// Message will become visible again after the delay
 	delay := w.calculateBackoff(job.Attempt)
-	if err := w.queue.ExtendVisibility(ctx, receiptHandle, delay); err != nil {
+	if err := w.queue.Retry(ctx, receiptHandle, delay); err != nil {
 		w.logError("failed to set retry delay", err,
 			"job_id", job.ID,
 			"delay", delay,
@@ -834,7 +830,7 @@ func (w *Worker) queueDelete(receiptHandle string) {
 	}
 }
 
-// flushPendingDeletes sends batched deletes to SQS.
+// flushPendingDeletes sends batched deletes to the queue backend.
 func (w *Worker) flushPendingDeletes(ctx context.Context) {
 	w.deleteMu.Lock()
 	if len(w.pendingDeletes) == 0 {

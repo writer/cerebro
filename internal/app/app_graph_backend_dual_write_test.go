@@ -3,23 +3,11 @@ package app
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log/slog"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/writer/cerebro/internal/graph"
 )
-
-type failingMutationGraphStore struct {
-	graph.GraphStore
-	upsertNodeErr error
-}
-
-func (s *failingMutationGraphStore) UpsertNode(context.Context, *graph.Node) error {
-	return s.upsertNodeErr
-}
 
 func TestObserveGraphStoreDualWriteMutationDoesNotWarnPrimaryOnlySuccess(t *testing.T) {
 	t.Parallel()
@@ -42,12 +30,11 @@ func TestObserveGraphStoreDualWriteMutationDoesNotWarnPrimaryOnlySuccess(t *test
 	}
 }
 
-func TestSecondaryGraphStoreConfigClearsDualWriteFields(t *testing.T) {
+func TestSecondaryGraphStoreConfigRemainsDisabled(t *testing.T) {
 	t.Parallel()
 
 	cfg := (&Config{
-		GraphStoreBackend:                     string(graph.StoreBackendSpanner),
-		GraphStoreSpannerDatabase:             "projects/test/instances/dev/databases/primary",
+		GraphStoreBackend:                     string(graph.StoreBackendNeptune),
 		GraphStoreSecondaryBackend:            string(graph.StoreBackendNeptune),
 		GraphStoreSecondaryNeptuneEndpoint:    "https://example.neptune.amazonaws.com",
 		GraphStoreSecondaryNeptuneRegion:      "us-east-1",
@@ -64,88 +51,66 @@ func TestSecondaryGraphStoreConfigClearsDualWriteFields(t *testing.T) {
 		t.Fatal("secondaryGraphStoreConfig() returned nil")
 	}
 	if got := cfg.graphStoreBackend(); got != graph.StoreBackendNeptune {
-		t.Fatalf("secondary graphStoreBackend() = %q, want %q", got, graph.StoreBackendNeptune)
+		t.Fatalf("graphStoreBackend() = %q, want %q", got, graph.StoreBackendNeptune)
 	}
 	if got := cfg.graphStoreSecondaryBackend(); got != "" {
-		t.Fatalf("secondary graphStoreSecondaryBackend() = %q, want empty", got)
+		t.Fatalf("graphStoreSecondaryBackend() = %q, want empty", got)
 	}
 	if cfg.dualWriteGraphStoreEnabled() {
-		t.Fatal("expected projected secondary config to disable nested dual-write")
+		t.Fatal("expected dual-write to remain disabled")
 	}
-	if strings.TrimSpace(cfg.GraphStoreDualWriteMode) != "" {
-		t.Fatalf("projected GraphStoreDualWriteMode = %q, want empty", cfg.GraphStoreDualWriteMode)
-	}
-	if strings.TrimSpace(cfg.GraphStoreDualWriteReconciliationPath) != "" {
-		t.Fatalf("projected GraphStoreDualWriteReconciliationPath = %q, want empty", cfg.GraphStoreDualWriteReconciliationPath)
-	}
-	if cfg.GraphStoreDualWriteReplayEnabled {
-		t.Fatal("expected projected GraphStoreDualWriteReplayEnabled to be false")
+	if got := cfg.graphStoreDualWriteMode(); got != graph.DualWriteModePrimaryOnly {
+		t.Fatalf("graphStoreDualWriteMode() = %q, want %q", got, graph.DualWriteModePrimaryOnly)
 	}
 }
 
-func TestWrapConfiguredSecurityGraphStoreWithDualWriteBestEffortWithoutQueuePathDoesNotPanic(t *testing.T) {
+func TestInitConfiguredSecurityGraphStoreDoesNotWrapDualWrite(t *testing.T) {
 	t.Parallel()
 
-	primaryStore := graph.New()
 	primaryProvider := &fakeGraphStoreBackendProvider{
-		backend: graph.StoreBackendSpanner,
+		backend: graph.StoreBackendNeptune,
 		handle: graphStoreBackendHandle{
-			Store: primaryStore,
+			Store: graph.New(),
 			Close: func() error { return nil },
 		},
 	}
 	secondaryProvider := &fakeGraphStoreBackendProvider{
 		backend: graph.StoreBackendNeptune,
 		handle: graphStoreBackendHandle{
-			Store: &failingMutationGraphStore{
-				GraphStore:    graph.New(),
-				upsertNodeErr: errors.New("secondary write failed"),
-			},
+			Store: graph.New(),
 			Close: func() error { return nil },
 		},
 	}
 
 	app := &App{
 		Config: &Config{
-			GraphStoreBackend:                          string(graph.StoreBackendSpanner),
-			GraphStoreSpannerDatabase:                  "projects/test/instances/dev/databases/primary",
+			GraphStoreBackend:                          string(graph.StoreBackendNeptune),
+			GraphStoreNeptuneEndpoint:                  "https://example.neptune.amazonaws.com",
 			GraphStoreSecondaryBackend:                 string(graph.StoreBackendNeptune),
 			GraphStoreSecondaryNeptuneEndpoint:         "https://example.neptune.amazonaws.com",
 			GraphStoreSecondaryNeptuneRegion:           "us-east-1",
 			GraphStoreSecondaryNeptunePoolSize:         1,
-			GraphStoreSecondaryNeptunePoolDrainTimeout: time.Second,
+			GraphStoreSecondaryNeptunePoolDrainTimeout: 1,
 			GraphStoreDualWriteMode:                    string(graph.DualWriteModeBestEffort),
 		},
-		graphStoreBackendProviderFactory: func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
-			switch backend {
-			case graph.StoreBackendSpanner:
-				return primaryProvider, nil
-			case graph.StoreBackendNeptune:
-				return secondaryProvider, nil
-			default:
-				return nil, errors.New("unexpected backend")
-			}
-		},
+	}
+	app.graphStoreBackendProviderFactory = func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
+		if backend != graph.StoreBackendNeptune {
+			t.Fatalf("backend = %q, want %q", backend, graph.StoreBackendNeptune)
+		}
+		if primaryProvider.opened == 0 {
+			return primaryProvider, nil
+		}
+		return secondaryProvider, nil
 	}
 
 	if err := app.initConfiguredSecurityGraphStore(context.Background()); err != nil {
 		t.Fatalf("initConfiguredSecurityGraphStore() error = %v", err)
 	}
-
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			t.Fatalf("expected best-effort write without queue path to avoid panic, got %v", recovered)
-		}
-	}()
-
-	if err := app.configuredSecurityGraphStore.UpsertNode(context.Background(), &graph.Node{
-		ID:   "service:payments",
-		Kind: graph.NodeKindService,
-		Name: "payments",
-	}); err != nil {
-		t.Fatalf("UpsertNode() error = %v, want nil in best-effort mode", err)
+	if _, ok := app.configuredSecurityGraphStore.(*graph.DualWriteGraphStore); ok {
+		t.Fatalf("configuredSecurityGraphStore = %T, want direct neptune store", app.configuredSecurityGraphStore)
 	}
-	if _, ok := primaryStore.GetNode("service:payments"); !ok {
-		t.Fatal("expected primary store to persist node despite secondary failure")
+	if secondaryProvider.opened != 0 {
+		t.Fatalf("expected secondary provider to remain unused, opened=%d", secondaryProvider.opened)
 	}
 }

@@ -26,6 +26,7 @@ type Queue interface {
 	DeleteBatch(ctx context.Context, receiptHandles []string) (succeeded int, failed []string, err error)
 	ExtendVisibility(ctx context.Context, receiptHandle string, timeout time.Duration) error
 	ExtendVisibilityBatch(ctx context.Context, receiptHandles []string, timeout time.Duration) (succeeded int, failed int, err error)
+	Retry(ctx context.Context, receiptHandle string, delay time.Duration) error
 }
 
 type SQSQueue struct {
@@ -283,4 +284,8 @@ func (q *SQSQueue) ExtendVisibilityBatch(ctx context.Context, receiptHandles []s
 	}
 
 	return succeeded, failed, err
+}
+
+func (q *SQSQueue) Retry(ctx context.Context, receiptHandle string, delay time.Duration) error {
+	return q.ExtendVisibility(ctx, receiptHandle, delay)
 }

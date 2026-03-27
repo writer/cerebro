@@ -588,7 +588,7 @@ func isNativeScheduleProvider(provider string) bool {
 }
 
 func nativeSyncWorkerConfigured() bool {
-	return firstNonEmptyEnv("JOB_QUEUE_URL") != "" && firstNonEmptyEnv("JOB_TABLE_NAME") != ""
+	return distributedJobsConfigured(app.LoadConfig())
 }
 
 func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) error {
@@ -600,21 +600,18 @@ func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) err
 		waitTimeout = time.Duration(timeoutSeconds) * time.Second
 	}
 
-	queueURL := firstNonEmptyEnv("JOB_QUEUE_URL")
-	tableName := firstNonEmptyEnv("JOB_TABLE_NAME")
-	if queueURL == "" || tableName == "" {
-		return fmt.Errorf("JOB_QUEUE_URL and JOB_TABLE_NAME are required for worker native sync")
+	cfg := app.LoadConfig()
+	if !distributedJobsConfigured(cfg) {
+		return fmt.Errorf("JOB_DATABASE_URL is required for worker native sync")
 	}
 
-	region := firstNonEmptyEnv("JOB_REGION", "AWS_REGION")
-	awsCfg, err := jobs.LoadAWSConfig(ctx, region)
+	runtime, err := openJobRuntime(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("load worker queue AWS config: %w", err)
+		return err
 	}
+	defer func() { _ = runtime.Close() }()
 
-	queue := jobs.NewSQSQueue(awsCfg, queueURL)
-	store := jobs.NewDynamoStore(awsCfg, tableName)
-	manager := jobs.NewManager(queue, store, slog.Default())
+	manager := jobs.NewManager(runtime.queue, runtime.store, slog.Default())
 
 	job, err := manager.EnqueueNativeSync(ctx, jobs.NativeSyncPayload{
 		Provider:     strings.ToLower(strings.TrimSpace(schedule.Provider)),

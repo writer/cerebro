@@ -40,14 +40,10 @@ func (a *App) resolveGraphStoreBackendProvider(backend graph.StoreBackend) (grap
 	if a != nil && a.graphStoreBackendProviderFactory != nil {
 		return a.graphStoreBackendProviderFactory(a, backend)
 	}
-	switch backend {
-	case graph.StoreBackendNeptune:
+	if backend == graph.StoreBackendNeptune {
 		return &neptuneGraphStoreBackendProvider{}, nil
-	case graph.StoreBackendSpanner:
-		return &spannerGraphStoreBackendProvider{}, nil
-	default:
-		return nil, fmt.Errorf("unsupported graph store backend %q", backend)
 	}
+	return nil, fmt.Errorf("unsupported graph store backend %q", backend)
 }
 
 func (p *neptuneGraphStoreBackendProvider) Backend() graph.StoreBackend {
