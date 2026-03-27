@@ -8,16 +8,6 @@ import (
 	"strings"
 )
 
-// NewBenchmarkMemoryBackedSpannerStore returns a SpannerGraphStore backed by an
-// in-memory graph adapter so benchmark runs can exercise the Spanner store code
-// path without requiring a live Spanner instance.
-func NewBenchmarkMemoryBackedSpannerStore(base *Graph) GraphStore {
-	if base == nil {
-		base = New()
-	}
-	return NewSpannerGraphStore(&benchmarkSpannerAdapter{store: GraphStore(base.Clone())})
-}
-
 // NewBenchmarkMemoryBackedNeptuneStore returns a NeptuneGraphStore backed by an
 // in-memory openCypher executor so benchmark runs can exercise the Neptune
 // store code path without requiring a live Neptune cluster.
@@ -26,70 +16,6 @@ func NewBenchmarkMemoryBackedNeptuneStore(base *Graph) GraphStore {
 		base = New()
 	}
 	return NewNeptuneGraphStore(&benchmarkNeptuneExecutor{graph: base.Clone()})
-}
-
-type benchmarkSpannerAdapter struct {
-	store GraphStore
-}
-
-func (b *benchmarkSpannerAdapter) UpsertNode(ctx context.Context, node *Node) error {
-	return b.store.UpsertNode(ctx, node)
-}
-
-func (b *benchmarkSpannerAdapter) UpsertNodesBatch(ctx context.Context, nodes []*Node) error {
-	return b.store.UpsertNodesBatch(ctx, nodes)
-}
-
-func (b *benchmarkSpannerAdapter) UpsertEdge(ctx context.Context, edge *Edge) error {
-	return b.store.UpsertEdge(ctx, edge)
-}
-
-func (b *benchmarkSpannerAdapter) UpsertEdgesBatch(ctx context.Context, edges []*Edge) error {
-	return b.store.UpsertEdgesBatch(ctx, edges)
-}
-
-func (b *benchmarkSpannerAdapter) DeleteNode(ctx context.Context, id string) error {
-	return b.store.DeleteNode(ctx, id)
-}
-
-func (b *benchmarkSpannerAdapter) DeleteEdge(ctx context.Context, id string) error {
-	return b.store.DeleteEdge(ctx, id)
-}
-
-func (b *benchmarkSpannerAdapter) LookupNode(ctx context.Context, id string) (*Node, bool, error) {
-	return b.store.LookupNode(ctx, id)
-}
-
-func (b *benchmarkSpannerAdapter) LookupEdge(ctx context.Context, id string) (*Edge, bool, error) {
-	return b.store.LookupEdge(ctx, id)
-}
-
-func (b *benchmarkSpannerAdapter) LookupOutEdges(ctx context.Context, nodeID string) ([]*Edge, error) {
-	return b.store.LookupOutEdges(ctx, nodeID)
-}
-
-func (b *benchmarkSpannerAdapter) LookupInEdges(ctx context.Context, nodeID string) ([]*Edge, error) {
-	return b.store.LookupInEdges(ctx, nodeID)
-}
-
-func (b *benchmarkSpannerAdapter) LookupNodesByKind(ctx context.Context, kinds ...NodeKind) ([]*Node, error) {
-	return b.store.LookupNodesByKind(ctx, kinds...)
-}
-
-func (b *benchmarkSpannerAdapter) CountNodes(ctx context.Context) (int, error) {
-	return b.store.CountNodes(ctx)
-}
-
-func (b *benchmarkSpannerAdapter) CountEdges(ctx context.Context) (int, error) {
-	return b.store.CountEdges(ctx)
-}
-
-func (b *benchmarkSpannerAdapter) EnsureIndexes(ctx context.Context) error {
-	return b.store.EnsureIndexes(ctx)
-}
-
-func (b *benchmarkSpannerAdapter) Snapshot(ctx context.Context) (*Snapshot, error) {
-	return b.store.Snapshot(ctx)
 }
 
 type benchmarkNeptuneExecutor struct {

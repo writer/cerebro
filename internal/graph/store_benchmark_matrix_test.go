@@ -56,7 +56,7 @@ func TestRunBenchmarkSuiteSupportsBackendAndFixtureMatrix(t *testing.T) {
 		}
 	}
 
-	for _, backend := range []string{"memory", "spanner", "neptune"} {
+	for _, backend := range []string{"memory", "neptune"} {
 		if !backends[backend] {
 			t.Fatalf("missing backend %q in %#v", backend, backends)
 		}
@@ -241,7 +241,6 @@ type benchmarkBackendStore struct {
 func benchmarkBackendStores(base *graphpkg.Graph) []benchmarkBackendStore {
 	return []benchmarkBackendStore{
 		{name: "memory", store: graphpkg.GraphStore(base.Clone())},
-		{name: "spanner", store: graphpkg.NewBenchmarkMemoryBackedSpannerStore(base)},
 		{name: "neptune", store: graphpkg.NewBenchmarkMemoryBackedNeptuneStore(base)},
 	}
 }

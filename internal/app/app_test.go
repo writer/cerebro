@@ -186,26 +186,10 @@ func TestLoadConfigCrossTenantIngestControls(t *testing.T) {
 	}
 }
 
-func TestLoadConfigValidateRejectsLegacyGraphStoreSettings(t *testing.T) {
-	t.Setenv("GRAPH_STORE_SPANNER_DATABASE", "projects/test/instances/dev/databases/cerebro")
-
-	cfg := LoadConfig()
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected config validation error")
-	}
-	if !strings.Contains(err.Error(), "Spanner graph-store settings are not supported") {
-		t.Fatalf("expected spanner validation failure, got %v", err)
-	}
-}
-
 func TestLoadConfigGraphStoreBackendDefaultsToNeptune(t *testing.T) {
 	cfg := LoadConfig()
 	if cfg.GraphStoreBackend != "neptune" {
 		t.Fatalf("expected graph store backend neptune, got %q", cfg.GraphStoreBackend)
-	}
-	if cfg.GraphStoreAllowInMemory {
-		t.Fatal("expected graph runtime to reject in-memory backend")
 	}
 }
 
@@ -215,18 +199,6 @@ func TestDefaultGraphStoreBackendForProcess(t *testing.T) {
 	}
 	if got := defaultGraphStoreBackendForProcess(false); got != "neptune" {
 		t.Fatalf("defaultGraphStoreBackendForProcess(production) = %q, want neptune", got)
-	}
-}
-
-func TestAllowInMemoryGraphStoreForProcess(t *testing.T) {
-	if allowInMemoryGraphStoreForProcess(true, false) {
-		t.Fatal("expected test process to reject in-memory graph store")
-	}
-	if allowInMemoryGraphStoreForProcess(false, false) {
-		t.Fatal("expected production process to reject in-memory graph store without explicit opt-in")
-	}
-	if allowInMemoryGraphStoreForProcess(false, true) {
-		t.Fatal("expected explicit production opt-in to remain disabled")
 	}
 }
 
@@ -862,43 +834,20 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 	}
 }
 
-func TestLoadConfigValidateGraphStoreBackendRequirements(t *testing.T) {
-	t.Setenv("GRAPH_STORE_BACKEND", "spanner")
-	t.Setenv("GRAPH_STORE_SPANNER_DATABASE", "")
+func TestLoadConfigValidateRejectsUnsupportedGraphStoreBackends(t *testing.T) {
+	for _, backend := range []string{"legacy", "memory"} {
+		t.Run(backend, func(t *testing.T) {
+			t.Setenv("GRAPH_STORE_BACKEND", backend)
 
-	cfg := LoadConfig()
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected config validation error")
-	}
-	if !strings.Contains(err.Error(), "GRAPH_STORE_BACKEND must be neptune") {
-		t.Fatalf("expected graph store backend validation failure, got %v", err)
-	}
-}
-
-func TestLoadConfigValidateRejectsLegacyJobQueueSettings(t *testing.T) {
-	t.Setenv("JOB_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789012/jobs")
-
-	cfg := LoadConfig()
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected config validation error")
-	}
-	if !strings.Contains(err.Error(), "legacy SQS/Dynamo job settings are not supported") {
-		t.Fatalf("expected legacy job runtime validation failure, got %v", err)
-	}
-}
-
-func TestLoadConfigValidateRejectsLegacyGraphFailoverSettings(t *testing.T) {
-	t.Setenv("GRAPH_STORE_SECONDARY_BACKEND", "neptune")
-
-	cfg := LoadConfig()
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected config validation error")
-	}
-	if !strings.Contains(err.Error(), "secondary graph-store and dual-write settings are not supported") {
-		t.Fatalf("expected legacy graph failover validation failure, got %v", err)
+			cfg := LoadConfig()
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatal("expected config validation error")
+			}
+			if !strings.Contains(err.Error(), "GRAPH_STORE_BACKEND must be neptune") {
+				t.Fatalf("expected graph store backend validation failure, got %v", err)
+			}
+		})
 	}
 }
 

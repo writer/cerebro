@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/writer/cerebro/internal/graph"
@@ -51,15 +50,6 @@ func normalizeConfigProblems(problems []string) []string {
 
 func addConfigProblem(problems []string, format string, args ...any) []string {
 	return append(problems, fmt.Sprintf(format, args...))
-}
-
-func hasNonEmptyEnv(names ...string) bool {
-	for _, name := range names {
-		if strings.TrimSpace(os.Getenv(name)) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 // ConfigValidationRules returns the catalog of startup validation rules used by Config.Validate.
@@ -197,7 +187,6 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Category: "dependency",
 		},
 		{EnvVars: []string{"GRAPH_STORE_BACKEND"}, Summary: "must be neptune", Category: "enum"},
-		{EnvVars: []string{"GRAPH_STORE_ALLOW_IN_MEMORY"}, Summary: "is not supported", Category: "dependency"},
 		{
 			EnvVars:  []string{"GRAPH_STORE_BACKEND", "GRAPH_STORE_NEPTUNE_ENDPOINT"},
 			Summary:  "when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required",
@@ -509,10 +498,6 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	if hasNonEmptyEnv("JOB_QUEUE_URL", "JOB_TABLE_NAME", "JOB_REGION", "JOB_IDEMPOTENCY_TABLE_NAME") {
-		problems = addConfigProblem(problems, "legacy SQS/Dynamo job settings are not supported; use JOB_DATABASE_URL with JOB_NATS_STREAM, JOB_NATS_SUBJECT, and JOB_NATS_CONSUMER")
-	}
-
 	if c.FindingAttestationEnabled {
 		if strings.TrimSpace(c.FindingAttestationSigningKey) == "" {
 			problems = addConfigProblem(problems, "FINDING_ATTESTATION_SIGNING_KEY is required when FINDING_ATTESTATION_ENABLED=true")
@@ -565,9 +550,6 @@ func (c *Config) Validate() error {
 	if c.graphStoreBackend() != graph.StoreBackendNeptune {
 		problems = addConfigProblem(problems, "GRAPH_STORE_BACKEND must be neptune")
 	}
-	if c.GraphStoreAllowInMemory {
-		problems = addConfigProblem(problems, "GRAPH_STORE_ALLOW_IN_MEMORY is not supported")
-	}
 	if !testProcess && strings.TrimSpace(c.GraphStoreNeptuneEndpoint) == "" {
 		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_ENDPOINT is required when GRAPH_STORE_BACKEND=neptune")
 	}
@@ -589,30 +571,6 @@ func (c *Config) Validate() error {
 	if c.GraphStoreNeptunePoolDrainTimeout <= 0 {
 		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT must be > 0 when GRAPH_STORE_BACKEND=neptune")
 	}
-	if hasNonEmptyEnv("GRAPH_STORE_SPANNER_DATABASE", "GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP") {
-		problems = addConfigProblem(problems, "Spanner graph-store settings are not supported")
-	}
-	if hasNonEmptyEnv(
-		"GRAPH_STORE_SECONDARY_BACKEND",
-		"GRAPH_STORE_SECONDARY_NEPTUNE_ENDPOINT",
-		"GRAPH_STORE_SECONDARY_NEPTUNE_REGION",
-		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE",
-		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL",
-		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT",
-		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME",
-		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES",
-		"GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT",
-		"GRAPH_STORE_SECONDARY_SPANNER_DATABASE",
-		"GRAPH_STORE_SECONDARY_SPANNER_AUTO_BOOTSTRAP",
-		"GRAPH_STORE_DUAL_WRITE_MODE",
-		"GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH",
-		"GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED",
-		"GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL",
-		"GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE",
-	) {
-		problems = addConfigProblem(problems, "secondary graph-store and dual-write settings are not supported")
-	}
-
 	switch strings.ToLower(strings.TrimSpace(c.GraphSchemaValidationMode)) {
 	case "", string(graph.SchemaValidationOff), string(graph.SchemaValidationWarn), string(graph.SchemaValidationEnforce):
 	default:

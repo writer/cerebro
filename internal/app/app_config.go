@@ -481,7 +481,6 @@ type Config struct {
 	GraphCrossTenantMinTenants               int
 	GraphCrossTenantMinSupport               int
 	GraphStoreBackend                        string
-	GraphStoreAllowInMemory                  bool
 	GraphStoreNeptuneEndpoint                string
 	GraphStoreNeptuneRegion                  string
 	GraphStoreNeptunePoolSize                int
@@ -891,7 +890,6 @@ func LoadConfig() *Config {
 				GraphCrossTenantMinTenants:               getEnvInt("GRAPH_CROSS_TENANT_MIN_TENANTS", 2),
 				GraphCrossTenantMinSupport:               getEnvInt("GRAPH_CROSS_TENANT_MIN_SUPPORT", 2),
 				GraphStoreBackend:                        getEnv("GRAPH_STORE_BACKEND", defaultGraphStoreBackend()),
-				GraphStoreAllowInMemory:                  getEnvBool("GRAPH_STORE_ALLOW_IN_MEMORY", false),
 				GraphStoreNeptuneEndpoint:                getEnv("GRAPH_STORE_NEPTUNE_ENDPOINT", ""),
 				GraphStoreNeptuneRegion:                  getEnv("GRAPH_STORE_NEPTUNE_REGION", getEnv("AWS_REGION", "us-east-1")),
 				GraphStoreNeptunePoolSize:                getEnvInt("GRAPH_STORE_NEPTUNE_POOL_SIZE", defaultNeptunePool.Size),

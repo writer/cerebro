@@ -24,12 +24,6 @@ func defaultGraphStoreBackend() string {
 	return defaultGraphStoreBackendForProcess(runningUnderGoTest())
 }
 
-func allowInMemoryGraphStoreForProcess(testProcess, explicit bool) bool {
-	_ = testProcess
-	_ = explicit
-	return false
-}
-
 func (c *Config) graphStoreBackend() graph.StoreBackend {
 	if c == nil {
 		return graph.ParseStoreBackend(defaultGraphStoreBackend())

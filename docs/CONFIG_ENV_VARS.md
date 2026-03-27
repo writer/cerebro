@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **371**
+Total variables: **370**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -148,7 +148,6 @@ Total variables: **371**
 | `GRAPH_SNAPSHOT_MAX_RETAINED` | `getEnvInt` | `10` | `GraphSnapshotMaxRetained` | `-` |
 | `GRAPH_SNAPSHOT_PATH` | `getEnv` | `filepath.Join(".cerebro", "graph-snapshots")` | `GraphSnapshotPath` | `-` |
 | `GRAPH_SNAPSHOT_REPLICA_URI` | `getEnv` | `""` | `GraphSnapshotReplicaURI` | `-` |
-| `GRAPH_STORE_ALLOW_IN_MEMORY` | `getEnvBool` | `false` | `GraphStoreAllowInMemory` | `is not supported` |
 | `GRAPH_STORE_BACKEND` | `getEnv` | `defaultGraphStoreBackend()` | `GraphStoreBackend` | `must be neptune`, `when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required` |
 | `GRAPH_STORE_NEPTUNE_ENDPOINT` | `getEnv` | `""` | `GraphStoreNeptuneEndpoint` | `when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required` |
 | `GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT` | `getEnvDuration` | `defaultNeptunePool.DrainTimeout` | `GraphStoreNeptunePoolDrainTimeout` | `-` |
