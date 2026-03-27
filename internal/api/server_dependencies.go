@@ -79,7 +79,6 @@ type serverDependencies struct {
 	Config *app.Config
 	Logger *slog.Logger
 
-	Snowflake      *snowflake.Client
 	Warehouse      warehouse.DataWarehouse
 	Policy         *policy.Engine
 	Findings       findings.FindingStore
@@ -172,7 +171,6 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 	deps := serverDependencies{
 		Config:               application.Config,
 		Logger:               application.Logger,
-		Snowflake:            application.Snowflake,
 		Warehouse:            application.Warehouse,
 		Policy:               application.Policy,
 		Findings:             application.Findings,
