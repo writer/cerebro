@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/nats-io/nats.go"
 
@@ -16,10 +18,11 @@ import (
 )
 
 type jobRuntime struct {
-	db    *sql.DB
-	nc    *nats.Conn
-	queue jobs.Queue
-	store jobs.Store
+	db     *sql.DB
+	nc     *nats.Conn
+	queue  jobs.Queue
+	store  jobs.Store
+	cancel context.CancelFunc
 }
 
 func distributedJobsConfigured(cfg *app.Config) bool {
@@ -30,25 +33,31 @@ func openJobRuntime(ctx context.Context, cfg *app.Config) (*jobRuntime, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("job config is required")
 	}
+	runtimeCtx, runtimeCancel := context.WithCancel(ctx)
 	databaseURL := strings.TrimSpace(cfg.JobDatabaseURL)
 	if databaseURL == "" {
+		runtimeCancel()
 		return nil, fmt.Errorf("JOB_DATABASE_URL is required")
 	}
 	if len(cfg.NATSJetStreamURLs) == 0 {
+		runtimeCancel()
 		return nil, fmt.Errorf("NATS_URLS is required")
 	}
 
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
+		runtimeCancel()
 		return nil, fmt.Errorf("open job database: %w", err)
 	}
 	if err := db.PingContext(ctx); err != nil {
+		runtimeCancel()
 		_ = db.Close()
 		return nil, fmt.Errorf("ping job database: %w", err)
 	}
 
 	store := jobs.NewPostgresStore(db)
 	if err := store.EnsureSchema(ctx); err != nil {
+		runtimeCancel()
 		_ = db.Close()
 		return nil, fmt.Errorf("ensure job schema: %w", err)
 	}
@@ -70,18 +79,21 @@ func openJobRuntime(ctx context.Context, cfg *app.Config) (*jobRuntime, error) {
 	}
 	natsOptions, err := jetStreamCfg.NATSOptions()
 	if err != nil {
+		runtimeCancel()
 		_ = db.Close()
 		return nil, fmt.Errorf("build job NATS options: %w", err)
 	}
 
 	nc, err := nats.Connect(strings.Join(cfg.NATSJetStreamURLs, ","), natsOptions...)
 	if err != nil {
+		runtimeCancel()
 		_ = db.Close()
 		return nil, fmt.Errorf("connect to job NATS: %w", err)
 	}
 
 	js, err := nc.JetStream()
 	if err != nil {
+		runtimeCancel()
 		nc.Close()
 		_ = db.Close()
 		return nil, fmt.Errorf("obtain job JetStream context: %w", err)
@@ -94,16 +106,23 @@ func openJobRuntime(ctx context.Context, cfg *app.Config) (*jobRuntime, error) {
 		CreateStream: false,
 	})
 	if err := queue.EnsureStream(ctx); err != nil {
+		runtimeCancel()
 		nc.Close()
 		_ = db.Close()
 		return nil, fmt.Errorf("ensure job stream: %w", err)
 	}
 
+	if pendingDispatchStore, ok := any(store).(jobs.PendingDispatchStore); ok {
+		scanner := jobs.NewPendingDispatchScanner(pendingDispatchStore, queue, slog.Default(), 15*time.Second, 15*time.Second)
+		go scanner.Start(runtimeCtx)
+	}
+
 	return &jobRuntime{
-		db:    db,
-		nc:    nc,
-		queue: queue,
-		store: store,
+		db:     db,
+		nc:     nc,
+		queue:  queue,
+		store:  store,
+		cancel: runtimeCancel,
 	}, nil
 }
 
@@ -123,6 +142,9 @@ func (r *jobRuntime) Close() error {
 		return nil
 	}
 	var err error
+	if r.cancel != nil {
+		r.cancel()
+	}
 	if r.nc != nil {
 		r.nc.Close()
 	}

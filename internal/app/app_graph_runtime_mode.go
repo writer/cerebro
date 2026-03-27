@@ -34,6 +34,13 @@ func (c *Config) graphStoreBackend() graph.StoreBackend {
 	return graph.ParseStoreBackend(c.GraphStoreBackend)
 }
 
+func (c *Config) allowMissingGraphStoreEndpoint() bool {
+	if c == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(c.WarehouseBackend), "sqlite") && strings.TrimSpace(c.GraphStoreNeptuneEndpoint) == ""
+}
+
 func (a *App) retainHotSecurityGraph() bool {
 	_ = a
 	return runningUnderGoTest()

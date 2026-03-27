@@ -12,6 +12,12 @@ import (
 )
 
 func executeAzureSync(ctx context.Context, client *snowflake.Client, schedule *SyncSchedule) error {
+	client, closeClient, err := ensureSnowflakeClientForDirectScheduledSync(client, "azure")
+	if err != nil {
+		return err
+	}
+	defer closeClient()
+
 	spec := parseScheduledSyncSpec(schedule.Table)
 	subscriptions := uniqueNonEmpty(append(append([]string{}, spec.AzureSubscriptions...), spec.AzureSubscription))
 	if len(subscriptions) == 0 {

@@ -73,17 +73,29 @@ func executeAWSSync(ctx context.Context, client *snowflake.Client, schedule *Syn
 }
 
 func runScheduledAWSNativeSync(ctx context.Context, client *snowflake.Client, awsCfg aws.Config, tableFilter []string) error {
+	client, closeClient, err := ensureSnowflakeClientForDirectScheduledSync(client, "aws")
+	if err != nil {
+		return err
+	}
+	defer closeClient()
+
 	var opts []nativesync.EngineOption
 	if len(tableFilter) > 0 {
 		opts = append(opts, nativesync.WithTableFilter(tableFilter))
 	}
 
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
-	_, err := syncer.SyncAllWithConfig(ctx, awsCfg)
+	_, err = syncer.SyncAllWithConfig(ctx, awsCfg)
 	return err
 }
 
 func runScheduledAWSOrgSync(ctx context.Context, client *snowflake.Client, awsCfg aws.Config, spec scheduledSyncSpec) error {
+	client, closeClient, err := ensureSnowflakeClientForDirectScheduledSync(client, "aws")
+	if err != nil {
+		return err
+	}
+	defer closeClient()
+
 	orgCfg := awsCfg.Copy()
 	if strings.TrimSpace(orgCfg.Region) == "" {
 		orgCfg.Region = "us-east-1"

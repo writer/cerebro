@@ -67,14 +67,46 @@ CREATE TABLE IF NOT EXISTS jobs (
 	group_id TEXT NOT NULL DEFAULT '',
 	worker_id TEXT NOT NULL DEFAULT '',
 	lease_expires_at BIGINT NOT NULL DEFAULT 0,
+	queue_dispatched_at BIGINT NOT NULL DEFAULT 0,
 	created_at BIGINT NOT NULL DEFAULT 0,
 	updated_at BIGINT NOT NULL DEFAULT 0,
 	correlation_id TEXT NOT NULL DEFAULT '',
 	parent_id TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX IF NOT EXISTS idx_jobs_status_lease ON jobs (status, lease_expires_at);
 `)
-	return err
+	if err != nil {
+		return err
+	}
+
+	addedDispatchColumn, err := s.ensureQueueDispatchedColumn(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+CREATE INDEX IF NOT EXISTS idx_jobs_status_lease ON jobs (status, lease_expires_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_status_dispatch ON jobs (status, queue_dispatched_at, updated_at);
+`)
+	if err != nil {
+		return err
+	}
+
+	if addedDispatchColumn {
+		_, err = s.db.ExecContext(ctx, `
+UPDATE jobs
+SET queue_dispatched_at = CASE
+	WHEN updated_at > 0 THEN updated_at
+	WHEN created_at > 0 THEN created_at
+	ELSE 1
+END
+WHERE queue_dispatched_at = 0
+`)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // CreateJob inserts a new job. Returns an error if a job with the same ID
@@ -149,7 +181,7 @@ UPDATE jobs SET
 	attempt = attempt + 1,
 	updated_at = $3
 WHERE job_id = $4
-	AND (status = 'queued' OR (status = 'running' AND lease_expires_at < $5))
+	AND ((status = 'queued' AND queue_dispatched_at > 0) OR (status = 'running' AND lease_expires_at < $5))
 RETURNING `+jobColumns),
 		workerID, leaseUntil, now, jobID, now,
 	)
@@ -317,4 +349,105 @@ LIMIT $2
 		return nil, err
 	}
 	return jobs, nil
+}
+
+func (s *PostgresStore) MarkDispatched(ctx context.Context, jobID string) error {
+	if jobID == "" {
+		return fmt.Errorf("job id required")
+	}
+	now := time.Now().UTC().Unix()
+	_, err := s.db.ExecContext(ctx, s.q(`
+UPDATE jobs
+SET queue_dispatched_at = $1, updated_at = $2
+WHERE job_id = $3 AND status = 'queued'
+`), now, now, jobID)
+	return err
+}
+
+func (s *PostgresStore) FindPendingDispatchJobs(ctx context.Context, limit int, olderThan time.Duration) ([]*Job, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	cutoff := time.Now().UTC().Add(-olderThan).Unix()
+	rows, err := s.db.QueryContext(ctx, s.q(`
+SELECT `+jobColumns+` FROM jobs
+WHERE status = 'queued' AND queue_dispatched_at = 0 AND updated_at <= $1
+ORDER BY updated_at ASC, created_at ASC
+LIMIT $2
+`), cutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	jobs := make([]*Job, 0)
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return jobs, nil
+}
+
+func (s *PostgresStore) ensureQueueDispatchedColumn(ctx context.Context) (bool, error) {
+	exists, err := s.hasQueueDispatchedColumn(ctx)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return false, nil
+	}
+	if _, err := s.db.ExecContext(ctx, `ALTER TABLE jobs ADD COLUMN queue_dispatched_at BIGINT NOT NULL DEFAULT 0`); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *PostgresStore) hasQueueDispatchedColumn(ctx context.Context) (bool, error) {
+	if s.rewriteSQL != nil {
+		rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(jobs)`)
+		if err != nil {
+			return false, err
+		}
+		defer func() { _ = rows.Close() }()
+
+		for rows.Next() {
+			var (
+				cid        int
+				name       string
+				columnType string
+				notNull    int
+				defaultVal sql.NullString
+				pk         int
+			)
+			if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultVal, &pk); err != nil {
+				return false, err
+			}
+			if name == "queue_dispatched_at" {
+				return true, nil
+			}
+		}
+		return false, rows.Err()
+	}
+
+	row := s.db.QueryRowContext(ctx, `
+SELECT 1
+FROM information_schema.columns
+WHERE table_schema = current_schema()
+	AND table_name = 'jobs'
+	AND column_name = 'queue_dispatched_at'
+LIMIT 1
+`)
+	var exists int
+	if err := row.Scan(&exists); errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	return true, nil
 }

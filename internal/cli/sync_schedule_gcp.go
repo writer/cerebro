@@ -577,16 +577,28 @@ func detectGCPCredentialsType(raw []byte, source string) (option.CredentialsType
 }
 
 func runScheduledGCPNativeSync(ctx context.Context, client *snowflake.Client, projectID string, tableFilter []string) error {
+	client, closeClient, err := ensureSnowflakeClientForDirectScheduledSync(client, "gcp")
+	if err != nil {
+		return err
+	}
+	defer closeClient()
+
 	opts := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
 	if len(tableFilter) > 0 {
 		opts = append(opts, nativesync.WithGCPTableFilter(tableFilter))
 	}
 	syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), opts...)
-	_, err := syncer.SyncAll(ctx)
+	_, err = syncer.SyncAll(ctx)
 	return err
 }
 
 func runScheduledGCPSecuritySync(ctx context.Context, client *snowflake.Client, projectID, orgID string, tableFilter []string) error {
+	client, closeClient, err := ensureSnowflakeClientForDirectScheduledSync(client, "gcp")
+	if err != nil {
+		return err
+	}
+	defer closeClient()
+
 	secOpts := []nativesync.GCPSecurityOption{}
 	if len(tableFilter) > 0 {
 		secOpts = append(secOpts, nativesync.WithGCPSecurityTableFilter(tableFilter))

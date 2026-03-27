@@ -13,7 +13,8 @@ func (a *App) initConfiguredSecurityGraphStore(ctx context.Context) error {
 		return nil
 	}
 	backend := a.Config.graphStoreBackend()
-	if backend == graph.StoreBackendNeptune && a.graphStoreBackendProviderFactory == nil && runningUnderGoTest() && strings.TrimSpace(a.Config.GraphStoreNeptuneEndpoint) == "" {
+	if backend == graph.StoreBackendNeptune && a.graphStoreBackendProviderFactory == nil && strings.TrimSpace(a.Config.GraphStoreNeptuneEndpoint) == "" &&
+		(runningUnderGoTest() || a.Config.allowMissingGraphStoreEndpoint()) {
 		a.configuredSecurityGraphStore = nil
 		a.configuredSecurityGraphClose = nil
 		a.configuredSecurityGraphReady = false

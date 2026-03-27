@@ -13,6 +13,13 @@ type OrphanScanner interface {
 	FindOrphanedJobs(ctx context.Context, limit int) ([]*Job, error)
 }
 
+// PendingDispatchStore tracks jobs persisted before their JetStream publish is
+// durably recorded.
+type PendingDispatchStore interface {
+	MarkDispatched(ctx context.Context, jobID string) error
+	FindPendingDispatchJobs(ctx context.Context, limit int, olderThan time.Duration) ([]*Job, error)
+}
+
 // OrphanedJobScanner finds and recovers jobs that are stuck in "running" state
 // with expired leases. This handles cases where a worker crashed after claiming
 // a job but before completing it.
@@ -107,6 +114,11 @@ func (s *OrphanedJobScanner) recoverJob(ctx context.Context, job *Job) error {
 	}); err != nil {
 		return fmt.Errorf("failed to re-enqueue job: %w", err)
 	}
+	if tracker, ok := s.store.(PendingDispatchStore); ok {
+		if err := tracker.MarkDispatched(ctx, job.ID); err != nil {
+			return fmt.Errorf("failed to mark re-enqueued job dispatched: %w", err)
+		}
+	}
 
 	s.log("recovered orphaned job", "job_id", job.ID, "attempt", job.Attempt)
 	return nil
@@ -120,6 +132,100 @@ func (s *OrphanedJobScanner) log(msg string, args ...any) {
 
 func (s *OrphanedJobScanner) logError(msg string, err error, args ...any) {
 	if s.logger != nil {
+		s.logger.Error(msg, append([]any{"error", err}, args...)...)
+	}
+}
+
+// PendingDispatchScanner republishes queued jobs that were persisted before the
+// process crashed or lost connectivity during JetStream publish.
+type PendingDispatchScanner struct {
+	store     PendingDispatchStore
+	queue     Queue
+	logger    *slog.Logger
+	interval  time.Duration
+	olderThan time.Duration
+}
+
+func NewPendingDispatchScanner(store PendingDispatchStore, queue Queue, logger *slog.Logger, interval, olderThan time.Duration) *PendingDispatchScanner {
+	if interval <= 0 {
+		interval = 15 * time.Second
+	}
+	if olderThan <= 0 {
+		olderThan = interval
+	}
+	return &PendingDispatchScanner{
+		store:     store,
+		queue:     queue,
+		logger:    logger,
+		interval:  interval,
+		olderThan: olderThan,
+	}
+}
+
+func (s *PendingDispatchScanner) Start(ctx context.Context) {
+	ticker := time.NewTicker(s.interval)
+	defer ticker.Stop()
+
+	s.scan(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.scan(ctx)
+		}
+	}
+}
+
+func (s *PendingDispatchScanner) scan(ctx context.Context) {
+	if s == nil || s.store == nil || s.queue == nil {
+		return
+	}
+
+	jobs, err := s.store.FindPendingDispatchJobs(ctx, 100, s.olderThan)
+	if err != nil {
+		s.logError("failed to scan pending dispatch jobs", err)
+		return
+	}
+	if len(jobs) == 0 {
+		return
+	}
+
+	recovered := 0
+	for _, job := range jobs {
+		if err := s.republish(ctx, job); err != nil {
+			s.logError("failed to republish pending dispatch job", err, "job_id", job.ID)
+			continue
+		}
+		recovered++
+	}
+	if recovered > 0 {
+		s.log("recovered pending dispatch jobs", "recovered", recovered, "total", len(jobs))
+	}
+}
+
+func (s *PendingDispatchScanner) republish(ctx context.Context, job *Job) error {
+	if job == nil {
+		return fmt.Errorf("job is required")
+	}
+	if err := s.queue.Enqueue(ctx, jobMessageForEnqueue(job)); err != nil {
+		return fmt.Errorf("enqueue pending dispatch job: %w", err)
+	}
+	if err := s.store.MarkDispatched(ctx, job.ID); err != nil {
+		return fmt.Errorf("mark pending dispatch job dispatched: %w", err)
+	}
+	return nil
+}
+
+func (s *PendingDispatchScanner) log(msg string, args ...any) {
+	if s != nil && s.logger != nil {
+		s.logger.Info(msg, args...)
+	}
+}
+
+func (s *PendingDispatchScanner) logError(msg string, err error, args ...any) {
+	if s != nil && s.logger != nil {
 		s.logger.Error(msg, append([]any{"error", err}, args...)...)
 	}
 }

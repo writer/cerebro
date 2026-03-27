@@ -550,7 +550,7 @@ func (c *Config) Validate() error {
 	if c.graphStoreBackend() != graph.StoreBackendNeptune {
 		problems = addConfigProblem(problems, "GRAPH_STORE_BACKEND must be neptune")
 	}
-	if !testProcess && strings.TrimSpace(c.GraphStoreNeptuneEndpoint) == "" {
+	if !testProcess && !c.allowMissingGraphStoreEndpoint() && strings.TrimSpace(c.GraphStoreNeptuneEndpoint) == "" {
 		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_ENDPOINT is required when GRAPH_STORE_BACKEND=neptune")
 	}
 	if c.GraphStoreNeptunePoolSize <= 0 {
