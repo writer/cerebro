@@ -94,7 +94,7 @@ func rewriteQuestionPlaceholders(query string) string {
 				b.WriteByte(ch)
 				continue
 			}
-			b.WriteString(fmt.Sprintf("$%d", index))
+			_, _ = fmt.Fprintf(&b, "$%d", index)
 			index++
 		default:
 			b.WriteByte(ch)
