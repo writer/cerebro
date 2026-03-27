@@ -58,5 +58,7 @@ func (a *App) probeConfiguredSecurityGraphStore(ctx context.Context, store graph
 	if err != nil {
 		return false, fmt.Errorf("probe configured graph store edges: %w", err)
 	}
-	return nodes > 0 || edges > 0, nil
+	_ = nodes
+	_ = edges
+	return true, nil
 }

@@ -211,7 +211,7 @@ func TestCerebroBlastRadiusTool(t *testing.T) {
 	}
 }
 
-func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestCerebroAnalysisToolsUseConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
@@ -263,9 +263,9 @@ func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *tes
 	g.BuildIndex()
 
 	application := &App{
-		GraphSnapshots: mustPersistToolGraph(t, g),
-		Identity:       identity.NewService(identity.WithGraphResolver(func(context.Context) *graph.Graph { return nil })),
+		Identity: identity.NewService(identity.WithGraphResolver(func(context.Context) *graph.Graph { return nil })),
 	}
+	setConfiguredSnapshotGraphFromGraph(t, application, g)
 	tests := []struct {
 		name   string
 		tool   string
@@ -1328,22 +1328,11 @@ func TestCerebroEvaluatePolicyTool(t *testing.T) {
 	}
 }
 
-func TestCerebroEvaluatePolicyToolUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
-	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
-		LocalPath:    filepath.Join(t.TempDir(), "graph-snapshots"),
-		MaxSnapshots: 4,
-	})
-	if err != nil {
-		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
-	}
-	if _, err := store.SaveGraph(graph.New()); err != nil {
-		t.Fatalf("SaveGraph() error = %v", err)
-	}
-
+func TestCerebroEvaluatePolicyToolUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	application := &App{
-		Policy:         policy.NewEngine(),
-		GraphSnapshots: store,
+		Policy: policy.NewEngine(),
 	}
+	setConfiguredSnapshotGraphFromGraph(t, application, graph.New())
 	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
 	if tool == nil {
 		t.Fatal("expected evaluate_policy tool")
@@ -1356,7 +1345,7 @@ func TestCerebroEvaluatePolicyToolUsesPersistedSnapshotWhenLiveGraphUnavailable(
 		"proposed_change":{
 			"id":"chg-1",
 			"source":"tool",
-			"reason":"test snapshot fallback",
+			"reason":"test configured graph base",
 			"nodes":[{"action":"add","node":{"id":"service:payments","kind":"service","name":"payments"}}]
 		}
 	}`))
@@ -1615,7 +1604,7 @@ func TestCerebroAccessReviewTool(t *testing.T) {
 	}
 }
 
-func TestCerebroAccessReviewToolUsesTenantScopedPersistedSnapshot(t *testing.T) {
+func TestCerebroAccessReviewToolUsesTenantScopedConfiguredStore(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
 	g.AddNode(&graph.Node{ID: "bucket:tenant-a", Kind: graph.NodeKindBucket, Name: "Tenant A Bucket", TenantID: "tenant-a", Risk: graph.RiskHigh})
@@ -1623,7 +1612,8 @@ func TestCerebroAccessReviewToolUsesTenantScopedPersistedSnapshot(t *testing.T) 
 	g.AddEdge(&graph.Edge{ID: "alice-tenant-a", Source: "user:alice", Target: "bucket:tenant-a", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
 	g.AddEdge(&graph.Edge{ID: "alice-tenant-b", Source: "user:alice", Target: "bucket:tenant-b", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
 
-	application := &App{GraphSnapshots: mustPersistToolGraph(t, g)}
+	application := &App{}
+	setConfiguredSnapshotGraphFromGraph(t, application, g)
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.access_review")
 	if tool == nil {
 		t.Fatal("expected access_review tool")
@@ -1736,7 +1726,7 @@ func TestCerebroAutonomousCredentialResponseTool_AwaitingApproval(t *testing.T) 
 	}
 }
 
-func TestCerebroAutonomousCredentialResponseTool_UsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestCerebroAutonomousCredentialResponseTool_UsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	dir := t.TempDir()
 	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
 	if err != nil {
@@ -1747,8 +1737,8 @@ func TestCerebroAutonomousCredentialResponseTool_UsesPersistedSnapshotWhenLiveGr
 	application := &App{
 		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
 		ExecutionStore: store,
-		GraphSnapshots: mustPersistToolGraph(t, autonomousCredentialWorkflowGraph()),
 	}
+	setConfiguredGraphFromGraph(t, application, autonomousCredentialWorkflowGraph())
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
 	if tool == nil {
 		t.Fatal("expected autonomous credential response tool")
@@ -1788,10 +1778,10 @@ func TestCerebroAutonomousCredentialResponseTool_UsesPersistedSnapshotWhenLiveGr
 
 	current := application.CurrentSecurityGraph()
 	if current == nil {
-		t.Fatal("expected persisted snapshot base to hydrate a live graph during mutation")
+		t.Fatal("expected configured graph base to hydrate a live graph during mutation")
 	}
 	if _, ok := current.GetNode("secret:public-repo:1"); !ok {
-		t.Fatal("expected original persisted secret node to remain present")
+		t.Fatal("expected original configured secret node to remain present")
 	}
 	if _, ok := current.GetNode(run.ObservationID); !ok {
 		t.Fatalf("expected observation node %q", run.ObservationID)

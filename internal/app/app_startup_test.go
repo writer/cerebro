@@ -142,21 +142,21 @@ func TestWaitForGraph_ContextCanceled(t *testing.T) {
 	}
 }
 
-func TestWaitForReadableSecurityGraphUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
-	persisted := graph.New()
-	persisted.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+func TestWaitForReadableSecurityGraphUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
+	configured := graph.New()
+	configured.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
 
 	a := &App{
-		GraphSnapshots: mustPersistToolGraph(t, persisted),
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
+	setConfiguredSnapshotGraphFromGraph(t, a, configured)
 
 	resolved := a.WaitForReadableSecurityGraph(context.Background())
 	if resolved == nil {
-		t.Fatal("expected persisted snapshot graph")
+		t.Fatal("expected configured graph")
 	}
 	if _, ok := resolved.GetNode("service:payments"); !ok {
-		t.Fatal("expected persisted snapshot node in readable graph")
+		t.Fatal("expected configured graph node in readable graph")
 	}
 }
 

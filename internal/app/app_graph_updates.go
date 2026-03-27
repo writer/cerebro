@@ -3,14 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
 )
 
-// ApplySecurityGraphChanges applies CDC-backed graph mutations and falls back to
-// a copy-on-write full rebuild only when incremental mutation fails.
+// ApplySecurityGraphChanges applies CDC-backed graph mutations.
 func (a *App) ApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, error) {
 	if a == nil || a.SecurityGraphBuilder == nil {
 		return graph.GraphMutationSummary{}, errGraphNotInitialized()
@@ -41,39 +39,17 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 	if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
 		return graph.GraphMutationSummary{}, err
 	}
-	start := time.Now()
 	if err := a.prepareSecurityGraphBuilderForIncrementalApply(ctx); err != nil {
 		return graph.GraphMutationSummary{}, err
 	}
 	summary, err := a.SecurityGraphBuilder.ApplyChanges(ctx, time.Time{})
 	if err != nil {
-		a.Logger.Warn("incremental graph apply failed, falling back to full rebuild",
+		a.Logger.Warn("incremental graph apply failed",
 			"trigger", trigger,
 			"error", err,
 		)
-		a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
-		if buildErr := a.SecurityGraphBuilder.Build(ctx); buildErr != nil {
-			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), buildErr)
-			return graph.GraphMutationSummary{}, buildErr
-		}
-
-		securityGraph := a.SecurityGraphBuilder.Graph()
-		meta, activateErr := a.activateBuiltSecurityGraph(ctx, securityGraph)
-		if activateErr != nil {
-			return graph.GraphMutationSummary{}, activateErr
-		}
-
-		summary = a.SecurityGraphBuilder.LastMutation()
-		duration := time.Since(start)
-		a.Logger.Info("security graph rebuilt after incremental apply failure",
-			"trigger", trigger,
-			"nodes", meta.NodeCount,
-			"edges", meta.EdgeCount,
-			"duration", duration,
-		)
-		a.emitGraphRebuiltEvent(ctx, meta, duration)
-		a.emitGraphMutationEvent(ctx, summary, trigger)
-		return summary, nil
+		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+		return graph.GraphMutationSummary{}, err
 	}
 
 	if summary.EventsProcessed == 0 {
@@ -254,15 +230,5 @@ func (a *App) currentIncrementalBuilderSnapshot(ctx context.Context) (*graph.Sna
 	} else if snapshot != nil {
 		return snapshot, nil
 	}
-	if a.GraphSnapshots == nil {
-		return nil, nil
-	}
-	snapshot, _, _, err := a.GraphSnapshots.PeekLatestSnapshot()
-	if err != nil {
-		if isNoSnapshotsGraphStoreErr(err) || strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return snapshot, nil
+	return nil, nil
 }

@@ -193,7 +193,7 @@ func TestGraphRuntimeAdapterCanApplySecurityGraphChangesAfterFallbackRefresh(t *
 	deps := &serverDependencies{}
 	runtime := &graphRuntimeAdapter{
 		deps:     deps,
-		fallback: fallback,
+		delegate: fallback,
 	}
 
 	if !runtime.CanApplySecurityGraphChanges() {
@@ -261,7 +261,7 @@ func TestGraphRuntimeAdapterGraphHealthSnapshotRecalculatesMemoryEstimate(t *tes
 			SecurityGraph:        localGraph,
 			SecurityGraphBuilder: &builders.Builder{},
 		},
-		fallback: stubGraphRuntime{
+		delegate: stubGraphRuntime{
 			graph: providerGraph,
 			healthSnapshot: app.GraphHealthSnapshot{
 				MemoryUsageEstimateBytes: app.EstimateGraphMemoryUsageBytes(providerGraph.NodeCount(), providerGraph.EdgeCount()),
@@ -289,7 +289,7 @@ func TestGraphRuntimeAdapterGraphHealthSnapshotEmptyLocalGraphIsNotHot(t *testin
 				SecurityGraph:        graph.New(),
 				SecurityGraphBuilder: &builders.Builder{},
 			},
-			fallback: stubGraphRuntime{},
+			delegate: stubGraphRuntime{},
 		}
 
 		snapshot := runtime.GraphHealthSnapshot(now)
@@ -333,7 +333,7 @@ func TestGraphRuntimeAdapterGraphHealthSnapshotFallbackUsesLocalBuilderLastMutat
 			SecurityGraph:        localGraph,
 			SecurityGraphBuilder: builder,
 		},
-		fallback: &mutatingFallbackGraphRuntime{current: graph.New()},
+		delegate: &mutatingFallbackGraphRuntime{current: graph.New()},
 	}
 
 	snapshot := runtime.GraphHealthSnapshot(now)

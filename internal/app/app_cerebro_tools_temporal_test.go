@@ -190,7 +190,7 @@ func TestCerebroTemporalAliasTools(t *testing.T) {
 	}
 }
 
-func TestCerebroEntityHistoryToolUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestCerebroEntityHistoryToolUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	base := time.Date(2026, 3, 10, 9, 0, 0, 0, time.UTC)
 	g := graph.New()
 	g.AddNode(&graph.Node{
@@ -219,9 +219,9 @@ func TestCerebroEntityHistoryToolUsesPersistedSnapshotWhenLiveGraphUnavailable(t
 	}
 
 	application := &App{
-		GraphSnapshots: mustPersistToolGraph(t, g),
-		Config:         &Config{},
+		Config: &Config{},
 	}
+	setConfiguredSnapshotGraphFromGraph(t, application, g)
 	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.entity_history")
 	if tool == nil {
 		t.Fatal("expected cerebro.entity_history tool")
@@ -346,8 +346,8 @@ func TestCerebroGraphChangelogTool(t *testing.T) {
 	if got := toSnapshot["captured_at"]; got != latest.CreatedAt.Format(time.RFC3339) {
 		t.Fatalf("expected newest changelog entry, got to=%#v", toSnapshot)
 	}
-	if got := toSnapshot["current"]; got != true {
-		t.Fatalf("expected newest persisted snapshot to be current, got %#v", got)
+	if got := toSnapshot["current"]; got != nil {
+		t.Fatalf("expected no current snapshot marker without live/configured graph, got %#v", got)
 	}
 	summary := entry["summary"].(map[string]any)
 	if summary["nodes_modified"] != float64(1) || summary["nodes_added"] != float64(0) {
@@ -370,8 +370,8 @@ func TestCerebroGraphChangelogTool(t *testing.T) {
 		t.Fatalf("expected filtered detail nodes_added=1, got %#v", detailSummary)
 	}
 	detailTo := detailPayload["to"].(map[string]any)
-	if got := detailTo["current"]; got != true {
-		t.Fatalf("expected detail target snapshot to be current, got %#v", got)
+	if got := detailTo["current"]; got != nil {
+		t.Fatalf("expected no detail current snapshot marker without live/configured graph, got %#v", got)
 	}
 
 	diffDir := filepath.Join(dir, "diffs")
@@ -384,7 +384,7 @@ func TestCerebroGraphChangelogTool(t *testing.T) {
 	}
 }
 
-func TestCerebroGraphChangelogToolMarksPersistedSnapshotCurrentWithoutBuiltAt(t *testing.T) {
+func TestCerebroGraphChangelogToolOmitsCurrentMarkerWithoutLiveGraph(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GRAPH_SNAPSHOT_PATH", dir)
 
@@ -446,8 +446,8 @@ func TestCerebroGraphChangelogToolMarksPersistedSnapshotCurrentWithoutBuiltAt(t 
 	if got := toSnapshot["captured_at"]; got != latest.CreatedAt.Format(time.RFC3339) {
 		t.Fatalf("expected latest persisted snapshot in changelog, got %#v", toSnapshot)
 	}
-	if got := toSnapshot["current"]; got != true {
-		t.Fatalf("expected latest persisted snapshot to stay current without built_at, got %#v", got)
+	if got := toSnapshot["current"]; got != nil {
+		t.Fatalf("expected latest persisted snapshot to omit current marker without live graph, got %#v", got)
 	}
 }
 

@@ -6,22 +6,20 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 )
 
-func TestCurrentOrStoredEventRoutingGraphUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
-	persisted := graph.New()
-	persisted.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
-	persisted.BuildIndex()
+func TestCurrentOrStoredEventRoutingGraphUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
+	configured := graph.New()
+	configured.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+	configured.BuildIndex()
 
-	application := &App{
-		Config:         &Config{},
-		GraphSnapshots: mustPersistToolGraph(t, persisted),
-	}
+	application := &App{Config: &Config{}}
+	setConfiguredSnapshotGraphFromGraph(t, application, configured)
 
 	resolved := application.currentOrStoredEventRoutingGraph()
 	if resolved == nil {
-		t.Fatal("expected persisted snapshot graph for event routing")
+		t.Fatal("expected configured graph for event routing")
 	}
 	if _, ok := resolved.GetNode("service:payments"); !ok {
-		t.Fatal("expected persisted snapshot node to be available for event routing")
+		t.Fatal("expected configured graph node to be available for event routing")
 	}
 }
 
@@ -35,10 +33,10 @@ func TestCurrentOrStoredEventRoutingGraphPrefersLiveGraph(t *testing.T) {
 	persisted.BuildIndex()
 
 	application := &App{
-		Config:         &Config{},
-		SecurityGraph:  live,
-		GraphSnapshots: mustPersistToolGraph(t, persisted),
+		Config:        &Config{},
+		SecurityGraph: live,
 	}
+	setConfiguredSnapshotGraphFromGraph(t, application, persisted)
 
 	resolved := application.currentOrStoredEventRoutingGraph()
 	if resolved != live {
@@ -48,6 +46,6 @@ func TestCurrentOrStoredEventRoutingGraphPrefersLiveGraph(t *testing.T) {
 		t.Fatal("expected live graph node to be available for event routing")
 	}
 	if _, ok := resolved.GetNode("service:stored"); ok {
-		t.Fatal("expected persisted snapshot graph to be ignored when live graph is present")
+		t.Fatal("expected configured graph to be ignored when live graph is present")
 	}
 }

@@ -528,27 +528,8 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	securityGraph := a.SecurityGraphBuilder.Graph()
 	a.configureGraphRuntimeBehavior(securityGraph)
 	a.publishSecurityGraphRuntimeView(securityGraph)
-	if a.GraphSnapshots != nil {
-		recovered, record, recoverySource, err := a.GraphSnapshots.LoadLatestSnapshot()
-		if err != nil {
-			a.Logger.Warn("failed to recover persisted security graph snapshot", "error", err)
-		} else if recovered != nil {
-			recoveredGraph := graph.RestoreFromSnapshot(recovered)
-			a.configureGraphRuntimeBehavior(recoveredGraph)
-			a.publishSecurityGraphRuntimeView(recoveredGraph)
-			if record != nil && record.BuiltAt != nil {
-				a.setGraphBuildState(GraphBuildSuccess, record.BuiltAt.UTC(), nil)
-			}
-			a.Logger.Info("recovered persisted security graph snapshot",
-				"source", recoverySource,
-				"snapshot_id", recordID(record),
-				"nodes", recoveredGraph.NodeCount(),
-				"edges", recoveredGraph.EdgeCount(),
-			)
-		}
-	}
 	if !a.graphWriterLeaseAllowsWrites() {
-		a.Logger.Info("security graph initialized from local snapshots while waiting for graph writer lease",
+		a.Logger.Info("security graph waiting for graph writer lease",
 			"lease", a.Config.GraphWriterLeaseName,
 			"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
 		)
@@ -768,13 +749,6 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 	meta := securityGraph.Metadata()
 	a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
 	return meta, nil
-}
-
-func recordID(record *graph.GraphSnapshotRecord) string {
-	if record == nil {
-		return ""
-	}
-	return record.ID
 }
 
 func (a *App) rematerializeEventCorrelations(securityGraph *graph.Graph, reason string) {

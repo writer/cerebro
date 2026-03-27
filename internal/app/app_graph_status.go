@@ -56,7 +56,9 @@ func (a *App) setGraphBuildState(state GraphBuildState, builtAt time.Time, err e
 
 func (a *App) CurrentSecurityGraph() *graph.Graph {
 	if current := a.currentLiveSecurityGraph(); current != nil {
-		return current
+		if current.NodeCount() > 0 || current.EdgeCount() > 0 {
+			return current
+		}
 	}
 	if a == nil {
 		return nil
@@ -64,14 +66,7 @@ func (a *App) CurrentSecurityGraph() *graph.Graph {
 	if view, err := a.currentConfiguredSecurityGraphView(context.Background()); err == nil && view != nil {
 		return view
 	}
-	view, err := a.storedSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error) {
-		snapshot, _, _, err := store.PeekLatestSnapshot()
-		return snapshot, err
-	})
-	if err != nil {
-		return nil
-	}
-	return view
+	return a.currentLiveSecurityGraph()
 }
 
 func (a *App) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
