@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **369**
+Total variables: **375**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -37,7 +37,7 @@ Total variables: **369**
 | `AUTH0_CLIENT_ID` | `getEnv` | `""` | `Auth0ClientID` | `-` |
 | `AUTH0_CLIENT_SECRET` | `getEnv` | `""` | `Auth0ClientSecret` | `-` |
 | `AUTH0_DOMAIN` | `getEnv` | `""` | `Auth0Domain` | `-` |
-| `AWS_REGION` | `getEnv` | `"us-east-1"` | `GraphStoreNeptuneRegion`, `S3InputRegion` | `-` |
+| `AWS_REGION` | `getEnv` | `""`, `"us-east-1"` | `GraphSearchOpenSearchRegion`, `GraphStoreNeptuneRegion`, `S3InputRegion` | `-` |
 | `AZURE_CLIENT_ID` | `getEnv` | `""` | `AzureClientID` | `-` |
 | `AZURE_CLIENT_SECRET` | `getEnv` | `""` | `AzureClientSecret` | `-` |
 | `AZURE_SUBSCRIPTION_ID` | `getEnv` | `""` | `AzureSubscriptionID` | `-` |
@@ -145,6 +145,12 @@ Total variables: **369**
 | `GRAPH_PROPERTY_HISTORY_TTL` | `getEnvDuration` | `graph.DefaultTemporalHistoryTTL` | `GraphPropertyHistoryTTL` | `non-positive values fall back to the default property-history TTL` |
 | `GRAPH_RISK_ENGINE_STATE_TIMEOUT` | `getEnvDuration` | `defaultGraphRiskEngineStateTimeout` | `GraphRiskEngineStateTimeout` | `must be greater than 0` |
 | `GRAPH_SCHEMA_VALIDATION_MODE` | `getEnv` | `"warn"` | `GraphSchemaValidationMode` | `must be one of off, warn, enforce` |
+| `GRAPH_SEARCH_BACKEND` | `getEnv` | `defaultGraphSearchBackend()` | `GraphSearchBackend` | `must be one of graph, opensearch`, `when GRAPH_SEARCH_BACKEND=opensearch, the OpenSearch endpoint, region, and index are required` |
+| `GRAPH_SEARCH_MAX_CANDIDATES` | `getEnvInt` | `100` | `GraphSearchMaxCandidates` | `must be greater than 0` |
+| `GRAPH_SEARCH_OPENSEARCH_ENDPOINT` | `getEnv` | `""` | `GraphSearchOpenSearchEndpoint` | `when GRAPH_SEARCH_BACKEND=opensearch, the OpenSearch endpoint, region, and index are required` |
+| `GRAPH_SEARCH_OPENSEARCH_INDEX` | `getEnv` | `""` | `GraphSearchOpenSearchIndex` | `when GRAPH_SEARCH_BACKEND=opensearch, the OpenSearch endpoint, region, and index are required` |
+| `GRAPH_SEARCH_OPENSEARCH_REGION` | `getEnv` | `getEnv("AWS_REGION", "")` | `GraphSearchOpenSearchRegion` | `when GRAPH_SEARCH_BACKEND=opensearch, the OpenSearch endpoint, region, and index are required` |
+| `GRAPH_SEARCH_REQUEST_TIMEOUT` | `getEnvDuration` | `5 * time.Second` | `GraphSearchRequestTimeout` | `must be greater than 0` |
 | `GRAPH_SNAPSHOT_MAX_RETAINED` | `getEnvInt` | `10` | `GraphSnapshotMaxRetained` | `-` |
 | `GRAPH_SNAPSHOT_PATH` | `getEnv` | `filepath.Join(".cerebro", "graph-snapshots")` | `GraphSnapshotPath` | `-` |
 | `GRAPH_STORE_BACKEND` | `getEnv` | `defaultGraphStoreBackend()` | `GraphStoreBackend` | `must be neptune`, `when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required` |
