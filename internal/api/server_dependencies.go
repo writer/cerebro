@@ -98,10 +98,19 @@ type serverDependencies struct {
 	Notifications  *notifications.Manager
 	Scheduler      *scheduler.Scheduler
 
-	AuditRepo           *snowflake.AuditRepository
-	PolicyHistoryRepo   *snowflake.PolicyHistoryRepository
-	RiskEngineStateRepo *snowflake.RiskEngineStateRepository
-	ScanWatermarks      *scanner.WatermarkStore
+	AuditRepo interface {
+		Log(ctx context.Context, entry *snowflake.AuditEntry) error
+		List(ctx context.Context, resourceType, resourceID string, limit int) ([]*snowflake.AuditEntry, error)
+	}
+	PolicyHistoryRepo interface {
+		Upsert(ctx context.Context, record *snowflake.PolicyHistoryRecord) error
+		List(ctx context.Context, policyID string, limit int) ([]*snowflake.PolicyHistoryRecord, error)
+	}
+	RiskEngineStateRepo interface {
+		SaveSnapshot(ctx context.Context, graphID string, snapshot []byte) error
+		LoadSnapshot(ctx context.Context, graphID string) ([]byte, error)
+	}
+	ScanWatermarks *scanner.WatermarkStore
 
 	RBAC           *auth.RBAC
 	ThreatIntel    *threatintel.ThreatIntelService

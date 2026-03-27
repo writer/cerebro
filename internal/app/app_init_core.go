@@ -127,6 +127,19 @@ func (a *App) initPolicy() error {
 }
 
 func (a *App) initFindings() {
+	if a.appStateDB != nil {
+		store := findings.NewPostgresStore(a.appStateDB)
+		store.SetSemanticDedup(a.Config.FindingsSemanticDedupEnabled)
+		if err := store.Load(context.Background()); err != nil {
+			a.Logger.Warn("failed to load postgres findings store", "error", err)
+		}
+		a.Findings = store
+		a.SnowflakeFindings = nil
+		a.configureFindingAttestation()
+		a.Logger.Info("using postgres findings store")
+		return
+	}
+
 	warehouseDB := (*sql.DB)(nil)
 	if a.Warehouse != nil {
 		warehouseDB = a.Warehouse.DB()
@@ -260,6 +273,10 @@ func (a *App) configureFindingAttestation() {
 		configured = true
 	}
 	if store, ok := a.Findings.(*findings.SnowflakeStore); ok {
+		store.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
+		configured = true
+	}
+	if store, ok := a.Findings.(*findings.PostgresStore); ok {
 		store.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
 		configured = true
 	}

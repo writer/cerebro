@@ -284,13 +284,17 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 	}
 
 	if a.Agents != nil {
-		store, err := agents.NewSnowflakeSessionStore(newClient)
-		if err != nil {
-			if a.Logger != nil {
-				a.Logger.Warn("failed to rotate agent session store", "error", err)
-			}
+		if a.appStateDB != nil {
+			a.Agents.SetSessionStore(agents.NewPostgresSessionStore(a.appStateDB))
 		} else {
-			a.Agents.SetSessionStore(store)
+			store, err := agents.NewSnowflakeSessionStore(newClient)
+			if err != nil {
+				if a.Logger != nil {
+					a.Logger.Warn("failed to rotate agent session store", "error", err)
+				}
+			} else {
+				a.Agents.SetSessionStore(store)
+			}
 		}
 	}
 

@@ -36,6 +36,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -80,6 +81,21 @@ type retentionCleaner interface {
 	CleanupAccessReviewData(ctx context.Context, olderThan time.Time) (reviewsDeleted, itemsDeleted int64, err error)
 }
 
+type auditRepository interface {
+	Log(ctx context.Context, entry *snowflake.AuditEntry) error
+	List(ctx context.Context, resourceType, resourceID string, limit int) ([]*snowflake.AuditEntry, error)
+}
+
+type policyHistoryRepository interface {
+	Upsert(ctx context.Context, record *snowflake.PolicyHistoryRecord) error
+	List(ctx context.Context, policyID string, limit int) ([]*snowflake.PolicyHistoryRecord, error)
+}
+
+type riskEngineStateRepository interface {
+	SaveSnapshot(ctx context.Context, graphID string, snapshot []byte) error
+	LoadSnapshot(ctx context.Context, graphID string) ([]byte, error)
+}
+
 // App is the main application container that holds references to all initialized
 // services. Create a new App using the New() function which handles all service
 // initialization and wiring based on environment configuration.
@@ -100,6 +116,7 @@ type App struct {
 	Cache          *cache.PolicyCache
 	ExecutionStore executionstore.Store
 	GraphSnapshots *graph.GraphPersistenceStore
+	appStateDB     *sql.DB
 
 	// Feature services
 	Agents         *agents.AgentRegistry
@@ -116,15 +133,13 @@ type App struct {
 	Notifications  *notifications.Manager
 	Scheduler      *scheduler.Scheduler
 
-	// Repositories (for Snowflake persistence)
-	FindingsRepo        *snowflake.FindingRepository
-	TicketsRepo         *snowflake.TicketRepository
-	AuditRepo           *snowflake.AuditRepository
-	PolicyHistoryRepo   *snowflake.PolicyHistoryRepository
-	RiskEngineStateRepo *snowflake.RiskEngineStateRepository
+	// Durable app-state repositories.
+	AuditRepo           auditRepository
+	PolicyHistoryRepo   policyHistoryRepository
+	RiskEngineStateRepo riskEngineStateRepository
 	RetentionRepo       retentionCleaner
 
-	// Snowflake-backed stores (when available)
+	// Legacy Snowflake-backed findings store for deployments without Postgres app-state.
 	SnowflakeFindings *findings.SnowflakeStore
 
 	// Incremental scanning

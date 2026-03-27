@@ -6,24 +6,28 @@ import (
 	"sort"
 	"time"
 
+	"github.com/writer/cerebro/internal/appstate"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/snowflake"
 )
 
 func (a *App) initRepositories() {
-	a.FindingsRepo = nil
-	a.TicketsRepo = nil
 	a.AuditRepo = nil
 	a.PolicyHistoryRepo = nil
 	a.RiskEngineStateRepo = nil
 	a.RetentionRepo = nil
 
+	if a.appStateDB != nil {
+		a.AuditRepo = appstate.NewAuditRepository(a.appStateDB)
+		a.PolicyHistoryRepo = appstate.NewPolicyHistoryRepository(a.appStateDB)
+		a.RiskEngineStateRepo = appstate.NewRiskEngineStateRepository(a.appStateDB)
+		a.RetentionRepo = appstate.NewRetentionRepository(a.appStateDB)
+		return
+	}
 	if a.Snowflake == nil {
 		return
 	}
-	a.FindingsRepo = snowflake.NewFindingRepository(a.Snowflake)
-	a.TicketsRepo = snowflake.NewTicketRepository(a.Snowflake)
 	a.AuditRepo = snowflake.NewAuditRepository(a.Snowflake)
 	a.PolicyHistoryRepo = snowflake.NewPolicyHistoryRepository(a.Snowflake)
 	a.RiskEngineStateRepo = snowflake.NewRiskEngineStateRepository(a.Snowflake)
@@ -313,6 +317,11 @@ func (a *App) Close() error {
 	if closer, ok := a.Findings.(interface{ Close() error }); ok {
 		if err := closer.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("findings store: %w", err))
+		}
+	}
+	if a.appStateDB != nil {
+		if err := a.appStateDB.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("app-state database: %w", err))
 		}
 	}
 

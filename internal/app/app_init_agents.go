@@ -13,7 +13,10 @@ func (a *App) initAgents(ctx context.Context) {
 		ctx = context.Background()
 	}
 	a.Agents = agents.NewAgentRegistry()
-	if a.Snowflake != nil {
+	switch {
+	case a.appStateDB != nil:
+		a.Agents.SetSessionStore(agents.NewPostgresSessionStore(a.appStateDB))
+	case a.Snowflake != nil:
 		store, err := agents.NewSnowflakeSessionStore(a.Snowflake)
 		if err != nil {
 			a.Logger.Warn("failed to initialize persistent agent session store, using in-memory store", "error", err)

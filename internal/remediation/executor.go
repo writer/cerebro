@@ -44,6 +44,7 @@ var (
 	_ NotificationSender = (*notifications.Manager)(nil)
 	_ FindingsWriter     = (*findings.Store)(nil)
 	_ FindingsWriter     = (*findings.SQLiteStore)(nil)
+	_ FindingsWriter     = (*findings.PostgresStore)(nil)
 	_ FindingsWriter     = (*findings.SnowflakeStore)(nil)
 	_ EventPublisher     = (*webhooks.Service)(nil)
 )

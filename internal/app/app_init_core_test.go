@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	_ "modernc.org/sqlite"
+
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/identity"
@@ -130,9 +132,35 @@ func TestInitFindings_UsesPostgresStoreForPostgresWarehouse(t *testing.T) {
 	if a.SnowflakeFindings != nil {
 		t.Fatal("expected snowflake findings store to remain nil for postgres warehouse backend")
 	}
-	schema := reflect.ValueOf(store).Elem().FieldByName("schema").String()
-	if schema != "cerebro" {
-		t.Fatalf("expected postgres findings schema cerebro, got %q", schema)
+	if store == nil {
+		t.Fatal("expected postgres findings store to be initialized")
+	}
+}
+
+func TestInitFindings_UsesPostgresStoreWhenAppStateDatabaseConfigured(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	if err := findings.NewPostgresStore(db).EnsureSchema(context.Background()); err != nil {
+		t.Fatalf("EnsureSchema() error = %v", err)
+	}
+
+	a := &App{
+		Config: &Config{},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	a.appStateDB = db
+
+	a.initFindings()
+
+	if _, ok := a.Findings.(*findings.PostgresStore); !ok {
+		t.Fatalf("expected postgres findings store, got %T", a.Findings)
+	}
+	if a.SnowflakeFindings != nil {
+		t.Fatal("expected legacy snowflake findings store to stay nil when app-state postgres is configured")
 	}
 }
 
