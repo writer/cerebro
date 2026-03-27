@@ -14,21 +14,20 @@ import (
 	"github.com/writer/cerebro/internal/scanner"
 )
 
-func TestCurrentOrStoredScheduledScanGraphView_UsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestCurrentOrStoredScheduledScanGraphView_UsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	g := orgTopologyTestGraph(time.Now().UTC())
-	app := &App{
-		GraphSnapshots: mustPersistToolGraph(t, g),
-	}
+	app := &App{}
+	setConfiguredSnapshotGraphFromGraph(t, app, g)
 
 	got := app.currentOrStoredScheduledScanGraphView(context.Background(), ScanTuning{})
 	if got == nil {
-		t.Fatal("expected persisted snapshot graph view")
+		t.Fatal("expected configured graph view")
 	}
 	if got.NodeCount() != g.NodeCount() {
 		t.Fatalf("expected %d nodes, got %d", g.NodeCount(), got.NodeCount())
 	}
 	if _, ok := got.GetNode("svc:core"); !ok {
-		t.Fatal("expected persisted graph view to include svc:core")
+		t.Fatal("expected configured graph view to include svc:core")
 	}
 }
 
@@ -38,10 +37,10 @@ func TestCurrentOrStoredScheduledScanGraphView_PreservesLiveGraphWaitWhenPresent
 	live.BuildIndex()
 
 	app := &App{
-		SecurityGraph:  live,
-		GraphSnapshots: mustPersistToolGraph(t, orgTopologyTestGraph(time.Now().UTC())),
-		graphReady:     make(chan struct{}),
+		SecurityGraph: live,
+		graphReady:    make(chan struct{}),
 	}
+	setConfiguredSnapshotGraphFromGraph(t, app, orgTopologyTestGraph(time.Now().UTC()))
 
 	got := app.currentOrStoredScheduledScanGraphView(context.Background(), ScanTuning{
 		GraphWaitTimeout: 5 * time.Millisecond,
@@ -51,7 +50,7 @@ func TestCurrentOrStoredScheduledScanGraphView_PreservesLiveGraphWaitWhenPresent
 	}
 }
 
-func TestRunScheduledGraphAnalyses_UsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestRunScheduledGraphAnalyses_UsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	engine := policy.NewEngine()
 	addOrgTestPolicy(t, engine, &policy.Policy{
@@ -68,25 +67,25 @@ func TestRunScheduledGraphAnalyses_UsesPersistedSnapshotWhenLiveGraphUnavailable
 
 	findingStore := findings.NewStore()
 	app := &App{
-		Logger:         logger,
-		Policy:         engine,
-		Scanner:        scanner.NewScanner(engine, scanner.ScanConfig{}, logger),
-		Findings:       findingStore,
-		GraphSnapshots: mustPersistToolGraph(t, orgTopologyTestGraph(time.Now().UTC())),
+		Logger:   logger,
+		Policy:   engine,
+		Scanner:  scanner.NewScanner(engine, scanner.ScanConfig{}, logger),
+		Findings: findingStore,
 	}
+	setConfiguredSnapshotGraphFromGraph(t, app, orgTopologyTestGraph(time.Now().UTC()))
 
 	summary := app.runScheduledGraphAnalyses(context.Background(), ScanTuning{}, nil)
 	if summary.orgTopologyErrorCount != 0 {
 		t.Fatalf("expected no org topology errors, got %d", summary.orgTopologyErrorCount)
 	}
 	if summary.orgTopologyFindingCount == 0 {
-		t.Fatal("expected org topology findings from persisted snapshot")
+		t.Fatal("expected org topology findings from configured graph")
 	}
 
 	stored := findingStore.List(findings.FindingFilter{})
 	if !slices.ContainsFunc(stored, func(f *findings.Finding) bool {
 		return f != nil && f.PolicyID == "org-bus-factor-critical"
 	}) {
-		t.Fatalf("expected stored finding for persisted snapshot org topology policy, got %v", stored)
+		t.Fatalf("expected stored finding for configured graph org topology policy, got %v", stored)
 	}
 }

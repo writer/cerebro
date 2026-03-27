@@ -146,7 +146,7 @@ type serverDependencies struct {
 
 type graphRuntimeAdapter struct {
 	deps            *serverDependencies
-	fallback        graphRuntimeService
+	delegate        graphRuntimeService
 	logger          *slog.Logger
 	originalGraph   *graph.Graph
 	originalBuilder *builders.Builder
@@ -202,7 +202,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 	}
 	deps.graphRuntime = &graphRuntimeAdapter{
 		deps:            &deps,
-		fallback:        application,
+		delegate:        application,
 		logger:          application.Logger,
 		originalGraph:   application.SecurityGraph,
 		originalBuilder: application.SecurityGraphBuilder,
@@ -440,7 +440,7 @@ func (r *graphRuntimeAdapter) useLocalGraph() bool {
 	if r == nil || r.deps == nil {
 		return false
 	}
-	if r.fallback != nil {
+	if r.delegate != nil {
 		return r.originalBuilder == nil && r.deps.SecurityGraphBuilder != nil && (r.deps.SecurityGraph != nil || r.deps.SecurityGraphBuilder != nil)
 	}
 	return r.deps.SecurityGraph != nil || r.deps.SecurityGraphBuilder != nil
@@ -456,8 +456,8 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraph() *graph.Graph {
 	if r.useLocalGraph() && r.deps != nil {
 		return r.deps.SecurityGraph
 	}
-	if r.fallback != nil {
-		return r.fallback.CurrentSecurityGraph()
+	if r.delegate != nil {
+		return r.delegate.CurrentSecurityGraph()
 	}
 	if r.deps != nil {
 		return r.deps.SecurityGraph
@@ -475,7 +475,7 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraphStore() graph.GraphStore {
 	if r.useLocalGraph() && r.deps != nil && r.deps.SecurityGraph != nil {
 		return r.deps.SecurityGraph
 	}
-	if scoped, ok := r.fallback.(interface {
+	if scoped, ok := r.delegate.(interface {
 		CurrentSecurityGraphStore() graph.GraphStore
 	}); ok {
 		return scoped.CurrentSecurityGraphStore()
@@ -493,7 +493,7 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraphForTenant(tenantID string) *gr
 		}
 		return r.deps.SecurityGraph.SubgraphForTenant(tenantID)
 	}
-	if scoped, ok := r.fallback.(interface {
+	if scoped, ok := r.delegate.(interface {
 		CurrentSecurityGraphForTenant(string) *graph.Graph
 	}); ok {
 		return scoped.CurrentSecurityGraphForTenant(tenantID)
@@ -519,7 +519,7 @@ func (r *graphRuntimeAdapter) CurrentSecurityGraphStoreForTenant(tenantID string
 		}
 		return r.deps.SecurityGraph.SubgraphForTenant(tenantID)
 	}
-	if scoped, ok := r.fallback.(interface {
+	if scoped, ok := r.delegate.(interface {
 		CurrentSecurityGraphStoreForTenant(string) graph.GraphStore
 	}); ok {
 		return scoped.CurrentSecurityGraphStoreForTenant(tenantID)
@@ -534,8 +534,8 @@ func (r *graphRuntimeAdapter) GraphBuildSnapshot() app.GraphBuildSnapshot {
 	if r == nil {
 		return app.GraphBuildSnapshot{}
 	}
-	if !r.useLocalGraph() && r.fallback != nil {
-		return r.fallback.GraphBuildSnapshot()
+	if !r.useLocalGraph() && r.delegate != nil {
+		return r.delegate.GraphBuildSnapshot()
 	}
 	r.snapshotMu.RLock()
 	snapshot := r.snapshot
@@ -547,17 +547,17 @@ func (r *graphRuntimeAdapter) GraphBuildSnapshot() app.GraphBuildSnapshot {
 }
 
 func (r *graphRuntimeAdapter) CurrentRetentionStatus() app.RetentionStatus {
-	if r == nil || r.fallback == nil {
+	if r == nil || r.delegate == nil {
 		return app.RetentionStatus{}
 	}
-	return r.fallback.CurrentRetentionStatus()
+	return r.delegate.CurrentRetentionStatus()
 }
 
 func (r *graphRuntimeAdapter) GraphFreshnessStatusSnapshot(now time.Time) app.GraphFreshnessStatus {
-	if r == nil || r.fallback == nil {
+	if r == nil || r.delegate == nil {
 		return app.GraphFreshnessStatus{}
 	}
-	return r.fallback.GraphFreshnessStatusSnapshot(now)
+	return r.delegate.GraphFreshnessStatusSnapshot(now)
 }
 
 func (r *graphRuntimeAdapter) GraphHealthSnapshot(now time.Time) app.GraphHealthSnapshot {
@@ -569,7 +569,7 @@ func (r *graphRuntimeAdapter) GraphHealthSnapshot(now time.Time) app.GraphHealth
 	} else {
 		now = now.UTC()
 	}
-	if provider, ok := r.fallback.(interface {
+	if provider, ok := r.delegate.(interface {
 		GraphHealthSnapshot(time.Time) app.GraphHealthSnapshot
 	}); ok {
 		snapshot := provider.GraphHealthSnapshot(now)
@@ -613,10 +613,10 @@ func (r *graphRuntimeAdapter) RebuildSecurityGraph(ctx context.Context) error {
 	if r == nil {
 		return errors.New("security graph runtime not configured")
 	}
-	if !r.useLocalGraph() && r.fallback != nil {
-		err := r.fallback.RebuildSecurityGraph(ctx)
+	if !r.useLocalGraph() && r.delegate != nil {
+		err := r.delegate.RebuildSecurityGraph(ctx)
 		if r.deps != nil {
-			r.deps.SecurityGraph = r.fallback.CurrentSecurityGraph()
+			r.deps.SecurityGraph = r.delegate.CurrentSecurityGraph()
 		}
 		return err
 	}
@@ -652,7 +652,7 @@ func (r *graphRuntimeAdapter) CanApplySecurityGraphChanges() bool {
 	if r.useLocalGraph() {
 		return r.localBuilder() != nil
 	}
-	if capable, ok := r.fallback.(graphChangeApplyCapability); ok {
+	if capable, ok := r.delegate.(graphChangeApplyCapability); ok {
 		return capable.CanApplySecurityGraphChanges()
 	}
 	return r.originalBuilder != nil
@@ -662,10 +662,10 @@ func (r *graphRuntimeAdapter) TryApplySecurityGraphChanges(ctx context.Context, 
 	if r == nil {
 		return graph.GraphMutationSummary{}, false, errors.New("security graph runtime not configured")
 	}
-	if !r.useLocalGraph() && r.fallback != nil {
-		summary, applied, err := r.fallback.TryApplySecurityGraphChanges(ctx, trigger)
+	if !r.useLocalGraph() && r.delegate != nil {
+		summary, applied, err := r.delegate.TryApplySecurityGraphChanges(ctx, trigger)
 		if r.deps != nil {
-			r.deps.SecurityGraph = r.fallback.CurrentSecurityGraph()
+			r.deps.SecurityGraph = r.delegate.CurrentSecurityGraph()
 		}
 		return summary, applied, err
 	}
@@ -681,27 +681,13 @@ func (r *graphRuntimeAdapter) TryApplySecurityGraphChanges(ctx context.Context, 
 	summary, err := builder.ApplyChanges(ctx, time.Time{})
 	if err != nil {
 		if r.logger != nil {
-			r.logger.Warn("incremental graph apply failed, falling back to full rebuild",
+			r.logger.Warn("incremental graph apply failed",
 				"trigger", trigger,
 				"error", err,
 			)
 		}
-		r.setSnapshot(app.GraphBuildBuilding, time.Time{}, nil)
-		if buildErr := builder.Build(ctx); buildErr != nil {
-			r.setSnapshot(app.GraphBuildFailed, time.Now().UTC(), buildErr)
-			return graph.GraphMutationSummary{}, true, buildErr
-		}
-		summary = builder.LastMutation()
-		graphValue := builder.Graph()
-		if r.deps != nil {
-			r.deps.SecurityGraph = graphValue
-		}
-		builtAt := time.Now().UTC()
-		if graphValue != nil {
-			builtAt = graphValue.Metadata().BuiltAt
-		}
-		r.setSnapshot(app.GraphBuildSuccess, builtAt, nil)
-		return summary, true, nil
+		r.setSnapshot(app.GraphBuildFailed, time.Now().UTC(), err)
+		return graph.GraphMutationSummary{}, true, err
 	}
 
 	if r.deps != nil {
@@ -744,7 +730,7 @@ func (r *graphRuntimeAdapter) detachedLocalGraph() *graph.Graph {
 	if r == nil || r.deps == nil || r.deps.SecurityGraph == nil || r.deps.SecurityGraphBuilder == nil {
 		return nil
 	}
-	if r.fallback != nil && r.originalBuilder != nil {
+	if r.delegate != nil && r.originalBuilder != nil {
 		return nil
 	}
 	return r.deps.SecurityGraph

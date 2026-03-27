@@ -292,7 +292,7 @@ func TestInitIdentityGraphResolverUsesTenantReadScope(t *testing.T) {
 	}
 }
 
-func TestInitIdentityGraphResolverUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestInitIdentityGraphResolverUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	a := &App{
 		Config: &Config{
 			GraphTenantShardIdleTTL:         10 * time.Minute,
@@ -337,7 +337,7 @@ func TestInitIdentityGraphResolverUsesPersistedSnapshotWhenLiveGraphUnavailable(
 	})
 	g.AddEdge(&graph.Edge{ID: "alice-tenant-a", Source: "user:alice", Target: "bucket:tenant-a", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
 	g.AddEdge(&graph.Edge{ID: "alice-tenant-b", Source: "user:alice", Target: "bucket:tenant-b", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
-	a.GraphSnapshots = mustPersistToolGraph(t, g)
+	setConfiguredSnapshotGraphFromGraph(t, a, g)
 	a.initIdentity()
 
 	if a.currentLiveSecurityGraph() != nil {

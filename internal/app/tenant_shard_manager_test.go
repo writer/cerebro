@@ -156,18 +156,9 @@ func TestEnsureTenantSecurityGraphShardsDoesNotWaitOnSecurityGraphLock(t *testin
 	application.securityGraphInitMu.Unlock()
 }
 
-func TestCurrentSecurityGraphForTenantHydratesFromPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestCurrentSecurityGraphForTenantUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	basePath := filepath.Join(t.TempDir(), "graph-snapshots")
-	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{LocalPath: basePath, MaxSnapshots: 4})
-	if err != nil {
-		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
-	}
-
 	live := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 22, 0, 0, 0, time.UTC))
-	if _, err := store.SaveGraph(live); err != nil {
-		t.Fatalf("SaveGraph() error = %v", err)
-	}
-
 	application := &App{
 		Config: &Config{
 			GraphSnapshotPath:               basePath,
@@ -175,12 +166,12 @@ func TestCurrentSecurityGraphForTenantHydratesFromPersistedSnapshotWhenLiveGraph
 			GraphTenantWarmShardTTL:         time.Hour,
 			GraphTenantWarmShardMaxRetained: 1,
 		},
-		GraphSnapshots: store,
 	}
+	setConfiguredSnapshotGraphFromGraph(t, application, live)
 
 	scoped := application.CurrentSecurityGraphForTenant("tenant-a")
 	if scoped == nil {
-		t.Fatal("expected tenant shard recovered from persisted snapshot")
+		t.Fatal("expected tenant shard resolved from configured graph")
 	}
 	if _, ok := scoped.GetNode("service:tenant-a"); !ok {
 		t.Fatal("expected tenant shard to include tenant-a node")

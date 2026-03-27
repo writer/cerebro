@@ -582,7 +582,7 @@ func TestSyncAWS_GraphUpdateNoopSummaryUsesEmptyTablesArray(t *testing.T) {
 	}
 }
 
-func TestSyncAWS_FullRebuildFallbackReportsAppliedStatus(t *testing.T) {
+func TestSyncAWS_GraphUpdateFailureReportsFailedStatus(t *testing.T) {
 	s := newTestServer(t)
 	setSnowflakeWarehouseDeps(s.app)
 
@@ -611,15 +611,17 @@ func TestSyncAWS_FullRebuildFallbackReportsAppliedStatus(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected graph_update payload, got %#v", body["graph_update"])
 	}
-	if graphUpdate["status"] != "applied" {
-		t.Fatalf("expected graph update status applied after full rebuild fallback, got %#v", graphUpdate)
+	if graphUpdate["status"] != "failed" {
+		t.Fatalf("expected graph update status failed, got %#v", graphUpdate)
 	}
-	summary, ok := graphUpdate["summary"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected graph update summary, got %#v", graphUpdate["summary"])
+	if graphUpdate["error"] != "graph update failed" {
+		t.Fatalf("expected sanitized graph update error, got %#v", graphUpdate["error"])
 	}
-	if summary["mode"] != graph.GraphMutationModeFullRebuild {
-		t.Fatalf("expected full rebuild summary mode, got %#v", summary["mode"])
+	if graphUpdate["error_code"] != "GRAPH_UPDATE_FAILED" {
+		t.Fatalf("expected graph update error code, got %#v", graphUpdate["error_code"])
+	}
+	if _, ok := graphUpdate["summary"]; ok {
+		t.Fatalf("expected failed graph update to omit summary, got %#v", graphUpdate["summary"])
 	}
 }
 
