@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 type fakeSnowflakeResult struct{}
@@ -128,5 +129,52 @@ func TestEnsureProviderTable_SkipsExistingColumnsCaseInsensitive(t *testing.T) {
 		if strings.Contains(query, "ALTER TABLE okta_users ADD COLUMN IF NOT EXISTS ID VARIANT") {
 			t.Fatalf("did not expect alter for existing column, queries: %v", client.execQueries)
 		}
+	}
+}
+
+func TestBaseProviderSyncTable_UsesConfiguredWarehouse(t *testing.T) {
+	provider := NewBaseProvider("okta", ProviderTypeIdentity)
+	provider.SetWarehouse(&warehouse.MemoryWarehouse{
+		DialectValue: warehouse.SQLDialectPostgres,
+		QueryFunc: func(ctx context.Context, query string, args ...any) (*snowflake.QueryResult, error) {
+			return &snowflake.QueryResult{Rows: []map[string]interface{}{
+				{"column_name": "_CQ_ID"},
+				{"column_name": "_CQ_HASH"},
+				{"column_name": "ID"},
+				{"column_name": "EMAIL"},
+			}}, nil
+		},
+	})
+
+	result, err := provider.syncTable(context.Background(), TableSchema{
+		Name: "okta_users",
+		Columns: []ColumnSchema{
+			{Name: "id"},
+			{Name: "email"},
+		},
+		PrimaryKey: []string{"id"},
+	}, []map[string]interface{}{
+		{"id": "user-1", "email": "user@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Inserted != 1 {
+		t.Fatalf("Inserted = %d, want 1", result.Inserted)
+	}
+
+	mem, ok := provider.getWarehouse().(*warehouse.MemoryWarehouse)
+	if !ok {
+		t.Fatal("expected configured memory warehouse")
+	}
+	foundUpsert := false
+	for _, call := range mem.Execs {
+		if strings.Contains(call.Statement, "ON CONFLICT (_CQ_ID) DO UPDATE") {
+			foundUpsert = true
+			break
+		}
+	}
+	if !foundUpsert {
+		t.Fatalf("expected postgres upsert query, got %#v", mem.Execs)
 	}
 }

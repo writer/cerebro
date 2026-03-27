@@ -7,7 +7,7 @@ import (
 
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/providers"
-	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 type providerRegistration struct {
@@ -47,8 +47,8 @@ func (a *App) registerConfiguredProviders(ctx context.Context, cfg *Config, regi
 			return
 		}
 
-		if setter, ok := p.(interface{ SetSnowflakeClient(*snowflake.Client) }); ok {
-			setter.SetSnowflakeClient(a.Snowflake)
+		if setter, ok := p.(interface{ SetWarehouse(warehouse.DataWarehouse) }); ok {
+			setter.SetWarehouse(a.Warehouse)
 		}
 		if err := p.Configure(ctx, config); err != nil {
 			a.Logger.Warn("provider configuration failed, skipping registration",
