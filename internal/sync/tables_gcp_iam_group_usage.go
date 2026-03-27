@@ -13,6 +13,7 @@ import (
 	"cloud.google.com/go/iam/apiv1/iampb"
 	"cloud.google.com/go/logging"
 	"cloud.google.com/go/logging/logadmin"
+	"github.com/writer/cerebro/internal/warehouse"
 	"google.golang.org/api/iterator"
 	auditpb "google.golang.org/genproto/googleapis/cloud/audit"
 )
@@ -619,7 +620,7 @@ func (e *GCPSyncEngine) loadWorkspaceGroupMemberships(ctx context.Context, group
 		return result, false
 	}
 
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(groups)), ",")
+	placeholders := strings.Join(warehouse.Placeholders(e.sf, 1, len(groups)), ",")
 	args := make([]interface{}, 0, len(groups))
 	for _, group := range groups {
 		args = append(args, strings.ToLower(strings.TrimSpace(group)))
@@ -667,7 +668,7 @@ func (e *GCPSyncEngine) loadExistingGCPGroupPermissionState(ctx context.Context,
 	rows, err := e.sf.Query(ctx, `
 		SELECT permission, permission_last_used, unused_since, usage_status
 		FROM `+gcpIAMGroupPermissionUsageTable+`
-		WHERE project_id = ? AND LOWER("group") = ?
+		WHERE project_id = `+warehouse.Placeholder(e.sf, 1)+` AND LOWER("group") = `+warehouse.Placeholder(e.sf, 2)+`
 	`, projectID, strings.ToLower(group))
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "does not exist") {

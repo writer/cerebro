@@ -255,10 +255,10 @@ func runMultiAccountAWSSyncDirect(ctx context.Context, start time.Time, profiles
 			region = "us-east-1"
 		}
 
-		store, err := openSyncWarehouseFn(ctx)
+		sfClient, err := createSyncWarehouse()
 		if err != nil {
-			Warning("Failed to open warehouse for profile %s: %v", profile, err)
-			syncErrs = append(syncErrs, fmt.Errorf("profile %s: open warehouse: %w", profile, err))
+			Warning("Failed to create warehouse client for profile %s: %v", profile, err)
+			syncErrs = append(syncErrs, fmt.Errorf("profile %s: create warehouse client: %w", profile, err))
 			continue
 		}
 
@@ -276,9 +276,9 @@ func runMultiAccountAWSSyncDirect(ctx context.Context, start time.Time, profiles
 		}
 		opts = appendAWSPermissionUsageOptions(opts)
 
-		syncer := nativesync.NewSyncEngine(store, slog.Default(), opts...)
+		syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
 		results, err := syncer.SyncAllWithConfig(ctx, awsCfg)
-		_ = closeSyncWarehouse(store)
+		closeSyncWarehouse(sfClient)
 		totalResults = append(totalResults, results...)
 
 		if err != nil {
@@ -445,11 +445,11 @@ func runNativeSyncDirect(ctx context.Context, start time.Time) error {
 		Info("Filtering AWS tables: %s", strings.Join(tableFilter, ", "))
 	}
 
-	store, err := openSyncWarehouseFn(ctx)
+	client, err := createSyncWarehouse()
 	if err != nil {
-		return fmt.Errorf("open warehouse: %w", err)
+		return fmt.Errorf("create warehouse client: %w", err)
 	}
-	defer func() { _ = closeSyncWarehouse(store) }()
+	defer closeSyncWarehouse(client)
 
 	opts := []nativesync.EngineOption{}
 	if syncConcurrency > 0 {
@@ -465,7 +465,7 @@ func runNativeSyncDirect(ctx context.Context, start time.Time) error {
 	}
 	opts = appendAWSPermissionUsageOptions(opts)
 
-	syncer := nativesync.NewSyncEngine(store, slog.Default(), opts...)
+	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
 	if syncValidate {
 		results, err := syncer.ValidateTablesWithConfig(ctx, awsCfg)
 		if err != nil {
@@ -486,7 +486,7 @@ func runNativeSyncDirect(ctx context.Context, start time.Time) error {
 		} else {
 			// Extract resource relationships for graph building.
 			Info("Extracting resource relationships...")
-			relExtractor := nativesync.NewRelationshipExtractor(store, slog.Default())
+			relExtractor := nativesync.NewRelationshipExtractor(client, slog.Default())
 			relCount, err := relExtractor.ExtractAndPersist(ctx)
 			if err != nil {
 				Warning("Relationship extraction failed: %v", err)

@@ -702,10 +702,10 @@ func (s *GCPSecuritySync) syncSCCFindings(ctx context.Context) error {
 // upsertVulnerabilities saves vulnerability data to Snowflake
 func (s *GCPSecuritySync) upsertVulnerabilities(ctx context.Context, vulns []map[string]interface{}) error {
 	// Create table if not exists
-	createSQL := `
+	createSQL := fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS GCP_CONTAINER_VULNERABILITIES (
 		_CQ_ID VARCHAR PRIMARY KEY,
-		_CQ_SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
+		_CQ_SYNC_TIME %s DEFAULT CURRENT_TIMESTAMP(),
 		PROJECT_ID VARCHAR,
 		NAME VARCHAR,
 		RESOURCE_URI VARCHAR,
@@ -722,25 +722,25 @@ func (s *GCPSecuritySync) upsertVulnerabilities(ctx context.Context, vulns []map
 		SHORT_DESCRIPTION VARCHAR,
 		CVE_ID VARCHAR,
 		PACKAGE_ISSUE VARCHAR
-	)`
+	)`, warehouse.TimestampColumnType(s.sf))
 
-	if _, err := s.sf.Query(ctx, createSQL); err != nil {
+	if _, err := s.sf.Exec(ctx, createSQL); err != nil {
 		return fmt.Errorf("failed to create vulnerabilities table: %w", err)
 	}
 
 	// Delete existing and insert new
-	deleteSQL := "DELETE FROM GCP_CONTAINER_VULNERABILITIES WHERE PROJECT_ID = ?"
+	deleteSQL := "DELETE FROM GCP_CONTAINER_VULNERABILITIES WHERE PROJECT_ID = " + warehouse.Placeholder(s.sf, 1)
 	if _, err := s.sf.Exec(ctx, deleteSQL, s.projectID); err != nil {
 		return fmt.Errorf("delete existing vulnerabilities: %w", err)
 	}
 
 	// Insert records
-	insertSQL := `
+	insertSQL := fmt.Sprintf(`
 		INSERT INTO GCP_CONTAINER_VULNERABILITIES
 		(_CQ_ID, PROJECT_ID, NAME, RESOURCE_URI, NOTE_NAME, KIND, CREATE_TIME, UPDATE_TIME,
 		 SEVERITY, CVSS_SCORE, CVSS_V3_SCORE, EFFECTIVE_SEVERITY, FIX_AVAILABLE,
 		 LONG_DESCRIPTION, SHORT_DESCRIPTION, CVE_ID, PACKAGE_ISSUE)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (%s)`, strings.Join(warehouse.Placeholders(s.sf, 1, 17), ", "))
 	insertErrs := make([]error, 0)
 	for _, v := range vulns {
 		if _, err := s.sf.Exec(ctx, insertSQL,
@@ -774,15 +774,15 @@ func (s *GCPSecuritySync) upsertVulnerabilities(ctx context.Context, vulns []map
 
 // upsertDockerImages saves docker image data to Snowflake
 func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[string]interface{}) error {
-	createSQL := `
+	createSQL := fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS GCP_ARTIFACT_REGISTRY_IMAGES (
 		_CQ_ID VARCHAR PRIMARY KEY,
-		_CQ_SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
+		_CQ_SYNC_TIME %s DEFAULT CURRENT_TIMESTAMP(),
 		PROJECT_ID VARCHAR,
 		NAME VARCHAR,
 		URI VARCHAR,
 		TAGS VARCHAR,
-		IMAGE_SIZE NUMBER,
+		IMAGE_SIZE %s,
 		UPLOAD_TIME VARCHAR,
 		MEDIA_TYPE VARCHAR,
 		BUILD_TIME VARCHAR,
@@ -798,9 +798,9 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 		HAS_CLOUD_KEYS BOOLEAN,
 		HAS_HIGH_PRIVILEGE_CLOUD_KEYS BOOLEAN,
 		HAS_CROSS_ACCOUNT_CLOUD_KEYS BOOLEAN
-	)`
+	)`, warehouse.TimestampColumnType(s.sf), warehouse.IntegerColumnType(s.sf))
 
-	if _, err := s.sf.Query(ctx, createSQL); err != nil {
+	if _, err := s.sf.Exec(ctx, createSQL); err != nil {
 		return fmt.Errorf("failed to create images table: %w", err)
 	}
 
@@ -821,15 +821,15 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 		}
 	}
 
-	deleteSQL := "DELETE FROM GCP_ARTIFACT_REGISTRY_IMAGES WHERE PROJECT_ID = ?"
+	deleteSQL := "DELETE FROM GCP_ARTIFACT_REGISTRY_IMAGES WHERE PROJECT_ID = " + warehouse.Placeholder(s.sf, 1)
 	if _, err := s.sf.Exec(ctx, deleteSQL, s.projectID); err != nil {
 		return fmt.Errorf("delete existing images: %w", err)
 	}
 
-	insertSQL := `
+	insertSQL := fmt.Sprintf(`
 		INSERT INTO GCP_ARTIFACT_REGISTRY_IMAGES
 		(_CQ_ID, PROJECT_ID, NAME, URI, TAGS, IMAGE_SIZE, UPLOAD_TIME, MEDIA_TYPE, BUILD_TIME, UPDATE_TIME, REPOSITORY, REGISTRY_TYPE, SCANNED, SCAN_STATUS, VULNERABILITIES, HAS_VULNERABILITIES, HAS_OPENSSL_VULNERABILITY, SECRETS, HAS_CLOUD_KEYS, HAS_HIGH_PRIVILEGE_CLOUD_KEYS, HAS_CROSS_ACCOUNT_CLOUD_KEYS)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (%s)`, strings.Join(warehouse.Placeholders(s.sf, 1, 21), ", "))
 	insertErrs := make([]error, 0)
 	for _, img := range images {
 		if _, err := s.sf.Exec(ctx, insertSQL,
@@ -867,10 +867,10 @@ func (s *GCPSecuritySync) upsertDockerImages(ctx context.Context, images []map[s
 
 // upsertSCCFindings saves SCC findings to Snowflake
 func (s *GCPSecuritySync) upsertSCCFindings(ctx context.Context, findings []map[string]interface{}) error {
-	createSQL := `
+	createSQL := fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS GCP_SCC_FINDINGS (
 		_CQ_ID VARCHAR PRIMARY KEY,
-		_CQ_SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
+		_CQ_SYNC_TIME %s DEFAULT CURRENT_TIMESTAMP(),
 		PROJECT_ID VARCHAR,
 		NAME VARCHAR,
 		PARENT VARCHAR,
@@ -886,22 +886,22 @@ func (s *GCPSecuritySync) upsertSCCFindings(ctx context.Context, findings []map[
 		DESCRIPTION VARCHAR,
 		INDICATOR VARCHAR,
 		VULNERABILITY VARCHAR
-	)`
+	)`, warehouse.TimestampColumnType(s.sf))
 
-	if _, err := s.sf.Query(ctx, createSQL); err != nil {
+	if _, err := s.sf.Exec(ctx, createSQL); err != nil {
 		return fmt.Errorf("failed to create SCC findings table: %w", err)
 	}
 
-	deleteSQL := "DELETE FROM GCP_SCC_FINDINGS WHERE PROJECT_ID = ?"
+	deleteSQL := "DELETE FROM GCP_SCC_FINDINGS WHERE PROJECT_ID = " + warehouse.Placeholder(s.sf, 1)
 	if _, err := s.sf.Exec(ctx, deleteSQL, s.projectID); err != nil {
 		return fmt.Errorf("delete existing scc findings: %w", err)
 	}
 
-	insertSQL := `
+	insertSQL := fmt.Sprintf(`
 		INSERT INTO GCP_SCC_FINDINGS
 		(_CQ_ID, PROJECT_ID, NAME, PARENT, RESOURCE_NAME, STATE, CATEGORY, EXTERNAL_URI,
 		 SEVERITY, FINDING_CLASS, MUTE, CREATE_TIME, EVENT_TIME, DESCRIPTION, INDICATOR, VULNERABILITY)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (%s)`, strings.Join(warehouse.Placeholders(s.sf, 1, 16), ", "))
 	insertErrs := make([]error, 0)
 	for _, f := range findings {
 		if _, err := s.sf.Exec(ctx, insertSQL,

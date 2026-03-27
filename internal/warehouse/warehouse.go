@@ -78,6 +78,7 @@ type MemoryWarehouse struct {
 	GetAssetsFunc       func(ctx context.Context, table string, filter snowflake.AssetFilter) ([]map[string]interface{}, error)
 	GetAssetByIDFunc    func(ctx context.Context, table, id string) (map[string]interface{}, error)
 	DBFunc              func() *sql.DB
+	DialectValue        SQLDialect
 	DatabaseValue       string
 	SchemaValue         string
 	AppSchemaValue      string

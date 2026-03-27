@@ -109,11 +109,14 @@ func (a *App) initHealth() {
 	a.Health = health.NewRegistry()
 
 	// Register health checks for all services
-	a.Health.Register("snowflake", health.PingCheck("snowflake", func(ctx context.Context) error {
-		if a.Snowflake == nil {
+	a.Health.Register("warehouse", health.PingCheck("warehouse", func(ctx context.Context) error {
+		if a.Warehouse == nil {
 			return fmt.Errorf("not configured")
 		}
-		return a.Snowflake.Ping(ctx)
+		if db := a.Warehouse.DB(); db != nil {
+			return db.PingContext(ctx)
+		}
+		return nil
 	}))
 
 	a.Health.Register("policy_engine", health.PingCheck("policy_engine", func(ctx context.Context) error {

@@ -244,7 +244,7 @@ func TestRunGCPOrgSync_SecurityOnlySkipsProjectDiscovery(t *testing.T) {
 		t.Fatalf("expected organization project discovery to be skipped")
 	}
 	if err == nil {
-		t.Fatalf("expected security-only organization sync to fail after skipping project discovery")
+		t.Fatalf("expected security-only org sync to require additional runtime configuration")
 	}
 }
 

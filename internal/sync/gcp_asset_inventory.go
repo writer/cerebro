@@ -15,6 +15,7 @@ import (
 
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/snowflake/tableops"
 	"github.com/writer/cerebro/internal/warehouse"
 	"golang.org/x/sync/errgroup"
 )
@@ -467,29 +468,9 @@ func (e *GCPAssetInventoryEngine) getColumnsForAssetType() []string {
 }
 
 func (e *GCPAssetInventoryEngine) ensureTable(ctx context.Context, table string, columns []string) error {
-	if err := snowflake.ValidateTableName(table); err != nil {
-		return fmt.Errorf("invalid table name: %w", err)
-	}
-
-	for _, col := range columns {
-		if err := snowflake.ValidateColumnName(col); err != nil {
-			return fmt.Errorf("invalid column name %q: %w", col, err)
-		}
-	}
-	colDefs := make([]string, len(columns))
-	for i, col := range columns {
-		colDefs[i] = fmt.Sprintf("%s VARIANT", strings.ToUpper(col))
-	}
-
-	createQuery := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-		_CQ_ID VARCHAR PRIMARY KEY,
-		_CQ_SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
-		_CQ_HASH VARCHAR,
-		%s
-	)`, table, strings.Join(colDefs, ", "))
-
-	_, err := e.sf.Exec(ctx, createQuery)
-	return err
+	return tableops.EnsureVariantTable(ctx, e.sf, table, columns, tableops.EnsureVariantTableOptions{
+		AddMissingColumns: true,
+	})
 }
 
 func gcpProjectIDFromScope(scope string) string {

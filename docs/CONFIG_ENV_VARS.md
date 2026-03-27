@@ -188,7 +188,7 @@ Total variables: **375**
 | `JIRA_CLOSE_TRANSITIONS` | `getEnv` | `"Done,Closed,Resolve Issue"` | `JiraCloseTransitions` | `-` |
 | `JIRA_EMAIL` | `getEnv` | `""` | `JiraEmail` | `-` |
 | `JIRA_PROJECT` | `getEnv` | `"SEC"` | `JiraProject` | `-` |
-| `JOB_DATABASE_URL` | `getEnv` | `""` | `JobDatabaseURL` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
+| `JOB_DATABASE_URL` | `getEnv` | `""` | `-` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
 | `JOB_MAX_ATTEMPTS` | `getEnvInt` | `3` | `JobMaxAttempts` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
 | `JOB_NATS_CONSUMER` | `getEnv` | `"job-worker"` | `JobNATSConsumer` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
 | `JOB_NATS_STREAM` | `getEnv` | `"CEREBRO_JOBS"` | `JobNATSStream` | `when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive` |
@@ -358,7 +358,7 @@ Total variables: **375**
 | `VAULT_TOKEN` | `getEnv` | `""` | `VaultToken` | `-` |
 | `VULNDB_STATE_FILE` | `getEnv` | `filepath.Join(".cerebro", "vulndb.db")` | `VulnDBStateFile` | `-` |
 | `WAREHOUSE_BACKEND` | `getEnv` | `defaultWarehouseBackend` | `WarehouseBackend` | `backend-specific connection settings must be present when an alternative warehouse backend is selected`, `must be one of snowflake, sqlite, postgres` |
-| `WAREHOUSE_POSTGRES_DSN` | `getEnv` | `""` | `WarehousePostgresDSN` | `backend-specific connection settings must be present when an alternative warehouse backend is selected` |
+| `WAREHOUSE_POSTGRES_DSN` | `getEnv` | `""` | `-` | `backend-specific connection settings must be present when an alternative warehouse backend is selected` |
 | `WAREHOUSE_SQLITE_PATH` | `getEnv` | `defaultWarehouseSQLitePath` | `WarehouseSQLitePath` | `backend-specific connection settings must be present when an alternative warehouse backend is selected` |
 | `WEBHOOK_URLS` | `getEnv` | `""` | `WebhookURLs` | `-` |
 | `WIZ_API_URL` | `getEnv` | `""` | `WizAPIURL` | `-` |

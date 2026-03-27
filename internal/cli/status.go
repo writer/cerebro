@@ -17,7 +17,7 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show system status and health",
 	Long: `Display the current status of Cerebro, including:
-- Snowflake connection status
+- Warehouse connection status
 - Loaded policies count
 - Findings summary
 - Registered agents and providers`,
@@ -78,20 +78,20 @@ func runStatusDirect(cmd *cobra.Command, args []string) error {
 		"timestamp": time.Now().UTC(),
 	}
 
-	// Snowflake status
-	sfStatus := map[string]interface{}{"configured": false}
-	if application.Snowflake != nil {
-		sfStatus["configured"] = true
+	// Warehouse status
+	warehouseStatus := map[string]interface{}{"configured": false}
+	if application.Warehouse != nil && application.Warehouse.DB() != nil {
+		warehouseStatus["configured"] = true
 		start := time.Now()
-		if err := application.Snowflake.Ping(ctx); err != nil {
-			sfStatus["status"] = "unhealthy"
-			sfStatus["error"] = err.Error()
+		if err := application.Warehouse.DB().PingContext(ctx); err != nil {
+			warehouseStatus["status"] = "unhealthy"
+			warehouseStatus["error"] = err.Error()
 		} else {
-			sfStatus["status"] = "healthy"
-			sfStatus["latency_ms"] = time.Since(start).Milliseconds()
+			warehouseStatus["status"] = "healthy"
+			warehouseStatus["latency_ms"] = time.Since(start).Milliseconds()
 		}
 	}
-	status["snowflake"] = sfStatus
+	status["warehouse"] = warehouseStatus
 
 	// Policies
 	policies := application.Policy.ListPolicies()
@@ -134,8 +134,8 @@ func renderStatus(status map[string]interface{}) error {
 	fmt.Println(strings.Repeat("=", 50))
 	fmt.Println()
 
-	fmt.Println(bold("Snowflake"))
-	sf := statusSection(status, "snowflake")
+	fmt.Println(bold("Warehouse"))
+	sf := statusSection(status, "warehouse")
 	sfStatus := strings.ToLower(strings.TrimSpace(statusString(sf["status"])))
 	configured := statusBool(sf["configured"]) || (sfStatus != "" && sfStatus != "not_configured")
 	if configured {

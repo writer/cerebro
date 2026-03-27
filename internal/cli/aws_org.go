@@ -250,17 +250,17 @@ func runAWSOrgSyncDirect(ctx context.Context, start time.Time) error {
 				accountCfg = assumedCfg
 			}
 
-			store, err := openSyncWarehouseFn(ctx)
+			sfClient, err := createSyncWarehouse()
 			if err != nil {
 				mu.Lock()
-				errs = append(errs, fmt.Errorf("account %s: open warehouse: %w", account.ID, err))
+				errs = append(errs, fmt.Errorf("account %s: create warehouse client: %w", account.ID, err))
 				mu.Unlock()
-				Warning("Failed to open warehouse for account %s: %v", account.ID, err)
+				Warning("Failed to create warehouse client for account %s: %v", account.ID, err)
 				return nil
 			}
-			defer func() { _ = closeSyncWarehouse(store) }()
+			defer closeSyncWarehouse(sfClient)
 
-			syncer := nativesync.NewSyncEngine(store, slog.Default(), opts...)
+			syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
 			accountResults, syncErr := syncer.SyncAllWithConfig(ctx, accountCfg)
 			mu.Lock()
 			results = append(results, accountResults...)
@@ -307,14 +307,14 @@ func runAWSOrgValidation(ctx context.Context, start time.Time, cfg aws.Config, r
 		Info("Filtering AWS tables: %s", strings.Join(tableFilter, ", "))
 	}
 
-	store, err := openSyncWarehouseFn(ctx)
+	client, err := createSyncWarehouse()
 	if err != nil {
-		return fmt.Errorf("open warehouse: %w", err)
+		return fmt.Errorf("create warehouse client: %w", err)
 	}
-	defer func() { _ = closeSyncWarehouse(store) }()
+	defer closeSyncWarehouse(client)
 
 	opts := buildAWSEngineOptions(region, tableFilter)
-	syncer := nativesync.NewSyncEngine(store, slog.Default(), opts...)
+	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
 	results, err := syncer.ValidateTablesWithConfig(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("validation failed: %w", err)

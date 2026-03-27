@@ -95,7 +95,7 @@ func getExistingHashesByScope(ctx context.Context, sf warehouse.SyncWarehouse, t
 		return result, err
 	}
 
-	whereClause, args := scopedWhereClause(scopeColumn, scopeValues)
+	whereClause, args := scopedWhereClauseForWarehouse(sf, scopeColumn, scopeValues)
 	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s%s", table, whereClause)
 	rows, err := sf.Query(ctx, query, args...)
 	if err != nil {
@@ -122,7 +122,7 @@ func deleteRowsByIDByScope(ctx context.Context, sf warehouse.SyncWarehouse, tabl
 		return nil
 	}
 
-	scopeWhere, scopeArgs := scopedWhereClause(scopeColumn, scopeValues)
+	scopeWhere, scopeArgs := scopedWhereClauseForWarehouse(sf, scopeColumn, scopeValues)
 	scopeCondition := strings.TrimPrefix(scopeWhere, " WHERE ")
 
 	for start := 0; start < len(keys); start += insertBatchSize {
@@ -132,7 +132,7 @@ func deleteRowsByIDByScope(ctx context.Context, sf warehouse.SyncWarehouse, tabl
 		}
 
 		batch := keys[start:end]
-		placeholders := strings.TrimRight(strings.Repeat("?,", len(batch)), ",")
+		placeholders := strings.Join(warehouse.Placeholders(sf, 1, len(batch)), ",")
 		args := make([]interface{}, 0, len(batch)+len(scopeArgs))
 		for _, id := range batch {
 			args = append(args, id)
@@ -153,7 +153,7 @@ func deleteRowsByIDByScope(ctx context.Context, sf warehouse.SyncWarehouse, tabl
 }
 
 func deleteScopedRowsByScope(ctx context.Context, sf warehouse.SyncWarehouse, table, scopeColumn string, scopeValues []string) error {
-	whereClause, args := scopedWhereClause(scopeColumn, scopeValues)
+	whereClause, args := scopedWhereClauseForWarehouse(sf, scopeColumn, scopeValues)
 	if whereClause == "" {
 		if _, err := sf.Exec(ctx, fmt.Sprintf("TRUNCATE TABLE %s", table)); err != nil {
 			if _, err := sf.Exec(ctx, fmt.Sprintf("DELETE FROM %s", table)); err != nil {
@@ -169,11 +169,19 @@ func deleteScopedRowsByScope(ctx context.Context, sf warehouse.SyncWarehouse, ta
 }
 
 func scopedWhereClause(column string, values []string) (string, []interface{}) {
+	return scopedWhereClauseWithTarget(nil, column, values)
+}
+
+func scopedWhereClauseForWarehouse(sf warehouse.SyncWarehouse, column string, values []string) (string, []interface{}) {
+	return scopedWhereClauseWithTarget(sf, column, values)
+}
+
+func scopedWhereClauseWithTarget(target any, column string, values []string) (string, []interface{}) {
 	if column == "" || len(values) == 0 {
 		return "", nil
 	}
 
-	placeholders := strings.TrimRight(strings.Repeat("?,", len(values)), ",")
+	placeholders := strings.Join(warehouse.Placeholders(target, 1, len(values)), ",")
 	args := make([]interface{}, len(values))
 	for i, value := range values {
 		args[i] = value
@@ -191,8 +199,8 @@ func persistProviderChangeHistory(ctx context.Context, sf warehouse.SyncWarehous
 		region VARCHAR,
 		account_id VARCHAR,
 		provider VARCHAR,
-		timestamp TIMESTAMP_TZ,
-		_cq_sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
+		timestamp ` + warehouse.TimestampColumnType(sf) + `,
+		_cq_sync_time ` + warehouse.TimestampColumnType(sf) + ` DEFAULT CURRENT_TIMESTAMP()
 	)`
 
 	if _, err := sf.Exec(ctx, createQuery); err != nil {
@@ -204,7 +212,7 @@ func persistProviderChangeHistory(ctx context.Context, sf warehouse.SyncWarehous
 		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS region VARCHAR",
 		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS account_id VARCHAR",
 		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS provider VARCHAR",
-		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP_TZ",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS timestamp " + warehouse.TimestampColumnType(sf),
 	}
 	for _, query := range alterQueries {
 		if _, err := sf.Exec(ctx, query); err != nil {
@@ -233,8 +241,10 @@ func persistProviderChangeHistory(ctx context.Context, sf warehouse.SyncWarehous
 func insertProviderChangeRecord(ctx context.Context, sf warehouse.SyncWarehouse, logger *slog.Logger, provider, table, operation, region string, resourceIDs []string, syncTime time.Time) {
 	for _, resourceID := range resourceIDs {
 		id := fmt.Sprintf("%s-%s-%s-%d", table, operation, resourceID, syncTime.UnixNano())
-		query := `INSERT INTO _sync_change_history (id, table_name, resource_id, operation, region, account_id, provider, timestamp)
-			SELECT ?, ?, ?, ?, ?, ?, ?, ?`
+		query := fmt.Sprintf(
+			"INSERT INTO _sync_change_history (id, table_name, resource_id, operation, region, account_id, provider, timestamp) VALUES (%s)",
+			strings.Join(warehouse.Placeholders(sf, 1, 8), ", "),
+		)
 		if _, err := sf.Exec(ctx, query, id, table, resourceID, operation, region, "", provider, syncTime); err != nil {
 			logger.Debug("failed to insert change record", "provider", provider, "table", table, "error", err)
 		}

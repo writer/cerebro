@@ -13,7 +13,7 @@ var queryLatestTableSyncTime = func(ctx context.Context, sf warehouse.SyncWareho
 	query := fmt.Sprintf("SELECT MAX(_CQ_SYNC_TIME) AS SYNC_TIME FROM %s", table)
 	args := []interface{}{}
 	if hasRegion {
-		query += " WHERE REGION = ?"
+		query += " WHERE REGION = " + warehouse.Placeholder(sf, 1)
 		args = append(args, region)
 	}
 

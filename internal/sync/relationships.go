@@ -111,7 +111,7 @@ var relationshipQueryBatch = func(ctx context.Context, sf warehouse.SyncWarehous
 	if sf == nil {
 		return fmt.Errorf("warehouse is nil")
 	}
-	if syncWarehouseDialect(sf) != warehouse.DialectSnowflake {
+	if warehouse.Dialect(sf) != warehouse.SQLDialectSnowflake {
 		_, err := sf.Exec(ctx, query, args...)
 		return err
 	}
@@ -285,23 +285,27 @@ type relationshipBackfillUpdate struct {
 
 func (r *RelationshipExtractor) applyRelationshipBackfillBatch(ctx context.Context, tableName string, updates []relationshipBackfillUpdate, deleteIDs []string) error {
 	if len(updates) > 0 {
-		dialect := syncWarehouseDialect(r.sf)
-		values := make([]string, 0, len(updates))
-		args := make([]interface{}, 0, len(updates)*8)
-		for _, update := range updates {
-			values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?)")
-			args = append(args,
-				update.NewID,
-				update.SourceID,
-				update.SourceType,
-				update.TargetID,
-				update.TargetType,
-				update.RelType,
-				update.Properties,
-				update.SyncTime,
-			)
-		}
-		query := fmt.Sprintf(`MERGE INTO %s AS t
+		var (
+			query string
+			args  []interface{}
+		)
+		if warehouse.Dialect(r.sf) == warehouse.SQLDialectSnowflake {
+			values := make([]string, 0, len(updates))
+			args = make([]interface{}, 0, len(updates)*8)
+			for _, update := range updates {
+				values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?)")
+				args = append(args,
+					update.NewID,
+					update.SourceID,
+					update.SourceType,
+					update.TargetID,
+					update.TargetType,
+					update.RelType,
+					update.Properties,
+					update.SyncTime,
+				)
+			}
+			query = fmt.Sprintf(`MERGE INTO %s AS t
 USING (SELECT column1 AS id,
               column2 AS source_id,
               column3 AS source_type,
@@ -322,20 +326,37 @@ WHEN MATCHED THEN UPDATE SET
   SYNC_TIME = COALESCE(s.sync_time, t.SYNC_TIME)
 WHEN NOT MATCHED THEN INSERT (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
 VALUES (s.id, s.source_id, s.source_type, s.target_id, s.target_type, s.rel_type, TRY_PARSE_JSON(s.properties), s.sync_time)`, tableName, strings.Join(values, ","))
-		if dialect != warehouse.DialectSnowflake {
-			propertyExpr := syncVariantValueExpr(r.sf, "?")
-			query = fmt.Sprintf(`INSERT INTO %s (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
-VALUES %s
-ON CONFLICT (ID) DO UPDATE SET
-  SOURCE_ID = EXCLUDED.SOURCE_ID,
-  SOURCE_TYPE = EXCLUDED.SOURCE_TYPE,
-  TARGET_ID = EXCLUDED.TARGET_ID,
-  TARGET_TYPE = EXCLUDED.TARGET_TYPE,
-  REL_TYPE = EXCLUDED.REL_TYPE,
-  PROPERTIES = EXCLUDED.PROPERTIES,
-  SYNC_TIME = COALESCE(EXCLUDED.SYNC_TIME, %s.SYNC_TIME)`,
+		} else {
+			values := make([]string, 0, len(updates))
+			args = make([]interface{}, 0, len(updates)*8)
+			for _, update := range updates {
+				row := []string{
+					warehouse.Placeholder(r.sf, len(args)+1),
+					warehouse.Placeholder(r.sf, len(args)+2),
+					warehouse.Placeholder(r.sf, len(args)+3),
+					warehouse.Placeholder(r.sf, len(args)+4),
+					warehouse.Placeholder(r.sf, len(args)+5),
+					warehouse.Placeholder(r.sf, len(args)+6),
+					warehouse.JSONPlaceholder(r.sf, len(args)+7),
+					warehouse.Placeholder(r.sf, len(args)+8),
+				}
+				values = append(values, "("+strings.Join(row, ", ")+")")
+				args = append(args,
+					update.NewID,
+					update.SourceID,
+					update.SourceType,
+					update.TargetID,
+					update.TargetType,
+					update.RelType,
+					update.Properties,
+					update.SyncTime,
+				)
+			}
+			query = fmt.Sprintf(
+				"INSERT INTO %s (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME) VALUES %s "+
+					"ON CONFLICT (ID) DO UPDATE SET SOURCE_ID = EXCLUDED.SOURCE_ID, SOURCE_TYPE = EXCLUDED.SOURCE_TYPE, TARGET_ID = EXCLUDED.TARGET_ID, TARGET_TYPE = EXCLUDED.TARGET_TYPE, REL_TYPE = EXCLUDED.REL_TYPE, PROPERTIES = EXCLUDED.PROPERTIES, SYNC_TIME = COALESCE(EXCLUDED.SYNC_TIME, %s.SYNC_TIME)",
 				tableName,
-				strings.Join(buildRelationshipValueRows(len(updates), propertyExpr), ", "),
+				strings.Join(values, ", "),
 				tableName,
 			)
 		}
@@ -364,8 +385,8 @@ ON CONFLICT (ID) DO UPDATE SET
 	}
 	placeholders := make([]string, 0, len(unique))
 	args := make([]interface{}, 0, len(unique))
-	for _, id := range unique {
-		placeholders = append(placeholders, "?")
+	for i, id := range unique {
+		placeholders = append(placeholders, warehouse.Placeholder(r.sf, i+1))
 		args = append(args, id)
 	}
 	deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE ID IN (%s)", tableName, strings.Join(placeholders, ","))
@@ -390,14 +411,6 @@ func formatRelationshipProperties(value interface{}) string {
 	return props
 }
 
-func buildRelationshipValueRows(count int, propertyExpr string) []string {
-	rows := make([]string, 0, count)
-	for i := 0; i < count; i++ {
-		rows = append(rows, fmt.Sprintf("(?, ?, ?, ?, ?, ?, %s, ?)", propertyExpr))
-	}
-	return rows
-}
-
 func (r *RelationshipExtractor) ensureTable(ctx context.Context) error {
 	// Use fully qualified table name to ensure we're in the right schema
 	schema := r.sf.Schema()
@@ -416,7 +429,7 @@ func (r *RelationshipExtractor) ensureTable(ctx context.Context) error {
 		REL_TYPE VARCHAR NOT NULL,
 		PROPERTIES %s,
 		SYNC_TIME %s DEFAULT CURRENT_TIMESTAMP()
-	)`, schema, syncVariantColumnType(r.sf), syncTimestampColumnType(r.sf))
+	)`, schema, warehouse.JSONColumnType(r.sf), warehouse.TimestampColumnType(r.sf))
 	_, err := r.sf.Exec(ctx, query)
 	return err
 }
@@ -429,7 +442,7 @@ func (r *RelationshipExtractor) cleanupStaleRelationships(ctx context.Context, c
 	if err := snowflake.ValidateTableName(schema); err != nil {
 		return fmt.Errorf("invalid schema name: %w", err)
 	}
-	query := fmt.Sprintf(`DELETE FROM %s.RESOURCE_RELATIONSHIPS WHERE SYNC_TIME < ?`, schema)
+	query := fmt.Sprintf(`DELETE FROM %s.RESOURCE_RELATIONSHIPS WHERE SYNC_TIME < %s`, schema, warehouse.Placeholder(r.sf, 1))
 	_, err := r.sf.Exec(ctx, query, cutoff.UTC())
 	return err
 }
@@ -479,32 +492,29 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 				props = "{}"
 			}
 			id := buildRelationshipID(sourceID, rel.RelType, targetID, props)
-			values = append(values, "(?, ?, ?, ?, ?, ?, ?, ?)")
+			values = append(values, fmt.Sprintf("(%s, %s, %s, %s, %s, %s, %s, %s)",
+				warehouse.Placeholder(r.sf, len(args)+1),
+				warehouse.Placeholder(r.sf, len(args)+2),
+				warehouse.Placeholder(r.sf, len(args)+3),
+				warehouse.Placeholder(r.sf, len(args)+4),
+				warehouse.Placeholder(r.sf, len(args)+5),
+				warehouse.Placeholder(r.sf, len(args)+6),
+				warehouse.JSONPlaceholder(r.sf, len(args)+7),
+				warehouse.Placeholder(r.sf, len(args)+8),
+			))
 			args = append(args, id, sourceID, rel.SourceType, targetID, rel.TargetType, rel.RelType, props, syncTime)
 		}
 		if len(values) == 0 {
 			continue
 		}
 
-		query := fmt.Sprintf(`INSERT INTO %s (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
-			SELECT column1, column2, column3, column4, column5, column6, TRY_PARSE_JSON(column7), column8::TIMESTAMP_TZ
-			FROM VALUES %s`,
-			tableName, strings.Join(values, ", "))
-		if syncWarehouseDialect(r.sf) != warehouse.DialectSnowflake {
-			query = fmt.Sprintf(`INSERT INTO %s (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
-VALUES %s
-ON CONFLICT (ID) DO UPDATE SET
-	SOURCE_ID = EXCLUDED.SOURCE_ID,
-	SOURCE_TYPE = EXCLUDED.SOURCE_TYPE,
-	TARGET_ID = EXCLUDED.TARGET_ID,
-	TARGET_TYPE = EXCLUDED.TARGET_TYPE,
-	REL_TYPE = EXCLUDED.REL_TYPE,
-	PROPERTIES = EXCLUDED.PROPERTIES,
-	SYNC_TIME = COALESCE(EXCLUDED.SYNC_TIME, %s.SYNC_TIME)`,
-				tableName,
-				strings.Join(buildRelationshipValueRows(len(values), syncVariantValueExpr(r.sf, "?")), ", "),
-				tableName,
-			)
+		query := fmt.Sprintf(
+			"INSERT INTO %s (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME) VALUES %s",
+			tableName,
+			strings.Join(values, ", "),
+		)
+		if warehouse.Dialect(r.sf) != warehouse.SQLDialectSnowflake {
+			query += " ON CONFLICT (ID) DO UPDATE SET SOURCE_ID = EXCLUDED.SOURCE_ID, SOURCE_TYPE = EXCLUDED.SOURCE_TYPE, TARGET_ID = EXCLUDED.TARGET_ID, TARGET_TYPE = EXCLUDED.TARGET_TYPE, REL_TYPE = EXCLUDED.REL_TYPE, PROPERTIES = EXCLUDED.PROPERTIES, SYNC_TIME = EXCLUDED.SYNC_TIME"
 		}
 
 		// Use Query instead of Exec - Exec has issues with Snowflake commit behavior
@@ -532,11 +542,30 @@ func (r *RelationshipExtractor) getTableColumnSet(ctx context.Context, table str
 		return nil, fmt.Errorf("invalid table name %s: %w", table, err)
 	}
 
+	if memory, ok := any(r.sf).(*warehouse.MemoryWarehouse); ok && memory.DescribeColumnsFunc == nil {
+		// Preserve query-driven column discovery in tests that only stub QueryFunc.
+	} else if describer, ok := any(r.sf).(interface {
+		DescribeColumns(context.Context, string) ([]string, error)
+	}); ok {
+		names, err := describer.DescribeColumns(ctx, table)
+		if err != nil {
+			return nil, err
+		}
+		columns := make(map[string]struct{}, len(names))
+		for _, name := range names {
+			name = strings.ToUpper(strings.TrimSpace(name))
+			if name != "" {
+				columns[name] = struct{}{}
+			}
+		}
+		return columns, nil
+	}
+
 	query := `
 		SELECT COLUMN_NAME
 		FROM INFORMATION_SCHEMA.COLUMNS
 		WHERE TABLE_SCHEMA = CURRENT_SCHEMA()
-		AND TABLE_NAME = ?
+		AND TABLE_NAME = ` + warehouse.Placeholder(r.sf, 1) + `
 	`
 
 	result, err := r.sf.Query(ctx, query, strings.ToUpper(table))

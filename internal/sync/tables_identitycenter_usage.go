@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssoadmin"
 	ssoadmintypes "github.com/aws/aws-sdk-go-v2/service/ssoadmin/types"
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const (
@@ -405,15 +406,19 @@ func (e *SyncEngine) deleteIdentityCenterUsageRowsNotInInstance(ctx context.Cont
 
 	if len(filtered) == 0 {
 		query = fmt.Sprintf(
-			"DELETE FROM %s WHERE identity_center_instance_arn = ? AND account_id = ?",
+			"DELETE FROM %s WHERE identity_center_instance_arn = %s AND account_id = %s",
 			awsIdentityCenterPermissionUsageTable,
+			warehouse.Placeholder(e.sf, 1),
+			warehouse.Placeholder(e.sf, 2),
 		)
 		args = []interface{}{instanceArn, accountID}
 	} else {
-		placeholders := strings.TrimRight(strings.Repeat("?,", len(filtered)), ",")
+		placeholders := strings.Join(warehouse.Placeholders(e.sf, 3, len(filtered)), ",")
 		query = fmt.Sprintf(
-			"DELETE FROM %s WHERE identity_center_instance_arn = ? AND account_id = ? AND permission_set_arn NOT IN (%s)",
+			"DELETE FROM %s WHERE identity_center_instance_arn = %s AND account_id = %s AND permission_set_arn NOT IN (%s)",
 			awsIdentityCenterPermissionUsageTable,
+			warehouse.Placeholder(e.sf, 1),
+			warehouse.Placeholder(e.sf, 2),
 			placeholders,
 		)
 		args = make([]interface{}, 0, len(filtered)+2)
@@ -444,20 +449,22 @@ func (e *SyncEngine) deleteStaleIdentityCenterUsageRows(ctx context.Context, per
 
 	if len(currentActions) == 0 {
 		query = fmt.Sprintf(
-			"DELETE FROM %s WHERE permission_set_arn = ? AND sso_role_arn = ?",
+			"DELETE FROM %s WHERE permission_set_arn = %s AND sso_role_arn = %s",
 			awsIdentityCenterPermissionUsageTable,
+			warehouse.Placeholder(e.sf, 1),
+			warehouse.Placeholder(e.sf, 2),
 		)
 		args = []interface{}{permissionSetArn, roleArn}
 	} else {
-		placeholders := strings.TrimRight(strings.Repeat("?,", len(currentActions)), ",")
+		placeholders := strings.Join(warehouse.Placeholders(e.sf, 3, len(currentActions)), ",")
 		args = make([]interface{}, 0, len(currentActions)+2)
 		args = append(args, permissionSetArn, roleArn)
 		for _, action := range currentActions {
 			args = append(args, strings.ToLower(action))
 		}
 		query = fmt.Sprintf(
-			"DELETE FROM %s WHERE permission_set_arn = ? AND sso_role_arn = ? AND LOWER(action) NOT IN (%s)",
-			awsIdentityCenterPermissionUsageTable, placeholders,
+			"DELETE FROM %s WHERE permission_set_arn = %s AND sso_role_arn = %s AND LOWER(action) NOT IN (%s)",
+			awsIdentityCenterPermissionUsageTable, warehouse.Placeholder(e.sf, 1), warehouse.Placeholder(e.sf, 2), placeholders,
 		)
 	}
 
@@ -474,8 +481,8 @@ func (e *SyncEngine) deleteIdentityCenterUsageRowsByPermissionSet(ctx context.Co
 	}
 
 	query := fmt.Sprintf(
-		"DELETE FROM %s WHERE permission_set_arn = ? AND account_id = ?",
-		awsIdentityCenterPermissionUsageTable,
+		"DELETE FROM %s WHERE permission_set_arn = %s AND account_id = %s",
+		awsIdentityCenterPermissionUsageTable, warehouse.Placeholder(e.sf, 1), warehouse.Placeholder(e.sf, 2),
 	)
 	if _, err := e.sf.Exec(ctx, query, permissionSetArn, accountID); err != nil {
 		if !strings.Contains(strings.ToLower(err.Error()), "does not exist") {
@@ -582,7 +589,7 @@ func (e *SyncEngine) loadExistingAWSPermissionActionState(ctx context.Context, p
 	query := `
 		SELECT action, action_last_accessed, unused_since, usage_status
 		FROM ` + awsIdentityCenterPermissionUsageTable + `
-		WHERE permission_set_arn = ? AND sso_role_arn = ?
+		WHERE permission_set_arn = ` + warehouse.Placeholder(e.sf, 1) + ` AND sso_role_arn = ` + warehouse.Placeholder(e.sf, 2) + `
 	`
 	rows, err := e.sf.Query(ctx, query, permissionSetArn, roleArn)
 	if err != nil {

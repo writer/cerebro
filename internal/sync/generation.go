@@ -254,11 +254,11 @@ func (e *SyncEngine) ensureGenerationTrackingTable(ctx context.Context) error {
 		region VARCHAR,
 		status VARCHAR,
 		backfill_pending BOOLEAN,
-		synced_rows NUMBER,
+		synced_rows %s,
 		error_message VARCHAR,
-		sync_time TIMESTAMP_TZ,
-		_cq_sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
-	)`, syncTableGenerationsTable)
+		sync_time %s,
+		_cq_sync_time %s DEFAULT CURRENT_TIMESTAMP()
+	)`, syncTableGenerationsTable, warehouse.IntegerColumnType(e.sf), warehouse.TimestampColumnType(e.sf), warehouse.TimestampColumnType(e.sf))
 	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
 		return fmt.Errorf("create sync generation table: %w", err)
 	}
@@ -271,17 +271,17 @@ func (e *SyncEngine) ensureGenerationAlertsTable(ctx context.Context) error {
 		provider VARCHAR,
 		account_id VARCHAR,
 		generation_id VARCHAR,
-		drift_seconds NUMBER,
-		threshold_seconds NUMBER,
+		drift_seconds %s,
+		threshold_seconds %s,
 		min_table_name VARCHAR,
 		min_region VARCHAR,
-		min_sync_time TIMESTAMP_TZ,
+		min_sync_time %s,
 		max_table_name VARCHAR,
 		max_region VARCHAR,
-		max_sync_time TIMESTAMP_TZ,
+		max_sync_time %s,
 		message VARCHAR,
-		_cq_sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
-	)`, syncGenerationAlertsTable)
+		_cq_sync_time %s DEFAULT CURRENT_TIMESTAMP()
+	)`, syncGenerationAlertsTable, warehouse.IntegerColumnType(e.sf), warehouse.IntegerColumnType(e.sf), warehouse.TimestampColumnType(e.sf), warehouse.TimestampColumnType(e.sf), warehouse.TimestampColumnType(e.sf))
 	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
 		return fmt.Errorf("create sync generation alerts table: %w", err)
 	}
@@ -303,59 +303,69 @@ func (e *SyncEngine) recordGenerationResult(ctx context.Context, generationID st
 	}
 
 	recordID := generationRecordID("aws", e.accountID, generationID, result.Table, result.Region)
-	query := fmt.Sprintf(`MERGE INTO %s t
-		USING (
-			SELECT ? AS id, ? AS provider, ? AS account_id, ? AS generation_id, ? AS table_name,
-				? AS region, ? AS status, ? AS backfill_pending, ? AS synced_rows, ? AS error_message, ? AS sync_time
-		) s
-		ON t.id = s.id
-		WHEN MATCHED THEN UPDATE SET
-			provider = s.provider,
-			account_id = s.account_id,
-			generation_id = s.generation_id,
-			table_name = s.table_name,
-			region = s.region,
-			status = s.status,
-			backfill_pending = s.backfill_pending,
-			synced_rows = s.synced_rows,
-			error_message = s.error_message,
-			sync_time = s.sync_time,
-			_cq_sync_time = CURRENT_TIMESTAMP()
-		WHEN NOT MATCHED THEN INSERT
-			(id, provider, account_id, generation_id, table_name, region, status, backfill_pending, synced_rows, error_message, sync_time)
-			VALUES
-			(s.id, s.provider, s.account_id, s.generation_id, s.table_name, s.region, s.status, s.backfill_pending, s.synced_rows, s.error_message, s.sync_time)`, syncTableGenerationsTable)
-	if syncWarehouseDialect(e.sf) != warehouse.DialectSnowflake {
-		query = fmt.Sprintf(`INSERT INTO %s
-			(id, provider, account_id, generation_id, table_name, region, status, backfill_pending, synced_rows, error_message, sync_time)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT (id) DO UPDATE SET
-				provider = EXCLUDED.provider,
-				account_id = EXCLUDED.account_id,
-				generation_id = EXCLUDED.generation_id,
-				table_name = EXCLUDED.table_name,
-				region = EXCLUDED.region,
-				status = EXCLUDED.status,
-				backfill_pending = EXCLUDED.backfill_pending,
-				synced_rows = EXCLUDED.synced_rows,
-				error_message = EXCLUDED.error_message,
-				sync_time = EXCLUDED.sync_time,
-				_cq_sync_time = CURRENT_TIMESTAMP()`, syncTableGenerationsTable)
+	var (
+		query string
+		args  []interface{}
+	)
+	if warehouse.Dialect(e.sf) == warehouse.SQLDialectSnowflake {
+		query = fmt.Sprintf(`MERGE INTO %s t
+			USING (
+				SELECT ? AS id, ? AS provider, ? AS account_id, ? AS generation_id, ? AS table_name,
+					? AS region, ? AS status, ? AS backfill_pending, ? AS synced_rows, ? AS error_message, ? AS sync_time
+			) s
+			ON t.id = s.id
+			WHEN MATCHED THEN UPDATE SET
+				provider = s.provider,
+				account_id = s.account_id,
+				generation_id = s.generation_id,
+				table_name = s.table_name,
+				region = s.region,
+				status = s.status,
+				backfill_pending = s.backfill_pending,
+				synced_rows = s.synced_rows,
+				error_message = s.error_message,
+				sync_time = s.sync_time,
+				_cq_sync_time = CURRENT_TIMESTAMP()
+			WHEN NOT MATCHED THEN INSERT
+				(id, provider, account_id, generation_id, table_name, region, status, backfill_pending, synced_rows, error_message, sync_time)
+				VALUES
+				(s.id, s.provider, s.account_id, s.generation_id, s.table_name, s.region, s.status, s.backfill_pending, s.synced_rows, s.error_message, s.sync_time)`, syncTableGenerationsTable)
+		args = []interface{}{
+			recordID,
+			"aws",
+			e.accountID,
+			generationID,
+			result.Table,
+			result.Region,
+			status,
+			result.BackfillPending,
+			result.Synced,
+			errorMessage,
+			syncTime,
+		}
+	} else {
+		query = fmt.Sprintf(
+			"INSERT INTO %s (id, provider, account_id, generation_id, table_name, region, status, backfill_pending, synced_rows, error_message, sync_time) VALUES (%s) "+
+				"ON CONFLICT (id) DO UPDATE SET provider = EXCLUDED.provider, account_id = EXCLUDED.account_id, generation_id = EXCLUDED.generation_id, table_name = EXCLUDED.table_name, region = EXCLUDED.region, status = EXCLUDED.status, backfill_pending = EXCLUDED.backfill_pending, synced_rows = EXCLUDED.synced_rows, error_message = EXCLUDED.error_message, sync_time = EXCLUDED.sync_time, _cq_sync_time = CURRENT_TIMESTAMP()",
+			syncTableGenerationsTable,
+			strings.Join(warehouse.Placeholders(e.sf, 1, 11), ", "),
+		)
+		args = []interface{}{
+			recordID,
+			"aws",
+			e.accountID,
+			generationID,
+			result.Table,
+			result.Region,
+			status,
+			result.BackfillPending,
+			result.Synced,
+			errorMessage,
+			syncTime,
+		}
 	}
 
-	if _, err := e.sf.Exec(ctx, query,
-		recordID,
-		"aws",
-		e.accountID,
-		generationID,
-		result.Table,
-		result.Region,
-		status,
-		result.BackfillPending,
-		result.Synced,
-		errorMessage,
-		syncTime,
-	); err != nil {
+	if _, err := e.sf.Exec(ctx, query, args...); err != nil {
 		return fmt.Errorf("upsert sync generation result: %w", err)
 	}
 
@@ -381,9 +391,11 @@ func (e *SyncEngine) recordGenerationAlert(ctx context.Context, generationID str
 		alert.Max.Region,
 	)
 
-	query := fmt.Sprintf(`INSERT INTO %s
-		(id, provider, account_id, generation_id, drift_seconds, threshold_seconds, min_table_name, min_region, min_sync_time, max_table_name, max_region, max_sync_time, message)
-		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`, syncGenerationAlertsTable)
+	query := fmt.Sprintf(
+		"INSERT INTO %s (id, provider, account_id, generation_id, drift_seconds, threshold_seconds, min_table_name, min_region, min_sync_time, max_table_name, max_region, max_sync_time, message) VALUES (%s)",
+		syncGenerationAlertsTable,
+		strings.Join(warehouse.Placeholders(e.sf, 1, 13), ", "),
+	)
 
 	if _, err := e.sf.Exec(ctx, query,
 		recordID,

@@ -394,8 +394,8 @@ func (c *Config) Validate() error {
 	}
 
 	if strings.EqualFold(strings.TrimSpace(c.WarehouseBackend), "postgres") {
-		if strings.TrimSpace(c.WarehousePostgresDSN) == "" {
-			problems = addConfigProblem(problems, "WAREHOUSE_POSTGRES_DSN is required when WAREHOUSE_BACKEND=postgres")
+		if strings.TrimSpace(c.WarehousePostgresDSN) == "" && strings.TrimSpace(c.JobDatabaseURL) == "" {
+			problems = addConfigProblem(problems, "WAREHOUSE_POSTGRES_DSN or JOB_DATABASE_URL is required when WAREHOUSE_BACKEND=postgres")
 		}
 	}
 

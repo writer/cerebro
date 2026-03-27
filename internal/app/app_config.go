@@ -563,8 +563,12 @@ func LoadConfig() *Config {
 			snowflakeAccount := getEnv("SNOWFLAKE_ACCOUNT", "")
 			snowflakeUser := getEnv("SNOWFLAKE_USER", "")
 			snowflakePrivateKey := normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", ""))
+			warehousePostgresDSN := getEnv("WAREHOUSE_POSTGRES_DSN", "")
+			jobDatabaseURL := getEnv("JOB_DATABASE_URL", "")
 			defaultWarehouseBackend := "sqlite"
-			if strings.TrimSpace(snowflakeAccount) != "" || strings.TrimSpace(snowflakeUser) != "" || strings.TrimSpace(snowflakePrivateKey) != "" {
+			if strings.TrimSpace(warehousePostgresDSN) != "" || strings.TrimSpace(jobDatabaseURL) != "" {
+				defaultWarehouseBackend = "postgres"
+			} else if strings.TrimSpace(snowflakeAccount) != "" || strings.TrimSpace(snowflakeUser) != "" || strings.TrimSpace(snowflakePrivateKey) != "" {
 				defaultWarehouseBackend = "snowflake"
 			}
 			defaultWarehouseSQLitePath := filepath.Join(filepath.Dir(findings.DefaultFilePath()), "warehouse.db")
@@ -595,7 +599,7 @@ func LoadConfig() *Config {
 				CredentialVaultKVVersion:                 bootstrapConfigInt("CEREBRO_CREDENTIAL_VAULT_KV_VERSION", 2),
 				WarehouseBackend:                         strings.ToLower(strings.TrimSpace(getEnv("WAREHOUSE_BACKEND", defaultWarehouseBackend))),
 				WarehouseSQLitePath:                      getEnv("WAREHOUSE_SQLITE_PATH", defaultWarehouseSQLitePath),
-				WarehousePostgresDSN:                     getEnv("WAREHOUSE_POSTGRES_DSN", ""),
+				WarehousePostgresDSN:                     warehousePostgresDSN,
 				SnowflakeAccount:                         snowflakeAccount,
 				SnowflakeUser:                            snowflakeUser,
 				SnowflakePrivateKey:                      snowflakePrivateKey,
@@ -866,7 +870,7 @@ func LoadConfig() *Config {
 				FindingAttestationLogURL:                 getEnv("FINDING_ATTESTATION_LOG_URL", ""),
 				FindingAttestationTimeout:                getEnvDuration("FINDING_ATTESTATION_TIMEOUT", 3*time.Second),
 				FindingAttestationAttestReobserved:       getEnvBool("FINDING_ATTESTATION_ATTEST_REOBSERVED", false),
-				JobDatabaseURL:                           getEnv("JOB_DATABASE_URL", ""),
+				JobDatabaseURL:                           jobDatabaseURL,
 				JobNATSStream:                            getEnv("JOB_NATS_STREAM", "CEREBRO_JOBS"),
 				JobNATSSubject:                           getEnv("JOB_NATS_SUBJECT", "cerebro.jobs"),
 				JobNATSConsumer:                          getEnv("JOB_NATS_CONSUMER", "job-worker"),

@@ -628,28 +628,28 @@ func (s *Server) adminHealth(w http.ResponseWriter, r *http.Request) {
 		"timestamp": time.Now().UTC(),
 	}
 
-	// Snowflake status
-	if s.app.Snowflake != nil {
+	// Warehouse status
+	if s.app.Warehouse != nil && s.app.Warehouse.DB() != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), s.healthCheckTimeout())
 		start := time.Now()
-		err := s.app.Snowflake.Ping(ctx)
+		err := s.app.Warehouse.DB().PingContext(ctx)
 		cancel()
 		latency := time.Since(start).Milliseconds()
 
 		if err != nil {
-			health["snowflake"] = map[string]interface{}{
+			health["warehouse"] = map[string]interface{}{
 				"status":     "unhealthy",
 				"error":      err.Error(),
 				"latency_ms": latency,
 			}
 		} else {
-			health["snowflake"] = map[string]interface{}{
+			health["warehouse"] = map[string]interface{}{
 				"status":     "healthy",
 				"latency_ms": latency,
 			}
 		}
 	} else {
-		health["snowflake"] = map[string]interface{}{"status": "not_configured"}
+		health["warehouse"] = map[string]interface{}{"status": "not_configured"}
 	}
 
 	// Findings stats

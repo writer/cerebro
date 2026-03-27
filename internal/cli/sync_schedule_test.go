@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/writer/cerebro/internal/app"
 	providerregistry "github.com/writer/cerebro/internal/providers"
-	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 	"google.golang.org/api/option"
 )
@@ -694,7 +693,7 @@ func TestRunScheduledSync_RetryAndStatus(t *testing.T) {
 			}
 			return nil
 		}
-		saveScheduleFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+		saveScheduleFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 			saves++
 			return nil
 		}
@@ -724,7 +723,7 @@ func TestRunScheduledSync_RetryAndStatus(t *testing.T) {
 			attempts++
 			return errors.New("hard failure")
 		}
-		saveScheduleFn = func(context.Context, *snowflake.Client, *SyncSchedule) error { return nil }
+		saveScheduleFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error { return nil }
 		scheduleSleepFn = func(time.Duration) {}
 		now := time.Date(2026, 2, 24, 12, 0, 0, 0, time.UTC)
 		scheduleNowFn = func() time.Time {
@@ -756,7 +755,7 @@ func TestRunScheduledSync_RejectsInvalidTimeoutDirective(t *testing.T) {
 		executeCalls++
 		return nil
 	}
-	saveScheduleFn = func(context.Context, *snowflake.Client, *SyncSchedule) error { return nil }
+	saveScheduleFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error { return nil }
 
 	schedule := &SyncSchedule{Name: "invalid-timeout", Provider: "aws", Retry: 1, Table: "sync_timeout_seconds=5"}
 	runScheduledSync(nil, schedule)
@@ -793,7 +792,7 @@ func TestRunScheduledSync_SkipsOverlappingRuns(t *testing.T) {
 		<-release
 		return nil
 	}
-	saveScheduleFn = func(context.Context, *snowflake.Client, *SyncSchedule) error { return nil }
+	saveScheduleFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error { return nil }
 	scheduleSleepFn = func(time.Duration) {}
 
 	first := &SyncSchedule{Name: "overlap-test", Provider: "aws", Retry: 1}

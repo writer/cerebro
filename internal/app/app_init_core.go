@@ -123,7 +123,7 @@ func (a *App) initSQLiteWarehouse(_ context.Context) error {
 
 func (a *App) initPostgresWarehouse(_ context.Context) error {
 	store, err := warehouse.NewPostgresWarehouse(warehouse.PostgresWarehouseConfig{
-		DSN:       strings.TrimSpace(a.Config.WarehousePostgresDSN),
+		DSN:       a.warehousePostgresDSN(),
 		AppSchema: "cerebro",
 	})
 	if err != nil {
@@ -132,6 +132,16 @@ func (a *App) initPostgresWarehouse(_ context.Context) error {
 	a.Snowflake = nil
 	a.Warehouse = store
 	return nil
+}
+
+func (a *App) warehousePostgresDSN() string {
+	if a == nil || a.Config == nil {
+		return ""
+	}
+	if dsn := strings.TrimSpace(a.Config.WarehousePostgresDSN); dsn != "" {
+		return dsn
+	}
+	return strings.TrimSpace(a.Config.JobDatabaseURL)
 }
 
 func OpenWarehouse(ctx context.Context, cfg *Config) (warehouse.DataWarehouse, error) {
@@ -154,7 +164,6 @@ func openSnowflakeWarehouse(ctx context.Context, cfg *Config) (warehouse.DataWar
 	if cfg == nil {
 		cfg = LoadConfig()
 	}
-	// Require key-pair auth
 	if cfg.SnowflakePrivateKey == "" || cfg.SnowflakeAccount == "" || cfg.SnowflakeUser == "" {
 		return nil, fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
@@ -196,8 +205,12 @@ func openPostgresWarehouse(cfg *Config) (warehouse.DataWarehouse, error) {
 	if cfg == nil {
 		cfg = LoadConfig()
 	}
+	dsn := strings.TrimSpace(cfg.WarehousePostgresDSN)
+	if dsn == "" {
+		dsn = strings.TrimSpace(cfg.JobDatabaseURL)
+	}
 	return warehouse.NewPostgresWarehouse(warehouse.PostgresWarehouseConfig{
-		DSN:       strings.TrimSpace(cfg.WarehousePostgresDSN),
+		DSN:       dsn,
 		AppSchema: "cerebro",
 	})
 }

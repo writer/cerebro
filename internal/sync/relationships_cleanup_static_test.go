@@ -22,12 +22,14 @@ func TestRelationshipCleanupUsesRunSyncTimeGuardrails(t *testing.T) {
 
 	checks := []string{
 		"cleanupStaleRelationships(ctx, runSyncTime)",
-		"column8::TIMESTAMP_TZ",
 		"r.sf.Exec(ctx, query, cutoff.UTC())",
 	}
 	for _, check := range checks {
 		if !strings.Contains(text, check) {
 			t.Fatalf("expected relationships.go to contain %q", check)
 		}
+	}
+	if !strings.Contains(text, "column8::TIMESTAMP_TZ") && !strings.Contains(text, "ON CONFLICT (ID) DO UPDATE") {
+		t.Fatal("expected relationships.go to contain a snowflake or postgres/sqlite batch upsert path")
 	}
 }

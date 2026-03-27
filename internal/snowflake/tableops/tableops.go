@@ -40,16 +40,15 @@ func EnsureVariantTable(ctx context.Context, client QueryExecClient, table strin
 	if err := validateColumns(filtered); err != nil {
 		return err
 	}
-	dialect := tableOpsDialect(client)
 
 	colDefs := make([]string, 0, len(filtered)+3)
 	colDefs = append(colDefs,
 		"_CQ_ID VARCHAR PRIMARY KEY",
-		fmt.Sprintf("_CQ_SYNC_TIME %s DEFAULT CURRENT_TIMESTAMP()", syncTimeColumnType(dialect)),
+		fmt.Sprintf("_CQ_SYNC_TIME %s DEFAULT CURRENT_TIMESTAMP()", warehouse.TimestampColumnType(client)),
 	)
 	colDefs = append(colDefs, "_CQ_HASH VARCHAR")
 	for _, col := range filtered {
-		colDefs = append(colDefs, fmt.Sprintf("%s %s", col, variantColumnType(dialect)))
+		colDefs = append(colDefs, fmt.Sprintf("%s %s", col, warehouse.JSONColumnType(client)))
 	}
 
 	createQuery := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n\t%s\n)", table, strings.Join(colDefs, ",\n\t"))
@@ -74,7 +73,7 @@ func EnsureVariantTable(ctx context.Context, client QueryExecClient, table strin
 	desired = append(desired, filtered...)
 
 	for _, col := range columnsMissingFromSchema(existingCols, desired) {
-		columnType := variantColumnType(dialect)
+		columnType := warehouse.JSONColumnType(client)
 		if col == "_CQ_HASH" {
 			columnType = "VARCHAR"
 		}
@@ -100,7 +99,6 @@ func InsertVariantRowsBatch(ctx context.Context, client ExecClient, table string
 	if batchSize <= 0 {
 		batchSize = DefaultInsertBatchSize
 	}
-	dialect := tableOpsDialect(client)
 
 	reserved := normalizeReserved(reservedColumns)
 	columnSet := make(map[string]struct{})
@@ -131,7 +129,7 @@ func InsertVariantRowsBatch(ctx context.Context, client ExecClient, table string
 		}
 
 		batch := rows[start:end]
-		selects := make([]string, 0, len(batch))
+		values := make([]string, 0, len(batch))
 		args := make([]interface{}, 0, len(batch)*len(allColumns))
 
 		for _, row := range batch {
@@ -146,24 +144,24 @@ func InsertVariantRowsBatch(ctx context.Context, client ExecClient, table string
 			}
 			hash := stringValue(rowUpper["_CQ_HASH"])
 
-			selectParts := make([]string, 0, len(allColumns))
-			selectParts = append(selectParts, "?", "?")
+			valueParts := make([]string, 0, len(allColumns))
+			valueParts = append(valueParts, warehouse.Placeholder(client, len(args)+1), warehouse.Placeholder(client, len(args)+2))
 			args = append(args, id, hash)
 
 			for _, col := range columns {
 				jsonVal, _ := json.Marshal(rowUpper[col])
-				selectParts = append(selectParts, variantValueExpr(dialect))
+				valueParts = append(valueParts, warehouse.JSONPlaceholder(client, len(args)+1))
 				args = append(args, string(jsonVal))
 			}
 
-			selects = append(selects, "SELECT "+strings.Join(selectParts, ", "))
+			values = append(values, "("+strings.Join(valueParts, ", ")+")")
 		}
 
-		if len(selects) == 0 {
+		if len(values) == 0 {
 			continue
 		}
 
-		query := fmt.Sprintf("INSERT INTO %s (%s) %s", table, strings.Join(allColumns, ", "), strings.Join(selects, " UNION ALL "))
+		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES %s", table, strings.Join(allColumns, ", "), strings.Join(values, ", "))
 		if _, err := client.Exec(ctx, query, args...); err != nil {
 			return fmt.Errorf("insert rows: %w", err)
 		}
@@ -185,10 +183,6 @@ func MergeVariantRowsBatch(ctx context.Context, client ExecClient, table string,
 	if batchSize <= 0 {
 		batchSize = DefaultInsertBatchSize
 	}
-	dialect := tableOpsDialect(client)
-	if dialect != warehouse.DialectSnowflake {
-		return upsertVariantRowsBatch(ctx, client, table, rows, reservedColumns, batchSize, dialect)
-	}
 
 	reserved := normalizeReserved(reservedColumns)
 	columnSet := make(map[string]struct{})
@@ -212,6 +206,7 @@ func MergeVariantRowsBatch(ctx context.Context, client ExecClient, table string,
 		return err
 	}
 
+	dialect := warehouse.Dialect(client)
 	for start := 0; start < len(rows); start += batchSize {
 		end := start + batchSize
 		if end > len(rows) {
@@ -219,73 +214,18 @@ func MergeVariantRowsBatch(ctx context.Context, client ExecClient, table string,
 		}
 
 		batch := rows[start:end]
-		selects := make([]string, 0, len(batch))
-		args := make([]interface{}, 0, len(batch)*len(allColumns))
-		firstSelect := true
-
-		for _, row := range batch {
-			rowUpper := make(map[string]interface{}, len(row))
-			for key, value := range row {
-				rowUpper[strings.ToUpper(key)] = value
-			}
-
-			id := strings.TrimSpace(stringValue(rowUpper["_CQ_ID"]))
-			if id == "" {
-				continue
-			}
-			hash := stringValue(rowUpper["_CQ_HASH"])
-
-			parts := make([]string, 0, len(allColumns))
-			args = append(args, id, hash)
-
-			// The first emitted SELECT needs column aliases for UNION ALL.
-			if firstSelect {
-				parts = append(parts, "? AS _CQ_ID", "? AS _CQ_HASH")
-				for _, col := range columns {
-					jsonVal, _ := json.Marshal(rowUpper[col])
-					parts = append(parts, fmt.Sprintf("PARSE_JSON(?) AS %s", col))
-					args = append(args, string(jsonVal))
-				}
-				firstSelect = false
-			} else {
-				parts = append(parts, "?", "?")
-				for _, col := range columns {
-					jsonVal, _ := json.Marshal(rowUpper[col])
-					parts = append(parts, "PARSE_JSON(?)")
-					args = append(args, string(jsonVal))
-				}
-			}
-
-			selects = append(selects, "SELECT "+strings.Join(parts, ", "))
+		var (
+			query string
+			args  []interface{}
+		)
+		if dialect == warehouse.SQLDialectSnowflake {
+			query, args = buildSnowflakeMergeQuery(batch, columns, allColumns, client, table)
+		} else {
+			query, args = buildUpsertQuery(batch, columns, allColumns, client, table)
 		}
-
-		if len(selects) == 0 {
+		if strings.TrimSpace(query) == "" {
 			continue
 		}
-
-		usingClause := strings.Join(selects, " UNION ALL ")
-
-		// Build UPDATE SET clause
-		updateParts := make([]string, 0, len(columns)+1)
-		updateParts = append(updateParts, "t._CQ_HASH = s._CQ_HASH")
-		for _, col := range columns {
-			updateParts = append(updateParts, fmt.Sprintf("t.%s = s.%s", col, col))
-		}
-
-		// Build INSERT column/value lists
-		insertCols := strings.Join(allColumns, ", ")
-		insertVals := make([]string, 0, len(allColumns))
-		for _, col := range allColumns {
-			insertVals = append(insertVals, "s."+col)
-		}
-
-		query := fmt.Sprintf(
-			"MERGE INTO %s t USING (%s) s ON t._CQ_ID = s._CQ_ID "+
-				"WHEN MATCHED THEN UPDATE SET %s "+
-				"WHEN NOT MATCHED THEN INSERT (%s) VALUES (%s)",
-			table, usingClause, strings.Join(updateParts, ", "),
-			insertCols, strings.Join(insertVals, ", "))
-
 		if _, err := client.Exec(ctx, query, args...); err != nil {
 			return fmt.Errorf("merge rows: %w", err)
 		}
@@ -294,87 +234,120 @@ func MergeVariantRowsBatch(ctx context.Context, client ExecClient, table string,
 	return nil
 }
 
-func upsertVariantRowsBatch(ctx context.Context, client ExecClient, table string, rows []map[string]interface{}, reservedColumns map[string]struct{}, batchSize int, dialect string) error {
-	reserved := normalizeReserved(reservedColumns)
-	columnSet := make(map[string]struct{})
-	for _, row := range rows {
-		for key := range row {
-			if _, skip := reserved[strings.ToUpper(key)]; skip {
-				continue
-			}
-			columnSet[strings.ToUpper(key)] = struct{}{}
-		}
-	}
+func buildSnowflakeMergeQuery(batch []map[string]interface{}, columns, allColumns []string, client ExecClient, table string) (string, []interface{}) {
+	selects := make([]string, 0, len(batch))
+	args := make([]interface{}, 0, len(batch)*len(allColumns))
+	firstSelect := true
 
-	columns := make([]string, 0, len(columnSet))
-	for col := range columnSet {
-		columns = append(columns, col)
-	}
-	sort.Strings(columns)
-
-	allColumns := append([]string{"_CQ_ID", "_CQ_HASH"}, columns...)
-	if err := validateColumns(allColumns); err != nil {
-		return err
-	}
-
-	for start := 0; start < len(rows); start += batchSize {
-		end := start + batchSize
-		if end > len(rows) {
-			end = len(rows)
+	for _, row := range batch {
+		rowUpper := make(map[string]interface{}, len(row))
+		for key, value := range row {
+			rowUpper[strings.ToUpper(key)] = value
 		}
 
-		batch := rows[start:end]
-		valueRows := make([]string, 0, len(batch))
-		args := make([]interface{}, 0, len(batch)*len(allColumns))
-
-		for _, row := range batch {
-			rowUpper := make(map[string]interface{}, len(row))
-			for key, value := range row {
-				rowUpper[strings.ToUpper(key)] = value
-			}
-
-			id := strings.TrimSpace(stringValue(rowUpper["_CQ_ID"]))
-			if id == "" {
-				continue
-			}
-			hash := stringValue(rowUpper["_CQ_HASH"])
-
-			valueParts := make([]string, 0, len(allColumns))
-			valueParts = append(valueParts, "?", "?")
-			args = append(args, id, hash)
-
-			for _, col := range columns {
-				jsonVal, _ := json.Marshal(rowUpper[col])
-				valueParts = append(valueParts, variantValueExpr(dialect))
-				args = append(args, string(jsonVal))
-			}
-
-			valueRows = append(valueRows, "("+strings.Join(valueParts, ", ")+")")
-		}
-
-		if len(valueRows) == 0 {
+		id := strings.TrimSpace(stringValue(rowUpper["_CQ_ID"]))
+		if id == "" {
 			continue
 		}
+		hash := stringValue(rowUpper["_CQ_HASH"])
 
-		updateParts := make([]string, 0, len(columns)+1)
-		updateParts = append(updateParts, "_CQ_HASH = EXCLUDED._CQ_HASH")
-		for _, col := range columns {
-			updateParts = append(updateParts, fmt.Sprintf("%s = EXCLUDED.%s", col, col))
+		parts := make([]string, 0, len(allColumns))
+		args = append(args, id, hash)
+
+		if firstSelect {
+			parts = append(parts, "? AS _CQ_ID", "? AS _CQ_HASH")
+			for _, col := range columns {
+				jsonVal, _ := json.Marshal(rowUpper[col])
+				parts = append(parts, fmt.Sprintf("PARSE_JSON(?) AS %s", col))
+				args = append(args, string(jsonVal))
+			}
+			firstSelect = false
+		} else {
+			parts = append(parts, "?", "?")
+			for _, col := range columns {
+				jsonVal, _ := json.Marshal(rowUpper[col])
+				parts = append(parts, "PARSE_JSON(?)")
+				args = append(args, string(jsonVal))
+			}
 		}
 
-		query := fmt.Sprintf(
-			"INSERT INTO %s (%s) VALUES %s ON CONFLICT (_CQ_ID) DO UPDATE SET %s",
-			table,
-			strings.Join(allColumns, ", "),
-			strings.Join(valueRows, ", "),
-			strings.Join(updateParts, ", "),
-		)
-		if _, err := client.Exec(ctx, query, args...); err != nil {
-			return fmt.Errorf("upsert rows: %w", err)
-		}
+		selects = append(selects, "SELECT "+strings.Join(parts, ", "))
 	}
 
-	return nil
+	if len(selects) == 0 {
+		return "", nil
+	}
+
+	usingClause := strings.Join(selects, " UNION ALL ")
+	updateParts := make([]string, 0, len(columns)+1)
+	updateParts = append(updateParts, "t._CQ_HASH = s._CQ_HASH")
+	for _, col := range columns {
+		updateParts = append(updateParts, fmt.Sprintf("t.%s = s.%s", col, col))
+	}
+
+	insertCols := strings.Join(allColumns, ", ")
+	insertVals := make([]string, 0, len(allColumns))
+	for _, col := range allColumns {
+		insertVals = append(insertVals, "s."+col)
+	}
+
+	query := fmt.Sprintf(
+		"MERGE INTO %s t USING (%s) s ON t._CQ_ID = s._CQ_ID "+
+			"WHEN MATCHED THEN UPDATE SET %s "+
+			"WHEN NOT MATCHED THEN INSERT (%s) VALUES (%s)",
+		table, usingClause, strings.Join(updateParts, ", "),
+		insertCols, strings.Join(insertVals, ", "),
+	)
+	return query, args
+}
+
+func buildUpsertQuery(batch []map[string]interface{}, columns, allColumns []string, client ExecClient, table string) (string, []interface{}) {
+	values := make([]string, 0, len(batch))
+	args := make([]interface{}, 0, len(batch)*len(allColumns))
+
+	for _, row := range batch {
+		rowUpper := make(map[string]interface{}, len(row))
+		for key, value := range row {
+			rowUpper[strings.ToUpper(key)] = value
+		}
+
+		id := strings.TrimSpace(stringValue(rowUpper["_CQ_ID"]))
+		if id == "" {
+			continue
+		}
+		hash := stringValue(rowUpper["_CQ_HASH"])
+
+		valueParts := make([]string, 0, len(allColumns))
+		valueParts = append(valueParts, warehouse.Placeholder(client, len(args)+1), warehouse.Placeholder(client, len(args)+2))
+		args = append(args, id, hash)
+
+		for _, col := range columns {
+			jsonVal, _ := json.Marshal(rowUpper[col])
+			valueParts = append(valueParts, warehouse.JSONPlaceholder(client, len(args)+1))
+			args = append(args, string(jsonVal))
+		}
+
+		values = append(values, "("+strings.Join(valueParts, ", ")+")")
+	}
+
+	if len(values) == 0 {
+		return "", nil
+	}
+
+	updateParts := make([]string, 0, len(columns)+1)
+	updateParts = append(updateParts, "_CQ_HASH = EXCLUDED._CQ_HASH")
+	for _, col := range columns {
+		updateParts = append(updateParts, fmt.Sprintf("%s = EXCLUDED.%s", col, col))
+	}
+
+	query := fmt.Sprintf(
+		"INSERT INTO %s (%s) VALUES %s ON CONFLICT (_CQ_ID) DO UPDATE SET %s",
+		table,
+		strings.Join(allColumns, ", "),
+		strings.Join(values, ", "),
+		strings.Join(updateParts, ", "),
+	)
+	return query, args
 }
 
 func normalizeReserved(custom map[string]struct{}) map[string]struct{} {
@@ -419,10 +392,19 @@ func validateColumns(columns []string) error {
 }
 
 func tableColumns(ctx context.Context, client QueryExecClient, table string) ([]string, error) {
+	if memory, ok := any(client).(*warehouse.MemoryWarehouse); ok && memory.DescribeColumnsFunc == nil {
+		// Preserve query-based behavior for tests that stub INFORMATION_SCHEMA reads
+		// via QueryFunc without wiring DescribeColumnsFunc explicitly.
+	} else if describer, ok := any(client).(interface {
+		DescribeColumns(context.Context, string) ([]string, error)
+	}); ok {
+		return describer.DescribeColumns(ctx, table)
+	}
+
 	query := `
 		SELECT COLUMN_NAME
 		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_NAME = ?
+		WHERE TABLE_NAME = ` + warehouse.Placeholder(client, 1) + `
 		AND TABLE_SCHEMA = CURRENT_SCHEMA()
 	`
 
@@ -484,49 +466,5 @@ func stringValue(value interface{}) string {
 		return string(typed)
 	default:
 		return fmt.Sprintf("%v", typed)
-	}
-}
-
-func tableOpsDialect(client interface{}) string {
-	if client == nil {
-		return warehouse.DialectSnowflake
-	}
-	dbProvider, ok := client.(interface{ DB() *sql.DB })
-	if !ok {
-		return warehouse.DialectSnowflake
-	}
-	return warehouse.DialectForDB(dbProvider.DB())
-}
-
-func variantColumnType(dialect string) string {
-	switch dialect {
-	case warehouse.DialectPostgres:
-		return "JSONB"
-	case warehouse.DialectSQLite:
-		return "JSON"
-	default:
-		return "VARIANT"
-	}
-}
-
-func syncTimeColumnType(dialect string) string {
-	switch dialect {
-	case warehouse.DialectPostgres:
-		return "TIMESTAMPTZ"
-	case warehouse.DialectSQLite:
-		return "TEXT"
-	default:
-		return "TIMESTAMP_TZ"
-	}
-}
-
-func variantValueExpr(dialect string) string {
-	switch dialect {
-	case warehouse.DialectPostgres:
-		return "CAST(? AS JSONB)"
-	case warehouse.DialectSQLite:
-		return "?"
-	default:
-		return "PARSE_JSON(?)"
 	}
 }

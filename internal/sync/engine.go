@@ -645,7 +645,7 @@ func (e *SyncEngine) deleteRowsByID(ctx context.Context, table string, ids map[s
 			end = len(keys)
 		}
 		batch := keys[start:end]
-		placeholders := strings.TrimRight(strings.Repeat("?,", len(batch)), ",")
+		placeholders := strings.Join(warehouse.Placeholders(e.sf, 1, len(batch)), ",")
 		args := make([]interface{}, len(batch))
 		for i, id := range batch {
 			args[i] = id
@@ -702,12 +702,12 @@ func (e *SyncEngine) scopeWhereClause(region string, hasRegion bool, hasAccount 
 	args := make([]interface{}, 0, 2)
 
 	if hasAccount && e.accountID != "" {
-		clauses = append(clauses, "ACCOUNT_ID = ?")
+		clauses = append(clauses, "ACCOUNT_ID = "+warehouse.Placeholder(e.sf, len(args)+1))
 		args = append(args, e.accountID)
 	}
 
 	if hasRegion && !globalScope {
-		clauses = append(clauses, "REGION = ?")
+		clauses = append(clauses, "REGION = "+warehouse.Placeholder(e.sf, len(args)+1))
 		args = append(args, region)
 	}
 
@@ -732,8 +732,8 @@ func (e *SyncEngine) persistChangeHistory(ctx context.Context, results []SyncRes
 		region VARCHAR,
 		account_id VARCHAR,
 		provider VARCHAR,
-		timestamp TIMESTAMP_TZ,
-		_cq_sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
+		timestamp ` + warehouse.TimestampColumnType(e.sf) + `,
+		_cq_sync_time ` + warehouse.TimestampColumnType(e.sf) + ` DEFAULT CURRENT_TIMESTAMP()
 	)`
 
 	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
@@ -744,7 +744,7 @@ func (e *SyncEngine) persistChangeHistory(ctx context.Context, results []SyncRes
 		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS region VARCHAR",
 		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS account_id VARCHAR",
 		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS provider VARCHAR",
-		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP_TZ",
+		"ALTER TABLE _sync_change_history ADD COLUMN IF NOT EXISTS timestamp " + warehouse.TimestampColumnType(e.sf),
 	} {
 		if _, err := e.sf.Exec(ctx, query); err != nil {
 			e.logger.Debug("failed to ensure change history column", "query", query, "error", err)
@@ -778,8 +778,10 @@ func (e *SyncEngine) persistChangeHistory(ctx context.Context, results []SyncRes
 
 func (e *SyncEngine) insertChangeRecord(ctx context.Context, table, resourceID, op, region string, ts time.Time) {
 	id := fmt.Sprintf("%s-%s-%s-%d", table, resourceID, op, ts.UnixNano())
-	query := `INSERT INTO _sync_change_history (id, table_name, resource_id, operation, region, account_id, provider, timestamp)
-		SELECT ?, ?, ?, ?, ?, ?, ?, ?`
+	query := fmt.Sprintf(
+		"INSERT INTO _sync_change_history (id, table_name, resource_id, operation, region, account_id, provider, timestamp) VALUES (%s)",
+		strings.Join(warehouse.Placeholders(e.sf, 1, 8), ", "),
+	)
 
 	if _, err := e.sf.Exec(ctx, query, id, table, resourceID, op, region, e.accountID, "aws", ts); err != nil {
 		e.logger.Debug("failed to insert change record", "error", err)
@@ -794,8 +796,8 @@ func (e *SyncEngine) ensureBackfillQueueTable(ctx context.Context) error {
 		region VARCHAR,
 		account_id VARCHAR,
 		reason VARCHAR,
-		requested_at TIMESTAMP_TZ,
-		_cq_sync_time TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
+		requested_at ` + warehouse.TimestampColumnType(e.sf) + `,
+		_cq_sync_time ` + warehouse.TimestampColumnType(e.sf) + ` DEFAULT CURRENT_TIMESTAMP()
 	)`
 	if _, err := e.sf.Exec(ctx, createQuery); err != nil {
 		return fmt.Errorf("create backfill queue: %w", err)
@@ -843,7 +845,7 @@ func (e *SyncEngine) loadBackfillRequests(ctx context.Context) map[string]string
 	}
 
 	result, err := e.sf.Query(ctx,
-		"SELECT table_name, region, reason FROM _sync_backfill_queue WHERE provider = ? AND account_id = ?",
+		"SELECT table_name, region, reason FROM _sync_backfill_queue WHERE provider = "+warehouse.Placeholder(e.sf, 1)+" AND account_id = "+warehouse.Placeholder(e.sf, 2),
 		"aws",
 		e.accountID,
 	)
@@ -868,25 +870,31 @@ func (e *SyncEngine) recordBackfillRequest(ctx context.Context, table, region, r
 	}
 
 	id := backfillQueueID(e.accountID, table, region)
-	query := `MERGE INTO _sync_backfill_queue t
-		USING (SELECT ? AS id, ? AS provider, ? AS table_name, ? AS region, ? AS account_id, ? AS reason, CURRENT_TIMESTAMP() AS requested_at) s
-		ON t.id = s.id
-		WHEN MATCHED THEN UPDATE SET
-			reason = s.reason,
-			requested_at = s.requested_at,
-			_cq_sync_time = CURRENT_TIMESTAMP()
-		WHEN NOT MATCHED THEN INSERT (id, provider, table_name, region, account_id, reason, requested_at)
-		VALUES (s.id, s.provider, s.table_name, s.region, s.account_id, s.reason, s.requested_at)`
-	if syncWarehouseDialect(e.sf) != warehouse.DialectSnowflake {
-		query = `INSERT INTO _sync_backfill_queue (id, provider, table_name, region, account_id, reason, requested_at)
-			VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
-			ON CONFLICT (id) DO UPDATE SET
-				reason = EXCLUDED.reason,
-				requested_at = EXCLUDED.requested_at,
-				_cq_sync_time = CURRENT_TIMESTAMP()`
+	var (
+		upsertQuery string
+		upsertArgs  []interface{}
+	)
+	if warehouse.Dialect(e.sf) == warehouse.SQLDialectSnowflake {
+		upsertQuery = `MERGE INTO _sync_backfill_queue t
+			USING (SELECT ? AS id, ? AS provider, ? AS table_name, ? AS region, ? AS account_id, ? AS reason, CURRENT_TIMESTAMP() AS requested_at) s
+			ON t.id = s.id
+			WHEN MATCHED THEN UPDATE SET
+				reason = s.reason,
+				requested_at = s.requested_at,
+				_cq_sync_time = CURRENT_TIMESTAMP()
+			WHEN NOT MATCHED THEN INSERT (id, provider, table_name, region, account_id, reason, requested_at)
+			VALUES (s.id, s.provider, s.table_name, s.region, s.account_id, s.reason, s.requested_at)`
+		upsertArgs = []interface{}{id, "aws", table, region, e.accountID, reason}
+	} else {
+		upsertQuery = fmt.Sprintf(
+			"INSERT INTO _sync_backfill_queue (id, provider, table_name, region, account_id, reason, requested_at) VALUES (%s) "+
+				"ON CONFLICT (id) DO UPDATE SET reason = EXCLUDED.reason, requested_at = EXCLUDED.requested_at, _cq_sync_time = CURRENT_TIMESTAMP()",
+			strings.Join(warehouse.Placeholders(e.sf, 1, 7), ", "),
+		)
+		upsertArgs = []interface{}{id, "aws", table, region, e.accountID, reason, time.Now().UTC()}
 	}
 
-	if _, err := e.sf.Exec(ctx, query, id, "aws", table, region, e.accountID, reason); err != nil {
+	if _, err := e.sf.Exec(ctx, upsertQuery, upsertArgs...); err != nil {
 		return fmt.Errorf("upsert backfill request: %w", err)
 	}
 
@@ -905,7 +913,7 @@ func (e *SyncEngine) clearBackfillRequest(ctx context.Context, table, region str
 	}
 
 	id := backfillQueueID(e.accountID, table, region)
-	_, err := e.sf.Exec(ctx, "DELETE FROM _sync_backfill_queue WHERE id = ?", id)
+	_, err := e.sf.Exec(ctx, "DELETE FROM _sync_backfill_queue WHERE id = "+warehouse.Placeholder(e.sf, 1), id)
 	if err != nil {
 		return fmt.Errorf("delete backfill request: %w", err)
 	}
