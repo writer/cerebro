@@ -32,7 +32,7 @@ type OpenSearchEntitySearchBackendOptions struct {
 	HTTPClient    *http.Client
 	Credentials   aws.CredentialsProvider
 	Signer        openSearchHTTPSigner
-	ResolveStore  func(context.Context, string) (GraphStore, error)
+	HydrateEntity func(context.Context, string, string) (EntityRecord, bool, error)
 	Now           func() time.Time
 	MaxCandidates int
 }
@@ -44,7 +44,7 @@ type OpenSearchEntitySearchBackend struct {
 	httpClient    *http.Client
 	credentials   aws.CredentialsProvider
 	signer        openSearchHTTPSigner
-	resolveStore  func(context.Context, string) (GraphStore, error)
+	hydrateEntity func(context.Context, string, string) (EntityRecord, bool, error)
 	now           func() time.Time
 	maxCandidates int
 }
@@ -99,8 +99,8 @@ func NewOpenSearchEntitySearchBackend(opts OpenSearchEntitySearchBackendOptions)
 	if opts.Signer == nil {
 		opts.Signer = v4.NewSigner()
 	}
-	if opts.ResolveStore == nil {
-		return nil, fmt.Errorf("opensearch graph store resolver is required")
+	if opts.HydrateEntity == nil {
+		return nil, fmt.Errorf("opensearch entity hydrator is required")
 	}
 	if opts.Now == nil {
 		opts.Now = temporalNowUTC
@@ -115,7 +115,7 @@ func NewOpenSearchEntitySearchBackend(opts OpenSearchEntitySearchBackendOptions)
 		httpClient:    opts.HTTPClient,
 		credentials:   opts.Credentials,
 		signer:        opts.Signer,
-		resolveStore:  opts.ResolveStore,
+		hydrateEntity: opts.HydrateEntity,
 		now:           opts.Now,
 		maxCandidates: opts.MaxCandidates,
 	}, nil
@@ -135,18 +135,18 @@ func (b *OpenSearchEntitySearchBackend) Search(ctx context.Context, tenantID str
 	if query.Query == "" {
 		return result, nil
 	}
+	allowedKinds, ok := openSearchAllowedEntityKinds(query.Kinds)
+	if !ok {
+		return result, nil
+	}
+	allowedKindSet := openSearchEntityKindSet(allowedKinds)
 
-	hits, err := b.searchHits(ctx, tenantID, query)
+	hits, err := b.searchHits(ctx, tenantID, query, allowedKinds, allowedKindSet)
 	if err != nil {
 		return result, err
 	}
 	if len(hits) == 0 {
 		return result, nil
-	}
-
-	store, err := b.resolveStore(ctx, strings.TrimSpace(tenantID))
-	if err != nil {
-		return result, err
 	}
 
 	results := make([]EntitySearchResult, 0, min(query.Limit, len(hits)))
@@ -157,7 +157,7 @@ func (b *OpenSearchEntitySearchBackend) Search(ctx context.Context, tenantID str
 		}
 		seen[hit.EntityID] = struct{}{}
 
-		record, ok, err := GetCurrentEntityRecordFromStore(ctx, store, hit.EntityID)
+		record, ok, err := b.hydrateEntity(ctx, strings.TrimSpace(tenantID), hit.EntityID)
 		if err != nil {
 			return result, err
 		}
@@ -201,9 +201,14 @@ func (b *OpenSearchEntitySearchBackend) Suggest(ctx context.Context, tenantID st
 	if query.Prefix == "" {
 		return result, nil
 	}
+	allowedKinds, ok := openSearchAllowedEntityKinds(query.Kinds)
+	if !ok {
+		return result, nil
+	}
+	allowedKindSet := openSearchEntityKindSet(allowedKinds)
 
 	var response openSearchEntitySearchResponse
-	if err := b.executeSearch(ctx, b.buildSuggestRequest(strings.TrimSpace(tenantID), query), &response); err != nil {
+	if err := b.executeSearch(ctx, b.buildSuggestRequest(strings.TrimSpace(tenantID), query, allowedKinds), &response); err != nil {
 		return result, err
 	}
 
@@ -211,6 +216,9 @@ func (b *OpenSearchEntitySearchBackend) Suggest(ctx context.Context, tenantID st
 	suggestions := make([]EntitySuggestion, 0, len(response.Hits.Hits)*2)
 	seen := make(map[string]struct{}, len(response.Hits.Hits)*2)
 	for _, hit := range response.Hits.Hits {
+		if !openSearchEntityKindAllowed(hit.Source.Kind, allowedKindSet) {
+			continue
+		}
 		entityID := strings.TrimSpace(firstNonEmpty(hit.Source.GraphID, hit.ID))
 		if entityID == "" {
 			continue
@@ -271,14 +279,17 @@ type openSearchEntitySearchHit struct {
 	MatchedFields []string
 }
 
-func (b *OpenSearchEntitySearchBackend) searchHits(ctx context.Context, tenantID string, query EntitySearchOptions) ([]openSearchEntitySearchHit, error) {
+func (b *OpenSearchEntitySearchBackend) searchHits(ctx context.Context, tenantID string, query EntitySearchOptions, allowedKinds []NodeKind, allowedKindSet map[NodeKind]struct{}) ([]openSearchEntitySearchHit, error) {
 	var response openSearchEntitySearchResponse
-	if err := b.executeSearch(ctx, b.buildSearchRequest(strings.TrimSpace(tenantID), query), &response); err != nil {
+	if err := b.executeSearch(ctx, b.buildSearchRequest(strings.TrimSpace(tenantID), query, allowedKinds), &response); err != nil {
 		return nil, err
 	}
 
 	hits := make([]openSearchEntitySearchHit, 0, len(response.Hits.Hits))
 	for _, hit := range response.Hits.Hits {
+		if !openSearchEntityKindAllowed(hit.Source.Kind, allowedKindSet) {
+			continue
+		}
 		entityID := strings.TrimSpace(firstNonEmpty(hit.Source.GraphID, hit.ID))
 		if entityID == "" {
 			continue
@@ -338,7 +349,24 @@ func (b *OpenSearchEntitySearchBackend) executeSearch(ctx context.Context, paylo
 	return nil
 }
 
-func (b *OpenSearchEntitySearchBackend) buildSearchRequest(tenantID string, query EntitySearchOptions) map[string]any {
+func (b *OpenSearchEntitySearchBackend) Check(ctx context.Context) error {
+	allowedKinds, ok := openSearchAllowedEntityKinds(nil)
+	if !ok {
+		return fmt.Errorf("no searchable entity kinds configured")
+	}
+	var response openSearchEntitySearchResponse
+	return b.executeSearch(ctx, map[string]any{
+		"size":             0,
+		"track_total_hits": false,
+		"query": map[string]any{
+			"bool": map[string]any{
+				"filter": openSearchEntitySearchFilters("", allowedKinds),
+			},
+		},
+	}, &response)
+}
+
+func (b *OpenSearchEntitySearchBackend) buildSearchRequest(tenantID string, query EntitySearchOptions, allowedKinds []NodeKind) map[string]any {
 	should := []any{
 		map[string]any{
 			"multi_match": map[string]any{
@@ -380,7 +408,7 @@ func (b *OpenSearchEntitySearchBackend) buildSearchRequest(tenantID string, quer
 		"_source":          []string{"graphId", "kind", "name", "provider", "account", "region"},
 		"query": map[string]any{
 			"bool": map[string]any{
-				"filter":               openSearchEntitySearchFilters(tenantID, query.Kinds),
+				"filter":               openSearchEntitySearchFilters(tenantID, allowedKinds),
 				"should":               should,
 				"minimum_should_match": 1,
 			},
@@ -388,7 +416,7 @@ func (b *OpenSearchEntitySearchBackend) buildSearchRequest(tenantID string, quer
 	}
 }
 
-func (b *OpenSearchEntitySearchBackend) buildSuggestRequest(tenantID string, query EntitySuggestOptions) map[string]any {
+func (b *OpenSearchEntitySearchBackend) buildSuggestRequest(tenantID string, query EntitySuggestOptions, allowedKinds []NodeKind) map[string]any {
 	should := []any{
 		map[string]any{
 			"wildcard": map[string]any{
@@ -418,7 +446,7 @@ func (b *OpenSearchEntitySearchBackend) buildSuggestRequest(tenantID string, que
 		"_source":          []string{"graphId", "kind", "name"},
 		"query": map[string]any{
 			"bool": map[string]any{
-				"filter":               openSearchEntitySearchFilters(tenantID, query.Kinds),
+				"filter":               openSearchEntitySearchFilters(tenantID, allowedKinds),
 				"should":               should,
 				"minimum_should_match": 1,
 			},
@@ -434,11 +462,11 @@ func openSearchEntitySearchFilters(tenantID string, kinds []NodeKind) []any {
 			},
 		},
 	}
-	if len(kinds) > 0 {
-		values := make([]string, 0, len(kinds))
-		for _, kind := range kinds {
-			values = append(values, string(kind))
-		}
+	values := make([]string, 0, len(kinds))
+	for _, kind := range kinds {
+		values = append(values, string(kind))
+	}
+	if len(values) > 0 {
 		filters = append(filters, map[string]any{
 			"terms": map[string]any{
 				"kind": values,
@@ -559,4 +587,41 @@ func openSearchGraphIDWildcardClause(value string, leading, trailing bool, boost
 			},
 		},
 	}
+}
+
+func openSearchAllowedEntityKinds(requested []NodeKind) ([]NodeKind, bool) {
+	if len(requested) > 0 {
+		allowed := make([]NodeKind, 0, len(requested))
+		for _, kind := range uniqueSortedNodeKinds(requested) {
+			if entityQueryAllowedNodeKind(kind) {
+				allowed = append(allowed, kind)
+			}
+		}
+		return allowed, len(allowed) > 0
+	}
+	registered := RegisteredNodeKinds()
+	allowed := make([]NodeKind, 0, len(registered))
+	for _, def := range registered {
+		if entityQueryAllowedNodeKind(def.Kind) {
+			allowed = append(allowed, def.Kind)
+		}
+	}
+	allowed = uniqueSortedNodeKinds(allowed)
+	return allowed, len(allowed) > 0
+}
+
+func openSearchEntityKindSet(kinds []NodeKind) map[NodeKind]struct{} {
+	set := make(map[NodeKind]struct{}, len(kinds))
+	for _, kind := range kinds {
+		set[kind] = struct{}{}
+	}
+	return set
+}
+
+func openSearchEntityKindAllowed(kind NodeKind, allowed map[NodeKind]struct{}) bool {
+	if len(allowed) == 0 {
+		return entityQueryAllowedNodeKind(kind)
+	}
+	_, ok := allowed[kind]
+	return ok
 }

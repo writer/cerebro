@@ -44,11 +44,11 @@ func (s *Server) searchPlatformEntities(w http.ResponseWriter, r *http.Request) 
 	}
 	if s != nil && s.app != nil && s.app.entitySearchBackend != nil {
 		results, err := s.app.entitySearchBackend.Search(r.Context(), currentTenantScopeID(r.Context()), opts)
-		if err == nil {
+		if err == nil && results.Count > 0 {
 			s.json(w, http.StatusOK, results)
 			return
 		}
-		if s.app.Logger != nil {
+		if err != nil && s.app.Logger != nil {
 			s.app.Logger.Warn("entity search backend failed; falling back to graph search", "backend", s.app.entitySearchBackend.Backend(), "error", err)
 		}
 	}
@@ -68,11 +68,11 @@ func (s *Server) suggestPlatformEntities(w http.ResponseWriter, r *http.Request)
 	}
 	if s != nil && s.app != nil && s.app.entitySearchBackend != nil {
 		results, err := s.app.entitySearchBackend.Suggest(r.Context(), currentTenantScopeID(r.Context()), opts)
-		if err == nil {
+		if err == nil && results.Count > 0 {
 			s.json(w, http.StatusOK, results)
 			return
 		}
-		if s.app.Logger != nil {
+		if err != nil && s.app.Logger != nil {
 			s.app.Logger.Warn("entity suggest backend failed; falling back to graph search", "backend", s.app.entitySearchBackend.Backend(), "error", err)
 		}
 	}

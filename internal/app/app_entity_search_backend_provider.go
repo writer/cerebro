@@ -51,18 +51,12 @@ func (p *openSearchEntitySearchBackendProvider) Open(ctx context.Context, app *A
 	}
 
 	backend, err := graph.NewOpenSearchEntitySearchBackend(graph.OpenSearchEntitySearchBackendOptions{
-		Endpoint:    app.Config.GraphSearchOpenSearchEndpoint,
-		Region:      region,
-		Index:       app.Config.GraphSearchOpenSearchIndex,
-		HTTPClient:  &http.Client{Timeout: app.Config.GraphSearchRequestTimeout},
-		Credentials: awsCfg.Credentials,
-		ResolveStore: func(ctx context.Context, tenantID string) (graph.GraphStore, error) {
-			store := app.CurrentSecurityGraphStoreForTenant(tenantID)
-			if store == nil {
-				return nil, graph.ErrStoreUnavailable
-			}
-			return store, nil
-		},
+		Endpoint:      app.Config.GraphSearchOpenSearchEndpoint,
+		Region:        region,
+		Index:         app.Config.GraphSearchOpenSearchIndex,
+		HTTPClient:    &http.Client{Timeout: app.Config.GraphSearchRequestTimeout},
+		Credentials:   awsCfg.Credentials,
+		HydrateEntity: app.hydrateCurrentEntitySearchRecord,
 		MaxCandidates: app.Config.GraphSearchMaxCandidates,
 	})
 	if err != nil {

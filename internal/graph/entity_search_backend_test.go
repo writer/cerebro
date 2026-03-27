@@ -84,18 +84,20 @@ func TestOpenSearchEntitySearchBackendSearchHydratesCurrentStateWithoutSnapshots
 		}
 		requestBody = string(body)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_score":8.5,"_source":{"graphId":"service:payments","kind":"service","name":"Payments","provider":"aws","account":"123456789012","region":"us-east-1"}}]}}`)
+		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_score":9.5,"_source":{"graphId":"claim:payments:owner","kind":"claim","name":"owner"}},{"_score":8.5,"_source":{"graphId":"service:payments","kind":"service","name":"Payments","provider":"aws","account":"123456789012","region":"us-east-1"}}]}}`)
 	}))
 	defer server.Close()
 
 	backend, err := NewOpenSearchEntitySearchBackend(OpenSearchEntitySearchBackendOptions{
-		Endpoint:     server.URL,
-		Region:       "us-east-1",
-		Index:        "entity-search",
-		HTTPClient:   server.Client(),
-		Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
-		Signer:       noopOpenSearchSigner{},
-		ResolveStore: func(context.Context, string) (GraphStore, error) { return store, nil },
+		Endpoint:    server.URL,
+		Region:      "us-east-1",
+		Index:       "entity-search",
+		HTTPClient:  server.Client(),
+		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
+		Signer:      noopOpenSearchSigner{},
+		HydrateEntity: func(ctx context.Context, _ string, id string) (EntityRecord, bool, error) {
+			return GetCurrentEntityRecordFromStore(ctx, store, id)
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewOpenSearchEntitySearchBackend() error = %v", err)
@@ -129,6 +131,91 @@ func TestOpenSearchEntitySearchBackendSearchHydratesCurrentStateWithoutSnapshots
 	}
 }
 
+func TestOpenSearchEntitySearchBackendUsesSearchableKindAllowlistWhenKindsOmitted(t *testing.T) {
+	t.Parallel()
+
+	var requestBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		requestBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"hits":{"hits":[]}}`)
+	}))
+	defer server.Close()
+
+	backend, err := NewOpenSearchEntitySearchBackend(OpenSearchEntitySearchBackendOptions{
+		Endpoint:    server.URL,
+		Region:      "us-east-1",
+		Index:       "entity-search",
+		HTTPClient:  server.Client(),
+		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
+		Signer:      noopOpenSearchSigner{},
+		HydrateEntity: func(context.Context, string, string) (EntityRecord, bool, error) {
+			return EntityRecord{}, false, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewOpenSearchEntitySearchBackend() error = %v", err)
+	}
+
+	if _, err := backend.Search(context.Background(), "tenant-a", EntitySearchOptions{Query: "payments", Limit: 5}); err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if !strings.Contains(requestBody, `"terms":{"kind":[`) {
+		t.Fatalf("expected OpenSearch request to include a searchable kind allowlist, got %s", requestBody)
+	}
+	for _, disallowed := range []string{`"claim"`, `"evidence"`, `"observation"`, `"bucket_policy_statement"`} {
+		if strings.Contains(requestBody, disallowed) {
+			t.Fatalf("expected OpenSearch request to exclude non-searchable kind %q, got %s", disallowed, requestBody)
+		}
+	}
+}
+
+func TestOpenSearchEntitySearchBackendReturnsEmptyForDisallowedRequestedKinds(t *testing.T) {
+	t.Parallel()
+
+	requests := atomic.Int32{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"hits":{"hits":[]}}`)
+	}))
+	defer server.Close()
+
+	backend, err := NewOpenSearchEntitySearchBackend(OpenSearchEntitySearchBackendOptions{
+		Endpoint:    server.URL,
+		Region:      "us-east-1",
+		Index:       "entity-search",
+		HTTPClient:  server.Client(),
+		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
+		Signer:      noopOpenSearchSigner{},
+		HydrateEntity: func(context.Context, string, string) (EntityRecord, bool, error) {
+			return EntityRecord{}, false, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewOpenSearchEntitySearchBackend() error = %v", err)
+	}
+
+	results, err := backend.Search(context.Background(), "tenant-a", EntitySearchOptions{
+		Query: "owner",
+		Kinds: []NodeKind{NodeKindClaim},
+		Limit: 5,
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if results.Count != 0 {
+		t.Fatalf("Search().Count = %d, want 0", results.Count)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("OpenSearch request count = %d, want 0", got)
+	}
+}
+
 func TestOpenSearchEntitySearchBackendSuggestsEntityNamesAndIDs(t *testing.T) {
 	t.Parallel()
 
@@ -145,13 +232,15 @@ func TestOpenSearchEntitySearchBackendSuggestsEntityNamesAndIDs(t *testing.T) {
 	defer server.Close()
 
 	backend, err := NewOpenSearchEntitySearchBackend(OpenSearchEntitySearchBackendOptions{
-		Endpoint:     server.URL,
-		Region:       "us-east-1",
-		Index:        "entity-search",
-		HTTPClient:   server.Client(),
-		Credentials:  credentials.NewStaticCredentialsProvider("test", "test", ""),
-		Signer:       noopOpenSearchSigner{},
-		ResolveStore: func(context.Context, string) (GraphStore, error) { return nil, nil },
+		Endpoint:    server.URL,
+		Region:      "us-east-1",
+		Index:       "entity-search",
+		HTTPClient:  server.Client(),
+		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
+		Signer:      noopOpenSearchSigner{},
+		HydrateEntity: func(context.Context, string, string) (EntityRecord, bool, error) {
+			return EntityRecord{}, false, nil
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewOpenSearchEntitySearchBackend() error = %v", err)
@@ -175,5 +264,39 @@ func TestOpenSearchEntitySearchBackendSuggestsEntityNamesAndIDs(t *testing.T) {
 		if !strings.Contains(requestBody, fragment) {
 			t.Fatalf("expected OpenSearch suggest request to contain %q, got %s", fragment, requestBody)
 		}
+	}
+}
+
+func TestOpenSearchEntitySearchBackendCheckProbesIndex(t *testing.T) {
+	t.Parallel()
+
+	requests := atomic.Int32{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"hits":{"hits":[]}}`)
+	}))
+	defer server.Close()
+
+	backend, err := NewOpenSearchEntitySearchBackend(OpenSearchEntitySearchBackendOptions{
+		Endpoint:    server.URL,
+		Region:      "us-east-1",
+		Index:       "entity-search",
+		HTTPClient:  server.Client(),
+		Credentials: credentials.NewStaticCredentialsProvider("test", "test", ""),
+		Signer:      noopOpenSearchSigner{},
+		HydrateEntity: func(context.Context, string, string) (EntityRecord, bool, error) {
+			return EntityRecord{}, false, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewOpenSearchEntitySearchBackend() error = %v", err)
+	}
+
+	if err := backend.Check(context.Background()); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("Check() request count = %d, want 1", got)
 	}
 }

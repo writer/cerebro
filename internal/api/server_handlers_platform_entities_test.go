@@ -413,6 +413,57 @@ func TestPlatformEntitySearchAndSuggestUseConfiguredBackend(t *testing.T) {
 	}
 }
 
+func TestPlatformEntitySearchAndSuggestFallbackToGraphWhenBackendReturnsEmpty(t *testing.T) {
+	s := newTestServer(t)
+	g := s.app.SecurityGraph
+	g.AddNode(&graph.Node{
+		ID:       "arn:aws:s3:::audit-logs",
+		Kind:     graph.NodeKindBucket,
+		Name:     "Audit Logs",
+		Provider: "aws",
+	})
+	g.AddNode(&graph.Node{
+		ID:   "person:alice@example.com",
+		Kind: graph.NodeKindPerson,
+		Name: "Alice Example",
+	})
+	g.BuildIndex()
+
+	backend := &recordingEntitySearchBackend{
+		searchFn: func(_ context.Context, _ string, opts graph.EntitySearchOptions) (graph.EntitySearchCollection, error) {
+			return graph.EntitySearchCollection{
+				GeneratedAt: time.Now().UTC(),
+				Query:       opts.Query,
+			}, nil
+		},
+		suggestFn: func(_ context.Context, _ string, opts graph.EntitySuggestOptions) (graph.EntitySuggestCollection, error) {
+			return graph.EntitySuggestCollection{
+				GeneratedAt: time.Now().UTC(),
+				Prefix:      opts.Prefix,
+			}, nil
+		},
+	}
+	s.app.entitySearchBackend = backend
+
+	search := do(t, s, http.MethodGet, "/api/v1/platform/entities/search?q=audit+logs&limit=5", nil)
+	if search.Code != http.StatusOK {
+		t.Fatalf("expected graph fallback search 200, got %d: %s", search.Code, search.Body.String())
+	}
+	searchBody := decodeJSON(t, search)
+	if got := int(searchBody["count"].(float64)); got < 1 {
+		t.Fatalf("expected graph fallback search results, got %#v", searchBody)
+	}
+
+	suggest := do(t, s, http.MethodGet, "/api/v1/platform/entities/suggest?prefix=ali&limit=5", nil)
+	if suggest.Code != http.StatusOK {
+		t.Fatalf("expected graph fallback suggest 200, got %d: %s", suggest.Code, suggest.Body.String())
+	}
+	suggestBody := decodeJSON(t, suggest)
+	if got := int(suggestBody["count"].(float64)); got < 1 {
+		t.Fatalf("expected graph fallback suggestions, got %#v", suggestBody)
+	}
+}
+
 func TestPlatformEntitiesAreTenantScoped(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
