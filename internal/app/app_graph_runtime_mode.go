@@ -19,7 +19,7 @@ func defaultGraphStoreBackendForProcess(testProcess bool) string {
 	if testProcess {
 		return string(graph.StoreBackendMemory)
 	}
-	return string(graph.StoreBackendSpanner)
+	return string(graph.StoreBackendNeptune)
 }
 
 func defaultGraphStoreBackend() string {

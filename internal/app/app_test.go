@@ -217,8 +217,8 @@ func TestDefaultGraphStoreBackendForProcess(t *testing.T) {
 	if got := defaultGraphStoreBackendForProcess(true); got != "memory" {
 		t.Fatalf("defaultGraphStoreBackendForProcess(test) = %q, want memory", got)
 	}
-	if got := defaultGraphStoreBackendForProcess(false); got != "spanner" {
-		t.Fatalf("defaultGraphStoreBackendForProcess(production) = %q, want spanner", got)
+	if got := defaultGraphStoreBackendForProcess(false); got != "neptune" {
+		t.Fatalf("defaultGraphStoreBackendForProcess(production) = %q, want neptune", got)
 	}
 }
 
