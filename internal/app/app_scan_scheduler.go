@@ -271,7 +271,7 @@ func (a *App) runScheduledGraphAnalyses(ctx context.Context, tuning ScanTuning, 
 
 func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	if a.Warehouse == nil {
-		return fmt.Errorf("snowflake not configured")
+		return fmt.Errorf("warehouse not configured")
 	}
 
 	scanStart := time.Now()

@@ -10,6 +10,7 @@ import (
 
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestResolveLocalScanDataset_FromFixture(t *testing.T) {
@@ -96,15 +97,42 @@ func TestEvaluateScanPreflight_WithLocalDataset(t *testing.T) {
 	}
 }
 
-func TestEvaluateScanPreflight_MissingSnowflake(t *testing.T) {
+func TestEvaluateScanPreflight_MissingWarehouse(t *testing.T) {
 	application := &app.App{Config: &app.Config{}}
 
 	result := evaluateScanPreflight(application, nil)
 	if result.Ready {
 		t.Fatalf("expected preflight not ready, got ready: %+v", result)
 	}
-	if len(result.MissingSnowflakeEnv) != 3 {
-		t.Fatalf("expected 3 missing env vars, got %v", result.MissingSnowflakeEnv)
+	if result.Mode != "warehouse" {
+		t.Fatalf("expected warehouse mode, got %s", result.Mode)
+	}
+	if result.WarehouseConnected {
+		t.Fatalf("expected warehouse to be disconnected, got %+v", result)
+	}
+	if result.Message != "warehouse not configured" {
+		t.Fatalf("unexpected preflight message %q", result.Message)
+	}
+}
+
+func TestEvaluateScanPreflight_WithWarehouse(t *testing.T) {
+	application := &app.App{
+		Config:    &app.Config{},
+		Warehouse: &warehouse.MemoryWarehouse{SchemaValue: "RAW"},
+	}
+
+	result := evaluateScanPreflight(application, nil)
+	if !result.Ready {
+		t.Fatalf("expected preflight ready, got %+v", result)
+	}
+	if result.Mode != "warehouse" {
+		t.Fatalf("expected warehouse mode, got %s", result.Mode)
+	}
+	if !result.WarehouseConnected {
+		t.Fatalf("expected warehouse to be connected, got %+v", result)
+	}
+	if result.Message != "ready: direct warehouse scan mode available" {
+		t.Fatalf("unexpected preflight message %q", result.Message)
 	}
 }
 
@@ -201,6 +229,126 @@ func TestRunScan_LocalModePersistsFindingsAndWatermarksAcrossRestart(t *testing.
 	}
 	persisted := restarted.Findings.List(findings.FindingFilter{})
 	if len(persisted) != 1 || persisted[0].PolicyID != "local-public-bucket" {
+		t.Fatalf("unexpected persisted findings after restart: %#v", persisted)
+	}
+
+	wm := restarted.ScanWatermarks.GetWatermark("aws_s3_buckets")
+	if wm == nil {
+		t.Fatal("expected persisted scan watermark after restart")
+	}
+	if !wm.LastScanTime.Equal(scanTime) {
+		t.Fatalf("expected watermark time %s, got %s", scanTime, wm.LastScanTime)
+	}
+	if wm.LastScanID != "bucket-1" {
+		t.Fatalf("expected watermark id bucket-1, got %q", wm.LastScanID)
+	}
+	if wm.RowsScanned != 1 {
+		t.Fatalf("expected watermark rows 1, got %d", wm.RowsScanned)
+	}
+}
+
+func TestRunScan_WarehouseModePersistsFindingsAndWatermarksAcrossRestart(t *testing.T) {
+	state := snapshotScanCLIState()
+	t.Cleanup(func() { restoreScanCLIState(state) })
+
+	tempDir := t.TempDir()
+	policyDir := filepath.Join(tempDir, "policies")
+	if err := os.MkdirAll(policyDir, 0o750); err != nil {
+		t.Fatalf("mkdir policy dir: %v", err)
+	}
+
+	policyJSON := `{
+		"id": "warehouse-name-match",
+		"name": "Warehouse name match",
+		"description": "Warehouse-backed scans should evaluate policies without Snowflake",
+		"effect": "forbid",
+		"resource": "aws::s3::bucket",
+		"condition_format": "cel",
+		"conditions": ["resource.name == 'public-bucket'"],
+		"severity": "high"
+	}`
+	if err := os.WriteFile(filepath.Join(policyDir, "warehouse-name-match.json"), []byte(policyJSON), 0o600); err != nil {
+		t.Fatalf("write policy: %v", err)
+	}
+
+	warehousePath := filepath.Join(tempDir, "warehouse.db")
+	store, err := warehouse.NewSQLiteWarehouse(warehouse.SQLiteWarehouseConfig{Path: warehousePath})
+	if err != nil {
+		t.Fatalf("new sqlite warehouse: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	scanTime := time.Date(2026, 3, 16, 9, 45, 0, 0, time.UTC)
+	if _, err := store.Exec(context.Background(), `
+		CREATE TABLE aws_s3_buckets (
+			_cq_id TEXT,
+			_cq_sync_time TEXT,
+			id TEXT,
+			type TEXT,
+			name TEXT
+		)
+	`); err != nil {
+		t.Fatalf("create warehouse table: %v", err)
+	}
+	if _, err := store.Exec(
+		context.Background(),
+		`INSERT INTO aws_s3_buckets (_cq_id, _cq_sync_time, id, type, name) VALUES (?, ?, ?, ?, ?)`,
+		"bucket-1",
+		scanTime.Format(time.RFC3339Nano),
+		"bucket-1",
+		"aws::s3::bucket",
+		"public-bucket",
+	); err != nil {
+		t.Fatalf("insert warehouse asset: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close seeded warehouse: %v", err)
+	}
+
+	t.Setenv(envCLIExecutionMode, string(cliExecutionModeDirect))
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("API_AUTH_ENABLED", "false")
+	t.Setenv("API_KEYS", "")
+	t.Setenv("WAREHOUSE_BACKEND", "sqlite")
+	t.Setenv("WAREHOUSE_SQLITE_PATH", warehousePath)
+	t.Setenv("EXECUTION_STORE_FILE", filepath.Join(tempDir, "executions.db"))
+	t.Setenv("GRAPH_SNAPSHOT_PATH", filepath.Join(tempDir, "graph-snapshots"))
+	t.Setenv("PLATFORM_REPORT_RUN_STATE_FILE", filepath.Join(tempDir, "report-runs.json"))
+	t.Setenv("PLATFORM_REPORT_SNAPSHOT_PATH", filepath.Join(tempDir, "report-snapshots"))
+	t.Setenv("CEREBRO_DB_PATH", filepath.Join(tempDir, "findings.db"))
+	t.Setenv("POLICIES_PATH", policyDir)
+
+	scanTables = []string{"aws_s3_buckets"}
+	scanLimit = 10
+	scanDryRun = false
+	scanOutput = FormatJSON
+	scanFull = false
+	scanToxicCombos = false
+	scanUseGraph = false
+	scanExtractRelationships = false
+	scanPreflight = false
+	scanLocalFixture = ""
+	scanSnapshotDir = ""
+
+	_ = captureStdout(t, func() {
+		if err := runScan(scanCmd, nil); err != nil {
+			t.Fatalf("runScan failed: %v", err)
+		}
+	})
+
+	restarted, err := app.New(context.Background())
+	if err != nil {
+		t.Fatalf("restart app: %v", err)
+	}
+	defer func() { _ = restarted.Close() }()
+
+	if got := restarted.Findings.Stats().Total; got != 1 {
+		t.Fatalf("expected 1 persisted finding after restart, got %d", got)
+	}
+	persisted := restarted.Findings.List(findings.FindingFilter{})
+	if len(persisted) != 1 || persisted[0].PolicyID != "warehouse-name-match" {
 		t.Fatalf("unexpected persisted findings after restart: %#v", persisted)
 	}
 

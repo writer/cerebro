@@ -194,54 +194,15 @@ func (w *PostgresWarehouse) GetAssets(ctx context.Context, table string, filter 
 	if err != nil {
 		return nil, err
 	}
-
-	selectExpr := "*"
-	if len(filter.Columns) > 0 {
-		quoted := make([]string, 0, len(filter.Columns))
-		for _, column := range filter.Columns {
-			normalized, err := normalizeSQLiteIdentifier(column)
-			if err != nil {
-				continue
-			}
-			quoted = append(quoted, quoteSQLiteIdentifier(normalized))
-		}
-		if len(quoted) > 0 {
-			selectExpr = strings.Join(quoted, ", ")
-		}
+	query, args, err := buildGetAssetsQuery(w, table, filter)
+	if err != nil {
+		return nil, err
 	}
-
-	query := "SELECT " + selectExpr + " FROM " + quoteSQLiteIdentifier(table)
-	var (
-		conditions []string
-		args       []any
-		argIndex   = 1
-	)
-	if strings.TrimSpace(filter.Account) != "" {
-		conditions = append(conditions, fmt.Sprintf("%s = $%d", quoteSQLiteIdentifier("account_id"), argIndex))
-		args = append(args, filter.Account)
-		argIndex++
-	}
-	if strings.TrimSpace(filter.Region) != "" {
-		conditions = append(conditions, fmt.Sprintf("%s = $%d", quoteSQLiteIdentifier("region"), argIndex))
-		args = append(args, filter.Region)
-	}
-	if len(conditions) > 0 {
-		query += " WHERE " + strings.Join(conditions, " AND ")
-	}
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 100
-	}
-	query += fmt.Sprintf(" LIMIT %d", limit)
-	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET %d", filter.Offset)
-	}
-
 	result, err := w.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	return result.Rows, nil
+	return finalizeAssetRows(table, result.Rows), nil
 }
 
 func (w *PostgresWarehouse) GetAssetByID(ctx context.Context, table, id string) (map[string]interface{}, error) {
