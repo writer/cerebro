@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/identity"
+	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -230,6 +231,95 @@ func TestInitWarehouse_UsesSQLiteBackend(t *testing.T) {
 	}
 	if got := a.Warehouse.Database(); got != "sqlite" {
 		t.Fatalf("expected sqlite warehouse database label, got %q", got)
+	}
+}
+
+func TestInitLegacySnowflake_UsesSeparateClientForNonSnowflakeWarehouse(t *testing.T) {
+	originalNewSnowflakeClient := newSnowflakeClient
+	originalPingSnowflake := pingSnowflake
+	newSnowflakeClient = func(snowflake.ClientConfig) (*snowflake.Client, error) {
+		return new(snowflake.Client), nil
+	}
+	pingSnowflake = func(context.Context, *snowflake.Client) error { return nil }
+	t.Cleanup(func() {
+		newSnowflakeClient = originalNewSnowflakeClient
+		pingSnowflake = originalPingSnowflake
+	})
+
+	a := &App{
+		Config: &Config{
+			WarehouseBackend:     "postgres",
+			SnowflakeAccount:     "acct",
+			SnowflakeUser:        "user",
+			SnowflakePrivateKey:  "key",
+			WarehousePostgresDSN: "postgres://warehouse",
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	if err := a.initLegacySnowflake(context.Background()); err != nil {
+		t.Fatalf("initLegacySnowflake() error = %v", err)
+	}
+
+	if a.LegacySnowflake == nil {
+		t.Fatal("expected legacy snowflake client to be initialized")
+	}
+	if a.Snowflake != nil {
+		t.Fatalf("expected active snowflake warehouse client to stay nil, got %T", a.Snowflake)
+	}
+	if a.Warehouse != nil {
+		t.Fatalf("expected warehouse selection to remain unchanged, got %T", a.Warehouse)
+	}
+}
+
+func TestAppStateMigrationSnowflakePrefersLegacyClient(t *testing.T) {
+	active := new(snowflake.Client)
+	legacy := new(snowflake.Client)
+	a := &App{Snowflake: active, LegacySnowflake: legacy}
+
+	if got := a.appStateMigrationSnowflake(); got != legacy {
+		t.Fatalf("expected legacy snowflake migration source, got %p want %p", got, legacy)
+	}
+}
+
+func TestRotateSnowflakeClientPreservesWarehouseWhenUsingLegacySource(t *testing.T) {
+	originalNewSnowflakeClient := newSnowflakeClient
+	originalPingSnowflake := pingSnowflake
+	newSnowflakeClient = func(snowflake.ClientConfig) (*snowflake.Client, error) {
+		return new(snowflake.Client), nil
+	}
+	pingSnowflake = func(context.Context, *snowflake.Client) error { return nil }
+	t.Cleanup(func() {
+		newSnowflakeClient = originalNewSnowflakeClient
+		pingSnowflake = originalPingSnowflake
+	})
+
+	existingWarehouse := &warehouse.MemoryWarehouse{}
+	oldLegacy := new(snowflake.Client)
+	a := &App{
+		Config: &Config{
+			WarehouseBackend:    "postgres",
+			SnowflakeAccount:    "acct",
+			SnowflakeUser:       "user",
+			SnowflakePrivateKey: "key",
+		},
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse:       existingWarehouse,
+		LegacySnowflake: oldLegacy,
+	}
+
+	if err := a.rotateSnowflakeClient(context.Background(), a.Config); err != nil {
+		t.Fatalf("rotateSnowflakeClient() error = %v", err)
+	}
+
+	if a.Warehouse != existingWarehouse {
+		t.Fatalf("expected warehouse selection to stay unchanged, got %T", a.Warehouse)
+	}
+	if a.Snowflake != nil {
+		t.Fatalf("expected active snowflake client to remain nil, got %T", a.Snowflake)
+	}
+	if a.LegacySnowflake == nil || a.LegacySnowflake == oldLegacy {
+		t.Fatal("expected legacy snowflake client to rotate independently")
 	}
 }
 
