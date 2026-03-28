@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"regexp"
 	"sort"
@@ -12,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/neptunedata"
 	"github.com/aws/smithy-go"
 )
@@ -100,6 +103,23 @@ func (f *fakeNeptuneDataClient) ExecuteOpenCypherExplainQuery(_ context.Context,
 		return output, f.explainErrors[idx]
 	}
 	return output, nil
+}
+
+func newNeptuneDocumentTestClient(t *testing.T, responseBody string) (neptuneDataClient, func()) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(responseBody))
+	}))
+	client := neptunedata.NewFromConfig(aws.Config{
+		Region:      "us-east-1",
+		Credentials: aws.AnonymousCredentials{},
+		HTTPClient:  server.Client(),
+	}, func(options *neptunedata.Options) {
+		options.BaseEndpoint = aws.String(server.URL)
+	})
+	return client, server.Close
 }
 
 type timeoutNetError struct{}
@@ -198,6 +218,20 @@ func TestNeptuneDataExecutorExecuteOpenCypherStopsAtMaxAttempts(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sleeps, []time.Duration{10 * time.Millisecond, 15 * time.Millisecond}) {
 		t.Fatalf("sleep backoff = %#v", sleeps)
+	}
+}
+
+func TestNeptuneGraphStoreCountNodesDecodesSmithyDocumentResults(t *testing.T) {
+	client, cleanup := newNeptuneDocumentTestClient(t, `{"results":[{"total":2}]}`)
+	defer cleanup()
+
+	store := NewNeptuneGraphStore(NewNeptuneDataExecutor(client))
+	got, err := store.CountNodes(context.Background())
+	if err != nil {
+		t.Fatalf("CountNodes() error = %v", err)
+	}
+	if got != 2 {
+		t.Fatalf("CountNodes() = %d, want 2", got)
 	}
 }
 

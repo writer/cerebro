@@ -81,7 +81,7 @@ func (e *neptuneDataExecutor) ExecuteOpenCypher(ctx context.Context, query strin
 		if output == nil {
 			return nil, nil
 		}
-		return output.Results, nil
+		return neptuneDecodeExecuteResults(output.Results)
 	})
 }
 
@@ -118,6 +118,21 @@ func defaultNeptuneRetryOptions() neptuneRetryOptions {
 		BaseDelay: 200 * time.Millisecond,
 		MaxDelay:  2 * time.Second,
 	}
+}
+
+func neptuneDecodeExecuteResults(results any) (any, error) {
+	if results == nil {
+		return nil, nil
+	}
+	unmarshaler, ok := results.(document.Unmarshaler)
+	if !ok {
+		return results, nil
+	}
+	var decoded any
+	if err := unmarshaler.UnmarshalSmithyDocument(&decoded); err != nil {
+		return nil, fmt.Errorf("unmarshal neptune results: %w", err)
+	}
+	return neptuneNormalizeValue(decoded), nil
 }
 
 func normalizeNeptuneRetryOptions(opts neptuneRetryOptions) neptuneRetryOptions {
