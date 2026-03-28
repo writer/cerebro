@@ -16,6 +16,16 @@ import (
 
 const appStateRiskEngineGraphID = "security-graph"
 
+func (a *App) appStateMigrationSnowflake() *snowflake.Client {
+	if a == nil {
+		return nil
+	}
+	if a.LegacySnowflake != nil {
+		return a.LegacySnowflake
+	}
+	return a.Snowflake
+}
+
 func (a *App) appStateDatabaseURL() string {
 	if a == nil || a.Config == nil {
 		return ""
@@ -65,7 +75,7 @@ func (a *App) initAppStateDB(ctx context.Context) error {
 }
 
 func (a *App) migrateAppState(ctx context.Context) error {
-	if a == nil || a.appStateDB == nil || a.Snowflake == nil {
+	if a == nil || a.appStateDB == nil || a.appStateMigrationSnowflake() == nil {
 		return nil
 	}
 	if err := a.migrateFindings(ctx); err != nil {
@@ -87,11 +97,12 @@ func (a *App) migrateAppState(ctx context.Context) error {
 }
 
 func (a *App) migrateFindings(ctx context.Context) error {
+	source := a.appStateMigrationSnowflake()
 	store, ok := a.Findings.(*findings.PostgresStore)
-	if !ok || a.Snowflake == nil {
+	if !ok || source == nil {
 		return nil
 	}
-	records, err := snowflake.NewFindingRepository(a.Snowflake).ListAll(ctx)
+	records, err := snowflake.NewFindingRepository(source).ListAll(ctx)
 	if err != nil {
 		if isMissingSnowflakeTableErr(err) {
 			return nil
@@ -102,10 +113,11 @@ func (a *App) migrateFindings(ctx context.Context) error {
 }
 
 func (a *App) migrateAgentSessions(ctx context.Context) error {
-	if a.appStateDB == nil || a.Snowflake == nil {
+	sourceClient := a.appStateMigrationSnowflake()
+	if a.appStateDB == nil || sourceClient == nil {
 		return nil
 	}
-	source, err := agents.NewSnowflakeSessionStore(a.Snowflake)
+	source, err := agents.NewSnowflakeSessionStore(sourceClient)
 	if err != nil {
 		return fmt.Errorf("initialize snowflake session store: %w", err)
 	}
@@ -123,10 +135,11 @@ func (a *App) migrateAgentSessions(ctx context.Context) error {
 }
 
 func (a *App) migrateAuditLogs(ctx context.Context) error {
-	if a.AuditRepo == nil || a.Snowflake == nil {
+	source := a.appStateMigrationSnowflake()
+	if a.AuditRepo == nil || source == nil {
 		return nil
 	}
-	entries, err := snowflake.NewAuditRepository(a.Snowflake).ListAll(ctx)
+	entries, err := snowflake.NewAuditRepository(source).ListAll(ctx)
 	if err != nil {
 		if isMissingSnowflakeTableErr(err) {
 			return nil
@@ -142,10 +155,11 @@ func (a *App) migrateAuditLogs(ctx context.Context) error {
 }
 
 func (a *App) migratePolicyHistory(ctx context.Context) error {
-	if a.PolicyHistoryRepo == nil || a.Snowflake == nil {
+	source := a.appStateMigrationSnowflake()
+	if a.PolicyHistoryRepo == nil || source == nil {
 		return nil
 	}
-	records, err := snowflake.NewPolicyHistoryRepository(a.Snowflake).ListAll(ctx)
+	records, err := snowflake.NewPolicyHistoryRepository(source).ListAll(ctx)
 	if err != nil {
 		if isMissingSnowflakeTableErr(err) {
 			return nil
@@ -161,7 +175,8 @@ func (a *App) migratePolicyHistory(ctx context.Context) error {
 }
 
 func (a *App) migrateRiskEngineState(ctx context.Context) error {
-	if a.RiskEngineStateRepo == nil || a.Snowflake == nil {
+	source := a.appStateMigrationSnowflake()
+	if a.RiskEngineStateRepo == nil || source == nil {
 		return nil
 	}
 	existing, err := a.RiskEngineStateRepo.LoadSnapshot(ctx, appStateRiskEngineGraphID)
@@ -171,7 +186,7 @@ func (a *App) migrateRiskEngineState(ctx context.Context) error {
 	if len(existing) > 0 {
 		return nil
 	}
-	payload, err := snowflake.NewRiskEngineStateRepository(a.Snowflake).LoadSnapshot(ctx, appStateRiskEngineGraphID)
+	payload, err := snowflake.NewRiskEngineStateRepository(source).LoadSnapshot(ctx, appStateRiskEngineGraphID)
 	if err != nil {
 		return fmt.Errorf("load snowflake risk engine state: %w", err)
 	}

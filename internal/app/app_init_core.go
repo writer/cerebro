@@ -26,17 +26,111 @@ import (
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
+var (
+	newSnowflakeClient = snowflake.NewClient
+	pingSnowflake      = func(ctx context.Context, client *snowflake.Client) error {
+		return client.Ping(ctx)
+	}
+)
+
 func (a *App) initWarehouse(ctx context.Context) error {
-	store, err := OpenWarehouse(ctx, a.Config)
+	switch strings.ToLower(strings.TrimSpace(a.Config.WarehouseBackend)) {
+	case "", "snowflake":
+		return a.initSnowflake(ctx)
+	case "sqlite":
+		return a.initSQLiteWarehouse(ctx)
+	case "postgres":
+		return a.initPostgresWarehouse(ctx)
+	default:
+		return fmt.Errorf("unsupported warehouse backend %q", a.Config.WarehouseBackend)
+	}
+}
+
+func hasSnowflakeCredentials(cfg *Config) bool {
+	return cfg != nil &&
+		strings.TrimSpace(cfg.SnowflakePrivateKey) != "" &&
+		strings.TrimSpace(cfg.SnowflakeAccount) != "" &&
+		strings.TrimSpace(cfg.SnowflakeUser) != ""
+}
+
+func snowflakeClientConfig(cfg *Config) snowflake.ClientConfig {
+	return snowflake.ClientConfig{
+		Account:    cfg.SnowflakeAccount,
+		User:       cfg.SnowflakeUser,
+		PrivateKey: cfg.SnowflakePrivateKey,
+		Database:   cfg.SnowflakeDatabase,
+		Schema:     cfg.SnowflakeSchema,
+		Warehouse:  cfg.SnowflakeWarehouse,
+		Role:       cfg.SnowflakeRole,
+	}
+}
+
+func openConfiguredSnowflakeClient(ctx context.Context, cfg *Config) (*snowflake.Client, error) {
+	client, err := newSnowflakeClient(snowflakeClientConfig(cfg))
+	if err != nil {
+		return nil, err
+	}
+	if err := pingSnowflake(ctx, client); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	return client, nil
+}
+
+func (a *App) initSnowflake(ctx context.Context) error {
+	// Require key-pair auth
+	if !hasSnowflakeCredentials(a.Config) {
+		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
+	}
+
+	client, err := openConfiguredSnowflakeClient(ctx, a.Config)
 	if err != nil {
 		return err
 	}
-	a.Warehouse = store
-	if client, ok := store.(*snowflake.Client); ok {
-		a.Snowflake = client
-	} else {
-		a.Snowflake = nil
+
+	a.Snowflake = client
+	a.LegacySnowflake = nil
+	a.Warehouse = client
+	return nil
+}
+
+func (a *App) initLegacySnowflake(ctx context.Context) error {
+	if a == nil || a.Config == nil || a.Snowflake != nil || !hasSnowflakeCredentials(a.Config) {
+		return nil
 	}
+	client, err := openConfiguredSnowflakeClient(ctx, a.Config)
+	if err != nil {
+		return err
+	}
+	a.LegacySnowflake = client
+	return nil
+}
+
+func (a *App) initSQLiteWarehouse(_ context.Context) error {
+	store, err := warehouse.NewSQLiteWarehouse(warehouse.SQLiteWarehouseConfig{
+		Path:      strings.TrimSpace(a.Config.WarehouseSQLitePath),
+		Database:  "sqlite",
+		Schema:    "RAW",
+		AppSchema: "CEREBRO",
+	})
+	if err != nil {
+		return err
+	}
+	a.Snowflake = nil
+	a.Warehouse = store
+	return nil
+}
+
+func (a *App) initPostgresWarehouse(_ context.Context) error {
+	store, err := warehouse.NewPostgresWarehouse(warehouse.PostgresWarehouseConfig{
+		DSN:       strings.TrimSpace(a.Config.WarehousePostgresDSN),
+		AppSchema: "cerebro",
+	})
+	if err != nil {
+		return err
+	}
+	a.Snowflake = nil
+	a.Warehouse = store
 	return nil
 }
 

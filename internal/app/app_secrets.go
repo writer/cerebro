@@ -241,72 +241,69 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 		ctx = context.Background()
 	}
 
-	if strings.TrimSpace(cfg.SnowflakePrivateKey) == "" ||
-		strings.TrimSpace(cfg.SnowflakeAccount) == "" ||
-		strings.TrimSpace(cfg.SnowflakeUser) == "" {
+	if !hasSnowflakeCredentials(cfg) {
 		return fmt.Errorf("snowflake rotation requires SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
 
-	newClient, err := snowflake.NewClient(snowflake.ClientConfig{
-		Account:    cfg.SnowflakeAccount,
-		User:       cfg.SnowflakeUser,
-		PrivateKey: cfg.SnowflakePrivateKey,
-		Database:   cfg.SnowflakeDatabase,
-		Schema:     cfg.SnowflakeSchema,
-		Warehouse:  cfg.SnowflakeWarehouse,
-		Role:       cfg.SnowflakeRole,
-	})
+	newClient, err := openConfiguredSnowflakeClient(ctx, cfg)
 	if err != nil {
-		return err
-	}
-	if err := newClient.Ping(ctx); err != nil {
-		_ = newClient.Close()
 		return err
 	}
 
 	oldClient := a.Snowflake
-	a.Snowflake = newClient
-	a.Warehouse = newClient
-	a.initRepositories()
+	oldLegacyClient := a.LegacySnowflake
+	if strings.EqualFold(strings.TrimSpace(cfg.WarehouseBackend), "snowflake") {
+		a.Snowflake = newClient
+		a.LegacySnowflake = nil
+		a.Warehouse = newClient
+		a.initRepositories()
 
-	if a.ScanWatermarks != nil {
-		a.ScanWatermarks.SetDB(newClient.DB())
-		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil && a.Logger != nil {
-			a.Logger.Warn("failed to reload scan watermarks after snowflake rotation", "error", err)
-		}
-	}
-
-	if a.SnowflakeFindings != nil {
-		a.SnowflakeFindings.SetConnection(newClient.DB(), newClient.Database(), newClient.Schema())
-		if err := a.SnowflakeFindings.Load(ctx); err != nil && a.Logger != nil {
-			a.Logger.Warn("failed to reload findings after snowflake rotation", "error", err)
-		}
-	}
-
-	if a.Agents != nil {
-		if a.appStateDB != nil {
-			a.Agents.SetSessionStore(agents.NewPostgresSessionStore(a.appStateDB))
-		} else {
-			store, err := agents.NewSnowflakeSessionStore(newClient)
-			if err != nil {
-				if a.Logger != nil {
-					a.Logger.Warn("failed to rotate agent session store", "error", err)
-				}
-			} else {
-				a.Agents.SetSessionStore(store)
+		if a.ScanWatermarks != nil {
+			a.ScanWatermarks.SetDB(newClient.DB())
+			if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil && a.Logger != nil {
+				a.Logger.Warn("failed to reload scan watermarks after snowflake rotation", "error", err)
 			}
 		}
+
+		if a.SnowflakeFindings != nil {
+			a.SnowflakeFindings.SetConnection(newClient.DB(), newClient.Database(), newClient.Schema())
+			if err := a.SnowflakeFindings.Load(ctx); err != nil && a.Logger != nil {
+				a.Logger.Warn("failed to reload findings after snowflake rotation", "error", err)
+			}
+		}
+
+		if a.Agents != nil {
+			if a.appStateDB != nil {
+				a.Agents.SetSessionStore(agents.NewPostgresSessionStore(a.appStateDB))
+			} else {
+				store, err := agents.NewSnowflakeSessionStore(newClient)
+				if err != nil {
+					if a.Logger != nil {
+						a.Logger.Warn("failed to rotate agent session store", "error", err)
+					}
+				} else {
+					a.Agents.SetSessionStore(store)
+				}
+			}
+		}
+
+		if a.graphCancel != nil {
+			a.graphCancel()
+			a.graphCancel = nil
+		}
+		a.initSecurityGraph(ctx)
+	} else {
+		a.LegacySnowflake = newClient
 	}
 
-	if a.graphCancel != nil {
-		a.graphCancel()
-		a.graphCancel = nil
-	}
-	a.initSecurityGraph(ctx)
-
-	if oldClient != nil {
+	if oldClient != nil && oldClient != newClient {
 		if err := oldClient.Close(); err != nil && a.Logger != nil {
 			a.Logger.Warn("failed to close previous snowflake client after rotation", "error", err)
+		}
+	}
+	if oldLegacyClient != nil && oldLegacyClient != newClient && oldLegacyClient != oldClient {
+		if err := oldLegacyClient.Close(); err != nil && a.Logger != nil {
+			a.Logger.Warn("failed to close previous legacy snowflake client after rotation", "error", err)
 		}
 	}
 

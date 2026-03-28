@@ -68,6 +68,9 @@ func (a *App) initPhase2a(ctx context.Context) error {
 	if err := runInitErrorStep("app_state_db", func() error { return a.initAppStateDB(ctx) }); err != nil {
 		return err
 	}
+	if err := runInitErrorStep("legacy_snowflake", func() error { return a.initLegacySnowflake(ctx) }); err != nil {
+		a.Logger.Warn("legacy snowflake initialization failed", "error", err)
+	}
 	if err := runInitErrorStep("graph_store_backend", func() error { return a.initConfiguredSecurityGraphStore(ctx) }); err != nil {
 		return err
 	}

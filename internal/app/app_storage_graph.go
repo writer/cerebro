@@ -279,6 +279,11 @@ func (a *App) Close() error {
 			errs = append(errs, fmt.Errorf("snowflake: %w", err))
 		}
 	}
+	if a.LegacySnowflake != nil && a.LegacySnowflake != a.Snowflake {
+		if err := a.LegacySnowflake.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("legacy snowflake: %w", err))
+		}
+	}
 	if closer, ok := a.Warehouse.(interface{ Close() error }); ok {
 		if a.Snowflake == nil || any(a.Warehouse) != any(a.Snowflake) {
 			if err := closer.Close(); err != nil {
