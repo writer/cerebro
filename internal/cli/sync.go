@@ -1152,7 +1152,7 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 
 	sqlToxicRiskSets := make(map[string][]map[string]bool)
 	relationshipCount := 0
-	if application.Warehouse != nil {
+	if scanner.SupportsRelationshipToxicDetection(application.Warehouse) {
 		var toxicCursor *scanner.ToxicScanCursor
 		if application.ScanWatermarks != nil {
 			if wm := application.ScanWatermarks.GetWatermark("_toxic_relationships"); wm != nil {

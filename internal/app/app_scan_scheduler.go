@@ -488,7 +488,7 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 	}
 
 	sqlToxicRiskSets := make(map[string][]map[string]bool)
-	if a.Warehouse != nil {
+	if scanner.SupportsRelationshipToxicDetection(a.Warehouse) {
 		var toxicCursor *scanner.ToxicScanCursor
 		if a.ScanWatermarks != nil {
 			if wm := a.ScanWatermarks.GetWatermark("_toxic_relationships"); wm != nil {

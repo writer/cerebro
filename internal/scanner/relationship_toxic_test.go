@@ -5,9 +5,23 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 // --- toxicSinceFilter tests ---
+
+func TestSupportsRelationshipToxicDetection(t *testing.T) {
+	if SupportsRelationshipToxicDetection(nil) {
+		t.Fatal("expected nil warehouse to be unsupported")
+	}
+	if SupportsRelationshipToxicDetection(&warehouse.MemoryWarehouse{DatabaseValue: "postgres"}) {
+		t.Fatal("expected postgres warehouse to skip relationship toxic detection")
+	}
+	if !SupportsRelationshipToxicDetection(&warehouse.MemoryWarehouse{DatabaseValue: "snowflake"}) {
+		t.Fatal("expected snowflake warehouse to support relationship toxic detection")
+	}
+}
 
 func TestToxicSinceFilter_NilCursor(t *testing.T) {
 	if got := toxicSinceFilter("s", nil); got != "" {

@@ -566,7 +566,7 @@ func LoadConfig() *Config {
 			warehousePostgresDSN := getEnv("WAREHOUSE_POSTGRES_DSN", "")
 			jobDatabaseURL := getEnv("JOB_DATABASE_URL", "")
 			defaultWarehouseBackend := "sqlite"
-			if strings.TrimSpace(warehousePostgresDSN) != "" || strings.TrimSpace(jobDatabaseURL) != "" {
+			if strings.TrimSpace(warehousePostgresDSN) != "" {
 				defaultWarehouseBackend = "postgres"
 			} else if strings.TrimSpace(snowflakeAccount) != "" || strings.TrimSpace(snowflakeUser) != "" || strings.TrimSpace(snowflakePrivateKey) != "" {
 				defaultWarehouseBackend = "snowflake"

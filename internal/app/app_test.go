@@ -790,6 +790,20 @@ func TestLoadConfig_DefaultsToSnowflakeBackendWhenAuthPresent(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_DoesNotDefaultWarehouseToPostgresWhenOnlyJobDatabaseConfigured(t *testing.T) {
+	t.Setenv("WAREHOUSE_BACKEND", "")
+	t.Setenv("WAREHOUSE_POSTGRES_DSN", "")
+	t.Setenv("JOB_DATABASE_URL", "postgres://jobs")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "")
+	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
+
+	cfg := LoadConfig()
+	if cfg.WarehouseBackend != "sqlite" {
+		t.Fatalf("expected warehouse backend to remain sqlite when only JOB_DATABASE_URL is set, got %q", cfg.WarehouseBackend)
+	}
+}
+
 func TestNew_APIAuthEnabledWithoutKeys(t *testing.T) {
 	t.Setenv("API_AUTH_ENABLED", "true")
 	t.Setenv("API_KEYS", "")

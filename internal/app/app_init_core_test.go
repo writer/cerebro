@@ -234,6 +234,18 @@ func TestInitWarehouse_UsesSQLiteBackend(t *testing.T) {
 	}
 }
 
+func TestWarehousePostgresDSN_DoesNotFallBackToJobDatabaseURL(t *testing.T) {
+	a := &App{
+		Config: &Config{
+			JobDatabaseURL: "postgres://jobs",
+		},
+	}
+
+	if got := a.warehousePostgresDSN(); got != "" {
+		t.Fatalf("expected warehouse DSN to ignore JOB_DATABASE_URL, got %q", got)
+	}
+}
+
 func TestInitLegacySnowflake_UsesSeparateClientForNonSnowflakeWarehouse(t *testing.T) {
 	originalNewSnowflakeClient := newSnowflakeClient
 	originalPingSnowflake := pingSnowflake

@@ -36,6 +36,10 @@ type ToxicScanCursor struct {
 	SinceID   string // keyset tiebreak: last resource_id at SinceTime
 }
 
+func SupportsRelationshipToxicDetection(w warehouse.SchemaWarehouse) bool {
+	return w != nil && strings.EqualFold(strings.TrimSpace(w.Database()), "snowflake")
+}
+
 func DetectRelationshipToxicCombinations(ctx context.Context, sf warehouse.QueryWarehouse, cursor *ToxicScanCursor) (*ToxicDetectionResult, error) {
 	if sf == nil {
 		return &ToxicDetectionResult{}, nil

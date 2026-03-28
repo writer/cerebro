@@ -138,10 +138,7 @@ func (a *App) warehousePostgresDSN() string {
 	if a == nil || a.Config == nil {
 		return ""
 	}
-	if dsn := strings.TrimSpace(a.Config.WarehousePostgresDSN); dsn != "" {
-		return dsn
-	}
-	return strings.TrimSpace(a.Config.JobDatabaseURL)
+	return strings.TrimSpace(a.Config.WarehousePostgresDSN)
 }
 
 func OpenWarehouse(ctx context.Context, cfg *Config) (warehouse.DataWarehouse, error) {
