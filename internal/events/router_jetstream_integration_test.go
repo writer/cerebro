@@ -89,3 +89,32 @@ func TestNATSAlertNotifierIntegrationPublishesAlertsToJetStream(t *testing.T) {
 		t.Fatalf("expected alert payload %q, got %q", payload, rawMessage.Data)
 	}
 }
+
+func TestNATSAlertNotifierIntegrationNormalizesSubjectPrefix(t *testing.T) {
+	natsURL := startJetStreamServer(t)
+
+	notifier, err := NewNATSAlertNotifier(AlertNotifierConfig{
+		URLs:          []string{natsURL},
+		Stream:        "TEST_ALERTS",
+		SubjectPrefix: ".ensemble.notify.",
+	}, nil)
+	if err != nil {
+		t.Fatalf("new notifier: %v", err)
+	}
+	defer func() { _ = notifier.Close() }()
+
+	if notifier.subjectPrefix != "ensemble.notify" {
+		t.Fatalf("expected normalized subject prefix, got %q", notifier.subjectPrefix)
+	}
+
+	info, err := notifier.js.StreamInfo("TEST_ALERTS")
+	if err != nil {
+		t.Fatalf("stream info: %v", err)
+	}
+	if !streamHasSubject(info.Config.Subjects, "ensemble.notify.>") {
+		t.Fatalf("expected normalized stream subject, got %v", info.Config.Subjects)
+	}
+	if streamHasSubject(info.Config.Subjects, ".ensemble.notify.>") || streamHasSubject(info.Config.Subjects, "ensemble.notify..>") {
+		t.Fatalf("expected only normalized stream subjects, got %v", info.Config.Subjects)
+	}
+}

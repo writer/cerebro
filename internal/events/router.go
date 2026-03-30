@@ -29,6 +29,10 @@ const (
 	defaultAlertEscalationReason    = "alert_unacknowledged"
 )
 
+func normalizeAlertSubjectPrefix(value string) string {
+	return strings.Trim(strings.TrimSpace(value), ".")
+}
+
 type AlertRoutingConfig struct {
 	Routes []AlertRoute `json:"routes" yaml:"routes"`
 }
@@ -217,7 +221,7 @@ func NewAlertRouter(options AlertRouterOptions) (*AlertRouter, error) {
 		logger = slog.Default()
 	}
 
-	subjectPrefix := strings.Trim(strings.TrimSpace(options.SubjectPrefix), ".")
+	subjectPrefix := normalizeAlertSubjectPrefix(options.SubjectPrefix)
 	if subjectPrefix == "" {
 		subjectPrefix = defaultAlertNotifySubjectPrefix
 	}
@@ -1211,7 +1215,8 @@ func NewNATSAlertNotifier(cfg AlertNotifierConfig, logger *slog.Logger) (*NATSAl
 		TLSServerName:         cfg.TLSServerName,
 		TLSInsecureSkipVerify: cfg.TLSInsecureSkipVerify,
 	}.withDefaults()
-	if strings.TrimSpace(cfg.SubjectPrefix) == "" {
+	base.SubjectPrefix = normalizeAlertSubjectPrefix(base.SubjectPrefix)
+	if base.SubjectPrefix == "" {
 		base.SubjectPrefix = defaultAlertNotifySubjectPrefix
 	}
 	options, err := base.natsOptions()
@@ -1301,7 +1306,8 @@ func (n *NATSAlertNotifier) ensureStream() error {
 		return errors.New("alert notifier subject prefix is required")
 	}
 
-	streamSubject := strings.TrimSpace(n.subjectPrefix) + ".>"
+	n.subjectPrefix = normalizeAlertSubjectPrefix(n.subjectPrefix)
+	streamSubject := n.subjectPrefix + ".>"
 	stream, err := n.js.StreamInfo(n.stream)
 	if err == nil {
 		if streamHasSubject(stream.Config.Subjects, streamSubject) {
