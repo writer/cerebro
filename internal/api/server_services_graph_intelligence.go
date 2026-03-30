@@ -43,13 +43,7 @@ func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, 
 	}
 	tenantID := currentTenantScopeID(ctx)
 	current := s.deps.CurrentSecurityGraphForTenant(tenantID)
-	if current != nil {
-		return current, nil
-	}
 	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
-	if store == nil {
-		return nil, graph.ErrStoreUnavailable
-	}
 	opts := graph.ExtractSubgraphOptions{MaxDepth: 3}
 	if !validAt.IsZero() || !recordedAt.IsZero() {
 		if temporalStore, ok := store.(interface {
@@ -57,9 +51,25 @@ func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, 
 		}); ok {
 			return temporalStore.ExtractSubgraphBitemporal(ctx, entityID, opts, validAt, recordedAt)
 		}
-		return snapshotGraphView(ctx, store)
+		if store != nil {
+			view, err := snapshotGraphView(ctx, store)
+			if err != nil {
+				return nil, err
+			}
+			return graph.ExtractSubgraph(view, entityID, opts), nil
+		}
+		if current != nil {
+			return graph.ExtractSubgraph(current, entityID, opts), nil
+		}
+		return nil, graph.ErrStoreUnavailable
 	}
-	return store.ExtractSubgraph(ctx, entityID, opts)
+	if store != nil {
+		return store.ExtractSubgraph(ctx, entityID, opts)
+	}
+	if current != nil {
+		return graph.ExtractSubgraph(current, entityID, opts), nil
+	}
+	return nil, graph.ErrStoreUnavailable
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {
