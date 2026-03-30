@@ -25,6 +25,10 @@ type serverGraphIntelligenceService struct {
 	deps *serverDependencies
 }
 
+type graphViewProvider interface {
+	GraphView(context.Context) (*graph.Graph, error)
+}
+
 func newGraphIntelligenceService(deps *serverDependencies) graphIntelligenceService {
 	return serverGraphIntelligenceService{deps: deps}
 }
@@ -43,33 +47,20 @@ func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, 
 	}
 	tenantID := currentTenantScopeID(ctx)
 	current := s.deps.CurrentSecurityGraphForTenant(tenantID)
-	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
-	opts := graph.ExtractSubgraphOptions{MaxDepth: 3}
-	if !validAt.IsZero() || !recordedAt.IsZero() {
-		if temporalStore, ok := store.(interface {
-			ExtractSubgraphBitemporal(context.Context, string, graph.ExtractSubgraphOptions, time.Time, time.Time) (*graph.Graph, error)
-		}); ok {
-			return temporalStore.ExtractSubgraphBitemporal(ctx, entityID, opts, validAt, recordedAt)
-		}
-		if store != nil {
-			view, err := snapshotGraphView(ctx, store)
-			if err != nil {
-				return nil, err
-			}
-			return graph.ExtractSubgraph(view, entityID, opts), nil
-		}
-		if current != nil {
-			return graph.ExtractSubgraph(current, entityID, opts), nil
-		}
-		return nil, graph.ErrStoreUnavailable
-	}
-	if store != nil {
-		return store.ExtractSubgraph(ctx, entityID, opts)
-	}
 	if current != nil {
-		return graph.ExtractSubgraph(current, entityID, opts), nil
+		return current, nil
 	}
-	return nil, graph.ErrStoreUnavailable
+	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
+	if provider, ok := store.(graphViewProvider); ok {
+		view, err := provider.GraphView(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if view != nil {
+			return view, nil
+		}
+	}
+	return snapshotGraphView(ctx, store)
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {
