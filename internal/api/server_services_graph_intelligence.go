@@ -25,6 +25,10 @@ type serverGraphIntelligenceService struct {
 	deps *serverDependencies
 }
 
+type graphViewProvider interface {
+	GraphView(context.Context) (*graph.Graph, error)
+}
+
 func newGraphIntelligenceService(deps *serverDependencies) graphIntelligenceService {
 	return serverGraphIntelligenceService{deps: deps}
 }
@@ -47,19 +51,16 @@ func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, 
 		return current, nil
 	}
 	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
-	if store == nil {
-		return nil, graph.ErrStoreUnavailable
-	}
-	opts := graph.ExtractSubgraphOptions{MaxDepth: 3}
-	if !validAt.IsZero() || !recordedAt.IsZero() {
-		if temporalStore, ok := store.(interface {
-			ExtractSubgraphBitemporal(context.Context, string, graph.ExtractSubgraphOptions, time.Time, time.Time) (*graph.Graph, error)
-		}); ok {
-			return temporalStore.ExtractSubgraphBitemporal(ctx, entityID, opts, validAt, recordedAt)
+	if provider, ok := store.(graphViewProvider); ok {
+		view, err := provider.GraphView(ctx)
+		if err != nil {
+			return nil, err
 		}
-		return snapshotGraphView(ctx, store)
+		if view != nil {
+			return view, nil
+		}
 	}
-	return store.ExtractSubgraph(ctx, entityID, opts)
+	return snapshotGraphView(ctx, store)
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {
