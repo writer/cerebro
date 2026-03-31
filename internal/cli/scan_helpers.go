@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func sevRank(sev string) int {
@@ -565,6 +567,49 @@ func filterCDCEvents(events []snowflake.CDCEvent) ([]string, time.Time) {
 	}
 
 	return dedupeStrings(ids), maxTime
+}
+
+func loadWarehouseCDCEvents(ctx context.Context, application *app.App, table string, since time.Time, limit int) ([]snowflake.CDCEvent, error) {
+	if application == nil || application.Warehouse == nil {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 1000
+	}
+
+	query := `SELECT resource_id, change_type, event_time FROM cdc_events`
+	var (
+		conditions []string
+		args       []any
+	)
+	if table = strings.TrimSpace(table); table != "" {
+		conditions = append(conditions, "table_name = "+warehouse.Placeholder(application.Warehouse, len(args)+1))
+		args = append(args, table)
+	}
+	if !since.IsZero() {
+		conditions = append(conditions, "event_time > "+warehouse.Placeholder(application.Warehouse, len(args)+1))
+		args = append(args, since)
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	query += " ORDER BY event_time ASC LIMIT " + warehouse.Placeholder(application.Warehouse, len(args)+1)
+	args = append(args, limit)
+
+	result, err := application.Warehouse.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	events := make([]snowflake.CDCEvent, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		events = append(events, snowflake.CDCEvent{
+			TableName:  table,
+			ResourceID: strings.TrimSpace(toString(row["resource_id"])),
+			ChangeType: strings.TrimSpace(toString(row["change_type"])),
+			EventTime:  getTime(row, "event_time"),
+		})
+	}
+	return events, nil
 }
 
 func dedupeStrings(values []string) []string {

@@ -1,13 +1,18 @@
 package cli
 
 import (
+	"context"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func TestResourceToTables_KnownMappings(t *testing.T) {
@@ -408,6 +413,62 @@ func TestFilterCDCEvents_Empty(t *testing.T) {
 	}
 	if !maxTime.IsZero() {
 		t.Errorf("maxTime should be zero")
+	}
+}
+
+func TestScanOneTableAdvancesWatermarkForDeleteOnlyCDCWindow(t *testing.T) {
+	deleteTime := time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC)
+	wm := scanner.NewWatermarkStore(nil)
+	wm.SetWatermark("aws_s3_buckets", deleteTime.Add(-time.Hour), "bucket-old", 1)
+
+	store := &warehouse.MemoryWarehouse{
+		DialectValue: warehouse.SQLDialectSQLite,
+		QueryFunc: func(_ context.Context, query string, args ...any) (*snowflake.QueryResult, error) {
+			if !strings.Contains(strings.ToLower(query), "cdc_events") {
+				t.Fatalf("expected CDC query, got %q", query)
+			}
+			return &snowflake.QueryResult{
+				Rows: []map[string]any{
+					{
+						"resource_id": "bucket-deleted",
+						"change_type": "deleted",
+						"event_time":  deleteTime.Format(time.RFC3339Nano),
+					},
+				},
+				Count: 1,
+			}, nil
+		},
+		GetAssetsFunc: func(context.Context, string, snowflake.AssetFilter) ([]map[string]interface{}, error) {
+			t.Fatal("expected delete-only CDC path to avoid asset fetch")
+			return nil, nil
+		},
+		DescribeColumnsFunc: func(context.Context, string) ([]string, error) {
+			return []string{"_cq_id", "_cq_sync_time"}, nil
+		},
+	}
+
+	application := &app.App{
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse:      store,
+		Policy:         policy.NewEngine(),
+		Scanner:        scanner.NewScanner(policy.NewEngine(), scanner.ScanConfig{Workers: 1, BatchSize: 1}, slog.New(slog.NewTextHandler(io.Discard, nil))),
+		ScanWatermarks: wm,
+	}
+
+	scanned, violations, findings, _ := scanOneTable(context.Background(), application, "aws_s3_buckets", false, 100, false, false, app.ScanTuning{})
+	if scanned != 0 || violations != 0 || len(findings) != 0 {
+		t.Fatalf("expected no scanned assets or findings, got scanned=%d violations=%d findings=%d", scanned, violations, len(findings))
+	}
+
+	got := wm.GetWatermark("aws_s3_buckets")
+	if got == nil {
+		t.Fatal("expected watermark to remain set")
+	}
+	if !got.LastScanTime.Equal(deleteTime) {
+		t.Fatalf("expected watermark at %v, got %v", deleteTime, got.LastScanTime)
+	}
+	if got.LastScanID != "" {
+		t.Fatalf("expected delete-only CDC watermark cursor id to be empty, got %q", got.LastScanID)
 	}
 }
 

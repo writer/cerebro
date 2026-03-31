@@ -969,10 +969,28 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 	}
 
 	filter := snowflake.AssetFilter{Limit: batchSize, Columns: columns}
+	var cdcCursor time.Time
 	if !full && application.ScanWatermarks != nil {
 		if wm := application.ScanWatermarks.GetWatermark(table); wm != nil {
 			filter.Since = wm.LastScanTime
 			filter.SinceID = wm.LastScanID
+
+			cdcEvents, attempts, err := scanner.WithRetryValue(tableCtx, tuning.RetryOptions, func() ([]snowflake.CDCEvent, error) {
+				return loadWarehouseCDCEvents(tableCtx, application, table, wm.LastScanTime, batchSize)
+			})
+			profile.RetryAttempts += retryCount(attempts)
+			if err != nil {
+				profile.FetchErrors++
+				Warning("Failed to query CDC events for %s, falling back to sync_time: %v", table, err)
+			} else if len(cdcEvents) > 0 && len(cdcEvents) < batchSize {
+				cdcIDs, maxCDCEventTime := filterCDCEvents(cdcEvents)
+				cdcCursor = maxCDCEventTime
+				if len(cdcIDs) == 0 && !cdcCursor.IsZero() {
+					application.ScanWatermarks.SetWatermark(table, cdcCursor, "", 0)
+					fmt.Printf("  No assets to scan for CDC changes\n")
+					return 0, 0, nil, profile
+				}
+			}
 		}
 	}
 
@@ -1071,6 +1089,10 @@ func scanOneTable(ctx context.Context, application *app.App, table string, full 
 	}
 
 	if application.ScanWatermarks != nil && scanned > 0 {
+		if !cdcCursor.IsZero() && scanner.IsCursorAfter(cdcCursor, "", cursorTime, cursorID) {
+			cursorTime = cdcCursor
+			cursorID = ""
+		}
 		if cursorTime.IsZero() {
 			cursorTime = time.Now().UTC()
 		}
