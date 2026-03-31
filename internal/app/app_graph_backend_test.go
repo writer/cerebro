@@ -82,6 +82,34 @@ func TestInitConfiguredSecurityGraphStoreUsesResolvedProvider(t *testing.T) {
 	}
 }
 
+func TestInitConfiguredSecurityGraphStoreKeepsEmptyStoreUnready(t *testing.T) {
+	t.Parallel()
+
+	provider := &fakeGraphStoreBackendProvider{
+		backend: graph.StoreBackendNeptune,
+		handle: graphStoreBackendHandle{
+			Store: graph.New(),
+		},
+	}
+
+	app := &App{
+		Config: &Config{GraphStoreBackend: string(graph.StoreBackendNeptune)},
+		graphStoreBackendProviderFactory: func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
+			if backend != graph.StoreBackendNeptune {
+				t.Fatalf("provider factory backend = %q, want %q", backend, graph.StoreBackendNeptune)
+			}
+			return provider, nil
+		},
+	}
+
+	if err := app.initConfiguredSecurityGraphStore(context.Background()); err != nil {
+		t.Fatalf("initConfiguredSecurityGraphStore() error = %v", err)
+	}
+	if app.configuredSecurityGraphReady {
+		t.Fatal("expected empty configured graph store to remain unready")
+	}
+}
+
 func TestInitConfiguredSecurityGraphStoreSkipsNeptuneWhenEndpointMissingInTests(t *testing.T) {
 	t.Parallel()
 

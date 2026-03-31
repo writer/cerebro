@@ -137,3 +137,67 @@ func TestPostgresStoreResolveSyncPersistsStatus(t *testing.T) {
 		t.Fatalf("Status = %q, want RESOLVED", got)
 	}
 }
+
+func TestPostgresStoreImportRecordsDoesNotOverwriteResolvedFindings(t *testing.T) {
+	store, db := newTestPostgresFindingsStore(t)
+	record := &snowflake.FindingRecord{
+		ID:           "finding-3",
+		PolicyID:     "policy-3",
+		PolicyName:   "Public bucket",
+		Severity:     "high",
+		Status:       "OPEN",
+		ResourceID:   "bucket-3",
+		ResourceType: "s3_bucket",
+		Description:  "bucket is public",
+		FirstSeen:    time.Now().UTC().Add(-2 * time.Hour),
+		LastSeen:     time.Now().UTC().Add(-time.Hour),
+	}
+
+	if err := store.ImportRecords(context.Background(), []*snowflake.FindingRecord{record}); err != nil {
+		t.Fatalf("initial ImportRecords() error = %v", err)
+	}
+	if !store.Resolve(record.ID) {
+		t.Fatalf("Resolve(%q) = false, want true", record.ID)
+	}
+	if err := store.Sync(context.Background()); err != nil {
+		t.Fatalf("resolve Sync() error = %v", err)
+	}
+
+	reloaded := &PostgresStore{
+		db:            db,
+		cache:         make(map[string]*Finding),
+		semanticIndex: make(map[string]string),
+		dirty:         make(map[string]bool),
+		semanticDedup: DefaultSemanticDedupEnabled,
+		rewriteSQL:    postgresSQLiteRewrite,
+	}
+	if err := reloaded.Load(context.Background()); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if err := reloaded.ImportRecords(context.Background(), []*snowflake.FindingRecord{record}); err != nil {
+		t.Fatalf("repeat ImportRecords() error = %v", err)
+	}
+
+	final := &PostgresStore{
+		db:            db,
+		cache:         make(map[string]*Finding),
+		semanticIndex: make(map[string]string),
+		dirty:         make(map[string]bool),
+		semanticDedup: DefaultSemanticDedupEnabled,
+		rewriteSQL:    postgresSQLiteRewrite,
+	}
+	if err := final.Load(context.Background()); err != nil {
+		t.Fatalf("final Load() error = %v", err)
+	}
+
+	finding, ok := final.Get(record.ID)
+	if !ok {
+		t.Fatalf("expected finding %q to remain loadable", record.ID)
+	}
+	if got := normalizeStatus(finding.Status); got != "RESOLVED" {
+		t.Fatalf("Status = %q, want RESOLVED after repeat import", got)
+	}
+	if finding.ResolvedAt == nil {
+		t.Fatal("expected ResolvedAt to be preserved after repeat import")
+	}
+}

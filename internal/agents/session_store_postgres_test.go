@@ -16,7 +16,7 @@ func sessionStoreSQLiteRewrite(query string) string {
 	return sessionStoreDollarPlaceholderRe.ReplaceAllString(query, "?")
 }
 
-func newTestPostgresSessionStore(t *testing.T) *PostgresSessionStore {
+func newTestPostgresSessionStoreWithDB(t *testing.T) (*PostgresSessionStore, *sql.DB) {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -31,6 +31,12 @@ func newTestPostgresSessionStore(t *testing.T) *PostgresSessionStore {
 		t.Fatalf("EnsureSchema() error = %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	return store, db
+}
+
+func newTestPostgresSessionStore(t *testing.T) *PostgresSessionStore {
+	t.Helper()
+	store, _ := newTestPostgresSessionStoreWithDB(t)
 	return store
 }
 
@@ -105,5 +111,52 @@ func TestPostgresSessionStoreSaveUpdatesExistingRow(t *testing.T) {
 	}
 	if len(got.Messages) != 1 || got.Messages[0].Content != "done" {
 		t.Fatalf("unexpected updated messages: %#v", got.Messages)
+	}
+}
+
+func TestPostgresSessionStoreImportMissingDoesNotOverwriteExistingUpdates(t *testing.T) {
+	store, db := newTestPostgresSessionStoreWithDB(t)
+	session := &Session{
+		ID:        "session-3",
+		AgentID:   "agent-1",
+		UserID:    "user-1",
+		Status:    "active",
+		Messages:  []Message{{Role: "user", Content: "investigate bucket"}},
+		CreatedAt: time.Now().UTC().Add(-time.Hour).Truncate(time.Second),
+		UpdatedAt: time.Now().UTC().Add(-30 * time.Minute).Truncate(time.Second),
+	}
+
+	if err := store.ImportMissing(context.Background(), []*Session{session}); err != nil {
+		t.Fatalf("initial ImportMissing() error = %v", err)
+	}
+
+	updated := *session
+	updated.Status = "completed"
+	updated.Messages = []Message{{Role: "assistant", Content: "done"}}
+	updated.UpdatedAt = session.UpdatedAt.Add(2 * time.Minute)
+	if err := store.Save(context.Background(), &updated); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	reloaded := &PostgresSessionStore{
+		db:         db,
+		rewriteSQL: sessionStoreSQLiteRewrite,
+	}
+	if err := reloaded.ImportMissing(context.Background(), []*Session{session}); err != nil {
+		t.Fatalf("repeat ImportMissing() error = %v", err)
+	}
+
+	got, err := reloaded.Get(context.Background(), session.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected persisted session")
+	}
+	if got.Status != "completed" {
+		t.Fatalf("Status = %q, want completed after repeat import", got.Status)
+	}
+	if len(got.Messages) != 1 || got.Messages[0].Content != "done" {
+		t.Fatalf("unexpected updated messages after repeat import: %#v", got.Messages)
 	}
 }

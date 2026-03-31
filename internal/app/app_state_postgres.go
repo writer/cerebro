@@ -126,10 +126,8 @@ func (a *App) migrateAgentSessions(ctx context.Context) error {
 		return fmt.Errorf("list snowflake agent sessions: %w", err)
 	}
 	destination := agents.NewPostgresSessionStore(a.appStateDB)
-	for _, session := range sessions {
-		if err := destination.Save(ctx, session); err != nil {
-			return fmt.Errorf("persist postgres agent session %s: %w", session.ID, err)
-		}
+	if err := destination.ImportMissing(ctx, sessions); err != nil {
+		return fmt.Errorf("persist postgres agent sessions: %w", err)
 	}
 	return nil
 }

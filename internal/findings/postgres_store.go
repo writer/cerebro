@@ -172,51 +172,38 @@ func (s *PostgresStore) ImportRecords(ctx context.Context, records []*snowflake.
 	if len(records) == 0 {
 		return nil
 	}
+	if err := s.EnsureSchema(ctx); err != nil {
+		return err
+	}
 
-	s.mu.Lock()
+	insertedAny := false
 	for _, record := range records {
-		if record == nil || strings.TrimSpace(record.ID) == "" {
+		finding := findingFromImportedRecord(record)
+		if finding == nil {
 			continue
 		}
-		oldKey := ""
-		if existing, ok := s.cache[record.ID]; ok {
-			oldKey = existing.SemanticKey
+		inserted, err := s.insertImportedFinding(ctx, finding)
+		if err != nil {
+			return err
 		}
-		finding := &Finding{
-			ID:           record.ID,
-			PolicyID:     record.PolicyID,
-			PolicyName:   record.PolicyName,
-			Severity:     record.Severity,
-			Status:       normalizeStatus(record.Status),
-			ResourceID:   record.ResourceID,
-			ResourceType: record.ResourceType,
-			Resource:     record.ResourceData,
-			Description:  record.Description,
-			Remediation:  record.Remediation,
-			FirstSeen:    record.FirstSeen.UTC(),
-			LastSeen:     record.LastSeen.UTC(),
+		if !inserted {
+			continue
 		}
-		if record.ResolvedAt != nil {
-			ts := record.ResolvedAt.UTC()
-			finding.ResolvedAt = &ts
-		}
-		if len(record.Metadata) > 0 {
-			applyFindingMetadata(finding, record.Metadata)
-		}
-		if len(record.ResourceData) > 0 {
-			resourceJSON, err := json.Marshal(record.ResourceData)
-			if err == nil {
-				finding.resourceJSONRaw = cloneBytes(resourceJSON)
-			}
-		}
-		EnrichFinding(finding)
-		s.cache[finding.ID] = finding
-		s.syncSemanticIndexLocked(finding, oldKey)
-		s.dirty[finding.ID] = true
-	}
-	s.mu.Unlock()
+		insertedAny = true
 
-	return s.Sync(ctx)
+		s.mu.Lock()
+		s.ensureCacheStateLocked()
+		s.cache[finding.ID] = finding
+		s.syncSemanticIndexLocked(finding, "")
+		s.mu.Unlock()
+	}
+
+	if insertedAny {
+		s.mu.Lock()
+		s.syncedAt = time.Now().UTC()
+		s.mu.Unlock()
+	}
+	return nil
 }
 
 func (s *PostgresStore) Upsert(ctx context.Context, pf policy.Finding) *Finding {
@@ -617,6 +604,104 @@ func placeholderTuple(start, count int) string {
 		parts[idx] = fmt.Sprintf("$%d", start+idx)
 	}
 	return "(" + strings.Join(parts, ", ") + ")"
+}
+
+func (s *PostgresStore) ensureCacheStateLocked() {
+	if s.cache == nil {
+		s.cache = make(map[string]*Finding)
+	}
+	if s.semanticIndex == nil {
+		s.semanticIndex = make(map[string]string)
+	}
+	if s.dirty == nil {
+		s.dirty = make(map[string]bool)
+	}
+}
+
+func findingFromImportedRecord(record *snowflake.FindingRecord) *Finding {
+	if record == nil || strings.TrimSpace(record.ID) == "" {
+		return nil
+	}
+	finding := &Finding{
+		ID:           record.ID,
+		PolicyID:     record.PolicyID,
+		PolicyName:   record.PolicyName,
+		Severity:     record.Severity,
+		Status:       normalizeStatus(record.Status),
+		ResourceID:   record.ResourceID,
+		ResourceType: record.ResourceType,
+		Resource:     record.ResourceData,
+		Description:  record.Description,
+		Remediation:  record.Remediation,
+		FirstSeen:    record.FirstSeen.UTC(),
+		LastSeen:     record.LastSeen.UTC(),
+	}
+	if record.ResolvedAt != nil {
+		ts := record.ResolvedAt.UTC()
+		finding.ResolvedAt = &ts
+	}
+	if len(record.Metadata) > 0 {
+		applyFindingMetadata(finding, record.Metadata)
+	}
+	if len(record.ResourceData) > 0 {
+		resourceJSON, err := json.Marshal(record.ResourceData)
+		if err == nil {
+			finding.resourceJSONRaw = cloneBytes(resourceJSON)
+		}
+	}
+	EnrichFinding(finding)
+	return finding
+}
+
+func (s *PostgresStore) insertImportedFinding(ctx context.Context, finding *Finding) (bool, error) {
+	resourceJSON, err := resourceJSONForSync(finding)
+	if err != nil {
+		return false, fmt.Errorf("marshal resource data for finding %s: %w", finding.ID, err)
+	}
+	metadataJSON, err := buildFindingMetadata(finding)
+	if err != nil {
+		return false, err
+	}
+	if len(metadataJSON) == 0 {
+		metadataJSON = []byte("{}")
+	}
+
+	var resolvedAt any
+	if finding.ResolvedAt != nil {
+		resolvedAt = finding.ResolvedAt.UTC()
+	}
+
+	result, err := s.db.ExecContext(ctx, s.q(`
+INSERT INTO `+postgresFindingsTable+` (
+	id, policy_id, policy_name, severity, status,
+	resource_id, resource_type, resource_data, description,
+	remediation, metadata, first_seen, last_seen, resolved_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+ON CONFLICT (id) DO NOTHING
+`),
+		finding.ID,
+		finding.PolicyID,
+		finding.PolicyName,
+		finding.Severity,
+		normalizeStatus(finding.Status),
+		finding.ResourceID,
+		finding.ResourceType,
+		string(resourceJSON),
+		finding.Description,
+		finding.Remediation,
+		string(metadataJSON),
+		finding.FirstSeen.UTC(),
+		finding.LastSeen.UTC(),
+		resolvedAt,
+	)
+	if err != nil {
+		return false, fmt.Errorf("import finding %s: %w", finding.ID, err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read imported finding rows affected for %s: %w", finding.ID, err)
+	}
+	return rowsAffected > 0, nil
 }
 
 var _ FindingStore = (*PostgresStore)(nil)
