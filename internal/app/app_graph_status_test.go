@@ -40,6 +40,22 @@ func TestSetSecurityGraphPublishesGraphCountMetrics(t *testing.T) {
 	}
 }
 
+func TestCurrentSecurityGraphUsesConfiguredStoreWhenLiveGraphEmpty(t *testing.T) {
+	configured := graph.New()
+	configured.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	application := &App{SecurityGraph: graph.New()}
+	setConfiguredSnapshotGraphFromGraph(t, application, configured)
+
+	current := application.CurrentSecurityGraph()
+	if current == nil {
+		t.Fatal("expected configured graph")
+	}
+	if _, ok := current.GetNode("service:payments"); !ok {
+		t.Fatal("expected configured graph node")
+	}
+}
+
 func gaugeValueFromMetric(t *testing.T, gauge interface{ Write(*dto.Metric) error }) float64 {
 	t.Helper()
 	var metric dto.Metric

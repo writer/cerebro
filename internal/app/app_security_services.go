@@ -527,8 +527,8 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
 	securityGraph := a.SecurityGraphBuilder.Graph()
 	a.configureGraphRuntimeBehavior(securityGraph)
-	a.publishSecurityGraphRuntimeView(securityGraph)
 	if !a.graphWriterLeaseAllowsWrites() {
+		a.publishSecurityGraphRuntimeView(nil)
 		a.Logger.Info("security graph waiting for graph writer lease",
 			"lease", a.Config.GraphWriterLeaseName,
 			"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
@@ -536,6 +536,7 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		close(a.graphReady)
 		return
 	}
+	a.publishSecurityGraphRuntimeView(securityGraph)
 
 	graphCtx, cancel := context.WithCancel(backgroundWorkContext(ctx))
 	a.graphCtx = graphCtx

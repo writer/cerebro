@@ -55,10 +55,8 @@ func (a *App) setGraphBuildState(state GraphBuildState, builtAt time.Time, err e
 }
 
 func (a *App) CurrentSecurityGraph() *graph.Graph {
-	if current := a.currentLiveSecurityGraph(); current != nil {
-		if current.NodeCount() > 0 || current.EdgeCount() > 0 {
-			return current
-		}
+	if current := a.currentLiveSecurityGraph(); graphHasReadableData(current) {
+		return current
 	}
 	if a == nil {
 		return nil

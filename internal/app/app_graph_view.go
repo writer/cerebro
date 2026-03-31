@@ -9,11 +9,15 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 )
 
+func graphHasReadableData(g *graph.Graph) bool {
+	return g != nil && (g.NodeCount() > 0 || g.EdgeCount() > 0)
+}
+
 func (a *App) currentOrStoredSecurityGraphView() (*graph.Graph, error) {
 	if a == nil {
 		return nil, nil
 	}
-	if current := a.currentLiveSecurityGraph(); current != nil && (current.NodeCount() > 0 || current.EdgeCount() > 0) {
+	if current := a.currentLiveSecurityGraph(); graphHasReadableData(current) {
 		return current, nil
 	}
 	if view, err := a.currentConfiguredSecurityGraphView(context.Background()); err != nil {
@@ -96,18 +100,27 @@ func (a *App) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph {
 	}
 	if current := a.currentLiveSecurityGraph(); current != nil {
 		if a.graphReady == nil {
-			if current.NodeCount() == 0 {
+			resolved := a.CurrentSecurityGraph()
+			if !graphHasReadableData(resolved) {
 				return nil
 			}
-			return current
+			return resolved
 		}
 		if !a.WaitForGraph(ctx) {
-			if current.NodeCount() == 0 {
-				return nil
+			if !graphHasReadableData(current) {
+				resolved := a.CurrentSecurityGraph()
+				if !graphHasReadableData(resolved) {
+					return nil
+				}
+				return resolved
 			}
 			return current
 		}
-		return a.currentLiveSecurityGraph()
+		resolved := a.CurrentSecurityGraph()
+		if !graphHasReadableData(resolved) {
+			return nil
+		}
+		return resolved
 	}
 	securityGraph, err := a.currentOrStoredSecurityGraphView()
 	if err != nil {
@@ -116,7 +129,7 @@ func (a *App) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph {
 		}
 		return nil
 	}
-	if securityGraph == nil || securityGraph.NodeCount() == 0 {
+	if !graphHasReadableData(securityGraph) {
 		return nil
 	}
 	return securityGraph

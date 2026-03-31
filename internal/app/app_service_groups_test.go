@@ -38,6 +38,7 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 	schedulerSvc := &scheduler.Scheduler{}
 	rbac := auth.NewRBAC()
 	securityGraph := graph.New()
+	securityGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
 	findingsRepo := &snowflake.FindingRepository{}
 	riskEngineStateRepo := &snowflake.RiskEngineStateRepository{}
 	snowflakeStore := &findings.SnowflakeStore{}

@@ -160,6 +160,27 @@ func TestWaitForReadableSecurityGraphUsesConfiguredStoreWhenLiveGraphUnavailable
 	}
 }
 
+func TestWaitForReadableSecurityGraphUsesConfiguredStoreAfterWaitWhenLiveGraphEmpty(t *testing.T) {
+	configured := graph.New()
+	configured.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	a := &App{
+		SecurityGraph: graph.New(),
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		graphReady:    make(chan struct{}),
+	}
+	setConfiguredSnapshotGraphFromGraph(t, a, configured)
+	close(a.graphReady)
+
+	resolved := a.WaitForReadableSecurityGraph(context.Background())
+	if resolved == nil {
+		t.Fatal("expected configured graph after wait")
+	}
+	if _, ok := resolved.GetNode("service:payments"); !ok {
+		t.Fatal("expected configured graph node in readable graph after wait")
+	}
+}
+
 func TestWaitForReadableSecurityGraphUsesReadyLiveGraphWithoutWaitChannel(t *testing.T) {
 	live := graph.New()
 	live.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})

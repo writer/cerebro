@@ -54,6 +54,31 @@ func TestEvaluateGraphOntologySLOStatus(t *testing.T) {
 	}
 }
 
+func TestInitSecurityGraphDoesNotPublishEmptyLiveGraphWithoutWriterLease(t *testing.T) {
+	application := &App{
+		Config: &Config{
+			GraphWriterLeaseEnabled: true,
+		},
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse: &warehouse.MemoryWarehouse{},
+	}
+
+	application.initSecurityGraph(context.Background())
+
+	if application.SecurityGraph != nil {
+		t.Fatalf("expected no live graph on lease follower, got %p", application.SecurityGraph)
+	}
+	if application.SecurityGraphBuilder == nil {
+		t.Fatal("expected security graph builder to be initialized")
+	}
+	if !application.graphReadyClosed() {
+		t.Fatal("expected graph readiness channel to be closed for lease follower")
+	}
+	if current := application.CurrentSecurityGraph(); current != nil {
+		t.Fatalf("expected no readable live graph without configured store, got %p", current)
+	}
+}
+
 func TestEvaluateGraphOntologySLOStatus_BurnRateDegraded(t *testing.T) {
 	thresholds := graphOntologySLOThresholds{
 		FallbackWarn:        12,
