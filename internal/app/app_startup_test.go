@@ -211,6 +211,33 @@ func TestWaitForReadableSecurityGraphReturnsCurrentGraphWhenWaitTimesOut(t *test
 	}
 }
 
+func TestWaitForReadableSecurityGraphUsesConfiguredStoreAfterReadySignal(t *testing.T) {
+	live := graph.New()
+	configured := graph.New()
+	configured.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+
+	graphReady := make(chan struct{})
+	close(graphReady)
+
+	a := &App{
+		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		SecurityGraph: live,
+		graphReady:    graphReady,
+	}
+	setConfiguredSnapshotGraphFromGraph(t, a, configured)
+
+	resolved := a.WaitForReadableSecurityGraph(context.Background())
+	if resolved == nil {
+		t.Fatal("expected configured graph after ready signal")
+	}
+	if resolved == live {
+		t.Fatal("expected configured graph instead of empty live graph")
+	}
+	if _, ok := resolved.GetNode("service:payments"); !ok {
+		t.Fatal("expected configured graph node in readable graph")
+	}
+}
+
 func TestClose_CancelsGraphBuilderBeforeWaiting(t *testing.T) {
 	graphReady := make(chan struct{})
 	cancelCalled := make(chan struct{})

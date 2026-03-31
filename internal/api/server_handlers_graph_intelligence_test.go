@@ -959,6 +959,7 @@ func TestPlatformIntelligenceEvaluationTemporalAnalysisReportDefinition(t *testi
 
 func TestGraphIntelligencePlaybookEffectivenessEndpoint(t *testing.T) {
 	s := newTestServer(t)
+	startedAt := time.Now().UTC().Add(-90 * time.Minute).Truncate(time.Second)
 	addPlaybookEffectivenessEndpointFixture(t, s.app.SecurityGraph, playbookEffectivenessEndpointFixture{
 		RunID:        "run-a1",
 		PlaybookID:   "pb-remediate",
@@ -966,15 +967,15 @@ func TestGraphIntelligencePlaybookEffectivenessEndpoint(t *testing.T) {
 		TenantID:     "tenant-acme",
 		TargetID:     "service:payments",
 		TargetKind:   graph.NodeKindService,
-		StartedAt:    time.Date(2026, 3, 23, 15, 0, 0, 0, time.UTC),
+		StartedAt:    startedAt,
 		Stages: []playbookEffectivenessEndpointStage{
-			{ID: "approve", Name: "Approve Fix", Order: 1, Status: "completed", ApprovalRequired: true, ApprovalStatus: "approved", ObservedAt: time.Date(2026, 3, 23, 15, 10, 0, 0, time.UTC)},
+			{ID: "approve", Name: "Approve Fix", Order: 1, Status: "completed", ApprovalRequired: true, ApprovalStatus: "approved", ObservedAt: startedAt.Add(10 * time.Minute)},
 		},
 		Outcome: &playbookEffectivenessEndpointOutcome{
 			Verdict:       "positive",
 			Status:        "completed",
 			RollbackState: "stable",
-			ObservedAt:    time.Date(2026, 3, 23, 15, 40, 0, 0, time.UTC),
+			ObservedAt:    startedAt.Add(40 * time.Minute),
 		},
 	})
 
@@ -1032,7 +1033,7 @@ func TestPlatformIntelligencePlaybookEffectivenessReportDefinition(t *testing.T)
 
 func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 	s := newTestServer(t)
-	base := time.Now().UTC().Add(-24 * time.Hour)
+	base := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
 	addEvaluationTemporalAnalysisEndpointFixture(t, s.app.SecurityGraph, evaluationTemporalAnalysisEndpointFixture{
 		RunID:        "run-1",
 		Conversation: "conv-1",

@@ -206,7 +206,7 @@ func (a *App) currentOrStoredScheduledScanGraphView(ctx context.Context, tuning 
 		if !graphReady {
 			return nil
 		}
-		return a.currentLiveSecurityGraph()
+		return a.CurrentSecurityGraph()
 	}
 
 	securityGraph, err := a.currentOrStoredSecurityGraphView()
