@@ -178,3 +178,32 @@ func TestBaseProviderSyncTable_UsesConfiguredWarehouse(t *testing.T) {
 		t.Fatalf("expected postgres upsert query, got %#v", mem.Execs)
 	}
 }
+
+func TestDeleteProviderRowsByIDUsesDialectAwarePlaceholders(t *testing.T) {
+	tests := []struct {
+		name      string
+		dialect   warehouse.SQLDialect
+		wantQuery string
+	}{
+		{name: "postgres", dialect: warehouse.SQLDialectPostgres, wantQuery: "DELETE FROM okta_users WHERE _CQ_ID IN ($1,$2)"},
+		{name: "sqlite", dialect: warehouse.SQLDialectSQLite, wantQuery: "DELETE FROM okta_users WHERE _CQ_ID IN (?,?)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &warehouse.MemoryWarehouse{DialectValue: tt.dialect}
+			if err := deleteProviderRowsByID(context.Background(), store, "okta_users", map[string]struct{}{
+				"user-1": {},
+				"user-2": {},
+			}); err != nil {
+				t.Fatalf("deleteProviderRowsByID() error = %v", err)
+			}
+			if len(store.Execs) != 1 {
+				t.Fatalf("expected one delete exec, got %#v", store.Execs)
+			}
+			if store.Execs[0].Statement != tt.wantQuery {
+				t.Fatalf("delete query = %q, want %q", store.Execs[0].Statement, tt.wantQuery)
+			}
+		})
+	}
+}

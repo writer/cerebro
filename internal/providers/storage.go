@@ -164,7 +164,7 @@ func deleteProviderRowsByID(ctx context.Context, store providerWarehouseClient, 
 		}
 
 		batch := keys[start:end]
-		placeholders := strings.TrimRight(strings.Repeat("?,", len(batch)), ",")
+		placeholders := strings.Join(warehouse.Placeholders(store, 1, len(batch)), ",")
 		args := make([]interface{}, 0, len(batch))
 		for _, id := range batch {
 			args = append(args, id)
