@@ -22,8 +22,8 @@ config:
   cerebro:enableKandjiApiToken: true
   cerebro:enableKandjiApiUrl: true
   cerebro:enableSocketApiToken: true
-  # Optional Socket provider overrides
-  # cerebro:socketOrg: "your-socket-org-slug"
+  cerebro:socketOrg: "writerinternal"
+  # Optional Socket provider override
   # cerebro:socketApiUrl: "https://api.socket.dev/v0"
   cerebro:enableInfisicalSyncRole: true
   cerebro:useExternalSecrets: true
