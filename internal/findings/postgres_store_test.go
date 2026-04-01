@@ -292,3 +292,85 @@ func TestPostgresStoreImportRecordsDoesNotOverwriteResolvedFindings(t *testing.T
 		t.Fatal("expected ResolvedAt to be preserved after repeat import")
 	}
 }
+
+func TestPostgresStoreResolveWithErrorRollsBackOnSyncFailure(t *testing.T) {
+	store, _ := newTestPostgresFindingsStore(t)
+	pf := policy.Finding{
+		ID:           "finding-resolve-rollback",
+		PolicyID:     "policy-resolve-rollback",
+		PolicyName:   "Resolve rollback",
+		Severity:     "medium",
+		ResourceID:   "bucket-resolve-rollback",
+		ResourceType: "s3_bucket",
+		Description:  "bucket is not encrypted",
+	}
+
+	if store.Upsert(context.Background(), pf) == nil {
+		t.Fatal("expected Upsert() to create a finding")
+	}
+	if err := store.Sync(context.Background()); err != nil {
+		t.Fatalf("initial Sync() error = %v", err)
+	}
+
+	store.db = nil
+	if err := store.ResolveWithError(pf.ID); err == nil {
+		t.Fatal("expected ResolveWithError() to fail when persistence is unavailable")
+	}
+
+	finding, ok := store.Get(pf.ID)
+	if !ok {
+		t.Fatalf("expected finding %q to remain in cache", pf.ID)
+	}
+	if got := normalizeStatus(finding.Status); got != "OPEN" {
+		t.Fatalf("Status = %q, want OPEN after rollback", got)
+	}
+	if finding.ResolvedAt != nil {
+		t.Fatal("expected ResolvedAt to be rolled back on sync failure")
+	}
+	if dirty := store.DirtyCount(); dirty != 0 {
+		t.Fatalf("DirtyCount() = %d, want 0 after rollback", dirty)
+	}
+}
+
+func TestPostgresStoreUpdateRollsBackOnSyncFailure(t *testing.T) {
+	store, _ := newTestPostgresFindingsStore(t)
+	pf := policy.Finding{
+		ID:           "finding-update-rollback",
+		PolicyID:     "policy-update-rollback",
+		PolicyName:   "Update rollback",
+		Severity:     "low",
+		ResourceID:   "bucket-update-rollback",
+		ResourceType: "s3_bucket",
+		Description:  "bucket needs triage",
+	}
+
+	if store.Upsert(context.Background(), pf) == nil {
+		t.Fatal("expected Upsert() to create a finding")
+	}
+	if err := store.Sync(context.Background()); err != nil {
+		t.Fatalf("initial Sync() error = %v", err)
+	}
+
+	store.db = nil
+	if err := store.Update(pf.ID, func(f *Finding) error {
+		f.Status = "IN_PROGRESS"
+		f.Resolution = "triaged"
+		return nil
+	}); err == nil {
+		t.Fatal("expected Update() to fail when persistence is unavailable")
+	}
+
+	finding, ok := store.Get(pf.ID)
+	if !ok {
+		t.Fatalf("expected finding %q to remain in cache", pf.ID)
+	}
+	if got := normalizeStatus(finding.Status); got != "OPEN" {
+		t.Fatalf("Status = %q, want OPEN after rollback", got)
+	}
+	if finding.Resolution != "" {
+		t.Fatalf("Resolution = %q, want empty after rollback", finding.Resolution)
+	}
+	if dirty := store.DirtyCount(); dirty != 0 {
+		t.Fatalf("DirtyCount() = %d, want 0 after rollback", dirty)
+	}
+}

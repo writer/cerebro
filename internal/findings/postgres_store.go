@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -265,8 +266,11 @@ func (s *PostgresStore) Update(id string, mutate func(*Finding) error) error {
 		s.mu.Unlock()
 		return ErrIssueNotFound
 	}
+	snapshot := cloneFinding(finding)
+	wasDirty := s.dirty[id]
 	oldKey := finding.SemanticKey
 	if err := mutate(finding); err != nil {
+		s.cache[id] = snapshot
 		s.mu.Unlock()
 		return err
 	}
@@ -276,8 +280,12 @@ func (s *PostgresStore) Update(id string, mutate func(*Finding) error) error {
 	s.syncSemanticIndexLocked(finding, oldKey)
 	EnrichFinding(finding)
 	s.dirty[id] = true
+	newKey := finding.SemanticKey
 	s.mu.Unlock()
-	s.syncMutation(context.Background())
+	if err := s.syncMutation(context.Background()); err != nil {
+		s.restoreMutation(id, snapshot, newKey, wasDirty)
+		return err
+	}
 	return nil
 }
 
@@ -354,12 +362,24 @@ func (s *PostgresStore) Count(filter FindingFilter) int {
 }
 
 func (s *PostgresStore) Resolve(id string) bool {
+	if err := s.ResolveWithError(id); err != nil {
+		if !errors.Is(err, ErrIssueNotFound) {
+			slog.Warn("findings: resolve failed", "finding_id", id, "error", err)
+		}
+		return false
+	}
+	return true
+}
+
+func (s *PostgresStore) ResolveWithError(id string) error {
 	s.mu.Lock()
 	finding, ok := s.cache[id]
 	if !ok {
 		s.mu.Unlock()
-		return false
+		return ErrIssueNotFound
 	}
+	snapshot := cloneFinding(finding)
+	wasDirty := s.dirty[id]
 	now := time.Now()
 	finding.Status = "RESOLVED"
 	finding.ResolvedAt = &now
@@ -367,27 +387,47 @@ func (s *PostgresStore) Resolve(id string) bool {
 	finding.StatusChangedAt = &now
 	finding.UpdatedAt = now
 	s.dirty[id] = true
+	newKey := finding.SemanticKey
 	s.mu.Unlock()
-	s.syncMutation(context.Background())
-	return true
+	if err := s.syncMutation(context.Background()); err != nil {
+		s.restoreMutation(id, snapshot, newKey, wasDirty)
+		return err
+	}
+	return nil
 }
 
 func (s *PostgresStore) Suppress(id string) bool {
+	if err := s.SuppressWithError(id); err != nil {
+		if !errors.Is(err, ErrIssueNotFound) {
+			slog.Warn("findings: suppress failed", "finding_id", id, "error", err)
+		}
+		return false
+	}
+	return true
+}
+
+func (s *PostgresStore) SuppressWithError(id string) error {
 	s.mu.Lock()
 	finding, ok := s.cache[id]
 	if !ok {
 		s.mu.Unlock()
-		return false
+		return ErrIssueNotFound
 	}
+	snapshot := cloneFinding(finding)
+	wasDirty := s.dirty[id]
 	now := time.Now()
 	finding.Status = "SUPPRESSED"
 	finding.SnoozedUntil = nil
 	finding.StatusChangedAt = &now
 	finding.UpdatedAt = now
 	s.dirty[id] = true
+	newKey := finding.SemanticKey
 	s.mu.Unlock()
-	s.syncMutation(context.Background())
-	return true
+	if err := s.syncMutation(context.Background()); err != nil {
+		s.restoreMutation(id, snapshot, newKey, wasDirty)
+		return err
+	}
+	return nil
 }
 
 func (s *PostgresStore) Stats() Stats {
@@ -544,16 +584,14 @@ func (s *PostgresStore) SyncedAt() time.Time {
 	return s.syncedAt
 }
 
-func (s *PostgresStore) syncMutation(ctx context.Context) {
+func (s *PostgresStore) syncMutation(ctx context.Context) error {
 	if s == nil || s.db == nil {
-		return
+		return fmt.Errorf("postgres findings store is not initialized")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := s.Sync(ctx); err != nil {
-		slog.Warn("findings: sync after mutation failed", "error", err)
-	}
+	return s.Sync(ctx)
 }
 
 func (s *PostgresStore) DirtyCount() int {
@@ -592,6 +630,46 @@ func (s *PostgresStore) syncSemanticIndexLocked(finding *Finding, oldKey string)
 	if strings.TrimSpace(finding.SemanticKey) != "" {
 		s.semanticIndex[finding.SemanticKey] = finding.ID
 	}
+}
+
+func (s *PostgresStore) restoreMutation(id string, snapshot *Finding, oldKey string, wasDirty bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if snapshot != nil {
+		s.cache[id] = snapshot
+		s.syncSemanticIndexLocked(snapshot, oldKey)
+	}
+	if wasDirty {
+		s.dirty[id] = true
+	} else {
+		delete(s.dirty, id)
+	}
+}
+
+func cloneFinding(src *Finding) *Finding {
+	if src == nil {
+		return nil
+	}
+	data, err := json.Marshal(src)
+	if err != nil {
+		clone := *src
+		if src.resourceJSONRaw != nil {
+			clone.resourceJSONRaw = append([]byte(nil), src.resourceJSONRaw...)
+		}
+		return &clone
+	}
+	var clone Finding
+	if err := json.Unmarshal(data, &clone); err != nil {
+		copy := *src
+		if src.resourceJSONRaw != nil {
+			copy.resourceJSONRaw = append([]byte(nil), src.resourceJSONRaw...)
+		}
+		return &copy
+	}
+	if src.resourceJSONRaw != nil {
+		clone.resourceJSONRaw = append([]byte(nil), src.resourceJSONRaw...)
+	}
+	return &clone
 }
 
 func (s *PostgresStore) indexSemanticFindingLocked(finding *Finding) {
