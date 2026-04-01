@@ -178,6 +178,7 @@ optional_secrets = [
     "LINEAR_API_KEY",
     "KANDJI_API_TOKEN",
     "KANDJI_API_URL",
+    "SOCKET_API_TOKEN",
 ]
 for key in optional_secrets:
     if config.get_bool(f"enable{key.replace('_', ' ').title().replace(' ', '')}"):
@@ -243,6 +244,10 @@ if config.get("jiraProject"):
     app_environment["JIRA_PROJECT"] = config.get("jiraProject")
 if config.get("linearTeamId"):
     app_environment["LINEAR_TEAM_ID"] = config.get("linearTeamId")
+if config.get("socketOrg"):
+    app_environment["SOCKET_ORG"] = config.get("socketOrg")
+if config.get("socketApiUrl"):
+    app_environment["SOCKET_API_URL"] = config.get("socketApiUrl")
 
 # GCP WIF (optional - enables AWS->GCP federated auth for GCP scans)
 if config.get("gcpWifAudience"):
