@@ -12,7 +12,7 @@ jobs:
   gosec-source-scan:
     name: gosec-source-scan shard ${{ matrix.shard_index }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -47,7 +47,24 @@ jobs:
           if [ "${#selected[@]}" -eq 0 ]; then
             exit 0
           fi
-          $(go env GOPATH)/bin/gosec -severity medium -confidence medium -exclude-generated -fmt=json -out "${report_path}" "${selected[@]}" || true
+          tmp_dir=$(mktemp -d)
+          idx=0
+          for pkg in "${selected[@]}"; do
+            echo "Scanning ${pkg}"
+            tmp_report="${tmp_dir}/report-${idx}.json"
+            $(go env GOPATH)/bin/gosec -severity medium -confidence medium -exclude-generated -fmt=json -out "${tmp_report}" "${pkg}" || true
+            idx=$((idx + 1))
+          done
+          python3 -c "
+          import json, glob, sys
+          merged = []
+          for path in sorted(glob.glob('${tmp_dir}/report-*.json')):
+              with open(path) as f:
+                  data = json.load(f)
+              merged.extend(data.get('Issues') or [])
+          with open(sys.argv[1], 'w') as f:
+              json.dump({'Issues': merged}, f)
+          " "${report_path}"
 
       - name: Fail on HIGH findings
         shell: bash
