@@ -138,6 +138,97 @@ func TestPostgresStoreResolveSyncPersistsStatus(t *testing.T) {
 	}
 }
 
+func TestPostgresStoreResolvePersistsWithoutExplicitSync(t *testing.T) {
+	store, db := newTestPostgresFindingsStore(t)
+	pf := policy.Finding{
+		ID:           "finding-resolve-immediate",
+		PolicyID:     "policy-resolve",
+		PolicyName:   "Resolve now",
+		Severity:     "medium",
+		ResourceID:   "bucket-resolve",
+		ResourceType: "s3_bucket",
+		Description:  "bucket is not encrypted",
+	}
+
+	if store.Upsert(context.Background(), pf) == nil {
+		t.Fatal("expected Upsert() to create a finding")
+	}
+	if err := store.Sync(context.Background()); err != nil {
+		t.Fatalf("initial Sync() error = %v", err)
+	}
+	if !store.Resolve(pf.ID) {
+		t.Fatalf("Resolve(%q) = false, want true", pf.ID)
+	}
+
+	reloaded := &PostgresStore{
+		db:            db,
+		cache:         make(map[string]*Finding),
+		semanticIndex: make(map[string]string),
+		dirty:         make(map[string]bool),
+		semanticDedup: DefaultSemanticDedupEnabled,
+		rewriteSQL:    postgresSQLiteRewrite,
+	}
+	if err := reloaded.Load(context.Background()); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	finding, ok := reloaded.Get(pf.ID)
+	if !ok {
+		t.Fatalf("expected finding %q to reload", pf.ID)
+	}
+	if got := normalizeStatus(finding.Status); got != "RESOLVED" {
+		t.Fatalf("Status = %q, want RESOLVED", got)
+	}
+}
+
+func TestPostgresStoreUpdatePersistsWithoutExplicitSync(t *testing.T) {
+	store, db := newTestPostgresFindingsStore(t)
+	pf := policy.Finding{
+		ID:           "finding-update-immediate",
+		PolicyID:     "policy-update",
+		PolicyName:   "Update now",
+		Severity:     "low",
+		ResourceID:   "bucket-update",
+		ResourceType: "s3_bucket",
+		Description:  "bucket needs triage",
+	}
+
+	if store.Upsert(context.Background(), pf) == nil {
+		t.Fatal("expected Upsert() to create a finding")
+	}
+	if err := store.Sync(context.Background()); err != nil {
+		t.Fatalf("initial Sync() error = %v", err)
+	}
+	if err := store.Update(pf.ID, func(f *Finding) error {
+		f.Status = "IN_PROGRESS"
+		f.Resolution = "triaged"
+		return nil
+	}); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	reloaded := &PostgresStore{
+		db:            db,
+		cache:         make(map[string]*Finding),
+		semanticIndex: make(map[string]string),
+		dirty:         make(map[string]bool),
+		semanticDedup: DefaultSemanticDedupEnabled,
+		rewriteSQL:    postgresSQLiteRewrite,
+	}
+	if err := reloaded.Load(context.Background()); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	finding, ok := reloaded.Get(pf.ID)
+	if !ok {
+		t.Fatalf("expected finding %q to reload", pf.ID)
+	}
+	if got := normalizeStatus(finding.Status); got != "IN_PROGRESS" {
+		t.Fatalf("Status = %q, want IN_PROGRESS", got)
+	}
+	if finding.Resolution != "triaged" {
+		t.Fatalf("Resolution = %q, want triaged", finding.Resolution)
+	}
+}
+
 func TestPostgresStoreImportRecordsDoesNotOverwriteResolvedFindings(t *testing.T) {
 	store, db := newTestPostgresFindingsStore(t)
 	record := &snowflake.FindingRecord{

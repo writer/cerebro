@@ -260,14 +260,14 @@ func (s *PostgresStore) Get(id string) (*Finding, bool) {
 
 func (s *PostgresStore) Update(id string, mutate func(*Finding) error) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	finding, ok := s.cache[id]
 	if !ok {
+		s.mu.Unlock()
 		return ErrIssueNotFound
 	}
 	oldKey := finding.SemanticKey
 	if err := mutate(finding); err != nil {
+		s.mu.Unlock()
 		return err
 	}
 	invalidateResourceJSONCache(finding)
@@ -276,6 +276,8 @@ func (s *PostgresStore) Update(id string, mutate func(*Finding) error) error {
 	s.syncSemanticIndexLocked(finding, oldKey)
 	EnrichFinding(finding)
 	s.dirty[id] = true
+	s.mu.Unlock()
+	s.syncMutation(context.Background())
 	return nil
 }
 
@@ -353,10 +355,9 @@ func (s *PostgresStore) Count(filter FindingFilter) int {
 
 func (s *PostgresStore) Resolve(id string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	finding, ok := s.cache[id]
 	if !ok {
+		s.mu.Unlock()
 		return false
 	}
 	now := time.Now()
@@ -366,15 +367,16 @@ func (s *PostgresStore) Resolve(id string) bool {
 	finding.StatusChangedAt = &now
 	finding.UpdatedAt = now
 	s.dirty[id] = true
+	s.mu.Unlock()
+	s.syncMutation(context.Background())
 	return true
 }
 
 func (s *PostgresStore) Suppress(id string) bool {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	finding, ok := s.cache[id]
 	if !ok {
+		s.mu.Unlock()
 		return false
 	}
 	now := time.Now()
@@ -383,6 +385,8 @@ func (s *PostgresStore) Suppress(id string) bool {
 	finding.StatusChangedAt = &now
 	finding.UpdatedAt = now
 	s.dirty[id] = true
+	s.mu.Unlock()
+	s.syncMutation(context.Background())
 	return true
 }
 
@@ -538,6 +542,16 @@ func (s *PostgresStore) SyncedAt() time.Time {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.syncedAt
+}
+
+func (s *PostgresStore) syncMutation(ctx context.Context) {
+	if s == nil || s.db == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	_ = s.Sync(ctx)
 }
 
 func (s *PostgresStore) DirtyCount() int {
