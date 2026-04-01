@@ -252,3 +252,39 @@ func TestSQLiteWarehouseGetAssetsAppliesCursorPagination(t *testing.T) {
 		t.Fatalf("expected paged asset bucket-c, got %#v", got)
 	}
 }
+
+func TestSQLiteWarehouseGetAssetByIDUsesCQIDAndReturnsNotFound(t *testing.T) {
+	store, err := NewSQLiteWarehouse(SQLiteWarehouseConfig{
+		Path: filepath.Join(t.TempDir(), "warehouse.db"),
+	})
+	if err != nil {
+		t.Fatalf("new sqlite warehouse: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ctx := context.Background()
+	if _, err := store.Exec(ctx, `
+		CREATE TABLE aws_s3_buckets (
+			_cq_id TEXT,
+			id TEXT,
+			name TEXT
+		)
+	`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := store.Exec(ctx, `INSERT INTO aws_s3_buckets (_cq_id, id, name) VALUES (?, ?, ?)`, "bucket-cq-id", "bucket-natural-id", "bucket-1"); err != nil {
+		t.Fatalf("insert row: %v", err)
+	}
+
+	asset, err := store.GetAssetByID(ctx, "aws_s3_buckets", "bucket-cq-id")
+	if err != nil {
+		t.Fatalf("GetAssetByID() error = %v", err)
+	}
+	if got := asset["_cq_id"]; got != "bucket-cq-id" {
+		t.Fatalf("expected _cq_id match, got %#v", got)
+	}
+
+	if _, err := store.GetAssetByID(ctx, "aws_s3_buckets", "bucket-natural-id"); err == nil || err.Error() != "asset not found" {
+		t.Fatalf("expected asset not found for natural id lookup, got %v", err)
+	}
+}

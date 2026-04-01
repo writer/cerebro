@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 func (s *Server) syncStatus(w http.ResponseWriter, r *http.Request) {
@@ -173,13 +174,13 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(req.Query, req.Limit)
+	boundedQuery, boundedLimit, err := warehouse.BuildReadOnlyLimitedQuery(req.Query, req.Limit)
 	if err != nil {
 		s.error(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	queryCtx, cancel := context.WithTimeout(r.Context(), snowflake.ClampReadOnlyQueryTimeout(req.TimeoutSeconds))
+	queryCtx, cancel := context.WithTimeout(r.Context(), warehouse.ClampReadOnlyQueryTimeout(req.TimeoutSeconds))
 	defer cancel()
 
 	result, err := s.app.Warehouse.Query(queryCtx, boundedQuery)
@@ -231,6 +232,10 @@ func (s *Server) getAsset(w http.ResponseWriter, r *http.Request) {
 	asset, err := s.app.Warehouse.GetAssetByID(r.Context(), table, id)
 	if err != nil {
 		s.error(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if asset == nil {
+		s.error(w, http.StatusNotFound, "asset not found")
 		return
 	}
 	s.json(w, http.StatusOK, asset)

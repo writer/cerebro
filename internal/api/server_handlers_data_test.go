@@ -98,3 +98,21 @@ func TestListAssets_RejectsNonAssetTable(t *testing.T) {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestGetAssetReturnsNotFoundWhenWarehouseMisses(t *testing.T) {
+	a := newTestApp(t)
+	a.Warehouse = &warehouse.MemoryWarehouse{
+		GetAssetByIDFunc: func(_ context.Context, table, id string) (map[string]interface{}, error) {
+			if table != "aws_s3_buckets" || id != "bucket-missing" {
+				t.Fatalf("unexpected asset lookup %s/%s", table, id)
+			}
+			return nil, nil
+		},
+	}
+	s := NewServer(a)
+
+	w := do(t, s, http.MethodGet, "/api/v1/assets/aws_s3_buckets/bucket-missing", nil)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}

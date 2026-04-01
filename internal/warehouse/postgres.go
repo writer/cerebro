@@ -213,12 +213,12 @@ func (w *PostgresWarehouse) GetAssetByID(ctx context.Context, table, id string) 
 	if err != nil {
 		return nil, err
 	}
-	result, err := w.Query(ctx, "SELECT * FROM "+quoteSQLiteIdentifier(table)+" WHERE "+quoteSQLiteIdentifier("id")+" = $1 LIMIT 1", id)
+	result, err := w.Query(ctx, "SELECT * FROM "+quoteSQLiteIdentifier(table)+" WHERE "+quoteSQLiteIdentifier("_cq_id")+" = $1 LIMIT 1", id)
 	if err != nil {
 		return nil, err
 	}
 	if len(result.Rows) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("asset not found")
 	}
 	return result.Rows[0], nil
 }

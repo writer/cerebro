@@ -229,12 +229,12 @@ func (w *SQLiteWarehouse) GetAssetByID(ctx context.Context, table, id string) (m
 	if err != nil {
 		return nil, err
 	}
-	result, err := w.Query(ctx, "SELECT * FROM "+quoteSQLiteIdentifier(table)+" WHERE "+quoteSQLiteIdentifier("id")+" = ? LIMIT 1", id)
+	result, err := w.Query(ctx, "SELECT * FROM "+quoteSQLiteIdentifier(table)+" WHERE "+quoteSQLiteIdentifier("_cq_id")+" = ? LIMIT 1", id)
 	if err != nil {
 		return nil, err
 	}
 	if len(result.Rows) == 0 {
-		return nil, nil
+		return nil, fmt.Errorf("asset not found")
 	}
 	return result.Rows[0], nil
 }

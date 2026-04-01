@@ -12,6 +12,7 @@ import (
 	"github.com/writer/cerebro/internal/app"
 	apiclient "github.com/writer/cerebro/internal/client"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 var queryCmd = &cobra.Command{
@@ -89,13 +90,12 @@ func runQueryDirect(cmd *cobra.Command, args []string) error {
 	}
 
 	query := strings.Join(args, " ")
-	upperQuery := strings.ToUpper(strings.TrimSpace(query))
-	// Only add LIMIT to SELECT queries that don't already have one
-	if strings.HasPrefix(upperQuery, "SELECT") && !strings.Contains(upperQuery, "LIMIT") && queryLimit > 0 {
-		query = fmt.Sprintf("%s LIMIT %d", query, queryLimit)
+	query, _, err = warehouse.BuildReadOnlyLimitedQuery(query, queryLimit)
+	if err != nil {
+		return err
 	}
 
-	ctx, cancel := context.WithTimeout(commandContextOrBackground(cmd), 60*time.Second)
+	ctx, cancel := context.WithTimeout(commandContextOrBackground(cmd), warehouse.ClampReadOnlyQueryTimeout(int((60*time.Second)/time.Second)))
 	defer cancel()
 
 	result, err := queryWarehouse.Query(ctx, query)

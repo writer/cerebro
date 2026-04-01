@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	queryPolicyDefaultRowLimit = snowflake.MaxReadOnlyQueryLimit
+	queryPolicyDefaultRowLimit = warehouse.MaxReadOnlyQueryLimit
 	queryPolicyMetaFindingID   = "query-result-limit"
 )
 
@@ -68,12 +68,12 @@ func (a *App) ScanQueryPolicies(ctx context.Context) QueryPolicyScanResult {
 			}
 		}
 
-		boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(queryPolicy.Query, rowLimit)
+		boundedQuery, boundedLimit, err := warehouse.BuildReadOnlyLimitedQuery(queryPolicy.Query, rowLimit)
 		if err != nil {
 			return nil, fmt.Errorf("invalid read-only query: %w", err)
 		}
 
-		queryCtx, cancel := context.WithTimeout(runCtx, snowflake.ClampReadOnlyQueryTimeout(0))
+		queryCtx, cancel := context.WithTimeout(runCtx, warehouse.ClampReadOnlyQueryTimeout(0))
 		defer cancel()
 
 		queryResult, attempts, err := scanner.WithRetryValue(queryCtx, tuning.RetryOptions, func() (*snowflake.QueryResult, error) {

@@ -369,7 +369,7 @@ func (st *SecurityTools) queryAssets(ctx context.Context, args json.RawMessage) 
 		return "", err
 	}
 
-	boundedQuery, boundedLimit, err := snowflake.BuildReadOnlyLimitedQuery(params.Query, params.Limit)
+	boundedQuery, boundedLimit, err := warehouse.BuildReadOnlyLimitedQuery(params.Query, params.Limit)
 	if err != nil {
 		return "", err
 	}
@@ -378,7 +378,7 @@ func (st *SecurityTools) queryAssets(ctx context.Context, args json.RawMessage) 
 		return "", fmt.Errorf("warehouse not configured")
 	}
 
-	queryCtx, cancel := context.WithTimeout(ctx, snowflake.ClampReadOnlyQueryTimeout(params.TimeoutSeconds))
+	queryCtx, cancel := context.WithTimeout(ctx, warehouse.ClampReadOnlyQueryTimeout(params.TimeoutSeconds))
 	defer cancel()
 
 	result, err := st.warehouse.Query(queryCtx, boundedQuery)
@@ -452,6 +452,9 @@ func (st *SecurityTools) getAssetContext(ctx context.Context, args json.RawMessa
 	asset, err := st.warehouse.GetAssetByID(ctx, params.AssetType, params.AssetID)
 	if err != nil {
 		return "", err
+	}
+	if asset == nil {
+		return "", fmt.Errorf("asset not found")
 	}
 
 	output, _ := json.Marshal(asset)

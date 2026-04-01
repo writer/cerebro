@@ -15,7 +15,7 @@ func TestQueryAssetsRejectsUnsafeQuery(t *testing.T) {
 	args := json.RawMessage(`{"query":"DROP TABLE users"}`)
 
 	_, err := st.queryAssets(context.Background(), args)
-	if !errors.Is(err, snowflake.ErrNonSelectQuery) {
+	if !errors.Is(err, warehouse.ErrNonSelectQuery) {
 		t.Fatalf("expected ErrNonSelectQuery, got %v", err)
 	}
 }
@@ -76,5 +76,21 @@ func TestGetAssetContextUsesWarehouse(t *testing.T) {
 	}
 	if output == "" {
 		t.Fatal("expected asset payload")
+	}
+}
+
+func TestGetAssetContextReturnsNotFoundWhenWarehouseReturnsNil(t *testing.T) {
+	store := &warehouse.MemoryWarehouse{
+		GetAssetByIDFunc: func(_ context.Context, table, id string) (map[string]interface{}, error) {
+			if table != "aws_s3_buckets" || id != "bucket-missing" {
+				t.Fatalf("unexpected asset lookup %s/%s", table, id)
+			}
+			return nil, nil
+		},
+	}
+	st := NewSecurityTools(store, nil, nil, nil)
+
+	if _, err := st.getAssetContext(context.Background(), json.RawMessage(`{"asset_type":"aws_s3_buckets","asset_id":"bucket-missing"}`)); err == nil || err.Error() != "asset not found" {
+		t.Fatalf("expected asset not found error, got %v", err)
 	}
 }
