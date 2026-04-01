@@ -28,7 +28,7 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Read image tag from Pulumi config
         id: image-tag
@@ -43,13 +43,13 @@ jobs:
           echo "Resolved image tag: ${tag}"
 
       - name: Configure AWS credentials (sec-dev)
-        uses: writerInternal/aws-git-roles@v2
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::${{ env.SEC_DEV_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@183a1442edf41672e66566b7fc560e297a290896 # v2
 
       - name: Pull from GHCR, retag, and push to ECR
         shell: bash
@@ -78,7 +78,7 @@ jobs:
     outputs:
       image_tag: ${{ steps.publish.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Read image tag from Pulumi config
         id: image-tag
@@ -93,13 +93,13 @@ jobs:
           echo "Resolved image tag: ${tag}"
 
       - name: Configure AWS credentials (sec-prod)
-        uses: writerInternal/aws-git-roles@v2
+        uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::${{ env.SEC_PROD_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@183a1442edf41672e66566b7fc560e297a290896 # v2
 
       - name: Pull from GHCR, retag, and push to ECR
         id: publish

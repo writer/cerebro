@@ -51,7 +51,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.auth_check.outputs.should_run == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
@@ -115,7 +115,7 @@ jobs:
 
       - name: Fetch secrets from Infisical
         if: steps.auth_check.outputs.has_infisical == 'true'
-        uses: Infisical/secrets-action@v1.0.15
+        uses: Infisical/secrets-action@8802effbe453d0576cd923567dcc2c97a1f54058 # v1.0.15
         with:
           method: "oidc"
           identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
@@ -218,7 +218,7 @@ jobs:
 
       - name: Submit inline review comments
         if: steps.auth_check.outputs.should_run == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require('fs');
@@ -278,7 +278,7 @@ jobs:
 
       - name: Upload debug artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: droid-review-debug-${{ github.run_id }}
           path: |
