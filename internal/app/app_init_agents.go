@@ -26,7 +26,11 @@ func (a *App) initAgents(ctx context.Context) {
 	}
 
 	scmClient := scm.NewConfiguredClient(a.Config.GitHubToken, a.Config.GitLabToken, a.Config.GitLabBaseURL)
-	toolset := agents.NewSecurityTools(a.Snowflake, a.Findings, a.Policy, scmClient)
+	sfClient := a.Snowflake
+	if sfClient == nil {
+		sfClient = a.LegacySnowflake
+	}
+	toolset := agents.NewSecurityTools(sfClient, a.Findings, a.Policy, scmClient)
 	agentTools := toolset.GetTools()
 
 	remoteProvider, err := agents.NewRemoteToolProvider(remoteToolProviderConfigFromConfig(a.Config), a.Logger)

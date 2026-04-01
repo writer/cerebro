@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -104,7 +105,6 @@ SELECT id, policy_id, policy_name, severity, status,
 FROM `+postgresFindingsTable+`
 WHERE UPPER(status) != 'RESOLVED' OR resolved_at > $1
 ORDER BY last_seen DESC
-LIMIT 10000
 `), cutoff)
 	if err != nil {
 		return fmt.Errorf("load findings: %w", err)
@@ -551,7 +551,9 @@ func (s *PostgresStore) syncMutation(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_ = s.Sync(ctx)
+	if err := s.Sync(ctx); err != nil {
+		slog.Warn("findings: sync after mutation failed", "error", err)
+	}
 }
 
 func (s *PostgresStore) DirtyCount() int {

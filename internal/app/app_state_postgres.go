@@ -123,6 +123,9 @@ func (a *App) migrateAgentSessions(ctx context.Context) error {
 	}
 	sessions, err := source.ListAll(ctx)
 	if err != nil {
+		if isMissingSnowflakeTableErr(err) {
+			return nil
+		}
 		return fmt.Errorf("list snowflake agent sessions: %w", err)
 	}
 	destination := agents.NewPostgresSessionStore(a.appStateDB)

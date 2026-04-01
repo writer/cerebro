@@ -242,6 +242,9 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 	}
 
 	if !hasSnowflakeCredentials(cfg) {
+		if !strings.EqualFold(strings.TrimSpace(cfg.WarehouseBackend), "snowflake") {
+			return nil
+		}
 		return fmt.Errorf("snowflake rotation requires SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
 
