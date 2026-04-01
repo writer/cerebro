@@ -37,7 +37,7 @@ Total variables: **375**
 | `AUTH0_CLIENT_ID` | `getEnv` | `""` | `Auth0ClientID` | `-` |
 | `AUTH0_CLIENT_SECRET` | `getEnv` | `""` | `Auth0ClientSecret` | `-` |
 | `AUTH0_DOMAIN` | `getEnv` | `""` | `Auth0Domain` | `-` |
-| `AWS_REGION` | `getEnv` | `"us-east-1"` | `GraphSearchOpenSearchRegion`, `GraphStoreNeptuneRegion`, `S3InputRegion` | `-` |
+| `AWS_REGION` | `getEnv` | `""`, `"us-east-1"` | `GraphSearchOpenSearchRegion`, `GraphStoreNeptuneRegion`, `S3InputRegion` | `-` |
 | `AZURE_CLIENT_ID` | `getEnv` | `""` | `AzureClientID` | `-` |
 | `AZURE_CLIENT_SECRET` | `getEnv` | `""` | `AzureClientSecret` | `-` |
 | `AZURE_SUBSCRIPTION_ID` | `getEnv` | `""` | `AzureSubscriptionID` | `-` |
