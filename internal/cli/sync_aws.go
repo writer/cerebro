@@ -278,7 +278,9 @@ func runMultiAccountAWSSyncDirect(ctx context.Context, start time.Time, profiles
 
 		syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
 		results, err := syncer.SyncAllWithConfig(ctx, awsCfg)
-		closeSyncWarehouse(sfClient)
+		if closeErr := closeSyncWarehouse(sfClient); closeErr != nil {
+			Warning("Failed to close warehouse client for profile %s: %v", profile, closeErr)
+		}
 		totalResults = append(totalResults, results...)
 
 		if err != nil {
@@ -449,7 +451,7 @@ func runNativeSyncDirect(ctx context.Context, start time.Time) error {
 	if err != nil {
 		return fmt.Errorf("create warehouse client: %w", err)
 	}
-	defer closeSyncWarehouse(client)
+	defer func() { _ = closeSyncWarehouse(client) }()
 
 	opts := []nativesync.EngineOption{}
 	if syncConcurrency > 0 {

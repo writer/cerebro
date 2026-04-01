@@ -110,7 +110,8 @@ var (
 	preflightScheduledGCPAuthFn   = preflightScheduledGCPAuth
 	waitForScheduledJobsFn        = waitForScheduledJobs
 
-	newScheduleAppFn = app.New
+	newScheduleAppFn    = app.New
+	openScheduleStoreFn = openScheduleStore
 
 	scheduledSyncInFlight sync.Map
 )
@@ -170,13 +171,7 @@ type SyncSchedule struct {
 func runScheduleList(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	client, err := createScheduleStore()
-	if err != nil {
-		return fmt.Errorf("failed to connect to warehouse: %w", err)
-	}
-	defer closeSyncWarehouse(client)
-
-	schedules, err := listSchedules(ctx, client)
+	schedules, err := listSchedules(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to list schedules: %w", err)
 	}
@@ -247,14 +242,8 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid provider %q; valid providers: %s", scheduleProvider, strings.Join(validProviders, ", "))
 	}
 
-	client, err := createScheduleStore()
-	if err != nil {
-		return fmt.Errorf("failed to connect to warehouse: %w", err)
-	}
-	defer closeSyncWarehouse(client)
-
 	// Check if schedule already exists
-	existing, _ := getSchedule(ctx, client, scheduleName)
+	existing, _ := getSchedule(ctx, nil, scheduleName)
 	if existing != nil {
 		return fmt.Errorf("schedule %q already exists; delete it first or use a different name", scheduleName)
 	}
@@ -272,7 +261,7 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 		NextRun:   cronSched.Next(time.Now()),
 	}
 
-	if err := saveSchedule(ctx, client, schedule); err != nil {
+	if err := saveSchedule(ctx, nil, schedule); err != nil {
 		return fmt.Errorf("failed to save schedule: %w", err)
 	}
 
@@ -288,14 +277,8 @@ func runScheduleDelete(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	name := args[0]
 
-	client, err := createScheduleStore()
-	if err != nil {
-		return fmt.Errorf("failed to connect to warehouse: %w", err)
-	}
-	defer closeSyncWarehouse(client)
-
 	// Check if schedule exists
-	existing, err := getSchedule(ctx, client, name)
+	existing, err := getSchedule(ctx, nil, name)
 	if err != nil {
 		return fmt.Errorf("failed to get schedule: %w", err)
 	}
@@ -303,7 +286,7 @@ func runScheduleDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("schedule %q not found", name)
 	}
 
-	if err := deleteSchedule(ctx, client, name); err != nil {
+	if err := deleteSchedule(ctx, nil, name); err != nil {
 		return fmt.Errorf("failed to delete schedule: %w", err)
 	}
 
@@ -315,13 +298,7 @@ func runScheduleShow(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	name := args[0]
 
-	client, err := createScheduleStore()
-	if err != nil {
-		return fmt.Errorf("failed to connect to warehouse: %w", err)
-	}
-	defer closeSyncWarehouse(client)
-
-	schedule, err := getSchedule(ctx, client, name)
+	schedule, err := getSchedule(ctx, nil, name)
 	if err != nil {
 		return fmt.Errorf("failed to get schedule: %w", err)
 	}
@@ -359,16 +336,10 @@ func runScheduleDaemon(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	client, err := createScheduleStore()
-	if err != nil {
-		return fmt.Errorf("failed to connect to warehouse: %w", err)
-	}
-	defer closeSyncWarehouse(client)
-
 	Info("Starting sync schedule daemon...")
 
 	// Ensure schedule table exists
-	if err := ensureScheduleTable(ctx, client); err != nil {
+	if err := ensureScheduleTable(ctx, nil); err != nil {
 		return fmt.Errorf("failed to ensure schedule table: %w", err)
 	}
 
@@ -377,7 +348,7 @@ func runScheduleDaemon(cmd *cobra.Command, args []string) error {
 	cronScheduler := cron.New(cron.WithParser(parser))
 
 	// Load schedules from database
-	schedules, err := listSchedules(ctx, client)
+	schedules, err := listSchedules(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to load schedules: %w", err)
 	}
@@ -396,7 +367,7 @@ func runScheduleDaemon(cmd *cobra.Command, args []string) error {
 			}
 			schedule := s // capture for closure
 			_, err := cronScheduler.AddFunc(schedule.Cron, func() {
-				runScheduledSync(client, &schedule)
+				runScheduledSync(nil, &schedule)
 			})
 			if err != nil {
 				Warning("Failed to register schedule %s: %v", schedule.Name, err)
@@ -423,7 +394,7 @@ func runScheduleDaemon(cmd *cobra.Command, args []string) error {
 		case <-ctx.Done():
 			goto shutdown
 		case <-reloadTicker.C:
-			updated, err := listSchedules(ctx, client)
+			updated, err := listSchedules(ctx, nil)
 			if err != nil {
 				Warning("Failed to reload schedules: %v", err)
 				continue
@@ -1139,269 +1110,47 @@ func schedulesEqual(a, b []SyncSchedule) bool {
 	return true
 }
 
-func ensureScheduleTable(ctx context.Context, client warehouse.SyncWarehouse) error {
-	query := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS sync_schedules (
-		name VARCHAR PRIMARY KEY,
-		cron VARCHAR NOT NULL,
-		provider VARCHAR NOT NULL,
-		table_filter VARCHAR,
-		enabled BOOLEAN DEFAULT TRUE,
-		scan_after BOOLEAN DEFAULT FALSE,
-		retry INTEGER DEFAULT 3,
-		created_at %s DEFAULT CURRENT_TIMESTAMP(),
-		updated_at %s DEFAULT CURRENT_TIMESTAMP(),
-		last_run %s,
-		last_status VARCHAR,
-		next_run %s
-	)`, warehouse.LocalTimestampColumnType(client), warehouse.LocalTimestampColumnType(client), warehouse.LocalTimestampColumnType(client), warehouse.LocalTimestampColumnType(client))
-	_, err := client.Exec(ctx, query)
-	return err
+func ensureScheduleTable(ctx context.Context, _ warehouse.SyncWarehouse) error {
+	store, err := openScheduleStoreFn()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = store.Close() }()
+	return store.EnsureSchema(ctx)
 }
 
-func listSchedules(ctx context.Context, client warehouse.SyncWarehouse) ([]SyncSchedule, error) {
-	if err := ensureScheduleTable(ctx, client); err != nil {
-		return nil, err
-	}
-
-	query := `SELECT name, cron, provider, COALESCE(table_filter, '') AS table_filter, enabled,
-		scan_after, retry, created_at, updated_at, last_run, COALESCE(last_status, '') AS last_status, next_run
-		FROM sync_schedules ORDER BY name`
-
-	result, err := client.Query(ctx, query)
+func listSchedules(ctx context.Context, _ warehouse.SyncWarehouse) ([]SyncSchedule, error) {
+	store, err := openScheduleStoreFn()
 	if err != nil {
 		return nil, err
 	}
-
-	schedules := make([]SyncSchedule, 0, len(result.Rows))
-	for _, row := range result.Rows {
-		schedules = append(schedules, decodeScheduleRow(row))
-	}
-	sort.Slice(schedules, func(i, j int) bool {
-		return schedules[i].Name < schedules[j].Name
-	})
-	return schedules, nil
+	defer func() { _ = store.Close() }()
+	return store.List(ctx)
 }
 
-func getSchedule(ctx context.Context, client warehouse.SyncWarehouse, name string) (*SyncSchedule, error) {
-	if err := ensureScheduleTable(ctx, client); err != nil {
-		return nil, err
-	}
-
-	query := `SELECT name, cron, provider, COALESCE(table_filter, '') AS table_filter, enabled,
-		scan_after, retry, created_at, updated_at, last_run, COALESCE(last_status, '') AS last_status, next_run
-		FROM sync_schedules WHERE name = ` + warehouse.Placeholder(client, 1)
-
-	result, err := client.Query(ctx, query, name)
+func getSchedule(ctx context.Context, _ warehouse.SyncWarehouse, name string) (*SyncSchedule, error) {
+	store, err := openScheduleStoreFn()
 	if err != nil {
 		return nil, err
 	}
-
-	if len(result.Rows) == 0 {
-		return nil, nil
-	}
-
-	schedule := decodeScheduleRow(result.Rows[0])
-	return &schedule, nil
+	defer func() { _ = store.Close() }()
+	return store.Get(ctx, name)
 }
 
-func saveSchedule(ctx context.Context, client warehouse.SyncWarehouse, schedule *SyncSchedule) error {
-	if err := ensureScheduleTable(ctx, client); err != nil {
+func saveSchedule(ctx context.Context, _ warehouse.SyncWarehouse, schedule *SyncSchedule) error {
+	store, err := openScheduleStoreFn()
+	if err != nil {
 		return err
 	}
+	defer func() { _ = store.Close() }()
+	return store.Save(ctx, schedule)
+}
 
-	lastRun := nullableTime(schedule.LastRun)
-	nextRun := nullableTime(schedule.NextRun)
-	if warehouse.Dialect(client) == warehouse.SQLDialectSnowflake {
-		query := `MERGE INTO sync_schedules t
-			USING (SELECT ? as name) s
-			ON t.name = s.name
-			WHEN MATCHED THEN UPDATE SET
-				cron = ?,
-				provider = ?,
-				table_filter = ?,
-				enabled = ?,
-				scan_after = ?,
-				retry = ?,
-				updated_at = ?,
-				last_run = ?,
-				last_status = ?,
-				next_run = ?
-			WHEN NOT MATCHED THEN INSERT
-				(name, cron, provider, table_filter, enabled, scan_after, retry, created_at, updated_at, last_run, last_status, next_run)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-		_, err := client.Exec(ctx, query,
-			schedule.Name,
-			schedule.Cron, schedule.Provider, schedule.Table, schedule.Enabled, schedule.ScanAfter, schedule.Retry,
-			schedule.UpdatedAt, lastRun, schedule.LastStatus, nextRun,
-			schedule.Name, schedule.Cron, schedule.Provider, schedule.Table, schedule.Enabled, schedule.ScanAfter, schedule.Retry,
-			schedule.CreatedAt, schedule.UpdatedAt, lastRun, schedule.LastStatus, nextRun,
-		)
+func deleteSchedule(ctx context.Context, _ warehouse.SyncWarehouse, name string) error {
+	store, err := openScheduleStoreFn()
+	if err != nil {
 		return err
 	}
-
-	query := fmt.Sprintf(
-		"INSERT INTO sync_schedules (name, cron, provider, table_filter, enabled, scan_after, retry, created_at, updated_at, last_run, last_status, next_run) VALUES (%s) "+
-			"ON CONFLICT (name) DO UPDATE SET cron = EXCLUDED.cron, provider = EXCLUDED.provider, table_filter = EXCLUDED.table_filter, enabled = EXCLUDED.enabled, scan_after = EXCLUDED.scan_after, retry = EXCLUDED.retry, updated_at = EXCLUDED.updated_at, last_run = EXCLUDED.last_run, last_status = EXCLUDED.last_status, next_run = EXCLUDED.next_run",
-		strings.Join(warehouse.Placeholders(client, 1, 12), ", "),
-	)
-
-	_, err := client.Exec(ctx, query,
-		schedule.Name,
-		schedule.Cron,
-		schedule.Provider,
-		schedule.Table,
-		schedule.Enabled,
-		schedule.ScanAfter,
-		schedule.Retry,
-		schedule.CreatedAt,
-		schedule.UpdatedAt,
-		lastRun,
-		schedule.LastStatus,
-		nextRun,
-	)
-	return err
-}
-
-func deleteSchedule(ctx context.Context, client warehouse.SyncWarehouse, name string) error {
-	query := `DELETE FROM sync_schedules WHERE name = ` + warehouse.Placeholder(client, 1)
-	_, err := client.Exec(ctx, query, name)
-	return err
-}
-
-func createScheduleStore() (warehouse.DataWarehouse, error) {
-	return createSyncWarehouse()
-}
-
-func decodeScheduleRow(row map[string]interface{}) SyncSchedule {
-	return SyncSchedule{
-		Name:       getString(row, "name"),
-		Cron:       getString(row, "cron"),
-		Provider:   getString(row, "provider"),
-		Table:      getString(row, "table_filter"),
-		Enabled:    getBool(row, "enabled"),
-		ScanAfter:  getBool(row, "scan_after"),
-		Retry:      getInt(row, "retry"),
-		CreatedAt:  getTime(row, "created_at"),
-		UpdatedAt:  getTime(row, "updated_at"),
-		LastRun:    getTime(row, "last_run"),
-		LastStatus: getString(row, "last_status"),
-		NextRun:    getTime(row, "next_run"),
-	}
-}
-
-func nullableTime(value time.Time) interface{} {
-	if value.IsZero() {
-		return nil
-	}
-	return value.UTC()
-}
-
-func scheduleRowValue(row map[string]interface{}, key string) interface{} {
-	for candidate, value := range row {
-		if strings.EqualFold(candidate, key) {
-			return value
-		}
-	}
-	return nil
-}
-
-func getString(row map[string]interface{}, key string) string {
-	switch value := scheduleRowValue(row, key).(type) {
-	case string:
-		return value
-	case []byte:
-		return string(value)
-	default:
-		if value == nil {
-			return ""
-		}
-		return fmt.Sprintf("%v", value)
-	}
-}
-
-func getBool(row map[string]interface{}, key string) bool {
-	switch value := scheduleRowValue(row, key).(type) {
-	case bool:
-		return value
-	case int64:
-		return value != 0
-	case int:
-		return value != 0
-	case string:
-		return strings.EqualFold(strings.TrimSpace(value), "true") || strings.TrimSpace(value) == "1"
-	default:
-		return false
-	}
-}
-
-func getInt(row map[string]interface{}, key string) int {
-	switch value := scheduleRowValue(row, key).(type) {
-	case int:
-		return value
-	case int64:
-		return int(value)
-	case int32:
-		return int(value)
-	case float64:
-		return int(value)
-	case []byte:
-		parsed, _ := strconv.Atoi(string(value))
-		return parsed
-	case string:
-		parsed, _ := strconv.Atoi(value)
-		return parsed
-	default:
-		return 0
-	}
-}
-
-func getTime(row map[string]interface{}, key string) time.Time {
-	switch value := scheduleRowValue(row, key).(type) {
-	case time.Time:
-		return value.UTC()
-	case *time.Time:
-		if value != nil {
-			return value.UTC()
-		}
-	case string:
-		if value == "" {
-			return time.Time{}
-		}
-		if ts, err := time.Parse(time.RFC3339Nano, value); err == nil {
-			return ts.UTC()
-		}
-		if ts, err := time.Parse(time.RFC3339, value); err == nil {
-			return ts.UTC()
-		}
-		if ts, err := time.Parse("2006-01-02 15:04:05.999999999-07:00", value); err == nil {
-			return ts.UTC()
-		}
-		if ts, err := time.Parse("2006-01-02 15:04:05.999999999", value); err == nil {
-			return ts.UTC()
-		}
-		if ts, err := time.Parse("2006-01-02 15:04:05", value); err == nil {
-			return ts.UTC()
-		}
-	case []byte:
-		text := string(value)
-		if text == "" {
-			return time.Time{}
-		}
-		if ts, err := time.Parse(time.RFC3339Nano, text); err == nil {
-			return ts.UTC()
-		}
-		if ts, err := time.Parse(time.RFC3339, text); err == nil {
-			return ts.UTC()
-		}
-		if ts, err := time.Parse("2006-01-02 15:04:05.999999999-07:00", text); err == nil {
-			return ts.UTC()
-		}
-		if ts, err := time.Parse("2006-01-02 15:04:05.999999999", text); err == nil {
-			return ts.UTC()
-		}
-		if ts, err := time.Parse("2006-01-02 15:04:05", text); err == nil {
-			return ts.UTC()
-		}
-	}
-	return time.Time{}
+	defer func() { _ = store.Close() }()
+	return store.Delete(ctx, name)
 }

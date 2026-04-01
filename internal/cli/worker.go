@@ -241,7 +241,7 @@ func runNativeSyncForJob(ctx context.Context, provider string, schedule *SyncSch
 	if err != nil {
 		return fmt.Errorf("create warehouse client: %w", err)
 	}
-	defer closeSyncWarehouse(client)
+	defer func() { _ = closeSyncWarehouse(client) }()
 
 	switch provider {
 	case "aws":

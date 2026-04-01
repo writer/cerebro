@@ -94,7 +94,7 @@ func runAzureSyncDirect(ctx context.Context, start time.Time, tableFilter []stri
 	if err != nil {
 		return fmt.Errorf("create warehouse client: %w", err)
 	}
-	defer closeSyncWarehouse(client)
+	defer func() { _ = closeSyncWarehouse(client) }()
 
 	opts := []nativesync.AzureEngineOption{}
 	switch len(explicitSubscriptions) {

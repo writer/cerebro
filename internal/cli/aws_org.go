@@ -258,7 +258,11 @@ func runAWSOrgSyncDirect(ctx context.Context, start time.Time) error {
 				Warning("Failed to create warehouse client for account %s: %v", account.ID, err)
 				return nil
 			}
-			defer closeSyncWarehouse(sfClient)
+			defer func() {
+				if closeErr := closeSyncWarehouse(sfClient); closeErr != nil {
+					Warning("Failed to close warehouse client for account %s: %v", account.ID, closeErr)
+				}
+			}()
 
 			syncer := nativesync.NewSyncEngine(sfClient, slog.Default(), opts...)
 			accountResults, syncErr := syncer.SyncAllWithConfig(ctx, accountCfg)
@@ -311,7 +315,11 @@ func runAWSOrgValidation(ctx context.Context, start time.Time, cfg aws.Config, r
 	if err != nil {
 		return fmt.Errorf("create warehouse client: %w", err)
 	}
-	defer closeSyncWarehouse(client)
+	defer func() {
+		if closeErr := closeSyncWarehouse(client); closeErr != nil {
+			Warning("Failed to close warehouse client: %v", closeErr)
+		}
+	}()
 
 	opts := buildAWSEngineOptions(region, tableFilter)
 	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)

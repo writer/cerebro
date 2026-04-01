@@ -76,7 +76,7 @@ func runK8sSyncDirect(ctx context.Context, start time.Time, tableFilter []string
 	if err != nil {
 		return fmt.Errorf("create warehouse client: %w", err)
 	}
-	defer closeSyncWarehouse(client)
+	defer func() { _ = closeSyncWarehouse(client) }()
 
 	opts := []nativesync.K8sEngineOption{}
 	if syncK8sKubeconfig != "" {

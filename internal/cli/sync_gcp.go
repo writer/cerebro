@@ -294,7 +294,7 @@ func runGCPSyncDirect(
 	if err != nil {
 		return fmt.Errorf("create warehouse client: %w", err)
 	}
-	defer closeSyncWarehouse(client)
+	defer func() { _ = closeSyncWarehouse(client) }()
 
 	if runNativeSync {
 		if err := preflightGCPProjectAccessFn(ctx, gcpProjectPreflightSpec{
@@ -478,7 +478,7 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 	if err != nil {
 		return fmt.Errorf("create warehouse client: %w", err)
 	}
-	defer closeSyncWarehouse(client)
+	defer func() { _ = closeSyncWarehouse(client) }()
 
 	if syncValidate {
 		if len(projects) == 0 {
@@ -729,7 +729,7 @@ func runGCPAssetAPISyncDirect(
 	if err != nil {
 		return fmt.Errorf("create warehouse client: %w", err)
 	}
-	defer closeSyncWarehouse(client)
+	defer func() { _ = closeSyncWarehouse(client) }()
 
 	var syncErrs []error
 
