@@ -21,6 +21,10 @@ config:
     - "10.20.128.0/18"
   cerebro:enableKandjiApiToken: true
   cerebro:enableKandjiApiUrl: true
+  cerebro:enableSocketApiToken: true
+  cerebro:socketOrg: "writerinternal"
+  # Optional Socket provider override
+  # cerebro:socketApiUrl: "https://api.socket.dev/v0"
   cerebro:enableInfisicalSyncRole: true
   cerebro:useExternalSecrets: true
   cerebro:infisicalAssumeRolePrincipalArn: "arn:aws:iam::381492033652:root"
