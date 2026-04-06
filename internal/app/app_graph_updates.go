@@ -38,10 +38,8 @@ func (a *App) TryApplySecurityGraphChanges(ctx context.Context, trigger string) 
 }
 
 func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger string) (graph.GraphMutationSummary, error) {
-	if !graphReplicaReplayEnabled(ctx) {
-		if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
-			return graph.GraphMutationSummary{}, err
-		}
+	if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
+		return graph.GraphMutationSummary{}, err
 	}
 	start := time.Now()
 	if err := a.prepareSecurityGraphBuilderForIncrementalApply(ctx); err != nil {
@@ -73,10 +71,8 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 			"edges", meta.EdgeCount,
 			"duration", duration,
 		)
-		if !graphReplicaReplayEnabled(ctx) {
-			a.emitGraphRebuiltEvent(ctx, meta, duration)
-			a.emitGraphMutationEvent(ctx, summary, trigger)
-		}
+		a.emitGraphRebuiltEvent(ctx, meta, duration)
+		a.emitGraphMutationEvent(ctx, summary, trigger)
 		return summary, nil
 	}
 
@@ -90,10 +86,8 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 	}
 
 	securityGraph := a.SecurityGraphBuilder.Graph()
-	if !graphReplicaReplayEnabled(ctx) {
-		if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
-			return graph.GraphMutationSummary{}, err
-		}
+	if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
+		return graph.GraphMutationSummary{}, err
 	}
 	meta, activateErr := a.activateBuiltSecurityGraph(ctx, securityGraph)
 	if activateErr != nil {
@@ -110,10 +104,8 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 		"edges", meta.EdgeCount,
 		"duration", summary.Duration,
 	)
-	if !graphReplicaReplayEnabled(ctx) {
-		a.emitGraphMutationEvent(ctx, summary, trigger)
-		a.maybeStartGraphConsistencyCheck(trigger, summary)
-	}
+	a.emitGraphMutationEvent(ctx, summary, trigger)
+	a.maybeStartGraphConsistencyCheck(trigger, summary)
 	return summary, nil
 }
 

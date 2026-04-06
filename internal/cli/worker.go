@@ -28,9 +28,6 @@ var workerCmd = &cobra.Command{
 }
 
 var (
-	workerQueueURL          string
-	workerTableName         string
-	workerRegion            string
 	workerConcurrency       int
 	workerVisibilityTimeout string
 	workerJobTimeout        string
@@ -45,14 +42,11 @@ var (
 func init() {
 	rootCmd.AddCommand(workerCmd)
 
-	workerCmd.Flags().StringVar(&workerQueueURL, "queue-url", "", "SQS queue URL")
-	workerCmd.Flags().StringVar(&workerTableName, "table", "", "DynamoDB table name")
-	workerCmd.Flags().StringVar(&workerRegion, "region", "", "AWS region override")
 	workerCmd.Flags().IntVar(&workerConcurrency, "concurrency", 0, "Number of concurrent job workers")
-	workerCmd.Flags().StringVar(&workerVisibilityTimeout, "visibility-timeout", "", "SQS visibility timeout (e.g. 60s)")
+	workerCmd.Flags().StringVar(&workerVisibilityTimeout, "visibility-timeout", "", "Queue visibility timeout (e.g. 60s)")
 	workerCmd.Flags().StringVar(&workerJobTimeout, "job-timeout", "", "Maximum time per job (e.g. 5m)")
 	workerCmd.Flags().StringVar(&workerDrainTimeout, "drain-timeout", "", "Graceful shutdown drain timeout (e.g. 30s)")
-	workerCmd.Flags().StringVar(&workerPollWait, "poll-wait", "", "SQS long poll wait time (e.g. 20s)")
+	workerCmd.Flags().StringVar(&workerPollWait, "poll-wait", "", "Queue poll wait time (e.g. 20s)")
 	workerCmd.Flags().IntVar(&workerHealthPort, "health-port", 8081, "HTTP port for health check endpoints")
 }
 
@@ -65,27 +59,15 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize app: %w", err)
 	}
 	defer func() { _ = application.Close() }()
-
-	queueURL := workerQueueURL
-	if queueURL == "" {
-		queueURL = application.Config.JobQueueURL
-	}
-	if queueURL == "" {
-		return fmt.Errorf("queue url required")
+	if !distributedJobsConfigured(application.Config) {
+		return fmt.Errorf("JOB_DATABASE_URL is required")
 	}
 
-	tableName := workerTableName
-	if tableName == "" {
-		tableName = application.Config.JobTableName
+	runtime, err := openJobRuntime(ctx, application.Config)
+	if err != nil {
+		return err
 	}
-	if tableName == "" {
-		return fmt.Errorf("table name required")
-	}
-
-	region := workerRegion
-	if region == "" {
-		region = application.Config.JobRegion
-	}
+	defer func() { _ = runtime.Close() }()
 
 	visibilityTimeout := application.Config.JobVisibilityTimeout
 	if workerVisibilityTimeout != "" {
@@ -128,14 +110,6 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		concurrency = application.Config.JobWorkerConcurrency
 	}
 
-	awsCfg, err := jobs.LoadAWSConfig(ctx, region)
-	if err != nil {
-		return err
-	}
-
-	queue := jobs.NewSQSQueue(awsCfg, queueURL)
-	store := jobs.NewDynamoStore(awsCfg, tableName)
-
 	// Create security tools for job execution
 	tools := agents.NewSecurityTools(
 		application.Snowflake,
@@ -156,7 +130,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	// Create metrics collector
 	metrics := jobs.NewMetrics(application.Logger, jobs.MetricsConfig{
 		Namespace: "Cerebro/Worker",
-		WorkerID:  fmt.Sprintf("worker-%s", region),
+		WorkerID:  fmt.Sprintf("worker-%s", summarizeDatabaseTarget(application.Config.JobDatabaseURL)),
 	})
 
 	// Create circuit breaker
@@ -177,15 +151,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		CircuitBreaker:    circuit,
 	}
 
-	idempotencyTable := application.Config.JobIdempotencyTableName
-	if idempotencyTable != "" {
-		workerOpts.Idempotency = jobs.NewDynamoIdempotencyStore(awsCfg, idempotencyTable)
-		application.Logger.Info("idempotency store enabled", "table", idempotencyTable)
-	} else {
-		application.Logger.Warn("no JOB_IDEMPOTENCY_TABLE_NAME configured; running without idempotency protection")
+	idempStore, err := runtime.newIdempotencyStore(ctx)
+	if err != nil {
+		return err
 	}
+	workerOpts.Idempotency = idempStore
 
-	workerService := jobs.NewWorker(queue, store, registry, workerOpts)
+	workerService := jobs.NewWorker(runtime.queue, runtime.store, registry, workerOpts)
 
 	// Start health check server
 	healthServer := jobs.NewHealthServer(workerService, fmt.Sprintf(":%d", workerHealthPort), application.Logger)
@@ -198,7 +170,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		_ = healthServer.Shutdown(shutdownCtx)
 	}()
 
-	Info("Worker started (queue=%s table=%s concurrency=%d health=:%d)", queueURL, tableName, concurrency, workerHealthPort)
+	Info("Worker started (db=%s stream=%s subject=%s concurrency=%d health=:%d)", summarizeDatabaseTarget(application.Config.JobDatabaseURL), application.Config.JobNATSStream, application.Config.JobNATSSubject, concurrency, workerHealthPort)
 	return workerService.Start(ctx)
 }
 
@@ -265,19 +237,19 @@ func newNativeSyncJobHandler(application *app.App) jobs.JobHandler {
 }
 
 func runNativeSyncForJob(ctx context.Context, provider string, schedule *SyncSchedule) error {
-	client, err := createSnowflakeClient()
+	store, err := openSyncWarehouseFn(ctx)
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return fmt.Errorf("open warehouse: %w", err)
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeSyncWarehouse(store) }()
 
 	switch provider {
 	case "aws":
-		return executeAWSSync(ctx, client, schedule)
+		return executeAWSSync(ctx, store, schedule)
 	case "gcp":
-		return executeGCPSync(ctx, client, schedule)
+		return executeGCPSync(ctx, store, schedule)
 	case "azure":
-		return executeAzureSync(ctx, client, schedule)
+		return executeAzureSync(ctx, store, schedule)
 	default:
 		return fmt.Errorf("unsupported native sync provider %q", provider)
 	}

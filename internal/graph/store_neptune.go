@@ -81,7 +81,7 @@ func (e *neptuneDataExecutor) ExecuteOpenCypher(ctx context.Context, query strin
 		if output == nil {
 			return nil, nil
 		}
-		return output.Results, nil
+		return neptuneDecodeExecuteResults(output.Results)
 	})
 }
 
@@ -118,6 +118,21 @@ func defaultNeptuneRetryOptions() neptuneRetryOptions {
 		BaseDelay: 200 * time.Millisecond,
 		MaxDelay:  2 * time.Second,
 	}
+}
+
+func neptuneDecodeExecuteResults(results any) (any, error) {
+	if results == nil {
+		return nil, nil
+	}
+	unmarshaler, ok := results.(document.Unmarshaler)
+	if !ok {
+		return results, nil
+	}
+	var decoded any
+	if err := unmarshaler.UnmarshalSmithyDocument(&decoded); err != nil {
+		return nil, fmt.Errorf("unmarshal neptune results: %w", err)
+	}
+	return neptuneNormalizeValue(decoded), nil
 }
 
 func normalizeNeptuneRetryOptions(opts neptuneRetryOptions) neptuneRetryOptions {
@@ -725,11 +740,7 @@ func (s *NeptuneGraphStore) EnsureIndexes(ctx context.Context) error {
 	if s == nil || s.exec == nil {
 		return ErrStoreUnavailable
 	}
-	for _, query := range neptuneEnsureIndexQueries() {
-		if _, err := s.exec.ExecuteOpenCypher(ctx, query, nil); err != nil {
-			return err
-		}
-	}
+	// Neptune openCypher does not support CREATE INDEX DDL.
 	return nil
 }
 
@@ -2366,46 +2377,4 @@ func neptuneTemporalRangePredicate(alias string) string {
 		"coalesce(%[1]s.valid_from, %[1]s.observed_at, %[1]s.created_at) <= $to AND (coalesce(%[1]s.valid_to, %[1]s.expires_at, %[1]s.deleted_at) IS NULL OR coalesce(%[1]s.valid_to, %[1]s.expires_at, %[1]s.deleted_at) >= $from)",
 		alias,
 	)
-}
-
-func neptuneEnsureIndexQueries() []string {
-	return []string{
-		neptuneNodeIndexQuery("id"),
-		neptuneNodeIndexQuery("kind"),
-		neptuneNodeIndexQuery("tenant_id"),
-		neptuneNodeIndexQuery("deleted_at"),
-		neptuneEdgeIndexQuery("id"),
-		neptuneEdgeIndexQuery("kind"),
-		neptuneEdgeIndexQuery("deleted_at"),
-		neptuneEdgeIndexQuery("observed_at"),
-		neptuneEdgeIndexQuery("valid_from"),
-		neptuneEdgeIndexQuery("valid_to"),
-		neptuneEdgeIndexQuery("expires_at"),
-		neptuneEdgeIndexQuery("recorded_at"),
-		neptuneEdgeIndexQuery("transaction_from"),
-		neptuneEdgeIndexQuery("transaction_to"),
-	}
-}
-
-func neptuneNodeIndexQuery(property string) string {
-	return fmt.Sprintf(
-		"CREATE INDEX %s IF NOT EXISTS FOR (n:%s) ON (n.%s)",
-		neptuneIndexName("node", property),
-		neptuneNodeLabel,
-		property,
-	)
-}
-
-func neptuneEdgeIndexQuery(property string) string {
-	return fmt.Sprintf(
-		"CREATE INDEX %s IF NOT EXISTS FOR ()-[r:%s]-() ON (r.%s)",
-		neptuneIndexName("edge", property),
-		neptuneEdgeType,
-		property,
-	)
-}
-
-func neptuneIndexName(scope, property string) string {
-	replacer := strings.NewReplacer(":", "_", "-", "_", ".", "_")
-	return fmt.Sprintf("neptune_%s_%s_idx", replacer.Replace(scope), replacer.Replace(strings.TrimSpace(property)))
 }
