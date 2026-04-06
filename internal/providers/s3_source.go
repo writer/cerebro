@@ -288,6 +288,7 @@ func (p *S3SourceProvider) syncSourceTable(ctx context.Context, tableName string
 
 func (p *S3SourceProvider) listObjectsWithPrefix(ctx context.Context, prefix string, maxObjects int, seen map[string]struct{}) ([]s3ObjectMeta, error) {
 	objects := make([]s3ObjectMeta, 0)
+	localSeen := make(map[string]struct{})
 	if maxObjects < 1 {
 		return objects, nil
 	}
@@ -318,7 +319,10 @@ func (p *S3SourceProvider) listObjectsWithPrefix(ctx context.Context, prefix str
 			if _, dup := seen[dedupKey]; dup {
 				continue
 			}
-			seen[dedupKey] = struct{}{}
+			if _, dup := localSeen[dedupKey]; dup {
+				continue
+			}
+			localSeen[dedupKey] = struct{}{}
 
 			objects = append(objects, s3ObjectMeta{
 				Key:          key,
@@ -342,6 +346,9 @@ func (p *S3SourceProvider) listObjectsWithPrefix(ctx context.Context, prefix str
 		input.ContinuationToken = output.NextContinuationToken
 	}
 
+	for dedupKey := range localSeen {
+		seen[dedupKey] = struct{}{}
+	}
 	return objects, nil
 }
 

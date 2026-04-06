@@ -182,6 +182,85 @@ func TestS3SourceProviderSyncDeduplicatesOverlappingPrefixes(t *testing.T) {
 	}
 }
 
+type failingPagedS3Client struct {
+	now   time.Time
+	calls int
+}
+
+func (f *failingPagedS3Client) ListObjectsV2(_ context.Context, input *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	prefix := aws.ToString(input.Prefix)
+	switch prefix {
+	case "alerts/":
+		if f.calls == 0 {
+			f.calls++
+			return &s3.ListObjectsV2Output{
+				Contents: []types.Object{
+					{
+						Key:          aws.String("alerts/2026/event1.jsonl"),
+						ETag:         aws.String("\"e1\""),
+						Size:         aws.Int64(10),
+						LastModified: aws.Time(f.now),
+					},
+				},
+				IsTruncated:           aws.Bool(true),
+				NextContinuationToken: aws.String("page-2"),
+			}, nil
+		}
+		return nil, fmt.Errorf("boom")
+	case "alerts/2026/":
+		return &s3.ListObjectsV2Output{
+			Contents: []types.Object{
+				{
+					Key:          aws.String("alerts/2026/event1.jsonl"),
+					ETag:         aws.String("\"e1\""),
+					Size:         aws.Int64(10),
+					LastModified: aws.Time(f.now),
+				},
+			},
+		}, nil
+	default:
+		return &s3.ListObjectsV2Output{}, nil
+	}
+}
+
+func (f *failingPagedS3Client) GetObject(_ context.Context, input *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	return &s3.GetObjectOutput{Body: io.NopCloser(strings.NewReader("{\"type\":\"alert\"}\n"))}, nil
+}
+
+func (f *failingPagedS3Client) HeadBucket(_ context.Context, _ *s3.HeadBucketInput, _ ...func(*s3.Options)) (*s3.HeadBucketOutput, error) {
+	return &s3.HeadBucketOutput{}, nil
+}
+
+func TestS3SourceProviderSyncDoesNotPersistDedupStateAfterPrefixErrors(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 3, 5, 3, 0, 0, 0, time.UTC)
+	p := NewS3SourceProvider("sentinelone")
+	p.bucket = "s1-bucket"
+	p.prefixes = []string{"alerts/", "alerts/2026/"}
+	p.client = &failingPagedS3Client{now: now}
+
+	result, err := p.Sync(context.Background(), SyncOptions{FullSync: true})
+	if err != nil {
+		t.Fatalf("sync failed: %v", err)
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("errors = %v, want 1 prefix error", result.Errors)
+	}
+
+	rowsByTable := make(map[string]int64)
+	for _, table := range result.Tables {
+		rowsByTable[table.Name] = table.Rows
+	}
+
+	if rowsByTable["s3_sentinelone_objects"] != 1 {
+		t.Fatalf("objects rows = %d, want 1 surviving overlap object", rowsByTable["s3_sentinelone_objects"])
+	}
+	if rowsByTable["s3_sentinelone_records"] != 1 {
+		t.Fatalf("records rows = %d, want 1 surviving overlap record", rowsByTable["s3_sentinelone_records"])
+	}
+}
+
 func TestS3SourceProviderSyncNoPrefix(t *testing.T) {
 	t.Parallel()
 
