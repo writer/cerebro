@@ -68,7 +68,7 @@ func (a *App) CurrentSecurityGraph() *graph.Graph {
 	if view != nil {
 		return view
 	}
-	return a.currentLiveSecurityGraph()
+	return nil
 }
 
 func (a *App) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
