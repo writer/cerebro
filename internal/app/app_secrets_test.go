@@ -142,6 +142,49 @@ func TestReloadSecretsRejectsInvalidConfig(t *testing.T) {
 	}
 }
 
+func TestReloadSecretsAllowsDroppingSnowflakeCredentialsOnPostgresBackend(t *testing.T) {
+	previousLoad := loadConfigForSecretsReload
+	t.Cleanup(func() { loadConfigForSecretsReload = previousLoad })
+
+	current := LoadConfig()
+	current.WarehouseBackend = "postgres"
+	current.WarehousePostgresDSN = "postgres://warehouse"
+	current.SnowflakeAccount = "acct"
+	current.SnowflakeUser = "user"
+	current.SnowflakePrivateKey = "key"
+	current.RefreshProviderAwareConfig()
+
+	next := LoadConfig()
+	next.WarehouseBackend = "postgres"
+	next.WarehousePostgresDSN = "postgres://warehouse"
+	next.SnowflakeAccount = ""
+	next.SnowflakeUser = ""
+	next.SnowflakePrivateKey = ""
+	next.RefreshProviderAwareConfig()
+
+	loadConfigForSecretsReload = func() *Config {
+		return next
+	}
+
+	application := &App{
+		Config: current,
+		Logger: testAppLogger(),
+	}
+
+	if err := application.ReloadSecrets(context.Background()); err != nil {
+		t.Fatalf("ReloadSecrets failed: %v", err)
+	}
+	if application.Config == nil {
+		t.Fatal("expected config to remain set after reload")
+	}
+	if application.Config.WarehouseBackend != "postgres" {
+		t.Fatalf("expected postgres warehouse backend after reload, got %q", application.Config.WarehouseBackend)
+	}
+	if application.Config.SnowflakeAccount != "" || application.Config.SnowflakeUser != "" || application.Config.SnowflakePrivateKey != "" {
+		t.Fatalf("expected Snowflake credentials to be removable on postgres backend, got %#v", application.Config)
+	}
+}
+
 func TestReloadSecretsReadsUpdatedCredentialFileSource(t *testing.T) {
 	previousLoad := loadConfigForSecretsReload
 	t.Cleanup(func() { loadConfigForSecretsReload = previousLoad })

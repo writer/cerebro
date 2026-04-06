@@ -15,6 +15,15 @@ import (
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
+type failingGraphStore struct {
+	*graph.Graph
+	err error
+}
+
+func (s failingGraphStore) Snapshot(context.Context) (*graph.Snapshot, error) {
+	return nil, s.err
+}
+
 func TestEvaluateGraphOntologySLOStatus(t *testing.T) {
 	thresholds := graphOntologySLOThresholds{
 		FallbackWarn:        12,
@@ -263,6 +272,22 @@ func TestActivateBuiltSecurityGraphDoesNotReplaceLiveGraphWithNil(t *testing.T) 
 	}
 	if snapshot := application.GraphBuildSnapshot(); snapshot.State != GraphBuildFailed {
 		t.Fatalf("expected graph build state failed, got %#v", snapshot)
+	}
+}
+
+func TestCurrentSecurityGraphReturnsNilWhenConfiguredViewErrors(t *testing.T) {
+	application := &App{
+		Config:        &Config{},
+		SecurityGraph: graph.New(),
+		configuredSecurityGraphStore: failingGraphStore{
+			Graph: graph.New(),
+			err:   fmt.Errorf("snapshot failed"),
+		},
+		configuredSecurityGraphReady: true,
+	}
+
+	if got := application.CurrentSecurityGraph(); got != nil {
+		t.Fatalf("expected nil graph when configured view errors, got %p", got)
 	}
 }
 

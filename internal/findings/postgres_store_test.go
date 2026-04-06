@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"testing"
 	"time"
@@ -177,6 +178,61 @@ func TestPostgresStoreResolvePersistsWithoutExplicitSync(t *testing.T) {
 	}
 	if got := normalizeStatus(finding.Status); got != "RESOLVED" {
 		t.Fatalf("Status = %q, want RESOLVED", got)
+	}
+}
+
+func TestPostgresStoreLoadDoesNotTruncateOpenFindings(t *testing.T) {
+	store, db := newTestPostgresFindingsStore(t)
+	now := time.Now().UTC().Add(-90 * 24 * time.Hour)
+	total := 10050
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	stmt, err := tx.Prepare(`
+INSERT INTO cerebro_findings (
+	id, policy_id, policy_name, severity, status,
+	resource_id, resource_type, resource_data, description,
+	remediation, metadata, first_seen, last_seen, resolved_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`)
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("prepare insert: %v", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for i := 0; i < total; i++ {
+		if _, err := stmt.Exec(
+			fmt.Sprintf("finding-open-%05d", i),
+			"policy-open",
+			"Open finding",
+			"medium",
+			"OPEN",
+			fmt.Sprintf("resource-%05d", i),
+			"s3_bucket",
+			`{"name":"bucket"}`,
+			"bucket is open",
+			"",
+			"{}",
+			now,
+			now,
+			nil,
+		); err != nil {
+			_ = tx.Rollback()
+			t.Fatalf("insert finding %d: %v", i, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit insert tx: %v", err)
+	}
+
+	if err := store.Load(context.Background()); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := store.Count(FindingFilter{}); got != total {
+		t.Fatalf("Count() = %d, want %d", got, total)
 	}
 }
 
