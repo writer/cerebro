@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -44,8 +45,16 @@ func (a *App) initialize(ctx context.Context) error {
 }
 
 func (a *App) initPhase1(ctx context.Context) error {
+	warehouseBackend := strings.ToLower(strings.TrimSpace(a.Config.WarehouseBackend))
+
 	if err := runInitErrorStep("warehouse", func() error { return a.initWarehouse(ctx) }); err != nil {
+		if warehouseBackend == "snowflake" {
+			return fmt.Errorf("warehouse initialization failed for backend %s: %w", warehouseBackend, err)
+		}
 		a.Logger.Warn("warehouse initialization failed", "error", err, "backend", a.Config.WarehouseBackend)
+	}
+	if warehouseBackend == "snowflake" && a.Snowflake == nil {
+		return fmt.Errorf("warehouse initialization failed for backend %s: snowflake client was not initialized", warehouseBackend)
 	}
 	if err := runInitErrorStep("policy", a.initPolicy); err != nil {
 		return err
@@ -60,6 +69,9 @@ func (a *App) initPhase2a(ctx context.Context) error {
 		return err
 	}
 	if err := runInitErrorStep("graph_writer_lease", func() error { return a.initGraphWriterLease(ctx) }); err != nil {
+		return err
+	}
+	if err := runInitErrorStep("entity_search_backend", func() error { return a.initEntitySearchBackend(ctx) }); err != nil {
 		return err
 	}
 

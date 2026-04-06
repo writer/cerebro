@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"io"
 	"log/slog"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +19,51 @@ import (
 	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/warehouse"
 )
+
+var registerPostgresStubDriverOnce sync.Once
+
+type postgresStubDriver struct{}
+
+type postgresStubConn struct{}
+
+type postgresStubRows struct{}
+
+func (postgresStubDriver) Open(string) (driver.Conn, error) { return postgresStubConn{}, nil }
+
+func (postgresStubConn) Prepare(string) (driver.Stmt, error) { return nil, driver.ErrSkip }
+
+func (postgresStubConn) Close() error { return nil }
+
+func (postgresStubConn) Begin() (driver.Tx, error) { return nil, driver.ErrSkip }
+
+func (postgresStubConn) ExecContext(context.Context, string, []driver.NamedValue) (driver.Result, error) {
+	return driver.RowsAffected(0), nil
+}
+
+func (postgresStubConn) QueryContext(context.Context, string, []driver.NamedValue) (driver.Rows, error) {
+	return postgresStubRows{}, nil
+}
+
+func (postgresStubConn) CheckNamedValue(*driver.NamedValue) error { return nil }
+
+func (postgresStubRows) Columns() []string { return nil }
+
+func (postgresStubRows) Close() error { return nil }
+
+func (postgresStubRows) Next([]driver.Value) error { return io.EOF }
+
+func openPostgresStubDB(t *testing.T) *sql.DB {
+	t.Helper()
+	registerPostgresStubDriverOnce.Do(func() {
+		sql.Register("app-init-postgres-stub", postgresStubDriver{})
+	})
+	db, err := sql.Open("app-init-postgres-stub", "")
+	if err != nil {
+		t.Fatalf("open stub db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
 
 func TestInitFindings_FallsBackToConfiguredWarehouseMetadata(t *testing.T) {
 	a := &App{
@@ -56,6 +103,36 @@ func TestInitFindings_FallsBackToSQLiteWhenWarehouseHasNoDB(t *testing.T) {
 	}
 	if _, ok := a.Findings.(*findings.SQLiteStore); !ok {
 		t.Fatalf("expected sqlite findings store fallback, got %T", a.Findings)
+	}
+}
+
+func TestInitFindings_UsesPostgresStoreForPostgresWarehouse(t *testing.T) {
+	db := openPostgresStubDB(t)
+	a := &App{
+		Config: &Config{
+			WarehouseBackend:             "postgres",
+			FindingsSemanticDedupEnabled: false,
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse: &warehouse.MemoryWarehouse{
+			DBFunc:         func() *sql.DB { return db },
+			SchemaValue:    "public",
+			AppSchemaValue: "cerebro",
+		},
+	}
+
+	a.initFindings()
+
+	store, ok := a.Findings.(*findings.PostgresStore)
+	if !ok {
+		t.Fatalf("expected postgres findings store, got %T", a.Findings)
+	}
+	if a.SnowflakeFindings != nil {
+		t.Fatal("expected snowflake findings store to remain nil for postgres warehouse backend")
+	}
+	schema := reflect.ValueOf(store).Elem().FieldByName("schema").String()
+	if schema != "cerebro" {
+		t.Fatalf("expected postgres findings schema cerebro, got %q", schema)
 	}
 }
 

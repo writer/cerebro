@@ -290,11 +290,11 @@ func runGCPSyncDirect(
 	runSecuritySync bool,
 	tableFilterSet map[string]struct{},
 ) error {
-	client, err := createSnowflakeClient()
+	store, err := openSyncWarehouseFn(ctx)
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return fmt.Errorf("open warehouse: %w", err)
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeSyncWarehouse(store) }()
 
 	if runNativeSync {
 		if err := preflightGCPProjectAccessFn(ctx, gcpProjectPreflightSpec{
@@ -315,7 +315,7 @@ func runGCPSyncDirect(
 			options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
 		}
 		options = appendGCPPermissionUsageOptions(options)
-		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
+		syncer := nativesync.NewGCPSyncEngine(store, slog.Default(), options...)
 		if syncValidate {
 			results, err := syncer.ValidateTables(ctx)
 			if err != nil {
@@ -356,7 +356,7 @@ func runGCPSyncDirect(
 			if len(securityTableFilter) > 0 {
 				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
 			}
-			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
+			securitySyncer := nativesync.NewGCPSecuritySync(store, slog.Default(), projectID, syncGCPOrg, secOptions...)
 			if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
 				Warning("Security sync failed: %v", secErr)
 			} else {
@@ -370,7 +370,7 @@ func runGCPSyncDirect(
 	if len(tableFilterSet) == 0 {
 		// Extract resource relationships for graph building
 		Info("Extracting resource relationships...")
-		relExtractor := nativesync.NewRelationshipExtractor(client, slog.Default())
+		relExtractor := nativesync.NewRelationshipExtractor(store, slog.Default())
 		relCount, err := relExtractor.ExtractAndPersist(ctx)
 		if err != nil {
 			Warning("Relationship extraction failed: %v", err)
@@ -406,6 +406,12 @@ func runGCPOrgSync(ctx context.Context, start time.Time, orgID string) error {
 		Info("Skipping organization project discovery for SCC-only security table filters")
 		if syncUseAssetAPI {
 			Info("Skipping Cloud Asset Inventory API because selected filters are security-only")
+		}
+		restoreOrg := ""
+		if strings.TrimSpace(syncGCPOrg) == "" {
+			restoreOrg = syncGCPOrg
+			syncGCPOrg = orgID
+			defer func() { syncGCPOrg = restoreOrg }()
 		}
 		return runGCPSync(ctx, start, "")
 	}
@@ -474,11 +480,11 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 		return fmt.Errorf("validation for GCP security-only table filters is not supported; include at least one native table")
 	}
 
-	client, err := createSnowflakeClient()
+	store, err := openSyncWarehouseFn(ctx)
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return fmt.Errorf("open warehouse: %w", err)
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeSyncWarehouse(store) }()
 
 	if syncValidate {
 		if len(projects) == 0 {
@@ -492,7 +498,7 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 			options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
 		}
 		options = appendGCPPermissionUsageOptions(options)
-		syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
+		syncer := nativesync.NewGCPSyncEngine(store, slog.Default(), options...)
 		results, err := syncer.ValidateTables(ctx)
 		if err != nil {
 			return fmt.Errorf("validation failed: %w", err)
@@ -533,7 +539,7 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 				options = append(options, nativesync.WithGCPTableFilter(nativeTableFilter))
 			}
 			options = appendGCPPermissionUsageOptions(options)
-			syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), options...)
+			syncer := nativesync.NewGCPSyncEngine(store, slog.Default(), options...)
 			results, err := syncer.SyncAll(projectCtx)
 			allResults = append(allResults, results...)
 			if err != nil {
@@ -573,7 +579,7 @@ func runGCPMultiProjectSync(ctx context.Context, start time.Time, projects []str
 			if len(securityTableFilter) > 0 {
 				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
 			}
-			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
+			securitySyncer := nativesync.NewGCPSecuritySync(store, slog.Default(), projectID, syncGCPOrg, secOptions...)
 			if secErr := securitySyncer.SyncAll(projectCtx); secErr != nil {
 				Warning("Security sync failed for project %s: %v", projectID, secErr)
 				if errors.Is(secErr, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
@@ -725,11 +731,11 @@ func runGCPAssetAPISyncDirect(
 	runNativeSync bool,
 	runSecuritySync bool,
 ) error {
-	client, err := createSnowflakeClient()
+	store, err := openSyncWarehouseFn(ctx)
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return fmt.Errorf("open warehouse: %w", err)
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeSyncWarehouse(store) }()
 
 	var syncErrs []error
 
@@ -746,7 +752,7 @@ func runGCPAssetAPISyncDirect(
 		if len(nativeTableFilter) > 0 {
 			options = append(options, nativesync.WithAssetTypeFilter(nativeTableFilter))
 		}
-		syncer := nativesync.NewGCPAssetInventoryEngine(client, slog.Default(), options...)
+		syncer := nativesync.NewGCPAssetInventoryEngine(store, slog.Default(), options...)
 		if syncValidate {
 			results, err := syncer.ValidateTables(ctx)
 			if err != nil {
@@ -770,7 +776,7 @@ func runGCPAssetAPISyncDirect(
 			if len(securityTableFilter) > 0 {
 				secOptions = append(secOptions, nativesync.WithGCPSecurityTableFilter(securityTableFilter))
 			}
-			securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, syncGCPOrg, secOptions...)
+			securitySyncer := nativesync.NewGCPSecuritySync(store, slog.Default(), projectID, syncGCPOrg, secOptions...)
 			if secErr := securitySyncer.SyncAll(ctx); secErr != nil {
 				Warning("Security sync failed for project %s: %v", projectID, secErr)
 				syncErrs = append(syncErrs, fmt.Errorf("project %s security sync: %w", projectID, secErr))

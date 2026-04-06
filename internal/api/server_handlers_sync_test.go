@@ -14,6 +14,7 @@ import (
 	"github.com/writer/cerebro/internal/graph/builders"
 	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 type syncGraphSource struct {
@@ -22,6 +23,24 @@ type syncGraphSource struct {
 	events []map[string]any
 	err    error
 	block  bool
+}
+
+func setSnowflakeWarehouseDeps(deps *serverDependencies) *snowflake.Client {
+	client := &snowflake.Client{}
+	if deps != nil {
+		deps.Snowflake = client
+		deps.Warehouse = client
+	}
+	return client
+}
+
+func setSnowflakeWarehouseApp(application *app.App) *snowflake.Client {
+	client := &snowflake.Client{}
+	if application != nil {
+		application.Snowflake = client
+		application.Warehouse = client
+	}
+	return client
 }
 
 func (s *syncGraphSource) Query(ctx context.Context, query string, args ...any) (*builders.DataQueryResult, error) {
@@ -99,13 +118,13 @@ func TestSyncAzure_InvalidRequest(t *testing.T) {
 
 func TestSyncAzure_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	originalRun := runAzureSyncWithOptions
 	t.Cleanup(func() { runAzureSyncWithOptions = originalRun })
 
 	called := false
-	runAzureSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+	runAzureSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req azureSyncRequest) ([]nativesync.SyncResult, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -149,7 +168,7 @@ func TestSyncAzure_UsesRequestOptions(t *testing.T) {
 
 func TestSyncAzure_RejectsMixedManagementGroupAndSubscriptions(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/azure", map[string]interface{}{
 		"management_group": "mg-platform",
@@ -162,12 +181,12 @@ func TestSyncAzure_RejectsMixedManagementGroupAndSubscriptions(t *testing.T) {
 
 func TestSyncAzure_NormalizesSubscriptionsCaseInsensitively(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	originalRun := runAzureSyncWithOptions
 	t.Cleanup(func() { runAzureSyncWithOptions = originalRun })
 
-	runAzureSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+	runAzureSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req azureSyncRequest) ([]nativesync.SyncResult, error) {
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
 		}
@@ -216,13 +235,13 @@ func TestSyncK8s_InvalidRequest(t *testing.T) {
 
 func TestSyncK8s_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	originalRun := runK8sSyncWithOptions
 	t.Cleanup(func() { runK8sSyncWithOptions = originalRun })
 
 	called := false
-	runK8sSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
+	runK8sSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -291,13 +310,13 @@ func TestSyncAWS_InvalidRequest(t *testing.T) {
 
 func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	originalRun := runAWSSyncWithOptions
 	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
 
 	called := false
-	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -351,7 +370,7 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 
 func TestSyncAWS_AppliesIncrementalGraphChangesAfterSync(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	source := &syncGraphSource{}
 	builder := builders.NewBuilder(source, s.app.Logger)
@@ -381,7 +400,7 @@ func TestSyncAWS_AppliesIncrementalGraphChangesAfterSync(t *testing.T) {
 
 	originalRun := runAWSSyncWithOptions
 	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
@@ -409,7 +428,7 @@ func TestSyncAWS_AppliesIncrementalGraphChangesAfterSync(t *testing.T) {
 
 func TestSyncAWS_GraphUpdateFailureIsSanitized(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	source := &syncGraphSource{block: true}
 	builder := builders.NewBuilder(source, s.app.Logger)
@@ -418,7 +437,7 @@ func TestSyncAWS_GraphUpdateFailureIsSanitized(t *testing.T) {
 
 	originalRun := runAWSSyncWithOptions
 	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
@@ -454,7 +473,7 @@ func TestSyncAWS_GraphUpdateFailureIsSanitized(t *testing.T) {
 
 func TestSyncAWS_GraphUpdateBusyReturnsBusyStatus(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	source := &syncGraphSource{block: true}
 	builder := builders.NewBuilder(source, s.app.Logger)
@@ -482,7 +501,7 @@ func TestSyncAWS_GraphUpdateBusyReturnsBusyStatus(t *testing.T) {
 
 	originalRun := runAWSSyncWithOptions
 	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
@@ -520,7 +539,7 @@ func TestSyncAWS_GraphUpdateBusyReturnsBusyStatus(t *testing.T) {
 
 func TestSyncAWS_GraphUpdateNoopSummaryUsesEmptyTablesArray(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	source := &syncGraphSource{}
 	builder := builders.NewBuilder(source, s.app.Logger)
@@ -529,7 +548,7 @@ func TestSyncAWS_GraphUpdateNoopSummaryUsesEmptyTablesArray(t *testing.T) {
 
 	originalRun := runAWSSyncWithOptions
 	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
@@ -565,7 +584,7 @@ func TestSyncAWS_GraphUpdateNoopSummaryUsesEmptyTablesArray(t *testing.T) {
 
 func TestSyncAWS_FullRebuildFallbackReportsAppliedStatus(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	source := &syncGraphSource{err: errors.New("cdc unavailable")}
 	builder := builders.NewBuilder(source, s.app.Logger)
@@ -574,7 +593,7 @@ func TestSyncAWS_FullRebuildFallbackReportsAppliedStatus(t *testing.T) {
 
 	originalRun := runAWSSyncWithOptions
 	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
@@ -606,7 +625,7 @@ func TestSyncAWS_FullRebuildFallbackReportsAppliedStatus(t *testing.T) {
 
 func TestSyncAWS_AppliesGraphUpdateUsingRuntimeWithoutLocalBuilder(t *testing.T) {
 	application := newTestApp(t)
-	application.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseApp(application)
 
 	deps := newServerDependenciesFromApp(application)
 	deps.SecurityGraph = nil
@@ -630,7 +649,7 @@ func TestSyncAWS_AppliesGraphUpdateUsingRuntimeWithoutLocalBuilder(t *testing.T)
 
 	originalRun := runAWSSyncWithOptions
 	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
@@ -662,7 +681,7 @@ func TestSyncAWS_AppliesGraphUpdateUsingRuntimeWithoutLocalBuilder(t *testing.T)
 
 func TestSyncAWS_SkipsGraphUpdateWithoutRuntimeOrLocalBuilder(t *testing.T) {
 	application := newTestApp(t)
-	application.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseApp(application)
 
 	deps := newServerDependenciesFromApp(application)
 	deps.SecurityGraph = nil
@@ -674,7 +693,7 @@ func TestSyncAWS_SkipsGraphUpdateWithoutRuntimeOrLocalBuilder(t *testing.T) {
 
 	originalRun := runAWSSyncWithOptions
 	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
@@ -694,9 +713,11 @@ func TestSyncAWS_SkipsGraphUpdateWithoutRuntimeOrLocalBuilder(t *testing.T) {
 }
 
 func TestSyncAWS_SkipsGraphUpdateWhenRuntimeAdapterHasNoApplyCapability(t *testing.T) {
+	client := &snowflake.Client{}
 	application := &app.App{
 		Config:    &app.Config{},
-		Snowflake: &snowflake.Client{},
+		Snowflake: client,
+		Warehouse: client,
 	}
 
 	deps := newServerDependenciesFromApp(application)
@@ -706,7 +727,7 @@ func TestSyncAWS_SkipsGraphUpdateWhenRuntimeAdapterHasNoApplyCapability(t *testi
 
 	originalRun := runAWSSyncWithOptions
 	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsSyncRequest) (*awsSyncOutcome, error) {
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
@@ -747,13 +768,13 @@ func TestSyncAWSOrg_InvalidRequest(t *testing.T) {
 
 func TestSyncAWSOrg_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	originalRun := runAWSOrgSyncWithOptions
 	t.Cleanup(func() { runAWSOrgSyncWithOptions = originalRun })
 
 	called := false
-	runAWSOrgSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+	runAWSOrgSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -844,7 +865,7 @@ func TestSyncGCP_InvalidRequest(t *testing.T) {
 
 func TestSyncGCP_RequiresProject(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp", map[string]interface{}{
 		"concurrency": 4,
@@ -857,13 +878,13 @@ func TestSyncGCP_RequiresProject(t *testing.T) {
 
 func TestSyncGCP_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	originalRun := runGCPSyncWithOptions
 	t.Cleanup(func() { runGCPSyncWithOptions = originalRun })
 
 	called := false
-	runGCPSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+	runGCPSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req gcpSyncRequest) (*gcpSyncOutcome, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -931,7 +952,7 @@ func TestSyncGCPAsset_InvalidRequest(t *testing.T) {
 
 func TestSyncGCPAsset_RequiresProjects(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp-asset", map[string]interface{}{
 		"concurrency": 4,
@@ -944,7 +965,7 @@ func TestSyncGCPAsset_RequiresProjects(t *testing.T) {
 
 func TestSyncGCPAsset_RejectsMixedOrganizationAndProjects(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp-asset", map[string]interface{}{
 		"organization": "1234567890",
@@ -957,13 +978,13 @@ func TestSyncGCPAsset_RejectsMixedOrganizationAndProjects(t *testing.T) {
 
 func TestSyncGCPAsset_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	originalRun := runGCPAssetSyncWithOptions
 	t.Cleanup(func() { runGCPAssetSyncWithOptions = originalRun })
 
 	called := false
-	runGCPAssetSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+	runGCPAssetSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -1002,13 +1023,13 @@ func TestSyncGCPAsset_UsesRequestOptions(t *testing.T) {
 
 func TestSyncGCPAsset_UsesOrganizationScope(t *testing.T) {
 	s := newTestServer(t)
-	s.app.Snowflake = &snowflake.Client{}
+	setSnowflakeWarehouseDeps(s.app)
 
 	originalRun := runGCPAssetSyncWithOptions
 	t.Cleanup(func() { runGCPAssetSyncWithOptions = originalRun })
 
 	called := false
-	runGCPAssetSyncWithOptions = func(ctx context.Context, client *snowflake.Client, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+	runGCPAssetSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
