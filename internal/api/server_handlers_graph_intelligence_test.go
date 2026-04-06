@@ -614,7 +614,7 @@ func TestGraphIntelligenceQualityEndpoint_InvalidParams(t *testing.T) {
 func TestGraphIntelligenceAgentActionEffectivenessEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
-	now := time.Date(2026, 3, 22, 18, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
 
 	g.AddNode(&graph.Node{
 		ID:   "thread:evaluation:run-1:conv-1",
@@ -959,6 +959,7 @@ func TestPlatformIntelligenceEvaluationTemporalAnalysisReportDefinition(t *testi
 
 func TestGraphIntelligencePlaybookEffectivenessEndpoint(t *testing.T) {
 	s := newTestServer(t)
+	startedAt := time.Now().UTC().Add(-90 * time.Minute).Truncate(time.Second)
 	addPlaybookEffectivenessEndpointFixture(t, s.app.SecurityGraph, playbookEffectivenessEndpointFixture{
 		RunID:        "run-a1",
 		PlaybookID:   "pb-remediate",
@@ -966,15 +967,15 @@ func TestGraphIntelligencePlaybookEffectivenessEndpoint(t *testing.T) {
 		TenantID:     "tenant-acme",
 		TargetID:     "service:payments",
 		TargetKind:   graph.NodeKindService,
-		StartedAt:    time.Date(2026, 3, 23, 15, 0, 0, 0, time.UTC),
+		StartedAt:    startedAt,
 		Stages: []playbookEffectivenessEndpointStage{
-			{ID: "approve", Name: "Approve Fix", Order: 1, Status: "completed", ApprovalRequired: true, ApprovalStatus: "approved", ObservedAt: time.Date(2026, 3, 23, 15, 10, 0, 0, time.UTC)},
+			{ID: "approve", Name: "Approve Fix", Order: 1, Status: "completed", ApprovalRequired: true, ApprovalStatus: "approved", ObservedAt: startedAt.Add(10 * time.Minute)},
 		},
 		Outcome: &playbookEffectivenessEndpointOutcome{
 			Verdict:       "positive",
 			Status:        "completed",
 			RollbackState: "stable",
-			ObservedAt:    time.Date(2026, 3, 23, 15, 40, 0, 0, time.UTC),
+			ObservedAt:    startedAt.Add(40 * time.Minute),
 		},
 	})
 
@@ -1032,11 +1033,12 @@ func TestPlatformIntelligencePlaybookEffectivenessReportDefinition(t *testing.T)
 
 func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 	s := newTestServer(t)
+	baseAt := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
 	addEvaluationTemporalAnalysisEndpointFixture(t, s.app.SecurityGraph, evaluationTemporalAnalysisEndpointFixture{
 		RunID:        "run-1",
 		Conversation: "conv-1",
 		ServiceID:    "service:payments:conv-1",
-		BaseAt:       time.Date(2026, 3, 23, 16, 0, 0, 0, time.UTC),
+		BaseAt:       baseAt,
 	})
 	tagEvaluationTemporalAnalysisEndpointTenant(t, s.app.SecurityGraph, "run-1", "conv-1", "tenant-acme")
 
@@ -1047,15 +1049,15 @@ func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 		TenantID:     "tenant-acme",
 		TargetID:     "database:orders",
 		TargetKind:   graph.NodeKind("database"),
-		StartedAt:    time.Date(2026, 3, 23, 17, 0, 0, 0, time.UTC),
+		StartedAt:    baseAt.Add(time.Hour),
 		Stages: []playbookEffectivenessEndpointStage{
-			{ID: "repair", Name: "Repair", Order: 1, Status: "completed", ObservedAt: time.Date(2026, 3, 23, 17, 10, 0, 0, time.UTC)},
+			{ID: "repair", Name: "Repair", Order: 1, Status: "completed", ObservedAt: baseAt.Add(70 * time.Minute)},
 		},
 		Outcome: &playbookEffectivenessEndpointOutcome{
 			Verdict:       "positive",
 			Status:        "completed",
 			RollbackState: "stable",
-			ObservedAt:    time.Date(2026, 3, 23, 17, 30, 0, 0, time.UTC),
+			ObservedAt:    baseAt.Add(90 * time.Minute),
 		},
 	})
 	s.app.SecurityGraph.AddNode(&graph.Node{
@@ -1074,8 +1076,8 @@ func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 			"tenant_id":       "tenant-acme",
 			"target_ids":      []string{"database:orders"},
 			"source_system":   "platform_playbook",
-			"observed_at":     time.Date(2026, 3, 23, 17, 20, 0, 0, time.UTC).Format(time.RFC3339),
-			"valid_from":      time.Date(2026, 3, 23, 17, 20, 0, 0, time.UTC).Format(time.RFC3339),
+			"observed_at":     baseAt.Add(80 * time.Minute).Format(time.RFC3339),
+			"valid_from":      baseAt.Add(80 * time.Minute).Format(time.RFC3339),
 		},
 	})
 
