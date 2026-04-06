@@ -188,6 +188,67 @@ func TestRollbackPolicyPreservesCELProgramsOnFailure(t *testing.T) {
 	}
 }
 
+func TestRollbackPolicyRejectsNonBooleanHistoricalCELConditions(t *testing.T) {
+	engine := NewEngine()
+	engine.AddPolicy(&Policy{
+		ID:              "policy-cel-non-bool",
+		Name:            "Good CEL v1",
+		Description:     "working policy",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		ConditionFormat: ConditionFormatCEL,
+		Conditions:      []string{"resource.public == true"},
+		Severity:        "high",
+	})
+
+	engine.mu.Lock()
+	nonBooleanPolicy := &Policy{
+		ID:              "policy-cel-non-bool",
+		Version:         2,
+		Name:            "Non-boolean CEL v2",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		ConditionFormat: ConditionFormatCEL,
+		Conditions:      []string{"resource.name"},
+		Severity:        "high",
+	}
+	if engine.history == nil {
+		engine.history = make(map[string][]PolicyEvent)
+	}
+	engine.history["policy-cel-non-bool"] = append(
+		engine.history["policy-cel-non-bool"],
+		PolicyEvent{
+			PolicyID:  "policy-cel-non-bool",
+			Version:   2,
+			Content:   clonePolicy(nonBooleanPolicy),
+			EventType: PolicyEventCreated,
+		},
+	)
+	engine.mu.Unlock()
+
+	_, err := engine.RollbackPolicy("policy-cel-non-bool", 2)
+	if err == nil {
+		t.Fatal("expected rollback to fail for non-boolean CEL condition")
+	}
+	if !strings.Contains(err.Error(), "must evaluate to a boolean") {
+		t.Fatalf("rollback error = %v, want non-boolean CEL validation failure", err)
+	}
+
+	findings, evalErr := engine.EvaluateAsset(context.Background(), map[string]interface{}{
+		"_cq_id":    "bucket-1",
+		"_cq_table": "aws_s3_buckets",
+		"type":      "aws::s3::bucket",
+		"name":      "critical-bucket",
+		"public":    true,
+	})
+	if evalErr != nil {
+		t.Fatalf("EvaluateAsset failed after non-boolean rollback: %v", evalErr)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding after failed non-boolean rollback, got %d", len(findings))
+	}
+}
+
 func TestDiffPolicies_TracksChangedFields(t *testing.T) {
 	before := &Policy{
 		ID:          "policy-diff",
