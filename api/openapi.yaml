@@ -63,6 +63,8 @@ tags:
     description: Role-based access control and tenancy endpoints
   - name: ThreatIntel
     description: Threat intelligence feed management and indicator lookups
+  - name: TrustCenter
+    description: Public trust center posture and evidence endpoints
 paths:
   /health:
     get:
@@ -21525,21 +21527,3 @@ components:
         - $ref: '#/components/schemas/PlatformEvidenceListEnvelope'
         - $ref: '#/components/schemas/PlatformNarrativeBlockEnvelope'
         - $ref: '#/components/schemas/PlatformFlexibleValue'
-    PlatformDecisionIntelligenceBenchmarkPack:
-      allOf:
-        - $ref: '#/components/schemas/PlatformBenchmarkPack'
-    PlatformGraphQualityBenchmarkPack:
-      allOf:
-        - $ref: '#/components/schemas/PlatformBenchmarkPack'
-    PlatformMetadataQualityBenchmarkPack:
-      allOf:
-        - $ref: '#/components/schemas/PlatformBenchmarkPack'
-    PlatformClaimConflictBenchmarkPack:
-      allOf:
-        - $ref: '#/components/schemas/PlatformBenchmarkPack'
-    PlatformGraphLeverageBenchmarkPack:
-      allOf:
-        - $ref: '#/components/schemas/PlatformBenchmarkPack'
-    PlatformWeeklyCalibrationBenchmarkPack:
-      allOf:
-        - $ref: '#/components/schemas/PlatformBenchmarkPack'

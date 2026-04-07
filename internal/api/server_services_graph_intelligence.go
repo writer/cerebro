@@ -13,6 +13,7 @@ import (
 // and mapper primitives consumed by the graph-intelligence routes.
 type graphIntelligenceService interface {
 	CurrentGraph(ctx context.Context) (*graph.Graph, error)
+	CurrentEntityGraph(ctx context.Context, entityID string, validAt, recordedAt time.Time) (*graph.Graph, error)
 	MapperInitialized() bool
 	MapperValidationMode() string
 	MapperDeadLetterPath() string
@@ -34,6 +35,31 @@ func (s serverGraphIntelligenceService) CurrentGraph(ctx context.Context) (*grap
 	}
 	tenantID := currentTenantScopeID(ctx)
 	return currentOrStoredGraphView(ctx, s.deps.CurrentSecurityGraphForTenant(tenantID), s.deps.CurrentSecurityGraphStoreForTenant(tenantID))
+}
+
+func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, entityID string, validAt, recordedAt time.Time) (*graph.Graph, error) {
+	if s.deps == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	tenantID := currentTenantScopeID(ctx)
+	current := s.deps.CurrentSecurityGraphForTenant(tenantID)
+	if current != nil {
+		return current, nil
+	}
+	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
+	if store == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	opts := graph.ExtractSubgraphOptions{MaxDepth: 3}
+	if !validAt.IsZero() || !recordedAt.IsZero() {
+		if temporalStore, ok := store.(interface {
+			ExtractSubgraphBitemporal(context.Context, string, graph.ExtractSubgraphOptions, time.Time, time.Time) (*graph.Graph, error)
+		}); ok {
+			return temporalStore.ExtractSubgraphBitemporal(ctx, entityID, opts, validAt, recordedAt)
+		}
+		return snapshotGraphView(ctx, store)
+	}
+	return store.ExtractSubgraph(ctx, entityID, opts)
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {
