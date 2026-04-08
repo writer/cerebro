@@ -45,7 +45,13 @@ func openJobRuntime(ctx context.Context, cfg *app.Config) (*jobRuntime, error) {
 		return nil, fmt.Errorf("NATS_URLS is required")
 	}
 
-	db, err := sql.Open("postgres", warehouse.NormalizePostgresDSN(databaseURL))
+	preparedDatabaseURL, err := warehouse.PreparePostgresDSN(databaseURL)
+	if err != nil {
+		runtimeCancel()
+		return nil, fmt.Errorf("prepare job database dsn: %w", err)
+	}
+
+	db, err := sql.Open("postgres", preparedDatabaseURL)
 	if err != nil {
 		runtimeCancel()
 		return nil, fmt.Errorf("open job database: %w", err)

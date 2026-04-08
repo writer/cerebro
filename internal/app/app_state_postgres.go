@@ -49,7 +49,12 @@ func (a *App) initAppStateDB(ctx context.Context) error {
 		return nil
 	}
 
-	db, err := sql.Open("postgres", warehouse.NormalizePostgresDSN(dsn))
+	preparedDSN, err := warehouse.PreparePostgresDSN(dsn)
+	if err != nil {
+		return fmt.Errorf("prepare app-state database dsn: %w", err)
+	}
+
+	db, err := sql.Open("postgres", preparedDSN)
 	if err != nil {
 		return fmt.Errorf("open app-state database: %w", err)
 	}
