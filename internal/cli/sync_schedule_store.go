@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 type scheduleStore interface {
@@ -30,7 +32,7 @@ func openScheduleStore() (scheduleStore, error) {
 		return nil, fmt.Errorf("JOB_DATABASE_URL is required")
 	}
 
-	db, err := sql.Open("postgres", databaseURL)
+	db, err := sql.Open("postgres", warehouse.NormalizePostgresDSN(databaseURL))
 	if err != nil {
 		return nil, fmt.Errorf("open schedule database: %w", err)
 	}

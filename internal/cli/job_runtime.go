@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/app"
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/jobs"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 type jobRuntime struct {
@@ -44,7 +45,7 @@ func openJobRuntime(ctx context.Context, cfg *app.Config) (*jobRuntime, error) {
 		return nil, fmt.Errorf("NATS_URLS is required")
 	}
 
-	db, err := sql.Open("postgres", databaseURL)
+	db, err := sql.Open("postgres", warehouse.NormalizePostgresDSN(databaseURL))
 	if err != nil {
 		runtimeCancel()
 		return nil, fmt.Errorf("open job database: %w", err)

@@ -36,7 +36,7 @@ type PostgresWarehouse struct {
 }
 
 func NewPostgresWarehouse(config PostgresWarehouseConfig) (*PostgresWarehouse, error) {
-	dsn := strings.TrimSpace(config.DSN)
+	dsn := NormalizePostgresDSN(config.DSN)
 	if dsn == "" {
 		return nil, fmt.Errorf("postgres warehouse dsn is required")
 	}
@@ -85,6 +85,32 @@ func NewPostgresWarehouse(config PostgresWarehouseConfig) (*PostgresWarehouse, e
 const defaultPostgresWarehousePingTimeout = 3 * time.Second
 
 var postgresDSNDatabaseNameRe = regexp.MustCompile(`(?:^|\s)(?:dbname|database)=('([^']*)'|"([^"]*)"|([^\s]+))`)
+var postgresDSNSSLModeRe = regexp.MustCompile(`(?:^|\s)sslmode=('([^']*)'|"([^"]*)"|([^\s]+))`)
+
+func NormalizePostgresDSN(dsn string) string {
+	dsn = strings.TrimSpace(dsn)
+	if dsn == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		parsed, err := url.Parse(dsn)
+		if err != nil {
+			return dsn
+		}
+		query := parsed.Query()
+		if strings.TrimSpace(query.Get("sslmode")) == "" {
+			query.Set("sslmode", "prefer")
+			parsed.RawQuery = query.Encode()
+		}
+		return parsed.String()
+	}
+
+	if postgresDSNSSLModeRe.MatchString(dsn) {
+		return dsn
+	}
+	return dsn + " sslmode=prefer"
+}
 
 func postgresDatabaseNameFromDSN(dsn string) string {
 	dsn = strings.TrimSpace(dsn)

@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/internal/appstate"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const appStateRiskEngineGraphID = "security-graph"
@@ -48,7 +49,7 @@ func (a *App) initAppStateDB(ctx context.Context) error {
 		return nil
 	}
 
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("postgres", warehouse.NormalizePostgresDSN(dsn))
 	if err != nil {
 		return fmt.Errorf("open app-state database: %w", err)
 	}
