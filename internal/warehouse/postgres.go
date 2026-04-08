@@ -193,7 +193,7 @@ func defaultPostgresServiceFilePath() string {
 }
 
 func readPostgresServiceSettings(serviceFilePath, serviceName string) (map[string]string, error) {
-	file, err := os.Open(serviceFilePath)
+	file, err := os.Open(serviceFilePath) // #nosec G304 -- servicefile is an operator-supplied PostgreSQL client config path
 	if err != nil {
 		return nil, fmt.Errorf("failed to read service file %q: %w", serviceFilePath, err)
 	}
