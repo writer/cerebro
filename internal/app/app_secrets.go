@@ -241,8 +241,13 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 		ctx = context.Background()
 	}
 
+	oldClient := a.Snowflake
+	oldLegacyClient := a.LegacySnowflake
 	if !hasSnowflakeCredentials(cfg) {
 		if !strings.EqualFold(strings.TrimSpace(cfg.WarehouseBackend), "snowflake") {
+			a.Snowflake = nil
+			a.LegacySnowflake = nil
+			a.closeSnowflakeClients(oldClient, oldLegacyClient, nil)
 			return nil
 		}
 		return fmt.Errorf("snowflake rotation requires SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
@@ -253,8 +258,6 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 		return err
 	}
 
-	oldClient := a.Snowflake
-	oldLegacyClient := a.LegacySnowflake
 	if strings.EqualFold(strings.TrimSpace(cfg.WarehouseBackend), "snowflake") {
 		a.Snowflake = newClient
 		a.LegacySnowflake = nil
@@ -299,18 +302,22 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 		a.LegacySnowflake = newClient
 	}
 
-	if oldClient != nil && oldClient != newClient {
-		if err := oldClient.Close(); err != nil && a.Logger != nil {
+	a.closeSnowflakeClients(oldClient, oldLegacyClient, newClient)
+
+	return nil
+}
+
+func (a *App) closeSnowflakeClients(current, legacy, keep *snowflake.Client) {
+	if current != nil && current != keep {
+		if err := current.Close(); err != nil && a.Logger != nil {
 			a.Logger.Warn("failed to close previous snowflake client after rotation", "error", err)
 		}
 	}
-	if oldLegacyClient != nil && oldLegacyClient != newClient && oldLegacyClient != oldClient {
-		if err := oldLegacyClient.Close(); err != nil && a.Logger != nil {
+	if legacy != nil && legacy != keep && legacy != current {
+		if err := legacy.Close(); err != nil && a.Logger != nil {
 			a.Logger.Warn("failed to close previous legacy snowflake client after rotation", "error", err)
 		}
 	}
-
-	return nil
 }
 
 func (a *App) logSecretRotation(ctx context.Context, action string, details map[string]interface{}) {

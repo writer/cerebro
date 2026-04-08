@@ -78,7 +78,7 @@ func (a *App) initAppStateDB(ctx context.Context) error {
 }
 
 func (a *App) migrateAppState(ctx context.Context) error {
-	if a == nil || a.appStateDB == nil || a.appStateMigrationSnowflake() == nil {
+	if a == nil || a.appStateDB == nil {
 		return nil
 	}
 	if err := a.migrateFindings(ctx); err != nil {

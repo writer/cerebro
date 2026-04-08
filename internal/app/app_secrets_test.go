@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 func testAppLogger() *slog.Logger {
@@ -167,8 +169,10 @@ func TestReloadSecretsAllowsDroppingSnowflakeCredentialsOnPostgresBackend(t *tes
 	}
 
 	application := &App{
-		Config: current,
-		Logger: testAppLogger(),
+		Config:          current,
+		Logger:          testAppLogger(),
+		Snowflake:       new(snowflake.Client),
+		LegacySnowflake: new(snowflake.Client),
 	}
 
 	if err := application.ReloadSecrets(context.Background()); err != nil {
@@ -182,6 +186,19 @@ func TestReloadSecretsAllowsDroppingSnowflakeCredentialsOnPostgresBackend(t *tes
 	}
 	if application.Config.SnowflakeAccount != "" || application.Config.SnowflakeUser != "" || application.Config.SnowflakePrivateKey != "" {
 		t.Fatalf("expected Snowflake credentials to be removable on postgres backend, got %#v", application.Config)
+	}
+	if application.Snowflake != nil {
+		t.Fatalf("expected active snowflake client to be cleared, got %T", application.Snowflake)
+	}
+	if application.LegacySnowflake != nil {
+		t.Fatalf("expected legacy snowflake client to be cleared, got %T", application.LegacySnowflake)
+	}
+	sfClient := application.Snowflake
+	if sfClient == nil {
+		sfClient = application.LegacySnowflake
+	}
+	if sfClient != nil {
+		t.Fatalf("expected no remaining snowflake client selection after reload, got %T", sfClient)
 	}
 }
 
