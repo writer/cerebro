@@ -44,7 +44,7 @@ func openJobRuntime(ctx context.Context, cfg *app.Config) (*jobRuntime, error) {
 		return nil, fmt.Errorf("NATS_URLS is required")
 	}
 
-	db, err := sql.Open("pgx", databaseURL)
+	db, err := sql.Open("postgres", databaseURL)
 	if err != nil {
 		runtimeCancel()
 		return nil, fmt.Errorf("open job database: %w", err)

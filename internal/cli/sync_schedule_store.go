@@ -30,7 +30,7 @@ func openScheduleStore() (scheduleStore, error) {
 		return nil, fmt.Errorf("JOB_DATABASE_URL is required")
 	}
 
-	db, err := sql.Open("pgx", databaseURL)
+	db, err := sql.Open("postgres", databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("open schedule database: %w", err)
 	}

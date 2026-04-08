@@ -5,12 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/lib/pq"
 
 	"github.com/writer/cerebro/internal/snowflake"
 )
@@ -40,12 +41,7 @@ func NewPostgresWarehouse(config PostgresWarehouseConfig) (*PostgresWarehouse, e
 		return nil, fmt.Errorf("postgres warehouse dsn is required")
 	}
 
-	parsed, err := pgx.ParseConfig(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("parse postgres warehouse dsn: %w", err)
-	}
-
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres warehouse: %w", err)
 	}
@@ -61,7 +57,7 @@ func NewPostgresWarehouse(config PostgresWarehouseConfig) (*PostgresWarehouse, e
 
 	databaseName := strings.TrimSpace(config.Database)
 	if databaseName == "" {
-		databaseName = strings.TrimSpace(parsed.Database)
+		databaseName = postgresDatabaseNameFromDSN(dsn)
 	}
 	if databaseName == "" {
 		databaseName = "postgres"
@@ -87,6 +83,40 @@ func NewPostgresWarehouse(config PostgresWarehouseConfig) (*PostgresWarehouse, e
 }
 
 const defaultPostgresWarehousePingTimeout = 3 * time.Second
+
+var postgresDSNDatabaseNameRe = regexp.MustCompile(`(?:^|\s)(?:dbname|database)=('([^']*)'|"([^"]*)"|([^\s]+))`)
+
+func postgresDatabaseNameFromDSN(dsn string) string {
+	dsn = strings.TrimSpace(dsn)
+	if dsn == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		parsed, err := url.Parse(dsn)
+		if err != nil {
+			return ""
+		}
+		if databaseName := strings.Trim(strings.TrimSpace(parsed.Path), "/"); databaseName != "" {
+			return databaseName
+		}
+		if databaseName := strings.TrimSpace(parsed.Query().Get("dbname")); databaseName != "" {
+			return databaseName
+		}
+		return strings.TrimSpace(parsed.Query().Get("database"))
+	}
+
+	match := postgresDSNDatabaseNameRe.FindStringSubmatch(dsn)
+	if len(match) == 0 {
+		return ""
+	}
+	for _, value := range match[1:] {
+		if databaseName := strings.Trim(strings.TrimSpace(value), `"'`); databaseName != "" {
+			return databaseName
+		}
+	}
+	return ""
+}
 
 func (w *PostgresWarehouse) Close() error {
 	if w == nil || w.db == nil {

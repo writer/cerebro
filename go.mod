@@ -2,7 +2,7 @@ module github.com/writer/cerebro
 
 go 1.26.0
 
-toolchain go1.26.1
+toolchain go1.26.2
 
 require (
 	cloud.google.com/go/artifactregistry v1.19.0
@@ -101,8 +101,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/gax-go/v2 v2.16.0
 	github.com/hashicorp/hcl/v2 v2.24.0
-	github.com/jackc/pgx/v5 v5.8.0
 	github.com/klauspost/compress v1.18.0
+	github.com/lib/pq v1.12.3
 	github.com/nats-io/nats.go v1.37.0
 	github.com/nats-io/nkeys v0.4.7
 	github.com/prometheus/client_golang v1.23.2
@@ -202,9 +202,6 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.7 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/asmfmt v1.3.2 // indirect

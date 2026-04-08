@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/lib/pq"
 
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/appstate"
@@ -48,7 +48,7 @@ func (a *App) initAppStateDB(ctx context.Context) error {
 		return nil
 	}
 
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return fmt.Errorf("open app-state database: %w", err)
 	}
