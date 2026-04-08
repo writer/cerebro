@@ -22,14 +22,19 @@ func NewSnowflakeSessionStore(client *snowflake.Client) (*SnowflakeSessionStore,
 		return nil, err
 	}
 
-	store := &SnowflakeSessionStore{
+	return &SnowflakeSessionStore{
 		db:       client.DB(),
 		tableRef: tableRef,
-	}
+	}, nil
+}
 
+func (s *SnowflakeSessionStore) EnsureSchema(ctx context.Context) error {
+	if s == nil || s.db == nil || strings.TrimSpace(s.tableRef) == "" {
+		return errors.New("snowflake session store is not initialized")
+	}
 	// #nosec G202 -- store.tableRef is validated by snowflake.SafeTableRef before interpolation.
 	createTableQuery := `
-		CREATE TABLE IF NOT EXISTS ` + store.tableRef + ` (
+		CREATE TABLE IF NOT EXISTS ` + s.tableRef + ` (
 			id STRING,
 			agent_id STRING,
 			user_id STRING,
@@ -42,11 +47,11 @@ func NewSnowflakeSessionStore(client *snowflake.Client) (*SnowflakeSessionStore,
 		)
 	`
 
-	if _, err = store.db.ExecContext(context.Background(), createTableQuery); err != nil {
-		return nil, err
+	if ctx == nil {
+		ctx = context.Background()
 	}
-
-	return store, nil
+	_, err := s.db.ExecContext(ctx, createTableQuery)
+	return err
 }
 
 func (s *SnowflakeSessionStore) Save(ctx context.Context, session *Session) error {
@@ -153,6 +158,7 @@ func scanSnowflakeSession(row interface {
 	Scan(dest ...any) error
 }) (*Session, error) {
 	var session Session
+	var userID sql.NullString
 	var messagesRaw any
 	var contextRaw any
 	var createdAt time.Time
@@ -161,7 +167,7 @@ func scanSnowflakeSession(row interface {
 	err := row.Scan(
 		&session.ID,
 		&session.AgentID,
-		&session.UserID,
+		&userID,
 		&session.Status,
 		&messagesRaw,
 		&contextRaw,
@@ -171,6 +177,7 @@ func scanSnowflakeSession(row interface {
 	if err != nil {
 		return nil, err
 	}
+	session.UserID = strings.TrimSpace(userID.String)
 
 	if messagesJSON := normalizeVariantJSON(messagesRaw); len(messagesJSON) > 0 {
 		if err := json.Unmarshal(messagesJSON, &session.Messages); err != nil {

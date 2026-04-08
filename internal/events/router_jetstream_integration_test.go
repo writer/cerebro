@@ -118,3 +118,31 @@ func TestNATSAlertNotifierIntegrationNormalizesSubjectPrefix(t *testing.T) {
 		t.Fatalf("expected only normalized stream subjects, got %v", info.Config.Subjects)
 	}
 }
+
+func TestNATSAlertNotifierIntegrationDefaultsEmptyPrefixToAlertNamespace(t *testing.T) {
+	natsURL := startJetStreamServer(t)
+
+	notifier, err := NewNATSAlertNotifier(AlertNotifierConfig{
+		URLs:   []string{natsURL},
+		Stream: "TEST_ALERTS",
+	}, nil)
+	if err != nil {
+		t.Fatalf("new notifier: %v", err)
+	}
+	defer func() { _ = notifier.Close() }()
+
+	if notifier.subjectPrefix != defaultAlertNotifySubjectPrefix {
+		t.Fatalf("expected default alert subject prefix %q, got %q", defaultAlertNotifySubjectPrefix, notifier.subjectPrefix)
+	}
+
+	info, err := notifier.js.StreamInfo("TEST_ALERTS")
+	if err != nil {
+		t.Fatalf("stream info: %v", err)
+	}
+	if !streamHasSubject(info.Config.Subjects, defaultAlertNotifySubjectPrefix+".>") {
+		t.Fatalf("expected alert default stream subject, got %v", info.Config.Subjects)
+	}
+	if streamHasSubject(info.Config.Subjects, "cerebro.events.>") {
+		t.Fatalf("did not expect generic jetstream prefix subject, got %v", info.Config.Subjects)
+	}
+}

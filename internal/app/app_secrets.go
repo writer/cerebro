@@ -287,6 +287,10 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 					if a.Logger != nil {
 						a.Logger.Warn("failed to rotate agent session store", "error", err)
 					}
+				} else if err := store.EnsureSchema(ctx); err != nil {
+					if a.Logger != nil {
+						a.Logger.Warn("failed to ensure rotated agent session store schema", "error", err)
+					}
 				} else {
 					a.Agents.SetSessionStore(store)
 				}

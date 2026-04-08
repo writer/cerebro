@@ -1198,9 +1198,14 @@ func cloneMap(value map[string]interface{}) map[string]interface{} {
 }
 
 func NewNATSAlertNotifier(cfg AlertNotifierConfig, logger *slog.Logger) (*NATSAlertNotifier, error) {
+	subjectPrefix := normalizeAlertSubjectPrefix(cfg.SubjectPrefix)
+	if subjectPrefix == "" {
+		subjectPrefix = defaultAlertNotifySubjectPrefix
+	}
+
 	base := JetStreamConfig{
 		Stream:                cfg.Stream,
-		SubjectPrefix:         cfg.SubjectPrefix,
+		SubjectPrefix:         subjectPrefix,
 		URLs:                  cfg.URLs,
 		ConnectTimeout:        cfg.ConnectTimeout,
 		AuthMode:              cfg.AuthMode,
@@ -1215,10 +1220,6 @@ func NewNATSAlertNotifier(cfg AlertNotifierConfig, logger *slog.Logger) (*NATSAl
 		TLSServerName:         cfg.TLSServerName,
 		TLSInsecureSkipVerify: cfg.TLSInsecureSkipVerify,
 	}.withDefaults()
-	base.SubjectPrefix = normalizeAlertSubjectPrefix(base.SubjectPrefix)
-	if base.SubjectPrefix == "" {
-		base.SubjectPrefix = defaultAlertNotifySubjectPrefix
-	}
 	options, err := base.natsOptions()
 	if err != nil {
 		return nil, err

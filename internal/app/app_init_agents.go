@@ -20,6 +20,8 @@ func (a *App) initAgents(ctx context.Context) {
 		store, err := agents.NewSnowflakeSessionStore(a.Snowflake)
 		if err != nil {
 			a.Logger.Warn("failed to initialize persistent agent session store, using in-memory store", "error", err)
+		} else if err := store.EnsureSchema(ctx); err != nil {
+			a.Logger.Warn("failed to ensure persistent agent session store schema, using in-memory store", "error", err)
 		} else {
 			a.Agents.SetSessionStore(store)
 		}
