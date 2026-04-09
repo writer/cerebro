@@ -52,6 +52,47 @@ func TestNATSAlertNotifierIntegrationUpdatesExistingStreamSubjects(t *testing.T)
 	}
 }
 
+func TestNATSAlertNotifierIntegrationPreservesCompatibleWildcardSubjects(t *testing.T) {
+	natsURL := startJetStreamServer(t)
+
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		t.Fatalf("connect nats: %v", err)
+	}
+	defer nc.Close()
+
+	js, err := nc.JetStream()
+	if err != nil {
+		t.Fatalf("jetstream context: %v", err)
+	}
+	if _, err := js.AddStream(&nats.StreamConfig{
+		Name:      "TEST_ALERTS",
+		Subjects:  []string{"ensemble.notify.*"},
+		Storage:   nats.FileStorage,
+		Retention: nats.LimitsPolicy,
+	}); err != nil {
+		t.Fatalf("add stream: %v", err)
+	}
+
+	notifier, err := NewNATSAlertNotifier(AlertNotifierConfig{
+		URLs:          []string{natsURL},
+		Stream:        "TEST_ALERTS",
+		SubjectPrefix: "ensemble.notify",
+	}, nil)
+	if err != nil {
+		t.Fatalf("new notifier: %v", err)
+	}
+	defer func() { _ = notifier.Close() }()
+
+	info, err := js.StreamInfo("TEST_ALERTS")
+	if err != nil {
+		t.Fatalf("stream info: %v", err)
+	}
+	if len(info.Config.Subjects) != 1 || info.Config.Subjects[0] != "ensemble.notify.*" {
+		t.Fatalf("expected existing compatible wildcard subjects to be preserved without updates, got %v", info.Config.Subjects)
+	}
+}
+
 func TestNATSAlertNotifierIntegrationPublishesAlertsToJetStream(t *testing.T) {
 	natsURL := startJetStreamServer(t)
 

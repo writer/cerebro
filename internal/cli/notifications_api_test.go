@@ -145,6 +145,7 @@ func TestRunNotificationsTest_AutoModeDoesNotFallbackOnUnauthorized(t *testing.T
 	err := runNotificationsTest(notificationsTestCmd, nil)
 	if err == nil {
 		t.Fatal("expected error when API responds unauthorized")
+		return
 	}
 	if !strings.Contains(err.Error(), "list notification channels via api") {
 		t.Fatalf("expected api failure context, got %v", err)

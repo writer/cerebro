@@ -13,6 +13,7 @@ import (
 func TestRootCmd(t *testing.T) {
 	if rootCmd == nil {
 		t.Fatal("rootCmd should not be nil")
+		return
 	}
 
 	if rootCmd.Use != "cerebro" {
@@ -82,6 +83,7 @@ func TestSubcommands(t *testing.T) {
 func TestServeCmd(t *testing.T) {
 	if serveCmd == nil {
 		t.Fatal("serveCmd should not be nil")
+		return
 	}
 
 	if serveCmd.Use != "serve" {
@@ -92,6 +94,7 @@ func TestServeCmd(t *testing.T) {
 func TestSyncCmd(t *testing.T) {
 	if syncCmd == nil {
 		t.Fatal("syncCmd should not be nil")
+		return
 	}
 
 	if syncCmd.Use != "sync" {
@@ -102,6 +105,7 @@ func TestSyncCmd(t *testing.T) {
 func TestPolicyCmd(t *testing.T) {
 	if policyCmd == nil {
 		t.Fatal("policyCmd should not be nil")
+		return
 	}
 
 	if policyCmd.Use != "policy" {
@@ -118,6 +122,7 @@ func TestPolicyCmd(t *testing.T) {
 func TestQueryCmd(t *testing.T) {
 	if queryCmd == nil {
 		t.Fatal("queryCmd should not be nil")
+		return
 	}
 
 	// Query cmd has arguments in Use field
@@ -129,6 +134,7 @@ func TestQueryCmd(t *testing.T) {
 func TestBootstrapCmd(t *testing.T) {
 	if bootstrapCmd == nil {
 		t.Fatal("bootstrapCmd should not be nil")
+		return
 	}
 
 	if bootstrapCmd.Use != "bootstrap" {
@@ -182,12 +188,14 @@ func TestCompletionCommandOutput(t *testing.T) {
 func TestCompletionCommandArgs(t *testing.T) {
 	if err := completionCmd.Args(completionCmd, []string{"invalid"}); err == nil {
 		t.Fatal("expected args validation error")
+		return
 	}
 }
 
 func TestWorkloadScanCommands(t *testing.T) {
 	if workloadScanCmd == nil {
 		t.Fatal("workloadScanCmd should not be nil")
+		return
 	}
 
 	if workloadScanCmd.Name() != "workload-scan" {
@@ -218,6 +226,7 @@ func TestWorkloadScanAWSRequiredFlags(t *testing.T) {
 		flag := workloadScanRunAWSCmd.Flags().Lookup(name)
 		if flag == nil {
 			t.Fatalf("expected %s flag to exist", name)
+			return
 		}
 		if values, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok || len(values) == 0 {
 			t.Fatalf("expected %s to be marked required", name)
@@ -229,6 +238,7 @@ func TestWorkloadScanReconcileAWSRequiredFlags(t *testing.T) {
 	flag := workloadScanReconcileAWSCmd.Flags().Lookup("region")
 	if flag == nil {
 		t.Fatal("expected reconcile aws region flag to exist")
+		return
 	}
 	if values, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok || len(values) == 0 {
 		t.Fatal("expected reconcile aws region flag to be marked required")
@@ -325,6 +335,7 @@ func TestParseWorkloadScanPriorityOverride(t *testing.T) {
 			}
 			if got == nil {
 				t.Fatal("expected priority assessment")
+				return
 			}
 			if got.Priority != tc.want.Priority || got.Score != tc.want.Score || got.Eligible != tc.want.Eligible || got.Source != tc.want.Source {
 				t.Fatalf("unexpected priority assessment: %#v", got)
@@ -336,6 +347,7 @@ func TestParseWorkloadScanPriorityOverride(t *testing.T) {
 func TestImageScanCommands(t *testing.T) {
 	if imageScanCmd == nil {
 		t.Fatal("imageScanCmd should not be nil")
+		return
 	}
 	if imageScanCmd.Name() != "image-scan" {
 		t.Fatalf("expected image-scan command, got %s", imageScanCmd.Name())
@@ -369,6 +381,7 @@ func TestImageScanRegistryRequiredFlags(t *testing.T) {
 			flag := tc.cmd.Flags().Lookup(name)
 			if flag == nil {
 				t.Fatalf("expected %s flag to exist on %s", name, tc.cmd.Name())
+				return
 			}
 			if values, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok || len(values) == 0 {
 				t.Fatalf("expected %s flag on %s to be marked required", name, tc.cmd.Name())
@@ -380,6 +393,7 @@ func TestImageScanRegistryRequiredFlags(t *testing.T) {
 func TestVulnDBCommands(t *testing.T) {
 	if vulndbCmd == nil {
 		t.Fatal("vulndbCmd should not be nil")
+		return
 	}
 	if vulndbCmd.Name() != "vulndb" {
 		t.Fatalf("expected vulndb command, got %s", vulndbCmd.Name())
@@ -412,6 +426,7 @@ func TestVulnDBCommands(t *testing.T) {
 func TestFunctionScanCommands(t *testing.T) {
 	if functionScanCmd == nil {
 		t.Fatal("functionScanCmd should not be nil")
+		return
 	}
 	if functionScanCmd.Name() != "function-scan" {
 		t.Fatalf("expected function-scan command, got %s", functionScanCmd.Name())
@@ -445,6 +460,7 @@ func TestFunctionScanRequiredFlags(t *testing.T) {
 			flag := tc.cmd.Flags().Lookup(name)
 			if flag == nil {
 				t.Fatalf("expected %s flag to exist on %s", name, tc.cmd.Name())
+				return
 			}
 			if values, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok || len(values) == 0 {
 				t.Fatalf("expected %s flag on %s to be marked required", name, tc.cmd.Name())
@@ -456,6 +472,7 @@ func TestFunctionScanRequiredFlags(t *testing.T) {
 func TestRepoScanCommands(t *testing.T) {
 	if repoScanCmd == nil {
 		t.Fatal("repoScanCmd should not be nil")
+		return
 	}
 	if repoScanCmd.Name() != "repo-scan" {
 		t.Fatalf("expected repo-scan command, got %s", repoScanCmd.Name())
@@ -480,6 +497,7 @@ func TestRepoScanRequiredFlags(t *testing.T) {
 	flag := repoScanRunCmd.Flags().Lookup("repo-url")
 	if flag == nil {
 		t.Fatal("expected repo-url flag to exist")
+		return
 	}
 	if values, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok || len(values) == 0 {
 		t.Fatalf("expected repo-url flag to be marked required")
@@ -489,6 +507,7 @@ func TestRepoScanRequiredFlags(t *testing.T) {
 func TestRepoSecretScanCommands(t *testing.T) {
 	if repoSecretScanCmd == nil {
 		t.Fatal("repoSecretScanCmd should not be nil")
+		return
 	}
 	if repoSecretScanCmd.Name() != "repo-secret-scan" {
 		t.Fatalf("expected repo-secret-scan command, got %s", repoSecretScanCmd.Name())
@@ -513,6 +532,7 @@ func TestRepoSecretScanRequiredFlags(t *testing.T) {
 	flag := repoSecretScanRunCmd.Flags().Lookup("repo-url")
 	if flag == nil {
 		t.Fatal("expected repo-url flag to exist")
+		return
 	}
 	if values, ok := flag.Annotations[cobra.BashCompOneRequiredFlag]; !ok || len(values) == 0 {
 		t.Fatalf("expected repo-url flag to be marked required")

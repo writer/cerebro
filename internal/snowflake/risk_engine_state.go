@@ -97,6 +97,12 @@ func isMissingRiskEngineStateTableErr(err error) bool {
 		return false
 	}
 	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "not authorized") ||
+		strings.Contains(message, "insufficient privileges") ||
+		strings.Contains(message, "permission denied") ||
+		strings.Contains(message, "access denied") {
+		return false
+	}
 	return strings.Contains(message, "does not exist") ||
 		strings.Contains(message, "no such table") ||
 		strings.Contains(message, "unknown table") ||

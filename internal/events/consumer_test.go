@@ -84,6 +84,7 @@ func TestConsumerConfigValidate(t *testing.T) {
 	}
 	if err := invalid.validate(); err == nil {
 		t.Fatal("expected validation error for invalid batch size")
+		return
 	}
 }
 
@@ -1238,6 +1239,7 @@ func TestConsumerHandleMessageDeadLettersDuplicateKeyPayloadMismatch(t *testing.
 	}
 	if record == nil {
 		t.Fatal("expected replayed hash-mismatch event to persist a new processed event record")
+		return
 	}
 	if record.DuplicateCount != 0 {
 		t.Fatalf("expected replayed hash-mismatch event to persist without duplicate count, got %#v", record)

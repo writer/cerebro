@@ -165,5 +165,6 @@ func TestKandjiResolveNextPathRejectsForeignHost(t *testing.T) {
 
 	if _, err := provider.resolveKandjiNextPath("/audit/events?limit=500", "https://evil.example.com/audit/events?cursor=abc"); err == nil {
 		t.Fatal("expected foreign host pagination path to be rejected")
+		return
 	}
 }

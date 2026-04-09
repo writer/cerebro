@@ -264,6 +264,7 @@ func TestForgeRockProviderRequest_RejectsCrossHostURL(t *testing.T) {
 	_, err := provider.request(context.Background(), "https://evil.example.com/scim/v2/Users")
 	if err == nil {
 		t.Fatal("expected cross-host URL rejection")
+		return
 	}
 	if !strings.Contains(err.Error(), "host mismatch") {
 		t.Fatalf("expected host mismatch error, got %v", err)

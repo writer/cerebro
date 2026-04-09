@@ -36,5 +36,6 @@ cloudquery.log
 
 infra/__pycache__/*
 infra/aws/__pycache__/*
+sdk/python/cerebro_sdk/__pycache__/*
 
 coverage.out

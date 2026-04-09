@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
@@ -252,5 +253,15 @@ func (a *App) currentIncrementalBuilderSnapshot(ctx context.Context) (*graph.Sna
 	} else if snapshot != nil {
 		return snapshot, nil
 	}
-	return nil, nil
+	if a.GraphSnapshots == nil {
+		return nil, nil
+	}
+	snapshot, _, _, err := a.GraphSnapshots.PeekLatestSnapshot()
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return snapshot, nil
 }

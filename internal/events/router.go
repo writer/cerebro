@@ -33,6 +33,26 @@ func normalizeAlertSubjectPrefix(value string) string {
 	return strings.Trim(strings.TrimSpace(value), ".")
 }
 
+func alertStreamHasCompatibleSubject(streamSubjects []string, subjectPrefix string) bool {
+	subjectPrefix = normalizeAlertSubjectPrefix(subjectPrefix)
+	if subjectPrefix == "" {
+		return false
+	}
+	expected := subjectPrefix + ".>"
+	singleToken := subjectPrefix + ".*"
+	for _, subject := range streamSubjects {
+		subject = strings.TrimSpace(subject)
+		switch subject {
+		case expected, singleToken, ">":
+			return true
+		}
+		if streamHasSubject([]string{subject}, expected) {
+			return true
+		}
+	}
+	return false
+}
+
 type AlertRoutingConfig struct {
 	Routes []AlertRoute `json:"routes" yaml:"routes"`
 }
@@ -1311,7 +1331,7 @@ func (n *NATSAlertNotifier) ensureStream() error {
 	streamSubject := n.subjectPrefix + ".>"
 	stream, err := n.js.StreamInfo(n.stream)
 	if err == nil {
-		if streamHasSubject(stream.Config.Subjects, streamSubject) {
+		if alertStreamHasCompatibleSubject(stream.Config.Subjects, n.subjectPrefix) {
 			return nil
 		}
 		updated := stream.Config

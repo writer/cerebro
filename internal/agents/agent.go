@@ -267,11 +267,111 @@ func (r *AgentRegistry) RegisterAgent(agent *Agent) {
 	r.agents[agent.ID] = agent
 }
 
+func (r *AgentRegistry) UpsertAgent(agent *Agent) {
+	if agent == nil || strings.TrimSpace(agent.ID) == "" {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if existing, ok := r.agents[agent.ID]; ok && existing != nil {
+		agent.Tools = MergeTools(agent.Tools, existing.Tools)
+		if existing.Memory != nil {
+			agent.Memory = existing.Memory
+		}
+	}
+	if agent.Memory == nil {
+		agent.Memory = NewMemory(100)
+	}
+
+	r.agents[agent.ID] = agent
+}
+
+func (r *AgentRegistry) UpsertAgentReplacingTools(agent *Agent, previousBaseTools []Tool) {
+	if agent == nil || strings.TrimSpace(agent.ID) == "" {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if existing, ok := r.agents[agent.ID]; ok && existing != nil {
+		agent.Tools = mergeAgentBaseTools(agent.Tools, existing.Tools, previousBaseTools)
+		if existing.Memory != nil {
+			agent.Memory = existing.Memory
+		}
+	}
+	if agent.Memory == nil {
+		agent.Memory = NewMemory(100)
+	}
+
+	r.agents[agent.ID] = agent
+}
+
 func (r *AgentRegistry) GetAgent(id string) (*Agent, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	a, ok := r.agents[id]
 	return a, ok
+}
+
+func (r *AgentRegistry) RefreshAgentTools(id string, baseTools []Tool) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	agent, ok := r.agents[id]
+	if !ok {
+		return false
+	}
+
+	agent.Tools = MergeTools(baseTools, agent.Tools)
+	return true
+}
+
+func (r *AgentRegistry) ReplaceAgentTools(id string, previousBaseTools, nextBaseTools []Tool) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	agent, ok := r.agents[id]
+	if !ok {
+		return false
+	}
+
+	agent.Tools = mergeAgentBaseTools(nextBaseTools, agent.Tools, previousBaseTools)
+	return true
+}
+
+func (r *AgentRegistry) RemoveAgent(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.agents[id]; !ok {
+		return false
+	}
+	delete(r.agents, id)
+	return true
+}
+
+func mergeAgentBaseTools(nextBaseTools, existingTools, previousBaseTools []Tool) []Tool {
+	excluded := make(map[string]struct{}, len(previousBaseTools))
+	for _, tool := range previousBaseTools {
+		name := strings.TrimSpace(tool.Name)
+		if name == "" {
+			continue
+		}
+		excluded[name] = struct{}{}
+	}
+
+	extraTools := make([]Tool, 0, len(existingTools))
+	for _, tool := range existingTools {
+		name := strings.TrimSpace(tool.Name)
+		if _, ok := excluded[name]; ok {
+			continue
+		}
+		extraTools = append(extraTools, tool)
+	}
+	return MergeTools(nextBaseTools, extraTools)
 }
 
 func (r *AgentRegistry) ListAgents() []*Agent {

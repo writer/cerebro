@@ -68,6 +68,7 @@ func seedRuntimeApprovalExecution(t *testing.T, s *Server, policyID, ip string) 
 	}
 	if execution == nil {
 		t.Fatal("expected runtime execution")
+		return nil
 	}
 	if execution.Status != runtime.StatusApproval {
 		t.Fatalf("status = %s, want %s", execution.Status, runtime.StatusApproval)
