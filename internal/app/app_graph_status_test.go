@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"testing"
 
 	dto "github.com/prometheus/client_model/go"
@@ -53,6 +54,56 @@ func TestCurrentSecurityGraphUsesConfiguredStoreWhenLiveGraphEmpty(t *testing.T)
 	}
 	if _, ok := current.GetNode("service:payments"); !ok {
 		t.Fatal("expected configured graph node")
+	}
+}
+
+type stubConfiguredSnapshotStore struct {
+	graph.GraphStore
+	snapshot *graph.Snapshot
+	err      error
+}
+
+func (s *stubConfiguredSnapshotStore) Snapshot(context.Context) (*graph.Snapshot, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.snapshot, nil
+}
+
+func TestCurrentSecurityGraphReturnsNilWhenConfiguredViewMissing(t *testing.T) {
+	application := &App{
+		SecurityGraph: graph.New(),
+	}
+	setConfiguredGraphStore(t, application, &stubConfiguredSnapshotStore{})
+
+	if current := application.CurrentSecurityGraph(); current != nil {
+		t.Fatalf("expected nil current graph when live graph is unreadable and configured view is missing, got %p", current)
+	}
+}
+
+func TestCurrentSecurityGraphReturnsNilWhenConfiguredViewErrors(t *testing.T) {
+	application := &App{
+		SecurityGraph: graph.New(),
+	}
+	setConfiguredGraphStore(t, application, &stubConfiguredSnapshotStore{err: context.DeadlineExceeded})
+
+	if current := application.CurrentSecurityGraph(); current != nil {
+		t.Fatalf("expected nil current graph when configured view errors, got %p", current)
+	}
+}
+
+func TestCurrentOrStoredSecurityGraphViewReturnsNilWhenSourcesUnreadable(t *testing.T) {
+	application := &App{
+		SecurityGraph: graph.New(),
+	}
+	setConfiguredGraphStore(t, application, &stubConfiguredSnapshotStore{})
+
+	current, err := application.currentOrStoredSecurityGraphView()
+	if err != nil {
+		t.Fatalf("currentOrStoredSecurityGraphView() error = %v, want nil", err)
+	}
+	if current != nil {
+		t.Fatalf("expected nil graph when live graph is unreadable and configured view is missing, got %p", current)
 	}
 }
 
