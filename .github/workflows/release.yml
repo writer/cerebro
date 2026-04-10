@@ -61,7 +61,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GOFLAGS: -mod=vendor
 
   ghcr-publish:
     runs-on: ubuntu-latest

@@ -41,6 +41,7 @@ func TestSQLiteStore(t *testing.T) {
 	f1 := store.Upsert(ctx, finding1)
 	if f1 == nil {
 		t.Fatal("Upsert returned nil")
+		return
 	}
 	if f1.ID != finding1.ID {
 		t.Errorf("expected ID %s, got %s", finding1.ID, f1.ID)

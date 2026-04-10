@@ -51,6 +51,7 @@ func TestEnsureProviderTable_PropagatesColumnError(t *testing.T) {
 	err := ensureProviderTable(context.Background(), client, "okta_users", []string{"id"})
 	if err == nil {
 		t.Fatal("expected error")
+		return
 	}
 	if !strings.Contains(err.Error(), "get existing columns") {
 		t.Fatalf("error = %q, want get existing columns", err.Error())

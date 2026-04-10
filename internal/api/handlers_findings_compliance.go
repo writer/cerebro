@@ -198,20 +198,24 @@ func normalizeScanRequestTables(table string, tables []string) []string {
 func (s *Server) resolveFinding(w http.ResponseWriter, r *http.Request) {
 	store := s.findingsCompliance.FindingsStore(r.Context())
 	id := chi.URLParam(r, "id")
-	if store.Resolve(id) {
+	if err := findings.ResolveStore(store, id); err == nil {
 		s.json(w, http.StatusOK, map[string]string{"status": "resolved"})
-	} else {
+	} else if errors.Is(err, findings.ErrIssueNotFound) {
 		s.error(w, http.StatusNotFound, "finding not found")
+	} else {
+		s.error(w, http.StatusInternalServerError, "failed to resolve finding")
 	}
 }
 
 func (s *Server) suppressFinding(w http.ResponseWriter, r *http.Request) {
 	store := s.findingsCompliance.FindingsStore(r.Context())
 	id := chi.URLParam(r, "id")
-	if store.Suppress(id) {
+	if err := findings.SuppressStore(store, id); err == nil {
 		s.json(w, http.StatusOK, map[string]string{"status": "suppressed"})
-	} else {
+	} else if errors.Is(err, findings.ErrIssueNotFound) {
 		s.error(w, http.StatusNotFound, "finding not found")
+	} else {
+		s.error(w, http.StatusInternalServerError, "failed to suppress finding")
 	}
 }
 

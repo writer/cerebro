@@ -52,7 +52,7 @@ type tierManagerEvictionWork struct {
 
 // TierManager keeps a bounded in-memory hot tier backed by warm on-disk
 // snapshots. Cold-tier loading is intentionally delegated to callers so the app
-// layer can decide how to hydrate historical or replicated snapshots.
+// layer can decide how to hydrate historical snapshots.
 type TierManager struct {
 	mu sync.Mutex
 

@@ -35,6 +35,7 @@ func TestRemoteToolProviderConfigValidate(t *testing.T) {
 	invalidAuth.AuthMode = "unknown"
 	if err := invalidAuth.validate(); err == nil {
 		t.Fatal("expected validation error for unknown auth mode")
+		return
 	}
 
 	missingUserPass := valid
@@ -43,6 +44,7 @@ func TestRemoteToolProviderConfigValidate(t *testing.T) {
 	missingUserPass.Password = ""
 	if err := missingUserPass.validate(); err == nil {
 		t.Fatal("expected validation error for missing userpass credentials")
+		return
 	}
 }
 
@@ -73,6 +75,7 @@ func TestDecodeRemoteManifest(t *testing.T) {
 
 	if _, err := decodeRemoteManifest([]byte(`{"invalid":true}`)); err == nil {
 		t.Fatal("expected decode error for invalid manifest payload")
+		return
 	}
 }
 

@@ -18,7 +18,7 @@ Cerebro is a unified operations platform that combines data ingestion from cloud
 - **Policy Engine** — Cedar-style JSON policies for evaluation with custom condition support, applicable to any domain
 - **Parallel Scanning** — High-performance scanning with configurable worker pools
 - **Findings Lifecycle** — Generalized signal detection, filtering, suppression, and dashboard views
-- **Distributed Job Queue** — SQS + DynamoDB based job system for scalable distributed processing
+- **Distributed Job Queue** — Postgres + NATS JetStream based job system for scalable distributed processing
 - **Scheduled Operations** — Automated scanning and digest notifications with configurable intervals
 
 ### Security
@@ -206,7 +206,7 @@ cerebro worker
 cerebro agent run --repo-url https://github.com/org/repo
 cerebro agent run --resource arn:aws:s3:::my-bucket --aws-region us-east-1
 
-# Run distributed analysis (enqueue jobs to SQS)
+# Run distributed analysis (enqueue jobs to NATS JetStream)
 cerebro agent run --repo-url https://github.com/org/repo --distributed --wait
 
 # Sync data via native scanners
@@ -266,13 +266,13 @@ Cerebro includes a distributed job queue for scalable analysis across large repo
 │                         DISTRIBUTED JOB SYSTEM                               │
 │                                                                              │
 │  ┌──────────────┐        ┌──────────────┐        ┌──────────────┐          │
-│  │  API/CLI     │───────▶│    SQS       │◀───────│   Workers    │          │
-│  │ (Orchestrator)│       │   Queue      │        │  (N instances)│          │
+│  │  API/CLI     │───────▶│ NATS JetStream│◀──────│   Workers    │          │
+│  │ (Orchestrator)│       │    Queue      │       │  (N instances)│          │
 │  └──────────────┘        └──────────────┘        └──────┬───────┘          │
 │         │                       │                        │                   │
 │         │                       ▼                        │                   │
 │         │               ┌──────────────┐                │                   │
-│         └──────────────▶│  DynamoDB    │◀───────────────┘                   │
+│         └──────────────▶│  Postgres    │◀───────────────┘                   │
 │                         │  Job Store   │                                     │
 │                         └──────────────┘                                     │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -348,11 +348,12 @@ See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
 | `SLACK_WEBHOOK_URL` | Slack webhook | - |
 | `SCAN_INTERVAL` | Scan frequency | - |
 | `SECURITY_DIGEST_INTERVAL` | Security digest frequency | - |
-| `JOB_QUEUE_URL` | SQS queue URL for distributed jobs | - |
-| `JOB_TABLE_NAME` | DynamoDB table for job state | - |
-| `JOB_REGION` | AWS region for job infrastructure | - |
+| `JOB_DATABASE_URL` | Postgres DSN for distributed job state | - |
+| `JOB_NATS_STREAM` | JetStream stream for distributed jobs | `CEREBRO_JOBS` |
+| `JOB_NATS_SUBJECT` | NATS subject for distributed jobs | `cerebro.jobs` |
+| `JOB_NATS_CONSUMER` | JetStream consumer for workers | `job-worker` |
 | `JOB_WORKER_CONCURRENCY` | Concurrent jobs per worker | `4` |
-| `NATS_URL` | NATS server URL for event streaming | - |
+| `NATS_URLS` | Comma-separated NATS server URLs | `nats://127.0.0.1:4222` |
 
 `*` When `API_KEYS` is set, API auth auto-enables unless explicitly overridden.
 
@@ -367,6 +368,8 @@ See [Configuration](docs/CONFIGURATION.md) for all options.
 | Language | Go 1.25+ |
 | API Framework | Chi |
 | Database | Snowflake / SQLite (local) |
+| Graph Store | Neptune |
+| Job Runtime | Postgres + NATS JetStream |
 | Event Streaming | NATS JetStream |
 | Data Ingestion | Native scanners |
 | Policy Engine | Cedar-style JSON |
