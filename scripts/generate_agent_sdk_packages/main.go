@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"go/format"
 	"os"
 	"path/filepath"
 	"sort"
@@ -244,6 +245,13 @@ func mustWriteTemplate(path, tmpl string, data templateData) {
 }
 
 func mustWrite(path, content string) {
+	if filepath.Ext(path) == ".go" {
+		formatted, err := format.Source([]byte(content))
+		if err != nil {
+			fatalf("format %s: %v", path, err)
+		}
+		content = string(formatted)
+	}
 	// #nosec G301 -- generated SDK/docs directories are checked into the repo and should remain readable.
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		fatalf("create dir for %s: %v", path, err)

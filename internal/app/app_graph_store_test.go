@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/writer/cerebro/internal/graph"
 )
@@ -54,72 +53,6 @@ func (r *recordingTenantScopedGraphStore) Snapshot(ctx context.Context) (*graph.
 	return r.GraphStore.Snapshot(ctx)
 }
 
-type recordingSpannerGraphStoreAdapter struct {
-	store         graph.GraphStore
-	snapshotCalls int
-}
-
-func (r *recordingSpannerGraphStoreAdapter) UpsertNode(ctx context.Context, node *graph.Node) error {
-	return r.store.UpsertNode(ctx, node)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) UpsertNodesBatch(ctx context.Context, nodes []*graph.Node) error {
-	return r.store.UpsertNodesBatch(ctx, nodes)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) UpsertEdge(ctx context.Context, edge *graph.Edge) error {
-	return r.store.UpsertEdge(ctx, edge)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) UpsertEdgesBatch(ctx context.Context, edges []*graph.Edge) error {
-	return r.store.UpsertEdgesBatch(ctx, edges)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) DeleteNode(ctx context.Context, id string) error {
-	return r.store.DeleteNode(ctx, id)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) DeleteEdge(ctx context.Context, id string) error {
-	return r.store.DeleteEdge(ctx, id)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) LookupNode(ctx context.Context, id string) (*graph.Node, bool, error) {
-	return r.store.LookupNode(ctx, id)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) LookupEdge(ctx context.Context, id string) (*graph.Edge, bool, error) {
-	return r.store.LookupEdge(ctx, id)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) LookupOutEdges(ctx context.Context, nodeID string) ([]*graph.Edge, error) {
-	return r.store.LookupOutEdges(ctx, nodeID)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) LookupInEdges(ctx context.Context, nodeID string) ([]*graph.Edge, error) {
-	return r.store.LookupInEdges(ctx, nodeID)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) LookupNodesByKind(ctx context.Context, kinds ...graph.NodeKind) ([]*graph.Node, error) {
-	return r.store.LookupNodesByKind(ctx, kinds...)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) CountNodes(ctx context.Context) (int, error) {
-	return r.store.CountNodes(ctx)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) CountEdges(ctx context.Context) (int, error) {
-	return r.store.CountEdges(ctx)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) EnsureIndexes(ctx context.Context) error {
-	return r.store.EnsureIndexes(ctx)
-}
-
-func (r *recordingSpannerGraphStoreAdapter) Snapshot(ctx context.Context) (*graph.Snapshot, error) {
-	r.snapshotCalls++
-	return r.store.Snapshot(ctx)
-}
-
 func TestCurrentSecurityGraphStoreTracksLiveGraphSwap(t *testing.T) {
 	application := &App{}
 
@@ -130,6 +63,7 @@ func TestCurrentSecurityGraphStoreTracksLiveGraphSwap(t *testing.T) {
 	store := application.CurrentSecurityGraphStore()
 	if store == nil {
 		t.Fatal("expected live graph store")
+		return
 	}
 	if _, ok, err := store.LookupNode(context.Background(), "service:first"); err != nil || !ok {
 		t.Fatalf("LookupNode(first) = (%v, %v), want present; err=%v", ok, err, err)
@@ -149,26 +83,22 @@ func TestCurrentSecurityGraphStoreTracksLiveGraphSwap(t *testing.T) {
 	}
 }
 
-func TestCurrentSecurityGraphStoreUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
-	persisted := graph.New()
-	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService})
-	persisted.BuildIndex()
+func TestCurrentSecurityGraphStoreUsesConfiguredBackendWhenLiveGraphUnavailable(t *testing.T) {
+	configured := graph.New()
+	configured.AddNode(&graph.Node{ID: "service:configured", Kind: graph.NodeKindService})
+	configured.BuildIndex()
 
-	store := mustPersistToolGraph(t, persisted)
-	application := &App{GraphSnapshots: store}
+	application := &App{}
+	setConfiguredGraphFromGraph(t, application, configured)
 
 	graphStore := application.CurrentSecurityGraphStore()
 	if graphStore == nil {
 		t.Fatal("expected graph store wrapper")
+		return
 	}
 
-	if _, ok, err := graphStore.LookupNode(context.Background(), "service:persisted"); err != nil || !ok {
-		t.Fatalf("LookupNode(persisted) = (%v, %v), want present; err=%v", ok, err, err)
-	}
-
-	status := store.Status()
-	if status.LastRecoveredSnapshot != "" || status.LastRecoverySource != "" {
-		t.Fatalf("expected passive snapshot read to avoid recovery bookkeeping, got %+v", status)
+	if _, ok, err := graphStore.LookupNode(context.Background(), "service:configured"); err != nil || !ok {
+		t.Fatalf("LookupNode(configured) = (%v, %v), want present; err=%v", ok, err, err)
 	}
 }
 
@@ -187,6 +117,7 @@ func TestCurrentSecurityGraphStorePrefersConfiguredBackendWhenReady(t *testing.T
 	store := application.CurrentSecurityGraphStore()
 	if store == nil {
 		t.Fatal("expected graph store wrapper")
+		return
 	}
 	if _, ok, err := store.LookupNode(context.Background(), "service:remote"); err != nil || !ok {
 		t.Fatalf("LookupNode(service:remote) = (%v, %v), want present; err=%v", ok, err, err)
@@ -195,85 +126,6 @@ func TestCurrentSecurityGraphStorePrefersConfiguredBackendWhenReady(t *testing.T
 		t.Fatalf("LookupNode(service:live) error = %v", err)
 	} else if ok {
 		t.Fatal("expected configured backend to be preferred over the live graph for reads")
-	}
-}
-
-func TestCurrentPassiveSnapshotStoreReusesCachedStoreUntilSnapshotChanges(t *testing.T) {
-	first := graph.New()
-	first.AddNode(&graph.Node{ID: "service:first", Kind: graph.NodeKindService})
-	first.BuildIndex()
-
-	snapshots := mustPersistToolGraph(t, first)
-	application := &App{GraphSnapshots: snapshots}
-
-	firstStore, err := application.currentPassiveSnapshotStore(context.Background())
-	if err != nil {
-		t.Fatalf("currentPassiveSnapshotStore() first error = %v", err)
-	}
-	if _, ok, err := firstStore.LookupNode(context.Background(), "service:first"); err != nil || !ok {
-		t.Fatalf("LookupNode(service:first) = (%v, %v), want present; err=%v", ok, err, err)
-	}
-
-	secondStore, err := application.currentPassiveSnapshotStore(context.Background())
-	if err != nil {
-		t.Fatalf("currentPassiveSnapshotStore() second error = %v", err)
-	}
-	if firstStore != secondStore {
-		t.Fatal("expected passive snapshot store to be reused while snapshot is unchanged")
-	}
-
-	next := graph.New()
-	next.AddNode(&graph.Node{ID: "service:next", Kind: graph.NodeKindService})
-	next.BuildIndex()
-	if _, err := snapshots.SaveGraph(next); err != nil {
-		t.Fatalf("SaveGraph(next) error = %v", err)
-	}
-
-	thirdStore, err := application.currentPassiveSnapshotStore(context.Background())
-	if err != nil {
-		t.Fatalf("currentPassiveSnapshotStore() third error = %v", err)
-	}
-	if thirdStore == secondStore {
-		t.Fatal("expected passive snapshot store to refresh after snapshot changes")
-	}
-	if _, ok, err := thirdStore.LookupNode(context.Background(), "service:next"); err != nil || !ok {
-		t.Fatalf("LookupNode(service:next) = (%v, %v), want present; err=%v", ok, err, err)
-	}
-}
-
-func TestCurrentPassiveSnapshotStoreReusesCachedStoreWhileStatusCatchesUp(t *testing.T) {
-	source := graph.New()
-	source.AddNode(&graph.Node{ID: "service:cached", Kind: graph.NodeKindService})
-	source.BuildIndex()
-
-	snapshots := mustPersistToolGraph(t, source)
-	application := &App{GraphSnapshots: snapshots}
-
-	caughtUpStatus := snapshots.Status()
-	laggingStatus := caughtUpStatus
-	laggingStatus.LastPersistedSnapshot = "stale-snapshot-id"
-	setGraphPersistenceStoreStatus(t, snapshots, laggingStatus)
-
-	firstStore, err := application.currentPassiveSnapshotStore(context.Background())
-	if err != nil {
-		t.Fatalf("currentPassiveSnapshotStore() first error = %v", err)
-	}
-	secondStore, err := application.currentPassiveSnapshotStore(context.Background())
-	if err != nil {
-		t.Fatalf("currentPassiveSnapshotStore() second error = %v", err)
-	}
-	if firstStore != secondStore {
-		t.Fatal("expected passive snapshot cache to survive lagging status identifier")
-	}
-
-	setGraphPersistenceStoreStatus(t, snapshots, caughtUpStatus)
-
-	thirdStore, err := application.currentPassiveSnapshotStore(context.Background())
-	if err != nil {
-		t.Fatalf("currentPassiveSnapshotStore() third error = %v", err)
-	}
-	if firstStore != thirdStore {
-		t.Fatal("expected passive snapshot cache to survive status catch-up")
 	}
 }
 
@@ -357,6 +209,7 @@ func TestCurrentSecurityGraphStoreForTenantRecognizesNonStringPropertyTenantIDs(
 	store := application.CurrentSecurityGraphStoreForTenant("42")
 	if store == nil {
 		t.Fatal("expected tenant-scoped graph store")
+		return
 	}
 
 	if _, ok, err := store.LookupNode(context.Background(), "service:tenant-42"); err != nil || !ok {
@@ -438,6 +291,7 @@ func TestCurrentSecurityGraphStoreForTenantScopesAndTracksLiveGraphSwap(t *testi
 	store := application.CurrentSecurityGraphStoreForTenant("tenant-a")
 	if store == nil {
 		t.Fatal("expected tenant-scoped graph store")
+		return
 	}
 
 	if _, ok, err := store.LookupNode(context.Background(), "service:tenant-a"); err != nil || !ok {
@@ -469,24 +323,15 @@ func TestCurrentSecurityGraphStoreForTenantScopesAndTracksLiveGraphSwap(t *testi
 	}
 }
 
-func setGraphPersistenceStoreStatus(t *testing.T, store *graph.GraphPersistenceStore, status graph.GraphPersistenceStatus) {
-	t.Helper()
-	value := reflect.ValueOf(store)
-	if !value.IsValid() || value.IsNil() {
-		t.Fatal("expected graph persistence store")
-	}
-	field := value.Elem().FieldByName("status")
-	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(status))
-}
-
-func TestCurrentSecurityGraphStoreForTenantUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestCurrentSecurityGraphStoreForTenantUsesConfiguredBackendWhenLiveGraphUnavailable(t *testing.T) {
 	source := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 23, 0, 0, 0, time.UTC))
-	store := mustPersistToolGraph(t, source)
-	application := &App{GraphSnapshots: store}
+	application := &App{}
+	setConfiguredSnapshotGraphFromGraph(t, application, source)
 
 	graphStore := application.CurrentSecurityGraphStoreForTenant("tenant-a")
 	if graphStore == nil {
 		t.Fatal("expected tenant-scoped graph store")
+		return
 	}
 
 	if _, ok, err := graphStore.LookupNode(context.Background(), "service:tenant-a"); err != nil || !ok {
@@ -496,11 +341,6 @@ func TestCurrentSecurityGraphStoreForTenantUsesPersistedSnapshotWhenLiveGraphUna
 		t.Fatalf("LookupNode(tenant-b) error = %v", err)
 	} else if ok {
 		t.Fatal("expected tenant store to exclude foreign-tenant nodes")
-	}
-
-	status := store.Status()
-	if status.LastRecoveredSnapshot != "" || status.LastRecoverySource != "" {
-		t.Fatalf("expected passive snapshot read to avoid recovery bookkeeping, got %+v", status)
 	}
 }
 
@@ -538,35 +378,6 @@ func TestCurrentSecurityGraphStoreForTenantPrefersConfiguredTenantScopedBackend(
 	}
 }
 
-func TestCurrentSecurityGraphStoreForTenantPrefersConfiguredSpannerBackend(t *testing.T) {
-	source := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 23, 0, 0, 0, time.UTC))
-	adapter := &recordingSpannerGraphStoreAdapter{store: source}
-	configured := graph.NewSpannerGraphStore(adapter)
-	if !graph.SupportsTenantReadScope(configured) {
-		t.Fatal("expected spanner store to advertise tenant read scope support")
-	}
-
-	application := &App{}
-	application.configuredSecurityGraphStore = configured
-	application.configuredSecurityGraphReady = true
-
-	store := application.CurrentSecurityGraphStoreForTenant("tenant-a")
-	if store == nil {
-		t.Fatal("expected tenant-scoped graph store")
-	}
-	if _, ok, err := store.LookupNode(context.Background(), "service:tenant-a"); err != nil || !ok {
-		t.Fatalf("LookupNode(tenant-a) = (%v, %v), want present; err=%v", ok, err, err)
-	}
-	if _, ok, err := store.LookupNode(context.Background(), "service:tenant-b"); err != nil {
-		t.Fatalf("LookupNode(tenant-b) error = %v", err)
-	} else if ok {
-		t.Fatal("expected configured spanner backend reads to exclude foreign-tenant nodes")
-	}
-	if adapter.snapshotCalls != 0 {
-		t.Fatalf("configured spanner backend snapshot calls = %d, want 0", adapter.snapshotCalls)
-	}
-}
-
 func TestCurrentSecurityGraphStoreForTenantScopesConfiguredSnapshotReads(t *testing.T) {
 	source := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 23, 0, 0, 0, time.UTC))
 	snapshot, err := source.Snapshot(context.Background())
@@ -584,6 +395,7 @@ func TestCurrentSecurityGraphStoreForTenantScopesConfiguredSnapshotReads(t *test
 	store := application.CurrentSecurityGraphStoreForTenant("tenant-a")
 	if store == nil {
 		t.Fatal("expected tenant-scoped graph store")
+		return
 	}
 	if _, ok, err := store.LookupNode(context.Background(), "service:tenant-a"); err != nil || !ok {
 		t.Fatalf("LookupNode(tenant-a) = (%v, %v), want present; err=%v", ok, err, err)
@@ -596,14 +408,63 @@ func TestCurrentSecurityGraphStoreForTenantScopesConfiguredSnapshotReads(t *test
 	}
 }
 
+func TestCurrentSecurityGraphUsesPersistedSnapshotWhenLiveAndConfiguredUnavailable(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService})
+	persisted.BuildIndex()
+
+	application := &App{GraphSnapshots: mustPersistToolGraph(t, persisted)}
+
+	current := application.CurrentSecurityGraph()
+	if current == nil {
+		t.Fatal("expected persisted graph snapshot fallback")
+		return
+	}
+	if _, ok := current.GetNode("service:persisted"); !ok {
+		t.Fatal("expected persisted graph node in current graph fallback")
+	}
+}
+
+func TestCurrentSecurityGraphStoreFallsBackToPersistedSnapshots(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService})
+	persisted.BuildIndex()
+
+	application := &App{GraphSnapshots: mustPersistToolGraph(t, persisted)}
+
+	graphStore := application.CurrentSecurityGraphStore()
+	if graphStore == nil {
+		t.Fatal("expected graph store wrapper")
+		return
+	}
+	if _, ok, err := graphStore.LookupNode(context.Background(), "service:persisted"); err != nil || !ok {
+		t.Fatalf("LookupNode(service:persisted) = (%v, %v), want present; err=%v", ok, err, err)
+	}
+}
+
+func TestCurrentSecurityGraphStoreForTenantFallsBackToPersistedSnapshots(t *testing.T) {
+	source := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 23, 0, 0, 0, time.UTC))
+	application := &App{GraphSnapshots: mustPersistToolGraph(t, source)}
+
+	graphStore := application.CurrentSecurityGraphStoreForTenant("tenant-a")
+	if graphStore == nil {
+		t.Fatal("expected tenant-scoped graph store wrapper")
+		return
+	}
+	if _, ok, err := graphStore.LookupNode(context.Background(), "service:tenant-a"); err != nil || !ok {
+		t.Fatalf("LookupNode(service:tenant-a) = (%v, %v), want present; err=%v", ok, err, err)
+	}
+}
+
 func TestCurrentSecurityGraphStoreForTenantReturnsUnavailableWhenTenantMissingFromSnapshot(t *testing.T) {
 	source := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 23, 0, 0, 0, time.UTC))
-	store := mustPersistToolGraph(t, source)
-	application := &App{GraphSnapshots: store}
+	application := &App{}
+	setConfiguredSnapshotGraphFromGraph(t, application, source)
 
 	graphStore := application.CurrentSecurityGraphStoreForTenant("tenant-missing")
 	if graphStore == nil {
 		t.Fatal("expected tenant-scoped graph store wrapper")
+		return
 	}
 
 	if _, _, err := graphStore.LookupNode(context.Background(), "service:shared"); !errors.Is(err, graph.ErrStoreUnavailable) {
@@ -631,6 +492,7 @@ func TestCurrentSecurityGraphStoreForTenantUsesWarmShardAfterLiveGraphClear(t *t
 	store := application.CurrentSecurityGraphStoreForTenant("tenant-a")
 	if store == nil {
 		t.Fatal("expected tenant-scoped graph store")
+		return
 	}
 	if _, ok, err := store.LookupNode(context.Background(), "service:tenant-a"); err != nil || !ok {
 		t.Fatalf("LookupNode(tenant-a live) = (%v, %v), want present; err=%v", ok, err, err)
@@ -668,6 +530,7 @@ func TestCurrentWarmTenantGraphStoreUsesSnapshotBackedWarmTierAfterHotEviction(t
 	application.setSecurityGraph(live)
 	if scoped := application.CurrentSecurityGraphForTenant("tenant-a"); scoped == nil {
 		t.Fatal("expected tenant shard to seed hot and warm tiers")
+		return
 	}
 
 	now = now.Add(2 * time.Hour)
@@ -699,6 +562,7 @@ func TestCurrentSecurityGraphStoreForTenantRejectsWrites(t *testing.T) {
 	store := application.CurrentSecurityGraphStoreForTenant("tenant-a")
 	if store == nil {
 		t.Fatal("expected tenant-scoped graph store")
+		return
 	}
 
 	err := store.UpsertNode(context.Background(), &graph.Node{ID: "service:tenant-a:new", Kind: graph.NodeKindService, TenantID: "tenant-a"})
@@ -710,17 +574,18 @@ func TestCurrentSecurityGraphStoreForTenantRejectsWrites(t *testing.T) {
 	}
 }
 
-func TestCurrentSecurityGraphStoreTreatsPersistedSnapshotAsReadOnly(t *testing.T) {
-	persisted := graph.New()
-	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService})
-	persisted.BuildIndex()
+func TestCurrentSecurityGraphStoreTreatsConfiguredSnapshotAsReadOnly(t *testing.T) {
+	configured := graph.New()
+	configured.AddNode(&graph.Node{ID: "service:configured", Kind: graph.NodeKindService})
+	configured.BuildIndex()
 
-	store := mustPersistToolGraph(t, persisted)
-	application := &App{GraphSnapshots: store}
+	application := &App{}
+	setConfiguredSnapshotGraphFromGraph(t, application, configured)
 
 	graphStore := application.CurrentSecurityGraphStore()
 	if graphStore == nil {
 		t.Fatal("expected graph store wrapper")
+		return
 	}
 
 	err := graphStore.UpsertNode(context.Background(), &graph.Node{ID: "service:new", Kind: graph.NodeKindService})
@@ -731,12 +596,7 @@ func TestCurrentSecurityGraphStoreTreatsPersistedSnapshotAsReadOnly(t *testing.T
 	if _, ok, err := graphStore.LookupNode(context.Background(), "service:new"); err != nil {
 		t.Fatalf("LookupNode(service:new) error = %v", err)
 	} else if ok {
-		t.Fatal("expected persisted snapshot fallback to remain unchanged after rejected write")
-	}
-
-	status := store.Status()
-	if status.LastRecoveredSnapshot != "" || status.LastRecoverySource != "" {
-		t.Fatalf("expected passive snapshot fallback to avoid recovery bookkeeping, got %+v", status)
+		t.Fatal("expected configured snapshot store to remain unchanged after rejected write")
 	}
 }
 
@@ -745,6 +605,7 @@ func TestCurrentSecurityGraphStoreReturnsUnavailableWhenGraphMissing(t *testing.
 	store := application.CurrentSecurityGraphStore()
 	if store == nil {
 		t.Fatal("expected live graph store wrapper")
+		return
 	}
 	if _, _, err := store.LookupNode(context.Background(), "service:none"); !errors.Is(err, graph.ErrStoreUnavailable) {
 		t.Fatalf("LookupNode() error = %v, want ErrStoreUnavailable", err)
@@ -771,6 +632,7 @@ func TestMutateSecurityGraphSyncsConfiguredBackend(t *testing.T) {
 	}
 	if mutated == nil {
 		t.Fatal("expected mutated graph")
+		return
 	}
 	if !application.configuredSecurityGraphReady {
 		t.Fatal("expected configured graph store to be marked ready after sync")

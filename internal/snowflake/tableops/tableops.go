@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const DefaultInsertBatchSize = 200
@@ -39,15 +40,16 @@ func EnsureVariantTable(ctx context.Context, client QueryExecClient, table strin
 	if err := validateColumns(filtered); err != nil {
 		return err
 	}
+	dialect := tableOpsDialect(client)
 
 	colDefs := make([]string, 0, len(filtered)+3)
 	colDefs = append(colDefs,
 		"_CQ_ID VARCHAR PRIMARY KEY",
-		"_CQ_SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()",
+		fmt.Sprintf("_CQ_SYNC_TIME %s DEFAULT CURRENT_TIMESTAMP()", syncTimeColumnType(dialect)),
 	)
 	colDefs = append(colDefs, "_CQ_HASH VARCHAR")
 	for _, col := range filtered {
-		colDefs = append(colDefs, fmt.Sprintf("%s VARIANT", col))
+		colDefs = append(colDefs, fmt.Sprintf("%s %s", col, variantColumnType(dialect)))
 	}
 
 	createQuery := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n\t%s\n)", table, strings.Join(colDefs, ",\n\t"))
@@ -72,7 +74,7 @@ func EnsureVariantTable(ctx context.Context, client QueryExecClient, table strin
 	desired = append(desired, filtered...)
 
 	for _, col := range columnsMissingFromSchema(existingCols, desired) {
-		columnType := "VARIANT"
+		columnType := variantColumnType(dialect)
 		if col == "_CQ_HASH" {
 			columnType = "VARCHAR"
 		}
@@ -98,6 +100,7 @@ func InsertVariantRowsBatch(ctx context.Context, client ExecClient, table string
 	if batchSize <= 0 {
 		batchSize = DefaultInsertBatchSize
 	}
+	dialect := tableOpsDialect(client)
 
 	reserved := normalizeReserved(reservedColumns)
 	columnSet := make(map[string]struct{})
@@ -149,7 +152,7 @@ func InsertVariantRowsBatch(ctx context.Context, client ExecClient, table string
 
 			for _, col := range columns {
 				jsonVal, _ := json.Marshal(rowUpper[col])
-				selectParts = append(selectParts, "PARSE_JSON(?)")
+				selectParts = append(selectParts, variantValueExpr(dialect))
 				args = append(args, string(jsonVal))
 			}
 
@@ -181,6 +184,10 @@ func MergeVariantRowsBatch(ctx context.Context, client ExecClient, table string,
 	}
 	if batchSize <= 0 {
 		batchSize = DefaultInsertBatchSize
+	}
+	dialect := tableOpsDialect(client)
+	if dialect != warehouse.DialectSnowflake {
+		return upsertVariantRowsBatch(ctx, client, table, rows, reservedColumns, batchSize, dialect)
 	}
 
 	reserved := normalizeReserved(reservedColumns)
@@ -281,6 +288,89 @@ func MergeVariantRowsBatch(ctx context.Context, client ExecClient, table string,
 
 		if _, err := client.Exec(ctx, query, args...); err != nil {
 			return fmt.Errorf("merge rows: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func upsertVariantRowsBatch(ctx context.Context, client ExecClient, table string, rows []map[string]interface{}, reservedColumns map[string]struct{}, batchSize int, dialect string) error {
+	reserved := normalizeReserved(reservedColumns)
+	columnSet := make(map[string]struct{})
+	for _, row := range rows {
+		for key := range row {
+			if _, skip := reserved[strings.ToUpper(key)]; skip {
+				continue
+			}
+			columnSet[strings.ToUpper(key)] = struct{}{}
+		}
+	}
+
+	columns := make([]string, 0, len(columnSet))
+	for col := range columnSet {
+		columns = append(columns, col)
+	}
+	sort.Strings(columns)
+
+	allColumns := append([]string{"_CQ_ID", "_CQ_HASH"}, columns...)
+	if err := validateColumns(allColumns); err != nil {
+		return err
+	}
+
+	for start := 0; start < len(rows); start += batchSize {
+		end := start + batchSize
+		if end > len(rows) {
+			end = len(rows)
+		}
+
+		batch := rows[start:end]
+		valueRows := make([]string, 0, len(batch))
+		args := make([]interface{}, 0, len(batch)*len(allColumns))
+
+		for _, row := range batch {
+			rowUpper := make(map[string]interface{}, len(row))
+			for key, value := range row {
+				rowUpper[strings.ToUpper(key)] = value
+			}
+
+			id := strings.TrimSpace(stringValue(rowUpper["_CQ_ID"]))
+			if id == "" {
+				continue
+			}
+			hash := stringValue(rowUpper["_CQ_HASH"])
+
+			valueParts := make([]string, 0, len(allColumns))
+			valueParts = append(valueParts, "?", "?")
+			args = append(args, id, hash)
+
+			for _, col := range columns {
+				jsonVal, _ := json.Marshal(rowUpper[col])
+				valueParts = append(valueParts, variantValueExpr(dialect))
+				args = append(args, string(jsonVal))
+			}
+
+			valueRows = append(valueRows, "("+strings.Join(valueParts, ", ")+")")
+		}
+
+		if len(valueRows) == 0 {
+			continue
+		}
+
+		updateParts := make([]string, 0, len(columns)+1)
+		updateParts = append(updateParts, "_CQ_HASH = EXCLUDED._CQ_HASH")
+		for _, col := range columns {
+			updateParts = append(updateParts, fmt.Sprintf("%s = EXCLUDED.%s", col, col))
+		}
+
+		query := fmt.Sprintf(
+			"INSERT INTO %s (%s) VALUES %s ON CONFLICT (_CQ_ID) DO UPDATE SET %s",
+			table,
+			strings.Join(allColumns, ", "),
+			strings.Join(valueRows, ", "),
+			strings.Join(updateParts, ", "),
+		)
+		if _, err := client.Exec(ctx, query, args...); err != nil {
+			return fmt.Errorf("upsert rows: %w", err)
 		}
 	}
 
@@ -394,5 +484,49 @@ func stringValue(value interface{}) string {
 		return string(typed)
 	default:
 		return fmt.Sprintf("%v", typed)
+	}
+}
+
+func tableOpsDialect(client interface{}) string {
+	if client == nil {
+		return warehouse.DialectSnowflake
+	}
+	dbProvider, ok := client.(interface{ DB() *sql.DB })
+	if !ok {
+		return warehouse.DialectSnowflake
+	}
+	return warehouse.DialectForDB(dbProvider.DB())
+}
+
+func variantColumnType(dialect string) string {
+	switch dialect {
+	case warehouse.DialectPostgres:
+		return "JSONB"
+	case warehouse.DialectSQLite:
+		return "JSON"
+	default:
+		return "VARIANT"
+	}
+}
+
+func syncTimeColumnType(dialect string) string {
+	switch dialect {
+	case warehouse.DialectPostgres:
+		return "TIMESTAMPTZ"
+	case warehouse.DialectSQLite:
+		return "TEXT"
+	default:
+		return "TIMESTAMP_TZ"
+	}
+}
+
+func variantValueExpr(dialect string) string {
+	switch dialect {
+	case warehouse.DialectPostgres:
+		return "CAST(? AS JSONB)"
+	case warehouse.DialectSQLite:
+		return "?"
+	default:
+		return "PARSE_JSON(?)"
 	}
 }

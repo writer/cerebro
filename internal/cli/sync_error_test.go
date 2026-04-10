@@ -21,6 +21,7 @@ func TestSummarizeSyncRunErrors(t *testing.T) {
 		err := summarizeSyncRunErrors("aws sync", []error{baseErr})
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "aws sync") {
 			t.Fatalf("expected scope in error, got %q", err.Error())
@@ -39,6 +40,7 @@ func TestSummarizeSyncRunErrors(t *testing.T) {
 		err := summarizeSyncRunErrors("aws sync", []error{errA, errB})
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "2 error(s)") {
 			t.Fatalf("expected count in error, got %q", err.Error())
@@ -59,6 +61,7 @@ func TestHandleSyncRunResultsNoResultsError(t *testing.T) {
 		handleErr := handleSyncRunResults(nil, time.Now(), "AWS", err)
 		if handleErr == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !errors.Is(handleErr, err) {
 			t.Fatalf("expected wrapped sync error, got %v", handleErr)
@@ -81,6 +84,7 @@ func TestHandleSyncRunResultsWithPartialResults(t *testing.T) {
 		handleErr := handleSyncRunResults(results, time.Now(), "AWS", err)
 		if handleErr == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !errors.Is(handleErr, err) {
 			t.Fatalf("expected wrapped sync error, got %v", handleErr)

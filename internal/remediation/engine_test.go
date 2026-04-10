@@ -12,6 +12,7 @@ func TestEngine_NewEngine(t *testing.T) {
 
 	if engine == nil {
 		t.Fatal("NewEngine returned nil")
+		return
 	}
 
 	rules := engine.ListRules()
@@ -353,6 +354,7 @@ func TestEngine_UpdateAndDeleteRule(t *testing.T) {
 
 	if err := engine.UpdateRule("missing-rule", Rule{Name: "Missing"}); err == nil {
 		t.Fatal("expected update on missing rule to fail")
+		return
 	}
 
 	if err := engine.DeleteRule("updatable-rule"); err != nil {
@@ -363,6 +365,7 @@ func TestEngine_UpdateAndDeleteRule(t *testing.T) {
 	}
 	if err := engine.DeleteRule("updatable-rule"); err == nil {
 		t.Fatal("expected second delete on missing rule to fail")
+		return
 	}
 }
 

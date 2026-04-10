@@ -49,6 +49,7 @@ func TestCurrentSecurityGraphForTenantReusesShardUntilSourceSwap(t *testing.T) {
 	third := application.CurrentSecurityGraphForTenant("tenant-a")
 	if third == nil {
 		t.Fatal("expected tenant shard after live graph swap")
+		return
 	}
 	if third == first {
 		t.Fatalf("expected source swap to invalidate tenant shard cache, still got %p", third)
@@ -70,6 +71,7 @@ func TestTenantGraphShardManagerEvictsIdleShards(t *testing.T) {
 	first := manager.GraphForTenant(live, "tenant-a")
 	if first == nil {
 		t.Fatal("expected initial tenant shard")
+		return
 	}
 
 	now = now.Add(2 * time.Minute)
@@ -80,6 +82,7 @@ func TestTenantGraphShardManagerEvictsIdleShards(t *testing.T) {
 	second := manager.GraphForTenant(live, "tenant-a")
 	if second == nil {
 		t.Fatal("expected tenant shard rebuild after eviction")
+		return
 	}
 	if second == first {
 		t.Fatalf("expected eviction to force shard rebuild, still got %p", second)
@@ -99,6 +102,7 @@ func TestTenantGraphShardManagerPromoteHotShardReturnsShardWithoutCachingOnSourc
 	shard := staleSource.SubgraphForTenant("tenant-a")
 	if shard == nil {
 		t.Fatal("expected stale tenant shard to exist")
+		return
 	}
 
 	returned := manager.promoteHotShard(staleSource, tenantGraphSourceGeneration(staleSource), "tenant-a", shard, now)
@@ -121,6 +125,7 @@ func TestTenantGraphShardManagerPromoteHotShardReturnsWarmShardWithoutCachingWhe
 	warmShard := currentSource.SubgraphForTenant("tenant-a")
 	if warmShard == nil {
 		t.Fatal("expected warm tenant shard to exist")
+		return
 	}
 
 	returned := manager.promoteHotShard(nil, manager.generation, "tenant-a", warmShard, now)
@@ -156,18 +161,9 @@ func TestEnsureTenantSecurityGraphShardsDoesNotWaitOnSecurityGraphLock(t *testin
 	application.securityGraphInitMu.Unlock()
 }
 
-func TestCurrentSecurityGraphForTenantHydratesFromPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestCurrentSecurityGraphForTenantUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	basePath := filepath.Join(t.TempDir(), "graph-snapshots")
-	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{LocalPath: basePath, MaxSnapshots: 4})
-	if err != nil {
-		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
-	}
-
 	live := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 22, 0, 0, 0, time.UTC))
-	if _, err := store.SaveGraph(live); err != nil {
-		t.Fatalf("SaveGraph() error = %v", err)
-	}
-
 	application := &App{
 		Config: &Config{
 			GraphSnapshotPath:               basePath,
@@ -175,12 +171,13 @@ func TestCurrentSecurityGraphForTenantHydratesFromPersistedSnapshotWhenLiveGraph
 			GraphTenantWarmShardTTL:         time.Hour,
 			GraphTenantWarmShardMaxRetained: 1,
 		},
-		GraphSnapshots: store,
 	}
+	setConfiguredSnapshotGraphFromGraph(t, application, live)
 
 	scoped := application.CurrentSecurityGraphForTenant("tenant-a")
 	if scoped == nil {
-		t.Fatal("expected tenant shard recovered from persisted snapshot")
+		t.Fatal("expected tenant shard resolved from configured graph")
+		return
 	}
 	if _, ok := scoped.GetNode("service:tenant-a"); !ok {
 		t.Fatal("expected tenant shard to include tenant-a node")
@@ -207,6 +204,7 @@ func TestCurrentSecurityGraphForTenantReusesWarmShardAfterLiveGraphClear(t *test
 	first := application.CurrentSecurityGraphForTenant("tenant-a")
 	if first == nil {
 		t.Fatal("expected warm tier seed from live graph")
+		return
 	}
 
 	application.setSecurityGraph(nil)
@@ -215,6 +213,7 @@ func TestCurrentSecurityGraphForTenantReusesWarmShardAfterLiveGraphClear(t *test
 	second := application.CurrentSecurityGraphForTenant("tenant-a")
 	if second == nil {
 		t.Fatal("expected tenant shard recovered from warm tier after live graph clear")
+		return
 	}
 	if second == first {
 		t.Fatalf("expected warm-tier recovery to rebuild shard, still got %p", second)
@@ -247,6 +246,7 @@ func TestTenantGraphShardManagerPinsTenantsWithOpenFindings(t *testing.T) {
 
 	if shard := manager.GraphForTenant(live, "tenant-a"); shard == nil {
 		t.Fatal("expected initial tenant shard")
+		return
 	}
 
 	now = now.Add(2 * time.Minute)
@@ -255,6 +255,7 @@ func TestTenantGraphShardManagerPinsTenantsWithOpenFindings(t *testing.T) {
 	}
 	if shard := manager.GraphForTenant(live, "tenant-a"); shard == nil {
 		t.Fatal("expected pinned tenant shard to remain available")
+		return
 	}
 
 	if !store.Resolve("finding:tenant-a") {
@@ -289,12 +290,14 @@ func TestTenantGraphShardManagerGraphForTenantAvoidsDoubleEviction(t *testing.T)
 
 	if shard := manager.GraphForTenant(live, "tenant-a"); shard == nil {
 		t.Fatal("expected initial tenant shard")
+		return
 	}
 
 	now = now.Add(2 * time.Minute)
 	store.countCalls = 0
 	if shard := manager.GraphForTenant(live, "tenant-a"); shard == nil {
 		t.Fatal("expected pinned tenant shard to remain available")
+		return
 	}
 	if store.countCalls != 1 {
 		t.Fatalf("Count() called %d times, want 1", store.countCalls)

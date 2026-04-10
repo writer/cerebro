@@ -176,7 +176,6 @@ func (a *App) initHealth() {
 	a.Health.Register("graph_ontology_slo", a.graphOntologySLOHealthCheck())
 	a.Health.Register("graph_writer_lease", a.graphWriterLeaseHealthCheck())
 	a.Health.Register("graph_runtime", a.graphRuntimeHealthCheck())
-	a.Health.Register("graph_dual_write_reconciliation", a.graphDualWriteReconciliationHealthCheck())
 	a.Health.Register("graph_build", func(_ context.Context) health.CheckResult {
 		start := time.Now().UTC()
 		result := health.CheckResult{
@@ -261,31 +260,12 @@ func (a *App) initHealth() {
 			return result
 		}
 		status := a.GraphSnapshots.Status()
-		switch {
-		case status.ReplicaConfigured && status.LastReplicationError != "":
-			result.Status = health.StatusDegraded
-			result.Message = "local snapshot persistence healthy; replica sync failing"
-		case status.ReplicaConfigured && status.LastReplicatedSnapshot == "":
-			records, err := a.GraphSnapshots.ListGraphSnapshotRecords()
-			switch {
-			case err == nil && len(records) > 0:
-				result.Status = health.StatusHealthy
-				result.Message = "replicated snapshot persistence active"
-			default:
-				result.Status = health.StatusDegraded
-				result.Message = "replica configured but not seeded yet"
-			}
-		default:
-			result.Status = health.StatusHealthy
-			message := "local snapshot persistence active"
-			if status.ReplicaConfigured {
-				message = "replicated snapshot persistence active"
-			}
-			if status.LastRecoverySource != "" {
-				message += " (last recovery: " + status.LastRecoverySource + ")"
-			}
-			result.Message = message
+		result.Status = health.StatusHealthy
+		message := "local snapshot persistence active"
+		if status.LastRecoverySource != "" {
+			message += " (last recovery: " + status.LastRecoverySource + ")"
 		}
+		result.Message = message
 		result.Latency = time.Since(start)
 		return result
 	})
@@ -548,27 +528,15 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	securityGraph := a.SecurityGraphBuilder.Graph()
 	a.configureGraphRuntimeBehavior(securityGraph)
 	a.publishSecurityGraphRuntimeView(securityGraph)
-	if a.GraphSnapshots != nil {
-		recovered, record, recoverySource, err := a.GraphSnapshots.LoadLatestSnapshot()
-		if err != nil {
-			a.Logger.Warn("failed to recover persisted security graph snapshot", "error", err)
-		} else if recovered != nil {
-			recoveredGraph := graph.RestoreFromSnapshot(recovered)
-			a.configureGraphRuntimeBehavior(recoveredGraph)
-			a.publishSecurityGraphRuntimeView(recoveredGraph)
-			if record != nil && record.BuiltAt != nil {
-				a.setGraphBuildState(GraphBuildSuccess, record.BuiltAt.UTC(), nil)
-			}
-			a.Logger.Info("recovered persisted security graph snapshot",
-				"source", recoverySource,
-				"snapshot_id", recordID(record),
-				"nodes", recoveredGraph.NodeCount(),
-				"edges", recoveredGraph.EdgeCount(),
-			)
-		}
-	}
 	if !a.graphWriterLeaseAllowsWrites() {
-		a.Logger.Info("security graph initialized in follower mode",
+		if readable := a.currentReadableSecurityGraph(); readable != nil {
+			builtAt := readable.Metadata().BuiltAt.UTC()
+			if builtAt.IsZero() {
+				builtAt = time.Now().UTC()
+			}
+			a.setGraphBuildState(GraphBuildSuccess, builtAt, nil)
+		}
+		a.Logger.Info("security graph waiting for graph writer lease",
 			"lease", a.Config.GraphWriterLeaseName,
 			"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
 		)
@@ -620,6 +588,26 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		a.emitGraphRebuiltEvent(emitCtx, meta, meta.BuildDuration)
 		a.emitGraphMutationEvent(emitCtx, a.SecurityGraphBuilder.LastMutation(), "startup")
 	}()
+}
+
+func (a *App) currentReadableSecurityGraph() *graph.Graph {
+	if a == nil {
+		return nil
+	}
+	securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("failed to resolve readable security graph", "error", err)
+		}
+		return nil
+	}
+	if securityGraph == nil {
+		return nil
+	}
+	if securityGraph.NodeCount() == 0 && securityGraph.EdgeCount() == 0 {
+		return nil
+	}
+	return securityGraph
 }
 
 func backgroundWorkContext(ctx context.Context) context.Context {
@@ -714,11 +702,9 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 		return graph.Metadata{}, err
 	}
-	if !graphReplicaReplayEnabled(ctx) {
-		if err := a.requireGraphWriterLease("activate security graph"); err != nil {
-			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
-			return graph.Metadata{}, err
-		}
+	if err := a.requireGraphWriterLease("activate security graph"); err != nil {
+		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+		return graph.Metadata{}, err
 	}
 	if materialized, err := a.materializePersistedWorkloadScans(ctx, securityGraph); err != nil {
 		a.Logger.Warn("failed to materialize persisted workload scans into security graph", "error", err)
@@ -776,10 +762,10 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 		return graph.Metadata{}, err
 	}
 	a.publishSecurityGraphRuntimeView(securityGraph)
-	if a.GraphSnapshots != nil && !graphReplicaReplayEnabled(ctx) {
+	if a.GraphSnapshots != nil {
 		if record, err := a.GraphSnapshots.SaveGraph(securityGraph); err != nil {
 			if record != nil {
-				a.Logger.Warn("replicated security graph snapshot failed after local persist", "snapshot_id", record.ID, "error", err)
+				a.Logger.Warn("failed to persist security graph snapshot", "snapshot_id", record.ID, "error", err)
 			} else {
 				a.Logger.Warn("failed to persist security graph snapshot", "error", err)
 			}
@@ -790,13 +776,6 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 	meta := securityGraph.Metadata()
 	a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
 	return meta, nil
-}
-
-func recordID(record *graph.GraphSnapshotRecord) string {
-	if record == nil {
-		return ""
-	}
-	return record.ID
 }
 
 func (a *App) rematerializeEventCorrelations(securityGraph *graph.Graph, reason string) {

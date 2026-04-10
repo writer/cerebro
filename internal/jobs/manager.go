@@ -75,11 +75,7 @@ func (m *Manager) EnqueueInspectResources(ctx context.Context, resources []Resou
 			return nil, err
 		}
 
-		if err := m.queue.Enqueue(ctx, JobMessage{JobID: job.ID, GroupID: groupID}); err != nil {
-			failMsg := fmt.Sprintf("enqueue failed: %v", err)
-			if failErr := m.store.FailJob(ctx, job.ID, failMsg); failErr != nil && m.logger != nil {
-				m.logger.Warn("failed to mark job failed after enqueue error", "job_id", job.ID, "error", failErr)
-			}
+		if err := m.enqueuePersistedJob(ctx, job); err != nil {
 			return nil, err
 		}
 
@@ -194,11 +190,7 @@ func (m *Manager) EnqueueNativeSync(ctx context.Context, payload NativeSyncPaylo
 		return nil, err
 	}
 
-	if err := m.queue.Enqueue(ctx, JobMessage{JobID: job.ID, GroupID: groupID}); err != nil {
-		failMsg := fmt.Sprintf("enqueue failed: %v", err)
-		if failErr := m.store.FailJob(ctx, job.ID, failMsg); failErr != nil && m.logger != nil {
-			m.logger.Warn("failed to mark native sync job failed after enqueue error", "job_id", job.ID, "error", failErr)
-		}
+	if err := m.enqueuePersistedJob(ctx, job); err != nil {
 		return nil, err
 	}
 
@@ -207,4 +199,45 @@ func (m *Manager) EnqueueNativeSync(ctx context.Context, payload NativeSyncPaylo
 	}
 
 	return job, nil
+}
+
+func (m *Manager) enqueuePersistedJob(ctx context.Context, job *Job) error {
+	if job == nil {
+		return fmt.Errorf("job is required")
+	}
+
+	if err := m.queue.Enqueue(ctx, jobMessageForEnqueue(job)); err != nil {
+		if _, ok := m.store.(PendingDispatchStore); ok {
+			if m.logger != nil {
+				m.logger.Warn("queue publish failed; leaving job queued for dispatch recovery", "job_id", job.ID, "error", err)
+			}
+			return err
+		}
+
+		failMsg := fmt.Sprintf("enqueue failed: %v", err)
+		if failErr := m.store.FailJob(ctx, job.ID, failMsg); failErr != nil && m.logger != nil {
+			m.logger.Warn("failed to mark job failed after enqueue error", "job_id", job.ID, "error", failErr)
+		}
+		return err
+	}
+
+	if tracker, ok := m.store.(PendingDispatchStore); ok {
+		if err := tracker.MarkDispatched(ctx, job.ID); err != nil {
+			return fmt.Errorf("mark job dispatched: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func jobMessageForEnqueue(job *Job) JobMessage {
+	if job == nil {
+		return JobMessage{}
+	}
+	return JobMessage{
+		JobID:         job.ID,
+		GroupID:       job.GroupID,
+		CorrelationID: job.CorrelationID,
+		Attempt:       job.Attempt,
+	}
 }

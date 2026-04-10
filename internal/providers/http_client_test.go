@@ -103,6 +103,7 @@ func TestProviderResilientTransportOpensCircuitAfterFailures(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected first request error")
+		return
 	}
 	resp, err = transport.RoundTrip(req)
 	if resp != nil {
@@ -110,6 +111,7 @@ func TestProviderResilientTransportOpensCircuitAfterFailures(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("expected second request error")
+		return
 	}
 	resp, err = transport.RoundTrip(req)
 	if resp != nil {
@@ -213,6 +215,7 @@ func TestProviderResilientTransportDoesNotResetCircuitOnNonRetryableError(t *tes
 	}
 	if err == nil {
 		t.Fatal("expected first request error")
+		return
 	}
 	resp, err = transport.RoundTrip(req)
 	if resp != nil {
@@ -227,6 +230,7 @@ func TestProviderResilientTransportDoesNotResetCircuitOnNonRetryableError(t *tes
 	}
 	if err == nil {
 		t.Fatal("expected third request error")
+		return
 	}
 	resp, err = transport.RoundTrip(req)
 	if resp != nil {

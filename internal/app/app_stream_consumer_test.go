@@ -33,6 +33,7 @@ func TestEnsureSecurityGraph_ConcurrentInitSingleInstance(t *testing.T) {
 	for g := range graphs {
 		if g == nil {
 			t.Fatal("expected initialized graph, got nil")
+			return
 		}
 		if first == nil {
 			first = g
@@ -97,6 +98,7 @@ func TestHandleTapCloudEventWaitsForGraphReady(t *testing.T) {
 
 	if a.SecurityGraph == nil {
 		t.Fatal("expected security graph to be created after readiness gate opened")
+		return
 	}
 	if _, ok := a.SecurityGraph.GetNode("salesforce:opportunity:opp-blocked"); !ok {
 		t.Fatal("expected tap event node to be applied after graph readiness")
@@ -511,6 +513,7 @@ func TestExtractBusinessEdges(t *testing.T) {
 	company := byTarget["hubspot:company:company-1"]
 	if company == nil {
 		t.Fatal("expected company edge")
+		return
 	}
 	if company.Kind != graph.EdgeKindWorksAt {
 		t.Fatalf("company edge kind = %q, want %q", company.Kind, graph.EdgeKindWorksAt)
@@ -522,6 +525,7 @@ func TestExtractBusinessEdges(t *testing.T) {
 	owner := byTarget["hubspot:owner:owner-1"]
 	if owner == nil {
 		t.Fatal("expected owner edge")
+		return
 	}
 	if owner.Kind != graph.EdgeKindAssignedTo {
 		t.Fatalf("owner edge kind = %q, want %q", owner.Kind, graph.EdgeKindAssignedTo)
@@ -803,6 +807,7 @@ func TestHandleTapCloudEvent_InvalidCustomMapperPathDoesNotBlockPipeline(t *test
 	}
 	if mapper == nil {
 		t.Fatal("expected tap mapper to be initialized from default config fallback")
+		return
 	}
 }
 
@@ -982,6 +987,7 @@ func TestHandleTapCloudEvent_InteractionSubjectCreatesPeopleAndEdge(t *testing.T
 	edge := findInteractionEdge(a.SecurityGraph, "person:alice@example.com", "person:bob@example.com")
 	if edge == nil {
 		t.Fatal("expected interaction edge between alice and bob")
+		return
 	}
 	if got := toInt(edge.Properties["frequency"]); got != 1 {
 		t.Fatalf("expected frequency=1, got %d", got)
@@ -1034,6 +1040,7 @@ func TestHandleTapCloudEvent_InteractionSubjectAggregatesAcrossEvents(t *testing
 	edge := findInteractionEdge(a.SecurityGraph, "person:alice@example.com", "person:bob@example.com")
 	if edge == nil {
 		t.Fatal("expected interaction edge between alice and bob")
+		return
 	}
 	if got := toInt(edge.Properties["frequency"]); got != 2 {
 		t.Fatalf("expected frequency=2, got %d", got)

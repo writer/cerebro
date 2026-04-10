@@ -64,7 +64,7 @@ func TestAuditEndpoint_ReturnsDegradedResponseWithoutAuditRepo(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	if !strings.Contains(w.Body.String(), "snowflake not configured") {
+	if !strings.Contains(w.Body.String(), "audit log persistence not configured") {
 		t.Fatalf("expected degraded audit response, got %s", w.Body.String())
 	}
 }
