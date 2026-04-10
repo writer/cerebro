@@ -594,6 +594,7 @@ func (c *Consumer) handleDecodedMessage(decoded consumerDecodedMessage) consumer
 	handlerCtx, handlerSpan := c.startTracingSpan(ingestCtx, "cerebro.event.handle", c.consumerEventAttributes(message, evt)...)
 	handlerCtx = telemetry.ContextWithAttributes(handlerCtx, c.consumerEventAttributes(message, evt)...)
 	if err := c.handler(handlerCtx, evt); err != nil {
+		consumerRecordSpanError(handlerSpan, err)
 		if delay, ok := retryDelay(err); ok && message.nakWithDelay != nil {
 			handlerSpan.End()
 			c.logger.Info("tap consumer handler deferred; message requeued with delay",
@@ -608,7 +609,6 @@ func (c *Consumer) handleDecodedMessage(decoded consumerDecodedMessage) consumer
 			}
 			return consumerMessageResult{}
 		}
-		consumerRecordSpanError(handlerSpan, err)
 		handlerSpan.End()
 		c.logger.Warn("tap consumer handler failed; message requeued", "error", err, "event_type", evt.Type)
 		if nakErr := c.consumerAckWithTracing(ingestCtx, message, evt, "nak", message.nak); nakErr != nil {

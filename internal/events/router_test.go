@@ -562,6 +562,7 @@ func TestAlertRouterRouteKeepsInMemoryStateWhenPersistenceFailsAfterDelivery(t *
 	}
 	if err := router.Route(context.Background(), event); err == nil {
 		t.Fatal("expected route to fail when persistence fails")
+		return
 	}
 	if got := len(sender.messages); got != 1 {
 		t.Fatalf("expected alert delivery before persistence failure, got %d", got)
@@ -607,6 +608,7 @@ func TestAlertRouterRouteRollsBackStateWhenDeliveryFails(t *testing.T) {
 	}
 	if err := router.Route(context.Background(), event); err == nil {
 		t.Fatal("expected route to fail when delivery fails")
+		return
 	}
 	if stateStore.saveCalls != 0 {
 		t.Fatalf("expected no state persistence on delivery failure, got %d saves", stateStore.saveCalls)

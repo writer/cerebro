@@ -422,7 +422,7 @@ func (a *App) handleGraphWriterLeaseAcquired(ctx context.Context) {
 	a.graphWriterLeaseTransitionWG.Add(1)
 	go func() {
 		defer a.graphWriterLeaseTransitionWG.Done()
-		promotionCtx := withoutGraphReplicaReplay(backgroundWorkContext(ctx))
+		promotionCtx := backgroundWorkContext(ctx)
 		if err := a.promoteOrRebuildSecurityGraph(promotionCtx); err != nil {
 			if a.Logger != nil {
 				a.Logger.Warn("graph writer promotion failed", "error", err)
@@ -472,9 +472,12 @@ func (a *App) handleGraphWriterLeaseLost(ctx context.Context) {
 	if a == nil || a.Config == nil || !a.Config.NATSConsumerEnabled {
 		return
 	}
-	a.startTapGraphConsumer(backgroundWorkContext(ctx))
+	if err := a.stopTapGraphConsumer(backgroundWorkContext(ctx)); err != nil && a.Logger != nil {
+		a.Logger.Warn("failed to stop tap graph consumer after losing graph writer lease", "error", err)
+		return
+	}
 	if a.Logger != nil {
-		a.Logger.Info("graph writer lease lost; continuing tap consumer in follower replica mode",
+		a.Logger.Info("graph writer lease lost; tap graph consumer stopped until the lease is reacquired",
 			"lease", a.Config.GraphWriterLeaseName,
 			"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
 		)

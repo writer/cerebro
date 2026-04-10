@@ -119,6 +119,7 @@ func TestRunPolicyList_AutoModeDoesNotFallbackOnUnauthorized(t *testing.T) {
 	err := runPolicyList(policyListCmd, nil)
 	if err == nil {
 		t.Fatal("expected error when API responds unauthorized")
+		return
 	}
 	if called {
 		t.Fatal("did not expect direct fallback on unauthorized response")

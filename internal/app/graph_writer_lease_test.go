@@ -13,12 +13,10 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/cerrors"
-	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/graph/builders"
 	"github.com/writer/cerebro/internal/health"
 	integrationtest "github.com/writer/cerebro/internal/testutil/integration"
-	"github.com/writer/cerebro/internal/warehouse"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -86,6 +84,7 @@ func TestGraphWriterLeaseManagerStopAfterFailedSync(t *testing.T) {
 
 	if err := manager.sync(context.Background()); err == nil {
 		t.Fatal("expected sync to fail")
+		return
 	}
 
 	done := make(chan struct{})
@@ -281,75 +280,6 @@ func TestHandleGraphWriterLeaseAcquiredPersistsWarmGraphAndEmitsEvents(t *testin
 	}
 }
 
-func TestHandleGraphWriterLeaseAcquiredClearsReplicaReplayContextForWarmPromotion(t *testing.T) {
-	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
-		LocalPath:    t.TempDir(),
-		MaxSnapshots: 4,
-	})
-	if err != nil {
-		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
-	}
-
-	publisher := &captureEventPublisher{}
-	hooks := webhooks.NewServiceForTesting()
-	hooks.SetEventPublisher(publisher)
-
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	warm := graph.New()
-	warm.AddNode(&graph.Node{ID: "service:billing", Kind: graph.NodeKindService, Name: "billing"})
-	warm.SetMetadata(graph.Metadata{
-		BuiltAt:       time.Date(2026, 3, 20, 13, 0, 0, 0, time.UTC),
-		NodeCount:     warm.NodeCount(),
-		EdgeCount:     warm.EdgeCount(),
-		BuildDuration: 900 * time.Millisecond,
-	})
-
-	application := &App{
-		Config: &Config{
-			GraphSchemaValidationMode: string(graph.SchemaValidationEnforce),
-		},
-		Logger:               logger,
-		Webhooks:             hooks,
-		GraphSnapshots:       store,
-		SecurityGraphBuilder: builders.NewBuilder(nil, logger),
-		graphReady:           make(chan struct{}),
-	}
-	application.setSecurityGraph(warm)
-	close(application.graphReady)
-
-	application.handleGraphWriterLeaseAcquired(withGraphReplicaReplay(context.Background()))
-
-	done := make(chan struct{})
-	go func() {
-		application.graphWriterLeaseTransitionWG.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for graph writer promotion")
-	}
-
-	records, err := store.ListGraphSnapshotRecords()
-	if err != nil {
-		t.Fatalf("ListGraphSnapshotRecords() error = %v", err)
-	}
-	if len(records) != 1 {
-		t.Fatalf("expected one persisted snapshot after replay-context warm promotion, got %d", len(records))
-	}
-
-	events := publisher.all()
-	if len(events) != 2 {
-		t.Fatalf("expected two emitted events after replay-context warm promotion, got %d", len(events))
-	}
-	if events[0].Type != webhooks.EventGraphRebuilt {
-		t.Fatalf("expected first event type %q, got %q", webhooks.EventGraphRebuilt, events[0].Type)
-	}
-	if events[1].Type != webhooks.EventGraphMutated {
-		t.Fatalf("expected second event type %q, got %q", webhooks.EventGraphMutated, events[1].Type)
-	}
-}
-
 func TestPromoteOrRebuildSecurityGraphUnlocksOnPanic(t *testing.T) {
 	warm := graph.New()
 	warm.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
@@ -364,6 +294,7 @@ func TestPromoteOrRebuildSecurityGraphUnlocksOnPanic(t *testing.T) {
 	defer func() {
 		if recovered := recover(); recovered == nil {
 			t.Fatal("expected promoteOrRebuildSecurityGraph() to panic")
+			return
 		}
 		if !application.graphUpdateMu.TryLock() {
 			t.Fatal("expected graphUpdateMu to be unlocked after panic")
@@ -374,7 +305,31 @@ func TestPromoteOrRebuildSecurityGraphUnlocksOnPanic(t *testing.T) {
 	_ = application.promoteOrRebuildSecurityGraph(context.Background())
 }
 
-func TestTapGraphConsumerDurableUsesReplicaScopedNameWhenLeaseEnabled(t *testing.T) {
+func TestPromoteOrRebuildSecurityGraphPromotesPersistedSnapshot(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService, Name: "persisted"})
+	persisted.BuildIndex()
+
+	application := &App{
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		GraphSnapshots: mustPersistToolGraph(t, persisted),
+	}
+
+	if err := application.promoteOrRebuildSecurityGraph(context.Background()); err != nil {
+		t.Fatalf("promoteOrRebuildSecurityGraph() error = %v", err)
+	}
+
+	current := application.CurrentSecurityGraph()
+	if current == nil {
+		t.Fatal("expected promoted graph from persisted snapshot")
+		return
+	}
+	if _, ok := current.GetNode("service:persisted"); !ok {
+		t.Fatal("expected persisted node after promotion")
+	}
+}
+
+func TestTapGraphConsumerDurableUsesConfiguredName(t *testing.T) {
 	application := &App{
 		Config: &Config{
 			GraphWriterLeaseEnabled: true,
@@ -383,26 +338,24 @@ func TestTapGraphConsumerDurableUsesReplicaScopedNameWhenLeaseEnabled(t *testing
 		},
 	}
 
-	if got := application.tapGraphConsumerDurable(); got != "cerebro_graph_builder_replica-host" {
-		t.Fatalf("tapGraphConsumerDurable() = %q, want cerebro_graph_builder_replica-host", got)
+	if got := application.tapGraphConsumerDurable(); got != "cerebro_graph_builder" {
+		t.Fatalf("tapGraphConsumerDurable() = %q, want cerebro_graph_builder", got)
 	}
 }
 
-func TestTapGraphConsumerSubjectsExcludeAuditSourcesForFollowers(t *testing.T) {
+func TestTapGraphConsumerSubjectsNormalizeConfiguredSources(t *testing.T) {
 	application := &App{
 		Config: &Config{
-			GraphWriterLeaseEnabled: true,
 			NATSConsumerSubjects: []string{
-				"ensemble.tap.>",
+				" ensemble.tap.> ",
 				"aws.cloudtrail.>",
-				"gcp.auditlog.>",
-				"azure.activitylog.>",
+				"ensemble.tap.>",
 			},
 		},
 	}
 
 	got := application.tapGraphConsumerSubjects()
-	want := []string{"ensemble.tap.>"}
+	want := []string{"ensemble.tap.>", "aws.cloudtrail.>"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("tapGraphConsumerSubjects() = %#v, want %#v", got, want)
 	}
@@ -425,64 +378,22 @@ func TestTapGraphConsumerSubjectsRetainConfiguredSourcesForWriters(t *testing.T)
 	}
 }
 
-func TestMutateSecurityGraphReplicaReplayBypassesLeaseFence(t *testing.T) {
+func TestHandleGraphWriterLeaseLostLogsConsumerStopUntilReacquired(t *testing.T) {
+	var logs bytes.Buffer
 	application := &App{
 		Config: &Config{
 			GraphWriterLeaseEnabled: true,
+			GraphWriterLeaseName:    "security_graph_writer",
+			GraphWriterLeaseOwnerID: "self",
+			NATSConsumerEnabled:     true,
 		},
-	}
-	application.setSecurityGraph(graph.New())
-
-	if _, err := application.MutateSecurityGraph(context.Background(), func(g *graph.Graph) error {
-		g.AddNode(&graph.Node{ID: "service:blocked", Kind: graph.NodeKindService})
-		return nil
-	}); !errors.Is(err, cerrors.ErrForbidden) {
-		t.Fatalf("MutateSecurityGraph() error = %v, want forbidden without lease", err)
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
 	}
 
-	replicaCtx := withGraphReplicaReplay(context.Background())
-	mutated, err := application.MutateSecurityGraph(replicaCtx, func(g *graph.Graph) error {
-		g.AddNode(&graph.Node{ID: "service:replica", Kind: graph.NodeKindService})
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("MutateSecurityGraph(replica replay) error = %v", err)
-	}
-	if _, ok := mutated.GetNode("service:replica"); !ok {
-		t.Fatal("expected replica replay mutation to update the local read replica graph")
-	}
-}
+	application.handleGraphWriterLeaseLost(context.Background())
 
-func TestHandleTapGraphConsumerEventRequeuesAuditMutationsWithoutWriterLease(t *testing.T) {
-	store := &warehouse.MemoryWarehouse{}
-	application := &App{
-		Config: &Config{
-			GraphWriterLeaseEnabled: true,
-		},
-		Warehouse: store,
-	}
-
-	evt := events.CloudEvent{
-		ID:     "evt-audit-follower-1",
-		Source: "urn:aws:cloudtrail",
-		Type:   "aws.cloudtrail.asset.changed",
-		Time:   time.Date(2026, 3, 19, 19, 0, 0, 0, time.UTC),
-		Data: map[string]any{
-			"table_name":  "aws_ec2_security_groups",
-			"resource_id": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-789",
-			"change_type": "modified",
-			"payload": map[string]any{
-				"arn": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-789",
-			},
-		},
-	}
-
-	err := application.handleTapGraphConsumerEvent(context.Background(), evt)
-	if !errors.Is(err, errTapGraphConsumerAuditMutationDeferred) {
-		t.Fatalf("handleTapGraphConsumerEvent() error = %v, want %v", err, errTapGraphConsumerAuditMutationDeferred)
-	}
-	if len(store.CDCBatches) != 0 {
-		t.Fatalf("expected deferred audit mutation to avoid warehouse writes, got %#v", store.CDCBatches)
+	if got := logs.String(); !strings.Contains(got, "tap graph consumer stopped until the lease is reacquired") {
+		t.Fatalf("handleGraphWriterLeaseLost() log = %q, want stop-until-reacquired message", got)
 	}
 }
 
