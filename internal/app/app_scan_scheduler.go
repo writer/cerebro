@@ -560,10 +560,9 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		}
 	}
 
-	// Sync to Snowflake if available
-	if a.SnowflakeFindings != nil {
-		if err := a.SnowflakeFindings.Sync(ctx); err != nil {
-			a.Logger.Warn("failed to sync findings to snowflake", "error", err)
+	if syncer, ok := a.Findings.(interface{ Sync(context.Context) error }); ok {
+		if err := syncer.Sync(ctx); err != nil {
+			a.Logger.Warn("failed to sync findings", "error", err)
 		}
 	}
 

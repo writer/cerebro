@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/cel-go/cel"
 	"github.com/writer/cerebro/internal/setutil"
 )
 
@@ -212,14 +213,32 @@ func (e *Engine) RollbackPolicy(policyID string, version int) (*Policy, error) {
 	}
 
 	now := time.Now().UTC()
-	if _, exists := e.policies[policyID]; exists {
-		e.closeActivePolicyEventLocked(policyID, now)
-	}
-
 	source.ID = policyID
 	source.Version = e.nextPolicyVersionLocked(policyID)
 	source.LastModified = now
 	source.PinnedVersion = version
+	source.ConditionFormat = normalizeConditionFormat(source.ConditionFormat)
+
+	// Preserve current compiled CEL programs so a failed rollback
+	// recompilation does not leave the active policy without programs.
+	var prevCELPrograms []cel.Program
+	if e.celPrograms != nil {
+		prevCELPrograms = e.celPrograms[policyID]
+	}
+	if err := e.syncConditionProgramsLocked(source); err != nil {
+		// Restore previously compiled programs for the active policy.
+		if prevCELPrograms != nil {
+			if e.celPrograms == nil {
+				e.celPrograms = make(map[string][]cel.Program)
+			}
+			e.celPrograms[policyID] = prevCELPrograms
+		}
+		return nil, err
+	}
+	if _, exists := e.policies[policyID]; exists {
+		e.closeActivePolicyEventLocked(policyID, now)
+	}
+
 	e.policies[policyID] = clonePolicy(source)
 	e.appendPolicyEventLocked(policyID, source, now, nil, PolicyEventRolledBack)
 

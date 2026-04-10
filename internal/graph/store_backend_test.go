@@ -8,10 +8,10 @@ func TestParseStoreBackend(t *testing.T) {
 		want  StoreBackend
 		valid bool
 	}{
-		{input: "", want: StoreBackendMemory, valid: true},
-		{input: "memory", want: StoreBackendMemory, valid: true},
+		{input: "", want: StoreBackendNeptune, valid: true},
 		{input: " Neptune ", want: StoreBackendNeptune, valid: true},
-		{input: "spanner", want: StoreBackendSpanner, valid: true},
+		{input: "legacy", want: StoreBackend("legacy"), valid: false},
+		{input: "memory", want: StoreBackend("memory"), valid: false},
 		{input: "unknown", want: StoreBackend("unknown"), valid: false},
 	}
 	for _, tc := range tests {

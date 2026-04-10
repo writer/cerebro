@@ -105,6 +105,7 @@ func TestIssueManager_SQLiteStorePersistsUpdates(t *testing.T) {
 	}
 	if f.ResolvedAt == nil {
 		t.Fatal("expected resolved_at to be set")
+		return
 	}
 	if f.Resolution != "remediated" {
 		t.Fatalf("resolution = %q, want %q", f.Resolution, "remediated")
@@ -137,6 +138,7 @@ func TestIssueManager_SQLiteStorePersistsUpdates(t *testing.T) {
 	}
 	if persisted.ResolvedAt == nil {
 		t.Fatal("expected persisted resolved_at")
+		return
 	}
 	if persisted.Resolution != "remediated" {
 		t.Fatalf("persisted resolution = %q, want remediated", persisted.Resolution)
@@ -203,6 +205,7 @@ func TestIssueManager_SnoozeEscalateAndAutoResolve(t *testing.T) {
 	}
 	if f.ResolvedAt == nil {
 		t.Fatal("expected resolved_at to be set")
+		return
 	}
 	if f.SnoozedUntil != nil {
 		t.Fatalf("snoozed_until = %v, want nil after auto-resolve", f.SnoozedUntil)

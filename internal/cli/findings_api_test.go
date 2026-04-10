@@ -188,6 +188,7 @@ func TestRunFindingsList_AutoModeDoesNotFallbackOnUnauthorized(t *testing.T) {
 	err := runFindingsList(findingsListCmd, nil)
 	if err == nil {
 		t.Fatal("expected error when API responds unauthorized")
+		return
 	}
 	if called {
 		t.Fatal("did not expect direct fallback on unauthorized response")

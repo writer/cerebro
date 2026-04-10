@@ -129,7 +129,7 @@ func TestStartEventRemediation_PropagationCanGateExecution(t *testing.T) {
 	}
 }
 
-func TestStartEventRemediation_PropagationUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestStartEventRemediation_PropagationUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	engine := remediation.NewEngine(logger)
 	if err := engine.AddRule(remediation.Rule{
@@ -145,15 +145,6 @@ func TestStartEventRemediation_PropagationUsesPersistedSnapshotWhenLiveGraphUnav
 		t.Fatalf("failed to add remediation rule: %v", err)
 	}
 
-	dir := t.TempDir()
-	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
-		LocalPath:    dir,
-		MaxSnapshots: 4,
-	})
-	if err != nil {
-		t.Fatalf("new graph persistence store: %v", err)
-	}
-
 	g := graph.New()
 	g.AddNode(&graph.Node{
 		ID:         "customer-1",
@@ -165,9 +156,6 @@ func TestStartEventRemediation_PropagationUsesPersistedSnapshotWhenLiveGraphUnav
 		BuiltAt:   time.Date(2026, 3, 19, 15, 30, 0, 0, time.UTC),
 		NodeCount: 1,
 	})
-	if _, err := store.SaveGraph(g); err != nil {
-		t.Fatalf("save graph snapshot: %v", err)
-	}
 
 	hooks := webhooks.NewServiceForTesting()
 	capture := &captureNotifier{}
@@ -180,8 +168,8 @@ func TestStartEventRemediation_PropagationUsesPersistedSnapshotWhenLiveGraphUnav
 		Remediation:         engine,
 		Notifications:       notifier,
 		RemediationExecutor: remediation.NewExecutor(engine, nil, notifier, nil, hooks),
-		GraphSnapshots:      store,
 	}
+	setConfiguredSnapshotGraphFromGraph(t, app, g)
 	app.startEventRemediation(context.Background())
 
 	if err := hooks.EmitWithErrors(context.Background(), webhooks.EventSignalCreated, map[string]any{
@@ -196,17 +184,17 @@ func TestStartEventRemediation_PropagationUsesPersistedSnapshotWhenLiveGraphUnav
 		if execution.RuleID == "signal-snapshot-graph-action" {
 			found = true
 			if execution.Status != remediation.ExecutionPending {
-				t.Fatalf("expected execution to remain %q when persisted propagation gates execution, got %q", remediation.ExecutionPending, execution.Status)
+				t.Fatalf("expected execution to remain %q when configured propagation gates execution, got %q", remediation.ExecutionPending, execution.Status)
 			}
 			break
 		}
 	}
 	if !found {
-		t.Fatal("expected snapshot-backed graph-action remediation execution")
+		t.Fatal("expected configured graph-action remediation execution")
 	}
 
 	if len(capture.events) == 0 {
-		t.Fatal("expected persisted propagation gating to emit review notification")
+		t.Fatal("expected configured propagation gating to emit review notification")
 	}
 	if capture.events[0].Type != notifications.EventReviewRequired {
 		t.Fatalf("expected review required notification, got %q", capture.events[0].Type)

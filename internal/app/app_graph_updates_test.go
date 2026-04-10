@@ -83,6 +83,7 @@ func TestSetSecurityGraphRefreshesPropagationEngine(t *testing.T) {
 	firstEngine := application.propagationEngine()
 	if firstEngine == nil {
 		t.Fatal("expected propagation engine for first graph")
+		return
 	}
 
 	second := graph.New()
@@ -91,8 +92,32 @@ func TestSetSecurityGraphRefreshesPropagationEngine(t *testing.T) {
 	secondEngine := application.propagationEngine()
 	if secondEngine == nil {
 		t.Fatal("expected propagation engine for second graph")
+		return
 	}
 	if firstEngine == secondEngine {
 		t.Fatal("expected propagation engine to refresh after graph swap")
+	}
+}
+
+func TestCurrentIncrementalBuilderSnapshotUsesPersistedSnapshotFallback(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService, Name: "persisted"})
+
+	application := &App{
+		GraphSnapshots: mustPersistToolGraph(t, persisted),
+	}
+
+	snapshot, err := application.currentIncrementalBuilderSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("currentIncrementalBuilderSnapshot() error = %v", err)
+	}
+	if snapshot == nil {
+		t.Fatal("expected persisted snapshot fallback")
+		return
+	}
+
+	view := graph.GraphViewFromSnapshot(snapshot)
+	if _, ok := view.GetNode("service:persisted"); !ok {
+		t.Fatal("expected persisted node in incremental snapshot fallback")
 	}
 }

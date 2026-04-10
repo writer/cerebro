@@ -178,6 +178,7 @@ func TestGraphRiskServiceRiskReportUsesStoreBackedGraphWithoutServer(t *testing.
 	}
 	if report == nil {
 		t.Fatal("expected store-backed risk report")
+		return
 	}
 }
 
