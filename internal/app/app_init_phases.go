@@ -209,10 +209,11 @@ func isAppStateWarehouseTable(name string) bool {
 }
 
 func (a *App) initPhase2b(ctx context.Context) error {
-	if err := runInitTasksConcurrently(ctx, []concurrentInitTask{
-		{name: "remediation", run: func(context.Context) { a.initRemediation() }},
-		{name: "agents", run: func(taskCtx context.Context) { a.initAgents(taskCtx) }},
-	}); err != nil {
+	// Agent tooling rebinds remediation remote callers, so remediation must be ready first.
+	if err := runInitStep("remediation", func() { a.initRemediation() }); err != nil {
+		return fmt.Errorf("phase 2b init failed: %w", err)
+	}
+	if err := runInitStep("agents", func() { a.initAgents(ctx) }); err != nil {
 		return fmt.Errorf("phase 2b init failed: %w", err)
 	}
 	a.startEventRemediation(ctx)

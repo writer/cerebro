@@ -263,3 +263,23 @@ func TestInitLegacySnowflakeForAppStateRequiresLegacySourceForRetentionAfterMigr
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestInitPhase2bInitializesRemediationBeforeAgents(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		a := &App{
+			Config: &Config{},
+			Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		}
+		a.initRuntime()
+
+		if err := a.initPhase2b(context.Background()); err != nil {
+			t.Fatalf("initPhase2b() error = %v", err)
+		}
+		if a.RemediationExecutor == nil {
+			t.Fatal("expected remediation executor to be initialized")
+		}
+		if a.Agents == nil {
+			t.Fatal("expected agents to be initialized")
+		}
+	}
+}

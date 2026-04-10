@@ -6,8 +6,7 @@ cerebro
 *.so
 *.dylib
 
-# But keep vendor .so files (required for Snowflake driver)
-!vendor/**/*.so
+vendor/
 
 # Go
 *.test
