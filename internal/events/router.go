@@ -29,6 +29,30 @@ const (
 	defaultAlertEscalationReason    = "alert_unacknowledged"
 )
 
+func normalizeAlertSubjectPrefix(value string) string {
+	return strings.Trim(strings.TrimSpace(value), ".")
+}
+
+func alertStreamHasCompatibleSubject(streamSubjects []string, subjectPrefix string) bool {
+	subjectPrefix = normalizeAlertSubjectPrefix(subjectPrefix)
+	if subjectPrefix == "" {
+		return false
+	}
+	expected := subjectPrefix + ".>"
+	singleToken := subjectPrefix + ".*"
+	for _, subject := range streamSubjects {
+		subject = strings.TrimSpace(subject)
+		switch subject {
+		case expected, singleToken, ">":
+			return true
+		}
+		if streamHasSubject([]string{subject}, expected) {
+			return true
+		}
+	}
+	return false
+}
+
 type AlertRoutingConfig struct {
 	Routes []AlertRoute `json:"routes" yaml:"routes"`
 }
@@ -85,6 +109,8 @@ type AlertRouterOptions struct {
 }
 
 type AlertNotifierConfig struct {
+	Stream         string
+	SubjectPrefix  string
 	URLs           []string
 	ConnectTimeout time.Duration
 	AuthMode       string
@@ -102,8 +128,11 @@ type AlertNotifierConfig struct {
 }
 
 type NATSAlertNotifier struct {
-	nc     *nats.Conn
-	logger *slog.Logger
+	nc            *nats.Conn
+	js            nats.JetStreamContext
+	stream        string
+	subjectPrefix string
+	logger        *slog.Logger
 }
 
 type AlertRouter struct {
@@ -212,7 +241,7 @@ func NewAlertRouter(options AlertRouterOptions) (*AlertRouter, error) {
 		logger = slog.Default()
 	}
 
-	subjectPrefix := strings.Trim(strings.TrimSpace(options.SubjectPrefix), ".")
+	subjectPrefix := normalizeAlertSubjectPrefix(options.SubjectPrefix)
 	if subjectPrefix == "" {
 		subjectPrefix = defaultAlertNotifySubjectPrefix
 	}
@@ -1189,7 +1218,14 @@ func cloneMap(value map[string]interface{}) map[string]interface{} {
 }
 
 func NewNATSAlertNotifier(cfg AlertNotifierConfig, logger *slog.Logger) (*NATSAlertNotifier, error) {
+	subjectPrefix := normalizeAlertSubjectPrefix(cfg.SubjectPrefix)
+	if subjectPrefix == "" {
+		subjectPrefix = defaultAlertNotifySubjectPrefix
+	}
+
 	base := JetStreamConfig{
+		Stream:                cfg.Stream,
+		SubjectPrefix:         subjectPrefix,
 		URLs:                  cfg.URLs,
 		ConnectTimeout:        cfg.ConnectTimeout,
 		AuthMode:              cfg.AuthMode,
@@ -1213,20 +1249,34 @@ func NewNATSAlertNotifier(cfg AlertNotifierConfig, logger *slog.Logger) (*NATSAl
 	if err != nil {
 		return nil, fmt.Errorf("connect alert notifier to nats: %w", err)
 	}
+	js, err := nc.JetStream()
+	if err != nil {
+		nc.Close()
+		return nil, fmt.Errorf("initialize alert notifier jetstream context: %w", err)
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &NATSAlertNotifier{
-		nc:     nc,
-		logger: logger,
-	}, nil
+	notifier := &NATSAlertNotifier{
+		nc:            nc,
+		js:            js,
+		stream:        base.Stream,
+		subjectPrefix: base.SubjectPrefix,
+		logger:        logger,
+	}
+	if err := notifier.ensureStream(); err != nil {
+		nc.Close()
+		return nil, err
+	}
+	return notifier, nil
 }
 
 func (n *NATSAlertNotifier) Send(ctx context.Context, subject string, payload []byte) error {
-	if n == nil || n.nc == nil {
+	if n == nil || n.nc == nil || n.js == nil {
 		return errors.New("alert notifier not initialized")
 	}
-	if strings.TrimSpace(subject) == "" {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
 		return errors.New("alert notifier subject is required")
 	}
 	if ctx == nil {
@@ -1238,10 +1288,17 @@ func (n *NATSAlertNotifier) Send(ctx context.Context, subject string, payload []
 	default:
 	}
 
-	if err := n.nc.Publish(strings.TrimSpace(subject), payload); err != nil {
+	publish := func() error {
+		_, err := n.js.Publish(subject, payload, nats.Context(ctx))
 		return err
 	}
-	if err := n.nc.Flush(); err != nil {
+	if err := publish(); err != nil {
+		if shouldEnsureJetStreamStream(err) {
+			if ensureErr := n.ensureStream(); ensureErr != nil {
+				return errors.Join(err, ensureErr)
+			}
+			return publish()
+		}
 		return err
 	}
 	return nil
@@ -1256,6 +1313,54 @@ func (n *NATSAlertNotifier) Close() error {
 		return err
 	}
 	n.nc.Close()
+	return nil
+}
+
+func (n *NATSAlertNotifier) ensureStream() error {
+	if n == nil || n.js == nil {
+		return errors.New("alert notifier not initialized")
+	}
+	if strings.TrimSpace(n.stream) == "" {
+		return errors.New("alert notifier stream is required")
+	}
+	if strings.TrimSpace(n.subjectPrefix) == "" {
+		return errors.New("alert notifier subject prefix is required")
+	}
+
+	n.subjectPrefix = normalizeAlertSubjectPrefix(n.subjectPrefix)
+	streamSubject := n.subjectPrefix + ".>"
+	stream, err := n.js.StreamInfo(n.stream)
+	if err == nil {
+		if alertStreamHasCompatibleSubject(stream.Config.Subjects, n.subjectPrefix) {
+			return nil
+		}
+		updated := stream.Config
+		updated.Subjects = append(append([]string(nil), stream.Config.Subjects...), streamSubject)
+		if _, err := n.js.UpdateStream(&updated); err != nil {
+			return fmt.Errorf("update alert notifier stream %s subjects: %w", n.stream, err)
+		}
+		n.logger.Info("updated alert notifier stream subjects",
+			"stream", n.stream,
+			"stream_subjects", updated.Subjects,
+			"added_subject", streamSubject,
+		)
+		return nil
+	}
+	if !errors.Is(err, nats.ErrStreamNotFound) {
+		return fmt.Errorf("lookup alert notifier stream %s: %w", n.stream, err)
+	}
+
+	_, err = n.js.AddStream(&nats.StreamConfig{
+		Name:      n.stream,
+		Subjects:  []string{streamSubject},
+		Storage:   nats.FileStorage,
+		Retention: nats.LimitsPolicy,
+		Discard:   nats.DiscardOld,
+	})
+	if err != nil {
+		return fmt.Errorf("create alert notifier stream %s: %w", n.stream, err)
+	}
+	n.logger.Info("created alert notifier stream", "stream", n.stream, "subject", streamSubject)
 	return nil
 }
 

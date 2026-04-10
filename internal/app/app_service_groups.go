@@ -74,13 +74,11 @@ type SecurityServices struct {
 
 // StorageServices groups data repositories and durable stores.
 type StorageServices struct {
-	FindingsRepo        *snowflake.FindingRepository
-	TicketsRepo         *snowflake.TicketRepository
-	AuditRepo           *snowflake.AuditRepository
-	PolicyHistoryRepo   *snowflake.PolicyHistoryRepository
-	RiskEngineStateRepo *snowflake.RiskEngineStateRepository
+	Findings            findings.FindingStore
+	AuditRepo           auditRepository
+	PolicyHistoryRepo   policyHistoryRepository
+	RiskEngineStateRepo riskEngineStateRepository
 	RetentionRepo       retentionCleaner
-	SnowflakeFindings   *findings.SnowflakeStore
 }
 
 func (a *App) CoreServices() CoreServices {
@@ -132,12 +130,10 @@ func (a *App) SecurityServices() SecurityServices {
 
 func (a *App) StorageServices() StorageServices {
 	return StorageServices{
-		FindingsRepo:        a.FindingsRepo,
-		TicketsRepo:         a.TicketsRepo,
+		Findings:            a.Findings,
 		AuditRepo:           a.AuditRepo,
 		PolicyHistoryRepo:   a.PolicyHistoryRepo,
 		RiskEngineStateRepo: a.RiskEngineStateRepo,
 		RetentionRepo:       a.RetentionRepo,
-		SnowflakeFindings:   a.SnowflakeFindings,
 	}
 }

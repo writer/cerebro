@@ -2675,6 +2675,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	s := NewServer(application)
 	if s.platformReportStore == nil {
 		t.Fatal("expected platformReportStore to be configured")
+		return
 	}
 	run := &reports.ReportRun{
 		ID:            "report_run:test-rollback",
@@ -2693,6 +2694,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	// can verify the update path does not partially mutate durable state.
 	if application.ExecutionStore == nil {
 		t.Fatal("expected shared execution store to be configured")
+		return
 	}
 	if err := application.ExecutionStore.Close(); err != nil {
 		t.Fatalf("ExecutionStore.Close(): %v", err)
@@ -2703,6 +2705,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected persistence failure from updatePlatformReportRun")
+		return
 	}
 	stored, ok := s.platformReportRunSnapshot(run.ReportID, run.ID)
 	if !ok {
@@ -3760,6 +3763,7 @@ func addEvaluationTemporalAnalysisEndpointFixture(t *testing.T, g *graph.Graph, 
 	t.Helper()
 	if g == nil {
 		t.Fatal("graph is required")
+		return
 	}
 
 	baseAt := fixture.BaseAt.UTC()
@@ -4024,6 +4028,7 @@ func addPlaybookEffectivenessEndpointFixture(t *testing.T, g *graph.Graph, fixtu
 	t.Helper()
 	if g == nil {
 		t.Fatal("graph is nil")
+		return
 	}
 
 	if fixture.TargetID != "" {

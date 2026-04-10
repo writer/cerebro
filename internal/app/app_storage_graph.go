@@ -6,28 +6,81 @@ import (
 	"sort"
 	"time"
 
+	"github.com/writer/cerebro/internal/appstate"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/snowflake"
 )
 
+type appStateCutoverRetentionCleaner struct {
+	appState retentionCleaner
+	legacy   retentionCleaner
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupAuditLogs(ctx context.Context, olderThan time.Time) (int64, error) {
+	if c.appState != nil {
+		return c.appState.CleanupAuditLogs(ctx, olderThan)
+	}
+	if c.legacy != nil {
+		return c.legacy.CleanupAuditLogs(ctx, olderThan)
+	}
+	return 0, nil
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupAgentData(ctx context.Context, olderThan time.Time) (int64, int64, error) {
+	if c.appState != nil {
+		return c.appState.CleanupAgentData(ctx, olderThan)
+	}
+	if c.legacy != nil {
+		return c.legacy.CleanupAgentData(ctx, olderThan)
+	}
+	return 0, 0, nil
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupGraphData(ctx context.Context, olderThan time.Time) (int64, int64, int64, error) {
+	if c.legacy != nil {
+		return c.legacy.CleanupGraphData(ctx, olderThan)
+	}
+	return 0, 0, 0, nil
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupAccessReviewData(ctx context.Context, olderThan time.Time) (int64, int64, error) {
+	if c.legacy != nil {
+		return c.legacy.CleanupAccessReviewData(ctx, olderThan)
+	}
+	return 0, 0, nil
+}
+
 func (a *App) initRepositories() {
-	a.FindingsRepo = nil
-	a.TicketsRepo = nil
 	a.AuditRepo = nil
 	a.PolicyHistoryRepo = nil
 	a.RiskEngineStateRepo = nil
 	a.RetentionRepo = nil
 
+	if a.appStateDB != nil {
+		a.AuditRepo = appstate.NewAuditRepository(a.appStateDB)
+		a.PolicyHistoryRepo = appstate.NewPolicyHistoryRepository(a.appStateDB)
+		a.RiskEngineStateRepo = appstate.NewRiskEngineStateRepository(a.appStateDB)
+		a.RetentionRepo = appStateCutoverRetentionCleaner{
+			appState: appstate.NewRetentionRepository(a.appStateDB),
+			legacy:   snowflakeRetentionCleaner(a.appStateMigrationSnowflake()),
+		}
+		return
+	}
 	if a.Snowflake == nil {
 		return
 	}
-	a.FindingsRepo = snowflake.NewFindingRepository(a.Snowflake)
-	a.TicketsRepo = snowflake.NewTicketRepository(a.Snowflake)
 	a.AuditRepo = snowflake.NewAuditRepository(a.Snowflake)
 	a.PolicyHistoryRepo = snowflake.NewPolicyHistoryRepository(a.Snowflake)
 	a.RiskEngineStateRepo = snowflake.NewRiskEngineStateRepository(a.Snowflake)
 	a.RetentionRepo = snowflake.NewRetentionRepository(a.Snowflake)
+}
+
+func snowflakeRetentionCleaner(client *snowflake.Client) retentionCleaner {
+	if client == nil {
+		return nil
+	}
+	return snowflake.NewRetentionRepository(client)
 }
 
 func (a *App) initSnowflakeFindings(ctx context.Context) {
@@ -275,6 +328,11 @@ func (a *App) Close() error {
 			errs = append(errs, fmt.Errorf("snowflake: %w", err))
 		}
 	}
+	if a.LegacySnowflake != nil && a.LegacySnowflake != a.Snowflake {
+		if err := a.LegacySnowflake.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("legacy snowflake: %w", err))
+		}
+	}
 	if closer, ok := a.Warehouse.(interface{ Close() error }); ok {
 		if a.Snowflake == nil || any(a.Warehouse) != any(a.Snowflake) {
 			if err := closer.Close(); err != nil {
@@ -313,6 +371,11 @@ func (a *App) Close() error {
 	if closer, ok := a.Findings.(interface{ Close() error }); ok {
 		if err := closer.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("findings store: %w", err))
+		}
+	}
+	if a.appStateDB != nil {
+		if err := a.appStateDB.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("app-state database: %w", err))
 		}
 	}
 

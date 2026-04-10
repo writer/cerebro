@@ -37,36 +37,16 @@ func (a *App) currentOrStoredPassiveGraphSnapshotRecord() (*graph.GraphSnapshotR
 	} else if err != nil {
 		return nil, err
 	}
-	if current := graph.CurrentGraphSnapshotRecord(a.CurrentSecurityGraph()); current != nil {
-		return current, nil
-	}
-	store := a.platformGraphSnapshotStoreForTool()
-	if store == nil {
-		return nil, nil
-	}
-	snapshot, record, _, err := store.PeekLatestSnapshot()
-	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
-			return nil, nil
-		}
-		return nil, err
-	}
-	if record != nil {
-		current := *record
-		current.Current = true
-		return &current, nil
-	}
-	if snapshot == nil {
-		return nil, nil
-	}
-	return graph.CurrentGraphSnapshotRecord(graph.GraphViewFromSnapshot(snapshot)), nil
+	return nil, nil
 }
 
 func (a *App) currentOrStoredSecurityGraphViewWithSnapshotLoader(loadSnapshot func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error)) (*graph.Graph, error) {
 	if a == nil {
 		return nil, nil
 	}
-	if current := a.currentLiveSecurityGraph(); current != nil {
+
+	current := a.currentLiveSecurityGraph()
+	if current != nil && (current.NodeCount() > 0 || current.EdgeCount() > 0) {
 		return current, nil
 	}
 	if view, err := a.currentConfiguredSecurityGraphView(context.Background()); err != nil {
@@ -74,7 +54,10 @@ func (a *App) currentOrStoredSecurityGraphViewWithSnapshotLoader(loadSnapshot fu
 	} else if view != nil {
 		return view, nil
 	}
-	return a.storedSecurityGraphViewWithSnapshotLoader(loadSnapshot)
+	if view, err := a.storedSecurityGraphViewWithSnapshotLoader(loadSnapshot); err != nil || view != nil {
+		return view, err
+	}
+	return current, nil
 }
 
 func (a *App) storedSecurityGraphViewWithSnapshotLoader(loadSnapshot func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error)) (*graph.Graph, error) {

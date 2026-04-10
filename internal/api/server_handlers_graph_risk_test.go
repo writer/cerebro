@@ -23,6 +23,7 @@ func TestPermissionEvaluationContextFromRequest_ParsesFields(t *testing.T) {
 	ctx := permissionEvaluationContextFromRequest(req)
 	if ctx == nil {
 		t.Fatal("expected parsed evaluation context")
+		return
 	}
 	if ctx.SourceIP != "10.1.2.3" {
 		t.Fatalf("expected source IP to be parsed, got %#v", ctx.SourceIP)
