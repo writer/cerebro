@@ -26,12 +26,11 @@ func currentOrStoredGraphSnapshotRecord(ctx context.Context, current *graph.Grap
 	}
 	if metadataStore, ok := graph.AsGraphMetadataStore(store); ok {
 		meta, err := metadataStore.GraphMetadata(ctx)
-		if err != nil {
-			return nil, err
-		}
-		record := graph.CurrentGraphSnapshotRecordFromMetadata(meta)
-		if record != nil {
-			return record, nil
+		if err == nil {
+			record := graph.CurrentGraphSnapshotRecordFromMetadata(meta)
+			if record != nil {
+				return record, nil
+			}
 		}
 	}
 	view, err := snapshotGraphView(ctx, store)

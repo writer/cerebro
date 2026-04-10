@@ -1810,6 +1810,8 @@ func (a *App) toolCerebroGraphQuery(ctx context.Context, args json.RawMessage) (
 				return a.runNeighborsQueryStore(ctx, store, req, temporalScope)
 			case "paths", "path":
 				return a.runPathsQueryStore(ctx, store, req, temporalScope)
+			default:
+				return "", fmt.Errorf("unsupported mode: %s", req.Mode)
 			}
 		}
 	}
