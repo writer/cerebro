@@ -61,10 +61,14 @@ func (a *App) CurrentSecurityGraph() *graph.Graph {
 	if a == nil {
 		return nil
 	}
-	if view, err := a.currentConfiguredSecurityGraphView(context.Background()); err == nil && view != nil {
+	view, err := a.currentConfiguredSecurityGraphView(context.Background())
+	if err != nil {
+		return nil
+	}
+	if view != nil {
 		return view
 	}
-	return a.currentLiveSecurityGraph()
+	return nil
 }
 
 func (a *App) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {

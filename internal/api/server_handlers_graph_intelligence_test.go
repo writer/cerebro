@@ -614,7 +614,7 @@ func TestGraphIntelligenceQualityEndpoint_InvalidParams(t *testing.T) {
 func TestGraphIntelligenceAgentActionEffectivenessEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
-	now := time.Now().UTC()
+	now := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
 
 	g.AddNode(&graph.Node{
 		ID:   "thread:evaluation:run-1:conv-1",
@@ -1033,12 +1033,12 @@ func TestPlatformIntelligencePlaybookEffectivenessReportDefinition(t *testing.T)
 
 func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 	s := newTestServer(t)
-	base := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
+	baseAt := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
 	addEvaluationTemporalAnalysisEndpointFixture(t, s.app.SecurityGraph, evaluationTemporalAnalysisEndpointFixture{
 		RunID:        "run-1",
 		Conversation: "conv-1",
 		ServiceID:    "service:payments:conv-1",
-		BaseAt:       base,
+		BaseAt:       baseAt,
 	})
 	tagEvaluationTemporalAnalysisEndpointTenant(t, s.app.SecurityGraph, "run-1", "conv-1", "tenant-acme")
 
@@ -1049,15 +1049,15 @@ func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 		TenantID:     "tenant-acme",
 		TargetID:     "database:orders",
 		TargetKind:   graph.NodeKind("database"),
-		StartedAt:    base.Add(time.Hour),
+		StartedAt:    baseAt.Add(time.Hour),
 		Stages: []playbookEffectivenessEndpointStage{
-			{ID: "repair", Name: "Repair", Order: 1, Status: "completed", ObservedAt: base.Add(time.Hour + 10*time.Minute)},
+			{ID: "repair", Name: "Repair", Order: 1, Status: "completed", ObservedAt: baseAt.Add(70 * time.Minute)},
 		},
 		Outcome: &playbookEffectivenessEndpointOutcome{
 			Verdict:       "positive",
 			Status:        "completed",
 			RollbackState: "stable",
-			ObservedAt:    base.Add(time.Hour + 30*time.Minute),
+			ObservedAt:    baseAt.Add(90 * time.Minute),
 		},
 	})
 	s.app.SecurityGraph.AddNode(&graph.Node{
@@ -1076,8 +1076,8 @@ func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 			"tenant_id":       "tenant-acme",
 			"target_ids":      []string{"database:orders"},
 			"source_system":   "platform_playbook",
-			"observed_at":     base.Add(time.Hour + 20*time.Minute).Format(time.RFC3339),
-			"valid_from":      base.Add(time.Hour + 20*time.Minute).Format(time.RFC3339),
+			"observed_at":     baseAt.Add(80 * time.Minute).Format(time.RFC3339),
+			"valid_from":      baseAt.Add(80 * time.Minute).Format(time.RFC3339),
 		},
 	})
 

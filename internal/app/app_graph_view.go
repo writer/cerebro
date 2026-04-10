@@ -25,7 +25,7 @@ func (a *App) currentOrStoredSecurityGraphView() (*graph.Graph, error) {
 	} else if view != nil {
 		return view, nil
 	}
-	return a.currentLiveSecurityGraph(), nil
+	return nil, nil
 }
 
 func (a *App) currentOrStoredPassiveSecurityGraphView() (*graph.Graph, error) {
