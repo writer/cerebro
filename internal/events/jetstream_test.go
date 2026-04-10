@@ -131,6 +131,7 @@ func TestJetStreamConfigValidateTLSPair(t *testing.T) {
 
 	if err := cfg.validate(); err == nil {
 		t.Fatal("expected tls validation error")
+		return
 	}
 }
 
@@ -161,6 +162,7 @@ func TestJetStreamConfigNKeyAuthOption(t *testing.T) {
 	cfg.NKeySeed = "invalid-seed"
 	if _, err := cfg.natsOptions(); err == nil {
 		t.Fatal("expected nats options error for invalid nkey seed")
+		return
 	}
 }
 
@@ -174,6 +176,7 @@ func TestJetStreamConfigValidateBackpressureThresholds(t *testing.T) {
 
 	if err := cfg.validate(); err == nil {
 		t.Fatal("expected validate to fail when warn percent exceeds critical percent")
+		return
 	}
 }
 

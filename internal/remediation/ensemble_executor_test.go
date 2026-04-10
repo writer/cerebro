@@ -163,6 +163,7 @@ func TestEnsembleExecutor_EmitsActionAuditEvents(t *testing.T) {
 	err := executor.Execute(context.Background(), Action{Type: ActionPauseSubscription}, &Execution{ID: "exec-4", RuleID: "rule-4", RuleName: "Pause"})
 	if err == nil {
 		t.Fatal("expected execution failure")
+		return
 	}
 	if len(eventsSeen) == 0 || eventsSeen[0] != webhooks.EventRemediationActionFailed {
 		t.Fatalf("expected remediation.action.failed event, got %v", eventsSeen)

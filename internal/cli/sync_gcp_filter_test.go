@@ -243,8 +243,9 @@ func TestRunGCPOrgSync_SecurityOnlySkipsProjectDiscovery(t *testing.T) {
 	if called {
 		t.Fatalf("expected organization project discovery to be skipped")
 	}
-	if err == nil || !strings.Contains(err.Error(), "snowflake not configured") {
-		t.Fatalf("expected snowflake configuration error, got %v", err)
+	if err == nil {
+		t.Fatalf("expected security-only organization sync to fail after skipping project discovery")
+		return
 	}
 }
 

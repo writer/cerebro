@@ -31,6 +31,7 @@ func TestWrapOrgPolicyError(t *testing.T) {
 			err := wrapOrgPolicyError(cerrors.Op("api.orgPolicies.test"), tc.err)
 			if err == nil {
 				t.Fatal("wrapOrgPolicyError() returned nil")
+				return
 			}
 			if !errors.Is(err, tc.wantKind) {
 				t.Fatalf("errors.Is(%v) = false, want true", tc.wantKind)

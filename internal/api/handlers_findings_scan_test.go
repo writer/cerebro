@@ -49,6 +49,7 @@ func TestDecodeScanFindingsRequest_RequiresTableOrTables(t *testing.T) {
 
 	if _, _, err := decodeScanFindingsRequest(req); err == nil {
 		t.Fatal("expected missing tables error")
+		return
 	}
 }
 

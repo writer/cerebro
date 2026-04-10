@@ -43,6 +43,13 @@ func (s *Server) currentGraphIntelligenceStore(ctx context.Context) graph.GraphS
 	return store
 }
 
+func (s *Server) graphIntelligenceEntityGraph(ctx context.Context, entityID string, validAt, recordedAt time.Time) (*graph.Graph, error) {
+	if s == nil || s.graphIntelligence == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return s.graphIntelligence.CurrentEntityGraph(ctx, entityID, validAt, recordedAt)
+}
+
 func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *http.Request) {
 	g := s.currentGraphIntelligenceGraph(r.Context())
 	if g == nil {
@@ -702,19 +709,9 @@ func (s *Server) graphIntelligenceClaimConflicts(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.Request) {
-	g := s.currentGraphIntelligenceGraph(r.Context())
-	if g == nil {
-		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-		return
-	}
-
 	entityID := strings.TrimSpace(r.URL.Query().Get("entity_id"))
 	if entityID == "" {
 		s.error(w, http.StatusBadRequest, "entity_id is required")
-		return
-	}
-	if _, ok := g.GetNode(entityID); !ok {
-		s.error(w, http.StatusNotFound, "entity not found in selected scope")
 		return
 	}
 
@@ -737,6 +734,16 @@ func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.R
 			return
 		}
 		maxPostureClaims = parsed
+	}
+
+	g, err := s.graphIntelligenceEntityGraph(r.Context(), entityID, validAt, recordedAt)
+	if err != nil {
+		s.errorFromErr(w, err)
+		return
+	}
+	if g == nil {
+		s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
+		return
 	}
 
 	report, ok := reports.BuildEntitySummaryReport(g, reports.EntitySummaryReportOptions{

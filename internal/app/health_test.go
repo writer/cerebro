@@ -78,32 +78,32 @@ func TestGraphHealthSnapshotAggregatesLiveGraphPersistenceAndTiers(t *testing.T)
 	}
 }
 
-func TestGraphHealthSnapshotFallsBackToPersistedSnapshot(t *testing.T) {
+func TestGraphHealthSnapshotUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	now := time.Date(2026, time.March, 20, 18, 0, 0, 0, time.UTC)
 
-	persisted := graph.New()
-	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService})
-	persisted.SetMetadata(graph.Metadata{
+	configured := graph.New()
+	configured.AddNode(&graph.Node{ID: "service:configured", Kind: graph.NodeKindService})
+	configured.SetMetadata(graph.Metadata{
 		BuiltAt:   now.Add(-time.Hour),
-		NodeCount: persisted.NodeCount(),
-		EdgeCount: persisted.EdgeCount(),
+		NodeCount: configured.NodeCount(),
+		EdgeCount: configured.EdgeCount(),
 	})
 
-	store := mustPersistToolGraph(t, persisted)
-	application := &App{GraphSnapshots: store}
+	application := &App{}
+	setConfiguredGraphFromGraph(t, application, configured)
 
 	snapshot := application.GraphHealthSnapshot(now)
 	if snapshot.NodeCount != 1 || snapshot.EdgeCount != 0 {
 		t.Fatalf("snapshot counts = (%d,%d), want (1,0)", snapshot.NodeCount, snapshot.EdgeCount)
 	}
-	if snapshot.SnapshotCount != 1 {
-		t.Fatalf("SnapshotCount = %d, want 1", snapshot.SnapshotCount)
+	if snapshot.SnapshotCount != 0 {
+		t.Fatalf("SnapshotCount = %d, want 0", snapshot.SnapshotCount)
 	}
-	if snapshot.TierDistribution.Hot != 0 || snapshot.TierDistribution.Warm != 0 || snapshot.TierDistribution.Cold != 1 {
-		t.Fatalf("TierDistribution = %+v, want hot=0 warm=0 cold=1", snapshot.TierDistribution)
+	if snapshot.TierDistribution.Hot != 0 || snapshot.TierDistribution.Warm != 0 || snapshot.TierDistribution.Cold != 0 {
+		t.Fatalf("TierDistribution = %+v, want hot=0 warm=0 cold=0", snapshot.TierDistribution)
 	}
 	if snapshot.LastMutationAt.IsZero() {
-		t.Fatal("expected last mutation timestamp from persisted snapshot")
+		t.Fatal("expected last mutation timestamp from configured store")
 	}
 }
 
