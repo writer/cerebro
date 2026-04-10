@@ -148,6 +148,7 @@ func TestRunScanViaAPI_ReturnsTransportError(t *testing.T) {
 	err := runScanViaAPI(context.Background(), []string{"aws_s3_buckets"})
 	if err == nil {
 		t.Fatal("expected api transport error")
+		return
 	}
 }
 

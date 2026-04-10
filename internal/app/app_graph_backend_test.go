@@ -67,18 +67,48 @@ func TestInitConfiguredSecurityGraphStoreUsesResolvedProvider(t *testing.T) {
 	}
 	if app.configuredSecurityGraphStore == nil {
 		t.Fatal("expected configuredSecurityGraphStore to be set")
+		return
 	}
 	if !app.configuredSecurityGraphReady {
 		t.Fatal("expected configuredSecurityGraphReady to be true")
 	}
 	if app.configuredSecurityGraphClose == nil {
 		t.Fatal("expected configuredSecurityGraphClose to be set")
+		return
 	}
 	if err := app.configuredSecurityGraphClose(); err != nil {
 		t.Fatalf("configuredSecurityGraphClose() error = %v", err)
 	}
 	if closeCalls != 1 {
 		t.Fatalf("close calls = %d, want 1", closeCalls)
+	}
+}
+
+func TestInitConfiguredSecurityGraphStoreKeepsEmptyStoreUnready(t *testing.T) {
+	t.Parallel()
+
+	provider := &fakeGraphStoreBackendProvider{
+		backend: graph.StoreBackendNeptune,
+		handle: graphStoreBackendHandle{
+			Store: graph.New(),
+		},
+	}
+
+	app := &App{
+		Config: &Config{GraphStoreBackend: string(graph.StoreBackendNeptune)},
+		graphStoreBackendProviderFactory: func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
+			if backend != graph.StoreBackendNeptune {
+				t.Fatalf("provider factory backend = %q, want %q", backend, graph.StoreBackendNeptune)
+			}
+			return provider, nil
+		},
+	}
+
+	if err := app.initConfiguredSecurityGraphStore(context.Background()); err != nil {
+		t.Fatalf("initConfiguredSecurityGraphStore() error = %v", err)
+	}
+	if app.configuredSecurityGraphReady {
+		t.Fatal("expected empty configured graph store to remain unready")
 	}
 }
 
@@ -133,5 +163,6 @@ func TestInitConfiguredSecurityGraphStoreRejectsUnsupportedBackend(t *testing.T)
 
 	if err := app.initConfiguredSecurityGraphStore(context.Background()); err == nil {
 		t.Fatal("expected initConfiguredSecurityGraphStore() to reject unsupported backend")
+		return
 	}
 }

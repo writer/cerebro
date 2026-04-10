@@ -35,6 +35,7 @@ func TestNewWithOptions_APIAuthEnabledWithoutKeys(t *testing.T) {
 	_, err := NewWithOptions(context.Background(), WithConfig(cfg))
 	if err == nil {
 		t.Fatal("expected error when API auth is enabled with no API keys")
+		return
 	}
 	if !strings.Contains(err.Error(), "api auth enabled but no API_KEYS configured") {
 		t.Fatalf("unexpected error: %v", err)

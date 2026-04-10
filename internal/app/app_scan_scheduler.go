@@ -560,9 +560,9 @@ func (a *App) runScheduledScan(ctx context.Context, tables []string) error {
 		}
 	}
 
-	if a.Findings != nil {
-		if err := a.Findings.Sync(ctx); err != nil {
-			a.Logger.Warn("failed to sync findings store", "error", err)
+	if syncer, ok := a.Findings.(interface{ Sync(context.Context) error }); ok {
+		if err := syncer.Sync(ctx); err != nil {
+			a.Logger.Warn("failed to sync findings", "error", err)
 		}
 	}
 

@@ -25,6 +25,10 @@ type serverGraphIntelligenceService struct {
 	deps *serverDependencies
 }
 
+type graphViewProvider interface {
+	GraphView(context.Context) (*graph.Graph, error)
+}
+
 func newGraphIntelligenceService(deps *serverDependencies) graphIntelligenceService {
 	return serverGraphIntelligenceService{deps: deps}
 }
@@ -59,7 +63,16 @@ func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, 
 		}
 		return snapshotGraphView(ctx, store)
 	}
-	return store.ExtractSubgraph(ctx, entityID, opts)
+	if provider, ok := store.(graphViewProvider); ok {
+		view, err := provider.GraphView(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if view != nil {
+			return view, nil
+		}
+	}
+	return snapshotGraphView(ctx, store)
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {

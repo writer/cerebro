@@ -62,6 +62,7 @@ func TestCurrentOrStoredGraphSnapshotRecordPrefersLiveRecord(t *testing.T) {
 	}
 	if record == nil {
 		t.Fatal("expected live snapshot record")
+		return
 	}
 	if got := record.NodeCount; got != 1 {
 		t.Fatalf("record node_count = %d, want 1", got)
@@ -81,6 +82,7 @@ func TestCurrentOrStoredGraphSnapshotRecordFallsBackToStoreRecord(t *testing.T) 
 	}
 	if record == nil {
 		t.Fatal("expected store-backed snapshot record")
+		return
 	}
 	if got := record.NodeCount; got != 1 {
 		t.Fatalf("record node_count = %d, want 1", got)
@@ -176,6 +178,7 @@ func TestGraphRiskServiceRiskReportUsesStoreBackedGraphWithoutServer(t *testing.
 	}
 	if report == nil {
 		t.Fatal("expected store-backed risk report")
+		return
 	}
 }
 

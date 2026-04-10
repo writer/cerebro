@@ -216,13 +216,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Verify vendor directory is in sync
+      - name: Verify Go module metadata is in sync
         shell: bash
         run: |
           set -euo pipefail
-          go mod tidy
-          go mod vendor
-          git diff --exit-code -- go.mod go.sum vendor/modules.txt vendor
+          make vendor-check
 
   openapi-route-parity:
     name: openapi-route-parity

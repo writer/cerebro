@@ -9,8 +9,7 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 )
 
-// ApplySecurityGraphChanges applies CDC-backed graph mutations and falls back to
-// a copy-on-write full rebuild only when incremental mutation fails.
+// ApplySecurityGraphChanges applies CDC-backed graph mutations.
 func (a *App) ApplySecurityGraphChanges(ctx context.Context, trigger string) (graph.GraphMutationSummary, error) {
 	if a == nil || a.SecurityGraphBuilder == nil {
 		return graph.GraphMutationSummary{}, errGraphNotInitialized()
@@ -259,7 +258,7 @@ func (a *App) currentIncrementalBuilderSnapshot(ctx context.Context) (*graph.Sna
 	}
 	snapshot, _, _, err := a.GraphSnapshots.PeekLatestSnapshot()
 	if err != nil {
-		if isNoSnapshotsGraphStoreErr(err) || strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
+		if strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
 			return nil, nil
 		}
 		return nil, err

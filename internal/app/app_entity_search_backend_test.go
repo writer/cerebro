@@ -91,9 +91,11 @@ func TestInitEntitySearchBackendUsesResolvedProvider(t *testing.T) {
 	}
 	if app.CurrentEntitySearchBackend() == nil {
 		t.Fatal("expected configured entity search backend to be set")
+		return
 	}
 	if app.configuredEntitySearchClose == nil {
 		t.Fatal("expected configured entity search close hook to be set")
+		return
 	}
 	if err := app.configuredEntitySearchClose(); err != nil {
 		t.Fatalf("configuredEntitySearchClose() error = %v", err)
@@ -177,6 +179,7 @@ func TestInitEntitySearchBackendAllowsBootstrapPendingReadiness(t *testing.T) {
 	}
 	if app.CurrentEntitySearchBackend() == nil {
 		t.Fatal("expected bootstrap-pending backend to remain configured")
+		return
 	}
 	if closeCalls != 0 {
 		t.Fatalf("close calls = %d, want 0", closeCalls)
@@ -254,6 +257,7 @@ func TestResolveCurrentEntitySearchGraphUsesConfiguredView(t *testing.T) {
 	}
 	if view == nil {
 		t.Fatal("expected tenant-scoped graph view")
+		return
 	}
 	if _, ok := view.GetNode("service:payments"); !ok {
 		t.Fatal("expected tenant node in resolved view")
@@ -286,8 +290,36 @@ func TestResolveCurrentEntitySearchGraphAllowsSharedOnlyTenantData(t *testing.T)
 	}
 	if view == nil {
 		t.Fatal("expected shared-only graph view for tenant-scoped request")
+		return
 	}
 	if _, ok := view.GetNode("service:shared"); !ok {
 		t.Fatal("expected shared entity in resolved graph view")
+	}
+}
+
+func TestResolveCurrentEntitySearchGraphUsesPersistedSnapshotFallback(t *testing.T) {
+	t.Parallel()
+
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "Payments", TenantID: "tenant-a"})
+	persisted.AddNode(&graph.Node{ID: "service:shared", Kind: graph.NodeKindService, Name: "Shared"})
+
+	app := &App{
+		GraphSnapshots: mustPersistToolGraph(t, persisted),
+	}
+
+	view, err := app.resolveCurrentEntitySearchGraph(context.Background(), "tenant-a")
+	if err != nil {
+		t.Fatalf("resolveCurrentEntitySearchGraph() error = %v", err)
+	}
+	if view == nil {
+		t.Fatal("expected persisted graph fallback view")
+		return
+	}
+	if _, ok := view.GetNode("service:payments"); !ok {
+		t.Fatal("expected tenant node in persisted fallback view")
+	}
+	if _, ok := view.GetNode("service:shared"); !ok {
+		t.Fatal("expected shared node in persisted fallback view")
 	}
 }
