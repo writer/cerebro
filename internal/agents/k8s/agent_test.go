@@ -125,6 +125,7 @@ func TestSendBatchWithContextServerError(t *testing.T) {
 	err := agent.sendBatchWithContext(context.Background(), []Event{{ID: "evt-1"}})
 	if err == nil {
 		t.Fatal("sendBatchWithContext() error = nil, want server error")
+		return
 	}
 	if !strings.Contains(err.Error(), "server returned 502") {
 		t.Fatalf("sendBatchWithContext() error = %v, want status message", err)

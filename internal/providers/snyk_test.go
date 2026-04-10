@@ -214,6 +214,7 @@ func TestSnykNextPagePathRejectsForeignHost(t *testing.T) {
 	_, err := snykNextPagePath("https://api.snyk.io", "https://evil.example.com/rest/orgs/org-1/projects?starting_after=abc")
 	if err == nil {
 		t.Fatal("expected host validation error")
+		return
 	}
 }
 

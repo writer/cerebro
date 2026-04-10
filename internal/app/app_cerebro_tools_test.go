@@ -165,6 +165,7 @@ func TestCerebroToolsApprovalFlags(t *testing.T) {
 	simulate := findCerebroTool(tools, "cerebro.simulate")
 	if simulate == nil {
 		t.Fatal("expected cerebro.simulate tool")
+		return
 	}
 	if simulate.RequiresApproval {
 		t.Fatal("simulate should not require approval with current config")
@@ -172,6 +173,7 @@ func TestCerebroToolsApprovalFlags(t *testing.T) {
 	scenarioSimulate := findCerebroTool(tools, "simulate")
 	if scenarioSimulate == nil {
 		t.Fatal("expected simulate tool")
+		return
 	}
 	if scenarioSimulate.RequiresApproval {
 		t.Fatal("simulate should not require approval with current config")
@@ -179,11 +181,13 @@ func TestCerebroToolsApprovalFlags(t *testing.T) {
 	insightCard := findCerebroTool(tools, "insight_card")
 	if insightCard == nil {
 		t.Fatal("expected insight_card tool")
+		return
 	}
 
 	accessReview := findCerebroTool(tools, "cerebro.access_review")
 	if accessReview == nil {
 		t.Fatal("expected cerebro.access_review tool")
+		return
 	}
 	if !accessReview.RequiresApproval {
 		t.Fatal("access_review should require approval with current config")
@@ -192,6 +196,7 @@ func TestCerebroToolsApprovalFlags(t *testing.T) {
 	autonomousApprove := findCerebroTool(tools, "cerebro.autonomous_workflow_approve")
 	if autonomousApprove == nil {
 		t.Fatal("expected cerebro.autonomous_workflow_approve tool")
+		return
 	}
 	if !autonomousApprove.RequiresApproval {
 		t.Fatal("autonomous_workflow_approve should require approval")
@@ -208,6 +213,7 @@ func TestCerebroBlastRadiusTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.blast_radius")
 	if tool == nil {
 		t.Fatal("expected blast radius tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"principal_id":"user:alice","max_depth":3}`))
@@ -227,7 +233,7 @@ func TestCerebroBlastRadiusTool(t *testing.T) {
 	}
 }
 
-func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestCerebroAnalysisToolsUseConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	base := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
@@ -279,9 +285,9 @@ func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *tes
 	g.BuildIndex()
 
 	application := &App{
-		GraphSnapshots: mustPersistToolGraph(t, g),
-		Identity:       identity.NewService(identity.WithGraphResolver(func(context.Context) *graph.Graph { return nil })),
+		Identity: identity.NewService(identity.WithGraphResolver(func(context.Context) *graph.Graph { return nil })),
 	}
+	setConfiguredSnapshotGraphFromGraph(t, application, g)
 	tests := []struct {
 		name   string
 		tool   string
@@ -463,6 +469,7 @@ func TestCerebroAnalysisToolsUsePersistedSnapshotWhenLiveGraphUnavailable(t *tes
 			tool := findCerebroTool(application.cerebroTools(), tc.tool)
 			if tool == nil {
 				t.Fatalf("expected %s tool", tc.tool)
+				return
 			}
 			result, err := tool.Handler(context.Background(), json.RawMessage(tc.args))
 			if err != nil {
@@ -509,11 +516,13 @@ func TestCerebroAnalysisToolsSanitizeSnapshotLoadErrors(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.blast_radius")
 	if tool == nil {
 		t.Fatal("expected blast radius tool")
+		return
 	}
 
 	_, err = tool.Handler(context.Background(), json.RawMessage(`{"principal_id":"user:alice","max_depth":3}`))
 	if err == nil {
 		t.Fatal("expected snapshot load error")
+		return
 	}
 	if !strings.Contains(err.Error(), "security graph not initialized") {
 		t.Fatalf("expected sanitized graph error, got %v", err)
@@ -534,6 +543,7 @@ func TestCerebroGraphQueryPathsTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.graph_query")
 	if tool == nil {
 		t.Fatal("expected graph_query tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"mode":"paths","node_id":"user:alice","target_id":"db:prod","k":2,"max_depth":6}`))
@@ -623,6 +633,7 @@ func TestCerebroNaturalLanguageQueryTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.nl_query")
 	if tool == nil {
 		t.Fatal("expected nl_query tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"question":"Which internet-facing instances have critical unpatched CVEs?"}`))
@@ -735,6 +746,7 @@ func TestCerebroCorrelateEventsTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.correlate_events")
 	if tool == nil {
 		t.Fatal("expected correlate_events tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"event_id":"incident:inc-1","limit":10}`))
@@ -773,6 +785,7 @@ func TestCerebroCorrelateEventsTool(t *testing.T) {
 
 	if _, err := tool.Handler(context.Background(), json.RawMessage(`{"pattern_id":"pr_deploy_chain"}`)); err == nil {
 		t.Fatal("expected scope validation error for correlate_events without event_id or entity_id")
+		return
 	}
 }
 
@@ -788,6 +801,7 @@ func TestCerebroIntelligenceReportTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.intelligence_report")
 	if tool == nil {
 		t.Fatal("expected intelligence report tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"entity_id":"db:prod","include_counterfactual":false}`))
@@ -841,6 +855,7 @@ func TestCerebroGraphQualityReportTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.graph_quality_report")
 	if tool == nil {
 		t.Fatal("expected graph quality report tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"history_limit":10,"stale_after_hours":24}`))
@@ -873,10 +888,12 @@ func TestCerebroGraphQualityReportToolValidation(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.graph_quality_report")
 	if tool == nil {
 		t.Fatal("expected graph quality report tool")
+		return
 	}
 
 	if _, err := tool.Handler(context.Background(), json.RawMessage(`{"since_version":-1}`)); err == nil {
 		t.Fatal("expected since_version validation error")
+		return
 	}
 }
 
@@ -916,6 +933,7 @@ func TestCerebroGraphLeverageAndQueryTemplateTools(t *testing.T) {
 	leverageTool := findCerebroTool(application.cerebroTools(), "cerebro.graph_leverage_report")
 	if leverageTool == nil {
 		t.Fatal("expected graph leverage report tool")
+		return
 	}
 	leverageResult, err := leverageTool.Handler(context.Background(), json.RawMessage(`{"recent_window_hours":24}`))
 	if err != nil {
@@ -936,6 +954,7 @@ func TestCerebroGraphLeverageAndQueryTemplateTools(t *testing.T) {
 	templatesTool := findCerebroTool(application.cerebroTools(), "cerebro.graph_query_templates")
 	if templatesTool == nil {
 		t.Fatal("expected graph query templates tool")
+		return
 	}
 	templatesResult, err := templatesTool.Handler(context.Background(), json.RawMessage(`{}`))
 	if err != nil {
@@ -989,6 +1008,7 @@ func TestCerebroAIWorkloadsTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.ai_workloads")
 	if tool == nil {
 		t.Fatal("expected AI workloads tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"max_workloads":10,"min_risk_score":0,"include_shadow":true}`))
@@ -1018,9 +1038,11 @@ func TestCerebroAIWorkloadsToolValidation(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.ai_workloads")
 	if tool == nil {
 		t.Fatal("expected AI workloads tool")
+		return
 	}
 	if _, err := tool.Handler(context.Background(), json.RawMessage(`{"min_risk_score":101}`)); err == nil {
 		t.Fatal("expected min_risk_score validation error")
+		return
 	}
 }
 
@@ -1068,6 +1090,7 @@ func TestCerebroIdentityReviewCalibrationAndActuationTools(t *testing.T) {
 	reviewTool := findCerebroTool(application.cerebroTools(), "cerebro.identity_review")
 	if reviewTool == nil {
 		t.Fatal("expected identity review tool")
+		return
 	}
 	reviewResult, err := reviewTool.Handler(context.Background(), json.RawMessage(`{
 		"alias_node_id":"identity_alias:github:alice",
@@ -1090,6 +1113,7 @@ func TestCerebroIdentityReviewCalibrationAndActuationTools(t *testing.T) {
 	calibrationTool := findCerebroTool(application.cerebroTools(), "cerebro.identity_calibration")
 	if calibrationTool == nil {
 		t.Fatal("expected identity calibration tool")
+		return
 	}
 	calibrationResult, err := calibrationTool.Handler(context.Background(), json.RawMessage(`{"include_queue":true}`))
 	if err != nil {
@@ -1106,6 +1130,7 @@ func TestCerebroIdentityReviewCalibrationAndActuationTools(t *testing.T) {
 	actuationTool := findCerebroTool(application.cerebroTools(), "cerebro.actuate_recommendation")
 	if actuationTool == nil {
 		t.Fatal("expected actuate recommendation tool")
+		return
 	}
 	actuationResult, err := actuationTool.Handler(context.Background(), json.RawMessage(`{
 		"recommendation_id":"rec-1",
@@ -1168,6 +1193,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	recordObservation := findCerebroTool(application.cerebroTools(), "cerebro.record_observation")
 	if recordObservation == nil {
 		t.Fatal("expected cerebro.record_observation tool")
+		return
 	}
 	observationPayload, err := recordObservation.Handler(context.Background(), json.RawMessage(`{
 		"entity_id":"service:payments",
@@ -1188,6 +1214,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	observationNode, ok := application.CurrentSecurityGraph().GetNode(observationID)
 	if !ok || observationNode == nil {
 		t.Fatalf("expected observation node %q", observationID)
+		return
 	}
 	if observationNode.Kind != graph.NodeKindObservation {
 		t.Fatalf("expected observation node, got %q", observationNode.Kind)
@@ -1199,6 +1226,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	annotateEntity := findCerebroTool(application.cerebroTools(), "cerebro.annotate_entity")
 	if annotateEntity == nil {
 		t.Fatal("expected cerebro.annotate_entity tool")
+		return
 	}
 	if _, err := annotateEntity.Handler(context.Background(), json.RawMessage(`{
 		"entity_id":"service:payments",
@@ -1211,6 +1239,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	serviceNode, _ := application.CurrentSecurityGraph().GetNode("service:payments")
 	if serviceNode == nil {
 		t.Fatal("expected service node")
+		return
 	}
 	annotations, ok := serviceNode.Properties["annotations"].([]map[string]any)
 	if !ok {
@@ -1225,6 +1254,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	recordDecision := findCerebroTool(application.cerebroTools(), "cerebro.record_decision")
 	if recordDecision == nil {
 		t.Fatal("expected cerebro.record_decision tool")
+		return
 	}
 	decisionPayload, err := recordDecision.Handler(context.Background(), json.RawMessage(fmt.Sprintf(`{
 		"decision_type":"rollback",
@@ -1248,11 +1278,13 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	}
 	if decisionNode, ok := application.CurrentSecurityGraph().GetNode(decisionID); !ok || decisionNode == nil {
 		t.Fatalf("expected decision node %q", decisionID)
+		return
 	}
 
 	recordOutcome := findCerebroTool(application.cerebroTools(), "cerebro.record_outcome")
 	if recordOutcome == nil {
 		t.Fatal("expected cerebro.record_outcome tool")
+		return
 	}
 	outcomePayload, err := recordOutcome.Handler(context.Background(), json.RawMessage(fmt.Sprintf(`{
 		"decision_id":"%s",
@@ -1279,6 +1311,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	resolveIdentity := findCerebroTool(application.cerebroTools(), "cerebro.resolve_identity")
 	if resolveIdentity == nil {
 		t.Fatal("expected cerebro.resolve_identity tool")
+		return
 	}
 	resolvePayload, err := resolveIdentity.Handler(context.Background(), json.RawMessage(`{
 		"source_system":"github",
@@ -1304,6 +1337,7 @@ func TestCerebroGraphWritebackTools(t *testing.T) {
 	splitIdentity := findCerebroTool(application.cerebroTools(), "cerebro.split_identity")
 	if splitIdentity == nil {
 		t.Fatal("expected cerebro.split_identity tool")
+		return
 	}
 	splitPayload, err := splitIdentity.Handler(context.Background(), json.RawMessage(fmt.Sprintf(`{
 		"alias_node_id":"%s",
@@ -1339,41 +1373,51 @@ func TestCerebroGraphWritebackToolsValidation(t *testing.T) {
 	recordObservation := findCerebroTool(application.cerebroTools(), "cerebro.record_observation")
 	if recordObservation == nil {
 		t.Fatal("expected cerebro.record_observation tool")
+		return
 	}
 	if _, err := recordObservation.Handler(context.Background(), json.RawMessage(`{"observation":"x"}`)); err == nil {
 		t.Fatal("expected entity_id validation error")
+		return
 	}
 
 	recordDecision := findCerebroTool(application.cerebroTools(), "cerebro.record_decision")
 	if recordDecision == nil {
 		t.Fatal("expected cerebro.record_decision tool")
+		return
 	}
 	if _, err := recordDecision.Handler(context.Background(), json.RawMessage(`{"decision_type":"rollback","target_ids":["service:missing"]}`)); err == nil {
 		t.Fatal("expected target not found error")
+		return
 	}
 
 	recordOutcome := findCerebroTool(application.cerebroTools(), "cerebro.record_outcome")
 	if recordOutcome == nil {
 		t.Fatal("expected cerebro.record_outcome tool")
+		return
 	}
 	if _, err := recordOutcome.Handler(context.Background(), json.RawMessage(`{"decision_id":"decision:missing","outcome_type":"result","verdict":"positive"}`)); err == nil {
 		t.Fatal("expected decision not found error")
+		return
 	}
 
 	resolveIdentity := findCerebroTool(application.cerebroTools(), "cerebro.resolve_identity")
 	if resolveIdentity == nil {
 		t.Fatal("expected cerebro.resolve_identity tool")
+		return
 	}
 	if _, err := resolveIdentity.Handler(context.Background(), json.RawMessage(`{"external_id":"alice-handle"}`)); err == nil {
 		t.Fatal("expected source_system validation error")
+		return
 	}
 
 	splitIdentity := findCerebroTool(application.cerebroTools(), "cerebro.split_identity")
 	if splitIdentity == nil {
 		t.Fatal("expected cerebro.split_identity tool")
+		return
 	}
 	if _, err := splitIdentity.Handler(context.Background(), json.RawMessage(`{"alias_node_id":"alias:github:alice"}`)); err == nil {
 		t.Fatal("expected canonical_node_id validation error")
+		return
 	}
 }
 
@@ -1403,6 +1447,7 @@ func TestCerebroEvaluatePolicyTool(t *testing.T) {
 	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
 	if tool == nil {
 		t.Fatal("expected evaluate_policy tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{
@@ -1430,25 +1475,15 @@ func TestCerebroEvaluatePolicyTool(t *testing.T) {
 	}
 }
 
-func TestCerebroEvaluatePolicyToolUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
-	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
-		LocalPath:    filepath.Join(t.TempDir(), "graph-snapshots"),
-		MaxSnapshots: 4,
-	})
-	if err != nil {
-		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
-	}
-	if _, err := store.SaveGraph(graph.New()); err != nil {
-		t.Fatalf("SaveGraph() error = %v", err)
-	}
-
+func TestCerebroEvaluatePolicyToolUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	application := &App{
-		Policy:         policy.NewEngine(),
-		GraphSnapshots: store,
+		Policy: policy.NewEngine(),
 	}
+	setConfiguredSnapshotGraphFromGraph(t, application, graph.New())
 	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
 	if tool == nil {
 		t.Fatal("expected evaluate_policy tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{
@@ -1458,7 +1493,7 @@ func TestCerebroEvaluatePolicyToolUsesPersistedSnapshotWhenLiveGraphUnavailable(
 		"proposed_change":{
 			"id":"chg-1",
 			"source":"tool",
-			"reason":"test snapshot fallback",
+			"reason":"test configured graph base",
 			"nodes":[{"action":"add","node":{"id":"service:payments","kind":"service","name":"payments"}}]
 		}
 	}`))
@@ -1483,6 +1518,7 @@ func TestCerebroEvaluatePolicyToolRequiresGraphSourceForProposedChange(t *testin
 	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
 	if tool == nil {
 		t.Fatal("expected evaluate_policy tool")
+		return
 	}
 
 	_, err := tool.Handler(context.Background(), json.RawMessage(`{
@@ -1531,6 +1567,7 @@ func TestCerebroEvaluatePolicyToolSanitizesSnapshotLoadErrors(t *testing.T) {
 	tool := findCerebroTool(application.AgentSDKTools(), "evaluate_policy")
 	if tool == nil {
 		t.Fatal("expected evaluate_policy tool")
+		return
 	}
 
 	_, err = tool.Handler(context.Background(), json.RawMessage(`{
@@ -1546,6 +1583,7 @@ func TestCerebroEvaluatePolicyToolSanitizesSnapshotLoadErrors(t *testing.T) {
 	}`))
 	if err == nil {
 		t.Fatal("expected snapshot load error")
+		return
 	}
 	if !strings.Contains(err.Error(), "graph platform not initialized") {
 		t.Fatalf("expected sanitized graph error, got %v", err)
@@ -1574,6 +1612,7 @@ func TestCerebroWriteClaimTool(t *testing.T) {
 	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.write_claim")
 	if tool == nil {
 		t.Fatal("expected cerebro.write_claim tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{
@@ -1643,6 +1682,7 @@ func TestCerebroExecutionStatusTool(t *testing.T) {
 	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.execution_status")
 	if tool == nil {
 		t.Fatal("expected cerebro.execution_status tool")
+		return
 	}
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"namespace":["image_scan"],"limit":5}`))
 	if err != nil {
@@ -1672,6 +1712,7 @@ func TestCerebroFindingsTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.findings")
 	if tool == nil {
 		t.Fatal("expected findings tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"status":"open","query":"public","limit":10}`))
@@ -1698,6 +1739,7 @@ func TestCerebroAccessReviewTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.access_review")
 	if tool == nil {
 		t.Fatal("expected access_review tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"identity_id":"user:alice"}`))
@@ -1717,7 +1759,7 @@ func TestCerebroAccessReviewTool(t *testing.T) {
 	}
 }
 
-func TestCerebroAccessReviewToolUsesTenantScopedPersistedSnapshot(t *testing.T) {
+func TestCerebroAccessReviewToolUsesTenantScopedConfiguredStore(t *testing.T) {
 	g := graph.New()
 	g.AddNode(&graph.Node{ID: "user:alice", Kind: graph.NodeKindUser, Name: "Alice"})
 	g.AddNode(&graph.Node{ID: "bucket:tenant-a", Kind: graph.NodeKindBucket, Name: "Tenant A Bucket", TenantID: "tenant-a", Risk: graph.RiskHigh})
@@ -1725,10 +1767,12 @@ func TestCerebroAccessReviewToolUsesTenantScopedPersistedSnapshot(t *testing.T) 
 	g.AddEdge(&graph.Edge{ID: "alice-tenant-a", Source: "user:alice", Target: "bucket:tenant-a", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
 	g.AddEdge(&graph.Edge{ID: "alice-tenant-b", Source: "user:alice", Target: "bucket:tenant-b", Kind: graph.EdgeKindCanRead, Effect: graph.EdgeEffectAllow})
 
-	application := &App{GraphSnapshots: mustPersistToolGraph(t, g)}
+	application := &App{}
+	setConfiguredSnapshotGraphFromGraph(t, application, g)
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.access_review")
 	if tool == nil {
 		t.Fatal("expected access_review tool")
+		return
 	}
 
 	result, err := tool.Handler(graph.WithTenantScope(context.Background(), "tenant-a"), json.RawMessage(`{"identity_id":"user:alice"}`))
@@ -1770,6 +1814,7 @@ func TestCerebroAutonomousCredentialResponseTool_AwaitingApproval(t *testing.T) 
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
 	if tool == nil {
 		t.Fatal("expected autonomous credential response tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{
@@ -1803,6 +1848,7 @@ func TestCerebroAutonomousCredentialResponseTool_AwaitingApproval(t *testing.T) 
 	}
 	if run == nil {
 		t.Fatal("expected persisted autonomous run")
+		return
 	}
 	if run.RequestedBy != "ensemble" {
 		t.Fatalf("expected durable actor ensemble, got %q", run.RequestedBy)
@@ -1821,6 +1867,7 @@ func TestCerebroAutonomousCredentialResponseTool_AwaitingApproval(t *testing.T) 
 	}
 	if execution == nil {
 		t.Fatal("expected persisted action execution")
+		return
 	}
 	if execution.Status != actionengine.StatusAwaitingApproval {
 		t.Fatalf("expected awaiting approval action execution, got %q", execution.Status)
@@ -1838,7 +1885,7 @@ func TestCerebroAutonomousCredentialResponseTool_AwaitingApproval(t *testing.T) 
 	}
 }
 
-func TestCerebroAutonomousCredentialResponseTool_UsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestCerebroAutonomousCredentialResponseTool_UsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	dir := t.TempDir()
 	store, err := executionstore.NewSQLiteStore(filepath.Join(dir, "executions.db"))
 	if err != nil {
@@ -1849,11 +1896,12 @@ func TestCerebroAutonomousCredentialResponseTool_UsesPersistedSnapshotWhenLiveGr
 	application := &App{
 		Config:         &Config{ExecutionStoreFile: filepath.Join(dir, "executions.db")},
 		ExecutionStore: store,
-		GraphSnapshots: mustPersistToolGraph(t, autonomousCredentialWorkflowGraph()),
 	}
+	setConfiguredGraphFromGraph(t, application, autonomousCredentialWorkflowGraph())
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
 	if tool == nil {
 		t.Fatal("expected autonomous credential response tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{
@@ -1883,6 +1931,7 @@ func TestCerebroAutonomousCredentialResponseTool_UsesPersistedSnapshotWhenLiveGr
 	}
 	if run == nil {
 		t.Fatal("expected persisted autonomous run")
+		return
 	}
 	if run.ActionExecutionID == "" || run.ObservationID == "" || run.DetectionClaimID == "" || run.DecisionID == "" {
 		t.Fatalf("expected workflow artifacts to be persisted, got %#v", run)
@@ -1890,10 +1939,11 @@ func TestCerebroAutonomousCredentialResponseTool_UsesPersistedSnapshotWhenLiveGr
 
 	current := application.CurrentSecurityGraph()
 	if current == nil {
-		t.Fatal("expected persisted snapshot base to hydrate a live graph during mutation")
+		t.Fatal("expected configured graph base to hydrate a live graph during mutation")
+		return
 	}
 	if _, ok := current.GetNode("secret:public-repo:1"); !ok {
-		t.Fatal("expected original persisted secret node to remain present")
+		t.Fatal("expected original configured secret node to remain present")
 	}
 	if _, ok := current.GetNode(run.ObservationID); !ok {
 		t.Fatalf("expected observation node %q", run.ObservationID)
@@ -1922,6 +1972,7 @@ func TestCerebroAutonomousCredentialResponseTool_IgnoresCallerApprovalPreference
 	tool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
 	if tool == nil {
 		t.Fatal("expected autonomous credential response tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{
@@ -1966,6 +2017,7 @@ func TestCerebroAutonomousWorkflowApproveTool_CompletesRun(t *testing.T) {
 	startTool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
 	if startTool == nil {
 		t.Fatal("expected autonomous credential response tool")
+		return
 	}
 	startResult, err := startTool.Handler(context.Background(), json.RawMessage(`{
 		"secret_node_id":"secret:public-repo:1",
@@ -1986,6 +2038,7 @@ func TestCerebroAutonomousWorkflowApproveTool_CompletesRun(t *testing.T) {
 	approveTool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_workflow_approve")
 	if approveTool == nil {
 		t.Fatal("expected autonomous workflow approve tool")
+		return
 	}
 	approveResult, err := approveTool.Handler(context.Background(), json.RawMessage(fmt.Sprintf(`{
 		"run_id":%q,
@@ -2023,6 +2076,7 @@ func TestCerebroAutonomousWorkflowApproveTool_CompletesRun(t *testing.T) {
 	}
 	if run == nil {
 		t.Fatal("expected persisted autonomous run")
+		return
 	}
 	if run.Status != autonomous.RunStatusCompleted || run.RemediationClaimID == "" || run.OutcomeID == "" {
 		t.Fatalf("expected completed workflow with remediation artifacts, got %#v", run)
@@ -2035,6 +2089,7 @@ func TestCerebroAutonomousWorkflowApproveTool_CompletesRun(t *testing.T) {
 	}
 	if execution == nil {
 		t.Fatal("expected persisted action execution")
+		return
 	}
 	if execution.Status != actionengine.StatusCompleted {
 		t.Fatalf("expected completed action execution, got %q", execution.Status)
@@ -2046,6 +2101,7 @@ func TestCerebroAutonomousWorkflowApproveTool_CompletesRun(t *testing.T) {
 	statusTool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_workflow_status")
 	if statusTool == nil {
 		t.Fatal("expected autonomous workflow status tool")
+		return
 	}
 	statusResult, err := statusTool.Handler(context.Background(), json.RawMessage(fmt.Sprintf(`{"run_id":%q}`, runID)))
 	if err != nil {
@@ -2077,6 +2133,7 @@ func TestCerebroAutonomousWorkflowApproveTool_CompletesRun(t *testing.T) {
 	}`, runID)))
 	if err == nil {
 		t.Fatal("expected second approval attempt to fail")
+		return
 	}
 	if !strings.Contains(err.Error(), "not awaiting approval") {
 		t.Fatalf("expected awaiting approval error, got %v", err)
@@ -2111,6 +2168,7 @@ func TestCerebroAutonomousWorkflowApproveTool_ConcurrentApprovalClaimsOnce(t *te
 	startTool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_credential_response")
 	if startTool == nil {
 		t.Fatal("expected autonomous credential response tool")
+		return
 	}
 	startResult, err := startTool.Handler(context.Background(), json.RawMessage(`{
 		"secret_node_id":"secret:public-repo:1",
@@ -2131,6 +2189,7 @@ func TestCerebroAutonomousWorkflowApproveTool_ConcurrentApprovalClaimsOnce(t *te
 	approveTool := findCerebroTool(application.cerebroTools(), "cerebro.autonomous_workflow_approve")
 	if approveTool == nil {
 		t.Fatal("expected autonomous workflow approve tool")
+		return
 	}
 
 	type approveResult struct {
@@ -2154,6 +2213,7 @@ func TestCerebroAutonomousWorkflowApproveTool_ConcurrentApprovalClaimsOnce(t *te
 	firstResult := <-results
 	if firstResult.err == nil {
 		t.Fatal("expected one concurrent approval to fail before release")
+		return
 	}
 	if !strings.Contains(firstResult.err.Error(), "not awaiting approval") {
 		t.Fatalf("expected awaiting approval error, got %v", firstResult.err)
@@ -2192,6 +2252,7 @@ func TestCerebroScenarioSimulateTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "simulate")
 	if tool == nil {
 		t.Fatal("expected scenario simulate tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{
@@ -2239,11 +2300,13 @@ func TestCerebroScenarioSimulateTool_UnsupportedScenario(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "simulate")
 	if tool == nil {
 		t.Fatal("expected scenario simulate tool")
+		return
 	}
 
 	_, err := tool.Handler(context.Background(), json.RawMessage(`{"scenario":"unknown","target":"customer:acme"}`))
 	if err == nil {
 		t.Fatal("expected unsupported scenario error")
+		return
 	}
 }
 
@@ -2266,6 +2329,7 @@ func TestCerebroInsightCardTool(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "insight_card")
 	if tool == nil {
 		t.Fatal("expected insight_card tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"entity":"customer:acme"}`))
@@ -2315,6 +2379,7 @@ func TestCerebroInsightCardTool_FilterSections(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "insight_card")
 	if tool == nil {
 		t.Fatal("expected insight_card tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"entity":"person:alice@example.com","sections":["risk","activity"]}`))
@@ -2345,11 +2410,13 @@ func TestCerebroInsightCardTool_EntityNotFound(t *testing.T) {
 	tool := findCerebroTool(application.cerebroTools(), "insight_card")
 	if tool == nil {
 		t.Fatal("expected insight_card tool")
+		return
 	}
 
 	_, err := tool.Handler(context.Background(), json.RawMessage(`{"entity":"customer:missing"}`))
 	if err == nil {
 		t.Fatal("expected not found error")
+		return
 	}
 }
 

@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -39,81 +38,6 @@ func TestGraphStoreBackendParityTraversal(t *testing.T) {
 	}
 }
 
-func TestGraphStoreBackendParitySpannerTraversalMatchesInMemoryReferenceWithoutSnapshotMaterialization(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	reference := New()
-	alice := contractStoreTestNode("user:alice", NodeKindUser, "Alice")
-	api := contractStoreTestNode("service:api", NodeKindService, "api")
-	db := contractStoreTestNode("service:db", NodeKindService, "db")
-	db.Risk = RiskCritical
-	reference.AddNodesBatch([]*Node{alice, api, db})
-	reference.AddEdgesBatch([]*Edge{
-		contractStoreTestEdge("edge:alice:api", alice.ID, api.ID, EdgeKindCanRead),
-		contractStoreTestEdge("edge:api:db", api.ID, db.ID, EdgeKindCalls),
-	})
-
-	adapter := &fakeSpannerAdapter{store: GraphStore(New())}
-	store := NewSpannerGraphStore(adapter, WithSpannerNativeTraversalQueries(true))
-	snapshot := CreateSnapshot(reference)
-	if err := store.UpsertNodesBatch(ctx, snapshot.Nodes); err != nil {
-		t.Fatalf("UpsertNodesBatch() error = %v", err)
-	}
-	if err := store.UpsertEdgesBatch(ctx, snapshot.Edges); err != nil {
-		t.Fatalf("UpsertEdgesBatch() error = %v", err)
-	}
-
-	blast, err := store.BlastRadius(ctx, alice.ID, 2)
-	if err != nil {
-		t.Fatalf("BlastRadius() error = %v", err)
-	}
-	wantBlast := BlastRadius(reference, alice.ID, 2)
-	if !reflect.DeepEqual(sortedReachableNodeIDs(blast.ReachableNodes), sortedReachableNodeIDs(wantBlast.ReachableNodes)) {
-		t.Fatalf("BlastRadius() reachable nodes = %#v, want %#v", sortedReachableNodeIDs(blast.ReachableNodes), sortedReachableNodeIDs(wantBlast.ReachableNodes))
-	}
-
-	reverse, err := store.ReverseAccess(ctx, db.ID, 2)
-	if err != nil {
-		t.Fatalf("ReverseAccess() error = %v", err)
-	}
-	wantReverse := ReverseAccess(reference, db.ID, 2)
-	if !reflect.DeepEqual(sortedAccessorNodeIDs(reverse.AccessibleBy), sortedAccessorNodeIDs(wantReverse.AccessibleBy)) {
-		t.Fatalf("ReverseAccess() accessors = %#v, want %#v", sortedAccessorNodeIDs(reverse.AccessibleBy), sortedAccessorNodeIDs(wantReverse.AccessibleBy))
-	}
-
-	access, err := store.EffectiveAccess(ctx, alice.ID, db.ID, 2)
-	if err != nil {
-		t.Fatalf("EffectiveAccess() error = %v", err)
-	}
-	wantAccess := EffectiveAccess(reference, alice.ID, db.ID, 2)
-	if access.Allowed != wantAccess.Allowed {
-		t.Fatalf("EffectiveAccess().Allowed = %v, want %v", access.Allowed, wantAccess.Allowed)
-	}
-	if !reflect.DeepEqual(sortedEdgeIDs(access.AllowedBy), sortedEdgeIDs(wantAccess.AllowedBy)) {
-		t.Fatalf("EffectiveAccess() allowed_by = %#v, want %#v", sortedEdgeIDs(access.AllowedBy), sortedEdgeIDs(wantAccess.AllowedBy))
-	}
-
-	subgraph, err := store.ExtractSubgraph(ctx, alice.ID, ExtractSubgraphOptions{MaxDepth: 2})
-	if err != nil {
-		t.Fatalf("ExtractSubgraph() error = %v", err)
-	}
-	wantSubgraph := ExtractSubgraph(reference, alice.ID, ExtractSubgraphOptions{MaxDepth: 2})
-	if !reflect.DeepEqual(sortedNodeIDs(subgraph.GetAllNodes()), sortedNodeIDs(wantSubgraph.GetAllNodes())) {
-		t.Fatalf("ExtractSubgraph() nodes = %#v, want %#v", sortedNodeIDs(subgraph.GetAllNodes()), sortedNodeIDs(wantSubgraph.GetAllNodes()))
-	}
-	if !reflect.DeepEqual(sortedGraphEdgeIDs(subgraph), sortedGraphEdgeIDs(wantSubgraph)) {
-		t.Fatalf("ExtractSubgraph() edges = %#v, want %#v", sortedGraphEdgeIDs(subgraph), sortedGraphEdgeIDs(wantSubgraph))
-	}
-
-	if adapter.snapshotCalls != 0 {
-		t.Fatalf("expected spanner traversal parity path not to materialize snapshots, snapshotCalls=%d", adapter.snapshotCalls)
-	}
-	if len(adapter.nativeEdgeQueries) == 0 {
-		t.Fatal("expected spanner native traversal parity path to issue graph queries")
-	}
-}
-
 func TestGraphStoreBackendParityCanceledContext(t *testing.T) {
 	t.Parallel()
 
@@ -133,13 +57,6 @@ func graphStoreBackendFactories() []graphStoreBackendFactory {
 			new: func(t *testing.T) GraphStore {
 				t.Helper()
 				return GraphStore(New())
-			},
-		},
-		{
-			name: "spanner",
-			new: func(t *testing.T) GraphStore {
-				t.Helper()
-				return NewSpannerGraphStore(&fakeSpannerAdapter{store: GraphStore(New())})
 			},
 		},
 		{

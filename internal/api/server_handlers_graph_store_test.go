@@ -19,6 +19,18 @@ func (n nilSnapshotGraphStore) Snapshot(context.Context) (*graph.Snapshot, error
 	return nil, nil
 }
 
+func (n nilSnapshotGraphStore) GraphView(ctx context.Context) (*graph.Graph, error) {
+	if provider, ok := n.GraphStore.(interface {
+		GraphView(context.Context) (*graph.Graph, error)
+	}); ok {
+		return provider.GraphView(ctx)
+	}
+	if view, ok := n.GraphStore.(*graph.Graph); ok && view != nil {
+		return view, nil
+	}
+	return nil, graph.ErrStoreUnavailable
+}
+
 type snapshotFailingExtractableGraphStore struct {
 	graph.GraphStore
 	snapshotCalls   int

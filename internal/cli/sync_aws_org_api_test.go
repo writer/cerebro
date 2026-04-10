@@ -294,6 +294,7 @@ func TestRunAWSOrgSync_AutoModeNoFallbackOnUnauthorized(t *testing.T) {
 	err := runAWSOrgSync(context.Background(), time.Now())
 	if err == nil {
 		t.Fatal("expected api error")
+		return
 	}
 	if !strings.Contains(err.Error(), "aws org sync via api failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -318,6 +319,7 @@ func TestRunAWSOrgSync_APIModeIncompatibleFlagsError(t *testing.T) {
 	err := runAWSOrgSync(context.Background(), time.Now())
 	if err == nil {
 		t.Fatal("expected api mode incompatibility error")
+		return
 	}
 	if !strings.Contains(err.Error(), "aws org sync API mode unsupported") {
 		t.Fatalf("unexpected error: %v", err)
@@ -380,6 +382,7 @@ func TestRunAWSOrgSync_APIModeAccountErrorsReturnNonZero(t *testing.T) {
 	err := runAWSOrgSync(context.Background(), time.Now())
 	if err == nil {
 		t.Fatal("expected account error summary")
+		return
 	}
 	if !strings.Contains(err.Error(), "AWS org sync") {
 		t.Fatalf("unexpected error: %v", err)
