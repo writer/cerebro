@@ -9,13 +9,11 @@ import (
 	"github.com/writer/cerebro/internal/graphingest"
 )
 
-const graphIntelligenceEntitySummarySubgraphDepth = 3
-
 // graphIntelligenceService narrows the handler dependency surface to the graph
 // and mapper primitives consumed by the graph-intelligence routes.
 type graphIntelligenceService interface {
 	CurrentGraph(ctx context.Context) (*graph.Graph, error)
-	CurrentEntityGraph(ctx context.Context, entityID string, validAt, recordedAt time.Time, maxDepth int) (*graph.Graph, error)
+	CurrentEntityGraph(ctx context.Context, entityID string, validAt, recordedAt time.Time) (*graph.Graph, error)
 	MapperInitialized() bool
 	MapperValidationMode() string
 	MapperDeadLetterPath() string
@@ -25,6 +23,10 @@ type graphIntelligenceService interface {
 
 type serverGraphIntelligenceService struct {
 	deps *serverDependencies
+}
+
+type graphViewProvider interface {
+	GraphView(context.Context) (*graph.Graph, error)
 }
 
 func newGraphIntelligenceService(deps *serverDependencies) graphIntelligenceService {
@@ -39,35 +41,38 @@ func (s serverGraphIntelligenceService) CurrentGraph(ctx context.Context) (*grap
 	return currentOrStoredGraphView(ctx, s.deps.CurrentSecurityGraphForTenant(tenantID), s.deps.CurrentSecurityGraphStoreForTenant(tenantID))
 }
 
-func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, entityID string, validAt, recordedAt time.Time, maxDepth int) (*graph.Graph, error) {
+func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, entityID string, validAt, recordedAt time.Time) (*graph.Graph, error) {
 	if s.deps == nil {
 		return nil, graph.ErrStoreUnavailable
 	}
-	if maxDepth <= 0 {
-		maxDepth = graphIntelligenceEntitySummarySubgraphDepth
-	}
 	tenantID := currentTenantScopeID(ctx)
 	current := s.deps.CurrentSecurityGraphForTenant(tenantID)
+	if current != nil {
+		return current, nil
+	}
 	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
-	opts := graph.ExtractSubgraphOptions{MaxDepth: maxDepth}
+	if store == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	opts := graph.ExtractSubgraphOptions{MaxDepth: 3}
 	if !validAt.IsZero() || !recordedAt.IsZero() {
-		if current != nil {
-			return current, nil
-		}
 		if temporalStore, ok := store.(interface {
 			ExtractSubgraphBitemporal(context.Context, string, graph.ExtractSubgraphOptions, time.Time, time.Time) (*graph.Graph, error)
 		}); ok {
 			return temporalStore.ExtractSubgraphBitemporal(ctx, entityID, opts, validAt, recordedAt)
 		}
-		return currentOrStoredGraphView(ctx, nil, store)
+		return snapshotGraphView(ctx, store)
 	}
-	if current != nil {
-		return graph.ExtractSubgraph(current, entityID, opts), nil
+	if provider, ok := store.(graphViewProvider); ok {
+		view, err := provider.GraphView(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if view != nil {
+			return view, nil
+		}
 	}
-	if store == nil {
-		return nil, graph.ErrStoreUnavailable
-	}
-	return store.ExtractSubgraph(ctx, entityID, opts)
+	return snapshotGraphView(ctx, store)
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {

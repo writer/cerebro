@@ -82,21 +82,21 @@ func (m *Metrics) RecordHeartbeat(succeeded bool) {
 	}
 }
 
-// RecordMessagesReceived records messages received from SQS.
+// RecordMessagesReceived records messages received from the queue backend.
 func (m *Metrics) RecordMessagesReceived(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.messagesReceived += int64(count)
 }
 
-// RecordMessagesDeleted records messages deleted from SQS.
+// RecordMessagesDeleted records messages deleted from the queue backend.
 func (m *Metrics) RecordMessagesDeleted(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.messagesDeleted += int64(count)
 }
 
-// RecordMessagesDeleteFailed records failed message delete attempts from SQS.
+// RecordMessagesDeleteFailed records failed message delete attempts from the queue backend.
 func (m *Metrics) RecordMessagesDeleteFailed(count int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/app"
 	providerregistry "github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/snowflake"
+	"github.com/writer/cerebro/internal/warehouse"
 	"google.golang.org/api/option"
 )
 
@@ -206,8 +207,7 @@ func TestValidScheduleProviders(t *testing.T) {
 }
 
 func TestExecuteScheduledSync_RoutesByProvider(t *testing.T) {
-	t.Setenv("JOB_QUEUE_URL", "")
-	t.Setenv("JOB_TABLE_NAME", "")
+	t.Setenv("JOB_DATABASE_URL", "")
 
 	originalAWSSync := executeAWSSyncFn
 	originalGCPSync := executeGCPSyncFn
@@ -223,19 +223,19 @@ func TestExecuteScheduledSync_RoutesByProvider(t *testing.T) {
 	})
 
 	called := ""
-	executeAWSSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+	executeAWSSyncFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 		called = "aws"
 		return nil
 	}
-	executeGCPSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+	executeGCPSyncFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 		called = "gcp"
 		return nil
 	}
-	executeAzureSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+	executeAzureSyncFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 		called = "azure"
 		return nil
 	}
-	executeProviderSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+	executeProviderSyncFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 		called = "provider"
 		return nil
 	}
@@ -268,8 +268,7 @@ func TestExecuteScheduledSync_RoutesByProvider(t *testing.T) {
 }
 
 func TestExecuteScheduledSync_UsesWorkerForNativeProviders(t *testing.T) {
-	t.Setenv("JOB_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123456789012/test")
-	t.Setenv("JOB_TABLE_NAME", "jobs")
+	t.Setenv("JOB_DATABASE_URL", "postgres://jobs@localhost:5432/cerebro_jobs")
 
 	originalAWSSync := executeAWSSyncFn
 	originalGCPSync := executeGCPSyncFn
@@ -285,7 +284,7 @@ func TestExecuteScheduledSync_UsesWorkerForNativeProviders(t *testing.T) {
 	})
 
 	directCalled := false
-	executeAWSSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+	executeAWSSyncFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 		directCalled = true
 		return nil
 	}
@@ -310,7 +309,7 @@ func TestExecuteScheduledSync_UsesWorkerForNativeProviders(t *testing.T) {
 	}
 
 	providerCalled := 0
-	executeProviderSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+	executeProviderSyncFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 		providerCalled++
 		return nil
 	}
@@ -430,6 +429,7 @@ func TestExecuteProviderSync_AutoModeDoesNotFallbackOnUnauthorized(t *testing.T)
 	err := executeProviderSync(context.Background(), nil, &SyncSchedule{Name: "nightly-okta", Provider: "okta"})
 	if err == nil {
 		t.Fatal("expected unauthorized api error")
+		return
 	}
 	if !strings.Contains(err.Error(), "sync via api failed") {
 		t.Fatalf("expected api failure context, got %v", err)
@@ -533,7 +533,7 @@ func TestExecuteAWSSync_UsesScheduledAuthDirectives(t *testing.T) {
 		preflightCalled = true
 		return nil
 	}
-	runScheduledAWSNativeSyncFn = func(_ context.Context, _ *snowflake.Client, _ aws.Config, tableFilter []string) error {
+	runScheduledAWSNativeSyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, _ aws.Config, tableFilter []string) error {
 		runCalled = true
 		if len(tableFilter) != 1 || tableFilter[0] != "aws_iam_roles" {
 			return fmt.Errorf("unexpected aws table filter: %v", tableFilter)
@@ -583,13 +583,13 @@ func TestExecuteAWSSync_UsesAWSOrgDirectives(t *testing.T) {
 	preflightScheduledAWSAuthFn = func(context.Context, *SyncSchedule, scheduledSyncSpec, aws.Config) error {
 		return nil
 	}
-	runScheduledAWSNativeSyncFn = func(_ context.Context, _ *snowflake.Client, _ aws.Config, _ []string) error {
+	runScheduledAWSNativeSyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, _ aws.Config, _ []string) error {
 		t.Fatal("did not expect single-account scheduled sync to run")
 		return nil
 	}
 
 	orgRunCalled := false
-	runScheduledAWSOrgSyncFn = func(_ context.Context, _ *snowflake.Client, _ aws.Config, spec scheduledSyncSpec) error {
+	runScheduledAWSOrgSyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, _ aws.Config, spec scheduledSyncSpec) error {
 		orgRunCalled = true
 		if len(spec.AWSOrgIncludeAccounts) != 1 || spec.AWSOrgIncludeAccounts[0] != "111111111111" {
 			t.Fatalf("unexpected include accounts: %v", spec.AWSOrgIncludeAccounts)
@@ -623,6 +623,7 @@ func TestParseAzureSubscriptionConcurrency(t *testing.T) {
 
 	if _, err := parseAzureSubscriptionConcurrency("0"); err == nil {
 		t.Fatal("expected bounds error")
+		return
 	}
 }
 
@@ -657,6 +658,7 @@ func TestParseScheduledNativeSyncJobResult(t *testing.T) {
 		}
 		if parsed == nil {
 			t.Fatal("expected parsed result")
+			return
 		}
 		if parsed.Provider != "aws" {
 			t.Fatalf("expected provider aws, got %q", parsed.Provider)
@@ -669,6 +671,7 @@ func TestParseScheduledNativeSyncJobResult(t *testing.T) {
 	t.Run("invalid payload", func(t *testing.T) {
 		if _, err := parseScheduledNativeSyncJobResult("{not-json"); err == nil {
 			t.Fatal("expected parse error for invalid payload")
+			return
 		}
 	})
 }
@@ -688,7 +691,7 @@ func TestRunScheduledSync_RetryAndStatus(t *testing.T) {
 	t.Run("succeeds after retry", func(t *testing.T) {
 		attempts := 0
 		saves := 0
-		executeScheduledSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+		executeScheduledSyncFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 			attempts++
 			if attempts < 2 {
 				return errors.New("temporary failure")
@@ -721,7 +724,7 @@ func TestRunScheduledSync_RetryAndStatus(t *testing.T) {
 
 	t.Run("fails after all retries", func(t *testing.T) {
 		attempts := 0
-		executeScheduledSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+		executeScheduledSyncFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 			attempts++
 			return errors.New("hard failure")
 		}
@@ -753,7 +756,7 @@ func TestRunScheduledSync_RejectsInvalidTimeoutDirective(t *testing.T) {
 	})
 
 	executeCalls := 0
-	executeScheduledSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+	executeScheduledSyncFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 		executeCalls++
 		return nil
 	}
@@ -785,7 +788,7 @@ func TestRunScheduledSync_SkipsOverlappingRuns(t *testing.T) {
 	release := make(chan struct{})
 	finished := make(chan struct{})
 
-	executeScheduledSyncFn = func(context.Context, *snowflake.Client, *SyncSchedule) error {
+	executeScheduledSyncFn = func(context.Context, warehouse.SyncWarehouse, *SyncSchedule) error {
 		select {
 		case <-started:
 		default:
@@ -839,8 +842,8 @@ func TestExecuteGCPSync_InvalidProjectTimeoutDirective(t *testing.T) {
 	preflightGCPProjectAccessFn = func(context.Context, gcpProjectPreflightSpec) error {
 		return nil
 	}
-	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error { return nil }
-	runScheduledGCPSecuritySyncFn = func(context.Context, *snowflake.Client, string, string, []string) error { return nil }
+	runScheduledGCPNativeSyncFn = func(context.Context, warehouse.SyncWarehouse, string, []string) error { return nil }
+	runScheduledGCPSecuritySyncFn = func(context.Context, warehouse.SyncWarehouse, string, string, []string) error { return nil }
 
 	err := executeGCPSync(context.Background(), nil, &SyncSchedule{
 		Name:  "invalid-project-timeout",
@@ -848,6 +851,7 @@ func TestExecuteGCPSync_InvalidProjectTimeoutDirective(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected project timeout validation error")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp_project_timeout_seconds") {
 		t.Fatalf("unexpected error: %v", err)
@@ -877,11 +881,11 @@ func TestExecuteGCPSync_SkipsSecurityWhenNativeProjectTimesOut(t *testing.T) {
 	preflightGCPProjectAccessFn = func(context.Context, gcpProjectPreflightSpec) error {
 		return nil
 	}
-	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+	runScheduledGCPNativeSyncFn = func(context.Context, warehouse.SyncWarehouse, string, []string) error {
 		return context.DeadlineExceeded
 	}
 	securityCalls := 0
-	runScheduledGCPSecuritySyncFn = func(context.Context, *snowflake.Client, string, string, []string) error {
+	runScheduledGCPSecuritySyncFn = func(context.Context, warehouse.SyncWarehouse, string, string, []string) error {
 		securityCalls++
 		return nil
 	}
@@ -892,6 +896,7 @@ func TestExecuteGCPSync_SkipsSecurityWhenNativeProjectTimesOut(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected timeout error")
+		return
 	}
 	if !strings.Contains(err.Error(), "native sync timed out") {
 		t.Fatalf("unexpected error: %v", err)
@@ -927,11 +932,11 @@ func TestExecuteGCPSync_PreflightFailureSkipsNativeAndSecurity(t *testing.T) {
 
 	nativeCalls := 0
 	securityCalls := 0
-	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+	runScheduledGCPNativeSyncFn = func(context.Context, warehouse.SyncWarehouse, string, []string) error {
 		nativeCalls++
 		return nil
 	}
-	runScheduledGCPSecuritySyncFn = func(context.Context, *snowflake.Client, string, string, []string) error {
+	runScheduledGCPSecuritySyncFn = func(context.Context, warehouse.SyncWarehouse, string, string, []string) error {
 		securityCalls++
 		return nil
 	}
@@ -942,6 +947,7 @@ func TestExecuteGCPSync_PreflightFailureSkipsNativeAndSecurity(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected preflight error")
+		return
 	}
 	if !strings.Contains(err.Error(), "preflight") {
 		t.Fatalf("unexpected error: %v", err)
@@ -962,6 +968,7 @@ func TestEnqueueScheduledNativeSync_InvalidWorkerWaitTimeoutDirective(t *testing
 	})
 	if err == nil {
 		t.Fatal("expected worker wait timeout validation error")
+		return
 	}
 	if !strings.Contains(err.Error(), "worker_wait_timeout_seconds") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1028,6 +1035,7 @@ func TestPreflightGCPProjectAccess_RequiresOrgForSCC(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected SCC org validation error")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp-org") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1124,10 +1132,10 @@ func TestExecuteGCPSync_AppliesScheduledAuthDirectives(t *testing.T) {
 	preflightGCPProjectAccessFn = func(context.Context, gcpProjectPreflightSpec) error {
 		return nil
 	}
-	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+	runScheduledGCPNativeSyncFn = func(context.Context, warehouse.SyncWarehouse, string, []string) error {
 		return nil
 	}
-	runScheduledGCPSecuritySyncFn = func(context.Context, *snowflake.Client, string, string, []string) error {
+	runScheduledGCPSecuritySyncFn = func(context.Context, warehouse.SyncWarehouse, string, string, []string) error {
 		return fmt.Errorf("security sync should not run")
 	}
 
@@ -1168,9 +1176,11 @@ func TestApplyScheduledGCPAuth_WithCredentialsFile(t *testing.T) {
 	}
 	if cfg == nil {
 		t.Fatal("expected auth config")
+		return
 	}
 	if cfg.Cleanup == nil {
 		t.Fatal("expected cleanup func")
+		return
 	}
 	if cfg.CredentialsFile != source.Name() {
 		t.Fatalf("expected credentials file %q, got %q", source.Name(), cfg.CredentialsFile)
@@ -1215,6 +1225,7 @@ func TestApplyScheduledGCPAuth_WithImpersonation(t *testing.T) {
 	}
 	if cfg == nil {
 		t.Fatal("expected auth config")
+		return
 	}
 	if !strings.Contains(cfg.Summary, "impersonate_service_account=impersonated@test.iam.gserviceaccount.com") {
 		t.Fatalf("unexpected summary: %q", cfg.Summary)
@@ -1266,6 +1277,7 @@ func TestApplyScheduledGCPAuth_ImpersonationRequiresSourceCredentials(t *testing
 	})
 	if err == nil {
 		t.Fatal("expected error when impersonation is set with an unreadable credentials source")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp_credentials_file") {
 		t.Fatalf("expected gcp_credentials_file validation error, got %v", err)
@@ -1294,6 +1306,7 @@ func TestApplyScheduledGCPAuth_TokenLifetimeRequiresImpersonation(t *testing.T) 
 	})
 	if err == nil {
 		t.Fatal("expected token lifetime to require impersonation")
+		return
 	}
 	if !strings.Contains(err.Error(), "requires gcp_impersonate_service_account") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1322,6 +1335,7 @@ func TestApplyScheduledGCPAuth_DelegatesRequireImpersonation(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected delegates to require impersonation")
+		return
 	}
 	if !strings.Contains(err.Error(), "requires gcp_impersonate_service_account") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1342,9 +1356,11 @@ func TestParseAWSSessionTagDirectives(t *testing.T) {
 
 	if _, _, err := parseAWSSessionTagDirectives([]string{"invalid"}, nil); err == nil {
 		t.Fatal("expected parse error for non key=value aws_role_session_tags entry")
+		return
 	}
 	if _, _, err := parseAWSSessionTagDirectives([]string{"env=prod"}, []string{"owner"}); err == nil {
 		t.Fatal("expected parse error when transitive key does not exist in session tags")
+		return
 	}
 }
 
@@ -1359,9 +1375,11 @@ func TestParseBoundedPositiveIntDirective(t *testing.T) {
 
 	if _, err := parseBoundedPositiveIntDirective("not-a-number", "aws_role_duration_seconds", 900, 43200); err == nil {
 		t.Fatal("expected integer parse error")
+		return
 	}
 	if _, err := parseBoundedPositiveIntDirective("100", "aws_role_duration_seconds", 900, 43200); err == nil {
 		t.Fatal("expected bounds error")
+		return
 	}
 }
 
@@ -1370,6 +1388,7 @@ func TestLoadScheduledAWSConfig_EnterpriseAuthValidation(t *testing.T) {
 		_, err := loadScheduledAWSConfig(context.Background(), scheduledSyncSpec{AWSWebIdentityTokenFile: "/tmp/token"})
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "aws_web_identity_token_file and aws_web_identity_role_arn must be set together") {
 			t.Fatalf("unexpected error: %v", err)
@@ -1383,6 +1402,7 @@ func TestLoadScheduledAWSConfig_EnterpriseAuthValidation(t *testing.T) {
 		})
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "aws_web_identity_token_file") {
 			t.Fatalf("unexpected error: %v", err)
@@ -1393,6 +1413,7 @@ func TestLoadScheduledAWSConfig_EnterpriseAuthValidation(t *testing.T) {
 		_, err := loadScheduledAWSConfig(context.Background(), scheduledSyncSpec{AWSRoleSourceIdentity: "cerebro-scheduler"})
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "aws_role_source_identity") {
 			t.Fatalf("unexpected error: %v", err)
@@ -1406,6 +1427,7 @@ func TestLoadScheduledAWSConfig_EnterpriseAuthValidation(t *testing.T) {
 		})
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "absolute executable path") {
 			t.Fatalf("unexpected error: %v", err)
@@ -1452,11 +1474,11 @@ func TestExecuteGCPSync_FilterRouting(t *testing.T) {
 		securityCalls := 0
 		var securityFilters []string
 
-		runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+		runScheduledGCPNativeSyncFn = func(context.Context, warehouse.SyncWarehouse, string, []string) error {
 			nativeCalls++
 			return nil
 		}
-		runScheduledGCPSecuritySyncFn = func(_ context.Context, _ *snowflake.Client, projectID, orgID string, tableFilter []string) error {
+		runScheduledGCPSecuritySyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, projectID, orgID string, tableFilter []string) error {
 			securityCalls++
 			if projectID != "proj-1" {
 				return fmt.Errorf("unexpected project id %q", projectID)
@@ -1499,11 +1521,11 @@ func TestExecuteGCPSync_FilterRouting(t *testing.T) {
 		securityCalls := 0
 		listCalls := 0
 
-		runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+		runScheduledGCPNativeSyncFn = func(context.Context, warehouse.SyncWarehouse, string, []string) error {
 			nativeCalls++
 			return nil
 		}
-		runScheduledGCPSecuritySyncFn = func(_ context.Context, _ *snowflake.Client, projectID, orgID string, tableFilter []string) error {
+		runScheduledGCPSecuritySyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, projectID, orgID string, tableFilter []string) error {
 			securityCalls++
 			if projectID != "" {
 				return fmt.Errorf("expected empty project id, got %q", projectID)
@@ -1553,12 +1575,12 @@ func TestExecuteGCPSync_FilterRouting(t *testing.T) {
 		var nativeFilters []string
 		var securityFilters []string
 
-		runScheduledGCPNativeSyncFn = func(_ context.Context, _ *snowflake.Client, _ string, tableFilter []string) error {
+		runScheduledGCPNativeSyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, tableFilter []string) error {
 			nativeCalls++
 			nativeFilters = append([]string(nil), tableFilter...)
 			return nil
 		}
-		runScheduledGCPSecuritySyncFn = func(_ context.Context, _ *snowflake.Client, _ string, _ string, tableFilter []string) error {
+		runScheduledGCPSecuritySyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, _ string, tableFilter []string) error {
 			securityCalls++
 			securityFilters = append([]string(nil), tableFilter...)
 			return nil
@@ -1620,11 +1642,11 @@ func TestExecuteGCPSync_AppliesWIFAuth(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
 
 	var observedGAC string
-	runScheduledGCPNativeSyncFn = func(_ context.Context, _ *snowflake.Client, _ string, _ []string) error {
+	runScheduledGCPNativeSyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, _ []string) error {
 		observedGAC = os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
 		return nil
 	}
-	runScheduledGCPSecuritySyncFn = func(_ context.Context, _ *snowflake.Client, _, _ string, _ []string) error {
+	runScheduledGCPSecuritySyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, _, _ string, _ []string) error {
 		return nil
 	}
 
@@ -1679,7 +1701,7 @@ func TestExecuteGCPSync_WIFCredsContent(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
 
 	var capturedPayload map[string]interface{}
-	runScheduledGCPNativeSyncFn = func(_ context.Context, _ *snowflake.Client, _ string, _ []string) error {
+	runScheduledGCPNativeSyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, _ string, _ []string) error {
 		gac := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
 		data, err := os.ReadFile(gac)
 		if err != nil {
@@ -1687,7 +1709,7 @@ func TestExecuteGCPSync_WIFCredsContent(t *testing.T) {
 		}
 		return json.Unmarshal(data, &capturedPayload)
 	}
-	runScheduledGCPSecuritySyncFn = func(_ context.Context, _ *snowflake.Client, _, _ string, _ []string) error {
+	runScheduledGCPSecuritySyncFn = func(_ context.Context, _ warehouse.SyncWarehouse, _, _ string, _ []string) error {
 		return nil
 	}
 
@@ -1700,6 +1722,7 @@ func TestExecuteGCPSync_WIFCredsContent(t *testing.T) {
 	}
 	if capturedPayload == nil {
 		t.Fatal("expected to capture WIF credentials payload")
+		return
 	}
 	if capturedPayload["type"] != "external_account" {
 		t.Fatalf("expected external_account type, got %v", capturedPayload["type"])
@@ -1758,11 +1781,11 @@ func TestExecuteGCPSync_OrgDiscoveryUsesScheduledAuthContext(t *testing.T) {
 	}
 
 	nativeCalls := 0
-	runScheduledGCPNativeSyncFn = func(context.Context, *snowflake.Client, string, []string) error {
+	runScheduledGCPNativeSyncFn = func(context.Context, warehouse.SyncWarehouse, string, []string) error {
 		nativeCalls++
 		return nil
 	}
-	runScheduledGCPSecuritySyncFn = func(context.Context, *snowflake.Client, string, string, []string) error {
+	runScheduledGCPSecuritySyncFn = func(context.Context, warehouse.SyncWarehouse, string, string, []string) error {
 		return nil
 	}
 

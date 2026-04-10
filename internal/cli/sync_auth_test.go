@@ -49,6 +49,7 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		_, err := applyGCPAuthOverrides()
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "gcp credentials file") {
 			t.Fatalf("expected file read error, got %v", err)
@@ -144,6 +145,7 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		_, err := applyGCPAuthOverrides()
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "gcp impersonation requires source credentials") {
 			t.Fatalf("expected missing source credentials error, got %v", err)
@@ -159,6 +161,7 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		_, err := applyGCPAuthOverrides()
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "requires --gcp-impersonate-service-account") {
 			t.Fatalf("expected impersonation requirement error, got %v", err)
@@ -174,6 +177,7 @@ func TestApplyGCPAuthOverrides(t *testing.T) {
 		_, err := applyGCPAuthOverrides()
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "requires --gcp-impersonate-service-account") {
 			t.Fatalf("expected impersonation requirement error, got %v", err)
@@ -245,6 +249,7 @@ func TestApplyAWSAssumeRoleOverride(t *testing.T) {
 		}
 		if out.Credentials == nil {
 			t.Fatal("expected assumed credentials provider to be configured")
+			return
 		}
 		if out.Region != cfg.Region {
 			t.Fatalf("expected region %q, got %q", cfg.Region, out.Region)
@@ -266,6 +271,7 @@ func TestApplyAWSAssumeRoleOverride(t *testing.T) {
 		_, err := applyAWSAssumeRoleOverride(context.Background(), cfg)
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "requires --aws-role-mfa-serial") {
 			t.Fatalf("expected MFA serial validation error, got %v", err)
@@ -287,6 +293,7 @@ func TestApplyAWSAssumeRoleOverride(t *testing.T) {
 		_, err := applyAWSAssumeRoleOverride(context.Background(), cfg)
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "require --aws-role-arn") {
 			t.Fatalf("expected role requirement validation error, got %v", err)
@@ -330,6 +337,7 @@ func TestApplyAWSAuthOverrides(t *testing.T) {
 		_, err := applyAWSAuthOverrides()
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "must be set together") {
 			t.Fatalf("expected paired-flag validation error, got %v", err)
@@ -397,6 +405,7 @@ func TestLoadAWSConfigValidatesFiles(t *testing.T) {
 		_, err := loadAWSConfig(context.Background(), "")
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "--aws-config-file") {
 			t.Fatalf("expected config file validation error, got %v", err)
@@ -411,6 +420,7 @@ func TestLoadAWSConfigValidatesFiles(t *testing.T) {
 		_, err := loadAWSConfig(context.Background(), "")
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "--aws-shared-credentials-file") {
 			t.Fatalf("expected shared credentials file validation error, got %v", err)
@@ -425,6 +435,7 @@ func TestLoadAWSConfigValidatesFiles(t *testing.T) {
 		_, err := loadAWSConfig(context.Background(), "prod")
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "absolute executable path") {
 			t.Fatalf("expected credential process validation error, got %v", err)
@@ -442,6 +453,7 @@ func TestValidateAWSCredentialProcess(t *testing.T) {
 		err := validateAWSCredentialProcess("helper --profile prod", "--aws-credential-process")
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "absolute executable path") {
 			t.Fatalf("unexpected error: %v", err)
@@ -452,6 +464,7 @@ func TestValidateAWSCredentialProcess(t *testing.T) {
 		err := validateAWSCredentialProcess(helperPath+";echo hacked", "--aws-credential-process")
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "disallowed shell operators") {
 			t.Fatalf("unexpected error: %v", err)
@@ -471,6 +484,7 @@ func TestValidateAWSCredentialProcess(t *testing.T) {
 		err := validateAWSCredentialProcess(helperPath+" --profile prod", "--aws-credential-process")
 		if err == nil {
 			t.Fatal("expected allowlist error")
+			return
 		}
 		if !strings.Contains(err.Error(), "not permitted") {
 			t.Fatalf("unexpected error: %v", err)

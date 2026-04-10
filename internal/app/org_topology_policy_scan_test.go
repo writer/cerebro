@@ -128,7 +128,7 @@ func TestScanOrgTopologyPolicies_EmptyWhenGraphUnavailable(t *testing.T) {
 	}
 }
 
-func TestScanOrgTopologyPolicies_UsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestScanOrgTopologyPolicies_UsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	engine := policy.NewEngine()
 	addOrgTestPolicy(t, engine, &policy.Policy{
 		ID:          "org-bus-factor-critical",
@@ -142,31 +142,18 @@ func TestScanOrgTopologyPolicies_UsesPersistedSnapshotWhenLiveGraphUnavailable(t
 		},
 	})
 
-	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
-		LocalPath:    filepath.Join(t.TempDir(), "graph-snapshots"),
-		MaxSnapshots: 4,
-	})
-	if err != nil {
-		t.Fatalf("NewGraphPersistenceStore() error = %v", err)
-	}
-	if _, err := store.SaveGraph(orgTopologyTestGraph(time.Now().UTC())); err != nil {
-		t.Fatalf("SaveGraph() error = %v", err)
-	}
-
-	app := &App{
-		Policy:         engine,
-		GraphSnapshots: store,
-	}
+	app := &App{Policy: engine}
+	setConfiguredSnapshotGraphFromGraph(t, app, orgTopologyTestGraph(time.Now().UTC()))
 
 	result := app.ScanOrgTopologyPolicies(context.Background())
 	if len(result.Errors) != 0 {
 		t.Fatalf("expected no scan errors, got %v", result.Errors)
 	}
 	if result.Assets == 0 {
-		t.Fatal("expected synthesized org-topology assets from persisted snapshot")
+		t.Fatal("expected synthesized org-topology assets from configured graph")
 	}
 	if !slices.ContainsFunc(result.Findings, func(f policy.Finding) bool { return f.PolicyID == "org-bus-factor-critical" }) {
-		t.Fatalf("expected persisted snapshot finding, got %v", result.Findings)
+		t.Fatalf("expected configured graph finding, got %v", result.Findings)
 	}
 }
 

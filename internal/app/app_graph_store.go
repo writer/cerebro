@@ -435,6 +435,17 @@ func (r *tenantGraphStoreResolver) storeResult(current *graph.Graph, version uin
 	r.unavailable = unavailable
 }
 
+func (a *App) currentConfiguredSnapshotGraphStore(ctx context.Context) (*graph.SnapshotGraphStore, error) {
+	snapshot, err := a.currentConfiguredSecurityGraphSnapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if snapshot == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return graph.NewSnapshotGraphStore(snapshot), nil
+}
+
 func (a *App) currentPassiveSnapshotStore(ctx context.Context) (graph.GraphStore, error) {
 	if err := graphStoreContextErr(ctx); err != nil {
 		return nil, err
@@ -442,18 +453,10 @@ func (a *App) currentPassiveSnapshotStore(ctx context.Context) (graph.GraphStore
 	if a == nil || a.GraphSnapshots == nil {
 		return nil, graph.ErrStoreUnavailable
 	}
-	snapshotStore := a.GraphSnapshots
-	if cached := a.cachedPassiveSnapshotStore(snapshotStore); cached != nil {
-		return cached, nil
-	}
-	a.passiveSnapshotStoreMu.Lock()
-	defer a.passiveSnapshotStoreMu.Unlock()
-	if cached := a.cachedPassiveSnapshotStoreLocked(snapshotStore); cached != nil {
-		return cached, nil
-	}
-	snapshot, record, source, err := snapshotStore.PeekLatestSnapshot()
+
+	snapshot, _, _, err := a.GraphSnapshots.PeekLatestSnapshot()
 	if err != nil {
-		if isNoSnapshotsGraphStoreErr(err) {
+		if strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
 			return nil, graph.ErrStoreUnavailable
 		}
 		return nil, err
@@ -461,14 +464,7 @@ func (a *App) currentPassiveSnapshotStore(ctx context.Context) (graph.GraphStore
 	if snapshot == nil {
 		return nil, graph.ErrStoreUnavailable
 	}
-	store := graph.NewSnapshotGraphStore(snapshot)
-	status := snapshotStore.Status()
-	a.passiveSnapshotStoreOwner = snapshotStore
-	a.passiveSnapshotStoreSource = strings.TrimSpace(source)
-	a.passiveSnapshotStoreID = passiveSnapshotStoreCacheID(a.passiveSnapshotStoreSource, record, status)
-	a.passiveSnapshotStoreStatusID = passiveSnapshotStoreCacheID(a.passiveSnapshotStoreSource, nil, status)
-	a.passiveSnapshotStore = store
-	return store, nil
+	return graph.NewSnapshotGraphStore(snapshot), nil
 }
 
 func (a *App) currentPassiveSnapshotGraphStore(ctx context.Context) (*graph.SnapshotGraphStore, error) {
@@ -481,17 +477,6 @@ func (a *App) currentPassiveSnapshotGraphStore(ctx context.Context) (*graph.Snap
 		return nil, graph.ErrStoreUnavailable
 	}
 	return snapshotStore, nil
-}
-
-func (a *App) currentConfiguredSnapshotGraphStore(ctx context.Context) (*graph.SnapshotGraphStore, error) {
-	snapshot, err := a.currentConfiguredSecurityGraphSnapshot(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if snapshot == nil {
-		return nil, graph.ErrStoreUnavailable
-	}
-	return graph.NewSnapshotGraphStore(snapshot), nil
 }
 
 func (a *App) currentWarmTenantGraphStore(ctx context.Context, tenantID string) (graph.GraphStore, error) {
@@ -574,52 +559,4 @@ func graphStoreContextErr(ctx context.Context) error {
 		return nil
 	}
 	return ctx.Err()
-}
-
-func isNoSnapshotsGraphStoreErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(strings.ToLower(err.Error()), "no snapshots found")
-}
-
-func (a *App) cachedPassiveSnapshotStore(store *graph.GraphPersistenceStore) *graph.SnapshotGraphStore {
-	if a == nil || store == nil {
-		return nil
-	}
-	a.passiveSnapshotStoreMu.RLock()
-	defer a.passiveSnapshotStoreMu.RUnlock()
-	return a.cachedPassiveSnapshotStoreLocked(store)
-}
-
-func (a *App) cachedPassiveSnapshotStoreLocked(store *graph.GraphPersistenceStore) *graph.SnapshotGraphStore {
-	if a == nil || store == nil || a.passiveSnapshotStore == nil {
-		return nil
-	}
-	if a.passiveSnapshotStoreOwner != store {
-		return nil
-	}
-	cacheID := passiveSnapshotStoreCacheID(a.passiveSnapshotStoreSource, nil, store.Status())
-	if cacheID != "" && cacheID != a.passiveSnapshotStoreID && cacheID != a.passiveSnapshotStoreStatusID {
-		return nil
-	}
-	return a.passiveSnapshotStore
-}
-
-func passiveSnapshotStoreCacheID(source string, record *graph.GraphSnapshotRecord, status graph.GraphPersistenceStatus) string {
-	if record != nil {
-		if id := strings.TrimSpace(record.ID); id != "" {
-			return id
-		}
-	}
-	switch strings.TrimSpace(source) {
-	case "local":
-		return strings.TrimSpace(status.LastPersistedSnapshot)
-	case "replica":
-		return strings.TrimSpace(status.LastReplicatedSnapshot)
-	}
-	if id := strings.TrimSpace(status.LastPersistedSnapshot); id != "" {
-		return id
-	}
-	return strings.TrimSpace(status.LastReplicatedSnapshot)
 }

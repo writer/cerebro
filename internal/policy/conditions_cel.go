@@ -139,6 +139,9 @@ func (e *Engine) syncConditionProgramsLocked(p *Policy) error {
 		if issues != nil && issues.Err() != nil {
 			return fmt.Errorf("policy %s: invalid CEL condition %d: %w", policyID, i+1, issues.Err())
 		}
+		if ast.OutputType() != cel.BoolType {
+			return fmt.Errorf("policy %s: CEL condition %d must evaluate to a boolean", policyID, i+1)
+		}
 		program, err := e.celEnv.Program(ast, cel.EvalOptions(cel.OptOptimize))
 		if err != nil {
 			return fmt.Errorf("policy %s: build CEL program %d: %w", policyID, i+1, err)

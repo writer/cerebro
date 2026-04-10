@@ -87,6 +87,7 @@ func TestServerFindingsComplianceServiceFallsBackToEmptyStore(t *testing.T) {
 	store := svc.FindingsStore(context.Background())
 	if store == nil {
 		t.Fatal("expected non-nil fallback findings store")
+		return
 	}
 	if count := store.Count(findings.FindingFilter{}); count != 0 {
 		t.Fatalf("expected empty fallback findings store, got count=%d", count)

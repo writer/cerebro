@@ -8,6 +8,7 @@ func TestNewRiskCalculator(t *testing.T) {
 	calc := NewRiskCalculator()
 	if calc == nil {
 		t.Fatal("expected non-nil calculator")
+		return
 	}
 	if calc.weights == nil {
 		t.Error("expected weights to be initialized")
@@ -281,6 +282,7 @@ func TestScoreBreakdown_Fields(t *testing.T) {
 
 	if result.Breakdown == nil {
 		t.Fatal("breakdown should not be nil")
+		return
 	}
 	if result.Breakdown.VulnerabilityScore <= 0 {
 		t.Error("vulnerability score should be positive")
@@ -306,6 +308,7 @@ func TestRiskCalculator_Calculate_NilFactors(t *testing.T) {
 
 	if result == nil {
 		t.Fatal("expected non-nil result even with nil factors")
+		return
 	}
 	if result.Score != 0 {
 		t.Errorf("expected zero score for nil factors, got %f", result.Score)

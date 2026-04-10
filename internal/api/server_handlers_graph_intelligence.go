@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -37,7 +36,7 @@ func (s *Server) graphIntelligenceEntityGraph(ctx context.Context, entityID stri
 	if s == nil || s.graphIntelligence == nil {
 		return nil, graph.ErrStoreUnavailable
 	}
-	return s.graphIntelligence.CurrentEntityGraph(ctx, entityID, validAt, recordedAt, graphIntelligenceEntitySummarySubgraphDepth)
+	return s.graphIntelligence.CurrentEntityGraph(ctx, entityID, validAt, recordedAt)
 }
 
 func (s *Server) graphIntelligenceEventCorrelations(w http.ResponseWriter, r *http.Request) {
@@ -728,10 +727,6 @@ func (s *Server) graphIntelligenceEntitySummary(w http.ResponseWriter, r *http.R
 
 	g, err := s.graphIntelligenceEntityGraph(r.Context(), entityID, validAt, recordedAt)
 	if err != nil {
-		if errors.Is(err, graph.ErrStoreUnavailable) {
-			s.error(w, http.StatusServiceUnavailable, "graph platform not initialized")
-			return
-		}
 		s.errorFromErr(w, err)
 		return
 	}

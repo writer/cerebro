@@ -245,3 +245,61 @@ func TestPlatformEntitySummaryPrefersLiveGraphOverSnapshotWhenAvailable(t *testi
 		t.Fatalf("expected live graph to avoid snapshot materialization, got %d snapshot calls", got)
 	}
 }
+
+func TestPlatformEntitySearchAndSuggestUseConfiguredBackendWithoutSnapshots(t *testing.T) {
+	store := &countingSnapshotStore{GraphStore: buildGraphStorePlatformEntitiesTestGraph(t)}
+	backend := &recordingEntitySearchBackend{
+		searchFn: func(_ context.Context, _ string, opts graph.EntitySearchOptions) (graph.EntitySearchCollection, error) {
+			return graph.EntitySearchCollection{
+				GeneratedAt: time.Now().UTC(),
+				Query:       opts.Query,
+				Count:       1,
+				Results: []graph.EntitySearchResult{
+					{
+						Entity: graph.EntityRecord{
+							ID:   "arn:aws:s3:::audit-logs",
+							Kind: graph.NodeKindBucket,
+							Name: "Audit Logs",
+						},
+						Score: 8,
+					},
+				},
+			}, nil
+		},
+		suggestFn: func(_ context.Context, _ string, opts graph.EntitySuggestOptions) (graph.EntitySuggestCollection, error) {
+			return graph.EntitySuggestCollection{
+				GeneratedAt: time.Now().UTC(),
+				Prefix:      opts.Prefix,
+				Count:       1,
+				Suggestions: []graph.EntitySuggestion{
+					{
+						EntityID: "person:alice@example.com",
+						Kind:     graph.NodeKindPerson,
+						Name:     "Alice Example",
+						Value:    "Alice Example",
+					},
+				},
+			}, nil
+		},
+	}
+	s := NewServerWithDependencies(serverDependencies{
+		Config:              &app.Config{},
+		graphRuntime:        stubGraphRuntime{store: store},
+		entitySearchBackend: backend,
+	})
+	t.Cleanup(func() { s.Close() })
+
+	search := do(t, s, http.MethodGet, "/api/v1/platform/entities/search?q=audit+logs&limit=5", nil)
+	if search.Code != http.StatusOK {
+		t.Fatalf("expected configured-backend entity search 200, got %d: %s", search.Code, search.Body.String())
+	}
+
+	suggest := do(t, s, http.MethodGet, "/api/v1/platform/entities/suggest?prefix=ali&limit=5", nil)
+	if suggest.Code != http.StatusOK {
+		t.Fatalf("expected configured-backend entity suggest 200, got %d: %s", suggest.Code, suggest.Body.String())
+	}
+
+	if got := store.count.Load(); got != 0 {
+		t.Fatalf("expected configured backend to avoid snapshot materialization, got %d snapshot calls", got)
+	}
+}
