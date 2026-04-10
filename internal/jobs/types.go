@@ -23,23 +23,23 @@ const (
 )
 
 type Job struct {
-	ID             string  `json:"id" dynamodbav:"job_id"`
-	Type           JobType `json:"type" dynamodbav:"type"`
-	Status         Status  `json:"status" dynamodbav:"status"`
-	Payload        string  `json:"payload" dynamodbav:"payload"`
-	Result         string  `json:"result,omitempty" dynamodbav:"result,omitempty"`
-	Error          string  `json:"error,omitempty" dynamodbav:"error,omitempty"`
-	Attempt        int     `json:"attempt" dynamodbav:"attempt"`
-	MaxAttempts    int     `json:"max_attempts" dynamodbav:"max_attempts"`
-	GroupID        string  `json:"group_id,omitempty" dynamodbav:"group_id,omitempty"`
-	WorkerID       string  `json:"worker_id,omitempty" dynamodbav:"worker_id,omitempty"`
-	LeaseExpiresAt int64   `json:"lease_expires_at,omitempty" dynamodbav:"lease_expires_at,omitempty"`
-	CreatedAt      int64   `json:"created_at" dynamodbav:"created_at"`
-	UpdatedAt      int64   `json:"updated_at" dynamodbav:"updated_at"`
+	ID             string  `json:"id"`
+	Type           JobType `json:"type"`
+	Status         Status  `json:"status"`
+	Payload        string  `json:"payload"`
+	Result         string  `json:"result,omitempty"`
+	Error          string  `json:"error,omitempty"`
+	Attempt        int     `json:"attempt"`
+	MaxAttempts    int     `json:"max_attempts"`
+	GroupID        string  `json:"group_id,omitempty"`
+	WorkerID       string  `json:"worker_id,omitempty"`
+	LeaseExpiresAt int64   `json:"lease_expires_at,omitempty"`
+	CreatedAt      int64   `json:"created_at"`
+	UpdatedAt      int64   `json:"updated_at"`
 
 	// Tracing fields
-	CorrelationID string `json:"correlation_id,omitempty" dynamodbav:"correlation_id,omitempty"`
-	ParentID      string `json:"parent_id,omitempty" dynamodbav:"parent_id,omitempty"`
+	CorrelationID string `json:"correlation_id,omitempty"`
+	ParentID      string `json:"parent_id,omitempty"`
 }
 
 type JobMessage struct {
@@ -48,7 +48,7 @@ type JobMessage struct {
 	CorrelationID string `json:"correlation_id,omitempty"`
 	// Attempt number for retry tracking (used in deduplication ID generation)
 	Attempt int `json:"attempt,omitempty"`
-	// DeduplicationID for FIFO queues - if empty, generates unique ID from job_id:attempt:timestamp
+	// DeduplicationID is optional; if empty, the queue generates a stable identifier.
 	DeduplicationID string `json:"deduplication_id,omitempty"`
 }
 

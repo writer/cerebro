@@ -54,6 +54,7 @@ func TestValidateAuthDoctorOutput(t *testing.T) {
 	authDoctorOutput = "invalid"
 	if err := validateAuthDoctorOutput(); err == nil {
 		t.Fatal("expected invalid output error")
+		return
 	}
 }
 

@@ -231,7 +231,8 @@ func profileSyntheticScaleTier(resourceCount, queryIterations int) (ScaleProfile
 func buildSyntheticScaleGraph(resourceCount int) (*Graph, scaleSyntheticFixture) {
 	g := New()
 	now := time.Date(2026, 3, 12, 12, 0, 0, 0, time.UTC)
-	internetNode := &Node{ID: "internet", Kind: NodeKindInternet, Name: "Internet", Risk: RiskHigh, CreatedAt: now, UpdatedAt: now, Version: 1}
+	internetNodeID := syntheticInternetNodeID()
+	internetNode := &Node{ID: internetNodeID, Kind: NodeKindInternet, Name: "Internet", Risk: RiskHigh, CreatedAt: now, UpdatedAt: now, Version: 1}
 	g.AddNode(internetNode)
 
 	serviceNames := []string{"payments", "auth", "billing", "orders", "search", "analytics", "messaging", "identity"}
@@ -242,7 +243,7 @@ func buildSyntheticScaleGraph(resourceCount int) (*Graph, scaleSyntheticFixture)
 		accountID := fmt.Sprintf("acct-%03d", accountIdx+1)
 		tenantID := fmt.Sprintf("tenant-%02d", accountIdx%8+1)
 		provider := "aws"
-		userID := fmt.Sprintf("user:%s:admin", accountID)
+		userID := syntheticAdminUserNodeID(accountID)
 		user := &Node{
 			ID:        userID,
 			Kind:      NodeKindUser,
@@ -270,7 +271,7 @@ func buildSyntheticScaleGraph(resourceCount int) (*Graph, scaleSyntheticFixture)
 		roleCount := maxInt(2, accountResources/250)
 		roles := make([]string, 0, roleCount)
 		for roleIdx := 0; roleIdx < roleCount; roleIdx++ {
-			roleID := fmt.Sprintf("role:%s:%02d", accountID, roleIdx+1)
+			roleID := syntheticRoleNodeID(accountID, roleIdx+1)
 			role := &Node{
 				ID:        roleID,
 				Kind:      NodeKindRole,
@@ -288,14 +289,14 @@ func buildSyntheticScaleGraph(resourceCount int) (*Graph, scaleSyntheticFixture)
 			}
 			g.AddNode(role)
 			roles = append(roles, roleID)
-			g.AddEdge(&Edge{ID: fmt.Sprintf("edge:%s:%s:assume", userID, roleID), Source: userID, Target: roleID, Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
+			g.AddEdge(&Edge{ID: syntheticAssumeEdgeID(userID, roleID), Source: userID, Target: roleID, Kind: EdgeKindCanAssume, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
 		}
 
 		serviceCount := maxInt(1, accountResources/250)
 		serviceIDs := make([]string, 0, serviceCount)
 		for serviceIdx := 0; serviceIdx < serviceCount; serviceIdx++ {
 			serviceLabel := serviceNames[(serviceIdx+accountIdx)%len(serviceNames)]
-			serviceID := fmt.Sprintf("service:%s:%s:%03d", accountID, serviceLabel, serviceIdx+1)
+			serviceID := syntheticServiceNodeID(accountID, serviceLabel, serviceIdx+1)
 			service := &Node{
 				ID:        serviceID,
 				Kind:      NodeKindService,
@@ -316,7 +317,7 @@ func buildSyntheticScaleGraph(resourceCount int) (*Graph, scaleSyntheticFixture)
 			g.AddNode(service)
 			serviceIDs = append(serviceIDs, serviceID)
 			roleID := roles[serviceIdx%len(roles)]
-			g.AddEdge(&Edge{ID: fmt.Sprintf("edge:%s:%s:admin", roleID, serviceID), Source: roleID, Target: serviceID, Kind: EdgeKindCanAdmin, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
+			g.AddEdge(&Edge{ID: syntheticAdminEdgeID(roleID, serviceID), Source: roleID, Target: serviceID, Kind: EdgeKindCanAdmin, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
 		}
 
 		lastByService := make(map[string]string, len(serviceIDs))
@@ -325,7 +326,7 @@ func buildSyntheticScaleGraph(resourceCount int) (*Graph, scaleSyntheticFixture)
 			serviceID := serviceIDs[resourceIdx%len(serviceIDs)]
 			serviceLabel := serviceNames[(resourceIdx+accountIdx)%len(serviceNames)]
 			kind, risk, props := syntheticResourceShape(globalIdx, tenantID, serviceLabel)
-			resourceID := fmt.Sprintf("%s:%s:%06d", kind, accountID, globalIdx+1)
+			resourceID := syntheticResourceNodeID(kind, accountID, globalIdx+1)
 			resource := &Node{
 				ID:         resourceID,
 				Kind:       kind,
@@ -351,14 +352,14 @@ func buildSyntheticScaleGraph(resourceCount int) (*Graph, scaleSyntheticFixture)
 
 			roleID := roles[resourceIdx%len(roles)]
 			permissionKind := []EdgeKind{EdgeKindCanRead, EdgeKindCanWrite, EdgeKindCanAdmin}[resourceIdx%3]
-			g.AddEdge(&Edge{ID: fmt.Sprintf("edge:%s:%s:perm", roleID, resourceID), Source: roleID, Target: resourceID, Kind: permissionKind, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
-			g.AddEdge(&Edge{ID: fmt.Sprintf("edge:%s:%s:service", serviceID, resourceID), Source: serviceID, Target: resourceID, Kind: EdgeKindRuns, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
+			g.AddEdge(&Edge{ID: syntheticPermissionEdgeID(roleID, resourceID), Source: roleID, Target: resourceID, Kind: permissionKind, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
+			g.AddEdge(&Edge{ID: syntheticServiceRunsEdgeID(serviceID, resourceID), Source: serviceID, Target: resourceID, Kind: EdgeKindRuns, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
 			if previous := lastByService[serviceID]; previous != "" {
-				g.AddEdge(&Edge{ID: fmt.Sprintf("edge:%s:%s:dep", resourceID, previous), Source: resourceID, Target: previous, Kind: EdgeKindDependsOn, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
+				g.AddEdge(&Edge{ID: syntheticDependencyEdgeID(resourceID, previous), Source: resourceID, Target: previous, Kind: EdgeKindDependsOn, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
 			}
 			lastByService[serviceID] = resourceID
 			if publicFacing(kind, props) {
-				g.AddEdge(&Edge{ID: fmt.Sprintf("edge:internet:%s:exposed", resourceID), Source: "internet", Target: resourceID, Kind: EdgeKindExposedTo, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
+				g.AddEdge(&Edge{ID: syntheticInternetExposureEdgeID(resourceID), Source: internetNodeID, Target: resourceID, Kind: EdgeKindExposedTo, Effect: EdgeEffectAllow, Priority: 50, CreatedAt: now, Version: 1})
 			}
 		}
 		resourcesAssigned += accountResources
@@ -373,6 +374,50 @@ func buildSyntheticScaleGraph(resourceCount int) (*Graph, scaleSyntheticFixture)
 		BuildDuration: 0,
 	})
 	return g, fixture
+}
+
+func syntheticInternetNodeID() string {
+	return "internet"
+}
+
+func syntheticAdminUserNodeID(accountID string) string {
+	return fmt.Sprintf("user:%s:admin", accountID)
+}
+
+func syntheticRoleNodeID(accountID string, roleOrdinal int) string {
+	return fmt.Sprintf("role:%s:%02d", accountID, roleOrdinal)
+}
+
+func syntheticServiceNodeID(accountID, serviceLabel string, serviceOrdinal int) string {
+	return fmt.Sprintf("service:%s:%s:%03d", accountID, serviceLabel, serviceOrdinal)
+}
+
+func syntheticResourceNodeID(kind NodeKind, accountID string, resourceOrdinal int) string {
+	return fmt.Sprintf("%s:%s:%06d", kind, accountID, resourceOrdinal)
+}
+
+func syntheticAssumeEdgeID(userID, roleID string) string {
+	return fmt.Sprintf("edge:%s:%s:assume", userID, roleID)
+}
+
+func syntheticAdminEdgeID(roleID, serviceID string) string {
+	return fmt.Sprintf("edge:%s:%s:admin", roleID, serviceID)
+}
+
+func syntheticPermissionEdgeID(roleID, resourceID string) string {
+	return fmt.Sprintf("edge:%s:%s:perm", roleID, resourceID)
+}
+
+func syntheticServiceRunsEdgeID(serviceID, resourceID string) string {
+	return fmt.Sprintf("edge:%s:%s:service", serviceID, resourceID)
+}
+
+func syntheticDependencyEdgeID(resourceID, previousResourceID string) string {
+	return fmt.Sprintf("edge:%s:%s:dep", resourceID, previousResourceID)
+}
+
+func syntheticInternetExposureEdgeID(resourceID string) string {
+	return fmt.Sprintf("edge:internet:%s:exposed", resourceID)
 }
 
 func syntheticResourceShape(globalIdx int, tenantID, serviceLabel string) (NodeKind, RiskLevel, map[string]any) {
@@ -526,9 +571,9 @@ func recommendScalePath(measurements []ScaleProfileMeasurement) (string, string)
 	case maxMeasurement.HeapAllocBytes >= 1536*1024*1024 || maxMeasurement.CopyOnWriteDurationMS >= 1500:
 		return "hybrid_persistent_graph", "Process-local graph materialization is approaching an unsafe single-process budget. Keep the authoritative graph in durable backing storage, materialize only the indexes or subgraphs needed for active reads, and avoid deepening SQLite-only execution paths."
 	case maxMeasurement.HeapAllocBytes >= 512*1024*1024 || maxMeasurement.CopyOnWriteDurationMS >= 250:
-		return "tenant_sharded_hot_graph", "Single-node in-memory remains viable for smaller tenants, but large tenants need tenant/account partitioning plus read replicas and object-backed snapshots before pushing further scale."
+		return "tenant_sharded_hot_graph", "Single-node hot-graph materialization remains viable for smaller tenants, but large tenants need tenant/account partitioning, local snapshot recovery, and Neptune-backed reads before pushing further scale."
 	default:
-		return "single_node_with_replicated_snapshots", "The graph still fits single-node memory budgets at the tested tiers. Keep the hot graph in memory, but pair it with replicated snapshots and a higher-scale execution-store backend before introducing multi-worker graph writers."
+		return "single_node_hot_graph", "The graph still fits single-node memory budgets at the tested tiers. Keep a single hot graph in process, recover it from local snapshots, and rely on Neptune as the durable system of record before introducing multi-worker graph writers."
 	}
 }
 

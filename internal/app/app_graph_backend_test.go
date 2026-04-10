@@ -3,9 +3,7 @@ package app
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/writer/cerebro/internal/graph"
 )
@@ -41,7 +39,7 @@ func TestInitConfiguredSecurityGraphStoreUsesResolvedProvider(t *testing.T) {
 
 	closeCalls := 0
 	provider := &fakeGraphStoreBackendProvider{
-		backend: graph.StoreBackendSpanner,
+		backend: graph.StoreBackendNeptune,
 		handle: graphStoreBackendHandle{
 			Store: backing,
 			Close: func() error {
@@ -52,10 +50,10 @@ func TestInitConfiguredSecurityGraphStoreUsesResolvedProvider(t *testing.T) {
 	}
 
 	app := &App{
-		Config: &Config{GraphStoreBackend: string(graph.StoreBackendSpanner)},
+		Config: &Config{GraphStoreBackend: string(graph.StoreBackendNeptune)},
 		graphStoreBackendProviderFactory: func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
-			if backend != graph.StoreBackendSpanner {
-				t.Fatalf("provider factory backend = %q, want %q", backend, graph.StoreBackendSpanner)
+			if backend != graph.StoreBackendNeptune {
+				t.Fatalf("provider factory backend = %q, want %q", backend, graph.StoreBackendNeptune)
 			}
 			return provider, nil
 		},
@@ -69,12 +67,14 @@ func TestInitConfiguredSecurityGraphStoreUsesResolvedProvider(t *testing.T) {
 	}
 	if app.configuredSecurityGraphStore == nil {
 		t.Fatal("expected configuredSecurityGraphStore to be set")
+		return
 	}
 	if !app.configuredSecurityGraphReady {
 		t.Fatal("expected configuredSecurityGraphReady to be true")
 	}
 	if app.configuredSecurityGraphClose == nil {
 		t.Fatal("expected configuredSecurityGraphClose to be set")
+		return
 	}
 	if err := app.configuredSecurityGraphClose(); err != nil {
 		t.Fatalf("configuredSecurityGraphClose() error = %v", err)
@@ -84,11 +84,39 @@ func TestInitConfiguredSecurityGraphStoreUsesResolvedProvider(t *testing.T) {
 	}
 }
 
-func TestInitConfiguredSecurityGraphStoreClearsConfiguredStoreForMemory(t *testing.T) {
+func TestInitConfiguredSecurityGraphStoreKeepsEmptyStoreUnready(t *testing.T) {
+	t.Parallel()
+
+	provider := &fakeGraphStoreBackendProvider{
+		backend: graph.StoreBackendNeptune,
+		handle: graphStoreBackendHandle{
+			Store: graph.New(),
+		},
+	}
+
+	app := &App{
+		Config: &Config{GraphStoreBackend: string(graph.StoreBackendNeptune)},
+		graphStoreBackendProviderFactory: func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
+			if backend != graph.StoreBackendNeptune {
+				t.Fatalf("provider factory backend = %q, want %q", backend, graph.StoreBackendNeptune)
+			}
+			return provider, nil
+		},
+	}
+
+	if err := app.initConfiguredSecurityGraphStore(context.Background()); err != nil {
+		t.Fatalf("initConfiguredSecurityGraphStore() error = %v", err)
+	}
+	if app.configuredSecurityGraphReady {
+		t.Fatal("expected empty configured graph store to remain unready")
+	}
+}
+
+func TestInitConfiguredSecurityGraphStoreSkipsNeptuneWhenEndpointMissingInTests(t *testing.T) {
 	t.Parallel()
 
 	app := &App{
-		Config:                       &Config{GraphStoreBackend: string(graph.StoreBackendMemory)},
+		Config:                       &Config{GraphStoreBackend: string(graph.StoreBackendNeptune)},
 		configuredSecurityGraphStore: graph.New(),
 		configuredSecurityGraphClose: func() error { return nil },
 		configuredSecurityGraphReady: true,
@@ -135,69 +163,6 @@ func TestInitConfiguredSecurityGraphStoreRejectsUnsupportedBackend(t *testing.T)
 
 	if err := app.initConfiguredSecurityGraphStore(context.Background()); err == nil {
 		t.Fatal("expected initConfiguredSecurityGraphStore() to reject unsupported backend")
-	}
-}
-
-func TestInitConfiguredSecurityGraphStoreWrapsDualWriteSecondaryBackend(t *testing.T) {
-	t.Parallel()
-
-	primaryCloseCalls := 0
-	secondaryCloseCalls := 0
-	primaryProvider := &fakeGraphStoreBackendProvider{
-		backend: graph.StoreBackendSpanner,
-		handle: graphStoreBackendHandle{
-			Store: graph.New(),
-			Close: func() error {
-				primaryCloseCalls++
-				return nil
-			},
-		},
-	}
-	secondaryProvider := &fakeGraphStoreBackendProvider{
-		backend: graph.StoreBackendNeptune,
-		handle: graphStoreBackendHandle{
-			Store: graph.New(),
-			Close: func() error {
-				secondaryCloseCalls++
-				return nil
-			},
-		},
-	}
-
-	app := &App{
-		Config: &Config{
-			GraphStoreBackend:                          string(graph.StoreBackendSpanner),
-			GraphStoreSpannerDatabase:                  "projects/test/instances/dev/databases/primary",
-			GraphStoreSecondaryBackend:                 string(graph.StoreBackendNeptune),
-			GraphStoreSecondaryNeptuneEndpoint:         "https://example.neptune.amazonaws.com",
-			GraphStoreSecondaryNeptuneRegion:           "us-east-1",
-			GraphStoreSecondaryNeptunePoolSize:         1,
-			GraphStoreSecondaryNeptunePoolDrainTimeout: time.Second,
-			GraphStoreDualWriteMode:                    string(graph.DualWriteModeBestEffort),
-			GraphStoreDualWriteReconciliationPath:      filepath.Join(t.TempDir(), "dual-write-queue.json"),
-		},
-		graphStoreBackendProviderFactory: func(_ *App, backend graph.StoreBackend) (graphStoreBackendProvider, error) {
-			switch backend {
-			case graph.StoreBackendSpanner:
-				return primaryProvider, nil
-			case graph.StoreBackendNeptune:
-				return secondaryProvider, nil
-			default:
-				return nil, errors.New("unexpected backend")
-			}
-		},
-	}
-
-	if err := app.initConfiguredSecurityGraphStore(context.Background()); err != nil {
-		t.Fatalf("initConfiguredSecurityGraphStore() error = %v", err)
-	}
-	if _, ok := app.configuredSecurityGraphStore.(*graph.DualWriteGraphStore); !ok {
-		t.Fatalf("configuredSecurityGraphStore = %T, want *graph.DualWriteGraphStore", app.configuredSecurityGraphStore)
-	}
-	if err := app.configuredSecurityGraphClose(); err != nil {
-		t.Fatalf("configuredSecurityGraphClose() error = %v", err)
-	}
-	if primaryCloseCalls != 1 || secondaryCloseCalls != 1 {
-		t.Fatalf("close calls primary=%d secondary=%d, want 1 each", primaryCloseCalls, secondaryCloseCalls)
+		return
 	}
 }

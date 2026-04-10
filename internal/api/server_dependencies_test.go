@@ -156,6 +156,7 @@ func TestNewServerWithDependencies_InitializesRuntimeIngestFromExecutionStore(t 
 	}
 	if got := s.runtimeIngestStore(); got == nil {
 		t.Fatal("expected runtimeIngestStore to return initialized store")
+		return
 	}
 }
 
@@ -170,6 +171,7 @@ func TestServerDependenciesCurrentSecurityGraphStoreUsesRuntimeStore(t *testing.
 	store := deps.CurrentSecurityGraphStore()
 	if store == nil {
 		t.Fatal("expected graph store from runtime")
+		return
 	}
 	node, ok, err := store.LookupNode(context.Background(), "service:payments")
 	if err != nil {
@@ -193,7 +195,7 @@ func TestGraphRuntimeAdapterCanApplySecurityGraphChangesAfterFallbackRefresh(t *
 	deps := &serverDependencies{}
 	runtime := &graphRuntimeAdapter{
 		deps:     deps,
-		fallback: fallback,
+		delegate: fallback,
 	}
 
 	if !runtime.CanApplySecurityGraphChanges() {
@@ -261,7 +263,7 @@ func TestGraphRuntimeAdapterGraphHealthSnapshotRecalculatesMemoryEstimate(t *tes
 			SecurityGraph:        localGraph,
 			SecurityGraphBuilder: &builders.Builder{},
 		},
-		fallback: stubGraphRuntime{
+		delegate: stubGraphRuntime{
 			graph: providerGraph,
 			healthSnapshot: app.GraphHealthSnapshot{
 				MemoryUsageEstimateBytes: app.EstimateGraphMemoryUsageBytes(providerGraph.NodeCount(), providerGraph.EdgeCount()),
@@ -289,7 +291,7 @@ func TestGraphRuntimeAdapterGraphHealthSnapshotEmptyLocalGraphIsNotHot(t *testin
 				SecurityGraph:        graph.New(),
 				SecurityGraphBuilder: &builders.Builder{},
 			},
-			fallback: stubGraphRuntime{},
+			delegate: stubGraphRuntime{},
 		}
 
 		snapshot := runtime.GraphHealthSnapshot(now)
@@ -333,7 +335,7 @@ func TestGraphRuntimeAdapterGraphHealthSnapshotFallbackUsesLocalBuilderLastMutat
 			SecurityGraph:        localGraph,
 			SecurityGraphBuilder: builder,
 		},
-		fallback: &mutatingFallbackGraphRuntime{current: graph.New()},
+		delegate: &mutatingFallbackGraphRuntime{current: graph.New()},
 	}
 
 	snapshot := runtime.GraphHealthSnapshot(now)

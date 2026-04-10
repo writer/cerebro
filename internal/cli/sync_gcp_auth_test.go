@@ -210,6 +210,7 @@ func TestApplyGCPAuth_MissingCredentialsFile(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for missing credentials file")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp credentials file") {
 		t.Fatalf("unexpected error: %v", err)

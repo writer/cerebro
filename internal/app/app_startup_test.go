@@ -21,6 +21,7 @@ func TestRunInitStep_RecoversPanic(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected panic to be converted into an error")
+		return
 	}
 	if !strings.Contains(err.Error(), "panic-step init panic") {
 		t.Fatalf("expected panic-step context, got: %v", err)
@@ -33,6 +34,7 @@ func TestRunInitErrorStep_RecoversPanic(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected panic to be converted into an error")
+		return
 	}
 	if !strings.Contains(err.Error(), "panic-step init panic") {
 		t.Fatalf("expected panic-step context, got: %v", err)
@@ -77,12 +79,38 @@ func TestNew_MissingSnowflakeConfigStartsWithSQLiteWarehouse(t *testing.T) {
 	}
 	if app.Warehouse == nil {
 		t.Fatal("expected local sqlite warehouse to be initialized when snowflake auth is unset")
+		return
 	}
 	if app.Findings == nil || app.Scanner == nil || app.Policy == nil {
 		t.Fatal("expected core services to still initialize with sqlite warehouse")
 	}
 	if !app.WaitForGraph(context.Background()) {
 		t.Fatal("expected graph readiness to become true when sqlite warehouse is configured")
+	}
+}
+
+func TestNew_ExplicitSnowflakeBackendFailsFastWhenSnowflakeInitFails(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "not-a-valid-private-key")
+	t.Setenv("SNOWFLAKE_ACCOUNT", "acct")
+	t.Setenv("SNOWFLAKE_USER", "user")
+	t.Setenv("API_AUTH_ENABLED", "false")
+	t.Setenv("API_KEYS", "")
+	t.Setenv("WAREHOUSE_BACKEND", "snowflake")
+	t.Setenv("WAREHOUSE_SQLITE_PATH", filepath.Join(tempDir, "warehouse.db"))
+	t.Setenv("EXECUTION_STORE_FILE", filepath.Join(tempDir, "executions.db"))
+	t.Setenv("GRAPH_SNAPSHOT_PATH", filepath.Join(tempDir, "graph-snapshots"))
+	t.Setenv("PLATFORM_REPORT_RUN_STATE_FILE", filepath.Join(tempDir, "report-runs.json"))
+	t.Setenv("PLATFORM_REPORT_SNAPSHOT_PATH", filepath.Join(tempDir, "report-snapshots"))
+	t.Setenv("CEREBRO_DB_PATH", filepath.Join(tempDir, "findings.db"))
+
+	_, err := New(context.Background())
+	if err == nil {
+		t.Fatal("expected startup to fail fast when WAREHOUSE_BACKEND=snowflake but snowflake initialization fails")
+		return
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "snowflake") {
+		t.Fatalf("expected snowflake initialization error, got: %v", err)
 	}
 }
 
@@ -102,6 +130,7 @@ func TestInitRBAC_InvalidStateFileFallsBackToInMemory(t *testing.T) {
 	a.initRBAC()
 	if a.RBAC == nil {
 		t.Fatal("expected RBAC to fall back to in-memory defaults when state file is invalid")
+		return
 	}
 	if len(a.RBAC.ListRoles()) == 0 {
 		t.Fatal("expected fallback RBAC instance to include default roles")
@@ -118,21 +147,41 @@ func TestWaitForGraph_ContextCanceled(t *testing.T) {
 	}
 }
 
-func TestWaitForReadableSecurityGraphUsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
-	persisted := graph.New()
-	persisted.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+func TestWaitForReadableSecurityGraphUsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
+	configured := graph.New()
+	configured.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
 
 	a := &App{
-		GraphSnapshots: mustPersistToolGraph(t, persisted),
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	setConfiguredSnapshotGraphFromGraph(t, a, configured)
+
+	resolved := a.WaitForReadableSecurityGraph(context.Background())
+	if resolved == nil {
+		t.Fatal("expected configured graph")
+		return
+	}
+	if _, ok := resolved.GetNode("service:payments"); !ok {
+		t.Fatal("expected configured graph node in readable graph")
+	}
+}
+
+func TestWaitForReadableSecurityGraphUsesPersistedSnapshotWhenConfiguredStoreUnavailable(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService, Name: "persisted"})
+
+	a := &App{
 		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		GraphSnapshots: mustPersistToolGraph(t, persisted),
 	}
 
 	resolved := a.WaitForReadableSecurityGraph(context.Background())
 	if resolved == nil {
-		t.Fatal("expected persisted snapshot graph")
+		t.Fatal("expected persisted graph snapshot")
+		return
 	}
-	if _, ok := resolved.GetNode("service:payments"); !ok {
-		t.Fatal("expected persisted snapshot node in readable graph")
+	if _, ok := resolved.GetNode("service:persisted"); !ok {
+		t.Fatal("expected persisted graph node in readable graph")
 	}
 }
 
@@ -236,6 +285,7 @@ func TestInitCache_EntriesDoNotExpireImmediately(t *testing.T) {
 	a.initCache()
 	if a.Cache == nil {
 		t.Fatal("expected cache to be initialized")
+		return
 	}
 
 	a.Cache.SetEvaluation("policy-1", "asset-1", "hit")

@@ -244,6 +244,7 @@ func TestZoomProviderListCollection_DetectsPaginationLoop(t *testing.T) {
 	_, err := provider.listUsers(context.Background())
 	if err == nil {
 		t.Fatal("expected pagination loop error")
+		return
 	}
 	if !strings.Contains(err.Error(), "pagination loop") {
 		t.Fatalf("expected pagination loop error, got %v", err)

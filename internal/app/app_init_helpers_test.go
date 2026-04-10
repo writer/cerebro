@@ -38,6 +38,7 @@ func TestInitPhase1_ExplicitMappingsModeReturnsError(t *testing.T) {
 
 	if err := a.initPhase1(context.Background()); err == nil {
 		t.Fatal("expected explicit-mappings-only mode to fail when policy loading fails")
+		return
 	}
 }
 
@@ -51,9 +52,11 @@ func TestInitPhase3_InitializesScannerAndDSPM(t *testing.T) {
 
 	if a.Scanner == nil {
 		t.Fatal("expected scanner to be initialized")
+		return
 	}
 	if a.DSPM == nil {
 		t.Fatal("expected DSPM scanner to be initialized")
+		return
 	}
 }
 
@@ -86,6 +89,7 @@ func TestRunInitTasksConcurrently_PropagatesTaskPanic(t *testing.T) {
 	err := runInitTasksConcurrently(context.Background(), tasks)
 	if err == nil {
 		t.Fatal("expected panic-wrapped init error")
+		return
 	}
 	if !strings.Contains(err.Error(), "panic-task init panic") {
 		t.Fatalf("expected task name in error, got: %v", err)
@@ -98,6 +102,7 @@ func TestValidateRequiredServices_ReturnsSortedMissingList(t *testing.T) {
 	err := a.validateRequiredServices()
 	if err == nil {
 		t.Fatal("expected validation error when required services are missing")
+		return
 	}
 
 	const prefix = "required services not initialized: "

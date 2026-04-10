@@ -17,16 +17,15 @@ func (a *App) initGraphPersistenceStore() {
 	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
 		LocalPath:    path,
 		MaxSnapshots: a.Config.GraphSnapshotMaxRetained,
-		ReplicaURI:   a.Config.GraphSnapshotReplicaURI,
 	})
 	if err != nil {
 		if a.Logger != nil {
-			a.Logger.Warn("failed to initialize graph persistence store", "error", err, "path", path, "replica_uri", strings.TrimSpace(a.Config.GraphSnapshotReplicaURI))
+			a.Logger.Warn("failed to initialize graph persistence store", "error", err, "path", path)
 		}
 		return
 	}
 	a.GraphSnapshots = store
 	if a.Logger != nil {
-		a.Logger.Info("graph persistence store initialized", "path", path, "replica_uri", strings.TrimSpace(a.Config.GraphSnapshotReplicaURI))
+		a.Logger.Info("graph persistence store initialized", "path", path)
 	}
 }

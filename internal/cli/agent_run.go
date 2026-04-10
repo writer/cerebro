@@ -77,8 +77,8 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 		application.Config.GitLabToken,
 		application.Config.GitLabBaseURL,
 	)
-	tools := agents.NewSecurityTools(application.Snowflake, application.Findings, application.Policy, scmClient)
-	useDistributed := agentRunDistributed || (application.Config.JobQueueURL != "" && application.Config.JobTableName != "")
+	tools := agents.NewSecurityTools(agentToolsSnowflakeClient(application), application.Findings, application.Policy, scmClient)
+	useDistributed := agentRunDistributed || distributedJobsConfigured(application.Config)
 	if useDistributed {
 		return runDistributedAgentFlow(ctx, application, tools)
 	}
@@ -136,8 +136,8 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 }
 
 func runDistributedAgentFlow(ctx context.Context, application *app.App, tools *agents.SecurityTools) error {
-	if application.Config.JobQueueURL == "" || application.Config.JobTableName == "" {
-		return fmt.Errorf("JOB_QUEUE_URL and JOB_TABLE_NAME are required for distributed execution")
+	if !distributedJobsConfigured(application.Config) {
+		return fmt.Errorf("JOB_DATABASE_URL is required for distributed execution")
 	}
 
 	resources, analysis, err := buildDistributedResources(ctx, tools)
@@ -148,14 +148,13 @@ func runDistributedAgentFlow(ctx context.Context, application *app.App, tools *a
 		return fmt.Errorf("no resources to enqueue")
 	}
 
-	awsCfg, err := jobs.LoadAWSConfig(ctx, application.Config.JobRegion)
+	runtime, err := openJobRuntime(ctx, application.Config)
 	if err != nil {
 		return err
 	}
+	defer func() { _ = runtime.Close() }()
 
-	queue := jobs.NewSQSQueue(awsCfg, application.Config.JobQueueURL)
-	store := jobs.NewDynamoStore(awsCfg, application.Config.JobTableName)
-	manager := jobs.NewManager(queue, store, application.Logger)
+	manager := jobs.NewManager(runtime.queue, runtime.store, application.Logger)
 
 	maxAttempts := agentRunMaxAttempts
 	if maxAttempts <= 0 {
