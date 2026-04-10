@@ -21,6 +21,7 @@ func TestRunInitStep_RecoversPanic(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected panic to be converted into an error")
+		return
 	}
 	if !strings.Contains(err.Error(), "panic-step init panic") {
 		t.Fatalf("expected panic-step context, got: %v", err)
@@ -33,6 +34,7 @@ func TestRunInitErrorStep_RecoversPanic(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected panic to be converted into an error")
+		return
 	}
 	if !strings.Contains(err.Error(), "panic-step init panic") {
 		t.Fatalf("expected panic-step context, got: %v", err)
@@ -77,6 +79,7 @@ func TestNew_MissingSnowflakeConfigStartsWithSQLiteWarehouse(t *testing.T) {
 	}
 	if app.Warehouse == nil {
 		t.Fatal("expected local sqlite warehouse to be initialized when snowflake auth is unset")
+		return
 	}
 	if app.Findings == nil || app.Scanner == nil || app.Policy == nil {
 		t.Fatal("expected core services to still initialize with sqlite warehouse")
@@ -104,6 +107,7 @@ func TestNew_ExplicitSnowflakeBackendFailsFastWhenSnowflakeInitFails(t *testing.
 	_, err := New(context.Background())
 	if err == nil {
 		t.Fatal("expected startup to fail fast when WAREHOUSE_BACKEND=snowflake but snowflake initialization fails")
+		return
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "snowflake") {
 		t.Fatalf("expected snowflake initialization error, got: %v", err)
@@ -126,6 +130,7 @@ func TestInitRBAC_InvalidStateFileFallsBackToInMemory(t *testing.T) {
 	a.initRBAC()
 	if a.RBAC == nil {
 		t.Fatal("expected RBAC to fall back to in-memory defaults when state file is invalid")
+		return
 	}
 	if len(a.RBAC.ListRoles()) == 0 {
 		t.Fatal("expected fallback RBAC instance to include default roles")
@@ -154,30 +159,29 @@ func TestWaitForReadableSecurityGraphUsesConfiguredStoreWhenLiveGraphUnavailable
 	resolved := a.WaitForReadableSecurityGraph(context.Background())
 	if resolved == nil {
 		t.Fatal("expected configured graph")
+		return
 	}
 	if _, ok := resolved.GetNode("service:payments"); !ok {
 		t.Fatal("expected configured graph node in readable graph")
 	}
 }
 
-func TestWaitForReadableSecurityGraphUsesConfiguredStoreAfterWaitWhenLiveGraphEmpty(t *testing.T) {
-	configured := graph.New()
-	configured.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
+func TestWaitForReadableSecurityGraphUsesPersistedSnapshotWhenConfiguredStoreUnavailable(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService, Name: "persisted"})
 
 	a := &App{
-		SecurityGraph: graph.New(),
-		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-		graphReady:    make(chan struct{}),
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		GraphSnapshots: mustPersistToolGraph(t, persisted),
 	}
-	setConfiguredSnapshotGraphFromGraph(t, a, configured)
-	close(a.graphReady)
 
 	resolved := a.WaitForReadableSecurityGraph(context.Background())
 	if resolved == nil {
-		t.Fatal("expected configured graph after wait")
+		t.Fatal("expected persisted graph snapshot")
+		return
 	}
-	if _, ok := resolved.GetNode("service:payments"); !ok {
-		t.Fatal("expected configured graph node in readable graph after wait")
+	if _, ok := resolved.GetNode("service:persisted"); !ok {
+		t.Fatal("expected persisted graph node in readable graph")
 	}
 }
 
@@ -208,33 +212,6 @@ func TestWaitForReadableSecurityGraphReturnsCurrentGraphWhenWaitTimesOut(t *test
 	resolved := a.WaitForReadableSecurityGraph(ctx)
 	if resolved != live {
 		t.Fatalf("expected current live graph after timeout, got %p want %p", resolved, live)
-	}
-}
-
-func TestWaitForReadableSecurityGraphUsesConfiguredStoreAfterReadySignal(t *testing.T) {
-	live := graph.New()
-	configured := graph.New()
-	configured.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
-
-	graphReady := make(chan struct{})
-	close(graphReady)
-
-	a := &App{
-		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-		SecurityGraph: live,
-		graphReady:    graphReady,
-	}
-	setConfiguredSnapshotGraphFromGraph(t, a, configured)
-
-	resolved := a.WaitForReadableSecurityGraph(context.Background())
-	if resolved == nil {
-		t.Fatal("expected configured graph after ready signal")
-	}
-	if resolved == live {
-		t.Fatal("expected configured graph instead of empty live graph")
-	}
-	if _, ok := resolved.GetNode("service:payments"); !ok {
-		t.Fatal("expected configured graph node in readable graph")
 	}
 }
 
@@ -308,6 +285,7 @@ func TestInitCache_EntriesDoNotExpireImmediately(t *testing.T) {
 	a.initCache()
 	if a.Cache == nil {
 		t.Fatal("expected cache to be initialized")
+		return
 	}
 
 	a.Cache.SetEvaluation("policy-1", "asset-1", "hit")

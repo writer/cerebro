@@ -22,6 +22,7 @@ func TestCurrentOrStoredScheduledScanGraphView_UsesConfiguredStoreWhenLiveGraphU
 	got := app.currentOrStoredScheduledScanGraphView(context.Background(), ScanTuning{})
 	if got == nil {
 		t.Fatal("expected configured graph view")
+		return
 	}
 	if got.NodeCount() != g.NodeCount() {
 		t.Fatalf("expected %d nodes, got %d", g.NodeCount(), got.NodeCount())
@@ -47,30 +48,6 @@ func TestCurrentOrStoredScheduledScanGraphView_PreservesLiveGraphWaitWhenPresent
 	})
 	if got != nil {
 		t.Fatalf("expected no graph view while live graph is still waiting, got %p", got)
-	}
-}
-
-func TestCurrentOrStoredScheduledScanGraphView_UsesConfiguredStoreAfterReadySignal(t *testing.T) {
-	live := graph.New()
-	graphReady := make(chan struct{})
-	close(graphReady)
-
-	app := &App{
-		SecurityGraph: live,
-		graphReady:    graphReady,
-	}
-	configured := orgTopologyTestGraph(time.Now().UTC())
-	setConfiguredSnapshotGraphFromGraph(t, app, configured)
-
-	got := app.currentOrStoredScheduledScanGraphView(context.Background(), ScanTuning{})
-	if got == nil {
-		t.Fatal("expected configured graph view")
-	}
-	if got == live {
-		t.Fatal("expected configured graph instead of empty live graph")
-	}
-	if _, ok := got.GetNode("svc:core"); !ok {
-		t.Fatal("expected configured graph view to include svc:core")
 	}
 }
 

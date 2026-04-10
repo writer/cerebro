@@ -41,7 +41,7 @@ func (a *App) CurrentSecurityGraphStore() graph.GraphStore {
 	if a == nil {
 		return nil
 	}
-	layers := make([]graphStoreLayer, 0, 2)
+	layers := make([]graphStoreLayer, 0, 3)
 	layers = append(layers, graphStoreLayer{
 		writable: true,
 		resolve: func(ctx context.Context) (graph.GraphStore, error) {
@@ -52,6 +52,11 @@ func (a *App) CurrentSecurityGraphStore() graph.GraphStore {
 		writable: true,
 		resolve: func(ctx context.Context) (graph.GraphStore, error) {
 			return resolveCurrentGraphStore(ctx, a.currentLiveSecurityGraph())
+		},
+	})
+	layers = append(layers, graphStoreLayer{
+		resolve: func(ctx context.Context) (graph.GraphStore, error) {
+			return a.currentPassiveSnapshotStore(ctx)
 		},
 	})
 	return tieredGraphStore{layers: layers}
@@ -88,6 +93,15 @@ func (a *App) CurrentSecurityGraphStoreForTenant(tenantID string) graph.GraphSto
 			{
 				resolve: func(ctx context.Context) (graph.GraphStore, error) {
 					return a.currentWarmTenantGraphStore(ctx, tenantID)
+				},
+			},
+			{
+				resolve: func(ctx context.Context) (graph.GraphStore, error) {
+					store, err := a.currentPassiveSnapshotGraphStore(ctx)
+					if err != nil {
+						return nil, err
+					}
+					return passiveResolver.Resolve(ctx, store)
 				},
 			},
 		},
@@ -430,6 +444,39 @@ func (a *App) currentConfiguredSnapshotGraphStore(ctx context.Context) (*graph.S
 		return nil, graph.ErrStoreUnavailable
 	}
 	return graph.NewSnapshotGraphStore(snapshot), nil
+}
+
+func (a *App) currentPassiveSnapshotStore(ctx context.Context) (graph.GraphStore, error) {
+	if err := graphStoreContextErr(ctx); err != nil {
+		return nil, err
+	}
+	if a == nil || a.GraphSnapshots == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+
+	snapshot, _, _, err := a.GraphSnapshots.PeekLatestSnapshot()
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
+			return nil, graph.ErrStoreUnavailable
+		}
+		return nil, err
+	}
+	if snapshot == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return graph.NewSnapshotGraphStore(snapshot), nil
+}
+
+func (a *App) currentPassiveSnapshotGraphStore(ctx context.Context) (*graph.SnapshotGraphStore, error) {
+	store, err := a.currentPassiveSnapshotStore(ctx)
+	if err != nil {
+		return nil, err
+	}
+	snapshotStore, ok := store.(*graph.SnapshotGraphStore)
+	if !ok || snapshotStore == nil {
+		return nil, graph.ErrStoreUnavailable
+	}
+	return snapshotStore, nil
 }
 
 func (a *App) currentWarmTenantGraphStore(ctx context.Context, tenantID string) (graph.GraphStore, error) {

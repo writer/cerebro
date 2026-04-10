@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -174,8 +175,12 @@ func (a *App) ReloadSecrets(ctx context.Context) error {
 	apiCredentialsChanged := !apiauth.EqualCredentials(a.APICredentialsSnapshot(), next.APICredentials)
 	snowflakeChanged := snowflakeCredentialsChanged(current, next)
 	providersChanged := providerConfigsChanged(current, next)
+	aiAgentsChanged := aiAgentCredentialsChanged(current, next)
+	agentSCMChanged := securityAgentSCMConfigChanged(current, next)
+	agentToolingChanged := agentToolingConfigChanged(current, next)
+	previousAgentTools := a.configuredAgentTools(current)
 
-	if !apiCredentialsChanged && !snowflakeChanged && !providersChanged {
+	if !apiCredentialsChanged && !snowflakeChanged && !providersChanged && !aiAgentsChanged && !agentSCMChanged && !agentToolingChanged {
 		return nil
 	}
 
@@ -194,6 +199,14 @@ func (a *App) ReloadSecrets(ctx context.Context) error {
 		a.logSecretRotation(ctx, "provider_credentials_reloaded", map[string]interface{}{
 			"provider_count": len(a.Providers.List()),
 		})
+	}
+	if agentToolingChanged {
+		a.rebuildAgentTooling(ctx, next)
+	}
+	if aiAgentsChanged {
+		a.syncConfiguredAIAgentsReplacingTools(next, previousAgentTools)
+	} else if snowflakeChanged || agentSCMChanged || agentToolingChanged {
+		a.replaceConfiguredAgentTools(next, previousAgentTools)
 	}
 
 	if apiCredentialsChanged {
@@ -215,6 +228,9 @@ func (a *App) ReloadSecrets(ctx context.Context) error {
 			"api_credentials_changed", apiCredentialsChanged,
 			"snowflake_changed", snowflakeChanged,
 			"providers_changed", providersChanged,
+			"ai_agents_changed", aiAgentsChanged,
+			"agent_scm_changed", agentSCMChanged,
+			"agent_tooling_changed", agentToolingChanged,
 		)
 	}
 	return nil
@@ -233,6 +249,64 @@ func snowflakeCredentialsChanged(current, next *Config) bool {
 		current.SnowflakeRole != next.SnowflakeRole
 }
 
+func aiAgentCredentialsChanged(current, next *Config) bool {
+	if current == nil || next == nil {
+		return current != next
+	}
+	return strings.TrimSpace(current.AnthropicAPIKey) != strings.TrimSpace(next.AnthropicAPIKey) ||
+		strings.TrimSpace(current.OpenAIAPIKey) != strings.TrimSpace(next.OpenAIAPIKey)
+}
+
+func securityAgentSCMConfigChanged(current, next *Config) bool {
+	if current == nil || next == nil {
+		return current != next
+	}
+	return strings.TrimSpace(current.GitHubToken) != strings.TrimSpace(next.GitHubToken) ||
+		strings.TrimSpace(current.GitHubOrg) != strings.TrimSpace(next.GitHubOrg) ||
+		strings.TrimSpace(current.GitLabToken) != strings.TrimSpace(next.GitLabToken) ||
+		strings.TrimSpace(current.GitLabBaseURL) != strings.TrimSpace(next.GitLabBaseURL)
+}
+
+func agentToolingConfigChanged(current, next *Config) bool {
+	if current == nil || next == nil {
+		return current != next
+	}
+	return !reflect.DeepEqual(remoteToolProviderConfigFromConfig(current), remoteToolProviderConfigFromConfig(next)) ||
+		!reflect.DeepEqual(toolPublisherConfigFromConfig(current), toolPublisherConfigFromConfig(next))
+}
+
+func (a *App) rebindAgentSessionStore(ctx context.Context, activeSnowflake *snowflake.Client) {
+	if a == nil || a.Agents == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	switch {
+	case a.appStateDB != nil:
+		a.Agents.SetSessionStore(agents.NewPostgresSessionStore(a.appStateDB))
+	case activeSnowflake == nil:
+		a.Agents.SetSessionStore(nil)
+	default:
+		store, err := agents.NewSnowflakeSessionStore(activeSnowflake)
+		if err != nil {
+			if a.Logger != nil {
+				a.Logger.Warn("failed to rotate agent session store", "error", err)
+			}
+			a.Agents.SetSessionStore(nil)
+			return
+		}
+		if err := store.EnsureSchema(ctx); err != nil {
+			if a.Logger != nil {
+				a.Logger.Warn("failed to ensure rotated agent session store schema", "error", err)
+			}
+			a.Agents.SetSessionStore(nil)
+			return
+		}
+		a.Agents.SetSessionStore(store)
+	}
+}
+
 func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 	if a == nil || cfg == nil {
 		return nil
@@ -241,72 +315,79 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 		ctx = context.Background()
 	}
 
-	if strings.TrimSpace(cfg.SnowflakePrivateKey) == "" ||
-		strings.TrimSpace(cfg.SnowflakeAccount) == "" ||
-		strings.TrimSpace(cfg.SnowflakeUser) == "" {
+	oldClient := a.Snowflake
+	oldLegacyClient := a.LegacySnowflake
+	if !hasSnowflakeCredentials(cfg) {
+		if !strings.EqualFold(strings.TrimSpace(cfg.WarehouseBackend), "snowflake") {
+			if a.appStateDB != nil && legacySnowflakeRetentionEnabled(cfg) && (oldLegacyClient != nil || oldClient != nil) {
+				return fmt.Errorf("legacy snowflake source is required while graph or access-review retention remains enabled")
+			}
+			a.Snowflake = nil
+			a.LegacySnowflake = nil
+			a.initRepositories()
+			a.rebindAgentSessionStore(ctx, nil)
+			a.refreshConfiguredAgentTools(cfg)
+			a.closeSnowflakeClients(oldClient, oldLegacyClient, nil)
+			return nil
+		}
 		return fmt.Errorf("snowflake rotation requires SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
 
-	newClient, err := snowflake.NewClient(snowflake.ClientConfig{
-		Account:    cfg.SnowflakeAccount,
-		User:       cfg.SnowflakeUser,
-		PrivateKey: cfg.SnowflakePrivateKey,
-		Database:   cfg.SnowflakeDatabase,
-		Schema:     cfg.SnowflakeSchema,
-		Warehouse:  cfg.SnowflakeWarehouse,
-		Role:       cfg.SnowflakeRole,
-	})
+	newClient, err := openConfiguredSnowflakeClient(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	if err := newClient.Ping(ctx); err != nil {
-		_ = newClient.Close()
-		return err
-	}
 
-	oldClient := a.Snowflake
-	a.Snowflake = newClient
-	a.Warehouse = newClient
-	a.initRepositories()
+	if strings.EqualFold(strings.TrimSpace(cfg.WarehouseBackend), "snowflake") {
+		a.Snowflake = newClient
+		a.LegacySnowflake = nil
+		a.Warehouse = newClient
+		a.initRepositories()
 
-	if a.ScanWatermarks != nil {
-		a.ScanWatermarks.SetDB(newClient.DB())
-		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil && a.Logger != nil {
-			a.Logger.Warn("failed to reload scan watermarks after snowflake rotation", "error", err)
-		}
-	}
-
-	if a.SnowflakeFindings != nil {
-		a.SnowflakeFindings.SetConnection(newClient.DB(), newClient.Database(), newClient.Schema())
-		if err := a.SnowflakeFindings.Load(ctx); err != nil && a.Logger != nil {
-			a.Logger.Warn("failed to reload findings after snowflake rotation", "error", err)
-		}
-	}
-
-	if a.Agents != nil {
-		store, err := agents.NewSnowflakeSessionStore(newClient)
-		if err != nil {
-			if a.Logger != nil {
-				a.Logger.Warn("failed to rotate agent session store", "error", err)
+		if a.ScanWatermarks != nil {
+			a.ScanWatermarks.SetDB(newClient.DB())
+			if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil && a.Logger != nil {
+				a.Logger.Warn("failed to reload scan watermarks after snowflake rotation", "error", err)
 			}
-		} else {
-			a.Agents.SetSessionStore(store)
 		}
+
+		if a.SnowflakeFindings != nil {
+			a.SnowflakeFindings.SetConnection(newClient.DB(), newClient.Database(), newClient.Schema())
+			if err := a.SnowflakeFindings.Load(ctx); err != nil && a.Logger != nil {
+				a.Logger.Warn("failed to reload findings after snowflake rotation", "error", err)
+			}
+		}
+		a.rebindAgentSessionStore(ctx, newClient)
+
+		if a.graphCancel != nil {
+			a.graphCancel()
+			a.graphCancel = nil
+		}
+		a.refreshConfiguredAgentTools(cfg)
+		a.initSecurityGraph(ctx)
+	} else {
+		a.LegacySnowflake = newClient
+		a.initRepositories()
+		a.rebindAgentSessionStore(ctx, nil)
+		a.refreshConfiguredAgentTools(cfg)
 	}
 
-	if a.graphCancel != nil {
-		a.graphCancel()
-		a.graphCancel = nil
-	}
-	a.initSecurityGraph(ctx)
+	a.closeSnowflakeClients(oldClient, oldLegacyClient, newClient)
 
-	if oldClient != nil {
-		if err := oldClient.Close(); err != nil && a.Logger != nil {
+	return nil
+}
+
+func (a *App) closeSnowflakeClients(current, legacy, keep *snowflake.Client) {
+	if current != nil && current != keep {
+		if err := current.Close(); err != nil && a.Logger != nil {
 			a.Logger.Warn("failed to close previous snowflake client after rotation", "error", err)
 		}
 	}
-
-	return nil
+	if legacy != nil && legacy != keep && legacy != current {
+		if err := legacy.Close(); err != nil && a.Logger != nil {
+			a.Logger.Warn("failed to close previous legacy snowflake client after rotation", "error", err)
+		}
+	}
 }
 
 func (a *App) logSecretRotation(ctx context.Context, action string, details map[string]interface{}) {

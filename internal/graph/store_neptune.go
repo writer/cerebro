@@ -1601,8 +1601,9 @@ func neptuneDecodeNode(record map[string]any) (*Node, error) {
 	if len(record) == 0 {
 		return nil, nil
 	}
+	decodedNodeID := strings.TrimSpace(readString(record, "id"))
 	node := &Node{
-		ID:                 strings.TrimSpace(readString(record, "id")),
+		ID:                 decodedNodeID,
 		Kind:               NodeKind(strings.TrimSpace(readString(record, "kind"))),
 		Name:               readString(record, "name"),
 		TenantID:           readString(record, "tenant_id"),
@@ -1646,8 +1647,9 @@ func neptuneDecodeEdge(record map[string]any) (*Edge, error) {
 	if len(record) == 0 {
 		return nil, nil
 	}
+	decodedEdgeID := strings.TrimSpace(readString(record, "id"))
 	edge := &Edge{
-		ID:        strings.TrimSpace(readString(record, "id")),
+		ID:        decodedEdgeID,
 		Source:    strings.TrimSpace(readString(record, "source")),
 		Target:    strings.TrimSpace(readString(record, "target")),
 		Kind:      EdgeKind(strings.TrimSpace(readString(record, "kind"))),

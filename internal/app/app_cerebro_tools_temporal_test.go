@@ -48,6 +48,7 @@ func TestCerebroEntityHistoryTool(t *testing.T) {
 	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.entity_history")
 	if tool == nil {
 		t.Fatal("expected cerebro.entity_history tool")
+		return
 	}
 
 	atResult, err := tool.Handler(context.Background(), json.RawMessage(`{
@@ -130,6 +131,7 @@ func TestCerebroTemporalAliasTools(t *testing.T) {
 	reconstructTool := findCerebroTool(application.AgentSDKTools(), "cerebro.reconstruct")
 	if reconstructTool == nil {
 		t.Fatal("expected cerebro.reconstruct tool")
+		return
 	}
 	reconstructResult, err := reconstructTool.Handler(context.Background(), json.RawMessage(`{
 		"entity_id":"service:payments",
@@ -151,6 +153,7 @@ func TestCerebroTemporalAliasTools(t *testing.T) {
 	timelineTool := findCerebroTool(application.AgentSDKTools(), "cerebro.timeline")
 	if timelineTool == nil {
 		t.Fatal("expected cerebro.timeline tool")
+		return
 	}
 	timelineResult, err := timelineTool.Handler(context.Background(), json.RawMessage(`{
 		"entity_id":"service:payments",
@@ -172,6 +175,7 @@ func TestCerebroTemporalAliasTools(t *testing.T) {
 	diffTool := findCerebroTool(application.AgentSDKTools(), "cerebro.diff")
 	if diffTool == nil {
 		t.Fatal("expected cerebro.diff tool")
+		return
 	}
 	diffResult, err := diffTool.Handler(context.Background(), json.RawMessage(`{
 		"entity_id":"service:payments",
@@ -225,6 +229,7 @@ func TestCerebroEntityHistoryToolUsesConfiguredStoreWhenLiveGraphUnavailable(t *
 	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.entity_history")
 	if tool == nil {
 		t.Fatal("expected cerebro.entity_history tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{
@@ -308,6 +313,7 @@ func TestCerebroGraphChangelogTool(t *testing.T) {
 	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.graph_changelog")
 	if tool == nil {
 		t.Fatal("expected cerebro.graph_changelog tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"since":"2026-03-07T00:00:00Z","provider":"aws","limit":1}`))
@@ -427,6 +433,7 @@ func TestCerebroGraphChangelogToolOmitsCurrentMarkerWithoutLiveGraph(t *testing.
 	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.graph_changelog")
 	if tool == nil {
 		t.Fatal("expected cerebro.graph_changelog tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"since":"2026-03-07T00:00:00Z","provider":"aws","limit":1}`))

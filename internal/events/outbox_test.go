@@ -57,6 +57,7 @@ func TestFileOutboxFlushFailureRetainsRecords(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected flush error")
+		return
 	}
 	if result.Published != 0 {
 		t.Fatalf("expected 0 published records, got %d", result.Published)

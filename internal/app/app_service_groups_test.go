@@ -38,10 +38,8 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 	schedulerSvc := &scheduler.Scheduler{}
 	rbac := auth.NewRBAC()
 	securityGraph := graph.New()
-	securityGraph.AddNode(&graph.Node{ID: "service:payments", Kind: graph.NodeKindService, Name: "payments"})
-	findingsRepo := &snowflake.FindingRepository{}
+	auditRepo := &snowflake.AuditRepository{}
 	riskEngineStateRepo := &snowflake.RiskEngineStateRepository{}
-	snowflakeStore := &findings.SnowflakeStore{}
 	retention := noopRetentionCleaner{}
 
 	application := &App{
@@ -52,9 +50,8 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 		Scheduler:           schedulerSvc,
 		RBAC:                rbac,
 		SecurityGraph:       securityGraph,
-		FindingsRepo:        findingsRepo,
+		AuditRepo:           auditRepo,
 		RiskEngineStateRepo: riskEngineStateRepo,
-		SnowflakeFindings:   snowflakeStore,
 		RetentionRepo:       retention,
 	}
 
@@ -86,14 +83,14 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 	}
 
 	storage := application.StorageServices()
-	if storage.FindingsRepo != findingsRepo {
-		t.Fatal("storage services should expose findings repository")
+	if storage.Findings != store {
+		t.Fatal("storage services should expose findings store")
+	}
+	if storage.AuditRepo != auditRepo {
+		t.Fatal("storage services should expose audit repository")
 	}
 	if storage.RiskEngineStateRepo != riskEngineStateRepo {
 		t.Fatal("storage services should expose risk engine state repository")
-	}
-	if storage.SnowflakeFindings != snowflakeStore {
-		t.Fatal("storage services should expose Snowflake findings store")
 	}
 	if storage.RetentionRepo != retention {
 		t.Fatal("storage services should expose retention cleaner")

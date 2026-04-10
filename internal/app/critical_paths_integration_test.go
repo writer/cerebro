@@ -208,6 +208,7 @@ func TestCriticalPath_PolicyEvaluationToRemediationAction(t *testing.T) {
 	stored := application.upsertFindingAndRemediate(context.Background(), policyFindings[0])
 	if stored == nil {
 		t.Fatal("expected finding to be persisted")
+		return
 	}
 	if got := strings.ToUpper(stored.Status); got != "RESOLVED" {
 		t.Fatalf("expected remediation to resolve finding, got status %s", got)
@@ -250,6 +251,7 @@ func TestCriticalPath_JetStreamEventIngestToCorrelationEdgeMaterialization(t *te
 	application.initTapGraphConsumer(ctx)
 	if application.TapConsumer == nil {
 		t.Fatal("expected tap consumer to initialize")
+		return
 	}
 	defer func() {
 		drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)

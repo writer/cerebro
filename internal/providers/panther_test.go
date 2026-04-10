@@ -209,6 +209,7 @@ func TestPantherProviderListCollection_DetectsPaginationLoop(t *testing.T) {
 	_, err := provider.listUsers(context.Background())
 	if err == nil {
 		t.Fatal("expected pagination loop error")
+		return
 	}
 	if !strings.Contains(err.Error(), "pagination loop") {
 		t.Fatalf("expected pagination loop error, got %v", err)
@@ -247,6 +248,7 @@ func TestPantherProviderListCollection_RejectsCrossHostPaginationURL(t *testing.
 	_, err := provider.listUsers(context.Background())
 	if err == nil {
 		t.Fatal("expected cross-host pagination error")
+		return
 	}
 	if !strings.Contains(err.Error(), "host mismatch") {
 		t.Fatalf("expected host mismatch error, got %v", err)
