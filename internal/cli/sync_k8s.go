@@ -72,11 +72,11 @@ func runK8sSync(ctx context.Context, start time.Time) error {
 var runK8sSyncDirectFn = runK8sSyncDirect
 
 func runK8sSyncDirect(ctx context.Context, start time.Time, tableFilter []string) error {
-	client, err := createSnowflakeClient()
+	store, err := openSyncWarehouseFn(ctx)
 	if err != nil {
-		return fmt.Errorf("create snowflake client: %w", err)
+		return fmt.Errorf("open warehouse: %w", err)
 	}
-	defer func() { _ = client.Close() }()
+	defer func() { _ = closeSyncWarehouse(store) }()
 
 	opts := []nativesync.K8sEngineOption{}
 	if syncK8sKubeconfig != "" {
@@ -95,7 +95,7 @@ func runK8sSyncDirect(ctx context.Context, start time.Time, tableFilter []string
 		opts = append(opts, nativesync.WithK8sTableFilter(tableFilter))
 	}
 
-	syncer := nativesync.NewK8sSyncEngine(client, slog.Default(), opts...)
+	syncer := nativesync.NewK8sSyncEngine(store, slog.Default(), opts...)
 	if syncValidate {
 		results, err := syncer.ValidateTables(ctx)
 		if err != nil {

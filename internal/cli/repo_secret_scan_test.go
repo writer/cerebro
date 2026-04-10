@@ -33,6 +33,7 @@ func TestRepoSecretScanFlagsRegistered(t *testing.T) {
 	for _, name := range []string{"state-file", "checkout-base", "gitleaks-binary", "trufflehog-binary"} {
 		if flag := repoSecretScanCmd.PersistentFlags().Lookup(name); flag == nil {
 			t.Fatalf("expected flag %s to be registered", name)
+			return
 		}
 	}
 }

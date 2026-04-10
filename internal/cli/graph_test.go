@@ -12,6 +12,7 @@ import (
 func TestGraphCommands(t *testing.T) {
 	if graphCmd == nil {
 		t.Fatal("graphCmd should not be nil")
+		return
 	}
 	if graphCmd.Name() != "graph" {
 		t.Fatalf("expected graph command, got %s", graphCmd.Name())
@@ -95,8 +96,8 @@ func TestRunGraphProfileScaleTable(t *testing.T) {
 			Measurements: []graph.ScaleProfileMeasurement{
 				{ResourceCount: 1000, AccountCount: 2, NodeCount: 3000, EdgeCount: 4500, HeapAllocBytes: 64 * 1024 * 1024, IndexDurationMS: 12.5, SearchDurationMS: 1.5, BlastRadiusColdDurationMS: 2.5, CopyOnWriteDurationMS: 8.5, SnapshotCompressedBytes: 1024 * 1024},
 			},
-			RecommendedPath: "single_node_with_replicated_snapshots",
-			Recommendation:  "keep the hot graph in memory",
+			RecommendedPath: "single_node_hot_graph",
+			Recommendation:  "keep a single hot graph in process",
 		}, nil
 	}
 
@@ -106,7 +107,7 @@ func TestRunGraphProfileScaleTable(t *testing.T) {
 		}
 	})
 
-	for _, needle := range []string{"Graph Scale Profile", "1000", "single_node_with_replicated_snapshots", "keep the hot graph in memory"} {
+	for _, needle := range []string{"Graph Scale Profile", "1000", "single_node_hot_graph", "keep a single hot graph in process"} {
 		if !strings.Contains(output, needle) {
 			t.Fatalf("expected output to contain %q, got %s", needle, output)
 		}

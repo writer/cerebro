@@ -84,6 +84,7 @@ func TestPlatformExecutionsListsSharedExecutionStoreRuns(t *testing.T) {
 	sharedStore := s.app.ExecutionStore
 	if sharedStore == nil {
 		t.Fatal("expected shared execution store")
+		return
 	}
 
 	workloadRun := workloadscan.RunRecord{
@@ -149,6 +150,7 @@ func TestPlatformExecutionsIncludeWorkloadPriorityFields(t *testing.T) {
 	sharedStore := s.app.ExecutionStore
 	if sharedStore == nil {
 		t.Fatal("expected shared execution store")
+		return
 	}
 
 	lastScannedAt := time.Date(2026, 3, 12, 8, 30, 0, 0, time.UTC)

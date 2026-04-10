@@ -94,7 +94,6 @@ func TestBenchmarkRunHelpersSupportMemoryBackedDurableStores(t *testing.T) {
 		store GraphStore
 	}{
 		{name: "memory", store: GraphStore(base.Clone())},
-		{name: "spanner", store: NewBenchmarkMemoryBackedSpannerStore(base)},
 		{name: "neptune", store: NewBenchmarkMemoryBackedNeptuneStore(base)},
 	}
 

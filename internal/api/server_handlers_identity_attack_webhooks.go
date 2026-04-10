@@ -504,7 +504,7 @@ func (s *Server) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		s.json(w, http.StatusOK, map[string]interface{}{
 			"logs":       []interface{}{},
 			"count":      0,
-			"message":    "snowflake not configured",
+			"message":    "audit log persistence not configured",
 			"pagination": PaginationResponse{Limit: limit, Offset: offset, HasMore: false},
 		})
 		return
