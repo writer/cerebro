@@ -3,36 +3,42 @@ package jobs
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/aws/smithy-go"
 )
+
+// OrphanScanner finds jobs that are stuck in "running" state with expired leases.
+type OrphanScanner interface {
+	FindOrphanedJobs(ctx context.Context, limit int) ([]*Job, error)
+}
+
+// PendingDispatchStore tracks jobs persisted before their JetStream publish is
+// durably recorded.
+type PendingDispatchStore interface {
+	MarkDispatched(ctx context.Context, jobID string) error
+	FindPendingDispatchJobs(ctx context.Context, limit int, olderThan time.Duration) ([]*Job, error)
+}
 
 // OrphanedJobScanner finds and recovers jobs that are stuck in "running" state
 // with expired leases. This handles cases where a worker crashed after claiming
 // a job but before completing it.
 type OrphanedJobScanner struct {
-	store    *DynamoStore
+	store    Store
+	orphans  OrphanScanner
 	queue    Queue
 	logger   *slog.Logger
 	interval time.Duration
 }
 
 // NewOrphanedJobScanner creates a new scanner.
-func NewOrphanedJobScanner(store *DynamoStore, queue Queue, logger *slog.Logger, interval time.Duration) *OrphanedJobScanner {
+func NewOrphanedJobScanner(store Store, orphans OrphanScanner, queue Queue, logger *slog.Logger, interval time.Duration) *OrphanedJobScanner {
 	if interval <= 0 {
 		interval = 5 * time.Minute
 	}
 	return &OrphanedJobScanner{
 		store:    store,
+		orphans:  orphans,
 		queue:    queue,
 		logger:   logger,
 		interval: interval,
@@ -61,7 +67,7 @@ func (s *OrphanedJobScanner) Start(ctx context.Context) {
 func (s *OrphanedJobScanner) scan(ctx context.Context) {
 	s.log("scanning for orphaned jobs")
 
-	jobs, err := s.findOrphanedJobs(ctx)
+	jobs, err := s.orphans.FindOrphanedJobs(ctx, 100)
 	if err != nil {
 		s.logError("failed to scan for orphaned jobs", err)
 		return
@@ -86,114 +92,6 @@ func (s *OrphanedJobScanner) scan(ctx context.Context) {
 	s.log("recovered orphaned jobs", "recovered", recovered, "total", len(jobs))
 }
 
-// findOrphanedJobs queries for jobs in "running" status with expired leases.
-func (s *OrphanedJobScanner) findOrphanedJobs(ctx context.Context) ([]*Job, error) {
-	now := time.Now().UTC().Unix()
-
-	jobs, err := s.queryOrphanedJobs(ctx, now)
-	if err == nil {
-		return jobs, nil
-	}
-	if isMissingIndexError(err) {
-		s.logWarn("status-lease-index unavailable, falling back to scan", "error", err)
-		return s.scanOrphanedJobs(ctx, now)
-	}
-	return nil, err
-}
-
-func (s *OrphanedJobScanner) queryOrphanedJobs(ctx context.Context, now int64) ([]*Job, error) {
-	// Query using GSI on status + lease_expires_at for efficient retrieval
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(s.store.table),
-		IndexName:              aws.String("status-lease-index"),
-		KeyConditionExpression: aws.String("#status = :running AND lease_expires_at BETWEEN :min_lease AND :now"),
-		ExpressionAttributeNames: map[string]string{
-			"#status": "status",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":running":   &types.AttributeValueMemberS{Value: string(StatusRunning)},
-			":min_lease": &types.AttributeValueMemberN{Value: "1"},
-			":now":       &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", now)},
-		},
-		Limit: aws.Int32(100),
-	}
-
-	var jobs []*Job
-	paginator := dynamodb.NewQueryPaginator(s.store.client, input)
-
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, item := range page.Items {
-			var job Job
-			if err := attributevalue.UnmarshalMap(item, &job); err != nil {
-				s.logError("failed to unmarshal job", err)
-				continue
-			}
-			jobs = append(jobs, &job)
-		}
-
-		// Limit total jobs processed per scan
-		if len(jobs) >= 100 {
-			break
-		}
-	}
-
-	return jobs, nil
-}
-
-func (s *OrphanedJobScanner) scanOrphanedJobs(ctx context.Context, now int64) ([]*Job, error) {
-	input := &dynamodb.ScanInput{
-		TableName:        aws.String(s.store.table),
-		FilterExpression: aws.String("#status = :running AND lease_expires_at < :now AND lease_expires_at > :zero"),
-		ExpressionAttributeNames: map[string]string{
-			"#status": "status",
-		},
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":running": &types.AttributeValueMemberS{Value: string(StatusRunning)},
-			":now":     &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", now)},
-			":zero":    &types.AttributeValueMemberN{Value: "0"},
-		},
-		Limit: aws.Int32(100),
-	}
-
-	var jobs []*Job
-	paginator := dynamodb.NewScanPaginator(s.store.client, input)
-
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, item := range page.Items {
-			var job Job
-			if err := attributevalue.UnmarshalMap(item, &job); err != nil {
-				s.logError("failed to unmarshal job", err)
-				continue
-			}
-			jobs = append(jobs, &job)
-		}
-
-		if len(jobs) >= 100 {
-			break
-		}
-	}
-
-	return jobs, nil
-}
-
-func isMissingIndexError(err error) bool {
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return apiErr.ErrorCode() == "ValidationException" && strings.Contains(apiErr.ErrorMessage(), "specified index")
-	}
-	return false
-}
-
 // recoverJob resets a job to queued status and re-enqueues it.
 func (s *OrphanedJobScanner) recoverJob(ctx context.Context, job *Job) error {
 	// Check if job has exceeded max attempts
@@ -207,7 +105,7 @@ func (s *OrphanedJobScanner) recoverJob(ctx context.Context, job *Job) error {
 		return fmt.Errorf("failed to reset job status: %w", err)
 	}
 
-	// Re-enqueue with attempt number for proper FIFO deduplication
+	// Re-enqueue with the current attempt number so queue deduplication stays stable.
 	if err := s.queue.Enqueue(ctx, JobMessage{
 		JobID:         job.ID,
 		GroupID:       job.GroupID,
@@ -215,6 +113,11 @@ func (s *OrphanedJobScanner) recoverJob(ctx context.Context, job *Job) error {
 		Attempt:       job.Attempt,
 	}); err != nil {
 		return fmt.Errorf("failed to re-enqueue job: %w", err)
+	}
+	if tracker, ok := s.store.(PendingDispatchStore); ok {
+		if err := tracker.MarkDispatched(ctx, job.ID); err != nil {
+			return fmt.Errorf("failed to mark re-enqueued job dispatched: %w", err)
+		}
 	}
 
 	s.log("recovered orphaned job", "job_id", job.ID, "attempt", job.Attempt)
@@ -229,6 +132,100 @@ func (s *OrphanedJobScanner) log(msg string, args ...any) {
 
 func (s *OrphanedJobScanner) logError(msg string, err error, args ...any) {
 	if s.logger != nil {
+		s.logger.Error(msg, append([]any{"error", err}, args...)...)
+	}
+}
+
+// PendingDispatchScanner republishes queued jobs that were persisted before the
+// process crashed or lost connectivity during JetStream publish.
+type PendingDispatchScanner struct {
+	store     PendingDispatchStore
+	queue     Queue
+	logger    *slog.Logger
+	interval  time.Duration
+	olderThan time.Duration
+}
+
+func NewPendingDispatchScanner(store PendingDispatchStore, queue Queue, logger *slog.Logger, interval, olderThan time.Duration) *PendingDispatchScanner {
+	if interval <= 0 {
+		interval = 15 * time.Second
+	}
+	if olderThan <= 0 {
+		olderThan = interval
+	}
+	return &PendingDispatchScanner{
+		store:     store,
+		queue:     queue,
+		logger:    logger,
+		interval:  interval,
+		olderThan: olderThan,
+	}
+}
+
+func (s *PendingDispatchScanner) Start(ctx context.Context) {
+	ticker := time.NewTicker(s.interval)
+	defer ticker.Stop()
+
+	s.scan(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.scan(ctx)
+		}
+	}
+}
+
+func (s *PendingDispatchScanner) scan(ctx context.Context) {
+	if s == nil || s.store == nil || s.queue == nil {
+		return
+	}
+
+	jobs, err := s.store.FindPendingDispatchJobs(ctx, 100, s.olderThan)
+	if err != nil {
+		s.logError("failed to scan pending dispatch jobs", err)
+		return
+	}
+	if len(jobs) == 0 {
+		return
+	}
+
+	recovered := 0
+	for _, job := range jobs {
+		if err := s.republish(ctx, job); err != nil {
+			s.logError("failed to republish pending dispatch job", err, "job_id", job.ID)
+			continue
+		}
+		recovered++
+	}
+	if recovered > 0 {
+		s.log("recovered pending dispatch jobs", "recovered", recovered, "total", len(jobs))
+	}
+}
+
+func (s *PendingDispatchScanner) republish(ctx context.Context, job *Job) error {
+	if job == nil {
+		return fmt.Errorf("job is required")
+	}
+	if err := s.queue.Enqueue(ctx, jobMessageForEnqueue(job)); err != nil {
+		return fmt.Errorf("enqueue pending dispatch job: %w", err)
+	}
+	if err := s.store.MarkDispatched(ctx, job.ID); err != nil {
+		return fmt.Errorf("mark pending dispatch job dispatched: %w", err)
+	}
+	return nil
+}
+
+func (s *PendingDispatchScanner) log(msg string, args ...any) {
+	if s != nil && s.logger != nil {
+		s.logger.Info(msg, args...)
+	}
+}
+
+func (s *PendingDispatchScanner) logError(msg string, err error, args ...any) {
+	if s != nil && s.logger != nil {
 		s.logger.Error(msg, append([]any{"error", err}, args...)...)
 	}
 }
@@ -380,13 +377,13 @@ func (c *DLQConsumer) ReplayMessage(ctx context.Context, msg QueueMessage) error
 			c.logError("failed to reset job for replay", err, "job_id", jobMsg.JobID)
 			// Continue anyway - maybe job was already reset
 		}
-		// Get current attempt count for deduplication
+		// Get current attempt count for deduplication.
 		if job, err := c.store.GetJob(ctx, jobMsg.JobID); err == nil {
 			attempt = job.Attempt
 		}
 	}
 
-	// Enqueue to main queue with updated attempt for FIFO deduplication
+	// Enqueue to the main queue with the updated attempt number for deduplication.
 	replayMsg := JobMessage{
 		JobID:         jobMsg.JobID,
 		GroupID:       jobMsg.GroupID,
@@ -470,11 +467,5 @@ func (c *DLQConsumer) calculateHeartbeatBackoff(failures int) time.Duration {
 func (c *DLQConsumer) logError(msg string, err error, args ...any) {
 	if c.logger != nil {
 		c.logger.Error(msg, append([]any{"error", err}, args...)...)
-	}
-}
-
-func (s *OrphanedJobScanner) logWarn(msg string, args ...any) {
-	if s.logger != nil {
-		s.logger.Warn(msg, args...)
 	}
 }

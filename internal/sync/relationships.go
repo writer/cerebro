@@ -109,7 +109,11 @@ var relationshipSchemaName = func(sf warehouse.SyncWarehouse) string {
 
 var relationshipQueryBatch = func(ctx context.Context, sf warehouse.SyncWarehouse, query string, args ...interface{}) error {
 	if sf == nil {
-		return fmt.Errorf("snowflake client is nil")
+		return fmt.Errorf("warehouse is nil")
+	}
+	if syncWarehouseDialect(sf) != warehouse.DialectSnowflake {
+		_, err := sf.Exec(ctx, query, args...)
+		return err
 	}
 	_, err := sf.Query(ctx, query, args...)
 	return err
@@ -281,6 +285,7 @@ type relationshipBackfillUpdate struct {
 
 func (r *RelationshipExtractor) applyRelationshipBackfillBatch(ctx context.Context, tableName string, updates []relationshipBackfillUpdate, deleteIDs []string) error {
 	if len(updates) > 0 {
+		dialect := syncWarehouseDialect(r.sf)
 		values := make([]string, 0, len(updates))
 		args := make([]interface{}, 0, len(updates)*8)
 		for _, update := range updates {
@@ -296,7 +301,7 @@ func (r *RelationshipExtractor) applyRelationshipBackfillBatch(ctx context.Conte
 				update.SyncTime,
 			)
 		}
-		merge := fmt.Sprintf(`MERGE INTO %s AS t
+		query := fmt.Sprintf(`MERGE INTO %s AS t
 USING (SELECT column1 AS id,
               column2 AS source_id,
               column3 AS source_type,
@@ -317,7 +322,24 @@ WHEN MATCHED THEN UPDATE SET
   SYNC_TIME = COALESCE(s.sync_time, t.SYNC_TIME)
 WHEN NOT MATCHED THEN INSERT (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
 VALUES (s.id, s.source_id, s.source_type, s.target_id, s.target_type, s.rel_type, TRY_PARSE_JSON(s.properties), s.sync_time)`, tableName, strings.Join(values, ","))
-		if _, err := r.sf.Exec(ctx, merge, args...); err != nil {
+		if dialect != warehouse.DialectSnowflake {
+			propertyExpr := syncVariantValueExpr(r.sf, "?")
+			query = fmt.Sprintf(`INSERT INTO %s (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
+VALUES %s
+ON CONFLICT (ID) DO UPDATE SET
+  SOURCE_ID = EXCLUDED.SOURCE_ID,
+  SOURCE_TYPE = EXCLUDED.SOURCE_TYPE,
+  TARGET_ID = EXCLUDED.TARGET_ID,
+  TARGET_TYPE = EXCLUDED.TARGET_TYPE,
+  REL_TYPE = EXCLUDED.REL_TYPE,
+  PROPERTIES = EXCLUDED.PROPERTIES,
+  SYNC_TIME = COALESCE(EXCLUDED.SYNC_TIME, %s.SYNC_TIME)`,
+				tableName,
+				strings.Join(buildRelationshipValueRows(len(updates), propertyExpr), ", "),
+				tableName,
+			)
+		}
+		if _, err := r.sf.Exec(ctx, query, args...); err != nil {
 			return err
 		}
 	}
@@ -368,6 +390,14 @@ func formatRelationshipProperties(value interface{}) string {
 	return props
 }
 
+func buildRelationshipValueRows(count int, propertyExpr string) []string {
+	rows := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		rows = append(rows, fmt.Sprintf("(?, ?, ?, ?, ?, ?, %s, ?)", propertyExpr))
+	}
+	return rows
+}
+
 func (r *RelationshipExtractor) ensureTable(ctx context.Context) error {
 	// Use fully qualified table name to ensure we're in the right schema
 	schema := r.sf.Schema()
@@ -384,9 +414,9 @@ func (r *RelationshipExtractor) ensureTable(ctx context.Context) error {
 		TARGET_ID VARCHAR NOT NULL,
 		TARGET_TYPE VARCHAR NOT NULL,
 		REL_TYPE VARCHAR NOT NULL,
-		PROPERTIES VARIANT,
-		SYNC_TIME TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
-	)`, schema)
+		PROPERTIES %s,
+		SYNC_TIME %s DEFAULT CURRENT_TIMESTAMP()
+	)`, schema, syncVariantColumnType(r.sf), syncTimestampColumnType(r.sf))
 	_, err := r.sf.Exec(ctx, query)
 	return err
 }
@@ -456,11 +486,26 @@ func (r *RelationshipExtractor) persistRelationships(ctx context.Context, rels [
 			continue
 		}
 
-		// Use simple INSERT with fully qualified table name
 		query := fmt.Sprintf(`INSERT INTO %s (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
 			SELECT column1, column2, column3, column4, column5, column6, TRY_PARSE_JSON(column7), column8::TIMESTAMP_TZ
 			FROM VALUES %s`,
 			tableName, strings.Join(values, ", "))
+		if syncWarehouseDialect(r.sf) != warehouse.DialectSnowflake {
+			query = fmt.Sprintf(`INSERT INTO %s (ID, SOURCE_ID, SOURCE_TYPE, TARGET_ID, TARGET_TYPE, REL_TYPE, PROPERTIES, SYNC_TIME)
+VALUES %s
+ON CONFLICT (ID) DO UPDATE SET
+	SOURCE_ID = EXCLUDED.SOURCE_ID,
+	SOURCE_TYPE = EXCLUDED.SOURCE_TYPE,
+	TARGET_ID = EXCLUDED.TARGET_ID,
+	TARGET_TYPE = EXCLUDED.TARGET_TYPE,
+	REL_TYPE = EXCLUDED.REL_TYPE,
+	PROPERTIES = EXCLUDED.PROPERTIES,
+	SYNC_TIME = COALESCE(EXCLUDED.SYNC_TIME, %s.SYNC_TIME)`,
+				tableName,
+				strings.Join(buildRelationshipValueRows(len(values), syncVariantValueExpr(r.sf, "?")), ", "),
+				tableName,
+			)
+		}
 
 		// Use Query instead of Exec - Exec has issues with Snowflake commit behavior
 		err := relationshipQueryBatch(ctx, r.sf, query, args...)

@@ -284,6 +284,7 @@ func TestTerraformCloudProviderListOrganizations_RejectsCrossHostPaginationURL(t
 	_, err := provider.listOrganizations(context.Background())
 	if err == nil {
 		t.Fatal("expected cross-host pagination error")
+		return
 	}
 	if !strings.Contains(err.Error(), "host mismatch") {
 		t.Fatalf("expected host mismatch error, got %v", err)

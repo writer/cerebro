@@ -110,8 +110,12 @@ func (w *SQLiteWarehouse) Query(ctx context.Context, query string, args ...any) 
 	if query == "" {
 		return &snowflake.QueryResult{}, nil
 	}
+	query = RewriteQueryForDialect(query, DialectSQLite)
 	if isInformationSchemaTablesQuery(query) {
 		return w.queryInformationSchemaTables(ctx)
+	}
+	if isInformationSchemaColumnsQuery(query) {
+		return w.queryInformationSchemaColumns(ctx, args...)
 	}
 
 	rows, err := w.db.QueryContext(ctx, query, args...)
@@ -126,6 +130,7 @@ func (w *SQLiteWarehouse) Exec(ctx context.Context, query string, args ...any) (
 	if w == nil || w.db == nil {
 		return nil, fmt.Errorf("sqlite warehouse is not initialized")
 	}
+	query = RewriteQueryForDialect(query, DialectSQLite)
 	return w.db.ExecContext(ctx, query, args...)
 }
 
@@ -375,6 +380,48 @@ func (w *SQLiteWarehouse) queryInformationSchemaTables(ctx context.Context) (*sn
 	}, nil
 }
 
+func (w *SQLiteWarehouse) queryInformationSchemaColumns(ctx context.Context, args ...any) (*snowflake.QueryResult, error) {
+	if w == nil || w.db == nil {
+		return nil, fmt.Errorf("sqlite warehouse is not initialized")
+	}
+	if len(args) == 0 {
+		return &snowflake.QueryResult{Columns: []string{"column_name"}}, nil
+	}
+	tableName := strings.TrimSpace(fmt.Sprintf("%v", args[0]))
+	tableName = strings.Trim(tableName, `"`)
+	if tableName == "" {
+		return &snowflake.QueryResult{Columns: []string{"column_name"}}, nil
+	}
+
+	rows, err := w.db.QueryContext(ctx, "PRAGMA table_info("+quoteSQLiteIdentifier(tableName)+")")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	resultRows := make([]map[string]interface{}, 0, 16)
+	for rows.Next() {
+		var cid int
+		var name string
+		var dataType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &pk); err != nil {
+			return nil, err
+		}
+		resultRows = append(resultRows, map[string]interface{}{"column_name": name})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &snowflake.QueryResult{
+		Columns: []string{"column_name"},
+		Rows:    resultRows,
+		Count:   len(resultRows),
+	}, nil
+}
+
 func (w *SQLiteWarehouse) listUserTables(ctx context.Context) ([]string, error) {
 	if w == nil || w.db == nil {
 		return nil, fmt.Errorf("sqlite warehouse is not initialized")
@@ -408,6 +455,11 @@ func (w *SQLiteWarehouse) listUserTables(ctx context.Context) ([]string, error) 
 func isInformationSchemaTablesQuery(query string) bool {
 	normalized := strings.ToLower(strings.Join(strings.Fields(query), " "))
 	return strings.Contains(normalized, "from information_schema.tables")
+}
+
+func isInformationSchemaColumnsQuery(query string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(query), " "))
+	return strings.Contains(normalized, "from information_schema.columns")
 }
 
 func scanRows(rows *sql.Rows) (*snowflake.QueryResult, error) {

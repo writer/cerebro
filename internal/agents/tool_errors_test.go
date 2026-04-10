@@ -15,6 +15,7 @@ func TestAWSInspectUnsupportedService(t *testing.T) {
 	_, err := st.awsInspect(context.Background(), json.RawMessage(`{"service":"rds","action":"list"}`))
 	if err == nil {
 		t.Fatal("expected error")
+		return
 	}
 
 	var toolErr *ToolError
@@ -35,6 +36,7 @@ func TestHandleS3UnsupportedAction(t *testing.T) {
 	_, err := st.handleS3(context.Background(), aws.Config{Region: "us-east-1"}, "delete-bucket", nil)
 	if err == nil {
 		t.Fatal("expected error")
+		return
 	}
 
 	var toolErr *ToolError
@@ -55,6 +57,7 @@ func TestGCPInspectUnsupportedService(t *testing.T) {
 	_, err := st.gcpInspect(context.Background(), json.RawMessage(`{"service":"bigquery","action":"list-datasets","project":"test"}`))
 	if err == nil {
 		t.Fatal("expected error")
+		return
 	}
 
 	var toolErr *ToolError
@@ -77,6 +80,7 @@ func TestInspectCloudResourceUnsupportedProvider(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error")
+		return
 	}
 
 	var toolErr *ToolError

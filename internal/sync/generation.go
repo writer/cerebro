@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const (
@@ -301,7 +303,7 @@ func (e *SyncEngine) recordGenerationResult(ctx context.Context, generationID st
 	}
 
 	recordID := generationRecordID("aws", e.accountID, generationID, result.Table, result.Region)
-	mergeQuery := fmt.Sprintf(`MERGE INTO %s t
+	query := fmt.Sprintf(`MERGE INTO %s t
 		USING (
 			SELECT ? AS id, ? AS provider, ? AS account_id, ? AS generation_id, ? AS table_name,
 				? AS region, ? AS status, ? AS backfill_pending, ? AS synced_rows, ? AS error_message, ? AS sync_time
@@ -323,8 +325,25 @@ func (e *SyncEngine) recordGenerationResult(ctx context.Context, generationID st
 			(id, provider, account_id, generation_id, table_name, region, status, backfill_pending, synced_rows, error_message, sync_time)
 			VALUES
 			(s.id, s.provider, s.account_id, s.generation_id, s.table_name, s.region, s.status, s.backfill_pending, s.synced_rows, s.error_message, s.sync_time)`, syncTableGenerationsTable)
+	if syncWarehouseDialect(e.sf) != warehouse.DialectSnowflake {
+		query = fmt.Sprintf(`INSERT INTO %s
+			(id, provider, account_id, generation_id, table_name, region, status, backfill_pending, synced_rows, error_message, sync_time)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (id) DO UPDATE SET
+				provider = EXCLUDED.provider,
+				account_id = EXCLUDED.account_id,
+				generation_id = EXCLUDED.generation_id,
+				table_name = EXCLUDED.table_name,
+				region = EXCLUDED.region,
+				status = EXCLUDED.status,
+				backfill_pending = EXCLUDED.backfill_pending,
+				synced_rows = EXCLUDED.synced_rows,
+				error_message = EXCLUDED.error_message,
+				sync_time = EXCLUDED.sync_time,
+				_cq_sync_time = CURRENT_TIMESTAMP()`, syncTableGenerationsTable)
+	}
 
-	if _, err := e.sf.Exec(ctx, mergeQuery,
+	if _, err := e.sf.Exec(ctx, query,
 		recordID,
 		"aws",
 		e.accountID,

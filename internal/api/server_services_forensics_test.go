@@ -195,6 +195,7 @@ func TestForensicsServiceCreateCaptureRecordsFailureWhenNoVolumesExist(t *testin
 	}
 	if record == nil {
 		t.Fatal("expected failed capture record to be persisted")
+		return
 	}
 	if record.Status != forensics.CaptureStatusFailed {
 		t.Fatalf("capture status = %q, want %q", record.Status, forensics.CaptureStatusFailed)

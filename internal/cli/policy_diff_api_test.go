@@ -162,6 +162,7 @@ func TestRunPolicyDiff_AutoModeDoesNotFallbackOnUnauthorized(t *testing.T) {
 	err := runPolicyDiff(policyDiffCmd, []string{"policy-diff", candidatePath})
 	if err == nil {
 		t.Fatal("expected error when API responds unauthorized")
+		return
 	}
 	if called {
 		t.Fatal("did not expect direct fallback on unauthorized response")

@@ -37,9 +37,7 @@ func GraphMetadataFromStore(ctx context.Context, store GraphStore) (Metadata, er
 var _ GraphMetadataStore = (*Graph)(nil)
 var _ GraphMetadataStore = (*SnapshotGraphStore)(nil)
 var _ GraphMetadataStore = (*TenantScopedReadOnlyGraphStore)(nil)
-var _ GraphMetadataStore = (*DualWriteGraphStore)(nil)
 var _ GraphMetadataStore = (*NeptuneGraphStore)(nil)
-var _ GraphMetadataStore = (*SpannerGraphStore)(nil)
 
 func (g *Graph) GraphMetadata(ctx context.Context) (Metadata, error) {
 	if err := graphStoreContextErr(ctx); err != nil {
@@ -95,24 +93,7 @@ func (s *TenantScopedReadOnlyGraphStore) GraphMetadata(ctx context.Context) (Met
 	return graphMetadataFromCounts(scopedCtx, s.store)
 }
 
-func (s *DualWriteGraphStore) GraphMetadata(ctx context.Context) (Metadata, error) {
-	if err := graphStoreContextErr(ctx); err != nil {
-		return Metadata{}, err
-	}
-	if s == nil || s.GraphStore == nil {
-		return Metadata{}, ErrStoreUnavailable
-	}
-	if metadataStore, ok := AsGraphMetadataStore(s.GraphStore); ok {
-		return metadataStore.GraphMetadata(ctx)
-	}
-	return graphMetadataFromCounts(ctx, s.GraphStore)
-}
-
 func (s *NeptuneGraphStore) GraphMetadata(ctx context.Context) (Metadata, error) {
-	return graphMetadataFromCounts(ctx, s)
-}
-
-func (s *SpannerGraphStore) GraphMetadata(ctx context.Context) (Metadata, error) {
 	return graphMetadataFromCounts(ctx, s)
 }
 

@@ -71,6 +71,7 @@ func TestValidateWorkloadScanAWSFlagsRequiresAccountIDForScannerAccount(t *testi
 
 	if err := validateWorkloadScanAWSFlags(); err == nil {
 		t.Fatal("expected account id validation error")
+		return
 	}
 }
 
@@ -84,6 +85,7 @@ func TestValidateWorkloadScanAWSFlagsRequiresScannerAccountForScannerAuth(t *tes
 
 	if err := validateWorkloadScanAWSFlags(); err == nil {
 		t.Fatal("expected scanner account validation error")
+		return
 	}
 }
 
@@ -96,6 +98,7 @@ func TestValidateWorkloadScanAWSFlagsRequiresScannerCredentialsForCrossAccount(t
 
 	if err := validateWorkloadScanAWSFlags(); err == nil {
 		t.Fatal("expected scanner credential validation error")
+		return
 	}
 }
 
@@ -134,6 +137,7 @@ func TestWorkloadScanAWSFlagsRegistered(t *testing.T) {
 	} {
 		if flag := workloadScanCmd.PersistentFlags().Lookup(name); flag == nil {
 			t.Fatalf("expected flag %s to be registered", name)
+			return
 		}
 	}
 }
