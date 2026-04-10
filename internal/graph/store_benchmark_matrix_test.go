@@ -56,7 +56,7 @@ func TestRunBenchmarkSuiteSupportsBackendAndFixtureMatrix(t *testing.T) {
 		}
 	}
 
-	for _, backend := range []string{"memory", "spanner", "neptune"} {
+	for _, backend := range []string{"memory", "neptune"} {
 		if !backends[backend] {
 			t.Fatalf("missing backend %q in %#v", backend, backends)
 		}
@@ -164,7 +164,7 @@ func benchmarkCasesForFixture(fixture benchmarkFixture, iterations int) []graphp
 				EdgeCount:  edgeCount,
 				BatchSize:  1,
 				Iterations: iterations,
-				Run: graphpkg.NewSnapshotReportBenchmarkRun(backend.store, reports.ClaimConflictReportParityProbe("claim-conflicts", reports.ClaimConflictReportOptions{
+				Run: graphpkg.NewSnapshotReportBenchmarkRun(backend.store, reports.ClaimConflictReportProbe("claim-conflicts", reports.ClaimConflictReportOptions{
 					ValidAt:      fixture.now,
 					RecordedAt:   fixture.now,
 					MaxConflicts: 25,
@@ -188,7 +188,7 @@ func benchmarkCasesForFixture(fixture benchmarkFixture, iterations int) []graphp
 				EdgeCount:  edgeCount,
 				BatchSize:  1,
 				Iterations: iterations,
-				Run: graphpkg.NewSnapshotReportBenchmarkRun(backend.store, reports.EvaluationTemporalAnalysisReportParityProbe("evaluation-temporal-analysis", reports.EvaluationTemporalAnalysisReportOptions{
+				Run: graphpkg.NewSnapshotReportBenchmarkRun(backend.store, reports.EvaluationTemporalAnalysisReportProbe("evaluation-temporal-analysis", reports.EvaluationTemporalAnalysisReportOptions{
 					Now:             fixture.now,
 					EvaluationRunID: fixture.evaluationRunID,
 					ConversationID:  fixture.evaluationThreadID,
@@ -203,7 +203,7 @@ func benchmarkCasesForFixture(fixture benchmarkFixture, iterations int) []graphp
 				EdgeCount:  edgeCount,
 				BatchSize:  1,
 				Iterations: iterations,
-				Run: graphpkg.NewSnapshotReportBenchmarkRun(backend.store, reports.PlaybookEffectivenessReportParityProbe("playbook-effectiveness", reports.PlaybookEffectivenessReportOptions{
+				Run: graphpkg.NewSnapshotReportBenchmarkRun(backend.store, reports.PlaybookEffectivenessReportProbe("playbook-effectiveness", reports.PlaybookEffectivenessReportOptions{
 					Now:          fixture.now,
 					Window:       30 * 24 * time.Hour,
 					MaxPlaybooks: 25,
@@ -241,7 +241,6 @@ type benchmarkBackendStore struct {
 func benchmarkBackendStores(base *graphpkg.Graph) []benchmarkBackendStore {
 	return []benchmarkBackendStore{
 		{name: "memory", store: graphpkg.GraphStore(base.Clone())},
-		{name: "spanner", store: graphpkg.NewBenchmarkMemoryBackedSpannerStore(base)},
 		{name: "neptune", store: graphpkg.NewBenchmarkMemoryBackedNeptuneStore(base)},
 	}
 }

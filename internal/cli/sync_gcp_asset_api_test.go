@@ -192,6 +192,7 @@ func TestRunGCPAssetAPISync_AutoModeNoFallbackOnUnauthorized(t *testing.T) {
 	err := runGCPAssetAPISync(context.Background(), time.Now(), []string{"proj-a"})
 	if err == nil {
 		t.Fatal("expected api error")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp asset sync via api failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -222,6 +223,7 @@ func TestRunGCPAssetAPISync_APIModeConfigError(t *testing.T) {
 
 	if err := runGCPAssetAPISync(context.Background(), time.Now(), []string{"proj-a"}); err == nil {
 		t.Fatal("expected api mode config error")
+		return
 	}
 }
 
@@ -246,6 +248,7 @@ func TestRunGCPAssetAPISync_APIModeIncompatibleFlagsError(t *testing.T) {
 	err := runGCPAssetAPISync(context.Background(), time.Now(), []string{"proj-a"})
 	if err == nil {
 		t.Fatal("expected api mode incompatibility error")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp asset sync API mode unsupported") {
 		t.Fatalf("unexpected error: %v", err)

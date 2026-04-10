@@ -11,7 +11,6 @@ This suite benchmarks the graph query families that matter for the durable-backe
 It exercises the same backend code paths used by the product:
 
 - in-memory reference graph
-- Spanner graph store via the benchmark memory-backed adapter
 - Neptune graph store via the benchmark memory-backed openCypher executor
 
 ## What Gets Recorded
@@ -46,7 +45,6 @@ It covers:
   - `100K`
 - backends:
   - `memory`
-  - `spanner`
   - `neptune`
 
 ## Local Run
@@ -71,17 +69,17 @@ go test ./internal/graph -run 'TestRunBenchmarkSuiteSupportsBackendAndFixtureMat
 
 ## Hosted / Real-Service Caveats
 
-The in-repo benchmark matrix uses memory-backed Spanner and Neptune adapters so developers can compare Cerebro backend code paths without requiring hosted infrastructure.
+The in-repo benchmark matrix uses memory-backed Neptune adapters so developers can compare Cerebro backend code paths without requiring hosted infrastructure.
 
 That means:
 
 - relative backend overhead inside Cerebro is meaningful
 - correctness and regression tracking are meaningful
-- absolute service latency is not representative of real Spanner or Neptune deployments
+- absolute service latency is not representative of real Neptune deployments
 
 For hosted measurements:
 
-- replace the benchmark stores with live Spanner and Neptune-backed `GraphStore` instances
+- replace the benchmark stores with live Neptune-backed `GraphStore` instances
 - keep the same fixture families and workload names so regression comparisons stay aligned
 - treat emulator or local fake timings as functional baselines, not production latency targets
 

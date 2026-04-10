@@ -37,6 +37,7 @@ func TestPreviouslyUntestedProviders_BasicCoverage(t *testing.T) {
 			provider := tt.constructor()
 			if provider == nil {
 				t.Fatalf("provider constructor returned nil")
+				return
 			}
 
 			if got := provider.Name(); got != tt.name {

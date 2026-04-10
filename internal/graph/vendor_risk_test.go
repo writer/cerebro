@@ -6,6 +6,10 @@ import (
 )
 
 func TestBuildVendorRiskReportFiltersAndAlerts(t *testing.T) {
+	origNow := temporalNowUTC
+	defer func() { temporalNowUTC = origNow }()
+	temporalNowUTC = func() time.Time { return time.Date(2026, 3, 20, 0, 0, 0, 0, time.UTC) }
+
 	g := New()
 
 	g.AddNode(&Node{

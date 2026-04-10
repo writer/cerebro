@@ -85,7 +85,7 @@ func TestEnrichSecurityGraphWithDSPMResult_UsesCopyOnWriteForLiveGraph(t *testin
 	}
 }
 
-func TestEnrichSecurityGraphWithDSPMResult_UsesPersistedSnapshotWhenLiveGraphUnavailable(t *testing.T) {
+func TestEnrichSecurityGraphWithDSPMResult_UsesConfiguredStoreWhenLiveGraphUnavailable(t *testing.T) {
 	logger := testutil.Logger()
 	nodeID := "arn:aws:s3:::customer-card-bucket"
 
@@ -101,10 +101,10 @@ func TestEnrichSecurityGraphWithDSPMResult_UsesPersistedSnapshotWhenLiveGraphUna
 	base.BuildIndex()
 
 	app := &App{
-		Logger:         logger,
-		DSPM:           dspm.NewScanner(nil, logger, dspm.DefaultScannerConfig()),
-		GraphSnapshots: mustPersistToolGraph(t, base),
+		Logger: logger,
+		DSPM:   dspm.NewScanner(nil, logger, dspm.DefaultScannerConfig()),
 	}
+	setConfiguredGraphFromGraph(t, app, base)
 
 	app.enrichSecurityGraphWithDSPMResult(&dspm.ScanTarget{
 		Provider: "aws",
@@ -123,7 +123,8 @@ func TestEnrichSecurityGraphWithDSPMResult_UsesPersistedSnapshotWhenLiveGraphUna
 
 	current := app.CurrentSecurityGraph()
 	if current == nil {
-		t.Fatal("expected persisted snapshot base to hydrate a live graph during DSPM enrichment")
+		t.Fatal("expected configured graph base to hydrate a live graph during DSPM enrichment")
+		return
 	}
 	if !current.IsIndexBuilt() {
 		t.Fatal("expected enriched live graph index to be rebuilt")
@@ -142,7 +143,7 @@ func TestEnrichSecurityGraphWithDSPMResult_UsesPersistedSnapshotWhenLiveGraphUna
 		t.Fatalf("expected original base node %q to exist", nodeID)
 	}
 	if _, exists := baseNode.Properties["dspm_scanned"]; exists {
-		t.Fatal("expected persisted base graph value to remain unchanged in memory")
+		t.Fatal("expected original base graph value to remain unchanged in memory")
 	}
 }
 
