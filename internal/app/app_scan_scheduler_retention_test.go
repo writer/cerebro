@@ -118,8 +118,48 @@ func TestRunRetentionCleanup_PropagatesErrors(t *testing.T) {
 	err := app.runRetentionCleanup(context.Background())
 	if err == nil {
 		t.Fatal("expected retention cleanup to fail")
+		return
 	}
 	if !strings.Contains(err.Error(), "cleanup audit logs") {
 		t.Fatalf("expected wrapped audit cleanup error, got %v", err)
+	}
+}
+
+func TestRunRetentionCleanupUsesLegacyCleanerForGraphAndAccessReviewDuringCutover(t *testing.T) {
+	appStateRepo := &mockRetentionRepo{}
+	legacyRepo := &mockRetentionRepo{}
+	app := &App{
+		Config: &Config{
+			AuditRetentionDays:        30,
+			SessionRetentionDays:      7,
+			GraphRetentionDays:        14,
+			AccessReviewRetentionDays: 90,
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		RetentionRepo: appStateCutoverRetentionCleaner{
+			appState: appStateRepo,
+			legacy:   legacyRepo,
+		},
+	}
+
+	if err := app.runRetentionCleanup(context.Background()); err != nil {
+		t.Fatalf("runRetentionCleanup() error = %v", err)
+	}
+
+	if appStateRepo.auditCalls != 1 || appStateRepo.sessionCalls != 1 {
+		t.Fatalf("expected app-state repo to handle audit/session cleanup, got audit=%d session=%d",
+			appStateRepo.auditCalls, appStateRepo.sessionCalls)
+	}
+	if appStateRepo.graphCalls != 0 || appStateRepo.accessReviewCalls != 0 {
+		t.Fatalf("expected app-state repo to skip graph/access-review cleanup, got graph=%d access_review=%d",
+			appStateRepo.graphCalls, appStateRepo.accessReviewCalls)
+	}
+	if legacyRepo.graphCalls != 1 || legacyRepo.accessReviewCalls != 1 {
+		t.Fatalf("expected legacy repo to handle graph/access-review cleanup, got graph=%d access_review=%d",
+			legacyRepo.graphCalls, legacyRepo.accessReviewCalls)
+	}
+	if legacyRepo.auditCalls != 0 || legacyRepo.sessionCalls != 0 {
+		t.Fatalf("expected legacy repo to skip audit/session cleanup, got audit=%d session=%d",
+			legacyRepo.auditCalls, legacyRepo.sessionCalls)
 	}
 }

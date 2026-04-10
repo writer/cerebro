@@ -182,9 +182,11 @@ func TestValidateQualifiedSchemaRef(t *testing.T) {
 
 	if _, err := ValidateQualifiedSchemaRef("justdb"); err == nil {
 		t.Fatal("expected malformed schema ref to fail")
+		return
 	}
 	if _, err := ValidateQualifiedSchemaRef("db.bad schema"); err == nil {
 		t.Fatal("expected invalid schema name to fail")
+		return
 	}
 }
 
@@ -199,8 +201,10 @@ func TestSafeQualifiedTableRef(t *testing.T) {
 
 	if _, err := SafeQualifiedTableRef("bad schema", "risk_engine_state"); err == nil {
 		t.Fatal("expected invalid schema ref to fail")
+		return
 	}
 	if _, err := SafeQualifiedTableRef("cerebro.app", "bad;table"); err == nil {
 		t.Fatal("expected invalid table name to fail")
+		return
 	}
 }

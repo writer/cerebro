@@ -26,7 +26,10 @@ func (a *App) startEventAlertRouting(_ context.Context) {
 		return
 	}
 
+	subjectPrefix := strings.TrimSpace(a.Config.AlertRouterNotifyPrefix)
 	notifier, err := events.NewNATSAlertNotifier(events.AlertNotifierConfig{
+		Stream:                a.Config.NATSJetStreamStream,
+		SubjectPrefix:         subjectPrefix,
 		URLs:                  a.Config.NATSJetStreamURLs,
 		ConnectTimeout:        a.Config.NATSJetStreamConnectTimeout,
 		AuthMode:              a.Config.NATSJetStreamAuthMode,
@@ -46,7 +49,6 @@ func (a *App) startEventAlertRouting(_ context.Context) {
 		return
 	}
 
-	subjectPrefix := strings.TrimSpace(a.Config.AlertRouterNotifyPrefix)
 	stateStore, err := events.NewSQLiteAlertRouterStateStore(a.Config.AlertRouterStateFile)
 	if err != nil {
 		a.Logger.Warn("failed to initialize alert router state store", "error", err, "path", a.Config.AlertRouterStateFile)

@@ -141,6 +141,7 @@ func TestBuildPlatformReportArtifactsUsesGraphStoreWhenRawGraphUnavailable(t *te
 	lineage := sections[0].Lineage
 	if lineage == nil {
 		t.Fatal("expected section lineage from graph store-backed graph view")
+		return
 	}
 	if lineage.ClaimCount != 1 || lineage.ReferencedNodeCount != 1 {
 		t.Fatalf("expected one referenced claim from store-backed graph view, got %#v", lineage)

@@ -219,6 +219,7 @@ func TestRunGCPSync_AutoModeNoFallbackOnUnauthorized(t *testing.T) {
 	err := runGCPSync(context.Background(), time.Now(), "proj-123")
 	if err == nil {
 		t.Fatal("expected api error")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp sync via api failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -250,6 +251,7 @@ func TestRunGCPSync_APIModeConfigError(t *testing.T) {
 
 	if err := runGCPSync(context.Background(), time.Now(), "proj-123"); err == nil {
 		t.Fatal("expected api mode config error")
+		return
 	}
 }
 
@@ -275,6 +277,7 @@ func TestRunGCPSync_APIModeIncompatibleFlagsError(t *testing.T) {
 	err := runGCPSync(context.Background(), time.Now(), "proj-123")
 	if err == nil {
 		t.Fatal("expected api mode incompatibility error")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp sync API mode unsupported") {
 		t.Fatalf("unexpected error: %v", err)

@@ -108,6 +108,7 @@ func TestComplianceReportDerivesFromGraphWithoutFindings(t *testing.T) {
 	}
 	if controlsFile == nil {
 		t.Fatal("missing controls.json in audit export")
+		return
 	}
 	rc, err := controlsFile.Open()
 	if err != nil {
