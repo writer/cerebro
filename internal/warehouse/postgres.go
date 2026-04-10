@@ -117,7 +117,7 @@ func PreparePostgresDSN(dsn string) (string, error) {
 			finalSettings[key] = value
 		}
 	}
-	delete(finalSettings, "service")
+	finalSettings["service"] = ""
 	delete(finalSettings, "servicefile")
 
 	effectiveSettings := make(map[string]string, len(envSettings)+len(serviceSettings)+len(connSettings))
@@ -264,7 +264,8 @@ func parsePostgresDSNSettings(connString string) (map[string]string, error) {
 func parsePostgresURLSettings(connString string) (map[string]string, error) {
 	settings := make(map[string]string)
 
-	parsedURL, err := url.Parse(connString)
+	sanitizedURL, rawHostSpec := sanitizePostgresURL(connString)
+	parsedURL, err := url.Parse(sanitizedURL)
 	if err != nil {
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) {
@@ -280,31 +281,14 @@ func parsePostgresURLSettings(connString string) (map[string]string, error) {
 		}
 	}
 
-	var hosts []string
-	var ports []string
-	for _, host := range strings.Split(parsedURL.Host, ",") {
-		if host == "" {
-			continue
-		}
-		if isIPOnly(host) {
-			hosts = append(hosts, strings.Trim(host, "[]"))
-			continue
-		}
-		splitHost, splitPort, err := net.SplitHostPort(host)
-		if err != nil {
-			return nil, fmt.Errorf("failed to split host:port in %q: %w", host, err)
-		}
-		if splitHost != "" {
-			hosts = append(hosts, splitHost)
-		}
-		if splitPort != "" {
-			ports = append(ports, splitPort)
-		}
+	hosts, ports, explicitPort, err := parsePostgresURLHostSpec(rawHostSpec)
+	if err != nil {
+		return nil, err
 	}
 	if len(hosts) > 0 {
 		settings["host"] = strings.Join(hosts, ",")
 	}
-	if len(ports) > 0 {
+	if explicitPort {
 		settings["port"] = strings.Join(ports, ",")
 	}
 
@@ -322,6 +306,122 @@ func parsePostgresURLSettings(connString string) (map[string]string, error) {
 	}
 
 	return settings, nil
+}
+
+func sanitizePostgresURL(connString string) (string, string) {
+	schemeIdx := strings.Index(connString, "://")
+	if schemeIdx < 0 {
+		return connString, ""
+	}
+
+	authorityStart := schemeIdx + len("://")
+	authorityEnd := len(connString)
+	if next := strings.IndexAny(connString[authorityStart:], "/?#"); next >= 0 {
+		authorityEnd = authorityStart + next
+	}
+	if authorityStart >= authorityEnd {
+		return connString, ""
+	}
+
+	authority := connString[authorityStart:authorityEnd]
+	hostStart := authorityStart
+	if at := strings.LastIndex(authority, "@"); at >= 0 {
+		hostStart += at + 1
+	}
+	if hostStart >= authorityEnd {
+		return connString, ""
+	}
+
+	rawHostSpec := connString[hostStart:authorityEnd]
+	sanitized := connString[:hostStart] + "placeholder" + connString[authorityEnd:]
+	return sanitized, rawHostSpec
+}
+
+func parsePostgresURLHostSpec(hostSpec string) ([]string, []string, bool, error) {
+	if strings.TrimSpace(hostSpec) == "" {
+		return nil, nil, false, nil
+	}
+
+	entries := splitPostgresHostSpec(hostSpec)
+	hosts := make([]string, 0, len(entries))
+	ports := make([]string, 0, len(entries))
+	explicitPort := false
+
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+
+		host, port, err := parsePostgresHostEntry(entry)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		hosts = append(hosts, host)
+		ports = append(ports, port)
+		if port != "" {
+			explicitPort = true
+		}
+	}
+
+	return hosts, ports, explicitPort, nil
+}
+
+func splitPostgresHostSpec(hostSpec string) []string {
+	entries := make([]string, 0, 1)
+	start := 0
+	bracketDepth := 0
+	for idx, r := range hostSpec {
+		switch r {
+		case '[':
+			bracketDepth++
+		case ']':
+			if bracketDepth > 0 {
+				bracketDepth--
+			}
+		case ',':
+			if bracketDepth == 0 {
+				entries = append(entries, hostSpec[start:idx])
+				start = idx + 1
+			}
+		}
+	}
+	entries = append(entries, hostSpec[start:])
+	return entries
+}
+
+func parsePostgresHostEntry(entry string) (string, string, error) {
+	decoded, err := url.PathUnescape(entry)
+	if err == nil {
+		entry = decoded
+	}
+	switch {
+	case strings.HasPrefix(entry, "["):
+		if strings.Contains(entry, "]:") {
+			host, port, err := net.SplitHostPort(entry)
+			if err != nil {
+				return "", "", fmt.Errorf("failed to split host:port in %q: %w", entry, err)
+			}
+			return host, port, nil
+		}
+		if strings.HasSuffix(entry, "]") {
+			return strings.Trim(entry, "[]"), "", nil
+		}
+		return "", "", fmt.Errorf("failed to parse host in %q", entry)
+	case strings.Count(entry, ":") == 0:
+		return strings.Trim(entry, "[]"), "", nil
+	case strings.Count(entry, ":") == 1:
+		host, port, err := net.SplitHostPort(entry)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to split host:port in %q: %w", entry, err)
+		}
+		return host, port, nil
+	default:
+		if isIPOnly(entry) {
+			return strings.Trim(entry, "[]"), "", nil
+		}
+		return "", "", fmt.Errorf("failed to parse host in %q", entry)
+	}
 }
 
 func isIPOnly(host string) bool {
@@ -345,6 +445,7 @@ func parsePostgresKeywordValueSettings(s string) (map[string]string, error) {
 			value = ""
 		} else if s[0] != '\'' {
 			end := 0
+			valueBytes := make([]byte, 0, len(s))
 			for ; end < len(s); end++ {
 				if asciiSpace[s[end]] == 1 {
 					break
@@ -355,9 +456,10 @@ func parsePostgresKeywordValueSettings(s string) (map[string]string, error) {
 						return nil, errors.New("invalid backslash")
 					}
 				}
+				valueBytes = append(valueBytes, s[end])
 			}
 
-			value = strings.ReplaceAll(strings.ReplaceAll(s[:end], `\\`, `\`), `\'`, `'`)
+			value = string(valueBytes)
 			if end == len(s) {
 				s = ""
 			} else {
@@ -366,20 +468,25 @@ func parsePostgresKeywordValueSettings(s string) (map[string]string, error) {
 		} else {
 			s = s[1:]
 			end := 0
+			valueBytes := make([]byte, 0, len(s))
 			for ; end < len(s); end++ {
 				if s[end] == '\'' {
 					break
 				}
 				if s[end] == '\\' {
 					end++
+					if end == len(s) {
+						return nil, errors.New("unterminated quoted string in connection info string")
+					}
 				}
+				valueBytes = append(valueBytes, s[end])
 			}
 			if end == len(s) {
 				return nil, errors.New("unterminated quoted string in connection info string")
 			}
 
-			value = strings.ReplaceAll(strings.ReplaceAll(s[:end], `\\`, `\`), `\'`, `'`)
-			if end == len(s) {
+			value = string(valueBytes)
+			if end+1 >= len(s) {
 				s = ""
 			} else {
 				s = s[end+1:]

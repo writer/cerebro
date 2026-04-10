@@ -48,6 +48,7 @@ func TestCloudInspectTools_DefaultDisabled(t *testing.T) {
 			_, err := tool.Handler(context.Background(), json.RawMessage(`{}`))
 			if err == nil {
 				t.Fatalf("expected disabled error for %s", name)
+				return
 			}
 			if !strings.Contains(err.Error(), "disabled by default") {
 				t.Fatalf("expected disabled-by-default message, got %v", err)

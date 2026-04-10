@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -35,6 +36,7 @@ CREATE TABLE "cerebro"."findings" (
 	resource_type TEXT,
 	resource_data TEXT,
 	description TEXT,
+	remediation TEXT,
 	metadata TEXT,
 	first_seen TIMESTAMP NOT NULL,
 	last_seen TIMESTAMP NOT NULL,
@@ -49,8 +51,8 @@ CREATE TABLE "cerebro"."findings" (
 INSERT INTO "cerebro"."findings" (
 	id, policy_id, policy_name, severity, status,
 	resource_id, resource_type, resource_data, description,
-	metadata, first_seen, last_seen, resolved_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	remediation, metadata, first_seen, last_seen, resolved_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"legacy-postgres-finding",
 		"policy-legacy",
 		"Legacy finding",
@@ -60,6 +62,7 @@ INSERT INTO "cerebro"."findings" (
 		"s3_bucket",
 		`{"name":"bucket-1"}`,
 		"legacy postgres finding",
+		"lock down bucket policy",
 		`{"tenant_id":"tenant-a","signal_type":"security","domain":"infra"}`,
 		firstSeen,
 		lastSeen,
@@ -102,6 +105,9 @@ INSERT INTO "cerebro"."findings" (
 	if finding.TenantID != "tenant-a" {
 		t.Fatalf("TenantID = %q, want tenant-a", finding.TenantID)
 	}
+	if finding.Remediation != "lock down bucket policy" {
+		t.Fatalf("Remediation = %q, want lock down bucket policy", finding.Remediation)
+	}
 
 	var count int
 	if err := appStateDB.QueryRow(`SELECT COUNT(*) FROM cerebro_findings WHERE id = ?`, "legacy-postgres-finding").Scan(&count); err != nil {
@@ -109,5 +115,62 @@ INSERT INTO "cerebro"."findings" (
 	}
 	if count != 1 {
 		t.Fatalf("migrated finding rows = %d, want 1", count)
+	}
+}
+
+func TestAppStateDatabaseURLUsesWarehousePostgresDSNAcrossBackends(t *testing.T) {
+	testCases := []struct {
+		name string
+		cfg  *Config
+		want string
+	}{
+		{
+			name: "snowflake backend still uses warehouse postgres dsn for app state",
+			cfg: &Config{
+				WarehouseBackend:     "snowflake",
+				WarehousePostgresDSN: "postgres://app-state",
+			},
+			want: "postgres://app-state",
+		},
+		{
+			name: "job database url does not drive app state",
+			cfg: &Config{
+				WarehouseBackend: "snowflake",
+				JobDatabaseURL:   "postgres://jobs",
+			},
+			want: "",
+		},
+		{
+			name: "warehouse postgres dsn wins over job database url",
+			cfg: &Config{
+				WarehouseBackend:     "postgres",
+				WarehousePostgresDSN: "postgres://app-state",
+				JobDatabaseURL:       "postgres://jobs",
+			},
+			want: "postgres://app-state",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &App{Config: tc.cfg}
+			if got := a.appStateDatabaseURL(); got != tc.want {
+				t.Fatalf("appStateDatabaseURL() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsMissingSnowflakeTableErrRejectsAuthorizationErrors(t *testing.T) {
+	err := errors.New("SQL compilation error: Object 'DB.SCHEMA.CEREBRO_FINDINGS' does not exist or not authorized.")
+	if isMissingSnowflakeTableErr(err) {
+		t.Fatal("expected authorization errors to fail migration instead of being treated as missing tables")
+	}
+}
+
+func TestIsMissingSnowflakeTableErrAcceptsMissingTableErrors(t *testing.T) {
+	err := errors.New("SQL compilation error: Object 'DB.SCHEMA.CEREBRO_FINDINGS' does not exist.")
+	if !isMissingSnowflakeTableErr(err) {
+		t.Fatal("expected missing table error to be treated as skippable migration input")
 	}
 }

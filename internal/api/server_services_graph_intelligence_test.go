@@ -43,6 +43,7 @@ func TestGraphIntelligenceServiceCurrentEntityGraphPrefersLiveGraph(t *testing.T
 	}
 	if current == nil {
 		t.Fatal("CurrentEntityGraph() returned nil graph")
+		return
 	}
 	if current != fullGraph {
 		t.Fatal("CurrentEntityGraph() should return the live graph when it is available")
@@ -66,6 +67,7 @@ func TestGraphIntelligenceServiceCurrentEntityGraphUsesSnapshotFallback(t *testi
 	}
 	if view == nil {
 		t.Fatal("CurrentEntityGraph() returned nil graph")
+		return
 	}
 	if _, ok := view.GetNode("arn:aws:s3:::audit-logs"); !ok {
 		t.Fatal("expected snapshot fallback to include requested entity")
@@ -93,6 +95,7 @@ func TestGraphIntelligenceServiceCurrentEntityGraphUsesBitemporalStoreQueries(t 
 	}
 	if view == nil {
 		t.Fatal("CurrentEntityGraph() returned nil graph")
+		return
 	}
 	if store.temporalCount != 1 {
 		t.Fatalf("expected one bitemporal store lookup, got %d", store.temporalCount)

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"log/slog"
 	"strings"
 	"time"
@@ -55,22 +54,14 @@ func (a *App) setGraphBuildState(state GraphBuildState, builtAt time.Time, err e
 }
 
 func (a *App) CurrentSecurityGraph() *graph.Graph {
-	if current := a.currentLiveSecurityGraph(); current != nil {
-		if current.NodeCount() > 0 || current.EdgeCount() > 0 {
-			return current
-		}
-	}
 	if a == nil {
 		return nil
 	}
-	view, err := a.currentConfiguredSecurityGraphView(context.Background())
+	view, err := a.currentOrStoredPassiveSecurityGraphView()
 	if err != nil {
 		return nil
 	}
-	if view != nil {
-		return view
-	}
-	return a.currentLiveSecurityGraph()
+	return view
 }
 
 func (a *App) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {

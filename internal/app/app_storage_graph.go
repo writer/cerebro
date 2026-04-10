@@ -12,6 +12,45 @@ import (
 	"github.com/writer/cerebro/internal/snowflake"
 )
 
+type appStateCutoverRetentionCleaner struct {
+	appState retentionCleaner
+	legacy   retentionCleaner
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupAuditLogs(ctx context.Context, olderThan time.Time) (int64, error) {
+	if c.appState != nil {
+		return c.appState.CleanupAuditLogs(ctx, olderThan)
+	}
+	if c.legacy != nil {
+		return c.legacy.CleanupAuditLogs(ctx, olderThan)
+	}
+	return 0, nil
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupAgentData(ctx context.Context, olderThan time.Time) (int64, int64, error) {
+	if c.appState != nil {
+		return c.appState.CleanupAgentData(ctx, olderThan)
+	}
+	if c.legacy != nil {
+		return c.legacy.CleanupAgentData(ctx, olderThan)
+	}
+	return 0, 0, nil
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupGraphData(ctx context.Context, olderThan time.Time) (int64, int64, int64, error) {
+	if c.legacy != nil {
+		return c.legacy.CleanupGraphData(ctx, olderThan)
+	}
+	return 0, 0, 0, nil
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupAccessReviewData(ctx context.Context, olderThan time.Time) (int64, int64, error) {
+	if c.legacy != nil {
+		return c.legacy.CleanupAccessReviewData(ctx, olderThan)
+	}
+	return 0, 0, nil
+}
+
 func (a *App) initRepositories() {
 	a.AuditRepo = nil
 	a.PolicyHistoryRepo = nil
@@ -22,7 +61,10 @@ func (a *App) initRepositories() {
 		a.AuditRepo = appstate.NewAuditRepository(a.appStateDB)
 		a.PolicyHistoryRepo = appstate.NewPolicyHistoryRepository(a.appStateDB)
 		a.RiskEngineStateRepo = appstate.NewRiskEngineStateRepository(a.appStateDB)
-		a.RetentionRepo = appstate.NewRetentionRepository(a.appStateDB)
+		a.RetentionRepo = appStateCutoverRetentionCleaner{
+			appState: appstate.NewRetentionRepository(a.appStateDB),
+			legacy:   snowflakeRetentionCleaner(a.appStateMigrationSnowflake()),
+		}
 		return
 	}
 	if a.Snowflake == nil {
@@ -32,6 +74,13 @@ func (a *App) initRepositories() {
 	a.PolicyHistoryRepo = snowflake.NewPolicyHistoryRepository(a.Snowflake)
 	a.RiskEngineStateRepo = snowflake.NewRiskEngineStateRepository(a.Snowflake)
 	a.RetentionRepo = snowflake.NewRetentionRepository(a.Snowflake)
+}
+
+func snowflakeRetentionCleaner(client *snowflake.Client) retentionCleaner {
+	if client == nil {
+		return nil
+	}
+	return snowflake.NewRetentionRepository(client)
 }
 
 func (a *App) initSnowflakeFindings(ctx context.Context) {

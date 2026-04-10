@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -20,6 +21,12 @@ import (
 
 const appStateRiskEngineGraphID = "security-graph"
 
+const (
+	appStateMigrationStateTable          = "cerebro_app_state_migrations"
+	legacySnowflakeAppStateMigrationName = "legacy_snowflake"
+	legacySnowflakeAppStateStartedName   = "legacy_snowflake_started"
+)
+
 func (a *App) appStateMigrationSnowflake() *snowflake.Client {
 	if a == nil {
 		return nil
@@ -34,13 +41,13 @@ func (a *App) appStateDatabaseURL() string {
 	if a == nil || a.Config == nil {
 		return ""
 	}
-	if dsn := strings.TrimSpace(a.Config.JobDatabaseURL); dsn != "" {
-		return dsn
-	}
-	if strings.EqualFold(strings.TrimSpace(a.Config.WarehouseBackend), "postgres") {
+
+	switch strings.ToLower(strings.TrimSpace(a.Config.WarehouseBackend)) {
+	case "postgres", "snowflake":
 		return strings.TrimSpace(a.Config.WarehousePostgresDSN)
+	default:
+		return ""
 	}
-	return ""
 }
 
 func (a *App) initAppStateDB(ctx context.Context) error {
@@ -71,6 +78,7 @@ func (a *App) initAppStateDB(ctx context.Context) error {
 		appstate.NewAuditRepository(db).EnsureSchema,
 		appstate.NewPolicyHistoryRepository(db).EnsureSchema,
 		appstate.NewRiskEngineStateRepository(db).EnsureSchema,
+		func(ctx context.Context) error { return ensureAppStateMigrationStateSchema(ctx, db) },
 	}
 	for _, ensureFn := range ensure {
 		if err := ensureFn(ctx); err != nil {
@@ -87,6 +95,11 @@ func (a *App) migrateAppState(ctx context.Context) error {
 	if a == nil || a.appStateDB == nil {
 		return nil
 	}
+	if a.appStateMigrationSnowflake() != nil {
+		if err := a.markAppStateMigrationComplete(ctx, legacySnowflakeAppStateStartedName); err != nil {
+			return fmt.Errorf("mark app-state migration started: %w", err)
+		}
+	}
 	if err := a.migrateFindings(ctx); err != nil {
 		return err
 	}
@@ -102,7 +115,69 @@ func (a *App) migrateAppState(ctx context.Context) error {
 	if err := a.migrateRiskEngineState(ctx); err != nil {
 		return err
 	}
+	if a.appStateMigrationSnowflake() != nil {
+		if err := a.markAppStateMigrationComplete(ctx, legacySnowflakeAppStateMigrationName); err != nil {
+			return fmt.Errorf("mark app-state migration complete: %w", err)
+		}
+	}
 	return nil
+}
+
+func ensureAppStateMigrationStateSchema(ctx context.Context, db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS `+appStateMigrationStateTable+` (
+	migration_name TEXT PRIMARY KEY,
+	completed_at TIMESTAMP NOT NULL
+)`)
+	return err
+}
+
+func (a *App) appStateMigrationComplete(ctx context.Context, migrationName string) (bool, error) {
+	if a == nil || a.appStateDB == nil {
+		return false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ensureAppStateMigrationStateSchema(ctx, a.appStateDB); err != nil {
+		return false, err
+	}
+
+	var completedAt time.Time
+	err := a.appStateDB.QueryRowContext(ctx, `
+SELECT completed_at
+FROM `+appStateMigrationStateTable+`
+WHERE migration_name = $1
+`, migrationName).Scan(&completedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return !completedAt.IsZero(), nil
+}
+
+func (a *App) markAppStateMigrationComplete(ctx context.Context, migrationName string) error {
+	if a == nil || a.appStateDB == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ensureAppStateMigrationStateSchema(ctx, a.appStateDB); err != nil {
+		return err
+	}
+	_, err := a.appStateDB.ExecContext(ctx, `
+INSERT INTO `+appStateMigrationStateTable+` (migration_name, completed_at)
+VALUES ($1, $2)
+ON CONFLICT (migration_name) DO UPDATE SET
+	completed_at = EXCLUDED.completed_at
+`, migrationName, time.Now().UTC())
+	return err
 }
 
 func (a *App) migrateFindings(ctx context.Context) error {
@@ -225,6 +300,9 @@ func isMissingSnowflakeTableErr(err error) bool {
 		return false
 	}
 	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "not authorized") {
+		return false
+	}
 	return strings.Contains(message, "does not exist") ||
 		strings.Contains(message, "unknown table") ||
 		strings.Contains(message, "not exist")
@@ -271,7 +349,7 @@ func loadLegacyPostgresFindingRecords(ctx context.Context, db *sql.DB, schemaNam
 	// #nosec G202 -- tableRef is built from validated identifiers via safePostgresTableRef.
 	rows, err := db.QueryContext(ctx, `
 SELECT id, policy_id, policy_name, severity, status,
-	   resource_id, resource_type, CAST(resource_data AS TEXT), description,
+	   resource_id, resource_type, CAST(resource_data AS TEXT), description, remediation,
 	   COALESCE(CAST(metadata AS TEXT), '{}'), first_seen, last_seen, resolved_at
 FROM `+tableRef+`
 ORDER BY last_seen DESC`)
@@ -298,6 +376,7 @@ func scanLegacyPostgresFindingRecord(row interface {
 }) (*snowflake.FindingRecord, error) {
 	var record snowflake.FindingRecord
 	var resourceData sql.NullString
+	var remediation sql.NullString
 	var metadata sql.NullString
 	var resolvedAt sql.NullTime
 	if err := row.Scan(
@@ -310,6 +389,7 @@ func scanLegacyPostgresFindingRecord(row interface {
 		&record.ResourceType,
 		&resourceData,
 		&record.Description,
+		&remediation,
 		&metadata,
 		&record.FirstSeen,
 		&record.LastSeen,
@@ -324,6 +404,9 @@ func scanLegacyPostgresFindingRecord(row interface {
 	}
 	if metadata.Valid && strings.TrimSpace(metadata.String) != "" {
 		record.Metadata = json.RawMessage(metadata.String)
+	}
+	if remediation.Valid {
+		record.Remediation = remediation.String
 	}
 	if resolvedAt.Valid {
 		ts := resolvedAt.Time.UTC()
