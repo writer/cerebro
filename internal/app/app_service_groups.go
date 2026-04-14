@@ -122,7 +122,7 @@ func (a *App) SecurityServices() SecurityServices {
 		RuntimeDetect:       a.RuntimeDetect,
 		RuntimeIngest:       a.RuntimeIngest,
 		RuntimeRespond:      a.RuntimeRespond,
-		SecurityGraph:       a.CurrentSecurityGraph(),
+		SecurityGraph:       a.currentLiveSecurityGraph(),
 		GraphBuilder:        a.SecurityGraphBuilder,
 		Propagation:         a.Propagation,
 	}

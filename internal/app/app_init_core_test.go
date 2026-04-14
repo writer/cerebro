@@ -16,6 +16,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/identity"
@@ -83,6 +84,7 @@ func TestInitFindings_FallsBackToConfiguredWarehouseMetadata(t *testing.T) {
 
 	if a.SnowflakeFindings == nil {
 		t.Fatal("expected snowflake findings store to be initialized")
+		return
 	}
 
 	schema := reflect.ValueOf(a.SnowflakeFindings).Elem().FieldByName("schema").String()
@@ -135,6 +137,7 @@ func TestInitFindings_UsesPostgresStoreForPostgresWarehouse(t *testing.T) {
 	}
 	if store == nil {
 		t.Fatal("expected postgres findings store to be initialized")
+		return
 	}
 }
 
@@ -225,6 +228,7 @@ func TestInitWarehouse_UsesSQLiteBackend(t *testing.T) {
 
 	if a.Warehouse == nil {
 		t.Fatal("expected sqlite warehouse to be initialized")
+		return
 	}
 	if a.Snowflake != nil {
 		t.Fatal("expected snowflake client to stay nil for sqlite backend")
@@ -263,6 +267,7 @@ func TestInitLegacySnowflake_UsesSeparateClientForNonSnowflakeWarehouse(t *testi
 
 	if a.LegacySnowflake == nil {
 		t.Fatal("expected legacy snowflake client to be initialized")
+		return
 	}
 	if a.Snowflake != nil {
 		t.Fatalf("expected active snowflake warehouse client to stay nil, got %T", a.Snowflake)
@@ -296,16 +301,26 @@ func TestRotateSnowflakeClientPreservesWarehouseWhenUsingLegacySource(t *testing
 
 	existingWarehouse := &warehouse.MemoryWarehouse{}
 	oldLegacy := new(snowflake.Client)
+	memory := agents.NewMemory(10)
+	registry := agents.NewAgentRegistry()
+	registry.RegisterAgent(&agents.Agent{
+		ID:     "security-analyst",
+		Name:   "Security Analyst",
+		Tools:  []agents.Tool{{Name: "query_assets", Description: "stale"}, {Name: "remote_tool", Description: "remote"}},
+		Memory: memory,
+	})
 	a := &App{
 		Config: &Config{
 			WarehouseBackend:    "postgres",
 			SnowflakeAccount:    "acct",
 			SnowflakeUser:       "user",
 			SnowflakePrivateKey: "key",
+			AnthropicAPIKey:     "anthropic-key",
 		},
 		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Warehouse:       existingWarehouse,
 		LegacySnowflake: oldLegacy,
+		Agents:          registry,
 	}
 
 	if err := a.rotateSnowflakeClient(context.Background(), a.Config); err != nil {
@@ -320,6 +335,26 @@ func TestRotateSnowflakeClientPreservesWarehouseWhenUsingLegacySource(t *testing
 	}
 	if a.LegacySnowflake == nil || a.LegacySnowflake == oldLegacy {
 		t.Fatal("expected legacy snowflake client to rotate independently")
+	}
+
+	agent, ok := a.Agents.GetAgent("security-analyst")
+	if !ok {
+		t.Fatal("expected security-analyst agent to remain registered")
+	}
+	if agent.Memory != memory {
+		t.Fatal("expected agent memory to be preserved during tool refresh")
+	}
+	queryAssets := findRegisteredAgentTool(agent.Tools, "query_assets")
+	if queryAssets == nil {
+		t.Fatal("expected query_assets tool after rotation")
+		return
+	}
+	if queryAssets.Description == "stale" {
+		t.Fatal("expected query_assets tool definition to refresh after rotation")
+	}
+	if findRegisteredAgentTool(agent.Tools, "remote_tool") == nil {
+		t.Fatal("expected non-security tools to be preserved during refresh")
+		return
 	}
 }
 

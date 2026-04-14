@@ -51,31 +51,9 @@ func (s *PostgresSessionStore) Save(ctx context.Context, session *Session) error
 		return err
 	}
 
-	messagesJSON, err := json.Marshal(session.Messages)
+	messagesJSON, contextJSON, createdAt, updatedAt, err := prepareSessionRow(session)
 	if err != nil {
 		return err
-	}
-	if len(messagesJSON) == 0 {
-		messagesJSON = []byte("[]")
-	}
-
-	contextJSON, err := json.Marshal(session.Context)
-	if err != nil {
-		return err
-	}
-	if len(contextJSON) == 0 {
-		contextJSON = []byte("{}")
-	}
-
-	createdAt := session.CreatedAt.UTC()
-	if createdAt.IsZero() {
-		createdAt = time.Now().UTC()
-		session.CreatedAt = createdAt
-	}
-	updatedAt := session.UpdatedAt.UTC()
-	if updatedAt.IsZero() {
-		updatedAt = createdAt
-		session.UpdatedAt = updatedAt
 	}
 
 	_, err = s.db.ExecContext(ctx, s.q(`
@@ -100,6 +78,42 @@ ON CONFLICT (id) DO UPDATE SET
 		updatedAt,
 	)
 	return err
+}
+
+func (s *PostgresSessionStore) ImportMissing(ctx context.Context, sessions []*Session) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("postgres session store is not initialized")
+	}
+	if err := s.EnsureSchema(ctx); err != nil {
+		return err
+	}
+	for _, session := range sessions {
+		if session == nil {
+			continue
+		}
+		messagesJSON, contextJSON, createdAt, updatedAt, err := prepareSessionRow(session)
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, s.q(`
+INSERT INTO `+postgresSessionTable+` (
+	id, agent_id, user_id, status, messages, context, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (id) DO NOTHING
+`),
+			session.ID,
+			session.AgentID,
+			session.UserID,
+			session.Status,
+			string(messagesJSON),
+			string(contextJSON),
+			createdAt,
+			updatedAt,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *PostgresSessionStore) Get(ctx context.Context, id string) (*Session, error) {
@@ -156,6 +170,37 @@ func (s *PostgresSessionStore) q(query string) string {
 		return s.rewriteSQL(query)
 	}
 	return query
+}
+
+func prepareSessionRow(session *Session) ([]byte, []byte, time.Time, time.Time, error) {
+	messagesJSON, err := json.Marshal(session.Messages)
+	if err != nil {
+		return nil, nil, time.Time{}, time.Time{}, err
+	}
+	if len(messagesJSON) == 0 {
+		messagesJSON = []byte("[]")
+	}
+
+	contextJSON, err := json.Marshal(session.Context)
+	if err != nil {
+		return nil, nil, time.Time{}, time.Time{}, err
+	}
+	if len(contextJSON) == 0 {
+		contextJSON = []byte("{}")
+	}
+
+	createdAt := session.CreatedAt.UTC()
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+		session.CreatedAt = createdAt
+	}
+	updatedAt := session.UpdatedAt.UTC()
+	if updatedAt.IsZero() {
+		updatedAt = createdAt
+		session.UpdatedAt = updatedAt
+	}
+
+	return messagesJSON, contextJSON, createdAt, updatedAt, nil
 }
 
 var _ SessionStore = (*PostgresSessionStore)(nil)

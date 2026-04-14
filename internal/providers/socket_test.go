@@ -169,6 +169,7 @@ func TestSocketProviderListCollection_DetectsPaginationLoop(t *testing.T) {
 	_, err := provider.listOrganizations(context.Background())
 	if err == nil {
 		t.Fatal("expected pagination loop error")
+		return
 	}
 	if !strings.Contains(err.Error(), "pagination loop") {
 		t.Fatalf("expected pagination loop error, got %v", err)
