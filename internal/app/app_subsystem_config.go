@@ -57,19 +57,17 @@ type GraphConfig struct {
 }
 
 type AppStateConfig struct {
-	JobDatabaseURL       string
 	WarehouseBackend     string
 	WarehousePostgresDSN string
 }
 
 func (c AppStateConfig) DatabaseURL() string {
-	if dsn := strings.TrimSpace(c.JobDatabaseURL); dsn != "" {
-		return dsn
-	}
-	if strings.EqualFold(strings.TrimSpace(c.WarehouseBackend), "postgres") {
+	switch strings.ToLower(strings.TrimSpace(c.WarehouseBackend)) {
+	case "postgres", "snowflake":
 		return strings.TrimSpace(c.WarehousePostgresDSN)
+	default:
+		return ""
 	}
-	return ""
 }
 
 type EventConfig struct {
@@ -125,7 +123,6 @@ func (c *Config) BuildSubsystemConfig() SubsystemConfig {
 			MigrateLegacyActivityOnStart: c.GraphMigrateLegacyActivityOnStart,
 		},
 		AppState: AppStateConfig{
-			JobDatabaseURL:       c.JobDatabaseURL,
 			WarehouseBackend:     c.WarehouseBackend,
 			WarehousePostgresDSN: c.WarehousePostgresDSN,
 		},

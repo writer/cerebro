@@ -27,6 +27,8 @@ func TestBuildSubsystemConfig_GroupsSubsystemViews(t *testing.T) {
 		GraphWriterLeaseTTL:               30 * time.Second,
 		GraphWriterLeaseHeartbeat:         10 * time.Second,
 		GraphMigrateLegacyActivityOnStart: true,
+		WarehouseBackend:                  "snowflake",
+		WarehousePostgresDSN:              "postgres://app-state",
 		JobDatabaseURL:                    "postgres://jobs",
 		ExecutionStoreFile:                "/tmp/executions.db",
 		NATSJetStreamEnabled:              true,
@@ -50,7 +52,7 @@ func TestBuildSubsystemConfig_GroupsSubsystemViews(t *testing.T) {
 	if got, want := subsystems.Runtime.ExecutionStoreFile, cfg.ExecutionStoreFile; got != want {
 		t.Fatalf("runtime execution store file = %q, want %q", got, want)
 	}
-	if got, want := subsystems.AppState.DatabaseURL(), cfg.JobDatabaseURL; got != want {
+	if got, want := subsystems.AppState.DatabaseURL(), cfg.WarehousePostgresDSN; got != want {
 		t.Fatalf("appstate database url = %q, want %q", got, want)
 	}
 	if got, want := subsystems.Graph.SnapshotPath, cfg.GraphSnapshotPath; got != want {
@@ -78,14 +80,44 @@ func TestBuildSubsystemConfig_GroupsSubsystemViews(t *testing.T) {
 	}
 }
 
-func TestAppStateConfigDatabaseURLFallsBackToWarehousePostgresDSN(t *testing.T) {
-	cfg := AppStateConfig{
-		WarehouseBackend:     "postgres",
-		WarehousePostgresDSN: "postgres://warehouse",
+func TestAppStateConfigDatabaseURLMatchesAppStateContract(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  AppStateConfig
+		want string
+	}{
+		{
+			name: "postgres backend uses warehouse dsn",
+			cfg: AppStateConfig{
+				WarehouseBackend:     "postgres",
+				WarehousePostgresDSN: "postgres://warehouse",
+			},
+			want: "postgres://warehouse",
+		},
+		{
+			name: "snowflake backend also uses warehouse dsn for app state",
+			cfg: AppStateConfig{
+				WarehouseBackend:     "snowflake",
+				WarehousePostgresDSN: "postgres://app-state",
+			},
+			want: "postgres://app-state",
+		},
+		{
+			name: "sqlite backend disables app-state dsn",
+			cfg: AppStateConfig{
+				WarehouseBackend:     "sqlite",
+				WarehousePostgresDSN: "postgres://unused",
+			},
+			want: "",
+		},
 	}
 
-	if got, want := cfg.DatabaseURL(), "postgres://warehouse"; got != want {
-		t.Fatalf("DatabaseURL() = %q, want %q", got, want)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.cfg.DatabaseURL(); got != tc.want {
+				t.Fatalf("DatabaseURL() = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
