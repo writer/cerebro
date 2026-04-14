@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 )
 
 // PostgresWatermarkStore manages scan watermarks persisted to PostgreSQL.
@@ -70,38 +69,35 @@ func (s *PostgresWatermarkStore) PersistWatermarks(ctx context.Context) error {
 		return nil
 	}
 
-	const batchSize = 200
-	for i := 0; i < len(watermarks); i += batchSize {
-		end := i + batchSize
-		if end > len(watermarks) {
-			end = len(watermarks)
-		}
-		batch := watermarks[i:end]
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin watermarks transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
 
-		valuePlaceholders := make([]string, 0, len(batch))
-		args := make([]interface{}, 0, len(batch)*4)
-		paramIdx := 1
-		for _, wm := range batch {
-			valuePlaceholders = append(valuePlaceholders, fmt.Sprintf(
-				"($%d, $%d, $%d, $%d)",
-				paramIdx, paramIdx+1, paramIdx+2, paramIdx+3,
-			))
-			paramIdx += 4
-			args = append(args, wm.Table, wm.LastScanTime, wm.LastScanID, wm.RowsScanned)
-		}
+	const upsert = `
+		INSERT INTO cerebro_scan_watermarks (table_name, last_scan_time, last_scan_id, rows_scanned)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (table_name) DO UPDATE SET
+			last_scan_time = EXCLUDED.last_scan_time,
+			last_scan_id = EXCLUDED.last_scan_id,
+			rows_scanned = EXCLUDED.rows_scanned,
+			updated_at = CURRENT_TIMESTAMP
+	`
+	stmt, err := tx.PrepareContext(ctx, upsert)
+	if err != nil {
+		return fmt.Errorf("prepare watermarks upsert: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
 
-		upsert := `
-			INSERT INTO cerebro_scan_watermarks (table_name, last_scan_time, last_scan_id, rows_scanned)
-			VALUES ` + strings.Join(valuePlaceholders, ",") + `
-			ON CONFLICT (table_name) DO UPDATE SET
-				last_scan_time = EXCLUDED.last_scan_time,
-				last_scan_id = EXCLUDED.last_scan_id,
-				rows_scanned = EXCLUDED.rows_scanned,
-				updated_at = CURRENT_TIMESTAMP
-		`
-		if _, err := s.db.ExecContext(ctx, upsert, args...); err != nil {
+	for _, wm := range watermarks {
+		if _, err := stmt.ExecContext(ctx, wm.Table, wm.LastScanTime, wm.LastScanID, wm.RowsScanned); err != nil {
 			return fmt.Errorf("upsert watermarks: %w", err)
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit watermarks transaction: %w", err)
 	}
 
 	return nil
