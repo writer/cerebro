@@ -532,6 +532,13 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	a.configureGraphRuntimeBehavior(securityGraph)
 	if !a.graphWriterLeaseAllowsWrites() {
 		a.publishSecurityGraphRuntimeView(nil)
+		if readable := a.currentReadableSecurityGraph(); readable != nil {
+			builtAt := readable.Metadata().BuiltAt.UTC()
+			if builtAt.IsZero() {
+				builtAt = time.Now().UTC()
+			}
+			a.setGraphBuildState(GraphBuildSuccess, builtAt, nil)
+		}
 		a.Logger.Info("security graph waiting for graph writer lease",
 			"lease", a.Config.GraphWriterLeaseName,
 			"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
@@ -585,6 +592,26 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		a.emitGraphRebuiltEvent(emitCtx, meta, meta.BuildDuration)
 		a.emitGraphMutationEvent(emitCtx, a.SecurityGraphBuilder.LastMutation(), "startup")
 	}()
+}
+
+func (a *App) currentReadableSecurityGraph() *graph.Graph {
+	if a == nil {
+		return nil
+	}
+	securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("failed to resolve readable security graph", "error", err)
+		}
+		return nil
+	}
+	if securityGraph == nil {
+		return nil
+	}
+	if securityGraph.NodeCount() == 0 && securityGraph.EdgeCount() == 0 {
+		return nil
+	}
+	return securityGraph
 }
 
 func backgroundWorkContext(ctx context.Context) context.Context {

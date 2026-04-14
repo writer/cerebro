@@ -120,19 +120,20 @@ type App struct {
 	appStateDB      *sql.DB
 
 	// Feature services
-	Agents         *agents.AgentRegistry
-	Ticketing      *ticketing.Service
-	Identity       *identity.Service
-	AttackPath     *attackpath.Graph
-	Providers      *providers.Registry
-	Webhooks       *webhooks.Service
-	TapConsumer    *events.Consumer
-	AlertRouter    *events.AlertRouter
-	TapEventMapper *graphingest.Mapper
-	RemoteTools    *agents.RemoteToolProvider
-	ToolPublisher  *agents.ToolPublisher
-	Notifications  *notifications.Manager
-	Scheduler      *scheduler.Scheduler
+	Agents           *agents.AgentRegistry
+	Ticketing        *ticketing.Service
+	Identity         *identity.Service
+	AttackPath       *attackpath.Graph
+	Providers        *providers.Registry
+	Webhooks         *webhooks.Service
+	TapConsumer      *events.Consumer
+	AlertRouter      *events.AlertRouter
+	TapEventMapper   *graphingest.Mapper
+	RemoteTools      *agents.RemoteToolProvider
+	remoteAgentTools []agents.Tool
+	ToolPublisher    *agents.ToolPublisher
+	Notifications    *notifications.Manager
+	Scheduler        *scheduler.Scheduler
 
 	// Durable app-state repositories.
 	AuditRepo           auditRepository

@@ -156,6 +156,7 @@ func TestNewServerWithDependencies_InitializesRuntimeIngestFromExecutionStore(t 
 	}
 	if got := s.runtimeIngestStore(); got == nil {
 		t.Fatal("expected runtimeIngestStore to return initialized store")
+		return
 	}
 }
 
@@ -170,6 +171,7 @@ func TestServerDependenciesCurrentSecurityGraphStoreUsesRuntimeStore(t *testing.
 	store := deps.CurrentSecurityGraphStore()
 	if store == nil {
 		t.Fatal("expected graph store from runtime")
+		return
 	}
 	node, ok, err := store.LookupNode(context.Background(), "service:payments")
 	if err != nil {

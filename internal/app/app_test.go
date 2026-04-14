@@ -151,6 +151,7 @@ func TestLoadConfigCredentialSourceValidation(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected validation error for incomplete vault credential source")
+		return
 	}
 	if !strings.Contains(err.Error(), "CEREBRO_CREDENTIAL_VAULT_ADDRESS is required") {
 		t.Fatalf("expected vault address validation failure, got %v", err)
@@ -812,6 +813,7 @@ func TestNew_APIAuthEnabledWithoutKeys(t *testing.T) {
 	_, err := New(ctx)
 	if err == nil {
 		t.Fatal("expected error when API auth enabled without API_KEYS")
+		return
 	}
 }
 
@@ -824,6 +826,7 @@ func TestNewWithConfig_APIAuthEnabledWithoutKeys(t *testing.T) {
 	_, err := NewWithConfig(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error when API auth enabled without API_KEYS")
+		return
 	}
 }
 
@@ -844,6 +847,7 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 
 	var validationErr *ConfigValidationError
@@ -885,6 +889,7 @@ func TestLoadConfigValidateDistributedJobsRequirePostgresAndNATS(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 
 	var validationErr *ConfigValidationError
@@ -904,6 +909,18 @@ func TestLoadConfigValidateDistributedJobsRequirePostgresAndNATS(t *testing.T) {
 	}
 }
 
+func TestLoadConfigValidateAllowsAppStatePostgresWithoutDistributedJobs(t *testing.T) {
+	cfg := LoadConfig()
+	cfg.WarehouseBackend = "postgres"
+	cfg.WarehousePostgresDSN = "postgres://app-state:app-state@localhost:5432/cerebro?sslmode=disable"
+	cfg.JobDatabaseURL = ""
+	cfg.NATSJetStreamURLs = nil
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected app-state postgres config without distributed jobs to validate, got %v", err)
+	}
+}
+
 func TestLoadConfigValidateRejectsUnsupportedGraphStoreBackends(t *testing.T) {
 	for _, backend := range []string{"legacy", "memory"} {
 		t.Run(backend, func(t *testing.T) {
@@ -913,6 +930,7 @@ func TestLoadConfigValidateRejectsUnsupportedGraphStoreBackends(t *testing.T) {
 			err := cfg.Validate()
 			if err == nil {
 				t.Fatal("expected config validation error")
+				return
 			}
 			if !strings.Contains(err.Error(), "GRAPH_STORE_BACKEND must be neptune") {
 				t.Fatalf("expected graph store backend validation failure, got %v", err)
@@ -928,6 +946,7 @@ func TestLoadConfigValidateRejectsUnsupportedGraphSearchBackends(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 	if !strings.Contains(err.Error(), "GRAPH_SEARCH_BACKEND must be one of graph, opensearch") {
 		t.Fatalf("expected graph search backend validation failure, got %v", err)
@@ -943,6 +962,7 @@ func TestLoadConfigValidateOpenSearchGraphSearchControls(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 
 	var validationErr *ConfigValidationError
@@ -985,6 +1005,7 @@ func TestLoadConfigValidateNeptunePoolControls(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 
 	var validationErr *ConfigValidationError
@@ -1035,6 +1056,7 @@ func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 
 	var validationErr *ConfigValidationError
@@ -1119,6 +1141,7 @@ func TestNewWithConfigFailsFastOnInvalidConfig(t *testing.T) {
 	_, err := NewWithConfig(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 	if !strings.Contains(err.Error(), "API_PORT must be between 1 and 65535") {
 		t.Fatalf("expected port validation error, got %v", err)
@@ -1358,6 +1381,7 @@ func TestNew_ExplicitMappingsOnlyFailsOnUnmappedPolicy(t *testing.T) {
 	_, err := New(context.Background())
 	if err == nil {
 		t.Fatal("expected app initialization to fail in explicit mappings-only mode")
+		return
 	}
 }
 
@@ -1734,6 +1758,7 @@ func TestScanQueryPolicies_AddsTruncationMetaFinding(t *testing.T) {
 	}
 	if meta == nil {
 		t.Fatalf("expected truncation meta finding %q", metaID)
+		return
 	}
 	if meta.ResourceType != "query_policy_scan" {
 		t.Fatalf("expected meta resource type query_policy_scan, got %q", meta.ResourceType)

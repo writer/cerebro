@@ -94,6 +94,7 @@ func TestScheduleSQLStore_RoundTrip(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("expected stored schedule")
+		return
 	}
 	if got.Name != schedule.Name || got.Provider != schedule.Provider || got.Table != schedule.Table {
 		t.Fatalf("unexpected schedule: %+v", got)

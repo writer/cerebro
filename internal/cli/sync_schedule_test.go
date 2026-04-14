@@ -428,6 +428,7 @@ func TestExecuteProviderSync_AutoModeDoesNotFallbackOnUnauthorized(t *testing.T)
 	err := executeProviderSync(context.Background(), nil, &SyncSchedule{Name: "nightly-okta", Provider: "okta"})
 	if err == nil {
 		t.Fatal("expected unauthorized api error")
+		return
 	}
 	if !strings.Contains(err.Error(), "sync via api failed") {
 		t.Fatalf("expected api failure context, got %v", err)
@@ -621,6 +622,7 @@ func TestParseAzureSubscriptionConcurrency(t *testing.T) {
 
 	if _, err := parseAzureSubscriptionConcurrency("0"); err == nil {
 		t.Fatal("expected bounds error")
+		return
 	}
 }
 
@@ -655,6 +657,7 @@ func TestParseScheduledNativeSyncJobResult(t *testing.T) {
 		}
 		if parsed == nil {
 			t.Fatal("expected parsed result")
+			return
 		}
 		if parsed.Provider != "aws" {
 			t.Fatalf("expected provider aws, got %q", parsed.Provider)
@@ -667,6 +670,7 @@ func TestParseScheduledNativeSyncJobResult(t *testing.T) {
 	t.Run("invalid payload", func(t *testing.T) {
 		if _, err := parseScheduledNativeSyncJobResult("{not-json"); err == nil {
 			t.Fatal("expected parse error for invalid payload")
+			return
 		}
 	})
 }
@@ -846,6 +850,7 @@ func TestExecuteGCPSync_InvalidProjectTimeoutDirective(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected project timeout validation error")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp_project_timeout_seconds") {
 		t.Fatalf("unexpected error: %v", err)
@@ -890,6 +895,7 @@ func TestExecuteGCPSync_SkipsSecurityWhenNativeProjectTimesOut(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected timeout error")
+		return
 	}
 	if !strings.Contains(err.Error(), "native sync timed out") {
 		t.Fatalf("unexpected error: %v", err)
@@ -940,6 +946,7 @@ func TestExecuteGCPSync_PreflightFailureSkipsNativeAndSecurity(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected preflight error")
+		return
 	}
 	if !strings.Contains(err.Error(), "preflight") {
 		t.Fatalf("unexpected error: %v", err)
@@ -960,6 +967,7 @@ func TestEnqueueScheduledNativeSync_InvalidWorkerWaitTimeoutDirective(t *testing
 	})
 	if err == nil {
 		t.Fatal("expected worker wait timeout validation error")
+		return
 	}
 	if !strings.Contains(err.Error(), "worker_wait_timeout_seconds") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1026,6 +1034,7 @@ func TestPreflightGCPProjectAccess_RequiresOrgForSCC(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected SCC org validation error")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp-org") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1166,9 +1175,11 @@ func TestApplyScheduledGCPAuth_WithCredentialsFile(t *testing.T) {
 	}
 	if cfg == nil {
 		t.Fatal("expected auth config")
+		return
 	}
 	if cfg.Cleanup == nil {
 		t.Fatal("expected cleanup func")
+		return
 	}
 	if cfg.CredentialsFile != source.Name() {
 		t.Fatalf("expected credentials file %q, got %q", source.Name(), cfg.CredentialsFile)
@@ -1213,6 +1224,7 @@ func TestApplyScheduledGCPAuth_WithImpersonation(t *testing.T) {
 	}
 	if cfg == nil {
 		t.Fatal("expected auth config")
+		return
 	}
 	if !strings.Contains(cfg.Summary, "impersonate_service_account=impersonated@test.iam.gserviceaccount.com") {
 		t.Fatalf("unexpected summary: %q", cfg.Summary)
@@ -1264,6 +1276,7 @@ func TestApplyScheduledGCPAuth_ImpersonationRequiresSourceCredentials(t *testing
 	})
 	if err == nil {
 		t.Fatal("expected error when impersonation is set with an unreadable credentials source")
+		return
 	}
 	if !strings.Contains(err.Error(), "gcp_credentials_file") {
 		t.Fatalf("expected gcp_credentials_file validation error, got %v", err)
@@ -1292,6 +1305,7 @@ func TestApplyScheduledGCPAuth_TokenLifetimeRequiresImpersonation(t *testing.T) 
 	})
 	if err == nil {
 		t.Fatal("expected token lifetime to require impersonation")
+		return
 	}
 	if !strings.Contains(err.Error(), "requires gcp_impersonate_service_account") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1320,6 +1334,7 @@ func TestApplyScheduledGCPAuth_DelegatesRequireImpersonation(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected delegates to require impersonation")
+		return
 	}
 	if !strings.Contains(err.Error(), "requires gcp_impersonate_service_account") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1340,9 +1355,11 @@ func TestParseAWSSessionTagDirectives(t *testing.T) {
 
 	if _, _, err := parseAWSSessionTagDirectives([]string{"invalid"}, nil); err == nil {
 		t.Fatal("expected parse error for non key=value aws_role_session_tags entry")
+		return
 	}
 	if _, _, err := parseAWSSessionTagDirectives([]string{"env=prod"}, []string{"owner"}); err == nil {
 		t.Fatal("expected parse error when transitive key does not exist in session tags")
+		return
 	}
 }
 
@@ -1357,9 +1374,11 @@ func TestParseBoundedPositiveIntDirective(t *testing.T) {
 
 	if _, err := parseBoundedPositiveIntDirective("not-a-number", "aws_role_duration_seconds", 900, 43200); err == nil {
 		t.Fatal("expected integer parse error")
+		return
 	}
 	if _, err := parseBoundedPositiveIntDirective("100", "aws_role_duration_seconds", 900, 43200); err == nil {
 		t.Fatal("expected bounds error")
+		return
 	}
 }
 
@@ -1368,6 +1387,7 @@ func TestLoadScheduledAWSConfig_EnterpriseAuthValidation(t *testing.T) {
 		_, err := loadScheduledAWSConfig(context.Background(), scheduledSyncSpec{AWSWebIdentityTokenFile: "/tmp/token"})
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "aws_web_identity_token_file and aws_web_identity_role_arn must be set together") {
 			t.Fatalf("unexpected error: %v", err)
@@ -1381,6 +1401,7 @@ func TestLoadScheduledAWSConfig_EnterpriseAuthValidation(t *testing.T) {
 		})
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "aws_web_identity_token_file") {
 			t.Fatalf("unexpected error: %v", err)
@@ -1391,6 +1412,7 @@ func TestLoadScheduledAWSConfig_EnterpriseAuthValidation(t *testing.T) {
 		_, err := loadScheduledAWSConfig(context.Background(), scheduledSyncSpec{AWSRoleSourceIdentity: "cerebro-scheduler"})
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "aws_role_source_identity") {
 			t.Fatalf("unexpected error: %v", err)
@@ -1404,6 +1426,7 @@ func TestLoadScheduledAWSConfig_EnterpriseAuthValidation(t *testing.T) {
 		})
 		if err == nil {
 			t.Fatal("expected error")
+			return
 		}
 		if !strings.Contains(err.Error(), "absolute executable path") {
 			t.Fatalf("unexpected error: %v", err)
@@ -1698,6 +1721,7 @@ func TestExecuteGCPSync_WIFCredsContent(t *testing.T) {
 	}
 	if capturedPayload == nil {
 		t.Fatal("expected to capture WIF credentials payload")
+		return
 	}
 	if capturedPayload["type"] != "external_account" {
 		t.Fatalf("expected external_account type, got %v", capturedPayload["type"])

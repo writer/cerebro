@@ -37,6 +37,7 @@ func TestLoadConfigCredentialVaultAddressValidation(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected validation error for non-https remote vault address")
+		return
 	}
 	if got := err.Error(); got == "" || !strings.Contains(got, "CEREBRO_CREDENTIAL_VAULT_ADDRESS must use https unless it targets localhost or a loopback address") {
 		t.Fatalf("unexpected validation error: %v", err)

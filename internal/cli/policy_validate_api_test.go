@@ -139,6 +139,7 @@ func TestRunPolicyValidate_AutoModeDoesNotFallbackOnUnauthorized(t *testing.T) {
 	err := runPolicyValidate(policyValidateCmd, nil)
 	if err == nil {
 		t.Fatal("expected error when API responds unauthorized")
+		return
 	}
 	if !strings.Contains(err.Error(), "policy validate via api failed") {
 		t.Fatalf("expected api failure context, got %v", err)

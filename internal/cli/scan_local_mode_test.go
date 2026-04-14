@@ -44,6 +44,7 @@ func TestResolveLocalScanDataset_FromFixture(t *testing.T) {
 	}
 	if dataset == nil {
 		t.Fatal("expected dataset")
+		return
 	}
 	if len(dataset.Tables) != 1 {
 		t.Fatalf("expected 1 table, got %d", len(dataset.Tables))
@@ -77,6 +78,7 @@ func TestResolveLocalScanDataset_FromSnapshotDir(t *testing.T) {
 	}
 	if dataset == nil {
 		t.Fatal("expected dataset")
+		return
 	}
 	if len(dataset.Tables["aws_iam_users"]) != 1 {
 		t.Fatalf("expected 1 asset in aws_iam_users, got %d", len(dataset.Tables["aws_iam_users"]))
@@ -207,6 +209,7 @@ func TestRunScan_LocalModePersistsFindingsAndWatermarksAcrossRestart(t *testing.
 	wm := restarted.ScanWatermarks.GetWatermark("aws_s3_buckets")
 	if wm == nil {
 		t.Fatal("expected persisted scan watermark after restart")
+		return
 	}
 	if !wm.LastScanTime.Equal(scanTime) {
 		t.Fatalf("expected watermark time %s, got %s", scanTime, wm.LastScanTime)
