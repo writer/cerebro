@@ -23,8 +23,8 @@ type NATSQueue struct {
 	consumer string
 
 	// pending maps receipt handles to the underlying NATS messages so that
-	// Delete / ExtendVisibility can call Ack / InProgress on the original
-	// *nats.Msg.  The map is pruned on Delete.
+	// Delete / ExtendVisibility / RetryLater can act on the original *nats.Msg.
+	// The map is pruned when the message is settled.
 	pending sync.Map // map[string]*nats.Msg
 }
 
@@ -87,9 +87,8 @@ func (q *NATSQueue) Enqueue(ctx context.Context, msg JobMessage) error {
 //
 // NOTE: NATS JetStream does not support per-message publish-time delays the
 // way SQS does.  The delay parameter is therefore *not* applied at publish
-// time.  For retry back-off, the consumer side uses NakWithDelay when
-// redelivering messages.  Callers that depend on publish-time delays should
-// be aware of this limitation.
+// time. Callers that depend on publish-time delays should be aware of this
+// limitation.
 func (q *NATSQueue) EnqueueWithDelay(_ context.Context, msg JobMessage, _ time.Duration) error {
 	body, err := json.Marshal(msg)
 	if err != nil {
@@ -185,9 +184,9 @@ func (q *NATSQueue) DeleteBatch(ctx context.Context, receiptHandles []string) (s
 }
 
 // ExtendVisibility resets the redelivery timer for the message associated with
-// receiptHandle by calling InProgress on the underlying *nats.Msg.  The
-// timeout parameter is accepted for interface compatibility but is not used;
-// NATS resets the ack-wait window configured on the consumer.
+// receiptHandle by calling InProgress on the underlying *nats.Msg. The timeout
+// parameter is accepted for interface compatibility but is not used; NATS
+// resets the ack-wait window configured on the consumer.
 func (q *NATSQueue) ExtendVisibility(_ context.Context, receiptHandle string, _ time.Duration) error {
 	if receiptHandle == "" {
 		return fmt.Errorf("receipt handle required")
@@ -218,4 +217,25 @@ func (q *NATSQueue) ExtendVisibilityBatch(ctx context.Context, receiptHandles []
 		}
 	}
 	return succeeded, failed, err
+}
+
+// RetryLater negatively acknowledges the message associated with receiptHandle
+// and asks JetStream to redeliver it after delay.
+func (q *NATSQueue) RetryLater(_ context.Context, receiptHandle string, delay time.Duration) error {
+	if receiptHandle == "" {
+		return fmt.Errorf("receipt handle required")
+	}
+	v, ok := q.pending.Load(receiptHandle)
+	if !ok {
+		return fmt.Errorf("nats: unknown receipt handle %q", receiptHandle)
+	}
+	if delay < 0 {
+		delay = 0
+	}
+	msg := v.(*nats.Msg)
+	if err := msg.NakWithDelay(delay); err != nil {
+		return fmt.Errorf("nats: retry later for receipt %s: %w", receiptHandle, err)
+	}
+	q.pending.Delete(receiptHandle)
+	return nil
 }

@@ -16,8 +16,12 @@ type MockQueue struct {
 	messages        []QueueMessage
 	deleted         []string
 	extendedHandles []string
+	retryHandles    []string
+	retryDelays     []time.Duration
 	extendErrors    []error
 	extendCalls     int
+	retryErrors     []error
+	retryCalls      int
 	enqueuedMsgs    []JobMessage
 	receiveDelay    time.Duration
 	receiveCalls    int32
@@ -96,6 +100,20 @@ func (m *MockQueue) ExtendVisibilityBatch(ctx context.Context, receiptHandles []
 	defer m.mu.Unlock()
 	m.extendedHandles = append(m.extendedHandles, receiptHandles...)
 	return len(receiptHandles), 0, nil
+}
+
+func (m *MockQueue) RetryLater(ctx context.Context, receiptHandle string, delay time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.retryCalls++
+	m.retryHandles = append(m.retryHandles, receiptHandle)
+	m.retryDelays = append(m.retryDelays, delay)
+	if len(m.retryErrors) > 0 {
+		err := m.retryErrors[0]
+		m.retryErrors = m.retryErrors[1:]
+		return err
+	}
+	return nil
 }
 
 func (m *MockQueue) AddMessage(jobID string) {
@@ -697,6 +715,60 @@ func TestPanicRecovery(t *testing.T) {
 	}
 
 	cancel()
+}
+
+func TestRetryableFailureSchedulesDelayedRedelivery(t *testing.T) {
+	queue := &MockQueue{}
+	store := NewMockStore()
+	registry := NewJobRegistry()
+	registry.Register(JobTypeInspectResource, func(ctx context.Context, payload string) (string, error) {
+		return "", errors.New("retry me")
+	})
+
+	store.AddJob(&Job{
+		ID:          "retry-job",
+		Type:        JobTypeInspectResource,
+		Status:      StatusQueued,
+		Payload:     "{}",
+		MaxAttempts: 3,
+	})
+
+	worker := NewWorker(queue, store, registry, WorkerOptions{
+		Concurrency:    1,
+		RetryBaseDelay: 2 * time.Second,
+		RetryMaxDelay:  30 * time.Second,
+	})
+
+	body, _ := json.Marshal(JobMessage{JobID: "retry-job"})
+	msg := QueueMessage{
+		ID:            "msg-retry",
+		ReceiptHandle: "receipt-retry",
+		Body:          string(body),
+	}
+
+	worker.processMessage(context.Background(), msg)
+
+	store.mu.Lock()
+	job := store.jobs["retry-job"]
+	store.mu.Unlock()
+	if job.Status != StatusQueued {
+		t.Fatalf("expected job to be re-queued, got %s", job.Status)
+	}
+
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	if queue.retryCalls != 1 {
+		t.Fatalf("expected one delayed retry call, got %d", queue.retryCalls)
+	}
+	if len(queue.retryHandles) != 1 || queue.retryHandles[0] != "receipt-retry" {
+		t.Fatalf("unexpected retry handles: %#v", queue.retryHandles)
+	}
+	if len(queue.retryDelays) != 1 || queue.retryDelays[0] != 2*time.Second {
+		t.Fatalf("unexpected retry delays: %#v", queue.retryDelays)
+	}
+	if queue.extendCalls != 0 {
+		t.Fatalf("expected retry scheduling to avoid heartbeat extension path, got %d extend calls", queue.extendCalls)
+	}
 }
 
 func TestIdempotencyStore(t *testing.T) {

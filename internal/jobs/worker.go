@@ -705,8 +705,7 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 		return
 	}
 
-	// Retryable failure - use SQS visibility timeout for backoff
-	// Calculate delay and extend visibility so message reappears after delay
+	// Retryable failure - schedule redelivery after a backoff delay.
 	_ = w.idempotency.MarkFailed(ctx, idempotencyKey)
 
 	if err := w.store.RetryJobOwned(ctx, job.ID, w.workerID, job.Attempt, errMsg); err != nil {
@@ -721,10 +720,8 @@ func (w *Worker) handleJobFailure(ctx context.Context, job *Job, receiptHandle s
 		return
 	}
 
-	// Use ChangeMessageVisibility to implement backoff delay
-	// Message will become visible again after the delay
 	delay := w.calculateBackoff(job.Attempt)
-	if err := w.queue.ExtendVisibility(ctx, receiptHandle, delay); err != nil {
+	if err := w.queue.RetryLater(ctx, receiptHandle, delay); err != nil {
 		w.logError("failed to set retry delay", err,
 			"job_id", job.ID,
 			"delay", delay,

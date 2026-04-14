@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,10 +21,13 @@ import (
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/scanner"
+	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/ticketing"
 	"github.com/writer/cerebro/internal/warehouse"
 	"github.com/writer/cerebro/internal/webhooks"
 )
+
+var openPostgresDB = sql.Open
 
 func (a *App) initPostgres(ctx context.Context) error {
 	if a.Config.DatabaseURL == "" {
@@ -30,7 +35,7 @@ func (a *App) initPostgres(ctx context.Context) error {
 		return nil
 	}
 
-	db, err := sql.Open("pgx", a.Config.DatabaseURL)
+	db, err := openPostgresDB("pgx", a.Config.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
@@ -47,7 +52,6 @@ func (a *App) initPostgres(ctx context.Context) error {
 
 	a.PostgresDB = db
 	a.PostgresClient = postgres.NewPostgresClient(db, postgres.AssetSchemaName, postgres.SchemaName)
-	a.Warehouse = a.PostgresClient
 
 	// Bootstrap schema and tables
 	if err := a.PostgresClient.Bootstrap(ctx); err != nil {
@@ -57,14 +61,44 @@ func (a *App) initPostgres(ctx context.Context) error {
 	return nil
 }
 
+func (a *App) initSnowflake(ctx context.Context) error {
+	if a.Config.SnowflakePrivateKey == "" || a.Config.SnowflakeAccount == "" || a.Config.SnowflakeUser == "" {
+		return fmt.Errorf("snowflake not configured: set SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
+	}
+
+	client, err := snowflake.NewClient(snowflake.ClientConfig{
+		Account:    a.Config.SnowflakeAccount,
+		User:       a.Config.SnowflakeUser,
+		PrivateKey: a.Config.SnowflakePrivateKey,
+		Database:   a.Config.SnowflakeDatabase,
+		Schema:     a.Config.SnowflakeSchema,
+		Warehouse:  a.Config.SnowflakeWarehouse,
+		Role:       a.Config.SnowflakeRole,
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := client.Ping(ctx); err != nil {
+		_ = client.Close()
+		return err
+	}
+
+	a.Snowflake = client
+	a.Warehouse = client
+	return nil
+}
+
 func (a *App) initWarehouse(ctx context.Context) error {
 	switch strings.ToLower(strings.TrimSpace(a.Config.WarehouseBackend)) {
+	case "", "snowflake":
+		return a.initSnowflake(ctx)
 	case "sqlite":
 		return a.initSQLiteWarehouse(ctx)
 	case "postgres":
 		return a.initPostgresWarehouse(ctx)
 	default:
-		return a.initSQLiteWarehouse(ctx)
+		return fmt.Errorf("unsupported warehouse backend %q", a.Config.WarehouseBackend)
 	}
 }
 
@@ -132,9 +166,18 @@ func (a *App) initFindings() {
 		return
 	}
 
-	// Fall back to in-memory store when no database is available
-	a.Findings = a.newInMemoryFindingsStore()
+	dbPath := resolveLocalFindingsSQLitePath()
+	store, err := findings.NewSQLiteStore(dbPath)
+	if err != nil {
+		a.Logger.Warn("failed to initialize sqlite findings store, falling back to in-memory", "error", err, "path", dbPath)
+		a.Findings = a.newInMemoryFindingsStore()
+		a.configureFindingAttestation()
+		return
+	}
+	store.SetSemanticDedup(a.Config.FindingsSemanticDedupEnabled)
+	a.Findings = store
 	a.configureFindingAttestation()
+	a.Logger.Info("using sqlite findings store", "path", dbPath)
 }
 
 func (a *App) newInMemoryFindingsStore() *findings.Store {
@@ -160,6 +203,13 @@ func (a *App) newInMemoryFindingsStore() *findings.Store {
 		)
 	}
 	return store
+}
+
+func resolveLocalFindingsSQLitePath() string {
+	if path := strings.TrimSpace(os.Getenv("CEREBRO_DB_PATH")); path != "" {
+		return path
+	}
+	return filepath.Join(filepath.Dir(findings.DefaultFilePath()), "cerebro.db")
 }
 
 func (a *App) configureFindingAttestation() {

@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -239,7 +238,7 @@ func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 		return fmt.Errorf("postgres rotation requires DATABASE_URL")
 	}
 
-	newDB, err := sql.Open("pgx", cfg.DatabaseURL)
+	newDB, err := openPostgresDB("pgx", cfg.DatabaseURL)
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
@@ -257,7 +256,6 @@ func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 	oldDB := a.PostgresDB
 	a.PostgresDB = newDB
 	a.PostgresClient = newClient
-	a.Warehouse = newClient
 	a.initRepositories()
 
 	if a.ScanWatermarks != nil {

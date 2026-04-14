@@ -16,9 +16,10 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/postgres"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
-func TestInitFindings_UsesPostgresStoreWhenDBAvailable(t *testing.T) {
+func TestInitFindings_FallsBackToSQLiteWhenPostgresDBMissing(t *testing.T) {
 	// Use a nil *sql.DB to verify wiring without a real Postgres connection
 	db := (*sql.DB)(nil)
 	pgClient := postgres.NewPostgresClient(db, "raw", "cerebro")
@@ -33,13 +34,14 @@ func TestInitFindings_UsesPostgresStoreWhenDBAvailable(t *testing.T) {
 	// initFindings checks PostgresDB != nil
 	// We need a real non-nil *sql.DB for the check, so let's test the nil fallback instead
 	a.PostgresDB = nil
+	t.Setenv("CEREBRO_DB_PATH", filepath.Join(t.TempDir(), "findings.db"))
 	a.initFindings()
 
 	if a.PostgresFindings != nil {
 		t.Fatal("expected no postgres findings store when PostgresDB is nil")
 	}
-	if _, ok := a.Findings.(*findings.Store); !ok {
-		t.Fatalf("expected in-memory findings store fallback, got %T", a.Findings)
+	if _, ok := a.Findings.(*findings.SQLiteStore); !ok {
+		t.Fatalf("expected sqlite findings store fallback, got %T", a.Findings)
 	}
 }
 
@@ -136,7 +138,81 @@ func TestInitWarehouse_UsesSQLiteBackend(t *testing.T) {
 	}
 }
 
-func TestInitFindings_UsesInMemoryStoreWithoutPostgres(t *testing.T) {
+func TestInitWarehouse_SnowflakeBackendWithoutCredentialsErrors(t *testing.T) {
+	a := &App{
+		Config: &Config{
+			WarehouseBackend: "snowflake",
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	err := a.initWarehouse(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "snowflake not configured") {
+		t.Fatalf("expected missing snowflake credentials error, got %v", err)
+	}
+}
+
+func TestInitPostgresDoesNotOverrideWarehouseSelection(t *testing.T) {
+	originalOpen := openPostgresDB
+	openPostgresDB = func(string, string) (*sql.DB, error) {
+		return sql.Open("sqlite", ":memory:")
+	}
+	t.Cleanup(func() { openPostgresDB = originalOpen })
+
+	a := &App{
+		Config: &Config{DatabaseURL: "postgres://example"},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	if err := a.initPostgres(context.Background()); err != nil {
+		t.Fatalf("initPostgres() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if a.PostgresDB != nil {
+			_ = a.PostgresDB.Close()
+		}
+	})
+
+	if a.PostgresClient == nil {
+		t.Fatal("expected postgres client to be initialized")
+	}
+	if a.Warehouse != nil {
+		t.Fatalf("expected initPostgres to leave warehouse selection unchanged, got %T", a.Warehouse)
+	}
+}
+
+func TestRotatePostgresClientPreservesWarehouseSelection(t *testing.T) {
+	originalOpen := openPostgresDB
+	openPostgresDB = func(string, string) (*sql.DB, error) {
+		return sql.Open("sqlite", ":memory:")
+	}
+	t.Cleanup(func() { openPostgresDB = originalOpen })
+
+	existingWarehouse := &warehouse.MemoryWarehouse{}
+	a := &App{
+		Config:    &Config{DatabaseURL: "postgres://old"},
+		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse: existingWarehouse,
+	}
+
+	if err := a.rotatePostgresClient(context.Background(), &Config{DatabaseURL: "postgres://new"}); err != nil {
+		t.Fatalf("rotatePostgresClient() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if a.PostgresDB != nil {
+			_ = a.PostgresDB.Close()
+		}
+	})
+
+	if a.PostgresClient == nil {
+		t.Fatal("expected rotated postgres client to be initialized")
+	}
+	if a.Warehouse != existingWarehouse {
+		t.Fatalf("expected rotatePostgresClient to preserve warehouse selection, got %T", a.Warehouse)
+	}
+}
+
+func TestInitFindings_UsesSQLiteStoreWithoutPostgres(t *testing.T) {
 	a := &App{
 		Config: &Config{
 			WarehouseBackend:    "sqlite",
@@ -147,11 +223,15 @@ func TestInitFindings_UsesInMemoryStoreWithoutPostgres(t *testing.T) {
 	if err := a.initWarehouse(context.Background()); err != nil {
 		t.Fatalf("init warehouse: %v", err)
 	}
+	t.Setenv("CEREBRO_DB_PATH", filepath.Join(t.TempDir(), "findings.db"))
 
 	a.initFindings()
 
-	if _, ok := a.Findings.(*findings.Store); !ok {
-		t.Fatalf("expected in-memory findings store without postgres, got %T", a.Findings)
+	if _, ok := a.Findings.(*findings.SQLiteStore); !ok {
+		t.Fatalf("expected sqlite findings store without postgres, got %T", a.Findings)
+	}
+	if a.PostgresFindings != nil {
+		t.Fatal("expected no postgres findings store without postgres database")
 	}
 }
 

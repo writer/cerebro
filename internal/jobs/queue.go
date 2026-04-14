@@ -22,6 +22,7 @@ type Queue interface {
 	DeleteBatch(ctx context.Context, receiptHandles []string) (succeeded int, failed []string, err error)
 	ExtendVisibility(ctx context.Context, receiptHandle string, timeout time.Duration) error
 	ExtendVisibilityBatch(ctx context.Context, receiptHandles []string, timeout time.Duration) (succeeded int, failed int, err error)
+	RetryLater(ctx context.Context, receiptHandle string, delay time.Duration) error
 }
 
 // TerminalQueueError is an interface that queue implementations can use to
