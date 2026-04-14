@@ -21,7 +21,7 @@ import (
 
 func (s *Server) detectStaleAccess(w http.ResponseWriter, r *http.Request) {
 	if s.app.Warehouse == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		s.error(w, http.StatusServiceUnavailable, "warehouse not configured")
 		return
 	}
 
