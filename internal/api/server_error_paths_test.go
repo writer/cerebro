@@ -34,9 +34,9 @@ func TestThreatIntelEndpoints_Return503WhenServiceMissing(t *testing.T) {
 	}
 }
 
-func TestScanCoverage_Return503WithoutSnowflake(t *testing.T) {
+func TestScanCoverage_Return503WithoutWarehouse(t *testing.T) {
 	a := newTestApp(t)
-	a.Snowflake = nil
+	a.Warehouse = nil
 	s := NewServer(a)
 
 	w := do(t, s, http.MethodGet, "/api/v1/scan/coverage", nil)

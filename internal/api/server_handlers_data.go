@@ -137,7 +137,7 @@ func parseLastSyncValue(value interface{}) time.Time {
 
 func (s *Server) listTables(w http.ResponseWriter, r *http.Request) {
 	if s.app.Warehouse == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		s.error(w, http.StatusServiceUnavailable, "warehouse not configured")
 		return
 	}
 	pagination := ParsePagination(r, 100, 1000)
@@ -160,7 +160,7 @@ func (s *Server) listTables(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 	if s.app.Warehouse == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		s.error(w, http.StatusServiceUnavailable, "warehouse not configured")
 		return
 	}
 
@@ -201,7 +201,7 @@ func (s *Server) executeQuery(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listAssets(w http.ResponseWriter, r *http.Request) {
 	if s.app.Warehouse == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		s.error(w, http.StatusServiceUnavailable, "warehouse not configured")
 		return
 	}
 
@@ -222,7 +222,7 @@ func (s *Server) listAssets(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getAsset(w http.ResponseWriter, r *http.Request) {
 	if s.app.Warehouse == nil {
-		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
+		s.error(w, http.StatusServiceUnavailable, "warehouse not configured")
 		return
 	}
 

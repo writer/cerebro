@@ -3,7 +3,6 @@ package providers
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,37 +12,38 @@ import (
 
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/snowflake/tableops"
+	"github.com/writer/cerebro/internal/warehouse"
 )
 
 const providerInsertBatchSize = 200
 
-type providerSnowflakeClient interface {
-	Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	Query(ctx context.Context, query string, args ...interface{}) (*snowflake.QueryResult, error)
+type providerWarehouseClient interface {
+	warehouse.ExecWarehouse
+	warehouse.QueryWarehouse
 }
 
-func (b *BaseProvider) SetSnowflakeClient(client *snowflake.Client) {
+func (b *BaseProvider) SetWarehouse(store warehouse.DataWarehouse) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.snowflake = client
+	b.warehouse = store
 }
 
-func (b *BaseProvider) getSnowflakeClient() *snowflake.Client {
+func (b *BaseProvider) getWarehouse() warehouse.DataWarehouse {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return b.snowflake
+	return b.warehouse
 }
 
 func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows []map[string]interface{}) (*TableResult, error) {
 	result := &TableResult{Name: schema.Name, Rows: int64(len(rows))}
-	sf := b.getSnowflakeClient()
-	if sf == nil {
+	store := b.getWarehouse()
+	if store == nil {
 		result.Inserted = result.Rows
 		return result, nil
 	}
 
 	columns := schemaColumnNames(schema.Columns)
-	if err := ensureProviderTable(ctx, sf, schema.Name, columns); err != nil {
+	if err := ensureProviderTable(ctx, store, schema.Name, columns); err != nil {
 		return result, err
 	}
 
@@ -52,15 +52,15 @@ func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows [
 		result.Rows = int64(len(prepared))
 	}
 
-	existingIDs, err := listProviderExistingIDs(ctx, sf, schema.Name)
+	existingIDs, err := listProviderExistingIDs(ctx, store, schema.Name)
 	if err != nil {
 		return result, err
 	}
 
 	newIDs := providerRowIDSet(prepared)
 
-	// Atomic upsert via MERGE - no delete-before-insert window.
-	if err := mergeProviderRows(ctx, sf, schema.Name, prepared); err != nil {
+	// Atomic upsert via dialect-specific merge/upsert; no delete-before-insert window.
+	if err := mergeProviderRows(ctx, store, schema.Name, prepared); err != nil {
 		return result, err
 	}
 
@@ -70,7 +70,7 @@ func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows [
 			removedIDs[id] = struct{}{}
 		}
 	}
-	if err := deleteProviderRowsByID(ctx, sf, schema.Name, removedIDs); err != nil {
+	if err := deleteProviderRowsByID(ctx, store, schema.Name, removedIDs); err != nil {
 		return result, err
 	}
 
@@ -88,8 +88,8 @@ func schemaColumnNames(columns []ColumnSchema) []string {
 	return names
 }
 
-func ensureProviderTable(ctx context.Context, sf providerSnowflakeClient, table string, columns []string) error {
-	err := tableops.EnsureVariantTable(ctx, sf, table, columns, tableops.EnsureVariantTableOptions{
+func ensureProviderTable(ctx context.Context, store providerWarehouseClient, table string, columns []string) error {
+	err := tableops.EnsureVariantTable(ctx, store, table, columns, tableops.EnsureVariantTableOptions{
 		AddMissingColumns: true,
 	})
 	if err == nil {
@@ -101,13 +101,13 @@ func ensureProviderTable(ctx context.Context, sf providerSnowflakeClient, table 
 	return err
 }
 
-func listProviderExistingIDs(ctx context.Context, sf providerSnowflakeClient, table string) (map[string]struct{}, error) {
+func listProviderExistingIDs(ctx context.Context, store providerWarehouseClient, table string) (map[string]struct{}, error) {
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return nil, fmt.Errorf("invalid table name %s: %w", table, err)
 	}
 
 	query := fmt.Sprintf("SELECT _CQ_ID FROM %s", table)
-	result, err := sf.Query(ctx, query)
+	result, err := store.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("list existing provider rows: %w", err)
 	}
@@ -137,7 +137,7 @@ func providerRowIDSet(rows []map[string]interface{}) map[string]struct{} {
 	return ids
 }
 
-func deleteProviderRowsByID(ctx context.Context, sf providerSnowflakeClient, table string, ids map[string]struct{}) error {
+func deleteProviderRowsByID(ctx context.Context, store providerWarehouseClient, table string, ids map[string]struct{}) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -164,13 +164,13 @@ func deleteProviderRowsByID(ctx context.Context, sf providerSnowflakeClient, tab
 		}
 
 		batch := keys[start:end]
-		placeholders := strings.TrimRight(strings.Repeat("?,", len(batch)), ",")
+		placeholders := strings.Join(warehouse.Placeholders(store, 1, len(batch)), ",")
 		args := make([]interface{}, 0, len(batch))
 		for _, id := range batch {
 			args = append(args, id)
 		}
 		query := fmt.Sprintf("DELETE FROM %s WHERE _CQ_ID IN (%s)", table, placeholders)
-		if _, err := sf.Exec(ctx, query, args...); err != nil {
+		if _, err := store.Exec(ctx, query, args...); err != nil {
 			return fmt.Errorf("delete provider rows by id: %w", err)
 		}
 	}
@@ -296,8 +296,8 @@ func formatProviderIDValue(value interface{}) string {
 	}
 }
 
-func mergeProviderRows(ctx context.Context, sf providerSnowflakeClient, table string, rows []map[string]interface{}) error {
-	return tableops.MergeVariantRowsBatch(ctx, sf, table, rows, nil, providerInsertBatchSize)
+func mergeProviderRows(ctx context.Context, store providerWarehouseClient, table string, rows []map[string]interface{}) error {
+	return tableops.MergeVariantRowsBatch(ctx, store, table, rows, nil, providerInsertBatchSize)
 }
 
 func hashProviderRow(row map[string]interface{}) string {
