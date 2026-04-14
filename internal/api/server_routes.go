@@ -71,7 +71,9 @@ func (s *Server) setupRoutes() {
 	s.router.Get("/.well-known/oauth-protected-resource", s.agentSDKProtectedResourceMetadata)
 
 	s.router.Route("/api/v1", func(r chi.Router) {
-		// Query endpoints
+		// Query endpoints. For endpoint inventory + vulnerability correlation the
+		// typical flow is: sync providers under /providers, discover tables here,
+		// then use /query for joins and /assets/{table} for spot checks.
 		r.Get("/tables", s.listTables)
 		r.Post("/query", s.executeQuery)
 		r.Get("/status/freshness", s.statusFreshness)
@@ -206,7 +208,8 @@ func (s *Server) setupRoutes() {
 		})
 		r.Post("/impact-analysis", s.impactAnalysis)
 
-		// Provider endpoints
+		// Provider endpoints expose the control plane for materializing endpoint
+		// inventory, application, and vulnerability rows before querying them.
 		r.Route("/providers", func(r chi.Router) {
 			r.Get("/", s.listProviders)
 			r.Get("/{name}", s.getProvider)

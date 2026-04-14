@@ -11,7 +11,17 @@ import (
 	"github.com/writer/cerebro/internal/providers"
 )
 
-// Provider endpoints
+// Provider endpoints.
+//
+// Endpoint software/CVE workflows generally use this control plane first:
+//   1. POST /api/v1/providers/{name}/sync to materialize provider rows
+//   2. GET /api/v1/providers/{name}/schema to discover table names and columns
+//   3. POST /api/v1/query (or GET /api/v1/assets/{table} for spot checks) to
+//      join device/agent, application, and vulnerability tables
+//
+// Today the provider layer preserves provider-native software names and versions.
+// That keeps ingest lossless, but cross-provider patch-target correlation usually
+// needs an extra normalization step above these endpoints.
 
 func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 	providerList := s.app.Providers.List()

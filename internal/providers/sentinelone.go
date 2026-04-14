@@ -42,6 +42,16 @@ func (s *SentinelOneProvider) Test(ctx context.Context) error {
 }
 
 func (s *SentinelOneProvider) Schema() []TableSchema {
+	// Endpoint software/CVE correlation in SentinelOne typically uses:
+	//   - sentinelone_agents: canonical endpoint rows keyed by id
+	//   - sentinelone_applications: installed application inventory keyed by agent_id
+	//   - sentinelone_vulnerabilities: provider-reported CVEs keyed by agent_id
+	//
+	// A patch-target query usually joins sentinelone_agents -> sentinelone_applications
+	// on id/agent_id, then joins sentinelone_vulnerabilities on agent_id and
+	// matches application_name/application_version back to the installed app row.
+	// Names are intentionally preserved from the provider API, so cross-provider
+	// deduplication may require additional normalization.
 	return []TableSchema{
 		{
 			Name:        "sentinelone_agents",
@@ -336,6 +346,9 @@ func (s *SentinelOneProvider) syncApplications(ctx context.Context) (*TableResul
 		return result, err
 	}
 
+	// Installed applications are synced independently from vulnerability rows so
+	// callers can choose how to reconcile provider-native names, versions, and
+	// publishers when building patching and exposure reports.
 	applications, err := s.listCollection(ctx, "/web/api/v2.1/installed-applications?limit=1000", "")
 	if err != nil {
 		return result, err
@@ -364,6 +377,9 @@ func (s *SentinelOneProvider) syncVulnerabilities(ctx context.Context) (*TableRe
 		return result, err
 	}
 
+	// Vulnerabilities are preserved as reported so downstream queries can decide
+	// whether to trust SentinelOne's application linkage directly or normalize it
+	// against sentinelone_applications for stricter patch-target correlation.
 	vulnerabilities, err := s.listCollection(ctx, "/web/api/v2.1/vulnerabilities?limit=1000", "")
 	if err != nil {
 		return result, err

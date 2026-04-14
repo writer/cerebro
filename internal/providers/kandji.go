@@ -50,6 +50,17 @@ func (k *KandjiProvider) Test(ctx context.Context) error {
 }
 
 func (k *KandjiProvider) Schema() []TableSchema {
+	// Endpoint app/CVE correlation in Kandji is provider-native and starts from
+	// these tables:
+	//   - kandji_devices: canonical endpoint rows keyed by device_id
+	//   - kandji_device_apps: installed application inventory keyed by device_id
+	//   - kandji_vulnerabilities: CVE detections keyed by cve_id + device_id
+	//
+	// A patch-target query typically joins kandji_devices -> kandji_device_apps
+	// on device_id, then maps kandji_vulnerabilities back onto the same device_id
+	// using software_name/software_version. software_* fields are preserved from
+	// the Kandji API, so cross-provider joins usually need an extra normalization
+	// layer for name/version matching.
 	return []TableSchema{
 		{
 			Name:        "kandji_devices",
@@ -365,6 +376,9 @@ func (k *KandjiProvider) syncVulnerabilities(ctx context.Context) (*TableResult,
 		return result, err
 	}
 
+	// Kandji exposes vulnerability detections separately from app inventory. We
+	// keep both datasets as-is so callers can decide how strict software name and
+	// version matching should be when building patch-target views.
 	detections, err := k.listAllResults(ctx, "/vulnerability-management/detections?size=300")
 	if err != nil {
 		if isKandjiIgnorableError(err) {

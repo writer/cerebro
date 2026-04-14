@@ -132,7 +132,16 @@ func parseLastSyncValue(value interface{}) time.Time {
 	return time.Time{}
 }
 
-// Query endpoints
+// Query endpoints.
+//
+// For endpoint patching/vulnerability flows, POST /api/v1/query is the main
+// data-plane surface after provider sync has materialized rows. Typical joins:
+//   - Kandji: kandji_devices -> kandji_device_apps -> kandji_vulnerabilities
+//   - SentinelOne: sentinelone_agents -> sentinelone_applications -> sentinelone_vulnerabilities
+//
+// GET /api/v1/tables helps discover which provider tables are present, while
+// GET /api/v1/assets/{table} is better for small spot checks than for multi-table
+// correlation work.
 
 func (s *Server) listTables(w http.ResponseWriter, r *http.Request) {
 	if s.app.Warehouse == nil {
