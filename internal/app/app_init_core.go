@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -148,9 +150,18 @@ func (a *App) initFindings() {
 		return
 	}
 
-	// Fall back to in-memory store when no database is available
-	a.Findings = a.newInMemoryFindingsStore()
+	dbPath := resolveLocalFindingsSQLitePath()
+	store, err := findings.NewSQLiteStore(dbPath)
+	if err != nil {
+		a.Logger.Warn("failed to initialize sqlite findings store, falling back to in-memory", "error", err)
+		a.Findings = a.newInMemoryFindingsStore()
+		a.configureFindingAttestation()
+		return
+	}
+	store.SetSemanticDedup(a.Config.FindingsSemanticDedupEnabled)
+	a.Findings = store
 	a.configureFindingAttestation()
+	a.Logger.Info("using sqlite findings store", "path", dbPath)
 }
 
 func (a *App) newInMemoryFindingsStore() *findings.Store {
@@ -176,6 +187,13 @@ func (a *App) newInMemoryFindingsStore() *findings.Store {
 		)
 	}
 	return store
+}
+
+func resolveLocalFindingsSQLitePath() string {
+	if path := strings.TrimSpace(os.Getenv("CEREBRO_DB_PATH")); path != "" {
+		return path
+	}
+	return filepath.Join(filepath.Dir(findings.DefaultFilePath()), "cerebro.db")
 }
 
 func (a *App) configureFindingAttestation() {

@@ -296,7 +296,7 @@ Total variables: **387**
 | `QUALYS_PASSWORD` | `getEnv` | `""` | `QualysPassword` | `-` |
 | `QUALYS_PLATFORM` | `getEnv` | `"US1"` | `QualysPlatform` | `-` |
 | `QUALYS_USERNAME` | `getEnv` | `""` | `QualysUsername` | `-` |
-| `QUERY_POLICY_ROW_LIMIT` | `getEnvInt` | `snowflake.MaxReadOnlyQueryLimit` | `QueryPolicyRowLimit` | `must be greater than 0` |
+| `QUERY_POLICY_ROW_LIMIT` | `getEnvInt` | `warehouse.MaxReadOnlyQueryLimit` | `QueryPolicyRowLimit` | `must be greater than 0` |
 | `RAMP_API_URL` | `getEnv` | `"https://api.ramp.com/developer/v1"` | `RampAPIURL` | `-` |
 | `RAMP_CLIENT_ID` | `getEnv` | `""` | `RampClientID` | `-` |
 | `RAMP_CLIENT_SECRET` | `getEnv` | `""` | `RampClientSecret` | `-` |

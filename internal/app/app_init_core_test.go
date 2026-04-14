@@ -18,8 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/postgres"
 )
 
-func TestInitFindings_UsesPostgresStoreWhenDBAvailable(t *testing.T) {
-	// Use a nil *sql.DB to verify wiring without a real Postgres connection
+func TestInitFindings_UsesSQLiteStoreWhenPostgresUnavailable(t *testing.T) {
 	db := (*sql.DB)(nil)
 	pgClient := postgres.NewPostgresClient(db, "raw", "cerebro")
 	a := &App{
@@ -28,18 +27,16 @@ func TestInitFindings_UsesPostgresStoreWhenDBAvailable(t *testing.T) {
 		PostgresDB:     db,
 		PostgresClient: pgClient,
 	}
+	t.Setenv("CEREBRO_DB_PATH", filepath.Join(t.TempDir(), "findings.db"))
 
-	// Force PostgresDB to be non-nil for the test (even though *sql.DB is nil internally)
-	// initFindings checks PostgresDB != nil
-	// We need a real non-nil *sql.DB for the check, so let's test the nil fallback instead
 	a.PostgresDB = nil
 	a.initFindings()
 
 	if a.PostgresFindings != nil {
 		t.Fatal("expected no postgres findings store when PostgresDB is nil")
 	}
-	if _, ok := a.Findings.(*findings.Store); !ok {
-		t.Fatalf("expected in-memory findings store fallback, got %T", a.Findings)
+	if _, ok := a.Findings.(*findings.SQLiteStore); !ok {
+		t.Fatalf("expected sqlite findings store fallback, got %T", a.Findings)
 	}
 }
 
@@ -136,7 +133,7 @@ func TestInitWarehouse_UsesSQLiteBackend(t *testing.T) {
 	}
 }
 
-func TestInitFindings_UsesInMemoryStoreWithoutPostgres(t *testing.T) {
+func TestInitFindings_UsesSQLiteStoreWithoutPostgres(t *testing.T) {
 	a := &App{
 		Config: &Config{
 			WarehouseBackend:    "sqlite",
@@ -147,11 +144,26 @@ func TestInitFindings_UsesInMemoryStoreWithoutPostgres(t *testing.T) {
 	if err := a.initWarehouse(context.Background()); err != nil {
 		t.Fatalf("init warehouse: %v", err)
 	}
+	t.Setenv("CEREBRO_DB_PATH", filepath.Join(t.TempDir(), "findings.db"))
+
+	a.initFindings()
+
+	if _, ok := a.Findings.(*findings.SQLiteStore); !ok {
+		t.Fatalf("expected sqlite findings store without postgres, got %T", a.Findings)
+	}
+}
+
+func TestInitFindings_FallsBackToInMemoryWhenSQLiteUnavailable(t *testing.T) {
+	a := &App{
+		Config: &Config{},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	t.Setenv("CEREBRO_DB_PATH", t.TempDir())
 
 	a.initFindings()
 
 	if _, ok := a.Findings.(*findings.Store); !ok {
-		t.Fatalf("expected in-memory findings store without postgres, got %T", a.Findings)
+		t.Fatalf("expected in-memory findings store fallback, got %T", a.Findings)
 	}
 }
 
