@@ -159,6 +159,63 @@ func (r *FindingRepository) List(ctx context.Context, filter FindingFilter) ([]*
 	return findings, nil
 }
 
+func (r *FindingRepository) ListAll(ctx context.Context) ([]*FindingRecord, error) {
+	findingsTable, err := SafeQualifiedTableRef(r.schema, "findings")
+	if err != nil {
+		return nil, fmt.Errorf("invalid findings table reference: %w", err)
+	}
+
+	// #nosec G202 -- findingsTable is validated via SafeQualifiedTableRef.
+	rows, err := r.client.db.QueryContext(ctx, `
+		SELECT id, policy_id, policy_name, severity, status,
+			   resource_id, resource_type, resource_data, description,
+			   remediation, metadata, first_seen, last_seen, resolved_at
+		FROM `+findingsTable+`
+		ORDER BY last_seen DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	records := make([]*FindingRecord, 0)
+	for rows.Next() {
+		record := &FindingRecord{}
+		var resourceData []byte
+		var metadataData []byte
+		var remediation sql.NullString
+		if err := rows.Scan(
+			&record.ID,
+			&record.PolicyID,
+			&record.PolicyName,
+			&record.Severity,
+			&record.Status,
+			&record.ResourceID,
+			&record.ResourceType,
+			&resourceData,
+			&record.Description,
+			&remediation,
+			&metadataData,
+			&record.FirstSeen,
+			&record.LastSeen,
+			&record.ResolvedAt,
+		); err != nil {
+			return nil, err
+		}
+		if remediation.Valid {
+			record.Remediation = remediation.String
+		}
+		if len(metadataData) > 0 {
+			record.Metadata = metadataData
+		}
+		if len(resourceData) > 0 {
+			_ = json.Unmarshal(resourceData, &record.ResourceData)
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
+}
+
 func (r *FindingRepository) UpdateStatus(ctx context.Context, id, status string) error {
 	normalized := strings.ToUpper(status)
 	findingsTable, err := SafeQualifiedTableRef(r.schema, "findings")
@@ -294,6 +351,7 @@ func NewAuditRepository(client *Client) *AuditRepository {
 
 type AuditEntry struct {
 	ID           string                 `json:"id"`
+	Timestamp    time.Time              `json:"timestamp,omitempty"`
 	Action       string                 `json:"action"`
 	ActorID      string                 `json:"actor_id"`
 	ActorType    string                 `json:"actor_type"`
@@ -308,6 +366,9 @@ func (r *AuditRepository) Log(ctx context.Context, entry *AuditEntry) error {
 	if entry.ID == "" {
 		entry.ID = uuid.New().String()
 	}
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = time.Now().UTC()
+	}
 
 	detailsJSON, _ := json.Marshal(entry.Details)
 	auditTable, err := SafeQualifiedTableRef(r.schema, "audit_log")
@@ -318,13 +379,13 @@ func (r *AuditRepository) Log(ctx context.Context, entry *AuditEntry) error {
 	// #nosec G202 -- auditTable is validated via SafeQualifiedTableRef.
 	query := `
 		INSERT INTO ` + auditTable + ` (
-			id, action, actor_id, actor_type, resource_type,
+			id, timestamp, action, actor_id, actor_type, resource_type,
 			resource_id, details, ip_address, user_agent
-		) VALUES (?, ?, ?, ?, ?, ?, PARSE_JSON(?), ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, PARSE_JSON(?), ?, ?)
 	`
 
 	_, err = r.client.db.ExecContext(ctx, query,
-		entry.ID, entry.Action, entry.ActorID, entry.ActorType, entry.ResourceType,
+		entry.ID, entry.Timestamp.UTC(), entry.Action, entry.ActorID, entry.ActorType, entry.ResourceType,
 		entry.ResourceID, string(detailsJSON), entry.IPAddress, entry.UserAgent,
 	)
 	return err
@@ -372,10 +433,56 @@ func (r *AuditRepository) List(ctx context.Context, resourceType, resourceID str
 			&e.ResourceType, &e.ResourceID, &e.IPAddress, &ts); err != nil {
 			continue
 		}
-		_ = ts // timestamp available for future use
+		e.Timestamp = ts.UTC()
 		entries = append(entries, &e)
 	}
 	return entries, nil
+}
+
+func (r *AuditRepository) ListAll(ctx context.Context) ([]*AuditEntry, error) {
+	auditTable, err := SafeQualifiedTableRef(r.schema, "audit_log")
+	if err != nil {
+		return nil, fmt.Errorf("invalid audit_log table reference: %w", err)
+	}
+
+	// #nosec G202 -- auditTable is validated via SafeQualifiedTableRef.
+	rows, err := r.client.db.QueryContext(ctx, `
+		SELECT id, timestamp, action, actor_id, actor_type, resource_type, resource_id, details, ip_address, user_agent
+		FROM `+auditTable+`
+		ORDER BY timestamp DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	entries := make([]*AuditEntry, 0)
+	for rows.Next() {
+		entry := &AuditEntry{}
+		var detailsRaw any
+		if err := rows.Scan(
+			&entry.ID,
+			&entry.Timestamp,
+			&entry.Action,
+			&entry.ActorID,
+			&entry.ActorType,
+			&entry.ResourceType,
+			&entry.ResourceID,
+			&detailsRaw,
+			&entry.IPAddress,
+			&entry.UserAgent,
+		); err != nil {
+			return nil, err
+		}
+		if detailsJSON := normalizeVariantJSONForState(detailsRaw); len(detailsJSON) > 0 {
+			if err := json.Unmarshal(detailsJSON, &entry.Details); err != nil {
+				return nil, err
+			}
+		}
+		entry.Timestamp = entry.Timestamp.UTC()
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
 }
 
 // PolicyHistoryRepository handles policy version history persistence.
@@ -527,4 +634,56 @@ func (r *PolicyHistoryRepository) List(ctx context.Context, policyID string, lim
 	}
 
 	return result, rows.Err()
+}
+
+func (r *PolicyHistoryRepository) ListAll(ctx context.Context) ([]*PolicyHistoryRecord, error) {
+	policyHistoryTable, err := SafeQualifiedTableRef(r.schema, "policy_history")
+	if err != nil {
+		return nil, fmt.Errorf("invalid policy_history table reference: %w", err)
+	}
+
+	// #nosec G202 -- policyHistoryTable is validated via SafeQualifiedTableRef.
+	rows, err := r.client.db.QueryContext(ctx, `
+		SELECT policy_id, version, content, change_type, pinned_version, effective_from, effective_to
+		FROM `+policyHistoryTable+`
+		ORDER BY policy_id ASC, version DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	records := make([]*PolicyHistoryRecord, 0)
+	for rows.Next() {
+		record := &PolicyHistoryRecord{}
+		var content []byte
+		var changeType sql.NullString
+		var pinned sql.NullInt64
+		var effectiveTo sql.NullTime
+		if err := rows.Scan(
+			&record.PolicyID,
+			&record.Version,
+			&content,
+			&changeType,
+			&pinned,
+			&record.EffectiveFrom,
+			&effectiveTo,
+		); err != nil {
+			return nil, err
+		}
+		record.Content = content
+		if changeType.Valid {
+			record.ChangeType = changeType.String
+		}
+		if pinned.Valid {
+			pinnedVal := int(pinned.Int64)
+			record.PinnedVersion = &pinnedVal
+		}
+		if effectiveTo.Valid {
+			ts := effectiveTo.Time
+			record.EffectiveTo = &ts
+		}
+		records = append(records, record)
+	}
+	return records, rows.Err()
 }

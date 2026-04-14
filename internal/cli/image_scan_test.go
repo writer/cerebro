@@ -30,6 +30,7 @@ func TestImageScanFlagsRegistered(t *testing.T) {
 	for _, name := range []string{"trivy-binary", "gitleaks-binary", "clamav-binary"} {
 		if flag := imageScanCmd.PersistentFlags().Lookup(name); flag == nil {
 			t.Fatalf("expected flag %s to be registered", name)
+			return
 		}
 	}
 }

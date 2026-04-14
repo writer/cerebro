@@ -106,6 +106,7 @@ func TestMergeVariantRowsBatch_InvalidTable(t *testing.T) {
 	err := MergeVariantRowsBatch(context.Background(), client, "DROP TABLE; --", rows, nil, 10)
 	if err == nil {
 		t.Fatal("expected error for invalid table name")
+		return
 	}
 }
 

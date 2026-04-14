@@ -35,6 +35,7 @@ func TestToolPublisherConfigValidate(t *testing.T) {
 	invalidAuth.AuthMode = "unknown"
 	if err := invalidAuth.validate(); err == nil {
 		t.Fatal("expected validation error for unknown auth mode")
+		return
 	}
 
 	missingUserPass := valid
@@ -43,6 +44,7 @@ func TestToolPublisherConfigValidate(t *testing.T) {
 	missingUserPass.Password = ""
 	if err := missingUserPass.validate(); err == nil {
 		t.Fatal("expected validation error for missing userpass credentials")
+		return
 	}
 }
 
@@ -98,6 +100,7 @@ func TestDecodeToolInvocationRequest_ArgumentsRawFallback(t *testing.T) {
 func TestDecodeToolInvocationRequest_InvalidPayload(t *testing.T) {
 	if _, _, err := decodeToolInvocationRequest([]byte("not-json")); err == nil {
 		t.Fatal("expected decode error for invalid payload")
+		return
 	}
 }
 

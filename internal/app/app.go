@@ -36,6 +36,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -80,6 +81,21 @@ type retentionCleaner interface {
 	CleanupAccessReviewData(ctx context.Context, olderThan time.Time) (reviewsDeleted, itemsDeleted int64, err error)
 }
 
+type auditRepository interface {
+	Log(ctx context.Context, entry *snowflake.AuditEntry) error
+	List(ctx context.Context, resourceType, resourceID string, limit int) ([]*snowflake.AuditEntry, error)
+}
+
+type policyHistoryRepository interface {
+	Upsert(ctx context.Context, record *snowflake.PolicyHistoryRecord) error
+	List(ctx context.Context, policyID string, limit int) ([]*snowflake.PolicyHistoryRecord, error)
+}
+
+type riskEngineStateRepository interface {
+	SaveSnapshot(ctx context.Context, graphID string, snapshot []byte) error
+	LoadSnapshot(ctx context.Context, graphID string) ([]byte, error)
+}
+
 // App is the main application container that holds references to all initialized
 // services. Create a new App using the New() function which handles all service
 // initialization and wiring based on environment configuration.
@@ -91,40 +107,41 @@ type App struct {
 	Logger *slog.Logger
 
 	// Core services
-	Snowflake      *snowflake.Client
-	Warehouse      warehouse.DataWarehouse
-	Policy         *policy.Engine
-	Findings       findings.FindingStore
-	Scanner        *scanner.Scanner
-	DSPM           *dspm.Scanner
-	Cache          *cache.PolicyCache
-	ExecutionStore executionstore.Store
-	GraphSnapshots *graph.GraphPersistenceStore
+	Snowflake       *snowflake.Client
+	LegacySnowflake *snowflake.Client
+	Warehouse       warehouse.DataWarehouse
+	Policy          *policy.Engine
+	Findings        findings.FindingStore
+	Scanner         *scanner.Scanner
+	DSPM            *dspm.Scanner
+	Cache           *cache.PolicyCache
+	ExecutionStore  executionstore.Store
+	GraphSnapshots  *graph.GraphPersistenceStore
+	appStateDB      *sql.DB
 
 	// Feature services
-	Agents         *agents.AgentRegistry
-	Ticketing      *ticketing.Service
-	Identity       *identity.Service
-	AttackPath     *attackpath.Graph
-	Providers      *providers.Registry
-	Webhooks       *webhooks.Service
-	TapConsumer    *events.Consumer
-	AlertRouter    *events.AlertRouter
-	TapEventMapper *graphingest.Mapper
-	RemoteTools    *agents.RemoteToolProvider
-	ToolPublisher  *agents.ToolPublisher
-	Notifications  *notifications.Manager
-	Scheduler      *scheduler.Scheduler
+	Agents           *agents.AgentRegistry
+	Ticketing        *ticketing.Service
+	Identity         *identity.Service
+	AttackPath       *attackpath.Graph
+	Providers        *providers.Registry
+	Webhooks         *webhooks.Service
+	TapConsumer      *events.Consumer
+	AlertRouter      *events.AlertRouter
+	TapEventMapper   *graphingest.Mapper
+	RemoteTools      *agents.RemoteToolProvider
+	remoteAgentTools []agents.Tool
+	ToolPublisher    *agents.ToolPublisher
+	Notifications    *notifications.Manager
+	Scheduler        *scheduler.Scheduler
 
-	// Repositories (for Snowflake persistence)
-	FindingsRepo        *snowflake.FindingRepository
-	TicketsRepo         *snowflake.TicketRepository
-	AuditRepo           *snowflake.AuditRepository
-	PolicyHistoryRepo   *snowflake.PolicyHistoryRepository
-	RiskEngineStateRepo *snowflake.RiskEngineStateRepository
+	// Durable app-state repositories.
+	AuditRepo           auditRepository
+	PolicyHistoryRepo   policyHistoryRepository
+	RiskEngineStateRepo riskEngineStateRepository
 	RetentionRepo       retentionCleaner
 
-	// Snowflake-backed stores (when available)
+	// Legacy Snowflake-backed findings store for deployments without Postgres app-state.
 	SnowflakeFindings *findings.SnowflakeStore
 
 	// Incremental scanning
@@ -170,12 +187,6 @@ type App struct {
 	graphWriterLeaseTransitionWG       sync.WaitGroup
 	tenantShardMu                      sync.Mutex
 	tenantSecurityGraphShards          *tenantGraphShardManager
-	passiveSnapshotStoreMu             sync.RWMutex
-	passiveSnapshotStoreOwner          *graph.GraphPersistenceStore
-	passiveSnapshotStoreSource         string
-	passiveSnapshotStoreID             string
-	passiveSnapshotStoreStatusID       string
-	passiveSnapshotStore               *graph.SnapshotGraphStore
 	eventCorrelationRefreshQueue       *eventCorrelationRefreshQueue
 	eventCorrelationRefreshCancel      context.CancelFunc
 	eventCorrelationRefreshWG          sync.WaitGroup

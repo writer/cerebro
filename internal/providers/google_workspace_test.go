@@ -407,6 +407,7 @@ func TestGoogleWorkspaceProviderConfigure_RequiresCredentials(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected credentials error")
+		return
 	}
 	if !strings.Contains(err.Error(), "google workspace credentials required") {
 		t.Fatalf("expected credentials error, got %v", err)
@@ -422,6 +423,7 @@ func TestGoogleWorkspaceProviderConfigure_RequiresDelegatedSubject(t *testing.T)
 	})
 	if err == nil {
 		t.Fatal("expected delegated subject error")
+		return
 	}
 	if !strings.Contains(err.Error(), "requires impersonator_email or admin_email") {
 		t.Fatalf("expected delegated subject error, got %v", err)
@@ -449,6 +451,7 @@ func TestGoogleWorkspaceProviderConfigure_ReadsCredentialsFile(t *testing.T) {
 	}
 	if provider.client == nil {
 		t.Fatal("expected OAuth client to be initialized")
+		return
 	}
 }
 

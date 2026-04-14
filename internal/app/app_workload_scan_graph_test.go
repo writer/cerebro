@@ -110,12 +110,14 @@ func TestBuildGraphConsistencyCandidateMaterializesPersistedWorkloadScans(t *tes
 	}
 	if candidate == nil {
 		t.Fatal("expected candidate graph")
+		return
 	}
 	if _, ok := candidate.GetNode(run.ID); !ok {
 		t.Fatalf("expected materialized workload scan node %q", run.ID)
 	}
 	if edge := findGraphOutEdge(candidate, "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123", graph.EdgeKindHasScan, run.ID); edge == nil {
 		t.Fatalf("expected has_scan edge for materialized run, got %#v", candidate.GetOutEdges("arn:aws:ec2:us-east-1:123456789012:instance/i-abc123"))
+		return
 	}
 }
 
