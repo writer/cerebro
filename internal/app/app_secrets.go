@@ -3,12 +3,13 @@ package app
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/apiauth"
-	"github.com/writer/cerebro/internal/postgres"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 type secretsLoader interface {
@@ -172,27 +173,40 @@ func (a *App) ReloadSecrets(ctx context.Context) error {
 	}
 
 	apiCredentialsChanged := !apiauth.EqualCredentials(a.APICredentialsSnapshot(), next.APICredentials)
-	postgresChanged := postgresCredentialsChanged(current, next)
+	snowflakeChanged := snowflakeCredentialsChanged(current, next)
 	providersChanged := providerConfigsChanged(current, next)
+	aiAgentsChanged := aiAgentCredentialsChanged(current, next)
+	agentSCMChanged := securityAgentSCMConfigChanged(current, next)
+	agentToolingChanged := agentToolingConfigChanged(current, next)
+	previousAgentTools := a.configuredAgentTools(current)
 
-	if !apiCredentialsChanged && !postgresChanged && !providersChanged {
+	if !apiCredentialsChanged && !snowflakeChanged && !providersChanged && !aiAgentsChanged && !agentSCMChanged && !agentToolingChanged {
 		return nil
 	}
 
-	if postgresChanged {
-		if err := a.rotatePostgresClient(ctx, next); err != nil {
-			return fmt.Errorf("rotate postgres credentials: %w", err)
+	if snowflakeChanged {
+		if err := a.rotateSnowflakeClient(ctx, next); err != nil {
+			return fmt.Errorf("rotate snowflake credentials: %w", err)
 		}
-		a.logSecretRotation(ctx, "postgres_credentials_rotated", map[string]interface{}{
-			"database_url_changed": true,
+		a.logSecretRotation(ctx, "snowflake_credentials_rotated", map[string]interface{}{
+			"account":   strings.TrimSpace(next.SnowflakeAccount),
+			"warehouse": strings.TrimSpace(next.SnowflakeWarehouse),
 		})
 	}
 
-	if providersChanged || postgresChanged {
+	if providersChanged || snowflakeChanged {
 		a.rebuildProviders(ctx, next)
 		a.logSecretRotation(ctx, "provider_credentials_reloaded", map[string]interface{}{
 			"provider_count": len(a.Providers.List()),
 		})
+	}
+	if agentToolingChanged {
+		a.rebuildAgentTooling(ctx, next)
+	}
+	if aiAgentsChanged {
+		a.syncConfiguredAIAgentsReplacingTools(next, previousAgentTools)
+	} else if snowflakeChanged || agentSCMChanged || agentToolingChanged {
+		a.replaceConfiguredAgentTools(next, previousAgentTools)
 	}
 
 	if apiCredentialsChanged {
@@ -212,21 +226,88 @@ func (a *App) ReloadSecrets(ctx context.Context) error {
 	if a.Logger != nil {
 		a.Logger.Info("secret reload completed",
 			"api_credentials_changed", apiCredentialsChanged,
-			"postgres_changed", postgresChanged,
+			"snowflake_changed", snowflakeChanged,
 			"providers_changed", providersChanged,
+			"ai_agents_changed", aiAgentsChanged,
+			"agent_scm_changed", agentSCMChanged,
+			"agent_tooling_changed", agentToolingChanged,
 		)
 	}
 	return nil
 }
 
-func postgresCredentialsChanged(current, next *Config) bool {
+func snowflakeCredentialsChanged(current, next *Config) bool {
 	if current == nil || next == nil {
 		return current != next
 	}
-	return current.DatabaseURL != next.DatabaseURL
+	return current.SnowflakeAccount != next.SnowflakeAccount ||
+		current.SnowflakeUser != next.SnowflakeUser ||
+		current.SnowflakePrivateKey != next.SnowflakePrivateKey ||
+		current.SnowflakeDatabase != next.SnowflakeDatabase ||
+		current.SnowflakeSchema != next.SnowflakeSchema ||
+		current.SnowflakeWarehouse != next.SnowflakeWarehouse ||
+		current.SnowflakeRole != next.SnowflakeRole
 }
 
-func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
+func aiAgentCredentialsChanged(current, next *Config) bool {
+	if current == nil || next == nil {
+		return current != next
+	}
+	return strings.TrimSpace(current.AnthropicAPIKey) != strings.TrimSpace(next.AnthropicAPIKey) ||
+		strings.TrimSpace(current.OpenAIAPIKey) != strings.TrimSpace(next.OpenAIAPIKey)
+}
+
+func securityAgentSCMConfigChanged(current, next *Config) bool {
+	if current == nil || next == nil {
+		return current != next
+	}
+	return strings.TrimSpace(current.GitHubToken) != strings.TrimSpace(next.GitHubToken) ||
+		strings.TrimSpace(current.GitHubOrg) != strings.TrimSpace(next.GitHubOrg) ||
+		strings.TrimSpace(current.GitLabToken) != strings.TrimSpace(next.GitLabToken) ||
+		strings.TrimSpace(current.GitLabBaseURL) != strings.TrimSpace(next.GitLabBaseURL)
+}
+
+func agentToolingConfigChanged(current, next *Config) bool {
+	if current == nil || next == nil {
+		return current != next
+	}
+	return !reflect.DeepEqual(remoteToolProviderConfigFromConfig(current), remoteToolProviderConfigFromConfig(next)) ||
+		!reflect.DeepEqual(toolPublisherConfigFromConfig(current), toolPublisherConfigFromConfig(next))
+}
+
+func (a *App) rebindAgentSessionStore(ctx context.Context, activeSnowflake *snowflake.Client) {
+	if a == nil || a.Agents == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	switch {
+	case a.appStateDB != nil:
+		a.Agents.SetSessionStore(agents.NewPostgresSessionStore(a.appStateDB))
+	case activeSnowflake == nil:
+		a.Agents.SetSessionStore(nil)
+	default:
+		store, err := agents.NewSnowflakeSessionStore(activeSnowflake)
+		if err != nil {
+			if a.Logger != nil {
+				a.Logger.Warn("failed to rotate agent session store", "error", err)
+			}
+			a.Agents.SetSessionStore(nil)
+			return
+		}
+		if err := store.EnsureSchema(ctx); err != nil {
+			if a.Logger != nil {
+				a.Logger.Warn("failed to ensure rotated agent session store schema", "error", err)
+			}
+			a.Agents.SetSessionStore(nil)
+			return
+		}
+		a.Agents.SetSessionStore(store)
+	}
+}
+
+func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 	if a == nil || cfg == nil {
 		return nil
 	}
@@ -234,68 +315,79 @@ func (a *App) rotatePostgresClient(ctx context.Context, cfg *Config) error {
 		ctx = context.Background()
 	}
 
-	if strings.TrimSpace(cfg.DatabaseURL) == "" {
-		return fmt.Errorf("postgres rotation requires DATABASE_URL")
-	}
-
-	newDB, err := openPostgresDB("pgx", cfg.DatabaseURL)
-	if err != nil {
-		return fmt.Errorf("open postgres: %w", err)
-	}
-	if err := newDB.PingContext(ctx); err != nil {
-		_ = newDB.Close()
-		return fmt.Errorf("ping postgres: %w", err)
-	}
-
-	newDB.SetMaxOpenConns(25)
-	newDB.SetMaxIdleConns(10)
-	newDB.SetConnMaxLifetime(5 * time.Minute)
-
-	newClient := postgres.NewPostgresClient(newDB, postgres.AssetSchemaName, postgres.SchemaName)
-
-	oldDB := a.PostgresDB
-	a.PostgresDB = newDB
-	a.PostgresClient = newClient
-	a.initRepositories()
-
-	if a.ScanWatermarks != nil {
-		a.ScanWatermarks.SetDB(newDB)
-		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil && a.Logger != nil {
-			a.Logger.Warn("failed to reload scan watermarks after postgres rotation", "error", err)
-		}
-	}
-
-	if a.PostgresFindings != nil {
-		a.PostgresFindings.SetConnection(newDB, newClient.AppSchema())
-		if err := a.PostgresFindings.Load(ctx); err != nil && a.Logger != nil {
-			a.Logger.Warn("failed to reload findings after postgres rotation", "error", err)
-		}
-	}
-
-	if a.Agents != nil {
-		store, err := agents.NewPostgresSessionStore(newDB, newClient.AppSchema())
-		if err != nil {
-			if a.Logger != nil {
-				a.Logger.Warn("failed to rotate agent session store", "error", err)
+	oldClient := a.Snowflake
+	oldLegacyClient := a.LegacySnowflake
+	if !hasSnowflakeCredentials(cfg) {
+		if !strings.EqualFold(strings.TrimSpace(cfg.WarehouseBackend), "snowflake") {
+			if a.appStateDB != nil && legacySnowflakeRetentionEnabled(cfg) && (oldLegacyClient != nil || oldClient != nil) {
+				return fmt.Errorf("legacy snowflake source is required while graph or access-review retention remains enabled")
 			}
-		} else {
-			a.Agents.SetSessionStore(store)
+			a.Snowflake = nil
+			a.LegacySnowflake = nil
+			a.initRepositories()
+			a.rebindAgentSessionStore(ctx, nil)
+			a.refreshConfiguredAgentTools(cfg)
+			a.closeSnowflakeClients(oldClient, oldLegacyClient, nil)
+			return nil
 		}
+		return fmt.Errorf("snowflake rotation requires SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
 
-	if a.graphCancel != nil {
-		a.graphCancel()
-		a.graphCancel = nil
+	newClient, err := openConfiguredSnowflakeClient(ctx, cfg)
+	if err != nil {
+		return err
 	}
-	a.initSecurityGraph(ctx)
 
-	if oldDB != nil {
-		if err := oldDB.Close(); err != nil && a.Logger != nil {
-			a.Logger.Warn("failed to close previous postgres connection after rotation", "error", err)
+	if strings.EqualFold(strings.TrimSpace(cfg.WarehouseBackend), "snowflake") {
+		a.Snowflake = newClient
+		a.LegacySnowflake = nil
+		a.Warehouse = newClient
+		a.initRepositories()
+
+		if a.ScanWatermarks != nil {
+			a.ScanWatermarks.SetDB(newClient.DB())
+			if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil && a.Logger != nil {
+				a.Logger.Warn("failed to reload scan watermarks after snowflake rotation", "error", err)
+			}
 		}
+
+		if a.SnowflakeFindings != nil {
+			a.SnowflakeFindings.SetConnection(newClient.DB(), newClient.Database(), newClient.Schema())
+			if err := a.SnowflakeFindings.Load(ctx); err != nil && a.Logger != nil {
+				a.Logger.Warn("failed to reload findings after snowflake rotation", "error", err)
+			}
+		}
+		a.rebindAgentSessionStore(ctx, newClient)
+
+		if a.graphCancel != nil {
+			a.graphCancel()
+			a.graphCancel = nil
+		}
+		a.refreshConfiguredAgentTools(cfg)
+		a.initSecurityGraph(ctx)
+	} else {
+		a.LegacySnowflake = newClient
+		a.initRepositories()
+		a.rebindAgentSessionStore(ctx, nil)
+		a.refreshConfiguredAgentTools(cfg)
 	}
+
+	a.closeSnowflakeClients(oldClient, oldLegacyClient, newClient)
 
 	return nil
+}
+
+func (a *App) closeSnowflakeClients(current, legacy, keep *snowflake.Client) {
+	if current != nil && current != keep {
+		if err := current.Close(); err != nil && a.Logger != nil {
+			a.Logger.Warn("failed to close previous snowflake client after rotation", "error", err)
+		}
+	}
+	if legacy != nil && legacy != keep && legacy != current {
+		if err := legacy.Close(); err != nil && a.Logger != nil {
+			a.Logger.Warn("failed to close previous legacy snowflake client after rotation", "error", err)
+		}
+	}
 }
 
 func (a *App) logSecretRotation(ctx context.Context, action string, details map[string]interface{}) {
@@ -311,7 +403,7 @@ func (a *App) logSecretRotation(ctx context.Context, action string, details map[
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	entry := &postgres.AuditEntry{
+	entry := &snowflake.AuditEntry{
 		Action:       action,
 		ActorID:      "system:secrets-reloader",
 		ActorType:    "system",

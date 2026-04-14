@@ -212,6 +212,34 @@ func TestPooledNeptuneDataExecutorRecyclesConnectionsAfterMaxUses(t *testing.T) 
 	}
 }
 
+func TestPooledNeptuneGraphStoreCountNodesDecodesSmithyDocumentResults(t *testing.T) {
+	client, cleanup := newNeptuneDocumentTestClient(t, `{"results":[{"total":2}]}`)
+	defer cleanup()
+
+	exec, err := NewPooledNeptuneDataExecutor(func() (neptuneDataClient, error) {
+		return client, nil
+	}, NeptuneDataExecutorPoolConfig{
+		Size: 1,
+	})
+	if err != nil {
+		t.Fatalf("NewPooledNeptuneDataExecutor() error = %v", err)
+	}
+	defer func() {
+		if err := exec.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+	}()
+
+	store := NewNeptuneGraphStore(exec)
+	got, err := store.CountNodes(context.Background())
+	if err != nil {
+		t.Fatalf("CountNodes() error = %v", err)
+	}
+	if got != 2 {
+		t.Fatalf("CountNodes() = %d, want 2", got)
+	}
+}
+
 func TestPooledNeptuneDataExecutorDrainWaitsForInflightQueriesAndRejectsNewWork(t *testing.T) {
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})

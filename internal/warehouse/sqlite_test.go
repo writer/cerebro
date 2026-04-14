@@ -114,5 +114,6 @@ func TestSQLiteWarehouseRejectsNonAssetTables(t *testing.T) {
 	}
 	if _, err := store.GetAssets(ctx, "cdc_events", AssetFilter{Limit: 1}); err == nil {
 		t.Fatal("expected non-asset table to be rejected")
+		return
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,12 +17,9 @@ type MockQueue struct {
 	messages        []QueueMessage
 	deleted         []string
 	extendedHandles []string
-	retryHandles    []string
-	retryDelays     []time.Duration
+	retriedHandles  []string
 	extendErrors    []error
 	extendCalls     int
-	retryErrors     []error
-	retryCalls      int
 	enqueuedMsgs    []JobMessage
 	receiveDelay    time.Duration
 	receiveCalls    int32
@@ -102,17 +100,10 @@ func (m *MockQueue) ExtendVisibilityBatch(ctx context.Context, receiptHandles []
 	return len(receiptHandles), 0, nil
 }
 
-func (m *MockQueue) RetryLater(ctx context.Context, receiptHandle string, delay time.Duration) error {
+func (m *MockQueue) Retry(ctx context.Context, receiptHandle string, delay time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.retryCalls++
-	m.retryHandles = append(m.retryHandles, receiptHandle)
-	m.retryDelays = append(m.retryDelays, delay)
-	if len(m.retryErrors) > 0 {
-		err := m.retryErrors[0]
-		m.retryErrors = m.retryErrors[1:]
-		return err
-	}
+	m.retriedHandles = append(m.retriedHandles, receiptHandle)
 	return nil
 }
 
@@ -127,14 +118,13 @@ func (m *MockQueue) AddMessage(jobID string) {
 	})
 }
 
-// mockTerminalError implements TerminalQueueError for testing.
-type mockTerminalError struct {
-	msg      string
-	terminal bool
+type mockAPIError struct {
+	msg string
 }
 
-func (e mockTerminalError) Error() string    { return e.msg }
-func (e mockTerminalError) IsTerminal() bool { return e.terminal }
+func (e mockAPIError) Error() string {
+	return e.msg
+}
 
 // MockStore implements Store interface for testing
 type MockStore struct {
@@ -548,9 +538,51 @@ func TestPermanentError(t *testing.T) {
 	}
 }
 
+func TestIsTerminalVisibilityError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "unknown receipt handle",
+			err:  mockAPIError{msg: "nats: unknown receipt handle \"missing\""},
+			want: true,
+		},
+		{
+			name: "receipt handle required",
+			err:  mockAPIError{msg: "receipt handle required"},
+			want: true,
+		},
+		{
+			name: "wrapped unknown receipt handle",
+			err:  fmt.Errorf("wrapped: %w", mockAPIError{msg: "nats: unknown receipt handle \"missing\""}),
+			want: true,
+		},
+		{
+			name: "plain string fallback",
+			err:  errors.New("message does not exist or is not available for visibility timeout change"),
+			want: true,
+		},
+		{
+			name: "non terminal error",
+			err:  mockAPIError{msg: "slow down"},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isTerminalVisibilityError(tc.err); got != tc.want {
+				t.Fatalf("isTerminalVisibilityError() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRunHeartbeat_DisablesQueueVisibilityOnTerminalErrorButExtendsLease(t *testing.T) {
 	queue := &MockQueue{
-		extendErrors: []error{mockTerminalError{msg: "invalid receipt handle", terminal: true}},
+		extendErrors: []error{mockAPIError{msg: "nats: unknown receipt handle \"invalid\""}},
 	}
 	store := NewMockStore()
 	worker := NewWorker(queue, store, NewJobRegistry(), WorkerOptions{
@@ -715,60 +747,6 @@ func TestPanicRecovery(t *testing.T) {
 	}
 
 	cancel()
-}
-
-func TestRetryableFailureSchedulesDelayedRedelivery(t *testing.T) {
-	queue := &MockQueue{}
-	store := NewMockStore()
-	registry := NewJobRegistry()
-	registry.Register(JobTypeInspectResource, func(ctx context.Context, payload string) (string, error) {
-		return "", errors.New("retry me")
-	})
-
-	store.AddJob(&Job{
-		ID:          "retry-job",
-		Type:        JobTypeInspectResource,
-		Status:      StatusQueued,
-		Payload:     "{}",
-		MaxAttempts: 3,
-	})
-
-	worker := NewWorker(queue, store, registry, WorkerOptions{
-		Concurrency:    1,
-		RetryBaseDelay: 2 * time.Second,
-		RetryMaxDelay:  30 * time.Second,
-	})
-
-	body, _ := json.Marshal(JobMessage{JobID: "retry-job"})
-	msg := QueueMessage{
-		ID:            "msg-retry",
-		ReceiptHandle: "receipt-retry",
-		Body:          string(body),
-	}
-
-	worker.processMessage(context.Background(), msg)
-
-	store.mu.Lock()
-	job := store.jobs["retry-job"]
-	store.mu.Unlock()
-	if job.Status != StatusQueued {
-		t.Fatalf("expected job to be re-queued, got %s", job.Status)
-	}
-
-	queue.mu.Lock()
-	defer queue.mu.Unlock()
-	if queue.retryCalls != 1 {
-		t.Fatalf("expected one delayed retry call, got %d", queue.retryCalls)
-	}
-	if len(queue.retryHandles) != 1 || queue.retryHandles[0] != "receipt-retry" {
-		t.Fatalf("unexpected retry handles: %#v", queue.retryHandles)
-	}
-	if len(queue.retryDelays) != 1 || queue.retryDelays[0] != 2*time.Second {
-		t.Fatalf("unexpected retry delays: %#v", queue.retryDelays)
-	}
-	if queue.extendCalls != 0 {
-		t.Fatalf("expected retry scheduling to avoid heartbeat extension path, got %d extend calls", queue.extendCalls)
-	}
 }
 
 func TestIdempotencyStore(t *testing.T) {

@@ -99,12 +99,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 			return nil
 		},
 		func() error {
-			// Sync any dirty findings to Postgres before shutdown
-			if application.PostgresFindings != nil {
-				application.Logger.Info("syncing findings to postgres before shutdown")
+			if syncer, ok := application.Findings.(interface{ Sync(context.Context) error }); ok {
+				application.Logger.Info("syncing findings before shutdown")
 				syncCtx, syncCancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer syncCancel()
-				return application.PostgresFindings.Sync(syncCtx)
+				return syncer.Sync(syncCtx)
 			}
 			return nil
 		},

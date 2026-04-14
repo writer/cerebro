@@ -9,10 +9,10 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/scanner"
 	"github.com/writer/cerebro/internal/scheduler"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 type noopRetentionCleaner struct{}
@@ -38,9 +38,8 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 	schedulerSvc := &scheduler.Scheduler{}
 	rbac := auth.NewRBAC()
 	securityGraph := graph.New()
-	findingsRepo := &postgres.FindingRepository{}
-	riskEngineStateRepo := &postgres.RiskEngineStateRepository{}
-	pgStore := &findings.PostgresStore{}
+	auditRepo := &snowflake.AuditRepository{}
+	riskEngineStateRepo := &snowflake.RiskEngineStateRepository{}
 	retention := noopRetentionCleaner{}
 
 	application := &App{
@@ -51,9 +50,8 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 		Scheduler:           schedulerSvc,
 		RBAC:                rbac,
 		SecurityGraph:       securityGraph,
-		FindingsRepo:        findingsRepo,
+		AuditRepo:           auditRepo,
 		RiskEngineStateRepo: riskEngineStateRepo,
-		PostgresFindings:    pgStore,
 		RetentionRepo:       retention,
 	}
 
@@ -85,14 +83,14 @@ func TestAppServiceGroupAccessors(t *testing.T) {
 	}
 
 	storage := application.StorageServices()
-	if storage.FindingsRepo != findingsRepo {
-		t.Fatal("storage services should expose findings repository")
+	if storage.Findings != store {
+		t.Fatal("storage services should expose findings store")
+	}
+	if storage.AuditRepo != auditRepo {
+		t.Fatal("storage services should expose audit repository")
 	}
 	if storage.RiskEngineStateRepo != riskEngineStateRepo {
 		t.Fatal("storage services should expose risk engine state repository")
-	}
-	if storage.PostgresFindings != pgStore {
-		t.Fatal("storage services should expose Postgres findings store")
 	}
 	if storage.RetentionRepo != retention {
 		t.Fatal("storage services should expose retention cleaner")

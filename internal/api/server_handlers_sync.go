@@ -37,7 +37,7 @@ func (s *Server) backfillRelationshipIDs(w http.ResponseWriter, r *http.Request)
 
 	stats, err := s.syncHandlers.BackfillRelationshipIDs(r.Context(), req.BatchSize)
 	if err != nil {
-		if errors.Is(err, errSyncSnowflakeUnavailable) {
+		if errors.Is(err, errSyncWarehouseUnavailable) {
 			s.error(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}
@@ -57,7 +57,7 @@ type azureSyncRequest struct {
 	Validate                bool     `json:"validate"`
 }
 
-var runAzureSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+var runAzureSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req azureSyncRequest) ([]nativesync.SyncResult, error) {
 	opts := []nativesync.AzureEngineOption{}
 	switch len(req.Subscriptions) {
 	case 1:
@@ -80,7 +80,7 @@ var runAzureSyncWithOptions = func(ctx context.Context, client warehouse.DataWar
 		opts = append(opts, nativesync.WithAzureTableFilter(req.Tables))
 	}
 
-	syncer, err := nativesync.NewAzureSyncEngine(client, slog.Default(), opts...)
+	syncer, err := nativesync.NewAzureSyncEngine(store, slog.Default(), opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create azure sync engine: %w", err)
 	}
@@ -118,7 +118,7 @@ func (s *Server) syncAzure(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.syncHandlers.SyncAzure(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, errSyncSnowflakeUnavailable) {
+		if errors.Is(err, errSyncWarehouseUnavailable) {
 			s.error(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}
@@ -146,7 +146,7 @@ type k8sSyncRequest struct {
 	Validate    bool     `json:"validate"`
 }
 
-var runK8sSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
+var runK8sSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
 	opts := []nativesync.K8sEngineOption{}
 	if req.Kubeconfig != "" {
 		opts = append(opts, nativesync.WithK8sKubeconfig(req.Kubeconfig))
@@ -164,7 +164,7 @@ var runK8sSyncWithOptions = func(ctx context.Context, client warehouse.DataWareh
 		opts = append(opts, nativesync.WithK8sTableFilter(req.Tables))
 	}
 
-	syncer := nativesync.NewK8sSyncEngine(client, slog.Default(), opts...)
+	syncer := nativesync.NewK8sSyncEngine(store, slog.Default(), opts...)
 	if req.Validate {
 		results, err := syncer.ValidateTables(ctx)
 		if err != nil {
@@ -194,7 +194,7 @@ func (s *Server) syncK8s(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.syncHandlers.SyncK8s(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, errSyncSnowflakeUnavailable) {
+		if errors.Is(err, errSyncWarehouseUnavailable) {
 			s.error(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}
@@ -232,7 +232,7 @@ type awsSyncOutcome struct {
 	RelationshipsSkippedReason string
 }
 
-var runAWSSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+var runAWSSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 	loadOptions := make([]func(*config.LoadOptions) error, 0, 2)
 	if req.Profile != "" {
 		loadOptions = append(loadOptions, config.WithSharedConfigProfile(req.Profile))
@@ -266,7 +266,7 @@ var runAWSSyncWithOptions = func(ctx context.Context, client warehouse.DataWareh
 	}
 	opts = appendAWSPermissionUsageRequestOptions(opts, req.PermissionUsageLookbackDays, req.PermissionRemovalThresholdDays, req.AWSIdentityCenterPermissionSetsInclude, req.AWSIdentityCenterPermissionSetsExclude)
 
-	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
+	syncer := nativesync.NewSyncEngine(store, slog.Default(), opts...)
 	if req.Validate {
 		results, err := syncer.ValidateTablesWithConfig(ctx, awsCfg)
 		if err != nil {
@@ -292,7 +292,7 @@ var runAWSSyncWithOptions = func(ctx context.Context, client warehouse.DataWareh
 		return outcome, nil
 	}
 
-	extractor := nativesync.NewRelationshipExtractor(client, slog.Default())
+	extractor := nativesync.NewRelationshipExtractor(store, slog.Default())
 	relCount, err := extractor.ExtractAndPersist(ctx)
 	if err != nil {
 		outcome.RelationshipsSkippedReason = fmt.Sprintf("relationship extraction failed: %v", err)
@@ -318,7 +318,7 @@ func (s *Server) syncAWS(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.syncHandlers.SyncAWS(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, errSyncSnowflakeUnavailable) {
+		if errors.Is(err, errSyncWarehouseUnavailable) {
 			s.error(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}
@@ -364,7 +364,7 @@ type awsOrgSyncOutcome struct {
 	AccountErrors []string
 }
 
-var runAWSOrgSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+var runAWSOrgSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
 	loadOptions := make([]func(*config.LoadOptions) error, 0, 2)
 	if req.Profile != "" {
 		loadOptions = append(loadOptions, config.WithSharedConfigProfile(req.Profile))
@@ -401,7 +401,7 @@ var runAWSOrgSyncWithOptions = func(ctx context.Context, client warehouse.DataWa
 
 	if req.Validate {
 		options := buildAWSEngineOptionsForRequest(region, req)
-		syncer := nativesync.NewSyncEngine(client, slog.Default(), options...)
+		syncer := nativesync.NewSyncEngine(store, slog.Default(), options...)
 		results, err := syncer.ValidateTablesWithConfig(ctx, awsCfg)
 		if err != nil {
 			return nil, fmt.Errorf("validation failed: %w", err)
@@ -449,7 +449,7 @@ var runAWSOrgSyncWithOptions = func(ctx context.Context, client warehouse.DataWa
 				accountCfg = assumedCfg
 			}
 
-			syncer := nativesync.NewSyncEngine(client, slog.Default(), options...)
+			syncer := nativesync.NewSyncEngine(store, slog.Default(), options...)
 			accountResults, syncErr := syncer.SyncAllWithConfig(ctx, accountCfg)
 
 			mu.Lock()
@@ -494,7 +494,7 @@ func (s *Server) syncAWSOrg(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.syncHandlers.SyncAWSOrg(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, errSyncSnowflakeUnavailable) {
+		if errors.Is(err, errSyncWarehouseUnavailable) {
 			s.error(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}
@@ -660,7 +660,7 @@ type gcpSyncOutcome struct {
 	RelationshipsSkippedReason string
 }
 
-var runGCPSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+var runGCPSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req gcpSyncRequest) (*gcpSyncOutcome, error) {
 	if req.Project == "" {
 		return nil, fmt.Errorf("project is required")
 	}
@@ -674,7 +674,7 @@ var runGCPSyncWithOptions = func(ctx context.Context, client warehouse.DataWareh
 	}
 	opts = appendGCPPermissionUsageRequestOptions(opts, req.PermissionUsageLookbackDays, req.PermissionRemovalThresholdDays, req.GCPIAMTargetGroups)
 
-	syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), opts...)
+	syncer := nativesync.NewGCPSyncEngine(store, slog.Default(), opts...)
 	if req.Validate {
 		results, err := syncer.ValidateTables(ctx)
 		if err != nil {
@@ -694,7 +694,7 @@ var runGCPSyncWithOptions = func(ctx context.Context, client warehouse.DataWareh
 		return outcome, nil
 	}
 
-	extractor := nativesync.NewRelationshipExtractor(client, slog.Default())
+	extractor := nativesync.NewRelationshipExtractor(store, slog.Default())
 	relCount, err := extractor.ExtractAndPersist(ctx)
 	if err != nil {
 		outcome.RelationshipsSkippedReason = fmt.Sprintf("relationship extraction failed: %v", err)
@@ -722,7 +722,7 @@ func (s *Server) syncGCP(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.syncHandlers.SyncGCP(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, errSyncSnowflakeUnavailable) {
+		if errors.Is(err, errSyncWarehouseUnavailable) {
 			s.error(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}
@@ -767,7 +767,7 @@ type gcpAssetSyncRequest struct {
 	Validate     bool     `json:"validate"`
 }
 
-var runGCPAssetSyncWithOptions = func(ctx context.Context, client warehouse.DataWarehouse, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+var runGCPAssetSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
 	organization := strings.TrimSpace(req.Organization)
 	if len(req.Projects) == 0 && organization == "" {
 		return nil, fmt.Errorf("projects or organization are required")
@@ -786,7 +786,7 @@ var runGCPAssetSyncWithOptions = func(ctx context.Context, client warehouse.Data
 		opts = append(opts, nativesync.WithAssetTypeFilter(req.Tables))
 	}
 
-	syncer := nativesync.NewGCPAssetInventoryEngine(client, slog.Default(), opts...)
+	syncer := nativesync.NewGCPAssetInventoryEngine(store, slog.Default(), opts...)
 	if req.Validate {
 		results, err := syncer.ValidateTables(ctx)
 		if err != nil {
@@ -823,7 +823,7 @@ func (s *Server) syncGCPAsset(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.syncHandlers.SyncGCPAsset(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, errSyncSnowflakeUnavailable) {
+		if errors.Is(err, errSyncWarehouseUnavailable) {
 			s.error(w, http.StatusServiceUnavailable, err.Error())
 			return
 		}

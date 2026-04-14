@@ -22,6 +22,8 @@ import (
 
 type stubGraphIntelligenceService struct {
 	graph             *graph.Graph
+	currentGraph      *graph.Graph
+	entityGraph       *graph.Graph
 	mapperInitialized bool
 	mapperValidation  string
 	deadLetterPath    string
@@ -31,6 +33,19 @@ type stubGraphIntelligenceService struct {
 }
 
 func (s stubGraphIntelligenceService) CurrentGraph(context.Context) (*graph.Graph, error) {
+	if s.currentGraph != nil {
+		return s.currentGraph, nil
+	}
+	return s.graph, nil
+}
+
+func (s stubGraphIntelligenceService) CurrentEntityGraph(_ context.Context, _ string, _, _ time.Time) (*graph.Graph, error) {
+	if s.entityGraph != nil {
+		return s.entityGraph, nil
+	}
+	if s.currentGraph != nil {
+		return s.currentGraph, nil
+	}
 	return s.graph, nil
 }
 
@@ -290,6 +305,185 @@ func TestGraphIntelligenceHandlersUseServiceInterface(t *testing.T) {
 	}
 }
 
+func TestGraphIntelligenceEntitySummaryPreservesEvaluationQualityWhenScoped(t *testing.T) {
+	s := newTestServer(t)
+	fullGraph := buildGraphStorePlatformEntitiesTestGraph(t)
+	base := time.Date(2026, 3, 22, 21, 0, 0, 0, time.UTC)
+
+	fullGraph.AddNode(&graph.Node{
+		ID:        "outcome:evaluation:run-1:conv-1",
+		Kind:      graph.NodeKindOutcome,
+		Name:      "positive",
+		CreatedAt: base,
+		UpdatedAt: base,
+		Properties: map[string]any{
+			"evaluation_run_id": "run-1",
+			"conversation_id":   "conv-1",
+			"verdict":           "positive",
+			"quality_score":     0.8,
+			"target_ids":        []string{"service:payments"},
+			"observed_at":       base.Format(time.RFC3339),
+			"valid_from":        base.Format(time.RFC3339),
+		},
+	})
+
+	scopedGraph := graph.ExtractSubgraph(fullGraph, "service:payments", graph.ExtractSubgraphOptions{MaxDepth: 3})
+	s.graphIntelligence = stubGraphIntelligenceService{
+		currentGraph: scopedGraph,
+		entityGraph:  fullGraph,
+	}
+	s.app.SecurityGraph = nil
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/entity-summary?entity_id=service:payments", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for service-backed entity summary, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	facets, ok := body["facets"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected facets block, got %#v", body["facets"])
+	}
+	items, ok := facets["items"].([]any)
+	if !ok {
+		t.Fatalf("expected facet items, got %#v", facets["items"])
+	}
+
+	for _, item := range items {
+		record, ok := item.(map[string]any)
+		if !ok || record["id"] != "evaluation_quality" {
+			continue
+		}
+		if record["summary"] == "No targeted evaluation lifecycle signals attached" {
+			t.Fatalf("expected evaluation_quality facet to retain targeted evaluation signals, got %#v", record)
+		}
+		return
+	}
+
+	t.Fatalf("expected evaluation_quality facet in entity summary, got %#v", items)
+}
+
+func TestGraphIntelligenceEntitySummaryPreservesWorkloadSecurityWhenScoped(t *testing.T) {
+	s := newTestServer(t)
+	base := time.Date(2026, 3, 22, 22, 0, 0, 0, time.UTC)
+	entityID := "arn:aws:ec2:us-east-1:123456789012:instance/i-payments"
+
+	fullGraph := graph.New()
+	fullGraph.AddNode(&graph.Node{
+		ID:        entityID,
+		Kind:      graph.NodeKindInstance,
+		Name:      "i-payments",
+		Provider:  "aws",
+		Account:   "123456789012",
+		Region:    "us-east-1",
+		CreatedAt: base,
+		UpdatedAt: base,
+		Properties: map[string]any{
+			"observed_at": base.Format(time.RFC3339),
+			"valid_from":  base.Format(time.RFC3339),
+		},
+	})
+	fullGraph.AddNode(&graph.Node{
+		ID:        "role:hop-1",
+		Kind:      graph.NodeKindRole,
+		Name:      "hop-1",
+		Provider:  "aws",
+		Account:   "123456789012",
+		CreatedAt: base,
+		UpdatedAt: base,
+	})
+	fullGraph.AddNode(&graph.Node{
+		ID:        "role:hop-2",
+		Kind:      graph.NodeKindRole,
+		Name:      "hop-2",
+		Provider:  "aws",
+		Account:   "123456789012",
+		CreatedAt: base,
+		UpdatedAt: base,
+	})
+	fullGraph.AddNode(&graph.Node{
+		ID:        "role:hop-3",
+		Kind:      graph.NodeKindRole,
+		Name:      "hop-3",
+		Provider:  "aws",
+		Account:   "123456789012",
+		CreatedAt: base,
+		UpdatedAt: base,
+	})
+	fullGraph.AddNode(&graph.Node{
+		ID:        "database:payments-sensitive",
+		Kind:      graph.NodeKindDatabase,
+		Name:      "payments-sensitive",
+		Provider:  "aws",
+		Account:   "123456789012",
+		Region:    "us-east-1",
+		CreatedAt: base,
+		UpdatedAt: base,
+		Properties: map[string]any{
+			"contains_pii": true,
+			"observed_at":  base.Format(time.RFC3339),
+			"valid_from":   base.Format(time.RFC3339),
+		},
+	})
+	fullGraph.AddNode(&graph.Node{
+		ID:        "workload_scan:i-payments",
+		Kind:      graph.NodeKindWorkloadScan,
+		Name:      "i-payments scan",
+		CreatedAt: base,
+		UpdatedAt: base,
+		Properties: map[string]any{
+			"completed_at":                           base.Format(time.RFC3339),
+			"observed_at":                            base.Format(time.RFC3339),
+			"valid_from":                             base.Format(time.RFC3339),
+			"vulnerability_count":                    1,
+			"reachable_vulnerability_count":          1,
+			"critical_vulnerability_count":           1,
+			"reachable_critical_vulnerability_count": 1,
+		},
+	})
+	fullGraph.AddEdge(&graph.Edge{ID: entityID + "->workload_scan:i-payments:has_scan", Source: entityID, Target: "workload_scan:i-payments", Kind: graph.EdgeKindHasScan, Effect: graph.EdgeEffectAllow, CreatedAt: base})
+	fullGraph.AddEdge(&graph.Edge{ID: entityID + "->role:hop-1:can_assume", Source: entityID, Target: "role:hop-1", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow, CreatedAt: base})
+	fullGraph.AddEdge(&graph.Edge{ID: "role:hop-1->role:hop-2:can_assume", Source: "role:hop-1", Target: "role:hop-2", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow, CreatedAt: base})
+	fullGraph.AddEdge(&graph.Edge{ID: "role:hop-2->role:hop-3:can_assume", Source: "role:hop-2", Target: "role:hop-3", Kind: graph.EdgeKindCanAssume, Effect: graph.EdgeEffectAllow, CreatedAt: base})
+	fullGraph.AddEdge(&graph.Edge{ID: "role:hop-3->database:payments-sensitive:can_admin", Source: "role:hop-3", Target: "database:payments-sensitive", Kind: graph.EdgeKindCanAdmin, Effect: graph.EdgeEffectAllow, CreatedAt: base})
+	fullGraph.BuildIndex()
+
+	scopedGraph := graph.ExtractSubgraph(fullGraph, entityID, graph.ExtractSubgraphOptions{MaxDepth: 3})
+	s.graphIntelligence = stubGraphIntelligenceService{
+		currentGraph: scopedGraph,
+		entityGraph:  fullGraph,
+	}
+	s.app.SecurityGraph = nil
+
+	w := do(t, s, http.MethodGet, "/api/v1/platform/intelligence/entity-summary?entity_id="+entityID, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for service-backed entity summary, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	facets, ok := body["facets"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected facets block, got %#v", body["facets"])
+	}
+	items, ok := facets["items"].([]any)
+	if !ok {
+		t.Fatalf("expected facet items, got %#v", facets["items"])
+	}
+
+	for _, item := range items {
+		record, ok := item.(map[string]any)
+		if !ok || record["id"] != "workload_security" {
+			continue
+		}
+		if record["summary"] != "Critical workload vulnerabilities combine with reachable attack-path context" {
+			t.Fatalf("expected workload_security facet to retain hop-4 blast-radius context, got %#v", record)
+		}
+		return
+	}
+
+	t.Fatalf("expected workload_security facet in entity summary, got %#v", items)
+}
+
 func TestGraphIntelligenceInsightsEndpoint_InvalidParams(t *testing.T) {
 	s := newTestServer(t)
 
@@ -420,7 +614,7 @@ func TestGraphIntelligenceQualityEndpoint_InvalidParams(t *testing.T) {
 func TestGraphIntelligenceAgentActionEffectivenessEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
-	now := time.Date(2026, 3, 22, 18, 0, 0, 0, time.UTC)
+	now := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
 
 	g.AddNode(&graph.Node{
 		ID:   "thread:evaluation:run-1:conv-1",
@@ -765,6 +959,7 @@ func TestPlatformIntelligenceEvaluationTemporalAnalysisReportDefinition(t *testi
 
 func TestGraphIntelligencePlaybookEffectivenessEndpoint(t *testing.T) {
 	s := newTestServer(t)
+	startedAt := time.Now().UTC().Add(-90 * time.Minute).Truncate(time.Second)
 	addPlaybookEffectivenessEndpointFixture(t, s.app.SecurityGraph, playbookEffectivenessEndpointFixture{
 		RunID:        "run-a1",
 		PlaybookID:   "pb-remediate",
@@ -772,15 +967,15 @@ func TestGraphIntelligencePlaybookEffectivenessEndpoint(t *testing.T) {
 		TenantID:     "tenant-acme",
 		TargetID:     "service:payments",
 		TargetKind:   graph.NodeKindService,
-		StartedAt:    time.Date(2026, 3, 23, 15, 0, 0, 0, time.UTC),
+		StartedAt:    startedAt,
 		Stages: []playbookEffectivenessEndpointStage{
-			{ID: "approve", Name: "Approve Fix", Order: 1, Status: "completed", ApprovalRequired: true, ApprovalStatus: "approved", ObservedAt: time.Date(2026, 3, 23, 15, 10, 0, 0, time.UTC)},
+			{ID: "approve", Name: "Approve Fix", Order: 1, Status: "completed", ApprovalRequired: true, ApprovalStatus: "approved", ObservedAt: startedAt.Add(10 * time.Minute)},
 		},
 		Outcome: &playbookEffectivenessEndpointOutcome{
 			Verdict:       "positive",
 			Status:        "completed",
 			RollbackState: "stable",
-			ObservedAt:    time.Date(2026, 3, 23, 15, 40, 0, 0, time.UTC),
+			ObservedAt:    startedAt.Add(40 * time.Minute),
 		},
 	})
 
@@ -838,11 +1033,12 @@ func TestPlatformIntelligencePlaybookEffectivenessReportDefinition(t *testing.T)
 
 func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 	s := newTestServer(t)
+	baseAt := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
 	addEvaluationTemporalAnalysisEndpointFixture(t, s.app.SecurityGraph, evaluationTemporalAnalysisEndpointFixture{
 		RunID:        "run-1",
 		Conversation: "conv-1",
 		ServiceID:    "service:payments:conv-1",
-		BaseAt:       time.Date(2026, 3, 23, 16, 0, 0, 0, time.UTC),
+		BaseAt:       baseAt,
 	})
 	tagEvaluationTemporalAnalysisEndpointTenant(t, s.app.SecurityGraph, "run-1", "conv-1", "tenant-acme")
 
@@ -853,15 +1049,15 @@ func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 		TenantID:     "tenant-acme",
 		TargetID:     "database:orders",
 		TargetKind:   graph.NodeKind("database"),
-		StartedAt:    time.Date(2026, 3, 23, 17, 0, 0, 0, time.UTC),
+		StartedAt:    baseAt.Add(time.Hour),
 		Stages: []playbookEffectivenessEndpointStage{
-			{ID: "repair", Name: "Repair", Order: 1, Status: "completed", ObservedAt: time.Date(2026, 3, 23, 17, 10, 0, 0, time.UTC)},
+			{ID: "repair", Name: "Repair", Order: 1, Status: "completed", ObservedAt: baseAt.Add(70 * time.Minute)},
 		},
 		Outcome: &playbookEffectivenessEndpointOutcome{
 			Verdict:       "positive",
 			Status:        "completed",
 			RollbackState: "stable",
-			ObservedAt:    time.Date(2026, 3, 23, 17, 30, 0, 0, time.UTC),
+			ObservedAt:    baseAt.Add(90 * time.Minute),
 		},
 	})
 	s.app.SecurityGraph.AddNode(&graph.Node{
@@ -880,8 +1076,8 @@ func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 			"tenant_id":       "tenant-acme",
 			"target_ids":      []string{"database:orders"},
 			"source_system":   "platform_playbook",
-			"observed_at":     time.Date(2026, 3, 23, 17, 20, 0, 0, time.UTC).Format(time.RFC3339),
-			"valid_from":      time.Date(2026, 3, 23, 17, 20, 0, 0, time.UTC).Format(time.RFC3339),
+			"observed_at":     baseAt.Add(80 * time.Minute).Format(time.RFC3339),
+			"valid_from":      baseAt.Add(80 * time.Minute).Format(time.RFC3339),
 		},
 	})
 
@@ -2479,6 +2675,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	s := NewServer(application)
 	if s.platformReportStore == nil {
 		t.Fatal("expected platformReportStore to be configured")
+		return
 	}
 	run := &reports.ReportRun{
 		ID:            "report_run:test-rollback",
@@ -2497,6 +2694,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	// can verify the update path does not partially mutate durable state.
 	if application.ExecutionStore == nil {
 		t.Fatal("expected shared execution store to be configured")
+		return
 	}
 	if err := application.ExecutionStore.Close(); err != nil {
 		t.Fatalf("ExecutionStore.Close(): %v", err)
@@ -2507,6 +2705,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected persistence failure from updatePlatformReportRun")
+		return
 	}
 	stored, ok := s.platformReportRunSnapshot(run.ReportID, run.ID)
 	if !ok {
@@ -3564,6 +3763,7 @@ func addEvaluationTemporalAnalysisEndpointFixture(t *testing.T, g *graph.Graph, 
 	t.Helper()
 	if g == nil {
 		t.Fatal("graph is required")
+		return
 	}
 
 	baseAt := fixture.BaseAt.UTC()
@@ -3828,6 +4028,7 @@ func addPlaybookEffectivenessEndpointFixture(t *testing.T, g *graph.Graph, fixtu
 	t.Helper()
 	if g == nil {
 		t.Fatal("graph is nil")
+		return
 	}
 
 	if fixture.TargetID != "" {

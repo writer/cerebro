@@ -73,7 +73,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// 4. Initialize Tools
 	tools := agents.NewSecurityTools(
-		application.Warehouse,
+		agentToolsSnowflakeClient(application),
 		application.Findings,
 		application.Policy,
 		scmClient,

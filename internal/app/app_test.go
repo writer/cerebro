@@ -150,6 +150,7 @@ func TestLoadConfigCredentialSourceValidation(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected validation error for incomplete vault credential source")
+		return
 	}
 	if !strings.Contains(err.Error(), "CEREBRO_CREDENTIAL_VAULT_ADDRESS is required") {
 		t.Fatalf("expected vault address validation failure, got %v", err)
@@ -185,51 +186,48 @@ func TestLoadConfigCrossTenantIngestControls(t *testing.T) {
 	}
 }
 
-func TestLoadConfigGraphStoreBackendControls(t *testing.T) {
-	t.Setenv("GRAPH_STORE_BACKEND", "spanner")
-	t.Setenv("GRAPH_STORE_SPANNER_DATABASE", "projects/test/instances/dev/databases/cerebro")
-	t.Setenv("GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP", "true")
-
+func TestLoadConfigGraphStoreBackendDefaultsToNeptune(t *testing.T) {
 	cfg := LoadConfig()
-	if cfg.GraphStoreBackend != "spanner" {
-		t.Fatalf("expected graph store backend spanner, got %q", cfg.GraphStoreBackend)
-	}
-	if cfg.GraphStoreSpannerDatabase != "projects/test/instances/dev/databases/cerebro" {
-		t.Fatalf("expected spanner database to be set, got %q", cfg.GraphStoreSpannerDatabase)
-	}
-	if !cfg.GraphStoreSpannerAutoBootstrap {
-		t.Fatal("expected spanner auto bootstrap to be enabled")
+	if cfg.GraphStoreBackend != "neptune" {
+		t.Fatalf("expected graph store backend neptune, got %q", cfg.GraphStoreBackend)
 	}
 }
 
-func TestLoadConfigGraphStoreBackendDefaultsToMemoryInTests(t *testing.T) {
+func TestLoadConfigGraphSearchOpenSearchSettings(t *testing.T) {
+	t.Setenv("GRAPH_SEARCH_BACKEND", "opensearch")
+	t.Setenv("GRAPH_SEARCH_OPENSEARCH_ENDPOINT", "https://search.example.com")
+	t.Setenv("AWS_REGION", "us-west-2")
+	t.Setenv("GRAPH_SEARCH_OPENSEARCH_INDEX", "cerebro-entities")
+	t.Setenv("GRAPH_SEARCH_REQUEST_TIMEOUT", "7s")
+	t.Setenv("GRAPH_SEARCH_MAX_CANDIDATES", "123")
+
 	cfg := LoadConfig()
-	if cfg.GraphStoreBackend != "memory" {
-		t.Fatalf("expected test graph store backend memory, got %q", cfg.GraphStoreBackend)
+	if cfg.GraphSearchBackend != "opensearch" {
+		t.Fatalf("expected graph search backend opensearch, got %q", cfg.GraphSearchBackend)
 	}
-	if !cfg.GraphStoreAllowInMemory {
-		t.Fatal("expected test graph runtime to allow in-memory backend")
+	if cfg.GraphSearchOpenSearchEndpoint != "https://search.example.com" {
+		t.Fatalf("expected graph search endpoint override, got %q", cfg.GraphSearchOpenSearchEndpoint)
+	}
+	if cfg.GraphSearchOpenSearchRegion != "us-west-2" {
+		t.Fatalf("expected graph search region fallback from AWS_REGION, got %q", cfg.GraphSearchOpenSearchRegion)
+	}
+	if cfg.GraphSearchOpenSearchIndex != "cerebro-entities" {
+		t.Fatalf("expected graph search index override, got %q", cfg.GraphSearchOpenSearchIndex)
+	}
+	if cfg.GraphSearchRequestTimeout != 7*time.Second {
+		t.Fatalf("expected graph search timeout 7s, got %s", cfg.GraphSearchRequestTimeout)
+	}
+	if cfg.GraphSearchMaxCandidates != 123 {
+		t.Fatalf("expected graph search max candidates 123, got %d", cfg.GraphSearchMaxCandidates)
 	}
 }
 
 func TestDefaultGraphStoreBackendForProcess(t *testing.T) {
-	if got := defaultGraphStoreBackendForProcess(true); got != "memory" {
-		t.Fatalf("defaultGraphStoreBackendForProcess(test) = %q, want memory", got)
+	if got := defaultGraphStoreBackendForProcess(true); got != "neptune" {
+		t.Fatalf("defaultGraphStoreBackendForProcess(test) = %q, want neptune", got)
 	}
-	if got := defaultGraphStoreBackendForProcess(false); got != "spanner" {
-		t.Fatalf("defaultGraphStoreBackendForProcess(production) = %q, want spanner", got)
-	}
-}
-
-func TestAllowInMemoryGraphStoreForProcess(t *testing.T) {
-	if !allowInMemoryGraphStoreForProcess(true, false) {
-		t.Fatal("expected test process to allow in-memory graph store")
-	}
-	if allowInMemoryGraphStoreForProcess(false, false) {
-		t.Fatal("expected production process to reject in-memory graph store without explicit opt-in")
-	}
-	if !allowInMemoryGraphStoreForProcess(false, true) {
-		t.Fatal("expected explicit production opt-in to allow in-memory graph store")
+	if got := defaultGraphStoreBackendForProcess(false); got != "neptune" {
+		t.Fatalf("defaultGraphStoreBackendForProcess(production) = %q, want neptune", got)
 	}
 }
 
@@ -800,6 +798,7 @@ func TestNew_APIAuthEnabledWithoutKeys(t *testing.T) {
 	_, err := New(ctx)
 	if err == nil {
 		t.Fatal("expected error when API auth enabled without API_KEYS")
+		return
 	}
 }
 
@@ -812,6 +811,7 @@ func TestNewWithConfig_APIAuthEnabledWithoutKeys(t *testing.T) {
 	_, err := NewWithConfig(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error when API auth enabled without API_KEYS")
+		return
 	}
 }
 
@@ -832,6 +832,7 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 
 	var validationErr *ConfigValidationError
@@ -865,17 +866,113 @@ func TestLoadConfigValidateAggregatesProblems(t *testing.T) {
 	}
 }
 
-func TestLoadConfigValidateGraphStoreBackendRequirements(t *testing.T) {
-	t.Setenv("GRAPH_STORE_BACKEND", "spanner")
-	t.Setenv("GRAPH_STORE_SPANNER_DATABASE", "")
+func TestLoadConfigValidateDistributedJobsRequirePostgresAndNATS(t *testing.T) {
+	cfg := LoadConfig()
+	cfg.JobDatabaseURL = "postgres://jobs:jobs@localhost:5432/cerebro?sslmode=disable"
+	cfg.NATSJetStreamURLs = nil
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+		return
+	}
+
+	var validationErr *ConfigValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ConfigValidationError, got %T", err)
+	}
+
+	found := false
+	for _, problem := range validationErr.Problems {
+		if strings.Contains(problem, "NATS_URLS must include at least one URL when JOB_DATABASE_URL is configured") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected distributed jobs validation failure, got %#v", validationErr.Problems)
+	}
+}
+
+func TestLoadConfigValidateAllowsAppStatePostgresWithoutDistributedJobs(t *testing.T) {
+	cfg := LoadConfig()
+	cfg.WarehouseBackend = "postgres"
+	cfg.WarehousePostgresDSN = "postgres://app-state:app-state@localhost:5432/cerebro?sslmode=disable"
+	cfg.JobDatabaseURL = ""
+	cfg.NATSJetStreamURLs = nil
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected app-state postgres config without distributed jobs to validate, got %v", err)
+	}
+}
+
+func TestLoadConfigValidateRejectsUnsupportedGraphStoreBackends(t *testing.T) {
+	for _, backend := range []string{"legacy", "memory"} {
+		t.Run(backend, func(t *testing.T) {
+			t.Setenv("GRAPH_STORE_BACKEND", backend)
+
+			cfg := LoadConfig()
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatal("expected config validation error")
+				return
+			}
+			if !strings.Contains(err.Error(), "GRAPH_STORE_BACKEND must be neptune") {
+				t.Fatalf("expected graph store backend validation failure, got %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadConfigValidateRejectsUnsupportedGraphSearchBackends(t *testing.T) {
+	t.Setenv("GRAPH_SEARCH_BACKEND", "legacy")
 
 	cfg := LoadConfig()
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
-	if !strings.Contains(err.Error(), "GRAPH_STORE_SPANNER_DATABASE is required when GRAPH_STORE_BACKEND=spanner") {
-		t.Fatalf("expected graph store backend validation failure, got %v", err)
+	if !strings.Contains(err.Error(), "GRAPH_SEARCH_BACKEND must be one of graph, opensearch") {
+		t.Fatalf("expected graph search backend validation failure, got %v", err)
+	}
+}
+
+func TestLoadConfigValidateOpenSearchGraphSearchControls(t *testing.T) {
+	t.Setenv("GRAPH_SEARCH_BACKEND", "opensearch")
+	t.Setenv("GRAPH_SEARCH_REQUEST_TIMEOUT", "0s")
+	t.Setenv("GRAPH_SEARCH_MAX_CANDIDATES", "0")
+
+	cfg := LoadConfig()
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+		return
+	}
+
+	var validationErr *ConfigValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ConfigValidationError, got %T", err)
+	}
+
+	wantProblems := []string{
+		"GRAPH_SEARCH_OPENSEARCH_ENDPOINT is required when GRAPH_SEARCH_BACKEND=opensearch",
+		"GRAPH_SEARCH_OPENSEARCH_REGION is required when GRAPH_SEARCH_BACKEND=opensearch",
+		"GRAPH_SEARCH_OPENSEARCH_INDEX is required when GRAPH_SEARCH_BACKEND=opensearch",
+		"GRAPH_SEARCH_REQUEST_TIMEOUT must be > 0",
+		"GRAPH_SEARCH_MAX_CANDIDATES must be > 0",
+	}
+	for _, want := range wantProblems {
+		found := false
+		for _, problem := range validationErr.Problems {
+			if strings.Contains(problem, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected validation problem containing %q, got %#v", want, validationErr.Problems)
+		}
 	}
 }
 
@@ -893,6 +990,7 @@ func TestLoadConfigValidateNeptunePoolControls(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 
 	var validationErr *ConfigValidationError
@@ -943,6 +1041,7 @@ func TestLoadConfigValidateOperationalTimeoutControls(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 
 	var validationErr *ConfigValidationError
@@ -1027,6 +1126,7 @@ func TestNewWithConfigFailsFastOnInvalidConfig(t *testing.T) {
 	_, err := NewWithConfig(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected config validation error")
+		return
 	}
 	if !strings.Contains(err.Error(), "API_PORT must be between 1 and 65535") {
 		t.Fatalf("expected port validation error, got %v", err)
@@ -1266,6 +1366,7 @@ func TestNew_ExplicitMappingsOnlyFailsOnUnmappedPolicy(t *testing.T) {
 	_, err := New(context.Background())
 	if err == nil {
 		t.Fatal("expected app initialization to fail in explicit mappings-only mode")
+		return
 	}
 }
 
@@ -1642,6 +1743,7 @@ func TestScanQueryPolicies_AddsTruncationMetaFinding(t *testing.T) {
 	}
 	if meta == nil {
 		t.Fatalf("expected truncation meta finding %q", metaID)
+		return
 	}
 	if meta.ResourceType != "query_policy_scan" {
 		t.Fatalf("expected meta resource type query_policy_scan, got %q", meta.ResourceType)

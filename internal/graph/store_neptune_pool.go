@@ -160,7 +160,7 @@ func (e *pooledNeptuneDataExecutor) ExecuteOpenCypher(ctx context.Context, query
 	if output == nil {
 		return nil, nil
 	}
-	return output.Results, nil
+	return neptuneDecodeExecuteResults(output.Results)
 }
 
 func (e *pooledNeptuneDataExecutor) ExecuteOpenCypherExplain(ctx context.Context, query string, mode NeptuneExplainMode, params map[string]any) ([]byte, error) {

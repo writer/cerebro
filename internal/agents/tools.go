@@ -477,10 +477,11 @@ func (st *SecurityTools) resolveFinding(ctx context.Context, args json.RawMessag
 		return "", err
 	}
 
-	if st.findings.Resolve(params.FindingID) {
+	if err := findings.ResolveStore(st.findings, params.FindingID); err == nil {
 		return fmt.Sprintf("Finding %s resolved: %s", params.FindingID, params.Reason), nil
+	} else {
+		return "", fmt.Errorf("resolve finding %s: %w", params.FindingID, err)
 	}
-	return "", fmt.Errorf("finding not found: %s", params.FindingID)
 }
 
 func (st *SecurityTools) createTicket(ctx context.Context, args json.RawMessage) (string, error) {

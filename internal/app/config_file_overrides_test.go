@@ -19,6 +19,7 @@ func TestResolveTrustedConfigPathRejectsTraversal(t *testing.T) {
 
 	if _, _, _, err := resolveTrustedConfigPath("../outside.yaml"); err == nil {
 		t.Fatal("expected traversal path to be rejected")
+		return
 	}
 }
 

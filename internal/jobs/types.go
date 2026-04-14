@@ -48,7 +48,7 @@ type JobMessage struct {
 	CorrelationID string `json:"correlation_id,omitempty"`
 	// Attempt number for retry tracking (used in deduplication ID generation)
 	Attempt int `json:"attempt,omitempty"`
-	// DeduplicationID for FIFO queues - if empty, generates unique ID from job_id:attempt:timestamp
+	// DeduplicationID is optional; if empty, the queue generates a stable identifier.
 	DeduplicationID string `json:"deduplication_id,omitempty"`
 }
 

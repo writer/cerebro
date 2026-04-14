@@ -166,6 +166,7 @@ func TestStrictSyncSummaryError(t *testing.T) {
 	syncStrictExit = true
 	if err := strictSyncSummaryError(summary); err == nil {
 		t.Fatal("expected strict exit error")
+		return
 	}
 }
 

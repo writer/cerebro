@@ -21,8 +21,8 @@ import (
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/postgres"
 	cerebroruntime "github.com/writer/cerebro/internal/runtime"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 // Server is the fully wired API server
@@ -77,7 +77,7 @@ type Server struct {
 }
 
 type auditLogWriter interface {
-	Log(ctx context.Context, entry *postgres.AuditEntry) error
+	Log(ctx context.Context, entry *snowflake.AuditEntry) error
 }
 
 var runtimeNumGoroutine = goruntime.NumGoroutine

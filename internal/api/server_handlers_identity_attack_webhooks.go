@@ -15,19 +15,19 @@ import (
 	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/remediation"
-	"github.com/writer/cerebro/internal/warehouse"
+	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
 func (s *Server) detectStaleAccess(w http.ResponseWriter, r *http.Request) {
 	if s.app.Warehouse == nil {
-		s.error(w, http.StatusServiceUnavailable, "warehouse not configured")
+		s.error(w, http.StatusServiceUnavailable, "snowflake not configured")
 		return
 	}
 
 	detector := identity.NewStaleAccessDetector(identity.DefaultThresholds())
 	fetch := func(table string) []map[string]interface{} {
-		rows, err := s.app.Warehouse.GetAssets(r.Context(), table, warehouse.AssetFilter{Limit: 1000})
+		rows, err := s.app.Warehouse.GetAssets(r.Context(), table, snowflake.AssetFilter{Limit: 1000})
 		if err != nil {
 			return []map[string]interface{}{}
 		}
@@ -181,22 +181,22 @@ func (s *Server) identityReport(w http.ResponseWriter, r *http.Request) {
 
 	if s.app.Warehouse != nil {
 		// Load identity data from various tables
-		if users, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_users", warehouse.AssetFilter{Limit: 1000}); err == nil {
+		if users, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Users = append(data.Users, users...)
 		}
-		if users, err := s.app.Warehouse.GetAssets(r.Context(), "okta_users", warehouse.AssetFilter{Limit: 1000}); err == nil {
+		if users, err := s.app.Warehouse.GetAssets(r.Context(), "okta_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Users = append(data.Users, users...)
 		}
-		if users, err := s.app.Warehouse.GetAssets(r.Context(), "azure_ad_users", warehouse.AssetFilter{Limit: 1000}); err == nil {
+		if users, err := s.app.Warehouse.GetAssets(r.Context(), "azure_ad_users", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Users = append(data.Users, users...)
 		}
-		if sas, err := s.app.Warehouse.GetAssets(r.Context(), "gcp_iam_service_accounts", warehouse.AssetFilter{Limit: 1000}); err == nil {
+		if sas, err := s.app.Warehouse.GetAssets(r.Context(), "gcp_iam_service_accounts", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.ServiceAccounts = sas
 		}
-		if creds, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_credential_reports", warehouse.AssetFilter{Limit: 1000}); err == nil {
+		if creds, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_credential_reports", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Credentials = creds
 		}
-		if roles, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_roles", warehouse.AssetFilter{Limit: 1000}); err == nil {
+		if roles, err := s.app.Warehouse.GetAssets(r.Context(), "aws_iam_roles", snowflake.AssetFilter{Limit: 1000}); err == nil {
 			data.Roles = roles
 		}
 	}
@@ -504,7 +504,7 @@ func (s *Server) listAuditLogs(w http.ResponseWriter, r *http.Request) {
 		s.json(w, http.StatusOK, map[string]interface{}{
 			"logs":       []interface{}{},
 			"count":      0,
-			"message":    "database not configured",
+			"message":    "audit log persistence not configured",
 			"pagination": PaginationResponse{Limit: limit, Offset: offset, HasMore: false},
 		})
 		return

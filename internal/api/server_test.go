@@ -31,9 +31,9 @@ import (
 	"github.com/writer/cerebro/internal/metrics"
 	"github.com/writer/cerebro/internal/notifications"
 	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/providers"
 	"github.com/writer/cerebro/internal/remediation"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 // newTestApp creates a minimal in-memory App suitable for API integration tests.
@@ -134,10 +134,10 @@ func (p *scriptedAgentProvider) Stream(context.Context, []agents.Message, []agen
 }
 
 type captureAuditLogger struct {
-	entries []*postgres.AuditEntry
+	entries []*snowflake.AuditEntry
 }
 
-func (l *captureAuditLogger) Log(_ context.Context, entry *postgres.AuditEntry) error {
+func (l *captureAuditLogger) Log(_ context.Context, entry *snowflake.AuditEntry) error {
 	l.entries = append(l.entries, entry)
 	return nil
 }
@@ -1036,6 +1036,7 @@ func TestCompliancePreAuditToExport_Smoke(t *testing.T) {
 	}
 	if preAuditBody["estimated_outcome"] == nil {
 		t.Fatalf("expected estimated_outcome in pre-audit response")
+		return
 	}
 
 	export := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/export", nil)

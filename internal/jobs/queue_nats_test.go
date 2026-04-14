@@ -156,17 +156,17 @@ func TestNATSQueue_ExtendVisibility_UnknownHandle(t *testing.T) {
 	}
 }
 
-func TestNATSQueue_RetryLater_EmptyHandle(t *testing.T) {
+func TestNATSQueue_Retry_EmptyHandle(t *testing.T) {
 	q := &NATSQueue{}
-	err := q.RetryLater(context.Background(), "", 30*time.Second)
+	err := q.Retry(context.Background(), "", 30*time.Second)
 	if err == nil {
 		t.Fatal("expected error for empty receipt handle")
 	}
 }
 
-func TestNATSQueue_RetryLater_UnknownHandle(t *testing.T) {
+func TestNATSQueue_Retry_UnknownHandle(t *testing.T) {
 	q := &NATSQueue{}
-	err := q.RetryLater(context.Background(), "nonexistent", 30*time.Second)
+	err := q.Retry(context.Background(), "nonexistent", 30*time.Second)
 	if err == nil {
 		t.Fatal("expected error for unknown receipt handle")
 	}

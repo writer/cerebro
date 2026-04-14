@@ -610,14 +610,32 @@ func entityRiskOrder(level RiskLevel) int {
 	}
 }
 
+var entityQueryDisallowedKinds = map[NodeKind]struct{}{
+	NodeKindClaim:                   {},
+	NodeKindEvidence:                {},
+	NodeKindObservation:             {},
+	NodeKindSource:                  {},
+	NodeKindDecision:                {},
+	NodeKindAction:                  {},
+	NodeKindOutcome:                 {},
+	NodeKindBucketPolicyStatement:   {},
+	NodeKindBucketPublicAccessBlock: {},
+	NodeKindBucketEncryptionConfig:  {},
+	NodeKindBucketLoggingConfig:     {},
+	NodeKindBucketVersioningConfig:  {},
+}
+
 func entityQueryAllowedNodeKind(kind NodeKind) bool {
-	switch kind {
-	case NodeKindClaim, NodeKindEvidence, NodeKindObservation, NodeKindSource, NodeKindDecision, NodeKindAction, NodeKindOutcome,
-		NodeKindBucketPolicyStatement, NodeKindBucketPublicAccessBlock, NodeKindBucketEncryptionConfig, NodeKindBucketLoggingConfig, NodeKindBucketVersioningConfig:
-		return false
-	default:
-		return true
+	_, disallowed := entityQueryDisallowedKinds[kind]
+	return !disallowed
+}
+
+func entityQueryDisallowedNodeKinds() []NodeKind {
+	values := make([]NodeKind, 0, len(entityQueryDisallowedKinds))
+	for kind := range entityQueryDisallowedKinds {
+		values = append(values, kind)
 	}
+	return uniqueSortedNodeKinds(values)
 }
 
 func cloneOptionalBool(value *bool) *bool {

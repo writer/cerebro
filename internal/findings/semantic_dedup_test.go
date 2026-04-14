@@ -142,6 +142,7 @@ func TestSnowflakeStoreSemanticDedupUsesCanonicalDirtyID(t *testing.T) {
 
 	if merged == nil {
 		t.Fatal("expected merged finding")
+		return
 	}
 	if merged.ID != "finding-v1" {
 		t.Fatalf("expected canonical id finding-v1, got %q", merged.ID)

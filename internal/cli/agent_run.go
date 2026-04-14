@@ -2,14 +2,11 @@ package cli
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/nats-io/nats.go"
 	"github.com/spf13/cobra"
 
 	"github.com/writer/cerebro/internal/agents"
@@ -80,8 +77,8 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 		application.Config.GitLabToken,
 		application.Config.GitLabBaseURL,
 	)
-	tools := agents.NewSecurityTools(application.Warehouse, application.Findings, application.Policy, scmClient)
-	useDistributed := agentRunDistributed || (application.Config.JobDatabaseURL != "" && len(application.Config.NATSJetStreamURLs) > 0)
+	tools := agents.NewSecurityTools(agentToolsSnowflakeClient(application), application.Findings, application.Policy, scmClient)
+	useDistributed := agentRunDistributed || distributedJobsConfigured(application.Config)
 	if useDistributed {
 		return runDistributedAgentFlow(ctx, application, tools)
 	}
@@ -139,11 +136,8 @@ func runAgentFlow(cmd *cobra.Command, args []string) error {
 }
 
 func runDistributedAgentFlow(ctx context.Context, application *app.App, tools *agents.SecurityTools) error {
-	if application.Config.JobDatabaseURL == "" {
+	if !distributedJobsConfigured(application.Config) {
 		return fmt.Errorf("JOB_DATABASE_URL is required for distributed execution")
-	}
-	if len(application.Config.NATSJetStreamURLs) == 0 {
-		return fmt.Errorf("NATS_URLS is required for distributed execution")
 	}
 
 	resources, analysis, err := buildDistributedResources(ctx, tools)
@@ -154,38 +148,13 @@ func runDistributedAgentFlow(ctx context.Context, application *app.App, tools *a
 		return fmt.Errorf("no resources to enqueue")
 	}
 
-	// Open Postgres connection for job store.
-	db, err := sql.Open("pgx", application.Config.JobDatabaseURL)
+	runtime, err := openJobRuntime(ctx, application.Config)
 	if err != nil {
-		return fmt.Errorf("open job database: %w", err)
+		return err
 	}
-	defer func() { _ = db.Close() }()
+	defer func() { _ = runtime.Close() }()
 
-	store := jobs.NewPostgresStore(db)
-	if err := store.EnsureSchema(ctx); err != nil {
-		return fmt.Errorf("ensure job schema: %w", err)
-	}
-
-	// Connect to NATS and obtain JetStream context.
-	nc, err := nats.Connect(strings.Join(application.Config.NATSJetStreamURLs, ","))
-	if err != nil {
-		return fmt.Errorf("connect to NATS: %w", err)
-	}
-	defer nc.Close()
-
-	js, err := nc.JetStream()
-	if err != nil {
-		return fmt.Errorf("obtain JetStream context: %w", err)
-	}
-
-	queue := jobs.NewNATSQueue(js, jobs.NATSQueueConfig{
-		Stream:       "CEREBRO_JOBS",
-		Subject:      "cerebro.jobs",
-		Consumer:     "job-worker",
-		CreateStream: true,
-	})
-
-	manager := jobs.NewManager(queue, store, application.Logger)
+	manager := jobs.NewManager(runtime.queue, runtime.store, application.Logger)
 
 	maxAttempts := agentRunMaxAttempts
 	if maxAttempts <= 0 {
