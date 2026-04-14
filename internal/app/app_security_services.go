@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/remediation"
 	"github.com/writer/cerebro/internal/runtime"
 	"github.com/writer/cerebro/internal/threatintel"
+	"github.com/writer/cerebro/internal/vulndb"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -96,8 +97,27 @@ func (a *App) initThreatIntel(ctx context.Context) {
 				a.Logger.Warn("failed to emit threat intel synced event", "error", err)
 			}
 		}
+		if err := a.refreshEndpointVulnerabilityTables(runCtx, "threatintel_sync"); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			a.Logger.Warn("failed to refresh endpoint vulnerability tables after threat intel sync", "error", err)
+		}
 		a.Logger.Info("threat intel feeds synced", "indicators", stats["total_indicators"])
 	}()
+}
+
+func (a *App) initVulnDB() {
+	if a == nil || a.Config == nil {
+		return
+	}
+
+	store, err := vulndb.NewSQLiteStore(strings.TrimSpace(a.Config.VulnDBStateFile))
+	if err != nil {
+		a.Logger.Warn("failed to initialize vulnerability advisory database", "error", err, "path", a.Config.VulnDBStateFile)
+		return
+	}
+
+	a.VulnDB = vulndb.NewService(store)
+	a.vulnDBStore = store
+	a.Logger.Info("vulnerability advisory database initialized", "path", a.Config.VulnDBStateFile)
 }
 
 func (a *App) initCompliance() {

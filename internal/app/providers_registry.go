@@ -56,7 +56,11 @@ func (a *App) registerConfiguredProviders(ctx context.Context, cfg *Config, regi
 				"error", err)
 			return
 		}
-		registry.Register(p)
+		registeredProvider := p
+		if p.Type() == providers.ProviderTypeEndpoint {
+			registeredProvider = providers.WithSyncHook(p, a.endpointProviderSyncHook)
+		}
+		registry.Register(registeredProvider)
 		a.Logger.Info("provider registered", "provider", name, "maturity", metadata.Maturity)
 	}
 

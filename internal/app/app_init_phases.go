@@ -100,11 +100,17 @@ func (a *App) initPhase2a(ctx context.Context) error {
 		{name: "snowflake_findings", run: func(taskCtx context.Context) { a.initSnowflakeFindings(taskCtx) }},
 		{name: "scan_watermarks", run: func(taskCtx context.Context) { a.initScanWatermarks(taskCtx) }},
 		{name: "threatintel", run: func(context.Context) { a.initThreatIntel(ctx) }},
+		{name: "vulndb", run: func(context.Context) { a.initVulnDB() }},
 		{name: "available_tables", run: func(taskCtx context.Context) { a.initAvailableTables(taskCtx) }},
 	}); err != nil {
 		return fmt.Errorf("phase 2a init failed: %w", err)
 	}
 	if err := runInitErrorStep("app_state_migration", func() error { return a.migrateAppState(ctx) }); err != nil {
+		return err
+	}
+	if err := runInitErrorStep("endpoint_vulnerability_tables", func() error {
+		return a.refreshEndpointVulnerabilityTables(ctx, "startup")
+	}); err != nil {
 		return err
 	}
 	return nil

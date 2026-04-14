@@ -340,6 +340,11 @@ func (a *App) Close() error {
 			}
 		}
 	}
+	if a.vulnDBStore != nil {
+		if err := a.vulnDBStore.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("vulnerability advisory db: %w", err))
+		}
+	}
 
 	if a.RemoteTools != nil {
 		if err := a.RemoteTools.Close(); err != nil {

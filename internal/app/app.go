@@ -70,6 +70,7 @@ import (
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/threatintel"
 	"github.com/writer/cerebro/internal/ticketing"
+	"github.com/writer/cerebro/internal/vulndb"
 	"github.com/writer/cerebro/internal/warehouse"
 	"github.com/writer/cerebro/internal/webhooks"
 )
@@ -150,6 +151,7 @@ type App struct {
 	// New services
 	RBAC                *auth.RBAC
 	ThreatIntel         *threatintel.ThreatIntelService
+	VulnDB              *vulndb.Service
 	Compliance          *compliance.ComplianceReport
 	Health              *health.Registry
 	Lineage             *lineage.LineageMapper
@@ -208,6 +210,8 @@ type App struct {
 	apiCredentials                     atomic.Value // map[string]apiauth.Credential
 	apiCredentialStore                 *apiauth.ManagedCredentialStore
 	secretsLoader                      secretsLoader
+	vulnDBStore                        interface{ Close() error }
+	endpointVulnRefreshMu              sync.Mutex
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string
