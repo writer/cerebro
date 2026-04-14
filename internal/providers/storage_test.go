@@ -49,7 +49,7 @@ func (f *fakeSnowflakeClient) Query(ctx context.Context, query string, args ...i
 func TestEnsureProviderTable_PropagatesColumnError(t *testing.T) {
 	client := &fakeSnowflakeClient{queryErr: errors.New("query failed")}
 
-	err := ensureProviderTable(context.Background(), client, "okta_users", []string{"id"})
+	err := ensureProviderTable(context.Background(), client, "okta_users", []ColumnSchema{{Name: "id", Type: "string"}})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -99,7 +99,7 @@ func TestEnsureProviderTable_UsesIdempotentAlter(t *testing.T) {
 		{"column_name": "_CQ_ID"},
 	}}}
 
-	if err := ensureProviderTable(context.Background(), client, "okta_users", []string{"id"}); err != nil {
+	if err := ensureProviderTable(context.Background(), client, "okta_users", []ColumnSchema{{Name: "id", Type: "string"}}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -121,7 +121,7 @@ func TestEnsureProviderTable_SkipsExistingColumnsCaseInsensitive(t *testing.T) {
 		{"column_name": "_CQ_HASH"},
 	}}}
 
-	if err := ensureProviderTable(context.Background(), client, "okta_users", []string{"id"}); err != nil {
+	if err := ensureProviderTable(context.Background(), client, "okta_users", []ColumnSchema{{Name: "id", Type: "string"}}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -142,6 +142,7 @@ func TestBaseProviderSyncTable_UsesConfiguredWarehouse(t *testing.T) {
 				{"column_name": "_CQ_HASH"},
 				{"column_name": "ID"},
 				{"column_name": "EMAIL"},
+				{"column_name": "ACCOUNT_ENABLED"},
 			}}, nil
 		},
 	})
@@ -149,12 +150,13 @@ func TestBaseProviderSyncTable_UsesConfiguredWarehouse(t *testing.T) {
 	result, err := provider.syncTable(context.Background(), TableSchema{
 		Name: "okta_users",
 		Columns: []ColumnSchema{
-			{Name: "id"},
-			{Name: "email"},
+			{Name: "id", Type: "string"},
+			{Name: "email", Type: "string"},
+			{Name: "account_enabled", Type: "boolean"},
 		},
 		PrimaryKey: []string{"id"},
 	}, []map[string]interface{}{
-		{"id": "user-1", "email": "user@example.com"},
+		{"id": "user-1", "email": "user@example.com", "account_enabled": true},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -168,14 +170,65 @@ func TestBaseProviderSyncTable_UsesConfiguredWarehouse(t *testing.T) {
 		t.Fatal("expected configured memory warehouse")
 	}
 	foundUpsert := false
+	foundTypedCreate := false
+	foundNativeBoolArg := false
 	for _, call := range mem.Execs {
 		if strings.Contains(call.Statement, "ON CONFLICT (_CQ_ID) DO UPDATE") {
 			foundUpsert = true
-			break
+		}
+		if strings.Contains(call.Statement, "ACCOUNT_ENABLED BOOLEAN") {
+			foundTypedCreate = true
+		}
+		for _, arg := range call.Args {
+			if typed, ok := arg.(bool); ok && typed {
+				foundNativeBoolArg = true
+			}
 		}
 	}
 	if !foundUpsert {
 		t.Fatalf("expected postgres upsert query, got %#v", mem.Execs)
+	}
+	if !foundTypedCreate {
+		t.Fatalf("expected typed boolean provider column, got %#v", mem.Execs)
+	}
+	if !foundNativeBoolArg {
+		t.Fatalf("expected native bool argument, got %#v", mem.Execs)
+	}
+}
+
+func TestBaseProviderSyncTable_StoresTypedProviderColumnsInSQLite(t *testing.T) {
+	store, err := warehouse.NewSQLiteWarehouse(warehouse.SQLiteWarehouseConfig{
+		Path: filepath.Join(t.TempDir(), "providers.db"),
+	})
+	if err != nil {
+		t.Fatalf("new sqlite warehouse: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	provider := NewBaseProvider("entra", ProviderTypeIdentity)
+	provider.SetWarehouse(store)
+
+	_, err = provider.syncTable(context.Background(), TableSchema{
+		Name: "entra_users",
+		Columns: []ColumnSchema{
+			{Name: "id", Type: "string"},
+			{Name: "account_enabled", Type: "boolean"},
+			{Name: "display_name", Type: "string"},
+		},
+		PrimaryKey: []string{"id"},
+	}, []map[string]interface{}{
+		{"id": "user-1", "account_enabled": true, "display_name": "User One"},
+	})
+	if err != nil {
+		t.Fatalf("syncTable() error = %v", err)
+	}
+
+	result, err := store.Query(context.Background(), "SELECT id FROM entra_users WHERE account_enabled = true")
+	if err != nil {
+		t.Fatalf("query typed provider column: %v", err)
+	}
+	if result.Count != 1 || result.Rows[0]["id"] != "user-1" {
+		t.Fatalf("expected native boolean query to match synced row, got %#v", result.Rows)
 	}
 }
 

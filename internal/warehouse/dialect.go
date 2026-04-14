@@ -14,6 +14,8 @@ const (
 )
 
 var currentTimestampCallPattern = regexp.MustCompile(`(?i)CURRENT_TIMESTAMP\(\)`)
+var nowCallPattern = regexp.MustCompile(`(?i)\bNOW\s*\(\s*\)`)
+var sqliteCurrentTimestampIntervalPattern = regexp.MustCompile(`(?i)CURRENT_TIMESTAMP\s*([+-])\s*INTERVAL\s*'([0-9]+)\s+([a-z]+)'`)
 
 func DialectFor(schema SchemaWarehouse) string {
 	if schema == nil {
@@ -60,7 +62,9 @@ func rewriteForPostgres(query string) string {
 }
 
 func rewriteForSQLite(query string) string {
-	rewritten := currentTimestampCallPattern.ReplaceAllString(query, "CURRENT_TIMESTAMP")
+	rewritten := nowCallPattern.ReplaceAllString(query, "CURRENT_TIMESTAMP")
+	rewritten = currentTimestampCallPattern.ReplaceAllString(rewritten, "CURRENT_TIMESTAMP")
+	rewritten = rewriteSQLiteCurrentTimestampIntervals(rewritten)
 	rewritten = replaceKeyword(rewritten, "TIMESTAMP_TZ", "TEXT")
 	rewritten = replaceKeyword(rewritten, "TIMESTAMP_NTZ", "TEXT")
 	rewritten = replaceKeyword(rewritten, "VARIANT", "JSON")
@@ -68,6 +72,17 @@ func rewriteForSQLite(query string) string {
 	rewritten = rewriteJSONFunctions(rewritten, DialectSQLite)
 	rewritten = strings.ReplaceAll(rewritten, "::TIMESTAMP_TZ", "")
 	return rewritten
+}
+
+func rewriteSQLiteCurrentTimestampIntervals(query string) string {
+	return sqliteCurrentTimestampIntervalPattern.ReplaceAllStringFunc(query, func(match string) string {
+		parts := sqliteCurrentTimestampIntervalPattern.FindStringSubmatch(match)
+		if len(parts) != 4 {
+			return match
+		}
+		modifier := fmt.Sprintf("%s%s %s", parts[1], parts[2], strings.ToLower(parts[3]))
+		return fmt.Sprintf("DATETIME(CURRENT_TIMESTAMP, '%s')", modifier)
+	})
 }
 
 func rewriteQuestionPlaceholders(query string) string {

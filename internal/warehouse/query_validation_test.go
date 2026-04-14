@@ -89,6 +89,13 @@ func TestBuildReadOnlyLimitedQuery(t *testing.T) {
 			wantQueryPart: "LIMIT 1000",
 		},
 		{
+			name:          "preserves explicit top level limit within bound",
+			query:         "SELECT * FROM findings LIMIT 10",
+			limit:         100,
+			wantLimit:     100,
+			wantQueryPart: "SELECT * FROM findings LIMIT 10",
+		},
+		{
 			name:    "rejects unsafe query",
 			query:   "DROP TABLE findings",
 			limit:   10,
@@ -114,6 +121,9 @@ func TestBuildReadOnlyLimitedQuery(t *testing.T) {
 			}
 			if !strings.Contains(gotQuery, tt.wantQueryPart) {
 				t.Fatalf("expected query %q to contain %q", gotQuery, tt.wantQueryPart)
+			}
+			if tt.name == "preserves explicit top level limit within bound" && strings.Contains(gotQuery, "cerebro_readonly_query") {
+				t.Fatalf("expected explicit limit query to avoid extra wrapper, got %q", gotQuery)
 			}
 		})
 	}

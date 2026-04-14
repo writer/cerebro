@@ -42,8 +42,7 @@ func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows [
 		return result, nil
 	}
 
-	columns := schemaColumnNames(schema.Columns)
-	if err := ensureProviderTable(ctx, store, schema.Name, columns); err != nil {
+	if err := ensureProviderTable(ctx, store, schema.Name, schema.Columns); err != nil {
 		return result, err
 	}
 
@@ -60,7 +59,7 @@ func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows [
 	newIDs := providerRowIDSet(prepared)
 
 	// Atomic upsert via dialect-specific merge/upsert; no delete-before-insert window.
-	if err := mergeProviderRows(ctx, store, schema.Name, prepared); err != nil {
+	if err := mergeProviderRows(ctx, store, schema.Name, schema.Columns, prepared); err != nil {
 		return result, err
 	}
 
@@ -88,8 +87,11 @@ func schemaColumnNames(columns []ColumnSchema) []string {
 	return names
 }
 
-func ensureProviderTable(ctx context.Context, store providerWarehouseClient, table string, columns []string) error {
-	err := tableops.EnsureVariantTable(ctx, store, table, columns, tableops.EnsureVariantTableOptions{
+func ensureProviderTable(ctx context.Context, store providerWarehouseClient, table string, columns []ColumnSchema) error {
+	if providerUsesTypedStorage(store) {
+		return ensureTypedProviderTable(ctx, store, table, columns)
+	}
+	err := tableops.EnsureVariantTable(ctx, store, table, schemaColumnNames(columns), tableops.EnsureVariantTableOptions{
 		AddMissingColumns: true,
 	})
 	if err == nil {
@@ -296,8 +298,15 @@ func formatProviderIDValue(value interface{}) string {
 	}
 }
 
-func mergeProviderRows(ctx context.Context, store providerWarehouseClient, table string, rows []map[string]interface{}) error {
+func mergeProviderRows(ctx context.Context, store providerWarehouseClient, table string, columns []ColumnSchema, rows []map[string]interface{}) error {
+	if providerUsesTypedStorage(store) {
+		return mergeTypedProviderRows(ctx, store, table, columns, rows)
+	}
 	return tableops.MergeVariantRowsBatch(ctx, store, table, rows, nil, providerInsertBatchSize)
+}
+
+func providerUsesTypedStorage(store providerWarehouseClient) bool {
+	return warehouse.Dialect(store) != warehouse.SQLDialectSnowflake
 }
 
 func hashProviderRow(row map[string]interface{}) string {

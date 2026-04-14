@@ -3,6 +3,7 @@ package warehouse
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -99,6 +100,9 @@ func BuildReadOnlyLimitedQuery(query string, limit int) (string, int, error) {
 
 	boundedLimit := ClampReadOnlyQueryLimit(limit)
 	trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(normalizedQuery), ";"))
+	if existingLimit, ok := topLevelLimitValue(trimmed); ok && existingLimit <= boundedLimit {
+		return trimmed, boundedLimit, nil
+	}
 
 	boundedQuery := fmt.Sprintf("SELECT * FROM (%s) AS cerebro_readonly_query LIMIT %d", trimmed, boundedLimit)
 	return boundedQuery, boundedLimit, nil
@@ -269,4 +273,89 @@ func normalizeReadOnlyDialect(query string) string {
 
 func isWordChar(c byte) bool {
 	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
+}
+
+func topLevelLimitValue(query string) (int, bool) {
+	if query == "" {
+		return 0, false
+	}
+
+	inSingleQuoted := false
+	inDoubleQuoted := false
+	depth := 0
+
+	for i := 0; i < len(query); i++ {
+		ch := query[i]
+
+		if inSingleQuoted {
+			if ch == '\'' {
+				if i+1 < len(query) && query[i+1] == '\'' {
+					i++
+					continue
+				}
+				inSingleQuoted = false
+			}
+			continue
+		}
+
+		if inDoubleQuoted {
+			if ch == '"' {
+				if i+1 < len(query) && query[i+1] == '"' {
+					i++
+					continue
+				}
+				inDoubleQuoted = false
+			}
+			continue
+		}
+
+		switch ch {
+		case '\'':
+			inSingleQuoted = true
+			continue
+		case '"':
+			inDoubleQuoted = true
+			continue
+		case '(':
+			depth++
+			continue
+		case ')':
+			if depth > 0 {
+				depth--
+			}
+			continue
+		}
+
+		if depth != 0 || i+5 > len(query) || !strings.EqualFold(query[i:i+5], "LIMIT") {
+			continue
+		}
+
+		beforeOK := i == 0 || !isWordChar(query[i-1])
+		afterIndex := i + 5
+		afterOK := afterIndex >= len(query) || !isWordChar(query[afterIndex])
+		if !beforeOK || !afterOK {
+			continue
+		}
+
+		j := afterIndex
+		for j < len(query) && (query[j] == ' ' || query[j] == '\t' || query[j] == '\n' || query[j] == '\r') {
+			j++
+		}
+
+		start := j
+		for j < len(query) && query[j] >= '0' && query[j] <= '9' {
+			j++
+		}
+		if start == j {
+			return 0, false
+		}
+
+		value, err := strconv.Atoi(query[start:j])
+		if err != nil {
+			return 0, false
+		}
+		return value, true
+	}
+
+	return 0, false
 }

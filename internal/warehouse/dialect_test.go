@@ -28,3 +28,12 @@ func TestRewriteQueryForDialect_SQLite(t *testing.T) {
 		t.Fatalf("expected timestamp rewrite, got %q", got)
 	}
 }
+
+func TestRewriteQueryForDialect_SQLiteInterval(t *testing.T) {
+	query := `SELECT id FROM assets WHERE seen_at < NOW() - INTERVAL '7 days'`
+	got := RewriteQueryForDialect(query, DialectSQLite)
+
+	if !strings.Contains(got, "DATETIME(CURRENT_TIMESTAMP, '-7 days')") {
+		t.Fatalf("expected sqlite interval rewrite, got %q", got)
+	}
+}

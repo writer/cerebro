@@ -84,6 +84,35 @@ func TestSQLiteWarehouseInsertCDCEvents(t *testing.T) {
 	}
 }
 
+func TestSQLiteWarehouseQueryRewritesTimestampIntervals(t *testing.T) {
+	store, err := NewSQLiteWarehouse(SQLiteWarehouseConfig{
+		Path: filepath.Join(t.TempDir(), "warehouse.db"),
+	})
+	if err != nil {
+		t.Fatalf("new sqlite warehouse: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ctx := context.Background()
+	if _, err := store.Exec(ctx, `CREATE TABLE sentinelone_agents (id TEXT, last_active_date TEXT)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := store.Exec(ctx, `INSERT INTO sentinelone_agents (id, last_active_date) VALUES (?, ?), (?, ?)`,
+		"agent-old", "2026-03-01T00:00:00Z",
+		"agent-new", "2026-04-12T00:00:00Z",
+	); err != nil {
+		t.Fatalf("insert rows: %v", err)
+	}
+
+	result, err := store.Query(ctx, `SELECT id FROM sentinelone_agents WHERE last_active_date < NOW() - INTERVAL '7 days' ORDER BY id`)
+	if err != nil {
+		t.Fatalf("interval query: %v", err)
+	}
+	if result.Count != 1 || result.Rows[0]["id"] != "agent-old" {
+		t.Fatalf("expected rewritten interval query to match only old agent, got %#v", result.Rows)
+	}
+}
+
 func TestSQLiteWarehouseRestrictsFilePermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warehouse.db")
 	store, err := NewSQLiteWarehouse(SQLiteWarehouseConfig{Path: path})

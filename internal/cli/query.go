@@ -39,6 +39,21 @@ var (
 	runQueryDirectFn = runQueryDirect
 )
 
+var allowedReadOnlyPRAGMAs = map[string]struct{}{
+	"TABLE_INFO":       {},
+	"TABLE_XINFO":      {},
+	"TABLE_LIST":       {},
+	"INDEX_LIST":       {},
+	"INDEX_INFO":       {},
+	"INDEX_XINFO":      {},
+	"FOREIGN_KEY_LIST": {},
+	"DATABASE_LIST":    {},
+	"COMPILE_OPTIONS":  {},
+	"FUNCTION_LIST":    {},
+	"MODULE_LIST":      {},
+	"PRAGMA_LIST":      {},
+}
+
 func init() {
 	queryCmd.Flags().StringVarP(&queryFormat, "format", "f", "table", "Output format: table, json, csv")
 	queryCmd.Flags().IntVarP(&queryLimit, "limit", "l", 100, "Limit results")
@@ -90,9 +105,18 @@ func runQueryDirect(cmd *cobra.Command, args []string) error {
 	}
 
 	query := strings.Join(args, " ")
-	query, _, err = warehouse.BuildReadOnlyLimitedQuery(query, queryLimit)
-	if err != nil {
+	rawQuery := false
+	if metadataQuery, executeRaw, handled, err := prepareDirectMetadataQuery(query); err != nil {
 		return err
+	} else if handled {
+		query = metadataQuery
+		rawQuery = executeRaw
+	}
+	if !rawQuery {
+		query, _, err = warehouse.BuildReadOnlyLimitedQuery(query, queryLimit)
+		if err != nil {
+			return err
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(commandContextOrBackground(cmd), warehouse.ClampReadOnlyQueryTimeout(int((60*time.Second)/time.Second)))
@@ -104,6 +128,79 @@ func runQueryDirect(cmd *cobra.Command, args []string) error {
 	}
 
 	return renderQueryResult(result)
+}
+
+func prepareDirectMetadataQuery(query string) (string, bool, bool, error) {
+	candidate := strings.TrimSpace(query)
+	candidateUpper := strings.ToUpper(candidate)
+	if !strings.HasPrefix(candidateUpper, "SHOW") && !strings.HasPrefix(candidateUpper, "PRAGMA") {
+		return "", false, false, nil
+	}
+
+	trimmed, err := normalizeDirectMetadataQuery(query)
+	if err != nil {
+		return "", false, false, err
+	}
+
+	upper := strings.ToUpper(strings.Join(strings.Fields(trimmed), " "))
+	if upper == "SHOW TABLES" {
+		return "SELECT table_name FROM information_schema.tables ORDER BY table_name", false, true, nil
+	}
+
+	if strings.HasPrefix(strings.ToUpper(trimmed), "PRAGMA ") {
+		if !isAllowedReadOnlyPRAGMA(trimmed) {
+			return "", false, false, fmt.Errorf("only read-only PRAGMA metadata queries are supported")
+		}
+		return trimmed, true, true, nil
+	}
+
+	return "", false, false, nil
+}
+
+func normalizeDirectMetadataQuery(query string) (string, error) {
+	if strings.TrimSpace(query) == "" {
+		return "", warehouse.ErrEmptyQuery
+	}
+	if strings.Contains(query, "--") || strings.Contains(query, "/*") || strings.Contains(query, "*/") {
+		return "", warehouse.ErrSQLInjection
+	}
+
+	trimmed := strings.TrimSpace(query)
+	semicolonCount := strings.Count(trimmed, ";")
+	if semicolonCount > 1 {
+		return "", warehouse.ErrSQLInjection
+	}
+	if semicolonCount == 1 {
+		if !strings.HasSuffix(trimmed, ";") {
+			return "", warehouse.ErrSQLInjection
+		}
+		trimmed = strings.TrimSpace(strings.TrimSuffix(trimmed, ";"))
+	}
+
+	return trimmed, nil
+}
+
+func isAllowedReadOnlyPRAGMA(query string) bool {
+	trimmed := strings.TrimSpace(query)
+	if strings.Contains(trimmed, "=") {
+		return false
+	}
+
+	fields := strings.Fields(trimmed)
+	if len(fields) < 2 || !strings.EqualFold(fields[0], "PRAGMA") {
+		return false
+	}
+
+	name := fields[1]
+	if idx := strings.IndexAny(name, "(;"); idx >= 0 {
+		name = name[:idx]
+	}
+	if parts := strings.Split(name, "."); len(parts) > 0 {
+		name = parts[len(parts)-1]
+	}
+	name = strings.ToUpper(strings.TrimSpace(name))
+	_, ok := allowedReadOnlyPRAGMAs[name]
+	return ok
 }
 
 func renderQueryResult(result *snowflake.QueryResult) error {
