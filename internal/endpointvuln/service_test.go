@@ -103,11 +103,11 @@ func TestRefresherBuildsCorrelatedEndpointVulnerabilityTables(t *testing.T) {
 		t.Fatalf("expected 1 endpoint row, got %#v", endpointsResult.Rows)
 	}
 	endpoint := endpointsResult.Rows[0]
-	if got := rowInt(endpoint, "provider_count"); got != 2 {
-		t.Fatalf("endpoint provider_count = %d, want 2", got)
+	if got := rowInt(endpoint, "provider_count"); got != 3 {
+		t.Fatalf("endpoint provider_count = %d, want 3", got)
 	}
-	if got := rowString(endpoint, "providers"); got != "kandji,sentinelone" {
-		t.Fatalf("endpoint providers = %q, want kandji,sentinelone", got)
+	if got := rowString(endpoint, "providers"); got != "crowdstrike,kandji,sentinelone" {
+		t.Fatalf("endpoint providers = %q, want crowdstrike,kandji,sentinelone", got)
 	}
 	if !rowBool(endpoint, "mdm_enrolled") || !rowBool(endpoint, "edr_installed") || !rowBool(endpoint, "malware_protection_enabled") {
 		t.Fatalf("expected merged endpoint protections, got %#v", endpoint)
@@ -154,14 +154,14 @@ func TestRefresherBuildsCorrelatedEndpointVulnerabilityTables(t *testing.T) {
 	if got := rowString(vulnerability, "kev_due_date"); got != "2026-04-20" {
 		t.Fatalf("kev_due_date = %q, want 2026-04-20", got)
 	}
-	if got := rowInt(vulnerability, "provider_count"); got != 2 {
-		t.Fatalf("vulnerability provider_count = %d, want 2", got)
+	if got := rowInt(vulnerability, "provider_count"); got != 3 {
+		t.Fatalf("vulnerability provider_count = %d, want 3", got)
 	}
 	if got := rowInt(vulnerability, "days_open"); got != 9 {
 		t.Fatalf("days_open = %d, want 9", got)
 	}
-	if got := rowString(vulnerability, "providers"); got != "kandji,sentinelone" {
-		t.Fatalf("vulnerability providers = %q, want kandji,sentinelone", got)
+	if got := rowString(vulnerability, "providers"); got != "crowdstrike,kandji,sentinelone" {
+		t.Fatalf("vulnerability providers = %q, want crowdstrike,kandji,sentinelone", got)
 	}
 	if got := rowString(vulnerability, "references_json"); !strings.Contains(got, "CVE-2026-0001") {
 		t.Fatalf("expected references_json to contain advisory reference, got %q", got)
@@ -271,6 +271,26 @@ func seedEndpointVulnSourceTables(t *testing.T, ctx context.Context, store *ware
 			remediation_action TEXT,
 			detected_at TEXT
 		)`,
+		`CREATE TABLE crowdstrike_hosts (
+			device_id TEXT,
+			hostname TEXT,
+			platform_name TEXT,
+			os_version TEXT,
+			last_seen TEXT
+		)`,
+		`CREATE TABLE crowdstrike_vulnerabilities (
+			id TEXT,
+			cve_id TEXT,
+			host_id TEXT,
+			severity TEXT,
+			status TEXT,
+			app_name TEXT,
+			app_version TEXT,
+			exploit_available BOOLEAN,
+			created_at TEXT,
+			updated_at TEXT,
+			remediation_action TEXT
+		)`,
 	}
 
 	for _, statement := range statements {
@@ -310,6 +330,15 @@ func seedEndpointVulnSourceTables(t *testing.T, ctx context.Context, store *ware
 			query: `INSERT INTO sentinelone_vulnerabilities (agent_id, cve_id, application_name, application_version, severity, cvss_score, exploited_in_wild, days_since_detection, remediation_action, detected_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			args: []any{"agent-1", "CVE-2026-0001", "Chrome", "1.2.3", "high", 8.4, true, 9, "Update Chrome to a patched release", "2026-04-05T00:00:00Z"},
+		},
+		{
+			query: `INSERT INTO crowdstrike_hosts (device_id, hostname, platform_name, os_version, last_seen) VALUES (?, ?, ?, ?, ?)`,
+			args:  []any{"device-cs-1", "host-1", "Mac", "14.4", "2026-04-14T10:00:00Z"},
+		},
+		{
+			query: `INSERT INTO crowdstrike_vulnerabilities (id, cve_id, host_id, severity, status, app_name, app_version, exploit_available, created_at, updated_at, remediation_action)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			args: []any{"device-cs-1|CVE-2026-0001|Chrome|1.2.3", "CVE-2026-0001", "device-cs-1", "critical", "open", "Chrome", "1.2.3", true, "2026-04-06T00:00:00Z", "2026-04-14T00:00:00Z", "Upgrade Chrome"},
 		},
 	}
 

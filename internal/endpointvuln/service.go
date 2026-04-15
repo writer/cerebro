@@ -79,6 +79,7 @@ type vulnerabilitySourceRecord struct {
 	SoftwareName      string
 	SoftwareVersion   string
 	Severity          string
+	Status            string
 	CVSSScore         float64
 	ExploitedInWild   bool
 	DetectedAt        time.Time
@@ -486,6 +487,28 @@ func (r Refresher) loadSourceData(ctx context.Context, available map[string]stru
 		}
 	}
 
+	if rows, err := loadRows("crowdstrike_hosts"); err != nil {
+		return nil, nil, nil, err
+	} else {
+		for _, row := range rows {
+			record := endpointSourceRecord{
+				Provider:                 "crowdstrike",
+				ProviderAssetID:          rowString(row, "device_id"),
+				Hostname:                 firstNonEmpty(rowString(row, "hostname"), rowString(row, "device_name")),
+				DisplayName:              firstNonEmpty(rowString(row, "hostname"), rowString(row, "device_name")),
+				OSType:                   normalizeOSType(firstNonEmpty(rowString(row, "platform_name"), rowString(row, "os_name"), rowString(row, "platform"))),
+				OSVersion:                rowString(row, "os_version"),
+				LastSeenAt:               rowTime(row, "last_seen"),
+				EDRInstalled:             boolPtr(true),
+				MalwareProtectionEnabled: boolPtr(true),
+				AntimalwareInstalled:     boolPtr(true),
+			}
+			if record.ProviderAssetID != "" {
+				endpoints = append(endpoints, record)
+			}
+		}
+	}
+
 	if rows, err := loadRows("kandji_device_apps"); err != nil {
 		return nil, nil, nil, err
 	} else {
@@ -555,11 +578,35 @@ func (r Refresher) loadSourceData(ctx context.Context, available map[string]stru
 				SoftwareName:      firstNonEmpty(rowString(row, "application_name"), rowString(row, "name")),
 				SoftwareVersion:   firstNonEmpty(rowString(row, "application_version"), rowString(row, "version")),
 				Severity:          rowString(row, "severity"),
+				Status:            rowString(row, "status"),
 				CVSSScore:         rowFloat(row, "cvss_score"),
 				ExploitedInWild:   rowBool(row, "exploited_in_wild"),
 				DetectedAt:        rowTime(row, "detected_at"),
 				DaysSinceDetected: rowInt(row, "days_since_detection"),
 				RemediationAction: rowString(row, "remediation_action"),
+			}
+			if record.ProviderAssetID != "" && record.CVEID != "" {
+				vulnerabilities = append(vulnerabilities, record)
+			}
+		}
+	}
+
+	if rows, err := loadRows("crowdstrike_vulnerabilities"); err != nil {
+		return nil, nil, nil, err
+	} else {
+		for _, row := range rows {
+			record := vulnerabilitySourceRecord{
+				Provider:          "crowdstrike",
+				ProviderAssetID:   firstNonEmpty(rowString(row, "host_id"), rowString(row, "device_id")),
+				CVEID:             rowString(row, "cve_id"),
+				SoftwareName:      rowString(row, "app_name"),
+				SoftwareVersion:   rowString(row, "app_version"),
+				Severity:          rowString(row, "severity"),
+				Status:            rowString(row, "status"),
+				ExploitedInWild:   rowBool(row, "exploit_available"),
+				DetectedAt:        rowTime(row, "created_at", "first_found"),
+				LastDetectedAt:    rowTime(row, "updated_at", "last_found"),
+				RemediationAction: rowString(row, "remediation_action", "solution"),
 			}
 			if record.ProviderAssetID != "" && record.CVEID != "" {
 				vulnerabilities = append(vulnerabilities, record)
@@ -762,7 +809,7 @@ func correlateVulnerabilities(records []vulnerabilitySourceRecord, endpoints map
 				AssetID:               endpointID,
 				EndpointID:            endpointID,
 				Hostname:              "",
-				Status:                "open",
+				Status:                "",
 				Providers:             make(map[string]struct{}),
 				ProviderRecords:       make(map[string]struct{}),
 				CorrelationBasis:      "provider_id",
@@ -784,6 +831,7 @@ func correlateVulnerabilities(records []vulnerabilitySourceRecord, endpoints map
 		aggregate.SoftwareVersion = firstNonEmpty(aggregate.SoftwareVersion, softwareVersion)
 		aggregate.Publisher = firstNonEmpty(aggregate.Publisher, publisher)
 		aggregate.BundleID = firstNonEmpty(aggregate.BundleID, bundleID)
+		aggregate.Status = mergeVulnerabilityStatus(aggregate.Status, record.Status)
 		aggregate.Severity = chooseHigherSeverity(aggregate.Severity, record.Severity)
 		if record.CVSSScore > aggregate.CVSSScore {
 			aggregate.CVSSScore = record.CVSSScore
@@ -809,6 +857,9 @@ func correlateVulnerabilities(records []vulnerabilitySourceRecord, endpoints map
 
 	list := make([]*vulnerabilityAggregate, 0, len(aggregates))
 	for _, aggregate := range aggregates {
+		if aggregate.Status == "" {
+			aggregate.Status = "open"
+		}
 		enrichVulnerability(aggregate, intel, advisories, now)
 		list = append(list, aggregate)
 	}
@@ -1384,6 +1435,35 @@ func normalizeSeverity(value string) string {
 		return "LOW"
 	default:
 		return value
+	}
+}
+
+func normalizeVulnerabilityStatus(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "":
+		return ""
+	case "new", "open", "active", "reopened", "unresolved", "in_progress":
+		return "open"
+	case "closed", "resolved", "fixed", "remediated":
+		return "resolved"
+	default:
+		return value
+	}
+}
+
+func mergeVulnerabilityStatus(current, candidate string) string {
+	current = normalizeVulnerabilityStatus(current)
+	candidate = normalizeVulnerabilityStatus(candidate)
+	switch {
+	case current == "":
+		return candidate
+	case candidate == "":
+		return current
+	case current == "open" || candidate == "open":
+		return "open"
+	default:
+		return candidate
 	}
 }
 
