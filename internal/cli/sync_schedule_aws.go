@@ -21,7 +21,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func executeAWSSync(ctx context.Context, client warehouse.SyncWarehouse, schedule *SyncSchedule) error {
+func executeAWSSync(ctx context.Context, store warehouse.SyncWarehouse, schedule *SyncSchedule) error {
 	Info("[%s] Executing AWS sync...", schedule.Name)
 	spec := parseScheduledSyncSpec(schedule.Table)
 
@@ -66,24 +66,36 @@ func executeAWSSync(ctx context.Context, client warehouse.SyncWarehouse, schedul
 		return err
 	}
 	if spec.AWSOrg {
-		return runScheduledAWSOrgSyncFn(ctx, client, awsCfg, spec)
+		return runScheduledAWSOrgSyncFn(ctx, store, awsCfg, spec)
 	}
 
-	return runScheduledAWSNativeSyncFn(ctx, client, awsCfg, spec.TableFilter)
+	return runScheduledAWSNativeSyncFn(ctx, store, awsCfg, spec.TableFilter)
 }
 
-func runScheduledAWSNativeSync(ctx context.Context, client warehouse.SyncWarehouse, awsCfg aws.Config, tableFilter []string) error {
+func runScheduledAWSNativeSync(ctx context.Context, store warehouse.SyncWarehouse, awsCfg aws.Config, tableFilter []string) error {
+	store, closeStore, err := ensureSyncWarehouse(ctx, store)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
 	var opts []nativesync.EngineOption
 	if len(tableFilter) > 0 {
 		opts = append(opts, nativesync.WithTableFilter(tableFilter))
 	}
 
-	syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
-	_, err := syncer.SyncAllWithConfig(ctx, awsCfg)
+	syncer := nativesync.NewSyncEngine(store, slog.Default(), opts...)
+	_, err = syncer.SyncAllWithConfig(ctx, awsCfg)
 	return err
 }
 
-func runScheduledAWSOrgSync(ctx context.Context, client warehouse.SyncWarehouse, awsCfg aws.Config, spec scheduledSyncSpec) error {
+func runScheduledAWSOrgSync(ctx context.Context, store warehouse.SyncWarehouse, awsCfg aws.Config, spec scheduledSyncSpec) error {
+	store, closeStore, err := ensureSyncWarehouse(ctx, store)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
 	orgCfg := awsCfg.Copy()
 	if strings.TrimSpace(orgCfg.Region) == "" {
 		orgCfg.Region = "us-east-1"
@@ -185,7 +197,7 @@ func runScheduledAWSOrgSync(ctx context.Context, client warehouse.SyncWarehouse,
 				accountCfg = assumedCfg
 			}
 
-			syncer := nativesync.NewSyncEngine(client, slog.Default(), opts...)
+			syncer := nativesync.NewSyncEngine(store, slog.Default(), opts...)
 			accountResults, syncErr := syncer.SyncAllWithConfig(ctx, accountCfg)
 
 			mu.Lock()

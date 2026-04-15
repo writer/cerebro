@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"log/slog"
 	"strings"
 	"time"
@@ -55,19 +54,10 @@ func (a *App) setGraphBuildState(state GraphBuildState, builtAt time.Time, err e
 }
 
 func (a *App) CurrentSecurityGraph() *graph.Graph {
-	if current := a.currentLiveSecurityGraph(); current != nil {
-		return current
-	}
 	if a == nil {
 		return nil
 	}
-	if view, err := a.currentConfiguredSecurityGraphView(context.Background()); err == nil && view != nil {
-		return view
-	}
-	view, err := a.storedSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error) {
-		snapshot, _, _, err := store.PeekLatestSnapshot()
-		return snapshot, err
-	})
+	view, err := a.currentOrStoredPassiveSecurityGraphView()
 	if err != nil {
 		return nil
 	}
@@ -102,25 +92,10 @@ func (a *App) currentLiveSecurityGraph() *graph.Graph {
 	if a == nil {
 		return nil
 	}
-	if a.configuredSecurityGraphStore != nil {
-		view, err := a.currentConfiguredSecurityGraphView(context.Background())
-		if err == nil && view != nil {
-			a.setSecurityGraph(view)
-			return view
-		}
-	}
 	a.securityGraphInitMu.RLock()
 	current := a.SecurityGraph
 	a.securityGraphInitMu.RUnlock()
-	if current != nil {
-		return current
-	}
-	view, err := a.currentConfiguredSecurityGraphView(context.Background())
-	if err != nil || view == nil {
-		return nil
-	}
-	a.setSecurityGraph(view)
-	return view
+	return current
 }
 
 func (a *App) setSecurityGraph(g *graph.Graph) {

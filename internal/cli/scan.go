@@ -367,7 +367,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 		duration  time.Duration
 	}
 	wmResultCh := make(chan watermarkResult, 1)
-	if !localMode && application.ScanWatermarks != nil {
+	if application.ScanWatermarks != nil {
 		go func() {
 			started := time.Now()
 			err := application.ScanWatermarks.PersistWatermarksWithRetry(ctx, scanner.DefaultWatermarkPersistOptions())

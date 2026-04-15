@@ -331,6 +331,8 @@ func scanOneLocalTable(ctx context.Context, application *app.App, table string, 
 		assets = assets[:limit]
 	}
 
+	cursorTime, cursorID := scanner.ExtractScanCursor(assets)
+
 	result := application.Scanner.ScanAssets(tableCtx, assets)
 	profile.Batches = 1
 	profile.CacheSkipped = result.Skipped
@@ -356,6 +358,12 @@ func scanOneLocalTable(ctx context.Context, application *app.App, table string, 
 	}
 
 	if scanned > 0 {
+		if application.ScanWatermarks != nil {
+			if cursorTime.IsZero() {
+				cursorTime = time.Now().UTC()
+			}
+			application.ScanWatermarks.SetWatermark(table, cursorTime, cursorID, scanned)
+		}
 		fmt.Printf("  Scanned: %d, Violations: %d (%s)\n", scanned, violations, time.Since(start).Round(time.Millisecond))
 	}
 

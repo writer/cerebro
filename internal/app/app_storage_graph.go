@@ -6,10 +6,51 @@ import (
 	"sort"
 	"time"
 
+	"github.com/writer/cerebro/internal/appstate"
 	"github.com/writer/cerebro/internal/policy"
 	"github.com/writer/cerebro/internal/postgres"
 	"github.com/writer/cerebro/internal/scanner"
+	"github.com/writer/cerebro/internal/snowflake"
 )
+
+type appStateCutoverRetentionCleaner struct {
+	appState retentionCleaner
+	legacy   retentionCleaner
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupAuditLogs(ctx context.Context, olderThan time.Time) (int64, error) {
+	if c.appState != nil {
+		return c.appState.CleanupAuditLogs(ctx, olderThan)
+	}
+	if c.legacy != nil {
+		return c.legacy.CleanupAuditLogs(ctx, olderThan)
+	}
+	return 0, nil
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupAgentData(ctx context.Context, olderThan time.Time) (int64, int64, error) {
+	if c.appState != nil {
+		return c.appState.CleanupAgentData(ctx, olderThan)
+	}
+	if c.legacy != nil {
+		return c.legacy.CleanupAgentData(ctx, olderThan)
+	}
+	return 0, 0, nil
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupGraphData(ctx context.Context, olderThan time.Time) (int64, int64, int64, error) {
+	if c.legacy != nil {
+		return c.legacy.CleanupGraphData(ctx, olderThan)
+	}
+	return 0, 0, 0, nil
+}
+
+func (c appStateCutoverRetentionCleaner) CleanupAccessReviewData(ctx context.Context, olderThan time.Time) (int64, int64, error) {
+	if c.legacy != nil {
+		return c.legacy.CleanupAccessReviewData(ctx, olderThan)
+	}
+	return 0, 0, nil
+}
 
 func (a *App) initRepositories() {
 	a.FindingsRepo = nil
@@ -19,38 +60,64 @@ func (a *App) initRepositories() {
 	a.RiskEngineStateRepo = nil
 	a.RetentionRepo = nil
 
-	if a.PostgresClient == nil {
+	if a.PostgresClient != nil {
+		a.FindingsRepo = postgres.NewFindingRepository(a.PostgresClient)
+		a.TicketsRepo = postgres.NewTicketRepository(a.PostgresClient)
+	}
+
+	if a.appStateDB != nil {
+		a.AuditRepo = appstate.NewAuditRepository(a.appStateDB)
+		a.PolicyHistoryRepo = appstate.NewPolicyHistoryRepository(a.appStateDB)
+		a.RiskEngineStateRepo = appstate.NewRiskEngineStateRepository(a.appStateDB)
+		a.RetentionRepo = appStateCutoverRetentionCleaner{
+			appState: appstate.NewRetentionRepository(a.appStateDB),
+			legacy:   snowflakeRetentionCleaner(a.appStateMigrationSnowflake()),
+		}
 		return
 	}
-	a.FindingsRepo = postgres.NewFindingRepository(a.PostgresClient)
-	a.TicketsRepo = postgres.NewTicketRepository(a.PostgresClient)
-	a.AuditRepo = postgres.NewAuditRepository(a.PostgresClient)
-	a.PolicyHistoryRepo = postgres.NewPolicyHistoryRepository(a.PostgresClient)
-	a.RiskEngineStateRepo = postgres.NewRiskEngineStateRepository(a.PostgresClient)
-	a.RetentionRepo = postgres.NewRetentionRepository(a.PostgresClient)
+	if a.Snowflake == nil {
+		return
+	}
+	a.AuditRepo = snowflake.NewAuditRepository(a.Snowflake)
+	a.PolicyHistoryRepo = snowflake.NewPolicyHistoryRepository(a.Snowflake)
+	a.RiskEngineStateRepo = snowflake.NewRiskEngineStateRepository(a.Snowflake)
+	a.RetentionRepo = snowflake.NewRetentionRepository(a.Snowflake)
 }
 
-func (a *App) initPostgresFindings(ctx context.Context) {
-	if a.PostgresDB == nil || a.PostgresFindings == nil {
+func snowflakeRetentionCleaner(client *snowflake.Client) retentionCleaner {
+	if client == nil {
+		return nil
+	}
+	return snowflake.NewRetentionRepository(client)
+}
+
+func (a *App) initSnowflakeFindings(ctx context.Context) {
+	if a.Snowflake == nil || a.SnowflakeFindings == nil {
 		return
 	}
 
-	// Load existing findings from Postgres
-	// PostgresStore is already created in initFindings when Postgres is available
-	if err := a.PostgresFindings.Load(ctx); err != nil {
-		a.Logger.Warn("failed to load findings from postgres", "error", err)
+	// Load existing findings from Snowflake
+	// SnowflakeStore is already created in initFindings when Snowflake is available
+	if err := a.SnowflakeFindings.Load(ctx); err != nil {
+		a.Logger.Warn("failed to load findings from snowflake", "error", err)
 	} else {
-		a.Logger.Info("loaded findings from postgres", "count", a.PostgresFindings.Stats().Total)
+		a.Logger.Info("loaded findings from snowflake", "count", a.SnowflakeFindings.Stats().Total)
 	}
 }
 
 func (a *App) initScanWatermarks(ctx context.Context) {
-	if a.PostgresDB != nil {
+	switch {
+	case a.PostgresDB != nil:
 		a.ScanWatermarks = scanner.NewWatermarkStore(a.PostgresDB)
 		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil {
 			a.Logger.Warn("failed to load scan watermarks", "error", err)
 		}
-	} else {
+	case a.Warehouse != nil && a.Warehouse.DB() != nil:
+		a.ScanWatermarks = scanner.NewWatermarkStore(a.Warehouse.DB())
+		if err := a.ScanWatermarks.LoadWatermarks(ctx); err != nil {
+			a.Logger.Warn("failed to load scan watermarks", "error", err)
+		}
+	default:
 		a.ScanWatermarks = scanner.NewWatermarkStore(nil)
 	}
 	a.Logger.Info("scan watermarks initialized")
@@ -59,22 +126,31 @@ func (a *App) initScanWatermarks(ctx context.Context) {
 // initAvailableTables caches the warehouse table list for reuse by graph builder and policy validation.
 
 func (a *App) initAvailableTables(ctx context.Context) {
-	if a.PostgresClient == nil || a.Warehouse == nil {
+	switch {
+	case a.PostgresClient != nil:
+		tables, err := a.PostgresClient.ListAvailableTables(ctx)
+		if err != nil {
+			a.Logger.Warn("failed to list available tables", "error", err)
+			return
+		}
+		a.AvailableTables = tables
+	case a.Warehouse != nil:
+		tables, err := a.Warehouse.ListAvailableTables(ctx)
+		if err != nil {
+			a.Logger.Warn("failed to list available tables", "error", err)
+			return
+		}
+		a.AvailableTables = tables
+	default:
 		return
 	}
-	tables, err := a.PostgresClient.ListAvailableTables(ctx)
-	if err != nil {
-		a.Logger.Warn("failed to list available tables", "error", err)
-		return
-	}
-	a.AvailableTables = tables
 }
 
 // validatePolicyCoverage checks that required tables exist for loaded policies
 
 func (a *App) validatePolicyCoverage(_ context.Context) error {
 	if a.Warehouse == nil {
-		a.Logger.Warn("skipping policy coverage validation - database not configured")
+		a.Logger.Warn("skipping policy coverage validation - warehouse not configured")
 		return nil
 	}
 
@@ -269,17 +345,15 @@ func (a *App) Close() error {
 
 	a.stopThreatIntelSync()
 
-	if a.configuredSecurityGraphClose != nil {
-		if err := a.configuredSecurityGraphClose(); err != nil {
-			errs = append(errs, fmt.Errorf("graph store: %w", err))
+	// Close Snowflake connection
+	if a.Snowflake != nil {
+		if err := a.Snowflake.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("snowflake: %w", err))
 		}
-		a.configuredSecurityGraphClose = nil
 	}
-
-	// Close Postgres connection
-	if a.PostgresDB != nil {
-		if err := a.PostgresDB.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("postgres: %w", err))
+	if a.LegacySnowflake != nil && a.LegacySnowflake != a.Snowflake {
+		if err := a.LegacySnowflake.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("legacy snowflake: %w", err))
 		}
 	}
 	if closer, ok := a.Warehouse.(interface{ Close() error }); ok {
@@ -322,12 +396,28 @@ func (a *App) Close() error {
 			errs = append(errs, fmt.Errorf("findings store: %w", err))
 		}
 	}
+	if a.appStateDB != nil {
+		if err := a.appStateDB.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("app-state database: %w", err))
+		}
+	}
 
 	if a.Webhooks != nil {
 		if err := a.Webhooks.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("webhooks: %w", err))
 		}
 	}
+	if a.configuredEntitySearchClose != nil {
+		if err := a.configuredEntitySearchClose(); err != nil {
+			errs = append(errs, fmt.Errorf("configured entity search backend: %w", err))
+		}
+	}
+	if a.configuredSecurityGraphClose != nil {
+		if err := a.configuredSecurityGraphClose(); err != nil {
+			errs = append(errs, fmt.Errorf("configured graph store: %w", err))
+		}
+	}
+
 	// Stop scheduler if running
 	if a.Scheduler != nil {
 		a.Scheduler.Stop()

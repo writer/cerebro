@@ -14,7 +14,7 @@ import (
 
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/policy"
-	"github.com/writer/cerebro/internal/postgres"
+	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
@@ -475,7 +475,7 @@ func (s *Server) persistPolicyHistory(ctx context.Context, policyID string) erro
 			pinnedVersion = &pinned
 		}
 
-		if err := s.app.PolicyHistoryRepo.Upsert(ctx, &postgres.PolicyHistoryRecord{
+		if err := s.app.PolicyHistoryRepo.Upsert(ctx, &snowflake.PolicyHistoryRecord{
 			PolicyID:      event.PolicyID,
 			Version:       event.Version,
 			Content:       content,
@@ -661,7 +661,7 @@ func (s *Server) logPolicyEvaluationDecision(ctx context.Context, r *http.Reques
 	}
 	resourceID := strings.TrimSpace(stringValue(req.Resource["id"]))
 
-	entry := &postgres.AuditEntry{
+	entry := &snowflake.AuditEntry{
 		Action:       "policy.evaluate",
 		ActorID:      actorID,
 		ActorType:    "user",

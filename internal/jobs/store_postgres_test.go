@@ -181,6 +181,9 @@ func TestPostgresStore_ClaimJob_Queued(t *testing.T) {
 		ID: "claim-1", Type: JobTypeInspectResource, Status: StatusQueued,
 		MaxAttempts: 3, CreatedAt: now, UpdatedAt: now,
 	})
+	if err := store.MarkDispatched(ctx, "claim-1"); err != nil {
+		t.Fatalf("MarkDispatched: %v", err)
+	}
 
 	got, ok, err := store.ClaimJob(ctx, "claim-1", "worker-A", 30*time.Second)
 	if err != nil {
@@ -713,6 +716,9 @@ func TestPostgresStore_FullLifecycle(t *testing.T) {
 	}
 	if err := store.CreateJob(ctx, job); err != nil {
 		t.Fatalf("CreateJob: %v", err)
+	}
+	if err := store.MarkDispatched(ctx, "lifecycle-1"); err != nil {
+		t.Fatalf("MarkDispatched: %v", err)
 	}
 
 	// 2. Claim it.

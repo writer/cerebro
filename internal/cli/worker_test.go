@@ -217,7 +217,7 @@ func TestNewNativeSyncJobHandler_RoutesAndSerializesResult(t *testing.T) {
 
 	calledProvider := ""
 	calledSchedule := &SyncSchedule{}
-	runNativeSyncForJobFn = func(_ context.Context, _ *app.App, provider string, schedule *SyncSchedule) error {
+	runNativeSyncForJobFn = func(_ context.Context, provider string, schedule *SyncSchedule) error {
 		calledProvider = provider
 		calledSchedule = schedule
 		return nil
@@ -284,7 +284,7 @@ func TestNewNativeSyncJobHandler_FailurePaths(t *testing.T) {
 			syncConfiguredProviderSourcesFn = originalSyncProviders
 		})
 
-		runNativeSyncForJobFn = func(context.Context, *app.App, string, *SyncSchedule) error {
+		runNativeSyncForJobFn = func(context.Context, string, *SyncSchedule) error {
 			return errors.New("sync boom")
 		}
 		syncConfiguredProviderSourcesFn = func(context.Context, *app.App, *slog.Logger) ([]string, []providerSyncFailure, error) {
@@ -307,7 +307,7 @@ func TestNewNativeSyncJobHandler_FailurePaths(t *testing.T) {
 			syncConfiguredProviderSourcesFn = originalSyncProviders
 		})
 
-		runNativeSyncForJobFn = func(context.Context, *app.App, string, *SyncSchedule) error {
+		runNativeSyncForJobFn = func(context.Context, string, *SyncSchedule) error {
 			return nil
 		}
 		syncConfiguredProviderSourcesFn = func(context.Context, *app.App, *slog.Logger) ([]string, []providerSyncFailure, error) {

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/agents"
-	"github.com/writer/cerebro/internal/postgres"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 func (s *Server) runAgentSessionLoop(ctx context.Context, session *agents.Session, agent *agents.Agent) (agents.Message, error) {
@@ -187,7 +187,7 @@ func (s *Server) logToolApprovalDecision(ctx context.Context, r *http.Request, s
 		details["requested_at"] = pendingCall.CreatedAt.UTC().Format(time.RFC3339Nano)
 	}
 
-	entry := &postgres.AuditEntry{
+	entry := &snowflake.AuditEntry{
 		Action:       "agent.tool_approval",
 		ActorID:      approverID,
 		ActorType:    "user",

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -117,14 +118,13 @@ func (m *MockQueue) AddMessage(jobID string) {
 	})
 }
 
-// mockTerminalError implements TerminalQueueError for testing.
-type mockTerminalError struct {
-	msg      string
-	terminal bool
+type mockAPIError struct {
+	msg string
 }
 
-func (e mockTerminalError) Error() string    { return e.msg }
-func (e mockTerminalError) IsTerminal() bool { return e.terminal }
+func (e mockAPIError) Error() string {
+	return e.msg
+}
 
 // MockStore implements Store interface for testing
 type MockStore struct {
@@ -538,9 +538,51 @@ func TestPermanentError(t *testing.T) {
 	}
 }
 
+func TestIsTerminalVisibilityError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "unknown receipt handle",
+			err:  mockAPIError{msg: "nats: unknown receipt handle \"missing\""},
+			want: true,
+		},
+		{
+			name: "receipt handle required",
+			err:  mockAPIError{msg: "receipt handle required"},
+			want: true,
+		},
+		{
+			name: "wrapped unknown receipt handle",
+			err:  fmt.Errorf("wrapped: %w", mockAPIError{msg: "nats: unknown receipt handle \"missing\""}),
+			want: true,
+		},
+		{
+			name: "plain string fallback",
+			err:  errors.New("message does not exist or is not available for visibility timeout change"),
+			want: true,
+		},
+		{
+			name: "non terminal error",
+			err:  mockAPIError{msg: "slow down"},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isTerminalVisibilityError(tc.err); got != tc.want {
+				t.Fatalf("isTerminalVisibilityError() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRunHeartbeat_DisablesQueueVisibilityOnTerminalErrorButExtendsLease(t *testing.T) {
 	queue := &MockQueue{
-		extendErrors: []error{mockTerminalError{msg: "invalid receipt handle", terminal: true}},
+		extendErrors: []error{mockAPIError{msg: "nats: unknown receipt handle \"invalid\""}},
 	}
 	store := NewMockStore()
 	worker := NewWorker(queue, store, NewJobRegistry(), WorkerOptions{

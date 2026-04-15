@@ -13,7 +13,7 @@ import (
 
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/metrics"
-	"github.com/writer/cerebro/internal/postgres"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 type crossTenantBuildRequest struct {
@@ -207,7 +207,7 @@ func (s *Server) logCrossTenantRead(ctx context.Context, r *http.Request, operat
 	if actorID == "" {
 		actorID = "api"
 	}
-	entry := &postgres.AuditEntry{
+	entry := &snowflake.AuditEntry{
 		Action:       "graph.cross_tenant.read",
 		ActorID:      actorID,
 		ActorType:    "user",

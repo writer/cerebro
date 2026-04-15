@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nats-io/nats.go"
 	"github.com/robfig/cron/v3"
 	"github.com/spf13/cobra"
 
@@ -24,6 +22,7 @@ import (
 	apiclient "github.com/writer/cerebro/internal/client"
 	"github.com/writer/cerebro/internal/jobs"
 	providerregistry "github.com/writer/cerebro/internal/providers"
+	"github.com/writer/cerebro/internal/snowflake"
 	nativesync "github.com/writer/cerebro/internal/sync"
 	"github.com/writer/cerebro/internal/warehouse"
 )
@@ -112,7 +111,8 @@ var (
 	preflightScheduledGCPAuthFn   = preflightScheduledGCPAuth
 	waitForScheduledJobsFn        = waitForScheduledJobs
 
-	newScheduleAppFn = app.New
+	newScheduleAppFn    = app.New
+	openScheduleStoreFn = openScheduleStore
 
 	scheduledSyncInFlight sync.Map
 )
@@ -172,13 +172,7 @@ type SyncSchedule struct {
 func runScheduleList(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	client, closeStore, err := openScheduleStore()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = closeStore() }()
-
-	schedules, err := listSchedules(ctx, client)
+	schedules, err := listSchedules(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to list schedules: %w", err)
 	}
@@ -249,14 +243,8 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid provider %q; valid providers: %s", scheduleProvider, strings.Join(validProviders, ", "))
 	}
 
-	client, closeStore, err := openScheduleStore()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = closeStore() }()
-
 	// Check if schedule already exists
-	existing, _ := getSchedule(ctx, client, scheduleName)
+	existing, _ := getSchedule(ctx, nil, scheduleName)
 	if existing != nil {
 		return fmt.Errorf("schedule %q already exists; delete it first or use a different name", scheduleName)
 	}
@@ -274,7 +262,7 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 		NextRun:   cronSched.Next(time.Now()),
 	}
 
-	if err := saveSchedule(ctx, client, schedule); err != nil {
+	if err := saveSchedule(ctx, nil, schedule); err != nil {
 		return fmt.Errorf("failed to save schedule: %w", err)
 	}
 
@@ -290,14 +278,8 @@ func runScheduleDelete(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	name := args[0]
 
-	client, closeStore, err := openScheduleStore()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = closeStore() }()
-
 	// Check if schedule exists
-	existing, err := getSchedule(ctx, client, name)
+	existing, err := getSchedule(ctx, nil, name)
 	if err != nil {
 		return fmt.Errorf("failed to get schedule: %w", err)
 	}
@@ -305,7 +287,7 @@ func runScheduleDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("schedule %q not found", name)
 	}
 
-	if err := deleteSchedule(ctx, client, name); err != nil {
+	if err := deleteSchedule(ctx, nil, name); err != nil {
 		return fmt.Errorf("failed to delete schedule: %w", err)
 	}
 
@@ -317,13 +299,7 @@ func runScheduleShow(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	name := args[0]
 
-	client, closeStore, err := openScheduleStore()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = closeStore() }()
-
-	schedule, err := getSchedule(ctx, client, name)
+	schedule, err := getSchedule(ctx, nil, name)
 	if err != nil {
 		return fmt.Errorf("failed to get schedule: %w", err)
 	}
@@ -361,16 +337,10 @@ func runScheduleDaemon(cmd *cobra.Command, args []string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	client, closeStore, err := openScheduleStore()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = closeStore() }()
-
 	Info("Starting sync schedule daemon...")
 
 	// Ensure schedule table exists
-	if err := ensureScheduleTable(ctx, client); err != nil {
+	if err := ensureScheduleTable(ctx, nil); err != nil {
 		return fmt.Errorf("failed to ensure schedule table: %w", err)
 	}
 
@@ -379,7 +349,7 @@ func runScheduleDaemon(cmd *cobra.Command, args []string) error {
 	cronScheduler := cron.New(cron.WithParser(parser))
 
 	// Load schedules from database
-	schedules, err := listSchedules(ctx, client)
+	schedules, err := listSchedules(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to load schedules: %w", err)
 	}
@@ -398,7 +368,7 @@ func runScheduleDaemon(cmd *cobra.Command, args []string) error {
 			}
 			schedule := s // capture for closure
 			_, err := cronScheduler.AddFunc(schedule.Cron, func() {
-				runScheduledSync(client, &schedule)
+				runScheduledSync(nil, &schedule)
 			})
 			if err != nil {
 				Warning("Failed to register schedule %s: %v", schedule.Name, err)
@@ -425,7 +395,7 @@ func runScheduleDaemon(cmd *cobra.Command, args []string) error {
 		case <-ctx.Done():
 			goto shutdown
 		case <-reloadTicker.C:
-			updated, err := listSchedules(ctx, client)
+			updated, err := listSchedules(ctx, nil)
 			if err != nil {
 				Warning("Failed to reload schedules: %v", err)
 				continue
@@ -458,7 +428,7 @@ shutdown:
 	return nil
 }
 
-func runScheduledSync(store scheduledSyncStore, schedule *SyncSchedule) {
+func runScheduledSync(store warehouse.SyncWarehouse, schedule *SyncSchedule) {
 	start := scheduleNowFn()
 	persistCtx := context.Background()
 	scheduleKey := strings.ToLower(strings.TrimSpace(schedule.Name))
@@ -470,7 +440,7 @@ func runScheduledSync(store scheduledSyncStore, schedule *SyncSchedule) {
 		schedule.LastRun = start
 		schedule.LastStatus = "skipped: previous run still active"
 		schedule.UpdatedAt = scheduleNowFn().UTC()
-		_ = saveScheduleFn(persistCtx, store, schedule)
+		_ = saveScheduleFn(persistCtx, nil, schedule)
 		Warning("[%s] Skipping scheduled sync: previous run is still active", schedule.Name)
 		slog.Default().Info("scheduled_sync_audit", "event", "skip_overlap", "schedule", schedule.Name, "provider", strings.ToLower(strings.TrimSpace(schedule.Provider)))
 		return
@@ -483,7 +453,7 @@ func runScheduledSync(store scheduledSyncStore, schedule *SyncSchedule) {
 		schedule.LastRun = start
 		schedule.LastStatus = fmt.Sprintf("failed: %v", err)
 		schedule.UpdatedAt = scheduleNowFn().UTC()
-		_ = saveScheduleFn(persistCtx, store, schedule)
+		_ = saveScheduleFn(persistCtx, nil, schedule)
 		Warning("[%s] Scheduled sync configuration invalid: %v", schedule.Name, err)
 		slog.Default().Error("scheduled_sync_audit", "event", "config_error", "schedule", schedule.Name, "provider", strings.ToLower(strings.TrimSpace(schedule.Provider)), "error", err)
 		return
@@ -500,7 +470,7 @@ func runScheduledSync(store scheduledSyncStore, schedule *SyncSchedule) {
 	// Update last run time
 	schedule.LastRun = start
 	schedule.LastStatus = "running"
-	_ = saveScheduleFn(persistCtx, store, schedule)
+	_ = saveScheduleFn(persistCtx, nil, schedule)
 
 	// Build sync command args based on provider
 	var syncErr error
@@ -511,7 +481,7 @@ func runScheduledSync(store scheduledSyncStore, schedule *SyncSchedule) {
 	attempts := 0
 	for attempt := 1; attempt <= attemptLimit; attempt++ {
 		attempts = attempt
-		syncErr = executeScheduledSyncFn(runCtx, schedule)
+		syncErr = executeScheduledSyncFn(runCtx, store, schedule)
 		if syncErr == nil {
 			break
 		}
@@ -546,7 +516,7 @@ func runScheduledSync(store scheduledSyncStore, schedule *SyncSchedule) {
 	}
 
 	schedule.UpdatedAt = scheduleNowFn().UTC()
-	_ = saveScheduleFn(persistCtx, store, schedule)
+	_ = saveScheduleFn(persistCtx, nil, schedule)
 
 	attrs := []any{
 		"event", "finish",
@@ -562,34 +532,35 @@ func runScheduledSync(store scheduledSyncStore, schedule *SyncSchedule) {
 	slog.Default().Info("scheduled_sync_audit", attrs...)
 }
 
-func executeScheduledSync(ctx context.Context, schedule *SyncSchedule) error {
+func executeScheduledSync(ctx context.Context, store warehouse.SyncWarehouse, schedule *SyncSchedule) error {
 	provider := strings.ToLower(strings.TrimSpace(schedule.Provider))
 	if isNativeScheduleProvider(provider) && nativeSyncWorkerConfigured() {
 		return enqueueScheduledNativeSyncFn(ctx, schedule)
 	}
 
-	var client warehouse.SyncWarehouse
-	closeWarehouse := noopClose
-	if isNativeScheduleProvider(provider) {
-		directWarehouse, closeFn, err := openCLIWarehouse()
-		if err != nil {
-			return err
-		}
-		client = directWarehouse
-		closeWarehouse = closeFn
-	}
-	defer func() { _ = closeWarehouse() }()
-
 	switch provider {
 	case "aws":
-		return executeAWSSyncFn(ctx, client, schedule)
+		return executeAWSSyncFn(ctx, store, schedule)
 	case "gcp":
-		return executeGCPSyncFn(ctx, client, schedule)
+		return executeGCPSyncFn(ctx, store, schedule)
 	case "azure":
-		return executeAzureSyncFn(ctx, client, schedule)
+		return executeAzureSyncFn(ctx, store, schedule)
 	default:
-		return executeProviderSyncFn(ctx, client, schedule)
+		return executeProviderSyncFn(ctx, store, schedule)
 	}
+}
+
+func ensureSyncWarehouse(ctx context.Context, store warehouse.SyncWarehouse) (warehouse.SyncWarehouse, func(), error) {
+	if store != nil {
+		return store, func() {}, nil
+	}
+	opened, err := openSyncWarehouseFn(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return opened, func() {
+		_ = closeSyncWarehouse(opened)
+	}, nil
 }
 
 func isNativeScheduleProvider(provider string) bool {
@@ -602,7 +573,7 @@ func isNativeScheduleProvider(provider string) bool {
 }
 
 func nativeSyncWorkerConfigured() bool {
-	return firstNonEmptyEnv("JOB_DATABASE_URL") != "" && firstNonEmptyEnv("NATS_URLS") != ""
+	return distributedJobsConfigured(app.LoadConfig())
 }
 
 func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) error {
@@ -614,49 +585,18 @@ func enqueueScheduledNativeSync(ctx context.Context, schedule *SyncSchedule) err
 		waitTimeout = time.Duration(timeoutSeconds) * time.Second
 	}
 
-	dbURL := firstNonEmptyEnv("JOB_DATABASE_URL")
-	if dbURL == "" {
+	cfg := app.LoadConfig()
+	if !distributedJobsConfigured(cfg) {
 		return fmt.Errorf("JOB_DATABASE_URL is required for worker native sync")
 	}
-	natsURLs := firstNonEmptyEnv("NATS_URLS")
-	if natsURLs == "" {
-		return fmt.Errorf("NATS_URLS is required for worker native sync")
-	}
 
-	// Open Postgres connection for job store using the pgx database/sql driver.
-	db, err := sql.Open("pgx", dbURL)
+	runtime, err := openJobRuntime(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("open job database: %w", err)
+		return err
 	}
-	defer func() {
-		_ = db.Close()
-	}()
+	defer func() { _ = runtime.Close() }()
 
-	store := jobs.NewPostgresStore(db)
-	if err := store.EnsureSchema(ctx); err != nil {
-		return fmt.Errorf("ensure job schema: %w", err)
-	}
-
-	// Connect to NATS and obtain JetStream context.
-	nc, err := nats.Connect(natsURLs)
-	if err != nil {
-		return fmt.Errorf("connect to NATS: %w", err)
-	}
-	defer nc.Close()
-
-	js, err := nc.JetStream()
-	if err != nil {
-		return fmt.Errorf("obtain JetStream context: %w", err)
-	}
-
-	queue := jobs.NewNATSQueue(js, jobs.NATSQueueConfig{
-		Stream:       "CEREBRO_JOBS",
-		Subject:      "cerebro.jobs",
-		Consumer:     "job-worker",
-		CreateStream: true,
-	})
-
-	manager := jobs.NewManager(queue, store, slog.Default())
+	manager := jobs.NewManager(runtime.queue, runtime.store, slog.Default())
 
 	job, err := manager.EnqueueNativeSync(ctx, jobs.NativeSyncPayload{
 		Provider:     strings.ToLower(strings.TrimSpace(schedule.Provider)),
@@ -1184,265 +1124,47 @@ func schedulesEqual(a, b []SyncSchedule) bool {
 	return true
 }
 
-func ensureScheduleTable(ctx context.Context, client scheduledSyncStore) error {
-	if _, err := client.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS cerebro`); err != nil {
+func ensureScheduleTable(ctx context.Context, _ *snowflake.Client) error {
+	store, err := openScheduleStoreFn()
+	if err != nil {
 		return err
 	}
-	query := `CREATE TABLE IF NOT EXISTS cerebro.sync_schedules (
-		name TEXT PRIMARY KEY,
-		cron TEXT NOT NULL,
-		provider TEXT NOT NULL,
-		table_filter TEXT NOT NULL DEFAULT '',
-		enabled BOOLEAN NOT NULL DEFAULT TRUE,
-		scan_after BOOLEAN NOT NULL DEFAULT FALSE,
-		retry INTEGER NOT NULL DEFAULT 3,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		last_run TIMESTAMPTZ,
-		last_status TEXT NOT NULL DEFAULT '',
-		next_run TIMESTAMPTZ
-	)`
-	_, err := client.Exec(ctx, query)
-	return err
+	defer func() { _ = store.Close() }()
+	return store.EnsureSchema(ctx)
 }
 
-func listSchedules(ctx context.Context, client scheduledSyncStore) ([]SyncSchedule, error) {
-	if err := ensureScheduleTable(ctx, client); err != nil {
-		return nil, err
-	}
-
-	query := `SELECT
-		name,
-		cron,
-		provider,
-		COALESCE(table_filter, '') AS table_filter,
-		enabled,
-		scan_after,
-		retry,
-		created_at,
-		updated_at,
-		COALESCE(last_run, TIMESTAMPTZ '1970-01-01T00:00:00Z') AS last_run,
-		COALESCE(last_status, '') AS last_status,
-		COALESCE(next_run, TIMESTAMPTZ '1970-01-01T00:00:00Z') AS next_run
-	FROM cerebro.sync_schedules
-	ORDER BY name`
-
-	result, err := client.Query(ctx, query)
+func listSchedules(ctx context.Context, _ *snowflake.Client) ([]SyncSchedule, error) {
+	store, err := openScheduleStoreFn()
 	if err != nil {
 		return nil, err
 	}
-
-	var schedules []SyncSchedule
-	for _, row := range result.Rows {
-		s := SyncSchedule{
-			Name:       getString(row, "name"),
-			Cron:       getString(row, "cron"),
-			Provider:   getString(row, "provider"),
-			Table:      getString(row, "table_filter"),
-			Enabled:    getBool(row, "enabled"),
-			ScanAfter:  getBool(row, "scan_after"),
-			Retry:      getInt(row, "retry"),
-			CreatedAt:  getTime(row, "created_at"),
-			UpdatedAt:  getTime(row, "updated_at"),
-			LastRun:    getTime(row, "last_run"),
-			LastStatus: getString(row, "last_status"),
-			NextRun:    getTime(row, "next_run"),
-		}
-		// Reset zero times
-		if s.LastRun.Year() == 1970 {
-			s.LastRun = time.Time{}
-		}
-		if s.NextRun.Year() == 1970 {
-			s.NextRun = time.Time{}
-		}
-		schedules = append(schedules, s)
-	}
-
-	// Sort by name
-	sort.Slice(schedules, func(i, j int) bool {
-		return schedules[i].Name < schedules[j].Name
-	})
-
-	return schedules, nil
+	defer func() { _ = store.Close() }()
+	return store.List(ctx)
 }
 
-func getSchedule(ctx context.Context, client scheduledSyncStore, name string) (*SyncSchedule, error) {
-	if err := ensureScheduleTable(ctx, client); err != nil {
-		return nil, err
-	}
-
-	query := `SELECT
-		name,
-		cron,
-		provider,
-		COALESCE(table_filter, '') AS table_filter,
-		enabled,
-		scan_after,
-		retry,
-		created_at,
-		updated_at,
-		COALESCE(last_run, TIMESTAMPTZ '1970-01-01T00:00:00Z') AS last_run,
-		COALESCE(last_status, '') AS last_status,
-		COALESCE(next_run, TIMESTAMPTZ '1970-01-01T00:00:00Z') AS next_run
-	FROM cerebro.sync_schedules
-	WHERE name = $1`
-
-	result, err := client.Query(ctx, query, name)
+func getSchedule(ctx context.Context, _ *snowflake.Client, name string) (*SyncSchedule, error) {
+	store, err := openScheduleStoreFn()
 	if err != nil {
 		return nil, err
 	}
-
-	if len(result.Rows) == 0 {
-		return nil, nil
-	}
-
-	row := result.Rows[0]
-	s := &SyncSchedule{
-		Name:       getString(row, "name"),
-		Cron:       getString(row, "cron"),
-		Provider:   getString(row, "provider"),
-		Table:      getString(row, "table_filter"),
-		Enabled:    getBool(row, "enabled"),
-		ScanAfter:  getBool(row, "scan_after"),
-		Retry:      getInt(row, "retry"),
-		CreatedAt:  getTime(row, "created_at"),
-		UpdatedAt:  getTime(row, "updated_at"),
-		LastRun:    getTime(row, "last_run"),
-		LastStatus: getString(row, "last_status"),
-		NextRun:    getTime(row, "next_run"),
-	}
-	if s.LastRun.Year() == 1970 {
-		s.LastRun = time.Time{}
-	}
-	if s.NextRun.Year() == 1970 {
-		s.NextRun = time.Time{}
-	}
-
-	return s, nil
+	defer func() { _ = store.Close() }()
+	return store.Get(ctx, name)
 }
 
-func saveSchedule(ctx context.Context, client scheduledSyncStore, schedule *SyncSchedule) error {
-	if err := ensureScheduleTable(ctx, client); err != nil {
+func saveSchedule(ctx context.Context, _ *snowflake.Client, schedule *SyncSchedule) error {
+	store, err := openScheduleStoreFn()
+	if err != nil {
 		return err
 	}
-	if schedule.CreatedAt.IsZero() {
-		schedule.CreatedAt = scheduleNowFn().UTC()
-	}
-	if schedule.UpdatedAt.IsZero() {
-		schedule.UpdatedAt = scheduleNowFn().UTC()
-	}
-
-	query := `INSERT INTO cerebro.sync_schedules (
-		name, cron, provider, table_filter, enabled, scan_after, retry, created_at, updated_at, last_run, last_status, next_run
-	) VALUES (
-		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-	)
-	ON CONFLICT (name) DO UPDATE SET
-		cron = EXCLUDED.cron,
-		provider = EXCLUDED.provider,
-		table_filter = EXCLUDED.table_filter,
-		enabled = EXCLUDED.enabled,
-		scan_after = EXCLUDED.scan_after,
-		retry = EXCLUDED.retry,
-		updated_at = EXCLUDED.updated_at,
-		last_run = EXCLUDED.last_run,
-		last_status = EXCLUDED.last_status,
-		next_run = EXCLUDED.next_run`
-
-	var lastRun, nextRun interface{}
-	if !schedule.LastRun.IsZero() {
-		lastRun = schedule.LastRun
-	}
-	if !schedule.NextRun.IsZero() {
-		nextRun = schedule.NextRun
-	}
-
-	_, err := client.Exec(ctx, query,
-		schedule.Name,
-		schedule.Cron, schedule.Provider, schedule.Table, schedule.Enabled, schedule.ScanAfter, schedule.Retry,
-		schedule.CreatedAt, schedule.UpdatedAt, lastRun, schedule.LastStatus, nextRun,
-	)
-	return err
+	defer func() { _ = store.Close() }()
+	return store.Save(ctx, schedule)
 }
 
-func deleteSchedule(ctx context.Context, client scheduledSyncStore, name string) error {
-	query := `DELETE FROM cerebro.sync_schedules WHERE name = $1`
-	_, err := client.Exec(ctx, query, name)
-	return err
-}
-
-// Helper functions for extracting values from query results
-
-func getString(row map[string]interface{}, key string) string {
-	if v, ok := rowValue(row, key); ok {
-		switch value := v.(type) {
-		case string:
-			return value
-		case []byte:
-			return string(value)
-		case fmt.Stringer:
-			return value.String()
-		default:
-			return fmt.Sprintf("%v", value)
-		}
+func deleteSchedule(ctx context.Context, _ *snowflake.Client, name string) error {
+	store, err := openScheduleStoreFn()
+	if err != nil {
+		return err
 	}
-	return ""
-}
-
-func getBool(row map[string]interface{}, key string) bool {
-	if v, ok := rowValue(row, key); ok {
-		if b, ok := v.(bool); ok {
-			return b
-		}
-	}
-	return false
-}
-
-func getInt(row map[string]interface{}, key string) int {
-	if v, ok := rowValue(row, key); ok {
-		switch n := v.(type) {
-		case int:
-			return n
-		case int64:
-			return int(n)
-		case float64:
-			return int(n)
-		}
-	}
-	return 0
-}
-
-func getTime(row map[string]interface{}, key string) time.Time {
-	if v, ok := rowValue(row, key); ok {
-		if t, ok := v.(time.Time); ok {
-			return t
-		}
-		if b, ok := v.([]byte); ok {
-			if t, err := time.Parse(time.RFC3339, string(b)); err == nil {
-				return t
-			}
-		}
-		if s, ok := v.(string); ok {
-			if t, err := time.Parse(time.RFC3339, s); err == nil {
-				return t
-			}
-		}
-	}
-	return time.Time{}
-}
-
-func rowValue(row map[string]interface{}, key string) (interface{}, bool) {
-	if row == nil {
-		return nil, false
-	}
-	if v, ok := row[key]; ok {
-		return v, true
-	}
-	lowerKey := strings.ToLower(strings.TrimSpace(key))
-	if v, ok := row[lowerKey]; ok {
-		return v, true
-	}
-	upperKey := strings.ToUpper(lowerKey)
-	v, ok := row[upperKey]
-	return v, ok
+	defer func() { _ = store.Close() }()
+	return store.Delete(ctx, name)
 }

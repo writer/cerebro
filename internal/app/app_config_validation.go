@@ -155,6 +155,21 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Category: "dependency",
 		},
 		{
+			EnvVars: []string{
+				"JOB_DATABASE_URL",
+				"NATS_URLS",
+				"JOB_NATS_STREAM",
+				"JOB_NATS_SUBJECT",
+				"JOB_NATS_CONSUMER",
+				"JOB_WORKER_CONCURRENCY",
+				"JOB_VISIBILITY_TIMEOUT",
+				"JOB_POLL_WAIT",
+				"JOB_MAX_ATTEMPTS",
+			},
+			Summary:  "when JOB_DATABASE_URL is configured, NATS settings must be present and worker timing/count controls must be positive",
+			Category: "dependency",
+		},
+		{
 			EnvVars:  []string{"FINDING_ATTESTATION_ENABLED", "FINDING_ATTESTATION_SIGNING_KEY", "FINDING_ATTESTATION_TIMEOUT"},
 			Summary:  "when FINDING_ATTESTATION_ENABLED=true, the signing key is required and timeout must be positive",
 			Category: "dependency",
@@ -176,32 +191,20 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Summary:  "when GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST=true, signing key is required and skew/TTL/support thresholds must be positive",
 			Category: "dependency",
 		},
-		{EnvVars: []string{"GRAPH_STORE_BACKEND"}, Summary: "must be one of memory, neptune, spanner", Category: "enum"},
-		{
-			EnvVars:  []string{"GRAPH_STORE_BACKEND", "GRAPH_STORE_ALLOW_IN_MEMORY"},
-			Summary:  "GRAPH_STORE_BACKEND=memory is restricted to tests and explicit local opt-in",
-			Category: "dependency",
-		},
+		{EnvVars: []string{"GRAPH_STORE_BACKEND"}, Summary: "must be neptune", Category: "enum"},
 		{
 			EnvVars:  []string{"GRAPH_STORE_BACKEND", "GRAPH_STORE_NEPTUNE_ENDPOINT"},
 			Summary:  "when GRAPH_STORE_BACKEND=neptune, the Neptune data API endpoint is required",
 			Category: "dependency",
 		},
+		{EnvVars: []string{"GRAPH_SEARCH_BACKEND"}, Summary: "must be one of graph, opensearch", Category: "enum"},
 		{
-			EnvVars:  []string{"GRAPH_STORE_BACKEND", "GRAPH_STORE_SPANNER_DATABASE", "GRAPH_STORE_SPANNER_AUTO_BOOTSTRAP"},
-			Summary:  "when GRAPH_STORE_BACKEND=spanner, the Cloud Spanner database is required and optional bootstrap reuses the bundled graph-store schema DDL",
+			EnvVars:  []string{"GRAPH_SEARCH_BACKEND", "GRAPH_SEARCH_OPENSEARCH_ENDPOINT", "GRAPH_SEARCH_OPENSEARCH_REGION", "GRAPH_SEARCH_OPENSEARCH_INDEX"},
+			Summary:  "when GRAPH_SEARCH_BACKEND=opensearch, the OpenSearch endpoint, region, and index are required",
 			Category: "dependency",
 		},
-		{
-			EnvVars:  []string{"GRAPH_STORE_SECONDARY_BACKEND"},
-			Summary:  "must be empty or one of neptune, spanner",
-			Category: "enum",
-		},
-		{
-			EnvVars:  []string{"GRAPH_STORE_SECONDARY_BACKEND", "GRAPH_STORE_DUAL_WRITE_MODE", "GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH"},
-			Summary:  "when a secondary backend is configured, dual-write mode must be valid and best-effort reconciliation must have a queue path",
-			Category: "dependency",
-		},
+		{EnvVars: []string{"GRAPH_SEARCH_REQUEST_TIMEOUT"}, Summary: "must be greater than 0", Category: "range"},
+		{EnvVars: []string{"GRAPH_SEARCH_MAX_CANDIDATES"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"GRAPH_TENANT_SHARD_IDLE_TTL"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"GRAPH_TENANT_WARM_SHARD_TTL"}, Summary: "must be greater than 0", Category: "range"},
 		{EnvVars: []string{"GRAPH_TENANT_WARM_SHARD_MAX_RETAINED"}, Summary: "must be greater than 0", Category: "range"},
@@ -218,6 +221,7 @@ func (c *Config) Validate() error {
 	}
 
 	problems := append([]string(nil), c.loadProblems...)
+	testProcess := runningUnderGoTest()
 
 	if c.Port < 1 || c.Port > 65535 {
 		problems = addConfigProblem(problems, "API_PORT must be between 1 and 65535")
@@ -481,6 +485,33 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if strings.TrimSpace(c.JobDatabaseURL) != "" {
+		if len(c.NATSJetStreamURLs) == 0 {
+			problems = addConfigProblem(problems, "NATS_URLS must include at least one URL when JOB_DATABASE_URL is configured")
+		}
+		if strings.TrimSpace(c.JobNATSStream) == "" {
+			problems = addConfigProblem(problems, "JOB_NATS_STREAM is required when JOB_DATABASE_URL is configured")
+		}
+		if strings.TrimSpace(c.JobNATSSubject) == "" {
+			problems = addConfigProblem(problems, "JOB_NATS_SUBJECT is required when JOB_DATABASE_URL is configured")
+		}
+		if strings.TrimSpace(c.JobNATSConsumer) == "" {
+			problems = addConfigProblem(problems, "JOB_NATS_CONSUMER is required when JOB_DATABASE_URL is configured")
+		}
+		if c.JobWorkerConcurrency <= 0 {
+			problems = addConfigProblem(problems, "JOB_WORKER_CONCURRENCY must be > 0 when JOB_DATABASE_URL is configured")
+		}
+		if c.JobVisibilityTimeout <= 0 {
+			problems = addConfigProblem(problems, "JOB_VISIBILITY_TIMEOUT must be > 0 when JOB_DATABASE_URL is configured")
+		}
+		if c.JobPollWait <= 0 {
+			problems = addConfigProblem(problems, "JOB_POLL_WAIT must be > 0 when JOB_DATABASE_URL is configured")
+		}
+		if c.JobMaxAttempts <= 0 {
+			problems = addConfigProblem(problems, "JOB_MAX_ATTEMPTS must be > 0 when JOB_DATABASE_URL is configured")
+		}
+	}
+
 	if c.FindingAttestationEnabled {
 		if strings.TrimSpace(c.FindingAttestationSigningKey) == "" {
 			problems = addConfigProblem(problems, "FINDING_ATTESTATION_SIGNING_KEY is required when FINDING_ATTESTATION_ENABLED=true")
@@ -530,100 +561,52 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	switch c.graphStoreBackend() {
-	case graph.StoreBackendMemory, graph.StoreBackendNeptune, graph.StoreBackendSpanner:
+	if c.graphStoreBackend() != graph.StoreBackendNeptune {
+		problems = addConfigProblem(problems, "GRAPH_STORE_BACKEND must be neptune")
+	}
+	if !testProcess && !c.allowMissingGraphStoreEndpoint() && strings.TrimSpace(c.GraphStoreNeptuneEndpoint) == "" {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_ENDPOINT is required when GRAPH_STORE_BACKEND=neptune")
+	}
+	if c.GraphStoreNeptunePoolSize <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_SIZE must be > 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	if c.GraphStoreNeptunePoolHealthCheckInterval < 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL must be >= 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	if c.GraphStoreNeptunePoolHealthCheckInterval > 0 && c.GraphStoreNeptunePoolHealthCheckTimeout <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT must be > 0 when GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL>0")
+	}
+	if c.GraphStoreNeptunePoolMaxClientLifetime < 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_LIFETIME must be >= 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	if c.GraphStoreNeptunePoolMaxClientUses < 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_USES must be >= 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	if c.GraphStoreNeptunePoolDrainTimeout <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT must be > 0 when GRAPH_STORE_BACKEND=neptune")
+	}
+	switch c.graphSearchBackend() {
+	case graph.EntitySearchBackendGraph, graph.EntitySearchBackendOpenSearch:
 	default:
-		problems = addConfigProblem(problems, "GRAPH_STORE_BACKEND must be one of memory, neptune, spanner")
+		problems = addConfigProblem(problems, "GRAPH_SEARCH_BACKEND must be one of graph, opensearch")
 	}
-	switch c.graphStoreBackend() {
-	case graph.StoreBackendMemory:
-		if !c.allowInMemoryGraphStore() {
-			problems = addConfigProblem(problems, "GRAPH_STORE_BACKEND=memory is restricted to tests and explicit local opt-in; set GRAPH_STORE_ALLOW_IN_MEMORY=true to override")
+	if c.graphSearchBackend() == graph.EntitySearchBackendOpenSearch {
+		if strings.TrimSpace(c.GraphSearchOpenSearchEndpoint) == "" {
+			problems = addConfigProblem(problems, "GRAPH_SEARCH_OPENSEARCH_ENDPOINT is required when GRAPH_SEARCH_BACKEND=opensearch")
 		}
-	case graph.StoreBackendNeptune:
-		if strings.TrimSpace(c.GraphStoreNeptuneEndpoint) == "" {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_ENDPOINT is required when GRAPH_STORE_BACKEND=neptune")
+		if strings.TrimSpace(c.GraphSearchOpenSearchRegion) == "" {
+			problems = addConfigProblem(problems, "GRAPH_SEARCH_OPENSEARCH_REGION is required when GRAPH_SEARCH_BACKEND=opensearch")
 		}
-		if c.GraphStoreNeptunePoolSize <= 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_SIZE must be > 0 when GRAPH_STORE_BACKEND=neptune")
-		}
-		if c.GraphStoreNeptunePoolHealthCheckInterval < 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL must be >= 0 when GRAPH_STORE_BACKEND=neptune")
-		}
-		if c.GraphStoreNeptunePoolHealthCheckInterval > 0 && c.GraphStoreNeptunePoolHealthCheckTimeout <= 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT must be > 0 when GRAPH_STORE_NEPTUNE_POOL_HEALTHCHECK_INTERVAL>0")
-		}
-		if c.GraphStoreNeptunePoolMaxClientLifetime < 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_LIFETIME must be >= 0 when GRAPH_STORE_BACKEND=neptune")
-		}
-		if c.GraphStoreNeptunePoolMaxClientUses < 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_MAX_CLIENT_USES must be >= 0 when GRAPH_STORE_BACKEND=neptune")
-		}
-		if c.GraphStoreNeptunePoolDrainTimeout <= 0 {
-			problems = addConfigProblem(problems, "GRAPH_STORE_NEPTUNE_POOL_DRAIN_TIMEOUT must be > 0 when GRAPH_STORE_BACKEND=neptune")
-		}
-	case graph.StoreBackendSpanner:
-		if strings.TrimSpace(c.GraphStoreSpannerDatabase) == "" {
-			problems = addConfigProblem(problems, "GRAPH_STORE_SPANNER_DATABASE is required when GRAPH_STORE_BACKEND=spanner")
+		if strings.TrimSpace(c.GraphSearchOpenSearchIndex) == "" {
+			problems = addConfigProblem(problems, "GRAPH_SEARCH_OPENSEARCH_INDEX is required when GRAPH_SEARCH_BACKEND=opensearch")
 		}
 	}
-
-	switch c.graphStoreSecondaryBackend() {
-	case "", graph.StoreBackendNeptune, graph.StoreBackendSpanner:
-	default:
-		problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_BACKEND must be empty or one of neptune, spanner")
+	if c.GraphSearchRequestTimeout <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_SEARCH_REQUEST_TIMEOUT must be > 0")
 	}
-	if c.dualWriteGraphStoreEnabled() {
-		if c.graphStoreSecondaryBackend() == c.graphStoreBackend() {
-			problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_BACKEND must differ from GRAPH_STORE_BACKEND")
-		}
-		switch c.graphStoreSecondaryBackend() {
-		case graph.StoreBackendNeptune:
-			if strings.TrimSpace(c.GraphStoreSecondaryNeptuneEndpoint) == "" {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_ENDPOINT is required when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-			if c.GraphStoreSecondaryNeptunePoolSize <= 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_SIZE must be > 0 when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-			if c.GraphStoreSecondaryNeptunePoolHealthCheckInterval < 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL must be >= 0 when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-			if c.GraphStoreSecondaryNeptunePoolHealthCheckInterval > 0 && c.GraphStoreSecondaryNeptunePoolHealthCheckTimeout <= 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_TIMEOUT must be > 0 when GRAPH_STORE_SECONDARY_NEPTUNE_POOL_HEALTHCHECK_INTERVAL>0")
-			}
-			if c.GraphStoreSecondaryNeptunePoolMaxClientLifetime < 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_LIFETIME must be >= 0 when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-			if c.GraphStoreSecondaryNeptunePoolMaxClientUses < 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_MAX_CLIENT_USES must be >= 0 when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-			if c.GraphStoreSecondaryNeptunePoolDrainTimeout <= 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_NEPTUNE_POOL_DRAIN_TIMEOUT must be > 0 when GRAPH_STORE_SECONDARY_BACKEND=neptune")
-			}
-		case graph.StoreBackendSpanner:
-			if strings.TrimSpace(c.GraphStoreSecondarySpannerDatabase) == "" {
-				problems = addConfigProblem(problems, "GRAPH_STORE_SECONDARY_SPANNER_DATABASE is required when GRAPH_STORE_SECONDARY_BACKEND=spanner")
-			}
-		}
-		if !c.graphStoreDualWriteMode().Valid() {
-			problems = addConfigProblem(problems, "GRAPH_STORE_DUAL_WRITE_MODE must be one of primary_only, best_effort_dual_write, strict_dual_write")
-		}
-		if c.graphStoreDualWriteMode() == graph.DualWriteModeBestEffort && strings.TrimSpace(c.GraphStoreDualWriteReconciliationPath) == "" {
-			problems = addConfigProblem(problems, "GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH is required when GRAPH_STORE_DUAL_WRITE_MODE=best_effort_dual_write")
-		}
-		if c.GraphStoreDualWriteReplayEnabled {
-			if strings.TrimSpace(c.GraphStoreDualWriteReconciliationPath) == "" {
-				problems = addConfigProblem(problems, "GRAPH_STORE_DUAL_WRITE_RECONCILIATION_PATH is required when GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED=true")
-			}
-			if c.GraphStoreDualWriteReplayInterval <= 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_DUAL_WRITE_REPLAY_INTERVAL must be > 0 when GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED=true")
-			}
-			if c.GraphStoreDualWriteReplayBatchSize <= 0 {
-				problems = addConfigProblem(problems, "GRAPH_STORE_DUAL_WRITE_REPLAY_BATCH_SIZE must be > 0 when GRAPH_STORE_DUAL_WRITE_REPLAY_ENABLED=true")
-			}
-		}
+	if c.GraphSearchMaxCandidates <= 0 {
+		problems = addConfigProblem(problems, "GRAPH_SEARCH_MAX_CANDIDATES must be > 0")
 	}
-
 	switch strings.ToLower(strings.TrimSpace(c.GraphSchemaValidationMode)) {
 	case "", string(graph.SchemaValidationOff), string(graph.SchemaValidationWarn), string(graph.SchemaValidationEnforce):
 	default:

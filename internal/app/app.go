@@ -82,6 +82,21 @@ type retentionCleaner interface {
 	CleanupAccessReviewData(ctx context.Context, olderThan time.Time) (reviewsDeleted, itemsDeleted int64, err error)
 }
 
+type auditRepository interface {
+	Log(ctx context.Context, entry *snowflake.AuditEntry) error
+	List(ctx context.Context, resourceType, resourceID string, limit int) ([]*snowflake.AuditEntry, error)
+}
+
+type policyHistoryRepository interface {
+	Upsert(ctx context.Context, record *snowflake.PolicyHistoryRecord) error
+	List(ctx context.Context, policyID string, limit int) ([]*snowflake.PolicyHistoryRecord, error)
+}
+
+type riskEngineStateRepository interface {
+	SaveSnapshot(ctx context.Context, graphID string, snapshot []byte) error
+	LoadSnapshot(ctx context.Context, graphID string) ([]byte, error)
+}
+
 // App is the main application container that holds references to all initialized
 // services. Create a new App using the New() function which handles all service
 // initialization and wiring based on environment configuration.
@@ -93,43 +108,49 @@ type App struct {
 	Logger *slog.Logger
 
 	// Core services
-	PostgresDB     *sql.DB
-	PostgresClient *postgres.PostgresClient
-	Snowflake      *snowflake.Client
-	Warehouse      warehouse.DataWarehouse
-	Policy         *policy.Engine
-	Findings       findings.FindingStore
-	Scanner        *scanner.Scanner
-	DSPM           *dspm.Scanner
-	Cache          *cache.PolicyCache
-	ExecutionStore executionstore.Store
-	GraphSnapshots *graph.GraphPersistenceStore
+	PostgresDB      *sql.DB
+	PostgresClient  *postgres.PostgresClient
+	Snowflake       *snowflake.Client
+	LegacySnowflake *snowflake.Client
+	Warehouse       warehouse.DataWarehouse
+	Policy          *policy.Engine
+	Findings        findings.FindingStore
+	Scanner         *scanner.Scanner
+	DSPM            *dspm.Scanner
+	Cache           *cache.PolicyCache
+	ExecutionStore  executionstore.Store
+	GraphSnapshots  *graph.GraphPersistenceStore
+	appStateDB      *sql.DB
 
 	// Feature services
-	Agents         *agents.AgentRegistry
-	Ticketing      *ticketing.Service
-	Identity       *identity.Service
-	AttackPath     *attackpath.Graph
-	Providers      *providers.Registry
-	Webhooks       *webhooks.Service
-	TapConsumer    *events.Consumer
-	AlertRouter    *events.AlertRouter
-	TapEventMapper *graphingest.Mapper
-	RemoteTools    *agents.RemoteToolProvider
-	ToolPublisher  *agents.ToolPublisher
-	Notifications  *notifications.Manager
-	Scheduler      *scheduler.Scheduler
+	Agents           *agents.AgentRegistry
+	Ticketing        *ticketing.Service
+	Identity         *identity.Service
+	AttackPath       *attackpath.Graph
+	Providers        *providers.Registry
+	Webhooks         *webhooks.Service
+	TapConsumer      *events.Consumer
+	AlertRouter      *events.AlertRouter
+	TapEventMapper   *graphingest.Mapper
+	RemoteTools      *agents.RemoteToolProvider
+	remoteAgentTools []agents.Tool
+	ToolPublisher    *agents.ToolPublisher
+	Notifications    *notifications.Manager
+	Scheduler        *scheduler.Scheduler
 
-	// Repositories (for Postgres persistence)
+	// Durable app-state repositories.
 	FindingsRepo        *postgres.FindingRepository
 	TicketsRepo         *postgres.TicketRepository
-	AuditRepo           *postgres.AuditRepository
-	PolicyHistoryRepo   *postgres.PolicyHistoryRepository
-	RiskEngineStateRepo *postgres.RiskEngineStateRepository
+	AuditRepo           auditRepository
+	PolicyHistoryRepo   policyHistoryRepository
+	RiskEngineStateRepo riskEngineStateRepository
 	RetentionRepo       retentionCleaner
 
-	// Postgres-backed stores (when available)
+	// Legacy Postgres-backed findings store for deployments without app-state postgres.
 	PostgresFindings *findings.PostgresStore
+
+	// Legacy Snowflake-backed findings store for deployments without Postgres app-state.
+	SnowflakeFindings *findings.SnowflakeStore
 
 	// Incremental scanning
 	ScanWatermarks *scanner.WatermarkStore
@@ -147,58 +168,54 @@ type App struct {
 	RuntimeRespond      *runtime.ResponseEngine
 
 	// Security Graph
-	SecurityGraph                    *graph.Graph
-	configuredSecurityGraphStore     graph.GraphStore
-	configuredSecurityGraphClose     func() error
-	configuredSecurityGraphReady     bool
-	graphStoreDualWriteReplayQueue   graphStoreDualWriteReplayQueue
-	graphStoreBackendProviderFactory graphStoreBackendProviderFactory
-	SecurityGraphBuilder             *builders.Builder
-	Propagation                      *graph.PropagationEngine
-	graphReady                       chan struct{} // closed when initial graph build completes
-	graphCtx                         context.Context
-	graphCancel                      context.CancelFunc
-	graphUpdateMu                    sync.Mutex
-	graphBuildMu                     sync.RWMutex
-	graphBuildState                  GraphBuildState
-	graphBuildLastAt                 time.Time
-	graphBuildErr                    string
-	graphConsistencyMu               sync.Mutex
-	graphConsistencyLast             time.Time
-	graphConsistencyRun              bool
-	graphConsistencyCancel           context.CancelFunc
-	graphConsistencyWG               sync.WaitGroup
-	graphWriterLease                 *graphWriterLeaseManager
-	graphWriterLeaseTransitionWG     sync.WaitGroup
-	tenantShardMu                    sync.Mutex
-	tenantSecurityGraphShards        *tenantGraphShardManager
-	passiveSnapshotStoreMu           sync.RWMutex
-	passiveSnapshotStoreOwner        *graph.GraphPersistenceStore
-	passiveSnapshotStoreSource       string
-	passiveSnapshotStoreID           string
-	passiveSnapshotStoreStatusID     string
-	passiveSnapshotStore             *graph.SnapshotGraphStore
-	eventCorrelationRefreshQueue     *eventCorrelationRefreshQueue
-	eventCorrelationRefreshCancel    context.CancelFunc
-	eventCorrelationRefreshWG        sync.WaitGroup
-	threatIntelSyncCancel            context.CancelFunc
-	threatIntelSyncWG                sync.WaitGroup
-	traceShutdown                    func(context.Context) error
-	secretsReloadCancel              context.CancelFunc
-	secretsReloadWG                  sync.WaitGroup
-	tapMapperOnce                    sync.Once
-	tapMapperErr                     error
-	tapResolveGraphMu                sync.RWMutex
-	tapResolveGraph                  *graph.Graph
-	tapConsumerMu                    sync.Mutex
-	tapConsumerDurable               string
-	tapConsumerSubjects              []string
-	securityGraphInitMu              sync.RWMutex
-	reloadMu                         sync.Mutex
-	apiKeys                          atomic.Value // map[string]string
-	apiCredentials                   atomic.Value // map[string]apiauth.Credential
-	apiCredentialStore               *apiauth.ManagedCredentialStore
-	secretsLoader                    secretsLoader
+	SecurityGraph                      *graph.Graph
+	configuredEntitySearchBackend      graph.EntitySearchBackend
+	configuredEntitySearchClose        func() error
+	entitySearchBackendProviderFactory entitySearchBackendProviderFactory
+	configuredSecurityGraphStore       graph.GraphStore
+	configuredSecurityGraphClose       func() error
+	configuredSecurityGraphReady       bool
+	graphStoreBackendProviderFactory   graphStoreBackendProviderFactory
+	SecurityGraphBuilder               *builders.Builder
+	Propagation                        *graph.PropagationEngine
+	graphReady                         chan struct{} // closed when initial graph build completes
+	graphCtx                           context.Context
+	graphCancel                        context.CancelFunc
+	graphUpdateMu                      sync.Mutex
+	graphBuildMu                       sync.RWMutex
+	graphBuildState                    GraphBuildState
+	graphBuildLastAt                   time.Time
+	graphBuildErr                      string
+	graphConsistencyMu                 sync.Mutex
+	graphConsistencyLast               time.Time
+	graphConsistencyRun                bool
+	graphConsistencyCancel             context.CancelFunc
+	graphConsistencyWG                 sync.WaitGroup
+	graphWriterLease                   *graphWriterLeaseManager
+	graphWriterLeaseTransitionWG       sync.WaitGroup
+	tenantShardMu                      sync.Mutex
+	tenantSecurityGraphShards          *tenantGraphShardManager
+	eventCorrelationRefreshQueue       *eventCorrelationRefreshQueue
+	eventCorrelationRefreshCancel      context.CancelFunc
+	eventCorrelationRefreshWG          sync.WaitGroup
+	threatIntelSyncCancel              context.CancelFunc
+	threatIntelSyncWG                  sync.WaitGroup
+	traceShutdown                      func(context.Context) error
+	secretsReloadCancel                context.CancelFunc
+	secretsReloadWG                    sync.WaitGroup
+	tapMapperOnce                      sync.Once
+	tapMapperErr                       error
+	tapResolveGraphMu                  sync.RWMutex
+	tapResolveGraph                    *graph.Graph
+	tapConsumerMu                      sync.Mutex
+	tapConsumerDurable                 string
+	tapConsumerSubjects                []string
+	securityGraphInitMu                sync.RWMutex
+	reloadMu                           sync.Mutex
+	apiKeys                            atomic.Value // map[string]string
+	apiCredentials                     atomic.Value // map[string]apiauth.Credential
+	apiCredentialStore                 *apiauth.ManagedCredentialStore
+	secretsLoader                      secretsLoader
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string
@@ -279,7 +296,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 	}
 
 	logger.Info("application initialized",
-		"postgres", app.PostgresDB != nil,
+		"snowflake", app.Snowflake != nil,
 		"policies", len(app.Policy.ListPolicies()),
 	)
 	app.startSecretsReloader(ctx)

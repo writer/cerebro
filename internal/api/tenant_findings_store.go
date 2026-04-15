@@ -76,11 +76,25 @@ func (s *tenantFindingStore) Resolve(id string) bool {
 	return s.base.Resolve(id)
 }
 
+func (s *tenantFindingStore) ResolveWithError(id string) error {
+	if _, ok := s.Get(id); !ok {
+		return findings.ErrIssueNotFound
+	}
+	return findings.ResolveStore(s.base, id)
+}
+
 func (s *tenantFindingStore) Suppress(id string) bool {
 	if _, ok := s.Get(id); !ok {
 		return false
 	}
 	return s.base.Suppress(id)
+}
+
+func (s *tenantFindingStore) SuppressWithError(id string) error {
+	if _, ok := s.Get(id); !ok {
+		return findings.ErrIssueNotFound
+	}
+	return findings.SuppressStore(s.base, id)
 }
 
 func (s *tenantFindingStore) Stats() findings.Stats {

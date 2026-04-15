@@ -33,6 +33,7 @@ func TestParseResourceDataReturnsErrorOnInvalidJSON(t *testing.T) {
 	var f Finding
 	if err := parseResourceData(&f, []byte(`{"invalid"`)); err == nil {
 		t.Fatal("expected parseResourceData to return an error for invalid JSON")
+		return
 	}
 }
 

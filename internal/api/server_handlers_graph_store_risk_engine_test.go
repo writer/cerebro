@@ -285,9 +285,11 @@ func TestGraphRiskEngineUsesGraphRuntimeWithoutStoredSecurityGraphField(t *testi
 	engine := s.graphRiskEngine(context.Background())
 	if engine == nil {
 		t.Fatal("expected graph risk engine to use graphRuntime.CurrentSecurityGraph()")
+		return
 	}
 	if report := engine.Analyze(); report == nil {
 		t.Fatal("expected runtime-backed risk engine report")
+		return
 	}
 }
 
@@ -302,12 +304,14 @@ func TestGraphRiskEngineRefreshesWhenGraphRuntimeGraphChanges(t *testing.T) {
 	first := s.graphRiskEngine(context.Background())
 	if first == nil {
 		t.Fatal("expected initial runtime-backed risk engine")
+		return
 	}
 
 	runtime.graph = buildGraphStoreRiskEngineAlternateTestGraph()
 	second := s.graphRiskEngine(context.Background())
 	if second == nil {
 		t.Fatal("expected refreshed runtime-backed risk engine")
+		return
 	}
 	if second == first {
 		t.Fatal("expected a new risk engine after runtime graph swap")
@@ -345,6 +349,7 @@ func TestGraphRiskEngineDoesNotRestoreStaleInMemoryStateAcrossChangedStoreSnapsh
 	first := s.graphRiskEngine(context.Background())
 	if first == nil {
 		t.Fatal("expected initial store-backed risk engine")
+		return
 	}
 	if _, err := first.RecordOutcome(risk.OutcomeEvent{
 		EntityID:   "customer:acme",
@@ -357,6 +362,7 @@ func TestGraphRiskEngineDoesNotRestoreStaleInMemoryStateAcrossChangedStoreSnapsh
 	second := s.graphRiskEngine(context.Background())
 	if second == nil {
 		t.Fatal("expected refreshed store-backed risk engine")
+		return
 	}
 	if second == first {
 		t.Fatal("expected a new risk engine for a changed snapshot topology")

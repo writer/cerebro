@@ -90,11 +90,11 @@ func runAzureSyncDirect(ctx context.Context, start time.Time, tableFilter []stri
 	if err != nil {
 		return err
 	}
-	client, closeWarehouse, err := openCLIWarehouse()
+	store, err := openSyncWarehouseFn(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("open warehouse: %w", err)
 	}
-	defer func() { _ = closeWarehouse() }()
+	defer func() { _ = closeSyncWarehouse(store) }()
 
 	opts := []nativesync.AzureEngineOption{}
 	switch len(explicitSubscriptions) {
@@ -118,7 +118,7 @@ func runAzureSyncDirect(ctx context.Context, start time.Time, tableFilter []stri
 		opts = append(opts, nativesync.WithAzureTableFilter(tableFilter))
 	}
 
-	syncer, err := nativesync.NewAzureSyncEngine(client, slog.Default(), opts...)
+	syncer, err := nativesync.NewAzureSyncEngine(store, slog.Default(), opts...)
 	if err != nil {
 		return fmt.Errorf("create azure sync engine: %w", err)
 	}

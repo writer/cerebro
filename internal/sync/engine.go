@@ -868,7 +868,7 @@ func (e *SyncEngine) recordBackfillRequest(ctx context.Context, table, region, r
 	}
 
 	id := backfillQueueID(e.accountID, table, region)
-	mergeQuery := `MERGE INTO _sync_backfill_queue t
+	query := `MERGE INTO _sync_backfill_queue t
 		USING (SELECT ? AS id, ? AS provider, ? AS table_name, ? AS region, ? AS account_id, ? AS reason, CURRENT_TIMESTAMP() AS requested_at) s
 		ON t.id = s.id
 		WHEN MATCHED THEN UPDATE SET
@@ -877,8 +877,16 @@ func (e *SyncEngine) recordBackfillRequest(ctx context.Context, table, region, r
 			_cq_sync_time = CURRENT_TIMESTAMP()
 		WHEN NOT MATCHED THEN INSERT (id, provider, table_name, region, account_id, reason, requested_at)
 		VALUES (s.id, s.provider, s.table_name, s.region, s.account_id, s.reason, s.requested_at)`
+	if syncWarehouseDialect(e.sf) != warehouse.DialectSnowflake {
+		query = `INSERT INTO _sync_backfill_queue (id, provider, table_name, region, account_id, reason, requested_at)
+			VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
+			ON CONFLICT (id) DO UPDATE SET
+				reason = EXCLUDED.reason,
+				requested_at = EXCLUDED.requested_at,
+				_cq_sync_time = CURRENT_TIMESTAMP()`
+	}
 
-	if _, err := e.sf.Exec(ctx, mergeQuery, id, "aws", table, region, e.accountID, reason); err != nil {
+	if _, err := e.sf.Exec(ctx, query, id, "aws", table, region, e.accountID, reason); err != nil {
 		return fmt.Errorf("upsert backfill request: %w", err)
 	}
 

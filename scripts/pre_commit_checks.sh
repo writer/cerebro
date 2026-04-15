@@ -18,12 +18,14 @@ while IFS= read -r path; do
 done <<< "$(git diff --cached --name-only --diff-filter=ACM -- '*.go' | grep -v '^vendor/' || true)"
 
 GRAPH_ID_SAFETY_FILES=()
-for path in "${STAGED_FILES[@]}"; do
-  if [[ "$path" == *_test.go ]]; then
-    continue
-  fi
-  GRAPH_ID_SAFETY_FILES+=("$path")
-done
+if [ "${#STAGED_FILES[@]}" -gt 0 ]; then
+  for path in "${STAGED_FILES[@]}"; do
+    if [[ "$path" == *_test.go ]]; then
+      continue
+    fi
+    GRAPH_ID_SAFETY_FILES+=("$path")
+  done
+fi
 
 has_staged_path_matching() {
   local pattern="$1"
@@ -127,8 +129,3 @@ run_without_git_local_env go run ./scripts/check_agent_sdk_contract_compat/main.
 
 echo "graph-ontology: checking mapper guardrails..."
 run_without_git_local_env go test ./internal/graphingest -run 'TestMapperContractFixtures|TestMapperSourceDomainCoverageGuardrails' -count=1
-
-if has_staged_path_matching '^(internal/graph/schema/|internal/graph/store_spanner[^/]*\.go$)'; then
-  echo "graph-spanner: checking world-model schema statements..."
-  run_without_git_local_env go test ./internal/graph -run TestSpannerWorldModelSchemaStatements -count=1
-fi

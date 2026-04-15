@@ -11,7 +11,13 @@ import (
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
-func executeAzureSync(ctx context.Context, client warehouse.SyncWarehouse, schedule *SyncSchedule) error {
+func executeAzureSync(ctx context.Context, store warehouse.SyncWarehouse, schedule *SyncSchedule) error {
+	store, closeStore, err := ensureSyncWarehouse(ctx, store)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
 	spec := parseScheduledSyncSpec(schedule.Table)
 	subscriptions := uniqueNonEmpty(append(append([]string{}, spec.AzureSubscriptions...), spec.AzureSubscription))
 	if len(subscriptions) == 0 {
@@ -68,7 +74,7 @@ func executeAzureSync(ctx context.Context, client warehouse.SyncWarehouse, sched
 		opts = append(opts, nativesync.WithAzureTableFilter(spec.TableFilter))
 	}
 
-	syncer, err := nativesync.NewAzureSyncEngine(client, slog.Default(), opts...)
+	syncer, err := nativesync.NewAzureSyncEngine(store, slog.Default(), opts...)
 	if err != nil {
 		return fmt.Errorf("create Azure sync engine: %w", err)
 	}

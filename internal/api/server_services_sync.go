@@ -13,7 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
-var errSyncSnowflakeUnavailable = errors.New("snowflake not configured")
+var errSyncWarehouseUnavailable = errors.New("warehouse not configured")
 
 type syncHandlerService interface {
 	BackfillRelationshipIDs(ctx context.Context, batchSize int) (syncBackfillResult, error)
@@ -66,11 +66,11 @@ func newSyncHandlerService(deps *serverDependencies) syncHandlerService {
 }
 
 func (s serverSyncHandlerService) BackfillRelationshipIDs(ctx context.Context, batchSize int) (syncBackfillResult, error) {
-	client, err := s.warehouse()
+	store, err := s.warehouse()
 	if err != nil {
 		return syncBackfillResult{}, err
 	}
-	extractor := nativesync.NewRelationshipExtractor(client, s.logger())
+	extractor := nativesync.NewRelationshipExtractor(store, s.logger())
 	stats, err := extractor.BackfillNormalizedRelationshipIDs(ctx, batchSize)
 	if err != nil {
 		return syncBackfillResult{}, err
@@ -84,11 +84,11 @@ func (s serverSyncHandlerService) BackfillRelationshipIDs(ctx context.Context, b
 }
 
 func (s serverSyncHandlerService) SyncAzure(ctx context.Context, req azureSyncRequest) (syncRunResult, error) {
-	client, err := s.warehouse()
+	store, err := s.warehouse()
 	if err != nil {
 		return syncRunResult{}, err
 	}
-	results, err := runAzureSyncWithOptions(ctx, client, req)
+	results, err := runAzureSyncWithOptions(ctx, store, req)
 	if err != nil {
 		return syncRunResult{}, err
 	}
@@ -99,11 +99,11 @@ func (s serverSyncHandlerService) SyncAzure(ctx context.Context, req azureSyncRe
 }
 
 func (s serverSyncHandlerService) SyncK8s(ctx context.Context, req k8sSyncRequest) (syncRunResult, error) {
-	client, err := s.warehouse()
+	store, err := s.warehouse()
 	if err != nil {
 		return syncRunResult{}, err
 	}
-	results, err := runK8sSyncWithOptions(ctx, client, req)
+	results, err := runK8sSyncWithOptions(ctx, store, req)
 	if err != nil {
 		return syncRunResult{}, err
 	}
@@ -114,11 +114,11 @@ func (s serverSyncHandlerService) SyncK8s(ctx context.Context, req k8sSyncReques
 }
 
 func (s serverSyncHandlerService) SyncAWS(ctx context.Context, req awsSyncRequest) (awsSyncRunResult, error) {
-	client, err := s.warehouse()
+	store, err := s.warehouse()
 	if err != nil {
 		return awsSyncRunResult{}, err
 	}
-	outcome, err := runAWSSyncWithOptions(ctx, client, req)
+	outcome, err := runAWSSyncWithOptions(ctx, store, req)
 	if err != nil {
 		return awsSyncRunResult{}, err
 	}
@@ -134,11 +134,11 @@ func (s serverSyncHandlerService) SyncAWS(ctx context.Context, req awsSyncReques
 }
 
 func (s serverSyncHandlerService) SyncAWSOrg(ctx context.Context, req awsOrgSyncRequest) (awsOrgSyncRunResult, error) {
-	client, err := s.warehouse()
+	store, err := s.warehouse()
 	if err != nil {
 		return awsOrgSyncRunResult{}, err
 	}
-	outcome, err := runAWSOrgSyncWithOptions(ctx, client, req)
+	outcome, err := runAWSOrgSyncWithOptions(ctx, store, req)
 	if err != nil {
 		return awsOrgSyncRunResult{}, err
 	}
@@ -153,11 +153,11 @@ func (s serverSyncHandlerService) SyncAWSOrg(ctx context.Context, req awsOrgSync
 }
 
 func (s serverSyncHandlerService) SyncGCP(ctx context.Context, req gcpSyncRequest) (gcpSyncRunResult, error) {
-	client, err := s.warehouse()
+	store, err := s.warehouse()
 	if err != nil {
 		return gcpSyncRunResult{}, err
 	}
-	outcome, err := runGCPSyncWithOptions(ctx, client, req)
+	outcome, err := runGCPSyncWithOptions(ctx, store, req)
 	if err != nil {
 		return gcpSyncRunResult{}, err
 	}
@@ -173,11 +173,11 @@ func (s serverSyncHandlerService) SyncGCP(ctx context.Context, req gcpSyncReques
 }
 
 func (s serverSyncHandlerService) SyncGCPAsset(ctx context.Context, req gcpAssetSyncRequest) (syncRunResult, error) {
-	client, err := s.warehouse()
+	store, err := s.warehouse()
 	if err != nil {
 		return syncRunResult{}, err
 	}
-	results, err := runGCPAssetSyncWithOptions(ctx, client, req)
+	results, err := runGCPAssetSyncWithOptions(ctx, store, req)
 	if err != nil {
 		return syncRunResult{}, err
 	}
@@ -189,7 +189,7 @@ func (s serverSyncHandlerService) SyncGCPAsset(ctx context.Context, req gcpAsset
 
 func (s serverSyncHandlerService) warehouse() (warehouse.DataWarehouse, error) {
 	if s.deps == nil || s.deps.Warehouse == nil {
-		return nil, errSyncSnowflakeUnavailable
+		return nil, errSyncWarehouseUnavailable
 	}
 	return s.deps.Warehouse, nil
 }

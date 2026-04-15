@@ -270,14 +270,14 @@ def plan_changed(files: list[str], base_ref: str) -> list[Step]:
             ),
         )
 
-    if any_match(files, ["go.mod", "go.sum", "vendor/**"]):
+    if any_match(files, ["go.mod", "go.sum"]):
         add_step(
             steps,
             Step(
                 key="vendor-check",
-                summary="Verify vendored dependencies are in sync",
+                summary="Verify Go module metadata is in sync",
                 command=["make", "vendor-check"],
-                reasons=["module or vendor inputs changed"],
+                reasons=["module inputs changed"],
             ),
         )
 

@@ -5,62 +5,177 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strings"
+	"fmt"
 	"time"
-
-	"github.com/writer/cerebro/internal/postgres"
 )
 
-// PostgresSessionStore persists agent sessions to PostgreSQL.
+const postgresSessionTable = "cerebro_agent_sessions"
+
 type PostgresSessionStore struct {
-	db       *sql.DB
-	tableRef string
+	db         *sql.DB
+	rewriteSQL func(string) string
 }
 
-// NewPostgresSessionStore creates a new Postgres-backed session store.
-// The schema parameter should be a simple schema name (e.g. "cerebro").
-func NewPostgresSessionStore(db *sql.DB, schema string) (*PostgresSessionStore, error) {
-	tableRef := "agent_sessions"
-	schema = strings.TrimSpace(schema)
-	if schema != "" {
-		safeTableRef, err := postgres.SafeQualifiedTableRef(schema, "agent_sessions")
-		if err != nil {
-			return nil, err
+func NewPostgresSessionStore(db *sql.DB) *PostgresSessionStore {
+	return &PostgresSessionStore{db: db}
+}
+
+func (s *PostgresSessionStore) EnsureSchema(ctx context.Context) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("postgres session store is not initialized")
+	}
+	_, err := s.db.ExecContext(ctx, s.q(`
+CREATE TABLE IF NOT EXISTS `+postgresSessionTable+` (
+	id TEXT PRIMARY KEY,
+	agent_id TEXT NOT NULL,
+	user_id TEXT NOT NULL,
+	status TEXT NOT NULL,
+	messages TEXT NOT NULL DEFAULT '[]',
+	context TEXT NOT NULL DEFAULT '{}',
+	created_at TIMESTAMP NOT NULL,
+	updated_at TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_`+postgresSessionTable+`_updated_at ON `+postgresSessionTable+` (updated_at);
+`))
+	return err
+}
+
+func (s *PostgresSessionStore) Save(ctx context.Context, session *Session) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("postgres session store is not initialized")
+	}
+	if session == nil {
+		return fmt.Errorf("session is required")
+	}
+	if err := s.EnsureSchema(ctx); err != nil {
+		return err
+	}
+
+	messagesJSON, contextJSON, createdAt, updatedAt, err := prepareSessionRow(session)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.ExecContext(ctx, s.q(`
+INSERT INTO `+postgresSessionTable+` (
+	id, agent_id, user_id, status, messages, context, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (id) DO UPDATE SET
+	agent_id = EXCLUDED.agent_id,
+	user_id = EXCLUDED.user_id,
+	status = EXCLUDED.status,
+	messages = EXCLUDED.messages,
+	context = EXCLUDED.context,
+	updated_at = EXCLUDED.updated_at
+`),
+		session.ID,
+		session.AgentID,
+		session.UserID,
+		session.Status,
+		string(messagesJSON),
+		string(contextJSON),
+		createdAt,
+		updatedAt,
+	)
+	return err
+}
+
+func (s *PostgresSessionStore) ImportMissing(ctx context.Context, sessions []*Session) error {
+	if s == nil || s.db == nil {
+		return fmt.Errorf("postgres session store is not initialized")
+	}
+	if err := s.EnsureSchema(ctx); err != nil {
+		return err
+	}
+	for _, session := range sessions {
+		if session == nil {
+			continue
 		}
-		tableRef = safeTableRef
+		messagesJSON, contextJSON, createdAt, updatedAt, err := prepareSessionRow(session)
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.ExecContext(ctx, s.q(`
+INSERT INTO `+postgresSessionTable+` (
+	id, agent_id, user_id, status, messages, context, created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (id) DO NOTHING
+`),
+			session.ID,
+			session.AgentID,
+			session.UserID,
+			session.Status,
+			string(messagesJSON),
+			string(contextJSON),
+			createdAt,
+			updatedAt,
+		); err != nil {
+			return err
+		}
 	}
+	return nil
+}
 
-	store := &PostgresSessionStore{
-		db:       db,
-		tableRef: tableRef,
+func (s *PostgresSessionStore) Get(ctx context.Context, id string) (*Session, error) {
+	if s == nil || s.db == nil {
+		return nil, fmt.Errorf("postgres session store is not initialized")
 	}
-
-	// #nosec G202 -- tableRef is either a constant or built from validated identifiers via postgres.SafeQualifiedTableRef.
-	createTableQuery := `
-		CREATE TABLE IF NOT EXISTS ` + store.tableRef + ` (
-			id TEXT PRIMARY KEY,
-			agent_id TEXT,
-			user_id TEXT,
-			status TEXT,
-			messages JSONB,
-			context JSONB,
-			created_at TIMESTAMP,
-			updated_at TIMESTAMP
-		)
-	`
-
-	if _, err := store.db.ExecContext(context.Background(), createTableQuery); err != nil {
+	if err := s.EnsureSchema(ctx); err != nil {
 		return nil, err
 	}
 
-	return store, nil
+	var session Session
+	var messagesRaw string
+	var contextRaw string
+
+	err := s.db.QueryRowContext(ctx, s.q(`
+SELECT id, agent_id, user_id, status, messages, context, created_at, updated_at
+FROM `+postgresSessionTable+`
+WHERE id = $1
+`), id).Scan(
+		&session.ID,
+		&session.AgentID,
+		&session.UserID,
+		&session.Status,
+		&messagesRaw,
+		&contextRaw,
+		&session.CreatedAt,
+		&session.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if messagesJSON := normalizeVariantJSON(messagesRaw); len(messagesJSON) > 0 {
+		if err := json.Unmarshal(messagesJSON, &session.Messages); err != nil {
+			return nil, err
+		}
+	}
+	if contextJSON := normalizeVariantJSON(contextRaw); len(contextJSON) > 0 {
+		if err := json.Unmarshal(contextJSON, &session.Context); err != nil {
+			return nil, err
+		}
+	}
+
+	session.CreatedAt = session.CreatedAt.UTC()
+	session.UpdatedAt = session.UpdatedAt.UTC()
+	return &session, nil
 }
 
-// Save persists a session to Postgres using INSERT ON CONFLICT.
-func (s *PostgresSessionStore) Save(ctx context.Context, session *Session) error {
+func (s *PostgresSessionStore) q(query string) string {
+	if s != nil && s.rewriteSQL != nil {
+		return s.rewriteSQL(query)
+	}
+	return query
+}
+
+func prepareSessionRow(session *Session) ([]byte, []byte, time.Time, time.Time, error) {
 	messagesJSON, err := json.Marshal(session.Messages)
 	if err != nil {
-		return err
+		return nil, nil, time.Time{}, time.Time{}, err
 	}
 	if len(messagesJSON) == 0 {
 		messagesJSON = []byte("[]")
@@ -68,87 +183,24 @@ func (s *PostgresSessionStore) Save(ctx context.Context, session *Session) error
 
 	contextJSON, err := json.Marshal(session.Context)
 	if err != nil {
-		return err
+		return nil, nil, time.Time{}, time.Time{}, err
 	}
 	if len(contextJSON) == 0 {
 		contextJSON = []byte("{}")
 	}
 
-	// #nosec G202 -- tableRef is either a constant or built from validated identifiers via postgres.SafeQualifiedTableRef.
-	query := `
-		INSERT INTO ` + s.tableRef + ` (
-			id, agent_id, user_id, status, messages, context, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8)
-		ON CONFLICT (id) DO UPDATE SET
-			agent_id = EXCLUDED.agent_id,
-			user_id = EXCLUDED.user_id,
-			status = EXCLUDED.status,
-			messages = EXCLUDED.messages,
-			context = EXCLUDED.context,
-			updated_at = EXCLUDED.updated_at
-	`
+	createdAt := session.CreatedAt.UTC()
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+		session.CreatedAt = createdAt
+	}
+	updatedAt := session.UpdatedAt.UTC()
+	if updatedAt.IsZero() {
+		updatedAt = createdAt
+		session.UpdatedAt = updatedAt
+	}
 
-	_, err = s.db.ExecContext(ctx, query,
-		session.ID,
-		session.AgentID,
-		session.UserID,
-		session.Status,
-		string(messagesJSON),
-		string(contextJSON),
-		session.CreatedAt.UTC(),
-		session.UpdatedAt.UTC(),
-	)
-
-	return err
+	return messagesJSON, contextJSON, createdAt, updatedAt, nil
 }
 
-// Get retrieves a session by ID from Postgres.
-func (s *PostgresSessionStore) Get(ctx context.Context, id string) (*Session, error) {
-	// #nosec G202 -- tableRef is either a constant or built from validated identifiers via postgres.SafeQualifiedTableRef.
-	query := `
-		SELECT id, agent_id, user_id, status, messages, context, created_at, updated_at
-		FROM ` + s.tableRef + `
-		WHERE id = $1
-	`
-
-	row := s.db.QueryRowContext(ctx, query, id)
-
-	var session Session
-	var messagesRaw []byte
-	var contextRaw []byte
-	var createdAt time.Time
-	var updatedAt time.Time
-
-	err := row.Scan(
-		&session.ID,
-		&session.AgentID,
-		&session.UserID,
-		&session.Status,
-		&messagesRaw,
-		&contextRaw,
-		&createdAt,
-		&updatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	if len(messagesRaw) > 0 {
-		if err := json.Unmarshal(messagesRaw, &session.Messages); err != nil {
-			return nil, err
-		}
-	}
-	if len(contextRaw) > 0 {
-		if err := json.Unmarshal(contextRaw, &session.Context); err != nil {
-			return nil, err
-		}
-	}
-
-	session.CreatedAt = createdAt.UTC()
-	session.UpdatedAt = updatedAt.UTC()
-
-	return &session, nil
-}
+var _ SessionStore = (*PostgresSessionStore)(nil)

@@ -173,6 +173,7 @@ func TestRunAzureSync_AutoModeNoFallbackOnUnauthorized(t *testing.T) {
 	err := runAzureSync(context.Background(), time.Now())
 	if err == nil {
 		t.Fatal("expected api error")
+		return
 	}
 	if !strings.Contains(err.Error(), "azure sync via api failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -198,6 +199,7 @@ func TestRunAzureSync_APIModeConfigError(t *testing.T) {
 
 	if err := runAzureSync(context.Background(), time.Now()); err == nil {
 		t.Fatal("expected api mode config error")
+		return
 	}
 }
 

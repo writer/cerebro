@@ -109,11 +109,11 @@ func (a *App) initHealth() {
 	a.Health = health.NewRegistry()
 
 	// Register health checks for all services
-	a.Health.Register("postgres", health.PingCheck("postgres", func(ctx context.Context) error {
-		if a.PostgresDB == nil {
+	a.Health.Register("snowflake", health.PingCheck("snowflake", func(ctx context.Context) error {
+		if a.Snowflake == nil {
 			return fmt.Errorf("not configured")
 		}
-		return a.PostgresDB.PingContext(ctx)
+		return a.Snowflake.Ping(ctx)
 	}))
 
 	a.Health.Register("policy_engine", health.PingCheck("policy_engine", func(ctx context.Context) error {
@@ -176,7 +176,6 @@ func (a *App) initHealth() {
 	a.Health.Register("graph_ontology_slo", a.graphOntologySLOHealthCheck())
 	a.Health.Register("graph_writer_lease", a.graphWriterLeaseHealthCheck())
 	a.Health.Register("graph_runtime", a.graphRuntimeHealthCheck())
-	a.Health.Register("graph_dual_write_reconciliation", a.graphDualWriteReconciliationHealthCheck())
 	a.Health.Register("graph_build", func(_ context.Context) health.CheckResult {
 		start := time.Now().UTC()
 		result := health.CheckResult{
@@ -261,31 +260,12 @@ func (a *App) initHealth() {
 			return result
 		}
 		status := a.GraphSnapshots.Status()
-		switch {
-		case status.ReplicaConfigured && status.LastReplicationError != "":
-			result.Status = health.StatusDegraded
-			result.Message = "local snapshot persistence healthy; replica sync failing"
-		case status.ReplicaConfigured && status.LastReplicatedSnapshot == "":
-			records, err := a.GraphSnapshots.ListGraphSnapshotRecords()
-			switch {
-			case err == nil && len(records) > 0:
-				result.Status = health.StatusHealthy
-				result.Message = "replicated snapshot persistence active"
-			default:
-				result.Status = health.StatusDegraded
-				result.Message = "replica configured but not seeded yet"
-			}
-		default:
-			result.Status = health.StatusHealthy
-			message := "local snapshot persistence active"
-			if status.ReplicaConfigured {
-				message = "replicated snapshot persistence active"
-			}
-			if status.LastRecoverySource != "" {
-				message += " (last recovery: " + status.LastRecoverySource + ")"
-			}
-			result.Message = message
+		result.Status = health.StatusHealthy
+		message := "local snapshot persistence active"
+		if status.LastRecoverySource != "" {
+			message += " (last recovery: " + status.LastRecoverySource + ")"
 		}
+		result.Message = message
 		result.Latency = time.Since(start)
 		return result
 	})
@@ -535,64 +515,35 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	a.graphReady = make(chan struct{})
 	a.setGraphBuildState(GraphBuildNotStarted, time.Time{}, nil)
 
-	a.SecurityGraphBuilder = a.newSecurityGraphBuilder()
-	if a.retainsBuilderState() && a.SecurityGraphBuilder != nil {
-		securityGraph := a.SecurityGraphBuilder.Graph()
-		a.configureGraphRuntimeBehavior(securityGraph)
-		a.setSecurityGraph(securityGraph)
-	}
-
 	if a.Warehouse == nil {
-		if securityGraph, err := a.currentConfiguredSecurityGraphView(context.Background()); err == nil && securityGraph != nil {
-			a.publishSecurityGraphRuntimeView(securityGraph)
-			meta := securityGraph.Metadata()
-			a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
-			a.Logger.Info("security graph loaded from configured store",
-				"nodes", securityGraph.NodeCount(),
-				"edges", securityGraph.EdgeCount(),
-			)
-		} else {
-			a.Logger.Warn("security graph disabled - warehouse not configured")
-			a.Propagation = nil
-			a.publishSecurityGraphRuntimeView(nil)
-		}
+		a.Logger.Warn("security graph disabled - warehouse not configured")
+		a.publishSecurityGraphRuntimeView(nil)
 		a.graphCancel = nil
 		close(a.graphReady)
 		return
 	}
 
-	if a.SecurityGraphBuilder != nil {
-		securityGraph := a.SecurityGraphBuilder.Graph()
-		a.configureGraphRuntimeBehavior(securityGraph)
-		a.publishSecurityGraphRuntimeView(securityGraph)
-	}
-	if a.GraphSnapshots != nil {
-		recovered, record, recoverySource, err := a.GraphSnapshots.LoadLatestSnapshot()
-		if err != nil {
-			a.Logger.Warn("failed to recover persisted security graph snapshot", "error", err)
-		} else if recovered != nil {
-			recoveredGraph := graph.RestoreFromSnapshot(recovered)
-			a.configureGraphRuntimeBehavior(recoveredGraph)
-			a.publishSecurityGraphRuntimeView(recoveredGraph)
-			if record != nil && record.BuiltAt != nil {
-				a.setGraphBuildState(GraphBuildSuccess, record.BuiltAt.UTC(), nil)
-			}
-			a.Logger.Info("recovered persisted security graph snapshot",
-				"source", recoverySource,
-				"snapshot_id", recordID(record),
-				"nodes", recoveredGraph.NodeCount(),
-				"edges", recoveredGraph.EdgeCount(),
-			)
-		}
-	}
+	source := builders.NewSnowflakeSource(a.Warehouse)
+	a.SecurityGraphBuilder = builders.NewBuilder(source, a.Logger)
+	securityGraph := a.SecurityGraphBuilder.Graph()
+	a.configureGraphRuntimeBehavior(securityGraph)
+	a.publishSecurityGraphRuntimeView(securityGraph)
 	if !a.graphWriterLeaseAllowsWrites() {
-		a.Logger.Info("security graph initialized in follower mode",
+		if readable := a.currentReadableSecurityGraph(); readable != nil {
+			builtAt := readable.Metadata().BuiltAt.UTC()
+			if builtAt.IsZero() {
+				builtAt = time.Now().UTC()
+			}
+			a.setGraphBuildState(GraphBuildSuccess, builtAt, nil)
+		}
+		a.Logger.Info("security graph waiting for graph writer lease",
 			"lease", a.Config.GraphWriterLeaseName,
 			"holder", a.GraphWriterLeaseStatusSnapshot().LeaseHolderID,
 		)
 		close(a.graphReady)
 		return
 	}
+
 	graphCtx, cancel := context.WithCancel(backgroundWorkContext(ctx))
 	a.graphCtx = graphCtx
 	a.graphCancel = cancel
@@ -604,30 +555,12 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 		a.graphUpdateMu.Lock()
 		defer a.graphUpdateMu.Unlock()
 
-		if a.SecurityGraphBuilder == nil {
-			err := fmt.Errorf("security graph not initialized")
-			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
-			a.Logger.Error("failed to initialize security graph builder", "error", err)
-			return
-		}
-
 		if err := a.SecurityGraphBuilder.Build(graphCtx); err != nil {
 			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 			a.Logger.Error("failed to build security graph", "error", err)
 			return
 		}
 		builtGraph := a.SecurityGraphBuilder.Graph()
-		if a.Config != nil && a.Config.GraphMigrateLegacyActivityOnStart {
-			migration := graph.MigrateLegacyActivityNodes(builtGraph, graph.LegacyActivityMigrationOptions{Now: time.Now().UTC()})
-			if migration.Migrated > 0 || migration.Scanned > 0 {
-				a.Logger.Info("migrated legacy activity nodes",
-					"scanned", migration.Scanned,
-					"migrated", migration.Migrated,
-					"marked_for_review", migration.MarkedForReview,
-					"migrated_by_kind", migration.MigratedByKind,
-				)
-			}
-		}
 		meta, err := a.activateBuiltSecurityGraph(graphCtx, builtGraph)
 		if err != nil {
 			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
@@ -639,6 +572,17 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 			"edges", meta.EdgeCount,
 			"duration", meta.BuildDuration,
 		)
+		if a.Config != nil && a.Config.GraphMigrateLegacyActivityOnStart {
+			migration := graph.MigrateLegacyActivityNodes(builtGraph, graph.LegacyActivityMigrationOptions{Now: time.Now().UTC()})
+			if migration.Migrated > 0 || migration.Scanned > 0 {
+				a.Logger.Info("migrated legacy activity nodes",
+					"scanned", migration.Scanned,
+					"migrated", migration.Migrated,
+					"marked_for_review", migration.MarkedForReview,
+					"migrated_by_kind", migration.MigratedByKind,
+				)
+			}
+		}
 
 		emitCtx := graphCtx
 		a.emitGraphRebuiltEvent(emitCtx, meta, meta.BuildDuration)
@@ -646,16 +590,24 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 	}()
 }
 
-func (a *App) retainsBuilderState() bool {
-	return a != nil && a.retainHotSecurityGraph()
-}
-
-func (a *App) newSecurityGraphBuilder() *builders.Builder {
-	if a == nil || a.Warehouse == nil {
+func (a *App) currentReadableSecurityGraph() *graph.Graph {
+	if a == nil {
 		return nil
 	}
-	source := builders.NewPostgresSource(a.Warehouse)
-	return builders.NewBuilder(source, a.Logger)
+	securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
+	if err != nil {
+		if a.Logger != nil {
+			a.Logger.Warn("failed to resolve readable security graph", "error", err)
+		}
+		return nil
+	}
+	if securityGraph == nil {
+		return nil
+	}
+	if securityGraph.NodeCount() == 0 && securityGraph.EdgeCount() == 0 {
+		return nil
+	}
+	return securityGraph
 }
 
 func backgroundWorkContext(ctx context.Context) context.Context {
@@ -750,11 +702,9 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
 		return graph.Metadata{}, err
 	}
-	if !graphReplicaReplayEnabled(ctx) {
-		if err := a.requireGraphWriterLease("activate security graph"); err != nil {
-			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
-			return graph.Metadata{}, err
-		}
+	if err := a.requireGraphWriterLease("activate security graph"); err != nil {
+		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
+		return graph.Metadata{}, err
 	}
 	if materialized, err := a.materializePersistedWorkloadScans(ctx, securityGraph); err != nil {
 		a.Logger.Warn("failed to materialize persisted workload scans into security graph", "error", err)
@@ -812,10 +762,10 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 		return graph.Metadata{}, err
 	}
 	a.publishSecurityGraphRuntimeView(securityGraph)
-	if a.GraphSnapshots != nil && !graphReplicaReplayEnabled(ctx) {
+	if a.GraphSnapshots != nil {
 		if record, err := a.GraphSnapshots.SaveGraph(securityGraph); err != nil {
 			if record != nil {
-				a.Logger.Warn("replicated security graph snapshot failed after local persist", "snapshot_id", record.ID, "error", err)
+				a.Logger.Warn("failed to persist security graph snapshot", "snapshot_id", record.ID, "error", err)
 			} else {
 				a.Logger.Warn("failed to persist security graph snapshot", "error", err)
 			}
@@ -826,13 +776,6 @@ func (a *App) activateBuiltSecurityGraph(ctx context.Context, securityGraph *gra
 	meta := securityGraph.Metadata()
 	a.setGraphBuildState(GraphBuildSuccess, meta.BuiltAt, nil)
 	return meta, nil
-}
-
-func recordID(record *graph.GraphSnapshotRecord) string {
-	if record == nil {
-		return ""
-	}
-	return record.ID
 }
 
 func (a *App) rematerializeEventCorrelations(securityGraph *graph.Graph, reason string) {

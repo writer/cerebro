@@ -40,7 +40,7 @@ type gcpProjectPreflightSpec struct {
 	ClientOptions  []option.ClientOption
 }
 
-func executeGCPSync(ctx context.Context, client warehouse.SyncWarehouse, schedule *SyncSchedule) error {
+func executeGCPSync(ctx context.Context, store warehouse.SyncWarehouse, schedule *SyncSchedule) error {
 	spec := parseScheduledSyncSpec(schedule.Table)
 	authConfig, err := applyScheduledGCPAuthFn(spec)
 	if err != nil {
@@ -141,7 +141,7 @@ func executeGCPSync(ctx context.Context, client warehouse.SyncWarehouse, schedul
 				continue
 			}
 
-			if err := runScheduledGCPNativeSyncFn(projectCtx, client, projectID, nativeFilter); err != nil {
+			if err := runScheduledGCPNativeSyncFn(projectCtx, store, projectID, nativeFilter); err != nil {
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
 					nativeTimedOut = true
 					errs = append(errs, fmt.Errorf("project %s native sync timed out after %s", projectLabel, projectTimeout.Round(time.Second)))
@@ -174,7 +174,7 @@ func executeGCPSync(ctx context.Context, client warehouse.SyncWarehouse, schedul
 				continue
 			}
 
-			if err := runScheduledGCPSecuritySyncFn(projectCtx, client, projectID, orgID, securityFilter); err != nil {
+			if err := runScheduledGCPSecuritySyncFn(projectCtx, store, projectID, orgID, securityFilter); err != nil {
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(projectCtx.Err(), context.DeadlineExceeded) {
 					errs = append(errs, fmt.Errorf("project %s security sync timed out after %s", projectLabel, projectTimeout.Round(time.Second)))
 				} else {
@@ -576,22 +576,34 @@ func detectGCPCredentialsType(raw []byte, source string) (option.CredentialsType
 	}
 }
 
-func runScheduledGCPNativeSync(ctx context.Context, client warehouse.SyncWarehouse, projectID string, tableFilter []string) error {
+func runScheduledGCPNativeSync(ctx context.Context, store warehouse.SyncWarehouse, projectID string, tableFilter []string) error {
+	store, closeStore, err := ensureSyncWarehouse(ctx, store)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
 	opts := []nativesync.GCPEngineOption{nativesync.WithGCPProject(projectID)}
 	if len(tableFilter) > 0 {
 		opts = append(opts, nativesync.WithGCPTableFilter(tableFilter))
 	}
-	syncer := nativesync.NewGCPSyncEngine(client, slog.Default(), opts...)
-	_, err := syncer.SyncAll(ctx)
+	syncer := nativesync.NewGCPSyncEngine(store, slog.Default(), opts...)
+	_, err = syncer.SyncAll(ctx)
 	return err
 }
 
-func runScheduledGCPSecuritySync(ctx context.Context, client warehouse.SyncWarehouse, projectID, orgID string, tableFilter []string) error {
+func runScheduledGCPSecuritySync(ctx context.Context, store warehouse.SyncWarehouse, projectID, orgID string, tableFilter []string) error {
+	store, closeStore, err := ensureSyncWarehouse(ctx, store)
+	if err != nil {
+		return err
+	}
+	defer closeStore()
+
 	secOpts := []nativesync.GCPSecurityOption{}
 	if len(tableFilter) > 0 {
 		secOpts = append(secOpts, nativesync.WithGCPSecurityTableFilter(tableFilter))
 	}
-	securitySyncer := nativesync.NewGCPSecuritySync(client, slog.Default(), projectID, orgID, secOpts...)
+	securitySyncer := nativesync.NewGCPSecuritySync(store, slog.Default(), projectID, orgID, secOpts...)
 	return securitySyncer.SyncAll(ctx)
 }
 

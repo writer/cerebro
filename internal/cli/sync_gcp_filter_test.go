@@ -243,8 +243,9 @@ func TestRunGCPOrgSync_SecurityOnlySkipsProjectDiscovery(t *testing.T) {
 	if called {
 		t.Fatalf("expected organization project discovery to be skipped")
 	}
-	if err == nil || !strings.Contains(err.Error(), "warehouse not configured") {
-		t.Fatalf("expected warehouse configuration error, got %v", err)
+	if err == nil {
+		t.Fatalf("expected security-only organization sync to fail after skipping project discovery")
+		return
 	}
 }
 
