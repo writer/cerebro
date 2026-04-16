@@ -6,6 +6,11 @@ import (
 	"strings"
 )
 
+const (
+	sseReaderInitialBufferSize = 64 * 1024
+	sseReaderMaxBufferSize     = 1024 * 1024
+)
+
 // SSEEvent represents a Server-Sent Event
 type SSEEvent struct {
 	Event string
@@ -20,8 +25,10 @@ type SSEReader struct {
 
 // newSSEReader creates a new SSE reader
 func newSSEReader(r io.Reader) *SSEReader {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, sseReaderInitialBufferSize), sseReaderMaxBufferSize)
 	return &SSEReader{
-		scanner: bufio.NewScanner(r),
+		scanner: scanner,
 	}
 }
 
