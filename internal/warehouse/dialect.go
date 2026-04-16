@@ -2,6 +2,7 @@ package warehouse
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -14,6 +15,24 @@ const (
 )
 
 var currentTimestampCallPattern = regexp.MustCompile(`(?i)CURRENT_TIMESTAMP\(\)`)
+
+var ErrUnsupportedSnowflakeDialectRewrite = errors.New("warehouse query requires a dialect-specific implementation")
+
+var unsupportedSnowflakeDialectPatterns = []struct {
+	name    string
+	pattern *regexp.Regexp
+}{
+	{name: "QUALIFY", pattern: regexp.MustCompile(`(?i)\bQUALIFY\b`)},
+	{name: "FLATTEN", pattern: regexp.MustCompile(`(?i)\b(?:LATERAL\s+)?FLATTEN\s*\(`)},
+	{name: "GET_PATH", pattern: regexp.MustCompile(`(?i)\bGET_PATH\s*\(`)},
+	{name: "OBJECT_CONSTRUCT", pattern: regexp.MustCompile(`(?i)\bOBJECT_CONSTRUCT\s*\(`)},
+	{name: "TRY_CAST", pattern: regexp.MustCompile(`(?i)\bTRY_CAST\s*\(`)},
+	{name: "IFF", pattern: regexp.MustCompile(`(?i)\bIFF\s*\(`)},
+	{name: "MERGE INTO", pattern: regexp.MustCompile(`(?i)\bMERGE\s+INTO\b`)},
+	{name: "CREATE OR REPLACE TABLE", pattern: regexp.MustCompile(`(?i)\bCREATE\s+OR\s+REPLACE\s+TABLE\b`)},
+	{name: "COPY INTO", pattern: regexp.MustCompile(`(?i)\bCOPY\s+INTO\b`)},
+	{name: "Snowflake JSON : operator", pattern: regexp.MustCompile(`(?i)\b[A-Za-z_][A-Za-z0-9_\.]*\s*:\s*[A-Za-z_][A-Za-z0-9_]*`)},
+}
 
 func DialectFor(schema SchemaWarehouse) string {
 	if schema == nil {
@@ -46,6 +65,16 @@ func RewriteQueryForDialect(query, dialect string) string {
 	default:
 		return query
 	}
+}
+
+func validateQueryForDialect(query, dialect string) error {
+	if dialect == DialectSnowflake {
+		return nil
+	}
+	if construct := unsupportedSnowflakeConstruct(query); construct != "" {
+		return fmt.Errorf("%w for %s: unsupported Snowflake construct %s", ErrUnsupportedSnowflakeDialectRewrite, dialect, construct)
+	}
+	return nil
 }
 
 func rewriteForPostgres(query string) string {
@@ -156,6 +185,23 @@ func maxDollarPlaceholderIndex(query string) int {
 		return segment
 	})
 	return max
+}
+
+func unsupportedSnowflakeConstruct(query string) string {
+	var construct string
+	_ = applyOutsideSQLQuotedSections(query, func(segment string) string {
+		if construct != "" {
+			return segment
+		}
+		for _, candidate := range unsupportedSnowflakeDialectPatterns {
+			if candidate.pattern.FindStringIndex(segment) != nil {
+				construct = candidate.name
+				break
+			}
+		}
+		return segment
+	})
+	return construct
 }
 
 func maxDollarPlaceholderIndexInSegment(segment string) int {

@@ -2,8 +2,10 @@ package warehouse
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,5 +119,41 @@ func TestSQLiteWarehouseRejectsNonAssetTables(t *testing.T) {
 	if _, err := store.GetAssets(ctx, "cdc_events", snowflake.AssetFilter{Limit: 1}); err == nil {
 		t.Fatal("expected non-asset table to be rejected")
 		return
+	}
+}
+
+func TestSQLiteWarehouseQueryRejectsUnsupportedSnowflakeConstructs(t *testing.T) {
+	store, err := NewSQLiteWarehouse(SQLiteWarehouseConfig{
+		Path: filepath.Join(t.TempDir(), "warehouse.db"),
+	})
+	if err != nil {
+		t.Fatalf("new sqlite warehouse: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	_, err = store.Query(context.Background(), `SELECT payload:key::STRING FROM demo`)
+	if !errors.Is(err, ErrUnsupportedSnowflakeDialectRewrite) {
+		t.Fatalf("expected unsupported rewrite error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Snowflake JSON : operator") {
+		t.Fatalf("expected error to mention JSON operator, got %v", err)
+	}
+}
+
+func TestSQLiteWarehouseExecRejectsUnsupportedSnowflakeConstructs(t *testing.T) {
+	store, err := NewSQLiteWarehouse(SQLiteWarehouseConfig{
+		Path: filepath.Join(t.TempDir(), "warehouse.db"),
+	})
+	if err != nil {
+		t.Fatalf("new sqlite warehouse: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	_, err = store.Exec(context.Background(), `CREATE OR REPLACE TABLE demo (id NUMBER)`)
+	if !errors.Is(err, ErrUnsupportedSnowflakeDialectRewrite) {
+		t.Fatalf("expected unsupported rewrite error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "CREATE OR REPLACE TABLE") {
+		t.Fatalf("expected error to mention CREATE OR REPLACE TABLE, got %v", err)
 	}
 }

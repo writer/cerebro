@@ -548,6 +548,9 @@ func (w *PostgresWarehouse) Query(ctx context.Context, query string, args ...any
 	if query == "" {
 		return &snowflake.QueryResult{}, nil
 	}
+	if err := validateQueryForDialect(query, DialectPostgres); err != nil {
+		return nil, err
+	}
 	query = RewriteQueryForDialect(query, DialectPostgres)
 	rows, err := w.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -560,6 +563,10 @@ func (w *PostgresWarehouse) Query(ctx context.Context, query string, args ...any
 func (w *PostgresWarehouse) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	if w == nil || w.db == nil {
 		return nil, fmt.Errorf("postgres warehouse is not initialized")
+	}
+	query = strings.TrimSpace(query)
+	if err := validateQueryForDialect(query, DialectPostgres); err != nil {
+		return nil, err
 	}
 	query = RewriteQueryForDialect(query, DialectPostgres)
 	return w.db.ExecContext(ctx, query, args...)

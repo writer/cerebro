@@ -110,6 +110,9 @@ func (w *SQLiteWarehouse) Query(ctx context.Context, query string, args ...any) 
 	if query == "" {
 		return &snowflake.QueryResult{}, nil
 	}
+	if err := validateQueryForDialect(query, DialectSQLite); err != nil {
+		return nil, err
+	}
 	query = RewriteQueryForDialect(query, DialectSQLite)
 	if isInformationSchemaTablesQuery(query) {
 		return w.queryInformationSchemaTables(ctx)
@@ -129,6 +132,10 @@ func (w *SQLiteWarehouse) Query(ctx context.Context, query string, args ...any) 
 func (w *SQLiteWarehouse) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	if w == nil || w.db == nil {
 		return nil, fmt.Errorf("sqlite warehouse is not initialized")
+	}
+	query = strings.TrimSpace(query)
+	if err := validateQueryForDialect(query, DialectSQLite); err != nil {
+		return nil, err
 	}
 	query = RewriteQueryForDialect(query, DialectSQLite)
 	return w.db.ExecContext(ctx, query, args...)
