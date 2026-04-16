@@ -190,7 +190,7 @@ func (c *Consumer) transformDecodedBatchMessage(decoded consumerBatchDecodedMess
 
 	handlerCtx, handlerSpan := c.startTracingSpan(ingestCtx, "cerebro.event.handle", c.consumerEventAttributes(decoded.message, evt)...)
 	handlerCtx = telemetry.ContextWithAttributes(handlerCtx, c.consumerEventAttributes(decoded.message, evt)...)
-	if err := c.handler(handlerCtx, evt); err != nil {
+	if err := c.invokeHandler(handlerCtx, evt); err != nil {
 		consumerRecordSpanError(handlerSpan, err)
 		handlerSpan.End()
 		return consumerBatchPersistRecord{

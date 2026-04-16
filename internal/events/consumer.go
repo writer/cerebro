@@ -40,6 +40,8 @@ const (
 	defaultConsumerLagRefreshInterval  = 15 * time.Second
 )
 
+var errConsumerHandlerRequired = errors.New("consumer handler is required")
+
 type ConsumerConfig struct {
 	URLs                []string
 	Stream              string
@@ -169,7 +171,7 @@ type ConsumerHealthSnapshot struct {
 
 func NewJetStreamConsumer(cfg ConsumerConfig, logger *slog.Logger, handler EventHandler) (*Consumer, error) {
 	if handler == nil {
-		return nil, errors.New("consumer handler is required")
+		return nil, errConsumerHandlerRequired
 	}
 	config := cfg.withDefaults()
 	if err := config.validate(); err != nil {
@@ -593,7 +595,7 @@ func (c *Consumer) handleDecodedMessage(decoded consumerDecodedMessage) consumer
 
 	handlerCtx, handlerSpan := c.startTracingSpan(ingestCtx, "cerebro.event.handle", c.consumerEventAttributes(message, evt)...)
 	handlerCtx = telemetry.ContextWithAttributes(handlerCtx, c.consumerEventAttributes(message, evt)...)
-	if err := c.handler(handlerCtx, evt); err != nil {
+	if err := c.invokeHandler(handlerCtx, evt); err != nil {
 		consumerRecordSpanError(handlerSpan, err)
 		if delay, ok := retryDelay(err); ok && message.nakWithDelay != nil {
 			handlerSpan.End()
@@ -637,6 +639,18 @@ func (c *Consumer) handleDecodedMessage(decoded consumerDecodedMessage) consumer
 		EventTime:   evt.Time.UTC(),
 		ProcessedAt: processedAt,
 	}
+}
+
+func (c *Consumer) invokeHandler(ctx context.Context, evt CloudEvent) (err error) {
+	if c == nil || c.handler == nil {
+		return errConsumerHandlerRequired
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("consumer handler panic: %v", recovered)
+		}
+	}()
+	return c.handler(ctx, evt)
 }
 
 func (c *Consumer) processBatch(ctx context.Context, messages []consumerPipelineMessage) bool {

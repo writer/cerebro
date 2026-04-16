@@ -1936,6 +1936,73 @@ func TestConsumerProcessBatchUsesDelayedNakForRetryWithDelayErrors(t *testing.T)
 	}
 }
 
+func TestConsumerProcessBatchRecoversPanickingHandler(t *testing.T) {
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:         "ENSEMBLE_TAP_TEST",
+			Durable:        "cerebro_panic_recovery_batch_test",
+			BatchSize:      1,
+			HandlerWorkers: 1,
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		handler: func(context.Context, CloudEvent) error {
+			panic("boom")
+		},
+	}
+
+	var acked atomic.Int64
+	var naks atomic.Int64
+	message := testConsumerPipelineMessage(t, 0, testConsumerEvent("customer:a", 1, true), func() error {
+		acked.Add(1)
+		return nil
+	})
+	message.nak = func() error {
+		naks.Add(1)
+		return nil
+	}
+
+	consumer.processBatch(context.Background(), []consumerPipelineMessage{message})
+
+	if acked.Load() != 0 {
+		t.Fatalf("expected recovered panic not to ack, got %d", acked.Load())
+	}
+	if naks.Load() != 1 {
+		t.Fatalf("expected recovered panic to trigger one nak, got %d", naks.Load())
+	}
+}
+
+func TestConsumerProcessBatchNaksWhenHandlerMissing(t *testing.T) {
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:         "ENSEMBLE_TAP_TEST",
+			Durable:        "cerebro_nil_handler_batch_test",
+			BatchSize:      1,
+			HandlerWorkers: 1,
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	var acked atomic.Int64
+	var naks atomic.Int64
+	message := testConsumerPipelineMessage(t, 0, testConsumerEvent("customer:a", 1, true), func() error {
+		acked.Add(1)
+		return nil
+	})
+	message.nak = func() error {
+		naks.Add(1)
+		return nil
+	}
+
+	consumer.processBatch(context.Background(), []consumerPipelineMessage{message})
+
+	if acked.Load() != 0 {
+		t.Fatalf("expected missing handler not to ack, got %d", acked.Load())
+	}
+	if naks.Load() != 1 {
+		t.Fatalf("expected missing handler to trigger one nak, got %d", naks.Load())
+	}
+}
+
 func TestConsumerHandleMessagePropagatesEventAttributesIntoHandlerChildSpans(t *testing.T) {
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
