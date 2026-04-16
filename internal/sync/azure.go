@@ -586,7 +586,7 @@ func (e *AzureSyncEngine) validateTable(ctx context.Context, table AzureTableSpe
 
 func (e *AzureSyncEngine) ensureTable(ctx context.Context, table string, columns []string) error {
 	return tableops.EnsureVariantTable(ctx, e.sf, table, columns, tableops.EnsureVariantTableOptions{
-		AddMissingColumns: false,
+		AddMissingColumns: true,
 	})
 }
 

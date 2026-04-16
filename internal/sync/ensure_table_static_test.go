@@ -19,6 +19,7 @@ func TestEnsureTableUsesIdempotentDDL(t *testing.T) {
 		"engine.go": "EnsureVariantTable(",
 		"k8s.go":    "EnsureVariantTable(",
 		"gcp.go":    "EnsureVariantTable(",
+		"azure.go":  "AddMissingColumns: true",
 		filepath.Join("..", "snowflake", "tableops", "tableops.go"): "ADD COLUMN IF NOT EXISTS",
 	}
 
