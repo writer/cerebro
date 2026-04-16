@@ -31,9 +31,12 @@ type Builder struct {
 	logger           *slog.Logger
 	stateMu          sync.RWMutex
 	updateMu         sync.Mutex
+	buildErrMu       sync.Mutex
 	graph            *Graph
 	availableTables  map[string]bool // populated tables, skips queries for missing ones
-	lastBuildTime    time.Time       // event_time watermark for the last successful build (or build completion when CDC watermark is unavailable)
+	buildErr         error
+	buildCancel      context.CancelCauseFunc
+	lastBuildTime    time.Time // event_time watermark for the last successful build (or build completion when CDC watermark is unavailable)
 	lastCDCWatermark cdcWatermark
 	lastMutation     GraphMutationSummary
 }
@@ -93,7 +96,72 @@ func (b *Builder) queryIfExists(ctx context.Context, table, query string) (*Data
 	if !b.hasTable(table) {
 		return &DataQueryResult{}, nil
 	}
-	return b.source.Query(ctx, query)
+	result, err := b.source.Query(ctx, query)
+	if err != nil {
+		b.recordBuildError(fmt.Errorf("query %s: %w", table, err))
+		return nil, err
+	}
+	return result, nil
+}
+
+func (b *Builder) recordBuildError(err error) {
+	if err == nil || b.shouldIgnoreBuildError(err) {
+		return
+	}
+
+	b.buildErrMu.Lock()
+	if b.buildErr != nil {
+		b.buildErrMu.Unlock()
+		return
+	}
+	b.buildErr = err
+	cancel := b.buildCancel
+	b.buildErrMu.Unlock()
+
+	if cancel != nil {
+		cancel(err)
+	}
+}
+
+func (b *Builder) shouldIgnoreBuildError(err error) bool {
+	return b.availableTables == nil && isMissingTableQueryError(err)
+}
+
+func (b *Builder) buildPhaseError(ctx context.Context) error {
+	b.buildErrMu.Lock()
+	defer b.buildErrMu.Unlock()
+	if b.buildErr != nil {
+		return b.buildErr
+	}
+	if ctx == nil || ctx.Err() == nil {
+		return nil
+	}
+	if cause := context.Cause(ctx); cause != nil {
+		return cause
+	}
+	return ctx.Err()
+}
+
+func isMissingTableQueryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "not authorized") || strings.Contains(msg, "permission denied") {
+		return false
+	}
+	switch {
+	case strings.Contains(msg, "no such table"),
+		strings.Contains(msg, "unknown table"),
+		strings.Contains(msg, "undefined table"),
+		strings.Contains(msg, "sqlstate 42p01"),
+		strings.Contains(msg, "object ") && strings.Contains(msg, " does not exist"),
+		strings.Contains(msg, "relation ") && strings.Contains(msg, " does not exist"),
+		strings.Contains(msg, "table ") && strings.Contains(msg, " does not exist"):
+		return true
+	default:
+		return false
+	}
 }
 
 // BuildCandidate constructs a fresh graph instance from the data source without
@@ -105,6 +173,8 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
+	buildCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 
 	validationMode := SchemaValidationWarn
 	b.stateMu.RLock()
@@ -114,9 +184,10 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	b.stateMu.RUnlock()
 
 	working := &Builder{
-		source: b.source,
-		graph:  New(),
-		logger: b.logger,
+		source:      b.source,
+		graph:       New(),
+		logger:      b.logger,
+		buildCancel: cancel,
 	}
 	working.graph.SetSchemaValidationMode(validationMode)
 	start := time.Now()
@@ -124,13 +195,13 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	working.logger.Info("building graph platform")
 
 	// Phase 1: discover which tables have data (1 round-trip)
-	working.discoverTables(ctx)
-	if err := ctx.Err(); err != nil {
+	working.discoverTables(buildCtx)
+	if err := working.buildPhaseError(buildCtx); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
 
 	// Phase 2: load all nodes in parallel
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx := errgroup.WithContext(buildCtx)
 	g.Go(func() error { working.buildAWSNodes(gctx); return nil })
 	g.Go(func() error { working.buildGCPNodes(gctx); return nil })
 	g.Go(func() error { working.buildAzureNodes(gctx); return nil })
@@ -138,7 +209,7 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	g.Go(func() error { working.buildGoogleWorkspaceNodes(gctx); return nil })
 	g.Go(func() error { working.buildK8sNodes(gctx); return nil })
 	_ = g.Wait()
-	if err := ctx.Err(); err != nil {
+	if err := working.buildPhaseError(buildCtx); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
 
@@ -154,14 +225,14 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 
 	// Phase 4: build provider edges in parallel
 	edgeStart := time.Now()
-	eg, ectx := errgroup.WithContext(ctx)
+	eg, ectx := errgroup.WithContext(buildCtx)
 	eg.Go(func() error { working.buildAWSEdges(ectx); return nil })
 	eg.Go(func() error { working.buildGCPEdges(ectx); return nil })
 	eg.Go(func() error { working.buildAzureEdges(ectx); return nil })
 	eg.Go(func() error { working.buildKubernetesEdges(ectx); return nil })
 	eg.Go(func() error { working.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
-	if err := ctx.Err(); err != nil {
+	if err := working.buildPhaseError(buildCtx); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
 
@@ -169,31 +240,40 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 		"edges", working.graph.EdgeCount(),
 		"duration", time.Since(edgeStart))
 
-	working.buildIAMPermissionUsageKnowledge(ctx)
+	working.buildIAMPermissionUsageKnowledge(buildCtx)
+	if err := working.buildPhaseError(buildCtx); err != nil {
+		return nil, GraphMutationSummary{}, err
+	}
 
 	working.buildVendorNodes()
 
 	// Build unified person graph overlay (person nodes + projected edges).
-	if err := ctx.Err(); err != nil {
+	if err := working.buildPhaseError(buildCtx); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
-	working.buildUnifiedPersonGraph(ctx)
-	working.buildPersonInteractionEdges(ctx)
+	working.buildUnifiedPersonGraph(buildCtx)
+	working.buildPersonInteractionEdges(buildCtx)
+	if err := working.buildPhaseError(buildCtx); err != nil {
+		return nil, GraphMutationSummary{}, err
+	}
 
 	// Phase 5: inferred edges (these iterate nodes, run sequentially)
 	inferStart := time.Now()
-	if err := ctx.Err(); err != nil {
+	if err := working.buildPhaseError(buildCtx); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
-	working.buildAPIEndpointNodes(ctx)
-	if err := ctx.Err(); err != nil {
+	working.buildAPIEndpointNodes(buildCtx)
+	if err := working.buildPhaseError(buildCtx); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
-	working.buildExposureEdges(ctx)
-	if err := ctx.Err(); err != nil {
+	working.buildExposureEdges(buildCtx)
+	if err := working.buildPhaseError(buildCtx); err != nil {
 		return nil, GraphMutationSummary{}, err
 	}
 	working.buildSCMInference()
+	if err := working.buildPhaseError(buildCtx); err != nil {
+		return nil, GraphMutationSummary{}, err
+	}
 	normalization := NormalizeEntityAssetSupport(working.graph, temporalNowUTC())
 
 	working.logger.Info("graph inferred edges built",

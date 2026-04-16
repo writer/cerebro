@@ -55,6 +55,81 @@ func (s *blockingBuildSource) Query(ctx context.Context, query string, args ...a
 	return &DataQueryResult{Rows: []map[string]any{}}, nil
 }
 
+type nodeFailureBuildSource struct {
+	siblingCanceled     chan struct{}
+	siblingCanceledOnce sync.Once
+}
+
+func (s *nodeFailureBuildSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
+	_ = args
+	lower := strings.ToLower(query)
+	switch {
+	case strings.Contains(lower, "information_schema.tables"):
+		return &DataQueryResult{Rows: []map[string]any{
+			{"table_name": "AWS_IAM_USERS"},
+			{"table_name": "AWS_IAM_ROLES"},
+		}}, nil
+	case strings.Contains(lower, "from aws_iam_users"):
+		return nil, errors.New("aws users query failed")
+	case strings.Contains(lower, "from aws_iam_roles"):
+		<-ctx.Done()
+		s.siblingCanceledOnce.Do(func() { close(s.siblingCanceled) })
+		return nil, ctx.Err()
+	default:
+		return &DataQueryResult{Rows: []map[string]any{}}, nil
+	}
+}
+
+type edgeFailureBuildSource struct {
+	siblingCanceled     chan struct{}
+	siblingCanceledOnce sync.Once
+}
+
+func (s *edgeFailureBuildSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
+	_ = args
+	lower := strings.ToLower(query)
+	switch {
+	case strings.Contains(lower, "information_schema.tables"):
+		return &DataQueryResult{Rows: []map[string]any{
+			{"table_name": "AWS_IAM_POLICY_VERSIONS"},
+			{"table_name": "AWS_IAM_USER_ATTACHED_POLICIES"},
+			{"table_name": "AWS_IAM_ROLE_ATTACHED_POLICIES"},
+		}}, nil
+	case strings.Contains(lower, "from aws_iam_policy_versions"):
+		return &DataQueryResult{Rows: []map[string]any{}}, nil
+	case strings.Contains(lower, "from aws_iam_user_attached_policies"):
+		return nil, errors.New("aws user attached policies query failed")
+	case strings.Contains(lower, "from aws_iam_role_attached_policies"):
+		<-ctx.Done()
+		s.siblingCanceledOnce.Do(func() { close(s.siblingCanceled) })
+		return nil, ctx.Err()
+	default:
+		return &DataQueryResult{Rows: []map[string]any{}}, nil
+	}
+}
+
+type missingTableBuildSource struct{}
+
+func (s *missingTableBuildSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
+	_ = ctx
+	_ = args
+	if strings.Contains(strings.ToLower(query), "information_schema.tables") {
+		return nil, errors.New("information schema unavailable")
+	}
+	return nil, errors.New(`Object 'RAW.OPTIONAL_TABLE' does not exist`)
+}
+
+type unauthorizedBuildSource struct{}
+
+func (s *unauthorizedBuildSource) Query(ctx context.Context, query string, args ...any) (*DataQueryResult, error) {
+	_ = ctx
+	_ = args
+	if strings.Contains(strings.ToLower(query), "information_schema.tables") {
+		return nil, errors.New("information schema unavailable")
+	}
+	return nil, errors.New(`Object 'RAW.AWS_IAM_USERS' does not exist or not authorized`)
+}
+
 func TestBuilder_BuildWithMockData(t *testing.T) {
 	ctx := context.Background()
 	source := newMockDataSource()
@@ -268,6 +343,83 @@ func TestBuilder_BuildReturnsContextErrorWhenCanceled(t *testing.T) {
 	err := builder.Build(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestBuilder_BuildReturnsNodeQueryFailureAndCancelsSiblingQueries(t *testing.T) {
+	source := &nodeFailureBuildSource{siblingCanceled: make(chan struct{})}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	builder := NewBuilder(source, logger)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- builder.Build(context.Background())
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "query aws_iam_users: aws users query failed") {
+			t.Fatalf("expected aws_iam_users query failure, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for build to fail on node query error")
+	}
+
+	select {
+	case <-source.siblingCanceled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected sibling node query to be canceled")
+	}
+}
+
+func TestBuilder_BuildReturnsEdgeQueryFailureAndCancelsSiblingQueries(t *testing.T) {
+	source := &edgeFailureBuildSource{siblingCanceled: make(chan struct{})}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	builder := NewBuilder(source, logger)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- builder.Build(context.Background())
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "query aws_iam_user_attached_policies: aws user attached policies query failed") {
+			t.Fatalf("expected aws_iam_user_attached_policies query failure, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for build to fail on edge query error")
+	}
+
+	select {
+	case <-source.siblingCanceled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected sibling edge query to be canceled")
+	}
+}
+
+func TestBuilder_BuildIgnoresMissingTableErrorsWhenDiscoveryUnavailable(t *testing.T) {
+	source := &missingTableBuildSource{}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	builder := NewBuilder(source, logger)
+
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("expected missing-table errors to be ignored when discovery is unavailable, got %v", err)
+	}
+
+	if got := builder.Graph().NodeCount(); got != 1 {
+		t.Fatalf("expected only internet node after ignored missing-table errors, got %d nodes", got)
+	}
+}
+
+func TestBuilder_BuildDoesNotIgnoreAuthorizationErrorsWhenDiscoveryUnavailable(t *testing.T) {
+	source := &unauthorizedBuildSource{}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	builder := NewBuilder(source, logger)
+
+	err := builder.Build(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "not authorized") {
+		t.Fatalf("expected authorization error to fail the build, got %v", err)
 	}
 }
 
