@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -51,6 +52,14 @@ type Manager struct {
 	notifiers []Notifier
 	client    *http.Client
 	mu        sync.RWMutex
+}
+
+func drainAndCloseResponseBody(resp *http.Response) {
+	if resp == nil || resp.Body == nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 }
 
 func NewManager() *Manager {
@@ -196,37 +205,32 @@ func (s *SlackNotifier) Send(ctx context.Context, event Event) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer drainAndCloseResponseBody(resp)
+	for attempt := 1; resp.StatusCode == http.StatusTooManyRequests && attempt <= 3; attempt++ {
+		drainAndCloseResponseBody(resp)
+
+		backoff := time.Duration(attempt*attempt) * time.Second
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		req, err = http.NewRequestWithContext(ctx, "POST", s.webhookURL, bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err = s.client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer drainAndCloseResponseBody(resp)
+	}
 
 	if resp.StatusCode == http.StatusTooManyRequests {
-		// Retry with exponential backoff
-		for attempt := 1; attempt <= 3; attempt++ {
-			backoff := time.Duration(attempt*attempt) * time.Second
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(backoff):
-			}
-
-			req, err = http.NewRequestWithContext(ctx, "POST", s.webhookURL, bytes.NewReader(body))
-			if err != nil {
-				return err
-			}
-			req.Header.Set("Content-Type", "application/json")
-
-			resp, err = s.client.Do(req)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = resp.Body.Close() }()
-
-			if resp.StatusCode != http.StatusTooManyRequests {
-				break
-			}
-		}
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return fmt.Errorf("slack rate limited after retries: %d", resp.StatusCode)
-		}
+		return fmt.Errorf("slack rate limited after retries: %d", resp.StatusCode)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -333,37 +337,32 @@ func (p *PagerDutyNotifier) Send(ctx context.Context, event Event) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer drainAndCloseResponseBody(resp)
+	for attempt := 1; resp.StatusCode == http.StatusTooManyRequests && attempt <= 3; attempt++ {
+		drainAndCloseResponseBody(resp)
+
+		backoff := time.Duration(attempt*attempt) * time.Second
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		req, err = http.NewRequestWithContext(ctx, "POST", "https://events.pagerduty.com/v2/enqueue", bytes.NewReader(body))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err = p.client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer drainAndCloseResponseBody(resp)
+	}
 
 	if resp.StatusCode == http.StatusTooManyRequests {
-		// Retry with exponential backoff
-		for attempt := 1; attempt <= 3; attempt++ {
-			backoff := time.Duration(attempt*attempt) * time.Second
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(backoff):
-			}
-
-			req, err = http.NewRequestWithContext(ctx, "POST", "https://events.pagerduty.com/v2/enqueue", bytes.NewReader(body))
-			if err != nil {
-				return err
-			}
-			req.Header.Set("Content-Type", "application/json")
-
-			resp, err = p.client.Do(req)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = resp.Body.Close() }()
-
-			if resp.StatusCode != http.StatusTooManyRequests {
-				break
-			}
-		}
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return fmt.Errorf("pagerduty rate limited after retries: %d", resp.StatusCode)
-		}
+		return fmt.Errorf("pagerduty rate limited after retries: %d", resp.StatusCode)
 	}
 
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {

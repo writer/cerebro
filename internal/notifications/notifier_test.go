@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,51 @@ import (
 
 	"golang.org/x/time/rate"
 )
+
+type trackingReadCloser struct {
+	reader io.Reader
+	closed bool
+}
+
+func newTrackingReadCloser(body string) *trackingReadCloser {
+	return &trackingReadCloser{reader: strings.NewReader(body)}
+}
+
+func (r *trackingReadCloser) Read(p []byte) (int, error) {
+	return r.reader.Read(p)
+}
+
+func (r *trackingReadCloser) Close() error {
+	r.closed = true
+	return nil
+}
+
+type retryBodyCloseCheckingTransport struct {
+	statuses []int
+	bodies   []*trackingReadCloser
+	call     int
+}
+
+func (t *retryBodyCloseCheckingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.call > 0 && !t.bodies[t.call-1].closed {
+		return nil, fmt.Errorf("response body from attempt %d was not closed before retry", t.call)
+	}
+	if t.call >= len(t.statuses) {
+		return nil, fmt.Errorf("unexpected request %d", t.call+1)
+	}
+
+	body := newTrackingReadCloser(`{"ok":true}`)
+	t.bodies = append(t.bodies, body)
+
+	resp := &http.Response{
+		StatusCode: t.statuses[t.call],
+		Body:       body,
+		Header:     make(http.Header),
+		Request:    req,
+	}
+	t.call++
+	return resp, nil
+}
 
 func TestManager_NewManager(t *testing.T) {
 	m := NewManager()
@@ -179,6 +225,41 @@ func TestSlackNotifier_SeverityColor(t *testing.T) {
 	}
 }
 
+func TestSlackNotifier_SendClosesRateLimitedResponseBeforeRetry(t *testing.T) {
+	transport := &retryBodyCloseCheckingTransport{
+		statuses: []int{http.StatusTooManyRequests, http.StatusOK},
+	}
+	n := &SlackNotifier{
+		webhookURL: "https://example.com/slack",
+		channel:    "#test",
+		client:     &http.Client{Transport: transport},
+		limiter:    rate.NewLimiter(rate.Inf, 1),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := n.Send(ctx, Event{
+		Type:      EventFindingCreated,
+		Timestamp: time.Now().UTC(),
+		Title:     "Test",
+		Message:   "retry body close regression",
+		Severity:  "high",
+	})
+	if err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+
+	if transport.call != 2 {
+		t.Fatalf("expected 2 requests, got %d", transport.call)
+	}
+	for i, body := range transport.bodies {
+		if !body.closed {
+			t.Fatalf("response body %d was not closed", i+1)
+		}
+	}
+}
+
 func TestPagerDutyNotifier_Name(t *testing.T) {
 	n, _ := NewPagerDutyNotifier(PagerDutyConfig{RoutingKey: "key"})
 	if n.Name() != "pagerduty" {
@@ -231,6 +312,41 @@ func TestPagerDutyNotifier_Send(t *testing.T) {
 	// This will fail because we can't override the PagerDuty URL
 	// but we can verify the logic for skipping low severity
 	_ = n.Send(context.Background(), event)
+}
+
+func TestPagerDutyNotifier_SendClosesRateLimitedResponseBeforeRetry(t *testing.T) {
+	transport := &retryBodyCloseCheckingTransport{
+		statuses: []int{http.StatusTooManyRequests, http.StatusAccepted},
+	}
+	n := &PagerDutyNotifier{
+		routingKey: "test-key",
+		client:     &http.Client{Transport: transport},
+		limiter:    rate.NewLimiter(rate.Inf, 1),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := n.Send(ctx, Event{
+		Type:      EventFindingCreated,
+		Timestamp: time.Now().UTC(),
+		Title:     "Critical finding",
+		Message:   "retry body close regression",
+		Severity:  "critical",
+		Data:      map[string]interface{}{"finding_id": "123"},
+	})
+	if err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+
+	if transport.call != 2 {
+		t.Fatalf("expected 2 requests, got %d", transport.call)
+	}
+	for i, body := range transport.bodies {
+		if !body.closed {
+			t.Fatalf("response body %d was not closed", i+1)
+		}
+	}
 }
 
 func TestWebhookNotifier_Name(t *testing.T) {
