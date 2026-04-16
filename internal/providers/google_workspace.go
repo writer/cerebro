@@ -624,8 +624,16 @@ func (g *GoogleWorkspaceProvider) listTokenActivities(ctx context.Context, since
 	baseURL := "https://admin.googleapis.com/admin/reports/v1/activity/users/all/applications/token"
 	pageToken := ""
 	rows := make([]map[string]interface{}, 0)
+	guard := newPaginationGuard("google_workspace", baseURL)
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		parsed, err := url.Parse(baseURL)
 		if err != nil {
 			return nil, err
@@ -662,6 +670,9 @@ func (g *GoogleWorkspaceProvider) listTokenActivities(ctx context.Context, since
 
 		if strings.TrimSpace(resp.NextPageToken) == "" {
 			break
+		}
+		if err := guard.nextToken(resp.NextPageToken); err != nil {
+			return nil, err
 		}
 		pageToken = resp.NextPageToken
 	}
@@ -874,8 +885,16 @@ func (g *GoogleWorkspaceProvider) listCalendarEvents(ctx context.Context, calend
 	baseURL := fmt.Sprintf("https://www.googleapis.com/calendar/v3/calendars/%s/events", url.PathEscape(calendarID))
 	pageToken := ""
 	events := make([]map[string]interface{}, 0)
+	guard := newPaginationGuard("google_workspace", baseURL)
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		parsed, err := url.Parse(baseURL)
 		if err != nil {
 			return nil, err
@@ -909,6 +928,9 @@ func (g *GoogleWorkspaceProvider) listCalendarEvents(ctx context.Context, calend
 		if resp.NextPageToken == "" {
 			break
 		}
+		if err := guard.nextToken(resp.NextPageToken); err != nil {
+			return nil, err
+		}
 		pageToken = resp.NextPageToken
 	}
 
@@ -918,8 +940,16 @@ func (g *GoogleWorkspaceProvider) listCalendarEvents(ctx context.Context, calend
 func (g *GoogleWorkspaceProvider) listAll(ctx context.Context, baseURL string, params map[string]string, itemsKey string) ([]map[string]interface{}, error) {
 	var allItems []map[string]interface{}
 	pageToken := ""
+	guard := newPaginationGuard("google_workspace", baseURL)
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		parsed, err := url.Parse(baseURL)
 		if err != nil {
 			return nil, err
@@ -952,6 +982,9 @@ func (g *GoogleWorkspaceProvider) listAll(ctx context.Context, baseURL string, p
 		}
 
 		if nextToken, ok := resp["nextPageToken"].(string); ok && nextToken != "" {
+			if err := guard.nextToken(nextToken); err != nil {
+				return nil, err
+			}
 			pageToken = nextToken
 		} else {
 			break

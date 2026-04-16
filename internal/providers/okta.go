@@ -1150,8 +1150,16 @@ func (o *OktaProvider) request(ctx context.Context, path string) ([]byte, error)
 func (o *OktaProvider) requestAll(ctx context.Context, path string) ([]map[string]interface{}, error) {
 	nextURL := fmt.Sprintf("https://%s%s", o.domain, path)
 	items := make([]map[string]interface{}, 0)
+	guard := newPaginationGuard("okta", path)
 
 	for nextURL != "" {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		body, headers, err := o.requestWithResponse(ctx, nextURL)
 		if err != nil {
 			return nil, err
@@ -1164,6 +1172,9 @@ func (o *OktaProvider) requestAll(ctx context.Context, path string) ([]map[strin
 
 		items = append(items, page...)
 		nextURL = parseNextLink(headers.Get("Link"))
+		if err := guard.nextToken(nextURL); err != nil {
+			return nil, err
+		}
 	}
 
 	return items, nil

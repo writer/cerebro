@@ -209,8 +209,16 @@ func (r *RipplingProvider) syncTerminations(ctx context.Context, opts SyncOption
 func (r *RipplingProvider) listAll(ctx context.Context, path string) ([]map[string]interface{}, error) {
 	var allItems []map[string]interface{}
 	cursor := ""
+	guard := newPaginationGuard("rippling", path)
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		url := path
 		if cursor != "" {
 			url += "&cursor=" + cursor
@@ -243,6 +251,9 @@ func (r *RipplingProvider) listAll(ctx context.Context, path string) ([]map[stri
 
 		if resp.NextCursor == "" {
 			break
+		}
+		if err := guard.nextToken(resp.NextCursor); err != nil {
+			return nil, err
 		}
 		cursor = resp.NextCursor
 	}

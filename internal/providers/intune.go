@@ -315,8 +315,16 @@ func (i *IntuneProvider) syncDetectedApps(ctx context.Context) (*TableResult, er
 func (i *IntuneProvider) listAll(ctx context.Context, path string) ([]map[string]interface{}, error) {
 	var allItems []map[string]interface{}
 	nextLink := path
+	guard := newPaginationGuard("intune", path)
 
 	for nextLink != "" {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		body, err := i.request(ctx, nextLink)
 		if err != nil {
 			return nil, err
@@ -334,6 +342,9 @@ func (i *IntuneProvider) listAll(ctx context.Context, path string) ([]map[string
 
 		if resp.NextLink != "" {
 			nextLink = strings.TrimPrefix(resp.NextLink, "https://graph.microsoft.com")
+			if err := guard.nextToken(nextLink); err != nil {
+				return nil, err
+			}
 		} else {
 			nextLink = ""
 		}

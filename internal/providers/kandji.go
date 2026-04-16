@@ -460,8 +460,16 @@ func (k *KandjiProvider) listAllDevices(ctx context.Context) ([]map[string]inter
 	var allDevices []map[string]interface{}
 	offset := 0
 	limit := 300
+	guard := newPaginationGuard("kandji", "/devices")
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		body, err := k.request(ctx, fmt.Sprintf("/devices?limit=%d&offset=%d", limit, offset))
 		if err != nil {
 			return nil, err
@@ -478,6 +486,9 @@ func (k *KandjiProvider) listAllDevices(ctx context.Context) ([]map[string]inter
 			break
 		}
 		offset += limit
+		if err := guard.nextOffset(offset); err != nil {
+			return nil, err
+		}
 	}
 
 	return allDevices, nil
@@ -485,10 +496,17 @@ func (k *KandjiProvider) listAllDevices(ctx context.Context) ([]map[string]inter
 
 func (k *KandjiProvider) listAllResults(ctx context.Context, path string) ([]map[string]interface{}, error) {
 	currentPath := path
-	seen := make(map[string]struct{})
+	guard := newPaginationGuard("kandji", path)
 	allItems := make([]map[string]interface{}, 0)
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		body, err := k.request(ctx, currentPath)
 		if err != nil {
 			return nil, err
@@ -508,10 +526,9 @@ func (k *KandjiProvider) listAllResults(ctx context.Context, path string) ([]map
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := seen[nextPath]; ok {
-			break
+		if err := guard.nextToken(nextPath); err != nil {
+			return nil, err
 		}
-		seen[nextPath] = struct{}{}
 		currentPath = nextPath
 	}
 

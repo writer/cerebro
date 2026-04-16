@@ -246,8 +246,16 @@ func (s *SlackProvider) syncTeam(ctx context.Context) (*TableResult, error) {
 func (s *SlackProvider) listAllUsers(ctx context.Context) ([]map[string]interface{}, error) {
 	var allUsers []map[string]interface{}
 	cursor := ""
+	guard := newPaginationGuard("slack", "/users.list")
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		params := url.Values{}
 		params.Set("limit", "200")
 		if cursor != "" {
@@ -280,6 +288,9 @@ func (s *SlackProvider) listAllUsers(ctx context.Context) ([]map[string]interfac
 		if resp.ResponseMetadata.NextCursor == "" {
 			break
 		}
+		if err := guard.nextToken(resp.ResponseMetadata.NextCursor); err != nil {
+			return nil, err
+		}
 		cursor = resp.ResponseMetadata.NextCursor
 	}
 
@@ -289,8 +300,16 @@ func (s *SlackProvider) listAllUsers(ctx context.Context) ([]map[string]interfac
 func (s *SlackProvider) listAllChannels(ctx context.Context) ([]map[string]interface{}, error) {
 	var allChannels []map[string]interface{}
 	cursor := ""
+	guard := newPaginationGuard("slack", "/conversations.list")
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		params := url.Values{}
 		params.Set("limit", "200")
 		params.Set("types", "public_channel,private_channel")
@@ -323,6 +342,9 @@ func (s *SlackProvider) listAllChannels(ctx context.Context) ([]map[string]inter
 
 		if resp.ResponseMetadata.NextCursor == "" {
 			break
+		}
+		if err := guard.nextToken(resp.ResponseMetadata.NextCursor); err != nil {
+			return nil, err
 		}
 		cursor = resp.ResponseMetadata.NextCursor
 	}

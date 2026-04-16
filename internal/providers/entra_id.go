@@ -648,8 +648,16 @@ func (e *EntraIDProvider) syncSignInLogs(ctx context.Context) (*TableResult, err
 func (e *EntraIDProvider) listAll(ctx context.Context, path string) ([]map[string]interface{}, error) {
 	var allItems []map[string]interface{}
 	nextLink := path
+	guard := newPaginationGuard("entra_id", path)
 
 	for nextLink != "" {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := guard.nextPage(); err != nil {
+			return nil, err
+		}
+
 		body, err := e.request(ctx, nextLink)
 		if err != nil {
 			return nil, err
@@ -668,6 +676,9 @@ func (e *EntraIDProvider) listAll(ctx context.Context, path string) ([]map[strin
 		// Handle pagination
 		if resp.NextLink != "" {
 			nextLink = strings.TrimPrefix(resp.NextLink, "https://graph.microsoft.com")
+			if err := guard.nextToken(nextLink); err != nil {
+				return nil, err
+			}
 		} else {
 			nextLink = ""
 		}
