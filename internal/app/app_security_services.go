@@ -803,6 +803,8 @@ func (a *App) initEventCorrelationRefreshLoop(ctx context.Context) {
 	}
 	if ctx == nil {
 		ctx = a.backgroundContext()
+	} else {
+		ctx = backgroundWorkContext(ctx)
 	}
 	loopCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is stored on App and invoked by stopEventCorrelationRefreshLoop during shutdown.
 	queue := newEventCorrelationRefreshQueue(a.refreshCurrentEventCorrelations)

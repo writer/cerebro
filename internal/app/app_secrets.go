@@ -99,6 +99,8 @@ func (a *App) startSecretsReloader(parent context.Context) {
 	}
 	if parent == nil {
 		parent = a.backgroundContext()
+	} else {
+		parent = backgroundWorkContext(parent)
 	}
 
 	ctx, cancel := context.WithCancel(parent)

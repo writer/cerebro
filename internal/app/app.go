@@ -294,7 +294,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		"snowflake", app.Snowflake != nil,
 		"policies", len(app.Policy.ListPolicies()),
 	)
-	app.startSecretsReloader(ctx)
+	app.startSecretsReloader(rootCtx)
 
 	return app, nil
 }
