@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -436,6 +437,27 @@ type consumerDecodedMessage struct {
 	result  consumerMessageResult
 }
 
+type consumerHandlerPanicError struct {
+	recovered any
+	stack     []byte
+}
+
+func (e *consumerHandlerPanicError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("consumer handler panic: %v", e.recovered)
+}
+
+func consumerHandlerFailureLogArgs(err error) []any {
+	args := []any{"error", err}
+	var panicErr *consumerHandlerPanicError
+	if errors.As(err, &panicErr) && len(panicErr.stack) > 0 {
+		args = append(args, "stack", string(panicErr.stack))
+	}
+	return args
+}
+
 func (c *Consumer) handleMessage(ctx context.Context, subject string, payload []byte, ack func() error, nak func() error, inProgress func() error) consumerMessageResult {
 	decoded := c.decodePipelineMessage(ctx, consumerPipelineMessage{
 		subject:    subject,
@@ -612,7 +634,9 @@ func (c *Consumer) handleDecodedMessage(decoded consumerDecodedMessage) consumer
 			return consumerMessageResult{}
 		}
 		handlerSpan.End()
-		c.logger.Warn("tap consumer handler failed; message requeued", "error", err, "event_type", evt.Type)
+		c.logger.Warn("tap consumer handler failed; message requeued",
+			append(consumerHandlerFailureLogArgs(err), "event_type", evt.Type)...,
+		)
 		if nakErr := c.consumerAckWithTracing(ingestCtx, message, evt, "nak", message.nak); nakErr != nil {
 			c.logger.Warn("tap consumer nak failed", "error", nakErr, "event_type", evt.Type)
 		}
@@ -647,7 +671,10 @@ func (c *Consumer) invokeHandler(ctx context.Context, evt CloudEvent) (err error
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("consumer handler panic: %v", recovered)
+			err = &consumerHandlerPanicError{
+				recovered: recovered,
+				stack:     debug.Stack(),
+			}
 		}
 	}()
 	return c.handler(ctx, evt)

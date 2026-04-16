@@ -1936,6 +1936,83 @@ func TestConsumerProcessBatchUsesDelayedNakForRetryWithDelayErrors(t *testing.T)
 	}
 }
 
+func TestConsumerHandleMessageRecoversPanickingHandler(t *testing.T) {
+	var logs strings.Builder
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:  "ENSEMBLE_TAP_TEST",
+			Durable: "cerebro_panic_recovery_single_test",
+		},
+		logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		handler: func(context.Context, CloudEvent) error {
+			panic("boom")
+		},
+	}
+
+	payload, err := json.Marshal(testConsumerEvent("customer:a", 1, true))
+	if err != nil {
+		t.Fatalf("marshal cloud event: %v", err)
+	}
+
+	var acked atomic.Int64
+	var naks atomic.Int64
+	result := consumer.handleMessage(context.Background(), "ensemble.tap.test", payload, func() error {
+		acked.Add(1)
+		return nil
+	}, func() error {
+		naks.Add(1)
+		return nil
+	}, func() error { return nil })
+
+	if result.Processed {
+		t.Fatal("expected recovered panic result to remain unprocessed")
+	}
+	if acked.Load() != 0 {
+		t.Fatalf("expected recovered panic not to ack, got %d", acked.Load())
+	}
+	if naks.Load() != 1 {
+		t.Fatalf("expected recovered panic to trigger one nak, got %d", naks.Load())
+	}
+	if got := logs.String(); !containsAll(got, "consumer handler panic: boom", "stack=", "goroutine ") {
+		t.Fatalf("expected panic recovery log with stack, got %q", got)
+	}
+}
+
+func TestConsumerHandleMessageNaksWhenHandlerMissing(t *testing.T) {
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:  "ENSEMBLE_TAP_TEST",
+			Durable: "cerebro_nil_handler_single_test",
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	payload, err := json.Marshal(testConsumerEvent("customer:a", 1, true))
+	if err != nil {
+		t.Fatalf("marshal cloud event: %v", err)
+	}
+
+	var acked atomic.Int64
+	var naks atomic.Int64
+	result := consumer.handleMessage(context.Background(), "ensemble.tap.test", payload, func() error {
+		acked.Add(1)
+		return nil
+	}, func() error {
+		naks.Add(1)
+		return nil
+	}, func() error { return nil })
+
+	if result.Processed {
+		t.Fatal("expected missing handler result to remain unprocessed")
+	}
+	if acked.Load() != 0 {
+		t.Fatalf("expected missing handler not to ack, got %d", acked.Load())
+	}
+	if naks.Load() != 1 {
+		t.Fatalf("expected missing handler to trigger one nak, got %d", naks.Load())
+	}
+}
+
 func TestConsumerProcessBatchRecoversPanickingHandler(t *testing.T) {
 	consumer := &Consumer{
 		config: ConsumerConfig{

@@ -346,7 +346,9 @@ func (c *Consumer) persistBatchRecord(ctx context.Context, record consumerBatchP
 			}
 			return consumerMessageResult{}
 		}
-		c.logger.Warn("tap consumer handler failed; message requeued", "error", record.err, "event_type", record.event.Type)
+		c.logger.Warn("tap consumer handler failed; message requeued",
+			append(consumerHandlerFailureLogArgs(record.err), "event_type", record.event.Type)...,
+		)
 		if nakErr := c.consumerAckWithTracing(record.ctx, record.message, record.event, "nak", record.message.nak); nakErr != nil {
 			c.logger.Warn("tap consumer nak failed", "error", nakErr, "event_type", record.event.Type)
 		}
