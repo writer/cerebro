@@ -141,7 +141,7 @@ func (c *DockerHubClient) DownloadBlob(ctx context.Context, repo, digest string)
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("registry API error %d: %s", resp.StatusCode, string(body))
 	}
-	return resp.Body, nil
+	return newMaxBytesReadCloser(resp.Body, maxRegistryBlobDownloadBytes, "registry blob download"), nil
 }
 
 func (c *DockerHubClient) GetVulnerabilities(context.Context, string, string) ([]ImageVulnerability, error) {

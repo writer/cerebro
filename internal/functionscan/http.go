@@ -73,7 +73,7 @@ func openHTTPArtifact(ctx context.Context, client *http.Client, rawURL string) (
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 16*1024))
 		return nil, fmt.Errorf("artifact download failed %d: %s", resp.StatusCode, sanitizeEmbeddedURL(strings.TrimSpace(string(body))))
 	}
-	return resp.Body, nil
+	return newMaxBytesReadCloser(resp.Body, maxArtifactResponseBodyBytes, "artifact download"), nil
 }
 
 func cloneArtifactTransport(base http.RoundTripper) *http.Transport {

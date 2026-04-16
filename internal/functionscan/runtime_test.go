@@ -323,6 +323,36 @@ func TestOpenHTTPArtifactValidatesDialTarget(t *testing.T) {
 	}
 }
 
+func TestOpenHTTPArtifactRejectsOversizedResponseBody(t *testing.T) {
+	originalValidator := artifactURLValidator
+	artifactURLValidator = func(string) error { return nil }
+	defer func() { artifactURLValidator = originalValidator }()
+
+	originalLimit := maxArtifactResponseBodyBytes
+	maxArtifactResponseBodyBytes = 4
+	defer func() { maxArtifactResponseBodyBytes = originalLimit }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "oversized")
+	}))
+	defer server.Close()
+
+	reader, err := openHTTPArtifact(context.Background(), server.Client(), server.URL)
+	if err != nil {
+		t.Fatalf("openHTTPArtifact: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	body, err := io.ReadAll(reader)
+	if err == nil || !strings.Contains(err.Error(), "artifact download exceeds max size of 4 bytes") {
+		t.Fatalf("expected oversized artifact error, got body %q err %v", string(body), err)
+	}
+	if string(body) != "over" {
+		t.Fatalf("expected body to stop at limit, got %q", string(body))
+	}
+}
+
 func TestLocalMaterializerRejectsOversizedArchiveEntry(t *testing.T) {
 	originalEntryBytes := maxArchiveEntryBytes
 	maxArchiveEntryBytes = 8

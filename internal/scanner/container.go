@@ -793,7 +793,7 @@ func (c *ECRClient) DownloadBlob(ctx context.Context, repo, digest string) (io.R
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("ecr layer download failed %d: %s", resp.StatusCode, string(body))
 	}
-	return resp.Body, nil
+	return newMaxBytesReadCloser(resp.Body, maxRegistryBlobDownloadBytes, "registry blob download"), nil
 }
 
 func (c *ECRClient) fetchManifest(ctx context.Context, repo, reference string) ([]byte, http.Header, error) {
@@ -1012,7 +1012,7 @@ func (c *GCRClient) DownloadBlob(ctx context.Context, repo, digest string) (io.R
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("registry API error %d: %s", resp.StatusCode, string(body))
 	}
-	return resp.Body, nil
+	return newMaxBytesReadCloser(resp.Body, maxRegistryBlobDownloadBytes, "registry blob download"), nil
 }
 
 func (c *GCRClient) GetVulnerabilities(ctx context.Context, repo, tag string) ([]ImageVulnerability, error) {
@@ -1180,7 +1180,7 @@ func (c *ACRClient) DownloadBlob(ctx context.Context, repo, digest string) (io.R
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("registry API error %d: %s", resp.StatusCode, string(body))
 	}
-	return resp.Body, nil
+	return newMaxBytesReadCloser(resp.Body, maxRegistryBlobDownloadBytes, "registry blob download"), nil
 }
 
 func (c *ACRClient) GetVulnerabilities(ctx context.Context, repo, tag string) ([]ImageVulnerability, error) {

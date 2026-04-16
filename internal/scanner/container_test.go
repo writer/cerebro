@@ -601,6 +601,35 @@ func TestGCRClientDownloadBlobQualifiesRepository(t *testing.T) {
 	}
 }
 
+func TestGCRClientDownloadBlobRejectsOversizedBody(t *testing.T) {
+	originalLimit := maxRegistryBlobDownloadBytes
+	maxRegistryBlobDownloadBytes = 4
+	defer func() { maxRegistryBlobDownloadBytes = originalLimit }()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("oversized"))
+	}))
+	defer server.Close()
+
+	client := NewGCRClient("my-project")
+	client.SetRegistryHost(server.URL)
+	client.client = server.Client()
+
+	reader, err := client.DownloadBlob(context.Background(), "repo", "sha256:layer")
+	if err != nil {
+		t.Fatalf("DownloadBlob: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	body, err := io.ReadAll(reader)
+	if err == nil || !strings.Contains(err.Error(), "registry blob download exceeds max size of 4 bytes") {
+		t.Fatalf("expected oversized blob error, got body %q err %v", string(body), err)
+	}
+	if string(body) != "over" {
+		t.Fatalf("expected body to stop at limit, got %q", string(body))
+	}
+}
+
 func TestDockerHubClientSuccess(t *testing.T) {
 	manifestPayload := registryManifest{
 		MediaType: "application/vnd.docker.distribution.manifest.v2+json",
