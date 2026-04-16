@@ -1,6 +1,8 @@
 package providers
 
 import (
+	"bufio"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -18,5 +20,15 @@ func TestSSEReaderAcceptsLargeDataLines(t *testing.T) {
 	}
 	if event.Data != payload {
 		t.Fatalf("event.Data length = %d, want %d", len(event.Data), len(payload))
+	}
+}
+
+func TestSSEReaderReturnsErrTooLongForOversizedDataLines(t *testing.T) {
+	payload := strings.Repeat("x", sseReaderMaxBufferSize+1)
+	reader := newSSEReader(strings.NewReader("data: " + payload + "\n\n"))
+
+	_, err := reader.Next()
+	if !errors.Is(err, bufio.ErrTooLong) {
+		t.Fatalf("expected ErrTooLong, got %v", err)
 	}
 }
