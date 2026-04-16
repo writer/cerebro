@@ -175,6 +175,11 @@ func ConfigValidationRules() []ConfigValidationRule {
 			Category: "dependency",
 		},
 		{
+			EnvVars:  []string{"CEREBRO_DEV_MODE", "LOG_LEVEL", "CEREBRO_DEV_MODE_ACK"},
+			Summary:  "when CEREBRO_DEV_MODE=true, LOG_LEVEL must be debug unless CEREBRO_DEV_MODE_ACK=true",
+			Category: "dependency",
+		},
+		{
 			EnvVars: []string{
 				"GRAPH_CROSS_TENANT_REQUIRE_SIGNED_INGEST",
 				"GRAPH_CROSS_TENANT_SIGNING_KEY",
@@ -521,6 +526,17 @@ func (c *Config) Validate() error {
 		}
 		if c.RateLimitWindow <= 0 {
 			problems = addConfigProblem(problems, "RATE_LIMIT_WINDOW must be > 0 when RATE_LIMIT_ENABLED=true")
+		}
+	}
+	if c.DevMode {
+		if c.APIAuthEnabled {
+			problems = addConfigProblem(problems, "API_AUTH_ENABLED must be false when CEREBRO_DEV_MODE=true")
+		}
+		if c.RateLimitEnabled {
+			problems = addConfigProblem(problems, "RATE_LIMIT_ENABLED must be false when CEREBRO_DEV_MODE=true")
+		}
+		if !strings.EqualFold(strings.TrimSpace(c.LogLevel), "debug") && !c.DevModeAck {
+			problems = addConfigProblem(problems, "CEREBRO_DEV_MODE requires LOG_LEVEL=debug or CEREBRO_DEV_MODE_ACK=1")
 		}
 	}
 

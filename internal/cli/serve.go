@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +16,20 @@ import (
 )
 
 var servePort int
+
+func validateServeSecurityMode(cfg *app.Config) error {
+	if cfg == nil || cfg.APIAuthEnabled || cfg.DevMode {
+		return nil
+	}
+	return fmt.Errorf("api authentication is disabled; configure API_KEYS/API_AUTH_ENABLED=true or explicitly set CEREBRO_DEV_MODE=1 for local development")
+}
+
+func serveSecurityWarning(cfg *app.Config) string {
+	if cfg == nil || !cfg.DevMode {
+		return ""
+	}
+	return "DEV MODE: API authentication and rate limiting are disabled"
+}
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
@@ -67,17 +79,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
-	if !application.Config.APIAuthEnabled {
-		allowInsecure := false
-		if raw := strings.TrimSpace(os.Getenv("ALLOW_INSECURE_API")); raw != "" {
-			allowInsecure, _ = strconv.ParseBool(raw)
-		}
-
-		if !allowInsecure {
-			return fmt.Errorf("api authentication is disabled; configure API_KEYS/API_AUTH_ENABLED=true or explicitly set ALLOW_INSECURE_API=true")
-		}
-
-		application.Logger.Warn("starting API server with authentication disabled")
+	if err := validateServeSecurityMode(application.Config); err != nil {
+		return err
+	}
+	if warning := serveSecurityWarning(application.Config); warning != "" {
+		application.Logger.Warn(warning)
 	}
 
 	// Start scheduler in background if configured

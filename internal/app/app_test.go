@@ -1169,6 +1169,7 @@ func TestNew_WithoutSnowflake(t *testing.T) {
 	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
 	t.Setenv("SNOWFLAKE_ACCOUNT", "")
 	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("API_AUTH_ENABLED", "false")
 
 	ctx := context.Background()
 	app, err := New(ctx)
@@ -1269,6 +1270,7 @@ func TestNew_WebhookURLs(t *testing.T) {
 	t.Setenv("WEBHOOK_URLS", "https://1.1.1.1/hook")
 	t.Setenv("SLACK_WEBHOOK_URL", "")
 	t.Setenv("PAGERDUTY_ROUTING_KEY", "")
+	t.Setenv("API_AUTH_ENABLED", "false")
 
 	ctx := context.Background()
 	app, err := New(ctx)
@@ -1301,6 +1303,7 @@ func TestNew_ServicesWired(t *testing.T) {
 	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
 	t.Setenv("SNOWFLAKE_ACCOUNT", "")
 	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("API_AUTH_ENABLED", "false")
 
 	ctx := context.Background()
 	app, err := New(ctx)
@@ -1350,6 +1353,7 @@ func TestNew_ExplicitMappingsOnlyFailsOnUnmappedPolicy(t *testing.T) {
 	t.Setenv("SNOWFLAKE_ACCOUNT", "")
 	t.Setenv("SNOWFLAKE_USER", "")
 
+	t.Setenv("API_AUTH_ENABLED", "false")
 	policiesDir := t.TempDir()
 	policyJSON := `{
 		"id": "strict-unmapped",
@@ -1758,6 +1762,7 @@ func TestApp_Close(t *testing.T) {
 	t.Setenv("SNOWFLAKE_PRIVATE_KEY", "")
 	t.Setenv("SNOWFLAKE_ACCOUNT", "")
 	t.Setenv("SNOWFLAKE_USER", "")
+	t.Setenv("API_AUTH_ENABLED", "false")
 
 	ctx := context.Background()
 	app, _ := New(ctx)

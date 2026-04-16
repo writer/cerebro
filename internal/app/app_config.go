@@ -458,6 +458,8 @@ type Config struct {
 	JobMaxAttempts       int
 
 	// Rate Limiting
+	DevMode                 bool
+	DevModeAck              bool
 	RateLimitEnabled        bool
 	RateLimitRequests       int
 	RateLimitWindow         time.Duration
@@ -559,7 +561,14 @@ func LoadConfig() *Config {
 				}
 			}
 			apiKeys = apiauth.CredentialsToUserMap(apiCredentials)
-			apiAuthEnabled := getEnvBool("API_AUTH_ENABLED", len(apiKeys) > 0)
+			devMode := getEnvBool("CEREBRO_DEV_MODE", false)
+			devModeAck := getEnvBool("CEREBRO_DEV_MODE_ACK", false)
+			apiAuthEnabled := getEnvBool("API_AUTH_ENABLED", true)
+			rateLimitEnabled := getEnvBool("RATE_LIMIT_ENABLED", true)
+			if devMode {
+				apiAuthEnabled = false
+				rateLimitEnabled = false
+			}
 			snowflakeAccount := getEnv("SNOWFLAKE_ACCOUNT", "")
 			snowflakeUser := getEnv("SNOWFLAKE_USER", "")
 			snowflakePrivateKey := normalizePrivateKey(getEnv("SNOWFLAKE_PRIVATE_KEY", ""))
@@ -874,7 +883,9 @@ func LoadConfig() *Config {
 				JobVisibilityTimeout:                     getEnvDuration("JOB_VISIBILITY_TIMEOUT", 30*time.Second),
 				JobPollWait:                              getEnvDuration("JOB_POLL_WAIT", 10*time.Second),
 				JobMaxAttempts:                           getEnvInt("JOB_MAX_ATTEMPTS", 3),
-				RateLimitEnabled:                         getEnvBool("RATE_LIMIT_ENABLED", false),
+				DevMode:                                  devMode,
+				DevModeAck:                               devModeAck,
+				RateLimitEnabled:                         rateLimitEnabled,
 				RateLimitRequests:                        getEnvInt("RATE_LIMIT_REQUESTS", 1000),
 				RateLimitWindow:                          getEnvDuration("RATE_LIMIT_WINDOW", time.Hour),
 				RateLimitTrustedProxies:                  splitCSV(getEnv("RATE_LIMIT_TRUSTED_PROXIES", "")),

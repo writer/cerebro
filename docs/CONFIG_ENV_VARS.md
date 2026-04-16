@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **375**
+Total variables: **377**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -23,7 +23,7 @@ Total variables: **375**
 | `ALERT_ROUTER_STATE_FILE` | `getEnv` | `filepath.Join(".cerebro", "alert-router", "state.db")` | `AlertRouterStateFile` | `-` |
 | `ANTHROPIC_API_KEY` | `getEnv` | `""` | `AnthropicAPIKey` | `-` |
 | `API_AUTHORIZATION_SERVERS` | `getEnv` | `""` | `APIAuthorizationServers` | `-` |
-| `API_AUTH_ENABLED` | `getEnvBool` | `len(apiKeys) > 0` | `-` | `-` |
+| `API_AUTH_ENABLED` | `getEnvBool` | `true` | `-` | `-` |
 | `API_CORS_ALLOWED_ORIGINS` | `getEnv` | `""` | `CORSAllowedOrigins` | `-` |
 | `API_CREDENTIALS_JSON` | `getEnv` | `""` | `-` | `-` |
 | `API_CREDENTIAL_STATE_FILE` | `getEnv` | `filepath.Join(".cerebro", "api-credentials", "state.json")` | `APICredentialStateFile` | `-` |
@@ -53,6 +53,8 @@ Total variables: **375**
 | `CEREBRO_CREDENTIAL_VAULT_NAMESPACE` | `bootstrapConfigValue` | `""` | `CredentialVaultNamespace` | `credential-source settings must be present and valid for the selected source backend` |
 | `CEREBRO_CREDENTIAL_VAULT_PATH` | `bootstrapConfigValue` | `""` | `CredentialVaultPath` | `credential-source settings must be present and valid for the selected source backend` |
 | `CEREBRO_CREDENTIAL_VAULT_TOKEN` | `bootstrapConfigValue` | `""` | `CredentialVaultToken` | `credential-source settings must be present and valid for the selected source backend` |
+| `CEREBRO_DEV_MODE` | `getEnvBool` | `false` | `-` | `when CEREBRO_DEV_MODE=true, LOG_LEVEL must be debug unless CEREBRO_DEV_MODE_ACK=true` |
+| `CEREBRO_DEV_MODE_ACK` | `getEnvBool` | `false` | `-` | `when CEREBRO_DEV_MODE=true, LOG_LEVEL must be debug unless CEREBRO_DEV_MODE_ACK=true` |
 | `CEREBRO_GRAPH_FRESHNESS_DEFAULT_SLA` | `getEnvDuration` | `6 * time.Hour` | `GraphFreshnessDefaultSLA` | `-` |
 | `CEREBRO_GRAPH_RETENTION_DAYS` | `getEnvInt` | `180` | `GraphRetentionDays` | `-` |
 | `CEREBRO_HEALTH_CHECK_TIMEOUT` | `getEnvDuration` | `defaultHealthCheckTimeout` | `HealthCheckTimeout` | `health checks must not outlive the API request timeout`, `must be greater than 0` |
@@ -205,7 +207,7 @@ Total variables: **375**
 | `KOLIDE_BASE_URL` | `getEnv` | `"https://api.kolide.com/v1"` | `KolideBaseURL` | `-` |
 | `LINEAR_API_KEY` | `getEnv` | `""` | `LinearAPIKey` | `-` |
 | `LINEAR_TEAM_ID` | `getEnv` | `""` | `LinearTeamID` | `-` |
-| `LOG_LEVEL` | `getEnv` | `"info"` | `LogLevel` | `must be one of debug, info, warn, error` |
+| `LOG_LEVEL` | `getEnv` | `"info"` | `LogLevel` | `must be one of debug, info, warn, error`, `when CEREBRO_DEV_MODE=true, LOG_LEVEL must be debug unless CEREBRO_DEV_MODE_ACK=true` |
 | `MALWARE_SCAN_CLAMAV_HOST` | `getEnv` | `""` | `MalwareScanClamAVHost` | `-` |
 | `MALWARE_SCAN_CLAMAV_PORT` | `getEnvInt` | `0` | `MalwareScanClamAVPort` | `-` |
 | `MALWARE_SCAN_VIRUSTOTAL_API_KEY` | `getEnv` | `""` | `MalwareScanVirusTotalAPIKey` | `-` |
@@ -289,7 +291,7 @@ Total variables: **375**
 | `RAMP_CLIENT_ID` | `getEnv` | `""` | `RampClientID` | `-` |
 | `RAMP_CLIENT_SECRET` | `getEnv` | `""` | `RampClientSecret` | `-` |
 | `RAMP_TOKEN_URL` | `getEnv` | `"https://api.ramp.com/developer/v1/token"` | `RampTokenURL` | `-` |
-| `RATE_LIMIT_ENABLED` | `getEnvBool` | `false` | `RateLimitEnabled` | `when RATE_LIMIT_ENABLED=true, requests and window must be positive` |
+| `RATE_LIMIT_ENABLED` | `getEnvBool` | `true` | `-` | `when RATE_LIMIT_ENABLED=true, requests and window must be positive` |
 | `RATE_LIMIT_REQUESTS` | `getEnvInt` | `1000` | `RateLimitRequests` | `when RATE_LIMIT_ENABLED=true, requests and window must be positive` |
 | `RATE_LIMIT_TRUSTED_PROXIES` | `getEnv` | `""` | `RateLimitTrustedProxies` | `-` |
 | `RATE_LIMIT_WINDOW` | `getEnvDuration` | `time.Hour` | `RateLimitWindow` | `when RATE_LIMIT_ENABLED=true, requests and window must be positive` |

@@ -37,7 +37,7 @@ func TestNewWithOptions_APIAuthEnabledWithoutKeys(t *testing.T) {
 		t.Fatal("expected error when API auth is enabled with no API keys")
 		return
 	}
-	if !strings.Contains(err.Error(), "api auth enabled but no API_KEYS configured") {
+	if !strings.Contains(err.Error(), "configure API_KEYS or set CEREBRO_DEV_MODE=1") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

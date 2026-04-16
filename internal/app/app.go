@@ -245,7 +245,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		return nil, fmt.Errorf("load managed api credential state: %w", err)
 	}
 	if cfg.APIAuthEnabled && len(cfg.APIKeys) == 0 && len(managedCredentialStore.List()) == 0 {
-		return nil, fmt.Errorf("api auth enabled but no API_KEYS configured")
+		return nil, fmt.Errorf("api auth enabled but no API_KEYS configured; configure API_KEYS or set CEREBRO_DEV_MODE=1 for local development")
 	}
 
 	logger := options.logger

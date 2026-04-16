@@ -107,6 +107,7 @@ export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
 export SNOWFLAKE_USER="CEREBRO_APP"
 export SNOWFLAKE_PRIVATE_KEY="<paste-pem-private-key>"
 export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
+export API_KEYS="replace-me:operator"
 
 # Optional: AI agents
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -126,6 +127,8 @@ For local development, you can run Cerebro without Snowflake credentials:
 ```bash
 unset SNOWFLAKE_PRIVATE_KEY SNOWFLAKE_ACCOUNT SNOWFLAKE_USER
 export CEREBRO_DB_PATH=.cerebro/cerebro.db
+export LOG_LEVEL=debug
+export CEREBRO_DEV_MODE=1
 make serve
 ```
 
@@ -339,9 +342,9 @@ See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
 | `POLICIES_PATH` | Policy directory | `policies` |
 | `ANTHROPIC_API_KEY` | Claude API key | - |
 | `OPENAI_API_KEY` | OpenAI API key | - |
-| `API_AUTH_ENABLED` | Require API key auth | `false`* |
+| `API_AUTH_ENABLED` | Require API key auth | `true`* |
 | `API_KEYS` | Comma-separated API keys | - |
-| `RATE_LIMIT_ENABLED` | Enable API rate limiting | `false` |
+| `RATE_LIMIT_ENABLED` | Enable API rate limiting | `true` |
 | `RATE_LIMIT_REQUESTS` | Requests per rate limit window | `1000` |
 | `RATE_LIMIT_WINDOW` | Rate limit duration window | `1h` |
 | `JIRA_BASE_URL` | Jira instance | - |
@@ -355,7 +358,7 @@ See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
 | `JOB_WORKER_CONCURRENCY` | Concurrent jobs per worker | `4` |
 | `NATS_URLS` | Comma-separated NATS server URLs | `nats://127.0.0.1:4222` |
 
-`*` When `API_KEYS` is set, API auth auto-enables unless explicitly overridden.
+`*` `CEREBRO_DEV_MODE=1` forces API auth and rate limiting off for local development.
 
 See [Configuration](docs/CONFIGURATION.md) for all options.
 

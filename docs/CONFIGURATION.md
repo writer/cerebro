@@ -162,11 +162,22 @@ export SCAN_TABLES="aws_s3_buckets,aws_iam_users,gcp_storage_buckets"
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `RATE_LIMIT_ENABLED` | Enable rate limiting | `false` | No |
+| `RATE_LIMIT_ENABLED` | Enable rate limiting | `true` | No |
 | `RATE_LIMIT_REQUESTS` | Requests per window | `1000` | No |
 | `RATE_LIMIT_WINDOW` | Time window | `1h` | No |
 
 **Window Format:** Go duration string (e.g., `1h`, `30m`, `24h`)
+
+### API Authentication and Dev Mode
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `API_AUTH_ENABLED` | Require API key authentication | `true` | No |
+| `API_KEYS` | Comma-separated `key[:user-id]` entries | - | Yes* |
+| `CEREBRO_DEV_MODE` | Local-development opt-out that disables API auth and rate limiting | `false` | No |
+| `CEREBRO_DEV_MODE_ACK` | Explicit acknowledgement for non-debug dev mode runs | `false` | No |
+
+`*` Required when serving the API outside dev mode.
 
 ---
 
@@ -179,6 +190,7 @@ export SCAN_TABLES="aws_s3_buckets,aws_iam_users,gcp_storage_buckets"
 export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
 export SNOWFLAKE_USER="CEREBRO_APP"
 export SNOWFLAKE_PRIVATE_KEY="<pem-private-key>"
+export API_KEYS="replace-me:operator"
 
 # Recommended
 export API_PORT="8080"
@@ -192,6 +204,7 @@ export SCAN_INTERVAL="1h"
 # Core
 export API_PORT="8080"
 export LOG_LEVEL="info"
+export API_KEYS="replace-me:operator"
 
 # Snowflake
 export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
@@ -237,6 +250,7 @@ export LOG_LEVEL="debug"
 export API_PORT="8080"
 export POLICIES_PATH="./policies"
 export QUERY_POLICY_ROW_LIMIT="1000"
+export CEREBRO_DEV_MODE="1"
 
 # Optional: Snowflake key-pair (leave unset to run in local SQLite mode)
 # export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
@@ -459,6 +473,7 @@ Cerebro uses presence-based feature flags. Features are enabled when their confi
 | PagerDuty alerts | `PAGERDUTY_ROUTING_KEY` is set |
 | Scheduled scanning | `SCAN_INTERVAL` is set |
 | Rate limiting | `RATE_LIMIT_ENABLED=true` |
+| Local dev mode | `CEREBRO_DEV_MODE=true` (disables API auth + rate limiting) |
 
 ---
 

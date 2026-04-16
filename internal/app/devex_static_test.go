@@ -437,6 +437,26 @@ func TestDevelopmentGuideDocumentsDevexPreflight(t *testing.T) {
 	}
 }
 
+func TestEnvExampleKeepsAPISecurityControlsEnabledByDefault(t *testing.T) {
+	root := repoRoot(t)
+	path := filepath.Join(root, ".env.example")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read .env.example: %v", err)
+	}
+	text := string(content)
+
+	if strings.Contains(text, "API_AUTH_ENABLED=false") {
+		t.Fatal("expected .env.example to avoid disabling API auth by default")
+	}
+	if strings.Contains(text, "RATE_LIMIT_ENABLED=false") {
+		t.Fatal("expected .env.example to avoid disabling rate limiting by default")
+	}
+	if !strings.Contains(text, "CEREBRO_DEV_MODE=") {
+		t.Fatal("expected .env.example to document CEREBRO_DEV_MODE for local development")
+	}
+}
+
 func TestDevexScriptPlansRelevantChecks(t *testing.T) {
 	root := repoRoot(t)
 	cmd := exec.Command("python3", "./scripts/devex.py", "plan", "--mode", "changed", "--json", "--files", "api/openapi.yaml", "internal/graph/entity_facets.go", "devex/codegen_catalog.json", ".githooks/pre-push")
