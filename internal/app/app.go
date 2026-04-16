@@ -203,6 +203,7 @@ type App struct {
 	tapConsumerDurable                 string
 	tapConsumerSubjects                []string
 	securityGraphInitMu                sync.RWMutex
+	appStateMigrationSourceMu          sync.RWMutex
 	reloadMu                           sync.Mutex
 	apiKeys                            atomic.Value // map[string]string
 	apiCredentials                     atomic.Value // map[string]apiauth.Credential

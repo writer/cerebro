@@ -322,7 +322,8 @@ func (a *App) Close() error {
 
 	a.stopThreatIntelSync()
 
-	// Close Snowflake connection
+	a.appStateMigrationSourceMu.Lock()
+	// Close Snowflake connections after any in-flight app-state migration source readers finish.
 	if a.Snowflake != nil {
 		if err := a.Snowflake.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("snowflake: %w", err))
@@ -333,6 +334,7 @@ func (a *App) Close() error {
 			errs = append(errs, fmt.Errorf("legacy snowflake: %w", err))
 		}
 	}
+	a.appStateMigrationSourceMu.Unlock()
 	if closer, ok := a.Warehouse.(interface{ Close() error }); ok {
 		if a.Snowflake == nil || any(a.Warehouse) != any(a.Snowflake) {
 			if err := closer.Close(); err != nil {

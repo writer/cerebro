@@ -315,32 +315,41 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 		ctx = context.Background()
 	}
 
+	a.appStateMigrationSourceMu.Lock()
 	oldClient := a.Snowflake
 	oldLegacyClient := a.LegacySnowflake
 	if !hasSnowflakeCredentials(cfg) {
 		if !strings.EqualFold(strings.TrimSpace(cfg.WarehouseBackend), "snowflake") {
 			if a.appStateDB != nil && legacySnowflakeRetentionEnabled(cfg) && (oldLegacyClient != nil || oldClient != nil) {
+				a.appStateMigrationSourceMu.Unlock()
 				return fmt.Errorf("legacy snowflake source is required while graph or access-review retention remains enabled")
 			}
 			a.Snowflake = nil
 			a.LegacySnowflake = nil
+			a.appStateMigrationSourceMu.Unlock()
 			a.initRepositories()
 			a.rebindAgentSessionStore(ctx, nil)
 			a.refreshConfiguredAgentTools(cfg)
 			a.closeSnowflakeClients(oldClient, oldLegacyClient, nil)
 			return nil
 		}
+		a.appStateMigrationSourceMu.Unlock()
 		return fmt.Errorf("snowflake rotation requires SNOWFLAKE_PRIVATE_KEY, SNOWFLAKE_ACCOUNT, and SNOWFLAKE_USER")
 	}
+	a.appStateMigrationSourceMu.Unlock()
 
 	newClient, err := openConfiguredSnowflakeClient(ctx, cfg)
 	if err != nil {
 		return err
 	}
 
+	a.appStateMigrationSourceMu.Lock()
+	oldClient = a.Snowflake
+	oldLegacyClient = a.LegacySnowflake
 	if strings.EqualFold(strings.TrimSpace(cfg.WarehouseBackend), "snowflake") {
 		a.Snowflake = newClient
 		a.LegacySnowflake = nil
+		a.appStateMigrationSourceMu.Unlock()
 		a.Warehouse = newClient
 		a.initRepositories()
 
@@ -367,6 +376,7 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 		a.initSecurityGraph(ctx)
 	} else {
 		a.LegacySnowflake = newClient
+		a.appStateMigrationSourceMu.Unlock()
 		a.initRepositories()
 		a.rebindAgentSessionStore(ctx, nil)
 		a.refreshConfiguredAgentTools(cfg)

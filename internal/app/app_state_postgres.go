@@ -31,6 +31,8 @@ func (a *App) appStateMigrationSnowflake() *snowflake.Client {
 	if a == nil {
 		return nil
 	}
+	a.appStateMigrationSourceMu.RLock()
+	defer a.appStateMigrationSourceMu.RUnlock()
 	if a.LegacySnowflake != nil {
 		return a.LegacySnowflake
 	}
@@ -95,6 +97,8 @@ func (a *App) migrateAppState(ctx context.Context) error {
 	if a == nil || a.appStateDB == nil {
 		return nil
 	}
+	a.appStateMigrationSourceMu.RLock()
+	defer a.appStateMigrationSourceMu.RUnlock()
 	if a.appStateMigrationSnowflake() != nil {
 		if err := a.markAppStateMigrationComplete(ctx, legacySnowflakeAppStateStartedName); err != nil {
 			return fmt.Errorf("mark app-state migration started: %w", err)

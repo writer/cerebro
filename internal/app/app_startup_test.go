@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
+	"github.com/writer/cerebro/internal/snowflake"
 )
 
 func TestRunInitStep_RecoversPanic(t *testing.T) {
@@ -262,6 +263,36 @@ func TestClose_LogsWarningWhenGraphShutdownTimesOut(t *testing.T) {
 
 	if !strings.Contains(logs.String(), "timed out waiting for security graph shutdown") {
 		t.Fatalf("expected graph shutdown timeout warning, got logs: %s", logs.String())
+	}
+}
+
+func TestClose_WaitsForAppStateMigrationSourceReaders(t *testing.T) {
+	a := &App{
+		Logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		LegacySnowflake: new(snowflake.Client),
+	}
+
+	a.appStateMigrationSourceMu.RLock()
+	done := make(chan error, 1)
+	go func() {
+		done <- a.Close()
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("expected Close to wait for app-state migration readers, got early result: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	a.appStateMigrationSourceMu.RUnlock()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Close() returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close() did not resume after app-state migration readers finished")
 	}
 }
 

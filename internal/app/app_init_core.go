@@ -88,8 +88,10 @@ func (a *App) initSnowflake(ctx context.Context) error {
 		return err
 	}
 
+	a.appStateMigrationSourceMu.Lock()
 	a.Snowflake = client
 	a.LegacySnowflake = nil
+	a.appStateMigrationSourceMu.Unlock()
 	a.Warehouse = client
 	return nil
 }
@@ -102,7 +104,9 @@ func (a *App) initLegacySnowflake(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	a.appStateMigrationSourceMu.Lock()
 	a.LegacySnowflake = client
+	a.appStateMigrationSourceMu.Unlock()
 	return nil
 }
 
