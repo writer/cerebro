@@ -3,7 +3,9 @@ package agents
 import (
 	"context"
 	"database/sql"
+	"path/filepath"
 	"regexp"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +16,41 @@ var sessionStoreDollarPlaceholderRe = regexp.MustCompile(`\$\d+`)
 
 func sessionStoreSQLiteRewrite(query string) string {
 	return sessionStoreDollarPlaceholderRe.ReplaceAllString(query, "?")
+}
+
+func newConcurrentSessionStoreTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "sessions.sqlite")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	db.SetMaxOpenConns(16)
+	db.SetMaxIdleConns(16)
+	ctx := context.Background()
+	conns := make([]*sql.Conn, 0, 16)
+	for i := 0; i < 16; i++ {
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			t.Fatalf("open sqlite connection: %v", err)
+		}
+		if _, err := conn.ExecContext(ctx, "PRAGMA busy_timeout = 10000"); err != nil {
+			_ = conn.Close()
+			t.Fatalf("set busy_timeout: %v", err)
+		}
+		if _, err := conn.ExecContext(ctx, "PRAGMA journal_mode = WAL"); err != nil {
+			_ = conn.Close()
+			t.Fatalf("set journal_mode: %v", err)
+		}
+		conns = append(conns, conn)
+	}
+	for _, conn := range conns {
+		if err := conn.Close(); err != nil {
+			t.Fatalf("close sqlite connection: %v", err)
+		}
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
 }
 
 func newTestPostgresSessionStoreWithDB(t *testing.T) (*PostgresSessionStore, *sql.DB) {
@@ -164,5 +201,46 @@ func TestPostgresSessionStoreImportMissingDoesNotOverwriteExistingUpdates(t *tes
 	}
 	if len(got.Messages) != 1 || got.Messages[0].Content != "done" {
 		t.Fatalf("unexpected updated messages after repeat import: %#v", got.Messages)
+	}
+}
+
+func TestPostgresSessionStoreConcurrentFirstUseEnsuresSchema(t *testing.T) {
+	db := newConcurrentSessionStoreTestDB(t)
+	store := &PostgresSessionStore{
+		db:         db,
+		rewriteSQL: sessionStoreSQLiteRewrite,
+	}
+
+	const n = 20
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = store.Save(context.Background(), &Session{
+				ID:        "session-concurrent-" + string(rune('a'+i)),
+				AgentID:   "agent-1",
+				UserID:    "user-1",
+				Status:    "active",
+				CreatedAt: time.Now().UTC(),
+				UpdatedAt: time.Now().UTC(),
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d: Save() error = %v", i, err)
+		}
+	}
+
+	var count int
+	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM `+postgresSessionTable).Scan(&count); err != nil {
+		t.Fatalf("count query error = %v", err)
+	}
+	if count != n {
+		t.Fatalf("count = %d, want %d", count, n)
 	}
 }

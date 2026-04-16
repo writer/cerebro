@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,8 +23,10 @@ const (
 )
 
 type AuditRepository struct {
-	db         *sql.DB
-	rewriteSQL func(string) string
+	db          *sql.DB
+	rewriteSQL  func(string) string
+	schemaMu    sync.Mutex
+	schemaReady bool
 }
 
 func NewAuditRepository(db *sql.DB) *AuditRepository {
@@ -34,6 +37,13 @@ func (r *AuditRepository) EnsureSchema(ctx context.Context) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("audit repository is not initialized")
 	}
+
+	r.schemaMu.Lock()
+	defer r.schemaMu.Unlock()
+	if r.schemaReady {
+		return nil
+	}
+
 	_, err := r.db.ExecContext(ctx, r.q(`
 CREATE TABLE IF NOT EXISTS `+auditTable+` (
 	id TEXT PRIMARY KEY,
@@ -50,6 +60,9 @@ CREATE TABLE IF NOT EXISTS `+auditTable+` (
 CREATE INDEX IF NOT EXISTS idx_`+auditTable+`_resource ON `+auditTable+` (resource_type, resource_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_`+auditTable+`_created_at ON `+auditTable+` (created_at);
 `))
+	if err == nil {
+		r.schemaReady = true
+	}
 	return err
 }
 
@@ -179,8 +192,10 @@ func (r *AuditRepository) q(query string) string {
 }
 
 type PolicyHistoryRepository struct {
-	db         *sql.DB
-	rewriteSQL func(string) string
+	db          *sql.DB
+	rewriteSQL  func(string) string
+	schemaMu    sync.Mutex
+	schemaReady bool
 }
 
 func NewPolicyHistoryRepository(db *sql.DB) *PolicyHistoryRepository {
@@ -191,6 +206,13 @@ func (r *PolicyHistoryRepository) EnsureSchema(ctx context.Context) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("policy history repository is not initialized")
 	}
+
+	r.schemaMu.Lock()
+	defer r.schemaMu.Unlock()
+	if r.schemaReady {
+		return nil
+	}
+
 	_, err := r.db.ExecContext(ctx, r.q(`
 CREATE TABLE IF NOT EXISTS `+policyHistoryTable+` (
 	policy_id TEXT NOT NULL,
@@ -205,6 +227,9 @@ CREATE TABLE IF NOT EXISTS `+policyHistoryTable+` (
 );
 CREATE INDEX IF NOT EXISTS idx_`+policyHistoryTable+`_policy ON `+policyHistoryTable+` (policy_id, version DESC);
 `))
+	if err == nil {
+		r.schemaReady = true
+	}
 	return err
 }
 
@@ -338,8 +363,10 @@ func (r *PolicyHistoryRepository) q(query string) string {
 }
 
 type RiskEngineStateRepository struct {
-	db         *sql.DB
-	rewriteSQL func(string) string
+	db          *sql.DB
+	rewriteSQL  func(string) string
+	schemaMu    sync.Mutex
+	schemaReady bool
 }
 
 func NewRiskEngineStateRepository(db *sql.DB) *RiskEngineStateRepository {
@@ -350,6 +377,13 @@ func (r *RiskEngineStateRepository) EnsureSchema(ctx context.Context) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("risk engine state repository is not initialized")
 	}
+
+	r.schemaMu.Lock()
+	defer r.schemaMu.Unlock()
+	if r.schemaReady {
+		return nil
+	}
+
 	_, err := r.db.ExecContext(ctx, r.q(`
 CREATE TABLE IF NOT EXISTS `+riskEngineStateTable+` (
 	graph_id TEXT PRIMARY KEY,
@@ -357,6 +391,9 @@ CREATE TABLE IF NOT EXISTS `+riskEngineStateTable+` (
 	updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 `))
+	if err == nil {
+		r.schemaReady = true
+	}
 	return err
 }
 

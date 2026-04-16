@@ -6,14 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
 const postgresSessionTable = "cerebro_agent_sessions"
 
 type PostgresSessionStore struct {
-	db         *sql.DB
-	rewriteSQL func(string) string
+	db          *sql.DB
+	rewriteSQL  func(string) string
+	schemaMu    sync.Mutex
+	schemaReady bool
 }
 
 func NewPostgresSessionStore(db *sql.DB) *PostgresSessionStore {
@@ -24,6 +27,13 @@ func (s *PostgresSessionStore) EnsureSchema(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("postgres session store is not initialized")
 	}
+
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	if s.schemaReady {
+		return nil
+	}
+
 	_, err := s.db.ExecContext(ctx, s.q(`
 CREATE TABLE IF NOT EXISTS `+postgresSessionTable+` (
 	id TEXT PRIMARY KEY,
@@ -37,6 +47,9 @@ CREATE TABLE IF NOT EXISTS `+postgresSessionTable+` (
 );
 CREATE INDEX IF NOT EXISTS idx_`+postgresSessionTable+`_updated_at ON `+postgresSessionTable+` (updated_at);
 `))
+	if err == nil {
+		s.schemaReady = true
+	}
 	return err
 }
 
