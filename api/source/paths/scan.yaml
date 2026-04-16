@@ -1,0 +1,44 @@
+/api/v1/scan/coverage:
+  get:
+    tags:
+      - Admin
+    summary: Policy coverage report
+    description: Report policy coverage against currently available source tables.
+    responses:
+      '200':
+        description: Policy coverage report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanCoverageResponse'
+      '503':
+        description: Snowflake unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to compute coverage report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/scan/watermarks:
+  get:
+    tags:
+      - Admin
+    summary: Scan watermark stats
+    description: Return incremental-scan watermark statistics.
+    responses:
+      '200':
+        description: Scan watermark stats
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanWatermarkStatsResponse'
+      '503':
+        description: Scan watermark store unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

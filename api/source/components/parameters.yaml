@@ -1,0 +1,14 @@
+parameters:
+  Limit:
+    name: limit
+    in: query
+    schema:
+      type: integer
+      default: 50
+      maximum: 1000
+  Offset:
+    name: offset
+    in: query
+    schema:
+      type: integer
+      default: 0

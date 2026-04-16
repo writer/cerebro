@@ -1,0 +1,93 @@
+/health:
+  get:
+    tags:
+      - Health
+    summary: Health check
+    security: []
+    responses:
+      '200':
+        description: Service is healthy
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HealthResponse'
+/ready:
+  get:
+    tags:
+      - Health
+    summary: Readiness check
+    security: []
+    responses:
+      '200':
+        description: Service is ready
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReadyResponse'
+/status:
+  get:
+    tags:
+      - Health
+    summary: Service status
+    security: []
+    responses:
+      '200':
+        description: Service status
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SystemStatusResponse'
+/metrics:
+  get:
+    tags:
+      - Health
+    summary: Prometheus metrics
+    security: []
+    responses:
+      '200':
+        description: Prometheus metrics
+        content:
+          text/plain:
+            schema:
+              type: string
+/.well-known/oauth-protected-resource:
+  get:
+    tags:
+      - AgentSDK
+    summary: Describe the protected Agent SDK resource
+    description: Return OAuth protected-resource metadata for Agent SDK and MCP clients, including supported scopes and authorization servers.
+    responses:
+      '200':
+        description: Protected resource metadata
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKProtectedResourceMetadata'
+/docs:
+  get:
+    tags:
+      - Health
+    summary: Get docs landing page
+    description: Return the embedded API documentation landing page.
+    responses:
+      '200':
+        description: Docs HTML
+        content:
+          text/html:
+            schema:
+              type: string
+    security: []
+/openapi.yaml:
+  get:
+    tags:
+      - Health
+    summary: Get OpenAPI spec
+    description: Return the OpenAPI YAML contract for this API.
+    responses:
+      '200':
+        description: OpenAPI YAML
+        content:
+          application/yaml:
+            schema:
+              type: string
+    security: []

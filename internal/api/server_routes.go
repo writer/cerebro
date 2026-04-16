@@ -1,4 +1,4 @@
-//go:generate sh -c "cd ../.. && go run ./scripts/openapi_route_parity.go --write"
+//go:generate sh -c "cd ../.. && go run ./scripts/openapi_source_sync.go --write"
 
 package api
 

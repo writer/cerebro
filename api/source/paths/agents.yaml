@@ -1,0 +1,173 @@
+/api/v1/agents:
+  get:
+    tags:
+      - Agents
+    summary: List available agents
+    responses:
+      '200':
+        description: List of agents
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentsResponse'
+/api/v1/agents/sessions:
+  post:
+    tags:
+      - Agents
+    summary: Create agent session
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateSessionRequest'
+    responses:
+      '201':
+        description: Session created
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSession'
+/api/v1/agents/sessions/{id}/messages:
+  get:
+    tags:
+      - Agents
+    summary: Get session messages
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Session messages
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessagesResponse'
+  post:
+    tags:
+      - Agents
+    summary: Send message to agent
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - content
+            properties:
+              content:
+                type: string
+    responses:
+      '200':
+        description: Agent response
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+/api/v1/agents/sessions/{id}:
+  get:
+    tags:
+      - Agents
+    summary: Get agent session
+    description: Return a specific agent session, including message and status metadata.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Agent session ID
+    responses:
+      '200':
+        description: Agent session
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSession'
+      '404':
+        description: Session not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agents/sessions/{id}/approve:
+  post:
+    tags:
+      - Agents
+    summary: Approve or deny pending tool call
+    description: Approve or deny a pending tool call for an agent session.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Agent session ID
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AgentSessionApprovalRequest'
+    responses:
+      '200':
+        description: Approval handled
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Message'
+      '400':
+        description: Invalid approval request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Session not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to update session
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agents/{id}:
+  get:
+    tags:
+      - Agents
+    summary: Get agent metadata
+    description: Return metadata for a registered investigation agent.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Agent ID
+    responses:
+      '200':
+        description: Agent metadata
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Agent not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync api-contract-docs api-contract-docs-check api-contract-compat config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check connector-docs connector-docs-check graph-ontology-guardrails gosec govulncheck devex-codegen devex-codegen-check devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks pre-commit verify
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync openapi-split api-contract-docs api-contract-docs-check api-contract-compat config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check connector-docs connector-docs-check graph-ontology-guardrails gosec govulncheck devex-codegen devex-codegen-check devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks pre-commit verify
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -124,6 +124,7 @@ oss-audit:
 	python3 scripts/oss_audit.py
 
 openapi-check:
+	go run ./scripts/openapi_source_sync.go
 	go run ./scripts/openapi_route_parity.go
 	@if grep -n "x-cerebro-generated" api/openapi.yaml; then \
 		echo "OpenAPI contains generated placeholders (x-cerebro-generated). Replace with real operation docs."; \
@@ -136,7 +137,10 @@ openapi-check:
 	$(MAKE) openapi-lint
 
 openapi-sync:
-	go run ./scripts/openapi_route_parity.go --write
+	go run ./scripts/openapi_source_sync.go --write
+
+openapi-split:
+	go run ./scripts/openapi_source_sync.go --split --write
 
 openapi-lint:
 	npx --yes @stoplight/spectral-cli@6 lint --ruleset .spectral.yaml api/openapi.yaml

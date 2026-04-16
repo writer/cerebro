@@ -1,0 +1,8 @@
+securitySchemes:
+  ApiKeyAuth:
+    type: apiKey
+    in: header
+    name: X-API-Key
+  BearerAuth:
+    type: http
+    scheme: bearer

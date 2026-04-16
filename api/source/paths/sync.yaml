@@ -1,0 +1,321 @@
+/api/v1/sync/aws:
+  post:
+    tags:
+      - Admin
+    summary: Run AWS native sync
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              profile:
+                type: string
+              region:
+                type: string
+              multi_region:
+                type: boolean
+              concurrency:
+                type: integer
+                minimum: 1
+              tables:
+                type: array
+                items:
+                  type: string
+              validate:
+                type: boolean
+    responses:
+      '200':
+        description: AWS sync run complete
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRunResponse'
+      '400':
+        description: Invalid AWS sync request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: AWS sync unavailable because Snowflake is not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/sync/aws-org:
+  post:
+    tags:
+      - Admin
+    summary: Run AWS organization sync
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              profile:
+                type: string
+              region:
+                type: string
+              multi_region:
+                type: boolean
+              concurrency:
+                type: integer
+                minimum: 1
+              tables:
+                type: array
+                items:
+                  type: string
+              validate:
+                type: boolean
+              org_role:
+                type: string
+              include_accounts:
+                type: array
+                items:
+                  type: string
+              exclude_accounts:
+                type: array
+                items:
+                  type: string
+              account_concurrency:
+                type: integer
+                minimum: 1
+    responses:
+      '200':
+        description: AWS organization sync run complete
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRunResponse'
+      '400':
+        description: Invalid AWS organization sync request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: AWS organization sync unavailable because Snowflake is not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/sync/backfill-relationships:
+  post:
+    tags:
+      - Admin
+    summary: Normalize relationship IDs in Snowflake
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              batch_size:
+                type: integer
+                minimum: 1
+    responses:
+      '200':
+        description: Relationship backfill complete
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelationshipBackfillResponse'
+      '400':
+        description: Invalid backfill request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Backfill unavailable because Snowflake is not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/sync/azure:
+  post:
+    tags:
+      - Admin
+    summary: Run Azure native sync
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              subscription:
+                type: string
+              subscriptions:
+                type: array
+                items:
+                  type: string
+              management_group:
+                type: string
+              concurrency:
+                type: integer
+                minimum: 1
+              subscription_concurrency:
+                type: integer
+                minimum: 1
+              tables:
+                type: array
+                items:
+                  type: string
+              validate:
+                type: boolean
+    responses:
+      '200':
+        description: Azure sync run complete
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRunResponse'
+      '400':
+        description: Invalid Azure sync request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Azure sync unavailable because Snowflake is not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/sync/gcp:
+  post:
+    tags:
+      - Admin
+    summary: Run GCP native sync
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              project:
+                type: string
+              concurrency:
+                type: integer
+                minimum: 1
+              tables:
+                type: array
+                items:
+                  type: string
+              validate:
+                type: boolean
+            required:
+              - project
+    responses:
+      '200':
+        description: GCP sync run complete
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRunResponse'
+      '400':
+        description: Invalid GCP sync request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: GCP sync unavailable because Snowflake is not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/sync/gcp-asset:
+  post:
+    tags:
+      - Admin
+    summary: Run GCP Cloud Asset Inventory sync
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              projects:
+                type: array
+                items:
+                  type: string
+              organization:
+                type: string
+              concurrency:
+                type: integer
+                minimum: 1
+              tables:
+                type: array
+                items:
+                  type: string
+              validate:
+                type: boolean
+            required:
+              - projects
+    responses:
+      '200':
+        description: GCP asset sync run complete
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRunResponse'
+      '400':
+        description: Invalid GCP asset sync request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: GCP asset sync unavailable because Snowflake is not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/sync/k8s:
+  post:
+    tags:
+      - Admin
+    summary: Run Kubernetes native sync
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              kubeconfig:
+                type: string
+              context:
+                type: string
+              namespace:
+                type: string
+              concurrency:
+                type: integer
+                minimum: 1
+              tables:
+                type: array
+                items:
+                  type: string
+              validate:
+                type: boolean
+    responses:
+      '200':
+        description: Kubernetes sync run complete
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRunResponse'
+      '400':
+        description: Invalid Kubernetes sync request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Kubernetes sync unavailable because Snowflake is not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

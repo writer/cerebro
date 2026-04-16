@@ -1,0 +1,69 @@
+openapi: 3.0.3
+info:
+  title: Cerebro API
+  description: 'Cerebro is a graph and intelligence platform with security/CSPM as the first major application surface. It provides:
+
+    - A shared graph substrate with ontology, provenance, temporal semantics, ingest, identity resolution, and simulation primitives
+
+    - Security workflows for policy scanning, findings, compliance, attack-path analysis, runtime detection/response, and remediation
+
+    - Org-intelligence workflows built on the same graph substrate
+
+    - Agent-assisted investigation and write-back
+
+'
+  version: 2.0.0
+  contact:
+    name: Security Team
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://api.example.com
+    description: Production (replace with your deployment URL)
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+tags:
+  - name: Health
+    description: Health and readiness endpoints
+  - name: Assets
+    description: Cloud asset inventory
+  - name: Policies
+    description: Security policy management
+  - name: Findings
+    description: Security findings and violations
+  - name: Compliance
+    description: Compliance frameworks and reporting
+  - name: Identity
+    description: Identity governance and access reviews
+  - name: Agents
+    description: AI-powered investigation agents
+  - name: Tickets
+    description: Ticketing integration (Jira, Linear)
+  - name: Webhooks
+    description: Webhook management
+  - name: Admin
+    description: Administrative endpoints
+  - name: Platform
+    description: Shared platform primitives built on the graph substrate
+  - name: AgentSDK
+    description: Universal HTTP and MCP tool gateway for AI agent frameworks
+  - name: Security
+    description: Security application endpoints layered on the shared platform
+  - name: Graph
+    description: Legacy graph compatibility endpoints retained while shared primitives move under Platform
+  - name: Org
+    description: Organizational topology and information-flow analytics endpoints
+  - name: Runtime
+    description: Runtime detection and response endpoints
+  - name: RBAC
+    description: Role-based access control and tenancy endpoints
+  - name: ThreatIntel
+    description: Threat intelligence feed management and indicator lookups
+  - name: TrustCenter
+    description: Public trust center posture and evidence endpoints
+paths: {}
+components: {}

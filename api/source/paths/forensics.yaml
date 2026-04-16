@@ -1,0 +1,171 @@
+/api/v1/forensics/capture:
+  post:
+    tags:
+      - Runtime
+    summary: Create forensic capture
+    description: Preserve workload snapshot evidence for an incident or remediation workflow.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForensicsCaptureRequest'
+    responses:
+      '201':
+        description: Forensic capture created
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForensicsCaptureRecord'
+      '400':
+        description: Invalid capture request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Forensics unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/forensics/captures:
+  get:
+    tags:
+      - Runtime
+    summary: List forensic captures
+    description: List preserved forensic capture records.
+    parameters:
+      - $ref: '#/components/parameters/Limit'
+      - name: incident_id
+        in: query
+        schema:
+          type: string
+      - name: workload_id
+        in: query
+        schema:
+          type: string
+      - name: status
+        in: query
+        schema:
+          type: string
+          description: Comma-separated capture statuses.
+    responses:
+      '200':
+        description: Forensic capture collection
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForensicsCaptureCollection'
+      '503':
+        description: Forensics unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/forensics/captures/{capture_id}:
+  get:
+    tags:
+      - Runtime
+    summary: Get forensic capture
+    description: Return a single forensic capture record.
+    parameters:
+      - name: capture_id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Forensic capture
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForensicsCaptureRecord'
+      '404':
+        description: Forensic capture not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/forensics/evidence:
+  post:
+    tags:
+      - Runtime
+    summary: Record remediation evidence
+    description: Persist a before-action-after remediation evidence record.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ForensicsRemediationEvidenceRequest'
+    responses:
+      '201':
+        description: Remediation evidence recorded
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForensicsRemediationEvidenceRecord'
+      '400':
+        description: Invalid remediation evidence payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Forensics unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/forensics/evidence/{evidence_id}:
+  get:
+    tags:
+      - Runtime
+    summary: Get remediation evidence
+    description: Return one remediation evidence record.
+    parameters:
+      - name: evidence_id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Remediation evidence record
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForensicsRemediationEvidenceRecord'
+      '404':
+        description: Remediation evidence not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/forensics/evidence/{evidence_id}/export:
+  get:
+    tags:
+      - Runtime
+    summary: Export forensic evidence package
+    description: Export an evidence package suitable for incident response or compliance review.
+    parameters:
+      - name: evidence_id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Exported forensic evidence package
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForensicsEvidencePackage'
+      '404':
+        description: Remediation evidence not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

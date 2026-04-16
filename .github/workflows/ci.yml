@@ -238,6 +238,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Verify merged OpenAPI matches source files
+        run: go run ./scripts/openapi_source_sync.go
+
       - name: Verify OpenAPI matches registered routes
         run: go run ./scripts/openapi_route_parity.go
 

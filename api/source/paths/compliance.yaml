@@ -1,0 +1,212 @@
+/api/v1/compliance/frameworks:
+  get:
+    tags:
+      - Compliance
+    summary: List compliance frameworks
+    responses:
+      '200':
+        description: List of frameworks
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FrameworksResponse'
+/api/v1/compliance/frameworks/{id}:
+  get:
+    tags:
+      - Compliance
+    summary: Get a compliance framework
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        example: soc2-type2
+    responses:
+      '200':
+        description: Framework details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Framework'
+/api/v1/compliance/frameworks/{id}/status:
+  get:
+    tags:
+      - Compliance
+    summary: Get current compliance framework status
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: valid_at
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: recorded_at
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+    responses:
+      '200':
+        description: Framework compliance status summary
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FrameworkComplianceStatusResponse'
+/api/v1/compliance/frameworks/{id}/controls/{control_id}:
+  get:
+    tags:
+      - Compliance
+    summary: Get compliance control detail with evidence
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: control_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: valid_at
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: recorded_at
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+    responses:
+      '200':
+        description: Compliance control detail
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComplianceControlDetailResponse'
+/api/v1/compliance/frameworks/{id}/report:
+  get:
+    tags:
+      - Compliance
+    summary: Generate compliance report
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: valid_at
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: recorded_at
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+    responses:
+      '200':
+        description: Compliance report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComplianceReport'
+/api/v1/compliance/frameworks/{id}/pre-audit:
+  get:
+    tags:
+      - Compliance
+    summary: Pre-audit health check
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: valid_at
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: recorded_at
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+    responses:
+      '200':
+        description: Pre-audit assessment
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreAuditReport'
+/api/v1/compliance/frameworks/{id}/export:
+  get:
+    tags:
+      - Compliance
+    summary: Export audit package
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: valid_at
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - name: recorded_at
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date-time
+    responses:
+      '200':
+        description: Audit package data
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditPackage'
+/api/v1/trust-center:
+  get:
+    tags:
+      - TrustCenter
+    summary: Get public trust center snapshot
+    description: Return a public-facing trust center snapshot with live compliance posture, subprocessors, security practices, and evidence catalog.
+    responses:
+      '200':
+        description: Trust center snapshot
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrustCenterSnapshotResponse'
+/api/v1/trust-center/evidence:
+  get:
+    tags:
+      - TrustCenter
+    summary: List public trust center evidence catalog
+    description: Return the catalog of public and NDA-gated evidence artifacts exposed through the trust center.
+    responses:
+      '200':
+        description: Trust center evidence catalog
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrustCenterEvidenceCatalogResponse'

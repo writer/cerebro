@@ -1,0 +1,29 @@
+/api/v1/mcp:
+  get:
+    tags:
+      - AgentSDK
+    summary: Open Agent SDK MCP SSE stream
+    responses:
+      '200':
+        description: MCP SSE readiness stream
+        content:
+          text/event-stream:
+            schema:
+              type: string
+  post:
+    tags:
+      - AgentSDK
+    summary: Send an MCP JSON-RPC request
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AgentSDKMCPRequest'
+    responses:
+      '200':
+        description: MCP JSON-RPC response
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKMCPResponse'

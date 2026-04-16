@@ -1,0 +1,456 @@
+/api/v1/agent-sdk/tools:
+  get:
+    tags:
+      - AgentSDK
+    summary: List Agent SDK tools
+    description: List the public Agent SDK tool catalog backed by the shared curated Cerebro tool registry.
+    responses:
+      '200':
+        description: Agent SDK tool catalog
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/AgentSDKToolDefinition'
+/api/v1/agent-sdk/tools/{tool_id}:call:
+  post:
+    tags:
+      - AgentSDK
+    summary: Invoke one Agent SDK tool
+    description: Invoke a public Agent SDK tool by its stable external identifier.
+    parameters:
+      - name: tool_id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Tool invocation completed
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKToolInvokeResponse'
+      '400':
+        description: Invalid tool input
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '403':
+        description: Insufficient permissions for this tool
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Tool not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '409':
+        description: Tool requires approval before execution
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/context/{entity_id}:
+  get:
+    tags:
+      - AgentSDK
+    summary: Get entity context card
+    parameters:
+      - name: entity_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: sections
+        in: query
+        schema:
+          type: string
+        description: Comma-separated section list overriding default sections.
+      - name: include_relationships
+        in: query
+        schema:
+          type: boolean
+      - name: include_activity
+        in: query
+        schema:
+          type: boolean
+    responses:
+      '200':
+        description: Context card
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKContextCard'
+      '400':
+        description: Invalid entity identifier or query parameters
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Entity not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/report:
+  post:
+    tags:
+      - AgentSDK
+    summary: Execute one platform intelligence report through the Agent SDK
+    description: Start a durable platform report run from the Agent SDK surface with optional async execution and report-run status tracking.
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AgentSDKReportRequest'
+    responses:
+      '201':
+        description: Synchronous report run created and completed
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformReportRun'
+      '202':
+        description: Asynchronous report run accepted
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformReportRun'
+      '400':
+        description: Invalid report request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Report definition not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Report execution failed after run creation
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformReportRun'
+/api/v1/agent-sdk/quality:
+  get:
+    tags:
+      - AgentSDK
+    summary: Get graph quality report
+    responses:
+      '200':
+        description: Quality report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphQualityReport'
+      '400':
+        description: Invalid query parameters
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/leverage:
+  get:
+    tags:
+      - AgentSDK
+    summary: Get graph leverage report
+    responses:
+      '200':
+        description: Leverage report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphLeverageReport'
+      '400':
+        description: Invalid query parameters
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/templates:
+  get:
+    tags:
+      - AgentSDK
+    summary: List reusable graph query templates
+    responses:
+      '200':
+        description: Query template catalog
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKQueryTemplatesResponse'
+/api/v1/agent-sdk/check:
+  post:
+    tags:
+      - AgentSDK
+    summary: Evaluate a pre-action policy check
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EvaluateRequest'
+    responses:
+      '200':
+        description: Policy decision
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateResponse'
+      '400':
+        description: Invalid evaluation request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/simulate:
+  post:
+    tags:
+      - AgentSDK
+    summary: Run scenario simulation
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AgentSDKSimulateRequest'
+    responses:
+      '200':
+        description: Simulation result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKSimulateResponse'
+      '400':
+        description: Invalid simulation request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '409':
+        description: Simulation requires approval
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/observations:
+  post:
+    tags:
+      - AgentSDK
+    summary: Record an observation
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AgentSDKObservationRequest'
+    responses:
+      '201':
+        description: Observation recorded
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKObservationResponse'
+      '400':
+        description: Invalid observation request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Target entity not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/claims:
+  post:
+    tags:
+      - AgentSDK
+    summary: Record a world-model claim
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PlatformClaimWriteRequest'
+    responses:
+      '201':
+        description: Claim recorded
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformClaimWriteResponse'
+      '400':
+        description: Invalid claim request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Referenced graph entity not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/decisions:
+  post:
+    tags:
+      - AgentSDK
+    summary: Record a decision
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PlatformDecisionWriteRequest'
+    responses:
+      '201':
+        description: Decision recorded
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformDecisionWriteResponse'
+      '400':
+        description: Invalid decision request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: One or more target entities were not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/outcomes:
+  post:
+    tags:
+      - AgentSDK
+    summary: Record a decision outcome
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AgentSDKOutcomeRequest'
+    responses:
+      '201':
+        description: Outcome recorded
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKOutcomeResponse'
+      '400':
+        description: Invalid outcome request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Referenced decision not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/annotations:
+  post:
+    tags:
+      - AgentSDK
+    summary: Annotate an entity
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AgentSDKAnnotationRequest'
+    responses:
+      '201':
+        description: Annotation recorded
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSDKAnnotationResponse'
+      '400':
+        description: Invalid annotation request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Entity not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/identity/resolve:
+  post:
+    tags:
+      - AgentSDK
+    summary: Resolve an identity alias
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AgentSDKResolveIdentityRequest'
+    responses:
+      '200':
+        description: Identity resolution result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid identity resolution request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/agent-sdk/schema/nodes:
+  get:
+    tags:
+      - AgentSDK
+    summary: List registered node kind definitions
+    responses:
+      '200':
+        description: Node kind schema definitions
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/AgentSDKNodeKindDefinition'
+/api/v1/agent-sdk/schema/edges:
+  get:
+    tags:
+      - AgentSDK
+    summary: List registered edge kind definitions
+    responses:
+      '200':
+        description: Edge kind schema definitions
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/AgentSDKEdgeKindDefinition'

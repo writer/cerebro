@@ -1,0 +1,150 @@
+/api/v1/threatintel/feeds:
+  get:
+    tags:
+      - ThreatIntel
+    summary: List threat intel feeds
+    description: List configured threat-intel feeds and latest sync metadata.
+    responses:
+      '200':
+        description: Threat intel feeds
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/ThreatIntelFeed'
+      '503':
+        description: Threat intel service unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/threatintel/feeds/{id}/sync:
+  post:
+    tags:
+      - ThreatIntel
+    summary: Sync threat intel feed
+    description: Trigger an immediate synchronization for a feed.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Feed identifier
+    responses:
+      '200':
+        description: Feed synchronized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '400':
+        description: Invalid feed ID or sync failed
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Threat intel service unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/threatintel/lookup/cve/{cve}:
+  get:
+    tags:
+      - ThreatIntel
+    summary: Lookup CVE indicator
+    description: Lookup a CVE and whether it is marked as known exploited.
+    parameters:
+      - name: cve
+        in: path
+        required: true
+        schema:
+          type: string
+        description: CVE identifier
+    responses:
+      '200':
+        description: CVE lookup result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThreatIntelLookupCVEResponse'
+      '503':
+        description: Threat intel service unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/threatintel/lookup/domain/{domain}:
+  get:
+    tags:
+      - ThreatIntel
+    summary: Lookup domain indicator
+    description: Lookup a domain in threat-intel indicators.
+    parameters:
+      - name: domain
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Domain name
+    responses:
+      '200':
+        description: Domain lookup result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThreatIntelLookupDomainResponse'
+      '503':
+        description: Threat intel service unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/threatintel/lookup/ip/{ip}:
+  get:
+    tags:
+      - ThreatIntel
+    summary: Lookup IP indicator
+    description: Lookup an IP address in threat-intel indicators.
+    parameters:
+      - name: ip
+        in: path
+        required: true
+        schema:
+          type: string
+        description: IP address
+    responses:
+      '200':
+        description: IP lookup result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThreatIntelLookupIPResponse'
+      '503':
+        description: Threat intel service unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/threatintel/stats:
+  get:
+    tags:
+      - ThreatIntel
+    summary: Threat intel stats
+    description: Return current threat-intel indicator and feed statistics.
+    responses:
+      '200':
+        description: Threat intel stats
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThreatIntelStatsResponse'
+      '503':
+        description: Threat intel service unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

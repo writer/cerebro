@@ -1,0 +1,106 @@
+/api/v1/webhooks:
+  get:
+    tags:
+      - Webhooks
+    summary: List webhooks
+    responses:
+      '200':
+        description: List of webhooks
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhooksResponse'
+  post:
+    tags:
+      - Webhooks
+    summary: Create webhook
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateWebhookRequest'
+    responses:
+      '201':
+        description: Webhook created
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Webhook'
+/api/v1/webhooks/{id}:
+  get:
+    tags:
+      - Webhooks
+    summary: Get webhook
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Webhook details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Webhook'
+  delete:
+    tags:
+      - Webhooks
+    summary: Delete webhook
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '204':
+        description: Webhook deleted
+/api/v1/webhooks/test:
+  post:
+    tags:
+      - Webhooks
+    summary: Send webhook test event
+    description: Emit a test webhook event to validate delivery wiring.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WebhookTestRequest'
+    responses:
+      '200':
+        description: Test event sent
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '400':
+        description: Invalid webhook test payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/webhooks/{id}/deliveries:
+  get:
+    tags:
+      - Webhooks
+    summary: List webhook deliveries
+    description: Return recent delivery attempts for a webhook.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Webhook ID
+    responses:
+      '200':
+        description: Delivery attempts
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true

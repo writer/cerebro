@@ -1,0 +1,74 @@
+/api/v1/incidents:
+  post:
+    tags:
+      - Runtime
+    summary: Create incident
+    description: Create an incident record and generate an initial response playbook.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '201':
+        description: Incident created
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid incident payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to create incident
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/incidents/playbooks:
+  get:
+    tags:
+      - Runtime
+    summary: List incident playbooks
+    description: List available incident response playbooks.
+    responses:
+      '200':
+        description: Playbook list
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/incidents/playbooks/{id}:
+  get:
+    tags:
+      - Runtime
+    summary: Get incident playbook
+    description: Return a specific incident response playbook.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Playbook ID
+    responses:
+      '200':
+        description: Playbook details
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Playbook not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

@@ -1,0 +1,46 @@
+/api/v1/reports/compliance/{framework}:
+  get:
+    tags:
+      - Compliance
+    summary: Framework compliance report
+    description: Generate a findings-based compliance report for a framework label.
+    parameters:
+      - name: framework
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Framework identifier or label
+    responses:
+      '200':
+        description: Framework compliance report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FrameworkComplianceReportResponse'
+/api/v1/reports/executive-summary:
+  get:
+    tags:
+      - Compliance
+    summary: Executive summary
+    description: Return a high-level risk and findings summary for executive reporting.
+    responses:
+      '200':
+        description: Executive summary
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutiveSummaryResponse'
+/api/v1/reports/risk-summary:
+  get:
+    tags:
+      - Compliance
+    summary: Risk category summary
+    description: Return open findings aggregated by risk category and severity.
+    responses:
+      '200':
+        description: Risk summary
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiskSummaryResponse'

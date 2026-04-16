@@ -406,7 +406,7 @@ func TestGoGenerateDirectivesForGeneratedArtifacts(t *testing.T) {
 		t.Fatalf("read server_routes.go: %v", err)
 	}
 	routesText := string(routesContent)
-	if !strings.Contains(routesText, "//go:generate sh -c \"cd ../.. && go run ./scripts/openapi_route_parity.go --write\"") {
+	if !strings.Contains(routesText, "//go:generate sh -c \"cd ../.. && go run ./scripts/openapi_source_sync.go --write\"") {
 		t.Fatalf("expected server_routes.go to include go:generate directive for OpenAPI sync")
 	}
 

@@ -1,0 +1,216 @@
+/api/v1/identity/stale-access:
+  get:
+    tags:
+      - Identity
+    summary: Detect stale access
+    responses:
+      '200':
+        description: Stale access findings
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaleAccessResponse'
+/api/v1/identity/report:
+  get:
+    tags:
+      - Identity
+    summary: Generate identity report
+    responses:
+      '200':
+        description: Identity posture report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityReport'
+/api/v1/identity/reviews:
+  get:
+    tags:
+      - Identity
+    summary: List access reviews
+    responses:
+      '200':
+        description: List of access reviews
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewsResponse'
+  post:
+    tags:
+      - Identity
+    summary: Create access review
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateReviewRequest'
+    responses:
+      '201':
+        description: Review created
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessReview'
+/api/v1/identity/reviews/{id}:
+  get:
+    tags:
+      - Identity
+    summary: Get access review
+    description: Return an identity access review by ID.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+    responses:
+      '200':
+        description: Access review
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessReview'
+      '404':
+        description: Review not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/identity/reviews/{id}/items:
+  get:
+    tags:
+      - Identity
+    summary: List review items
+    description: List all review items for an identity access review.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+    responses:
+      '200':
+        description: Review item list
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Review not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+  post:
+    tags:
+      - Identity
+    summary: Add review item
+    description: Add a principal/resource decision item to an access review.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '201':
+        description: Review item created
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid review item payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to add review item
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/identity/reviews/{id}/items/{itemId}/decide:
+  post:
+    tags:
+      - Identity
+    summary: Record review decision
+    description: Record an approve/revoke decision for a review item.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Review item ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Decision recorded
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '400':
+        description: Invalid decision payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to persist decision
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/identity/reviews/{id}/start:
+  post:
+    tags:
+      - Identity
+    summary: Start access review
+    description: Transition an access review to active state.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+    responses:
+      '200':
+        description: Review started
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '500':
+        description: Failed to start review
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

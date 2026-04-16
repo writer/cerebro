@@ -1,0 +1,297 @@
+/api/v1/remediation/executions:
+  get:
+    tags:
+      - Admin
+    summary: List remediation executions
+    description: List recent remediation execution records.
+    parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Maximum execution records to return
+    responses:
+      '200':
+        description: Remediation execution list
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/remediation/executions/{id}:
+  get:
+    tags:
+      - Admin
+    summary: Get remediation execution
+    description: Return a remediation execution by ID.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Remediation execution ID
+    responses:
+      '200':
+        description: Remediation execution
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Execution not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/remediation/executions/{id}/approve:
+  post:
+    tags:
+      - Admin
+    summary: Approve remediation execution
+    description: Approve a remediation execution waiting for human approval.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Remediation execution ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RemediationApproveRequest'
+    responses:
+      '200':
+        description: Execution approved
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '400':
+        description: Invalid approval request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/remediation/executions/{id}/reject:
+  post:
+    tags:
+      - Admin
+    summary: Reject remediation execution
+    description: Reject a remediation execution and provide a reason.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Remediation execution ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RemediationRejectRequest'
+    responses:
+      '200':
+        description: Execution rejected
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '400':
+        description: Invalid rejection request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/remediation/rules:
+  get:
+    tags:
+      - Admin
+    summary: List remediation rules
+    description: List automation rules used to trigger remediations.
+    responses:
+      '200':
+        description: Remediation rule list
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  post:
+    tags:
+      - Admin
+    summary: Create remediation rule
+    description: Create a new remediation automation rule.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '201':
+        description: Rule created
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid rule payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to create rule
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/remediation/rules/{id}:
+  get:
+    tags:
+      - Admin
+    summary: Get remediation rule
+    description: Return a remediation rule by ID.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Remediation rule ID
+    responses:
+      '200':
+        description: Remediation rule
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Rule not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+  delete:
+    tags:
+      - Admin
+    summary: Delete remediation rule
+    description: Delete a remediation rule by ID.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Remediation rule ID
+    responses:
+      '204':
+        description: Rule deleted
+      '404':
+        description: Rule not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+  put:
+    tags:
+      - Admin
+    summary: Update remediation rule
+    description: Update an existing remediation rule by ID.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Remediation rule ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Rule updated
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid rule payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Rule not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/remediation/rules/{id}/disable:
+  post:
+    tags:
+      - Admin
+    summary: Disable remediation rule
+    description: Disable a remediation rule by ID.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Remediation rule ID
+    responses:
+      '200':
+        description: Rule disabled
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '404':
+        description: Rule not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/remediation/rules/{id}/enable:
+  post:
+    tags:
+      - Admin
+    summary: Enable remediation rule
+    description: Enable a remediation rule by ID.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Remediation rule ID
+    responses:
+      '200':
+        description: Rule enabled
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '404':
+        description: Rule not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

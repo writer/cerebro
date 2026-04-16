@@ -1,0 +1,220 @@
+/api/v1/rbac/permissions:
+  get:
+    tags:
+      - RBAC
+    summary: List permissions
+    description: List permission identifiers available for assignment.
+    responses:
+      '200':
+        description: Permission list
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+/api/v1/rbac/roles:
+  get:
+    tags:
+      - RBAC
+    summary: List roles
+    description: List RBAC roles.
+    responses:
+      '200':
+        description: Role list
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+      '503':
+        description: RBAC unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/rbac/tenants:
+  get:
+    tags:
+      - RBAC
+    summary: List tenants
+    description: List RBAC tenants.
+    responses:
+      '200':
+        description: Tenant list
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/RBACTenant'
+      '503':
+        description: RBAC unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  post:
+    tags:
+      - RBAC
+    summary: Create tenant
+    description: Create a RBAC tenant.
+    responses:
+      '201':
+        description: Tenant created
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RBACTenant'
+      '400':
+        description: Invalid tenant payload
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '403':
+        description: Permission denied
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: RBAC unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RBACTenantCreateRequest'
+/api/v1/rbac/users:
+  post:
+    tags:
+      - RBAC
+    summary: Create user
+    description: Create a RBAC user record.
+    responses:
+      '201':
+        description: User created
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RBACUser'
+      '400':
+        description: Invalid user payload
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '403':
+        description: Permission denied
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: RBAC unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RBACUserCreateRequest'
+/api/v1/rbac/users/{id}:
+  get:
+    tags:
+      - RBAC
+    summary: Get user
+    description: Get a RBAC user by ID.
+    responses:
+      '200':
+        description: User
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RBACUser'
+      '404':
+        description: User not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: RBAC unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: User ID
+/api/v1/rbac/users/{id}/roles:
+  post:
+    tags:
+      - RBAC
+    summary: Assign role
+    description: Assign a role to a RBAC user.
+    responses:
+      '200':
+        description: Role assigned
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingActionResponse'
+      '400':
+        description: Invalid role assignment request
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '403':
+        description: Permission denied
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: RBAC unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: User ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RBACAssignRoleRequest'

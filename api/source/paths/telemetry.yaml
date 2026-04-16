@@ -1,0 +1,25 @@
+/api/v1/telemetry/ingest:
+  post:
+    tags:
+      - Runtime
+    summary: Ingest telemetry batch
+    description: Ingest a telemetry batch and process each runtime event through detection/response.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TelemetryIngestRequest'
+    responses:
+      '200':
+        description: Telemetry batch processed
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelemetryIngestResponse'
+      '400':
+        description: Invalid telemetry payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

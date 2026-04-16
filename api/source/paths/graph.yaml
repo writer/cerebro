@@ -1,0 +1,2327 @@
+/api/v1/attack-paths:
+  get:
+    tags:
+      - Graph
+    summary: List attack paths
+    description: Enumerate modeled attack paths and aggregate counts.
+    responses:
+      '200':
+        description: Attack path list
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/attack-paths/analyze:
+  post:
+    tags:
+      - Graph
+    summary: Analyze attack paths
+    description: Run an attack-path analysis against optional high-value targets.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AttackPathAnalyzeRequest'
+    responses:
+      '200':
+        description: Analysis results
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid analysis request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/attack-paths/graph:
+  get:
+    tags:
+      - Graph
+    summary: Get attack graph nodes
+    description: Return the current attack graph node inventory.
+    responses:
+      '200':
+        description: Graph node list
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/attack-paths/graph/edges:
+  post:
+    tags:
+      - Graph
+    summary: Add attack graph edge
+    description: Add a directed edge between attack graph nodes.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '201':
+        description: Edge created
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid edge payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/attack-paths/graph/nodes:
+  post:
+    tags:
+      - Graph
+    summary: Add attack graph node
+    description: Add a node to the configured attack graph backend.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '201':
+        description: Node created
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid node payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/attack-paths/{id}:
+  get:
+    tags:
+      - Graph
+    summary: Get attack path by ID
+    description: Return a specific computed attack path.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Attack path ID
+      - name: max_depth
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Optional maximum traversal depth
+      - name: targets
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Comma-separated list of target node IDs
+    responses:
+      '200':
+        description: Attack path details
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Attack path not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/security/analyses/attack-paths/jobs:
+  post:
+    tags:
+      - Security
+    summary: Start an asynchronous attack-path analysis job
+    description: Queue a security attack-path analysis and return a platform job resource for status and results.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SecurityAttackPathJobRequest'
+    responses:
+      '202':
+        description: Attack-path job accepted
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlatformJob'
+      '400':
+        description: Invalid request body
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/access-reviews:
+  get:
+    tags:
+      - Graph
+    summary: List graph access reviews
+    description: List graph-based access reviews.
+    responses:
+      '200':
+        description: Graph access reviews
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphAccessReviewsResponse'
+      '503':
+        description: Graph unavailable
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  post:
+    tags:
+      - Graph
+    summary: Create graph access review
+    description: Create a graph-based access review run.
+    responses:
+      '201':
+        description: Graph access review created
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphAccessReviewResponse'
+      '400':
+        description: Invalid request
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+/api/v1/graph/access-reviews/{id}:
+  get:
+    tags:
+      - Graph
+    summary: Get graph access review
+    description: Get a graph-based access review by ID.
+    responses:
+      '200':
+        description: Graph access review
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphAccessReviewResponse'
+      '404':
+        description: Not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+/api/v1/graph/access-reviews/{id}/items/{itemId}/decide:
+  post:
+    tags:
+      - Graph
+    summary: Record graph access-review decision
+    description: Record a decision for a graph access-review item.
+    responses:
+      '200':
+        description: Decision recorded
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingActionResponse'
+      '400':
+        description: Invalid request
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Review item ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+/api/v1/graph/access-reviews/{id}/start:
+  post:
+    tags:
+      - Graph
+    summary: Start graph access review
+    description: Start executing a pending graph access review.
+    responses:
+      '200':
+        description: Graph access review started
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingActionResponse'
+      '404':
+        description: Not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Access review ID
+/api/v1/entities/{id}/cohort:
+  get:
+    tags:
+      - Graph
+    summary: Get entity cohort
+    description: Return peer-cohort membership details for a specific entity.
+    responses:
+      '200':
+        description: Cohort details
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Cohort not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Entity identifier
+/api/v1/entities/{id}/outlier-score:
+  get:
+    tags:
+      - Graph
+    summary: Get entity outlier score
+    description: Return outlier scoring and explanatory factors for a specific entity.
+    responses:
+      '200':
+        description: Outlier score
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Outlier score not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Entity identifier
+/api/v1/impact-analysis:
+  post:
+    tags:
+      - Graph
+    summary: Run impact analysis
+    description: Analyze cascading impact paths from a starting node under a selected business scenario.
+    responses:
+      '200':
+        description: Impact analysis result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid request
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: max_depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 6
+        description: Override traversal depth for this request.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - start_node
+              - scenario
+            properties:
+              start_node:
+                type: string
+                description: Starting node ID for traversal.
+              scenario:
+                type: string
+                enum:
+                  - churn_cascade
+                  - revenue_impact
+                  - incident_blast_radius
+              max_depth:
+                type: integer
+                default: 6
+/api/v1/graph/attack-paths:
+  get:
+    tags:
+      - Graph
+    summary: List scored attack paths
+    description: Simulate attack paths and return scored results.
+    responses:
+      '200':
+        description: Attack path simulation
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttackPathSimulationResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: max_depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 6
+        description: Traversal depth (1-10)
+      - name: threshold
+        in: query
+        required: false
+        schema:
+          type: number
+          default: 0
+        description: Minimum path score
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+        description: Maximum result size
+/api/v1/graph/attack-paths/{id}/simulate-fix:
+  get:
+    tags:
+      - Graph
+    summary: Simulate attack path fix
+    description: Simulate remediation impact for a target node.
+    responses:
+      '200':
+        description: Fix simulation result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttackPathFixSimulationResponse'
+      '400':
+        description: Invalid node ID
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Node identifier
+/api/v1/graph/blast-radius/{principalId}:
+  get:
+    tags:
+      - Graph
+    summary: Calculate blast radius
+    description: Return reachable resources from a principal.
+    responses:
+      '200':
+        description: Blast radius result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphBlastRadiusResponse'
+      '400':
+        description: Invalid principal ID
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: principalId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Principal identifier
+      - name: max_depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 3
+        description: Traversal depth (1-10)
+/api/v1/graph/cascading-blast-radius/{principalId}:
+  get:
+    tags:
+      - Graph
+    summary: Calculate cascading blast radius
+    description: Return transitive blast radius analysis.
+    responses:
+      '200':
+        description: Cascading blast radius result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphBlastRadiusResponse'
+      '400':
+        description: Invalid principal ID
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: principalId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Principal identifier
+      - name: max_depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 6
+        description: Traversal depth (1-10)
+/api/v1/graph/chokepoints:
+  get:
+    tags:
+      - Graph
+    summary: List chokepoints
+    description: Return highest-value chokepoints across simulated attack paths.
+    responses:
+      '200':
+        description: Chokepoints
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChokepointsResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 20
+        description: Maximum result size
+/api/v1/graph/compare-permissions:
+  get:
+    tags:
+      - Graph
+    summary: Compare permissions
+    description: Compare effective permissions between two principals.
+    responses:
+      '200':
+        description: Permission comparison
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionComparisonResponse'
+      '400':
+        description: principal1/principal2 required
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: principal1
+        in: query
+        required: false
+        schema:
+          type: string
+        description: First principal identifier
+      - name: principal2
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Second principal identifier
+/api/v1/graph/effective-permissions/{principalId}:
+  get:
+    tags:
+      - Graph
+    summary: Get effective permissions
+    description: Resolve effective permissions for a principal.
+    responses:
+      '200':
+        description: Effective permissions
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EffectivePermissionsResponse'
+      '400':
+        description: Invalid principal ID
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: principalId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Principal identifier
+/api/v1/graph/peer-groups:
+  get:
+    tags:
+      - Graph
+    summary: Analyze peer groups
+    description: Compute peer groups and privilege creep outliers.
+    responses:
+      '200':
+        description: Peer group analysis
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PeerGroupsResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: min_similarity
+        in: query
+        required: false
+        schema:
+          type: number
+          default: 0.7
+        description: Minimum similarity threshold
+      - name: min_group_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 2
+        description: Minimum peer-group size
+/api/v1/graph/privilege-escalation/{principalId}:
+  get:
+    tags:
+      - Graph
+    summary: Detect privilege escalation
+    description: Detect privilege escalation risks for a principal.
+    responses:
+      '200':
+        description: Privilege escalation risks
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrivilegeEscalationResponse'
+      '400':
+        description: Invalid principal ID
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: principalId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Principal identifier
+/api/v1/graph/rebuild:
+  post:
+    tags:
+      - Graph
+    summary: Rebuild graph
+    description: Trigger a full graph platform rebuild.
+    responses:
+      '200':
+        description: Graph rebuilt
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphRebuildResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '500':
+        description: Rebuild failed
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/reverse-access/{resourceId}:
+  get:
+    tags:
+      - Graph
+    summary: Get reverse access
+    description: Return principals that can reach a resource.
+    responses:
+      '200':
+        description: Reverse access result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphReverseAccessResponse'
+      '400':
+        description: Invalid resource ID
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: resourceId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Resource identifier
+      - name: max_depth
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 3
+        description: Traversal depth (1-10)
+/api/v1/graph/risk-report:
+  get:
+    tags:
+      - Graph
+    summary: Get risk report
+    description: Run graph risk analysis across the current graph snapshot.
+    responses:
+      '200':
+        description: Risk report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphRiskReportResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/vendors:
+  get:
+    tags:
+      - Graph
+    summary: List vendor risk inventory
+    description: Return auto-discovered third-party vendors, their graph-derived risk posture, and recent risk/access change alerts.
+    parameters:
+      - name: min_score
+        in: query
+        required: false
+        description: Minimum vendor risk score to include (0-100).
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 100
+      - name: risk
+        in: query
+        required: false
+        description: Comma-separated risk levels to include.
+        schema:
+          type: string
+      - name: verification_status
+        in: query
+        required: false
+        description: Comma-separated verification statuses to include.
+        schema:
+          type: string
+      - name: category
+        in: query
+        required: false
+        description: Comma-separated vendor categories to include.
+        schema:
+          type: string
+      - name: permission_level
+        in: query
+        required: false
+        description: Comma-separated permission levels to include.
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        description: Maximum vendors to return.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+      - name: include_alerts
+        in: query
+        required: false
+        description: Include recent risk/access change alerts.
+        schema:
+          type: boolean
+          default: true
+      - name: window_days
+        in: query
+        required: false
+        description: Lookback window for change alerts in days.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 365
+          default: 30
+    responses:
+      '200':
+        description: Vendor inventory and risk assessment
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphVendorRiskReportResponse'
+      '400':
+        description: Invalid query parameter
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/api-surface:
+  get:
+    tags:
+      - Graph
+    summary: List discovered API endpoints and exposed backend reachability
+    description: Return provider-discovered API endpoints, their exposure metadata, reachable backend resources, and derived attack-surface findings.
+    parameters:
+      - name: include_internal
+        in: query
+        required: false
+        description: Include non-public/internal-only endpoints in the response.
+        schema:
+          type: boolean
+      - name: max_depth
+        in: query
+        required: false
+        description: Reachability traversal depth used when summarizing what each endpoint can access.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 4
+      - name: limit
+        in: query
+        required: false
+        description: Optional maximum number of endpoints to return.
+        schema:
+          type: integer
+          minimum: 1
+    responses:
+      '200':
+        description: API surface report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphAPISurfaceResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/risk-feedback:
+  get:
+    tags:
+      - Graph
+    summary: Get risk feedback and tuning recommendations
+    description: Evaluate historical rule effectiveness against realized outcomes and return severity, retirement, and risk profile weight tuning suggestions.
+    parameters:
+      - name: window_days
+        in: query
+        required: false
+        description: Historical lookback window in days (default 90).
+        schema:
+          type: integer
+      - name: profile
+        in: query
+        required: false
+        description: Optional risk profile name used for weight tuning suggestions.
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Risk feedback report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphRiskFeedbackResponse'
+      '400':
+        description: Invalid query parameter
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/outcomes:
+  get:
+    tags:
+      - Graph
+    summary: List realized outcomes
+    description: List historical outcome events used for risk feedback and auto-tuning.
+    parameters:
+      - name: entity_id
+        in: query
+        required: false
+        description: Optional entity ID filter.
+        schema:
+          type: string
+      - name: outcome
+        in: query
+        required: false
+        description: Optional outcome type filter.
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Outcome events
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphOutcomesResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  post:
+    tags:
+      - Graph
+    summary: Record realized outcome
+    description: Record a business outcome event (for example churn, closed_lost, sla_breach, incident, payment_default) tied to an entity.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GraphOutcomeRecordRequest'
+    responses:
+      '200':
+        description: Outcome recorded
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphOutcomeRecordResponse'
+      '400':
+        description: Invalid request body
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/rule-discovery/run:
+  post:
+    tags:
+      - Graph
+    summary: Run AI rule discovery
+    description: Generate candidate toxic-combination and policy rules from historical risk signals and outcomes.
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GraphRuleDiscoveryRunRequest'
+    responses:
+      '200':
+        description: Discovered candidate rules
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphRuleDiscoveryCandidatesResponse'
+      '400':
+        description: Invalid request body
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/rule-discovery/candidates:
+  get:
+    tags:
+      - Graph
+    summary: List discovered rule candidates
+    description: List pending, approved, or rejected AI-generated rule proposals.
+    parameters:
+      - name: status
+        in: query
+        required: false
+        description: Optional candidate status filter (pending_approval, approved, rejected).
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Candidate rule proposals
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphRuleDiscoveryCandidatesResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/rule-discovery/candidates/{id}/decision:
+  post:
+    tags:
+      - Graph
+    summary: Approve or reject discovered rule candidate
+    description: Human-in-the-loop approval endpoint for discovered policy and toxic-combination candidates.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Candidate rule ID.
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GraphRuleDiscoveryDecisionRequest'
+    responses:
+      '200':
+        description: Updated candidate rule
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphRuleDiscoveryDecisionResponse'
+      '400':
+        description: Invalid request body
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Candidate not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/cross-tenant/patterns/build:
+  post:
+    tags:
+      - Graph
+    summary: Build anonymized tenant pattern samples
+    description: Build privacy-safe structural pattern samples from the current tenant graph and outcome history.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GraphCrossTenantBuildRequest'
+    responses:
+      '200':
+        description: Anonymized pattern samples
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphCrossTenantSamplesResponse'
+      '400':
+        description: Invalid request body
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/cross-tenant/patterns/ingest:
+  post:
+    tags:
+      - Graph
+    summary: Ingest anonymized cross-tenant patterns
+    description: Ingest structural graph fingerprints and outcomes from multiple tenants with no PII values.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GraphCrossTenantIngestRequest'
+    responses:
+      '200':
+        description: Ingest summary
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphCrossTenantIngestResponse'
+      '400':
+        description: Invalid request body
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/cross-tenant/patterns:
+  get:
+    tags:
+      - Graph
+    summary: List anonymized cross-tenant patterns
+    description: Return aggregated anonymized pattern/outcome signatures and probabilities.
+    parameters:
+      - name: min_tenants
+        in: query
+        required: false
+        description: Minimum distinct tenant count for returned patterns.
+        schema:
+          type: integer
+    responses:
+      '200':
+        description: Cross-tenant patterns
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphCrossTenantPatternsResponse'
+      '400':
+        description: Invalid query parameter
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/cross-tenant/matches:
+  get:
+    tags:
+      - Graph
+    summary: Match current tenant entities to cross-tenant patterns
+    description: Compare current graph fingerprints to cross-tenant pattern library and return outcome-probability recommendations.
+    parameters:
+      - name: min_probability
+        in: query
+        required: false
+        description: Minimum outcome probability threshold (0-1).
+        schema:
+          type: number
+          format: float
+      - name: limit
+        in: query
+        required: false
+        description: Maximum number of matches to return.
+        schema:
+          type: integer
+    responses:
+      '200':
+        description: Cross-tenant matches
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphCrossTenantMatchesResponse'
+      '400':
+        description: Invalid query parameter
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/stats:
+  get:
+    tags:
+      - Graph
+    summary: Get graph statistics
+    description: Return graph build metadata and cardinality.
+    responses:
+      '200':
+        description: Graph stats
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphStatsResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/health:
+  get:
+    tags:
+      - Graph
+    summary: Get graph health snapshot
+    description: Return live graph counts, snapshot inventory, writer lease status, tier distribution, and a memory usage estimate.
+    responses:
+      '200':
+        description: Graph health snapshot
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - evaluated_at
+                - node_count
+                - edge_count
+                - snapshot_count
+                - writer_lease
+                - tier_distribution
+                - memory_usage_estimate_bytes
+              properties:
+                evaluated_at:
+                  type: string
+                  format: date-time
+                node_count:
+                  type: integer
+                edge_count:
+                  type: integer
+                snapshot_count:
+                  type: integer
+                last_mutation_at:
+                  type: string
+                  format: date-time
+                writer_lease:
+                  type: object
+                  required:
+                    - enabled
+                    - role
+                  properties:
+                    enabled:
+                      type: boolean
+                    role:
+                      type: string
+                      enum:
+                        - disabled
+                        - writer
+                        - follower
+                    lease_name:
+                      type: string
+                    owner_id:
+                      type: string
+                    lease_holder_id:
+                      type: string
+                    lease_until:
+                      type: string
+                      format: date-time
+                    last_heartbeat_at:
+                      type: string
+                      format: date-time
+                    last_transition_at:
+                      type: string
+                      format: date-time
+                    last_error:
+                      type: string
+                tier_distribution:
+                  type: object
+                  required:
+                    - hot
+                    - warm
+                    - cold
+                  properties:
+                    hot:
+                      type: integer
+                    warm:
+                      type: integer
+                    cold:
+                      type: integer
+                memory_usage_estimate_bytes:
+                  type: integer
+                  format: int64
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/ingest/health:
+  get:
+    tags:
+      - Graph
+    summary: Report graph ingest mapper and DLQ health
+    description: Return TAP mapper runtime counters, per-source ingest SLO rollups, and bounded dead-letter queue tail metrics.
+    parameters:
+      - name: tail_limit
+        in: query
+        required: false
+        description: Number of dead-letter tail lines to summarize (1-500).
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+    responses:
+      '200':
+        description: Graph ingest health report
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid query parameter
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/ingest/dead-letter:
+  get:
+    tags:
+      - Graph
+    summary: Query graph ingest dead-letter records
+    description: Query dead-letter records with optional filters across file or sqlite DLQ backends.
+    parameters:
+      - name: limit
+        in: query
+        required: false
+        description: Maximum records to return (1-500).
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+      - name: offset
+        in: query
+        required: false
+        description: Row offset for pagination (>=0).
+        schema:
+          type: integer
+          minimum: 0
+      - name: event_type
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: mapping_name
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: issue_code
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: entity_type
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: entity_kind
+        in: query
+        required: false
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Dead-letter query response
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid query parameter
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Dead-letter path not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/ingest/contracts:
+  get:
+    tags:
+      - Graph
+    summary: Get graph ingest event contracts
+    description: Return the generated CloudEvents envelope and per-mapping ingest contracts, including derived data schemas.
+    responses:
+      '200':
+        description: Graph ingest contract catalog
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '500':
+        description: Contract generation failed
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/toxic-combinations:
+  get:
+    tags:
+      - Graph
+    summary: List toxic combinations
+    description: List toxic risk combinations detected in the graph.
+    responses:
+      '200':
+        description: Toxic combinations
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToxicCombinationsResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: severity
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by severity
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+        description: Maximum result size
+/api/v1/graph/visualize/attack-path/{id}:
+  get:
+    tags:
+      - Graph
+    summary: Visualize attack path
+    description: Render graph visualization payload for an attack path.
+    responses:
+      '200':
+        description: Visualization payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphVisualizationResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Attack path ID
+/api/v1/graph/visualize/blast-radius/{principalId}:
+  get:
+    tags:
+      - Graph
+    summary: Visualize blast radius
+    description: Render graph visualization payload for blast radius.
+    responses:
+      '200':
+        description: Visualization payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphVisualizationResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: principalId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Principal identifier
+/api/v1/graph/visualize/report:
+  get:
+    tags:
+      - Graph
+    summary: Visualize graph report
+    description: Render aggregate graph visualization report payload.
+    responses:
+      '200':
+        description: Visualization payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphVisualizationResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/visualize/toxic-combination/{id}:
+  get:
+    tags:
+      - Graph
+    summary: Visualize toxic combination
+    description: Render graph visualization payload for a toxic combination.
+    responses:
+      '200':
+        description: Visualization payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphVisualizationResponse'
+      '503':
+        description: Graph unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Toxic combination ID
+/api/v1/graph/actuate/recommendation:
+  post:
+    tags:
+      - Graph
+    summary: Record one recommendation actuation action
+    description: Create an action node for a recommendation and link it to targets and optional decision context.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              id:
+                type: string
+              recommendation_id:
+                type: string
+              insight_type:
+                type: string
+              title:
+                type: string
+              summary:
+                type: string
+              decision_id:
+                type: string
+              target_ids:
+                type: array
+                items:
+                  type: string
+              source_system:
+                type: string
+              source_event_id:
+                type: string
+              observed_at:
+                type: string
+                format: date-time
+              valid_from:
+                type: string
+                format: date-time
+              valid_to:
+                type: string
+                format: date-time
+              confidence:
+                type: number
+              auto_generated:
+                type: boolean
+              metadata:
+                type: object
+                additionalProperties: true
+    responses:
+      '201':
+        description: Recommendation actuation recorded
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid request body
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/write/annotation:
+  post:
+    tags:
+      - Graph
+    summary: Append an annotation to an entity
+    description: Append analyst or agent annotations to one graph entity with provenance and temporal metadata.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - entity_id
+              - annotation
+            properties:
+              entity_id:
+                type: string
+              annotation:
+                type: string
+              tags:
+                type: array
+                items:
+                  type: string
+              source_system:
+                type: string
+              source_event_id:
+                type: string
+              observed_at:
+                type: string
+                format: date-time
+              valid_from:
+                type: string
+                format: date-time
+              valid_to:
+                type: string
+                format: date-time
+              confidence:
+                type: number
+              metadata:
+                type: object
+                additionalProperties: true
+    responses:
+      '201':
+        description: Annotation recorded
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid request body
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Entity not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/write/outcome:
+  post:
+    tags:
+      - Graph
+    summary: Record a decision outcome
+    description: Create an outcome node linked to a decision and optional impacted targets.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - decision_id
+              - outcome_type
+              - verdict
+            properties:
+              id:
+                type: string
+              decision_id:
+                type: string
+              outcome_type:
+                type: string
+              verdict:
+                type: string
+              impact_score:
+                type: number
+              target_ids:
+                type: array
+                items:
+                  type: string
+              source_system:
+                type: string
+              source_event_id:
+                type: string
+              observed_at:
+                type: string
+                format: date-time
+              valid_from:
+                type: string
+                format: date-time
+              valid_to:
+                type: string
+                format: date-time
+              confidence:
+                type: number
+              metadata:
+                type: object
+                additionalProperties: true
+    responses:
+      '201':
+        description: Outcome recorded
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid request body
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Referenced decision was not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/identity/resolve:
+  post:
+    tags:
+      - Graph
+    summary: Resolve one external alias against canonical identities
+    description: Upsert one identity alias assertion, score candidate canonical identities, and auto-link when confidence thresholds are met.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - source_system
+              - external_id
+            properties:
+              alias_id:
+                type: string
+              source_system:
+                type: string
+              source_event_id:
+                type: string
+              external_id:
+                type: string
+              alias_type:
+                type: string
+              canonical_hint:
+                type: string
+              email:
+                type: string
+              name:
+                type: string
+              observed_at:
+                type: string
+                format: date-time
+              confidence:
+                type: number
+              auto_link_threshold:
+                type: number
+              suggest_threshold:
+                type: number
+    responses:
+      '200':
+        description: Identity resolution result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid identity assertion
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/identity/review:
+  post:
+    tags:
+      - Graph
+    summary: Record reviewer verdict for one identity candidate
+    description: Apply accepted/rejected/uncertain reviewer decisions and persist identity review history.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - alias_node_id
+              - canonical_node_id
+              - verdict
+            properties:
+              alias_node_id:
+                type: string
+              canonical_node_id:
+                type: string
+              verdict:
+                type: string
+                enum:
+                  - accepted
+                  - rejected
+                  - uncertain
+              reviewer:
+                type: string
+              reason:
+                type: string
+              source_system:
+                type: string
+              source_event_id:
+                type: string
+              observed_at:
+                type: string
+                format: date-time
+              confidence:
+                type: number
+    responses:
+      '200':
+        description: Identity review result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid review payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/identity/calibration:
+  get:
+    tags:
+      - Graph
+    summary: Report identity resolution calibration and backlog
+    description: Return precision/coverage metrics and optional reviewer queue for identity alias resolution.
+    parameters:
+      - name: include_queue
+        in: query
+        required: false
+        description: Include review queue details in response.
+        schema:
+          type: boolean
+      - name: suggest_threshold
+        in: query
+        required: false
+        description: Candidate score threshold for queue suggestions (0-1).
+        schema:
+          type: number
+          minimum: 0
+          maximum: 1
+      - name: queue_limit
+        in: query
+        required: false
+        description: Max queue entries to include (1-200).
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+    responses:
+      '200':
+        description: Identity calibration report
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid query parameter
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/identity/split:
+  post:
+    tags:
+      - Graph
+    summary: Remove one alias-to-canonical identity link
+    description: Reverse one incorrect alias merge by removing an alias_of edge.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - alias_node_id
+              - canonical_node_id
+            properties:
+              alias_node_id:
+                type: string
+              canonical_node_id:
+                type: string
+              reason:
+                type: string
+              source_system:
+                type: string
+              source_event_id:
+                type: string
+              observed_at:
+                type: string
+                format: date-time
+    responses:
+      '200':
+        description: Identity split result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid split payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/schema:
+  get:
+    tags:
+      - Graph
+    summary: List registered graph schema kinds
+    description: Return built-in and dynamically registered node/edge kinds for runtime graph typing.
+    responses:
+      '200':
+        description: Graph schema registry contents
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/graph/schema/health:
+  get:
+    tags:
+      - Graph
+    summary: Report graph ontology coverage and conformance
+    description: Return schema coverage, validation conformance, runtime validation counters, and schema drift history.
+    parameters:
+      - name: history_limit
+        in: query
+        required: false
+        description: Number of recent schema changes to include (1-200).
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      - name: since_version
+        in: query
+        required: false
+        description: Override schema drift baseline version (must be positive).
+        schema:
+          type: integer
+          minimum: 1
+    responses:
+      '200':
+        description: Ontology health report
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid query parameter
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/schema/register:
+  post:
+    tags:
+      - Graph
+    summary: Register node and edge kinds in the graph schema registry
+    description: Register runtime entity and relationship kinds so new integrations can map into graph nodes/edges without code changes.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              node_kinds:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+              edge_kinds:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+    responses:
+      '200':
+        description: Graph schema registration result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid schema registration payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/evaluate-change:
+  post:
+    tags:
+      - Graph
+    summary: Evaluate a graph change proposal
+    description: Evaluate blast radius and propagation impact for graph mutations without applying them.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Graph change evaluation result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid graph change request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/graph/simulate:
+  post:
+    tags:
+      - Graph
+    summary: Simulate graph mutations
+    description: Simulate graph node and edge mutations and return the resulting risk model without persisting changes.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Graph simulation result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid mutation payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

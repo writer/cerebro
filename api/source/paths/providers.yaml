@@ -1,0 +1,215 @@
+/api/v1/providers:
+  get:
+    tags:
+      - Admin
+    summary: List providers
+    description: List configured providers and sync maturity metadata.
+    parameters:
+      - name: include_incomplete
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Include providers marked as incomplete
+    responses:
+      '200':
+        description: Provider list
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/providers/{name}:
+  get:
+    tags:
+      - Admin
+    summary: Get provider
+    description: Return provider metadata and schema details.
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Provider name
+      - name: include_incomplete
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Include providers marked as incomplete
+    responses:
+      '200':
+        description: Provider details
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Provider not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/providers/{name}/configure:
+  post:
+    tags:
+      - Admin
+    summary: Configure provider
+    description: Persist provider-specific configuration values.
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Provider name
+      - name: include_incomplete
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Include providers marked as incomplete
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Provider configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '400':
+        description: Invalid provider config payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Provider not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to configure provider
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/providers/{name}/schema:
+  get:
+    tags:
+      - Admin
+    summary: Get provider table schema
+    description: Return table schema information for a provider.
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Provider name
+      - name: include_incomplete
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Include providers marked as incomplete
+    responses:
+      '200':
+        description: Provider schema
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Provider not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/providers/{name}/sync:
+  post:
+    tags:
+      - Admin
+    summary: Trigger provider sync
+    description: Run an immediate full sync for a provider.
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Provider name
+      - name: include_incomplete
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Include providers marked as incomplete
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProviderSyncRequest'
+    responses:
+      '200':
+        description: Sync result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Provider not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to sync provider
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/providers/{name}/test:
+  post:
+    tags:
+      - Admin
+    summary: Test provider connectivity
+    description: Run a provider-specific connectivity/authentication test.
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Provider name
+      - name: include_incomplete
+        in: query
+        required: false
+        schema:
+          type: boolean
+        description: Include providers marked as incomplete
+    responses:
+      '200':
+        description: Provider test result
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderTestResponse'
+      '404':
+        description: Provider not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

@@ -1,0 +1,230 @@
+/api/v1/tickets:
+  get:
+    tags:
+      - Tickets
+    summary: List tickets
+    description: List tickets from the configured ticketing provider.
+    parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by ticket status
+      - name: priority
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by ticket priority
+    responses:
+      '200':
+        description: Ticket list
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '500':
+        description: Failed to list tickets
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+  post:
+    tags:
+      - Tickets
+    summary: Create ticket
+    description: Create a ticket in the configured ticketing provider.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketCreateRequest'
+    responses:
+      '201':
+        description: Ticket created
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid ticket request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to create ticket
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Ticketing provider not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/tickets/{id}:
+  get:
+    tags:
+      - Tickets
+    summary: Get ticket
+    description: Retrieve a ticket by ID.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Ticket ID
+    responses:
+      '200':
+        description: Ticket details
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Ticket not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Ticketing provider not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+  put:
+    tags:
+      - Tickets
+    summary: Update ticket
+    description: Update fields on an existing ticket.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Ticket ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Ticket updated
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid ticket update payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to update ticket
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Ticketing provider not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/tickets/{id}/close:
+  post:
+    tags:
+      - Tickets
+    summary: Close ticket
+    description: Close an existing ticket with an optional resolution.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Ticket ID
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketCloseRequest'
+    responses:
+      '200':
+        description: Ticket closed
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '500':
+        description: Failed to close ticket
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Ticketing provider not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/tickets/{id}/comments:
+  post:
+    tags:
+      - Tickets
+    summary: Add ticket comment
+    description: Add a comment to an existing ticket.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Ticket ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TicketCommentRequest'
+    responses:
+      '201':
+        description: Comment added
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '400':
+        description: Invalid comment payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to add comment
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Ticketing provider not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

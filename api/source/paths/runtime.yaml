@@ -1,0 +1,288 @@
+/api/v1/runtime/detections:
+  get:
+    tags:
+      - Runtime
+    summary: List detection rules
+    description: List runtime detection rules.
+    responses:
+      '200':
+        description: Detection rules
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+      '503':
+        description: Runtime detection unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/runtime/events:
+  post:
+    tags:
+      - Runtime
+    summary: Ingest runtime event
+    description: Ingest a runtime event and evaluate detection/response policies.
+    responses:
+      '200':
+        description: Runtime event processed
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeIngestResponse'
+      '400':
+        description: Invalid runtime event
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Runtime detection unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RuntimeEventIngestRequest'
+/api/v1/runtime/findings:
+  get:
+    tags:
+      - Runtime
+    summary: List runtime findings
+    description: List recent runtime findings.
+    responses:
+      '200':
+        description: Runtime findings
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeFindingsResponse'
+    parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 100
+        description: Maximum result size
+/api/v1/runtime/executions:
+  get:
+    tags:
+      - Runtime
+    summary: List runtime executions
+    description: List recent runtime response executions.
+    responses:
+      '200':
+        description: Runtime executions
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeExecutionsResponse'
+      '503':
+        description: Runtime response unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+        description: Maximum result size
+/api/v1/runtime/executions/{id}/approve:
+  post:
+    tags:
+      - Runtime
+    summary: Approve runtime execution
+    description: Approve a runtime response execution that is awaiting approval.
+    responses:
+      '200':
+        description: Execution approved
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '400':
+        description: Invalid approval request
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Runtime response unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Runtime execution ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - approver_id
+            properties:
+              approver_id:
+                type: string
+/api/v1/runtime/executions/{id}/reject:
+  post:
+    tags:
+      - Runtime
+    summary: Reject runtime execution
+    description: Reject a runtime response execution that is awaiting approval.
+    responses:
+      '200':
+        description: Execution rejected
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusResponse'
+      '400':
+        description: Invalid rejection request
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Runtime response unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Runtime execution ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - rejecter_id
+            properties:
+              rejecter_id:
+                type: string
+              reason:
+                type: string
+/api/v1/runtime/responses:
+  get:
+    tags:
+      - Runtime
+    summary: List response policies
+    description: List runtime response policies.
+    responses:
+      '200':
+        description: Response policies
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+      '503':
+        description: Runtime response unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/runtime/responses/{id}/disable:
+  post:
+    tags:
+      - Runtime
+    summary: Disable response policy
+    description: Disable a runtime response policy by ID.
+    responses:
+      '200':
+        description: Policy disabled
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingActionResponse'
+      '400':
+        description: Invalid policy ID
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Runtime response unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Policy ID
+/api/v1/runtime/responses/{id}/enable:
+  post:
+    tags:
+      - Runtime
+    summary: Enable response policy
+    description: Enable a runtime response policy by ID.
+    responses:
+      '200':
+        description: Policy enabled
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingActionResponse'
+      '400':
+        description: Invalid policy ID
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Runtime response unavailable
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Policy ID

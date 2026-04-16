@@ -1,0 +1,288 @@
+/api/v1/policies:
+  get:
+    tags:
+      - Policies
+    summary: List all policies
+    responses:
+      '200':
+        description: List of policies
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PoliciesResponse'
+  post:
+    tags:
+      - Policies
+    summary: Create a new policy
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Policy'
+    responses:
+      '201':
+        description: Policy created
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Policy'
+/api/v1/policies/{id}:
+  get:
+    tags:
+      - Policies
+    summary: Get a specific policy
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Policy details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Policy'
+  delete:
+    tags:
+      - Policies
+    summary: Delete a policy
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '204':
+        description: Policy deleted
+      '404':
+        description: Policy not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+  put:
+    tags:
+      - Policies
+    summary: Update an existing policy
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Policy'
+    responses:
+      '200':
+        description: Policy updated
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Policy'
+      '400':
+        description: Invalid policy payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Policy not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/policies/evaluate:
+  post:
+    tags:
+      - Policies
+    summary: Evaluate a proposed action against policy and propagation controls
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EvaluateRequest'
+    responses:
+      '200':
+        description: Evaluation decision
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateResponse'
+      '400':
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform unavailable for propagation evaluation
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/policy/evaluate:
+  post:
+    tags:
+      - Policies
+    summary: Evaluate a proposed action against policy and propagation controls
+    description: Alias endpoint for synchronous pre-action policy enforcement decisions.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EvaluateRequest'
+    responses:
+      '200':
+        description: Evaluation decision
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateResponse'
+      '400':
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform unavailable for propagation evaluation
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/policies/{id}/dry-run:
+  post:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Policy identifier
+        schema:
+          type: string
+    tags:
+      - Policies
+    summary: Dry-run a policy change
+    description: Evaluate a candidate policy revision against request-supplied or fetched assets without persisting changes.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Dry-run impact result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid dry-run request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Policy not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '500':
+        description: Failed to evaluate dry-run request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/policies/{id}/rollback:
+  post:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Policy identifier
+        schema:
+          type: string
+    tags:
+      - Policies
+    summary: Roll back a policy version
+    description: Restore the current policy definition to a specific historical version.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - version
+            properties:
+              version:
+                type: integer
+                minimum: 1
+    responses:
+      '200':
+        description: Rolled-back policy
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Policy'
+      '400':
+        description: Invalid rollback request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Policy or version not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/policies/{id}/versions:
+  get:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Policy identifier
+        schema:
+          type: string
+    tags:
+      - Policies
+    summary: List policy version history
+    description: Return persisted policy versions for a policy ID in descending version order.
+    responses:
+      '200':
+        description: Policy version history
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                policy_id:
+                  type: string
+                versions:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+                count:
+                  type: integer
+      '404':
+        description: Policy not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

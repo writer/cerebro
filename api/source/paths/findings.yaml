@@ -1,0 +1,472 @@
+/api/v1/findings:
+  get:
+    tags:
+      - Findings
+    summary: List findings
+    parameters:
+      - name: severity
+        in: query
+        schema:
+          type: string
+          enum:
+            - critical
+            - high
+            - medium
+            - low
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+            - open
+            - resolved
+            - suppressed
+      - name: policy_id
+        in: query
+        schema:
+          type: string
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Offset'
+    responses:
+      '200':
+        description: List of findings
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingsResponse'
+/api/v1/findings/stats:
+  get:
+    tags:
+      - Findings
+    summary: Get findings statistics
+    responses:
+      '200':
+        description: Findings statistics
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingsStats'
+/api/v1/signals/dashboard:
+  get:
+    tags:
+      - Findings
+    summary: Get signals dashboard
+    description: Return summary counts, aggregate stats, and recent signal findings for dashboard views.
+    responses:
+      '200':
+        description: Signals dashboard payload
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                summary:
+                  type: object
+                  properties:
+                    total_signals:
+                      type: integer
+                    open_signals:
+                      type: integer
+                    snoozed_signals:
+                      type: integer
+                stats:
+                  type: object
+                  additionalProperties: true
+                recent_signals:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Finding'
+                count:
+                  type: integer
+/api/v1/findings/{id}:
+  get:
+    tags:
+      - Findings
+    summary: Get a specific finding
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Finding details
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Finding'
+  delete:
+    tags:
+      - Findings
+    summary: Soft delete a finding
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Finding deleted
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Finding not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/findings/scan:
+  post:
+    tags:
+      - Findings
+    summary: Trigger a security scan
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              table:
+                type: string
+              tables:
+                type: array
+                items:
+                  type: string
+              limit:
+                type: integer
+                minimum: 1
+    responses:
+      '200':
+        description: Scan results
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanResponse'
+      '400':
+        description: Invalid scan request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Scan unavailable because Snowflake is not configured
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/findings/{id}/resolve:
+  post:
+    tags:
+      - Findings
+    summary: Resolve a finding
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              resolution:
+                type: string
+    responses:
+      '200':
+        description: Finding resolved
+/api/v1/findings/{id}/suppress:
+  post:
+    tags:
+      - Findings
+    summary: Suppress a finding
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              reason:
+                type: string
+              expires_at:
+                type: string
+                format: date-time
+    responses:
+      '200':
+        description: Finding suppressed
+/api/v1/audit:
+  get:
+    tags:
+      - Admin
+    summary: List audit logs
+    description: Query persisted audit entries, optionally filtered by resource.
+    parameters:
+      - name: resource_type
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by resource type
+      - name: resource_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by resource ID
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+        description: Maximum number of log entries to return
+    responses:
+      '200':
+        description: Audit log entries
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '500':
+        description: Failed to fetch audit logs
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/findings/export:
+  get:
+    tags:
+      - Findings
+    summary: Export findings
+    description: Export findings in CSV or JSON format with optional filters.
+    responses:
+      '200':
+        description: Exported findings file
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+          application/json:
+            schema:
+              type: string
+              format: binary
+      '500':
+        description: Export failure
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: severity
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by severity
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by status
+      - name: policy_id
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by policy ID
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          default: csv
+          enum:
+            - csv
+            - json
+        description: Export format
+      - name: pretty
+        in: query
+        required: false
+        schema:
+          type: string
+          default: 'false'
+          enum:
+            - 'true'
+            - 'false'
+        description: Pretty-print JSON output
+/api/v1/findings/{id}/assign:
+  put:
+    tags:
+      - Findings
+    summary: Assign finding
+    description: Assign a finding to an owner.
+    responses:
+      '200':
+        description: Assignment updated
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingActionResponse'
+      '400':
+        description: Invalid request
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Finding not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Finding ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FindingAssignRequest'
+/api/v1/findings/{id}/due:
+  put:
+    tags:
+      - Findings
+    summary: Set finding due date
+    description: Set due date metadata for a finding.
+    responses:
+      '200':
+        description: Due date updated
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingActionResponse'
+      '400':
+        description: Invalid request
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Finding not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Finding ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FindingDueDateRequest'
+/api/v1/findings/{id}/notes:
+  post:
+    tags:
+      - Findings
+    summary: Add finding note
+    description: Append an analyst note to a finding.
+    responses:
+      '200':
+        description: Note added
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingActionResponse'
+      '400':
+        description: Invalid request
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Finding not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Finding ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FindingNoteRequest'
+/api/v1/findings/{id}/tickets:
+  post:
+    tags:
+      - Findings
+    summary: Link ticket
+    description: Attach a ticket reference to a finding.
+    responses:
+      '200':
+        description: Ticket linked
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FindingActionResponse'
+      '400':
+        description: Invalid request
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Finding not found
+        content: &id001
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Finding ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FindingTicketLinkRequest'

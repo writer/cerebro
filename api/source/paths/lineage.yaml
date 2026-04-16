@@ -1,0 +1,130 @@
+/api/v1/lineage/by-commit/{sha}:
+  get:
+    tags:
+      - Graph
+    summary: List lineage by commit
+    description: Return lineage records linked to a commit SHA.
+    parameters:
+      - name: sha
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Commit SHA
+    responses:
+      '200':
+        description: Lineage records
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+      '503':
+        description: Lineage service unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/lineage/by-image/{digest}:
+  get:
+    tags:
+      - Graph
+    summary: List lineage by image digest
+    description: Return lineage records linked to a container image digest.
+    parameters:
+      - name: digest
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Container image digest
+    responses:
+      '200':
+        description: Lineage records
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+      '503':
+        description: Lineage service unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/lineage/drift/{assetId}:
+  post:
+    tags:
+      - Graph
+    summary: Detect lineage drift
+    description: Compare current asset state against IaC state to detect drift.
+    parameters:
+      - name: assetId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Asset ID
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LineageDriftRequest'
+    responses:
+      '200':
+        description: Drift detection result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid drift request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Lineage service unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/lineage/{assetId}:
+  get:
+    tags:
+      - Graph
+    summary: Get lineage for asset
+    description: Return the lineage graph for a specific asset.
+    parameters:
+      - name: assetId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Asset ID
+    responses:
+      '200':
+        description: Asset lineage
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Lineage not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Lineage service unavailable
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'

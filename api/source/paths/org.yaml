@@ -1,0 +1,595 @@
+/api/v1/org/expertise/queries:
+  get:
+    tags:
+      - Org
+    summary: Rank experts for a topic, customer, or system
+    description: Return a ranked list of people who are most likely to have relevant knowledge, with availability-aware routing.
+    parameters:
+      - name: topic
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: customer
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: system
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: available
+        in: query
+        required: false
+        schema:
+          type: boolean
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 25
+    responses:
+      '200':
+        description: Ranked knowledge candidates
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Missing required query parameters
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/policies:
+  post:
+    tags:
+      - Org
+    summary: Create or update an organizational policy registry entry
+    description: Upsert one organizational policy definition, optionally instantiating it from a built-in compliance template and assigning departments or people who must acknowledge it.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Policy registry update result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid organizational policy payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/policies/templates:
+  get:
+    tags:
+      - Org
+    summary: List organizational policy templates
+    description: Return the built-in policy template catalog, optionally filtered to one framework family such as SOC 2 or ISO 27001.
+    parameters:
+      - name: framework
+        in: query
+        required: false
+        description: Optional canonical framework family filter.
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Organizational policy templates
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+/api/v1/org/policies/program-status:
+  get:
+    tags:
+      - Org
+    summary: Summarize policy acknowledgment coverage across the program
+    description: Return aggregate acknowledgment posture across all registered organizational policies, optionally scoped to one framework family.
+    parameters:
+      - name: framework
+        in: query
+        required: false
+        description: Optional canonical framework family filter.
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Program-level organizational policy status
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/policies/review-schedule:
+  get:
+    tags:
+      - Org
+    summary: List organizational policies due for review
+    description: Return review cadence and due-date posture for all organizational policies with a configured review cycle.
+    parameters:
+      - name: as_of
+        in: query
+        required: false
+        description: Optional RFC3339 timestamp used as the review schedule baseline.
+        schema:
+          type: string
+          format: date-time
+    responses:
+      '200':
+        description: Organizational policy review schedule
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid as_of timestamp
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/policies/{id}/acknowledge:
+  post:
+    tags:
+      - Org
+    summary: Record one employee acknowledgment for a policy
+    description: Write one current-version policy acknowledgment edge from a person to an organizational policy.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Policy node ID.
+        schema:
+          type: string
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      '200':
+        description: Organizational policy acknowledgment result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid acknowledgment payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: Policy or person not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/policies/{id}/acknowledgment-status:
+  get:
+    tags:
+      - Org
+    summary: Get acknowledgment coverage for one policy
+    description: Return current-version acknowledgment coverage for one policy, including department rollups and pending people.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Policy node ID.
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Organizational policy acknowledgment status
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Policy not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/policies/{id}/assignees:
+  get:
+    tags:
+      - Org
+    summary: List current assignees for one policy
+    description: Return the current assignee roster for one policy, including direct versus department-based assignment provenance and acknowledgment state.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Policy node ID.
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Organizational policy assignee roster
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Policy not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/policies/{id}/reminders:
+  get:
+    tags:
+      - Org
+    summary: List reminder candidates for one policy
+    description: Return people who still need reminders for the current policy version, including stale acknowledgments from older versions.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Policy node ID.
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Organizational policy reminder candidates
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Policy not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/policies/{id}/versions:
+  get:
+    tags:
+      - Org
+    summary: List tracked policy versions and diffs
+    description: Return version history for one organizational policy, including changed fields between revisions.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Policy node ID.
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Organizational policy version history
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Policy not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/team-recommendations:
+  post:
+    tags:
+      - Org
+    summary: Recommend a graph-informed team for a project
+    description: Rank people by system knowledge, collaboration fit, bridge potential, availability, and bus-factor impact.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TeamRecommendationRequest'
+    responses:
+      '200':
+        description: Team recommendation with candidate ranking, team analysis, and alternatives
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamRecommendationResult'
+      '400':
+        description: Invalid request body
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/reorg-simulations:
+  post:
+    tags:
+      - Org
+    summary: Simulate organizational reorg changes
+    description: Apply proposed reorg changes against a cloned graph and return predicted communication, knowledge, and customer impacts.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReorgSimulationRequest'
+    responses:
+      '200':
+        description: Reorg impact analysis
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Invalid reorg request
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/information-flow:
+  get:
+    tags:
+      - Org
+    summary: Compute shortest information path between two endpoints
+    description: Return the shortest information flow path and estimated latency between the provided endpoints.
+    parameters:
+      - name: from
+        in: query
+        required: true
+        description: Source selector (node ID, name, or team/<name>).
+        schema:
+          type: string
+      - name: to
+        in: query
+        required: true
+        description: Destination selector (node ID, name, or team/<name>).
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Information path result
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '400':
+        description: Missing from/to selectors
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '404':
+        description: No path exists between selectors
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/clock-speed:
+  get:
+    tags:
+      - Org
+    summary: Compute organizational information-flow clock speed
+    description: Return category-level and aggregate hop/latency metrics for organizational information flow.
+    responses:
+      '200':
+        description: Clock speed metrics
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/recommended-connections:
+  get:
+    tags:
+      - Org
+    summary: Recommend missing person connections
+    description: Suggest person-to-person connections that would reduce information flow distance.
+    parameters:
+      - name: limit
+        in: query
+        required: false
+        description: Maximum number of recommendations to return.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 50
+    responses:
+      '200':
+        description: Recommended connections
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/onboarding/{id}/plan:
+  get:
+    tags:
+      - Org
+    summary: Generate a personalized onboarding plan from peer cohort behavior
+    description: Build repository, introduction, system access, channel, project, and customer context recommendations for a person using similar-role peers and predecessor signals.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Person node ID.
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Personalized onboarding plan
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      '404':
+        description: Person or onboarding plan not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/meeting-insights:
+  get:
+    tags:
+      - Org
+    summary: Analyze meeting quality and optimization opportunities
+    description: Return missing participants, unnecessary attendees, redundant meeting pairs, fragile bridges, and aggregate meeting optimization metrics.
+    parameters:
+      - name: team
+        in: query
+        required: false
+        description: Optional team/department filter (for example engineering).
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Meeting optimization insight report
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeetingInsightsReport'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+/api/v1/org/meetings/{id}/analysis:
+  get:
+    tags:
+      - Org
+    summary: Analyze one meeting in detail
+    description: Return detailed missing participant, redundancy, and fragile-bridge context for a single meeting.
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Meeting activity node ID.
+        schema:
+          type: string
+    responses:
+      '200':
+        description: Meeting analysis
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeetingAnalysis'
+      '404':
+        description: Meeting analysis not found
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
+      '503':
+        description: Graph platform is not initialized
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Error'
