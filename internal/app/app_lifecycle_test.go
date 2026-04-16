@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"reflect"
 	"sync/atomic"
 	"testing"
@@ -81,5 +83,135 @@ func TestRunSubsystemCloseSequentially_CollectsErrors(t *testing.T) {
 	}
 	if errs[0] == nil || errs[0].Error() == "" {
 		t.Fatalf("expected non-empty close error, got %v", errs[0])
+	}
+}
+
+func TestBuildSubsystemWaves_OrdersDependencies(t *testing.T) {
+	subsystems := []lifecycleSubsystem{
+		initOnlySubsystem("cache", nil),
+		initOnlySubsystemWithDeps("scheduler", []string{"cache", "health"}, nil),
+		initOnlySubsystem("health", nil),
+		initOnlySubsystemWithDeps("agents", []string{"runtime"}, nil),
+		initOnlySubsystem("runtime", nil),
+	}
+
+	waves, err := buildSubsystemWaves(subsystems)
+	if err != nil {
+		t.Fatalf("buildSubsystemWaves() error = %v", err)
+	}
+
+	got := subsystemWaveNames(waves)
+	want := [][]string{
+		{"cache", "health", "runtime"},
+		{"scheduler", "agents"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildSubsystemWaves() = %v, want %v", got, want)
+	}
+}
+
+func TestBuildSubsystemWaves_RejectsUnknownDependency(t *testing.T) {
+	_, err := buildSubsystemWaves([]lifecycleSubsystem{
+		initOnlySubsystemWithDeps("scheduler", []string{"missing"}, nil),
+	})
+	if err == nil || err.Error() == "" {
+		t.Fatal("expected unknown dependency error")
+	}
+}
+
+func TestBuildSubsystemWaves_RejectsCycle(t *testing.T) {
+	_, err := buildSubsystemWaves([]lifecycleSubsystem{
+		initOnlySubsystemWithDeps("cache", []string{"runtime"}, nil),
+		initOnlySubsystemWithDeps("runtime", []string{"cache"}, nil),
+	})
+	if err == nil || err.Error() == "" {
+		t.Fatal("expected dependency cycle error")
+	}
+}
+
+func TestPhase2aSubsystemWaves(t *testing.T) {
+	a := &App{
+		Config: &Config{},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	}
+
+	waves, err := buildSubsystemWaves(a.phase2aInitSubsystems(), "appstate", "graph")
+	if err != nil {
+		t.Fatalf("buildSubsystemWaves(phase2a) error = %v", err)
+	}
+
+	gotWaveBySubsystem := make(map[string]int)
+	for waveIdx, wave := range subsystemWaveNames(waves) {
+		for _, name := range wave {
+			gotWaveBySubsystem[name] = waveIdx
+		}
+	}
+
+	wantWaveBySubsystem := map[string]int{
+		"cache":              0,
+		"ticketing":          0,
+		"identity":           0,
+		"attackpath":         0,
+		"webhooks":           0,
+		"notifications":      0,
+		"rbac":               0,
+		"compliance":         0,
+		"health":             0,
+		"lineage":            0,
+		"runtime":            0,
+		"findings":           0,
+		"providers":          0,
+		"scan_watermarks":    0,
+		"available_tables":   0,
+		"snowflake_findings": 1,
+		"threatintel":        1,
+		"scheduler":          1,
+	}
+	if !reflect.DeepEqual(gotWaveBySubsystem, wantWaveBySubsystem) {
+		t.Fatalf("phase2a wave plan = %v, want %v", gotWaveBySubsystem, wantWaveBySubsystem)
+	}
+}
+
+func TestInitialize_partial_failure(t *testing.T) {
+	report, err := executeLifecycleStages(context.Background(), nil, lifecycleStage{
+		phase:  "initialize",
+		action: lifecycleActionInit,
+		subsystems: []lifecycleSubsystem{
+			{
+				name: "appstate",
+				init: func(context.Context) error { return nil },
+				close: func(context.Context) error {
+					return nil
+				},
+			},
+			{
+				name:     "runtime",
+				requires: []string{"appstate"},
+				init:     func(context.Context) error { return nil },
+				close: func(context.Context) error {
+					return nil
+				},
+			},
+			{
+				name:     "agents",
+				requires: []string{"runtime"},
+				init: func(context.Context) error {
+					return errors.New("boom")
+				},
+				close: func(context.Context) error {
+					t.Fatal("failed subsystem should not be closed")
+					return nil
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected initialize failure")
+	}
+	if got, want := report.Closed, []string{"runtime", "appstate"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("closed subsystems = %v, want %v", got, want)
+	}
+	if got, want := report.Stages[0].Succeeded, []string{"appstate", "runtime"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("successful subsystems = %v, want %v", got, want)
 	}
 }
