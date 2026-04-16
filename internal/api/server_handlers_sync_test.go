@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -365,6 +367,43 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"relationships_extracted":11`) {
 		t.Fatalf("expected relationships count in response body, got %s", w.Body.String())
+	}
+}
+
+func TestSyncAWS_SanitizesRelationshipExtractionFailureReason(t *testing.T) {
+	s := newTestServer(t)
+	setSnowflakeWarehouseDeps(s.app)
+
+	var logs bytes.Buffer
+	s.app.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+
+	rawReason := "relationship extraction failed: sqlite open /tmp/cerebro-secrets.db: permission denied"
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+		return &awsSyncOutcome{
+			Results:                    []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
+			RelationshipsSkippedReason: rawReason,
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region": "us-east-1",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if body["relationships_skipped_reason"] != "relationship extraction failed" {
+		t.Fatalf("expected sanitized relationship skip reason, got %#v", body["relationships_skipped_reason"])
+	}
+	if strings.Contains(w.Body.String(), "/tmp/cerebro-secrets.db") {
+		t.Fatalf("expected response to omit raw extraction details, got %s", w.Body.String())
+	}
+	if !strings.Contains(logs.String(), rawReason) {
+		t.Fatalf("expected logs to retain raw extraction failure, got %s", logs.String())
 	}
 }
 
@@ -838,8 +877,49 @@ func TestSyncAWSOrg_UsesRequestOptions(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"provider":"aws_org"`) {
 		t.Fatalf("expected provider in response body, got %s", w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), `"account_errors":["account 999999999999: access denied"]`) {
+	if !strings.Contains(w.Body.String(), `"account_errors":["account 999999999999: sync failed"]`) {
 		t.Fatalf("expected account errors in response body, got %s", w.Body.String())
+	}
+}
+
+func TestSyncAWSOrg_SanitizesAccountErrorsInResponse(t *testing.T) {
+	s := newTestServer(t)
+	setSnowflakeWarehouseDeps(s.app)
+
+	var logs bytes.Buffer
+	s.app.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	originalRun := runAWSOrgSyncWithOptions
+	t.Cleanup(func() { runAWSOrgSyncWithOptions = originalRun })
+
+	rawError := "account 999999999999: AccessDenied: failed to assume role arn:aws:iam::999999999999:role/OrganizationAccountAccessRole"
+	runAWSOrgSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+		return &awsOrgSyncOutcome{
+			Results:       []nativesync.SyncResult{{Table: "aws_iam_users", Synced: 4}},
+			AccountErrors: []string{rawError},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws-org", map[string]interface{}{
+		"org_role": "OrganizationAccountAccessRole",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	accountErrors, ok := body["account_errors"].([]interface{})
+	if !ok || len(accountErrors) != 1 {
+		t.Fatalf("expected single sanitized account error, got %#v", body["account_errors"])
+	}
+	if accountErrors[0] != "account 999999999999: sync failed" {
+		t.Fatalf("expected sanitized account error, got %#v", accountErrors[0])
+	}
+	if strings.Contains(w.Body.String(), "OrganizationAccountAccessRole") {
+		t.Fatalf("expected response to omit raw account error details, got %s", w.Body.String())
+	}
+	if !strings.Contains(logs.String(), rawError) {
+		t.Fatalf("expected logs to retain raw account error, got %s", logs.String())
 	}
 }
 
@@ -927,6 +1007,43 @@ func TestSyncGCP_UsesRequestOptions(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"relationships_extracted":8`) {
 		t.Fatalf("expected relationships count in response body, got %s", w.Body.String())
+	}
+}
+
+func TestSyncGCP_SanitizesRelationshipExtractionFailureReason(t *testing.T) {
+	s := newTestServer(t)
+	setSnowflakeWarehouseDeps(s.app)
+
+	var logs bytes.Buffer
+	s.app.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	originalRun := runGCPSyncWithOptions
+	t.Cleanup(func() { runGCPSyncWithOptions = originalRun })
+
+	rawReason := "relationship extraction failed: googleapi: could not read gs://internal-artifacts/private"
+	runGCPSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+		return &gcpSyncOutcome{
+			Results:                    []nativesync.SyncResult{{Table: "gcp_compute_instances", Synced: 6}},
+			RelationshipsSkippedReason: rawReason,
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp", map[string]interface{}{
+		"project": "proj-123",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	if body["relationships_skipped_reason"] != "relationship extraction failed" {
+		t.Fatalf("expected sanitized relationship skip reason, got %#v", body["relationships_skipped_reason"])
+	}
+	if strings.Contains(w.Body.String(), "gs://internal-artifacts/private") {
+		t.Fatalf("expected response to omit raw extraction details, got %s", w.Body.String())
+	}
+	if !strings.Contains(logs.String(), rawReason) {
+		t.Fatalf("expected logs to retain raw extraction failure, got %s", logs.String())
 	}
 }
 

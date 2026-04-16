@@ -333,7 +333,7 @@ func (s *Server) syncAWS(w http.ResponseWriter, r *http.Request) {
 		"relationships_extracted": result.RelationshipsExtracted,
 	}
 	if result.RelationshipsSkippedReason != "" {
-		resp["relationships_skipped_reason"] = result.RelationshipsSkippedReason
+		resp["relationships_skipped_reason"] = s.sanitizeSyncRelationshipsSkippedReason("aws", result.RelationshipsSkippedReason)
 	}
 	if graphUpdate := result.GraphUpdate; graphUpdate != nil {
 		resp["graph_update"] = graphUpdate
@@ -508,7 +508,7 @@ func (s *Server) syncAWSOrg(w http.ResponseWriter, r *http.Request) {
 		"results":  result.Results,
 	}
 	if len(result.AccountErrors) > 0 {
-		resp["account_errors"] = result.AccountErrors
+		resp["account_errors"] = s.sanitizeSyncAccountErrors("aws_org", result.AccountErrors)
 	}
 	if graphUpdate := result.GraphUpdate; graphUpdate != nil {
 		resp["graph_update"] = graphUpdate
@@ -737,13 +737,62 @@ func (s *Server) syncGCP(w http.ResponseWriter, r *http.Request) {
 		"relationships_extracted": result.RelationshipsExtracted,
 	}
 	if result.RelationshipsSkippedReason != "" {
-		resp["relationships_skipped_reason"] = result.RelationshipsSkippedReason
+		resp["relationships_skipped_reason"] = s.sanitizeSyncRelationshipsSkippedReason("gcp", result.RelationshipsSkippedReason)
 	}
 	if graphUpdate := result.GraphUpdate; graphUpdate != nil {
 		resp["graph_update"] = graphUpdate
 	}
 
 	s.json(w, http.StatusOK, resp)
+}
+
+func (s *Server) sanitizeSyncRelationshipsSkippedReason(provider, reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return ""
+	}
+	if !strings.HasPrefix(strings.ToLower(reason), "relationship extraction failed:") {
+		return reason
+	}
+	if s != nil && s.app != nil && s.app.Logger != nil {
+		s.app.Logger.Warn("post-sync relationship extraction failed", "provider", provider, "details", reason)
+	}
+	return "relationship extraction failed"
+}
+
+func (s *Server) sanitizeSyncAccountErrors(provider string, accountErrors []string) []string {
+	if len(accountErrors) == 0 {
+		return nil
+	}
+	raw := make([]string, 0, len(accountErrors))
+	sanitized := make([]string, 0, len(accountErrors))
+	for _, accountError := range accountErrors {
+		accountError = strings.TrimSpace(accountError)
+		if accountError == "" {
+			continue
+		}
+		raw = append(raw, accountError)
+		sanitized = append(sanitized, sanitizeSyncAccountError(accountError))
+	}
+	if len(raw) > 0 && s != nil && s.app != nil && s.app.Logger != nil {
+		s.app.Logger.Warn("organization sync completed with account errors", "provider", provider, "details", raw)
+	}
+	return sanitized
+}
+
+func sanitizeSyncAccountError(accountError string) string {
+	accountError = strings.TrimSpace(accountError)
+	if accountError == "" {
+		return "account sync failed"
+	}
+	prefix, _, found := strings.Cut(accountError, ":")
+	if found {
+		prefix = strings.TrimSpace(prefix)
+		if strings.HasPrefix(prefix, "account ") {
+			return prefix + ": sync failed"
+		}
+	}
+	return "account sync failed"
 }
 
 func appendGCPPermissionUsageRequestOptions(options []nativesync.GCPEngineOption, lookbackDays int, removalThresholdDays int, targetGroups []string) []nativesync.GCPEngineOption {
