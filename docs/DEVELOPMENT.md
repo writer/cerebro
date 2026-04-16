@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - Docker & Docker Compose (optional)
 - Snowflake account (for full functionality)
 - Make
@@ -730,7 +730,7 @@ jobs:
         run: make build
       
       - name: Build Docker image
-        run: docker build --build-arg GO_VERSION="$(./scripts/go_version.sh)" -t cerebro:${{ github.sha }} .
+        run: GO_VERSION="$(./scripts/go_version.sh)" && VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)" && COMMIT="$(git rev-parse --short HEAD)" && DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" && docker build --build-arg GO_VERSION="${GO_VERSION}" --build-arg VERSION="${VERSION}" --build-arg COMMIT="${COMMIT}" --build-arg DATE="${DATE}" -t cerebro:${{ github.sha }} .
 ```
 
 ---

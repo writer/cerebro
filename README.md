@@ -6,7 +6,7 @@ Cerebro is a unified operations platform that combines data ingestion from cloud
 
 > **Origin:** This is Writer's original Cerebro repository. Cerebro began as a security-focused cloud posture management tool and now handles broader operational signals too — from cloud misconfigurations to stale deals, SLA breaches, payment failures, and business entity drift.
 
-[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ---
@@ -79,7 +79,7 @@ Cerebro is a unified operations platform that combines data ingestion from cloud
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - Snowflake account (or use local SQLite mode)
 
 ### Installation
@@ -365,7 +365,7 @@ See [Configuration](docs/CONFIGURATION.md) for all options.
 
 | Component | Technology |
 |-----------|------------|
-| Language | Go 1.25+ |
+| Language | Go 1.26+ |
 | API Framework | Chi |
 | Database | Snowflake / SQLite (local) |
 | Graph Store | Neptune |

@@ -254,17 +254,45 @@ func TestGoVersionScriptMatchesGoMod(t *testing.T) {
 	}
 	text := string(content)
 
-	if !strings.Contains(text, "toolchain go") {
-		t.Fatalf("expected go_version.sh to parse toolchain directive")
-	}
 	if !strings.Contains(text, "version=\"$(awk '/^go [0-9]/{print $2; exit}'") {
-		t.Fatalf("expected go_version.sh to fall back to go directive")
+		t.Fatalf("expected go_version.sh to parse the go directive")
 	}
 	if !strings.Contains(text, "printf '%s\\n' \"${version}\"") {
 		t.Fatalf("expected go_version.sh to print parsed version")
 	}
 	if expected == "" {
 		t.Fatalf("expected non-empty go.mod version")
+	}
+
+	cmd := exec.Command("bash", scriptPath)
+	cmd.Dir = root
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("run go_version.sh: %v", err)
+	}
+	if got := strings.TrimSpace(string(output)); got != expected {
+		t.Fatalf("go_version.sh = %q, want %q", got, expected)
+	}
+}
+
+func TestREADMEGoVersionMatchesGoMod(t *testing.T) {
+	root := repoRoot(t)
+	expectedMinor := expectedGoMinorVersionFromGoMod(t, root)
+
+	readmePath := filepath.Join(root, "README.md")
+	content, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read README.md: %v", err)
+	}
+	text := string(content)
+
+	for _, needle := range []string{
+		"Go-" + expectedMinor + "+-",
+		"Go " + expectedMinor + "+",
+	} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("expected README.md to contain %q", needle)
+		}
 	}
 }
 
@@ -282,6 +310,17 @@ func TestDockerfileUsesGoVersionBuildArg(t *testing.T) {
 	}
 	if !strings.Contains(text, "golang:${GO_VERSION}-alpine") {
 		t.Fatalf("expected Dockerfile builder image to use GO_VERSION build arg")
+	}
+	for _, needle := range []string{
+		"ARG VERSION=dev",
+		"ARG COMMIT=unknown",
+		"ARG DATE=unknown",
+		"go build -buildvcs=false -trimpath",
+		"-ldflags=\"-s -w -X github.com/writer/cerebro/internal/cli.Version=${VERSION}",
+	} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("expected Dockerfile to contain %q", needle)
+		}
 	}
 }
 
@@ -304,7 +343,7 @@ func TestWorkflowsUseGoVersionFileFromGoMod(t *testing.T) {
 		if !strings.Contains(text, "go-version-file: go.mod") {
 			t.Fatalf("expected workflow %s to use go-version-file: go.mod", rel)
 		}
-		if strings.Contains(text, "go-version: '1.26.1'") {
+		if strings.Contains(text, "go-version: '") || strings.Contains(text, "go-version: \"") {
 			t.Fatalf("expected workflow %s to avoid hardcoded Go version", rel)
 		}
 	}
@@ -346,10 +385,19 @@ func TestDockerBuildCommandsPassGoVersionBuildArg(t *testing.T) {
 	if !strings.Contains(makefileText, "GO_VERSION ?= $(shell ./scripts/go_version.sh)") {
 		t.Fatalf("expected Makefile to derive GO_VERSION from scripts/go_version.sh")
 	}
-	if !strings.Contains(makefileText, "docker build --build-arg GO_VERSION=$(GO_VERSION) -t cerebro:latest .") {
+	if !strings.Contains(makefileText, "build-release:") {
+		t.Fatalf("expected Makefile to define build-release")
+	}
+	if !strings.Contains(makefileText, "go build -buildvcs=false -trimpath $(RELEASE_LDFLAGS) -o bin/cerebro ./cmd/cerebro") {
+		t.Fatalf("expected Makefile build-release target to use trimpath and release ldflags")
+	}
+	if !strings.Contains(makefileText, "build-size-report: build") {
+		t.Fatalf("expected Makefile to define build-size-report")
+	}
+	if !strings.Contains(makefileText, "docker build --build-arg GO_VERSION=$(GO_VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) -t cerebro:latest .") {
 		t.Fatalf("expected Makefile docker-build target to pass GO_VERSION build arg")
 	}
-	if !strings.Contains(makefileText, "docker build --build-arg GO_VERSION=$(GO_VERSION) -f Dockerfile -t $(SECURITY_SCAN_IMAGE) .") {
+	if !strings.Contains(makefileText, "docker build --build-arg GO_VERSION=$(GO_VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) -f Dockerfile -t $(SECURITY_SCAN_IMAGE) .") {
 		t.Fatalf("expected Makefile security scan image build to pass GO_VERSION build arg")
 	}
 	for _, target := range []string{"gosec:", "govulncheck:", "graph-ontology-guardrails:", "devex-codegen:", "devex-codegen-check:", "devex-changed:", "devex-pr:"} {
@@ -382,7 +430,10 @@ func TestDockerBuildCommandsPassGoVersionBuildArg(t *testing.T) {
 	if !strings.Contains(ciText, "GO_VERSION=\"$(./scripts/go_version.sh)\"") {
 		t.Fatalf("expected CI workflow to derive GO_VERSION from go.mod via script")
 	}
-	if !strings.Contains(ciText, "docker build --build-arg GO_VERSION=\"${GO_VERSION}\" -f Dockerfile -t cerebro:ci .") {
+	if !strings.Contains(ciText, "Ensure README Go version matches go.mod") {
+		t.Fatalf("expected CI workflow to check README Go version drift")
+	}
+	if !strings.Contains(ciText, "docker build --build-arg GO_VERSION=\"${GO_VERSION}\" --build-arg VERSION=\"${VERSION}\" --build-arg COMMIT=\"${COMMIT}\" --build-arg DATE=\"${DATE}\" -f Dockerfile -t cerebro:ci .") {
 		t.Fatalf("expected CI workflow Docker build to pass GO_VERSION build arg")
 	}
 }
@@ -702,20 +753,24 @@ func expectedGoVersionFromGoMod(t *testing.T, root string) string {
 		t.Fatalf("read go.mod: %v", err)
 	}
 
-	fallback := ""
 	for _, raw := range strings.Split(string(content), "\n") {
 		line := strings.TrimSpace(raw)
-		if strings.HasPrefix(line, "toolchain go") {
-			return strings.TrimPrefix(line, "toolchain go")
-		}
 		if strings.HasPrefix(line, "go ") {
-			fallback = strings.TrimSpace(strings.TrimPrefix(line, "go "))
+			return strings.TrimSpace(strings.TrimPrefix(line, "go "))
 		}
 	}
-	if fallback == "" {
-		t.Fatal("go.mod missing both toolchain and go directives")
+	t.Fatal("go.mod missing go directive")
+	return ""
+}
+
+func expectedGoMinorVersionFromGoMod(t *testing.T, root string) string {
+	t.Helper()
+
+	parts := strings.Split(expectedGoVersionFromGoMod(t, root), ".")
+	if len(parts) < 2 {
+		t.Fatalf("expected go version to include major and minor components, got %q", expectedGoVersionFromGoMod(t, root))
 	}
-	return fallback
+	return strings.Join(parts[:2], ".")
 }
 
 func repoRoot(t *testing.T) string {

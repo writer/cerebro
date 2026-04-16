@@ -6,6 +6,9 @@ FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG DATE=unknown
 
 WORKDIR /app
 
@@ -23,7 +26,9 @@ COPY internal ./internal
 RUN --mount=type=cache,id=cerebro-go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=cerebro-go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -buildvcs=false -trimpath -ldflags="-s -w" -o /cerebro ./cmd/cerebro
+    go build -buildvcs=false -trimpath \
+    -ldflags="-s -w -X github.com/writer/cerebro/internal/cli.Version=${VERSION} -X github.com/writer/cerebro/internal/cli.Commit=${COMMIT} -X github.com/writer/cerebro/internal/cli.BuildDate=${DATE}" \
+    -o /cerebro ./cmd/cerebro
 
 # Runtime image
 FROM alpine:3.23

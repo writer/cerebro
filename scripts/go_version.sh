@@ -9,10 +9,7 @@ if [ ! -f "${go_mod}" ]; then
   exit 1
 fi
 
-version="$(awk '/^toolchain go[0-9]/{sub(/^toolchain go/, "", $0); print $1; exit}' "${go_mod}")"
-if [ -z "${version}" ]; then
-  version="$(awk '/^go [0-9]/{print $2; exit}' "${go_mod}")"
-fi
+version="$(awk '/^go [0-9]/{print $2; exit}' "${go_mod}")"
 
 if [ -z "${version}" ]; then
   echo "unable to determine Go version from ${go_mod}" >&2

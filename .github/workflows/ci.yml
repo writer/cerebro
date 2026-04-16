@@ -205,6 +205,21 @@ jobs:
           print("Package-level coverage thresholds passed.")
           PY
 
+  go-version-docs:
+    name: go-version-docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Ensure README Go version matches go.mod
+        shell: bash
+        run: |
+          set -euo pipefail
+          GO_VERSION="$(awk '/^go [0-9]/{print $2; exit}' go.mod)"
+          GO_MINOR="$(printf '%s' "${GO_VERSION}" | cut -d. -f1,2)"
+          grep -q "Go-${GO_MINOR}+-" README.md
+          grep -q "Go ${GO_MINOR}+" README.md
+
   vendor-check:
     name: vendor-check
     runs-on: ubuntu-latest
@@ -679,7 +694,10 @@ jobs:
         run: |
           set -euo pipefail
           GO_VERSION="$(./scripts/go_version.sh)"
-          docker build --build-arg GO_VERSION="${GO_VERSION}" -f Dockerfile -t cerebro:ci .
+          VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
+          COMMIT="$(git rev-parse --short HEAD)"
+          DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          docker build --build-arg GO_VERSION="${GO_VERSION}" --build-arg VERSION="${VERSION}" --build-arg COMMIT="${COMMIT}" --build-arg DATE="${DATE}" -f Dockerfile -t cerebro:ci .
 
       - name: Run Trivy image scan
         run: |

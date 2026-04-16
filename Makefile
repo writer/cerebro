@@ -1,12 +1,14 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync api-contract-docs api-contract-docs-check api-contract-compat config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check connector-docs connector-docs-check graph-ontology-guardrails gosec govulncheck devex-codegen devex-codegen-check devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks pre-commit verify
+.PHONY: build build-release build-size-report run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync api-contract-docs api-contract-docs-check api-contract-compat config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check connector-docs connector-docs-check graph-ontology-guardrails gosec govulncheck devex-codegen devex-codegen-check devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks pre-commit verify
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE    ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS := -ldflags "-X github.com/writer/cerebro/internal/cli.Version=$(VERSION) \
-                     -X github.com/writer/cerebro/internal/cli.Commit=$(COMMIT) \
-                     -X github.com/writer/cerebro/internal/cli.BuildDate=$(DATE)"
+VERSION_LDFLAGS := -X github.com/writer/cerebro/internal/cli.Version=$(VERSION) \
+                   -X github.com/writer/cerebro/internal/cli.Commit=$(COMMIT) \
+                   -X github.com/writer/cerebro/internal/cli.BuildDate=$(DATE)
+LDFLAGS := -ldflags "$(VERSION_LDFLAGS)"
+RELEASE_LDFLAGS := -ldflags "-s -w $(VERSION_LDFLAGS)"
 
 TRIVY_IMAGE ?= aquasec/trivy:0.34.0
 TRIVY_CACHE_DIR ?= $(HOME)/.cache/trivy
@@ -19,6 +21,13 @@ export GOFLAGS
 # Build the cerebro binary
 build:
 	go build $(LDFLAGS) -o bin/cerebro ./cmd/cerebro
+
+build-release:
+	CGO_ENABLED=0 go build -buildvcs=false -trimpath $(RELEASE_LDFLAGS) -o bin/cerebro ./cmd/cerebro
+
+build-size-report: build
+	ls -lh bin/cerebro
+	go tool nm -size bin/cerebro 2>/dev/null | head -20
 
 # Run the API server
 serve: build
@@ -85,7 +94,7 @@ dev:
 
 # Docker build
 docker-build:
-	docker build --build-arg GO_VERSION=$(GO_VERSION) -t cerebro:latest .
+	docker build --build-arg GO_VERSION=$(GO_VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) -t cerebro:latest .
 
 # Download/update Trivy vulnerability database cache
 trivy-db:
@@ -99,7 +108,7 @@ trivy-db:
 security-scan: security-scan-built
 
 security-scan-built: trivy-db
-	docker build --build-arg GO_VERSION=$(GO_VERSION) -f Dockerfile -t $(SECURITY_SCAN_IMAGE) .
+	docker build --build-arg GO_VERSION=$(GO_VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) -f Dockerfile -t $(SECURITY_SCAN_IMAGE) .
 	docker run --rm \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v "$(TRIVY_CACHE_DIR):/root/.cache" \
