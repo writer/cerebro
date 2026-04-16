@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/apiauth"
+	appsecrets "github.com/writer/cerebro/internal/app/secrets"
 	"github.com/writer/cerebro/internal/snowflake"
 )
 
@@ -24,117 +24,77 @@ func (envSecretsLoader) LoadConfig() *Config {
 var loadConfigForSecretsReload = LoadConfig
 
 func cloneStringMap(values map[string]string) map[string]string {
-	cloned := make(map[string]string, len(values))
-	for key, value := range values {
-		cloned[key] = value
-	}
-	return cloned
+	return appsecrets.CloneStringMap(values)
 }
 
 func credentialsFromAPIKeys(keys map[string]string) map[string]apiauth.Credential {
-	credentials := make(map[string]apiauth.Credential, len(keys))
-	for key, userID := range keys {
-		credentials[key] = apiauth.DefaultCredentialForAPIKey(key, userID)
+	return appsecrets.CredentialsFromAPIKeys(keys)
+}
+
+func (a *App) secretsRuntime() *appsecrets.Runtime {
+	if a == nil {
+		return nil
 	}
-	return credentials
+	if a.Secrets == nil {
+		a.Secrets = appsecrets.NewRuntime()
+	}
+	return a.Secrets
 }
 
 func (a *App) setAPICredentials(credentials map[string]apiauth.Credential) {
-	cloned := apiauth.CloneCredentials(credentials)
-	derivedKeys := apiauth.CredentialsToUserMap(cloned)
-	a.apiCredentials.Store(cloned)
-	a.apiKeys.Store(cloneStringMap(derivedKeys))
+	if a == nil {
+		return
+	}
+	runtime := a.secretsRuntime()
+	cloned, derivedKeys := runtime.SetAPICredentials(credentials)
 	if a.Config != nil {
 		a.Config.APICredentials = cloned
-		a.Config.APIKeys = cloneStringMap(derivedKeys)
+		a.Config.APIKeys = derivedKeys
 	}
 }
 
 func (a *App) setAPIKeys(keys map[string]string) {
+	if a == nil {
+		return
+	}
 	a.setAPICredentials(credentialsFromAPIKeys(keys))
 }
 
 // APIKeysSnapshot returns the current API key map used by auth middleware.
 func (a *App) APIKeysSnapshot() map[string]string {
-	if a == nil {
-		return map[string]string{}
+	var fallback map[string]string
+	if a != nil && a.Config != nil {
+		fallback = a.Config.APIKeys
 	}
-	current := a.apiKeys.Load()
-	if current == nil {
-		if a.Config != nil {
-			return cloneStringMap(a.Config.APIKeys)
-		}
-		return map[string]string{}
+	runtime := a.secretsRuntime()
+	if runtime == nil {
+		return cloneStringMap(fallback)
 	}
-	keys, ok := current.(map[string]string)
-	if !ok {
-		return map[string]string{}
-	}
-	return cloneStringMap(keys)
+	return runtime.APIKeysSnapshot(fallback)
 }
 
 // APICredentialsSnapshot returns the current structured API credential map.
 func (a *App) APICredentialsSnapshot() map[string]apiauth.Credential {
-	if a == nil {
-		return map[string]apiauth.Credential{}
+	var fallback map[string]apiauth.Credential
+	if a != nil && a.Config != nil {
+		fallback = a.Config.APICredentials
 	}
-	current := a.apiCredentials.Load()
-	if current == nil {
-		if a.Config != nil {
-			return apiauth.CloneCredentials(a.Config.APICredentials)
-		}
-		return map[string]apiauth.Credential{}
+	runtime := a.secretsRuntime()
+	if runtime == nil {
+		return apiauth.CloneCredentials(fallback)
 	}
-	credentials, ok := current.(map[string]apiauth.Credential)
-	if !ok {
-		return map[string]apiauth.Credential{}
-	}
-	return apiauth.CloneCredentials(credentials)
+	return runtime.APICredentialsSnapshot(fallback)
 }
 
 func (a *App) startSecretsReloader(parent context.Context) {
 	if a == nil || a.Config == nil || a.Config.SecretsReloadInterval <= 0 {
 		return
 	}
-	if parent == nil {
-		parent = context.Background()
-	}
-
-	ctx, cancel := context.WithCancel(parent)
-	a.secretsReloadCancel = cancel
-	a.secretsReloadWG.Add(1)
-
-	interval := a.Config.SecretsReloadInterval
-	go func() {
-		defer a.secretsReloadWG.Done()
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if err := a.ReloadSecrets(ctx); err != nil && a.Logger != nil {
-					a.Logger.Warn("periodic secret reload failed", "error", err)
-				}
-			}
-		}
-	}()
-
-	if a.Logger != nil {
-		a.Logger.Info("secrets reload scheduler enabled", "interval", interval)
-	}
+	a.secretsRuntime().StartReloader(parent, a.Config.SecretsReloadInterval, a.Logger, a.ReloadSecrets)
 }
 
 func (a *App) stopSecretsReloader() {
-	if a == nil {
-		return
-	}
-	if a.secretsReloadCancel != nil {
-		a.secretsReloadCancel()
-	}
-	a.secretsReloadWG.Wait()
+	a.secretsRuntime().StopReloader()
 }
 
 // ReloadSecrets reloads runtime credentials from the current configuration source.
@@ -273,8 +233,8 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 		}
 
 		if a.Agents != nil {
-			if a.appStateDB != nil {
-				a.Agents.SetSessionStore(agents.NewPostgresSessionStore(a.appStateDB))
+			if db := a.appStateDB(); db != nil {
+				a.Agents.SetSessionStore(agents.NewPostgresSessionStore(db))
 			} else {
 				store, err := agents.NewSnowflakeSessionStore(newClient)
 				if err != nil {

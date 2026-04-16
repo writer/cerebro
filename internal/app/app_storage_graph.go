@@ -18,11 +18,11 @@ func (a *App) initRepositories() {
 	a.RiskEngineStateRepo = nil
 	a.RetentionRepo = nil
 
-	if a.appStateDB != nil {
-		a.AuditRepo = appstate.NewAuditRepository(a.appStateDB)
-		a.PolicyHistoryRepo = appstate.NewPolicyHistoryRepository(a.appStateDB)
-		a.RiskEngineStateRepo = appstate.NewRiskEngineStateRepository(a.appStateDB)
-		a.RetentionRepo = appstate.NewRetentionRepository(a.appStateDB)
+	if db := a.appStateDB(); db != nil {
+		a.AuditRepo = appstate.NewAuditRepository(db)
+		a.PolicyHistoryRepo = appstate.NewPolicyHistoryRepository(db)
+		a.RiskEngineStateRepo = appstate.NewRiskEngineStateRepository(db)
+		a.RetentionRepo = appstate.NewRetentionRepository(db)
 		return
 	}
 	if a.Snowflake == nil {
@@ -324,8 +324,8 @@ func (a *App) Close() error {
 			errs = append(errs, fmt.Errorf("findings store: %w", err))
 		}
 	}
-	if a.appStateDB != nil {
-		if err := a.appStateDB.Close(); err != nil {
+	if runtime := a.appStateRuntime(); runtime != nil && runtime.DB() != nil {
+		if err := runtime.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("app-state database: %w", err))
 		}
 	}

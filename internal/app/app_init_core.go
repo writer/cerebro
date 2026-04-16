@@ -221,8 +221,8 @@ func (a *App) initPolicy() error {
 }
 
 func (a *App) initFindings() {
-	if a.appStateDB != nil {
-		store := findings.NewPostgresStore(a.appStateDB)
+	if db := a.appStateDB(); db != nil {
+		store := findings.NewPostgresStore(db)
 		store.SetSemanticDedup(a.Config.FindingsSemanticDedupEnabled)
 		if err := store.Load(context.Background()); err != nil {
 			a.Logger.Warn("failed to load postgres findings store", "error", err)

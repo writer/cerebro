@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
-
 	"github.com/writer/cerebro/internal/agents"
-	"github.com/writer/cerebro/internal/appstate"
+	appsubstate "github.com/writer/cerebro/internal/app/appstate"
+	staterepo "github.com/writer/cerebro/internal/appstate"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/snowflake"
 )
@@ -30,52 +29,59 @@ func (a *App) appStateDatabaseURL() string {
 	if a == nil || a.Config == nil {
 		return ""
 	}
-	if dsn := strings.TrimSpace(a.Config.JobDatabaseURL); dsn != "" {
-		return dsn
+	return appsubstate.DatabaseURL(a.Config.JobDatabaseURL, a.Config.WarehouseBackend, a.Config.WarehousePostgresDSN)
+}
+
+func (a *App) appStateRuntime() *appsubstate.Runtime {
+	if a == nil {
+		return nil
 	}
-	if strings.EqualFold(strings.TrimSpace(a.Config.WarehouseBackend), "postgres") {
-		return strings.TrimSpace(a.Config.WarehousePostgresDSN)
+	if a.AppState == nil {
+		a.AppState = appsubstate.NewRuntime()
 	}
-	return ""
+	return a.AppState
+}
+
+func (a *App) appStateDB() *sql.DB {
+	if a == nil || a.AppState == nil {
+		return nil
+	}
+	return a.AppState.DB()
+}
+
+func (a *App) setAppStateDB(db *sql.DB) {
+	if a == nil {
+		return
+	}
+	a.appStateRuntime().SetDB(db)
 }
 
 func (a *App) initAppStateDB(ctx context.Context) error {
 	dsn := a.appStateDatabaseURL()
+	runtime := a.appStateRuntime()
+	if runtime == nil {
+		return fmt.Errorf("appstate runtime is nil")
+	}
 	if dsn == "" {
 		return nil
 	}
-
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return fmt.Errorf("open app-state database: %w", err)
-	}
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(4)
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		return fmt.Errorf("ping app-state database: %w", err)
-	}
-
-	ensure := []func(context.Context) error{
-		findings.NewPostgresStore(db).EnsureSchema,
-		agents.NewPostgresSessionStore(db).EnsureSchema,
-		appstate.NewAuditRepository(db).EnsureSchema,
-		appstate.NewPolicyHistoryRepository(db).EnsureSchema,
-		appstate.NewRiskEngineStateRepository(db).EnsureSchema,
-	}
-	for _, ensureFn := range ensure {
-		if err := ensureFn(ctx); err != nil {
-			_ = db.Close()
-			return err
-		}
-	}
-
-	a.appStateDB = db
-	return nil
+	return runtime.Init(ctx, dsn,
+		func(ctx context.Context, db *sql.DB) error { return findings.NewPostgresStore(db).EnsureSchema(ctx) },
+		func(ctx context.Context, db *sql.DB) error {
+			return agents.NewPostgresSessionStore(db).EnsureSchema(ctx)
+		},
+		func(ctx context.Context, db *sql.DB) error { return staterepo.NewAuditRepository(db).EnsureSchema(ctx) },
+		func(ctx context.Context, db *sql.DB) error {
+			return staterepo.NewPolicyHistoryRepository(db).EnsureSchema(ctx)
+		},
+		func(ctx context.Context, db *sql.DB) error {
+			return staterepo.NewRiskEngineStateRepository(db).EnsureSchema(ctx)
+		},
+	)
 }
 
 func (a *App) migrateAppState(ctx context.Context) error {
-	if a == nil || a.appStateDB == nil || a.appStateMigrationSnowflake() == nil {
+	if a == nil || a.appStateDB() == nil || a.appStateMigrationSnowflake() == nil {
 		return nil
 	}
 	if err := a.migrateFindings(ctx); err != nil {
@@ -114,7 +120,7 @@ func (a *App) migrateFindings(ctx context.Context) error {
 
 func (a *App) migrateAgentSessions(ctx context.Context) error {
 	sourceClient := a.appStateMigrationSnowflake()
-	if a.appStateDB == nil || sourceClient == nil {
+	if a.appStateDB() == nil || sourceClient == nil {
 		return nil
 	}
 	source, err := agents.NewSnowflakeSessionStore(sourceClient)
@@ -125,7 +131,7 @@ func (a *App) migrateAgentSessions(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("list snowflake agent sessions: %w", err)
 	}
-	destination := agents.NewPostgresSessionStore(a.appStateDB)
+	destination := agents.NewPostgresSessionStore(a.appStateDB())
 	if err := destination.ImportMissing(ctx, sessions); err != nil {
 		return fmt.Errorf("persist postgres agent sessions: %w", err)
 	}

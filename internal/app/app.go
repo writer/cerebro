@@ -36,16 +36,16 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/apiauth"
+	appsubstate "github.com/writer/cerebro/internal/app/appstate"
+	appsecrets "github.com/writer/cerebro/internal/app/secrets"
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
@@ -116,8 +116,8 @@ type App struct {
 	DSPM            *dspm.Scanner
 	Cache           *cache.PolicyCache
 	ExecutionStore  executionstore.Store
+	AppState        *appsubstate.Runtime
 	GraphSnapshots  *graph.GraphPersistenceStore
-	appStateDB      *sql.DB
 
 	// Feature services
 	Agents         *agents.AgentRegistry
@@ -192,8 +192,6 @@ type App struct {
 	threatIntelSyncCancel              context.CancelFunc
 	threatIntelSyncWG                  sync.WaitGroup
 	traceShutdown                      func(context.Context) error
-	secretsReloadCancel                context.CancelFunc
-	secretsReloadWG                    sync.WaitGroup
 	tapMapperOnce                      sync.Once
 	tapMapperErr                       error
 	tapResolveGraphMu                  sync.RWMutex
@@ -203,8 +201,7 @@ type App struct {
 	tapConsumerSubjects                []string
 	securityGraphInitMu                sync.RWMutex
 	reloadMu                           sync.Mutex
-	apiKeys                            atomic.Value // map[string]string
-	apiCredentials                     atomic.Value // map[string]apiauth.Credential
+	Secrets                            *appsecrets.Runtime
 	apiCredentialStore                 *apiauth.ManagedCredentialStore
 	secretsLoader                      secretsLoader
 
@@ -254,8 +251,10 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 	logUnboundedRetentionWarnings(logger, cfg)
 
 	app := &App{
-		Config: cfg,
-		Logger: logger,
+		Config:   cfg,
+		Logger:   logger,
+		AppState: appsubstate.NewRuntime(),
+		Secrets:  appsecrets.NewRuntime(),
 	}
 	app.secretsLoader = options.secretsLoader
 	app.apiCredentialStore = managedCredentialStore

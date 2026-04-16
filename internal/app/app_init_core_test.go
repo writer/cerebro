@@ -153,7 +153,7 @@ func TestInitFindings_UsesPostgresStoreWhenAppStateDatabaseConfigured(t *testing
 		Config: &Config{},
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
-	a.appStateDB = db
+	a.setAppStateDB(db)
 
 	a.initFindings()
 

@@ -14,8 +14,8 @@ func (a *App) initAgents(ctx context.Context) {
 	}
 	a.Agents = agents.NewAgentRegistry()
 	switch {
-	case a.appStateDB != nil:
-		a.Agents.SetSessionStore(agents.NewPostgresSessionStore(a.appStateDB))
+	case a.appStateDB() != nil:
+		a.Agents.SetSessionStore(agents.NewPostgresSessionStore(a.appStateDB()))
 	case a.Snowflake != nil:
 		store, err := agents.NewSnowflakeSessionStore(a.Snowflake)
 		if err != nil {
