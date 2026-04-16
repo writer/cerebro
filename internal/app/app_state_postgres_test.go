@@ -174,3 +174,120 @@ func TestIsMissingSnowflakeTableErrAcceptsMissingTableErrors(t *testing.T) {
 		t.Fatal("expected missing table error to be treated as skippable migration input")
 	}
 }
+
+func TestRunAppStateMigrationStepSkipsCompletedTrackedStep(t *testing.T) {
+	ctx := context.Background()
+	appStateDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open app-state sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = appStateDB.Close() })
+
+	a := &App{appStateDB: appStateDB}
+	if err := a.markAppStateMigrationComplete(ctx, legacySnowflakeAppStateFindingsName); err != nil {
+		t.Fatalf("markAppStateMigrationComplete() error = %v", err)
+	}
+
+	called := false
+	err = a.runAppStateMigrationStep(ctx, appStateMigrationStep{
+		name: legacySnowflakeAppStateFindingsName,
+		run: func(context.Context) error {
+			called = true
+			return nil
+		},
+	}, true)
+	if err != nil {
+		t.Fatalf("runAppStateMigrationStep() error = %v", err)
+	}
+	if called {
+		t.Fatal("expected completed tracked migration step to be skipped")
+	}
+}
+
+func TestRunAppStateMigrationStepMarksTrackedStepCompleteAfterSuccess(t *testing.T) {
+	ctx := context.Background()
+	appStateDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open app-state sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = appStateDB.Close() })
+
+	a := &App{appStateDB: appStateDB}
+	err = a.runAppStateMigrationStep(ctx, appStateMigrationStep{
+		name: legacySnowflakeAppStateAgentSessionsName,
+		run:  func(context.Context) error { return nil },
+	}, true)
+	if err != nil {
+		t.Fatalf("runAppStateMigrationStep() error = %v", err)
+	}
+
+	completed, err := a.appStateMigrationComplete(ctx, legacySnowflakeAppStateAgentSessionsName)
+	if err != nil {
+		t.Fatalf("appStateMigrationComplete() error = %v", err)
+	}
+	if !completed {
+		t.Fatal("expected successful tracked migration step to be marked complete")
+	}
+}
+
+func TestRunAppStateMigrationStepLeavesTrackedStepIncompleteOnError(t *testing.T) {
+	ctx := context.Background()
+	appStateDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open app-state sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = appStateDB.Close() })
+
+	a := &App{appStateDB: appStateDB}
+	want := errors.New("boom")
+	err = a.runAppStateMigrationStep(ctx, appStateMigrationStep{
+		name: legacySnowflakeAppStateAuditLogsName,
+		run: func(context.Context) error {
+			return want
+		},
+	}, true)
+	if !errors.Is(err, want) {
+		t.Fatalf("runAppStateMigrationStep() error = %v, want %v", err, want)
+	}
+
+	completed, err := a.appStateMigrationComplete(ctx, legacySnowflakeAppStateAuditLogsName)
+	if err != nil {
+		t.Fatalf("appStateMigrationComplete() error = %v", err)
+	}
+	if completed {
+		t.Fatal("expected failed tracked migration step to remain incomplete")
+	}
+}
+
+func TestRunAppStateMigrationStepDoesNotMarkUntrackedStepComplete(t *testing.T) {
+	ctx := context.Background()
+	appStateDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open app-state sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = appStateDB.Close() })
+
+	a := &App{appStateDB: appStateDB}
+	called := false
+	err = a.runAppStateMigrationStep(ctx, appStateMigrationStep{
+		name: legacySnowflakeAppStatePolicyHistoryName,
+		run: func(context.Context) error {
+			called = true
+			return nil
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("runAppStateMigrationStep() error = %v", err)
+	}
+	if !called {
+		t.Fatal("expected untracked migration step to run")
+	}
+
+	completed, err := a.appStateMigrationComplete(ctx, legacySnowflakeAppStatePolicyHistoryName)
+	if err != nil {
+		t.Fatalf("appStateMigrationComplete() error = %v", err)
+	}
+	if completed {
+		t.Fatal("expected untracked migration step not to be marked complete")
+	}
+}

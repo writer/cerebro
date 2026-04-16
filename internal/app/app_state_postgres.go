@@ -22,10 +22,20 @@ import (
 const appStateRiskEngineGraphID = "security-graph"
 
 const (
-	appStateMigrationStateTable          = "cerebro_app_state_migrations"
-	legacySnowflakeAppStateMigrationName = "legacy_snowflake"
-	legacySnowflakeAppStateStartedName   = "legacy_snowflake_started"
+	appStateMigrationStateTable                = "cerebro_app_state_migrations"
+	legacySnowflakeAppStateMigrationName       = "legacy_snowflake"
+	legacySnowflakeAppStateStartedName         = "legacy_snowflake_started"
+	legacySnowflakeAppStateFindingsName        = "legacy_snowflake_findings"
+	legacySnowflakeAppStateAgentSessionsName   = "legacy_snowflake_agent_sessions"
+	legacySnowflakeAppStateAuditLogsName       = "legacy_snowflake_audit_logs"
+	legacySnowflakeAppStatePolicyHistoryName   = "legacy_snowflake_policy_history"
+	legacySnowflakeAppStateRiskEngineStateName = "legacy_snowflake_risk_engine_state"
 )
+
+type appStateMigrationStep struct {
+	name string
+	run  func(context.Context) error
+}
 
 func (a *App) appStateMigrationSnowflake() *snowflake.Client {
 	if a == nil {
@@ -95,30 +105,53 @@ func (a *App) migrateAppState(ctx context.Context) error {
 	if a == nil || a.appStateDB == nil {
 		return nil
 	}
-	if a.appStateMigrationSnowflake() != nil {
+	tracked := a.appStateMigrationSnowflake() != nil
+	if tracked {
 		if err := a.markAppStateMigrationComplete(ctx, legacySnowflakeAppStateStartedName); err != nil {
 			return fmt.Errorf("mark app-state migration started: %w", err)
 		}
 	}
-	if err := a.migrateFindings(ctx); err != nil {
-		return err
+
+	for _, step := range []appStateMigrationStep{
+		{name: legacySnowflakeAppStateFindingsName, run: a.migrateFindings},
+		{name: legacySnowflakeAppStateAgentSessionsName, run: a.migrateAgentSessions},
+		{name: legacySnowflakeAppStateAuditLogsName, run: a.migrateAuditLogs},
+		{name: legacySnowflakeAppStatePolicyHistoryName, run: a.migratePolicyHistory},
+		{name: legacySnowflakeAppStateRiskEngineStateName, run: a.migrateRiskEngineState},
+	} {
+		if err := a.runAppStateMigrationStep(ctx, step, tracked); err != nil {
+			return err
+		}
 	}
-	if err := a.migrateAgentSessions(ctx); err != nil {
-		return err
-	}
-	if err := a.migrateAuditLogs(ctx); err != nil {
-		return err
-	}
-	if err := a.migratePolicyHistory(ctx); err != nil {
-		return err
-	}
-	if err := a.migrateRiskEngineState(ctx); err != nil {
-		return err
-	}
-	if a.appStateMigrationSnowflake() != nil {
+	if tracked {
 		if err := a.markAppStateMigrationComplete(ctx, legacySnowflakeAppStateMigrationName); err != nil {
 			return fmt.Errorf("mark app-state migration complete: %w", err)
 		}
+	}
+	return nil
+}
+
+func (a *App) runAppStateMigrationStep(ctx context.Context, step appStateMigrationStep, tracked bool) error {
+	if step.run == nil {
+		return nil
+	}
+	if tracked {
+		completed, err := a.appStateMigrationComplete(ctx, step.name)
+		if err != nil {
+			return fmt.Errorf("check app-state migration step %s: %w", step.name, err)
+		}
+		if completed {
+			return nil
+		}
+	}
+	if err := step.run(ctx); err != nil {
+		return err
+	}
+	if !tracked {
+		return nil
+	}
+	if err := a.markAppStateMigrationComplete(ctx, step.name); err != nil {
+		return fmt.Errorf("mark app-state migration step %s complete: %w", step.name, err)
 	}
 	return nil
 }
