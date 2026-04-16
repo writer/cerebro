@@ -135,6 +135,18 @@ func TestJetStreamConfigValidateTLSPair(t *testing.T) {
 	}
 }
 
+func TestJetStreamConfigRejectsInsecureTLSWithoutOverride(t *testing.T) {
+	cfg := JetStreamConfig{
+		URLs:                  []string{"tls://127.0.0.1:4222"},
+		TLSEnabled:            true,
+		TLSInsecureSkipVerify: true,
+	}.withDefaults()
+
+	if _, err := cfg.NATSOptions(); err == nil {
+		t.Fatal("expected insecure TLS override error")
+	}
+}
+
 func TestJetStreamConfigNKeyAuthOption(t *testing.T) {
 	kp, err := nkeys.CreateUser()
 	if err != nil {

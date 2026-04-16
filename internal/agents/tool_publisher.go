@@ -441,6 +441,9 @@ func (c ToolPublisherConfig) authOptions() ([]nats.Option, error) {
 }
 
 func (c ToolPublisherConfig) tlsConfig() (*tls.Config, error) {
+	if c.TLSInsecureSkipVerify && !allowInsecureTLSOverride() {
+		return nil, fmt.Errorf("tool publisher tls insecure skip verify requires CEREBRO_ALLOW_INSECURE_TLS=true")
+	}
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: c.TLSInsecureSkipVerify,

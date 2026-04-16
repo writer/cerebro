@@ -427,6 +427,9 @@ func (c *Config) Validate() error {
 		if c.NATSJetStreamOutboxMaxRetry < 0 {
 			problems = addConfigProblem(problems, "NATS_JETSTREAM_OUTBOX_MAX_RETRY must be >= 0 when NATS_JETSTREAM_ENABLED=true")
 		}
+		if c.NATSJetStreamTLSEnabled && c.NATSJetStreamTLSInsecure && !getEnvBool("CEREBRO_ALLOW_INSECURE_TLS", false) {
+			problems = addConfigProblem(problems, "NATS_JETSTREAM_TLS_INSECURE_SKIP_VERIFY requires CEREBRO_ALLOW_INSECURE_TLS=true")
+		}
 	}
 
 	if c.NATSConsumerEnabled {

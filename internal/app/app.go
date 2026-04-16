@@ -253,6 +253,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		logger = newDefaultAppLogger(cfg.LogLevel)
 	}
 	logUnboundedRetentionWarnings(logger, cfg)
+	logInsecureTLSWarnings(logger, cfg)
 
 	app := &App{
 		Config: cfg,
@@ -294,4 +295,13 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 	app.startSecretsReloader(ctx)
 
 	return app, nil
+}
+
+func logInsecureTLSWarnings(logger *slog.Logger, cfg *Config) {
+	if logger == nil || cfg == nil {
+		return
+	}
+	if cfg.NATSJetStreamTLSEnabled && cfg.NATSJetStreamTLSInsecure && getEnvBool("CEREBRO_ALLOW_INSECURE_TLS", false) {
+		logger.Warn("insecure TLS verification bypass enabled for NATS clients", "env_var", "NATS_JETSTREAM_TLS_INSECURE_SKIP_VERIFY")
+	}
 }

@@ -909,6 +909,9 @@ func signerFromSeed(seed string) (string, func([]byte) ([]byte, error), error) {
 }
 
 func (c JetStreamConfig) tlsConfig() (*tls.Config, error) {
+	if c.TLSInsecureSkipVerify && !allowInsecureTLSOverride() {
+		return nil, errors.New("tls insecure skip verify requires CEREBRO_ALLOW_INSECURE_TLS=true")
+	}
 	tlsConfig := &tls.Config{
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: c.TLSInsecureSkipVerify,
@@ -940,6 +943,10 @@ func (c JetStreamConfig) tlsConfig() (*tls.Config, error) {
 	}
 
 	return tlsConfig, nil
+}
+
+func allowInsecureTLSOverride() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("CEREBRO_ALLOW_INSECURE_TLS")), "true")
 }
 
 func (p *Publisher) canPublishLive() bool {

@@ -48,6 +48,21 @@ func TestRemoteToolProviderConfigValidate(t *testing.T) {
 	}
 }
 
+func TestRemoteToolProviderConfigRejectsInsecureTLSWithoutOverride(t *testing.T) {
+	cfg := (RemoteToolProviderConfig{
+		Enabled:               true,
+		URLs:                  []string{"nats://127.0.0.1:4222"},
+		ManifestSubject:       "ensemble.tools.manifest",
+		RequestPrefix:         "ensemble.tools.request",
+		TLSEnabled:            true,
+		TLSInsecureSkipVerify: true,
+	}).withDefaults()
+
+	if _, err := cfg.natsOptions(); err == nil {
+		t.Fatal("expected insecure TLS override error")
+	}
+}
+
 func TestDecodeRemoteManifest(t *testing.T) {
 	asArray := []byte(`[
 	  {"name":"hubspot_get_company","description":"Get company","parameters":{"type":"object"},"requires_approval":false}
