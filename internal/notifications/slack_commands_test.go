@@ -40,7 +40,9 @@ func (m *mockFindingStore) Stats() findings.Stats {
 		ByStatus:   map[string]int{"open": 8, "resolved": 2},
 	}
 }
-func (m *mockFindingStore) Sync(ctx context.Context) error { return nil }
+func (m *mockFindingStore) SetAttestor(attestor findings.FindingAttestor, attestReobserved bool) {}
+func (m *mockFindingStore) SetSemanticDedup(enabled bool)                                        {}
+func (m *mockFindingStore) Sync(ctx context.Context) error                                       { return nil }
 
 func TestSlackCommandHandler_VerifySignature(t *testing.T) {
 	secret := "8f742231b10e8888abcd99yyyzzz85a5"

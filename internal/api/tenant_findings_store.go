@@ -127,6 +127,14 @@ func (s *tenantFindingStore) Stats() findings.Stats {
 	return stats
 }
 
+func (s *tenantFindingStore) SetAttestor(attestor findings.FindingAttestor, attestReobserved bool) {
+	s.base.SetAttestor(attestor, attestReobserved)
+}
+
+func (s *tenantFindingStore) SetSemanticDedup(enabled bool) {
+	s.base.SetSemanticDedup(enabled)
+}
+
 func (s *tenantFindingStore) Sync(ctx context.Context) error {
 	return s.base.Sync(ctx)
 }
