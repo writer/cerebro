@@ -79,7 +79,7 @@ func TestInitFindings_FallsBackToConfiguredWarehouseMetadata(t *testing.T) {
 		Warehouse: &warehouse.MemoryWarehouse{DBFunc: func() *sql.DB { return &sql.DB{} }},
 	}
 
-	a.initFindings()
+	a.initFindings(context.Background())
 
 	if a.SnowflakeFindings == nil {
 		t.Fatal("expected snowflake findings store to be initialized")
@@ -91,6 +91,30 @@ func TestInitFindings_FallsBackToConfiguredWarehouseMetadata(t *testing.T) {
 	}
 }
 
+func TestInitFindings_LoadsSnowflakeFindingsStoreWhenAvailable(t *testing.T) {
+	db := openPostgresStubDB(t)
+	var logs bytes.Buffer
+	a := &App{
+		Config: &Config{
+			WarehouseBackend:  "snowflake",
+			SnowflakeDatabase: "RAW",
+			SnowflakeSchema:   "PUBLIC",
+		},
+		Logger:    slog.New(slog.NewTextHandler(&logs, nil)),
+		Snowflake: &snowflake.Client{},
+		Warehouse: &warehouse.MemoryWarehouse{DBFunc: func() *sql.DB { return db }},
+	}
+
+	a.initFindings(context.Background())
+
+	if a.SnowflakeFindings == nil {
+		t.Fatal("expected snowflake findings store to be initialized")
+	}
+	if !strings.Contains(logs.String(), "loaded findings from snowflake") {
+		t.Fatalf("expected snowflake findings load log, got %q", logs.String())
+	}
+}
+
 func TestInitFindings_FallsBackToSQLiteWhenWarehouseHasNoDB(t *testing.T) {
 	a := &App{
 		Config:    &Config{},
@@ -99,7 +123,7 @@ func TestInitFindings_FallsBackToSQLiteWhenWarehouseHasNoDB(t *testing.T) {
 	}
 	t.Setenv("CEREBRO_DB_PATH", filepath.Join(t.TempDir(), "findings.db"))
 
-	a.initFindings()
+	a.initFindings(context.Background())
 
 	if a.SnowflakeFindings != nil {
 		t.Fatal("expected no snowflake findings store when warehouse DB is nil")
@@ -124,7 +148,7 @@ func TestInitFindings_UsesPostgresStoreForPostgresWarehouse(t *testing.T) {
 		},
 	}
 
-	a.initFindings()
+	a.initFindings(context.Background())
 
 	store, ok := a.Findings.(*findings.PostgresStore)
 	if !ok {
@@ -155,7 +179,7 @@ func TestInitFindings_UsesPostgresStoreWhenAppStateDatabaseConfigured(t *testing
 	}
 	a.appStateDB = db
 
-	a.initFindings()
+	a.initFindings(context.Background())
 
 	if _, ok := a.Findings.(*findings.PostgresStore); !ok {
 		t.Fatalf("expected postgres findings store, got %T", a.Findings)
@@ -336,7 +360,7 @@ func TestInitFindings_UsesSQLiteStoreForSQLiteWarehouse(t *testing.T) {
 	}
 	t.Setenv("CEREBRO_DB_PATH", filepath.Join(t.TempDir(), "findings.db"))
 
-	a.initFindings()
+	a.initFindings(context.Background())
 
 	if _, ok := a.Findings.(*findings.SQLiteStore); !ok {
 		t.Fatalf("expected sqlite findings store for sqlite warehouse, got %T", a.Findings)

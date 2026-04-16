@@ -220,11 +220,14 @@ func (a *App) initPolicy() error {
 	return nil
 }
 
-func (a *App) initFindings() {
+func (a *App) initFindings(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if a.appStateDB != nil {
 		store := findings.NewPostgresStore(a.appStateDB)
 		store.SetSemanticDedup(a.Config.FindingsSemanticDedupEnabled)
-		if err := store.Load(context.Background()); err != nil {
+		if err := store.Load(ctx); err != nil {
 			a.Logger.Warn("failed to load postgres findings store", "error", err)
 		}
 		a.Findings = store
@@ -304,6 +307,7 @@ func (a *App) initFindings() {
 	a.SnowflakeFindings = snowflakeStore
 	a.configureFindingAttestation()
 	a.Logger.Info("using snowflake findings store")
+	a.initSnowflakeFindings(ctx)
 }
 
 func (a *App) newInMemoryFindingsStore() *findings.Store {
