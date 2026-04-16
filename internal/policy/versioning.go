@@ -376,7 +376,7 @@ func (e *Engine) evaluatePolicyAgainstAssets(ctx context.Context, p *Policy, ass
 		if len(asset) == 0 || !policyAppliesToAssetTable(p, asset) {
 			continue
 		}
-		if violation := preparedEngine.checkAssetViolation(preparedPolicy, asset); violation == "" {
+		if _, ok := preparedEngine.checkAssetViolation(preparedPolicy, asset); !ok {
 			continue
 		}
 		findingID := fmt.Sprintf("%s-%v", policyID, asset["_cq_id"])

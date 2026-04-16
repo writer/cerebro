@@ -802,7 +802,7 @@ func (e *Engine) EvaluateAsset(ctx context.Context, asset map[string]interface{}
 			}
 		}
 
-		if violation := e.checkAssetViolation(p, asset); violation != "" {
+		if violation, ok := e.checkAssetViolation(p, asset); ok {
 			// Extract resource identifiers
 			resourceID := extractResourceID(asset)
 			resourceName := extractResourceName(asset)
@@ -842,18 +842,31 @@ func (e *Engine) matchPolicy(p *Policy, req *EvalRequest) bool {
 	return true
 }
 
-func (e *Engine) checkAssetViolation(p *Policy, asset map[string]interface{}) string {
+func (e *Engine) checkAssetViolation(p *Policy, asset map[string]interface{}) (string, bool) {
 	// All conditions must match for a violation (AND logic)
 	if len(p.Conditions) == 0 {
-		return ""
+		return "", false
 	}
 	if normalizeConditionFormat(p.ConditionFormat) != ConditionFormatCEL {
-		return ""
+		return "", false
 	}
 	if !e.evaluateCELConditions(p, asset) {
+		return "", false
+	}
+	return policyViolationDescription(p), true
+}
+
+func policyViolationDescription(p *Policy) string {
+	if p == nil {
 		return ""
 	}
-	return p.Description // All conditions matched - violation
+	if description := strings.TrimSpace(p.Description); description != "" {
+		return description
+	}
+	if name := strings.TrimSpace(p.Name); name != "" {
+		return name
+	}
+	return strings.TrimSpace(p.ID)
 }
 
 func normalizeLogicalOperators(condition string) string {

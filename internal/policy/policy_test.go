@@ -138,6 +138,37 @@ func TestAddPolicyDefaultsMissingConditionFormatToCEL(t *testing.T) {
 	}
 }
 
+func TestEvaluateAssetUsesPolicyNameWhenDescriptionIsEmpty(t *testing.T) {
+	engine := NewEngine()
+	engine.AddPolicy(&Policy{
+		ID:              "empty-description",
+		Name:            "Policy without description",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		ConditionFormat: ConditionFormatCEL,
+		Conditions: []string{
+			"resource.public == true",
+		},
+		Severity: "high",
+	})
+
+	findings, err := engine.EvaluateAsset(context.Background(), map[string]interface{}{
+		"_cq_id":    "bucket-empty-description",
+		"_cq_table": "aws_s3_buckets",
+		"type":      "aws::s3::bucket",
+		"public":    true,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateAsset failed: %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Description != "Policy without description" {
+		t.Fatalf("description = %q, want policy name fallback", findings[0].Description)
+	}
+}
+
 func TestPublicVMPolicies(t *testing.T) {
 	engine := NewEngine()
 

@@ -338,6 +338,36 @@ func TestDryRunPolicyChange_ComputesImpactDelta(t *testing.T) {
 	}
 }
 
+func TestDryRunPolicyChange_UsesPolicyNameWhenDescriptionIsEmpty(t *testing.T) {
+	engine := NewEngine()
+
+	candidate := &Policy{
+		ID:              "policy-dry-run-empty-description",
+		Name:            "Candidate fallback description",
+		Effect:          "forbid",
+		Resource:        "aws::s3::bucket",
+		ConditionFormat: ConditionFormatCEL,
+		Conditions:      []string{"resource.public == true"},
+		Severity:        "high",
+	}
+
+	assets := []map[string]interface{}{
+		{"_cq_id": "bucket-a", "_cq_table": "aws_s3_buckets", "public": true},
+	}
+
+	impact, err := engine.DryRunPolicyChange(context.Background(), nil, candidate, assets)
+	if err != nil {
+		t.Fatalf("dry-run failed: %v", err)
+	}
+
+	if impact.AfterMatches != 1 {
+		t.Fatalf("expected 1 match after, got %d", impact.AfterMatches)
+	}
+	if len(impact.AddedFindingIDs) != 1 {
+		t.Fatalf("expected 1 added finding, got %d", len(impact.AddedFindingIDs))
+	}
+}
+
 func TestGetPolicyVersionAndDiffPolicyVersions(t *testing.T) {
 	engine := NewEngine()
 	engine.AddPolicy(&Policy{
