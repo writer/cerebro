@@ -3,8 +3,10 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"database/sql"
 	"database/sql/driver"
+	"encoding/base64"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -67,6 +69,23 @@ func openPostgresStubDB(t *testing.T) *sql.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	return db
+}
+
+type attestationTrackingFindingStore struct {
+	*findings.Store
+	attestor         findings.FindingAttestor
+	attestReobserved bool
+	setAttestorCalls int
+}
+
+func newAttestationTrackingFindingStore() *attestationTrackingFindingStore {
+	return &attestationTrackingFindingStore{Store: findings.NewStore()}
+}
+
+func (s *attestationTrackingFindingStore) SetAttestor(attestor findings.FindingAttestor, attestReobserved bool) {
+	s.attestor = attestor
+	s.attestReobserved = attestReobserved
+	s.setAttestorCalls++
 }
 
 func TestInitFindings_FallsBackToConfiguredWarehouseMetadata(t *testing.T) {
@@ -209,6 +228,40 @@ func TestNewInMemoryFindingsStore_WarnsOnExplicitUnlimitedConfig(t *testing.T) {
 
 	if !strings.Contains(logs.String(), "configured without size or retention bounds") {
 		t.Fatalf("expected unlimited findings warning, got %q", logs.String())
+	}
+}
+
+func TestConfigureFindingAttestationUsesFindingStoreInterface(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate signing key: %v", err)
+	}
+
+	store := newAttestationTrackingFindingStore()
+	var logs bytes.Buffer
+	a := &App{
+		Config: &Config{
+			FindingAttestationEnabled:          true,
+			FindingAttestationSigningKey:       base64.StdEncoding.EncodeToString(priv),
+			FindingAttestationAttestReobserved: true,
+		},
+		Logger:   slog.New(slog.NewTextHandler(&logs, nil)),
+		Findings: store,
+	}
+
+	a.configureFindingAttestation()
+
+	if store.setAttestorCalls != 1 {
+		t.Fatalf("expected SetAttestor to be called once, got %d", store.setAttestorCalls)
+	}
+	if store.attestor == nil {
+		t.Fatal("expected attestor to be configured on the findings store")
+	}
+	if !store.attestReobserved {
+		t.Fatal("expected attest_reobserved to be forwarded to the findings store")
+	}
+	if !strings.Contains(logs.String(), "finding attestation chain enabled") {
+		t.Fatalf("expected success log, got %q", logs.String())
 	}
 }
 

@@ -48,6 +48,8 @@ type FindingStore interface {
 	Suppress(id string) bool
 	Stats() Stats
 	Sync(ctx context.Context) error // Sync to persistent storage
+	SetAttestor(attestor FindingAttestor, attestReobserved bool)
+	SetSemanticDedup(enabled bool)
 }
 
 const (

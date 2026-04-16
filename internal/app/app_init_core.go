@@ -353,36 +353,11 @@ func (a *App) configureFindingAttestation() {
 		return
 	}
 
-	configured := false
-	if store, ok := a.Findings.(*findings.Store); ok {
-		store.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
-		configured = true
-	}
-	if store, ok := a.Findings.(*findings.SQLiteStore); ok {
-		store.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
-		configured = true
-	}
-	if store, ok := a.Findings.(*findings.PostgresStore); ok {
-		store.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
-		configured = true
-	}
-	if store, ok := a.Findings.(*findings.SnowflakeStore); ok {
-		store.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
-		configured = true
-	}
-	if store, ok := a.Findings.(*findings.PostgresStore); ok {
-		store.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
-		configured = true
-	}
-	if store, ok := a.Findings.(*findings.FileStore); ok {
-		store.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
-		configured = true
-	}
-
-	if !configured {
+	if a.Findings == nil {
 		a.Logger.Warn("finding attestation enabled but findings store does not support attestations")
 		return
 	}
+	a.Findings.SetAttestor(attestor, a.Config.FindingAttestationAttestReobserved)
 
 	a.Logger.Info("finding attestation chain enabled",
 		"log_url", strings.TrimSpace(a.Config.FindingAttestationLogURL),
