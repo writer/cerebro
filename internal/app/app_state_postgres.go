@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	sf "github.com/snowflakedb/gosnowflake"
 
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/appstate"
@@ -25,7 +26,10 @@ const (
 	appStateMigrationStateTable          = "cerebro_app_state_migrations"
 	legacySnowflakeAppStateMigrationName = "legacy_snowflake"
 	legacySnowflakeAppStateStartedName   = "legacy_snowflake_started"
+	snowflakeErrObjectNotExist           = 2003
 )
+
+var missingSnowflakeAppStateTablePattern = regexp.MustCompile(`(?i)\b(?:cerebro_findings|findings|agent_sessions|audit_log|policy_history|risk_engine_state)\b`)
 
 func (a *App) appStateMigrationSnowflake() *snowflake.Client {
 	if a == nil {
@@ -299,13 +303,20 @@ func isMissingSnowflakeTableErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	message := strings.ToLower(err.Error())
+	var snowflakeErr *sf.SnowflakeError
+	if !errors.As(err, &snowflakeErr) {
+		return false
+	}
+	message := strings.ToLower(snowflakeErr.Error())
 	if strings.Contains(message, "not authorized") {
 		return false
 	}
-	return strings.Contains(message, "does not exist") ||
-		strings.Contains(message, "unknown table") ||
-		strings.Contains(message, "not exist")
+	switch snowflakeErr.Number {
+	case snowflakeErrObjectNotExist, sf.ErrObjectNotExistOrAuthorized:
+		return missingSnowflakeAppStateTablePattern.MatchString(message)
+	default:
+		return false
+	}
 }
 
 var postgresIdentifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)

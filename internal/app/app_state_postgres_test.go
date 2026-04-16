@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	sf "github.com/snowflakedb/gosnowflake"
 	_ "modernc.org/sqlite"
 
 	"github.com/writer/cerebro/internal/findings"
@@ -161,16 +163,64 @@ func TestAppStateDatabaseURLUsesWarehousePostgresDSNAcrossBackends(t *testing.T)
 	}
 }
 
-func TestIsMissingSnowflakeTableErrRejectsAuthorizationErrors(t *testing.T) {
-	err := errors.New("SQL compilation error: Object 'DB.SCHEMA.CEREBRO_FINDINGS' does not exist or not authorized.")
-	if isMissingSnowflakeTableErr(err) {
-		t.Fatal("expected authorization errors to fail migration instead of being treated as missing tables")
+func TestIsMissingSnowflakeTableErr(t *testing.T) {
+	testCases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "wrapped app state table lookup failure",
+			err: fmt.Errorf("query failed: %w", &sf.SnowflakeError{
+				Number:  snowflakeErrObjectNotExist,
+				Message: "Object 'DB.SCHEMA.CEREBRO_FINDINGS' does not exist.",
+			}),
+			want: true,
+		},
+		{
+			name: "not authorized responses are not swallowed",
+			err: &sf.SnowflakeError{
+				Number:  sf.ErrObjectNotExistOrAuthorized,
+				Message: "Object 'DB.SCHEMA.AGENT_SESSIONS' does not exist or not authorized.",
+			},
+			want: false,
+		},
+		{
+			name: "driver object missing code matches known tables",
+			err: &sf.SnowflakeError{
+				Number:  sf.ErrObjectNotExistOrAuthorized,
+				Message: "Object 'DB.SCHEMA.AGENT_SESSIONS' does not exist.",
+			},
+			want: true,
+		},
+		{
+			name: "non table object failures are not swallowed",
+			err: &sf.SnowflakeError{
+				Number:  snowflakeErrObjectNotExist,
+				Message: "Database 'DB' does not exist.",
+			},
+			want: false,
+		},
+		{
+			name: "other snowflake error codes are not treated as missing tables",
+			err: &sf.SnowflakeError{
+				Number:  sf.ErrRoleNotExist,
+				Message: "Role 'ANALYST' does not exist.",
+			},
+			want: false,
+		},
+		{
+			name: "plain string errors are ignored",
+			err:  errors.New("SQL compilation error: unknown table FOO"),
+			want: false,
+		},
 	}
-}
 
-func TestIsMissingSnowflakeTableErrAcceptsMissingTableErrors(t *testing.T) {
-	err := errors.New("SQL compilation error: Object 'DB.SCHEMA.CEREBRO_FINDINGS' does not exist.")
-	if !isMissingSnowflakeTableErr(err) {
-		t.Fatal("expected missing table error to be treated as skippable migration input")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isMissingSnowflakeTableErr(tc.err); got != tc.want {
+				t.Fatalf("isMissingSnowflakeTableErr(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
 	}
 }
