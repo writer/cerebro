@@ -32,11 +32,14 @@ func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) er
 	if !strings.HasPrefix(strings.ToLower(eventType), "ensemble.tap.") {
 		return nil
 	}
-	if err := a.waitForSecurityGraphReady(ctx); err != nil {
-		return err
-	}
 	if isTapSchemaEventType(eventType) {
 		return a.handleTapSchemaEvent(eventType, evt)
+	}
+	if err := a.waitForSecurityGraphReady(ctx); err != nil {
+		if ctx == nil || ctx.Err() == nil {
+			return events.RetryWithDelay(err, a.tapGraphReadyRetryDelay())
+		}
+		return err
 	}
 	if isTapInteractionType(eventType) {
 		return a.handleTapInteractionEvent(ctx, eventType, evt)

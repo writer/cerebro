@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -102,6 +103,71 @@ func TestHandleTapCloudEventWaitsForGraphReady(t *testing.T) {
 	}
 	if _, ok := a.SecurityGraph.GetNode("salesforce:opportunity:opp-blocked"); !ok {
 		t.Fatal("expected tap event node to be applied after graph readiness")
+	}
+}
+
+func TestHandleTapCloudEventSchemaEventBypassesGraphReadyWait(t *testing.T) {
+	a := &App{graphReady: make(chan struct{})}
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.schema.workday.updated",
+		Time: time.Now().UTC(),
+		Data: map[string]any{
+			"integration": "workday",
+			"entity_types": []any{
+				map[string]any{"kind": "tap_graph_ready_bypass_employee_v1"},
+			},
+		},
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- a.handleTapCloudEvent(context.Background(), evt)
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("schema event failed: %v", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("expected schema event to bypass graph readiness wait")
+	}
+}
+
+func TestHandleTapCloudEventReturnsDelayedRetryWhenGraphNotReady(t *testing.T) {
+	a := &App{
+		graphReady: make(chan struct{}),
+		Config: &Config{
+			NATSConsumerAckWait:      20 * time.Millisecond,
+			NATSConsumerFetchTimeout: 7 * time.Millisecond,
+		},
+	}
+	evt := events.CloudEvent{
+		Type: "ensemble.tap.salesforce.opportunity.updated",
+		Time: time.Now().UTC(),
+		Data: map[string]any{
+			"id": "opp-retry",
+			"snapshot": map[string]any{
+				"name": "Retry Opportunity",
+			},
+		},
+	}
+
+	start := time.Now()
+	err := a.handleTapCloudEvent(context.Background(), evt)
+	if err == nil {
+		t.Fatal("expected delayed retry error")
+	}
+	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+		t.Fatalf("handleTapCloudEvent blocked too long: %s", elapsed)
+	}
+
+	var delayed interface{ RetryDelay() time.Duration }
+	if !errors.As(err, &delayed) {
+		t.Fatalf("expected delayed retry error, got %T: %v", err, err)
+	}
+	if delayed.RetryDelay() != 7*time.Millisecond {
+		t.Fatalf("retry delay = %s, want %s", delayed.RetryDelay(), 7*time.Millisecond)
 	}
 }
 
