@@ -30,6 +30,7 @@ type SyncEngine struct {
 	regions                             []string
 	accountID                           string
 	tableInit                           sync.Map
+	s3BucketInventory                   sync.Map
 	tableFilter                         map[string]struct{}
 	rateLimiter                         *rate.Limiter
 	retryOptions                        retryOptions
@@ -139,6 +140,7 @@ func (e *SyncEngine) SyncAll(ctx context.Context) ([]SyncResult, error) {
 func (e *SyncEngine) SyncAllWithConfig(ctx context.Context, cfg aws.Config) ([]SyncResult, error) {
 	// Get account ID
 	e.accountID = e.getAccountID(ctx, cfg)
+	e.s3BucketInventory = sync.Map{}
 
 	if len(e.regions) == 0 {
 		region := cfg.Region

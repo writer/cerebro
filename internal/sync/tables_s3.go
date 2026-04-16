@@ -20,37 +20,23 @@ func (e *SyncEngine) s3BucketPolicyTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketPolicies(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		// Get bucket location to filter by region
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		policyOut, err := client.GetBucketPolicy(ctx, &s3.GetBucketPolicyInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_policies", bucketName, bucketRegion, "GetBucketPolicy", err, "NoSuchBucketPolicy")
 			continue // No policy
 		}
 
@@ -77,36 +63,23 @@ func (e *SyncEngine) s3BucketGrantTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketGrants(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		aclOut, err := client.GetBucketAcl(ctx, &s3.GetBucketAclInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_grants", bucketName, bucketRegion, "GetBucketAcl", err)
 			continue
 		}
 
@@ -147,36 +120,23 @@ func (e *SyncEngine) s3BucketEncryptionTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketEncryption(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		encOut, err := client.GetBucketEncryption(ctx, &s3.GetBucketEncryptionInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_encryption_rules", bucketName, bucketRegion, "GetBucketEncryption", err, "ServerSideEncryptionConfigurationNotFoundError")
 			continue // No encryption config
 		}
 
@@ -219,36 +179,23 @@ func (e *SyncEngine) s3BucketVersioningTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketVersioning(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		verOut, err := client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_versionings", bucketName, bucketRegion, "GetBucketVersioning", err)
 			continue
 		}
 
@@ -276,36 +223,23 @@ func (e *SyncEngine) s3BucketLoggingTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketLogging(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		logOut, err := client.GetBucketLogging(ctx, &s3.GetBucketLoggingInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_loggings", bucketName, bucketRegion, "GetBucketLogging", err)
 			continue
 		}
 
@@ -339,36 +273,23 @@ func (e *SyncEngine) s3BucketPublicAccessBlockTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketPublicAccessBlock(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		pabOut, err := client.GetPublicAccessBlock(ctx, &s3.GetPublicAccessBlockInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_public_access_blocks", bucketName, bucketRegion, "GetPublicAccessBlock", err, "NoSuchPublicAccessBlockConfiguration")
 			// No public access block config - record as all false
 			arn := fmt.Sprintf("arn:aws:s3:::%s/public-access-block", bucketName)
 			rows = append(rows, map[string]interface{}{
@@ -412,37 +333,24 @@ func (e *SyncEngine) s3BucketOwnershipControlsTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketOwnershipControls(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		var rules interface{}
 		objectOwnership := ""
 		ownershipOut, err := client.GetBucketOwnershipControls(ctx, &s3.GetBucketOwnershipControlsInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
+		e.warnS3BucketOperation("aws_s3_bucket_ownership_controls", bucketName, bucketRegion, "GetBucketOwnershipControls", err, "OwnershipControlsNotFoundError")
 		if err == nil && ownershipOut.OwnershipControls != nil {
 			rules = ownershipOut.OwnershipControls.Rules
 			if len(ownershipOut.OwnershipControls.Rules) > 0 {
@@ -475,36 +383,23 @@ func (e *SyncEngine) s3BucketPolicyStatusTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketPolicyStatuses(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		isPublic := false
 		statusOut, err := client.GetBucketPolicyStatus(ctx, &s3.GetBucketPolicyStatusInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
+		e.warnS3BucketOperation("aws_s3_bucket_policy_statuses", bucketName, bucketRegion, "GetBucketPolicyStatus", err, "NoSuchBucketPolicy")
 		if err == nil && statusOut.PolicyStatus != nil {
 			isPublic = aws.ToBool(statusOut.PolicyStatus.IsPublic)
 		}
@@ -533,36 +428,23 @@ func (e *SyncEngine) s3BucketNotificationTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketNotifications(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		conf, err := client.GetBucketNotificationConfiguration(ctx, &s3.GetBucketNotificationConfigurationInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_notifications", bucketName, bucketRegion, "GetBucketNotificationConfiguration", err)
 			continue
 		}
 
@@ -593,39 +475,26 @@ func (e *SyncEngine) s3BucketInventoryTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketInventoryConfigurations(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		var continuationToken *string
 		for {
 			out, err := client.ListBucketInventoryConfigurations(ctx, &s3.ListBucketInventoryConfigurationsInput{
-				Bucket:            bucket.Name,
+				Bucket:            aws.String(bucketName),
 				ContinuationToken: continuationToken,
 			})
 			if err != nil {
+				e.warnS3BucketOperation("aws_s3_bucket_inventory_configurations", bucketName, bucketRegion, "ListBucketInventoryConfigurations", err)
 				break
 			}
 			for _, cfg := range out.InventoryConfigurationList {
@@ -667,35 +536,22 @@ func (e *SyncEngine) s3BucketObjectLockTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketObjectLockConfigurations(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		lockOut, err := client.GetObjectLockConfiguration(ctx, &s3.GetObjectLockConfigurationInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
+		e.warnS3BucketOperation("aws_s3_bucket_object_lock_configurations", bucketName, bucketRegion, "GetObjectLockConfiguration", err, "ObjectLockConfigurationNotFoundError")
 		if err != nil || lockOut.ObjectLockConfiguration == nil {
 			continue
 		}
@@ -811,36 +667,23 @@ func (e *SyncEngine) s3BucketLifecycleTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketLifecycle(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		lcOut, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_lifecycles", bucketName, bucketRegion, "GetBucketLifecycleConfiguration", err, "NoSuchLifecycleConfiguration")
 			continue // No lifecycle config
 		}
 
@@ -917,36 +760,23 @@ func (e *SyncEngine) s3BucketReplicationTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketReplication(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		repOut, err := client.GetBucketReplication(ctx, &s3.GetBucketReplicationInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_replications", bucketName, bucketRegion, "GetBucketReplication", err, "ReplicationConfigurationNotFoundError")
 			continue // No replication config
 		}
 
@@ -985,38 +815,20 @@ func (e *SyncEngine) s3ObjectTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3Objects(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
-
-		bucketClient := s3.NewFromConfig(cfg, func(o *s3.Options) {
-			o.Region = bucketRegion
-		})
-
-		pager := s3.NewListObjectsV2Paginator(bucketClient, &s3.ListObjectsV2Input{
-			Bucket: bucket.Name,
+		pager := s3.NewListObjectsV2Paginator(client, &s3.ListObjectsV2Input{
+			Bucket: aws.String(bucketName),
 		})
 
 		for pager.HasMorePages() {
@@ -1064,36 +876,23 @@ func (e *SyncEngine) fetchS3Objects(ctx context.Context, cfg aws.Config, region 
 }
 
 func (e *SyncEngine) fetchS3BucketCors(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		corsOut, err := client.GetBucketCors(ctx, &s3.GetBucketCorsInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_cors_rules", bucketName, bucketRegion, "GetBucketCors", err, "NoSuchCORSConfiguration")
 			continue // No CORS config
 		}
 
@@ -1126,36 +925,23 @@ func (e *SyncEngine) s3BucketWebsiteTable() TableSpec {
 }
 
 func (e *SyncEngine) fetchS3BucketWebsite(ctx context.Context, cfg aws.Config, region string) ([]map[string]interface{}, error) {
-	client := s3.NewFromConfig(cfg)
+	client := newS3BucketRegionalClient(cfg, region)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	bucketsOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3BucketsInRegion(ctx, cfg, region)
 	if err != nil {
 		return nil, err
 	}
 
 	var rows []map[string]interface{}
-	for _, bucket := range bucketsOut.Buckets {
-		bucketName := aws.ToString(bucket.Name)
-
-		locOut, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-			Bucket: bucket.Name,
-		})
-		if err != nil {
-			continue
-		}
-		bucketRegion := string(locOut.LocationConstraint)
-		if bucketRegion == "" {
-			bucketRegion = "us-east-1"
-		}
-		if bucketRegion != region {
-			continue
-		}
+	for _, bucket := range buckets {
+		bucketName := bucket.Name
+		bucketRegion := bucket.Region
 
 		webOut, err := client.GetBucketWebsite(ctx, &s3.GetBucketWebsiteInput{
-			Bucket: bucket.Name,
+			Bucket: aws.String(bucketName),
 		})
 		if err != nil {
+			e.warnS3BucketOperation("aws_s3_bucket_websites", bucketName, bucketRegion, "GetBucketWebsite", err, "NoSuchWebsiteConfiguration")
 			continue // No website config
 		}
 

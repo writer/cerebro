@@ -22,18 +22,25 @@ func (e *SyncEngine) fetchS3Buckets(ctx context.Context, cfg aws.Config, region 
 		return nil, nil
 	}
 
-	client := s3.NewFromConfig(cfg)
 	accountID := e.getAccountIDFromConfig(ctx, cfg)
-
-	listOut, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	buckets, err := e.s3Buckets(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	rows := make([]map[string]interface{}, 0, len(listOut.Buckets))
-	for _, bucket := range listOut.Buckets {
-		name := aws.ToString(bucket.Name)
+	clientByRegion := make(map[string]s3BucketClient)
+	rows := make([]map[string]interface{}, 0, len(buckets))
+	for _, bucket := range buckets {
+		name := bucket.Name
 		arn := fmt.Sprintf("arn:aws:s3:::%s", name)
+		bucketRegion := bucket.Region
+		clientRegion := bucketRegion
+		if clientRegion == "" {
+			clientRegion = cfg.Region
+		}
+		if clientRegion == "" {
+			clientRegion = "us-east-1"
+		}
 
 		row := map[string]interface{}{
 			"_cq_id":        arn,
@@ -42,14 +49,14 @@ func (e *SyncEngine) fetchS3Buckets(ctx context.Context, cfg aws.Config, region 
 			"account_id":    accountID,
 			"creation_date": bucket.CreationDate,
 		}
-
-		// Get bucket location
-		if loc, err := client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{Bucket: &name}); err == nil {
-			bucketRegion := string(loc.LocationConstraint)
-			if bucketRegion == "" {
-				bucketRegion = "us-east-1"
-			}
+		if bucketRegion != "" {
 			row["region"] = bucketRegion
+		}
+
+		client := clientByRegion[clientRegion]
+		if client == nil {
+			client = newS3BucketRegionalClient(cfg, clientRegion)
+			clientByRegion[clientRegion] = client
 		}
 
 		// Get public access block
@@ -59,6 +66,7 @@ func (e *SyncEngine) fetchS3Buckets(ctx context.Context, cfg aws.Config, region 
 			row["ignore_public_acls"] = aws.ToBool(pab.PublicAccessBlockConfiguration.IgnorePublicAcls)
 			row["restrict_public_buckets"] = aws.ToBool(pab.PublicAccessBlockConfiguration.RestrictPublicBuckets)
 		} else {
+			e.warnS3BucketOperation("aws_s3_buckets", name, bucketRegion, "GetPublicAccessBlock", err, "NoSuchPublicAccessBlockConfiguration")
 			row["block_public_acls"] = false
 			row["block_public_policy"] = false
 			row["ignore_public_acls"] = false
@@ -69,12 +77,16 @@ func (e *SyncEngine) fetchS3Buckets(ctx context.Context, cfg aws.Config, region 
 		if vers, err := client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: &name}); err == nil {
 			row["versioning_status"] = string(vers.Status)
 			row["versioning_mfa_delete"] = string(vers.MFADelete)
+		} else {
+			e.warnS3BucketOperation("aws_s3_buckets", name, bucketRegion, "GetBucketVersioning", err)
 		}
 
 		// Get logging
 		if log, err := client.GetBucketLogging(ctx, &s3.GetBucketLoggingInput{Bucket: &name}); err == nil && log.LoggingEnabled != nil {
 			row["logging_target_bucket"] = aws.ToString(log.LoggingEnabled.TargetBucket)
 			row["logging_target_prefix"] = aws.ToString(log.LoggingEnabled.TargetPrefix)
+		} else if err != nil {
+			e.warnS3BucketOperation("aws_s3_buckets", name, bucketRegion, "GetBucketLogging", err)
 		}
 
 		rows = append(rows, row)
