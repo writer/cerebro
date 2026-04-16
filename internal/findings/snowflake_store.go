@@ -353,24 +353,10 @@ func (s *SnowflakeStore) Stats() Stats {
 // Sync persists dirty findings to Snowflake
 func (s *SnowflakeStore) Sync(ctx context.Context) error {
 	s.mu.Lock()
-	dirtyIDs := make([]string, 0, len(s.dirty))
-	for id := range s.dirty {
-		dirtyIDs = append(dirtyIDs, id)
-	}
+	findings, err := snapshotDirtyFindings(s.cache, s.dirty)
 	s.mu.Unlock()
-
-	if len(dirtyIDs) == 0 {
-		return nil
-	}
-
-	findings := make([]*Finding, 0, len(dirtyIDs))
-	for _, id := range dirtyIDs {
-		s.mu.RLock()
-		f, ok := s.cache[id]
-		s.mu.RUnlock()
-		if ok {
-			findings = append(findings, f)
-		}
+	if err != nil {
+		return fmt.Errorf("snapshot dirty findings: %w", err)
 	}
 	if len(findings) == 0 {
 		return nil
