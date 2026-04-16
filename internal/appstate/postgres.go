@@ -22,11 +22,17 @@ const (
 	sessionTable         = "cerebro_agent_sessions"
 )
 
+type schemaInitState struct {
+	done chan struct{}
+	err  error
+}
+
 type AuditRepository struct {
 	db          *sql.DB
 	rewriteSQL  func(string) string
 	schemaMu    sync.Mutex
 	schemaReady bool
+	schemaInit  *schemaInitState
 }
 
 func NewAuditRepository(db *sql.DB) *AuditRepository {
@@ -37,11 +43,43 @@ func (r *AuditRepository) EnsureSchema(ctx context.Context) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("audit repository is not initialized")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	r.schemaMu.Lock()
-	defer r.schemaMu.Unlock()
 	if r.schemaReady {
+		r.schemaMu.Unlock()
 		return nil
 	}
+	if state := r.schemaInit; state != nil {
+		r.schemaMu.Unlock()
+		select {
+		case <-state.done:
+			return state.err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	state := &schemaInitState{done: make(chan struct{})}
+	r.schemaInit = state
+	r.schemaMu.Unlock()
+
+	state.err = r.ensureSchemaDDL(ctx)
+
+	r.schemaMu.Lock()
+	if state.err == nil {
+		r.schemaReady = true
+	}
+	if r.schemaInit == state {
+		r.schemaInit = nil
+	}
+	r.schemaMu.Unlock()
+	close(state.done)
+	return state.err
+}
+
+func (r *AuditRepository) ensureSchemaDDL(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, r.q(`
 CREATE TABLE IF NOT EXISTS `+auditTable+` (
 	id TEXT PRIMARY KEY,
@@ -58,9 +96,6 @@ CREATE TABLE IF NOT EXISTS `+auditTable+` (
 CREATE INDEX IF NOT EXISTS idx_`+auditTable+`_resource ON `+auditTable+` (resource_type, resource_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_`+auditTable+`_created_at ON `+auditTable+` (created_at);
 `))
-	if err == nil {
-		r.schemaReady = true
-	}
 	return err
 }
 
@@ -194,6 +229,7 @@ type PolicyHistoryRepository struct {
 	rewriteSQL  func(string) string
 	schemaMu    sync.Mutex
 	schemaReady bool
+	schemaInit  *schemaInitState
 }
 
 func NewPolicyHistoryRepository(db *sql.DB) *PolicyHistoryRepository {
@@ -204,11 +240,43 @@ func (r *PolicyHistoryRepository) EnsureSchema(ctx context.Context) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("policy history repository is not initialized")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	r.schemaMu.Lock()
-	defer r.schemaMu.Unlock()
 	if r.schemaReady {
+		r.schemaMu.Unlock()
 		return nil
 	}
+	if state := r.schemaInit; state != nil {
+		r.schemaMu.Unlock()
+		select {
+		case <-state.done:
+			return state.err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	state := &schemaInitState{done: make(chan struct{})}
+	r.schemaInit = state
+	r.schemaMu.Unlock()
+
+	state.err = r.ensureSchemaDDL(ctx)
+
+	r.schemaMu.Lock()
+	if state.err == nil {
+		r.schemaReady = true
+	}
+	if r.schemaInit == state {
+		r.schemaInit = nil
+	}
+	r.schemaMu.Unlock()
+	close(state.done)
+	return state.err
+}
+
+func (r *PolicyHistoryRepository) ensureSchemaDDL(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, r.q(`
 CREATE TABLE IF NOT EXISTS `+policyHistoryTable+` (
 	policy_id TEXT NOT NULL,
@@ -223,9 +291,6 @@ CREATE TABLE IF NOT EXISTS `+policyHistoryTable+` (
 );
 CREATE INDEX IF NOT EXISTS idx_`+policyHistoryTable+`_policy ON `+policyHistoryTable+` (policy_id, version DESC);
 `))
-	if err == nil {
-		r.schemaReady = true
-	}
 	return err
 }
 
@@ -363,6 +428,7 @@ type RiskEngineStateRepository struct {
 	rewriteSQL  func(string) string
 	schemaMu    sync.Mutex
 	schemaReady bool
+	schemaInit  *schemaInitState
 }
 
 func NewRiskEngineStateRepository(db *sql.DB) *RiskEngineStateRepository {
@@ -373,11 +439,43 @@ func (r *RiskEngineStateRepository) EnsureSchema(ctx context.Context) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("risk engine state repository is not initialized")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	r.schemaMu.Lock()
-	defer r.schemaMu.Unlock()
 	if r.schemaReady {
+		r.schemaMu.Unlock()
 		return nil
 	}
+	if state := r.schemaInit; state != nil {
+		r.schemaMu.Unlock()
+		select {
+		case <-state.done:
+			return state.err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	state := &schemaInitState{done: make(chan struct{})}
+	r.schemaInit = state
+	r.schemaMu.Unlock()
+
+	state.err = r.ensureSchemaDDL(ctx)
+
+	r.schemaMu.Lock()
+	if state.err == nil {
+		r.schemaReady = true
+	}
+	if r.schemaInit == state {
+		r.schemaInit = nil
+	}
+	r.schemaMu.Unlock()
+	close(state.done)
+	return state.err
+}
+
+func (r *RiskEngineStateRepository) ensureSchemaDDL(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, r.q(`
 CREATE TABLE IF NOT EXISTS `+riskEngineStateTable+` (
 	graph_id TEXT PRIMARY KEY,
@@ -385,9 +483,6 @@ CREATE TABLE IF NOT EXISTS `+riskEngineStateTable+` (
 	updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 `))
-	if err == nil {
-		r.schemaReady = true
-	}
 	return err
 }
 

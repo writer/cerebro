@@ -12,11 +12,17 @@ import (
 
 const postgresSessionTable = "cerebro_agent_sessions"
 
+type schemaInitState struct {
+	done chan struct{}
+	err  error
+}
+
 type PostgresSessionStore struct {
 	db          *sql.DB
 	rewriteSQL  func(string) string
 	schemaMu    sync.Mutex
 	schemaReady bool
+	schemaInit  *schemaInitState
 }
 
 func NewPostgresSessionStore(db *sql.DB) *PostgresSessionStore {
@@ -27,11 +33,43 @@ func (s *PostgresSessionStore) EnsureSchema(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return fmt.Errorf("postgres session store is not initialized")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	s.schemaMu.Lock()
-	defer s.schemaMu.Unlock()
 	if s.schemaReady {
+		s.schemaMu.Unlock()
 		return nil
 	}
+	if state := s.schemaInit; state != nil {
+		s.schemaMu.Unlock()
+		select {
+		case <-state.done:
+			return state.err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	state := &schemaInitState{done: make(chan struct{})}
+	s.schemaInit = state
+	s.schemaMu.Unlock()
+
+	state.err = s.ensureSchemaDDL(ctx)
+
+	s.schemaMu.Lock()
+	if state.err == nil {
+		s.schemaReady = true
+	}
+	if s.schemaInit == state {
+		s.schemaInit = nil
+	}
+	s.schemaMu.Unlock()
+	close(state.done)
+	return state.err
+}
+
+func (s *PostgresSessionStore) ensureSchemaDDL(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, s.q(`
 CREATE TABLE IF NOT EXISTS `+postgresSessionTable+` (
 	id TEXT PRIMARY KEY,
@@ -45,9 +83,6 @@ CREATE TABLE IF NOT EXISTS `+postgresSessionTable+` (
 );
 CREATE INDEX IF NOT EXISTS idx_`+postgresSessionTable+`_updated_at ON `+postgresSessionTable+` (updated_at);
 `))
-	if err == nil {
-		s.schemaReady = true
-	}
 	return err
 }
 
