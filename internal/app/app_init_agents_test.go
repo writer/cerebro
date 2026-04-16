@@ -39,6 +39,7 @@ func TestRemoteToolProviderConfigFromConfig(t *testing.T) {
 		NATSJetStreamTLSKeyFile:         "/tmp/key.pem",
 		NATSJetStreamTLSServerName:      "nats.internal",
 		NATSJetStreamTLSInsecure:        true,
+		AllowInsecureTLS:                true,
 	}
 
 	got := remoteToolProviderConfigFromConfig(cfg)
@@ -62,6 +63,7 @@ func TestRemoteToolProviderConfigFromConfig(t *testing.T) {
 		TLSKeyFile:            "/tmp/key.pem",
 		TLSServerName:         "nats.internal",
 		TLSInsecureSkipVerify: true,
+		AllowInsecureTLS:      true,
 	}
 
 	if !reflect.DeepEqual(got, want) {
@@ -88,6 +90,7 @@ func TestToolPublisherConfigFromConfig(t *testing.T) {
 		NATSJetStreamTLSKeyFile:           "/tmp/key2.pem",
 		NATSJetStreamTLSServerName:        "nats.tools.internal",
 		NATSJetStreamTLSInsecure:          true,
+		AllowInsecureTLS:                  true,
 	}
 
 	got := toolPublisherConfigFromConfig(cfg)
@@ -109,6 +112,7 @@ func TestToolPublisherConfigFromConfig(t *testing.T) {
 		TLSKeyFile:            "/tmp/key2.pem",
 		TLSServerName:         "nats.tools.internal",
 		TLSInsecureSkipVerify: true,
+		AllowInsecureTLS:      true,
 	}
 
 	if !reflect.DeepEqual(got, want) {

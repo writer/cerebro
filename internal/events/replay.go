@@ -36,6 +36,7 @@ type ReplayConfig struct {
 	TLSKeyFile            string
 	TLSServerName         string
 	TLSInsecureSkipVerify bool
+	AllowInsecureTLS      bool
 
 	ContinueOnHandlerError bool
 }
@@ -97,6 +98,7 @@ func ReplayJetStreamHistory(ctx context.Context, cfg ReplayConfig, handler Repla
 		TLSKeyFile:            config.TLSKeyFile,
 		TLSServerName:         config.TLSServerName,
 		TLSInsecureSkipVerify: config.TLSInsecureSkipVerify,
+		AllowInsecureTLS:      config.AllowInsecureTLS,
 	}.withDefaults()
 
 	natsOptions, err := base.natsOptions()

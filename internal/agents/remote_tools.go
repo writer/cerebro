@@ -45,6 +45,7 @@ type RemoteToolProviderConfig struct {
 	TLSKeyFile            string
 	TLSServerName         string
 	TLSInsecureSkipVerify bool
+	AllowInsecureTLS      bool
 }
 
 type RemoteToolProvider struct {
@@ -368,7 +369,7 @@ func signerFromSeed(seed string) (string, func([]byte) ([]byte, error), error) {
 }
 
 func (c RemoteToolProviderConfig) tlsConfig() (*tls.Config, error) {
-	if c.TLSInsecureSkipVerify && !allowInsecureTLSOverride() {
+	if c.TLSInsecureSkipVerify && !allowInsecureTLSOverride(c.AllowInsecureTLS) {
 		return nil, fmt.Errorf("remote tools tls insecure skip verify requires CEREBRO_ALLOW_INSECURE_TLS=true")
 	}
 	tlsConfig := &tls.Config{
@@ -404,6 +405,6 @@ func (c RemoteToolProviderConfig) tlsConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-func allowInsecureTLSOverride() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("CEREBRO_ALLOW_INSECURE_TLS")), "true")
+func allowInsecureTLSOverride(explicit bool) bool {
+	return explicit || strings.EqualFold(strings.TrimSpace(os.Getenv("CEREBRO_ALLOW_INSECURE_TLS")), "true")
 }

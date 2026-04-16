@@ -301,7 +301,30 @@ func logInsecureTLSWarnings(logger *slog.Logger, cfg *Config) {
 	if logger == nil || cfg == nil {
 		return
 	}
-	if cfg.NATSJetStreamTLSEnabled && cfg.NATSJetStreamTLSInsecure && getEnvBool("CEREBRO_ALLOW_INSECURE_TLS", false) {
+	if cfg.usesNATSInsecureTLS() && cfg.allowInsecureTLSOverride() {
 		logger.Warn("insecure TLS verification bypass enabled for NATS clients", "env_var", "NATS_JETSTREAM_TLS_INSECURE_SKIP_VERIFY")
 	}
+}
+
+func (c *Config) allowInsecureTLSOverride() bool {
+	if c == nil {
+		return getEnvBool("CEREBRO_ALLOW_INSECURE_TLS", false)
+	}
+	return c.AllowInsecureTLS || getEnvBool("CEREBRO_ALLOW_INSECURE_TLS", false)
+}
+
+func (c *Config) usesNATSInsecureTLS() bool {
+	return c != nil && c.NATSJetStreamTLSEnabled && c.NATSJetStreamTLSInsecure
+}
+
+func (c *Config) usesNATSTransportSettings() bool {
+	if c == nil {
+		return false
+	}
+	return c.NATSJetStreamEnabled ||
+		c.NATSConsumerEnabled ||
+		c.AlertRouterEnabled ||
+		c.AgentRemoteToolsEnabled ||
+		c.AgentToolPublisherEnabled ||
+		c.GraphWriterLeaseEnabled
 }

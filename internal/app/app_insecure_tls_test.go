@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadConfigValidateRejectsInsecureTLSWithoutOverride(t *testing.T) {
@@ -35,6 +36,45 @@ func TestLoadConfigValidateAllowsInsecureTLSWithOverride(t *testing.T) {
 	}
 }
 
+func TestConfigValidateRejectsInsecureTLSForAgentTransportsWithoutOverride(t *testing.T) {
+	cfg := &Config{
+		AgentRemoteToolsEnabled:  true,
+		NATSJetStreamTLSEnabled:  true,
+		NATSJetStreamTLSInsecure: true,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected config validation error")
+	}
+	if !strings.Contains(err.Error(), "NATS_JETSTREAM_TLS_INSECURE_SKIP_VERIFY requires CEREBRO_ALLOW_INSECURE_TLS=true") {
+		t.Fatalf("expected insecure TLS validation failure, got %v", err)
+	}
+}
+
+func TestConfigValidateAllowsInsecureTLSWithExplicitOverride(t *testing.T) {
+	t.Setenv("CEREBRO_ALLOW_INSECURE_TLS", "false")
+
+	cfg := LoadConfig()
+	cfg.NATSJetStreamEnabled = true
+	cfg.NATSJetStreamURLs = []string{"nats://127.0.0.1:4222"}
+	cfg.NATSJetStreamStream = "CEREBRO_EVENTS"
+	cfg.NATSJetStreamSubjectPrefix = "cerebro.events"
+	cfg.NATSJetStreamPublishTimeout = 3 * time.Second
+	cfg.NATSJetStreamConnectTimeout = 5 * time.Second
+	cfg.NATSJetStreamFlushInterval = 10 * time.Second
+	cfg.NATSJetStreamOutboxMaxAge = time.Second
+	cfg.NATSJetStreamOutboxMaxItems = 1
+	cfg.NATSJetStreamOutboxMaxRetry = 0
+	cfg.NATSJetStreamTLSEnabled = true
+	cfg.NATSJetStreamTLSInsecure = true
+	cfg.AllowInsecureTLS = true
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected explicit insecure TLS override to validate, got %v", err)
+	}
+}
+
 func TestLogInsecureTLSWarnings(t *testing.T) {
 	t.Setenv("CEREBRO_ALLOW_INSECURE_TLS", "true")
 
@@ -44,6 +84,22 @@ func TestLogInsecureTLSWarnings(t *testing.T) {
 	logInsecureTLSWarnings(logger, &Config{
 		NATSJetStreamTLSEnabled:  true,
 		NATSJetStreamTLSInsecure: true,
+	})
+
+	output := logs.String()
+	if !strings.Contains(output, "insecure TLS verification bypass enabled for NATS clients") {
+		t.Fatalf("expected insecure TLS warning, got %q", output)
+	}
+}
+
+func TestLogInsecureTLSWarningsWithExplicitOverride(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	logInsecureTLSWarnings(logger, &Config{
+		NATSJetStreamTLSEnabled:  true,
+		NATSJetStreamTLSInsecure: true,
+		AllowInsecureTLS:         true,
 	})
 
 	output := logs.String()

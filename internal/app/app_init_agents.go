@@ -195,6 +195,7 @@ func remoteToolProviderConfigFromConfig(cfg *Config) agents.RemoteToolProviderCo
 		TLSKeyFile:            cfg.NATSJetStreamTLSKeyFile,
 		TLSServerName:         cfg.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: cfg.NATSJetStreamTLSInsecure,
+		AllowInsecureTLS:      cfg.AllowInsecureTLS,
 	}
 }
 
@@ -217,6 +218,7 @@ func toolPublisherConfigFromConfig(cfg *Config) agents.ToolPublisherConfig {
 		TLSKeyFile:            cfg.NATSJetStreamTLSKeyFile,
 		TLSServerName:         cfg.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: cfg.NATSJetStreamTLSInsecure,
+		AllowInsecureTLS:      cfg.AllowInsecureTLS,
 	}
 }
 

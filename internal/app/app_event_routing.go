@@ -43,6 +43,7 @@ func (a *App) startEventAlertRouting(_ context.Context) {
 		TLSKeyFile:            a.Config.NATSJetStreamTLSKeyFile,
 		TLSServerName:         a.Config.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: a.Config.NATSJetStreamTLSInsecure,
+		AllowInsecureTLS:      a.Config.AllowInsecureTLS,
 	}, a.Logger)
 	if err != nil {
 		a.Logger.Warn("failed to initialize alert notifier", "error", err)

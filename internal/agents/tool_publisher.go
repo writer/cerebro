@@ -44,6 +44,7 @@ type ToolPublisherConfig struct {
 	TLSKeyFile            string
 	TLSServerName         string
 	TLSInsecureSkipVerify bool
+	AllowInsecureTLS      bool
 }
 
 // ToolPublisher exposes a manifest and request handlers for local Cerebro tools
@@ -441,7 +442,7 @@ func (c ToolPublisherConfig) authOptions() ([]nats.Option, error) {
 }
 
 func (c ToolPublisherConfig) tlsConfig() (*tls.Config, error) {
-	if c.TLSInsecureSkipVerify && !allowInsecureTLSOverride() {
+	if c.TLSInsecureSkipVerify && !allowInsecureTLSOverride(c.AllowInsecureTLS) {
 		return nil, fmt.Errorf("tool publisher tls insecure skip verify requires CEREBRO_ALLOW_INSECURE_TLS=true")
 	}
 	tlsConfig := &tls.Config{

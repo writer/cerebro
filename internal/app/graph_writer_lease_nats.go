@@ -41,6 +41,7 @@ func newNATSGraphWriterLeaseStore(cfg *Config) (*natsGraphWriterLeaseStore, erro
 		TLSKeyFile:            cfg.NATSJetStreamTLSKeyFile,
 		TLSServerName:         cfg.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: cfg.NATSJetStreamTLSInsecure,
+		AllowInsecureTLS:      cfg.AllowInsecureTLS,
 	}
 	options, err := base.NATSOptions()
 	if err != nil {

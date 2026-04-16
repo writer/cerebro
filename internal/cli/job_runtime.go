@@ -83,6 +83,7 @@ func openJobRuntime(ctx context.Context, cfg *app.Config) (*jobRuntime, error) {
 		TLSKeyFile:            cfg.NATSJetStreamTLSKeyFile,
 		TLSServerName:         cfg.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: cfg.NATSJetStreamTLSInsecure,
+		AllowInsecureTLS:      cfg.AllowInsecureTLS,
 	}
 	natsOptions, err := jetStreamCfg.NATSOptions()
 	if err != nil {

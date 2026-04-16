@@ -530,6 +530,7 @@ func (a *App) initJetStreamEventPublisher() {
 		TLSKeyFile:            a.Config.NATSJetStreamTLSKeyFile,
 		TLSServerName:         a.Config.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: a.Config.NATSJetStreamTLSInsecure,
+		AllowInsecureTLS:      a.Config.AllowInsecureTLS,
 	}, a.Logger)
 	if err != nil {
 		a.Logger.Warn("failed to initialize jetstream event publisher", "error", err)

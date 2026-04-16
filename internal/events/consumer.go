@@ -75,6 +75,7 @@ type ConsumerConfig struct {
 	TLSKeyFile            string
 	TLSServerName         string
 	TLSInsecureSkipVerify bool
+	AllowInsecureTLS      bool
 }
 
 type EventHandler func(context.Context, CloudEvent) error
@@ -208,6 +209,7 @@ func NewJetStreamConsumer(cfg ConsumerConfig, logger *slog.Logger, handler Event
 		TLSKeyFile:            config.TLSKeyFile,
 		TLSServerName:         config.TLSServerName,
 		TLSInsecureSkipVerify: config.TLSInsecureSkipVerify,
+		AllowInsecureTLS:      config.AllowInsecureTLS,
 	}.withDefaults()
 
 	natsOptions, err := base.natsOptions()

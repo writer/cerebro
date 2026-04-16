@@ -87,6 +87,7 @@ func (a *App) startTapGraphConsumer(ctx context.Context) {
 		TLSKeyFile:            a.Config.NATSJetStreamTLSKeyFile,
 		TLSServerName:         a.Config.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: a.Config.NATSJetStreamTLSInsecure,
+		AllowInsecureTLS:      a.Config.AllowInsecureTLS,
 	}, a.Logger, handler)
 	if err != nil {
 		a.Logger.Warn("failed to initialize tap graph consumer", "error", err)

@@ -337,6 +337,7 @@ type Config struct {
 	NATSJetStreamTLSKeyFile            string
 	NATSJetStreamTLSServerName         string
 	NATSJetStreamTLSInsecure           bool
+	AllowInsecureTLS                   bool
 
 	// NATS JetStream consumer for ensemble-tap ingestion
 	NATSConsumerEnabled                 bool

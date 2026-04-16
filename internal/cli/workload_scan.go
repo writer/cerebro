@@ -604,6 +604,7 @@ func newWorkloadScanEmitter(cfg *app.Config, logger *slog.Logger) (*webhooks.Ser
 		TLSKeyFile:            cfg.NATSJetStreamTLSKeyFile,
 		TLSServerName:         cfg.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify: cfg.NATSJetStreamTLSInsecure,
+		AllowInsecureTLS:      cfg.AllowInsecureTLS,
 	}, logger)
 	if err != nil {
 		return nil, fmt.Errorf("initialize workload scan event publisher: %w", err)

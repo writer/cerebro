@@ -210,6 +210,7 @@ func replayJetStream(opts replayStreamOptions) (replayStreamReport, error) {
 		TLSKeyFile:             cfg.NATSJetStreamTLSKeyFile,
 		TLSServerName:          cfg.NATSJetStreamTLSServerName,
 		TLSInsecureSkipVerify:  cfg.NATSJetStreamTLSInsecure,
+		AllowInsecureTLS:       cfg.AllowInsecureTLS,
 		ContinueOnHandlerError: true,
 	}, func(ctx context.Context, evt events.ReplayEvent) error {
 		if err := replayApp.ReplayTapCloudEvent(ctx, evt.CloudEvent); err != nil {

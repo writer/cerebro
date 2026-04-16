@@ -125,6 +125,7 @@ type AlertNotifierConfig struct {
 	TLSKeyFile            string
 	TLSServerName         string
 	TLSInsecureSkipVerify bool
+	AllowInsecureTLS      bool
 }
 
 type NATSAlertNotifier struct {
@@ -1239,6 +1240,7 @@ func NewNATSAlertNotifier(cfg AlertNotifierConfig, logger *slog.Logger) (*NATSAl
 		TLSKeyFile:            cfg.TLSKeyFile,
 		TLSServerName:         cfg.TLSServerName,
 		TLSInsecureSkipVerify: cfg.TLSInsecureSkipVerify,
+		AllowInsecureTLS:      cfg.AllowInsecureTLS,
 	}.withDefaults()
 	options, err := base.natsOptions()
 	if err != nil {

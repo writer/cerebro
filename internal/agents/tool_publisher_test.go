@@ -63,6 +63,22 @@ func TestToolPublisherConfigRejectsInsecureTLSWithoutOverride(t *testing.T) {
 	}
 }
 
+func TestToolPublisherConfigAllowsInsecureTLSWithExplicitOverride(t *testing.T) {
+	cfg := (ToolPublisherConfig{
+		Enabled:               true,
+		URLs:                  []string{"nats://127.0.0.1:4222"},
+		ManifestSubject:       "cerebro.tools.manifest",
+		RequestPrefix:         "cerebro.tools.request",
+		TLSEnabled:            true,
+		TLSInsecureSkipVerify: true,
+		AllowInsecureTLS:      true,
+	}).withDefaults()
+
+	if _, err := cfg.natsOptions(); err != nil {
+		t.Fatalf("expected explicit insecure TLS override to succeed, got %v", err)
+	}
+}
+
 func TestDecodeToolInvocationRequest_WrappedArguments(t *testing.T) {
 	req, args, err := decodeToolInvocationRequest([]byte(`{"tool":"cerebro.blast_radius","arguments":{"principal_id":"user:1","max_depth":4}}`))
 	if err != nil {
