@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/writer/cerebro/internal/iacrender"
@@ -61,22 +62,28 @@ type terraformArtifactRendererKey struct {
 	ResourceFamily string
 }
 
-var terraformArtifactRenderers = map[terraformArtifactRendererKey]terraformArtifactRenderer{
-	{
+var (
+	terraformRestrictPublicStorageAccessAWSBucketKey = terraformArtifactRendererKey{
 		ActionType:     ActionRestrictPublicStorageAccess,
 		Provider:       "aws",
 		ResourceFamily: "bucket",
-	}: renderTerraformRestrictPublicStorageAccessActionArtifact,
-	{
+	}
+	terraformEnableBucketDefaultEncryptionAWSBucketKey = terraformArtifactRendererKey{
 		ActionType:     ActionEnableBucketDefaultEncryption,
 		Provider:       "aws",
 		ResourceFamily: "bucket",
-	}: renderTerraformBucketDefaultEncryptionActionArtifact,
-	{
+	}
+	terraformRestrictPublicSecurityGroupIngressAWSSecurityGroupKey = terraformArtifactRendererKey{
 		ActionType:     ActionRestrictPublicSecurityGroupIngress,
 		Provider:       "aws",
 		ResourceFamily: "security_group",
-	}: renderTerraformRestrictPublicSecurityGroupIngressActionArtifact,
+	}
+)
+
+var terraformArtifactRenderers = map[terraformArtifactRendererKey]terraformArtifactRenderer{
+	terraformRestrictPublicStorageAccessAWSBucketKey:               renderTerraformRestrictPublicStorageAccessActionArtifact,
+	terraformEnableBucketDefaultEncryptionAWSBucketKey:             renderTerraformBucketDefaultEncryptionActionArtifact,
+	terraformRestrictPublicSecurityGroupIngressAWSSecurityGroupKey: renderTerraformRestrictPublicSecurityGroupIngressActionArtifact,
 }
 
 func actionDeliveryMode(action Action, execution *Execution, entry CatalogEntry) DeliveryMode {
@@ -425,10 +432,24 @@ func terraformArtifactRendererLookupKey(actionType ActionType, execution *Execut
 func validateTerraformArtifactContext(actionType ActionType, execution *Execution, expectedProvider, expectedResourceFamily string) error {
 	key := terraformArtifactRendererLookupKey(actionType, execution)
 	if expectedProvider != "" && key.Provider != "" && key.Provider != expectedProvider {
-		return fmt.Errorf("terraform delivery for %s is only implemented for %s %ss, got %s", actionType, expectedProvider, expectedResourceFamily, key.Provider)
+		return fmt.Errorf(
+			"terraform delivery for %s is only implemented for %s %ss, got %s; %s",
+			actionType,
+			expectedProvider,
+			expectedResourceFamily,
+			key.Provider,
+			terraformSupportedContextsHelp(actionType),
+		)
 	}
 	if expectedResourceFamily != "" && key.ResourceFamily != "" && key.ResourceFamily != expectedResourceFamily {
-		return fmt.Errorf("terraform delivery for %s is only implemented for %s %ss, got %s", actionType, expectedProvider, expectedResourceFamily, key.ResourceFamily)
+		return fmt.Errorf(
+			"terraform delivery for %s is only implemented for %s %ss, got %s; %s",
+			actionType,
+			expectedProvider,
+			expectedResourceFamily,
+			key.ResourceFamily,
+			terraformSupportedContextsHelp(actionType),
+		)
 	}
 	return nil
 }
@@ -449,20 +470,54 @@ func terraformUnsupportedContextError(actionType ActionType, key terraformArtifa
 	}
 	if len(providers) == 1 && len(resourceFamilies) == 1 {
 		return fmt.Errorf(
-			"terraform delivery for %s is only implemented for %s %ss, got provider=%s resource_family=%s",
+			"terraform delivery for %s is only implemented for %s %ss, got provider=%s resource_family=%s; %s",
 			actionType,
 			firstMapKey(providers),
 			firstMapKey(resourceFamilies),
 			firstNonEmpty(key.Provider, "unknown"),
 			firstNonEmpty(key.ResourceFamily, "unknown"),
+			terraformSupportedContextsHelp(actionType),
 		)
 	}
 	return fmt.Errorf(
-		"terraform delivery is not implemented for %s (provider=%s resource_family=%s)",
+		"terraform delivery is not implemented for %s (provider=%s resource_family=%s); %s",
 		actionType,
 		firstNonEmpty(key.Provider, "unknown"),
 		firstNonEmpty(key.ResourceFamily, "unknown"),
+		terraformSupportedContextsHelp(actionType),
 	)
+}
+
+func terraformSupportedContextsHelp(actionType ActionType) string {
+	supported := terraformSupportedContexts(actionType)
+	if len(supported) == 0 {
+		return "no Terraform delivery combinations are currently supported; consider remote_apply or manual remediation"
+	}
+	return fmt.Sprintf(
+		"supported combinations: %s; consider remote_apply or manual remediation",
+		strings.Join(supported, ", "),
+	)
+}
+
+func terraformSupportedContexts(actionType ActionType) []string {
+	candidates := []terraformArtifactRendererKey{
+		terraformRestrictPublicStorageAccessAWSBucketKey,
+		terraformEnableBucketDefaultEncryptionAWSBucketKey,
+		terraformRestrictPublicSecurityGroupIngressAWSSecurityGroupKey,
+	}
+	supported := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.ActionType != actionType {
+			continue
+		}
+		supported = append(supported, fmt.Sprintf(
+			"%s/%s",
+			firstNonEmpty(candidate.Provider, "unknown"),
+			firstNonEmpty(candidate.ResourceFamily, "unknown"),
+		))
+	}
+	sort.Strings(supported)
+	return supported
 }
 
 func firstMapKey(values map[string]struct{}) string {

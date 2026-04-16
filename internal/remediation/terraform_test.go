@@ -157,6 +157,37 @@ func TestRenderTerraformArtifact_EnableBucketDefaultEncryptionRejectsNonAWSProvi
 	if !strings.Contains(err.Error(), "only implemented for aws buckets") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if !strings.Contains(err.Error(), "supported combinations: aws/bucket") {
+		t.Fatalf("expected supported combinations in error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "consider remote_apply or manual remediation") {
+		t.Fatalf("expected remediation guidance in error, got %v", err)
+	}
+}
+
+func TestRenderTerraformArtifact_RestrictPublicSecurityGroupIngressUnsupportedResourceListsSupportedCombinations(t *testing.T) {
+	_, err := renderTerraformArtifact(Action{
+		Type: ActionRestrictPublicSecurityGroupIngress,
+	}, &Execution{
+		TriggerData: map[string]any{
+			"resource_id":       "bucket:audit-logs",
+			"resource_type":     "bucket",
+			"resource_platform": "aws",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected unsupported resource family rejection")
+		return
+	}
+	if !strings.Contains(err.Error(), "provider=aws resource_family=bucket") {
+		t.Fatalf("expected provider/resource family details, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "supported combinations: aws/security_group") {
+		t.Fatalf("expected supported combinations in error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "consider remote_apply or manual remediation") {
+		t.Fatalf("expected remediation guidance in error, got %v", err)
+	}
 }
 
 func TestRenderTerraformBucketDefaultEncryptionArtifact_UsesIaCStateIDModulePath(t *testing.T) {
