@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -127,5 +128,27 @@ func TestErrorFromErr_ResponseMapping(t *testing.T) {
 				t.Fatalf("expected original error message for status %d", tc.wantStatus)
 			}
 		})
+	}
+}
+
+func TestJSONEncodingFailureReturnsInternalServerError(t *testing.T) {
+	s := &Server{}
+	w := httptest.NewRecorder()
+
+	s.json(w, http.StatusOK, map[string]float64{"value": math.NaN()})
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	if got := w.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("content type = %q, want application/json", got)
+	}
+
+	body := decodeAPIErrorResponse(t, w)
+	if body.Code != "internal_error" {
+		t.Fatalf("code = %q, want internal_error", body.Code)
+	}
+	if body.Error != "internal server error" {
+		t.Fatalf("error = %q, want internal server error", body.Error)
 	}
 }

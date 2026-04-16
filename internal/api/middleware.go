@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -20,12 +19,15 @@ type APIError struct {
 }
 
 func writeJSONError(w http.ResponseWriter, status int, code, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(APIError{
+	payload, err := encodeJSONPayload(APIError{
 		Error: message,
 		Code:  code,
 	})
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	writeJSONPayload(w, status, payload, nil)
 }
 
 type contextKey string

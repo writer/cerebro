@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,9 +11,12 @@ import (
 )
 
 func (s *Server) json(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
+	payload, err := encodeJSONPayload(data)
+	if err != nil {
+		s.writeJSONEncodingError(w, err)
+		return
+	}
+	writeJSONPayload(w, status, payload, nil)
 }
 
 func (s *Server) error(w http.ResponseWriter, status int, message string) {
@@ -81,4 +85,39 @@ func httpStatusToCode(status int) string {
 	default:
 		return "error"
 	}
+}
+
+func (s *Server) writeJSONEncodingError(w http.ResponseWriter, err error) {
+	if s.app != nil && s.app.Logger != nil {
+		s.app.Logger.Error("api json encoding failed", "error", err)
+	}
+
+	payload, marshalErr := encodeJSONPayload(APIError{
+		Error: "internal server error",
+		Code:  httpStatusToCode(http.StatusInternalServerError),
+	})
+	if marshalErr != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	writeJSONPayload(w, http.StatusInternalServerError, payload, nil)
+}
+
+func encodeJSONPayload(data any) ([]byte, error) {
+	var payload bytes.Buffer
+	if err := json.NewEncoder(&payload).Encode(data); err != nil {
+		return nil, err
+	}
+	return payload.Bytes(), nil
+}
+
+func writeJSONPayload(w http.ResponseWriter, status int, payload []byte, headers map[string]string) {
+	for key, value := range headers {
+		w.Header().Set(key, value)
+	}
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(payload)
 }

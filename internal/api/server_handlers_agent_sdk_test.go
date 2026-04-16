@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -190,6 +191,32 @@ func TestAgentSDKMCPToolsAndResources(t *testing.T) {
 	firstContent, ok := contents[0].(map[string]any)
 	if !ok || !strings.Contains(firstContent["text"].(string), "\"kind\"") {
 		t.Fatalf("expected JSON schema text payload, got %#v", contents[0])
+	}
+}
+
+func TestWriteAgentSDKMCPResponseEncodingFailureReturnsInternalServerError(t *testing.T) {
+	s := &Server{}
+	w := httptest.NewRecorder()
+
+	s.writeAgentSDKMCPResponse(w, agentSDKMCPResponse{
+		JSONRPC: "2.0",
+		ID:      "bad-1",
+		Result:  map[string]float64{"value": math.NaN()},
+	})
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+	if got := w.Header().Get("MCP-Protocol-Version"); got != agentSDKMCPProtocolVersion {
+		t.Fatalf("MCP-Protocol-Version = %q, want %q", got, agentSDKMCPProtocolVersion)
+	}
+
+	body := decodeJSON(t, w)
+	if body["code"] != "internal_error" {
+		t.Fatalf("code = %#v, want internal_error", body["code"])
+	}
+	if body["error"] != "internal server error" {
+		t.Fatalf("error = %#v, want internal server error", body["error"])
 	}
 }
 

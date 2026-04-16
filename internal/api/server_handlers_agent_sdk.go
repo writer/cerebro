@@ -606,10 +606,15 @@ func (s *Server) readAgentSDKResource(r *http.Request, uri string) (agentSDKReso
 }
 
 func (s *Server) writeAgentSDKMCPResponse(w http.ResponseWriter, resp agentSDKMCPResponse) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("MCP-Protocol-Version", agentSDKMCPProtocolVersion)
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(resp)
+	payload, err := encodeJSONPayload(resp)
+	if err != nil {
+		w.Header().Set("MCP-Protocol-Version", agentSDKMCPProtocolVersion)
+		s.writeJSONEncodingError(w, err)
+		return
+	}
+	writeJSONPayload(w, http.StatusOK, payload, map[string]string{
+		"MCP-Protocol-Version": agentSDKMCPProtocolVersion,
+	})
 }
 
 func (s *Server) handleAgentSDKToolError(w http.ResponseWriter, err error) {
@@ -630,9 +635,12 @@ func (s *Server) handleAgentSDKToolError(w http.ResponseWriter, err error) {
 		if toolErr.Code == "approval_required" {
 			status = http.StatusConflict
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(toolErr.AsMap())
+		payload, encodeErr := encodeJSONPayload(toolErr.AsMap())
+		if encodeErr != nil {
+			s.writeJSONEncodingError(w, encodeErr)
+			return
+		}
+		writeJSONPayload(w, status, payload, nil)
 		return
 	}
 
