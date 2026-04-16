@@ -98,7 +98,7 @@ func (a *App) startSecretsReloader(parent context.Context) {
 		return
 	}
 	if parent == nil {
-		parent = context.Background()
+		parent = a.backgroundContext()
 	}
 
 	ctx, cancel := context.WithCancel(parent)
@@ -144,7 +144,7 @@ func (a *App) ReloadSecrets(ctx context.Context) error {
 		return fmt.Errorf("app is nil")
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = a.backgroundContext()
 	}
 
 	a.reloadMu.Lock()
@@ -280,7 +280,7 @@ func (a *App) rebindAgentSessionStore(ctx context.Context, activeSnowflake *snow
 		return
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = a.backgroundContext()
 	}
 	switch {
 	case a.appStateDB != nil:
@@ -312,7 +312,7 @@ func (a *App) rotateSnowflakeClient(ctx context.Context, cfg *Config) error {
 		return nil
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = a.backgroundContext()
 	}
 
 	oldClient := a.Snowflake
