@@ -293,7 +293,9 @@ func (r *Runner) cleanupCheckout(ctx context.Context, run *RunRecord) {
 	cleanedAt := r.now().UTC()
 	run.Checkout.CleanedUpAt = &cleanedAt
 	run.UpdatedAt = cleanedAt
-	_ = r.saveRun(ctx, run)
+	if err := r.saveRun(ctx, run); err != nil {
+		r.logger.Warn("persist repo scan cleanup state failed", "run_id", run.ID, "error", err)
+	}
 }
 
 func (r *Runner) saveRun(ctx context.Context, run *RunRecord) error {
