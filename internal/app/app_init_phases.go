@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"golang.org/x/sync/errgroup"
 )
 
 type concurrentInitTask struct {
@@ -63,48 +61,43 @@ func (a *App) initPhase1(ctx context.Context) error {
 }
 
 func (a *App) initPhase2a(ctx context.Context) error {
+	appState := a.appStateSubsystem()
+	graphSubsystem := a.graphSubsystem()
+
 	a.initExecutionStore()
-	a.initGraphPersistenceStore()
-	if err := runInitErrorStep("app_state_db", func() error { return a.initAppStateDB(ctx) }); err != nil {
+	if err := appState.Init(ctx); err != nil {
 		return err
 	}
 	if err := a.initLegacySnowflakeForAppState(ctx); err != nil {
 		return err
 	}
-	if err := runInitErrorStep("graph_store_backend", func() error { return a.initConfiguredSecurityGraphStore(ctx) }); err != nil {
-		return err
-	}
-	if err := runInitErrorStep("graph_writer_lease", func() error { return a.initGraphWriterLease(ctx) }); err != nil {
-		return err
-	}
-	if err := runInitErrorStep("entity_search_backend", func() error { return a.initEntitySearchBackend(ctx) }); err != nil {
+	if err := graphSubsystem.Init(ctx); err != nil {
 		return err
 	}
 
-	if err := runInitTasksConcurrently(ctx, []concurrentInitTask{
-		{name: "cache", run: func(context.Context) { a.initCache() }},
-		{name: "ticketing", run: func(taskCtx context.Context) { a.initTicketing(taskCtx) }},
-		{name: "identity", run: func(context.Context) { a.initIdentity() }},
-		{name: "attackpath", run: func(context.Context) { a.initAttackPath() }},
-		{name: "webhooks", run: func(context.Context) { a.initWebhooks() }},
-		{name: "notifications", run: func(context.Context) { a.initNotifications() }},
-		{name: "rbac", run: func(context.Context) { a.initRBAC() }},
-		{name: "compliance", run: func(context.Context) { a.initCompliance() }},
-		{name: "health", run: func(context.Context) { a.initHealth() }},
-		{name: "lineage", run: func(context.Context) { a.initLineage() }},
-		{name: "runtime", run: func(context.Context) { a.initRuntime() }},
-		{name: "findings", run: func(context.Context) { a.initFindings() }},
-		{name: "providers", run: func(taskCtx context.Context) { a.initProviders(taskCtx) }},
-		{name: "scheduler", run: func(taskCtx context.Context) { a.initScheduler(taskCtx) }},
-		{name: "repositories", run: func(context.Context) { a.initRepositories() }},
-		{name: "snowflake_findings", run: func(taskCtx context.Context) { a.initSnowflakeFindings(taskCtx) }},
-		{name: "scan_watermarks", run: func(taskCtx context.Context) { a.initScanWatermarks(taskCtx) }},
-		{name: "threatintel", run: func(context.Context) { a.initThreatIntel(ctx) }},
-		{name: "available_tables", run: func(taskCtx context.Context) { a.initAvailableTables(taskCtx) }},
-	}); err != nil {
+	if err := runSubsystemInitConcurrently(ctx,
+		initOnlySubsystem("cache", func(context.Context) { a.initCache() }),
+		initOnlySubsystem("ticketing", func(taskCtx context.Context) { a.initTicketing(taskCtx) }),
+		initOnlySubsystem("identity", func(context.Context) { a.initIdentity() }),
+		initOnlySubsystem("attackpath", func(context.Context) { a.initAttackPath() }),
+		initOnlySubsystem("webhooks", func(context.Context) { a.initWebhooks() }),
+		initOnlySubsystem("notifications", func(context.Context) { a.initNotifications() }),
+		initOnlySubsystem("rbac", func(context.Context) { a.initRBAC() }),
+		initOnlySubsystem("compliance", func(context.Context) { a.initCompliance() }),
+		initOnlySubsystem("health", func(context.Context) { a.initHealth() }),
+		initOnlySubsystem("lineage", func(context.Context) { a.initLineage() }),
+		a.runtimeSubsystem(),
+		initOnlySubsystem("findings", func(context.Context) { a.initFindings() }),
+		initOnlySubsystem("providers", func(taskCtx context.Context) { a.initProviders(taskCtx) }),
+		initOnlySubsystem("scheduler", func(taskCtx context.Context) { a.initScheduler(taskCtx) }),
+		initOnlySubsystem("snowflake_findings", func(taskCtx context.Context) { a.initSnowflakeFindings(taskCtx) }),
+		initOnlySubsystem("scan_watermarks", func(taskCtx context.Context) { a.initScanWatermarks(taskCtx) }),
+		initOnlySubsystem("threatintel", func(context.Context) { a.initThreatIntel(ctx) }),
+		initOnlySubsystem("available_tables", func(taskCtx context.Context) { a.initAvailableTables(taskCtx) }),
+	); err != nil {
 		return fmt.Errorf("phase 2a init failed: %w", err)
 	}
-	if err := runInitErrorStep("app_state_migration", func() error { return a.migrateAppState(ctx) }); err != nil {
+	if err := appState.Start(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -210,14 +203,13 @@ func isAppStateWarehouseTable(name string) bool {
 
 func (a *App) initPhase2b(ctx context.Context) error {
 	// Agent tooling rebinds remediation remote callers, so remediation must be ready first.
-	if err := runInitStep("remediation", func() { a.initRemediation() }); err != nil {
+	remediation := a.remediationSubsystem()
+	if err := runSubsystemInitSequentially(ctx, remediation, a.agentsSubsystem()); err != nil {
 		return fmt.Errorf("phase 2b init failed: %w", err)
 	}
-	if err := runInitStep("agents", func() { a.initAgents(ctx) }); err != nil {
-		return fmt.Errorf("phase 2b init failed: %w", err)
+	if err := runSubsystemStartSequentially(ctx, remediation, a.eventsSubsystem()); err != nil {
+		return fmt.Errorf("phase 2b start failed: %w", err)
 	}
-	a.startEventRemediation(ctx)
-	a.startEventAlertRouting(ctx)
 	return nil
 }
 
@@ -226,24 +218,17 @@ func (a *App) initPhase3() {
 }
 
 func (a *App) initPhase4(ctx context.Context) error {
-	a.initSecurityGraph(ctx)
-	a.initTapGraphConsumer(ctx)
+	if err := runSubsystemStartSequentially(ctx, a.graphSubsystem()); err != nil {
+		return err
+	}
 	return a.validatePolicyCoverage(ctx)
 }
 
 func runInitTasksConcurrently(ctx context.Context, tasks []concurrentInitTask) error {
-	if len(tasks) == 0 {
-		return nil
-	}
-
-	g, gctx := errgroup.WithContext(ctx)
+	subsystems := make([]initSubsystem, 0, len(tasks))
 	for _, task := range tasks {
 		task := task
-		g.Go(func() error {
-			return runInitStep(task.name, func() {
-				task.run(gctx)
-			})
-		})
+		subsystems = append(subsystems, initOnlySubsystem(task.name, task.run))
 	}
-	return g.Wait()
+	return runSubsystemInitConcurrently(ctx, subsystems...)
 }
