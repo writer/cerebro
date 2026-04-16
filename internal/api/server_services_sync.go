@@ -15,6 +15,15 @@ import (
 
 var errSyncWarehouseUnavailable = errors.New("warehouse not configured")
 
+type syncRunner interface {
+	RunAzure(ctx context.Context, req azureSyncRequest) ([]nativesync.SyncResult, error)
+	RunK8s(ctx context.Context, req k8sSyncRequest) ([]nativesync.SyncResult, error)
+	RunAWS(ctx context.Context, req awsSyncRequest) (*awsSyncOutcome, error)
+	RunAWSOrg(ctx context.Context, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error)
+	RunGCP(ctx context.Context, req gcpSyncRequest) (*gcpSyncOutcome, error)
+	RunGCPAsset(ctx context.Context, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error)
+}
+
 type syncHandlerService interface {
 	BackfillRelationshipIDs(ctx context.Context, batchSize int) (syncBackfillResult, error)
 	SyncAzure(ctx context.Context, req azureSyncRequest) (syncRunResult, error)
@@ -58,11 +67,15 @@ type gcpSyncRunResult struct {
 }
 
 type serverSyncHandlerService struct {
-	deps *serverDependencies
+	deps   *serverDependencies
+	runner syncRunner
 }
 
 func newSyncHandlerService(deps *serverDependencies) syncHandlerService {
-	return serverSyncHandlerService{deps: deps}
+	return serverSyncHandlerService{
+		deps:   deps,
+		runner: newSyncRunner(deps),
+	}
 }
 
 func (s serverSyncHandlerService) BackfillRelationshipIDs(ctx context.Context, batchSize int) (syncBackfillResult, error) {
@@ -84,11 +97,10 @@ func (s serverSyncHandlerService) BackfillRelationshipIDs(ctx context.Context, b
 }
 
 func (s serverSyncHandlerService) SyncAzure(ctx context.Context, req azureSyncRequest) (syncRunResult, error) {
-	store, err := s.warehouse()
-	if err != nil {
-		return syncRunResult{}, err
+	if s.runner == nil {
+		return syncRunResult{}, errSyncWarehouseUnavailable
 	}
-	results, err := runAzureSyncWithOptions(ctx, store, req)
+	results, err := s.runner.RunAzure(ctx, req)
 	if err != nil {
 		return syncRunResult{}, err
 	}
@@ -99,11 +111,10 @@ func (s serverSyncHandlerService) SyncAzure(ctx context.Context, req azureSyncRe
 }
 
 func (s serverSyncHandlerService) SyncK8s(ctx context.Context, req k8sSyncRequest) (syncRunResult, error) {
-	store, err := s.warehouse()
-	if err != nil {
-		return syncRunResult{}, err
+	if s.runner == nil {
+		return syncRunResult{}, errSyncWarehouseUnavailable
 	}
-	results, err := runK8sSyncWithOptions(ctx, store, req)
+	results, err := s.runner.RunK8s(ctx, req)
 	if err != nil {
 		return syncRunResult{}, err
 	}
@@ -114,11 +125,10 @@ func (s serverSyncHandlerService) SyncK8s(ctx context.Context, req k8sSyncReques
 }
 
 func (s serverSyncHandlerService) SyncAWS(ctx context.Context, req awsSyncRequest) (awsSyncRunResult, error) {
-	store, err := s.warehouse()
-	if err != nil {
-		return awsSyncRunResult{}, err
+	if s.runner == nil {
+		return awsSyncRunResult{}, errSyncWarehouseUnavailable
 	}
-	outcome, err := runAWSSyncWithOptions(ctx, store, req)
+	outcome, err := s.runner.RunAWS(ctx, req)
 	if err != nil {
 		return awsSyncRunResult{}, err
 	}
@@ -134,11 +144,10 @@ func (s serverSyncHandlerService) SyncAWS(ctx context.Context, req awsSyncReques
 }
 
 func (s serverSyncHandlerService) SyncAWSOrg(ctx context.Context, req awsOrgSyncRequest) (awsOrgSyncRunResult, error) {
-	store, err := s.warehouse()
-	if err != nil {
-		return awsOrgSyncRunResult{}, err
+	if s.runner == nil {
+		return awsOrgSyncRunResult{}, errSyncWarehouseUnavailable
 	}
-	outcome, err := runAWSOrgSyncWithOptions(ctx, store, req)
+	outcome, err := s.runner.RunAWSOrg(ctx, req)
 	if err != nil {
 		return awsOrgSyncRunResult{}, err
 	}
@@ -153,11 +162,10 @@ func (s serverSyncHandlerService) SyncAWSOrg(ctx context.Context, req awsOrgSync
 }
 
 func (s serverSyncHandlerService) SyncGCP(ctx context.Context, req gcpSyncRequest) (gcpSyncRunResult, error) {
-	store, err := s.warehouse()
-	if err != nil {
-		return gcpSyncRunResult{}, err
+	if s.runner == nil {
+		return gcpSyncRunResult{}, errSyncWarehouseUnavailable
 	}
-	outcome, err := runGCPSyncWithOptions(ctx, store, req)
+	outcome, err := s.runner.RunGCP(ctx, req)
 	if err != nil {
 		return gcpSyncRunResult{}, err
 	}
@@ -173,11 +181,10 @@ func (s serverSyncHandlerService) SyncGCP(ctx context.Context, req gcpSyncReques
 }
 
 func (s serverSyncHandlerService) SyncGCPAsset(ctx context.Context, req gcpAssetSyncRequest) (syncRunResult, error) {
-	store, err := s.warehouse()
-	if err != nil {
-		return syncRunResult{}, err
+	if s.runner == nil {
+		return syncRunResult{}, errSyncWarehouseUnavailable
 	}
-	results, err := runGCPAssetSyncWithOptions(ctx, store, req)
+	results, err := s.runner.RunGCPAsset(ctx, req)
 	if err != nil {
 		return syncRunResult{}, err
 	}
@@ -245,4 +252,56 @@ func (s serverSyncHandlerService) graphPostSyncUpdateTimeout() time.Duration {
 		return s.deps.Config.GraphPostSyncUpdateTimeoutOrDefault()
 	}
 	return (*app.Config)(nil).GraphPostSyncUpdateTimeoutOrDefault()
+}
+
+type defaultSyncRunner struct {
+	warehouse warehouse.SyncWarehouse
+	logger    *slog.Logger
+}
+
+func newSyncRunner(deps *serverDependencies) syncRunner {
+	if deps == nil {
+		return nil
+	}
+	if deps.syncRunner != nil {
+		return deps.syncRunner
+	}
+	if deps.Warehouse == nil {
+		return nil
+	}
+	return defaultSyncRunner{
+		warehouse: deps.Warehouse,
+		logger:    deps.Logger,
+	}
+}
+
+func syncRunnerLogger(logger *slog.Logger) *slog.Logger {
+	if logger != nil {
+		return logger
+	}
+	return slog.Default()
+}
+
+func (r defaultSyncRunner) RunAzure(ctx context.Context, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+	return runAzureSyncWithOptions(ctx, r.warehouse, r.logger, req)
+}
+
+func (r defaultSyncRunner) RunK8s(ctx context.Context, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
+	return runK8sSyncWithOptions(ctx, r.warehouse, r.logger, req)
+}
+
+func (r defaultSyncRunner) RunAWS(ctx context.Context, req awsSyncRequest) (*awsSyncOutcome, error) {
+	return runAWSSyncWithOptions(ctx, r.warehouse, r.logger, req)
+}
+
+func (r defaultSyncRunner) RunAWSOrg(ctx context.Context, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+	return runAWSOrgSyncWithOptions(ctx, r.warehouse, r.logger, req)
+}
+
+func (r defaultSyncRunner) RunGCP(ctx context.Context, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+	return runGCPSyncWithOptions(ctx, r.warehouse, r.logger, req)
+}
+
+func (r defaultSyncRunner) RunGCPAsset(ctx context.Context, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+	return runGCPAssetSyncWithOptions(ctx, r.warehouse, r.logger, req)
 }

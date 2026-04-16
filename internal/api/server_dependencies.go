@@ -148,6 +148,7 @@ type serverDependencies struct {
 	rbacAdmin             rbacAdminService
 	remediationOperations remediationOperationsService
 	schedulerOperations   schedulerOperationsService
+	syncRunner            syncRunner
 	syncHandlers          syncHandlerService
 	ticketingOps          ticketingService
 	threatRuntime         threatRuntimeService

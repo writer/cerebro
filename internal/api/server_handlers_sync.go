@@ -57,7 +57,8 @@ type azureSyncRequest struct {
 	Validate                bool     `json:"validate"`
 }
 
-var runAzureSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+func runAzureSyncWithOptions(ctx context.Context, store warehouse.SyncWarehouse, logger *slog.Logger, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+	logger = syncRunnerLogger(logger)
 	opts := []nativesync.AzureEngineOption{}
 	switch len(req.Subscriptions) {
 	case 1:
@@ -80,7 +81,7 @@ var runAzureSyncWithOptions = func(ctx context.Context, store warehouse.SyncWare
 		opts = append(opts, nativesync.WithAzureTableFilter(req.Tables))
 	}
 
-	syncer, err := nativesync.NewAzureSyncEngine(store, slog.Default(), opts...)
+	syncer, err := nativesync.NewAzureSyncEngine(store, logger, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create azure sync engine: %w", err)
 	}
@@ -146,7 +147,8 @@ type k8sSyncRequest struct {
 	Validate    bool     `json:"validate"`
 }
 
-var runK8sSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
+func runK8sSyncWithOptions(ctx context.Context, store warehouse.SyncWarehouse, logger *slog.Logger, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
+	logger = syncRunnerLogger(logger)
 	opts := []nativesync.K8sEngineOption{}
 	if req.Kubeconfig != "" {
 		opts = append(opts, nativesync.WithK8sKubeconfig(req.Kubeconfig))
@@ -164,7 +166,7 @@ var runK8sSyncWithOptions = func(ctx context.Context, store warehouse.SyncWareho
 		opts = append(opts, nativesync.WithK8sTableFilter(req.Tables))
 	}
 
-	syncer := nativesync.NewK8sSyncEngine(store, slog.Default(), opts...)
+	syncer := nativesync.NewK8sSyncEngine(store, logger, opts...)
 	if req.Validate {
 		results, err := syncer.ValidateTables(ctx)
 		if err != nil {
@@ -232,7 +234,8 @@ type awsSyncOutcome struct {
 	RelationshipsSkippedReason string
 }
 
-var runAWSSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+func runAWSSyncWithOptions(ctx context.Context, store warehouse.SyncWarehouse, logger *slog.Logger, req awsSyncRequest) (*awsSyncOutcome, error) {
+	logger = syncRunnerLogger(logger)
 	loadOptions := make([]func(*config.LoadOptions) error, 0, 2)
 	if req.Profile != "" {
 		loadOptions = append(loadOptions, config.WithSharedConfigProfile(req.Profile))
@@ -266,7 +269,7 @@ var runAWSSyncWithOptions = func(ctx context.Context, store warehouse.SyncWareho
 	}
 	opts = appendAWSPermissionUsageRequestOptions(opts, req.PermissionUsageLookbackDays, req.PermissionRemovalThresholdDays, req.AWSIdentityCenterPermissionSetsInclude, req.AWSIdentityCenterPermissionSetsExclude)
 
-	syncer := nativesync.NewSyncEngine(store, slog.Default(), opts...)
+	syncer := nativesync.NewSyncEngine(store, logger, opts...)
 	if req.Validate {
 		results, err := syncer.ValidateTablesWithConfig(ctx, awsCfg)
 		if err != nil {
@@ -292,7 +295,7 @@ var runAWSSyncWithOptions = func(ctx context.Context, store warehouse.SyncWareho
 		return outcome, nil
 	}
 
-	extractor := nativesync.NewRelationshipExtractor(store, slog.Default())
+	extractor := nativesync.NewRelationshipExtractor(store, logger)
 	relCount, err := extractor.ExtractAndPersist(ctx)
 	if err != nil {
 		outcome.RelationshipsSkippedReason = fmt.Sprintf("relationship extraction failed: %v", err)
@@ -364,7 +367,8 @@ type awsOrgSyncOutcome struct {
 	AccountErrors []string
 }
 
-var runAWSOrgSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+func runAWSOrgSyncWithOptions(ctx context.Context, store warehouse.SyncWarehouse, logger *slog.Logger, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+	logger = syncRunnerLogger(logger)
 	loadOptions := make([]func(*config.LoadOptions) error, 0, 2)
 	if req.Profile != "" {
 		loadOptions = append(loadOptions, config.WithSharedConfigProfile(req.Profile))
@@ -401,7 +405,7 @@ var runAWSOrgSyncWithOptions = func(ctx context.Context, store warehouse.SyncWar
 
 	if req.Validate {
 		options := buildAWSEngineOptionsForRequest(region, req)
-		syncer := nativesync.NewSyncEngine(store, slog.Default(), options...)
+		syncer := nativesync.NewSyncEngine(store, logger, options...)
 		results, err := syncer.ValidateTablesWithConfig(ctx, awsCfg)
 		if err != nil {
 			return nil, fmt.Errorf("validation failed: %w", err)
@@ -449,7 +453,7 @@ var runAWSOrgSyncWithOptions = func(ctx context.Context, store warehouse.SyncWar
 				accountCfg = assumedCfg
 			}
 
-			syncer := nativesync.NewSyncEngine(store, slog.Default(), options...)
+			syncer := nativesync.NewSyncEngine(store, logger, options...)
 			accountResults, syncErr := syncer.SyncAllWithConfig(ctx, accountCfg)
 
 			mu.Lock()
@@ -660,7 +664,8 @@ type gcpSyncOutcome struct {
 	RelationshipsSkippedReason string
 }
 
-var runGCPSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+func runGCPSyncWithOptions(ctx context.Context, store warehouse.SyncWarehouse, logger *slog.Logger, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+	logger = syncRunnerLogger(logger)
 	if req.Project == "" {
 		return nil, fmt.Errorf("project is required")
 	}
@@ -674,7 +679,7 @@ var runGCPSyncWithOptions = func(ctx context.Context, store warehouse.SyncWareho
 	}
 	opts = appendGCPPermissionUsageRequestOptions(opts, req.PermissionUsageLookbackDays, req.PermissionRemovalThresholdDays, req.GCPIAMTargetGroups)
 
-	syncer := nativesync.NewGCPSyncEngine(store, slog.Default(), opts...)
+	syncer := nativesync.NewGCPSyncEngine(store, logger, opts...)
 	if req.Validate {
 		results, err := syncer.ValidateTables(ctx)
 		if err != nil {
@@ -694,7 +699,7 @@ var runGCPSyncWithOptions = func(ctx context.Context, store warehouse.SyncWareho
 		return outcome, nil
 	}
 
-	extractor := nativesync.NewRelationshipExtractor(store, slog.Default())
+	extractor := nativesync.NewRelationshipExtractor(store, logger)
 	relCount, err := extractor.ExtractAndPersist(ctx)
 	if err != nil {
 		outcome.RelationshipsSkippedReason = fmt.Sprintf("relationship extraction failed: %v", err)
@@ -767,7 +772,8 @@ type gcpAssetSyncRequest struct {
 	Validate     bool     `json:"validate"`
 }
 
-var runGCPAssetSyncWithOptions = func(ctx context.Context, store warehouse.SyncWarehouse, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+func runGCPAssetSyncWithOptions(ctx context.Context, store warehouse.SyncWarehouse, logger *slog.Logger, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+	logger = syncRunnerLogger(logger)
 	organization := strings.TrimSpace(req.Organization)
 	if len(req.Projects) == 0 && organization == "" {
 		return nil, fmt.Errorf("projects or organization are required")
@@ -786,7 +792,7 @@ var runGCPAssetSyncWithOptions = func(ctx context.Context, store warehouse.SyncW
 		opts = append(opts, nativesync.WithAssetTypeFilter(req.Tables))
 	}
 
-	syncer := nativesync.NewGCPAssetInventoryEngine(store, slog.Default(), opts...)
+	syncer := nativesync.NewGCPAssetInventoryEngine(store, logger, opts...)
 	if req.Validate {
 		results, err := syncer.ValidateTables(ctx)
 		if err != nil {

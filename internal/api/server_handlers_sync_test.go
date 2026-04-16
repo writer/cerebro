@@ -25,6 +25,117 @@ type syncGraphSource struct {
 	block  bool
 }
 
+type stubSyncRunner struct {
+	azureFunc    func(context.Context, azureSyncRequest) ([]nativesync.SyncResult, error)
+	k8sFunc      func(context.Context, k8sSyncRequest) ([]nativesync.SyncResult, error)
+	awsFunc      func(context.Context, awsSyncRequest) (*awsSyncOutcome, error)
+	awsOrgFunc   func(context.Context, awsOrgSyncRequest) (*awsOrgSyncOutcome, error)
+	gcpFunc      func(context.Context, gcpSyncRequest) (*gcpSyncOutcome, error)
+	gcpAssetFunc func(context.Context, gcpAssetSyncRequest) ([]nativesync.SyncResult, error)
+}
+
+func (s stubSyncRunner) RunAzure(ctx context.Context, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+	if s.azureFunc != nil {
+		return s.azureFunc(ctx, req)
+	}
+	return nil, nil
+}
+
+func (s stubSyncRunner) RunK8s(ctx context.Context, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
+	if s.k8sFunc != nil {
+		return s.k8sFunc(ctx, req)
+	}
+	return nil, nil
+}
+
+func (s stubSyncRunner) RunAWS(ctx context.Context, req awsSyncRequest) (*awsSyncOutcome, error) {
+	if s.awsFunc != nil {
+		return s.awsFunc(ctx, req)
+	}
+	return nil, nil
+}
+
+func (s stubSyncRunner) RunAWSOrg(ctx context.Context, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+	if s.awsOrgFunc != nil {
+		return s.awsOrgFunc(ctx, req)
+	}
+	return nil, nil
+}
+
+func (s stubSyncRunner) RunGCP(ctx context.Context, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+	if s.gcpFunc != nil {
+		return s.gcpFunc(ctx, req)
+	}
+	return nil, nil
+}
+
+func (s stubSyncRunner) RunGCPAsset(ctx context.Context, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+	if s.gcpAssetFunc != nil {
+		return s.gcpAssetFunc(ctx, req)
+	}
+	return nil, nil
+}
+
+func setSyncRunner(t *testing.T, s *Server, runner syncRunner) {
+	t.Helper()
+	s.app.syncRunner = runner
+	s.syncHandlers = newSyncHandlerService(s.app)
+}
+
+func stubAzureSyncRunner(t *testing.T, s *Server, fn func(context.Context, warehouse.SyncWarehouse, azureSyncRequest) ([]nativesync.SyncResult, error)) {
+	t.Helper()
+	setSyncRunner(t, s, stubSyncRunner{
+		azureFunc: func(ctx context.Context, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+			return fn(ctx, s.app.Warehouse, req)
+		},
+	})
+}
+
+func stubK8sSyncRunner(t *testing.T, s *Server, fn func(context.Context, warehouse.SyncWarehouse, k8sSyncRequest) ([]nativesync.SyncResult, error)) {
+	t.Helper()
+	setSyncRunner(t, s, stubSyncRunner{
+		k8sFunc: func(ctx context.Context, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
+			return fn(ctx, s.app.Warehouse, req)
+		},
+	})
+}
+
+func stubAWSSyncRunner(t *testing.T, s *Server, fn func(context.Context, warehouse.SyncWarehouse, awsSyncRequest) (*awsSyncOutcome, error)) {
+	t.Helper()
+	setSyncRunner(t, s, stubSyncRunner{
+		awsFunc: func(ctx context.Context, req awsSyncRequest) (*awsSyncOutcome, error) {
+			return fn(ctx, s.app.Warehouse, req)
+		},
+	})
+}
+
+func stubAWSOrgSyncRunner(t *testing.T, s *Server, fn func(context.Context, warehouse.SyncWarehouse, awsOrgSyncRequest) (*awsOrgSyncOutcome, error)) {
+	t.Helper()
+	setSyncRunner(t, s, stubSyncRunner{
+		awsOrgFunc: func(ctx context.Context, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+			return fn(ctx, s.app.Warehouse, req)
+		},
+	})
+}
+
+func stubGCPSyncRunner(t *testing.T, s *Server, fn func(context.Context, warehouse.SyncWarehouse, gcpSyncRequest) (*gcpSyncOutcome, error)) {
+	t.Helper()
+	setSyncRunner(t, s, stubSyncRunner{
+		gcpFunc: func(ctx context.Context, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+			return fn(ctx, s.app.Warehouse, req)
+		},
+	})
+}
+
+func stubGCPAssetSyncRunner(t *testing.T, s *Server, fn func(context.Context, warehouse.SyncWarehouse, gcpAssetSyncRequest) ([]nativesync.SyncResult, error)) {
+	t.Helper()
+	setSyncRunner(t, s, stubSyncRunner{
+		gcpAssetFunc: func(ctx context.Context, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+			return fn(ctx, s.app.Warehouse, req)
+		},
+	})
+}
+
 func setSnowflakeWarehouseDeps(deps *serverDependencies) *snowflake.Client {
 	client := &snowflake.Client{}
 	if deps != nil {
@@ -120,11 +231,8 @@ func TestSyncAzure_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
 	setSnowflakeWarehouseDeps(s.app)
 
-	originalRun := runAzureSyncWithOptions
-	t.Cleanup(func() { runAzureSyncWithOptions = originalRun })
-
 	called := false
-	runAzureSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+	stubAzureSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req azureSyncRequest) ([]nativesync.SyncResult, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -145,7 +253,7 @@ func TestSyncAzure_UsesRequestOptions(t *testing.T) {
 			t.Fatal("expected validate=true")
 		}
 		return []nativesync.SyncResult{{Table: "azure_vm_instances", Synced: 3}}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/azure", map[string]interface{}{
 		"subscription":             "  sub-123  ",
@@ -183,10 +291,7 @@ func TestSyncAzure_NormalizesSubscriptionsCaseInsensitively(t *testing.T) {
 	s := newTestServer(t)
 	setSnowflakeWarehouseDeps(s.app)
 
-	originalRun := runAzureSyncWithOptions
-	t.Cleanup(func() { runAzureSyncWithOptions = originalRun })
-
-	runAzureSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req azureSyncRequest) ([]nativesync.SyncResult, error) {
+	stubAzureSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req azureSyncRequest) ([]nativesync.SyncResult, error) {
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
 		}
@@ -200,7 +305,7 @@ func TestSyncAzure_NormalizesSubscriptionsCaseInsensitively(t *testing.T) {
 			}
 		}
 		return []nativesync.SyncResult{{Table: "azure_vm_instances", Synced: 1}}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/azure", map[string]interface{}{
 		"subscription":  " sub-b ",
@@ -237,11 +342,8 @@ func TestSyncK8s_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
 	setSnowflakeWarehouseDeps(s.app)
 
-	originalRun := runK8sSyncWithOptions
-	t.Cleanup(func() { runK8sSyncWithOptions = originalRun })
-
 	called := false
-	runK8sSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
+	stubK8sSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req k8sSyncRequest) ([]nativesync.SyncResult, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -265,7 +367,7 @@ func TestSyncK8s_UsesRequestOptions(t *testing.T) {
 			t.Fatal("expected validate=true")
 		}
 		return []nativesync.SyncResult{{Table: "k8s_pods", Synced: 2}}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/k8s", map[string]interface{}{
 		"kubeconfig":  " /tmp/kubeconfig ",
@@ -312,11 +414,8 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
 	setSnowflakeWarehouseDeps(s.app)
 
-	originalRun := runAWSSyncWithOptions
-	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-
 	called := false
-	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+	stubAWSSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -344,7 +443,7 @@ func TestSyncAWS_UsesRequestOptions(t *testing.T) {
 			RelationshipsExtracted:     11,
 			RelationshipsSkippedReason: "test reason",
 		}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
 		"profile":      " prod-profile ",
@@ -398,13 +497,11 @@ func TestSyncAWS_AppliesIncrementalGraphChangesAfterSync(t *testing.T) {
 		"event_time": base.Add(30 * time.Second),
 	}}
 
-	originalRun := runAWSSyncWithOptions
-	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+	stubAWSSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
 		"region": "us-east-1",
@@ -435,13 +532,11 @@ func TestSyncAWS_GraphUpdateFailureIsSanitized(t *testing.T) {
 	s.app.SecurityGraphBuilder = builder
 	s.app.SecurityGraph = builder.Graph()
 
-	originalRun := runAWSSyncWithOptions
-	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+	stubAWSSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
-	}
+	})
 
 	s.app.Config.GraphPostSyncUpdateTimeout = 5 * time.Millisecond
 
@@ -499,13 +594,11 @@ func TestSyncAWS_GraphUpdateBusyReturnsBusyStatus(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	originalRun := runAWSSyncWithOptions
-	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+	stubAWSSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
 		"region": "us-east-1",
@@ -546,13 +639,11 @@ func TestSyncAWS_GraphUpdateNoopSummaryUsesEmptyTablesArray(t *testing.T) {
 	s.app.SecurityGraphBuilder = builder
 	s.app.SecurityGraph = builder.Graph()
 
-	originalRun := runAWSSyncWithOptions
-	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+	stubAWSSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
 		"region": "us-east-1",
@@ -591,13 +682,11 @@ func TestSyncAWS_GraphUpdateFailureReportsFailedStatus(t *testing.T) {
 	s.app.SecurityGraphBuilder = builder
 	s.app.SecurityGraph = builder.Graph()
 
-	originalRun := runAWSSyncWithOptions
-	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+	stubAWSSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
 		"region": "us-east-1",
@@ -649,13 +738,11 @@ func TestSyncAWS_AppliesGraphUpdateUsingRuntimeWithoutLocalBuilder(t *testing.T)
 	s := NewServerWithDependencies(deps)
 	t.Cleanup(func() { s.Close() })
 
-	originalRun := runAWSSyncWithOptions
-	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+	stubAWSSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
 		"region": "us-east-1",
@@ -693,13 +780,11 @@ func TestSyncAWS_SkipsGraphUpdateWithoutRuntimeOrLocalBuilder(t *testing.T) {
 	s := NewServerWithDependencies(deps)
 	t.Cleanup(func() { s.Close() })
 
-	originalRun := runAWSSyncWithOptions
-	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+	stubAWSSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
 		"region": "us-east-1",
@@ -727,13 +812,11 @@ func TestSyncAWS_SkipsGraphUpdateWhenRuntimeAdapterHasNoApplyCapability(t *testi
 	s := NewServerWithDependencies(deps)
 	t.Cleanup(func() { s.Close() })
 
-	originalRun := runAWSSyncWithOptions
-	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
-	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+	stubAWSSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
 		return &awsSyncOutcome{
 			Results: []nativesync.SyncResult{{Table: "aws_s3_buckets", Synced: 1}},
 		}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
 		"region": "us-east-1",
@@ -772,11 +855,8 @@ func TestSyncAWSOrg_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
 	setSnowflakeWarehouseDeps(s.app)
 
-	originalRun := runAWSOrgSyncWithOptions
-	t.Cleanup(func() { runAWSOrgSyncWithOptions = originalRun })
-
 	called := false
-	runAWSOrgSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+	stubAWSOrgSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -815,7 +895,7 @@ func TestSyncAWSOrg_UsesRequestOptions(t *testing.T) {
 			Results:       []nativesync.SyncResult{{Table: "aws_iam_users", Synced: 4}},
 			AccountErrors: []string{"account 999999999999: access denied"},
 		}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/aws-org", map[string]interface{}{
 		"profile":             " prod-profile ",
@@ -882,11 +962,8 @@ func TestSyncGCP_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
 	setSnowflakeWarehouseDeps(s.app)
 
-	originalRun := runGCPSyncWithOptions
-	t.Cleanup(func() { runGCPSyncWithOptions = originalRun })
-
 	called := false
-	runGCPSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+	stubGCPSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req gcpSyncRequest) (*gcpSyncOutcome, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -908,7 +985,7 @@ func TestSyncGCP_UsesRequestOptions(t *testing.T) {
 			RelationshipsExtracted:     8,
 			RelationshipsSkippedReason: "test reason",
 		}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp", map[string]interface{}{
 		"project":     "  proj-123  ",
@@ -982,11 +1059,8 @@ func TestSyncGCPAsset_UsesRequestOptions(t *testing.T) {
 	s := newTestServer(t)
 	setSnowflakeWarehouseDeps(s.app)
 
-	originalRun := runGCPAssetSyncWithOptions
-	t.Cleanup(func() { runGCPAssetSyncWithOptions = originalRun })
-
 	called := false
-	runGCPAssetSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+	stubGCPAssetSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -1004,7 +1078,7 @@ func TestSyncGCPAsset_UsesRequestOptions(t *testing.T) {
 			t.Fatal("expected validate=true")
 		}
 		return []nativesync.SyncResult{{Table: "gcp_compute_instances", Synced: 6}}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp-asset", map[string]interface{}{
 		"projects":    []string{"  proj-123  ", "PROJ-123", "proj-456"},
@@ -1027,11 +1101,8 @@ func TestSyncGCPAsset_UsesOrganizationScope(t *testing.T) {
 	s := newTestServer(t)
 	setSnowflakeWarehouseDeps(s.app)
 
-	originalRun := runGCPAssetSyncWithOptions
-	t.Cleanup(func() { runGCPAssetSyncWithOptions = originalRun })
-
 	called := false
-	runGCPAssetSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
+	stubGCPAssetSyncRunner(t, s, func(ctx context.Context, client warehouse.SyncWarehouse, req gcpAssetSyncRequest) ([]nativesync.SyncResult, error) {
 		called = true
 		if client != s.app.Snowflake {
 			t.Fatalf("expected server snowflake client to be passed through")
@@ -1043,7 +1114,7 @@ func TestSyncGCPAsset_UsesOrganizationScope(t *testing.T) {
 			t.Fatalf("did not expect explicit projects, got %#v", req.Projects)
 		}
 		return []nativesync.SyncResult{{Table: "gcp_compute_instances", Synced: 6}}, nil
-	}
+	})
 
 	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp-asset", map[string]interface{}{
 		"organization": " 1234567890 ",

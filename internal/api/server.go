@@ -189,6 +189,9 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 	if threatRuntime == nil {
 		threatRuntime = newThreatRuntimeService(&deps)
 	}
+	if deps.syncRunner == nil {
+		deps.syncRunner = newSyncRunner(&deps)
+	}
 	syncHandlers := deps.syncHandlers
 	if syncHandlers == nil {
 		syncHandlers = newSyncHandlerService(&deps)
