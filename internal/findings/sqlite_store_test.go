@@ -172,6 +172,36 @@ func TestSQLiteStore_Concurrency(t *testing.T) {
 	}
 }
 
+func TestSQLiteStore_ListOffsetWithoutLimit(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "pagination_test.db")
+
+	store, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer func() {
+		_ = store.Close()
+	}()
+
+	ctx := context.Background()
+	for i := 0; i < 5; i++ {
+		store.Upsert(ctx, policy.Finding{
+			ID:         fmt.Sprintf("finding-%d", i),
+			PolicyID:   "policy-1",
+			PolicyName: "Test Policy",
+			Severity:   "high",
+			Resource:   map[string]interface{}{"id": fmt.Sprintf("resource-%d", i)},
+		})
+		time.Sleep(time.Millisecond)
+	}
+
+	findings := store.List(FindingFilter{Offset: 2})
+	if len(findings) != 3 {
+		t.Fatalf("expected 3 findings after offset-only pagination, got %d", len(findings))
+	}
+}
+
 func TestSQLiteStore_SignalTypeDomainFiltersAndStats(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "signals_test.db")
