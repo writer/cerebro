@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	sf "github.com/snowflakedb/gosnowflake"
 	_ "modernc.org/sqlite"
 
 	"github.com/writer/cerebro/internal/findings"
@@ -162,15 +164,28 @@ func TestAppStateDatabaseURLUsesWarehousePostgresDSNAcrossBackends(t *testing.T)
 }
 
 func TestIsMissingSnowflakeTableErrRejectsAuthorizationErrors(t *testing.T) {
-	err := errors.New("SQL compilation error: Object 'DB.SCHEMA.CEREBRO_FINDINGS' does not exist or not authorized.")
+	err := &sf.SnowflakeError{
+		Number:  2003,
+		Message: "SQL compilation error: Object 'DB.SCHEMA.CEREBRO_FINDINGS' does not exist or not authorized.",
+	}
 	if isMissingSnowflakeTableErr(err) {
 		t.Fatal("expected authorization errors to fail migration instead of being treated as missing tables")
 	}
 }
 
 func TestIsMissingSnowflakeTableErrAcceptsMissingTableErrors(t *testing.T) {
-	err := errors.New("SQL compilation error: Object 'DB.SCHEMA.CEREBRO_FINDINGS' does not exist.")
+	err := fmt.Errorf("wrapped: %w", &sf.SnowflakeError{
+		Number:  2003,
+		Message: "SQL compilation error: Object 'DB.SCHEMA.CEREBRO_FINDINGS' does not exist.",
+	})
 	if !isMissingSnowflakeTableErr(err) {
 		t.Fatal("expected missing table error to be treated as skippable migration input")
+	}
+}
+
+func TestIsMissingSnowflakeTableErrRejectsGenericStringErrors(t *testing.T) {
+	err := errors.New("SQL compilation error: Object 'DB.SCHEMA.CEREBRO_FINDINGS' does not exist.")
+	if isMissingSnowflakeTableErr(err) {
+		t.Fatal("expected generic string errors not to be treated as missing snowflake tables")
 	}
 }

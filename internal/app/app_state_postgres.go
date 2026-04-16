@@ -11,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	sf "github.com/snowflakedb/gosnowflake"
 
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/appstate"
@@ -299,13 +300,20 @@ func isMissingSnowflakeTableErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	message := strings.ToLower(err.Error())
-	if strings.Contains(message, "not authorized") {
+
+	var sfErr *sf.SnowflakeError
+	if !errors.As(err, &sfErr) {
 		return false
 	}
-	return strings.Contains(message, "does not exist") ||
-		strings.Contains(message, "unknown table") ||
-		strings.Contains(message, "not exist")
+	if sfErr.Number != 2003 {
+		return false
+	}
+
+	message := strings.ToLower(strings.TrimSpace(sfErr.Message))
+	if message == "" {
+		message = strings.ToLower(err.Error())
+	}
+	return strings.Contains(message, "does not exist") && !strings.Contains(message, "not authorized")
 }
 
 var postgresIdentifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
