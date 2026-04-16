@@ -2,6 +2,7 @@ package cerrors
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -175,6 +176,52 @@ func TestErrorMessage(t *testing.T) {
 	// Should contain context message
 	if !contains(msg, "failed to fetch users") {
 		t.Errorf("error message should contain context, got: %s", msg)
+	}
+}
+
+func TestEDuplicateOpsPreservesBothOperations(t *testing.T) {
+	err := E(Op("first.Op"), Op("second.Op"), ErrNotFound)
+	if err == nil {
+		t.Fatal("E() returned nil")
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, "first.Op") {
+		t.Fatalf("expected error message to preserve first op, got %q", msg)
+	}
+	if !strings.Contains(msg, "second.Op") {
+		t.Fatalf("expected error message to preserve second op, got %q", msg)
+	}
+}
+
+func TestEDuplicateSentinelsRemainReachable(t *testing.T) {
+	err := E(Op("lookup"), ErrNotFound, ErrUnauthorized)
+	if err == nil {
+		t.Fatal("E() returned nil")
+	}
+
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatal("expected first sentinel to remain reachable")
+	}
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatal("expected second sentinel to remain reachable")
+	}
+}
+
+func TestEDuplicateUnderlyingErrorsRemainReachable(t *testing.T) {
+	errA := errors.New("error A")
+	errB := errors.New("error B")
+
+	err := E(Op("lookup"), errA, errB)
+	if err == nil {
+		t.Fatal("E() returned nil")
+	}
+
+	if !errors.Is(err, errA) {
+		t.Fatal("expected first underlying error to remain reachable")
+	}
+	if !errors.Is(err, errB) {
+		t.Fatal("expected second underlying error to remain reachable")
 	}
 }
 

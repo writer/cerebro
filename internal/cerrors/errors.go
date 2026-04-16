@@ -70,10 +70,33 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
-	if e.Msg != "" {
-		return fmt.Sprintf("%s: %s: %v", e.Op, e.Msg, e.Err)
+	if e == nil {
+		return ""
 	}
-	return fmt.Sprintf("%s: %v", e.Op, e.Err)
+
+	cause := e.Err
+	if cause == nil {
+		cause = e.Kind
+	}
+
+	switch {
+	case e.Op != "" && e.Msg != "" && cause != nil:
+		return fmt.Sprintf("%s: %s: %v", e.Op, e.Msg, cause)
+	case e.Op != "" && e.Msg != "":
+		return fmt.Sprintf("%s: %s", e.Op, e.Msg)
+	case e.Op != "" && cause != nil:
+		return fmt.Sprintf("%s: %v", e.Op, cause)
+	case e.Op != "":
+		return string(e.Op)
+	case e.Msg != "" && cause != nil:
+		return fmt.Sprintf("%s: %v", e.Msg, cause)
+	case e.Msg != "":
+		return e.Msg
+	case cause != nil:
+		return cause.Error()
+	}
+
+	return ""
 }
 
 func (e *Error) Unwrap() error {
@@ -97,16 +120,16 @@ func E(args ...interface{}) error {
 	for _, arg := range args {
 		switch a := arg.(type) {
 		case Op:
-			e.Op = a
+			e.Op = joinOps(e.Op, a)
 		case error:
 			// If it's a sentinel error, set Kind; otherwise set Err
 			if isSentinel(a) {
-				e.Kind = a
+				e.Kind = joinErrors(e.Kind, a)
 			} else {
-				e.Err = a
+				e.Err = joinErrors(e.Err, a)
 			}
 		case string:
-			e.Msg = a
+			e.Msg = joinMessages(e.Msg, a)
 		}
 	}
 	return e
@@ -178,4 +201,37 @@ func IsAuth(err error) bool {
 // IsTimeout reports whether err is a timeout error.
 func IsTimeout(err error) bool {
 	return errors.Is(err, ErrDBTimeout) || errors.Is(err, ErrContextTimeout)
+}
+
+func joinErrors(existing, next error) error {
+	switch {
+	case existing == nil:
+		return next
+	case next == nil:
+		return existing
+	default:
+		return errors.Join(existing, next)
+	}
+}
+
+func joinMessages(existing, next string) string {
+	switch {
+	case existing == "":
+		return next
+	case next == "":
+		return existing
+	default:
+		return existing + ": " + next
+	}
+}
+
+func joinOps(existing, next Op) Op {
+	switch {
+	case existing == "":
+		return next
+	case next == "":
+		return existing
+	default:
+		return Op(fmt.Sprintf("%s -> %s", existing, next))
+	}
 }
