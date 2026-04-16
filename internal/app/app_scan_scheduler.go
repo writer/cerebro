@@ -688,10 +688,10 @@ func (a *App) resolveScanTables(ctx context.Context) []string {
 		tables = splitTables(a.Config.ScanTables)
 	}
 
-	available := a.AvailableTables
+	available := a.AvailableTablesSnapshot()
 	if a.Warehouse != nil {
 		if refreshed, err := a.Warehouse.ListAvailableTables(ctx); err == nil {
-			a.AvailableTables = refreshed
+			a.SetAvailableTables(refreshed)
 			available = refreshed
 		} else if ctx.Err() == nil {
 			a.Logger.Warn("failed to refresh available tables", "error", err)

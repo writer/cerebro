@@ -165,13 +165,13 @@ func runScan(cmd *cobra.Command, args []string) error {
 
 	// Build set of available tables for filtering
 	availableSet := make(map[string]bool)
-	availableTables := application.AvailableTables
+	availableTables := application.AvailableTablesSnapshot()
 	if localMode {
 		availableTables = sortedDatasetTables(localDataset)
-		application.AvailableTables = append([]string(nil), availableTables...)
+		application.SetAvailableTables(availableTables)
 	} else if application.Snowflake != nil {
 		if tables, err := application.Snowflake.ListAvailableTables(ctx); err == nil {
-			application.AvailableTables = tables
+			application.SetAvailableTables(tables)
 			availableTables = tables
 		} else {
 			Warning("Failed to list available tables: %v", err)
@@ -482,8 +482,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 	slowTables := scanner.FilterSlowTables(tableProfiles, tuning.ProfileSlowThreshold)
 
 	var coverageReport *policy.CoverageReport
-	if application.AvailableTables != nil && application.Policy != nil {
-		report := application.Policy.CoverageReport(application.AvailableTables)
+	availableTables = application.AvailableTablesSnapshot()
+	if availableTables != nil && application.Policy != nil {
+		report := application.Policy.CoverageReport(availableTables)
 		coverageReport = &report
 	}
 

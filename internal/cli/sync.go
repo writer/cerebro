@@ -973,10 +973,10 @@ func runPostSyncScan(ctx context.Context, tableFilter []string) error {
 		return fmt.Errorf("warehouse not configured")
 	}
 
-	availableTables := application.AvailableTables
+	availableTables := application.AvailableTablesSnapshot()
 	if application.Warehouse != nil {
 		if refreshed, err := application.Warehouse.ListAvailableTables(ctx); err == nil {
-			application.AvailableTables = refreshed
+			application.SetAvailableTables(refreshed)
 			availableTables = refreshed
 		} else {
 			Warning("Failed to list available tables: %v", err)

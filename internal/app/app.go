@@ -208,6 +208,7 @@ type App struct {
 	apiCredentials                     atomic.Value // map[string]apiauth.Credential
 	apiCredentialStore                 *apiauth.ManagedCredentialStore
 	secretsLoader                      secretsLoader
+	availableTablesMu                  sync.RWMutex
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string

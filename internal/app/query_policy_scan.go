@@ -168,10 +168,10 @@ func (a *App) queryPolicyRowLimit() int {
 }
 
 func (a *App) queryPolicyAllowlist(ctx context.Context) map[string]struct{} {
-	tables := a.AvailableTables
+	tables := a.AvailableTablesSnapshot()
 	if len(tables) == 0 && a.Warehouse != nil {
 		if refreshed, err := a.Warehouse.ListAvailableTables(ctx); err == nil {
-			a.AvailableTables = refreshed
+			a.SetAvailableTables(refreshed)
 			tables = refreshed
 		} else if ctx.Err() == nil && a.Logger != nil {
 			a.Logger.Warn("failed to refresh query policy allowlist tables", "error", err)

@@ -120,7 +120,7 @@ func (a *App) initAvailableTables(ctx context.Context) {
 		a.Logger.Warn("failed to list available tables", "error", err)
 		return
 	}
-	a.AvailableTables = tables
+	a.SetAvailableTables(tables)
 }
 
 // validatePolicyCoverage checks that required tables exist for loaded policies
@@ -131,13 +131,14 @@ func (a *App) validatePolicyCoverage(_ context.Context) error {
 		return nil
 	}
 
-	if a.AvailableTables == nil {
+	availableTables := a.AvailableTablesSnapshot()
+	if availableTables == nil {
 		a.Logger.Warn("skipping policy coverage validation - table list not available")
 		return nil
 	}
 
-	report := a.Policy.CoverageReport(a.AvailableTables)
-	orphanTables := policy.GlobalMappingRegistry().OrphanNativeTables(a.AvailableTables)
+	report := a.Policy.CoverageReport(availableTables)
+	orphanTables := policy.GlobalMappingRegistry().OrphanNativeTables(availableTables)
 	if report.TotalPolicies == 0 {
 		if len(orphanTables) == 0 {
 			return nil
