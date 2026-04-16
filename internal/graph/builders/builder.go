@@ -728,10 +728,17 @@ func isNodePublic(node *Node) bool {
 	return false
 }
 
-// isValidPublicIP returns true if the string is a valid, non-placeholder IP address.
+// isValidPublicIP returns true if the string is a valid, publicly routable IP address.
 func isValidPublicIP(s string) bool {
 	s = strings.TrimSpace(s)
-	return s != "" && net.ParseIP(s) != nil
+	ip := net.ParseIP(s)
+	if ip == nil {
+		return false
+	}
+	return !ip.IsLoopback() &&
+		!ip.IsPrivate() &&
+		!ip.IsLinkLocalUnicast() &&
+		!ip.IsUnspecified()
 }
 
 func toString(v any) string {

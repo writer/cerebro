@@ -700,8 +700,6 @@ func TestIsValidPublicIP(t *testing.T) {
 		"54.239.28.85",
 		"203.0.113.1",
 		"2001:0db8:85a3:0000:0000:8a2e:0370:7334",
-		"::1",
-		"0.0.0.0",
 	}
 	for _, ip := range valid {
 		if !isValidPublicIP(ip) {
@@ -720,6 +718,13 @@ func TestIsValidPublicIP(t *testing.T) {
 		"version 2",
 		"192.168.1.",
 		"abc.def.ghi.jkl",
+		"10.0.0.8",
+		"172.16.4.10",
+		"192.168.1.20",
+		"169.254.10.2",
+		"::1",
+		"fe80::1",
+		"0.0.0.0",
 	}
 	for _, ip := range invalid {
 		if isValidPublicIP(ip) {
@@ -757,6 +762,11 @@ func TestIsNodePublic(t *testing.T) {
 		{
 			name:   "empty public_ip",
 			node:   &Node{ID: "i3", Kind: NodeKindInstance, Properties: map[string]any{"public_ip": ""}},
+			public: false,
+		},
+		{
+			name:   "private public_ip",
+			node:   &Node{ID: "i4", Kind: NodeKindInstance, Properties: map[string]any{"public_ip": "10.0.0.8"}},
 			public: false,
 		},
 		{
