@@ -13,7 +13,7 @@ const (
 	ConditionFormatCEL    = "cel"
 )
 
-func newPolicyConditionEnv() (*cel.Env, error) {
+var newPolicyConditionEnv = func() (*cel.Env, error) {
 	return cel.NewEnv(
 		cel.Variable("resource", cel.DynType),
 		ext.Strings(),
@@ -47,11 +47,16 @@ func (e *Engine) ensureConditionEnvLocked() error {
 	if e.celEnv != nil {
 		return nil
 	}
+	if e.celEnvErr != nil {
+		return e.celEnvErr
+	}
 	env, err := newPolicyConditionEnv()
 	if err != nil {
-		return fmt.Errorf("initialize CEL environment: %w", err)
+		e.celEnvErr = fmt.Errorf("initialize CEL environment: %w", err)
+		return e.celEnvErr
 	}
 	e.celEnv = env
+	e.celEnvErr = nil
 	return nil
 }
 
@@ -72,9 +77,13 @@ func (e *Engine) validatePolicyConditionPrograms(p *Policy) error {
 func (e *Engine) conditionEnvForValidation() (*cel.Env, error) {
 	e.mu.RLock()
 	env := e.celEnv
+	envErr := e.celEnvErr
 	e.mu.RUnlock()
 	if env != nil {
 		return env, nil
+	}
+	if envErr != nil {
+		return nil, envErr
 	}
 	var err error
 	env, err = newPolicyConditionEnv()

@@ -1,8 +1,11 @@
 package policy
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/google/cel-go/cel"
 )
 
 func TestValidatePolicyDefinitionRejectsInvalidCELCondition(t *testing.T) {
@@ -59,5 +62,43 @@ func TestValidatePolicyConditionProgramsUsesReusableEnv(t *testing.T) {
 	}
 	if err := validatePolicyConditionProgramsWithEnv(env, policy); err != nil {
 		t.Fatalf("validatePolicyConditionProgramsWithEnv failed: %v", err)
+	}
+}
+
+func TestNewEngineDefersCELEnvInitError(t *testing.T) {
+	original := newPolicyConditionEnv
+	newPolicyConditionEnv = func() (*cel.Env, error) {
+		return nil, errors.New("boom")
+	}
+	t.Cleanup(func() { newPolicyConditionEnv = original })
+
+	engine := NewEngine()
+	if engine == nil {
+		t.Fatal("expected engine to be created")
+	}
+	if engine.celEnv != nil {
+		t.Fatal("expected CEL env to remain unset on init failure")
+	}
+	if err := engine.ensureConditionEnvLocked(); err == nil {
+		t.Fatal("expected deferred CEL env init error")
+	} else if !strings.Contains(err.Error(), "initialize CEL environment: boom") {
+		t.Fatalf("unexpected env init error: %v", err)
+	}
+}
+
+func TestLoadPoliciesReturnsDeferredCELEnvInitError(t *testing.T) {
+	original := newPolicyConditionEnv
+	newPolicyConditionEnv = func() (*cel.Env, error) {
+		return nil, errors.New("boom")
+	}
+	t.Cleanup(func() { newPolicyConditionEnv = original })
+
+	engine := NewEngine()
+	err := engine.LoadPolicies(t.TempDir())
+	if err == nil {
+		t.Fatal("expected LoadPolicies to return CEL env init error")
+	}
+	if !strings.Contains(err.Error(), "initialize CEL environment: boom") {
+		t.Fatalf("unexpected LoadPolicies error: %v", err)
 	}
 }

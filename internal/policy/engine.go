@@ -60,6 +60,7 @@ type Engine struct {
 	history     map[string][]PolicyEvent // Version history indexed by policy ID
 	celPrograms map[string][]cel.Program // Compiled CEL programs indexed by policy ID
 	celEnv      *cel.Env                 // Shared CEL environment for condition validation/eval
+	celEnvErr   error                    // Deferred CEL environment initialization error
 	mu          sync.RWMutex             // Protects policies/history maps
 }
 
@@ -169,17 +170,18 @@ type Finding struct {
 
 func NewEngine() *Engine {
 	MustValidateStartupMappings()
-	celEnv, err := newPolicyConditionEnv()
-	if err != nil {
-		panic(fmt.Sprintf("initialize CEL environment: %v", err))
-	}
-
-	return &Engine{
+	engine := &Engine{
 		policies:    make(map[string]*Policy),
 		history:     make(map[string][]PolicyEvent),
 		celPrograms: make(map[string][]cel.Program),
-		celEnv:      celEnv,
 	}
+	celEnv, err := newPolicyConditionEnv()
+	if err != nil {
+		engine.celEnvErr = fmt.Errorf("initialize CEL environment: %w", err)
+		return engine
+	}
+	engine.celEnv = celEnv
+	return engine
 }
 
 func (e *Engine) LoadPolicies(dir string) error {
