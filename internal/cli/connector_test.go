@@ -57,6 +57,15 @@ type connectorTestState struct {
 	runAzure               func(context.Context) (connectorValidationReport, error)
 }
 
+func TestConnectorHTTPClientHasTimeout(t *testing.T) {
+	if connectorHTTPClient == nil {
+		t.Fatal("expected connector HTTP client")
+	}
+	if connectorHTTPClient.Timeout != 30*time.Second {
+		t.Fatalf("timeout = %s, want %s", connectorHTTPClient.Timeout, 30*time.Second)
+	}
+}
+
 func snapshotConnectorTestState() connectorTestState {
 	return connectorTestState{
 		output:                 connectorOutput,

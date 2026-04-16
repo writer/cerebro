@@ -181,12 +181,14 @@ type CVEInfo struct {
 
 var manifestParseFailures atomic.Int64
 
+func newRegistryHTTPClient() *http.Client {
+	return &http.Client{Timeout: 60 * time.Second}
+}
+
 func NewContainerScanner() *ContainerScanner {
 	return &ContainerScanner{
 		registries: make(map[string]RegistryClient),
-		client: &http.Client{
-			Timeout: 60 * time.Second,
-		},
+		client:     newRegistryHTTPClient(),
 	}
 }
 
@@ -645,19 +647,20 @@ type ecrAPI interface {
 
 // ECRClient implements RegistryClient for AWS ECR
 type ECRClient struct {
-	region    string
-	accountID string
-	client    ecrAPI
-	initOnce  sync.Once
-	initErr   error
+	region     string
+	accountID  string
+	client     ecrAPI
+	httpClient *http.Client
+	initOnce   sync.Once
+	initErr    error
 }
 
 func NewECRClient(region, accountID string) *ECRClient {
-	return &ECRClient{region: region, accountID: accountID}
+	return &ECRClient{region: region, accountID: accountID, httpClient: newRegistryHTTPClient()}
 }
 
 func NewECRClientWithAPI(region, accountID string, api ecrAPI) *ECRClient {
-	return &ECRClient{region: region, accountID: accountID, client: api}
+	return &ECRClient{region: region, accountID: accountID, client: api, httpClient: newRegistryHTTPClient()}
 }
 
 func (c *ECRClient) Name() string { return "ecr" }
@@ -784,7 +787,12 @@ func (c *ECRClient) DownloadBlob(ctx context.Context, repo, digest string) (io.R
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	client := c.httpClient
+	if client == nil {
+		client = newRegistryHTTPClient()
+		c.httpClient = client
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, sanitizeTransportError(err)
 	}

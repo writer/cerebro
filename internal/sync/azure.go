@@ -51,6 +51,10 @@ type AzureSyncEngine struct {
 // AzureEngineOption configures the Azure sync engine
 type AzureEngineOption func(*AzureSyncEngine)
 
+func newAzureHTTPClient() *http.Client {
+	return &http.Client{Timeout: 30 * time.Second}
+}
+
 func WithAzureSubscription(subscriptionID string) AzureEngineOption {
 	return func(e *AzureSyncEngine) { e.subscriptionID = subscriptionID }
 }
@@ -87,7 +91,7 @@ func NewAzureSyncEngine(sf warehouse.SyncWarehouse, logger *slog.Logger, opts ..
 		concurrency:             10,
 		subscriptionConcurrency: 4,
 		credential:              cred,
-		httpClient:              http.DefaultClient,
+		httpClient:              newAzureHTTPClient(),
 		tokenCredential:         cred,
 	}
 	for _, opt := range opts {

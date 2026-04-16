@@ -13,7 +13,35 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+var strippedGitEnvKeys = map[string]struct{}{
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES": {},
+	"GIT_COMMON_DIR":                   {},
+	"GIT_DIR":                          {},
+	"GIT_INDEX_FILE":                   {},
+	"GIT_OBJECT_DIRECTORY":             {},
+	"GIT_PREFIX":                       {},
+	"GIT_WORK_TREE":                    {},
+}
+
+func gitCommandEnv(extra ...string) []string {
+	env := make([]string, 0, len(os.Environ())+len(extra)+1)
+	for _, entry := range os.Environ() {
+		key := entry
+		if idx := strings.IndexByte(entry, '='); idx >= 0 {
+			key = entry[:idx]
+		}
+		if _, blocked := strippedGitEnvKeys[key]; blocked {
+			continue
+		}
+		env = append(env, entry)
+	}
+	env = append(env, "GIT_TERMINAL_PROMPT=0")
+	env = append(env, extra...)
+	return env
+}
 
 // Client defines the interface for SCM interactions
 type Client interface {
@@ -183,7 +211,7 @@ func (c *GitHubClient) cloneURL(repoURL string) (string, error) {
 
 func (c *GitHubClient) runGitWithOptionalAuth(ctx context.Context, args []string) error {
 	cmd := exec.CommandContext(ctx, "git", args...) //#nosec G204 -- fixed binary/args
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = gitCommandEnv()
 	cleanup := func() {}
 	if c.Token != "" {
 		askPassPath, err := gitAskPassScriptWithUsername("x-access-token", "GITHUB_TOKEN")
@@ -210,11 +238,19 @@ type GitLabClient struct {
 	httpClient *http.Client
 }
 
+func newGitLabHTTPClient() *http.Client {
+	return &http.Client{Timeout: 30 * time.Second}
+}
+
 func NewGitLabClient(token, baseURL string) *GitLabClient {
 	if strings.TrimSpace(baseURL) == "" {
 		baseURL = "https://gitlab.com"
 	}
-	return &GitLabClient{Token: token, BaseURL: strings.TrimRight(baseURL, "/")}
+	return &GitLabClient{
+		Token:      token,
+		BaseURL:    strings.TrimRight(baseURL, "/"),
+		httpClient: newGitLabHTTPClient(),
+	}
 }
 
 func (c *GitLabClient) Clone(ctx context.Context, repoURL string, dest string) error {
@@ -240,7 +276,7 @@ func (c *GitLabClient) CloneWithOptions(ctx context.Context, repoURL string, des
 	args = append(args, cloneURL, dest)
 
 	cmd := exec.CommandContext(ctx, "git", args...) //#nosec G204 -- args are sanitized repo/dest strings
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = gitCommandEnv()
 	cleanup := func() {}
 	if c.Token != "" {
 		askPassPath, err := gitAskPassScriptWithUsername("oauth2", "GITLAB_TOKEN")
@@ -457,7 +493,7 @@ esac
 
 func (c *GitLabClient) runGitWithOptionalAuth(ctx context.Context, args []string) error {
 	cmd := exec.CommandContext(ctx, "git", args...) //#nosec G204 -- fixed binary/args
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = gitCommandEnv()
 	cleanup := func() {}
 	if c.Token != "" {
 		askPassPath, err := gitAskPassScriptWithUsername("oauth2", "GITLAB_TOKEN")
@@ -488,7 +524,7 @@ func (c *GitLabClient) doRequest(ctx context.Context, endpoint string) (*http.Re
 	}
 	client := c.httpClient
 	if client == nil {
-		client = http.DefaultClient
+		client = newGitLabHTTPClient()
 	}
 	return client.Do(req)
 }
@@ -662,7 +698,7 @@ func (c *LocalClient) CloneWithOptions(ctx context.Context, repoURL, dest string
 	args = append(args, localCloneURL(repoURL, opts.Depth > 0), dest)
 
 	cmd := exec.CommandContext(ctx, "git", args...) //#nosec G204 -- args are sanitized repo/dest strings
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = gitCommandEnv()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git clone failed: %s: %w", string(out), err)
 	}
@@ -686,7 +722,7 @@ func localCloneURL(repoURL string, shallow bool) string {
 
 func (c *LocalClient) Fetch(ctx context.Context, repoURL, dest string) error {
 	cmd := exec.CommandContext(ctx, "git", "-C", dest, "fetch", "--prune", "--tags", "origin") //#nosec G204 -- args are sanitized repo/dest strings
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = gitCommandEnv()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git fetch failed: %s: %w", string(out), err)
 	}

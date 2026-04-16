@@ -304,6 +304,16 @@ func TestECRClient_QualifyImageRef(t *testing.T) {
 	}
 }
 
+func TestNewECRClientConfiguresHTTPTimeout(t *testing.T) {
+	client := NewECRClient("us-west-2", "123456789012")
+	if client.httpClient == nil {
+		t.Fatal("expected ECR client HTTP client to be configured")
+	}
+	if client.httpClient.Timeout != 60*time.Second {
+		t.Fatalf("timeout = %s, want %s", client.httpClient.Timeout, 60*time.Second)
+	}
+}
+
 func TestECRClientListRepositoriesError(t *testing.T) {
 	stub := &stubECR{
 		describeRepositoriesFn: func(_ *ecr.DescribeRepositoriesInput) (*ecr.DescribeRepositoriesOutput, error) {
@@ -692,8 +702,7 @@ func TestDockerHubClientSuccess(t *testing.T) {
 }
 
 func TestECRClientDownloadBlobSanitizesPresignedURLTransportErrors(t *testing.T) {
-	originalClient := http.DefaultClient
-	http.DefaultClient = &http.Client{
+	httpClient := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return nil, &url.Error{
 				Op:  req.Method,
@@ -702,9 +711,6 @@ func TestECRClientDownloadBlobSanitizesPresignedURLTransportErrors(t *testing.T)
 			}
 		}),
 	}
-	t.Cleanup(func() {
-		http.DefaultClient = originalClient
-	})
 
 	stub := &stubECR{
 		getDownloadURLForLayerFn: func(input *ecr.GetDownloadUrlForLayerInput) (*ecr.GetDownloadUrlForLayerOutput, error) {
@@ -717,6 +723,7 @@ func TestECRClientDownloadBlobSanitizesPresignedURLTransportErrors(t *testing.T)
 		},
 	}
 	client := NewECRClientWithAPI("us-west-2", "", stub)
+	client.httpClient = httpClient
 	_, err := client.DownloadBlob(context.Background(), "repo", "sha256:layer")
 	if err == nil {
 		t.Fatal("expected transport error")

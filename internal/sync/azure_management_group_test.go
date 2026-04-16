@@ -35,6 +35,16 @@ func rewriteAzureManagementHost(target *url.URL, base http.RoundTripper) http.Ro
 	})
 }
 
+func TestNewAzureHTTPClientConfiguresTimeout(t *testing.T) {
+	client := newAzureHTTPClient()
+	if client == nil {
+		t.Fatal("expected Azure HTTP client")
+	}
+	if client.Timeout != 30*time.Second {
+		t.Fatalf("timeout = %s, want %s", client.Timeout, 30*time.Second)
+	}
+}
+
 func TestListManagementGroupSubscriptionsFiltersCaseInsensitively(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {

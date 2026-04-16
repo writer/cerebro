@@ -62,6 +62,8 @@ var connectorValidateCmd = &cobra.Command{
 	RunE:      runConnectorValidate,
 }
 
+var connectorHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 var (
 	connectorOutput string
 
@@ -734,7 +736,7 @@ func doAzureRequest(ctx context.Context, token, url string) ([]byte, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := connectorHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func createTestRepo(t *testing.T) string {
@@ -31,8 +32,19 @@ func createTestRepo(t *testing.T) string {
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...) //#nosec G204 -- test helper
+	cmd.Env = gitCommandEnv()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v failed: %s: %v", args, string(out), err)
+	}
+}
+
+func TestNewGitLabClientConfiguresDefaultHTTPClient(t *testing.T) {
+	client := NewGitLabClient("token", "https://gitlab.example.com")
+	if client.httpClient == nil {
+		t.Fatal("expected GitLab HTTP client to be configured")
+	}
+	if client.httpClient.Timeout != 30*time.Second {
+		t.Fatalf("timeout = %s, want %s", client.httpClient.Timeout, 30*time.Second)
 	}
 }
 
