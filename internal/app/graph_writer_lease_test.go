@@ -188,7 +188,7 @@ func TestInitTapGraphConsumerDefersWithoutWriterLease(t *testing.T) {
 	}
 
 	application.initTapGraphConsumer(context.Background())
-	if application.TapConsumer != nil {
+	if application.currentTapConsumer() != nil {
 		t.Fatal("expected tap consumer initialization to defer without writer lease")
 	}
 	if got := logs.String(); !strings.Contains(got, "deferring tap graph consumer until graph writer lease is acquired") {

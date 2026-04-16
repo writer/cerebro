@@ -1,34 +1,34 @@
-package app
+package stream
 
 import (
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/graph"
 )
 
-func (a *App) handleTapSchemaEvent(eventType string, evt events.CloudEvent) error {
-	integration := parseTapSchemaIntegration(eventType, evt.Data)
-	entities := parseTapSchemaEntities(evt.Data)
+func (r *Runtime) handleTapSchemaEvent(eventType string, evt events.CloudEvent) error {
+	integration := ParseTapSchemaIntegration(eventType, evt.Data)
+	entities := ParseTapSchemaEntities(evt.Data)
 	if len(entities) == 0 {
 		return nil
 	}
 
 	registeredNodeKinds := 0
 	edgeKinds := make(map[graph.EdgeKind]struct{})
-	for _, edgeKind := range parseTapSchemaRelationships(firstPresent(evt.Data, "edge_types", "relationship_types")) {
+	for _, edgeKind := range ParseTapSchemaRelationships(FirstPresent(evt.Data, "edge_types", "relationship_types")) {
 		edgeKinds[edgeKind] = struct{}{}
 	}
 
 	for _, entity := range entities {
-		if !a.registerTapSchemaNodeKind(integration, entity, edgeKinds) {
+		if !r.registerTapSchemaNodeKind(integration, entity, edgeKinds) {
 			continue
 		}
 		registeredNodeKinds++
 	}
 
-	registeredEdgeKinds := a.registerTapSchemaEdgeKinds(integration, edgeKinds)
+	registeredEdgeKinds := r.registerTapSchemaEdgeKinds(integration, edgeKinds)
 
-	if a.Logger != nil {
-		a.Logger.Info("registered tap integration schema",
+	if logger := r.logger(); logger != nil {
+		logger.Info("registered tap integration schema",
 			"integration", integration,
 			"node_kinds", registeredNodeKinds,
 			"edge_kinds", registeredEdgeKinds,
@@ -37,7 +37,7 @@ func (a *App) handleTapSchemaEvent(eventType string, evt events.CloudEvent) erro
 	return nil
 }
 
-func (a *App) registerTapSchemaNodeKind(integration string, entity tapSchemaEntityDefinition, edgeKinds map[graph.EdgeKind]struct{}) bool {
+func (r *Runtime) registerTapSchemaNodeKind(integration string, entity SchemaEntityDefinition, edgeKinds map[graph.EdgeKind]struct{}) bool {
 	definition := graph.NodeKindDefinition{
 		Kind:               graph.NodeKind(entity.Kind),
 		Categories:         entity.Categories,
@@ -48,8 +48,8 @@ func (a *App) registerTapSchemaNodeKind(integration string, entity tapSchemaEnti
 		Description:        entity.Description,
 	}
 	if _, err := graph.RegisterNodeKindDefinition(definition); err != nil {
-		if a.Logger != nil {
-			a.Logger.Warn("failed to register tap schema node kind",
+		if logger := r.logger(); logger != nil {
+			logger.Warn("failed to register tap schema node kind",
 				"integration", integration,
 				"kind", entity.Kind,
 				"error", err,
@@ -63,12 +63,12 @@ func (a *App) registerTapSchemaNodeKind(integration string, entity tapSchemaEnti
 	return true
 }
 
-func (a *App) registerTapSchemaEdgeKinds(integration string, edgeKinds map[graph.EdgeKind]struct{}) int {
+func (r *Runtime) registerTapSchemaEdgeKinds(integration string, edgeKinds map[graph.EdgeKind]struct{}) int {
 	registered := 0
 	for edgeKind := range edgeKinds {
 		if _, err := graph.RegisterEdgeKindDefinition(graph.EdgeKindDefinition{Kind: edgeKind}); err != nil {
-			if a.Logger != nil {
-				a.Logger.Warn("failed to register tap schema edge kind",
+			if logger := r.logger(); logger != nil {
+				logger.Warn("failed to register tap schema edge kind",
 					"integration", integration,
 					"kind", edgeKind,
 					"error", err,
@@ -79,4 +79,8 @@ func (a *App) registerTapSchemaEdgeKinds(integration string, edgeKinds map[graph
 		registered++
 	}
 	return registered
+}
+
+func (r *Runtime) HandleTapSchemaEvent(eventType string, evt events.CloudEvent) error {
+	return r.handleTapSchemaEvent(eventType, evt)
 }

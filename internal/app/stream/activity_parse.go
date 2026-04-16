@@ -1,4 +1,4 @@
-package app
+package stream
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 )
 
-type tapActivityEventPlan struct {
+type ActivityEventPlan struct {
 	Actor          *graph.Node
 	Target         *graph.Node
 	Activity       *graph.Node
@@ -16,10 +16,10 @@ type tapActivityEventPlan struct {
 	ActivityTarget *graph.Edge
 }
 
-func buildTapActivityEventPlan(source, activityType string, evt events.CloudEvent) (*tapActivityEventPlan, bool) {
-	actorID, actorName := parseTapActivityActor(evt.Data["actor"])
+func BuildTapActivityEventPlan(source, activityType string, evt events.CloudEvent) (*ActivityEventPlan, bool) {
+	actorID, actorName := ParseTapActivityActor(evt.Data["actor"])
 	if actorID == "" {
-		actorID = strings.TrimSpace(anyToString(firstPresent(evt.Data, "actor_email", "actor_id", "user_email", "user_id")))
+		actorID = strings.TrimSpace(AnyToString(FirstPresent(evt.Data, "actor_email", "actor_id", "user_email", "user_id")))
 	}
 	if actorID == "" {
 		return nil, false
@@ -29,9 +29,9 @@ func buildTapActivityEventPlan(source, activityType string, evt events.CloudEven
 		actorNodeID = "person:" + strings.ToLower(actorNodeID)
 	}
 
-	targetNodeID, targetKind, targetName := parseTapActivityTarget(evt.Data["target"], source)
+	targetNodeID, targetKind, targetName := ParseTapActivityTarget(evt.Data["target"], source)
 	if targetNodeID == "" {
-		targetID := strings.TrimSpace(anyToString(firstPresent(evt.Data, "entity_id", "target_id", "id")))
+		targetID := strings.TrimSpace(AnyToString(FirstPresent(evt.Data, "entity_id", "target_id", "id")))
 		if targetID != "" {
 			targetNodeID = fmt.Sprintf("%s:entity:%s", source, targetID)
 			targetKind = graph.NodeKindCompany
@@ -43,10 +43,10 @@ func buildTapActivityEventPlan(source, activityType string, evt events.CloudEven
 	}
 
 	occurredAt := evt.Time.UTC()
-	if ts, ok := parseTimeValue(firstPresent(evt.Data, "timestamp", "event_time", "occurred_at")); ok {
+	if ts, ok := ParseTimeValue(FirstPresent(evt.Data, "timestamp", "event_time", "occurred_at")); ok {
 		occurredAt = ts.UTC()
 	}
-	action := strings.TrimSpace(anyToString(evt.Data["action"]))
+	action := strings.TrimSpace(AnyToString(evt.Data["action"]))
 	if action == "" {
 		action = activityType
 	}
@@ -55,9 +55,9 @@ func buildTapActivityEventPlan(source, activityType string, evt events.CloudEven
 	if activityID == "" {
 		activityID = fmt.Sprintf("%d", occurredAt.UnixNano())
 	}
-	activityKind := deriveTapActivityNodeKind(source, activityType, evt.Data)
-	activityNodeID := fmt.Sprintf("%s:%s:%s:%s", tapActivityNodePrefix(activityKind), source, activityType, activityID)
-	metadata := mapFromAny(evt.Data["metadata"])
+	activityKind := DeriveTapActivityNodeKind(source, activityType, evt.Data)
+	activityNodeID := fmt.Sprintf("%s:%s:%s:%s", TapActivityNodePrefix(activityKind), source, activityType, activityID)
+	metadata := MapFromAny(evt.Data["metadata"])
 	if metadata == nil {
 		metadata = map[string]any{}
 	}
@@ -91,11 +91,11 @@ func buildTapActivityEventPlan(source, activityType string, evt events.CloudEven
 		targetEdgeKind = graph.EdgeKindTargets
 	}
 
-	return &tapActivityEventPlan{
+	return &ActivityEventPlan{
 		Actor: &graph.Node{
 			ID:       actorNodeID,
 			Kind:     graph.NodeKindPerson,
-			Name:     coalesceString(actorName, actorID),
+			Name:     CoalesceString(actorName, actorID),
 			Provider: source,
 			Risk:     graph.RiskNone,
 			Properties: map[string]any{
@@ -105,7 +105,7 @@ func buildTapActivityEventPlan(source, activityType string, evt events.CloudEven
 		Target: &graph.Node{
 			ID:         targetNodeID,
 			Kind:       targetKind,
-			Name:       coalesceString(targetName, targetNodeID),
+			Name:       CoalesceString(targetName, targetNodeID),
 			Provider:   source,
 			Risk:       graph.RiskNone,
 			Properties: map[string]any{"source_system": source},
@@ -113,7 +113,7 @@ func buildTapActivityEventPlan(source, activityType string, evt events.CloudEven
 		Activity: &graph.Node{
 			ID:         activityNodeID,
 			Kind:       activityKind,
-			Name:       coalesceString(action, activityType),
+			Name:       CoalesceString(action, activityType),
 			Provider:   source,
 			Risk:       graph.RiskNone,
 			Properties: activityProps,

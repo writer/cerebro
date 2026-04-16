@@ -46,6 +46,7 @@ import (
 	"github.com/writer/cerebro/internal/apiauth"
 	appsubstate "github.com/writer/cerebro/internal/app/appstate"
 	appsecrets "github.com/writer/cerebro/internal/app/secrets"
+	appstream "github.com/writer/cerebro/internal/app/stream"
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
@@ -56,7 +57,6 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/graph/builders"
-	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/health"
 	"github.com/writer/cerebro/internal/identity"
 	"github.com/writer/cerebro/internal/lineage"
@@ -120,19 +120,18 @@ type App struct {
 	GraphSnapshots  *graph.GraphPersistenceStore
 
 	// Feature services
-	Agents         *agents.AgentRegistry
-	Ticketing      *ticketing.Service
-	Identity       *identity.Service
-	AttackPath     *attackpath.Graph
-	Providers      *providers.Registry
-	Webhooks       *webhooks.Service
-	TapConsumer    *events.Consumer
-	AlertRouter    *events.AlertRouter
-	TapEventMapper *graphingest.Mapper
-	RemoteTools    *agents.RemoteToolProvider
-	ToolPublisher  *agents.ToolPublisher
-	Notifications  *notifications.Manager
-	Scheduler      *scheduler.Scheduler
+	Agents        *agents.AgentRegistry
+	Ticketing     *ticketing.Service
+	Identity      *identity.Service
+	AttackPath    *attackpath.Graph
+	Providers     *providers.Registry
+	Webhooks      *webhooks.Service
+	Stream        *appstream.Runtime
+	AlertRouter   *events.AlertRouter
+	RemoteTools   *agents.RemoteToolProvider
+	ToolPublisher *agents.ToolPublisher
+	Notifications *notifications.Manager
+	Scheduler     *scheduler.Scheduler
 
 	// Durable app-state repositories.
 	AuditRepo           auditRepository
@@ -192,13 +191,6 @@ type App struct {
 	threatIntelSyncCancel              context.CancelFunc
 	threatIntelSyncWG                  sync.WaitGroup
 	traceShutdown                      func(context.Context) error
-	tapMapperOnce                      sync.Once
-	tapMapperErr                       error
-	tapResolveGraphMu                  sync.RWMutex
-	tapResolveGraph                    *graph.Graph
-	tapConsumerMu                      sync.Mutex
-	tapConsumerDurable                 string
-	tapConsumerSubjects                []string
 	securityGraphInitMu                sync.RWMutex
 	reloadMu                           sync.Mutex
 	Secrets                            *appsecrets.Runtime
@@ -256,6 +248,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		AppState: appsubstate.NewRuntime(),
 		Secrets:  appsecrets.NewRuntime(),
 	}
+	app.Stream = app.newStreamRuntime()
 	app.secretsLoader = options.secretsLoader
 	app.apiCredentialStore = managedCredentialStore
 	if len(cfg.APICredentials) > 0 || len(cfg.APIKeys) == 0 {

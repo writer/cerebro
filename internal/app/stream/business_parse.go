@@ -1,4 +1,4 @@
-package app
+package stream
 
 import (
 	"fmt"
@@ -9,23 +9,23 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 )
 
-type tapBusinessEventPlan struct {
+type BusinessEventPlan struct {
 	Node        *graph.Node
 	TargetStubs []*graph.Node
 	Edges       []*graph.Edge
 }
 
-func buildTapBusinessEventPlan(system, entityType, action, eventType string, evt events.CloudEvent, existingProperties map[string]any) (*tapBusinessEventPlan, bool) {
-	entityID := strings.TrimSpace(anyToString(evt.Data["entity_id"]))
+func BuildTapBusinessEventPlan(system, entityType, action, eventType string, evt events.CloudEvent, existingProperties map[string]any) (*BusinessEventPlan, bool) {
+	entityID := strings.TrimSpace(AnyToString(evt.Data["entity_id"]))
 	if entityID == "" {
-		entityID = strings.TrimSpace(anyToString(evt.Data["id"]))
+		entityID = strings.TrimSpace(AnyToString(evt.Data["id"]))
 	}
 	if entityID == "" {
 		return nil, false
 	}
 
-	snapshot := mapFromAny(evt.Data["snapshot"])
-	changes := mapFromAny(evt.Data["changes"])
+	snapshot := MapFromAny(evt.Data["snapshot"])
+	changes := MapFromAny(evt.Data["changes"])
 	nodeID := fmt.Sprintf("%s:%s:%s", system, entityType, entityID)
 	properties := map[string]any{
 		"source_system": system,
@@ -38,7 +38,7 @@ func buildTapBusinessEventPlan(system, entityType, action, eventType string, evt
 	for key, value := range snapshot {
 		properties[key] = value
 	}
-	for key, value := range deriveComputedFields(system, entityType, snapshot, changes, existingProperties, evt.Time) {
+	for key, value := range DeriveComputedFields(system, entityType, snapshot, changes, existingProperties, evt.Time) {
 		properties[key] = value
 	}
 	if action == "deleted" {
@@ -47,14 +47,14 @@ func buildTapBusinessEventPlan(system, entityType, action, eventType string, evt
 
 	node := &graph.Node{
 		ID:         nodeID,
-		Kind:       mapBusinessEntityKind(entityType),
-		Name:       coalesceString(anyToString(snapshot["name"]), entityID),
+		Kind:       MapBusinessEntityKind(entityType),
+		Name:       CoalesceString(AnyToString(snapshot["name"]), entityID),
 		Provider:   system,
 		Properties: properties,
 		Risk:       graph.RiskNone,
 	}
 
-	edges := extractBusinessEdges(system, entityType, nodeID, snapshot)
+	edges := ExtractBusinessEdges(system, entityType, nodeID, snapshot)
 	targetStubs := make([]*graph.Node, 0, len(edges))
 	seenTargets := make(map[string]struct{}, len(edges))
 	for _, edge := range edges {
@@ -72,7 +72,7 @@ func buildTapBusinessEventPlan(system, entityType, action, eventType string, evt
 		targetName := edge.Target
 		if len(targetParts) == 3 {
 			targetProvider = targetParts[0]
-			targetKind = mapBusinessEntityKind(targetParts[1])
+			targetKind = MapBusinessEntityKind(targetParts[1])
 			targetName = targetParts[2]
 		}
 		targetStubs = append(targetStubs, &graph.Node{
@@ -84,7 +84,7 @@ func buildTapBusinessEventPlan(system, entityType, action, eventType string, evt
 		})
 	}
 
-	return &tapBusinessEventPlan{
+	return &BusinessEventPlan{
 		Node:        node,
 		TargetStubs: targetStubs,
 		Edges:       edges,

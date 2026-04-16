@@ -76,7 +76,7 @@ func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, 
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {
-	return s.deps != nil && s.deps.TapEventMapper != nil
+	return s.deps != nil && s.deps.CurrentTapEventMapper() != nil
 }
 
 func (s serverGraphIntelligenceService) MapperValidationMode() string {
@@ -98,15 +98,23 @@ func (s serverGraphIntelligenceService) MapperDeadLetterPath() string {
 }
 
 func (s serverGraphIntelligenceService) MapperStats() graphingest.MapperStats {
-	if s.deps == nil || s.deps.TapEventMapper == nil {
+	if s.deps == nil {
 		return graphingest.MapperStats{}
 	}
-	return s.deps.TapEventMapper.Stats()
+	mapper := s.deps.CurrentTapEventMapper()
+	if mapper == nil {
+		return graphingest.MapperStats{}
+	}
+	return mapper.Stats()
 }
 
 func (s serverGraphIntelligenceService) MapperContractCatalog(now time.Time) (graphingest.ContractCatalog, bool) {
-	if s.deps == nil || s.deps.TapEventMapper == nil {
+	if s.deps == nil {
 		return graphingest.ContractCatalog{}, false
 	}
-	return s.deps.TapEventMapper.ContractCatalog(now), true
+	mapper := s.deps.CurrentTapEventMapper()
+	if mapper == nil {
+		return graphingest.ContractCatalog{}, false
+	}
+	return mapper.ContractCatalog(now), true
 }

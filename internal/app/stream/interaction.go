@@ -1,4 +1,4 @@
-package app
+package stream
 
 import (
 	"context"
@@ -10,25 +10,25 @@ import (
 	"github.com/writer/cerebro/internal/setutil"
 )
 
-func (a *App) handleTapInteractionEvent(ctx context.Context, eventType string, evt events.CloudEvent) error {
-	plan, ok := buildTapInteractionEventPlan(eventType, evt)
+func (r *Runtime) handleTapInteractionEvent(ctx context.Context, eventType string, evt events.CloudEvent) error {
+	plan, ok := BuildTapInteractionEventPlan(eventType, evt)
 	if !ok {
 		return nil
 	}
 
-	_, err := a.MutateSecurityGraphMaybe(ctx, func(securityGraph *graph.Graph) (bool, error) {
-		applyTapInteractionEventPlan(a, securityGraph, plan)
+	_, err := r.mutateSecurityGraphMaybe(ctx, func(securityGraph *graph.Graph) (bool, error) {
+		applyTapInteractionEventPlan(securityGraph, plan)
 		return true, nil
 	})
 	return err
 }
 
-func applyTapInteractionEventPlan(a *App, securityGraph *graph.Graph, plan *tapInteractionEventPlan) {
-	if a == nil || securityGraph == nil || plan == nil {
+func applyTapInteractionEventPlan(securityGraph *graph.Graph, plan *InteractionEventPlan) {
+	if securityGraph == nil || plan == nil {
 		return
 	}
 	for _, participant := range plan.Participants {
-		a.upsertTapInteractionPersonNode(securityGraph, participant, plan.Channel, plan.OccurredAt)
+		upsertTapInteractionPersonNode(securityGraph, participant, plan.Channel, plan.OccurredAt)
 	}
 
 	for i := 0; i < len(plan.Participants); i++ {
@@ -46,11 +46,11 @@ func applyTapInteractionEventPlan(a *App, securityGraph *graph.Graph, plan *tapI
 	}
 }
 
-func (a *App) upsertTapInteractionPersonNode(securityGraph *graph.Graph, participant tapInteractionParticipant, channel string, occurredAt time.Time) {
+func upsertTapInteractionPersonNode(securityGraph *graph.Graph, participant InteractionParticipant, channel string, occurredAt time.Time) {
 	if securityGraph == nil {
 		return
 	}
-	personID := normalizeTapInteractionPersonID(participant.ID)
+	personID := NormalizeTapInteractionPersonID(participant.ID)
 	if personID == "" {
 		return
 	}
@@ -61,7 +61,7 @@ func (a *App) upsertTapInteractionPersonNode(securityGraph *graph.Graph, partici
 	provider := strings.ToLower(strings.TrimSpace(channel))
 
 	if existing, ok := securityGraph.GetNode(personID); ok && existing != nil {
-		for key, value := range mapFromAny(existing.Properties) {
+		for key, value := range MapFromAny(existing.Properties) {
 			properties[key] = value
 		}
 		if existing.Kind != "" {
@@ -86,12 +86,12 @@ func (a *App) upsertTapInteractionPersonNode(securityGraph *graph.Graph, partici
 	}
 
 	email := strings.TrimPrefix(personID, "person:")
-	if strings.Contains(email, "@") && strings.TrimSpace(anyToString(properties["email"])) == "" {
+	if strings.Contains(email, "@") && strings.TrimSpace(AnyToString(properties["email"])) == "" {
 		properties["email"] = email
 	}
 
 	sources := make(map[string]struct{})
-	for _, source := range stringSliceFromAny(properties["source_systems"]) {
+	for _, source := range StringSliceFromAny(properties["source_systems"]) {
 		source = strings.ToLower(strings.TrimSpace(source))
 		if source == "" {
 			continue

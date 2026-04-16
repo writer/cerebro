@@ -248,14 +248,15 @@ func TestCriticalPath_JetStreamEventIngestToCorrelationEdgeMaterialization(t *te
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	application.initTapGraphConsumer(ctx)
-	if application.TapConsumer == nil {
+	if application.currentTapConsumer() == nil {
 		t.Fatal("expected tap consumer to initialize")
 	}
 	defer func() {
 		drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer drainCancel()
-		_ = application.TapConsumer.Drain(drainCtx)
-		_ = application.TapConsumer.Close()
+		consumer := application.currentTapConsumer()
+		_ = consumer.Drain(drainCtx)
+		_ = consumer.Close()
 	}()
 
 	nc, err := nats.Connect(natsURL, nats.Timeout(2*time.Second))

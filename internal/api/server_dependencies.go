@@ -95,6 +95,7 @@ type serverDependencies struct {
 	Providers      *providers.Registry
 	Webhooks       *webhooks.Service
 	TapEventMapper *graphingest.Mapper
+	tapEventMapper func() *graphingest.Mapper
 	Notifications  *notifications.Manager
 	Scheduler      *scheduler.Scheduler
 
@@ -186,7 +187,7 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		AttackPath:           application.AttackPath,
 		Providers:            application.Providers,
 		Webhooks:             application.Webhooks,
-		TapEventMapper:       application.TapEventMapper,
+		tapEventMapper:       application.CurrentTapEventMapper,
 		Notifications:        application.Notifications,
 		Scheduler:            application.Scheduler,
 		AuditRepo:            application.AuditRepo,
@@ -217,6 +218,16 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		originalBuilder: application.SecurityGraphBuilder,
 	}
 	return deps
+}
+
+func (d serverDependencies) CurrentTapEventMapper() *graphingest.Mapper {
+	if d.TapEventMapper != nil {
+		return d.TapEventMapper
+	}
+	if d.tapEventMapper != nil {
+		return d.tapEventMapper()
+	}
+	return nil
 }
 
 func (d serverDependencies) CurrentSecurityGraph() *graph.Graph {

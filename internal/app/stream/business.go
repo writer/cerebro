@@ -1,4 +1,4 @@
-package app
+package stream
 
 import (
 	"context"
@@ -9,18 +9,18 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 )
 
-func (a *App) handleTapBusinessEvent(ctx context.Context, eventType string, evt events.CloudEvent) error {
-	system, entityType, action := parseTapType(eventType)
+func (r *Runtime) handleTapBusinessEvent(ctx context.Context, eventType string, evt events.CloudEvent) error {
+	system, entityType, action := ParseTapType(eventType)
 	if system == "" {
 		return nil
 	}
 
 	var refreshEventCorrelations bool
-	_, err := a.MutateSecurityGraphMaybe(ctx, func(securityGraph *graph.Graph) (bool, error) {
+	_, err := r.mutateSecurityGraphMaybe(ctx, func(securityGraph *graph.Graph) (bool, error) {
 		var existingProperties map[string]any
-		entityID := strings.TrimSpace(anyToString(evt.Data["entity_id"]))
+		entityID := strings.TrimSpace(AnyToString(evt.Data["entity_id"]))
 		if entityID == "" {
-			entityID = strings.TrimSpace(anyToString(evt.Data["id"]))
+			entityID = strings.TrimSpace(AnyToString(evt.Data["id"]))
 		}
 		if entityID != "" {
 			nodeID := fmt.Sprintf("%s:%s:%s", system, entityType, entityID)
@@ -29,7 +29,7 @@ func (a *App) handleTapBusinessEvent(ctx context.Context, eventType string, evt 
 			}
 		}
 
-		plan, ok := buildTapBusinessEventPlan(system, entityType, action, eventType, evt, existingProperties)
+		plan, ok := BuildTapBusinessEventPlan(system, entityType, action, eventType, evt, existingProperties)
 		if !ok {
 			return false, nil
 		}
@@ -41,12 +41,12 @@ func (a *App) handleTapBusinessEvent(ctx context.Context, eventType string, evt 
 		return err
 	}
 	if refreshEventCorrelations {
-		a.queueEventCorrelationRefresh("tap_business")
+		r.queueEventCorrelationRefresh("tap_business")
 	}
 	return nil
 }
 
-func applyTapBusinessEventPlan(securityGraph *graph.Graph, plan *tapBusinessEventPlan) {
+func applyTapBusinessEventPlan(securityGraph *graph.Graph, plan *BusinessEventPlan) {
 	if securityGraph == nil || plan == nil || plan.Node == nil {
 		return
 	}

@@ -102,7 +102,7 @@ func (a *App) FeatureServices() FeatureServices {
 		AttackPath:    a.AttackPath,
 		Providers:     a.Providers,
 		Webhooks:      a.Webhooks,
-		TapConsumer:   a.TapConsumer,
+		TapConsumer:   a.currentTapConsumer(),
 		RemoteTools:   a.RemoteTools,
 		ToolPublisher: a.ToolPublisher,
 		Notifications: a.Notifications,

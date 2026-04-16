@@ -1,4 +1,4 @@
-package app
+package stream
 
 import (
 	"sort"
@@ -8,7 +8,7 @@ import (
 	"github.com/writer/cerebro/internal/setutil"
 )
 
-type tapSchemaEntityDefinition struct {
+type SchemaEntityDefinition struct {
 	Kind          string
 	Categories    []graph.NodeKindCategory
 	Properties    map[string]string
@@ -18,7 +18,7 @@ type tapSchemaEntityDefinition struct {
 	Description   string
 }
 
-func isTapSchemaEventType(eventType string) bool {
+func IsTapSchemaEventType(eventType string) bool {
 	lower := strings.ToLower(strings.TrimSpace(eventType))
 	switch {
 	case strings.HasPrefix(lower, "ensemble.tap.schema."),
@@ -32,8 +32,8 @@ func isTapSchemaEventType(eventType string) bool {
 	}
 }
 
-func parseTapSchemaIntegration(eventType string, data map[string]any) string {
-	integration := strings.ToLower(strings.TrimSpace(anyToString(firstPresent(data, "integration", "source_system", "system", "provider", "integration_name"))))
+func ParseTapSchemaIntegration(eventType string, data map[string]any) string {
+	integration := strings.ToLower(strings.TrimSpace(AnyToString(FirstPresent(data, "integration", "source_system", "system", "provider", "integration_name"))))
 	if integration != "" {
 		return integration
 	}
@@ -50,8 +50,8 @@ func parseTapSchemaIntegration(eventType string, data map[string]any) string {
 	return ""
 }
 
-func parseTapSchemaEntities(data map[string]any) []tapSchemaEntityDefinition {
-	raw := firstPresent(data, "entity_types", "entities", "node_kinds")
+func ParseTapSchemaEntities(data map[string]any) []SchemaEntityDefinition {
+	raw := FirstPresent(data, "entity_types", "entities", "node_kinds")
 	items := make([]any, 0)
 	switch typed := raw.(type) {
 	case []any:
@@ -62,33 +62,33 @@ func parseTapSchemaEntities(data map[string]any) []tapSchemaEntityDefinition {
 		}
 	}
 
-	out := make([]tapSchemaEntityDefinition, 0, len(items))
+	out := make([]SchemaEntityDefinition, 0, len(items))
 	for _, item := range items {
-		entity := mapFromAny(item)
+		entity := MapFromAny(item)
 		if len(entity) == 0 {
 			continue
 		}
-		kind := strings.ToLower(strings.TrimSpace(anyToString(firstPresent(entity, "kind", "entity_type", "type", "name"))))
+		kind := strings.ToLower(strings.TrimSpace(AnyToString(FirstPresent(entity, "kind", "entity_type", "type", "name"))))
 		if kind == "" {
 			continue
 		}
-		rawProperties := firstPresent(entity, "properties", "fields", "schema")
+		rawProperties := FirstPresent(entity, "properties", "fields", "schema")
 
-		definition := tapSchemaEntityDefinition{
+		definition := SchemaEntityDefinition{
 			Kind:          kind,
-			Categories:    parseTapSchemaCategories(firstPresent(entity, "categories", "category"), kind),
-			Properties:    parseTapSchemaProperties(rawProperties),
-			Required:      parseTapSchemaRequiredProperties(firstPresent(entity, "required_properties", "required_fields", "required"), rawProperties),
-			Relationships: parseTapSchemaRelationships(firstPresent(entity, "relationships", "edges", "relation_types")),
-			Capabilities:  parseTapSchemaCapabilities(firstPresent(entity, "capabilities", "features")),
-			Description:   strings.TrimSpace(anyToString(firstPresent(entity, "description", "summary"))),
+			Categories:    ParseTapSchemaCategories(FirstPresent(entity, "categories", "category"), kind),
+			Properties:    ParseTapSchemaProperties(rawProperties),
+			Required:      ParseTapSchemaRequiredProperties(FirstPresent(entity, "required_properties", "required_fields", "required"), rawProperties),
+			Relationships: ParseTapSchemaRelationships(FirstPresent(entity, "relationships", "edges", "relation_types")),
+			Capabilities:  ParseTapSchemaCapabilities(FirstPresent(entity, "capabilities", "features")),
+			Description:   strings.TrimSpace(AnyToString(FirstPresent(entity, "description", "summary"))),
 		}
 		out = append(out, definition)
 	}
 	return out
 }
 
-func parseTapSchemaCategories(raw any, kind string) []graph.NodeKindCategory {
+func ParseTapSchemaCategories(raw any, kind string) []graph.NodeKindCategory {
 	values := make([]graph.NodeKindCategory, 0)
 	switch typed := raw.(type) {
 	case string:
@@ -100,7 +100,7 @@ func parseTapSchemaCategories(raw any, kind string) []graph.NodeKindCategory {
 		}
 	case []any:
 		for _, item := range typed {
-			category := strings.ToLower(strings.TrimSpace(anyToString(item)))
+			category := strings.ToLower(strings.TrimSpace(AnyToString(item)))
 			if category != "" {
 				values = append(values, graph.NodeKindCategory(category))
 			}
@@ -157,17 +157,17 @@ func inferTapSchemaCategories(kind string) []graph.NodeKindCategory {
 	}
 }
 
-func parseTapSchemaProperties(raw any) map[string]string {
+func ParseTapSchemaProperties(raw any) map[string]string {
 	properties := make(map[string]string)
-	for key, value := range mapFromAny(raw) {
+	for key, value := range MapFromAny(raw) {
 		trimmedKey := strings.TrimSpace(key)
 		if trimmedKey == "" {
 			continue
 		}
 
-		valueType := strings.TrimSpace(anyToString(value))
-		if nested := mapFromAny(value); len(nested) > 0 {
-			valueType = strings.TrimSpace(anyToString(firstPresent(nested, "type", "kind", "data_type")))
+		valueType := strings.TrimSpace(AnyToString(value))
+		if nested := MapFromAny(value); len(nested) > 0 {
+			valueType = strings.TrimSpace(AnyToString(FirstPresent(nested, "type", "kind", "data_type")))
 		}
 		if valueType == "" {
 			valueType = "any"
@@ -177,7 +177,7 @@ func parseTapSchemaProperties(raw any) map[string]string {
 	return properties
 }
 
-func parseTapSchemaRequiredProperties(raw any, schemaRaw any) []string {
+func ParseTapSchemaRequiredProperties(raw any, schemaRaw any) []string {
 	required := make(map[string]struct{})
 
 	add := func(value string) {
@@ -199,16 +199,16 @@ func parseTapSchemaRequiredProperties(raw any, schemaRaw any) []string {
 		}
 	case []any:
 		for _, item := range typed {
-			add(anyToString(item))
+			add(AnyToString(item))
 		}
 	}
 
-	for key, value := range mapFromAny(schemaRaw) {
-		nested := mapFromAny(value)
+	for key, value := range MapFromAny(schemaRaw) {
+		nested := MapFromAny(value)
 		if len(nested) == 0 {
 			continue
 		}
-		if requiredFlag, ok := firstPresent(nested, "required", "is_required").(bool); ok && requiredFlag {
+		if requiredFlag, ok := FirstPresent(nested, "required", "is_required").(bool); ok && requiredFlag {
 			add(key)
 		}
 	}
@@ -216,7 +216,7 @@ func parseTapSchemaRequiredProperties(raw any, schemaRaw any) []string {
 	return setutil.SortedStrings(required)
 }
 
-func parseTapSchemaCapabilities(raw any) []graph.NodeKindCapability {
+func ParseTapSchemaCapabilities(raw any) []graph.NodeKindCapability {
 	capabilities := make(map[graph.NodeKindCapability]struct{})
 
 	add := func(value string) {
@@ -243,7 +243,7 @@ func parseTapSchemaCapabilities(raw any) []graph.NodeKindCapability {
 		}
 	case []any:
 		for _, item := range typed {
-			add(anyToString(item))
+			add(AnyToString(item))
 		}
 	}
 
@@ -258,7 +258,7 @@ func parseTapSchemaCapabilities(raw any) []graph.NodeKindCapability {
 	return out
 }
 
-func parseTapSchemaRelationships(raw any) []graph.EdgeKind {
+func ParseTapSchemaRelationships(raw any) []graph.EdgeKind {
 	values := make([]graph.EdgeKind, 0)
 	switch typed := raw.(type) {
 	case []any:
@@ -270,7 +270,7 @@ func parseTapSchemaRelationships(raw any) []graph.EdgeKind {
 					values = append(values, graph.EdgeKind(kind))
 				}
 			case map[string]any:
-				kind := strings.ToLower(strings.TrimSpace(anyToString(firstPresent(relationship, "kind", "type", "edge_kind", "relationship"))))
+				kind := strings.ToLower(strings.TrimSpace(AnyToString(FirstPresent(relationship, "kind", "type", "edge_kind", "relationship"))))
 				if kind != "" {
 					values = append(values, graph.EdgeKind(kind))
 				}

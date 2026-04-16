@@ -1,4 +1,4 @@
-package app
+package stream
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 )
 
-func mapBusinessEntityKind(entityType string) graph.NodeKind {
+func MapBusinessEntityKind(entityType string) graph.NodeKind {
 	switch strings.ToLower(strings.TrimSpace(entityType)) {
 	case "customer":
 		return graph.NodeKindCustomer
@@ -35,14 +35,14 @@ func mapBusinessEntityKind(entityType string) graph.NodeKind {
 	}
 }
 
-func extractBusinessEdges(system string, entityType string, sourceNodeID string, snapshot map[string]any) []*graph.Edge {
+func ExtractBusinessEdges(system string, entityType string, sourceNodeID string, snapshot map[string]any) []*graph.Edge {
 	out := make([]*graph.Edge, 0)
 	lowEntityType := strings.ToLower(entityType)
 	for key, raw := range snapshot {
 		if !strings.HasSuffix(strings.ToLower(key), "_id") {
 			continue
 		}
-		targetID := strings.TrimSpace(anyToString(raw))
+		targetID := strings.TrimSpace(AnyToString(raw))
 		if targetID == "" {
 			continue
 		}
@@ -86,7 +86,7 @@ func inferBusinessEdgeKind(entityType, targetType string) graph.EdgeKind {
 	}
 }
 
-func deriveComputedFields(system, entityType string, snapshot map[string]any, changes map[string]any, existingProperties map[string]any, eventTime time.Time) map[string]any {
+func DeriveComputedFields(system, entityType string, snapshot map[string]any, changes map[string]any, existingProperties map[string]any, eventTime time.Time) map[string]any {
 	out := make(map[string]any)
 	now := eventTime
 	if now.IsZero() {
@@ -96,7 +96,7 @@ func deriveComputedFields(system, entityType string, snapshot map[string]any, ch
 	switch strings.ToLower(system) {
 	case "hubspot":
 		if strings.EqualFold(entityType, "deal") {
-			if ts, ok := parseTimeValue(firstPresent(snapshot,
+			if ts, ok := ParseTimeValue(FirstPresent(snapshot,
 				"properties.last_activity_date",
 				"properties.hs_lastmodifieddate",
 				"last_activity_date",
@@ -106,11 +106,11 @@ func deriveComputedFields(system, entityType string, snapshot map[string]any, ch
 		}
 	case "salesforce":
 		if strings.EqualFold(entityType, "opportunity") {
-			if ts, ok := parseTimeValue(firstPresent(snapshot, "LastModifiedDate", "last_modified_date")); ok {
+			if ts, ok := ParseTimeValue(FirstPresent(snapshot, "LastModifiedDate", "last_modified_date")); ok {
 				out["days_since_last_modified"] = int(now.Sub(ts).Hours() / 24)
 			}
-			count := toInt(firstPresent(existingProperties, "close_date_push_count"))
-			if snapshotCount := toInt(firstPresent(snapshot, "close_date_push_count")); snapshotCount > count {
+			count := ToInt(FirstPresent(existingProperties, "close_date_push_count"))
+			if snapshotCount := ToInt(FirstPresent(snapshot, "close_date_push_count")); snapshotCount > count {
 				count = snapshotCount
 			}
 			if changeIncludesFieldUpdate(changes, "CloseDate") {
@@ -122,7 +122,7 @@ func deriveComputedFields(system, entityType string, snapshot map[string]any, ch
 		}
 	case "stripe":
 		if strings.EqualFold(entityType, "subscription") {
-			if ts, ok := parseTimeValue(firstPresent(snapshot, "trial_end", "trial_end_at")); ok {
+			if ts, ok := ParseTimeValue(FirstPresent(snapshot, "trial_end", "trial_end_at")); ok {
 				days := int(math.Ceil(ts.Sub(now).Hours() / 24))
 				if days < 0 {
 					days = 0
@@ -130,7 +130,7 @@ func deriveComputedFields(system, entityType string, snapshot map[string]any, ch
 				out["days_until_trial_end"] = days
 			}
 			if _, ok := snapshot["failed_payment_count"]; !ok {
-				out["failed_payment_count"] = toInt(firstPresent(snapshot,
+				out["failed_payment_count"] = ToInt(FirstPresent(snapshot,
 					"billing.failed_payment_count",
 					"payment.failed_count",
 					"failed_payments",
@@ -142,7 +142,7 @@ func deriveComputedFields(system, entityType string, snapshot map[string]any, ch
 	return out
 }
 
-func firstPresent(snapshot map[string]any, keys ...string) any {
+func FirstPresent(snapshot map[string]any, keys ...string) any {
 	for _, key := range keys {
 		if v, ok := nestedValue(snapshot, key); ok {
 			return v
@@ -160,12 +160,12 @@ func changeIncludesFieldUpdate(changes map[string]any, field string) bool {
 	if m, ok := raw.(map[string]any); ok {
 		if oldValue, okOld := m["old"]; okOld {
 			if newValue, okNew := m["new"]; okNew {
-				return anyToString(oldValue) != anyToString(newValue)
+				return AnyToString(oldValue) != AnyToString(newValue)
 			}
 		}
 		if fromValue, okFrom := m["from"]; okFrom {
 			if toValue, okTo := m["to"]; okTo {
-				return anyToString(fromValue) != anyToString(toValue)
+				return AnyToString(fromValue) != AnyToString(toValue)
 			}
 		}
 	}
@@ -188,7 +188,7 @@ func nestedValue(m map[string]any, path string) (any, bool) {
 	return current, true
 }
 
-func parseTimeValue(value any) (time.Time, bool) {
+func ParseTimeValue(value any) (time.Time, bool) {
 	switch typed := value.(type) {
 	case nil:
 		return time.Time{}, false
@@ -227,7 +227,7 @@ func unixToTime(unix int64) time.Time {
 	return time.Unix(unix, 0).UTC()
 }
 
-func mapFromAny(value any) map[string]any {
+func MapFromAny(value any) map[string]any {
 	switch typed := value.(type) {
 	case map[string]any:
 		return typed
@@ -236,7 +236,7 @@ func mapFromAny(value any) map[string]any {
 	}
 }
 
-func anyToString(value any) string {
+func AnyToString(value any) string {
 	switch typed := value.(type) {
 	case string:
 		return typed
@@ -249,7 +249,7 @@ func anyToString(value any) string {
 	}
 }
 
-func coalesceString(values ...string) string {
+func CoalesceString(values ...string) string {
 	for _, v := range values {
 		if strings.TrimSpace(v) != "" {
 			return strings.TrimSpace(v)
@@ -258,7 +258,7 @@ func coalesceString(values ...string) string {
 	return ""
 }
 
-func toInt(value any) int {
+func ToInt(value any) int {
 	switch typed := value.(type) {
 	case int:
 		return typed
@@ -277,7 +277,7 @@ func toInt(value any) int {
 	}
 }
 
-func toFloat64(value any) float64 {
+func ToFloat64(value any) float64 {
 	switch typed := value.(type) {
 	case float64:
 		return typed

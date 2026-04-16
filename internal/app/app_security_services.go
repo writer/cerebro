@@ -861,26 +861,6 @@ func (a *App) refreshCurrentEventCorrelations(reason string) {
 	)
 }
 
-func shouldRefreshEventCorrelations(securityGraph *graph.Graph, nodeIDs []string) bool {
-	if securityGraph == nil || len(nodeIDs) == 0 {
-		return false
-	}
-	for _, nodeID := range nodeIDs {
-		nodeID = strings.TrimSpace(nodeID)
-		if nodeID == "" {
-			continue
-		}
-		node, ok := securityGraph.GetNode(nodeID)
-		if !ok || node == nil {
-			continue
-		}
-		if graph.IsEventCorrelationNodeKind(node.Kind) {
-			return true
-		}
-	}
-	return false
-}
-
 func (a *App) emitGraphRebuiltEvent(ctx context.Context, meta graph.Metadata, duration time.Duration) {
 	if a.Webhooks == nil {
 		return
