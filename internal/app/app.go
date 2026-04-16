@@ -49,7 +49,6 @@ import (
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
-	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/dspm"
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/executionstore"
@@ -149,7 +148,6 @@ type App struct {
 	// New services
 	RBAC                *auth.RBAC
 	ThreatIntel         *threatintel.ThreatIntelService
-	Compliance          *compliance.ComplianceReport
 	Health              *health.Registry
 	Lineage             *lineage.LineageMapper
 	Remediation         *remediation.Engine

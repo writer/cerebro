@@ -100,11 +100,6 @@ func (a *App) initThreatIntel(ctx context.Context) {
 	}()
 }
 
-func (a *App) initCompliance() {
-	// Compliance reports are generated on-demand, not stored
-	a.Logger.Info("compliance service ready")
-}
-
 func (a *App) initHealth() {
 	a.Health = health.NewRegistry()
 

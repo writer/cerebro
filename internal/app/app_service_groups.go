@@ -5,7 +5,6 @@ import (
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
-	"github.com/writer/cerebro/internal/compliance"
 	"github.com/writer/cerebro/internal/dspm"
 	"github.com/writer/cerebro/internal/events"
 	"github.com/writer/cerebro/internal/findings"
@@ -59,7 +58,6 @@ type FeatureServices struct {
 type SecurityServices struct {
 	RBAC                *auth.RBAC
 	ThreatIntel         *threatintel.ThreatIntelService
-	Compliance          *compliance.ComplianceReport
 	Health              *health.Registry
 	Lineage             *lineage.LineageMapper
 	Remediation         *remediation.Engine
@@ -114,7 +112,6 @@ func (a *App) SecurityServices() SecurityServices {
 	return SecurityServices{
 		RBAC:                a.RBAC,
 		ThreatIntel:         a.ThreatIntel,
-		Compliance:          a.Compliance,
 		Health:              a.Health,
 		Lineage:             a.Lineage,
 		Remediation:         a.Remediation,

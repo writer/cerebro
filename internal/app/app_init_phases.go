@@ -83,7 +83,6 @@ func (a *App) initPhase2a(ctx context.Context) error {
 		initOnlySubsystem("webhooks", func(context.Context) { a.initWebhooks() }),
 		initOnlySubsystem("notifications", func(context.Context) { a.initNotifications() }),
 		initOnlySubsystem("rbac", func(context.Context) { a.initRBAC() }),
-		initOnlySubsystem("compliance", func(context.Context) { a.initCompliance() }),
 		initOnlySubsystem("health", func(context.Context) { a.initHealth() }),
 		initOnlySubsystem("lineage", func(context.Context) { a.initLineage() }),
 		a.runtimeSubsystem(),
