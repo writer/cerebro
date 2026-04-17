@@ -54,6 +54,7 @@ type RefreshTokenRecord struct {
 	DeviceID   string     `json:"device_id"`
 	FamilyID   string     `json:"family_id"`
 	Generation int        `json:"generation"`
+	Scopes     []string   `json:"scopes,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	ExpiresAt  time.Time  `json:"expires_at"`
 	Consumed   bool       `json:"consumed"`
@@ -476,6 +477,9 @@ func (s *Store) UpdateDeviceLastSeen(deviceID string, agentVersion string) error
 }
 
 // StoreRefreshToken persists a refresh token record (hash-only, no plaintext).
+// If the token's family was revoked between consume and store (replay
+// detected concurrently), the insert is rejected to prevent a revoked
+// family from being re-opened.
 func (s *Store) StoreRefreshToken(record RefreshTokenRecord) error {
 	if s == nil {
 		return fmt.Errorf("device auth store is nil")
@@ -486,8 +490,30 @@ func (s *Store) StoreRefreshToken(record RefreshTokenRecord) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if record.FamilyID != "" && s.isFamilyRevokedLocked(record.FamilyID) {
+		return fmt.Errorf("token family has been revoked")
+	}
+
 	s.refreshTokens[record.TokenHash] = record
 	return s.persistLocked()
+}
+
+// isFamilyRevokedLocked checks if all tokens in a family are consumed
+// (indicating the family was revoked). Must be called with s.mu held.
+func (s *Store) isFamilyRevokedLocked(familyID string) bool {
+	for _, rt := range s.refreshTokens {
+		if rt.FamilyID == familyID && !rt.Consumed {
+			return false
+		}
+	}
+	// If we found any tokens in this family and all were consumed, revoked.
+	for _, rt := range s.refreshTokens {
+		if rt.FamilyID == familyID {
+			return true
+		}
+	}
+	return false
 }
 
 // ConsumeRefreshToken validates and consumes a refresh token. If a replay
@@ -713,5 +739,8 @@ func cloneBootstrapToken(b BootstrapToken) BootstrapToken {
 
 func cloneRefreshTokenRecord(r RefreshTokenRecord) RefreshTokenRecord {
 	r.ConsumedAt = cloneTimePtr(r.ConsumedAt)
+	if r.Scopes != nil {
+		r.Scopes = append([]string(nil), r.Scopes...)
+	}
 	return r
 }

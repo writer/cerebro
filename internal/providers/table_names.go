@@ -39,6 +39,7 @@ func AllProviderTableNames() []string {
 		NewSailPointProvider(),
 		NewSalesforceProvider(),
 		NewSaviyntProvider(),
+		NewSeCheckProvider(),
 		NewSemgrepProvider(),
 		NewSentinelOneProvider(),
 		NewServiceNowProvider(),

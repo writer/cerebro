@@ -133,6 +133,14 @@ func (s *SeCheckProvider) Sync(ctx context.Context, opts SyncOptions) (*SyncResu
 	return result, nil
 }
 
+func (s *SeCheckProvider) schemaFor(name string) (TableSchema, error) {
+	schema, ok := schemaByName(s.Schema(), name)
+	if !ok {
+		return TableSchema{}, fmt.Errorf("schema not found: %s", name)
+	}
+	return schema, nil
+}
+
 func (s *SeCheckProvider) syncTable(ctx context.Context, table string, opts SyncOptions) (*TableResult, error) {
 	endpoint := tableEndpoint(table)
 	if endpoint == "" {
@@ -153,11 +161,12 @@ func (s *SeCheckProvider) syncTable(ctx context.Context, table string, opts Sync
 		return nil, fmt.Errorf("decode %s: %w", table, err)
 	}
 
-	return &TableResult{
-		Name:     table,
-		Rows:     int64(len(records)),
-		Inserted: int64(len(records)),
-	}, nil
+	schema, err := s.schemaFor(table)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.BaseProvider.syncTable(ctx, schema, records)
 }
 
 func (s *SeCheckProvider) request(ctx context.Context, path string) ([]byte, error) {

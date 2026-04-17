@@ -357,10 +357,15 @@ func RBACMiddleware(rbac *auth.RBAC) func(http.Handler) http.Handler {
 				return
 			}
 
-			if !rbac.HasPermission(r.Context(), userID, requiredPerm) {
-				writeJSONError(w, http.StatusForbidden, "forbidden",
-					"insufficient permissions: requires "+requiredPerm)
-				return
+			// Device JWTs carry scopes directly in the token; they do
+			// not have RBAC user records. Authorize via scope check only.
+			credKind := GetAPICredentialKind(r.Context())
+			if credKind != "device_jwt" {
+				if !rbac.HasPermission(r.Context(), userID, requiredPerm) {
+					writeJSONError(w, http.StatusForbidden, "forbidden",
+						"insufficient permissions: requires "+requiredPerm)
+					return
+				}
 			}
 			if !credentialAllowsPermission(GetAPICredentialScopes(r.Context()), requiredPerm) {
 				writeCredentialScopeError(w, r, requiredPerm)
@@ -396,6 +401,8 @@ func routePermission(method, path string) string {
 	isExport := strings.Contains(path, "/export")
 
 	switch {
+	case path == "/api/v1/telemetry/ingest" && method == "POST":
+		return "security.runtime.write"
 	case strings.HasPrefix(path, "/api/v1/admin/devices"):
 		return "sdk.admin"
 	case strings.HasPrefix(path, "/api/v1/admin/agent-sdk/credentials"):

@@ -588,6 +588,14 @@ func providerRegistrations() []providerRegistration {
 			},
 		},
 		{
+			name:        "secheck",
+			constructor: func() providers.Provider { return providers.NewSeCheckProvider() },
+			enabled:     func(c *Config) bool { return c.SeCheckAPIURL != "" },
+			buildConfig: func(c *Config) map[string]interface{} {
+				return map[string]interface{}{"api_url": c.SeCheckAPIURL, "api_token": c.SeCheckAPIToken}
+			},
+		},
+		{
 			name:        "cloudtrail",
 			constructor: func() providers.Provider { return providers.NewCloudTrailProvider() },
 			enabled:     func(c *Config) bool { return c.CloudTrailRegion != "" || c.CloudTrailTrailARN != "" },

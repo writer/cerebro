@@ -234,13 +234,15 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 			deps.DeviceJWT = issuer
 			storePath := strings.TrimSpace(os.Getenv("CEREBRO_DEVICE_AUTH_STORE_PATH"))
 			if storePath == "" {
-				storePath = filepath.Join(os.TempDir(), "cerebro-device-auth.json")
+				deps.Logger.Error("CEREBRO_DEVICE_AUTH_STORE_PATH is required for device auth; " +
+					"ephemeral fallback disabled to prevent state loss in multi-replica deployments")
+			} else {
+				store := deviceauth.NewStore(storePath)
+				if err := store.Load(); err != nil {
+					deps.Logger.Warn("failed to load device auth state; starting fresh", "error", err)
+				}
+				deps.DeviceAuth = store
 			}
-			store := deviceauth.NewStore(storePath)
-			if err := store.Load(); err != nil {
-				deps.Logger.Warn("failed to load device auth state; starting fresh", "error", err)
-			}
-			deps.DeviceAuth = store
 		}
 	}
 

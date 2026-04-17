@@ -143,6 +143,7 @@ func (s *Server) deviceEnroll(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusInternalServerError, "failed to issue refresh token")
 		return
 	}
+	refreshRecord.Scopes = scopes
 	if err := s.deviceAuth.StoreRefreshToken(refreshRecord); err != nil {
 		s.error(w, http.StatusInternalServerError, "failed to store refresh token")
 		return
@@ -200,8 +201,11 @@ func (s *Server) deviceToken(w http.ResponseWriter, r *http.Request) {
 
 	_ = s.deviceAuth.UpdateDeviceLastSeen(device.DeviceID, "")
 
-	defaultScopes := []string{"security.findings.read", "security.runtime.write"}
-	accessToken, err := s.deviceJWT.IssueAccessToken(device, defaultScopes)
+	scopes := consumed.Scopes
+	if len(scopes) == 0 {
+		scopes = []string{"security.findings.read", "security.runtime.write"}
+	}
+	accessToken, err := s.deviceJWT.IssueAccessToken(device, scopes)
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, "failed to issue access token")
 		return
@@ -213,6 +217,7 @@ func (s *Server) deviceToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refreshRecord.Generation = consumed.Generation + 1
+	refreshRecord.Scopes = scopes
 	if err := s.deviceAuth.StoreRefreshToken(refreshRecord); err != nil {
 		s.error(w, http.StatusInternalServerError, "failed to store refresh token")
 		return

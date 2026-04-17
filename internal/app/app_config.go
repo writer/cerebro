@@ -122,6 +122,10 @@ type Config struct {
 	FigmaTeamID   string
 	FigmaBaseURL  string
 
+	// SeCheck Provider (Writer Security Checkup Agent)
+	SeCheckAPIURL   string
+	SeCheckAPIToken string
+
 	// Socket Provider
 	SocketAPIToken string
 	SocketOrgSlug  string
@@ -646,6 +650,8 @@ func LoadConfig() *Config {
 				FigmaAPIToken:                            getEnv("FIGMA_API_TOKEN", ""),
 				FigmaTeamID:                              getEnv("FIGMA_TEAM_ID", ""),
 				FigmaBaseURL:                             getEnv("FIGMA_BASE_URL", "https://api.figma.com"),
+				SeCheckAPIURL:                            getEnv("SECHECK_API_URL", ""),
+				SeCheckAPIToken:                          getEnv("SECHECK_API_TOKEN", ""),
 				SocketAPIToken:                           getEnv("SOCKET_API_TOKEN", ""),
 				SocketOrgSlug:                            getEnv("SOCKET_ORG", ""),
 				SocketAPIURL:                             getEnv("SOCKET_API_URL", "https://api.socket.dev/v0"),
