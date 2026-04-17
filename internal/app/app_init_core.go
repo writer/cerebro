@@ -224,7 +224,7 @@ func (a *App) initFindings() {
 	if db := a.appStateDB(); db != nil {
 		store := findings.NewPostgresStore(db)
 		store.SetSemanticDedup(a.Config.FindingsSemanticDedupEnabled)
-		if err := store.Load(context.Background()); err != nil {
+		if err := store.Load(a.backgroundContext()); err != nil {
 			a.Logger.Warn("failed to load postgres findings store", "error", err)
 		}
 		a.Findings = store
@@ -407,7 +407,7 @@ func (a *App) initCache() {
 
 func (a *App) initTicketing(ctx context.Context) {
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = a.backgroundContext()
 	}
 	a.Ticketing = ticketing.NewService()
 

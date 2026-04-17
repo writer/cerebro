@@ -614,7 +614,7 @@ func TestGraphIntelligenceQualityEndpoint_InvalidParams(t *testing.T) {
 func TestGraphIntelligenceAgentActionEffectivenessEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	g := s.app.SecurityGraph
-	now := time.Now().UTC().Truncate(time.Second)
+	now := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
 
 	g.AddNode(&graph.Node{
 		ID:   "thread:evaluation:run-1:conv-1",
@@ -959,6 +959,7 @@ func TestPlatformIntelligenceEvaluationTemporalAnalysisReportDefinition(t *testi
 
 func TestGraphIntelligencePlaybookEffectivenessEndpoint(t *testing.T) {
 	s := newTestServer(t)
+	startedAt := time.Now().UTC().Add(-90 * time.Minute).Truncate(time.Second)
 	addPlaybookEffectivenessEndpointFixture(t, s.app.SecurityGraph, playbookEffectivenessEndpointFixture{
 		RunID:        "run-a1",
 		PlaybookID:   "pb-remediate",
@@ -966,15 +967,15 @@ func TestGraphIntelligencePlaybookEffectivenessEndpoint(t *testing.T) {
 		TenantID:     "tenant-acme",
 		TargetID:     "service:payments",
 		TargetKind:   graph.NodeKindService,
-		StartedAt:    time.Date(2026, 3, 23, 15, 0, 0, 0, time.UTC),
+		StartedAt:    startedAt,
 		Stages: []playbookEffectivenessEndpointStage{
-			{ID: "approve", Name: "Approve Fix", Order: 1, Status: "completed", ApprovalRequired: true, ApprovalStatus: "approved", ObservedAt: time.Date(2026, 3, 23, 15, 10, 0, 0, time.UTC)},
+			{ID: "approve", Name: "Approve Fix", Order: 1, Status: "completed", ApprovalRequired: true, ApprovalStatus: "approved", ObservedAt: startedAt.Add(10 * time.Minute)},
 		},
 		Outcome: &playbookEffectivenessEndpointOutcome{
 			Verdict:       "positive",
 			Status:        "completed",
 			RollbackState: "stable",
-			ObservedAt:    time.Date(2026, 3, 23, 15, 40, 0, 0, time.UTC),
+			ObservedAt:    startedAt.Add(40 * time.Minute),
 		},
 	})
 
@@ -1033,7 +1034,6 @@ func TestPlatformIntelligencePlaybookEffectivenessReportDefinition(t *testing.T)
 func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 	s := newTestServer(t)
 	baseAt := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
-
 	addEvaluationTemporalAnalysisEndpointFixture(t, s.app.SecurityGraph, evaluationTemporalAnalysisEndpointFixture{
 		RunID:        "run-1",
 		Conversation: "conv-1",
@@ -1051,13 +1051,13 @@ func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 		TargetKind:   graph.NodeKind("database"),
 		StartedAt:    baseAt.Add(time.Hour),
 		Stages: []playbookEffectivenessEndpointStage{
-			{ID: "repair", Name: "Repair", Order: 1, Status: "completed", ObservedAt: baseAt.Add(time.Hour + 10*time.Minute)},
+			{ID: "repair", Name: "Repair", Order: 1, Status: "completed", ObservedAt: baseAt.Add(70 * time.Minute)},
 		},
 		Outcome: &playbookEffectivenessEndpointOutcome{
 			Verdict:       "positive",
 			Status:        "completed",
 			RollbackState: "stable",
-			ObservedAt:    baseAt.Add(time.Hour + 30*time.Minute),
+			ObservedAt:    baseAt.Add(90 * time.Minute),
 		},
 	})
 	s.app.SecurityGraph.AddNode(&graph.Node{
@@ -1076,8 +1076,8 @@ func TestGraphIntelligenceUnifiedExecutionTimelineEndpoint(t *testing.T) {
 			"tenant_id":       "tenant-acme",
 			"target_ids":      []string{"database:orders"},
 			"source_system":   "platform_playbook",
-			"observed_at":     baseAt.Add(time.Hour + 20*time.Minute).Format(time.RFC3339),
-			"valid_from":      baseAt.Add(time.Hour + 20*time.Minute).Format(time.RFC3339),
+			"observed_at":     baseAt.Add(80 * time.Minute).Format(time.RFC3339),
+			"valid_from":      baseAt.Add(80 * time.Minute).Format(time.RFC3339),
 		},
 	})
 
@@ -2675,6 +2675,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	s := NewServer(application)
 	if s.platformReportStore == nil {
 		t.Fatal("expected platformReportStore to be configured")
+		return
 	}
 	run := &reports.ReportRun{
 		ID:            "report_run:test-rollback",
@@ -2693,6 +2694,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	// can verify the update path does not partially mutate durable state.
 	if application.ExecutionStore == nil {
 		t.Fatal("expected shared execution store to be configured")
+		return
 	}
 	if err := application.ExecutionStore.Close(); err != nil {
 		t.Fatalf("ExecutionStore.Close(): %v", err)
@@ -2703,6 +2705,7 @@ func TestPlatformReportRunUpdateRollsBackOnPersistenceFailure(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected persistence failure from updatePlatformReportRun")
+		return
 	}
 	stored, ok := s.platformReportRunSnapshot(run.ReportID, run.ID)
 	if !ok {
@@ -3760,6 +3763,7 @@ func addEvaluationTemporalAnalysisEndpointFixture(t *testing.T, g *graph.Graph, 
 	t.Helper()
 	if g == nil {
 		t.Fatal("graph is required")
+		return
 	}
 
 	baseAt := fixture.BaseAt.UTC()
@@ -4024,6 +4028,7 @@ func addPlaybookEffectivenessEndpointFixture(t *testing.T, g *graph.Graph, fixtu
 	t.Helper()
 	if g == nil {
 		t.Fatal("graph is nil")
+		return
 	}
 
 	if fixture.TargetID != "" {

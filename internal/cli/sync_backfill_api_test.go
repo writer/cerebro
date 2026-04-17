@@ -125,6 +125,7 @@ func TestRunBackfillRelationships_AutoModeNoFallbackOnUnauthorized(t *testing.T)
 	err := runBackfillRelationships(nil, nil)
 	if err == nil {
 		t.Fatal("expected api error")
+		return
 	}
 	if !strings.Contains(err.Error(), "backfill relationship IDs via api failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -176,5 +177,6 @@ func TestRunBackfillRelationships_APIModeConfigError(t *testing.T) {
 
 	if err := runBackfillRelationships(nil, nil); err == nil {
 		t.Fatal("expected api mode config error")
+		return
 	}
 }
