@@ -431,6 +431,20 @@ func runSubsystemInitConcurrently(ctx context.Context, subsystems ...initSubsyst
 	return g.Wait()
 }
 
+func runSubsystemInitSequentially(ctx context.Context, subsystems ...initSubsystem) error {
+	for _, subsystem := range subsystems {
+		if subsystem == nil {
+			continue
+		}
+		if err := runLifecycleErrorStep("init", subsystem.Name(), func() error {
+			return subsystem.Init(ctx)
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func runSubsystemStartSequentially(ctx context.Context, subsystems ...startSubsystem) error {
 	for _, subsystem := range subsystems {
 		if subsystem == nil {

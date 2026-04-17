@@ -176,6 +176,199 @@ func TestAgentRegistry_GetAgent_NotFound(t *testing.T) {
 	}
 }
 
+func TestAgentRegistry_RefreshAgentTools(t *testing.T) {
+	r := NewAgentRegistry()
+	memory := NewMemory(10)
+	r.RegisterAgent(&Agent{
+		ID:     "agent-1",
+		Name:   "Test Agent",
+		Tools:  []Tool{{Name: "query_assets", Description: "stale"}, {Name: "remote_tool", Description: "remote"}},
+		Memory: memory,
+	})
+
+	ok := r.RefreshAgentTools("agent-1", []Tool{
+		{Name: "query_assets", Description: "fresh"},
+		{Name: "list_findings", Description: "list"},
+	})
+	if !ok {
+		t.Fatal("expected tools refresh to succeed")
+	}
+
+	agent, ok := r.GetAgent("agent-1")
+	if !ok {
+		t.Fatal("expected refreshed agent to be found")
+	}
+	if agent.Memory != memory {
+		t.Fatal("expected refresh to preserve agent memory")
+	}
+
+	toolDescriptions := make(map[string]string, len(agent.Tools))
+	for _, tool := range agent.Tools {
+		toolDescriptions[tool.Name] = tool.Description
+	}
+
+	if got := toolDescriptions["query_assets"]; got != "fresh" {
+		t.Fatalf("expected query_assets description to be refreshed, got %q", got)
+	}
+	if got := toolDescriptions["list_findings"]; got != "list" {
+		t.Fatalf("expected list_findings tool to be added, got %q", got)
+	}
+	if got := toolDescriptions["remote_tool"]; got != "remote" {
+		t.Fatalf("expected remote_tool to be preserved, got %q", got)
+	}
+}
+
+func TestAgentRegistry_RefreshAgentTools_NotFound(t *testing.T) {
+	r := NewAgentRegistry()
+	if ok := r.RefreshAgentTools("missing", []Tool{{Name: "query_assets"}}); ok {
+		t.Fatal("expected refresh to fail for missing agent")
+	}
+}
+
+func TestAgentRegistry_ReplaceAgentToolsDropsRemovedManagedTools(t *testing.T) {
+	r := NewAgentRegistry()
+	memory := NewMemory(10)
+	r.RegisterAgent(&Agent{
+		ID:     "agent-1",
+		Name:   "Test Agent",
+		Tools:  []Tool{{Name: "query_assets", Description: "stale"}, {Name: "remote_tool", Description: "remote"}, {Name: "custom_tool", Description: "custom"}},
+		Memory: memory,
+	})
+
+	ok := r.ReplaceAgentTools("agent-1",
+		[]Tool{{Name: "query_assets", Description: "stale"}, {Name: "remote_tool", Description: "remote"}},
+		[]Tool{{Name: "query_assets", Description: "fresh"}, {Name: "list_findings", Description: "list"}},
+	)
+	if !ok {
+		t.Fatal("expected tool replacement to succeed")
+	}
+
+	agent, ok := r.GetAgent("agent-1")
+	if !ok {
+		t.Fatal("expected agent to be found")
+	}
+	if agent.Memory != memory {
+		t.Fatal("expected memory to be preserved")
+	}
+
+	toolDescriptions := make(map[string]string, len(agent.Tools))
+	for _, tool := range agent.Tools {
+		toolDescriptions[tool.Name] = tool.Description
+	}
+	if got := toolDescriptions["query_assets"]; got != "fresh" {
+		t.Fatalf("expected query_assets to refresh, got %q", got)
+	}
+	if got := toolDescriptions["list_findings"]; got != "list" {
+		t.Fatalf("expected list_findings to be added, got %q", got)
+	}
+	if _, ok := toolDescriptions["remote_tool"]; ok {
+		t.Fatal("expected removed managed remote_tool to be dropped")
+	}
+	if got := toolDescriptions["custom_tool"]; got != "custom" {
+		t.Fatalf("expected custom_tool to be preserved, got %q", got)
+	}
+}
+
+func TestAgentRegistry_UpsertAgentPreservesMemoryAndExtraTools(t *testing.T) {
+	r := NewAgentRegistry()
+	memory := NewMemory(10)
+	r.RegisterAgent(&Agent{
+		ID:     "agent-1",
+		Name:   "Old Agent",
+		Tools:  []Tool{{Name: "query_assets", Description: "stale"}, {Name: "remote_tool", Description: "remote"}},
+		Memory: memory,
+	})
+
+	r.UpsertAgent(&Agent{
+		ID:          "agent-1",
+		Name:        "Updated Agent",
+		Description: "updated",
+		Tools:       []Tool{{Name: "query_assets", Description: "fresh"}, {Name: "list_findings", Description: "list"}},
+		Memory:      NewMemory(5),
+	})
+
+	agent, ok := r.GetAgent("agent-1")
+	if !ok {
+		t.Fatal("expected upserted agent to be found")
+	}
+	if agent.Memory != memory {
+		t.Fatal("expected upsert to preserve existing memory")
+	}
+
+	toolDescriptions := make(map[string]string, len(agent.Tools))
+	for _, tool := range agent.Tools {
+		toolDescriptions[tool.Name] = tool.Description
+	}
+	if got := toolDescriptions["query_assets"]; got != "fresh" {
+		t.Fatalf("expected query_assets description to be refreshed, got %q", got)
+	}
+	if got := toolDescriptions["list_findings"]; got != "list" {
+		t.Fatalf("expected list_findings tool to be present, got %q", got)
+	}
+	if got := toolDescriptions["remote_tool"]; got != "remote" {
+		t.Fatalf("expected remote_tool to be preserved, got %q", got)
+	}
+}
+
+func TestAgentRegistry_UpsertAgentReplacingToolsDropsRemovedManagedTools(t *testing.T) {
+	r := NewAgentRegistry()
+	memory := NewMemory(10)
+	r.RegisterAgent(&Agent{
+		ID:     "agent-1",
+		Name:   "Old Agent",
+		Tools:  []Tool{{Name: "query_assets", Description: "stale"}, {Name: "remote_tool", Description: "remote"}, {Name: "custom_tool", Description: "custom"}},
+		Memory: memory,
+	})
+
+	r.UpsertAgentReplacingTools(&Agent{
+		ID:          "agent-1",
+		Name:        "Updated Agent",
+		Description: "updated",
+		Tools:       []Tool{{Name: "query_assets", Description: "fresh"}, {Name: "list_findings", Description: "list"}},
+		Memory:      NewMemory(5),
+	}, []Tool{{Name: "query_assets", Description: "stale"}, {Name: "remote_tool", Description: "remote"}})
+
+	agent, ok := r.GetAgent("agent-1")
+	if !ok {
+		t.Fatal("expected upserted agent to be found")
+	}
+	if agent.Memory != memory {
+		t.Fatal("expected existing memory to be preserved")
+	}
+
+	toolDescriptions := make(map[string]string, len(agent.Tools))
+	for _, tool := range agent.Tools {
+		toolDescriptions[tool.Name] = tool.Description
+	}
+	if got := toolDescriptions["query_assets"]; got != "fresh" {
+		t.Fatalf("expected query_assets to refresh, got %q", got)
+	}
+	if got := toolDescriptions["list_findings"]; got != "list" {
+		t.Fatalf("expected list_findings to be added, got %q", got)
+	}
+	if _, ok := toolDescriptions["remote_tool"]; ok {
+		t.Fatal("expected removed managed remote_tool to be dropped")
+	}
+	if got := toolDescriptions["custom_tool"]; got != "custom" {
+		t.Fatalf("expected custom_tool to be preserved, got %q", got)
+	}
+}
+
+func TestAgentRegistry_RemoveAgent(t *testing.T) {
+	r := NewAgentRegistry()
+	r.RegisterAgent(&Agent{ID: "agent-1", Name: "Agent 1"})
+
+	if ok := r.RemoveAgent("agent-1"); !ok {
+		t.Fatal("expected remove to succeed")
+	}
+	if _, ok := r.GetAgent("agent-1"); ok {
+		t.Fatal("expected agent to be removed")
+	}
+	if ok := r.RemoveAgent("agent-1"); ok {
+		t.Fatal("expected remove to report false for missing agent")
+	}
+}
+
 func TestAgentRegistry_ListAgents(t *testing.T) {
 	r := NewAgentRegistry()
 	r.RegisterAgent(&Agent{ID: "agent-1", Name: "Agent 1"})
@@ -307,6 +500,7 @@ func TestAgentRegistry_CreateSession_ReturnsErrorOnPersistFailure(t *testing.T) 
 	_, err := r.CreateSession("agent-1", "user-123", SessionContext{})
 	if err == nil {
 		t.Fatal("expected create session to fail when persistence fails")
+		return
 	}
 	if len(r.sessions) != 0 {
 		t.Fatal("expected failed persisted session not to remain in registry")
@@ -330,6 +524,7 @@ func TestAgentRegistry_UpdateSession_ReturnsErrorOnPersistFailure(t *testing.T) 
 	session.Status = "completed"
 	if err := r.UpdateSession(session); err == nil {
 		t.Fatal("expected update session to fail when persistence fails")
+		return
 	}
 }
 
@@ -386,6 +581,7 @@ func TestToolValidateExecutionRequiresApproval(t *testing.T) {
 
 	if err := tool.ValidateExecution(false); err == nil {
 		t.Fatal("expected approval_required error when tool is not approved")
+		return
 	}
 
 	if err := tool.ValidateExecution(true); err != nil {

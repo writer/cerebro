@@ -108,6 +108,7 @@ func TestGraphAdvisoryEvaluateChangeHandlerUsesServiceInterface(t *testing.T) {
 				called = true
 				if proposal == nil {
 					t.Fatal("expected proposal")
+					return nil, nil
 				}
 				if proposal.ID != "proposal-1" {
 					t.Fatalf("expected proposal-1, got %q", proposal.ID)

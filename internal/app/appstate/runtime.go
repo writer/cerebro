@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/lib/pq"
 )
 
 type Runtime struct {
@@ -20,13 +20,12 @@ func NewRuntime() *Runtime {
 }
 
 func DatabaseURL(jobDatabaseURL, warehouseBackend, warehousePostgresDSN string) string {
-	if dsn := strings.TrimSpace(jobDatabaseURL); dsn != "" {
-		return dsn
-	}
-	if strings.EqualFold(strings.TrimSpace(warehouseBackend), "postgres") {
+	switch strings.ToLower(strings.TrimSpace(warehouseBackend)) {
+	case "postgres", "snowflake":
 		return strings.TrimSpace(warehousePostgresDSN)
+	default:
+		return ""
 	}
-	return ""
 }
 
 func (r *Runtime) DB() *sql.DB {
@@ -52,7 +51,7 @@ func (r *Runtime) Init(ctx context.Context, dsn string, ensureFns ...EnsureSchem
 		return nil
 	}
 
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return fmt.Errorf("open app-state database: %w", err)
 	}

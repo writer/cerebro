@@ -15,6 +15,15 @@ import (
 	"github.com/writer/cerebro/internal/warehouse"
 )
 
+type failingGraphStore struct {
+	*graph.Graph
+	err error
+}
+
+func (s failingGraphStore) Snapshot(context.Context) (*graph.Snapshot, error) {
+	return nil, s.err
+}
+
 func TestEvaluateGraphOntologySLOStatus(t *testing.T) {
 	thresholds := graphOntologySLOThresholds{
 		FallbackWarn:        12,
@@ -175,6 +184,56 @@ func TestInitHealthRegistersGraphBuildCheck(t *testing.T) {
 	}
 }
 
+func TestInitSecurityGraphMarksFollowerBuildHealthyWhenSnapshotAvailable(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService, Name: "persisted"})
+	persisted.SetMetadata(graph.Metadata{
+		BuiltAt: time.Date(2026, 4, 8, 10, 30, 0, 0, time.UTC),
+	})
+	persisted.BuildIndex()
+
+	application := &App{
+		Config: &Config{
+			GraphWriterLeaseEnabled: true,
+			GraphWriterLeaseName:    "security_graph_writer",
+		},
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Warehouse:      &warehouse.MemoryWarehouse{},
+		GraphSnapshots: mustPersistToolGraph(t, persisted),
+		graphWriterLease: &graphWriterLeaseManager{
+			status: GraphWriterLeaseStatus{
+				Enabled:       true,
+				Role:          GraphWriterRoleFollower,
+				LeaseHolderID: "writer-1",
+			},
+		},
+	}
+
+	application.initSecurityGraph(context.Background())
+
+	snapshot := application.GraphBuildSnapshot()
+	if snapshot.State != GraphBuildSuccess {
+		t.Fatalf("expected follower graph build state success, got %#v", snapshot)
+	}
+	if !snapshot.LastBuildAt.Equal(persisted.Metadata().BuiltAt) {
+		t.Fatalf("LastBuildAt = %s, want %s", snapshot.LastBuildAt, persisted.Metadata().BuiltAt)
+	}
+	if current := application.CurrentSecurityGraph(); current == nil {
+		t.Fatal("expected readable graph fallback for follower replica")
+		return
+	}
+
+	application.initHealth()
+	results := application.Health.RunAll(context.Background())
+	check, ok := results["graph_build"]
+	if !ok {
+		t.Fatal("expected graph_build health check to be registered")
+	}
+	if check.Status != health.StatusHealthy {
+		t.Fatalf("expected healthy graph_build check for follower replica, got %s (%s)", check.Status, check.Message)
+	}
+}
+
 func TestInitHealthRegistersGraphPersistenceCheck(t *testing.T) {
 	dir := t.TempDir()
 	store, err := graph.NewGraphPersistenceStore(graph.GraphPersistenceOptions{
@@ -257,12 +316,29 @@ func TestActivateBuiltSecurityGraphDoesNotReplaceLiveGraphWithNil(t *testing.T) 
 
 	if _, err := application.activateBuiltSecurityGraph(context.Background(), nil); err == nil {
 		t.Fatal("expected nil built graph to return an error")
+		return
 	}
 	if got := application.CurrentSecurityGraph(); got != liveGraph {
 		t.Fatal("expected existing live graph to remain in place when built graph is nil")
 	}
 	if snapshot := application.GraphBuildSnapshot(); snapshot.State != GraphBuildFailed {
 		t.Fatalf("expected graph build state failed, got %#v", snapshot)
+	}
+}
+
+func TestCurrentSecurityGraphReturnsNilWhenConfiguredViewErrors(t *testing.T) {
+	application := &App{
+		Config:        &Config{},
+		SecurityGraph: graph.New(),
+		configuredSecurityGraphStore: failingGraphStore{
+			Graph: graph.New(),
+			err:   fmt.Errorf("snapshot failed"),
+		},
+		configuredSecurityGraphReady: true,
+	}
+
+	if got := application.CurrentSecurityGraph(); got != nil {
+		t.Fatalf("expected nil graph when configured view errors, got %p", got)
 	}
 }
 

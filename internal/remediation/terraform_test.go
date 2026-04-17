@@ -9,6 +9,7 @@ func TestRenderTerraformArtifact_RejectsUnsupportedContextForSecurityGroupIngres
 	_, err := renderTerraformArtifact(Action{Type: ActionRestrictPublicSecurityGroupIngress}, &Execution{})
 	if err == nil {
 		t.Fatal("expected unsupported terraform context error")
+		return
 	}
 	if !strings.Contains(err.Error(), "standalone Terraform security group rule resources") {
 		t.Fatalf("unexpected error: %v", err)
@@ -68,6 +69,7 @@ func TestRenderTerraformArtifact_RestrictPublicSecurityGroupIngressRejectsForEac
 	})
 	if err == nil {
 		t.Fatal("expected for_each rule address rejection")
+		return
 	}
 	if !strings.Contains(err.Error(), "standalone Terraform security group rule resources") {
 		t.Fatalf("unexpected error: %v", err)
@@ -85,6 +87,7 @@ func TestRenderTerraformArtifact_RestrictPublicSecurityGroupIngressRejectsInline
 	})
 	if err == nil {
 		t.Fatal("expected inline security group state rejection")
+		return
 	}
 	if !strings.Contains(err.Error(), "standalone Terraform security group rule resources") {
 		t.Fatalf("unexpected error: %v", err)
@@ -149,6 +152,7 @@ func TestRenderTerraformArtifact_EnableBucketDefaultEncryptionRejectsNonAWSProvi
 	})
 	if err == nil {
 		t.Fatal("expected non-aws provider rejection")
+		return
 	}
 	if !strings.Contains(err.Error(), "only implemented for aws buckets") {
 		t.Fatalf("unexpected error: %v", err)
@@ -255,6 +259,7 @@ func TestRenderTerraformRestrictPublicStorageAccessArtifact_UsesIaCFilePlacement
 	}
 	if artifact.StateReconciliation == nil {
 		t.Fatal("expected structured state reconciliation guidance")
+		return
 	}
 	if artifact.StateReconciliation.StateShow.Program != "terraform" {
 		t.Fatalf("unexpected state show program: %#v", artifact.StateReconciliation.StateShow)
@@ -499,6 +504,7 @@ func TestRenderTerraformRestrictPublicStorageAccessArtifact_RejectsNonAWSProvide
 	})
 	if err == nil {
 		t.Fatal("expected non-aws provider rejection")
+		return
 	}
 	if !strings.Contains(err.Error(), "only implemented for aws") {
 		t.Fatalf("unexpected error: %v", err)
@@ -517,6 +523,7 @@ func TestRenderTerraformRestrictPublicStorageAccessArtifact_RejectsNonBucketReso
 	})
 	if err == nil {
 		t.Fatal("expected non-bucket resource rejection")
+		return
 	}
 	if !strings.Contains(err.Error(), "resource_family=database") && !strings.Contains(err.Error(), "got database") {
 		t.Fatalf("unexpected error: %v", err)

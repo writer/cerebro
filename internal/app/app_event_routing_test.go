@@ -17,6 +17,7 @@ func TestCurrentOrStoredEventRoutingGraphUsesConfiguredStoreWhenLiveGraphUnavail
 	resolved := application.currentOrStoredEventRoutingGraph()
 	if resolved == nil {
 		t.Fatal("expected configured graph for event routing")
+		return
 	}
 	if _, ok := resolved.GetNode("service:payments"); !ok {
 		t.Fatal("expected configured graph node to be available for event routing")

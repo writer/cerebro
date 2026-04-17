@@ -203,6 +203,7 @@ func TestJumpCloudProviderRequest_RejectsCrossHostURL(t *testing.T) {
 	_, err := provider.requestV2(context.Background(), "https://evil.example.com/api/v2/usergroups")
 	if err == nil {
 		t.Fatal("expected cross-host URL rejection")
+		return
 	}
 	if !strings.Contains(err.Error(), "host mismatch") {
 		t.Fatalf("expected host mismatch error, got %v", err)

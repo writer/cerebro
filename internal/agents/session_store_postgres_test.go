@@ -69,6 +69,7 @@ func TestPostgresSessionStoreSaveAndGet(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("expected persisted session")
+		return
 	}
 	if got.UserID != session.UserID {
 		t.Fatalf("UserID = %q, want %q", got.UserID, session.UserID)
@@ -105,6 +106,10 @@ func TestPostgresSessionStoreSaveUpdatesExistingRow(t *testing.T) {
 	got, err := store.Get(context.Background(), session.ID)
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected persisted session")
+		return
 	}
 	if got.Status != "completed" {
 		t.Fatalf("Status = %q, want completed", got.Status)
@@ -152,6 +157,7 @@ func TestPostgresSessionStoreImportMissingDoesNotOverwriteExistingUpdates(t *tes
 	}
 	if got == nil {
 		t.Fatal("expected persisted session")
+		return
 	}
 	if got.Status != "completed" {
 		t.Fatalf("Status = %q, want completed after repeat import", got.Status)

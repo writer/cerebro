@@ -39,5 +39,6 @@ func TestBuildMalwareScannerReturnsConfiguredScanner(t *testing.T) {
 	malwareScanner := buildMalwareScanner(&app.Config{MalwareScanVirusTotalAPIKey: "test-api-key"}, "")
 	if malwareScanner == nil {
 		t.Fatal("expected configured malware scanner")
+		return
 	}
 }

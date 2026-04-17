@@ -24,6 +24,7 @@ func TestCerebroKeyPersonRiskTool(t *testing.T) {
 	tool := findCerebroTool(application.AgentSDKTools(), "cerebro.key_person_risk")
 	if tool == nil {
 		t.Fatal("expected cerebro.key_person_risk tool")
+		return
 	}
 
 	result, err := tool.Handler(context.Background(), json.RawMessage(`{"limit":5}`))

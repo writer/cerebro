@@ -67,12 +67,14 @@ func TestInitConfiguredSecurityGraphStoreUsesResolvedProvider(t *testing.T) {
 	}
 	if app.configuredSecurityGraphStore == nil {
 		t.Fatal("expected configuredSecurityGraphStore to be set")
+		return
 	}
 	if !app.configuredSecurityGraphReady {
 		t.Fatal("expected configuredSecurityGraphReady to be true")
 	}
 	if app.configuredSecurityGraphClose == nil {
 		t.Fatal("expected configuredSecurityGraphClose to be set")
+		return
 	}
 	if err := app.configuredSecurityGraphClose(); err != nil {
 		t.Fatalf("configuredSecurityGraphClose() error = %v", err)
@@ -161,5 +163,6 @@ func TestInitConfiguredSecurityGraphStoreRejectsUnsupportedBackend(t *testing.T)
 
 	if err := app.initConfiguredSecurityGraphStore(context.Background()); err == nil {
 		t.Fatal("expected initConfiguredSecurityGraphStore() to reject unsupported backend")
+		return
 	}
 }

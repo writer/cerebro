@@ -124,6 +124,7 @@ func TestEnrichSecurityGraphWithDSPMResult_UsesConfiguredStoreWhenLiveGraphUnava
 	current := app.CurrentSecurityGraph()
 	if current == nil {
 		t.Fatal("expected configured graph base to hydrate a live graph during DSPM enrichment")
+		return
 	}
 	if !current.IsIndexBuilt() {
 		t.Fatal("expected enriched live graph index to be rebuilt")

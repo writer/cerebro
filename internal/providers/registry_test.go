@@ -56,6 +56,7 @@ func TestRegistry_NewRegistry(t *testing.T) {
 	r := NewRegistry()
 	if r == nil {
 		t.Fatal("NewRegistry returned nil")
+		return
 	}
 
 	if r.providers == nil {

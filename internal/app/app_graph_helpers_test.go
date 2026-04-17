@@ -27,6 +27,7 @@ func setConfiguredGraphStore(t *testing.T, application *App, store graph.GraphSt
 	t.Helper()
 	if application == nil {
 		t.Fatal("expected app")
+		return
 	}
 	application.configuredSecurityGraphStore = store
 	application.configuredSecurityGraphReady = true

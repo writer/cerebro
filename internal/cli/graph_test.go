@@ -12,6 +12,7 @@ import (
 func TestGraphCommands(t *testing.T) {
 	if graphCmd == nil {
 		t.Fatal("graphCmd should not be nil")
+		return
 	}
 	if graphCmd.Name() != "graph" {
 		t.Fatalf("expected graph command, got %s", graphCmd.Name())
