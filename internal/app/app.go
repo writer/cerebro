@@ -45,6 +45,7 @@ import (
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/apiauth"
 	appsubstate "github.com/writer/cerebro/internal/app/appstate"
+	appscan "github.com/writer/cerebro/internal/app/scan"
 	appsecrets "github.com/writer/cerebro/internal/app/secrets"
 	appstream "github.com/writer/cerebro/internal/app/stream"
 	"github.com/writer/cerebro/internal/attackpath"
@@ -126,6 +127,7 @@ type App struct {
 	AttackPath    *attackpath.Graph
 	Providers     *providers.Registry
 	Webhooks      *webhooks.Service
+	Scan          *appscan.Runtime
 	Stream        *appstream.Runtime
 	AlertRouter   *events.AlertRouter
 	RemoteTools   *agents.RemoteToolProvider

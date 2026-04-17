@@ -1,4 +1,4 @@
-package app
+package scan
 
 import (
 	"context"
@@ -26,26 +26,28 @@ var scanIdentifierColumns = []string{
 	"self_link",
 }
 
-func (a *App) ScanColumnsForTable(ctx context.Context, table string) []string {
-	if a == nil || a.Policy == nil {
+func (r *Runtime) ScanColumnsForTable(ctx context.Context, table string) []string {
+	policyEngine := r.policy()
+	if r == nil || policyEngine == nil {
 		return nil
 	}
 
 	candidates := make(map[string]struct{})
-	for _, col := range a.Policy.ColumnsForTable(table) {
+	for _, col := range policyEngine.ColumnsForTable(table) {
 		candidates[strings.ToLower(col)] = struct{}{}
 	}
 	for _, col := range scanIdentifierColumns {
 		candidates[col] = struct{}{}
 	}
 
-	if a.Warehouse == nil {
+	warehouseClient := r.warehouse()
+	if warehouseClient == nil {
 		return sortedColumns(candidates)
 	}
 
-	available, err := a.Warehouse.DescribeColumns(ctx, table)
+	available, err := warehouseClient.DescribeColumns(ctx, table)
 	if err != nil {
-		a.Logger.Warn("failed to describe scan columns", "table", table, "error", err)
+		r.logger().Warn("failed to describe scan columns", "table", table, "error", err)
 		return nil
 	}
 

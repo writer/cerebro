@@ -1,4 +1,4 @@
-package app
+package scan
 
 import (
 	"time"
@@ -6,7 +6,7 @@ import (
 	"github.com/writer/cerebro/internal/scanner"
 )
 
-type ScanTuning struct {
+type Tuning struct {
 	TableTimeout         time.Duration
 	RetryOptions         scanner.RetryOptions
 	MaxConcurrent        int
@@ -29,8 +29,8 @@ const (
 	defaultScanGraphWait     = 2 * time.Minute
 )
 
-func (a *App) ScanTuning() ScanTuning {
-	tuning := ScanTuning{
+func (r *Runtime) ScanTuning() Tuning {
+	tuning := Tuning{
 		TableTimeout:         defaultScanTableTimeout,
 		RetryOptions:         scanner.DefaultRetryOptions(),
 		MaxConcurrent:        defaultScanMaxConcurrent,
@@ -41,11 +41,11 @@ func (a *App) ScanTuning() ScanTuning {
 		ProfileSlowThreshold: defaultScanProfileSlow,
 		GraphWaitTimeout:     defaultScanGraphWait,
 	}
-	if a == nil || a.Config == nil {
+
+	cfg := r.config()
+	if cfg == nil {
 		return tuning
 	}
-
-	cfg := a.Config
 	if cfg.ScanTableTimeout > 0 {
 		tuning.TableTimeout = cfg.ScanTableTimeout
 	}
