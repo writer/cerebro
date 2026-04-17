@@ -91,6 +91,7 @@ func TestExecutor_RemoteActionFailsWithoutRemoteCaller(t *testing.T) {
 	err = executor.Execute(context.Background(), execution)
 	if err == nil {
 		t.Fatal("expected execute to fail without remote caller")
+		return
 	}
 	if !strings.Contains(err.Error(), "remote tool caller not configured") {
 		t.Fatalf("unexpected error: %v", err)
@@ -460,6 +461,7 @@ func TestExecutor_RestrictPublicStorageAccessDoesNotTrustStalePolicyWithoutCurre
 	err = executor.Execute(context.Background(), execution)
 	if err == nil {
 		t.Fatal("expected precondition failure")
+		return
 	}
 	if !strings.Contains(err.Error(), "precondition failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -703,6 +705,7 @@ func TestExecutor_RestrictPublicStorageAccessTerraformModeRequiresAWSProvider(t 
 	err = executor.Execute(context.Background(), execution)
 	if err == nil {
 		t.Fatal("expected precondition failure")
+		return
 	}
 	if !strings.Contains(err.Error(), "precondition failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1146,6 +1149,7 @@ func TestExecutor_EnableBucketDefaultEncryptionDoesNotTrustStalePolicyWhenResour
 	err = executor.Execute(context.Background(), execution)
 	if err == nil {
 		t.Fatal("expected precondition failure")
+		return
 	}
 	if !strings.Contains(err.Error(), "precondition failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1371,6 +1375,7 @@ func TestExecutor_RestrictPublicSecurityGroupIngressTerraformModeRejectsInlineSe
 	err = executor.Execute(context.Background(), execution)
 	if err == nil {
 		t.Fatal("expected terraform inline security group rejection")
+		return
 	}
 	if !strings.Contains(err.Error(), "precondition failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1441,6 +1446,7 @@ func TestExecutor_RestrictPublicSecurityGroupIngressTerraformModeRejectsForEachR
 	err = executor.Execute(context.Background(), execution)
 	if err == nil {
 		t.Fatal("expected terraform for_each rule rejection")
+		return
 	}
 	if !strings.Contains(err.Error(), "precondition failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1590,6 +1596,7 @@ func TestExecutor_RestrictPublicSecurityGroupIngressFailsPreconditionWhenPolicyD
 	err = executor.Execute(context.Background(), execution)
 	if err == nil {
 		t.Fatal("expected precondition failure")
+		return
 	}
 	if !strings.Contains(err.Error(), "precondition failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1643,6 +1650,7 @@ func TestExecutor_DisableStaleAccessKeyFailsPreconditionWhenKeyIsFresh(t *testin
 	err = executor.Execute(context.Background(), execution)
 	if err == nil {
 		t.Fatal("expected precondition failure")
+		return
 	}
 	if !strings.Contains(err.Error(), "precondition failed") {
 		t.Fatalf("unexpected error: %v", err)

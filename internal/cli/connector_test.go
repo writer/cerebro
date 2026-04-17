@@ -407,6 +407,7 @@ func TestConnectorValidateRegionUsesDedicatedDefault(t *testing.T) {
 	flag := connectorValidateCmd.Flag("region")
 	if flag == nil {
 		t.Fatal("expected connector validate region flag to be registered")
+		return
 	}
 	if flag.DefValue != "us-east-1" {
 		t.Fatalf("expected connector validate region default us-east-1, got %q", flag.DefValue)

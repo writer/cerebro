@@ -55,10 +55,22 @@ func RenderAWSBundle(opts AWSRenderOptions) (Bundle, error) {
 		"ManagedTagKey": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.ManagedTagKey), "CerebroManagedBy"),
 		"ManagedTagVal": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.ManagedTagVal), "cerebro"),
 	}
+	stackset, err := renderTemplate("aws/stackset.yaml", awsStackSetTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
+	parameters, err := renderJSONTemplate("aws/parameters.example.json", awsParametersTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
+	readme, err := renderTemplate("aws/README.md", awsReadmeTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
 	files := []GeneratedFile{
-		{Path: filepath.ToSlash("aws/stackset.yaml"), Content: renderTemplate(awsStackSetTemplate, data)},
-		{Path: filepath.ToSlash("aws/parameters.example.json"), Content: renderJSONTemplate(awsParametersTemplate, data)},
-		{Path: filepath.ToSlash("aws/README.md"), Content: renderTemplate(awsReadmeTemplate, data)},
+		{Path: filepath.ToSlash("aws/stackset.yaml"), Content: stackset},
+		{Path: filepath.ToSlash("aws/parameters.example.json"), Content: parameters},
+		{Path: filepath.ToSlash("aws/README.md"), Content: readme},
 	}
 	return Bundle{Provider: ProviderAWS, Summary: "AWS cross-account snapshot connector bundle", Files: files}, nil
 }
@@ -75,11 +87,27 @@ func RenderGCPBundle(opts GCPRenderOptions) (Bundle, error) {
 		"WorkloadIdentityAudience":   textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.WorkloadIdentityAudience), "//iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/cerebro-workload-pool/providers/cerebro-oidc"),
 		"PrincipalSubject":           textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalSubject), "repo:your-org/your-repo:ref:refs/heads/main"),
 	}
+	mainTF, err := renderTemplate("gcp/main.tf", gcpMainTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
+	variablesTF, err := renderTemplate("gcp/variables.tf", gcpVariablesTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
+	outputsTF, err := renderTemplate("gcp/outputs.tf", gcpOutputsTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
+	readme, err := renderTemplate("gcp/README.md", gcpReadmeTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
 	files := []GeneratedFile{
-		{Path: filepath.ToSlash("gcp/main.tf"), Content: renderTemplate(gcpMainTemplate, data)},
-		{Path: filepath.ToSlash("gcp/variables.tf"), Content: renderTemplate(gcpVariablesTemplate, data)},
-		{Path: filepath.ToSlash("gcp/outputs.tf"), Content: renderTemplate(gcpOutputsTemplate, data)},
-		{Path: filepath.ToSlash("gcp/README.md"), Content: renderTemplate(gcpReadmeTemplate, data)},
+		{Path: filepath.ToSlash("gcp/main.tf"), Content: mainTF},
+		{Path: filepath.ToSlash("gcp/variables.tf"), Content: variablesTF},
+		{Path: filepath.ToSlash("gcp/outputs.tf"), Content: outputsTF},
+		{Path: filepath.ToSlash("gcp/README.md"), Content: readme},
 	}
 	return Bundle{Provider: ProviderGCP, Summary: "GCP snapshot connector Terraform bundle", Files: files}, nil
 }
@@ -92,23 +120,47 @@ func RenderAzureBundle(opts AzureRenderOptions) (Bundle, error) {
 		"PrincipalDisplayName": textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.PrincipalDisplayName), "cerebro-workload-scan"),
 		"CustomRoleName":       textutil.FirstNonEmptyTrimmed(strings.TrimSpace(opts.CustomRoleName), "Cerebro Snapshot Operator"),
 	}
+	armTemplate, err := renderJSONTemplate("azure/arm-template.json", azureARMTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
+	parameters, err := renderJSONTemplate("azure/parameters.example.json", azureARMParametersTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
+	mainTF, err := renderTemplate("azure/main.tf", azureMainTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
+	variablesTF, err := renderTemplate("azure/variables.tf", azureVariablesTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
+	outputsTF, err := renderTemplate("azure/outputs.tf", azureOutputsTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
+	readme, err := renderTemplate("azure/README.md", azureReadmeTemplate, data)
+	if err != nil {
+		return Bundle{}, err
+	}
 	files := []GeneratedFile{
-		{Path: filepath.ToSlash("azure/arm-template.json"), Content: renderJSONTemplate(azureARMTemplate, data)},
-		{Path: filepath.ToSlash("azure/parameters.example.json"), Content: renderJSONTemplate(azureARMParametersTemplate, data)},
-		{Path: filepath.ToSlash("azure/main.tf"), Content: renderTemplate(azureMainTemplate, data)},
-		{Path: filepath.ToSlash("azure/variables.tf"), Content: renderTemplate(azureVariablesTemplate, data)},
-		{Path: filepath.ToSlash("azure/outputs.tf"), Content: renderTemplate(azureOutputsTemplate, data)},
-		{Path: filepath.ToSlash("azure/README.md"), Content: renderTemplate(azureReadmeTemplate, data)},
+		{Path: filepath.ToSlash("azure/arm-template.json"), Content: armTemplate},
+		{Path: filepath.ToSlash("azure/parameters.example.json"), Content: parameters},
+		{Path: filepath.ToSlash("azure/main.tf"), Content: mainTF},
+		{Path: filepath.ToSlash("azure/variables.tf"), Content: variablesTF},
+		{Path: filepath.ToSlash("azure/outputs.tf"), Content: outputsTF},
+		{Path: filepath.ToSlash("azure/README.md"), Content: readme},
 	}
 	return Bundle{Provider: ProviderAzure, Summary: "Azure snapshot connector ARM + Terraform bundle", Files: files}, nil
 }
 
-func renderTemplate(src string, data any) string {
-	return iacrender.RenderTemplate("bundle", src, data)
+func renderTemplate(name, src string, data any) (string, error) {
+	return iacrender.RenderTemplate(name, src, data)
 }
 
-func renderJSONTemplate(src string, data any) string {
-	return iacrender.RenderTemplate("bundle", src, data)
+func renderJSONTemplate(name, src string, data any) (string, error) {
+	return iacrender.RenderTemplate(name, src, data)
 }
 
 const awsStackSetTemplate = `AWSTemplateFormatVersion: '2010-09-09'

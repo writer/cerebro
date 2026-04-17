@@ -42,6 +42,33 @@ func TestRunSubsystemInitConcurrently_PropagatesError(t *testing.T) {
 	}
 }
 
+func TestRunSubsystemInitSequentially_RunsInOrder(t *testing.T) {
+	var order []string
+
+	err := runSubsystemInitSequentially(context.Background(),
+		lifecycleSubsystem{
+			name: "remediation",
+			init: func(context.Context) error {
+				order = append(order, "remediation")
+				return nil
+			},
+		},
+		lifecycleSubsystem{
+			name: "agents",
+			init: func(context.Context) error {
+				order = append(order, "agents")
+				return nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("runSubsystemInitSequentially() error = %v", err)
+	}
+	if want := []string{"remediation", "agents"}; !reflect.DeepEqual(order, want) {
+		t.Fatalf("init order = %v, want %v", order, want)
+	}
+}
+
 func TestRunSubsystemStartSequentially_RunsInOrder(t *testing.T) {
 	var order []string
 

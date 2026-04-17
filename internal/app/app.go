@@ -120,19 +120,20 @@ type App struct {
 	GraphSnapshots  *graph.GraphPersistenceStore
 
 	// Feature services
-	Agents         *agents.AgentRegistry
-	Ticketing      *ticketing.Service
-	Identity       *identity.Service
-	AttackPath     *attackpath.Graph
-	Providers      *providers.Registry
-	Webhooks       *webhooks.Service
-	TapConsumer    *events.Consumer
-	AlertRouter    *events.AlertRouter
-	TapEventMapper *graphingest.Mapper
-	RemoteTools    *agents.RemoteToolProvider
-	ToolPublisher  *agents.ToolPublisher
-	Notifications  *notifications.Manager
-	Scheduler      *scheduler.Scheduler
+	Agents           *agents.AgentRegistry
+	Ticketing        *ticketing.Service
+	Identity         *identity.Service
+	AttackPath       *attackpath.Graph
+	Providers        *providers.Registry
+	Webhooks         *webhooks.Service
+	TapConsumer      *events.Consumer
+	AlertRouter      *events.AlertRouter
+	TapEventMapper   *graphingest.Mapper
+	RemoteTools      *agents.RemoteToolProvider
+	remoteAgentTools []agents.Tool
+	ToolPublisher    *agents.ToolPublisher
+	Notifications    *notifications.Manager
+	Scheduler        *scheduler.Scheduler
 
 	// Durable app-state repositories.
 	AuditRepo           auditRepository
@@ -204,6 +205,7 @@ type App struct {
 	Secrets                            *appsecrets.Runtime
 	apiCredentialStore                 *apiauth.ManagedCredentialStore
 	secretsLoader                      secretsLoader
+	rootCtx                            context.Context
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string
@@ -243,6 +245,10 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 	if cfg.APIAuthEnabled && len(cfg.APIKeys) == 0 && len(managedCredentialStore.List()) == 0 {
 		return nil, fmt.Errorf("api auth enabled but no API_KEYS configured")
 	}
+	rootCtx := ctx
+	if rootCtx == nil {
+		rootCtx = context.Background()
+	}
 
 	logger := options.logger
 	if logger == nil {
@@ -255,6 +261,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		Logger:   logger,
 		AppState: appsubstate.NewRuntime(),
 		Secrets:  appsecrets.NewRuntime(),
+		rootCtx:  rootCtx,
 	}
 	app.secretsLoader = options.secretsLoader
 	app.apiCredentialStore = managedCredentialStore
@@ -264,10 +271,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		app.setAPIKeys(cfg.APIKeys)
 	}
 
-	initCtx := ctx
-	if initCtx == nil {
-		initCtx = context.Background()
-	}
+	initCtx := rootCtx
 	if cfg.InitTimeout > 0 {
 		var cancel context.CancelFunc
 		initCtx, cancel = context.WithTimeout(initCtx, cfg.InitTimeout)
@@ -288,7 +292,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		"snowflake", app.Snowflake != nil,
 		"policies", len(app.Policy.ListPolicies()),
 	)
-	app.startSecretsReloader(ctx)
+	app.startSecretsReloader(rootCtx)
 
 	return app, nil
 }

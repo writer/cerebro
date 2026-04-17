@@ -90,7 +90,7 @@ func (r *Runtime) StartReloader(parent context.Context, interval time.Duration, 
 		parent = context.Background()
 	}
 
-	ctx, cancel := context.WithCancel(parent)
+	ctx, cancel := context.WithCancel(context.WithoutCancel(parent))
 	r.reloadCancel = cancel
 	r.reloadWG.Add(1)
 

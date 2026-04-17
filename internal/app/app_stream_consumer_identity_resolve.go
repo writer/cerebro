@@ -29,11 +29,11 @@ func (a *App) resolveTapMappingIdentityOnGraph(securityGraph *graph.Graph, raw s
 
 	email := strings.ToLower(strings.TrimSpace(raw))
 	if strings.Contains(email, "@") {
-		canonicalID := "person:" + email
+		canonicalNodeID := "person:" + email
 		if securityGraph != nil {
-			if _, ok := securityGraph.GetNode(canonicalID); !ok {
+			if _, ok := securityGraph.GetNode(canonicalNodeID); !ok {
 				securityGraph.AddNode(&graph.Node{
-					ID:       canonicalID,
+					ID:       canonicalNodeID,
 					Kind:     graph.NodeKindPerson,
 					Name:     email,
 					Provider: "org",
@@ -47,17 +47,19 @@ func (a *App) resolveTapMappingIdentityOnGraph(securityGraph *graph.Graph, raw s
 					},
 				})
 			}
-			_, _ = graph.ResolveIdentityAlias(securityGraph, graph.IdentityAliasAssertion{
+			if _, err := graph.ResolveIdentityAlias(securityGraph, graph.IdentityAliasAssertion{
 				SourceSystem:  firstNonEmpty(sourceSystemFromTapType(evt.Type), "tap"),
 				SourceEventID: strings.TrimSpace(evt.ID),
 				ExternalID:    email,
 				Email:         email,
-				CanonicalHint: canonicalID,
+				CanonicalHint: canonicalNodeID,
 				ObservedAt:    evt.Time.UTC(),
 				Confidence:    0.95,
-			}, graph.IdentityResolutionOptions{})
+			}, graph.IdentityResolutionOptions{}); err != nil && a != nil && a.Logger != nil {
+				a.Logger.Warn("resolve tap identity alias failed", "identity", email, "event_id", strings.TrimSpace(evt.ID), "error", err)
+			}
 		}
-		return canonicalID
+		return canonicalNodeID
 	}
 	return raw
 }

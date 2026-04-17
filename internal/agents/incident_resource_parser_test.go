@@ -45,6 +45,7 @@ func TestParseAWSArn(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("parseAWSArn() error = nil, want error")
+					return
 				}
 				return
 			}
@@ -110,6 +111,7 @@ func TestIncidentResponseCreateIncidentStartsInvestigation(t *testing.T) {
 	}
 	if incident.BlastRadius == nil {
 		t.Fatal("expected blast radius to be calculated")
+		return
 	}
 	if incident.BlastRadius.DataExposure != "significant" {
 		t.Fatalf("data exposure = %q, want %q", incident.BlastRadius.DataExposure, "significant")

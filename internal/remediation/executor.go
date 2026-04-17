@@ -865,8 +865,8 @@ func (ex *Executor) resolveFinding(_ context.Context, _ Action, execution *Execu
 		return fmt.Errorf("no finding_id in trigger data")
 	}
 
-	if !ex.findings.Resolve(findingID) {
-		return fmt.Errorf("finding not found: %s", findingID)
+	if err := findings.ResolveStore(ex.findings, findingID); err != nil {
+		return fmt.Errorf("resolve finding %s: %w", findingID, err)
 	}
 
 	return nil

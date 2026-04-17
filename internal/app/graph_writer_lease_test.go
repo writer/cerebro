@@ -84,6 +84,7 @@ func TestGraphWriterLeaseManagerStopAfterFailedSync(t *testing.T) {
 
 	if err := manager.sync(context.Background()); err == nil {
 		t.Fatal("expected sync to fail")
+		return
 	}
 
 	done := make(chan struct{})
@@ -293,6 +294,7 @@ func TestPromoteOrRebuildSecurityGraphUnlocksOnPanic(t *testing.T) {
 	defer func() {
 		if recovered := recover(); recovered == nil {
 			t.Fatal("expected promoteOrRebuildSecurityGraph() to panic")
+			return
 		}
 		if !application.graphUpdateMu.TryLock() {
 			t.Fatal("expected graphUpdateMu to be unlocked after panic")
@@ -301,6 +303,30 @@ func TestPromoteOrRebuildSecurityGraphUnlocksOnPanic(t *testing.T) {
 	}()
 
 	_ = application.promoteOrRebuildSecurityGraph(context.Background())
+}
+
+func TestPromoteOrRebuildSecurityGraphPromotesPersistedSnapshot(t *testing.T) {
+	persisted := graph.New()
+	persisted.AddNode(&graph.Node{ID: "service:persisted", Kind: graph.NodeKindService, Name: "persisted"})
+	persisted.BuildIndex()
+
+	application := &App{
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		GraphSnapshots: mustPersistToolGraph(t, persisted),
+	}
+
+	if err := application.promoteOrRebuildSecurityGraph(context.Background()); err != nil {
+		t.Fatalf("promoteOrRebuildSecurityGraph() error = %v", err)
+	}
+
+	current := application.CurrentSecurityGraph()
+	if current == nil {
+		t.Fatal("expected promoted graph from persisted snapshot")
+		return
+	}
+	if _, ok := current.GetNode("service:persisted"); !ok {
+		t.Fatal("expected persisted node after promotion")
+	}
 }
 
 func TestTapGraphConsumerDurableUsesConfiguredName(t *testing.T) {
