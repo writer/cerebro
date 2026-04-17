@@ -140,6 +140,32 @@ func TestSQLiteWarehouseQueryRejectsUnsupportedSnowflakeConstructs(t *testing.T)
 	}
 }
 
+func TestSQLiteWarehouseQueryAllowsQualifyIdentifier(t *testing.T) {
+	store, err := NewSQLiteWarehouse(SQLiteWarehouseConfig{
+		Path: filepath.Join(t.TempDir(), "warehouse.db"),
+	})
+	if err != nil {
+		t.Fatalf("new sqlite warehouse: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	ctx := context.Background()
+	if _, err := store.Exec(ctx, `CREATE TABLE demo (qualify TEXT)`); err != nil {
+		t.Fatalf("create demo table: %v", err)
+	}
+	if _, err := store.Exec(ctx, `INSERT INTO demo (qualify) VALUES ('ok')`); err != nil {
+		t.Fatalf("insert demo row: %v", err)
+	}
+
+	result, err := store.Query(ctx, `SELECT qualify FROM demo`)
+	if err != nil {
+		t.Fatalf("select qualify column: %v", err)
+	}
+	if result.Count != 1 || result.Rows[0]["qualify"] != "ok" {
+		t.Fatalf("unexpected result: %#v", result.Rows)
+	}
+}
+
 func TestSQLiteWarehouseExecRejectsUnsupportedSnowflakeConstructs(t *testing.T) {
 	store, err := NewSQLiteWarehouse(SQLiteWarehouseConfig{
 		Path: filepath.Join(t.TempDir(), "warehouse.db"),

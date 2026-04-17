@@ -22,11 +22,11 @@ var unsupportedSnowflakeDialectPatterns = []struct {
 	name    string
 	pattern *regexp.Regexp
 }{
-	{name: "QUALIFY", pattern: regexp.MustCompile(`(?i)\bQUALIFY\b`)},
 	{name: "FLATTEN", pattern: regexp.MustCompile(`(?i)\b(?:LATERAL\s+)?FLATTEN\s*\(`)},
 	{name: "GET_PATH", pattern: regexp.MustCompile(`(?i)\bGET_PATH\s*\(`)},
 	{name: "OBJECT_CONSTRUCT", pattern: regexp.MustCompile(`(?i)\bOBJECT_CONSTRUCT\s*\(`)},
 	{name: "TRY_CAST", pattern: regexp.MustCompile(`(?i)\bTRY_CAST\s*\(`)},
+	{name: "DATEDIFF", pattern: regexp.MustCompile(`(?i)\bDATEDIFF\s*\(`)},
 	{name: "IFF", pattern: regexp.MustCompile(`(?i)\bIFF\s*\(`)},
 	{name: "MERGE INTO", pattern: regexp.MustCompile(`(?i)\bMERGE\s+INTO\b`)},
 	{name: "CREATE OR REPLACE TABLE", pattern: regexp.MustCompile(`(?i)\bCREATE\s+OR\s+REPLACE\s+TABLE\b`)},

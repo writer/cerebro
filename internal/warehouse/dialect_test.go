@@ -66,9 +66,9 @@ func TestValidateQueryForDialect_RejectsUnsupportedSnowflakeConstructs(t *testin
 		wantConstruct string
 	}{
 		{
-			name:          "qualify",
-			query:         `SELECT * FROM demo QUALIFY ROW_NUMBER() OVER (PARTITION BY tenant_id ORDER BY created_at DESC) = 1`,
-			wantConstruct: "QUALIFY",
+			name:          "datediff",
+			query:         `SELECT * FROM demo WHERE ABS(DATEDIFF('hour', created_at, updated_at)) < 24`,
+			wantConstruct: "DATEDIFF",
 		},
 		{
 			name:          "flatten",
@@ -104,5 +104,12 @@ func TestValidateQueryForDialect_IgnoresQuotedUnsupportedConstructs(t *testing.T
 	query := `SELECT 'QUALIFY payload:key::STRING' AS demo`
 	if err := validateQueryForDialect(query, DialectPostgres); err != nil {
 		t.Fatalf("expected quoted text to be ignored, got %v", err)
+	}
+}
+
+func TestValidateQueryForDialect_AllowsQualifyIdentifier(t *testing.T) {
+	query := `SELECT qualify FROM demo`
+	if err := validateQueryForDialect(query, DialectPostgres); err != nil {
+		t.Fatalf("expected qualify identifier to remain allowed, got %v", err)
 	}
 }
