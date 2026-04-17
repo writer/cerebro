@@ -9,7 +9,6 @@ import (
 
 const (
 	defaultTapGraphReadyWaitTimeout = 15 * time.Second
-	defaultTapGraphReadyRetryDelay  = 5 * time.Second
 )
 
 func (a *App) ensureSecurityGraph() *graph.Graph {
@@ -62,11 +61,4 @@ func (a *App) tapGraphReadyWaitTimeout() time.Duration {
 		}
 	}
 	return defaultTapGraphReadyWaitTimeout
-}
-
-func (a *App) tapGraphReadyRetryDelay() time.Duration {
-	if a != nil && a.Config != nil && a.Config.NATSConsumerFetchTimeout > 0 {
-		return a.Config.NATSConsumerFetchTimeout
-	}
-	return defaultTapGraphReadyRetryDelay
 }

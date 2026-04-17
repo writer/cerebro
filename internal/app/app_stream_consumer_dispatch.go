@@ -36,9 +36,6 @@ func (a *App) handleTapCloudEvent(ctx context.Context, evt events.CloudEvent) er
 		return a.handleTapSchemaEvent(eventType, evt)
 	}
 	if err := a.waitForSecurityGraphReady(ctx); err != nil {
-		if ctx == nil || ctx.Err() == nil {
-			return events.RetryWithDelay(err, a.tapGraphReadyRetryDelay())
-		}
 		return err
 	}
 	if isTapInteractionType(eventType) {

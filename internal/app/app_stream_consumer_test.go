@@ -1,8 +1,10 @@
 package app
 
 import (
+	"bytes"
 	"context"
-	"errors"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -134,40 +136,25 @@ func TestHandleTapCloudEventSchemaEventBypassesGraphReadyWait(t *testing.T) {
 	}
 }
 
-func TestHandleTapCloudEventReturnsDelayedRetryWhenGraphNotReady(t *testing.T) {
+func TestInitTapGraphConsumerDefersUntilGraphReady(t *testing.T) {
+	var logs bytes.Buffer
 	a := &App{
 		graphReady: make(chan struct{}),
 		Config: &Config{
-			NATSConsumerAckWait:      20 * time.Millisecond,
-			NATSConsumerFetchTimeout: 7 * time.Millisecond,
+			NATSConsumerEnabled: true,
 		},
-	}
-	evt := events.CloudEvent{
-		Type: "ensemble.tap.salesforce.opportunity.updated",
-		Time: time.Now().UTC(),
-		Data: map[string]any{
-			"id": "opp-retry",
-			"snapshot": map[string]any{
-				"name": "Retry Opportunity",
-			},
-		},
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
 	}
 
-	start := time.Now()
-	err := a.handleTapCloudEvent(context.Background(), evt)
-	if err == nil {
-		t.Fatal("expected delayed retry error")
+	a.initTapGraphConsumer(context.Background())
+	if a.TapConsumer != nil {
+		t.Fatal("expected tap consumer initialization to wait for graph readiness")
 	}
-	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
-		t.Fatalf("handleTapCloudEvent blocked too long: %s", elapsed)
+	if got := logs.String(); !strings.Contains(got, "deferring tap graph consumer until security graph is ready") {
+		t.Fatalf("initTapGraphConsumer() log = %q, want graph-ready deferral message", got)
 	}
-
-	var delayed interface{ RetryDelay() time.Duration }
-	if !errors.As(err, &delayed) {
-		t.Fatalf("expected delayed retry error, got %T: %v", err, err)
-	}
-	if delayed.RetryDelay() != 7*time.Millisecond {
-		t.Fatalf("retry delay = %s, want %s", delayed.RetryDelay(), 7*time.Millisecond)
+	if strings.Contains(logs.String(), "failed to initialize tap graph consumer") {
+		t.Fatalf("initTapGraphConsumer() log = %q, should not attempt consumer startup before graph readiness", logs.String())
 	}
 }
 

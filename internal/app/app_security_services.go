@@ -551,7 +551,10 @@ func (a *App) initSecurityGraph(ctx context.Context) {
 
 	// Build initial graph in background
 	go func() {
-		defer close(a.graphReady)
+		defer func() {
+			close(a.graphReady)
+			a.startTapGraphConsumer(graphCtx)
+		}()
 		a.graphUpdateMu.Lock()
 		defer a.graphUpdateMu.Unlock()
 

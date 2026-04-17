@@ -23,6 +23,12 @@ func (a *App) initTapGraphConsumer(ctx context.Context) {
 		}
 		return
 	}
+	if !a.graphReadyClosed() {
+		if a.Logger != nil {
+			a.Logger.Info("deferring tap graph consumer until security graph is ready")
+		}
+		return
+	}
 	a.startTapGraphConsumer(ctx)
 }
 
@@ -30,10 +36,16 @@ func (a *App) startTapGraphConsumer(ctx context.Context) {
 	if a == nil || a.Config == nil {
 		return
 	}
+	if ctx != nil && ctx.Err() != nil {
+		return
+	}
 	if !a.Config.NATSConsumerEnabled {
 		return
 	}
 	if !a.graphWriterLeaseAllowsWrites() {
+		return
+	}
+	if !a.graphReadyClosed() {
 		return
 	}
 	a.tapConsumerMu.Lock()
