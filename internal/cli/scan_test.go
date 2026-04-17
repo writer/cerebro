@@ -173,6 +173,7 @@ func TestToxicWatermark_NotAdvancedWithoutDataCursor(t *testing.T) {
 	got := wm.GetWatermark("_toxic_relationships")
 	if got == nil {
 		t.Fatal("watermark should still exist")
+		return
 	}
 	if !got.LastScanTime.Equal(original) {
 		t.Errorf("watermark advanced from %v to %v", original, got.LastScanTime)
@@ -200,6 +201,7 @@ func TestToxicWatermark_AdvancesToDataCursor(t *testing.T) {
 	got := wm.GetWatermark("_toxic_relationships")
 	if got == nil {
 		t.Fatal("watermark should be set")
+		return
 	}
 	if !got.LastScanTime.Equal(dataCursor) {
 		t.Errorf("expected watermark at %v, got %v", dataCursor, got.LastScanTime)

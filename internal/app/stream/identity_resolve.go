@@ -51,7 +51,7 @@ func (r *Runtime) resolveTapMappingIdentityOnGraph(securityGraph *graph.Graph, r
 					},
 				})
 			}
-			_, _ = graph.ResolveIdentityAlias(securityGraph, graph.IdentityAliasAssertion{
+			if _, err := graph.ResolveIdentityAlias(securityGraph, graph.IdentityAliasAssertion{
 				SourceSystem:  firstNonEmpty(SourceSystemFromTapType(evt.Type), "tap"),
 				SourceEventID: strings.TrimSpace(evt.ID),
 				ExternalID:    email,
@@ -59,7 +59,9 @@ func (r *Runtime) resolveTapMappingIdentityOnGraph(securityGraph *graph.Graph, r
 				CanonicalHint: canonicalNodeID,
 				ObservedAt:    evt.Time.UTC(),
 				Confidence:    0.95,
-			}, graph.IdentityResolutionOptions{})
+			}, graph.IdentityResolutionOptions{}); err != nil && r != nil && r.logger() != nil {
+				r.logger().Warn("resolve tap identity alias failed", "identity", email, "event_id", strings.TrimSpace(evt.ID), "error", err)
+			}
 		}
 		return canonicalNodeID
 	}

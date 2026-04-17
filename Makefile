@@ -13,7 +13,6 @@ TRIVY_CACHE_DIR ?= $(HOME)/.cache/trivy
 SECURITY_SCAN_IMAGE ?= cerebro:ci
 GO_BIN ?= $(shell go env GOPATH)/bin
 GO_VERSION ?= $(shell ./scripts/go_version.sh)
-GOFLAGS ?= -mod=vendor
 
 export GOFLAGS
 
@@ -71,11 +70,10 @@ vendor:
 	go mod tidy
 	go mod vendor
 
-# Verify vendored dependencies are in sync
+# Verify Go module metadata is in sync
 vendor-check:
 	go mod tidy
-	go mod vendor
-	git diff --exit-code -- go.mod go.sum vendor/modules.txt vendor
+	git diff --exit-code -- go.mod go.sum
 
 # Clean build artifacts
 clean:

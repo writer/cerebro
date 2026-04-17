@@ -1036,6 +1036,7 @@ func TestCompliancePreAuditToExport_Smoke(t *testing.T) {
 	}
 	if preAuditBody["estimated_outcome"] == nil {
 		t.Fatalf("expected estimated_outcome in pre-audit response")
+		return
 	}
 
 	export := do(t, s, "GET", "/api/v1/compliance/frameworks/cis-aws-1.5/export", nil)

@@ -31,6 +31,7 @@ func TestLoadCLIExecutionMode(t *testing.T) {
 	t.Setenv(envCLIExecutionMode, "invalid")
 	if _, err := loadCLIExecutionMode(); err == nil {
 		t.Fatal("expected invalid mode error")
+		return
 	}
 }
 
@@ -61,11 +62,13 @@ func TestResolveCLIAPIClientConfig_TimeoutValidation(t *testing.T) {
 	t.Setenv(envCLIAPITimeout, "not-a-duration")
 	if _, err := resolveCLIAPIClientConfig(); err == nil {
 		t.Fatal("expected timeout parse error")
+		return
 	}
 
 	t.Setenv(envCLIAPITimeout, "0s")
 	if _, err := resolveCLIAPIClientConfig(); err == nil {
 		t.Fatal("expected timeout validation error for zero duration")
+		return
 	}
 }
 

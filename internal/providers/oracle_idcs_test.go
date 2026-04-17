@@ -264,6 +264,7 @@ func TestOracleIDCSProviderRequest_RejectsCrossHostURL(t *testing.T) {
 	_, err := provider.request(context.Background(), "https://evil.example.com/admin/v1/Users")
 	if err == nil {
 		t.Fatal("expected cross-host URL rejection")
+		return
 	}
 	if !strings.Contains(err.Error(), "host mismatch") {
 		t.Fatalf("expected host mismatch error, got %v", err)

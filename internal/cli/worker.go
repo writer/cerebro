@@ -112,7 +112,7 @@ func runWorker(cmd *cobra.Command, args []string) error {
 
 	// Create security tools for job execution
 	tools := agents.NewSecurityTools(
-		application.Snowflake,
+		agentToolsSnowflakeClient(application),
 		application.Findings,
 		application.Policy,
 		scm.NewConfiguredClient(

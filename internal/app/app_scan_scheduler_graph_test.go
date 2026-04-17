@@ -229,6 +229,58 @@ func TestInitScheduler_GraphRebuildAppliesIncrementalChangesAndEmitsMutation(t *
 	}
 }
 
+func TestInitScheduler_GraphRebuildFallsBackToFullRebuildWhenCDCApplyFails(t *testing.T) {
+	source := newSchedulerGraphSource()
+	builder := builders.NewBuilder(source, schedulerDigestTestLogger())
+	if err := builder.Build(context.Background()); err != nil {
+		t.Fatalf("initial build failed: %v", err)
+	}
+
+	source.setLatest(time.Now().UTC().Add(30 * time.Second))
+	source.failCDCQuery = true
+
+	publisher := &captureEventPublisher{}
+	hooks := webhooks.NewServiceForTesting()
+	hooks.SetEventPublisher(publisher)
+
+	app := &App{
+		Config:               &Config{},
+		Logger:               schedulerDigestTestLogger(),
+		Webhooks:             hooks,
+		SecurityGraphBuilder: builder,
+		SecurityGraph:        builder.Graph(),
+	}
+	app.initScheduler(context.Background())
+
+	job, ok := app.Scheduler.GetJob("graph-rebuild")
+	if !ok {
+		t.Fatal("expected graph-rebuild job to exist")
+	}
+
+	source.resetCounts()
+	if err := job.Handler(context.Background()); err != nil {
+		t.Fatalf("graph-rebuild handler returned error: %v", err)
+	}
+
+	if source.count("cdc_events") == 0 {
+		t.Fatal("expected CDC query to execute")
+	}
+	if snapshot := app.GraphBuildSnapshot(); snapshot.State != GraphBuildSuccess {
+		t.Fatalf("expected graph build state success after fallback rebuild, got %#v", snapshot)
+	}
+
+	events := publisher.all()
+	if len(events) != 2 {
+		t.Fatalf("expected rebuild and mutation events after fallback, got %d", len(events))
+	}
+	if events[0].Type != webhooks.EventGraphRebuilt {
+		t.Fatalf("expected first event type %q, got %q", webhooks.EventGraphRebuilt, events[0].Type)
+	}
+	if events[1].Type != webhooks.EventGraphMutated {
+		t.Fatalf("expected second event type %q, got %q", webhooks.EventGraphMutated, events[1].Type)
+	}
+}
+
 func TestRebuildSecurityGraphUpdatesGraphBuildState(t *testing.T) {
 	source := newSchedulerGraphSource()
 	builder := builders.NewBuilder(source, schedulerDigestTestLogger())
