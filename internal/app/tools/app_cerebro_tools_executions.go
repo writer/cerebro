@@ -1,4 +1,4 @@
-package app
+package tools
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"github.com/writer/cerebro/internal/executionstore"
 )
 
-func (a *App) toolCerebroExecutionStatus(ctx context.Context, args json.RawMessage) (string, error) {
-	if a == nil || a.Config == nil {
+func (a *Runtime) toolCerebroExecutionStatus(ctx context.Context, args json.RawMessage) (string, error) {
+	if a == nil || a.config() == nil {
 		return "", fmt.Errorf("app config not initialized")
 	}
 	var req struct {
@@ -30,10 +30,10 @@ func (a *App) toolCerebroExecutionStatus(ctx context.Context, args json.RawMessa
 	if limit > 100 {
 		return "", fmt.Errorf("limit must be <= 100")
 	}
-	store := a.ExecutionStore
+	store := a.executionStore()
 	if store == nil {
 		var err error
-		store, err = executionstore.NewSQLiteStore(a.Config.ExecutionStoreFile)
+		store, err = executionstore.NewSQLiteStore(a.config().ExecutionStoreFile)
 		if err != nil {
 			return "", fmt.Errorf("open shared execution store: %w", err)
 		}

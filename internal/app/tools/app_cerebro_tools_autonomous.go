@@ -1,4 +1,4 @@
-package app
+package tools
 
 import (
 	"context"
@@ -25,7 +25,7 @@ type autonomousCredentialAnalysis struct {
 	Summary           string
 }
 
-func (a *App) toolCerebroAutonomousCredentialResponse(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroAutonomousCredentialResponse(ctx context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -154,7 +154,7 @@ func (a *App) toolCerebroAutonomousCredentialResponse(ctx context.Context, args 
 	return marshalToolResponse(a.autonomousWorkflowResponse(ctx, run, execution, nil))
 }
 
-func (a *App) toolCerebroAutonomousWorkflowApprove(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroAutonomousWorkflowApprove(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		RunID      string `json:"run_id"`
 		ApprovedBy string `json:"approved_by"`
@@ -274,7 +274,7 @@ func (a *App) toolCerebroAutonomousWorkflowApprove(ctx context.Context, args jso
 	return marshalToolResponse(a.autonomousWorkflowResponse(ctx, run, execution, nil))
 }
 
-func (a *App) toolCerebroAutonomousWorkflowStatus(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroAutonomousWorkflowStatus(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		RunID string `json:"run_id"`
 	}
@@ -317,7 +317,7 @@ func (a *App) toolCerebroAutonomousWorkflowStatus(ctx context.Context, args json
 	return marshalToolResponse(response)
 }
 
-func (a *App) writeAutonomousCredentialArtifacts(ctx context.Context, run *autonomous.RunRecord, analysis autonomousCredentialAnalysis) (string, string, string, error) {
+func (a *Runtime) writeAutonomousCredentialArtifacts(ctx context.Context, run *autonomous.RunRecord, analysis autonomousCredentialAnalysis) (string, string, string, error) {
 	observationPayload := map[string]any{
 		"entity_id":       run.SecretNodeID,
 		"observation":     "credential_exposure_response_started",
@@ -378,7 +378,7 @@ func (a *App) writeAutonomousCredentialArtifacts(ctx context.Context, run *auton
 	return observationID, claimID, mapString(decisionResult, "decision_id"), nil
 }
 
-func (a *App) startAutonomousCredentialAction(ctx context.Context, run *autonomous.RunRecord) (*actionengine.Execution, error) {
+func (a *Runtime) startAutonomousCredentialAction(ctx context.Context, run *autonomous.RunRecord) (*actionengine.Execution, error) {
 	if run == nil {
 		return nil, fmt.Errorf("workflow run is required")
 	}
@@ -399,7 +399,7 @@ func (a *App) startAutonomousCredentialAction(ctx context.Context, run *autonomo
 	return execution, nil
 }
 
-func (a *App) finalizeAutonomousCredentialResponse(ctx context.Context, run *autonomous.RunRecord, execution *actionengine.Execution, store autonomous.RunStore) error {
+func (a *Runtime) finalizeAutonomousCredentialResponse(ctx context.Context, run *autonomous.RunRecord, execution *actionengine.Execution, store autonomous.RunStore) error {
 	if run == nil {
 		return fmt.Errorf("workflow run is required")
 	}
@@ -478,7 +478,7 @@ func (a *App) finalizeAutonomousCredentialResponse(ctx context.Context, run *aut
 	return nil
 }
 
-func (a *App) writeAutonomousCredentialRemediation(ctx context.Context, run *autonomous.RunRecord) (string, string, error) {
+func (a *Runtime) writeAutonomousCredentialRemediation(ctx context.Context, run *autonomous.RunRecord) (string, string, error) {
 	claimPayload := map[string]any{
 		"subject_id":          run.SecretNodeID,
 		"claim_type":          "security_posture",
@@ -516,7 +516,7 @@ func (a *App) writeAutonomousCredentialRemediation(ctx context.Context, run *aut
 	return mapString(claimResult, "claim_id"), mapString(outcomeResult, "outcome_id"), nil
 }
 
-func (a *App) autonomousWorkflowResponse(ctx context.Context, run *autonomous.RunRecord, execution *actionengine.Execution, events []autonomous.RunEvent) map[string]any {
+func (a *Runtime) autonomousWorkflowResponse(ctx context.Context, run *autonomous.RunRecord, execution *actionengine.Execution, events []autonomous.RunEvent) map[string]any {
 	response := map[string]any{
 		"run_id":               run.ID,
 		"workflow_id":          run.WorkflowID,
@@ -556,45 +556,45 @@ func (a *App) autonomousWorkflowResponse(ctx context.Context, run *autonomous.Ru
 	return response
 }
 
-func (a *App) autonomousRunStore() (autonomous.RunStore, error) {
-	if a != nil && a.ExecutionStore != nil {
-		return autonomous.NewSQLiteRunStoreWithExecutionStore(a.ExecutionStore), nil
+func (a *Runtime) autonomousRunStore() (autonomous.RunStore, error) {
+	if a != nil && a.executionStore() != nil {
+		return autonomous.NewSQLiteRunStoreWithExecutionStore(a.executionStore()), nil
 	}
-	if a == nil || a.Config == nil {
+	if a == nil || a.config() == nil {
 		return nil, fmt.Errorf("execution store is not configured")
 	}
-	store, err := autonomous.NewSQLiteRunStore(a.Config.ExecutionStoreFile)
+	store, err := autonomous.NewSQLiteRunStore(a.config().ExecutionStoreFile)
 	if err != nil {
 		return nil, fmt.Errorf("open autonomous workflow store: %w", err)
 	}
 	return store, nil
 }
 
-func (a *App) autonomousRuntimeBlocklist() *runtime.Blocklist {
-	if a == nil || a.RuntimeRespond == nil {
+func (a *Runtime) autonomousRuntimeBlocklist() *runtime.Blocklist {
+	if a == nil || a.runtimeRespond() == nil {
 		return nil
 	}
-	return a.RuntimeRespond.Blocklist()
+	return a.runtimeRespond().Blocklist()
 }
 
-func (a *App) autonomousActionHandler() runtime.ActionHandler {
-	if a != nil && a.RuntimeRespond != nil && a.RuntimeRespond.ActionHandler() != nil {
-		return a.RuntimeRespond.ActionHandler()
+func (a *Runtime) autonomousActionHandler() runtime.ActionHandler {
+	if a != nil && a.runtimeRespond() != nil && a.runtimeRespond().ActionHandler() != nil {
+		return a.runtimeRespond().ActionHandler()
 	}
 	return runtime.NewDefaultActionHandler(runtime.DefaultActionHandlerOptions{
 		Blocklist:    a.autonomousRuntimeBlocklist(),
-		RemoteCaller: a.RemoteTools,
+		RemoteCaller: a.remoteTools(),
 	})
 }
 
-func (a *App) autonomousActionStore() (*actionengine.SQLiteStore, error) {
-	if a != nil && a.ExecutionStore != nil {
-		return actionengine.NewSQLiteStoreWithExecutionStore(a.ExecutionStore, actionengine.DefaultNamespace), nil
+func (a *Runtime) autonomousActionStore() (*actionengine.SQLiteStore, error) {
+	if a != nil && a.executionStore() != nil {
+		return actionengine.NewSQLiteStoreWithExecutionStore(a.executionStore(), actionengine.DefaultNamespace), nil
 	}
-	if a == nil || a.Config == nil {
+	if a == nil || a.config() == nil {
 		return nil, fmt.Errorf("execution store is not configured")
 	}
-	store, err := actionengine.NewSQLiteStore(a.Config.ExecutionStoreFile, actionengine.DefaultNamespace)
+	store, err := actionengine.NewSQLiteStore(a.config().ExecutionStoreFile, actionengine.DefaultNamespace)
 	if err != nil {
 		return nil, fmt.Errorf("open action execution store: %w", err)
 	}

@@ -1,4 +1,4 @@
-package app
+package tools
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/writer/cerebro/internal/graph/knowledge"
 )
 
-func (a *App) toolCerebroRecordObservation(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroRecordObservation(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		ID            string         `json:"id"`
 		EntityID      string         `json:"entity_id"`
@@ -72,7 +72,7 @@ func (a *App) toolCerebroRecordObservation(ctx context.Context, args json.RawMes
 	})
 }
 
-func (a *App) toolCerebroWriteClaim(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroWriteClaim(ctx context.Context, args json.RawMessage) (string, error) {
 	var req knowledge.ClaimWriteRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
@@ -124,7 +124,7 @@ func (a *App) toolCerebroWriteClaim(ctx context.Context, args json.RawMessage) (
 	})
 }
 
-func (a *App) toolCerebroAnnotateEntity(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroAnnotateEntity(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		EntityID      string         `json:"entity_id"`
 		Annotation    string         `json:"annotation"`
@@ -205,7 +205,7 @@ func (a *App) toolCerebroAnnotateEntity(ctx context.Context, args json.RawMessag
 	})
 }
 
-func (a *App) toolCerebroRecordDecision(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroRecordDecision(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		ID            string         `json:"id"`
 		DecisionType  string         `json:"decision_type"`
@@ -326,7 +326,7 @@ func (a *App) toolCerebroRecordDecision(ctx context.Context, args json.RawMessag
 	})
 }
 
-func (a *App) toolCerebroRecordOutcome(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroRecordOutcome(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		ID            string         `json:"id"`
 		DecisionID    string         `json:"decision_id"`
@@ -424,7 +424,7 @@ func (a *App) toolCerebroRecordOutcome(ctx context.Context, args json.RawMessage
 	})
 }
 
-func (a *App) toolCerebroResolveIdentity(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroResolveIdentity(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		AliasID           string    `json:"alias_id"`
 		SourceSystem      string    `json:"source_system"`
@@ -469,7 +469,7 @@ func (a *App) toolCerebroResolveIdentity(ctx context.Context, args json.RawMessa
 	return marshalToolResponse(result)
 }
 
-func (a *App) toolCerebroSplitIdentity(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroSplitIdentity(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		AliasNodeID     string    `json:"alias_node_id"`
 		CanonicalNodeID string    `json:"canonical_node_id"`
@@ -506,7 +506,7 @@ func (a *App) toolCerebroSplitIdentity(ctx context.Context, args json.RawMessage
 	})
 }
 
-func (a *App) toolCerebroIdentityReview(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroIdentityReview(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		AliasNodeID     string    `json:"alias_node_id"`
 		CanonicalNodeID string    `json:"canonical_node_id"`
@@ -544,7 +544,7 @@ func (a *App) toolCerebroIdentityReview(ctx context.Context, args json.RawMessag
 	return marshalToolResponse(record)
 }
 
-func (a *App) toolCerebroIdentityCalibration(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroIdentityCalibration(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -580,7 +580,7 @@ func (a *App) toolCerebroIdentityCalibration(_ context.Context, args json.RawMes
 	return marshalToolResponse(report)
 }
 
-func (a *App) toolCerebroActuateRecommendation(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroActuateRecommendation(ctx context.Context, args json.RawMessage) (string, error) {
 	var req struct {
 		ID               string         `json:"id"`
 		RecommendationID string         `json:"recommendation_id"`

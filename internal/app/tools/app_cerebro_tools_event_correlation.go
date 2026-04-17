@@ -1,4 +1,4 @@
-package app
+package tools
 
 import (
 	"context"
@@ -23,7 +23,7 @@ type cerebroCorrelateEventsRequest struct {
 	IncludeAnomalies *bool  `json:"include_anomalies"`
 }
 
-func (a *App) toolCerebroCorrelateEvents(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroCorrelateEvents(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err

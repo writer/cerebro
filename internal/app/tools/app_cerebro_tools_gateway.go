@@ -1,4 +1,4 @@
-package app
+package tools
 
 import (
 	"context"
@@ -22,8 +22,8 @@ type toolGraphEvaluateChangeRequest struct {
 	ApprovalARRThreshold *float64             `json:"approval_arr_threshold,omitempty"`
 }
 
-func (a *App) toolCerebroEvaluatePolicy(ctx context.Context, args json.RawMessage) (string, error) {
-	if a == nil || a.Policy == nil {
+func (a *Runtime) toolCerebroEvaluatePolicy(ctx context.Context, args json.RawMessage) (string, error) {
+	if a == nil || a.policy() == nil {
 		return "", fmt.Errorf("policy engine not initialized")
 	}
 
@@ -44,7 +44,7 @@ func (a *App) toolCerebroEvaluatePolicy(ctx context.Context, args json.RawMessag
 		return "", fmt.Errorf("resource is required")
 	}
 
-	policyResp, err := a.Policy.Evaluate(ctx, &req.EvalRequest)
+	policyResp, err := a.policy().Evaluate(ctx, &req.EvalRequest)
 	if err != nil {
 		return "", err
 	}
@@ -64,8 +64,8 @@ func (a *App) toolCerebroEvaluatePolicy(ctx context.Context, args json.RawMessag
 	if decision != "deny" && req.ProposedChange != nil {
 		securityGraph, err := a.currentOrStoredSecurityGraphView()
 		if err != nil {
-			if a.Logger != nil {
-				a.Logger.Warn("failed to resolve security graph for evaluate_policy", "error", err)
+			if a.logger() != nil {
+				a.logger().Warn("failed to resolve security graph for evaluate_policy", "error", err)
 			}
 			return "", fmt.Errorf("graph platform not initialized")
 		}

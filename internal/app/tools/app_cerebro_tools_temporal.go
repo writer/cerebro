@@ -1,4 +1,4 @@
-package app
+package tools
 
 import (
 	"context"
@@ -47,7 +47,7 @@ type cerebroTimelineRequest struct {
 	RecordedAt string `json:"recorded_at"`
 }
 
-func (a *App) toolCerebroGraphChangelog(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroGraphChangelog(_ context.Context, args json.RawMessage) (string, error) {
 	var req cerebroGraphChangelogRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
@@ -79,7 +79,7 @@ func (a *App) toolCerebroGraphChangelog(_ context.Context, args json.RawMessage)
 	return marshalToolResponse(changelog)
 }
 
-func (a *App) toolCerebroEntityHistory(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroEntityHistory(_ context.Context, args json.RawMessage) (string, error) {
 	var req cerebroEntityHistoryRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
@@ -132,7 +132,7 @@ func (a *App) toolCerebroEntityHistory(_ context.Context, args json.RawMessage) 
 	return marshalToolResponse(record)
 }
 
-func (a *App) toolCerebroReconstruct(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroReconstruct(_ context.Context, args json.RawMessage) (string, error) {
 	var req cerebroReconstructRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
@@ -162,7 +162,7 @@ func (a *App) toolCerebroReconstruct(_ context.Context, args json.RawMessage) (s
 	return marshalToolResponse(record)
 }
 
-func (a *App) toolCerebroTimeline(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroTimeline(_ context.Context, args json.RawMessage) (string, error) {
 	var req cerebroTimelineRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
@@ -199,7 +199,7 @@ func (a *App) toolCerebroTimeline(_ context.Context, args json.RawMessage) (stri
 	return marshalToolResponse(record)
 }
 
-func (a *App) toolCerebroDiff(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroDiff(_ context.Context, args json.RawMessage) (string, error) {
 	var req cerebroTimelineRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
@@ -233,7 +233,7 @@ func (a *App) toolCerebroDiff(_ context.Context, args json.RawMessage) (string, 
 	return marshalToolResponse(record)
 }
 
-func (a *App) platformGraphChangelogForTool(now, since, until time.Time, limit int, filter graph.GraphDiffFilter) (graph.GraphChangelog, error) {
+func (a *Runtime) platformGraphChangelogForTool(now, since, until time.Time, limit int, filter graph.GraphDiffFilter) (graph.GraphChangelog, error) {
 	changelog := graph.GraphChangelog{
 		GeneratedAt: now.UTC(),
 		Filter:      filter,
@@ -327,7 +327,7 @@ func (a *App) platformGraphChangelogForTool(now, since, until time.Time, limit i
 	return changelog, nil
 }
 
-func (a *App) platformGraphDiffDetailsForTool(diffID string, filter graph.GraphDiffFilter) (*graph.GraphSnapshotDiffDetails, error) {
+func (a *Runtime) platformGraphDiffDetailsForTool(diffID string, filter graph.GraphDiffFilter) (*graph.GraphSnapshotDiffDetails, error) {
 	diffID = strings.TrimSpace(diffID)
 	if diffID == "" {
 		return nil, fmt.Errorf("diff_id is required")
@@ -343,7 +343,7 @@ func (a *App) platformGraphDiffDetailsForTool(diffID string, filter graph.GraphD
 	return details, nil
 }
 
-func (a *App) platformGraphDiffForReadForTool(diffID string) (*graph.GraphSnapshotDiffRecord, map[string]*graph.Snapshot, error) {
+func (a *Runtime) platformGraphDiffForReadForTool(diffID string) (*graph.GraphSnapshotDiffRecord, map[string]*graph.Snapshot, error) {
 	diffStore := a.platformGraphDiffStoreForTool()
 	if diffStore == nil {
 		return nil, nil, fmt.Errorf("graph snapshot diff store not configured")
@@ -358,7 +358,7 @@ func (a *App) platformGraphDiffForReadForTool(diffID string) (*graph.GraphSnapsh
 	return a.platformGraphSnapshotDiffByIDForTool(diffID)
 }
 
-func (a *App) platformGraphSnapshotsForDiffRecordForTool(record *graph.GraphSnapshotDiffRecord) (map[string]*graph.Snapshot, error) {
+func (a *Runtime) platformGraphSnapshotsForDiffRecordForTool(record *graph.GraphSnapshotDiffRecord) (map[string]*graph.Snapshot, error) {
 	snapshotStore := a.platformGraphSnapshotStoreForTool()
 	if snapshotStore == nil {
 		return nil, fmt.Errorf("graph snapshot store not configured")
@@ -376,7 +376,7 @@ func (a *App) platformGraphSnapshotsForDiffRecordForTool(record *graph.GraphSnap
 	return snapshots, nil
 }
 
-func (a *App) platformGraphSnapshotDiffByIDForTool(diffID string) (*graph.GraphSnapshotDiffRecord, map[string]*graph.Snapshot, error) {
+func (a *Runtime) platformGraphSnapshotDiffByIDForTool(diffID string) (*graph.GraphSnapshotDiffRecord, map[string]*graph.Snapshot, error) {
 	records := a.platformGraphSnapshotRecordsForTool(time.Now().UTC())
 	if len(records) < 2 {
 		return nil, nil, fmt.Errorf("graph snapshot diff not found: %s", diffID)
@@ -415,12 +415,12 @@ func (a *App) platformGraphSnapshotDiffByIDForTool(diffID string) (*graph.GraphS
 	return nil, nil, fmt.Errorf("graph snapshot diff not found: %s", diffID)
 }
 
-func (a *App) platformGraphSnapshotRecordsForTool(now time.Time) []graph.GraphSnapshotRecord {
+func (a *Runtime) platformGraphSnapshotRecordsForTool(now time.Time) []graph.GraphSnapshotRecord {
 	records := map[string]*graph.GraphSnapshotRecord{}
 	if current, err := a.currentOrStoredPassiveGraphSnapshotRecord(); err == nil && current != nil {
 		records[current.ID] = current
-	} else if err != nil && a != nil && a.Logger != nil {
-		a.Logger.Warn("failed to resolve current graph snapshot record for tool", "error", err)
+	} else if err != nil && a != nil && a.logger() != nil {
+		a.logger().Warn("failed to resolve current graph snapshot record for tool", "error", err)
 	}
 
 	store := a.platformGraphSnapshotStoreForTool()
@@ -444,18 +444,18 @@ func (a *App) platformGraphSnapshotRecordsForTool(now time.Time) []graph.GraphSn
 	return append([]graph.GraphSnapshotRecord(nil), collection.Snapshots...)
 }
 
-func (a *App) platformGraphSnapshotStoreForTool() *graph.GraphPersistenceStore {
-	if a != nil && a.GraphSnapshots != nil {
-		return a.GraphSnapshots
+func (a *Runtime) platformGraphSnapshotStoreForTool() *graph.GraphPersistenceStore {
+	if a != nil && a.graphSnapshots() != nil {
+		return a.graphSnapshots()
 	}
 	snapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
 	maxSnapshots := 10
-	if a != nil && a.Config != nil {
-		if configured := strings.TrimSpace(a.Config.GraphSnapshotPath); configured != "" {
+	if a != nil && a.config() != nil {
+		if configured := strings.TrimSpace(a.config().GraphSnapshotPath); configured != "" {
 			snapshotPath = configured
 		}
-		if a.Config.GraphSnapshotMaxRetained > 0 {
-			maxSnapshots = a.Config.GraphSnapshotMaxRetained
+		if a.config().GraphSnapshotMaxRetained > 0 {
+			maxSnapshots = a.config().GraphSnapshotMaxRetained
 		}
 	}
 	if snapshotPath == "" {
@@ -471,10 +471,10 @@ func (a *App) platformGraphSnapshotStoreForTool() *graph.GraphPersistenceStore {
 	return store
 }
 
-func (a *App) platformGraphDiffStoreForTool() *graph.GraphSnapshotDiffStore {
+func (a *Runtime) platformGraphDiffStoreForTool() *graph.GraphSnapshotDiffStore {
 	snapshotPath := strings.TrimSpace(os.Getenv("GRAPH_SNAPSHOT_PATH"))
-	if a != nil && a.Config != nil && strings.TrimSpace(a.Config.GraphSnapshotPath) != "" {
-		snapshotPath = strings.TrimSpace(a.Config.GraphSnapshotPath)
+	if a != nil && a.config() != nil && strings.TrimSpace(a.config().GraphSnapshotPath) != "" {
+		snapshotPath = strings.TrimSpace(a.config().GraphSnapshotPath)
 	}
 	if snapshotPath == "" {
 		snapshotPath = filepath.Join(".cerebro", "graph-snapshots")

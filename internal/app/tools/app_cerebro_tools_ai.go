@@ -1,4 +1,4 @@
-package app
+package tools
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	reports "github.com/writer/cerebro/internal/graph/reports"
 )
 
-func (a *App) toolCerebroAIWorkloads(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroAIWorkloads(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err

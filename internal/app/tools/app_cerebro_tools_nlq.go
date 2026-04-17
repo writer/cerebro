@@ -1,4 +1,4 @@
-package app
+package tools
 
 import (
 	"context"
@@ -17,7 +17,7 @@ type cerebroNaturalLanguageQueryRequest struct {
 	Context     *nlq.Context `json:"context,omitempty"`
 }
 
-func (a *App) toolCerebroNaturalLanguageQuery(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroNaturalLanguageQuery(ctx context.Context, args json.RawMessage) (string, error) {
 	var req cerebroNaturalLanguageQueryRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err
@@ -52,8 +52,8 @@ func (a *App) toolCerebroNaturalLanguageQuery(ctx context.Context, args json.Raw
 	if !req.PreviewOnly {
 		executor := &nlq.Executor{
 			Graph:    g,
-			Findings: a.Findings,
-			Diffs:    a.GraphSnapshots,
+			Findings: a.findings(),
+			Diffs:    a.graphSnapshots(),
 		}
 		result, err := executor.Execute(ctx, plan)
 		if err != nil {
@@ -66,11 +66,11 @@ func (a *App) toolCerebroNaturalLanguageQuery(ctx context.Context, args json.Raw
 	return marshalToolResponse(response)
 }
 
-func (a *App) nlqCompletionProvider() nlq.CompletionProvider {
-	if a == nil || a.Agents == nil {
+func (a *Runtime) nlqCompletionProvider() nlq.CompletionProvider {
+	if a == nil || a.agents() == nil {
 		return nil
 	}
-	candidates := a.Agents.ListAgents()
+	candidates := a.agents().ListAgents()
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i] == nil || candidates[j] == nil {
 			return candidates[j] != nil

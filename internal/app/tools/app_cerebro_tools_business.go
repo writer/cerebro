@@ -1,4 +1,4 @@
-package app
+package tools
 
 import (
 	"context"
@@ -15,7 +15,7 @@ type cerebroKeyPersonRiskRequest struct {
 	Limit    int    `json:"limit"`
 }
 
-func (a *App) toolCerebroKeyPersonRisk(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroKeyPersonRisk(_ context.Context, args json.RawMessage) (string, error) {
 	var req cerebroKeyPersonRiskRequest
 	if err := decodeToolArgs(args, &req); err != nil {
 		return "", err

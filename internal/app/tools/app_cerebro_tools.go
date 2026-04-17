@@ -1,4 +1,4 @@
-package app
+package tools
 
 import (
 	"bytes"
@@ -18,12 +18,12 @@ import (
 	"github.com/writer/cerebro/internal/identity"
 )
 
-func (a *App) cerebroTools() []agents.Tool {
+func (a *Runtime) Catalog() []agents.Tool {
 	requiresSimApproval := true
 	requiresAccessReviewApproval := true
-	if a != nil && a.Config != nil {
-		requiresSimApproval = a.Config.CerebroSimulateNeedsApproval
-		requiresAccessReviewApproval = a.Config.CerebroAccessReviewNeedsApproval
+	if a != nil && a.config() != nil {
+		requiresSimApproval = a.config().CerebroSimulateNeedsApproval
+		requiresAccessReviewApproval = a.config().CerebroAccessReviewNeedsApproval
 	}
 
 	return []agents.Tool{
@@ -912,7 +912,7 @@ type cerebroGraphQueryRequest struct {
 	To        string `json:"to"`
 }
 
-func (a *App) toolCerebroSimulate(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroSimulate(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -950,7 +950,7 @@ func (a *App) toolCerebroSimulate(_ context.Context, args json.RawMessage) (stri
 	return marshalToolResponse(result)
 }
 
-func (a *App) toolCerebroScenarioSimulate(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroScenarioSimulate(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -1027,7 +1027,7 @@ func (a *App) toolCerebroScenarioSimulate(_ context.Context, args json.RawMessag
 	return marshalToolResponse(response)
 }
 
-func (a *App) toolCerebroInsightCard(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroInsightCard(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -1086,7 +1086,7 @@ func (a *App) toolCerebroInsightCard(_ context.Context, args json.RawMessage) (s
 	return marshalToolResponse(response)
 }
 
-func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroIntelligenceReport(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -1122,7 +1122,7 @@ func (a *App) toolCerebroIntelligenceReport(_ context.Context, args json.RawMess
 	return marshalToolResponse(report)
 }
 
-func (a *App) toolCerebroGraphQualityReport(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroGraphQualityReport(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -1152,7 +1152,7 @@ func (a *App) toolCerebroGraphQualityReport(_ context.Context, args json.RawMess
 	return marshalToolResponse(report)
 }
 
-func (a *App) toolCerebroGraphLeverageReport(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroGraphLeverageReport(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -1199,7 +1199,7 @@ func (a *App) toolCerebroGraphLeverageReport(_ context.Context, args json.RawMes
 	return marshalToolResponse(report)
 }
 
-func (a *App) toolCerebroGraphQueryTemplates(_ context.Context, _ json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroGraphQueryTemplates(_ context.Context, _ json.RawMessage) (string, error) {
 	templates := graph.DefaultGraphQueryTemplates()
 	return marshalToolResponse(map[string]any{
 		"templates": templates,
@@ -1713,7 +1713,7 @@ func simulationRecommendation(result *graph.GraphSimulationResult) string {
 	return "safe_to_proceed"
 }
 
-func (a *App) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -1736,7 +1736,7 @@ func (a *App) toolCerebroBlastRadius(_ context.Context, args json.RawMessage) (s
 	return marshalToolResponse(result)
 }
 
-func (a *App) toolCerebroRiskScore(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroRiskScore(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -1769,7 +1769,7 @@ func (a *App) toolCerebroRiskScore(_ context.Context, args json.RawMessage) (str
 	return marshalToolResponse(response)
 }
 
-func (a *App) toolCerebroGraphQuery(_ context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroGraphQuery(_ context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -1835,7 +1835,7 @@ func (a *App) toolCerebroGraphQuery(_ context.Context, args json.RawMessage) (st
 	}
 }
 
-func (a *App) runNeighborsQuery(g *graph.Graph, req cerebroGraphQueryRequest, temporalScope map[string]any) (string, error) {
+func (a *Runtime) runNeighborsQuery(g *graph.Graph, req cerebroGraphQueryRequest, temporalScope map[string]any) (string, error) {
 	direction := strings.ToLower(strings.TrimSpace(req.Direction))
 	if direction == "" {
 		direction = "both"
@@ -1904,7 +1904,7 @@ func (a *App) runNeighborsQuery(g *graph.Graph, req cerebroGraphQueryRequest, te
 	})
 }
 
-func (a *App) runPathsQuery(g *graph.Graph, req cerebroGraphQueryRequest, temporalScope map[string]any) (string, error) {
+func (a *Runtime) runPathsQuery(g *graph.Graph, req cerebroGraphQueryRequest, temporalScope map[string]any) (string, error) {
 	if req.TargetID == "" {
 		return "", fmt.Errorf("target_id is required for paths mode")
 	}
@@ -1930,8 +1930,8 @@ func (a *App) runPathsQuery(g *graph.Graph, req cerebroGraphQueryRequest, tempor
 	})
 }
 
-func (a *App) toolCerebroFindings(_ context.Context, args json.RawMessage) (string, error) {
-	if a == nil || a.Findings == nil {
+func (a *Runtime) toolCerebroFindings(_ context.Context, args json.RawMessage) (string, error) {
+	if a == nil || a.findings() == nil {
 		return "", fmt.Errorf("findings store not initialized")
 	}
 
@@ -1968,19 +1968,19 @@ func (a *App) toolCerebroFindings(_ context.Context, args json.RawMessage) (stri
 		pageFilter := baseFilter
 		pageFilter.Limit = limit
 		pageFilter.Offset = offset
-		list := a.Findings.List(pageFilter)
-		total := a.Findings.Count(baseFilter)
+		list := a.findings().List(pageFilter)
+		total := a.findings().Count(baseFilter)
 		return marshalToolResponse(map[string]any{
 			"total":    total,
 			"count":    len(list),
 			"limit":    limit,
 			"offset":   offset,
 			"findings": list,
-			"stats":    a.Findings.Stats(),
+			"stats":    a.findings().Stats(),
 		})
 	}
 
-	all := a.Findings.List(baseFilter)
+	all := a.findings().List(baseFilter)
 	matched := make([]*findings.Finding, 0, len(all))
 	for _, finding := range all {
 		if findingMatchesQuery(finding, query) {
@@ -1996,7 +1996,7 @@ func (a *App) toolCerebroFindings(_ context.Context, args json.RawMessage) (stri
 			"offset":   offset,
 			"query":    query,
 			"findings": []any{},
-			"stats":    a.Findings.Stats(),
+			"stats":    a.findings().Stats(),
 		})
 	}
 	end := offset + limit
@@ -2012,11 +2012,11 @@ func (a *App) toolCerebroFindings(_ context.Context, args json.RawMessage) (stri
 		"offset":   offset,
 		"query":    query,
 		"findings": page,
-		"stats":    a.Findings.Stats(),
+		"stats":    a.findings().Stats(),
 	})
 }
 
-func (a *App) toolCerebroAccessReview(ctx context.Context, args json.RawMessage) (string, error) {
+func (a *Runtime) toolCerebroAccessReview(ctx context.Context, args json.RawMessage) (string, error) {
 	g, err := a.requireReadableSecurityGraph()
 	if err != nil {
 		return "", err
@@ -2082,9 +2082,9 @@ func (a *App) toolCerebroAccessReview(ctx context.Context, args json.RawMessage)
 	return marshalToolResponse(payload)
 }
 
-func (a *App) cerebroAccessReviewService(g *graph.Graph) *identity.Service {
-	if a != nil && a.Identity != nil && a.CurrentSecurityGraph() != nil {
-		return a.Identity
+func (a *Runtime) cerebroAccessReviewService(g *graph.Graph) *identity.Service {
+	if a != nil && a.identity() != nil && a.CurrentSecurityGraph() != nil {
+		return a.identity()
 	}
 
 	opts := []identity.ServiceOption{
@@ -2095,8 +2095,8 @@ func (a *App) cerebroAccessReviewService(g *graph.Graph) *identity.Service {
 			return g
 		}),
 	}
-	if a != nil && a.ExecutionStore != nil {
-		opts = append(opts, identity.WithExecutionStore(a.ExecutionStore))
+	if a != nil && a.executionStore() != nil {
+		opts = append(opts, identity.WithExecutionStore(a.executionStore()))
 	}
 	return identity.NewService(opts...)
 }
