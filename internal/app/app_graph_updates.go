@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/writer/cerebro/internal/graph"
@@ -39,17 +40,39 @@ func (a *App) applySecurityGraphChangesLocked(ctx context.Context, trigger strin
 	if err := a.requireGraphWriterLease("apply security graph changes"); err != nil {
 		return graph.GraphMutationSummary{}, err
 	}
+	start := time.Now()
 	if err := a.prepareSecurityGraphBuilderForIncrementalApply(ctx); err != nil {
 		return graph.GraphMutationSummary{}, err
 	}
 	summary, err := a.SecurityGraphBuilder.ApplyChanges(ctx, time.Time{})
 	if err != nil {
-		a.Logger.Warn("incremental graph apply failed",
+		a.Logger.Warn("incremental graph apply failed, falling back to full rebuild",
 			"trigger", trigger,
 			"error", err,
 		)
-		a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), err)
-		return graph.GraphMutationSummary{}, err
+		a.setGraphBuildState(GraphBuildBuilding, time.Time{}, nil)
+		if buildErr := a.SecurityGraphBuilder.Build(ctx); buildErr != nil {
+			a.setGraphBuildState(GraphBuildFailed, time.Now().UTC(), buildErr)
+			return graph.GraphMutationSummary{}, buildErr
+		}
+
+		securityGraph := a.SecurityGraphBuilder.Graph()
+		meta, activateErr := a.activateBuiltSecurityGraph(ctx, securityGraph)
+		if activateErr != nil {
+			return graph.GraphMutationSummary{}, activateErr
+		}
+
+		summary = a.SecurityGraphBuilder.LastMutation()
+		duration := time.Since(start)
+		a.Logger.Info("security graph rebuilt after incremental apply failure",
+			"trigger", trigger,
+			"nodes", meta.NodeCount,
+			"edges", meta.EdgeCount,
+			"duration", duration,
+		)
+		a.emitGraphRebuiltEvent(ctx, meta, duration)
+		a.emitGraphMutationEvent(ctx, summary, trigger)
+		return summary, nil
 	}
 
 	if summary.EventsProcessed == 0 {
@@ -110,7 +133,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 	a.graphConsistencyWG.Add(1)
 	baseCtx := a.graphCtx
 	if baseCtx == nil {
-		baseCtx = context.Background()
+		baseCtx = a.backgroundContext()
 	}
 	checkCtx, cancel := context.WithTimeout(baseCtx, a.Config.GraphConsistencyCheckTimeoutOrDefault())
 	a.graphConsistencyCancel = cancel
@@ -230,5 +253,15 @@ func (a *App) currentIncrementalBuilderSnapshot(ctx context.Context) (*graph.Sna
 	} else if snapshot != nil {
 		return snapshot, nil
 	}
-	return nil, nil
+	if a.GraphSnapshots == nil {
+		return nil, nil
+	}
+	snapshot, _, _, err := a.GraphSnapshots.PeekLatestSnapshot()
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return snapshot, nil
 }

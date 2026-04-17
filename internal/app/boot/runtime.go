@@ -14,22 +14,24 @@ type ConcurrentInitTask struct {
 }
 
 type Dependencies struct {
-	Logger                   func() *slog.Logger
-	Config                   func() *InitConfig
-	InitTelemetry            func(context.Context) error
-	InitWarehouse            func(context.Context) error
-	SnowflakeInitialized     func() bool
-	InitPolicy               func() error
-	InitExecutionStore       func()
-	AppStateSubsystem        func() InitStartSubsystem
-	GraphSubsystem           func() InitStartSubsystem
-	InitLegacySnowflake      func(context.Context) error
-	Phase2aInitSubsystems    func() []LifecycleSubsystem
-	Phase2bInitSubsystems    func() []LifecycleSubsystem
-	Phase2bStartSubsystems   func() []LifecycleSubsystem
-	InitScanner              func()
-	ValidateRequiredServices func() error
-	ValidatePolicyCoverage   func(context.Context) error
+	Logger                           func() *slog.Logger
+	Config                           func() *InitConfig
+	InitTelemetry                    func(context.Context) error
+	InitWarehouse                    func(context.Context) error
+	SnowflakeInitialized             func() bool
+	InitPolicy                       func() error
+	InitExecutionStore               func()
+	AppStateSubsystem                func() InitStartSubsystem
+	GraphSubsystem                   func() InitStartSubsystem
+	InitLegacySnowflake              func(context.Context) error
+	RequiresLegacySnowflakeSource    func(context.Context) (bool, error)
+	LegacySnowflakeSourceInitialized func() bool
+	Phase2aInitSubsystems            func() []LifecycleSubsystem
+	Phase2bInitSubsystems            func() []LifecycleSubsystem
+	Phase2bStartSubsystems           func() []LifecycleSubsystem
+	InitScanner                      func()
+	ValidateRequiredServices         func() error
+	ValidatePolicyCoverage           func(context.Context) error
 }
 
 type Runtime struct {
@@ -111,6 +113,20 @@ func (r *Runtime) initLegacySnowflake(ctx context.Context) error {
 		return nil
 	}
 	return r.deps.InitLegacySnowflake(ctx)
+}
+
+func (r *Runtime) requiresLegacySnowflakeSource(ctx context.Context) (bool, error) {
+	if r == nil || r.deps.RequiresLegacySnowflakeSource == nil {
+		return false, nil
+	}
+	return r.deps.RequiresLegacySnowflakeSource(ctx)
+}
+
+func (r *Runtime) legacySnowflakeSourceInitialized() bool {
+	if r == nil || r.deps.LegacySnowflakeSourceInitialized == nil {
+		return false
+	}
+	return r.deps.LegacySnowflakeSourceInitialized()
 }
 
 func (r *Runtime) phase2aInitSubsystems() []LifecycleSubsystem {
@@ -230,8 +246,8 @@ func (r *Runtime) InitPhase2a(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := RunInitErrorStep("legacy_snowflake", func() error { return r.initLegacySnowflake(ctx) }); err != nil {
-		r.logger().Warn("legacy snowflake initialization failed", "error", err)
+	if err := r.InitLegacySnowflakeForAppState(ctx); err != nil {
+		return err
 	}
 	if graphSubsystem != nil {
 		if err := graphSubsystem.Init(ctx); err != nil {
@@ -250,6 +266,23 @@ func (r *Runtime) InitPhase2a(ctx context.Context) error {
 		Subsystems:   r.phase2aInitSubsystems(),
 	}); err != nil {
 		return fmt.Errorf("phase 2a init failed: %w", err)
+	}
+	return nil
+}
+
+func (r *Runtime) InitLegacySnowflakeForAppState(ctx context.Context) error {
+	required, err := r.requiresLegacySnowflakeSource(ctx)
+	if err != nil {
+		return fmt.Errorf("determine legacy snowflake source requirement: %w", err)
+	}
+	if err := RunInitErrorStep("legacy_snowflake", func() error { return r.initLegacySnowflake(ctx) }); err != nil {
+		if required {
+			return fmt.Errorf("legacy snowflake initialization failed: %w", err)
+		}
+		r.logger().Warn("legacy snowflake initialization failed", "error", err)
+	}
+	if required && !r.legacySnowflakeSourceInitialized() {
+		return fmt.Errorf("legacy snowflake source is required until app-state migration completes or legacy retention is disabled")
 	}
 	return nil
 }

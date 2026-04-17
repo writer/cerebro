@@ -9,6 +9,15 @@ import (
 	"github.com/writer/cerebro/internal/agents"
 )
 
+func findRegisteredAgentTool(tools []agents.Tool, name string) *agents.Tool {
+	for i := range tools {
+		if tools[i].Name == name {
+			return &tools[i]
+		}
+	}
+	return nil
+}
+
 func TestRemoteToolProviderConfigFromConfig(t *testing.T) {
 	cfg := &Config{
 		AgentRemoteToolsEnabled:         true,
@@ -177,6 +186,7 @@ func TestRegisterConfiguredAIAgents(t *testing.T) {
 				}
 				if agent.Memory == nil {
 					t.Fatalf("expected non-nil memory for %s", id)
+					return
 				}
 			}
 
@@ -186,5 +196,91 @@ func TestRegisterConfiguredAIAgents(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSyncConfiguredAIAgentsPreservesMemoryAndRemovesDisabledAgents(t *testing.T) {
+	registry := agents.NewAgentRegistry()
+	existingMemory := agents.NewMemory(10)
+	registry.RegisterAgent(&agents.Agent{
+		ID:     "security-analyst",
+		Name:   "Security Analyst",
+		Tools:  []agents.Tool{{Name: "query_assets", Description: "stale"}, {Name: "remote_tool", Description: "remote"}},
+		Memory: existingMemory,
+	})
+
+	cfg := &Config{
+		OpenAIAPIKey: "openai-key",
+	}
+	tools := []agents.Tool{{Name: "query_assets", Description: "fresh"}}
+
+	syncConfiguredAIAgents(registry, cfg, tools)
+
+	if _, ok := registry.GetAgent("security-analyst"); ok {
+		t.Fatal("expected security-analyst to be removed when Anthropic key is absent")
+	}
+
+	agent, ok := registry.GetAgent("incident-responder")
+	if !ok {
+		t.Fatal("expected incident-responder to be registered")
+	}
+	if agent.Memory == nil {
+		t.Fatal("expected incident-responder memory to be initialized")
+		return
+	}
+	queryAssets := findRegisteredAgentTool(agent.Tools, "query_assets")
+	if queryAssets == nil || queryAssets.Description != "fresh" {
+		t.Fatalf("expected incident-responder query_assets tool to be refreshed, got %#v", queryAssets)
+	}
+}
+
+func TestSyncConfiguredAIAgentsPreservesExistingAgentMemoryAndExtraTools(t *testing.T) {
+	registry := agents.NewAgentRegistry()
+	existingMemory := agents.NewMemory(10)
+	registry.RegisterAgent(&agents.Agent{
+		ID:     "security-analyst",
+		Name:   "Security Analyst",
+		Tools:  []agents.Tool{{Name: "query_assets", Description: "stale"}, {Name: "remote_tool", Description: "remote"}},
+		Memory: existingMemory,
+	})
+
+	cfg := &Config{
+		AnthropicAPIKey: "anthropic-key",
+	}
+	tools := []agents.Tool{{Name: "query_assets", Description: "fresh"}, {Name: "list_findings", Description: "list"}}
+
+	syncConfiguredAIAgents(registry, cfg, tools)
+
+	agent, ok := registry.GetAgent("security-analyst")
+	if !ok {
+		t.Fatal("expected security-analyst to remain registered")
+	}
+	if agent.Memory != existingMemory {
+		t.Fatal("expected existing memory to be preserved")
+	}
+	if tool := findRegisteredAgentTool(agent.Tools, "query_assets"); tool == nil || tool.Description != "fresh" {
+		t.Fatalf("expected query_assets tool to be refreshed, got %#v", tool)
+	}
+	if tool := findRegisteredAgentTool(agent.Tools, "remote_tool"); tool == nil || tool.Description != "remote" {
+		t.Fatalf("expected remote_tool to be preserved, got %#v", tool)
+	}
+}
+
+func TestAppSyncConfiguredAIAgentsIncludesCachedRemoteToolsForNewAgents(t *testing.T) {
+	application := &App{
+		Agents:           agents.NewAgentRegistry(),
+		remoteAgentTools: []agents.Tool{{Name: "remote_tool", Description: "remote"}},
+	}
+
+	application.syncConfiguredAIAgents(&Config{
+		OpenAIAPIKey: "openai-key",
+	})
+
+	agent, ok := application.Agents.GetAgent("incident-responder")
+	if !ok {
+		t.Fatal("expected incident-responder to be registered")
+	}
+	if tool := findRegisteredAgentTool(agent.Tools, "remote_tool"); tool == nil || tool.Description != "remote" {
+		t.Fatalf("expected remote_tool to be included for newly registered agent, got %#v", tool)
 	}
 }

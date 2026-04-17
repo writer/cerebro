@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -306,11 +307,14 @@ func runFindingsResolveDirect(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = application.Close() }()
 
-	if application.Findings.Resolve(findingID) {
+	if err := findings.ResolveStore(application.Findings, findingID); err == nil {
 		Success("Finding %s marked as resolved", findingID)
 		return nil
+	} else if errors.Is(err, findings.ErrIssueNotFound) {
+		return fmt.Errorf("finding not found: %s", findingID)
+	} else {
+		return fmt.Errorf("resolve finding %s: %w", findingID, err)
 	}
-	return fmt.Errorf("finding not found: %s", findingID)
 }
 
 func runFindingsSuppressDirect(cmd *cobra.Command, args []string) error {
@@ -323,11 +327,14 @@ func runFindingsSuppressDirect(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = application.Close() }()
 
-	if application.Findings.Suppress(findingID) {
+	if err := findings.SuppressStore(application.Findings, findingID); err == nil {
 		Success("Finding %s suppressed", findingID)
 		return nil
+	} else if errors.Is(err, findings.ErrIssueNotFound) {
+		return fmt.Errorf("finding not found: %s", findingID)
+	} else {
+		return fmt.Errorf("suppress finding %s: %w", findingID, err)
 	}
-	return fmt.Errorf("finding not found: %s", findingID)
 }
 
 func runFindingsExportDirect(cmd *cobra.Command, args []string) error {

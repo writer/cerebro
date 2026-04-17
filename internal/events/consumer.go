@@ -594,6 +594,7 @@ func (c *Consumer) handleDecodedMessage(decoded consumerDecodedMessage) consumer
 	handlerCtx, handlerSpan := c.startTracingSpan(ingestCtx, "cerebro.event.handle", c.consumerEventAttributes(message, evt)...)
 	handlerCtx = telemetry.ContextWithAttributes(handlerCtx, c.consumerEventAttributes(message, evt)...)
 	if err := c.handler(handlerCtx, evt); err != nil {
+		consumerRecordSpanError(handlerSpan, err)
 		if delay, ok := retryDelay(err); ok && message.nakWithDelay != nil {
 			handlerSpan.End()
 			c.logger.Info("tap consumer handler deferred; message requeued with delay",
@@ -608,7 +609,6 @@ func (c *Consumer) handleDecodedMessage(decoded consumerDecodedMessage) consumer
 			}
 			return consumerMessageResult{}
 		}
-		consumerRecordSpanError(handlerSpan, err)
 		handlerSpan.End()
 		c.logger.Warn("tap consumer handler failed; message requeued", "error", err, "event_type", evt.Type)
 		if nakErr := c.consumerAckWithTracing(ingestCtx, message, evt, "nak", message.nak); nakErr != nil {
@@ -909,8 +909,10 @@ func (c *Consumer) startInProgressHeartbeat(ctx context.Context, inProgress func
 	}
 	heartbeatCtx := context.WithoutCancel(ctx)
 	stopCh := make(chan struct{})
+	doneCh := make(chan struct{})
 	var once sync.Once
 	go func() {
+		defer close(doneCh)
 		ticker := time.NewTicker(c.config.InProgressInterval)
 		defer ticker.Stop()
 		for {
@@ -927,7 +929,10 @@ func (c *Consumer) startInProgressHeartbeat(ctx context.Context, inProgress func
 		}
 	}()
 	return func() {
-		once.Do(func() { close(stopCh) })
+		once.Do(func() {
+			close(stopCh)
+			<-doneCh
+		})
 	}
 }
 
@@ -945,9 +950,11 @@ func (c *Consumer) startBatchInProgressHeartbeat(ctx context.Context, inProgress
 		activeMu sync.RWMutex
 		once     sync.Once
 		stopCh   = make(chan struct{})
+		doneCh   = make(chan struct{})
 	)
 
 	go func() {
+		defer close(doneCh)
 		ticker := time.NewTicker(c.config.InProgressInterval)
 		defer ticker.Stop()
 		for {
@@ -980,7 +987,10 @@ func (c *Consumer) startBatchInProgressHeartbeat(ctx context.Context, inProgress
 		activeMu.Unlock()
 	}
 	stop := func() {
-		once.Do(func() { close(stopCh) })
+		once.Do(func() {
+			close(stopCh)
+			<-doneCh
+		})
 	}
 	return deactivate, stop
 }

@@ -22,6 +22,7 @@ func TestCurrentOrStoredScheduledScanGraphView_UsesConfiguredStoreWhenLiveGraphU
 	got := app.currentOrStoredScheduledScanGraphView(context.Background(), ScanTuning{})
 	if got == nil {
 		t.Fatal("expected configured graph view")
+		return
 	}
 	if got.NodeCount() != g.NodeCount() {
 		t.Fatalf("expected %d nodes, got %d", g.NodeCount(), got.NodeCount())

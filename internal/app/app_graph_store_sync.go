@@ -14,7 +14,7 @@ func (a *App) syncConfiguredSecurityGraphStore(ctx context.Context, g *graph.Gra
 		return nil
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = a.backgroundContext()
 	}
 	store := a.configuredSecurityGraphStore
 	if err := store.EnsureIndexes(ctx); err != nil {

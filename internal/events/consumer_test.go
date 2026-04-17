@@ -84,6 +84,7 @@ func TestConsumerConfigValidate(t *testing.T) {
 	}
 	if err := invalid.validate(); err == nil {
 		t.Fatal("expected validation error for invalid batch size")
+		return
 	}
 }
 
@@ -557,11 +558,11 @@ func TestConsumerStartInProgressHeartbeatContinuesAfterContextCancelUntilStopped
 		t.Fatal("expected in-progress heartbeat to continue after context cancellation")
 	}
 
-	beforeStop := beats.Load()
 	stop()
+	afterStop := beats.Load()
 	time.Sleep(20 * time.Millisecond)
-	if beats.Load() != beforeStop {
-		t.Fatalf("expected in-progress heartbeat to stop after stop(), got before=%d after=%d", beforeStop, beats.Load())
+	if beats.Load() != afterStop {
+		t.Fatalf("expected in-progress heartbeat to stop after stop(), got before=%d after=%d", afterStop, beats.Load())
 	}
 }
 
@@ -1238,6 +1239,7 @@ func TestConsumerHandleMessageDeadLettersDuplicateKeyPayloadMismatch(t *testing.
 	}
 	if record == nil {
 		t.Fatal("expected replayed hash-mismatch event to persist a new processed event record")
+		return
 	}
 	if record.DuplicateCount != 0 {
 		t.Fatalf("expected replayed hash-mismatch event to persist without duplicate count, got %#v", record)
@@ -1716,6 +1718,88 @@ func TestConsumerHandleMessageTracesNakOnHandlerFailure(t *testing.T) {
 	}
 	ackSpan := testConsumerSpanByName(t, spans, "cerebro.event.ack")
 	if got, ok := testConsumerSpanAttribute(ackSpan, "cerebro.event.ack_operation"); !ok || got != "nak" {
+		t.Fatalf("ack span operation = %q, ok=%t", got, ok)
+	}
+}
+
+func TestConsumerHandleDecodedMessageTracesDelayedNakForRetryWithDelayErrors(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	prevProvider := otel.GetTracerProvider()
+	prevPropagator := otel.GetTextMapPropagator()
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(traceContextPropagator())
+	t.Cleanup(func() {
+		otel.SetTracerProvider(prevProvider)
+		otel.SetTextMapPropagator(prevPropagator)
+		_ = tp.Shutdown(t.Context())
+	})
+
+	const retryDelay = 5 * time.Second
+
+	consumer := &Consumer{
+		config: ConsumerConfig{
+			Stream:  "ENSEMBLE_TAP_TEST",
+			Durable: "cerebro_retry_delay_trace_test",
+		},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		handler: func(context.Context, CloudEvent) error {
+			return RetryWithDelay(errors.New("deferred"), retryDelay)
+		},
+	}
+
+	event := CloudEvent{
+		SpecVersion: cloudEventSpecVersion,
+		ID:          "evt-retry-delay-trace-1",
+		Source:      "cerebro.events.test",
+		Type:        "tap.test",
+		Time:        time.Now().UTC(),
+		DataSchema:  "urn:cerebro:events:test",
+		TenantID:    "tenant-a",
+		TraceParent: "00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01",
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal cloud event: %v", err)
+	}
+
+	var delayedNaks atomic.Int64
+	decoded := consumer.decodePipelineMessage(context.Background(), consumerPipelineMessage{
+		subject: "ensemble.tap.retry.event",
+		payload: payload,
+		ack: func() error {
+			t.Fatal("expected deferred handler failure not to ack")
+			return nil
+		},
+		nak: func() error {
+			t.Fatal("expected deferred handler failure not to use immediate nak")
+			return nil
+		},
+		nakWithDelay: func(delay time.Duration) error {
+			if delay != retryDelay {
+				t.Fatalf("delayed nak used delay %s, want %s", delay, retryDelay)
+			}
+			delayedNaks.Add(1)
+			return nil
+		},
+		inProgress: func() error { return nil },
+	})
+
+	result := consumer.handleDecodedMessage(decoded)
+	if result.Processed {
+		t.Fatal("expected deferred handler result to remain unprocessed")
+	}
+	if delayedNaks.Load() != 1 {
+		t.Fatalf("expected one delayed nak, got %d", delayedNaks.Load())
+	}
+
+	spans := exporter.GetSpans()
+	handleSpan := testConsumerSpanByName(t, spans, "cerebro.event.handle")
+	if handleSpan.Status.Code != codes.Error {
+		t.Fatalf("handler span status = %v, want error", handleSpan.Status.Code)
+	}
+	ackSpan := testConsumerSpanByName(t, spans, "cerebro.event.ack")
+	if got, ok := testConsumerSpanAttribute(ackSpan, "cerebro.event.ack_operation"); !ok || got != "nak_with_delay" {
 		t.Fatalf("ack span operation = %q, ok=%t", got, ok)
 	}
 }
