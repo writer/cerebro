@@ -45,6 +45,7 @@ import (
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/apiauth"
 	appsubstate "github.com/writer/cerebro/internal/app/appstate"
+	appboot "github.com/writer/cerebro/internal/app/boot"
 	appscan "github.com/writer/cerebro/internal/app/scan"
 	appsecrets "github.com/writer/cerebro/internal/app/secrets"
 	appstream "github.com/writer/cerebro/internal/app/stream"
@@ -127,6 +128,7 @@ type App struct {
 	AttackPath    *attackpath.Graph
 	Providers     *providers.Registry
 	Webhooks      *webhooks.Service
+	Boot          *appboot.Runtime
 	Scan          *appscan.Runtime
 	Stream        *appstream.Runtime
 	AlertRouter   *events.AlertRouter
@@ -250,6 +252,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		AppState: appsubstate.NewRuntime(),
 		Secrets:  appsecrets.NewRuntime(),
 	}
+	app.Boot = app.newBootRuntime()
 	app.Stream = app.newStreamRuntime()
 	app.secretsLoader = options.secretsLoader
 	app.apiCredentialStore = managedCredentialStore

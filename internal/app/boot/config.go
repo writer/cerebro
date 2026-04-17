@@ -1,4 +1,4 @@
-package app
+package boot
 
 import (
 	"strings"
@@ -7,6 +7,10 @@ import (
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/graph"
 )
+
+type InitConfig struct {
+	WarehouseBackend string
+}
 
 // SubsystemConfig provides grouped, subsystem-scoped views over the env-backed
 // top-level app config without changing the external config surface.
@@ -89,62 +93,4 @@ func (c EventConfig) AlertRoutingEnabled() bool {
 
 func (c EventConfig) TapGraphConsumerEnabled() bool {
 	return c.NATSConsumerEnabled
-}
-
-func (c *Config) BuildSubsystemConfig() SubsystemConfig {
-	if c == nil {
-		return SubsystemConfig{}
-	}
-
-	return SubsystemConfig{
-		Agents: AgentConfig{
-			AnthropicAPIKey: c.AnthropicAPIKey,
-			OpenAIAPIKey:    c.OpenAIAPIKey,
-			GitHubToken:     c.GitHubToken,
-			GitLabToken:     c.GitLabToken,
-			GitLabBaseURL:   c.GitLabBaseURL,
-			RemoteTools:     remoteToolProviderConfigFromConfig(c),
-			ToolPublisher:   toolPublisherConfigFromConfig(c),
-		},
-		Runtime: RuntimeConfig{
-			ExecutionStoreFile: c.ExecutionStoreFile,
-		},
-		Graph: GraphConfig{
-			SnapshotPath:                 c.GraphSnapshotPath,
-			SnapshotMaxRetained:          c.GraphSnapshotMaxRetained,
-			StoreBackend:                 c.graphStoreBackend(),
-			SearchBackend:                c.graphSearchBackend(),
-			SchemaValidationMode:         c.GraphSchemaValidationMode,
-			PropertyHistoryMaxEntries:    c.GraphPropertyHistoryMaxEntries,
-			PropertyHistoryTTL:           c.GraphPropertyHistoryTTL,
-			WriterLeaseEnabled:           c.GraphWriterLeaseEnabled,
-			WriterLeaseName:              c.GraphWriterLeaseName,
-			WriterLeaseOwnerID:           c.GraphWriterLeaseOwnerID,
-			WriterLeaseTTL:               c.GraphWriterLeaseTTL,
-			WriterLeaseHeartbeat:         c.GraphWriterLeaseHeartbeat,
-			MigrateLegacyActivityOnStart: c.GraphMigrateLegacyActivityOnStart,
-		},
-		AppState: AppStateConfig{
-			JobDatabaseURL:       c.JobDatabaseURL,
-			WarehouseBackend:     c.WarehouseBackend,
-			WarehousePostgresDSN: c.WarehousePostgresDSN,
-		},
-		Events: EventConfig{
-			NATSJetStreamEnabled:     c.NATSJetStreamEnabled,
-			NATSConsumerEnabled:      c.NATSConsumerEnabled,
-			NATSConsumerSubjects:     append([]string(nil), c.NATSConsumerSubjects...),
-			NATSConsumerDurable:      c.NATSConsumerDurable,
-			NATSConsumerDrainTimeout: c.NATSConsumerDrainTimeout,
-			AlertRouterEnabled:       c.AlertRouterEnabled,
-			AlertRouterConfigPath:    c.AlertRouterConfigPath,
-			AlertRouterNotifyPrefix:  c.AlertRouterNotifyPrefix,
-		},
-	}
-}
-
-func (a *App) subsystemConfig() SubsystemConfig {
-	if a == nil || a.Config == nil {
-		return SubsystemConfig{}
-	}
-	return a.Config.BuildSubsystemConfig()
 }

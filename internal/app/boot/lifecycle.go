@@ -1,4 +1,4 @@
-package app
+package boot
 
 import (
 	"context"
@@ -12,96 +12,101 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type namedSubsystem interface {
+type NamedSubsystem interface {
 	Name() string
 }
 
-type initSubsystem interface {
-	namedSubsystem
+type InitSubsystem interface {
+	NamedSubsystem
 	Init(context.Context) error
 }
 
-type startSubsystem interface {
-	namedSubsystem
+type StartSubsystem interface {
+	NamedSubsystem
 	Start(context.Context) error
 }
 
-type closeSubsystem interface {
-	namedSubsystem
+type CloseSubsystem interface {
+	NamedSubsystem
 	Close(context.Context) error
 }
 
-type lifecycleSubsystem struct {
-	name     string
-	requires []string
-	init     func(context.Context) error
-	start    func(context.Context) error
-	close    func(context.Context) error
+type InitStartSubsystem interface {
+	InitSubsystem
+	StartSubsystem
 }
 
-type lifecycleAction string
+type LifecycleSubsystem struct {
+	SubsystemName string
+	Dependencies  []string
+	InitFunc      func(context.Context) error
+	StartFunc     func(context.Context) error
+	CloseFunc     func(context.Context) error
+}
+
+type LifecycleAction string
 
 const (
-	lifecycleActionInit  lifecycleAction = "init"
-	lifecycleActionStart lifecycleAction = "start"
+	LifecycleActionInit  LifecycleAction = "init"
+	LifecycleActionStart LifecycleAction = "start"
 )
 
-type lifecycleStage struct {
-	phase        string
-	action       lifecycleAction
-	subsystems   []lifecycleSubsystem
-	preSatisfied []string
+type LifecycleStage struct {
+	Phase        string
+	Action       LifecycleAction
+	Subsystems   []LifecycleSubsystem
+	PreSatisfied []string
 }
 
-type lifecycleStageReport struct {
+type LifecycleStageReport struct {
 	Phase     string
 	Action    string
 	Waves     [][]string
 	Succeeded []string
 }
 
-type lifecycleExecutionReport struct {
-	Stages []lifecycleStageReport
+type LifecycleExecutionReport struct {
+	Stages []LifecycleStageReport
 	Closed []string
 }
 
-func (s lifecycleSubsystem) Name() string {
-	name := strings.TrimSpace(s.name)
+func (s LifecycleSubsystem) Name() string {
+	name := strings.TrimSpace(s.SubsystemName)
 	if name == "" {
 		return "subsystem"
 	}
 	return name
 }
 
-func (s lifecycleSubsystem) Requires() []string {
-	if len(s.requires) == 0 {
+func (s LifecycleSubsystem) Requires() []string {
+	if len(s.Dependencies) == 0 {
 		return nil
 	}
-	return append([]string(nil), s.requires...)
+	return append([]string(nil), s.Dependencies...)
 }
 
-func (s lifecycleSubsystem) Init(ctx context.Context) error {
-	if s.init == nil {
+func (s LifecycleSubsystem) Init(ctx context.Context) error {
+	if s.InitFunc == nil {
 		return nil
 	}
-	return s.init(ctx)
+	return s.InitFunc(ctx)
 }
 
-func (s lifecycleSubsystem) Start(ctx context.Context) error {
-	if s.start == nil {
+func (s LifecycleSubsystem) Start(ctx context.Context) error {
+	if s.StartFunc == nil {
 		return nil
 	}
-	return s.start(ctx)
+	return s.StartFunc(ctx)
 }
 
-func (s lifecycleSubsystem) Close(ctx context.Context) error {
-	if s.close == nil {
+func (s LifecycleSubsystem) Close(ctx context.Context) error {
+	if s.CloseFunc == nil {
 		return nil
 	}
-	return s.close(ctx)
+	return s.CloseFunc(ctx)
 }
 
-func (a lifecycleAction) String() string {
+func (a LifecycleAction) String() string {
 	action := strings.TrimSpace(string(a))
 	if action == "" {
 		return "lifecycle"
@@ -109,11 +114,11 @@ func (a lifecycleAction) String() string {
 	return action
 }
 
-func (a lifecycleAction) run(ctx context.Context, subsystem lifecycleSubsystem) error {
+func (a LifecycleAction) run(ctx context.Context, subsystem LifecycleSubsystem) error {
 	switch a {
-	case lifecycleActionInit:
+	case LifecycleActionInit:
 		return subsystem.Init(ctx)
-	case lifecycleActionStart:
+	case LifecycleActionStart:
 		return subsystem.Start(ctx)
 	default:
 		return nil
@@ -134,15 +139,18 @@ func runLifecycleErrorStep(phase, name string, fn func() error) (err error) {
 			err = fmt.Errorf("%s %s panic: %v", name, phase, r)
 		}
 	}()
+	if fn == nil {
+		return nil
+	}
 	return fn()
 }
 
-func buildSubsystemWaves(subsystems []lifecycleSubsystem, preSatisfied ...string) ([][]lifecycleSubsystem, error) {
+func BuildSubsystemWaves(subsystems []LifecycleSubsystem, preSatisfied ...string) ([][]LifecycleSubsystem, error) {
 	if len(subsystems) == 0 {
 		return nil, nil
 	}
 
-	specs := make(map[string]lifecycleSubsystem, len(subsystems))
+	specs := make(map[string]LifecycleSubsystem, len(subsystems))
 	order := make(map[string]int, len(subsystems))
 	dependents := make(map[string][]string, len(subsystems))
 	indegree := make(map[string]int, len(subsystems))
@@ -190,9 +198,9 @@ func buildSubsystemWaves(subsystems []lifecycleSubsystem, preSatisfied ...string
 	}
 
 	ready := orderedReadySubsystems(remaining, indegree, order)
-	waves := make([][]lifecycleSubsystem, 0, len(subsystems))
+	waves := make([][]LifecycleSubsystem, 0, len(subsystems))
 	for len(ready) > 0 {
-		wave := make([]lifecycleSubsystem, 0, len(ready))
+		wave := make([]LifecycleSubsystem, 0, len(ready))
 		nextCandidates := make(map[string]struct{})
 		for _, name := range ready {
 			delete(remaining, name)
@@ -218,16 +226,16 @@ func buildSubsystemWaves(subsystems []lifecycleSubsystem, preSatisfied ...string
 	return waves, nil
 }
 
-func executeLifecycleStages(ctx context.Context, logger *slog.Logger, stages ...lifecycleStage) (lifecycleExecutionReport, error) {
-	report := lifecycleExecutionReport{}
+func ExecuteLifecycleStages(ctx context.Context, logger *slog.Logger, stages ...LifecycleStage) (LifecycleExecutionReport, error) {
+	report := LifecycleExecutionReport{}
 	seenClosers := make(map[string]struct{})
-	successfulClosers := make([]lifecycleSubsystem, 0)
+	successfulClosers := make([]LifecycleSubsystem, 0)
 
 	for _, stage := range stages {
 		stageReport, closers, err := runLifecycleStage(ctx, logger, stage)
 		report.Stages = append(report.Stages, stageReport)
 		for _, subsystem := range closers {
-			if subsystem.close == nil {
+			if subsystem.CloseFunc == nil {
 				continue
 			}
 			name := subsystem.Name()
@@ -250,22 +258,22 @@ func executeLifecycleStages(ctx context.Context, logger *slog.Logger, stages ...
 	return report, nil
 }
 
-func runLifecycleStage(ctx context.Context, logger *slog.Logger, stage lifecycleStage) (lifecycleStageReport, []lifecycleSubsystem, error) {
-	report := lifecycleStageReport{
-		Phase:  strings.TrimSpace(stage.phase),
-		Action: stage.action.String(),
+func runLifecycleStage(ctx context.Context, logger *slog.Logger, stage LifecycleStage) (LifecycleStageReport, []LifecycleSubsystem, error) {
+	report := LifecycleStageReport{
+		Phase:  strings.TrimSpace(stage.Phase),
+		Action: stage.Action.String(),
 	}
 
-	waves, err := buildSubsystemWaves(stage.subsystems, stage.preSatisfied...)
+	waves, err := BuildSubsystemWaves(stage.Subsystems, stage.PreSatisfied...)
 	if err != nil {
 		return report, nil, err
 	}
 	report.Waves = subsystemWaveNames(waves)
 	logLifecycleStagePlan(logger, stage, report.Waves)
 
-	successful := make([]lifecycleSubsystem, 0, len(stage.subsystems))
+	successful := make([]LifecycleSubsystem, 0, len(stage.Subsystems))
 	for _, wave := range waves {
-		names, subsystems, err := runLifecycleWave(ctx, stage.action, wave)
+		names, subsystems, err := runLifecycleWave(ctx, stage.Action, wave)
 		report.Succeeded = append(report.Succeeded, names...)
 		successful = append(successful, subsystems...)
 		if err != nil {
@@ -276,14 +284,14 @@ func runLifecycleStage(ctx context.Context, logger *slog.Logger, stage lifecycle
 	return report, successful, nil
 }
 
-func runLifecycleWave(ctx context.Context, action lifecycleAction, wave []lifecycleSubsystem) ([]string, []lifecycleSubsystem, error) {
+func runLifecycleWave(ctx context.Context, action LifecycleAction, wave []LifecycleSubsystem) ([]string, []LifecycleSubsystem, error) {
 	if len(wave) == 0 {
 		return nil, nil, nil
 	}
 
 	type success struct {
 		index     int
-		subsystem lifecycleSubsystem
+		subsystem LifecycleSubsystem
 	}
 
 	var (
@@ -314,7 +322,7 @@ func runLifecycleWave(ctx context.Context, action lifecycleAction, wave []lifecy
 	})
 
 	names := make([]string, 0, len(successes))
-	subsystems := make([]lifecycleSubsystem, 0, len(successes))
+	subsystems := make([]LifecycleSubsystem, 0, len(successes))
 	for _, success := range successes {
 		names = append(names, success.subsystem.Name())
 		subsystems = append(subsystems, success.subsystem)
@@ -322,16 +330,16 @@ func runLifecycleWave(ctx context.Context, action lifecycleAction, wave []lifecy
 	return names, subsystems, err
 }
 
-func closeLifecycleSubsystems(ctx context.Context, subsystems []lifecycleSubsystem) ([]string, []error) {
+func closeLifecycleSubsystems(ctx context.Context, subsystems []LifecycleSubsystem) ([]string, []error) {
 	if len(subsystems) == 0 {
 		return nil, nil
 	}
 
-	ordered := make([]closeSubsystem, 0, len(subsystems))
+	ordered := make([]CloseSubsystem, 0, len(subsystems))
 	closed := make([]string, 0, len(subsystems))
 	for i := len(subsystems) - 1; i >= 0; i-- {
 		subsystem := subsystems[i]
-		if subsystem.close == nil {
+		if subsystem.CloseFunc == nil {
 			continue
 		}
 		ordered = append(ordered, subsystem)
@@ -340,22 +348,22 @@ func closeLifecycleSubsystems(ctx context.Context, subsystems []lifecycleSubsyst
 	if len(ordered) == 0 {
 		return nil, nil
 	}
-	return closed, runSubsystemCloseSequentially(ctx, ordered...)
+	return closed, RunSubsystemCloseSequentially(ctx, ordered...)
 }
 
-func logLifecycleStagePlan(logger *slog.Logger, stage lifecycleStage, waves [][]string) {
+func logLifecycleStagePlan(logger *slog.Logger, stage LifecycleStage, waves [][]string) {
 	if logger == nil || !logger.Enabled(context.Background(), slog.LevelDebug) {
 		return
 	}
 	logger.Debug("computed subsystem lifecycle plan",
-		"phase", strings.TrimSpace(stage.phase),
-		"action", stage.action.String(),
-		"pre_satisfied", normalizeLifecycleDependencies(stage.preSatisfied),
+		"phase", strings.TrimSpace(stage.Phase),
+		"action", stage.Action.String(),
+		"pre_satisfied", normalizeLifecycleDependencies(stage.PreSatisfied),
 		"waves", waves,
 	)
 }
 
-func subsystemWaveNames(waves [][]lifecycleSubsystem) [][]string {
+func subsystemWaveNames(waves [][]LifecycleSubsystem) [][]string {
 	if len(waves) == 0 {
 		return nil
 	}
@@ -411,7 +419,7 @@ func normalizeLifecycleDependencies(values []string) []string {
 	return normalized
 }
 
-func runSubsystemInitConcurrently(ctx context.Context, subsystems ...initSubsystem) error {
+func RunSubsystemInitConcurrently(ctx context.Context, subsystems ...InitSubsystem) error {
 	if len(subsystems) == 0 {
 		return nil
 	}
@@ -431,7 +439,7 @@ func runSubsystemInitConcurrently(ctx context.Context, subsystems ...initSubsyst
 	return g.Wait()
 }
 
-func runSubsystemStartSequentially(ctx context.Context, subsystems ...startSubsystem) error {
+func RunSubsystemStartSequentially(ctx context.Context, subsystems ...StartSubsystem) error {
 	for _, subsystem := range subsystems {
 		if subsystem == nil {
 			continue
@@ -445,7 +453,7 @@ func runSubsystemStartSequentially(ctx context.Context, subsystems ...startSubsy
 	return nil
 }
 
-func runSubsystemCloseSequentially(ctx context.Context, subsystems ...closeSubsystem) []error {
+func RunSubsystemCloseSequentially(ctx context.Context, subsystems ...CloseSubsystem) []error {
 	if len(subsystems) == 0 {
 		return nil
 	}
@@ -462,44 +470,4 @@ func runSubsystemCloseSequentially(ctx context.Context, subsystems ...closeSubsy
 		}
 	}
 	return errs
-}
-
-func initOnlySubsystem(name string, init func(context.Context)) lifecycleSubsystem {
-	return lifecycleSubsystem{
-		name: name,
-		init: func(ctx context.Context) error {
-			if init != nil {
-				init(ctx)
-			}
-			return nil
-		},
-	}
-}
-
-func initOnlySubsystemWithDeps(name string, requires []string, init func(context.Context)) lifecycleSubsystem {
-	subsystem := initOnlySubsystem(name, init)
-	subsystem.requires = normalizeLifecycleDependencies(requires)
-	return subsystem
-}
-
-func wrapInitSubsystem(subsystem initSubsystem, requires ...string) lifecycleSubsystem {
-	if subsystem == nil {
-		return lifecycleSubsystem{}
-	}
-	return lifecycleSubsystem{
-		name:     subsystem.Name(),
-		requires: normalizeLifecycleDependencies(requires),
-		init:     subsystem.Init,
-	}
-}
-
-func wrapStartSubsystem(subsystem startSubsystem, requires ...string) lifecycleSubsystem {
-	if subsystem == nil {
-		return lifecycleSubsystem{}
-	}
-	return lifecycleSubsystem{
-		name:     subsystem.Name(),
-		requires: normalizeLifecycleDependencies(requires),
-		start:    subsystem.Start,
-	}
 }
