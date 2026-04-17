@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"log/slog"
 	"strings"
 	"time"
@@ -9,29 +8,6 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 	"github.com/writer/cerebro/internal/metrics"
 )
-
-type GraphBuildState string
-
-const (
-	GraphBuildNotStarted GraphBuildState = "not_started"
-	GraphBuildBuilding   GraphBuildState = "building"
-	GraphBuildSuccess    GraphBuildState = "success"
-	GraphBuildFailed     GraphBuildState = "failed"
-)
-
-type GraphBuildSnapshot struct {
-	State       GraphBuildState `json:"state"`
-	LastBuildAt time.Time       `json:"last_build_at,omitempty"`
-	LastError   string          `json:"last_error,omitempty"`
-	NodeCount   int             `json:"node_count"`
-}
-
-type RetentionStatus struct {
-	AuditDays        int `json:"audit_days"`
-	SessionDays      int `json:"session_days"`
-	GraphDays        int `json:"graph_days"`
-	AccessReviewDays int `json:"access_review_days"`
-}
 
 func (a *App) setGraphBuildState(state GraphBuildState, builtAt time.Time, err error) {
 	if a == nil {
@@ -52,45 +28,6 @@ func (a *App) setGraphBuildState(state GraphBuildState, builtAt time.Time, err e
 	if state == GraphBuildSuccess && !builtAt.IsZero() {
 		metrics.SetGraphLastUpdate(builtAt.UTC())
 	}
-}
-
-func (a *App) CurrentSecurityGraph() *graph.Graph {
-	if current := a.currentLiveSecurityGraph(); current != nil {
-		if current.NodeCount() > 0 || current.EdgeCount() > 0 {
-			return current
-		}
-	}
-	if a == nil {
-		return nil
-	}
-	if view, err := a.currentConfiguredSecurityGraphView(context.Background()); err == nil && view != nil {
-		return view
-	}
-	return a.currentLiveSecurityGraph()
-}
-
-func (a *App) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {
-	if a == nil {
-		return nil
-	}
-	tenantID = strings.TrimSpace(tenantID)
-	if tenantID == "" {
-		return a.CurrentSecurityGraph()
-	}
-	current := a.currentLiveSecurityGraph()
-	if a.retainHotSecurityGraph() {
-		manager := a.ensureTenantSecurityGraphShards()
-		if manager != nil {
-			if scoped := manager.GraphForTenant(current, tenantID); scoped != nil {
-				return scoped
-			}
-		}
-	}
-	current = a.CurrentSecurityGraph()
-	if current == nil {
-		return nil
-	}
-	return current.SubgraphForTenant(tenantID)
 }
 
 func (a *App) currentLiveSecurityGraph() *graph.Graph {
@@ -171,40 +108,6 @@ func (a *App) releaseBuilderGraphRuntimeLocked() {
 	placeholder := graph.New()
 	a.configureGraphRuntimeBehavior(placeholder)
 	a.SecurityGraphBuilder.ReplaceGraph(placeholder)
-}
-
-func (a *App) GraphBuildSnapshot() GraphBuildSnapshot {
-	if a == nil {
-		return GraphBuildSnapshot{}
-	}
-	a.graphBuildMu.RLock()
-	snapshot := GraphBuildSnapshot{
-		State:       a.graphBuildState,
-		LastBuildAt: a.graphBuildLastAt,
-		LastError:   a.graphBuildErr,
-	}
-	a.graphBuildMu.RUnlock()
-
-	securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
-	if err != nil && a != nil && a.Logger != nil {
-		a.Logger.Warn("failed to resolve security graph for build snapshot", "error", err)
-	}
-	if securityGraph != nil {
-		snapshot.NodeCount = securityGraph.NodeCount()
-	}
-	return snapshot
-}
-
-func (a *App) CurrentRetentionStatus() RetentionStatus {
-	if a == nil || a.Config == nil {
-		return RetentionStatus{}
-	}
-	return RetentionStatus{
-		AuditDays:        a.Config.AuditRetentionDays,
-		SessionDays:      a.Config.SessionRetentionDays,
-		GraphDays:        a.Config.GraphRetentionDays,
-		AccessReviewDays: a.Config.AccessReviewRetentionDays,
-	}
 }
 
 func logUnboundedRetentionWarnings(logger *slog.Logger, cfg *Config) {

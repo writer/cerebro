@@ -1,4 +1,4 @@
-package app
+package graphruntime
 
 import (
 	"context"
@@ -9,14 +9,14 @@ import (
 	"github.com/writer/cerebro/internal/graph"
 )
 
-func (a *App) currentOrStoredSecurityGraphView() (*graph.Graph, error) {
+func (a *Runtime) CurrentOrStoredSecurityGraphView() (*graph.Graph, error) {
 	if a == nil {
 		return nil, nil
 	}
 	if current := a.currentLiveSecurityGraph(); current != nil && (current.NodeCount() > 0 || current.EdgeCount() > 0) {
 		return current, nil
 	}
-	if view, err := a.currentConfiguredSecurityGraphView(context.Background()); err != nil {
+	if view, err := a.CurrentConfiguredSecurityGraphView(context.Background()); err != nil {
 		return nil, err
 	} else if view != nil {
 		return view, nil
@@ -24,22 +24,22 @@ func (a *App) currentOrStoredSecurityGraphView() (*graph.Graph, error) {
 	return a.currentLiveSecurityGraph(), nil
 }
 
-func (a *App) currentOrStoredPassiveSecurityGraphView() (*graph.Graph, error) {
-	return a.currentOrStoredSecurityGraphView()
+func (a *Runtime) CurrentOrStoredPassiveSecurityGraphView() (*graph.Graph, error) {
+	return a.CurrentOrStoredSecurityGraphView()
 }
 
-func (a *App) storedSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error)) (*graph.Graph, error) {
+func (a *Runtime) StoredSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error)) (*graph.Graph, error) {
 	return nil, nil
 }
 
-func (a *App) currentOrStoredPassiveGraphSnapshotRecord() (*graph.GraphSnapshotRecord, error) {
+func (a *Runtime) CurrentOrStoredPassiveGraphSnapshotRecord() (*graph.GraphSnapshotRecord, error) {
 	if a == nil {
 		return nil, nil
 	}
 	if current := graph.CurrentGraphSnapshotRecord(a.currentLiveSecurityGraph()); current != nil {
 		return current, nil
 	}
-	if snapshot, err := a.currentConfiguredSecurityGraphSnapshot(context.Background()); err == nil && snapshot != nil {
+	if snapshot, err := a.CurrentConfiguredSecurityGraphSnapshot(context.Background()); err == nil && snapshot != nil {
 		if current := graph.CurrentGraphSnapshotRecord(graph.GraphViewFromSnapshot(snapshot)); current != nil {
 			return current, nil
 		}
@@ -52,32 +52,32 @@ func (a *App) currentOrStoredPassiveGraphSnapshotRecord() (*graph.GraphSnapshotR
 	return nil, nil
 }
 
-func (a *App) currentOrStoredSecurityGraphViewForTenant(tenantID string) (*graph.Graph, error) {
+func (a *Runtime) CurrentOrStoredSecurityGraphViewForTenant(tenantID string) (*graph.Graph, error) {
 	if a == nil {
 		return nil, nil
 	}
 	tenantID = strings.TrimSpace(tenantID)
 	if tenantID == "" {
-		return a.currentOrStoredSecurityGraphView()
+		return a.CurrentOrStoredSecurityGraphView()
 	}
 	if current := a.currentLiveSecurityGraph(); current != nil {
 		return a.CurrentSecurityGraphForTenant(tenantID), nil
 	}
-	view, err := a.currentOrStoredSecurityGraphView()
+	view, err := a.CurrentOrStoredSecurityGraphView()
 	if err != nil || view == nil {
 		return view, err
 	}
 	return view.SubgraphForTenant(tenantID), nil
 }
 
-func (a *App) requireReadableSecurityGraph() (*graph.Graph, error) {
+func (a *Runtime) RequireReadableSecurityGraph() (*graph.Graph, error) {
 	if a == nil {
 		return nil, fmt.Errorf("security graph not initialized")
 	}
-	g, err := a.currentOrStoredSecurityGraphView()
+	g, err := a.CurrentOrStoredSecurityGraphView()
 	if err != nil {
-		if a.Logger != nil {
-			a.Logger.Warn("failed to resolve readable security graph", "error", err)
+		if a.logger() != nil {
+			a.logger().Warn("failed to resolve readable security graph", "error", err)
 		}
 		return nil, fmt.Errorf("security graph not initialized")
 	}
@@ -87,7 +87,7 @@ func (a *App) requireReadableSecurityGraph() (*graph.Graph, error) {
 	return g, nil
 }
 
-func (a *App) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph {
+func (a *Runtime) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph {
 	if a == nil {
 		return nil
 	}
@@ -95,13 +95,13 @@ func (a *App) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph {
 		ctx = context.Background()
 	}
 	if current := a.currentLiveSecurityGraph(); current != nil {
-		if a.graphReady == nil {
+		if !a.hasGraphReadySignal() {
 			if current.NodeCount() == 0 {
 				return nil
 			}
 			return current
 		}
-		if !a.WaitForGraph(ctx) {
+		if !a.waitForGraph(ctx) {
 			if current.NodeCount() == 0 {
 				return nil
 			}
@@ -109,10 +109,10 @@ func (a *App) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph {
 		}
 		return a.currentLiveSecurityGraph()
 	}
-	securityGraph, err := a.currentOrStoredSecurityGraphView()
+	securityGraph, err := a.CurrentOrStoredSecurityGraphView()
 	if err != nil {
-		if a.Logger != nil {
-			a.Logger.Warn("failed to resolve readable security graph", "error", err)
+		if a.logger() != nil {
+			a.logger().Warn("failed to resolve readable security graph", "error", err)
 		}
 		return nil
 	}
@@ -122,7 +122,7 @@ func (a *App) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph {
 	return securityGraph
 }
 
-func (a *App) currentConfiguredSecurityGraphSnapshot(ctx context.Context) (*graph.Snapshot, error) {
+func (a *Runtime) CurrentConfiguredSecurityGraphSnapshot(ctx context.Context) (*graph.Snapshot, error) {
 	if a == nil {
 		return nil, nil
 	}
@@ -139,8 +139,8 @@ func (a *App) currentConfiguredSecurityGraphSnapshot(ctx context.Context) (*grap
 	return store.Snapshot(ctx)
 }
 
-func (a *App) currentConfiguredSecurityGraphView(ctx context.Context) (*graph.Graph, error) {
-	snapshot, err := a.currentConfiguredSecurityGraphSnapshot(ctx)
+func (a *Runtime) CurrentConfiguredSecurityGraphView(ctx context.Context) (*graph.Graph, error) {
+	snapshot, err := a.CurrentConfiguredSecurityGraphSnapshot(ctx)
 	if err != nil || snapshot == nil {
 		return nil, err
 	}

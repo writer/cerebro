@@ -46,6 +46,7 @@ import (
 	"github.com/writer/cerebro/internal/apiauth"
 	appsubstate "github.com/writer/cerebro/internal/app/appstate"
 	appboot "github.com/writer/cerebro/internal/app/boot"
+	appgraphruntime "github.com/writer/cerebro/internal/app/graphruntime"
 	appscan "github.com/writer/cerebro/internal/app/scan"
 	appsecrets "github.com/writer/cerebro/internal/app/secrets"
 	appstream "github.com/writer/cerebro/internal/app/stream"
@@ -131,6 +132,7 @@ type App struct {
 	Boot          *appboot.Runtime
 	Scan          *appscan.Runtime
 	Stream        *appstream.Runtime
+	GraphRuntime  *appgraphruntime.Runtime
 	AlertRouter   *events.AlertRouter
 	RemoteTools   *agents.RemoteToolProvider
 	ToolPublisher *agents.ToolPublisher
@@ -254,6 +256,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 	}
 	app.Boot = app.newBootRuntime()
 	app.Stream = app.newStreamRuntime()
+	app.GraphRuntime = app.newGraphRuntime()
 	app.secretsLoader = options.secretsLoader
 	app.apiCredentialStore = managedCredentialStore
 	if len(cfg.APICredentials) > 0 || len(cfg.APIKeys) == 0 {

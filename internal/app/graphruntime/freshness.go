@@ -1,4 +1,4 @@
-package app
+package graphruntime
 
 import (
 	"sort"
@@ -27,7 +27,7 @@ type GraphFreshnessStatus struct {
 	Breaches    []GraphFreshnessBreach   `json:"breaches,omitempty"`
 }
 
-func (a *App) GraphFreshnessStatusSnapshot(now time.Time) GraphFreshnessStatus {
+func (a *Runtime) GraphFreshnessStatusSnapshot(now time.Time) GraphFreshnessStatus {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
@@ -35,21 +35,21 @@ func (a *App) GraphFreshnessStatusSnapshot(now time.Time) GraphFreshnessStatus {
 		EvaluatedAt: now.UTC(),
 		Healthy:     true,
 	}
-	securityGraph, err := a.currentOrStoredPassiveSecurityGraphView()
-	if err != nil && a != nil && a.Logger != nil {
-		a.Logger.Warn("failed to resolve security graph for freshness status", "error", err)
+	securityGraph, err := a.CurrentOrStoredPassiveSecurityGraphView()
+	if err != nil && a != nil && a.logger() != nil {
+		a.logger().Warn("failed to resolve security graph for freshness status", "error", err)
 	}
 	if securityGraph == nil {
 		return status
 	}
 
 	defaultSLA := defaultGraphFreshnessSLA
-	if a != nil && a.Config != nil && a.Config.GraphFreshnessDefaultSLA > 0 {
-		defaultSLA = a.Config.GraphFreshnessDefaultSLA
+	if a != nil && a.config() != nil && a.config().GraphFreshnessDefaultSLA > 0 {
+		defaultSLA = a.config().GraphFreshnessDefaultSLA
 	}
 	providerSLAs := make(map[string]time.Duration)
-	if a != nil && a.Config != nil {
-		for provider, duration := range a.Config.GraphFreshnessProviderSLAs {
+	if a != nil && a.config() != nil {
+		for provider, duration := range a.config().GraphFreshnessProviderSLAs {
 			provider = strings.ToLower(strings.TrimSpace(provider))
 			if provider == "" || duration <= 0 {
 				continue
