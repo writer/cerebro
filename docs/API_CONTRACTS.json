@@ -2,8 +2,27 @@
   "api_version": "devex.cerebro/v1alpha1",
   "kind": "HTTPAPIContractCatalog",
   "generated_at": "0001-01-01T00:00:00Z",
-  "endpoint_count": 336,
+  "endpoint_count": 343,
   "endpoints": [
+    {
+      "id": "DELETE /api/v1/admin/devices/bootstrap-tokens/{token_id}",
+      "path": "/api/v1/admin/devices/bootstrap-tokens/{token_id}",
+      "method": "DELETE",
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "status",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
     {
       "id": "DELETE /api/v1/findings/{id}",
       "path": "/api/v1/findings/{id}",
@@ -302,6 +321,144 @@
             },
             {
               "path": "user_id",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/admin/devices",
+      "path": "/api/v1/admin/devices",
+      "method": "GET",
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "count",
+              "type": "integer"
+            },
+            {
+              "path": "devices",
+              "type": "array"
+            },
+            {
+              "path": "devices[]",
+              "type": "object"
+            },
+            {
+              "path": "devices[].agent_version",
+              "type": "string"
+            },
+            {
+              "path": "devices[].device_id",
+              "type": "string"
+            },
+            {
+              "path": "devices[].enrolled_at",
+              "type": "string"
+            },
+            {
+              "path": "devices[].hardware_uuid",
+              "type": "string"
+            },
+            {
+              "path": "devices[].hostname",
+              "type": "string"
+            },
+            {
+              "path": "devices[].last_seen",
+              "type": "string"
+            },
+            {
+              "path": "devices[].metadata",
+              "type": "object"
+            },
+            {
+              "path": "devices[].org_id",
+              "type": "string"
+            },
+            {
+              "path": "devices[].os_type",
+              "type": "string"
+            },
+            {
+              "path": "devices[].revoked_at",
+              "type": "string"
+            },
+            {
+              "path": "devices[].serial_number",
+              "type": "string"
+            },
+            {
+              "path": "devices[].status",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GET /api/v1/admin/devices/{device_id}",
+      "path": "/api/v1/admin/devices/{device_id}",
+      "method": "GET",
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "agent_version",
+              "type": "string"
+            },
+            {
+              "path": "device_id",
+              "type": "string"
+            },
+            {
+              "path": "enrolled_at",
+              "type": "string"
+            },
+            {
+              "path": "hardware_uuid",
+              "type": "string"
+            },
+            {
+              "path": "hostname",
+              "type": "string"
+            },
+            {
+              "path": "last_seen",
+              "type": "string"
+            },
+            {
+              "path": "metadata",
+              "type": "object"
+            },
+            {
+              "path": "org_id",
+              "type": "string"
+            },
+            {
+              "path": "os_type",
+              "type": "string"
+            },
+            {
+              "path": "revoked_at",
+              "type": "string"
+            },
+            {
+              "path": "serial_number",
+              "type": "string"
+            },
+            {
+              "path": "status",
               "type": "string"
             }
           ]
@@ -38534,6 +38691,68 @@
       ]
     },
     {
+      "id": "POST /api/v1/admin/devices/bootstrap-tokens",
+      "path": "/api/v1/admin/devices/bootstrap-tokens",
+      "method": "POST",
+      "request": {
+        "content_types": [
+          "application/json"
+        ],
+        "required_fields": [
+          {
+            "path": "hardware_uuid",
+            "type": "string"
+          }
+        ]
+      },
+      "success_responses": [
+        {
+          "status_code": "201",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "expires_at",
+              "type": "string"
+            },
+            {
+              "path": "token",
+              "type": "string"
+            },
+            {
+              "path": "token_id",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "POST /api/v1/admin/devices/{device_id}:revoke",
+      "path": "/api/v1/admin/devices/{device_id}:revoke",
+      "method": "POST",
+      "request": {
+        "content_types": [
+          "application/json"
+        ]
+      },
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "status",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "POST /api/v1/agent-sdk/annotations",
       "path": "/api/v1/agent-sdk/annotations",
       "method": "POST",
@@ -40139,6 +40358,106 @@
           "status_code": "201",
           "content_types": [
             "application/json"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "POST /api/v1/devices/enroll",
+      "path": "/api/v1/devices/enroll",
+      "method": "POST",
+      "request": {
+        "content_types": [
+          "application/json"
+        ],
+        "required_fields": [
+          {
+            "path": "bootstrap_token",
+            "type": "string"
+          },
+          {
+            "path": "hardware_uuid",
+            "type": "string"
+          }
+        ]
+      },
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "access_token",
+              "type": "string"
+            },
+            {
+              "path": "device_id",
+              "type": "string"
+            },
+            {
+              "path": "expires_in",
+              "type": "integer"
+            },
+            {
+              "path": "refresh_token",
+              "type": "string"
+            },
+            {
+              "path": "token_type",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "POST /api/v1/devices/token",
+      "path": "/api/v1/devices/token",
+      "method": "POST",
+      "request": {
+        "content_types": [
+          "application/json"
+        ],
+        "required_fields": [
+          {
+            "path": "grant_type",
+            "type": "string"
+          },
+          {
+            "path": "refresh_token",
+            "type": "string"
+          }
+        ]
+      },
+      "success_responses": [
+        {
+          "status_code": "200",
+          "content_types": [
+            "application/json"
+          ],
+          "fields": [
+            {
+              "path": "access_token",
+              "type": "string"
+            },
+            {
+              "path": "device_id",
+              "type": "string"
+            },
+            {
+              "path": "expires_in",
+              "type": "integer"
+            },
+            {
+              "path": "refresh_token",
+              "type": "string"
+            },
+            {
+              "path": "token_type",
+              "type": "string"
+            }
           ]
         }
       ]

@@ -4,12 +4,13 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 
 - Catalog API version: **devex.cerebro/v1alpha1**
 - Catalog kind: **HTTPAPIContractCatalog**
-- Endpoints: **336**
+- Endpoints: **343**
 
 ## Endpoint Summary
 
 | Endpoint | Query Params | Required Request Fields | Success Status Codes |
 |---|---:|---:|---|
+| `DELETE /api/v1/admin/devices/bootstrap-tokens/{token_id}` | 0 | 0 | `200` |
 | `DELETE /api/v1/findings/{id}` | 0 | 0 | `200` |
 | `DELETE /api/v1/policies/{id}` | 0 | 0 | `204` |
 | `DELETE /api/v1/remediation/rules/{id}` | 0 | 0 | `204` |
@@ -17,6 +18,8 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `GET /.well-known/oauth-protected-resource` | 0 | 0 | `200` |
 | `GET /api/v1/admin/agent-sdk/credentials` | 0 | 0 | `200` |
 | `GET /api/v1/admin/agent-sdk/credentials/{credential_id}` | 0 | 0 | `200` |
+| `GET /api/v1/admin/devices` | 0 | 0 | `200` |
+| `GET /api/v1/admin/devices/{device_id}` | 0 | 0 | `200` |
 | `GET /api/v1/admin/health` | 0 | 0 | `200` |
 | `GET /api/v1/admin/sync/status` | 0 | 0 | `200` |
 | `GET /api/v1/agent-sdk/context/{entity_id}` | 3 | 0 | `200` |
@@ -235,6 +238,8 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `POST /api/v1/admin/agent-sdk/credentials` | 0 | 0 | `201` |
 | `POST /api/v1/admin/agent-sdk/credentials/{credential_id}:revoke` | 0 | 0 | `200` |
 | `POST /api/v1/admin/agent-sdk/credentials/{credential_id}:rotate` | 0 | 0 | `200` |
+| `POST /api/v1/admin/devices/bootstrap-tokens` | 0 | 1 | `201` |
+| `POST /api/v1/admin/devices/{device_id}:revoke` | 0 | 0 | `200` |
 | `POST /api/v1/agent-sdk/annotations` | 0 | 2 | `201` |
 | `POST /api/v1/agent-sdk/check` | 0 | 2 | `200` |
 | `POST /api/v1/agent-sdk/claims` | 0 | 2 | `201` |
@@ -251,6 +256,8 @@ Generated from `api/openapi.yaml` via `go run ./scripts/generate_api_contract_do
 | `POST /api/v1/attack-paths/analyze` | 0 | 0 | `200` |
 | `POST /api/v1/attack-paths/graph/edges` | 0 | 0 | `201` |
 | `POST /api/v1/attack-paths/graph/nodes` | 0 | 0 | `201` |
+| `POST /api/v1/devices/enroll` | 0 | 2 | `200` |
+| `POST /api/v1/devices/token` | 0 | 2 | `200` |
 | `POST /api/v1/findings/scan` | 0 | 0 | `200` |
 | `POST /api/v1/findings/{id}/notes` | 0 | 1 | `200` |
 | `POST /api/v1/findings/{id}/resolve` | 0 | 0 | `200` |
