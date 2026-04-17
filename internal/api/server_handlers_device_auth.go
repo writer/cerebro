@@ -52,7 +52,7 @@ type adminCreateBootstrapTokenResponse struct {
 
 type adminDeviceResponse struct {
 	DeviceID     string            `json:"device_id"`
-	HardwareUUID string           `json:"hardware_uuid"`
+	HardwareUUID string            `json:"hardware_uuid"`
 	SerialNumber string            `json:"serial_number"`
 	Hostname     string            `json:"hostname"`
 	OrgID        string            `json:"org_id"`

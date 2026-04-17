@@ -20,7 +20,7 @@ import (
 // DeviceRecord represents an enrolled device in the system.
 type DeviceRecord struct {
 	DeviceID     string            `json:"device_id"`
-	HardwareUUID string           `json:"hardware_uuid"`
+	HardwareUUID string            `json:"hardware_uuid"`
 	SerialNumber string            `json:"serial_number"`
 	Hostname     string            `json:"hostname"`
 	OrgID        string            `json:"org_id"`
@@ -37,7 +37,7 @@ type DeviceRecord struct {
 type BootstrapToken struct {
 	TokenID      string            `json:"token_id"`
 	TokenHash    string            `json:"token_hash"`
-	HardwareUUID string           `json:"hardware_uuid"`
+	HardwareUUID string            `json:"hardware_uuid"`
 	OrgID        string            `json:"org_id"`
 	CreatedAt    time.Time         `json:"created_at"`
 	ExpiresAt    time.Time         `json:"expires_at"`
@@ -96,8 +96,8 @@ type Store struct {
 	path          string
 	mu            sync.RWMutex
 	devices       map[string]DeviceRecord       // device_id -> record
-	bootstraps    map[string]BootstrapToken      // token_id -> record
-	refreshTokens map[string]RefreshTokenRecord  // token_hash -> record
+	bootstraps    map[string]BootstrapToken     // token_id -> record
+	refreshTokens map[string]RefreshTokenRecord // token_hash -> record
 }
 
 // NewStore creates a new device auth store backed by the given file path.
