@@ -5529,6 +5529,177 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /api/v1/devices/enroll:
+    post:
+      tags:
+        - DeviceAuth
+      summary: Enroll a device using a bootstrap token
+      description: MDM-deployed agents call this endpoint on first boot to exchange a bootstrap token for device credentials.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceEnrollRequest'
+      responses:
+        '200':
+          description: Device enrolled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenResponse'
+        '401':
+          description: Invalid or expired bootstrap token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/devices/token:
+    post:
+      tags:
+        - DeviceAuth
+      summary: Exchange a refresh token for a new access and refresh token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRequest'
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceTokenResponse'
+        '401':
+          description: Invalid or revoked refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/admin/devices:
+    get:
+      tags:
+        - Admin
+      summary: List enrolled devices
+      responses:
+        '200':
+          description: Device collection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDeviceCollection'
+  /api/v1/admin/devices/{device_id}:
+    get:
+      tags:
+        - Admin
+      summary: Get an enrolled device
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Device record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDeviceResponse'
+        '404':
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/admin/devices/{device_id}:revoke:
+    post:
+      tags:
+        - Admin
+      summary: Revoke an enrolled device
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminRevokeDeviceRequest'
+      responses:
+        '200':
+          description: Device revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '404':
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/admin/devices/bootstrap-tokens:
+    post:
+      tags:
+        - Admin
+      summary: Create a bootstrap token for device enrollment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminCreateBootstrapTokenRequest'
+      responses:
+        '201':
+          description: Bootstrap token created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminCreateBootstrapTokenResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/admin/devices/bootstrap-tokens/{token_id}:
+    delete:
+      tags:
+        - Admin
+      summary: Revoke a bootstrap token
+      parameters:
+        - name: token_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Token revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '404':
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/threatintel/feeds:
     get:
       tags:
@@ -11081,6 +11252,121 @@ components:
         type: integer
         default: 0
   schemas:
+    DeviceEnrollRequest:
+      type: object
+      required: [bootstrap_token, hardware_uuid]
+      properties:
+        bootstrap_token:
+          type: string
+        hardware_uuid:
+          type: string
+        serial_number:
+          type: string
+        hostname:
+          type: string
+        os_type:
+          type: string
+        agent_version:
+          type: string
+    DeviceTokenRequest:
+      type: object
+      required: [grant_type, refresh_token]
+      properties:
+        grant_type:
+          type: string
+          enum: [refresh_token]
+        refresh_token:
+          type: string
+        device_id:
+          type: string
+    DeviceTokenResponse:
+      type: object
+      properties:
+        device_id:
+          type: string
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+        token_type:
+          type: string
+    AdminDeviceResponse:
+      type: object
+      properties:
+        device_id:
+          type: string
+        hardware_uuid:
+          type: string
+        serial_number:
+          type: string
+        hostname:
+          type: string
+        org_id:
+          type: string
+        os_type:
+          type: string
+        agent_version:
+          type: string
+        status:
+          type: string
+        enrolled_at:
+          type: string
+          format: date-time
+        last_seen:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    AdminDeviceCollection:
+      type: object
+      properties:
+        count:
+          type: integer
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminDeviceResponse'
+    AdminRevokeDeviceRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+    AdminCreateBootstrapTokenRequest:
+      type: object
+      required: [hardware_uuid]
+      properties:
+        hardware_uuid:
+          type: string
+        org_id:
+          type: string
+        expires_in_hours:
+          type: integer
+        scopes:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    AdminCreateBootstrapTokenResponse:
+      type: object
+      properties:
+        token_id:
+          type: string
+        token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
     HealthResponse:
       type: object
       properties:
