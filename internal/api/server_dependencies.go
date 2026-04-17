@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/agents"
 	"github.com/writer/cerebro/internal/apiauth"
 	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/attackpath"
 	"github.com/writer/cerebro/internal/auth"
 	"github.com/writer/cerebro/internal/cache"
@@ -151,6 +152,9 @@ type serverDependencies struct {
 	syncHandlers          syncHandlerService
 	ticketingOps          ticketingService
 	threatRuntime         threatRuntimeService
+
+	DeviceAuth *deviceauth.Store
+	DeviceJWT  *deviceauth.DeviceJWTIssuer
 }
 
 type graphRuntimeAdapter struct {
@@ -216,6 +220,30 @@ func newServerDependenciesFromApp(application *app.App) serverDependencies {
 		originalGraph:   application.SecurityGraph,
 		originalBuilder: application.SecurityGraphBuilder,
 	}
+
+	// Device auth: initialized from env vars when signing key is present.
+	if signingKey := strings.TrimSpace(os.Getenv("CEREBRO_DEVICE_JWT_SIGNING_KEY")); signingKey != "" {
+		issuer, err := deviceauth.NewDeviceJWTIssuer(
+			[]byte(signingKey),
+			strings.TrimSpace(os.Getenv("CEREBRO_DEVICE_JWT_ISSUER")),
+			strings.TrimSpace(os.Getenv("CEREBRO_DEVICE_JWT_AUDIENCE")),
+		)
+		if err != nil {
+			deps.Logger.Error("failed to initialize device JWT issuer", "error", err)
+		} else {
+			deps.DeviceJWT = issuer
+			storePath := strings.TrimSpace(os.Getenv("CEREBRO_DEVICE_AUTH_STORE_PATH"))
+			if storePath == "" {
+				storePath = filepath.Join(os.TempDir(), "cerebro-device-auth.json")
+			}
+			store := deviceauth.NewStore(storePath)
+			if err := store.Load(); err != nil {
+				deps.Logger.Warn("failed to load device auth state; starting fresh", "error", err)
+			}
+			deps.DeviceAuth = store
+		}
+	}
+
 	return deps
 }
 

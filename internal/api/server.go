@@ -15,6 +15,7 @@ import (
 
 	apicontract "github.com/writer/cerebro/api"
 	"github.com/writer/cerebro/internal/app"
+	"github.com/writer/cerebro/internal/deviceauth"
 	"github.com/writer/cerebro/internal/graph"
 	reports "github.com/writer/cerebro/internal/graph/reports"
 	risk "github.com/writer/cerebro/internal/graph/risk"
@@ -38,6 +39,8 @@ type Server struct {
 	graphWriteback           graphWritebackService
 	forensics                forensicsService
 	agentSDKAdmin            agentSDKAdminService
+	deviceAuth               *deviceauth.Store
+	deviceJWT                *deviceauth.DeviceJWTIssuer
 	lineage                  lineageService
 	orgAnalysis              orgAnalysisService
 	orgPolicies              orgPolicyService
@@ -217,6 +220,8 @@ func NewServerWithDependencies(deps serverDependencies) *Server {
 		syncHandlers:           syncHandlers,
 		ticketingOps:           ticketingOps,
 		threatRuntime:          threatRuntime,
+		deviceAuth:             deps.DeviceAuth,
+		deviceJWT:              deps.DeviceJWT,
 		router:                 chi.NewRouter(),
 		auditLogger:            deps.AuditRepo,
 		crossTenantReplay:      make(map[string]time.Time),

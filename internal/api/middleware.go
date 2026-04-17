@@ -40,7 +40,13 @@ const (
 	contextKeyCredentialScopes contextKey = "api_credential_scopes"
 	contextKeyClientID         contextKey = "api_client_id"
 	contextKeyTraceparent      contextKey = "traceparent"
+	contextKeyDeviceID         contextKey = "device_id"
 )
+
+// DeviceJWTValidator validates device-issued access tokens.
+type DeviceJWTValidator interface {
+	ValidateAccessToken(tokenStr string) (deviceID, hardwareUUID, orgID string, scopes []string, err error)
+}
 
 type AuthConfig struct {
 	APIKeys              map[string]string             // key -> user_id mapping
@@ -49,6 +55,7 @@ type AuthConfig struct {
 	CredentialProvider   func() map[string]apiauth.Credential
 	CredentialLookup     func(string) (apiauth.Credential, bool)
 	AuthorizationServers []string
+	DeviceJWT            DeviceJWTValidator // optional device JWT validator
 	Enabled              bool
 }
 
@@ -84,6 +91,25 @@ func APIKeyAuth(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			credential, valid := lookupAuthCredential(cfg, apiKey)
 			if !valid {
+				// If API key lookup failed, try device JWT validation
+				if cfg.DeviceJWT != nil && looksLikeJWT(apiKey) {
+					deviceID, _, orgID, scopes, err := cfg.DeviceJWT.ValidateAccessToken(apiKey)
+					if err == nil {
+						ctx := context.WithValue(r.Context(), contextKeyAPIKey, "")
+						ctx = context.WithValue(ctx, contextKeyUserID, "device:"+deviceID)
+						ctx = context.WithValue(ctx, contextKeyDeviceID, deviceID)
+						ctx = context.WithValue(ctx, contextKeyCredentialID, "device:"+deviceID)
+						ctx = context.WithValue(ctx, contextKeyCredentialKind, "device_jwt")
+						ctx = context.WithValue(ctx, contextKeyCredentialName, "device:"+deviceID)
+						ctx = context.WithValue(ctx, contextKeyCredentialScopes, append([]string(nil), scopes...))
+						ctx = context.WithValue(ctx, contextKeyTenant, orgID)
+						if traceparent := strings.TrimSpace(r.Header.Get("traceparent")); traceparent != "" {
+							ctx = context.WithValue(ctx, contextKeyTraceparent, traceparent)
+						}
+						next.ServeHTTP(w, r.WithContext(ctx))
+						return
+					}
+				}
 				writeAPIAuthError(w, r, http.StatusUnauthorized, "invalid_api_key", "API key is invalid or expired")
 				return
 			}
@@ -267,6 +293,19 @@ func GetAPIClientID(ctx context.Context) string {
 	return ""
 }
 
+func GetDeviceID(ctx context.Context) string {
+	if v := ctx.Value(contextKeyDeviceID); v != nil {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func looksLikeJWT(token string) bool {
+	return strings.Count(token, ".") == 2
+}
+
 func GetTraceparent(ctx context.Context) string {
 	if v := ctx.Value(contextKeyTraceparent); v != nil {
 		if s, ok := v.(string); ok {
@@ -340,6 +379,8 @@ func isPublicEndpoint(path string) bool {
 		path == "/openapi.yaml" ||
 		path == "/api/v1/trust-center" ||
 		path == "/api/v1/trust-center/evidence" ||
+		path == "/api/v1/devices/enroll" ||
+		path == "/api/v1/devices/token" ||
 		path == "/.well-known/oauth-protected-resource"
 }
 
@@ -355,6 +396,8 @@ func routePermission(method, path string) string {
 	isExport := strings.Contains(path, "/export")
 
 	switch {
+	case strings.HasPrefix(path, "/api/v1/admin/devices"):
+		return "sdk.admin"
 	case strings.HasPrefix(path, "/api/v1/admin/agent-sdk/credentials"):
 		return "sdk.admin"
 	case strings.HasPrefix(path, "/api/v1/agent-sdk/tools"):

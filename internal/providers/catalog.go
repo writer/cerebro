@@ -55,6 +55,7 @@ var providerMetadata = map[string]ProviderMetadata{
 	"servicenow":       {Name: "servicenow", Maturity: ProviderMaturityBeta, Public: true},
 	"sentinelone":      {Name: "sentinelone", Maturity: ProviderMaturityProductionReady, Public: true},
 	"sailpoint":        {Name: "sailpoint", Maturity: ProviderMaturityProductionReady, Public: true},
+	"secheck":          {Name: "secheck", Maturity: ProviderMaturityBeta, Public: true},
 	"saviynt":          {Name: "saviynt", Maturity: ProviderMaturityProductionReady, Public: true},
 	"slack":            {Name: "slack", Maturity: ProviderMaturityBeta, Public: true},
 	"snyk":             {Name: "snyk", Maturity: ProviderMaturityProductionReady, Public: true},

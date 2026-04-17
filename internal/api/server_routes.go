@@ -5,6 +5,8 @@ package api
 import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/writer/cerebro/internal/deviceauth"
 )
 
 func (s *Server) setupMiddleware() {
@@ -44,6 +46,10 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RealIP)
 
 	if s.app.Config.APIAuthEnabled {
+		var deviceJWTValidator DeviceJWTValidator
+		if s.deviceJWT != nil {
+			deviceJWTValidator = &deviceauth.MiddlewareAdapter{Issuer: s.deviceJWT}
+		}
 		s.router.Use(APIKeyAuth(AuthConfig{
 			Enabled:              true,
 			APIKeys:              s.app.Config.APIKeys,
@@ -52,6 +58,7 @@ func (s *Server) setupMiddleware() {
 			CredentialProvider:   s.app.APICredentialsSnapshot,
 			CredentialLookup:     s.app.LookupAPICredential,
 			AuthorizationServers: append([]string(nil), s.app.Config.APIAuthorizationServers...),
+			DeviceJWT:            deviceJWTValidator,
 		}))
 	}
 
@@ -335,6 +342,21 @@ func (s *Server) setupRoutes() {
 			r.Post("/gcp", s.syncGCP)
 			r.Post("/gcp-asset", s.syncGCPAsset)
 			r.Post("/k8s", s.syncK8s)
+		})
+
+		// Device authentication (public, no API key required)
+		r.Route("/devices", func(r chi.Router) {
+			r.Post("/enroll", s.deviceEnroll)
+			r.Post("/token", s.deviceToken)
+		})
+
+		// Admin device management
+		r.Route("/admin/devices", func(r chi.Router) {
+			r.Get("/", s.listAdminDevices)
+			r.Get("/{device_id}", s.getAdminDevice)
+			r.Post("/{device_id}:revoke", s.revokeAdminDevice)
+			r.Post("/bootstrap-tokens", s.createBootstrapToken)
+			r.Delete("/bootstrap-tokens/{token_id}", s.revokeBootstrapToken)
 		})
 
 		// Telemetry ingestion (for agents)

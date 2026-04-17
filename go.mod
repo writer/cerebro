@@ -97,6 +97,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/wafv2 v1.70.7
 	github.com/aws/smithy-go v1.24.2
 	github.com/go-chi/chi/v5 v5.2.4
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
 	github.com/googleapis/gax-go/v2 v2.16.0
@@ -192,7 +193,6 @@ require (
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect

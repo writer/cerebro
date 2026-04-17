@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/runtime"
 	"github.com/writer/cerebro/internal/runtime/adapters"
 	"github.com/writer/cerebro/internal/runtime/adapters/awsvpcflow"
+	"github.com/writer/cerebro/internal/runtime/adapters/secheck"
 	"github.com/writer/cerebro/internal/webhooks"
 )
 
@@ -20,6 +21,8 @@ func telemetryAdapter(source string) (adapters.Adapter, bool) {
 	switch strings.TrimSpace(source) {
 	case awsvpcflow.SourceName:
 		return awsvpcflow.Adapter{}, true
+	case secheck.SourceName:
+		return secheck.Adapter{}, true
 	default:
 		return nil, false
 	}
