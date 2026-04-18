@@ -1,0 +1,13 @@
+name: Socket Security Analysis
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+
+jobs:
+  socket:
+    uses: WriterInternal/security/.github/workflows/socket.yml@main
+    secrets:
+      google_ar_pass: ${{ secrets.GOOGLE_AR_PASS }}
+      zizmor_infisical_project_uuid: ${{ secrets.ZIZMOR_INFISICAL_PROJECT_UUID }}
