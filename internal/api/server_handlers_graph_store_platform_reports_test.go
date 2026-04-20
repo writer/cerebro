@@ -11,6 +11,20 @@ import (
 	reports "github.com/writer/cerebro/internal/graph/reports"
 )
 
+type countOnlyPlatformReportMetadataStore struct {
+	graph.GraphStore
+	nodeCount int
+	edgeCount int
+}
+
+func (s countOnlyPlatformReportMetadataStore) CountNodes(context.Context) (int, error) {
+	return s.nodeCount, nil
+}
+
+func (s countOnlyPlatformReportMetadataStore) CountEdges(context.Context) (int, error) {
+	return s.edgeCount, nil
+}
+
 func buildGraphStorePlatformReportTestGraph() *graph.Graph {
 	g := graph.New()
 	now := time.Date(2026, 3, 18, 10, 30, 0, 0, time.UTC)
@@ -82,6 +96,23 @@ func TestCurrentPlatformReportLineageUsesStoreMetadataWhenSnapshotMaterializatio
 	}
 	if store.metadataCalls == 0 {
 		t.Fatal("expected currentPlatformReportLineage to use store metadata")
+	}
+}
+
+func TestCurrentPlatformReportLineageSkipsSnapshotIDForCountOnlyMetadata(t *testing.T) {
+	store := countOnlyPlatformReportMetadataStore{
+		GraphStore: buildGraphStorePlatformReportTestGraph(),
+		nodeCount:  2,
+		edgeCount:  0,
+	}
+	s := newStoreBackedGraphServerWithExecutionStore(t, store)
+
+	lineage := s.currentPlatformReportLineage(context.Background(), reports.ReportDefinition{ID: "quality", Version: "2.1.0"})
+	if lineage.GraphSnapshotID != "" {
+		t.Fatalf("expected no graph_snapshot_id for count-only metadata, got %#v", lineage)
+	}
+	if lineage.GraphBuiltAt != nil {
+		t.Fatalf("expected no graph_built_at for count-only metadata, got %#v", lineage.GraphBuiltAt)
 	}
 }
 
