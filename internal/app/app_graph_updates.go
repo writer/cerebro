@@ -133,7 +133,7 @@ func (a *App) maybeStartGraphConsistencyCheck(trigger string, summary graph.Grap
 	a.graphConsistencyWG.Add(1)
 	baseCtx := a.graphCtx
 	if baseCtx == nil {
-		baseCtx = context.Background()
+		baseCtx = a.backgroundContext()
 	}
 	checkCtx, cancel := context.WithTimeout(baseCtx, a.Config.GraphConsistencyCheckTimeoutOrDefault())
 	a.graphConsistencyCancel = cancel
