@@ -323,7 +323,6 @@ func (c *Config) usesNATSTransportSettings() bool {
 	}
 	return c.NATSJetStreamEnabled ||
 		c.NATSConsumerEnabled ||
-		c.AlertRouterEnabled ||
 		c.AgentRemoteToolsEnabled ||
 		c.AgentToolPublisherEnabled ||
 		c.GraphWriterLeaseEnabled

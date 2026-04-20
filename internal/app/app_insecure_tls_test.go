@@ -52,6 +52,18 @@ func TestConfigValidateRejectsInsecureTLSForAgentTransportsWithoutOverride(t *te
 	}
 }
 
+func TestConfigValidateAllowsAlertRouterWithoutJetStreamWhenTLSIsInsecure(t *testing.T) {
+	cfg := LoadConfig()
+	cfg.AlertRouterEnabled = true
+	cfg.NATSJetStreamEnabled = false
+	cfg.NATSJetStreamTLSEnabled = true
+	cfg.NATSJetStreamTLSInsecure = true
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected alert router alone not to require insecure TLS override, got %v", err)
+	}
+}
+
 func TestConfigValidateAllowsInsecureTLSWithExplicitOverride(t *testing.T) {
 	t.Setenv("CEREBRO_ALLOW_INSECURE_TLS", "false")
 
