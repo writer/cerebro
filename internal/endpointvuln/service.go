@@ -3,6 +3,7 @@ package endpointvuln
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -41,6 +42,11 @@ type Refresher struct {
 	Advisories  advisoryLookup
 	Logger      *slog.Logger
 	Now         func() time.Time
+}
+
+type tableRefresh struct {
+	spec tableSpec
+	rows []map[string]any
 }
 
 type endpointSourceRecord struct {
@@ -377,13 +383,12 @@ func (r Refresher) Refresh(ctx context.Context) error {
 	softwareAggs, softwareIndex := correlateSoftware(software, endpointAggs, endpointIDs)
 	vulnerabilityAggs := correlateVulnerabilities(vulnerabilities, endpointAggs, endpointIDs, softwareIndex, r.ThreatIntel, r.Advisories, now)
 
-	if err := r.replaceRows(ctx, endpointTableSpec, endpointRows(endpointAggs, now)); err != nil {
-		return err
+	refreshes := []tableRefresh{
+		{spec: endpointTableSpec, rows: endpointRows(endpointAggs, now)},
+		{spec: endpointSoftwareTableSpec, rows: softwareRows(softwareAggs, now)},
+		{spec: vulnerabilityTableSpec, rows: vulnerabilityRows(vulnerabilityAggs, now)},
 	}
-	if err := r.replaceRows(ctx, endpointSoftwareTableSpec, softwareRows(softwareAggs, now)); err != nil {
-		return err
-	}
-	if err := r.replaceRows(ctx, vulnerabilityTableSpec, vulnerabilityRows(vulnerabilityAggs, now)); err != nil {
+	if err := r.replaceRowsAtomically(ctx, refreshes); err != nil {
 		return err
 	}
 
@@ -974,11 +979,41 @@ func vulnerabilityRows(aggregates []*vulnerabilityAggregate, refreshedAt time.Ti
 	return rows
 }
 
-func (r Refresher) replaceRows(ctx context.Context, spec tableSpec, rows []map[string]any) error {
-	if _, err := r.Warehouse.Exec(ctx, spec.Create); err != nil {
-		return fmt.Errorf("ensure %s: %w", spec.Name, err)
+func (r Refresher) replaceRowsAtomically(ctx context.Context, refreshes []tableRefresh) error {
+	db := r.Warehouse.DB()
+	if db == nil {
+		return fmt.Errorf("warehouse database is not initialized")
 	}
-	if _, err := r.Warehouse.Exec(ctx, "DELETE FROM "+spec.Name); err != nil {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin normalized table refresh: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	dialect := warehouse.DialectFor(r.Warehouse)
+	for _, refresh := range refreshes {
+		if err := execWarehouseTx(ctx, tx, dialect, refresh.spec.Create); err != nil {
+			return fmt.Errorf("ensure %s: %w", refresh.spec.Name, err)
+		}
+		if err := r.replaceRowsTx(ctx, tx, dialect, refresh.spec, refresh.rows); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit normalized table refresh: %w", err)
+	}
+	committed = true
+	return nil
+}
+
+func (r Refresher) replaceRowsTx(ctx context.Context, tx *sql.Tx, dialect string, spec tableSpec, rows []map[string]any) error {
+	if err := execWarehouseTx(ctx, tx, dialect, "DELETE FROM "+spec.Name); err != nil {
 		return fmt.Errorf("clear %s: %w", spec.Name, err)
 	}
 	if len(rows) == 0 {
@@ -1002,12 +1037,22 @@ func (r Refresher) replaceRows(ctx context.Context, spec tableSpec, rows []map[s
 			for _, column := range spec.Columns {
 				args = append(args, row[column])
 			}
-			if _, err := r.Warehouse.Exec(ctx, insertQuery, args...); err != nil {
+			if err := execWarehouseTx(ctx, tx, dialect, insertQuery, args...); err != nil {
 				return fmt.Errorf("insert into %s: %w", spec.Name, err)
 			}
 		}
 	}
 
+	return nil
+}
+
+func execWarehouseTx(ctx context.Context, tx *sql.Tx, dialect string, query string, args ...any) error {
+	if tx == nil {
+		return fmt.Errorf("warehouse transaction is not initialized")
+	}
+	if _, err := tx.ExecContext(ctx, warehouse.RewriteQueryForDialect(query, dialect), args...); err != nil {
+		return err
+	}
 	return nil
 }
 

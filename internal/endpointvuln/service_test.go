@@ -193,6 +193,73 @@ func TestRefresherCreatesEmptyNormalizedTablesWithoutSourceTables(t *testing.T) 
 	}
 }
 
+func TestRefresherRefreshKeepsNormalizedTablesAtomicOnInsertFailure(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newTestWarehouse(t)
+	seedEndpointVulnSourceTables(t, ctx, store)
+
+	refresher := Refresher{
+		Warehouse: store,
+		Now:       func() time.Time { return time.Date(2026, 4, 14, 12, 0, 0, 0, time.UTC) },
+	}
+	if err := refresher.Refresh(ctx); err != nil {
+		t.Fatalf("initial refresh failed: %v", err)
+	}
+
+	if _, err := store.Exec(ctx, `INSERT INTO kandji_devices (
+		device_id, device_name, serial_number, platform, os_version, last_check_in, user_name, user_email, agent_installed, firewall_enabled, filevault_enabled
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"device-2", "macbook-02", "SERIAL-2", "macOS", "14.4", "2026-04-14T12:00:00Z", "analyst", "analyst@example.com", true, true, true,
+	); err != nil {
+		t.Fatalf("seed second device: %v", err)
+	}
+	if _, err := store.Exec(ctx, `INSERT INTO kandji_device_apps (device_id, app_name, version, bundle_id) VALUES (?, ?, ?, ?)`,
+		"device-2", "Firefox", "125.0", "org.mozilla.firefox",
+	); err != nil {
+		t.Fatalf("seed second app: %v", err)
+	}
+	if _, err := store.Exec(ctx, `INSERT INTO kandji_vulnerabilities (
+		device_id, cve_id, software_name, software_version, cvss_score, cvss_severity, first_detection_date, latest_detection_date, cve_link
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"device-2", "CVE-2026-9999", "Firefox", "125.0", 7.8, "high", "2026-04-13T00:00:00Z", "2026-04-14T00:00:00Z", "https://example.com/CVE-2026-9999",
+	); err != nil {
+		t.Fatalf("seed second vulnerability: %v", err)
+	}
+	if _, err := store.Exec(ctx, `
+		CREATE TRIGGER fail_vulnerabilities_insert
+		BEFORE INSERT ON vulnerabilities
+		BEGIN
+			SELECT RAISE(FAIL, 'vulnerability refresh blocked');
+		END;
+	`); err != nil {
+		t.Fatalf("create failure trigger: %v", err)
+	}
+
+	err := refresher.Refresh(ctx)
+	if err == nil || !strings.Contains(err.Error(), "insert into vulnerabilities") {
+		t.Fatalf("expected vulnerability insert failure, got %v", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		want int
+	}{
+		{name: endpointsTableName, want: 1},
+		{name: endpointSoftwareTableName, want: 1},
+		{name: vulnerabilitiesTableName, want: 1},
+	} {
+		result, queryErr := store.Query(ctx, "SELECT * FROM "+tc.name)
+		if queryErr != nil {
+			t.Fatalf("query %s failed: %v", tc.name, queryErr)
+		}
+		if result.Count != tc.want {
+			t.Fatalf("%s count = %d, want %d", tc.name, result.Count, tc.want)
+		}
+	}
+}
+
 func newTestWarehouse(t *testing.T) *warehouse.SQLiteWarehouse {
 	t.Helper()
 
