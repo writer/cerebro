@@ -11,6 +11,9 @@ func TestBuildVendorRiskReportFiltersAndAlerts(t *testing.T) {
 	temporalNowUTC = func() time.Time { return time.Date(2026, 3, 20, 0, 0, 0, 0, time.UTC) }
 
 	g := New()
+	now := time.Now().UTC().Truncate(time.Second)
+	historical := now.Add(-12 * 24 * time.Hour)
+	recent := now.Add(-24 * time.Hour)
 
 	g.AddNode(&Node{
 		ID:   "vendor:slack",
@@ -36,8 +39,8 @@ func TestBuildVendorRiskReportFiltersAndAlerts(t *testing.T) {
 			"delegated_admin_consent_count":   1,
 			"verified_publisher_count":        1,
 			"unverified_integration_count":    0,
-			"last_grant_updated_at":           "2026-03-18T00:00:00Z",
-			"last_oauth_activity_at":          "2026-03-19T00:00:00Z",
+			"last_grant_updated_at":           recent.Add(-24 * time.Hour).Format(time.RFC3339),
+			"last_oauth_activity_at":          recent.Format(time.RFC3339),
 		},
 	})
 	g.AddNode(&Node{
@@ -63,16 +66,16 @@ func TestBuildVendorRiskReportFiltersAndAlerts(t *testing.T) {
 	}
 	slack.PropertyHistory = map[string][]PropertySnapshot{
 		"vendor_risk_score": {
-			{Timestamp: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), Value: 44},
-			{Timestamp: time.Date(2026, 3, 19, 0, 0, 0, 0, time.UTC), Value: 86},
+			{Timestamp: historical, Value: 44},
+			{Timestamp: recent, Value: 86},
 		},
 		"admin_access_count": {
-			{Timestamp: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), Value: 0},
-			{Timestamp: time.Date(2026, 3, 19, 0, 0, 0, 0, time.UTC), Value: 1},
+			{Timestamp: historical, Value: 0},
+			{Timestamp: recent, Value: 1},
 		},
 		"sensitive_resource_count": {
-			{Timestamp: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), Value: 0},
-			{Timestamp: time.Date(2026, 3, 19, 0, 0, 0, 0, time.UTC), Value: 1},
+			{Timestamp: historical, Value: 0},
+			{Timestamp: recent, Value: 1},
 		},
 	}
 
