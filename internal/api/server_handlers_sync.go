@@ -329,7 +329,7 @@ func (s *Server) syncAWS(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"provider":                "aws",
 		"validate":                req.Validate,
-		"results":                 result.Results,
+		"results":                 s.sanitizeSyncResults("aws", result.Results),
 		"relationships_extracted": result.RelationshipsExtracted,
 	}
 	if result.RelationshipsSkippedReason != "" {
@@ -505,7 +505,7 @@ func (s *Server) syncAWSOrg(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"provider": "aws_org",
 		"validate": req.Validate,
-		"results":  result.Results,
+		"results":  s.sanitizeSyncResults("aws_org", result.Results),
 	}
 	if len(result.AccountErrors) > 0 {
 		resp["account_errors"] = s.sanitizeSyncAccountErrors("aws_org", result.AccountErrors)
@@ -733,7 +733,7 @@ func (s *Server) syncGCP(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"provider":                "gcp",
 		"validate":                req.Validate,
-		"results":                 result.Results,
+		"results":                 s.sanitizeSyncResults("gcp", result.Results),
 		"relationships_extracted": result.RelationshipsExtracted,
 	}
 	if result.RelationshipsSkippedReason != "" {
@@ -793,6 +793,26 @@ func sanitizeSyncAccountError(accountError string) string {
 		}
 	}
 	return "account sync failed"
+}
+
+func (s *Server) sanitizeSyncResults(provider string, results []nativesync.SyncResult) []nativesync.SyncResult {
+	if len(results) == 0 {
+		return nil
+	}
+	sanitized := make([]nativesync.SyncResult, len(results))
+	raw := make([]string, 0)
+	for i, result := range results {
+		sanitized[i] = result
+		if strings.TrimSpace(result.Error) == "" {
+			continue
+		}
+		raw = append(raw, fmt.Sprintf("table=%s region=%s error=%s", result.Table, result.Region, result.Error))
+		sanitized[i].Error = "sync failed"
+	}
+	if len(raw) > 0 && s != nil && s.app != nil && s.app.Logger != nil {
+		s.app.Logger.Warn("sync completed with table errors", "provider", provider, "details", raw)
+	}
+	return sanitized
 }
 
 func appendGCPPermissionUsageRequestOptions(options []nativesync.GCPEngineOption, lookbackDays int, removalThresholdDays int, targetGroups []string) []nativesync.GCPEngineOption {

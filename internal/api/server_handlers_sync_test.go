@@ -407,6 +407,54 @@ func TestSyncAWS_SanitizesRelationshipExtractionFailureReason(t *testing.T) {
 	}
 }
 
+func TestSyncAWS_SanitizesTableLevelErrorsInResults(t *testing.T) {
+	s := newTestServer(t)
+	setSnowflakeWarehouseDeps(s.app)
+
+	var logs bytes.Buffer
+	s.app.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	originalRun := runAWSSyncWithOptions
+	t.Cleanup(func() { runAWSSyncWithOptions = originalRun })
+
+	rawError := "SQL compilation error: Object 'RAW.INTERNAL_ONLY' does not exist"
+	runAWSSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsSyncRequest) (*awsSyncOutcome, error) {
+		return &awsSyncOutcome{
+			Results: []nativesync.SyncResult{{
+				Table:  "aws_s3_buckets",
+				Region: "us-east-1",
+				Error:  rawError,
+			}},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws", map[string]interface{}{
+		"region": "us-east-1",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	results, ok := body["results"].([]interface{})
+	if !ok || len(results) != 1 {
+		t.Fatalf("expected single sync result, got %#v", body["results"])
+	}
+	result, ok := results[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sync result object, got %#v", results[0])
+	}
+	if result["Error"] != "sync failed" {
+		t.Fatalf("expected sanitized sync error, got %#v", result["Error"])
+	}
+	if strings.Contains(w.Body.String(), rawError) {
+		t.Fatalf("expected response to omit raw sync error, got %s", w.Body.String())
+	}
+	if !strings.Contains(logs.String(), rawError) {
+		t.Fatalf("expected logs to retain raw sync error, got %s", logs.String())
+	}
+}
+
 func TestSyncAWS_AppliesIncrementalGraphChangesAfterSync(t *testing.T) {
 	s := newTestServer(t)
 	setSnowflakeWarehouseDeps(s.app)
@@ -923,6 +971,53 @@ func TestSyncAWSOrg_SanitizesAccountErrorsInResponse(t *testing.T) {
 	}
 }
 
+func TestSyncAWSOrg_SanitizesTableLevelErrorsInResults(t *testing.T) {
+	s := newTestServer(t)
+	setSnowflakeWarehouseDeps(s.app)
+
+	var logs bytes.Buffer
+	s.app.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	originalRun := runAWSOrgSyncWithOptions
+	t.Cleanup(func() { runAWSOrgSyncWithOptions = originalRun })
+
+	rawError := "AccessDenied: cannot query table RAW.SECRET_BUCKETS"
+	runAWSOrgSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req awsOrgSyncRequest) (*awsOrgSyncOutcome, error) {
+		return &awsOrgSyncOutcome{
+			Results: []nativesync.SyncResult{{
+				Table: "aws_iam_users",
+				Error: rawError,
+			}},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/aws-org", map[string]interface{}{
+		"org_role": "OrganizationAccountAccessRole",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	results, ok := body["results"].([]interface{})
+	if !ok || len(results) != 1 {
+		t.Fatalf("expected single sync result, got %#v", body["results"])
+	}
+	result, ok := results[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sync result object, got %#v", results[0])
+	}
+	if result["Error"] != "sync failed" {
+		t.Fatalf("expected sanitized sync error, got %#v", result["Error"])
+	}
+	if strings.Contains(w.Body.String(), rawError) {
+		t.Fatalf("expected response to omit raw sync error, got %s", w.Body.String())
+	}
+	if !strings.Contains(logs.String(), rawError) {
+		t.Fatalf("expected logs to retain raw sync error, got %s", logs.String())
+	}
+}
+
 func TestSyncGCP_RequiresSnowflake(t *testing.T) {
 	s := newTestServer(t)
 
@@ -1044,6 +1139,53 @@ func TestSyncGCP_SanitizesRelationshipExtractionFailureReason(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), rawReason) {
 		t.Fatalf("expected logs to retain raw extraction failure, got %s", logs.String())
+	}
+}
+
+func TestSyncGCP_SanitizesTableLevelErrorsInResults(t *testing.T) {
+	s := newTestServer(t)
+	setSnowflakeWarehouseDeps(s.app)
+
+	var logs bytes.Buffer
+	s.app.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	originalRun := runGCPSyncWithOptions
+	t.Cleanup(func() { runGCPSyncWithOptions = originalRun })
+
+	rawError := "permission denied reading gs://internal-only-bucket"
+	runGCPSyncWithOptions = func(ctx context.Context, client warehouse.SyncWarehouse, req gcpSyncRequest) (*gcpSyncOutcome, error) {
+		return &gcpSyncOutcome{
+			Results: []nativesync.SyncResult{{
+				Table: "gcp_compute_instances",
+				Error: rawError,
+			}},
+		}, nil
+	}
+
+	w := do(t, s, http.MethodPost, "/api/v1/sync/gcp", map[string]interface{}{
+		"project": "proj-123",
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	body := decodeJSON(t, w)
+	results, ok := body["results"].([]interface{})
+	if !ok || len(results) != 1 {
+		t.Fatalf("expected single sync result, got %#v", body["results"])
+	}
+	result, ok := results[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sync result object, got %#v", results[0])
+	}
+	if result["Error"] != "sync failed" {
+		t.Fatalf("expected sanitized sync error, got %#v", result["Error"])
+	}
+	if strings.Contains(w.Body.String(), rawError) {
+		t.Fatalf("expected response to omit raw sync error, got %s", w.Body.String())
+	}
+	if !strings.Contains(logs.String(), rawError) {
+		t.Fatalf("expected logs to retain raw sync error, got %s", logs.String())
 	}
 }
 
