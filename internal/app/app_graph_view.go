@@ -30,7 +30,7 @@ func (a *App) currentOrStoredPassiveGraphSnapshotRecord() (*graph.GraphSnapshotR
 	if current := graph.CurrentGraphSnapshotRecord(a.currentLiveSecurityGraph()); current != nil {
 		return current, nil
 	}
-	if snapshot, err := a.currentConfiguredSecurityGraphSnapshot(context.Background()); err == nil && snapshot != nil {
+	if snapshot, err := a.currentConfiguredSecurityGraphSnapshot(a.backgroundContext()); err == nil && snapshot != nil {
 		if current := graph.CurrentGraphSnapshotRecord(graph.GraphViewFromSnapshot(snapshot)); current != nil {
 			return current, nil
 		}
@@ -49,7 +49,7 @@ func (a *App) currentOrStoredSecurityGraphViewWithSnapshotLoader(loadSnapshot fu
 	if current != nil && (current.NodeCount() > 0 || current.EdgeCount() > 0) {
 		return current, nil
 	}
-	if view, err := a.currentConfiguredSecurityGraphView(context.Background()); err != nil {
+	if view, err := a.currentConfiguredSecurityGraphView(a.backgroundContext()); err != nil {
 		return nil, err
 	} else if view != nil {
 		return view, nil
@@ -138,7 +138,7 @@ func (a *App) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph {
 		return nil
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = a.backgroundContext()
 	}
 	if current := a.currentLiveSecurityGraph(); current != nil {
 		if a.graphReady == nil {

@@ -1,9 +1,6 @@
 package graph
 
-import (
-	"context"
-	"time"
-)
+import "context"
 
 // GraphMetadataStore exposes graph metadata/status reads without forcing a
 // full snapshot restore.
@@ -113,7 +110,6 @@ func graphMetadataFromCounts(ctx context.Context, store GraphStore) (Metadata, e
 		return Metadata{}, err
 	}
 	return Metadata{
-		BuiltAt:   time.Now().UTC(),
 		NodeCount: nodeCount,
 		EdgeCount: edgeCount,
 	}, nil

@@ -498,6 +498,17 @@ func (a *App) currentConfiguredTenantSecurityGraphStore(ctx context.Context, ten
 	if !graph.SupportsTenantReadScope(store) {
 		return nil, graph.ErrStoreUnavailable
 	}
+	presenceStore, ok := graph.AsTenantScopedNodePresenceStore(store)
+	if !ok {
+		return nil, graph.ErrStoreUnavailable
+	}
+	hasScopedNodes, err := presenceStore.HasTenantScopedNodes(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if !hasScopedNodes {
+		return nil, graph.ErrStoreUnavailable
+	}
 	return graph.NewTenantScopedReadOnlyGraphStore(store, tenantID), nil
 }
 func (a *App) currentWarmTenantGraphStore(ctx context.Context, tenantID string) (graph.GraphStore, error) {

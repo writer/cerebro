@@ -802,7 +802,9 @@ func (a *App) initEventCorrelationRefreshLoop(ctx context.Context) {
 		return
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = a.backgroundContext()
+	} else {
+		ctx = backgroundWorkContext(ctx)
 	}
 	loopCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is stored on App and invoked by stopEventCorrelationRefreshLoop during shutdown.
 	queue := newEventCorrelationRefreshQueue(a.refreshCurrentEventCorrelations)
@@ -861,7 +863,7 @@ func (a *App) refreshCurrentEventCorrelations(reason string) {
 	}
 	baseCtx := a.graphCtx
 	if baseCtx == nil {
-		baseCtx = context.Background()
+		baseCtx = a.backgroundContext()
 	}
 	var summary graph.EventCorrelationMaterializationSummary
 	_, err := a.MutateSecurityGraphMaybe(baseCtx, func(candidate *graph.Graph) (bool, error) {

@@ -208,6 +208,7 @@ type App struct {
 	apiCredentials                     atomic.Value // map[string]apiauth.Credential
 	apiCredentialStore                 *apiauth.ManagedCredentialStore
 	secretsLoader                      secretsLoader
+	rootCtx                            context.Context
 
 	// Cached table list from Snowflake (shared by graph builder + policy coverage)
 	AvailableTables []string
@@ -247,6 +248,10 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 	if cfg.APIAuthEnabled && len(cfg.APIKeys) == 0 && len(managedCredentialStore.List()) == 0 {
 		return nil, fmt.Errorf("api auth enabled but no API_KEYS configured")
 	}
+	rootCtx := ctx
+	if rootCtx == nil {
+		rootCtx = context.Background()
+	}
 
 	logger := options.logger
 	if logger == nil {
@@ -255,8 +260,9 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 	logUnboundedRetentionWarnings(logger, cfg)
 
 	app := &App{
-		Config: cfg,
-		Logger: logger,
+		Config:  cfg,
+		Logger:  logger,
+		rootCtx: rootCtx,
 	}
 	app.secretsLoader = options.secretsLoader
 	app.apiCredentialStore = managedCredentialStore
@@ -266,10 +272,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		app.setAPIKeys(cfg.APIKeys)
 	}
 
-	initCtx := ctx
-	if initCtx == nil {
-		initCtx = context.Background()
-	}
+	initCtx := rootCtx
 	if cfg.InitTimeout > 0 {
 		var cancel context.CancelFunc
 		initCtx, cancel = context.WithTimeout(initCtx, cfg.InitTimeout)
@@ -291,7 +294,7 @@ func NewWithOptions(ctx context.Context, opts ...Option) (*App, error) {
 		"snowflake", app.Snowflake != nil,
 		"policies", len(app.Policy.ListPolicies()),
 	)
-	app.startSecretsReloader(ctx)
+	app.startSecretsReloader(rootCtx)
 
 	return app, nil
 }

@@ -133,17 +133,27 @@ func attackPathStoreRoots(ctx context.Context, store GraphStore) ([]*Node, error
 	}
 	roots := make([]*Node, 0, len(nodes))
 	seen := make(map[string]struct{}, len(nodes))
+	internetIDs := make([]string, 0, len(nodes))
+	addRoot := func(node *Node) {
+		if node == nil || node.ID == "" {
+			return
+		}
+		if _, ok := seen[node.ID]; ok {
+			return
+		}
+		seen[node.ID] = struct{}{}
+		roots = append(roots, node)
+	}
 	for _, node := range nodes {
 		if node == nil || node.ID == "" {
 			continue
 		}
-		if _, ok := seen[node.ID]; ok {
-			continue
-		}
 		switch node.Kind {
 		case NodeKindInternet, NodeKindUser:
-			seen[node.ID] = struct{}{}
-			roots = append(roots, node)
+			addRoot(node)
+			if node.Kind == NodeKindInternet {
+				internetIDs = append(internetIDs, node.ID)
+			}
 		case NodeKindServiceAccount:
 			if node.Properties == nil {
 				continue
@@ -151,8 +161,26 @@ func attackPathStoreRoots(ctx context.Context, store GraphStore) ([]*Node, error
 			if _, hasKeys := node.Properties["access_keys"]; !hasKeys {
 				continue
 			}
-			seen[node.ID] = struct{}{}
-			roots = append(roots, node)
+			addRoot(node)
+		}
+	}
+	for _, internetID := range internetIDs {
+		edges, err := store.LookupOutEdges(ctx, internetID)
+		if err != nil {
+			return nil, err
+		}
+		for _, edge := range edges {
+			if edge == nil || edge.Kind != EdgeKindExposedTo || edge.Target == "" {
+				continue
+			}
+			node, ok, err := store.LookupNode(ctx, edge.Target)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				continue
+			}
+			addRoot(node)
 		}
 	}
 	sort.Slice(roots, func(i, j int) bool {

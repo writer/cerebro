@@ -350,6 +350,7 @@ type neptuneExplainExecutor interface {
 
 var _ GraphStore = (*NeptuneGraphStore)(nil)
 var _ TenantScopeAwareGraphStore = (*NeptuneGraphStore)(nil)
+var _ TenantScopedNodePresenceStore = (*NeptuneGraphStore)(nil)
 
 func NewNeptuneGraphStore(exec NeptuneOpenCypherExecutor) *NeptuneGraphStore {
 	return &NeptuneGraphStore{exec: exec}
@@ -357,6 +358,27 @@ func NewNeptuneGraphStore(exec NeptuneOpenCypherExecutor) *NeptuneGraphStore {
 
 func (s *NeptuneGraphStore) SupportsTenantReadScope() bool {
 	return true
+}
+
+func (s *NeptuneGraphStore) HasTenantScopedNodes(ctx context.Context, tenantID string) (bool, error) {
+	if err := graphStoreContextErr(ctx); err != nil {
+		return false, err
+	}
+	if s == nil || s.exec == nil {
+		return false, ErrStoreUnavailable
+	}
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return false, nil
+	}
+	rows, err := s.queryRows(ctx, neptuneCountTenantScopedNodesQuery, map[string]any{"tenant_id_exact": tenantID})
+	if err != nil {
+		return false, err
+	}
+	if len(rows) == 0 {
+		return false, nil
+	}
+	return neptuneInt(rows[0]["total"]) > 0, nil
 }
 
 func (s *NeptuneGraphStore) ExplainQuery(ctx context.Context, query string, params map[string]any, mode NeptuneExplainMode) (*NeptuneQueryAnalysis, error) {
@@ -2308,6 +2330,13 @@ WHERE n.deleted_at IS NULL
   AND %s
 RETURN count(n) AS total
 `, neptuneNodeLabel, neptuneTenantNodePredicate("n"))
+
+var neptuneCountTenantScopedNodesQuery = fmt.Sprintf(`
+MATCH (n:%s)
+WHERE n.deleted_at IS NULL
+  AND n.tenant_id = $tenant_id_exact
+RETURN count(n) AS total
+`, neptuneNodeLabel)
 
 var neptuneCountEdgesQuery = fmt.Sprintf(`
 MATCH (src:%s)-[r:%s]->(dst:%s)
