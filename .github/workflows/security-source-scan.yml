@@ -43,7 +43,7 @@ jobs:
             fi
           done
           echo "Running gosec shard ${{ matrix.shard_index }} with ${#selected[@]} packages"
-          printf '{"Issues":[]}' > "${report_path}"
+          printf '{"Issues":[],"Golang errors":[]}' > "${report_path}"
           if [ "${#selected[@]}" -eq 0 ]; then
             exit 0
           fi
@@ -52,21 +52,38 @@ jobs:
           for pkg in "${selected[@]}"; do
             echo "Scanning ${pkg}"
             tmp_report="${tmp_dir}/report-${idx}.json"
-            $(go env GOPATH)/bin/gosec -severity medium -confidence medium -exclude-generated -fmt=json -out "${tmp_report}" "${pkg}" || true
+            "$(go env GOPATH)/bin/gosec" -severity medium -confidence medium -exclude-generated -fmt=json -out "${tmp_report}" "${pkg}" || true
             idx=$((idx + 1))
           done
-          python3 -c "
-          import json, glob, sys
-          merged = []
-          for path in sorted(glob.glob('${tmp_dir}/report-*.json')):
-              with open(path) as f:
-                  data = json.load(f)
-              merged.extend(data.get('Issues') or [])
-          with open(sys.argv[1], 'w') as f:
-              json.dump({'Issues': merged}, f)
-          " "${report_path}"
+          python3 - "${report_path}" "${tmp_dir}" <<'PY'
+          import glob
+          import json
+          import os
+          import sys
 
-      - name: Fail on HIGH findings
+          merged = []
+          golang_errors = []
+
+          def extend_errors(value):
+              if not value:
+                  return
+              if isinstance(value, list):
+                  golang_errors.extend(value)
+                  return
+              golang_errors.append(value)
+
+          report_path, tmp_dir = sys.argv[1], sys.argv[2]
+          for path in sorted(glob.glob(os.path.join(tmp_dir, "report-*.json"))):
+              with open(path, encoding="utf-8") as f:
+                  data = json.load(f)
+              merged.extend(data.get("Issues") or [])
+              extend_errors(data.get("Golang errors"))
+
+          with open(report_path, "w", encoding="utf-8") as f:
+              json.dump({"Issues": merged, "Golang errors": golang_errors}, f)
+          PY
+
+      - name: Fail on HIGH findings or Go analysis errors
         shell: bash
         run: |
           set -euo pipefail
@@ -79,6 +96,9 @@ jobs:
               data = json.load(f)
 
           issues = data.get('Issues') or []
+          golang_errors = data.get('Golang errors') or []
+          if not isinstance(golang_errors, list):
+              golang_errors = [golang_errors]
           high = [i for i in issues if str(i.get('severity', '')).upper() == 'HIGH']
 
           print(f"Total gosec findings: {len(issues)}")
@@ -89,7 +109,14 @@ jobs:
                   f"{finding.get('details', '').strip()}"
               )
 
-          if high:
+          print(f"Golang errors: {len(golang_errors)}")
+          for err in golang_errors:
+              if isinstance(err, dict):
+                  print(f"- {json.dumps(err, sort_keys=True)}")
+              else:
+                  print(f"- {err}")
+
+          if high or golang_errors:
               sys.exit(1)
           PY
 
