@@ -30,6 +30,21 @@ func (s *temporalEntityGraphStore) ExtractSubgraphBitemporal(ctx context.Context
 	return s.ExtractSubgraph(ctx, entityID, opts)
 }
 
+type temporalFullGraphStore struct {
+	graph.GraphStore
+	view          *graph.Graph
+	temporalCount int
+}
+
+func (s *temporalFullGraphStore) GraphView(context.Context) (*graph.Graph, error) {
+	return s.view, nil
+}
+
+func (s *temporalFullGraphStore) ExtractSubgraphBitemporal(ctx context.Context, entityID string, opts graph.ExtractSubgraphOptions, validAt, recordedAt time.Time) (*graph.Graph, error) {
+	s.temporalCount++
+	return s.ExtractSubgraph(ctx, entityID, opts)
+}
+
 func TestGraphIntelligenceServiceCurrentEntityGraphPrefersLiveGraph(t *testing.T) {
 	fullGraph := buildGraphStorePlatformEntitiesTestGraph(t)
 	store := &countingSnapshotStore{GraphStore: fullGraph}
@@ -82,7 +97,7 @@ func TestGraphIntelligenceServiceCurrentEntityGraphUsesSnapshotFallback(t *testi
 
 func TestGraphIntelligenceServiceCurrentEntityGraphUsesBitemporalStoreQueries(t *testing.T) {
 	fullGraph := buildGraphStorePlatformEntitiesTestGraph(t)
-	store := &temporalEntityGraphStore{GraphStore: fullGraph}
+	store := &temporalEntityGraphStore{GraphStore: nilSnapshotGraphStore{GraphStore: fullGraph}}
 	service := newGraphIntelligenceService(&serverDependencies{
 		graphRuntime: stubGraphRuntime{store: store},
 	})
@@ -100,13 +115,61 @@ func TestGraphIntelligenceServiceCurrentEntityGraphUsesBitemporalStoreQueries(t 
 	if store.temporalCount != 1 {
 		t.Fatalf("expected one bitemporal store lookup, got %d", store.temporalCount)
 	}
-	if store.snapshotCount != 0 {
-		t.Fatalf("expected temporal store lookup to avoid snapshot fallback, got %d snapshot calls", store.snapshotCount)
+	if store.snapshotCount != 1 {
+		t.Fatalf("expected one snapshot attempt before bitemporal fallback, got %d snapshot calls", store.snapshotCount)
 	}
 	if store.lastEntityID != "arn:aws:s3:::audit-logs" {
 		t.Fatalf("entityID = %q, want arn:aws:s3:::audit-logs", store.lastEntityID)
 	}
 	if !store.lastValidAt.Equal(validAt) || !store.lastRecordedAt.Equal(recordedAt) {
 		t.Fatalf("unexpected temporal bounds: validAt=%s recordedAt=%s", store.lastValidAt, store.lastRecordedAt)
+	}
+}
+
+func TestGraphIntelligenceServiceCurrentEntityGraphPrefersFullGraphViewForTemporalReads(t *testing.T) {
+	fullGraph := buildGraphStorePlatformEntitiesTestGraph(t)
+	fullGraph.AddNode(&graph.Node{ID: "service:isolated", Kind: graph.NodeKindService, Name: "Isolated"})
+	fullGraph.BuildIndex()
+
+	store := &temporalFullGraphStore{GraphStore: fullGraph, view: fullGraph}
+	service := newGraphIntelligenceService(&serverDependencies{
+		graphRuntime: stubGraphRuntime{store: store},
+	})
+
+	at := time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC)
+	view, err := service.CurrentEntityGraph(context.Background(), "arn:aws:s3:::audit-logs", at, at)
+	if err != nil {
+		t.Fatalf("CurrentEntityGraph() error = %v", err)
+	}
+	if view == nil {
+		t.Fatal("CurrentEntityGraph() returned nil graph")
+	}
+	if _, ok := view.GetNode("service:isolated"); !ok {
+		t.Fatal("expected temporal entity graph to preserve unrelated nodes from the full graph view")
+	}
+	if store.temporalCount != 0 {
+		t.Fatalf("expected temporal entity graph to avoid subgraph extraction when a full graph view is available, got %d extraction calls", store.temporalCount)
+	}
+}
+
+func TestGraphIntelligenceServiceCurrentEntityGraphUsesGraphViewFallbackWhenTemporalSnapshotsUnavailable(t *testing.T) {
+	fullGraph := buildGraphStorePlatformEntitiesTestGraph(t)
+	service := newGraphIntelligenceService(&serverDependencies{
+		graphRuntime: stubGraphRuntime{store: nilSnapshotGraphStore{GraphStore: fullGraph}},
+	})
+
+	at := time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC)
+	view, err := service.CurrentEntityGraph(context.Background(), "arn:aws:s3:::audit-logs", at, at)
+	if err != nil {
+		t.Fatalf("CurrentEntityGraph() error = %v", err)
+	}
+	if view == nil {
+		t.Fatal("CurrentEntityGraph() returned nil graph")
+	}
+	if _, ok := view.GetNode("arn:aws:s3:::audit-logs"); !ok {
+		t.Fatal("expected graph-view fallback to include requested entity")
+	}
+	if _, ok := view.GetNode("person:alice@example.com"); !ok {
+		t.Fatal("expected graph-view fallback to preserve unrelated nodes needed by report facets")
 	}
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -54,25 +55,30 @@ func (s serverGraphIntelligenceService) CurrentEntityGraph(ctx context.Context, 
 	if store == nil {
 		return nil, graph.ErrStoreUnavailable
 	}
-	opts := graph.ExtractSubgraphOptions{MaxDepth: 3}
-	if !validAt.IsZero() || !recordedAt.IsZero() {
-		if temporalStore, ok := store.(interface {
-			ExtractSubgraphBitemporal(context.Context, string, graph.ExtractSubgraphOptions, time.Time, time.Time) (*graph.Graph, error)
-		}); ok {
-			return temporalStore.ExtractSubgraphBitemporal(ctx, entityID, opts, validAt, recordedAt)
-		}
-		return snapshotGraphView(ctx, store)
-	}
 	if provider, ok := store.(graphViewProvider); ok {
 		view, err := provider.GraphView(ctx)
-		if err != nil {
+		if err != nil && !errors.Is(err, graph.ErrStoreUnavailable) {
 			return nil, err
 		}
 		if view != nil {
 			return view, nil
 		}
 	}
-	return snapshotGraphView(ctx, store)
+	view, err := snapshotGraphView(ctx, store)
+	switch {
+	case err == nil && view != nil:
+		return view, nil
+	case err != nil && !errors.Is(err, graph.ErrStoreUnavailable):
+		return nil, err
+	}
+	if !validAt.IsZero() || !recordedAt.IsZero() {
+		if temporalStore, ok := store.(interface {
+			ExtractSubgraphBitemporal(context.Context, string, graph.ExtractSubgraphOptions, time.Time, time.Time) (*graph.Graph, error)
+		}); ok {
+			return temporalStore.ExtractSubgraphBitemporal(ctx, entityID, graph.ExtractSubgraphOptions{}, validAt, recordedAt)
+		}
+	}
+	return nil, graph.ErrStoreUnavailable
 }
 
 func (s serverGraphIntelligenceService) MapperInitialized() bool {
