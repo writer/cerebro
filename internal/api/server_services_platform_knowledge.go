@@ -116,7 +116,7 @@ func (s serverPlatformKnowledgeService) GetClaimGroup(ctx context.Context, group
 }
 
 func (s serverPlatformKnowledgeService) GetClaimTimeline(ctx context.Context, claimID string, opts knowledge.ClaimTimelineOptions) (knowledge.ClaimTimeline, bool, error) {
-	g, err := s.claimGraph(ctx, claimID)
+	g, err := s.claimAnalysisGraph(ctx, claimID)
 	if err != nil {
 		return knowledge.ClaimTimeline{}, false, err
 	}
@@ -125,7 +125,7 @@ func (s serverPlatformKnowledgeService) GetClaimTimeline(ctx context.Context, cl
 }
 
 func (s serverPlatformKnowledgeService) ExplainClaim(ctx context.Context, claimID string, validAt, recordedAt time.Time) (knowledge.ClaimExplanation, bool, error) {
-	g, err := s.claimGraph(ctx, claimID)
+	g, err := s.claimAnalysisGraph(ctx, claimID)
 	if err != nil {
 		return knowledge.ClaimExplanation{}, false, err
 	}
@@ -134,7 +134,7 @@ func (s serverPlatformKnowledgeService) ExplainClaim(ctx context.Context, claimI
 }
 
 func (s serverPlatformKnowledgeService) BuildClaimProofs(ctx context.Context, claimID string, opts knowledge.ClaimProofOptions) (knowledge.ClaimProofCollection, bool, error) {
-	g, err := s.claimGraph(ctx, claimID)
+	g, err := s.claimAnalysisGraph(ctx, claimID)
 	if err != nil {
 		return knowledge.ClaimProofCollection{}, false, err
 	}
@@ -217,6 +217,44 @@ func (s serverPlatformKnowledgeService) tenantGraph(ctx context.Context) (*graph
 
 func (s serverPlatformKnowledgeService) claimGraph(ctx context.Context, claimID string) (*graph.Graph, error) {
 	return s.detailGraph(ctx, claimID, graph.ExtractSubgraphOptions{MaxDepth: platformKnowledgeClaimSubgraphDepth})
+}
+
+func (s serverPlatformKnowledgeService) claimAnalysisGraph(ctx context.Context, claimID string) (*graph.Graph, error) {
+	if s.deps == nil {
+		return nil, errPlatformKnowledgeUnavailable
+	}
+	tenantID := currentTenantScopeID(ctx)
+	if current := s.deps.CurrentSecurityGraphForTenant(tenantID); current != nil {
+		return current, nil
+	}
+	store := s.deps.CurrentSecurityGraphStoreForTenant(tenantID)
+	if store == nil {
+		return nil, errPlatformKnowledgeUnavailable
+	}
+	if provider, ok := store.(graphViewProvider); ok {
+		view, err := provider.GraphView(ctx)
+		switch {
+		case err == nil && view != nil:
+			return s.scopeGraph(ctx, view), nil
+		case err != nil && !errors.Is(err, graph.ErrStoreUnavailable):
+			return nil, err
+		}
+	}
+	view, err := snapshotGraphView(ctx, store)
+	switch {
+	case err == nil && view != nil:
+		return s.scopeGraph(ctx, view), nil
+	case err != nil && !errors.Is(err, graph.ErrStoreUnavailable):
+		return nil, err
+	}
+	view, err = store.ExtractSubgraph(ctx, claimID, graph.ExtractSubgraphOptions{})
+	if err != nil {
+		if errors.Is(err, graph.ErrStoreUnavailable) {
+			return nil, errPlatformKnowledgeUnavailable
+		}
+		return nil, err
+	}
+	return view, nil
 }
 
 func (s serverPlatformKnowledgeService) artifactGraph(ctx context.Context, artifactID string) (*graph.Graph, error) {

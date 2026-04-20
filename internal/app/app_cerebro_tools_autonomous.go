@@ -79,7 +79,7 @@ func (a *App) toolCerebroAutonomousCredentialResponse(ctx context.Context, args 
 	if err := store.SaveRun(ctx, run); err != nil {
 		return "", fmt.Errorf("save autonomous workflow run: %w", err)
 	}
-	_, _ = store.AppendEvent(ctx, run.ID, autonomous.RunEvent{
+	a.appendAutonomousRunEventBestEffort(ctx, store, run.ID, autonomous.RunEvent{
 		Status:     run.Status,
 		Stage:      run.Stage,
 		Message:    "credential exposure analysis started",
@@ -94,8 +94,8 @@ func (a *App) toolCerebroAutonomousCredentialResponse(ctx context.Context, args 
 		run.Error = err.Error()
 		run.CompletedAt = timePointer(time.Now().UTC())
 		run.UpdatedAt = *run.CompletedAt
-		_ = store.SaveRun(ctx, run)
-		_, _ = store.AppendEvent(ctx, run.ID, autonomous.RunEvent{
+		a.saveAutonomousRunBestEffort(ctx, store, run)
+		a.appendAutonomousRunEventBestEffort(ctx, store, run.ID, autonomous.RunEvent{
 			Status:     run.Status,
 			Stage:      run.Stage,
 			Message:    "failed to write graph artifacts",
@@ -115,8 +115,8 @@ func (a *App) toolCerebroAutonomousCredentialResponse(ctx context.Context, args 
 		run.Error = err.Error()
 		run.CompletedAt = timePointer(time.Now().UTC())
 		run.UpdatedAt = *run.CompletedAt
-		_ = store.SaveRun(ctx, run)
-		_, _ = store.AppendEvent(ctx, run.ID, autonomous.RunEvent{
+		a.saveAutonomousRunBestEffort(ctx, store, run)
+		a.appendAutonomousRunEventBestEffort(ctx, store, run.ID, autonomous.RunEvent{
 			Status:     run.Status,
 			Stage:      run.Stage,
 			Message:    "failed to start autonomous action execution",
@@ -134,7 +134,7 @@ func (a *App) toolCerebroAutonomousCredentialResponse(ctx context.Context, args 
 		if err := store.SaveRun(ctx, run); err != nil {
 			return "", fmt.Errorf("save pending autonomous workflow run: %w", err)
 		}
-		_, _ = store.AppendEvent(ctx, run.ID, autonomous.RunEvent{
+		a.appendAutonomousRunEventBestEffort(ctx, store, run.ID, autonomous.RunEvent{
 			Status:     run.Status,
 			Stage:      run.Stage,
 			Message:    "awaiting approval before revoking credentials",
@@ -232,8 +232,8 @@ func (a *App) toolCerebroAutonomousWorkflowApprove(ctx context.Context, args jso
 			now := time.Now().UTC()
 			run.CompletedAt = timePointer(now)
 			run.UpdatedAt = now
-			_ = store.SaveRun(ctx, run)
-			_, _ = store.AppendEvent(ctx, run.ID, autonomous.RunEvent{
+			a.saveAutonomousRunBestEffort(ctx, store, run)
+			a.appendAutonomousRunEventBestEffort(ctx, store, run.ID, autonomous.RunEvent{
 				Status:     run.Status,
 				Stage:      run.Stage,
 				Message:    "workflow approval failed during execution",
@@ -264,7 +264,7 @@ func (a *App) toolCerebroAutonomousWorkflowApprove(ctx context.Context, args jso
 	if err := store.SaveRun(ctx, run); err != nil {
 		return "", err
 	}
-	_, _ = store.AppendEvent(ctx, run.ID, autonomous.RunEvent{
+	a.appendAutonomousRunEventBestEffort(ctx, store, run.ID, autonomous.RunEvent{
 		Status:     run.Status,
 		Stage:      run.Stage,
 		Message:    "workflow approval rejected",
@@ -423,8 +423,8 @@ func (a *App) finalizeAutonomousCredentialResponse(ctx context.Context, run *aut
 			run.Stage = autonomous.RunStageClosed
 			run.Error = err.Error()
 			run.CompletedAt = timePointer(now)
-			_ = store.SaveRun(ctx, run)
-			_, _ = store.AppendEvent(ctx, run.ID, autonomous.RunEvent{
+			a.saveAutonomousRunBestEffort(ctx, store, run)
+			a.appendAutonomousRunEventBestEffort(ctx, store, run.ID, autonomous.RunEvent{
 				Status:     run.Status,
 				Stage:      run.Stage,
 				Message:    "credential revocation succeeded but graph closeout failed",
@@ -442,7 +442,7 @@ func (a *App) finalizeAutonomousCredentialResponse(ctx context.Context, run *aut
 		if err := store.SaveRun(ctx, run); err != nil {
 			return err
 		}
-		_, _ = store.AppendEvent(ctx, run.ID, autonomous.RunEvent{
+		a.appendAutonomousRunEventBestEffort(ctx, store, run.ID, autonomous.RunEvent{
 			Status:     run.Status,
 			Stage:      run.Stage,
 			Message:    "credential exposure workflow completed",
@@ -461,7 +461,7 @@ func (a *App) finalizeAutonomousCredentialResponse(ctx context.Context, run *aut
 		if err := store.SaveRun(ctx, run); err != nil {
 			return err
 		}
-		_, _ = store.AppendEvent(ctx, run.ID, autonomous.RunEvent{
+		a.appendAutonomousRunEventBestEffort(ctx, store, run.ID, autonomous.RunEvent{
 			Status:     run.Status,
 			Stage:      run.Stage,
 			Message:    "credential exposure workflow failed during actuation",
@@ -568,6 +568,31 @@ func (a *App) autonomousRunStore() (autonomous.RunStore, error) {
 		return nil, fmt.Errorf("open autonomous workflow store: %w", err)
 	}
 	return store, nil
+}
+
+func (a *App) saveAutonomousRunBestEffort(ctx context.Context, store autonomous.RunStore, run *autonomous.RunRecord) {
+	if store == nil || run == nil {
+		return
+	}
+	if err := store.SaveRun(ctx, run); err != nil {
+		a.warnAutonomousRunPersistence("persist autonomous workflow run failed", run.ID, err)
+	}
+}
+
+func (a *App) appendAutonomousRunEventBestEffort(ctx context.Context, store autonomous.RunStore, runID string, event autonomous.RunEvent) {
+	if store == nil {
+		return
+	}
+	if _, err := store.AppendEvent(ctx, runID, event); err != nil {
+		a.warnAutonomousRunPersistence("persist autonomous workflow event failed", runID, err)
+	}
+}
+
+func (a *App) warnAutonomousRunPersistence(message, runID string, err error) {
+	if err == nil || a == nil || a.Logger == nil {
+		return
+	}
+	a.Logger.Warn(message, "run_id", strings.TrimSpace(runID), "error", err)
 }
 
 func (a *App) autonomousRuntimeBlocklist() *runtime.Blocklist {

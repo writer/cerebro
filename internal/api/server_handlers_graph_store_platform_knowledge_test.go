@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -47,6 +48,47 @@ func buildGraphStorePlatformKnowledgeFixture(t *testing.T) platformKnowledgeStor
 		evidenceID:    "evidence:runbook",
 		observationID: observationID,
 	}
+}
+
+func appendPlatformKnowledgeSupportChain(t *testing.T, g *graph.Graph, targetClaimID string, length int) []string {
+	t.Helper()
+	claimIDs := make([]string, 0, length)
+	baseAt := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	nextTarget := targetClaimID
+	for i := 0; i < length; i++ {
+		claimID := fmt.Sprintf("claim:payments:owner:alice:chain:%d", i+1)
+		at := baseAt.Add(time.Duration(i) * time.Minute)
+		if _, err := graph.WriteClaim(g, graph.ClaimWriteRequest{
+			ID:              claimID,
+			SubjectID:       "service:payments",
+			Predicate:       "ownership_review",
+			ObjectID:        "person:alice@example.com",
+			SourceSystem:    "chain-test",
+			ObservedAt:      at,
+			ValidFrom:       at,
+			RecordedAt:      at,
+			TransactionFrom: at,
+		}); err != nil {
+			t.Fatalf("write support chain claim %d: %v", i+1, err)
+		}
+		edgeProps := map[string]any{
+			"observed_at":      at.UTC().Format(time.RFC3339),
+			"valid_from":       at.UTC().Format(time.RFC3339),
+			"recorded_at":      at.UTC().Format(time.RFC3339),
+			"transaction_from": at.UTC().Format(time.RFC3339),
+		}
+		g.AddEdge(&graph.Edge{
+			ID:         fmt.Sprintf("%s->%s:%s", claimID, nextTarget, graph.EdgeKindSupports),
+			Source:     claimID,
+			Target:     nextTarget,
+			Kind:       graph.EdgeKindSupports,
+			Effect:     graph.EdgeEffectAllow,
+			Properties: cloneJSONMap(edgeProps),
+		})
+		claimIDs = append(claimIDs, claimID)
+		nextTarget = claimID
+	}
+	return claimIDs
 }
 
 func TestPlatformKnowledgeReadHandlersUseGraphStoreWhenRawGraphUnavailable(t *testing.T) {
@@ -164,6 +206,41 @@ func TestPlatformKnowledgeDetailHandlersUseStoreSubgraphWhenSnapshotsUnavailable
 	proofSummary, ok := proofsBody["summary"].(map[string]any)
 	if !ok || proofSummary["total_proofs"].(float64) < 1 {
 		t.Fatalf("expected proof fragments from store subgraph, got %#v", proofsBody)
+	}
+}
+
+func TestPlatformKnowledgeRecursiveClaimHandlersUseFullStoreGraphWhenSnapshotsUnavailable(t *testing.T) {
+	fixture := buildGraphStorePlatformKnowledgeFixture(t)
+	chainIDs := appendPlatformKnowledgeSupportChain(t, fixture.graph, fixture.aliceClaimID, 4)
+	s := newStoreBackedGraphServer(t, nilSnapshotGraphStore{GraphStore: fixture.graph})
+
+	timeline := do(t, s, http.MethodGet, "/api/v1/platform/knowledge/claims/"+fixture.aliceClaimID+"/timeline", nil)
+	if timeline.Code != http.StatusOK {
+		t.Fatalf("expected claim timeline 200, got %d: %s", timeline.Code, timeline.Body.String())
+	}
+	timelineBody := decodeJSON(t, timeline)
+	entries, ok := timelineBody["entries"].([]any)
+	if !ok {
+		t.Fatalf("expected timeline entries, got %#v", timelineBody["entries"])
+	}
+	deepestClaimID := chainIDs[len(chainIDs)-1]
+	foundDeepest := false
+	for _, raw := range entries {
+		entry, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		claim, ok := entry["claim"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if claim["id"] == deepestClaimID {
+			foundDeepest = true
+			break
+		}
+	}
+	if !foundDeepest {
+		t.Fatalf("expected deepest support claim %q in timeline entries, got %#v", deepestClaimID, entries)
 	}
 }
 
