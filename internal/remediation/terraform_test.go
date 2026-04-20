@@ -160,7 +160,7 @@ func TestRenderTerraformArtifact_EnableBucketDefaultEncryptionRejectsNonAWSProvi
 	if !strings.Contains(err.Error(), "supported combinations: aws/bucket") {
 		t.Fatalf("expected supported combinations in error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "consider remote_apply or manual remediation") {
+	if !strings.Contains(err.Error(), "use manual remediation when Terraform delivery is unavailable") {
 		t.Fatalf("expected remediation guidance in error, got %v", err)
 	}
 }
@@ -185,7 +185,7 @@ func TestRenderTerraformArtifact_RestrictPublicSecurityGroupIngressUnsupportedRe
 	if !strings.Contains(err.Error(), "supported combinations: aws/security_group") {
 		t.Fatalf("expected supported combinations in error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "consider remote_apply or manual remediation") {
+	if !strings.Contains(err.Error(), "use manual remediation when Terraform delivery is unavailable") {
 		t.Fatalf("expected remediation guidance in error, got %v", err)
 	}
 }

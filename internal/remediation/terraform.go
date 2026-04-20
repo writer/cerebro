@@ -491,10 +491,10 @@ func terraformUnsupportedContextError(actionType ActionType, key terraformArtifa
 func terraformSupportedContextsHelp(actionType ActionType) string {
 	supported := terraformSupportedContexts(actionType)
 	if len(supported) == 0 {
-		return "no Terraform delivery combinations are currently supported; consider remote_apply or manual remediation"
+		return "no Terraform delivery combinations are currently supported; use manual remediation"
 	}
 	return fmt.Sprintf(
-		"supported combinations: %s; consider remote_apply or manual remediation",
+		"supported combinations: %s; use manual remediation when Terraform delivery is unavailable",
 		strings.Join(supported, ", "),
 	)
 }
