@@ -192,9 +192,9 @@ func TestVisualizeReportReturnsServiceUnavailableWhenStoreSnapshotMissing(t *tes
 	}
 }
 
-func TestVisualizationEndpointsPreferLiveGraphWhenAvailable(t *testing.T) {
-	g := buildGraphStoreVisualizationTestGraph()
-	results := graph.NewToxicCombinationEngine().Analyze(g)
+func TestAttackPathAndToxicCombinationVisualizationsUseSnapshotBackedGraphWhenLiveGraphDiffers(t *testing.T) {
+	snapshotGraph := buildGraphStoreVisualizationTestGraph()
+	results := graph.NewToxicCombinationEngine().Analyze(snapshotGraph)
 	if len(results) == 0 {
 		t.Fatal("expected at least one toxic combination in test graph")
 	}
@@ -205,21 +205,34 @@ func TestVisualizationEndpointsPreferLiveGraphWhenAvailable(t *testing.T) {
 	}{
 		{name: "attack path", path: "/api/v1/graph/visualize/attack-path/0"},
 		{name: "toxic combination", path: "/api/v1/graph/visualize/toxic-combination/" + results[0].ID},
-		{name: "report", path: "/api/v1/graph/visualize/report"},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			store := &countingSnapshotStore{GraphStore: g}
-			s := newLiveGraphServer(t, g, store)
+			store := &countingSnapshotStore{GraphStore: snapshotGraph}
+			s := newLiveGraphServer(t, graph.New(), store)
 
 			resp := do(t, s, http.MethodGet, tc.path, nil)
 			if resp.Code != http.StatusOK {
 				t.Fatalf("expected visualization 200, got %d: %s", resp.Code, resp.Body.String())
 			}
-			if got := store.count.Load(); got != 0 {
-				t.Fatalf("expected live graph to avoid snapshot reads, got %d snapshot calls", got)
+			if got := store.count.Load(); got == 0 {
+				t.Fatalf("expected snapshot-backed visualization, got %d snapshot calls", got)
 			}
 		})
+	}
+}
+
+func TestVisualizeReportPrefersLiveGraphWhenAvailable(t *testing.T) {
+	g := buildGraphStoreVisualizationTestGraph()
+	store := &countingSnapshotStore{GraphStore: g}
+	s := newLiveGraphServer(t, g, store)
+
+	resp := do(t, s, http.MethodGet, "/api/v1/graph/visualize/report", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected visualization 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if got := store.count.Load(); got != 0 {
+		t.Fatalf("expected live graph to avoid snapshot reads, got %d snapshot calls", got)
 	}
 }

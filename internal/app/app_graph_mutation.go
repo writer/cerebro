@@ -30,7 +30,7 @@ func (a *App) MutateSecurityGraphMaybe(ctx context.Context, mutate func(*graph.G
 		return a.CurrentSecurityGraph(), nil
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = a.backgroundContext()
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
