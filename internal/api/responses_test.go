@@ -152,3 +152,15 @@ func TestJSONEncodingFailureReturnsInternalServerError(t *testing.T) {
 		t.Fatalf("error = %q, want internal server error", body.Error)
 	}
 }
+
+func TestEncodeJSONPayloadEscapesHTML(t *testing.T) {
+	payload, err := encodeJSONPayload(map[string]string{
+		"value": "<script>alert(1)</script>",
+	})
+	if err != nil {
+		t.Fatalf("encodeJSONPayload() error = %v", err)
+	}
+	if got := string(payload); got != "{\"value\":\"\\u003cscript\\u003ealert(1)\\u003c/script\\u003e\"}\n" {
+		t.Fatalf("encodeJSONPayload() = %q", got)
+	}
+}

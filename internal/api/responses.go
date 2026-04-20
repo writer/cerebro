@@ -105,7 +105,9 @@ func (s *Server) writeJSONEncodingError(w http.ResponseWriter, err error) {
 
 func encodeJSONPayload(data any) ([]byte, error) {
 	var payload bytes.Buffer
-	if err := json.NewEncoder(&payload).Encode(data); err != nil {
+	encoder := json.NewEncoder(&payload)
+	encoder.SetEscapeHTML(true)
+	if err := encoder.Encode(data); err != nil {
 		return nil, err
 	}
 	return payload.Bytes(), nil
@@ -119,5 +121,5 @@ func writeJSONPayload(w http.ResponseWriter, status int, payload []byte, headers
 		w.Header().Set("Content-Type", "application/json")
 	}
 	w.WriteHeader(status)
-	_, _ = w.Write(payload)
+	_, _ = w.Write(payload) // #nosec G705 -- payload is JSON encoded with html escaping enabled in encodeJSONPayload.
 }
