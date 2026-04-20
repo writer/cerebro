@@ -61,6 +61,7 @@ func TestUpsertFindingAndRemediate_TriggersResolveRuleOnCreate(t *testing.T) {
 	})
 	if stored == nil {
 		t.Fatal("expected finding to be stored")
+		return
 	}
 	if strings.ToUpper(stored.Status) != "RESOLVED" {
 		t.Fatalf("expected finding to be resolved by remediation, got %s", stored.Status)
@@ -214,6 +215,7 @@ func TestUpsertFindingAndRemediate_ForwardsRichResourceContext(t *testing.T) {
 	})
 	if stored == nil {
 		t.Fatal("expected finding to be stored")
+		return
 	}
 
 	var execution *remediation.Execution
@@ -225,6 +227,7 @@ func TestUpsertFindingAndRemediate_ForwardsRichResourceContext(t *testing.T) {
 	}
 	if execution == nil {
 		t.Fatal("expected remediation execution for rich-context rule")
+		return
 	}
 	if execution.TriggerData["resource_name"] != "public-assets" {
 		t.Fatalf("expected resource_name in trigger data, got %#v", execution.TriggerData["resource_name"])

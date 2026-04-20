@@ -163,12 +163,19 @@ func renderTerraformPublicStorageAccessArtifact(execution *Execution) (Terraform
 		resourceName = existingName
 	}
 	path := terraformArtifactPath(execution, "cerebro_s3_bucket_public_access_block_"+terraformIdentifier(bucketName)+".tf")
-	content := iacrender.RenderTemplate("terraform", terraformBucketPublicAccessBlockTemplate, map[string]string{
+	content, err := iacrender.RenderTemplate("terraform_s3_bucket_public_access_block", terraformBucketPublicAccessBlockTemplate, map[string]string{
 		"BucketReference":   terraformBucketArgument(execution, bucketName),
 		"ResourceName":      resourceName,
 		"ExistingIaCFile":   iacFile,
 		"ExistingIaCModule": iacModule,
 	})
+	if err != nil {
+		return TerraformArtifact{}, fmt.Errorf("render public access block terraform artifact: %w", err)
+	}
+	stateReconciliation, err := terraformStateReconciliation(address, bucketName)
+	if err != nil {
+		return TerraformArtifact{}, fmt.Errorf("build public access block terraform reconciliation: %w", err)
+	}
 
 	notes := []string{
 		"Run terraform plan before apply.",
@@ -195,7 +202,7 @@ func renderTerraformPublicStorageAccessArtifact(execution *Execution) (Terraform
 		IaCFile:             iacFile,
 		IaCModule:           iacModule,
 		IaCStateID:          iacStateID,
-		StateReconciliation: terraformStateReconciliation(address, bucketName),
+		StateReconciliation: stateReconciliation,
 	}, nil
 }
 
@@ -226,7 +233,7 @@ func renderTerraformBucketDefaultEncryptionArtifact(execution *Execution, sseAlg
 		resourceName = existingName
 	}
 	path := terraformArtifactPath(execution, "cerebro_s3_bucket_default_encryption_"+terraformIdentifier(bucketName)+".tf")
-	content := iacrender.RenderTemplate("terraform", terraformBucketDefaultEncryptionTemplate, map[string]string{
+	content, err := iacrender.RenderTemplate("terraform_s3_bucket_default_encryption", terraformBucketDefaultEncryptionTemplate, map[string]string{
 		"BucketReference":   terraformBucketArgument(execution, bucketName),
 		"ResourceName":      resourceName,
 		"SSEAlgorithm":      iacrender.HCLString(firstNonEmpty(strings.TrimSpace(sseAlgorithm), "AES256")),
@@ -237,6 +244,13 @@ func renderTerraformBucketDefaultEncryptionArtifact(execution *Execution, sseAlg
 		"ExistingIaCFile":   iacFile,
 		"ExistingIaCModule": iacModule,
 	})
+	if err != nil {
+		return TerraformArtifact{}, fmt.Errorf("render default encryption terraform artifact: %w", err)
+	}
+	stateReconciliation, err := terraformStateReconciliation(address, bucketName)
+	if err != nil {
+		return TerraformArtifact{}, fmt.Errorf("build default encryption terraform reconciliation: %w", err)
+	}
 
 	notes := []string{
 		"Run terraform plan before apply.",
@@ -262,7 +276,7 @@ func renderTerraformBucketDefaultEncryptionArtifact(execution *Execution, sseAlg
 		IaCFile:             iacFile,
 		IaCModule:           iacModule,
 		IaCStateID:          iacStateID,
-		StateReconciliation: terraformStateReconciliation(address, bucketName),
+		StateReconciliation: stateReconciliation,
 	}, nil
 }
 
@@ -276,9 +290,12 @@ func renderTerraformRestrictPublicSecurityGroupIngressArtifact(execution *Execut
 	}
 	resourceName := terraformRuleArtifactName(execution)
 	path := terraformArtifactPath(execution, "cerebro_remove_public_ingress_"+resourceName+".tf")
-	content := iacrender.RenderTemplate("terraform", terraformRemoveManagedResourceTemplate, map[string]string{
+	content, err := iacrender.RenderTemplate("terraform_remove_managed_resource", terraformRemoveManagedResourceTemplate, map[string]string{
 		"ResourceAddress": ruleAddress,
 	})
+	if err != nil {
+		return TerraformArtifact{}, fmt.Errorf("render removed resource terraform artifact: %w", err)
+	}
 	iacFile := ""
 	iacModule := ""
 	iacStateID := ""
@@ -341,11 +358,15 @@ func terraformArtifactMetadata(artifact TerraformArtifact) map[string]any {
 	})
 }
 
-func terraformStateReconciliation(address, importID string) *TerraformStateReconciliation {
+func terraformStateReconciliation(address, importID string) (*TerraformStateReconciliation, error) {
 	address = strings.TrimSpace(address)
 	importID = strings.TrimSpace(importID)
 	if address == "" || importID == "" {
-		return nil
+		return nil, nil
+	}
+	importBlock, err := terraformImportBlock(address, importID)
+	if err != nil {
+		return nil, err
 	}
 	return &TerraformStateReconciliation{
 		StateShow: terraformCommand("terraform", "state", "show", address),
@@ -353,10 +374,10 @@ func terraformStateReconciliation(address, importID string) *TerraformStateRecon
 		Imports: []TerraformImportInstruction{{
 			To:      address,
 			ID:      importID,
-			HCL:     terraformImportBlock(address, importID),
+			HCL:     importBlock,
 			Command: terraformCommand("terraform", "import", address, importID),
 		}},
-	}
+	}, nil
 }
 
 func terraformRemovalStateReconciliation(address string) *TerraformStateReconciliation {
@@ -407,11 +428,15 @@ func terraformCommandMetadata(command TerraformCommand) map[string]any {
 	})
 }
 
-func terraformImportBlock(address, importID string) string {
-	return strings.TrimSpace(iacrender.RenderTemplate("terraform", terraformImportBlockTemplate, map[string]string{
+func terraformImportBlock(address, importID string) (string, error) {
+	content, err := iacrender.RenderTemplate("terraform_import_block", terraformImportBlockTemplate, map[string]string{
 		"To": address,
 		"ID": iacrender.HCLString(strings.TrimSpace(importID)),
-	}))
+	})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(content), nil
 }
 
 func terraformArtifactRendererLookupKey(actionType ActionType, execution *Execution) terraformArtifactRendererKey {

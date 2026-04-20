@@ -10,26 +10,38 @@ import (
 )
 
 func (a *Runtime) CurrentOrStoredSecurityGraphView() (*graph.Graph, error) {
-	if a == nil {
-		return nil, nil
-	}
-	if current := a.currentLiveSecurityGraph(); current != nil && (current.NodeCount() > 0 || current.EdgeCount() > 0) {
-		return current, nil
-	}
-	if view, err := a.CurrentConfiguredSecurityGraphView(context.Background()); err != nil {
-		return nil, err
-	} else if view != nil {
-		return view, nil
-	}
-	return a.currentLiveSecurityGraph(), nil
+	return a.currentOrStoredSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error) {
+		snapshot, _, _, err := store.LoadLatestSnapshot()
+		return snapshot, err
+	})
 }
 
 func (a *Runtime) CurrentOrStoredPassiveSecurityGraphView() (*graph.Graph, error) {
-	return a.CurrentOrStoredSecurityGraphView()
+	return a.currentOrStoredSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error) {
+		snapshot, _, _, err := store.PeekLatestSnapshot()
+		return snapshot, err
+	})
 }
 
-func (a *Runtime) StoredSecurityGraphViewWithSnapshotLoader(func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error)) (*graph.Graph, error) {
-	return nil, nil
+func (a *Runtime) StoredSecurityGraphViewWithSnapshotLoader(loadSnapshot func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error)) (*graph.Graph, error) {
+	if a == nil {
+		return nil, nil
+	}
+	store := a.graphSnapshots()
+	if store == nil || loadSnapshot == nil {
+		return nil, nil
+	}
+	snapshot, err := loadSnapshot(store)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "no snapshots found") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if snapshot == nil {
+		return nil, nil
+	}
+	return graph.GraphViewFromSnapshot(snapshot), nil
 }
 
 func (a *Runtime) CurrentOrStoredPassiveGraphSnapshotRecord() (*graph.GraphSnapshotRecord, error) {
@@ -39,7 +51,7 @@ func (a *Runtime) CurrentOrStoredPassiveGraphSnapshotRecord() (*graph.GraphSnaps
 	if current := graph.CurrentGraphSnapshotRecord(a.currentLiveSecurityGraph()); current != nil {
 		return current, nil
 	}
-	if snapshot, err := a.CurrentConfiguredSecurityGraphSnapshot(context.Background()); err == nil && snapshot != nil {
+	if snapshot, err := a.CurrentConfiguredSecurityGraphSnapshot(a.backgroundContext()); err == nil && snapshot != nil {
 		if current := graph.CurrentGraphSnapshotRecord(graph.GraphViewFromSnapshot(snapshot)); current != nil {
 			return current, nil
 		}
@@ -50,6 +62,26 @@ func (a *Runtime) CurrentOrStoredPassiveGraphSnapshotRecord() (*graph.GraphSnaps
 		return current, nil
 	}
 	return nil, nil
+}
+
+func (a *Runtime) currentOrStoredSecurityGraphViewWithSnapshotLoader(loadSnapshot func(store *graph.GraphPersistenceStore) (*graph.Snapshot, error)) (*graph.Graph, error) {
+	if a == nil {
+		return nil, nil
+	}
+
+	current := a.currentLiveSecurityGraph()
+	if current != nil && (current.NodeCount() > 0 || current.EdgeCount() > 0) {
+		return current, nil
+	}
+	if view, err := a.CurrentConfiguredSecurityGraphView(a.backgroundContext()); err != nil {
+		return nil, err
+	} else if view != nil {
+		return view, nil
+	}
+	if view, err := a.StoredSecurityGraphViewWithSnapshotLoader(loadSnapshot); err != nil || view != nil {
+		return view, err
+	}
+	return current, nil
 }
 
 func (a *Runtime) CurrentOrStoredSecurityGraphViewForTenant(tenantID string) (*graph.Graph, error) {
@@ -92,7 +124,7 @@ func (a *Runtime) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph
 		return nil
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = a.backgroundContext()
 	}
 	if current := a.currentLiveSecurityGraph(); current != nil {
 		if !a.hasGraphReadySignal() {
@@ -125,6 +157,9 @@ func (a *Runtime) WaitForReadableSecurityGraph(ctx context.Context) *graph.Graph
 func (a *Runtime) CurrentConfiguredSecurityGraphSnapshot(ctx context.Context) (*graph.Snapshot, error) {
 	if a == nil {
 		return nil, nil
+	}
+	if ctx == nil {
+		ctx = a.backgroundContext()
 	}
 	store, err := a.currentConfiguredSecurityGraphStore(ctx)
 	if err != nil {

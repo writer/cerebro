@@ -71,9 +71,6 @@ func (r *RiskEngineStateRepository) LoadSnapshot(ctx context.Context, graphID st
 	if err != nil {
 		return nil, err
 	}
-	if err := r.ensureTable(ctx, tableRef); err != nil {
-		return nil, err
-	}
 
 	// #nosec G202 -- tableRef is validated through SafeQualifiedTableRef.
 	query := `SELECT snapshot FROM ` + tableRef + ` WHERE graph_id = ?`
@@ -83,6 +80,9 @@ func (r *RiskEngineStateRepository) LoadSnapshot(ctx context.Context, graphID st
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
+		if isMissingRiskEngineStateTableErr(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	normalized := normalizeVariantJSONForState(raw)
@@ -90,6 +90,23 @@ func (r *RiskEngineStateRepository) LoadSnapshot(ctx context.Context, graphID st
 		return nil, nil
 	}
 	return normalized, nil
+}
+
+func isMissingRiskEngineStateTableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	if strings.Contains(message, "not authorized") ||
+		strings.Contains(message, "insufficient privileges") ||
+		strings.Contains(message, "permission denied") ||
+		strings.Contains(message, "access denied") {
+		return false
+	}
+	return strings.Contains(message, "does not exist") ||
+		strings.Contains(message, "no such table") ||
+		strings.Contains(message, "unknown table") ||
+		strings.Contains(message, "not exist")
 }
 
 func (r *RiskEngineStateRepository) tableRef() (string, error) {

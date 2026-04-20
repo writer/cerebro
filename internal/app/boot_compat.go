@@ -138,7 +138,6 @@ func (c *Config) BuildSubsystemConfig() SubsystemConfig {
 			MigrateLegacyActivityOnStart: c.GraphMigrateLegacyActivityOnStart,
 		},
 		AppState: AppStateConfig{
-			JobDatabaseURL:       c.JobDatabaseURL,
 			WarehouseBackend:     c.WarehouseBackend,
 			WarehousePostgresDSN: c.WarehousePostgresDSN,
 		},
@@ -172,6 +171,13 @@ func (a *App) initialize(ctx context.Context) error {
 func (a *App) initPhase1(ctx context.Context) error {
 	if runtime := a.bootRuntime(); runtime != nil {
 		return runtime.InitPhase1(ctx)
+	}
+	return nil
+}
+
+func (a *App) initPhase2b(ctx context.Context) error {
+	if runtime := a.bootRuntime(); runtime != nil {
+		return runtime.InitPhase2b(ctx)
 	}
 	return nil
 }
@@ -250,6 +256,20 @@ func runSubsystemInitConcurrently(ctx context.Context, subsystems ...initSubsyst
 		bootSubsystems = append(bootSubsystems, subsystem)
 	}
 	return appboot.RunSubsystemInitConcurrently(ctx, bootSubsystems...)
+}
+
+func runSubsystemInitSequentially(ctx context.Context, subsystems ...initSubsystem) error {
+	for _, subsystem := range subsystems {
+		if subsystem == nil {
+			continue
+		}
+		if err := appboot.RunInitErrorStep(subsystem.Name(), func() error {
+			return subsystem.Init(ctx)
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runSubsystemStartSequentially(ctx context.Context, subsystems ...startSubsystem) error {

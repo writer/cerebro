@@ -1,7 +1,6 @@
 package graphruntime
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -32,18 +31,14 @@ type RetentionStatus struct {
 }
 
 func (a *Runtime) CurrentSecurityGraph() *graph.Graph {
-	if current := a.currentLiveSecurityGraph(); current != nil {
-		if current.NodeCount() > 0 || current.EdgeCount() > 0 {
-			return current
-		}
-	}
 	if a == nil {
 		return nil
 	}
-	if view, err := a.CurrentConfiguredSecurityGraphView(context.Background()); err == nil && view != nil {
-		return view
+	view, err := a.CurrentOrStoredPassiveSecurityGraphView()
+	if err != nil {
+		return nil
 	}
-	return a.currentLiveSecurityGraph()
+	return view
 }
 
 func (a *Runtime) CurrentSecurityGraphForTenant(tenantID string) *graph.Graph {

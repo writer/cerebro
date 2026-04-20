@@ -33,6 +33,8 @@ type Dependencies struct {
 	Logger                              func() *slog.Logger
 	Config                              func() *Config
 	SetGraphSnapshots                   func(*graph.GraphPersistenceStore)
+	GraphSnapshots                      func() *graph.GraphPersistenceStore
+	BackgroundContext                   func() context.Context
 	CurrentLiveSecurityGraph            func() *graph.Graph
 	CurrentConfiguredSecurityGraphStore func(context.Context) (graph.GraphStore, error)
 	WaitForGraph                        func(context.Context) bool
@@ -69,6 +71,23 @@ func (a *Runtime) setGraphSnapshots(store *graph.GraphPersistenceStore) {
 		return
 	}
 	a.deps.SetGraphSnapshots(store)
+}
+
+func (a *Runtime) graphSnapshots() *graph.GraphPersistenceStore {
+	if a == nil || a.deps.GraphSnapshots == nil {
+		return nil
+	}
+	return a.deps.GraphSnapshots()
+}
+
+func (a *Runtime) backgroundContext() context.Context {
+	if a == nil || a.deps.BackgroundContext == nil {
+		return context.Background()
+	}
+	if ctx := a.deps.BackgroundContext(); ctx != nil {
+		return ctx
+	}
+	return context.Background()
 }
 
 func (a *Runtime) currentLiveSecurityGraph() *graph.Graph {

@@ -75,6 +75,15 @@ func (a *App) newBootRuntime() *appboot.Runtime {
 			}
 			return a.initLegacySnowflake(ctx)
 		},
+		RequiresLegacySnowflakeSource: func(ctx context.Context) (bool, error) {
+			if a == nil {
+				return false, nil
+			}
+			return a.requiresLegacySnowflakeSource(ctx)
+		},
+		LegacySnowflakeSourceInitialized: func() bool {
+			return a != nil && a.appStateMigrationSnowflake() != nil
+		},
 		Phase2aInitSubsystems: func() []appboot.LifecycleSubsystem {
 			if a == nil {
 				return nil

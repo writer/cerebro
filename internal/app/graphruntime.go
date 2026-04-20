@@ -27,6 +27,8 @@ func (a *App) newGraphRuntime() *appgraphruntime.Runtime {
 		Logger:                              func() *slog.Logger { return a.Logger },
 		Config:                              a.graphRuntimeConfig,
 		SetGraphSnapshots:                   func(store *graph.GraphPersistenceStore) { a.GraphSnapshots = store },
+		GraphSnapshots:                      func() *graph.GraphPersistenceStore { return a.GraphSnapshots },
+		BackgroundContext:                   a.backgroundContext,
 		CurrentLiveSecurityGraph:            a.currentLiveSecurityGraph,
 		CurrentConfiguredSecurityGraphStore: a.currentConfiguredSecurityGraphStore,
 		WaitForGraph:                        a.WaitForGraph,
