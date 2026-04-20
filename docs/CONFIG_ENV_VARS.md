@@ -2,7 +2,7 @@
 
 Generated from `internal/app/app_config.go` (`LoadConfig`) via `go run ./scripts/generate_config_docs/main.go`.
 
-Total variables: **375**
+Total variables: **377**
 
 | Variable | Reader(s) | Default(s) | Config Field(s) | Validation rule(s) |
 |---|---|---|---|---|
@@ -321,6 +321,8 @@ Total variables: **375**
 | `SCAN_RETRY_MAX_BACKOFF` | `getEnvDuration` | `30 * time.Second` | `ScanRetryMaxBackoff` | `-` |
 | `SCAN_TABLES` | `getEnv` | `""` | `ScanTables` | `-` |
 | `SCAN_TABLE_TIMEOUT` | `getEnvDuration` | `30 * time.Minute` | `ScanTableTimeout` | `-` |
+| `SECHECK_API_TOKEN` | `getEnv` | `""` | `SeCheckAPIToken` | `-` |
+| `SECHECK_API_URL` | `getEnv` | `""` | `SeCheckAPIURL` | `-` |
 | `SECURITY_DIGEST_INTERVAL` | `getEnv` | `""` | `SecurityDigestInterval` | `-` |
 | `SEMGREP_API_TOKEN` | `getEnv` | `""` | `SemgrepAPIToken` | `-` |
 | `SENTINELONE_API_TOKEN` | `getEnv` | `""` | `SentinelOneAPIToken` | `-` |
