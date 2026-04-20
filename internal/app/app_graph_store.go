@@ -498,6 +498,14 @@ func (a *App) currentConfiguredTenantSecurityGraphStore(ctx context.Context, ten
 	if !graph.SupportsTenantReadScope(store) {
 		return nil, graph.ErrStoreUnavailable
 	}
+	snapshotStore, err := a.currentConfiguredSnapshotGraphStore(graph.WithTenantScope(ctx, tenantID))
+	if err != nil {
+		return nil, err
+	}
+	resolver := &tenantSnapshotStoreResolver{tenantID: tenantID}
+	if _, err := resolver.Resolve(ctx, snapshotStore); err != nil {
+		return nil, err
+	}
 	return graph.NewTenantScopedReadOnlyGraphStore(store, tenantID), nil
 }
 func (a *App) currentWarmTenantGraphStore(ctx context.Context, tenantID string) (graph.GraphStore, error) {

@@ -373,11 +373,34 @@ func TestCurrentSecurityGraphStoreForTenantPrefersConfiguredTenantScopedBackend(
 	if got := recording.scope.TenantIDs; !reflect.DeepEqual(got, []string{"tenant-a"}) {
 		t.Fatalf("configured backend scope = %#v, want [tenant-a]", got)
 	}
-	if recording.snapshotCalls != 0 {
-		t.Fatalf("configured backend snapshot calls = %d, want 0", recording.snapshotCalls)
+	if recording.snapshotCalls != 2 {
+		t.Fatalf("configured backend snapshot calls = %d, want 2", recording.snapshotCalls)
 	}
 }
 
+func TestCurrentSecurityGraphStoreForTenantReturnsUnavailableWhenConfiguredTenantScopedBackendMissingTenant(t *testing.T) {
+	source := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 23, 0, 0, 0, time.UTC))
+	snapshot, err := source.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() error = %v", err)
+	}
+	recording := &recordingTenantScopedGraphStore{
+		GraphStore: graph.NewSnapshotGraphStore(snapshot),
+		source:     source,
+	}
+
+	application := &App{}
+	application.configuredSecurityGraphStore = recording
+	application.configuredSecurityGraphReady = true
+
+	store := application.CurrentSecurityGraphStoreForTenant("tenant-missing")
+	if store == nil {
+		t.Fatal("expected tenant-scoped graph store")
+	}
+	if _, _, err := store.LookupNode(context.Background(), "service:shared"); !errors.Is(err, graph.ErrStoreUnavailable) {
+		t.Fatalf("LookupNode() error = %v, want ErrStoreUnavailable", err)
+	}
+}
 func TestCurrentSecurityGraphStoreForTenantScopesConfiguredSnapshotReads(t *testing.T) {
 	source := buildTenantShardTestGraph(time.Date(2026, time.March, 17, 23, 0, 0, 0, time.UTC))
 	snapshot, err := source.Snapshot(context.Background())
