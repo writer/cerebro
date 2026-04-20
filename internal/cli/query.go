@@ -106,23 +106,32 @@ func runQueryDirect(cmd *cobra.Command, args []string) error {
 
 	query := strings.Join(args, " ")
 	rawQuery := false
-	if metadataQuery, executeRaw, handled, err := prepareDirectMetadataQuery(query); err != nil {
+	queryArgs := []any(nil)
+	if metadataQuery, metadataArgs, executeRaw, handled, err := prepareDirectMetadataQueryWithArgs(query); err != nil {
 		return err
 	} else if handled {
 		query = metadataQuery
+		queryArgs = metadataArgs
 		rawQuery = executeRaw
 	}
 	if !rawQuery {
-		query, _, err = warehouse.BuildReadOnlyLimitedQuery(query, queryLimit)
-		if err != nil {
-			return err
+		if warehouse.HasTopLevelLimit(query) {
+			query, err = warehouse.NormalizeReadOnlyQuery(query)
+			if err != nil {
+				return err
+			}
+		} else {
+			query, _, err = warehouse.BuildReadOnlyLimitedQuery(query, queryLimit)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
 	ctx, cancel := context.WithTimeout(commandContextOrBackground(cmd), warehouse.ClampReadOnlyQueryTimeout(int((60*time.Second)/time.Second)))
 	defer cancel()
 
-	result, err := queryWarehouse.Query(ctx, query)
+	result, err := queryWarehouse.Query(ctx, query, queryArgs...)
 	if err != nil {
 		return fmt.Errorf("query failed: %w", err)
 	}
@@ -131,30 +140,65 @@ func runQueryDirect(cmd *cobra.Command, args []string) error {
 }
 
 func prepareDirectMetadataQuery(query string) (string, bool, bool, error) {
+	metadataQuery, _, executeRaw, handled, err := prepareDirectMetadataQueryWithArgs(query)
+	return metadataQuery, executeRaw, handled, err
+}
+
+func prepareDirectMetadataQueryWithArgs(query string) (string, []any, bool, bool, error) {
 	candidate := strings.TrimSpace(query)
 	candidateUpper := strings.ToUpper(candidate)
-	if !strings.HasPrefix(candidateUpper, "SHOW") && !strings.HasPrefix(candidateUpper, "PRAGMA") {
-		return "", false, false, nil
+	if !strings.HasPrefix(candidateUpper, "SHOW") &&
+		!strings.HasPrefix(candidateUpper, "PRAGMA") &&
+		!strings.HasPrefix(candidateUpper, "DESCRIBE") &&
+		!strings.HasPrefix(candidateUpper, "DESC") {
+		return "", nil, false, false, nil
 	}
 
 	trimmed, err := normalizeDirectMetadataQuery(query)
 	if err != nil {
-		return "", false, false, err
+		return "", nil, false, false, err
 	}
 
 	upper := strings.ToUpper(strings.Join(strings.Fields(trimmed), " "))
 	if upper == "SHOW TABLES" {
-		return "SELECT table_name FROM information_schema.tables ORDER BY table_name", false, true, nil
+		return "SELECT table_name FROM information_schema.tables ORDER BY table_name", nil, false, true, nil
+	}
+
+	if strings.HasPrefix(upper, "DESCRIBE TABLE ") || strings.HasPrefix(upper, "DESC TABLE ") {
+		tableName, err := directMetadataTableName(trimmed)
+		if err != nil {
+			return "", nil, false, false, err
+		}
+		return "SELECT column_name FROM information_schema.columns WHERE table_name = ? ORDER BY column_name", []any{tableName}, false, true, nil
 	}
 
 	if strings.HasPrefix(strings.ToUpper(trimmed), "PRAGMA ") {
 		if !isAllowedReadOnlyPRAGMA(trimmed) {
-			return "", false, false, fmt.Errorf("only read-only PRAGMA metadata queries are supported")
+			return "", nil, false, false, fmt.Errorf("only read-only PRAGMA metadata queries are supported")
 		}
-		return trimmed, true, true, nil
+		return trimmed, nil, true, true, nil
 	}
 
-	return "", false, false, nil
+	return "", nil, false, false, nil
+}
+
+func directMetadataTableName(query string) (string, error) {
+	fields := strings.Fields(query)
+	if len(fields) < 3 || !strings.EqualFold(fields[1], "TABLE") {
+		return "", fmt.Errorf("expected DESCRIBE TABLE <table>")
+	}
+	tableName := strings.TrimSpace(strings.Join(fields[2:], " "))
+	if tableName == "" {
+		return "", fmt.Errorf("expected DESCRIBE TABLE <table>")
+	}
+	if idx := strings.LastIndex(tableName, "."); idx >= 0 {
+		tableName = tableName[idx+1:]
+	}
+	tableName = strings.TrimSpace(strings.Trim(tableName, "`\""))
+	if tableName == "" {
+		return "", fmt.Errorf("expected DESCRIBE TABLE <table>")
+	}
+	return tableName, nil
 }
 
 func normalizeDirectMetadataQuery(query string) (string, error) {

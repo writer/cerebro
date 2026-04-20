@@ -93,19 +93,36 @@ func ClampReadOnlyQueryTimeout(timeoutSeconds int) time.Duration {
 
 // BuildReadOnlyLimitedQuery validates read-only SQL and enforces row-limit pushdown.
 func BuildReadOnlyLimitedQuery(query string, limit int) (string, int, error) {
-	normalizedQuery := normalizeReadOnlyDialect(strings.TrimSpace(query))
-	if err := ValidateReadOnlyQuery(normalizedQuery); err != nil {
+	trimmed, err := NormalizeReadOnlyQuery(query)
+	if err != nil {
 		return "", 0, err
 	}
-
 	boundedLimit := ClampReadOnlyQueryLimit(limit)
-	trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(normalizedQuery), ";"))
 	if existingLimit, ok := topLevelLimitValue(trimmed); ok && existingLimit <= boundedLimit {
 		return trimmed, boundedLimit, nil
 	}
 
 	boundedQuery := fmt.Sprintf("SELECT * FROM (%s) AS cerebro_readonly_query LIMIT %d", trimmed, boundedLimit)
 	return boundedQuery, boundedLimit, nil
+}
+
+// NormalizeReadOnlyQuery applies read-only SQL normalization and validation without changing limits.
+func NormalizeReadOnlyQuery(query string) (string, error) {
+	normalizedQuery := normalizeReadOnlyDialect(strings.TrimSpace(query))
+	if err := ValidateReadOnlyQuery(normalizedQuery); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(normalizedQuery), ";")), nil
+}
+
+// HasTopLevelLimit reports whether the query already includes a top-level LIMIT clause.
+func HasTopLevelLimit(query string) bool {
+	trimmed, err := NormalizeReadOnlyQuery(query)
+	if err != nil {
+		return false
+	}
+	_, ok := topLevelLimitValue(trimmed)
+	return ok
 }
 
 func normalizeQuery(query string) string {

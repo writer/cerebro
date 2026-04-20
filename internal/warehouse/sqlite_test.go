@@ -99,7 +99,7 @@ func TestSQLiteWarehouseQueryRewritesTimestampIntervals(t *testing.T) {
 	}
 	if _, err := store.Exec(ctx, `INSERT INTO sentinelone_agents (id, last_active_date) VALUES (?, ?), (?, ?)`,
 		"agent-old", "2026-03-01T00:00:00Z",
-		"agent-new", "2026-04-12T00:00:00Z",
+		"agent-new", time.Now().UTC().Add(-48*time.Hour).Format(time.RFC3339),
 	); err != nil {
 		t.Fatalf("insert rows: %v", err)
 	}

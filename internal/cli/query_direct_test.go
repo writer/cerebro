@@ -138,6 +138,80 @@ func TestRunQueryDirect_AllowsReadOnlyPragmaMetadata(t *testing.T) {
 	}
 }
 
+func TestRunQueryDirect_SupportsDescribeTable(t *testing.T) {
+	state := snapshotQueryCLIState()
+	t.Cleanup(func() { restoreQueryCLIState(state) })
+
+	tempDir := t.TempDir()
+	warehousePath := filepath.Join(tempDir, "warehouse.db")
+	store, err := warehouse.NewSQLiteWarehouse(warehouse.SQLiteWarehouseConfig{Path: warehousePath})
+	if err != nil {
+		t.Fatalf("new sqlite warehouse: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if _, err := store.Exec(context.Background(), `CREATE TABLE aws_s3_buckets (id TEXT, name TEXT)`); err != nil {
+		t.Fatalf("create warehouse table: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close seeded warehouse: %v", err)
+	}
+
+	configureDirectQuerySQLiteEnv(t, tempDir, warehousePath)
+	queryFormat = FormatJSON
+	queryLimit = 10
+
+	output := captureStdout(t, func() {
+		if err := runQueryDirect(queryCmd, []string{"DESCRIBE", "TABLE", "aws_s3_buckets"}); err != nil {
+			t.Fatalf("runQueryDirect failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, `"column_name": "id"`) || !strings.Contains(output, `"column_name": "name"`) {
+		t.Fatalf("expected DESCRIBE TABLE output to include table columns, got %s", output)
+	}
+}
+
+func TestRunQueryDirect_PreservesExplicitLimit(t *testing.T) {
+	state := snapshotQueryCLIState()
+	t.Cleanup(func() { restoreQueryCLIState(state) })
+
+	tempDir := t.TempDir()
+	warehousePath := filepath.Join(tempDir, "warehouse.db")
+	store, err := warehouse.NewSQLiteWarehouse(warehouse.SQLiteWarehouseConfig{Path: warehousePath})
+	if err != nil {
+		t.Fatalf("new sqlite warehouse: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if _, err := store.Exec(context.Background(), `CREATE TABLE aws_s3_buckets (id TEXT, name TEXT)`); err != nil {
+		t.Fatalf("create warehouse table: %v", err)
+	}
+	if _, err := store.Exec(context.Background(), `INSERT INTO aws_s3_buckets (id, name) VALUES (?, ?)`, "bucket-1", "bucket-a"); err != nil {
+		t.Fatalf("insert warehouse row: %v", err)
+	}
+	if _, err := store.Exec(context.Background(), `INSERT INTO aws_s3_buckets (id, name) VALUES (?, ?)`, "bucket-2", "bucket-b"); err != nil {
+		t.Fatalf("insert warehouse row: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close seeded warehouse: %v", err)
+	}
+
+	configureDirectQuerySQLiteEnv(t, tempDir, warehousePath)
+	queryFormat = FormatJSON
+	queryLimit = 1
+
+	output := captureStdout(t, func() {
+		if err := runQueryDirect(queryCmd, []string{"SELECT", "name", "FROM", "aws_s3_buckets", "LIMIT", "2"}); err != nil {
+			t.Fatalf("runQueryDirect failed: %v", err)
+		}
+	})
+
+	if !strings.Contains(output, `"count": 2`) {
+		t.Fatalf("expected direct query to preserve explicit limit, got %s", output)
+	}
+}
+
 func TestPrepareDirectMetadataQuery_RejectsMutatingPragma(t *testing.T) {
 	if _, _, _, err := prepareDirectMetadataQuery("PRAGMA journal_mode=WAL"); err == nil || !strings.Contains(err.Error(), "read-only PRAGMA") {
 		t.Fatalf("expected read-only PRAGMA rejection, got %v", err)
