@@ -199,6 +199,7 @@ type App struct {
 	threatIntelSyncWG                  sync.WaitGroup
 	traceShutdown                      func(context.Context) error
 	securityGraphInitMu                sync.RWMutex
+	graphRuntimeOnce                   sync.Once
 	reloadMu                           sync.Mutex
 	Secrets                            *appsecrets.Runtime
 	apiCredentialStore                 *apiauth.ManagedCredentialStore

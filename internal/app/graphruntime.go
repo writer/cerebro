@@ -13,9 +13,11 @@ func (a *App) graphRuntime() *appgraphruntime.Runtime {
 	if a == nil {
 		return nil
 	}
-	if a.GraphRuntime == nil {
-		a.GraphRuntime = a.newGraphRuntime()
-	}
+	a.graphRuntimeOnce.Do(func() {
+		if a.GraphRuntime == nil {
+			a.GraphRuntime = a.newGraphRuntime()
+		}
+	})
 	return a.GraphRuntime
 }
 
