@@ -86,6 +86,12 @@ if [ "${#STAGED_FILES[@]}" -gt 0 ]; then
     if [[ "$output" == *"build constraints exclude all Go files"* ]]; then
       continue
     fi
+    # Nested Go modules (e.g. tools/linters) are intentionally outside
+    # the main module. Skip them here; they are validated via their own
+    # make targets (see Makefile: check-structural).
+    if [[ "$output" == *"main module ("*") does not contain package"* ]]; then
+      continue
+    fi
     echo "$output"
     exit 1
   done

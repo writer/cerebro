@@ -1,4 +1,4 @@
-.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync api-contract-docs api-contract-docs-check api-contract-compat config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check connector-docs connector-docs-check graph-ontology-guardrails gosec govulncheck devex-codegen devex-codegen-check devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks pre-commit verify
+.PHONY: build run test sync clean dev serve policy-list docker-build trivy-db security-scan security-scan-built security-scan-source vendor vendor-check oss-audit openapi-check openapi-sync api-contract-docs api-contract-docs-check api-contract-compat config-docs config-docs-check ontology-docs ontology-docs-check cloudevents-docs cloudevents-docs-check cloudevents-contract-compat report-contract-docs report-contract-docs-check report-contract-compat entity-facet-docs entity-facet-docs-check entity-facet-contract-compat agent-sdk-docs agent-sdk-docs-check agent-sdk-contract-compat agent-sdk-packages agent-sdk-packages-check connector-docs connector-docs-check graph-ontology-guardrails gosec govulncheck devex-codegen devex-codegen-check devex-changed devex-pr platform-up platform-down platform-logs platform-smoke hooks pre-commit verify check check-structural check-structural-build check-structural-test
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -260,12 +260,40 @@ pre-commit:
 verify:
 	go test -race ./...
 	$(MAKE) lint
+	$(MAKE) check-structural
 	$(MAKE) api-contract-compat
 	$(MAKE) cloudevents-contract-compat
 	$(MAKE) report-contract-compat
 	$(MAKE) entity-facet-contract-compat
 	$(MAKE) agent-sdk-contract-compat
 	$(MAKE) graph-ontology-guardrails
+
+# -----------------------------------------------------------------------------
+# Structural invariants — see PLAN.md §7 and tools/linters/README.md.
+#
+# tools/linters/ is a SEPARATE Go module so that its build-only dependencies
+# (golang.org/x/tools) never reach the runtime vendor tree.
+# -----------------------------------------------------------------------------
+
+LINTER_MODULE := ./tools/linters
+LINTER_BIN    := $(GO_BIN)/cerebrolint
+
+.PHONY: check check-structural check-structural-build check-structural-test
+
+# Aggregate developer entrypoint.
+check: check-structural
+
+# Run every custom analyzer in the cerebrolint multichecker against the
+# main module.
+check-structural: check-structural-build
+	@$(LINTER_BIN) ./...
+
+check-structural-build:
+	@GOFLAGS= cd $(LINTER_MODULE) && go build -o $(LINTER_BIN) ./cerebrolint
+
+# Run the analyzer unit tests against their golden fixtures.
+check-structural-test:
+	@GOFLAGS= cd $(LINTER_MODULE) && go test ./...
 
 # Full local setup
 setup: install-deps build hooks

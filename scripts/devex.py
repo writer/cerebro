@@ -152,6 +152,12 @@ def filter_build_ignored_dirs(dirs: Iterable[str]) -> list[str]:
         combined = "\n".join(part for part in (result.stdout, result.stderr) if part)
         if "build constraints exclude all Go files" in combined:
             continue
+        # Nested Go modules (e.g. tools/linters/) are intentionally outside
+        # the main module. They have their own make targets and CI entry
+        # points; skip them here so changed-file lint/test does not try to
+        # reach across module boundaries.
+        if "does not contain package" in combined:
+            continue
         filtered.append(directory)
     return filtered
 
