@@ -13,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
@@ -38,8 +39,9 @@ type stubStore struct {
 func (s stubStore) Ping(context.Context) error { return s.err }
 
 type recordingAppendLog struct {
-	err    error
-	events []*cerebrov1.EventEnvelope
+	err          error
+	events       []*cerebrov1.EventEnvelope
+	replayEvents []*cerebrov1.EventEnvelope
 }
 
 func (s *recordingAppendLog) Ping(context.Context) error { return s.err }
@@ -52,11 +54,36 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 	return nil
 }
 
+func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	source := s.events
+	if len(s.replayEvents) != 0 {
+		source = s.replayEvents
+	}
+	events := make([]*cerebrov1.EventEnvelope, 0, len(source))
+	for _, event := range source {
+		if event == nil {
+			continue
+		}
+		if event.GetAttributes()[ports.EventAttributeSourceRuntimeID] != request.RuntimeID {
+			continue
+		}
+		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
+		if request.Limit != 0 && uint32(len(events)) >= request.Limit {
+			break
+		}
+	}
+	return events, nil
+}
+
 type stubRuntimeStore struct {
 	err      error
 	runtimes map[string]*cerebrov1.SourceRuntime
 	entities map[string]*ports.ProjectedEntity
 	links    map[string]*ports.ProjectedLink
+	findings map[string]*ports.FindingRecord
 }
 
 func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
@@ -109,6 +136,20 @@ func (s *stubRuntimeStore) UpsertProjectedLink(_ context.Context, link *ports.Pr
 	}
 	s.links[projectedLinkKey(link)] = cloneProjectedLink(link)
 	return nil
+}
+
+func (s *stubRuntimeStore) UpsertFinding(_ context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if finding == nil {
+		return nil, nil
+	}
+	if s.findings == nil {
+		s.findings = make(map[string]*ports.FindingRecord)
+	}
+	s.findings[finding.ID] = cloneFinding(finding)
+	return cloneFinding(finding), nil
 }
 
 type stubGraphStore struct {
@@ -600,6 +641,97 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 }
 
+func TestFindingEndpoints(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	appendLog := &recordingAppendLog{
+		replayEvents: []*cerebrov1.EventEnvelope{
+			findingTestEvent("okta-audit-1", "user.session.start", "SUCCESS"),
+			findingTestEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+		},
+	}
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {
+				Id:       "writer-okta-audit",
+				SourceId: "okta",
+				TenantId: "writer",
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  appendLog,
+		StateStore: runtimeStore,
+		GraphStore: &stubGraphStore{},
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?event_limit=2", nil)
+	if err != nil {
+		t.Fatalf("new evaluate findings request: %v", err)
+	}
+	evaluateResp, err := server.Client().Do(evaluateReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/findings/evaluate error = %v", err)
+	}
+	defer func() {
+		if closeErr := evaluateResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close evaluate findings response body: %v", closeErr)
+		}
+	}()
+	var evaluatePayload map[string]any
+	if err := json.NewDecoder(evaluateResp.Body).Decode(&evaluatePayload); err != nil {
+		t.Fatalf("decode evaluate findings response: %v", err)
+	}
+	if got := evaluatePayload["events_evaluated"]; got != float64(2) {
+		t.Fatalf("evaluate findings events_evaluated = %#v, want 2", got)
+	}
+	if got := evaluatePayload["findings_upserted"]; got != float64(1) {
+		t.Fatalf("evaluate findings findings_upserted = %#v, want 1", got)
+	}
+	findingsPayload, ok := evaluatePayload["findings"].([]any)
+	if !ok || len(findingsPayload) != 1 {
+		t.Fatalf("evaluate findings payload = %#v, want 1 entry", evaluatePayload["findings"])
+	}
+	findingPayload, ok := findingsPayload[0].(map[string]any)
+	if !ok {
+		t.Fatalf("evaluate finding payload = %#v, want object", findingsPayload[0])
+	}
+	if got := findingPayload["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
+		t.Fatalf("evaluate finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
+	if got := findingPayload["summary"]; got != "admin@writer.com performed policy.rule.update on pol-1" {
+		t.Fatalf("evaluate finding summary = %#v, want admin summary", got)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	evaluateFindingsResp, err := client.EvaluateSourceRuntimeFindings(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingsRequest{
+		Id:         "writer-okta-audit",
+		EventLimit: 5,
+	}))
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeFindings() error = %v", err)
+	}
+	if got := evaluateFindingsResp.Msg.GetEventsEvaluated(); got != 2 {
+		t.Fatalf("EvaluateSourceRuntimeFindings events_evaluated = %d, want 2", got)
+	}
+	if got := evaluateFindingsResp.Msg.GetFindingsUpserted(); got != 1 {
+		t.Fatalf("EvaluateSourceRuntimeFindings findings_upserted = %d, want 1", got)
+	}
+	if len(evaluateFindingsResp.Msg.GetFindings()) != 1 {
+		t.Fatalf("len(EvaluateSourceRuntimeFindings.Findings) = %d, want 1", len(evaluateFindingsResp.Msg.GetFindings()))
+	}
+	if got := evaluateFindingsResp.Msg.GetRule().GetId(); got != "identity-okta-policy-rule-lifecycle-tampering" {
+		t.Fatalf("EvaluateSourceRuntimeFindings rule id = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
+	if len(runtimeStore.findings) != 1 {
+		t.Fatalf("len(runtimeStore.findings) = %d, want 1", len(runtimeStore.findings))
+	}
+}
+
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {
@@ -645,6 +777,59 @@ func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
 		ToURN:      link.ToURN,
 		Relation:   link.Relation,
 		Attributes: attributes,
+	}
+}
+
+func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
+	if finding == nil {
+		return nil
+	}
+	resourceURNs := make([]string, len(finding.ResourceURNs))
+	copy(resourceURNs, finding.ResourceURNs)
+	eventIDs := make([]string, len(finding.EventIDs))
+	copy(eventIDs, finding.EventIDs)
+	attributes := make(map[string]string, len(finding.Attributes))
+	for key, value := range finding.Attributes {
+		attributes[key] = value
+	}
+	return &ports.FindingRecord{
+		ID:              finding.ID,
+		Fingerprint:     finding.Fingerprint,
+		TenantID:        finding.TenantID,
+		RuntimeID:       finding.RuntimeID,
+		RuleID:          finding.RuleID,
+		Title:           finding.Title,
+		Severity:        finding.Severity,
+		Status:          finding.Status,
+		Summary:         finding.Summary,
+		ResourceURNs:    resourceURNs,
+		EventIDs:        eventIDs,
+		Attributes:      attributes,
+		FirstObservedAt: finding.FirstObservedAt,
+		LastObservedAt:  finding.LastObservedAt,
+	}
+}
+
+func findingTestEvent(id string, eventType string, outcome string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.audit",
+		OccurredAt: timestamppb.New(time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  "okta/audit/v1",
+		Attributes: map[string]string{
+			"domain":                            "writer.okta.com",
+			"event_type":                        eventType,
+			"resource_id":                       "pol-1",
+			"resource_type":                     "PolicyRule",
+			"actor_id":                          "00u2",
+			"actor_type":                        "User",
+			"actor_alternate_id":                "admin@writer.com",
+			"actor_display_name":                "Admin Example",
+			"outcome_result":                    outcome,
+			ports.EventAttributeSourceRuntimeID: "writer-okta-audit",
+		},
 	}
 }
 
