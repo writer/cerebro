@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
@@ -187,7 +188,12 @@ func runSourceRuntime(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open source registry: %w", err)
 	}
-	service := sourceruntime.New(registry, sourceRuntimeStore(deps.StateStore), deps.AppendLog)
+	service := sourceruntime.New(
+		registry,
+		sourceRuntimeStore(deps.StateStore),
+		deps.AppendLog,
+		sourceProjector(deps.StateStore, deps.GraphStore),
+	)
 
 	switch args[0] {
 	case "put":
@@ -287,7 +293,7 @@ func sensitiveSourceConfigKey(key string) bool {
 
 func parseSourceRuntimePutArgs(args []string) (*cerebrov1.SourceRuntime, error) {
 	if len(args) < 2 {
-		return nil, usageError(fmt.Sprintf("usage: %s source-runtime put <runtime-id> <source-id> [key=value ...]", os.Args[0]))
+		return nil, usageError(fmt.Sprintf("usage: %s source-runtime put <runtime-id> <source-id> [tenant_id=<tenant-id>] [key=value ...]", os.Args[0]))
 	}
 	runtime := &cerebrov1.SourceRuntime{
 		Id:       strings.TrimSpace(args[0]),
@@ -295,12 +301,16 @@ func parseSourceRuntimePutArgs(args []string) (*cerebrov1.SourceRuntime, error) 
 		Config:   make(map[string]string),
 	}
 	if runtime.GetId() == "" || runtime.GetSourceId() == "" {
-		return nil, usageError(fmt.Sprintf("usage: %s source-runtime put <runtime-id> <source-id> [key=value ...]", os.Args[0]))
+		return nil, usageError(fmt.Sprintf("usage: %s source-runtime put <runtime-id> <source-id> [tenant_id=<tenant-id>] [key=value ...]", os.Args[0]))
 	}
 	for _, arg := range args[2:] {
 		key, value, ok := strings.Cut(arg, "=")
 		if !ok {
 			return nil, fmt.Errorf("invalid source runtime argument %q; want key=value", arg)
+		}
+		if key == "tenant_id" {
+			runtime.TenantId = strings.TrimSpace(value)
+			continue
 		}
 		runtime.Config[key] = value
 	}
@@ -336,6 +346,31 @@ func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 		return nil
 	}
 	return runtimeStore
+}
+
+func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateStore {
+	projectionStore, ok := store.(ports.ProjectionStateStore)
+	if !ok {
+		return nil
+	}
+	return projectionStore
+}
+
+func sourceProjectionGraphStore(store ports.GraphStore) ports.ProjectionGraphStore {
+	projectionStore, ok := store.(ports.ProjectionGraphStore)
+	if !ok {
+		return nil
+	}
+	return projectionStore
+}
+
+func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) ports.SourceProjector {
+	state := sourceProjectionStateStore(stateStore)
+	graph := sourceProjectionGraphStore(graphStore)
+	if state == nil && graph == nil {
+		return nil
+	}
+	return sourceprojection.New(state, graph)
 }
 
 func printProto(message proto.Message) error {

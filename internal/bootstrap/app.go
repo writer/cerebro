@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
@@ -226,7 +227,12 @@ func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[
 }
 
 func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.PutSourceRuntimeRequest]) (*connect.Response[cerebrov1.PutSourceRuntimeResponse], error) {
-	response, err := sourceruntime.New(s.sources, sourceRuntimeStore(s.deps.StateStore), s.deps.AppendLog).Put(ctx, req.Msg)
+	response, err := sourceruntime.New(
+		s.sources,
+		sourceRuntimeStore(s.deps.StateStore),
+		s.deps.AppendLog,
+		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
+	).Put(ctx, req.Msg)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +240,12 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 }
 
 func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.GetSourceRuntimeRequest]) (*connect.Response[cerebrov1.GetSourceRuntimeResponse], error) {
-	response, err := sourceruntime.New(s.sources, sourceRuntimeStore(s.deps.StateStore), s.deps.AppendLog).Get(ctx, req.Msg)
+	response, err := sourceruntime.New(
+		s.sources,
+		sourceRuntimeStore(s.deps.StateStore),
+		s.deps.AppendLog,
+		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
+	).Get(ctx, req.Msg)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +253,12 @@ func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Re
 }
 
 func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.SyncSourceRuntimeRequest]) (*connect.Response[cerebrov1.SyncSourceRuntimeResponse], error) {
-	response, err := sourceruntime.New(s.sources, sourceRuntimeStore(s.deps.StateStore), s.deps.AppendLog).Sync(ctx, req.Msg)
+	response, err := sourceruntime.New(
+		s.sources,
+		sourceRuntimeStore(s.deps.StateStore),
+		s.deps.AppendLog,
+		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
+	).Sync(ctx, req.Msg)
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +301,12 @@ func (a *App) sourceService() *sourceops.Service {
 }
 
 func (a *App) runtimeService() *sourceruntime.Service {
-	return sourceruntime.New(a.sources, sourceRuntimeStore(a.deps.StateStore), a.deps.AppendLog)
+	return sourceruntime.New(
+		a.sources,
+		sourceRuntimeStore(a.deps.StateStore),
+		a.deps.AppendLog,
+		sourceProjector(a.deps.StateStore, a.deps.GraphStore),
+	)
 }
 
 func sourceConfigFromQuery(r *http.Request) map[string]string {
@@ -351,6 +372,31 @@ func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 		return nil
 	}
 	return runtimeStore
+}
+
+func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateStore {
+	projectionStore, ok := store.(ports.ProjectionStateStore)
+	if !ok {
+		return nil
+	}
+	return projectionStore
+}
+
+func sourceProjectionGraphStore(store ports.GraphStore) ports.ProjectionGraphStore {
+	projectionStore, ok := store.(ports.ProjectionGraphStore)
+	if !ok {
+		return nil
+	}
+	return projectionStore
+}
+
+func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) ports.SourceProjector {
+	state := sourceProjectionStateStore(stateStore)
+	graph := sourceProjectionGraphStore(graphStore)
+	if state == nil && graph == nil {
+		return nil
+	}
+	return sourceprojection.New(state, graph)
 }
 
 type pinger interface {

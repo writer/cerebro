@@ -29,11 +29,12 @@ type Service struct {
 	registry  *sourcecdk.Registry
 	store     ports.SourceRuntimeStore
 	appendLog ports.AppendLog
+	projector ports.SourceProjector
 }
 
 // New constructs a source runtime service.
-func New(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog) *Service {
-	return &Service{registry: registry, store: store, appendLog: appendLog}
+func New(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog, projector ports.SourceProjector) *Service {
+	return &Service{registry: registry, store: store, appendLog: appendLog, projector: projector}
 }
 
 // Put validates and stores a source runtime definition.
@@ -47,6 +48,7 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 	runtime := cloneRuntime(req.GetRuntime())
 	runtime.Id = strings.TrimSpace(runtime.GetId())
 	runtime.SourceId = strings.TrimSpace(runtime.GetSourceId())
+	runtime.TenantId = strings.TrimSpace(runtime.GetTenantId())
 	if runtime.GetId() == "" {
 		return nil, fmt.Errorf("source runtime id is required")
 	}
@@ -99,8 +101,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}
 	cursor := cloneCursor(runtime.GetNextCursor())
 	var (
-		eventsAppended uint32
-		pagesRead      uint32
+		eventsAppended    uint32
+		pagesRead         uint32
+		entitiesProjected uint32
+		linksProjected    uint32
 	)
 	for i := uint32(0); i < pageLimit; i++ {
 		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtime.GetConfig()), cursor)
@@ -116,10 +120,19 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		}
 		pagesRead++
 		for _, event := range pull.Events {
-			if err := s.appendLog.Append(ctx, event); err != nil {
-				return nil, fmt.Errorf("append source event %q: %w", event.GetId(), err)
+			syncedEvent := materializeEvent(runtime, event)
+			if err := s.appendLog.Append(ctx, syncedEvent); err != nil {
+				return nil, fmt.Errorf("append source event %q: %w", syncedEvent.GetId(), err)
 			}
 			eventsAppended++
+			if s.projector != nil {
+				result, err := s.projector.Project(ctx, syncedEvent)
+				if err != nil {
+					return nil, fmt.Errorf("project source event %q: %w", syncedEvent.GetId(), err)
+				}
+				entitiesProjected += result.EntitiesProjected
+				linksProjected += result.LinksProjected
+			}
 		}
 		if pull.NextCursor == nil {
 			break
@@ -131,10 +144,12 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		return nil, err
 	}
 	return &cerebrov1.SyncSourceRuntimeResponse{
-		Runtime:        redactRuntime(runtime),
-		Source:         source.Spec(),
-		PagesRead:      pagesRead,
-		EventsAppended: eventsAppended,
+		Runtime:           redactRuntime(runtime),
+		Source:            source.Spec(),
+		PagesRead:         pagesRead,
+		EventsAppended:    eventsAppended,
+		EntitiesProjected: entitiesProjected,
+		LinksProjected:    linksProjected,
 	}, nil
 }
 
@@ -182,7 +197,12 @@ func mergeRuntime(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceR
 	if existing == nil {
 		return incoming
 	}
-	resetProgress := existing.GetSourceId() != incoming.GetSourceId() || !sameConfig(existing.GetConfig(), incoming.GetConfig())
+	if strings.TrimSpace(incoming.GetTenantId()) == "" {
+		incoming.TenantId = strings.TrimSpace(existing.GetTenantId())
+	}
+	resetProgress := existing.GetSourceId() != incoming.GetSourceId() ||
+		existing.GetTenantId() != incoming.GetTenantId() ||
+		!sameConfig(existing.GetConfig(), incoming.GetConfig())
 	if !resetProgress {
 		if incoming.GetCheckpoint() == nil {
 			incoming.Checkpoint = cloneCheckpoint(existing.GetCheckpoint())
@@ -195,6 +215,17 @@ func mergeRuntime(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceR
 		}
 	}
 	return incoming
+}
+
+func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {
+	if event == nil {
+		return nil
+	}
+	cloned := proto.Clone(event).(*cerebrov1.EventEnvelope)
+	if runtime != nil && strings.TrimSpace(runtime.GetTenantId()) != "" {
+		cloned.TenantId = strings.TrimSpace(runtime.GetTenantId())
+	}
+	return cloned
 }
 
 func sameConfig(left map[string]string, right map[string]string) bool {

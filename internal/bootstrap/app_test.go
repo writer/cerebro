@@ -55,6 +55,8 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 type stubRuntimeStore struct {
 	err      error
 	runtimes map[string]*cerebrov1.SourceRuntime
+	entities map[string]*ports.ProjectedEntity
+	links    map[string]*ports.ProjectedLink
 }
 
 func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
@@ -79,6 +81,72 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 		return nil, ports.ErrSourceRuntimeNotFound
 	}
 	return proto.Clone(runtime).(*cerebrov1.SourceRuntime), nil
+}
+
+func (s *stubRuntimeStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if s.err != nil {
+		return s.err
+	}
+	if entity == nil {
+		return nil
+	}
+	if s.entities == nil {
+		s.entities = make(map[string]*ports.ProjectedEntity)
+	}
+	s.entities[entity.URN] = cloneProjectedEntity(entity)
+	return nil
+}
+
+func (s *stubRuntimeStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if s.err != nil {
+		return s.err
+	}
+	if link == nil {
+		return nil
+	}
+	if s.links == nil {
+		s.links = make(map[string]*ports.ProjectedLink)
+	}
+	s.links[projectedLinkKey(link)] = cloneProjectedLink(link)
+	return nil
+}
+
+type stubGraphStore struct {
+	err      error
+	entities map[string]*ports.ProjectedEntity
+	links    map[string]*ports.ProjectedLink
+}
+
+func (s *stubGraphStore) Ping(context.Context) error {
+	return s.err
+}
+
+func (s *stubGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if s.err != nil {
+		return s.err
+	}
+	if entity == nil {
+		return nil
+	}
+	if s.entities == nil {
+		s.entities = make(map[string]*ports.ProjectedEntity)
+	}
+	s.entities[entity.URN] = cloneProjectedEntity(entity)
+	return nil
+}
+
+func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if s.err != nil {
+		return s.err
+	}
+	if link == nil {
+		return nil
+	}
+	if s.links == nil {
+		s.links = make(map[string]*ports.ProjectedLink)
+	}
+	s.links[projectedLinkKey(link)] = cloneProjectedLink(link)
+	return nil
 }
 
 func TestBootstrapEndpoints(t *testing.T) {
@@ -391,9 +459,11 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 	appendLog := &recordingAppendLog{}
 	runtimeStore := &stubRuntimeStore{}
+	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		AppendLog:  appendLog,
 		StateStore: runtimeStore,
+		GraphStore: graphStore,
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -401,6 +471,7 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	putBody, err := protojson.Marshal(&cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
 			SourceId: "okta",
+			TenantId: "writer",
 			Config: map[string]string{
 				"domain": "writer.okta.com",
 				"family": "user",
@@ -440,6 +511,9 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if got := configPayload["token"]; got != "[redacted]" {
 		t.Fatalf("put runtime token = %#v, want [redacted]", got)
 	}
+	if got := runtimePayload["tenant_id"]; got != "writer" {
+		t.Fatalf("put runtime tenant_id = %#v, want writer", got)
+	}
 
 	getResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-users")
 	if err != nil {
@@ -460,6 +534,9 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 	if got := getRuntimePayload["source_id"]; got != "okta" {
 		t.Fatalf("get runtime source_id = %#v, want okta", got)
+	}
+	if got := getRuntimePayload["tenant_id"]; got != "writer" {
+		t.Fatalf("get runtime tenant_id = %#v, want writer", got)
 	}
 
 	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-users/sync?page_limit=1", nil)
@@ -482,12 +559,19 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if got := syncPayload["events_appended"]; got != float64(1) {
 		t.Fatalf("sync events_appended = %#v, want 1", got)
 	}
+	if got := syncPayload["entities_projected"]; got != float64(3) {
+		t.Fatalf("sync entities_projected = %#v, want 3", got)
+	}
+	if got := syncPayload["links_projected"]; got != float64(2) {
+		t.Fatalf("sync links_projected = %#v, want 2", got)
+	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	putRuntimeResp, err := client.PutSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
 			Id:       "writer-github",
 			SourceId: "github",
+			TenantId: "writer",
 			Config:   map[string]string{"token": "test"},
 		},
 	}))
@@ -496,6 +580,9 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 	if got := putRuntimeResp.Msg.GetRuntime().GetConfig()["token"]; got != "[redacted]" {
 		t.Fatalf("PutSourceRuntime token = %q, want [redacted]", got)
+	}
+	if got := putRuntimeResp.Msg.GetRuntime().GetTenantId(); got != "writer" {
+		t.Fatalf("PutSourceRuntime tenant_id = %q, want writer", got)
 	}
 
 	getRuntimeResp, err := client.GetSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{
@@ -506,6 +593,9 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 	if got := getRuntimeResp.Msg.GetRuntime().GetSourceId(); got != "okta" {
 		t.Fatalf("GetSourceRuntime source_id = %q, want okta", got)
+	}
+	if got := getRuntimeResp.Msg.GetRuntime().GetTenantId(); got != "writer" {
+		t.Fatalf("GetSourceRuntime tenant_id = %q, want writer", got)
 	}
 
 	syncRuntimeResp, err := client.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{
@@ -518,8 +608,17 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if syncRuntimeResp.Msg.GetEventsAppended() != 1 {
 		t.Fatalf("SyncSourceRuntime events_appended = %d, want 1", syncRuntimeResp.Msg.GetEventsAppended())
 	}
+	if syncRuntimeResp.Msg.GetEntitiesProjected() != 3 {
+		t.Fatalf("SyncSourceRuntime entities_projected = %d, want 3", syncRuntimeResp.Msg.GetEntitiesProjected())
+	}
+	if syncRuntimeResp.Msg.GetLinksProjected() != 2 {
+		t.Fatalf("SyncSourceRuntime links_projected = %d, want 2", syncRuntimeResp.Msg.GetLinksProjected())
+	}
 	if len(appendLog.events) != 2 {
 		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
+	}
+	if len(runtimeStore.entities) == 0 || len(graphStore.entities) == 0 {
+		t.Fatalf("projected entities = state:%d graph:%d, want non-zero", len(runtimeStore.entities), len(graphStore.entities))
 	}
 }
 
@@ -533,4 +632,44 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 		return nil, err
 	}
 	return sourcecdk.NewRegistry(source, okta)
+}
+
+func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {
+	if entity == nil {
+		return nil
+	}
+	attributes := make(map[string]string, len(entity.Attributes))
+	for key, value := range entity.Attributes {
+		attributes[key] = value
+	}
+	return &ports.ProjectedEntity{
+		URN:        entity.URN,
+		TenantID:   entity.TenantID,
+		SourceID:   entity.SourceID,
+		EntityType: entity.EntityType,
+		Label:      entity.Label,
+		Attributes: attributes,
+	}
+}
+
+func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
+	if link == nil {
+		return nil
+	}
+	attributes := make(map[string]string, len(link.Attributes))
+	for key, value := range link.Attributes {
+		attributes[key] = value
+	}
+	return &ports.ProjectedLink{
+		TenantID:   link.TenantID,
+		SourceID:   link.SourceID,
+		FromURN:    link.FromURN,
+		ToURN:      link.ToURN,
+		Relation:   link.Relation,
+		Attributes: attributes,
+	}
+}
+
+func projectedLinkKey(link *ports.ProjectedLink) string {
+	return link.FromURN + "|" + link.Relation + "|" + link.ToURN
 }
