@@ -24,6 +24,7 @@ service BootstrapService {
   rpc GetSourceRuntime(GetSourceRuntimeRequest) returns (GetSourceRuntimeResponse);
   rpc SyncSourceRuntime(SyncSourceRuntimeRequest) returns (SyncSourceRuntimeResponse);
   rpc WriteClaims(WriteClaimsRequest) returns (WriteClaimsResponse);
+  rpc ListClaims(ListClaimsRequest) returns (ListClaimsResponse);
   rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
   rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
 }
@@ -225,6 +226,24 @@ message WriteClaimsResponse {
   uint32 claims_written = 1;
   uint32 entities_upserted = 2;
   uint32 relation_links_projected = 3;
+}
+
+// ListClaimsRequest queries persisted claims for one stored runtime.
+message ListClaimsRequest {
+  string runtime_id = 1;
+  string claim_id = 2;
+  string subject_urn = 3;
+  string predicate = 4;
+  string object_urn = 5;
+  string object_value = 6;
+  string claim_type = 7;
+  string status = 8;
+  uint32 limit = 9;
+}
+
+// ListClaimsResponse returns the matched persisted claims.
+message ListClaimsResponse {
+  repeated Claim claims = 1;
 }
 
 // Finding is the normalized persisted finding view for the first runtime evaluator slice.

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -26,7 +27,7 @@ const (
 // ErrRuntimeUnavailable indicates that the runtime or claim store boundary is unavailable.
 var ErrRuntimeUnavailable = errors.New("claim runtime is unavailable")
 
-// Service writes runtime-scoped claims into the state store and optional projections.
+// Service reads and writes runtime-scoped claims into the state store and optional projections.
 type Service struct {
 	runtimeStore ports.SourceRuntimeStore
 	store        ports.ClaimStore
@@ -45,6 +46,24 @@ type WriteResult struct {
 	ClaimsWritten          uint32
 	EntitiesUpserted       uint32
 	RelationLinksProjected uint32
+}
+
+// ListRequest scopes one runtime-scoped claim query.
+type ListRequest struct {
+	RuntimeID   string
+	ClaimID     string
+	SubjectURN  string
+	Predicate   string
+	ObjectURN   string
+	ObjectValue string
+	ClaimType   string
+	Status      string
+	Limit       uint32
+}
+
+// ListResult reports one runtime-scoped claim query.
+type ListResult struct {
+	Claims []*cerebrov1.Claim
 }
 
 // New constructs a claim write service.
@@ -111,6 +130,42 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 		result.ClaimsWritten++
 	}
 	return result, nil
+}
+
+// ListClaims loads persisted claims for one runtime.
+func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListResult, error) {
+	if s == nil || s.runtimeStore == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return nil, errors.New("source runtime id is required")
+	}
+	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
+		return nil, err
+	}
+	records, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
+		RuntimeID:   runtimeID,
+		ClaimID:     strings.TrimSpace(request.ClaimID),
+		SubjectURN:  strings.TrimSpace(request.SubjectURN),
+		Predicate:   strings.TrimSpace(request.Predicate),
+		ObjectURN:   strings.TrimSpace(request.ObjectURN),
+		ObjectValue: strings.TrimSpace(request.ObjectValue),
+		ClaimType:   strings.TrimSpace(request.ClaimType),
+		Status:      strings.TrimSpace(request.Status),
+		Limit:       request.Limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list claims for runtime %q: %w", runtimeID, err)
+	}
+	response := &ListResult{Claims: make([]*cerebrov1.Claim, 0, len(records))}
+	for _, record := range records {
+		if record == nil {
+			continue
+		}
+		response.Claims = append(response.Claims, protoClaim(record))
+	}
+	return response, nil
 }
 
 func (s *Service) upsertEntity(ctx context.Context, entity *ports.ProjectedEntity, seen map[string]struct{}) (bool, error) {
@@ -353,6 +408,35 @@ func claimRecord(runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim) *port
 		ValidTo:       claimTime(claim.GetValidTo()),
 		Attributes:    trimAttributes(claim.GetAttributes()),
 	}
+}
+
+func protoClaim(record *ports.ClaimRecord) *cerebrov1.Claim {
+	if record == nil {
+		return nil
+	}
+	claim := &cerebrov1.Claim{
+		Id:            strings.TrimSpace(record.ID),
+		SubjectUrn:    strings.TrimSpace(record.SubjectURN),
+		SubjectRef:    cloneEntityRef(record.SubjectRef),
+		Predicate:     strings.TrimSpace(record.Predicate),
+		ObjectUrn:     strings.TrimSpace(record.ObjectURN),
+		ObjectRef:     cloneEntityRef(record.ObjectRef),
+		ObjectValue:   strings.TrimSpace(record.ObjectValue),
+		ClaimType:     strings.TrimSpace(record.ClaimType),
+		Status:        strings.TrimSpace(record.Status),
+		SourceEventId: strings.TrimSpace(record.SourceEventID),
+		Attributes:    trimAttributes(record.Attributes),
+	}
+	if !record.ObservedAt.IsZero() {
+		claim.ObservedAt = timestamppb.New(record.ObservedAt.UTC())
+	}
+	if !record.ValidFrom.IsZero() {
+		claim.ValidFrom = timestamppb.New(record.ValidFrom.UTC())
+	}
+	if !record.ValidTo.IsZero() {
+		claim.ValidTo = timestamppb.New(record.ValidTo.UTC())
+	}
+	return claim
 }
 
 func cloneEntityRef(ref *cerebrov1.EntityRef) *cerebrov1.EntityRef {

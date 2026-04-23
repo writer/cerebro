@@ -7,6 +7,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,13 +82,14 @@ func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayReque
 }
 
 type stubRuntimeStore struct {
-	err        error
-	runtimes   map[string]*cerebrov1.SourceRuntime
-	entities   map[string]*ports.ProjectedEntity
-	links      map[string]*ports.ProjectedLink
-	claims     map[string]*ports.ClaimRecord
-	findings   map[string]*ports.FindingRecord
-	reportRuns map[string]*cerebrov1.ReportRun
+	err              error
+	runtimes         map[string]*cerebrov1.SourceRuntime
+	entities         map[string]*ports.ProjectedEntity
+	links            map[string]*ports.ProjectedLink
+	claims           map[string]*ports.ClaimRecord
+	claimListRequest ports.ListClaimsRequest
+	findings         map[string]*ports.FindingRecord
+	reportRuns       map[string]*cerebrov1.ReportRun
 }
 
 func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
@@ -167,6 +170,38 @@ func (s *stubRuntimeStore) UpsertClaim(_ context.Context, claim *ports.ClaimReco
 	}
 	s.claims[claim.ID] = cloneClaim(claim)
 	return cloneClaim(claim), nil
+}
+
+func (s *stubRuntimeStore) ListClaims(_ context.Context, request ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.claimListRequest = request
+	claims := []*ports.ClaimRecord{}
+	for _, claim := range s.claims {
+		if !claimMatches(request, claim) {
+			continue
+		}
+		claims = append(claims, cloneClaim(claim))
+	}
+	sort.Slice(claims, func(i, j int) bool {
+		left := claims[i]
+		right := claims[j]
+		switch {
+		case left.ObservedAt.Equal(right.ObservedAt):
+			return left.ID < right.ID
+		case left.ObservedAt.IsZero():
+			return false
+		case right.ObservedAt.IsZero():
+			return true
+		default:
+			return left.ObservedAt.After(right.ObservedAt)
+		}
+	})
+	if request.Limit != 0 && len(claims) > int(request.Limit) {
+		claims = claims[:int(request.Limit)]
+	}
+	return claims, nil
 }
 
 func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
@@ -923,6 +958,53 @@ func TestClaimEndpoints(t *testing.T) {
 	if len(graphStore.links) != 1 {
 		t.Fatalf("len(graphStore.links) = %d, want 1", len(graphStore.links))
 	}
+
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-jira/claims?predicate=assigned_to&limit=1")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes/{id}/claims error = %v", err)
+	}
+	defer func() {
+		if closeErr := listResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close list claims response body: %v", closeErr)
+		}
+	}()
+	var listPayload map[string]any
+	if err := json.NewDecoder(listResp.Body).Decode(&listPayload); err != nil {
+		t.Fatalf("decode list claims response: %v", err)
+	}
+	listedClaims, ok := listPayload["claims"].([]any)
+	if !ok || len(listedClaims) != 1 {
+		t.Fatalf("list claims payload = %#v, want 1 claim", listPayload["claims"])
+	}
+	listedClaim, ok := listedClaims[0].(map[string]any)
+	if !ok {
+		t.Fatalf("list claims entry = %#v, want object", listedClaims[0])
+	}
+	if got := listedClaim["predicate"]; got != "assigned_to" {
+		t.Fatalf("list claims predicate = %#v, want assigned_to", got)
+	}
+
+	listClaimsResp, err := client.ListClaims(context.Background(), connect.NewRequest(&cerebrov1.ListClaimsRequest{
+		RuntimeId:   "writer-jira",
+		Predicate:   "status",
+		ObjectValue: "in_progress",
+		Limit:       1,
+	}))
+	if err != nil {
+		t.Fatalf("ListClaims() error = %v", err)
+	}
+	if got := len(listClaimsResp.Msg.GetClaims()); got != 1 {
+		t.Fatalf("len(ListClaims().Claims) = %d, want 1", got)
+	}
+	if got := listClaimsResp.Msg.GetClaims()[0].GetObjectValue(); got != "in_progress" {
+		t.Fatalf("ListClaims().Claims[0].ObjectValue = %q, want in_progress", got)
+	}
+	if got := runtimeStore.claimListRequest.Predicate; got != "status" {
+		t.Fatalf("runtimeStore.claimListRequest.Predicate = %q, want status", got)
+	}
+	if got := runtimeStore.claimListRequest.ObjectValue; got != "in_progress" {
+		t.Fatalf("runtimeStore.claimListRequest.ObjectValue = %q, want in_progress", got)
+	}
 }
 
 func TestGraphNeighborhoodEndpoints(t *testing.T) {
@@ -1296,6 +1378,37 @@ func cloneClaim(claim *ports.ClaimRecord) *ports.ClaimRecord {
 		ValidTo:       claim.ValidTo,
 		Attributes:    attributes,
 	}
+}
+
+func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) bool {
+	if claim == nil {
+		return false
+	}
+	if strings.TrimSpace(claim.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+		return false
+	}
+	if request.ClaimID != "" && strings.TrimSpace(claim.ID) != strings.TrimSpace(request.ClaimID) {
+		return false
+	}
+	if request.SubjectURN != "" && strings.TrimSpace(claim.SubjectURN) != strings.TrimSpace(request.SubjectURN) {
+		return false
+	}
+	if request.Predicate != "" && strings.TrimSpace(claim.Predicate) != strings.TrimSpace(request.Predicate) {
+		return false
+	}
+	if request.ObjectURN != "" && strings.TrimSpace(claim.ObjectURN) != strings.TrimSpace(request.ObjectURN) {
+		return false
+	}
+	if request.ObjectValue != "" && strings.TrimSpace(claim.ObjectValue) != strings.TrimSpace(request.ObjectValue) {
+		return false
+	}
+	if request.ClaimType != "" && strings.TrimSpace(claim.ClaimType) != strings.TrimSpace(request.ClaimType) {
+		return false
+	}
+	if request.Status != "" && strings.TrimSpace(claim.Status) != strings.TrimSpace(request.Status) {
+		return false
+	}
+	return true
 }
 
 func cloneReportRun(run *cerebrov1.ReportRun) *cerebrov1.ReportRun {

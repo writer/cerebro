@@ -47,6 +47,18 @@ class Client:
         result, _ = self._request_json("POST", f"/source-runtimes/{parse.quote(runtime_id)}/claims", {"claims": claims})
         return result
 
+    def list_claims(self, runtime_id: str, filters: Optional[Dict[str, Any]] = None) -> Any:
+        query: Dict[str, str] = {}
+        for key, value in (filters or {}).items():
+            if value in (None, ""):
+                continue
+            query[key] = str(value)
+        path = f"/source-runtimes/{parse.quote(runtime_id)}/claims"
+        if query:
+            path = f"{path}?{parse.urlencode(query)}"
+        result, _ = self._request_json("GET", path)
+        return result
+
     def integration(self, runtime_id: str, tenant_id: str, integration: str) -> "IntegrationClient":
         return IntegrationClient(self, runtime_id=runtime_id, tenant_id=tenant_id, integration=integration)
 
@@ -283,6 +295,9 @@ class IntegrationClient:
 
     def write_claims(self, claims: list[Dict[str, Any]]) -> Any:
         return self.client.write_claims(self.runtime_id, claims)
+
+    def list_claims(self, filters: Optional[Dict[str, Any]] = None) -> Any:
+        return self.client.list_claims(self.runtime_id, filters)
 
     def ref(self, kind: str, external_id: str, label: str = "") -> Dict[str, str]:
         normalized_kind = kind.strip()
