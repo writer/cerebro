@@ -42,6 +42,19 @@ func TestReadRequiresRepo(t *testing.T) {
 	}
 }
 
+func TestAuditRequiresToken(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"family": "audit",
+		"owner":  "writer",
+	})); err == nil {
+		t.Fatal("Check(audit) error = nil, want non-nil")
+	}
+}
+
 func TestNewFixtureReturnsFixtureURNs(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {
@@ -94,7 +107,7 @@ func TestNewFixtureReplaysFixturePages(t *testing.T) {
 	}
 }
 
-func TestCheckDiscoverAndReadLiveGitHubPreview(t *testing.T) {
+func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	server := httptest.NewServer(newGitHubAPIHandler(t))
 	defer server.Close()
 
@@ -169,6 +182,82 @@ func TestCheckDiscoverAndReadLiveGitHubPreview(t *testing.T) {
 	}
 }
 
+func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
+	server := httptest.NewServer(newGitHubAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   "audit",
+		"include":  "all",
+		"owner":    "writer",
+		"token":    "test-token",
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check(audit) error = %v", err)
+	}
+
+	discover, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover(audit) error = %v", err)
+	}
+	if len(discover) != 1 {
+		t.Fatalf("len(Discover(audit)) = %d, want 1", len(discover))
+	}
+	if discover[0] != "urn:cerebro:writer:org:writer" {
+		t.Fatalf("Discover(audit)[0] = %q, want org urn", discover[0])
+	}
+
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(audit first) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(Read(audit first).Events) = %d, want 1", len(first.Events))
+	}
+	if first.NextCursor == nil || first.NextCursor.Opaque != "cursor-2" {
+		t.Fatalf("first.NextCursor = %#v, want cursor-2", first.NextCursor)
+	}
+	if got := first.Events[0].Kind; got != "github.audit" {
+		t.Fatalf("first.Events[0].Kind = %q, want github.audit", got)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal audit payload: %v", err)
+	}
+	if got := payload["resource_type"]; got != "repository_vulnerability_alert" {
+		t.Fatalf("audit payload resource_type = %#v, want repository_vulnerability_alert", got)
+	}
+	if got := payload["resource_id"]; got != "writer/cerebro" {
+		t.Fatalf("audit payload resource_id = %#v, want writer/cerebro", got)
+	}
+	raw, ok := payload["raw"].(map[string]any)
+	if !ok {
+		t.Fatalf("audit payload raw = %#v, want object", payload["raw"])
+	}
+	if got := raw["action"]; got != "repository_vulnerability_alert.create" {
+		t.Fatalf("audit raw action = %#v, want repository_vulnerability_alert.create", got)
+	}
+
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(audit second) error = %v", err)
+	}
+	if len(second.Events) != 1 {
+		t.Fatalf("len(Read(audit second).Events) = %d, want 1", len(second.Events))
+	}
+	if second.NextCursor != nil {
+		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
+	}
+	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "audit-doc-2" {
+		t.Fatalf("second.Checkpoint = %#v, want audit-doc-2", second.Checkpoint)
+	}
+}
+
 func newGitHubAPIHandler(t *testing.T) http.Handler {
 	t.Helper()
 
@@ -217,6 +306,46 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			},
 		},
 	}
+	auditEntries := []map[string]any{
+		{
+			"@timestamp":                  1776916397852,
+			"_document_id":                "audit-doc-1",
+			"action":                      "repository_vulnerability_alert.create",
+			"actor":                       "dependabot[bot]",
+			"actor_id":                    49699333,
+			"actor_is_bot":                true,
+			"business":                    "writer",
+			"business_id":                 10550,
+			"created_at":                  1776916397852,
+			"operation_type":              "create",
+			"org":                         "writer",
+			"org_id":                      1,
+			"programmatic_access_type":    "GitHub App server-to-server token",
+			"public_repo":                 false,
+			"repo":                        "writer/cerebro",
+			"repo_id":                     1,
+			"visibility":                  "internal",
+			"request_id":                  "audit-1",
+			"repository_vulnerability_id": 99,
+		},
+		{
+			"@timestamp":     1776916385929,
+			"_document_id":   "audit-doc-2",
+			"action":         "org_credential_authorization.deauthorize",
+			"actor":          "octocat",
+			"actor_id":       1,
+			"created_at":     1776916385929,
+			"operation_type": "modify",
+			"org":            "writer",
+			"org_id":         1,
+			"user":           "octocat",
+			"user_id":        1,
+			"actor_is_agent": false,
+			"actor_is_bot":   false,
+			"request_id":     "audit-2",
+			"visibility":     "internal",
+		},
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -246,6 +375,24 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			}
 			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
 				t.Fatalf("encode empty pulls page: %v", err)
+			}
+		case "/api/v3/orgs/writer/audit-log":
+			after := r.URL.Query().Get("after")
+			if after == "" {
+				w.Header().Set("Link", "</api/v3/orgs/writer/audit-log?after=cursor-2&before=>; rel=\"next\"")
+				if err := json.NewEncoder(w).Encode(auditEntries[:1]); err != nil {
+					t.Fatalf("encode audit page 1: %v", err)
+				}
+				return
+			}
+			if after == "cursor-2" {
+				if err := json.NewEncoder(w).Encode(auditEntries[1:2]); err != nil {
+					t.Fatalf("encode audit page 2: %v", err)
+				}
+				return
+			}
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode empty audit page: %v", err)
 			}
 		default:
 			http.NotFound(w, r)
