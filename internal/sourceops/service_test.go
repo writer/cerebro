@@ -76,7 +76,7 @@ func TestUnknownSource(t *testing.T) {
 }
 
 func newGitHubRegistry() (*sourcecdk.Registry, error) {
-	source, err := githubsource.New()
+	source, err := githubsource.NewFixture()
 	if err != nil {
 		return nil, err
 	}

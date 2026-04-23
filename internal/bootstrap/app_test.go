@@ -15,7 +15,8 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
-	"github.com/writer/cerebro/internal/sourceregistry"
+	"github.com/writer/cerebro/internal/sourcecdk"
+	githubsource "github.com/writer/cerebro/sources/github"
 )
 
 type stubAppendLog struct {
@@ -32,9 +33,9 @@ type stubStore struct {
 func (s stubStore) Ping(context.Context) error { return s.err }
 
 func TestBootstrapEndpoints(t *testing.T) {
-	registry, err := sourceregistry.Builtin()
+	registry, err := newFixtureRegistry()
 	if err != nil {
-		t.Fatalf("Builtin() error = %v", err)
+		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
 	server := httptest.NewServer(app.Handler())
@@ -200,4 +201,12 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	if got := healthResp.Msg.Components[1].Status; got != "error" {
 		t.Fatalf("state_store status = %q, want %q", got, "error")
 	}
+}
+
+func newFixtureRegistry() (*sourcecdk.Registry, error) {
+	source, err := githubsource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
+	return sourcecdk.NewRegistry(source)
 }
