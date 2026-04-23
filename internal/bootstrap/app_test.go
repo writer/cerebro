@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,11 +11,14 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
@@ -32,6 +36,50 @@ type stubStore struct {
 }
 
 func (s stubStore) Ping(context.Context) error { return s.err }
+
+type recordingAppendLog struct {
+	err    error
+	events []*cerebrov1.EventEnvelope
+}
+
+func (s *recordingAppendLog) Ping(context.Context) error { return s.err }
+
+func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.events = append(s.events, proto.Clone(event).(*cerebrov1.EventEnvelope))
+	return nil
+}
+
+type stubRuntimeStore struct {
+	err      error
+	runtimes map[string]*cerebrov1.SourceRuntime
+}
+
+func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
+
+func (s *stubRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.runtimes == nil {
+		s.runtimes = make(map[string]*cerebrov1.SourceRuntime)
+	}
+	s.runtimes[runtime.GetId()] = proto.Clone(runtime).(*cerebrov1.SourceRuntime)
+	return nil
+}
+
+func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov1.SourceRuntime, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	runtime, ok := s.runtimes[id]
+	if !ok {
+		return nil, ports.ErrSourceRuntimeNotFound
+	}
+	return proto.Clone(runtime).(*cerebrov1.SourceRuntime), nil
+}
 
 func TestBootstrapEndpoints(t *testing.T) {
 	registry, err := newFixtureRegistry()
@@ -311,6 +359,145 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	}
 	if got := healthResp.Msg.Components[1].Status; got != "error" {
 		t.Fatalf("state_store status = %q, want %q", got, "error")
+	}
+}
+
+func TestSourceRuntimeEndpoints(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	appendLog := &recordingAppendLog{}
+	runtimeStore := &stubRuntimeStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  appendLog,
+		StateStore: runtimeStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	putBody, err := protojson.Marshal(&cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			SourceId: "okta",
+			Config: map[string]string{
+				"domain": "writer.okta.com",
+				"family": "user",
+				"token":  "test",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal put runtime body: %v", err)
+	}
+	putReq, err := http.NewRequest(http.MethodPut, server.URL+"/source-runtimes/writer-okta-users", bytes.NewReader(putBody))
+	if err != nil {
+		t.Fatalf("new put request: %v", err)
+	}
+	putReq.Header.Set("Content-Type", "application/json")
+	putResp, err := server.Client().Do(putReq)
+	if err != nil {
+		t.Fatalf("PUT /source-runtimes/{id} error = %v", err)
+	}
+	defer func() {
+		if closeErr := putResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close put runtime response body: %v", closeErr)
+		}
+	}()
+	var putPayload map[string]any
+	if err := json.NewDecoder(putResp.Body).Decode(&putPayload); err != nil {
+		t.Fatalf("decode put runtime response: %v", err)
+	}
+	runtimePayload, ok := putPayload["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("put runtime payload = %#v, want object", putPayload["runtime"])
+	}
+	configPayload, ok := runtimePayload["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("put runtime config = %#v, want object", runtimePayload["config"])
+	}
+	if got := configPayload["token"]; got != "[redacted]" {
+		t.Fatalf("put runtime token = %#v, want [redacted]", got)
+	}
+
+	getResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-users")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes/{id} error = %v", err)
+	}
+	defer func() {
+		if closeErr := getResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close get runtime response body: %v", closeErr)
+		}
+	}()
+	var getPayload map[string]any
+	if err := json.NewDecoder(getResp.Body).Decode(&getPayload); err != nil {
+		t.Fatalf("decode get runtime response: %v", err)
+	}
+	getRuntimePayload, ok := getPayload["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("get runtime payload = %#v, want object", getPayload["runtime"])
+	}
+	if got := getRuntimePayload["source_id"]; got != "okta" {
+		t.Fatalf("get runtime source_id = %#v, want okta", got)
+	}
+
+	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-users/sync?page_limit=1", nil)
+	if err != nil {
+		t.Fatalf("new sync request: %v", err)
+	}
+	syncResp, err := server.Client().Do(syncReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/sync error = %v", err)
+	}
+	defer func() {
+		if closeErr := syncResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close sync runtime response body: %v", closeErr)
+		}
+	}()
+	var syncPayload map[string]any
+	if err := json.NewDecoder(syncResp.Body).Decode(&syncPayload); err != nil {
+		t.Fatalf("decode sync runtime response: %v", err)
+	}
+	if got := syncPayload["events_appended"]; got != float64(1) {
+		t.Fatalf("sync events_appended = %#v, want 1", got)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	putRuntimeResp, err := client.PutSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-github",
+			SourceId: "github",
+			Config:   map[string]string{"token": "test"},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("PutSourceRuntime() error = %v", err)
+	}
+	if got := putRuntimeResp.Msg.GetRuntime().GetConfig()["token"]; got != "[redacted]" {
+		t.Fatalf("PutSourceRuntime token = %q, want [redacted]", got)
+	}
+
+	getRuntimeResp, err := client.GetSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{
+		Id: "writer-okta-users",
+	}))
+	if err != nil {
+		t.Fatalf("GetSourceRuntime() error = %v", err)
+	}
+	if got := getRuntimeResp.Msg.GetRuntime().GetSourceId(); got != "okta" {
+		t.Fatalf("GetSourceRuntime source_id = %q, want okta", got)
+	}
+
+	syncRuntimeResp, err := client.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{
+		Id:        "writer-okta-users",
+		PageLimit: 1,
+	}))
+	if err != nil {
+		t.Fatalf("SyncSourceRuntime() error = %v", err)
+	}
+	if syncRuntimeResp.Msg.GetEventsAppended() != 1 {
+		t.Fatalf("SyncSourceRuntime events_appended = %d, want 1", syncRuntimeResp.Msg.GetEventsAppended())
+	}
+	if len(appendLog.events) != 2 {
+		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
 	}
 }
 

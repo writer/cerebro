@@ -51,6 +51,15 @@ const (
 	// BootstrapServiceReadSourceProcedure is the fully-qualified name of the BootstrapService's
 	// ReadSource RPC.
 	BootstrapServiceReadSourceProcedure = "/cerebro.v1.BootstrapService/ReadSource"
+	// BootstrapServicePutSourceRuntimeProcedure is the fully-qualified name of the BootstrapService's
+	// PutSourceRuntime RPC.
+	BootstrapServicePutSourceRuntimeProcedure = "/cerebro.v1.BootstrapService/PutSourceRuntime"
+	// BootstrapServiceGetSourceRuntimeProcedure is the fully-qualified name of the BootstrapService's
+	// GetSourceRuntime RPC.
+	BootstrapServiceGetSourceRuntimeProcedure = "/cerebro.v1.BootstrapService/GetSourceRuntime"
+	// BootstrapServiceSyncSourceRuntimeProcedure is the fully-qualified name of the BootstrapService's
+	// SyncSourceRuntime RPC.
+	BootstrapServiceSyncSourceRuntimeProcedure = "/cerebro.v1.BootstrapService/SyncSourceRuntime"
 )
 
 // BootstrapServiceClient is a client for the cerebro.v1.BootstrapService service.
@@ -61,6 +70,9 @@ type BootstrapServiceClient interface {
 	CheckSource(context.Context, *connect.Request[v1.CheckSourceRequest]) (*connect.Response[v1.CheckSourceResponse], error)
 	DiscoverSource(context.Context, *connect.Request[v1.DiscoverSourceRequest]) (*connect.Response[v1.DiscoverSourceResponse], error)
 	ReadSource(context.Context, *connect.Request[v1.ReadSourceRequest]) (*connect.Response[v1.ReadSourceResponse], error)
+	PutSourceRuntime(context.Context, *connect.Request[v1.PutSourceRuntimeRequest]) (*connect.Response[v1.PutSourceRuntimeResponse], error)
+	GetSourceRuntime(context.Context, *connect.Request[v1.GetSourceRuntimeRequest]) (*connect.Response[v1.GetSourceRuntimeResponse], error)
+	SyncSourceRuntime(context.Context, *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error)
 }
 
 // NewBootstrapServiceClient constructs a client for the cerebro.v1.BootstrapService service. By
@@ -110,17 +122,38 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("ReadSource")),
 			connect.WithClientOptions(opts...),
 		),
+		putSourceRuntime: connect.NewClient[v1.PutSourceRuntimeRequest, v1.PutSourceRuntimeResponse](
+			httpClient,
+			baseURL+BootstrapServicePutSourceRuntimeProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("PutSourceRuntime")),
+			connect.WithClientOptions(opts...),
+		),
+		getSourceRuntime: connect.NewClient[v1.GetSourceRuntimeRequest, v1.GetSourceRuntimeResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetSourceRuntimeProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetSourceRuntime")),
+			connect.WithClientOptions(opts...),
+		),
+		syncSourceRuntime: connect.NewClient[v1.SyncSourceRuntimeRequest, v1.SyncSourceRuntimeResponse](
+			httpClient,
+			baseURL+BootstrapServiceSyncSourceRuntimeProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("SyncSourceRuntime")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // bootstrapServiceClient implements BootstrapServiceClient.
 type bootstrapServiceClient struct {
-	getVersion     *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
-	checkHealth    *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
-	listSources    *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
-	checkSource    *connect.Client[v1.CheckSourceRequest, v1.CheckSourceResponse]
-	discoverSource *connect.Client[v1.DiscoverSourceRequest, v1.DiscoverSourceResponse]
-	readSource     *connect.Client[v1.ReadSourceRequest, v1.ReadSourceResponse]
+	getVersion        *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
+	checkHealth       *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
+	listSources       *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
+	checkSource       *connect.Client[v1.CheckSourceRequest, v1.CheckSourceResponse]
+	discoverSource    *connect.Client[v1.DiscoverSourceRequest, v1.DiscoverSourceResponse]
+	readSource        *connect.Client[v1.ReadSourceRequest, v1.ReadSourceResponse]
+	putSourceRuntime  *connect.Client[v1.PutSourceRuntimeRequest, v1.PutSourceRuntimeResponse]
+	getSourceRuntime  *connect.Client[v1.GetSourceRuntimeRequest, v1.GetSourceRuntimeResponse]
+	syncSourceRuntime *connect.Client[v1.SyncSourceRuntimeRequest, v1.SyncSourceRuntimeResponse]
 }
 
 // GetVersion calls cerebro.v1.BootstrapService.GetVersion.
@@ -153,6 +186,21 @@ func (c *bootstrapServiceClient) ReadSource(ctx context.Context, req *connect.Re
 	return c.readSource.CallUnary(ctx, req)
 }
 
+// PutSourceRuntime calls cerebro.v1.BootstrapService.PutSourceRuntime.
+func (c *bootstrapServiceClient) PutSourceRuntime(ctx context.Context, req *connect.Request[v1.PutSourceRuntimeRequest]) (*connect.Response[v1.PutSourceRuntimeResponse], error) {
+	return c.putSourceRuntime.CallUnary(ctx, req)
+}
+
+// GetSourceRuntime calls cerebro.v1.BootstrapService.GetSourceRuntime.
+func (c *bootstrapServiceClient) GetSourceRuntime(ctx context.Context, req *connect.Request[v1.GetSourceRuntimeRequest]) (*connect.Response[v1.GetSourceRuntimeResponse], error) {
+	return c.getSourceRuntime.CallUnary(ctx, req)
+}
+
+// SyncSourceRuntime calls cerebro.v1.BootstrapService.SyncSourceRuntime.
+func (c *bootstrapServiceClient) SyncSourceRuntime(ctx context.Context, req *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error) {
+	return c.syncSourceRuntime.CallUnary(ctx, req)
+}
+
 // BootstrapServiceHandler is an implementation of the cerebro.v1.BootstrapService service.
 type BootstrapServiceHandler interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
@@ -161,6 +209,9 @@ type BootstrapServiceHandler interface {
 	CheckSource(context.Context, *connect.Request[v1.CheckSourceRequest]) (*connect.Response[v1.CheckSourceResponse], error)
 	DiscoverSource(context.Context, *connect.Request[v1.DiscoverSourceRequest]) (*connect.Response[v1.DiscoverSourceResponse], error)
 	ReadSource(context.Context, *connect.Request[v1.ReadSourceRequest]) (*connect.Response[v1.ReadSourceResponse], error)
+	PutSourceRuntime(context.Context, *connect.Request[v1.PutSourceRuntimeRequest]) (*connect.Response[v1.PutSourceRuntimeResponse], error)
+	GetSourceRuntime(context.Context, *connect.Request[v1.GetSourceRuntimeRequest]) (*connect.Response[v1.GetSourceRuntimeResponse], error)
+	SyncSourceRuntime(context.Context, *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error)
 }
 
 // NewBootstrapServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -206,6 +257,24 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("ReadSource")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServicePutSourceRuntimeHandler := connect.NewUnaryHandler(
+		BootstrapServicePutSourceRuntimeProcedure,
+		svc.PutSourceRuntime,
+		connect.WithSchema(bootstrapServiceMethods.ByName("PutSourceRuntime")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceGetSourceRuntimeHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetSourceRuntimeProcedure,
+		svc.GetSourceRuntime,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetSourceRuntime")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceSyncSourceRuntimeHandler := connect.NewUnaryHandler(
+		BootstrapServiceSyncSourceRuntimeProcedure,
+		svc.SyncSourceRuntime,
+		connect.WithSchema(bootstrapServiceMethods.ByName("SyncSourceRuntime")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/cerebro.v1.BootstrapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BootstrapServiceGetVersionProcedure:
@@ -220,6 +289,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceDiscoverSourceHandler.ServeHTTP(w, r)
 		case BootstrapServiceReadSourceProcedure:
 			bootstrapServiceReadSourceHandler.ServeHTTP(w, r)
+		case BootstrapServicePutSourceRuntimeProcedure:
+			bootstrapServicePutSourceRuntimeHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetSourceRuntimeProcedure:
+			bootstrapServiceGetSourceRuntimeHandler.ServeHTTP(w, r)
+		case BootstrapServiceSyncSourceRuntimeProcedure:
+			bootstrapServiceSyncSourceRuntimeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -251,4 +326,16 @@ func (UnimplementedBootstrapServiceHandler) DiscoverSource(context.Context, *con
 
 func (UnimplementedBootstrapServiceHandler) ReadSource(context.Context, *connect.Request[v1.ReadSourceRequest]) (*connect.Response[v1.ReadSourceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ReadSource is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) PutSourceRuntime(context.Context, *connect.Request[v1.PutSourceRuntimeRequest]) (*connect.Response[v1.PutSourceRuntimeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.PutSourceRuntime is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetSourceRuntime(context.Context, *connect.Request[v1.GetSourceRuntimeRequest]) (*connect.Response[v1.GetSourceRuntimeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetSourceRuntime is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) SyncSourceRuntime(context.Context, *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.SyncSourceRuntime is not implemented"))
 }

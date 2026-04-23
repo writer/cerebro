@@ -1,8 +1,10 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
 // Dependencies are the future store/log boundaries that will be wired into the rewrite.
@@ -55,6 +58,9 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /sources/{sourceID}/check", app.handleCheckSource)
 	mux.HandleFunc("GET /sources/{sourceID}/discover", app.handleDiscoverSource)
 	mux.HandleFunc("GET /sources/{sourceID}/read", app.handleReadSource)
+	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
+	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
+	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
@@ -130,6 +136,53 @@ func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, response)
 }
 
+func (a *App) handlePutSourceRuntime(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.PutSourceRuntimeRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	if request.Runtime == nil {
+		request.Runtime = &cerebrov1.SourceRuntime{}
+	}
+	request.Runtime.Id = r.PathValue("runtimeID")
+	response, err := a.runtimeService().Put(r.Context(), request)
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleGetSourceRuntime(w http.ResponseWriter, r *http.Request) {
+	response, err := a.runtimeService().Get(r.Context(), &cerebrov1.GetSourceRuntimeRequest{
+		Id: r.PathValue("runtimeID"),
+	})
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.SyncSourceRuntimeRequest{}
+	if pageLimit := r.URL.Query().Get("page_limit"); pageLimit != "" {
+		body := []byte(`{"page_limit":` + pageLimit + `}`)
+		if err := protojson.Unmarshal(body, request); err != nil {
+			writeSourceRuntimeError(w, err)
+			return
+		}
+	}
+	request.Id = r.PathValue("runtimeID")
+	response, err := a.runtimeService().Sync(r.Context(), request)
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, response)
+}
+
 func (s *bootstrapService) GetVersion(_ context.Context, _ *connect.Request[cerebrov1.GetVersionRequest]) (*connect.Response[cerebrov1.GetVersionResponse], error) {
 	return connect.NewResponse(&cerebrov1.GetVersionResponse{
 		ServiceName: buildinfo.ServiceName,
@@ -172,6 +225,30 @@ func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[
 	return connect.NewResponse(response), nil
 }
 
+func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.PutSourceRuntimeRequest]) (*connect.Response[cerebrov1.PutSourceRuntimeResponse], error) {
+	response, err := sourceruntime.New(s.sources, sourceRuntimeStore(s.deps.StateStore), s.deps.AppendLog).Put(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.GetSourceRuntimeRequest]) (*connect.Response[cerebrov1.GetSourceRuntimeResponse], error) {
+	response, err := sourceruntime.New(s.sources, sourceRuntimeStore(s.deps.StateStore), s.deps.AppendLog).Get(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.SyncSourceRuntimeRequest]) (*connect.Response[cerebrov1.SyncSourceRuntimeResponse], error) {
+	response, err := sourceruntime.New(s.sources, sourceRuntimeStore(s.deps.StateStore), s.deps.AppendLog).Sync(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
 func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHealthResponse {
 	components := []*cerebrov1.ComponentStatus{
 		componentStatus(ctx, "append_log", deps.AppendLog),
@@ -207,6 +284,10 @@ func (a *App) sourceService() *sourceops.Service {
 	return sourceops.New(a.sources)
 }
 
+func (a *App) runtimeService() *sourceruntime.Service {
+	return sourceruntime.New(a.sources, sourceRuntimeStore(a.deps.StateStore), a.deps.AppendLog)
+}
+
 func sourceConfigFromQuery(r *http.Request) map[string]string {
 	values := make(map[string]string)
 	for key, rawValues := range r.URL.Query() {
@@ -224,6 +305,36 @@ func writeSourceError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	}
 	http.Error(w, err.Error(), statusCode)
+}
+
+func writeSourceRuntimeError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusBadRequest
+	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
+		statusCode = http.StatusNotFound
+	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
+		statusCode = http.StatusServiceUnavailable
+	}
+	http.Error(w, err.Error(), statusCode)
+}
+
+func readProtoJSON(r *http.Request, message proto.Message) error {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil
+	}
+	return protojson.Unmarshal(body, message)
+}
+
+func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
+	runtimeStore, ok := store.(ports.SourceRuntimeStore)
+	if !ok {
+		return nil
+	}
+	return runtimeStore
 }
 
 type pinger interface {

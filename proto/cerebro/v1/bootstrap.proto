@@ -17,6 +17,9 @@ service BootstrapService {
   rpc CheckSource(CheckSourceRequest) returns (CheckSourceResponse);
   rpc DiscoverSource(DiscoverSourceRequest) returns (DiscoverSourceResponse);
   rpc ReadSource(ReadSourceRequest) returns (ReadSourceResponse);
+  rpc PutSourceRuntime(PutSourceRuntimeRequest) returns (PutSourceRuntimeResponse);
+  rpc GetSourceRuntime(GetSourceRuntimeRequest) returns (GetSourceRuntimeResponse);
+  rpc SyncSourceRuntime(SyncSourceRuntimeRequest) returns (SyncSourceRuntimeResponse);
 }
 
 // GetVersionRequest requests static build metadata from the running service.
@@ -101,4 +104,48 @@ message ReadSourceResponse {
   SourceCheckpoint checkpoint = 3;
   SourceCursor next_cursor = 4;
   repeated SourcePreviewEvent preview_events = 5;
+}
+
+// SourceRuntime stores source configuration plus the latest durable sync progress.
+message SourceRuntime {
+  string id = 1;
+  string source_id = 2;
+  map<string, string> config = 3;
+  SourceCheckpoint checkpoint = 4;
+  SourceCursor next_cursor = 5;
+  google.protobuf.Timestamp last_synced_at = 6;
+}
+
+// PutSourceRuntimeRequest stores or updates one source runtime definition.
+message PutSourceRuntimeRequest {
+  SourceRuntime runtime = 1;
+}
+
+// PutSourceRuntimeResponse returns the stored runtime view.
+message PutSourceRuntimeResponse {
+  SourceRuntime runtime = 1;
+}
+
+// GetSourceRuntimeRequest looks up one stored source runtime definition.
+message GetSourceRuntimeRequest {
+  string id = 1;
+}
+
+// GetSourceRuntimeResponse returns the stored runtime view.
+message GetSourceRuntimeResponse {
+  SourceRuntime runtime = 1;
+}
+
+// SyncSourceRuntimeRequest advances one stored source runtime.
+message SyncSourceRuntimeRequest {
+  string id = 1;
+  uint32 page_limit = 2;
+}
+
+// SyncSourceRuntimeResponse returns the updated runtime and sync totals.
+message SyncSourceRuntimeResponse {
+  SourceRuntime runtime = 1;
+  SourceSpec source = 2;
+  uint32 pages_read = 3;
+  uint32 events_appended = 4;
 }
