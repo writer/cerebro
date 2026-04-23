@@ -8,24 +8,14 @@ import (
 	"path/filepath"
 	"testing"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourceprojection"
 )
 
 func TestUpsertProjectedEntityAndLink(t *testing.T) {
-	store, err := Open(config.GraphStoreConfig{
-		Driver:   config.GraphStoreDriverKuzu,
-		KuzuPath: filepath.Join(t.TempDir(), "graph"),
-	})
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer func() {
-		if closeErr := store.Close(); closeErr != nil {
-			t.Fatalf("Close() error = %v", closeErr)
-		}
-	}()
-
+	store := newTestStore(t)
 	ctx := context.Background()
 	user := &ports.ProjectedEntity{
 		URN:        "urn:cerebro:writer:github_user:alice",
@@ -68,13 +58,7 @@ func TestUpsertProjectedEntityAndLink(t *testing.T) {
 		t.Fatalf("UpsertProjectedLink(idempotent) error = %v", err)
 	}
 
-	var label string
-	if err := store.db.QueryRowContext(
-		ctx,
-		fmt.Sprintf("MATCH (e:entity {urn: %s}) RETURN e.label", cypherString(user.URN)),
-	).Scan(&label); err != nil {
-		t.Fatalf("query projected entity label: %v", err)
-	}
+	label := queryGraphString(t, store, fmt.Sprintf("MATCH (e:entity {urn: %s}) RETURN e.label", cypherString(user.URN)))
 	if label != "Alice Example" {
 		t.Fatalf("projected entity label = %q, want %q", label, "Alice Example")
 	}
@@ -101,32 +85,14 @@ func TestUpsertProjectedEntityAndLink(t *testing.T) {
 		t.Fatalf("projected entity resource_type attribute = %q, want user", got)
 	}
 
-	var linkCount int64
-	if err := store.db.QueryRowContext(
-		ctx,
-		"MATCH (:entity)-[r:relation]->(:entity) RETURN COUNT(r)",
-	).Scan(&linkCount); err != nil {
-		t.Fatalf("query projected link count: %v", err)
-	}
+	linkCount := queryGraphCount(t, store, "MATCH (:entity)-[r:relation]->(:entity) RETURN COUNT(r)")
 	if linkCount != 1 {
 		t.Fatalf("projected link count = %d, want 1", linkCount)
 	}
 }
 
 func TestUpsertProjectedLinkMergesMissingEndpoints(t *testing.T) {
-	store, err := Open(config.GraphStoreConfig{
-		Driver:   config.GraphStoreDriverKuzu,
-		KuzuPath: filepath.Join(t.TempDir(), "graph"),
-	})
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer func() {
-		if closeErr := store.Close(); closeErr != nil {
-			t.Fatalf("Close() error = %v", closeErr)
-		}
-	}()
-
+	store := newTestStore(t)
 	ctx := context.Background()
 	link := &ports.ProjectedLink{
 		TenantID: "writer",
@@ -174,6 +140,114 @@ func TestUpsertProjectedLinkMergesMissingEndpoints(t *testing.T) {
 	}
 }
 
+func TestProjectorBuildsTraversableLocalGraph(t *testing.T) {
+	store := newTestStore(t)
+	projectEvents(t, store,
+		&cerebrov1.EventEnvelope{
+			Id:       "github-pr-447",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.pull_request",
+			Payload: mustJSON(t, map[string]any{
+				"title": "Add local graph tests",
+			}),
+			Attributes: map[string]string{
+				"author":      "alice",
+				"owner":       "writer",
+				"pull_number": "447",
+				"repository":  "writer/cerebro",
+				"state":       "open",
+			},
+		},
+		&cerebrov1.EventEnvelope{
+			Id:       "github-audit-1",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"actor":         "alice",
+				"org":           "writer",
+				"repo":          "writer/cerebro",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "repository",
+			},
+		},
+	)
+
+	pathCount := queryGraphCount(t, store, fmt.Sprintf(
+		"MATCH (author:entity {urn: %s})-[authored:relation]->(pr:entity)-[pr_repo:relation]->(repo:entity)-[repo_org:relation]->(org:entity {urn: %s}) "+
+			"WHERE authored.relation = 'authored' AND pr_repo.relation = 'belongs_to' AND repo_org.relation = 'belongs_to' RETURN COUNT(pr)",
+		cypherString("urn:cerebro:writer:github_user:alice"),
+		cypherString("urn:cerebro:writer:github_org:writer"),
+	))
+	if pathCount != 1 {
+		t.Fatalf("authored pull-request path count = %d, want 1", pathCount)
+	}
+}
+
+func TestProjectorKeepsLocalGraphIdentityLinksTenantScoped(t *testing.T) {
+	store := newTestStore(t)
+	projectEvents(t, store,
+		&cerebrov1.EventEnvelope{
+			Id:       "github-audit-1",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.audit",
+			Attributes: map[string]string{
+				"actor":         "alice@writer.com",
+				"org":           "writer",
+				"repo":          "writer/cerebro",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "repository",
+			},
+		},
+		&cerebrov1.EventEnvelope{
+			Id:       "okta-user-1",
+			TenantId: "writer",
+			SourceId: "okta",
+			Kind:     "okta.user",
+			Attributes: map[string]string{
+				"domain":  "writer.okta.com",
+				"email":   "alice@writer.com",
+				"login":   "alice@writer.com",
+				"status":  "ACTIVE",
+				"user_id": "00u1",
+			},
+		},
+		&cerebrov1.EventEnvelope{
+			Id:       "okta-user-2",
+			TenantId: "writer-next",
+			SourceId: "okta",
+			Kind:     "okta.user",
+			Attributes: map[string]string{
+				"domain":  "writer.okta.com",
+				"email":   "alice@writer.com",
+				"login":   "alice@writer.com",
+				"status":  "ACTIVE",
+				"user_id": "00u2",
+			},
+		},
+	)
+
+	sharedIdentifierPathCount := queryGraphCount(t, store, fmt.Sprintf(
+		"MATCH (github_user:entity {urn: %s})-[github_identifier:relation]->(identifier:entity {urn: %s})<-[okta_identifier:relation]-(okta_user:entity {urn: %s}) "+
+			"WHERE github_identifier.relation = 'has_identifier' AND okta_identifier.relation = 'has_identifier' RETURN COUNT(identifier)",
+		cypherString("urn:cerebro:writer:github_user:alice@writer.com"),
+		cypherString("urn:cerebro:writer:identifier:email:alice@writer.com"),
+		cypherString("urn:cerebro:writer:okta_user:00u1"),
+	))
+	if sharedIdentifierPathCount != 1 {
+		t.Fatalf("shared identifier path count = %d, want 1", sharedIdentifierPathCount)
+	}
+
+	identifierCount := queryGraphCount(t, store,
+		"MATCH (identifier:entity) WHERE identifier.entity_type = 'identifier.email' AND identifier.label = 'alice@writer.com' RETURN COUNT(identifier)",
+	)
+	if identifierCount != 2 {
+		t.Fatalf("identifier count = %d, want 2", identifierCount)
+	}
+}
+
 func TestUpsertProjectedEntityRejectsNilEntity(t *testing.T) {
 	store := &Store{}
 	if err := store.UpsertProjectedEntity(context.Background(), nil); err == nil {
@@ -195,19 +269,7 @@ func TestUpsertProjectedLinkRejectsMissingFromURN(t *testing.T) {
 }
 
 func TestUpsertProjectedLinkPreservesAttributesOnRepeatedUpserts(t *testing.T) {
-	store, err := Open(config.GraphStoreConfig{
-		Driver:   config.GraphStoreDriverKuzu,
-		KuzuPath: filepath.Join(t.TempDir(), "graph"),
-	})
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer func() {
-		if closeErr := store.Close(); closeErr != nil {
-			t.Fatalf("Close() error = %v", closeErr)
-		}
-	}()
-
+	store := newTestStore(t)
 	ctx := context.Background()
 	first := &ports.ProjectedLink{
 		TenantID:   "writer",
@@ -248,4 +310,58 @@ func TestUpsertProjectedLinkPreservesAttributesOnRepeatedUpserts(t *testing.T) {
 	if got["team"] != "platform" {
 		t.Fatalf("attributes team = %q, want platform", got["team"])
 	}
+}
+
+func newTestStore(t *testing.T) *Store {
+	t.Helper()
+	store, err := Open(config.GraphStoreConfig{
+		Driver:   config.GraphStoreDriverKuzu,
+		KuzuPath: filepath.Join(t.TempDir(), "graph"),
+	})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := store.Close(); closeErr != nil {
+			t.Fatalf("Close() error = %v", closeErr)
+		}
+	})
+	return store
+}
+
+func projectEvents(t *testing.T, store *Store, events ...*cerebrov1.EventEnvelope) {
+	t.Helper()
+	projector := sourceprojection.New(nil, store)
+	for _, event := range events {
+		if _, err := projector.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+}
+
+func queryGraphCount(t *testing.T, store *Store, query string) int64 {
+	t.Helper()
+	var count int64
+	if err := store.db.QueryRowContext(context.Background(), query).Scan(&count); err != nil {
+		t.Fatalf("QueryRowContext(%q) error = %v", query, err)
+	}
+	return count
+}
+
+func queryGraphString(t *testing.T, store *Store, query string) string {
+	t.Helper()
+	var value string
+	if err := store.db.QueryRowContext(context.Background(), query).Scan(&value); err != nil {
+		t.Fatalf("QueryRowContext(%q) error = %v", query, err)
+	}
+	return value
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	return payload
 }
