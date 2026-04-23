@@ -150,17 +150,20 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if result.GraphLinks != 5 {
 		t.Fatalf("GraphLinks = %d, want 5", result.GraphLinks)
 	}
-	if len(result.StageConfirmations) != 7 {
-		t.Fatalf("len(StageConfirmations) = %d, want 7", len(result.StageConfirmations))
+	if len(result.StageConfirmations) != 8 {
+		t.Fatalf("len(StageConfirmations) = %d, want 8", len(result.StageConfirmations))
 	}
-	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph", "verify_integrity", "verify_traversals")
+	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph", "verify_integrity", "verify_path_patterns", "verify_traversals")
 	if got := result.StageConfirmations[5].AssertionsPassed; got != 5 {
 		t.Fatalf("verify_integrity assertions_passed = %d, want 5", got)
 	}
 	if got := result.StageConfirmations[5].AssertionsFailed; got != 0 {
 		t.Fatalf("verify_integrity assertions_failed = %d, want 0", got)
 	}
-	if got := result.StageConfirmations[6].TraversalsVerified; got != 3 {
+	if got := result.StageConfirmations[6].PatternsVerified; got != 3 {
+		t.Fatalf("verify_path_patterns patterns_verified = %d, want 3", got)
+	}
+	if got := result.StageConfirmations[7].TraversalsVerified; got != 3 {
 		t.Fatalf("verify_traversals traversals_verified = %d, want 3", got)
 	}
 	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
@@ -189,6 +192,12 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 	if !containsAssertion(result.GraphAssertions, "self_referential_relations", 0, 0, true) {
 		t.Fatalf("GraphAssertions missing self_referential_relations: %#v", result.GraphAssertions)
+	}
+	if len(result.GraphPathPatterns) != 3 {
+		t.Fatalf("len(GraphPathPatterns) = %d, want 3", len(result.GraphPathPatterns))
+	}
+	if !containsPathPatternPreview(result.GraphPathPatterns, "github.user -[authored]-> github.pull_request -[belongs_to]-> github.repo", 1) {
+		t.Fatalf("GraphPathPatterns missing authored pattern: %#v", result.GraphPathPatterns)
 	}
 	if len(result.GraphTraversals) != 3 {
 		t.Fatalf("len(GraphTraversals) = %d, want 3", len(result.GraphTraversals))
@@ -276,8 +285,17 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if got := result.StageConfirmations[5].AssertionsPassed; got != 5 {
 		t.Fatalf("verify_integrity assertions_passed = %d, want 5", got)
 	}
-	if got := result.StageConfirmations[6].TraversalsVerified; got != 1 {
+	if got := result.StageConfirmations[6].PatternsVerified; got != 1 {
+		t.Fatalf("verify_path_patterns patterns_verified = %d, want 1", got)
+	}
+	if got := result.StageConfirmations[7].TraversalsVerified; got != 1 {
 		t.Fatalf("verify_traversals traversals_verified = %d, want 1", got)
+	}
+	if len(result.GraphPathPatterns) != 1 {
+		t.Fatalf("len(GraphPathPatterns) = %d, want 1", len(result.GraphPathPatterns))
+	}
+	if !containsPathPatternPreview(result.GraphPathPatterns, "github.user -[acted_on]-> github.repo -[belongs_to]-> github.org", 1) {
+		t.Fatalf("GraphPathPatterns missing acted_on pattern: %#v", result.GraphPathPatterns)
 	}
 	if !containsTraversalPath(result.GraphTraversals, "octocat -[acted_on]-> writer/cerebro -[belongs_to]-> writer") {
 		t.Fatalf("GraphTraversals missing acted_on path: %#v", result.GraphTraversals)
@@ -358,6 +376,15 @@ func containsAssertion(assertions []*AssertionPreview, name string, actual int64
 			continue
 		}
 		if assertion.Name == name && assertion.Actual == actual && assertion.Expected == expected && assertion.Passed == passed {
+			return true
+		}
+	}
+	return false
+}
+
+func containsPathPatternPreview(patterns []*PathPatternPreview, label string, count int64) bool {
+	for _, pattern := range patterns {
+		if pattern != nil && pattern.Pattern == label && pattern.Count == count {
 			return true
 		}
 	}

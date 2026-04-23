@@ -50,6 +50,16 @@ type IntegrityCheck struct {
 	Passed   bool
 }
 
+// PathPattern captures one grouped two-hop graph pattern.
+type PathPattern struct {
+	FromType       string
+	FirstRelation  string
+	ViaType        string
+	SecondRelation string
+	ToType         string
+	Count          int64
+}
+
 // Open opens a Kuzu-backed graph projection store.
 func Open(cfg config.GraphStoreConfig) (*Store, error) {
 	rawPath := strings.TrimSpace(cfg.KuzuPath)
@@ -170,6 +180,57 @@ func (s *Store) SampleTraversals(ctx context.Context, limit int) (_ []Traversal,
 		return nil, fmt.Errorf("iterate graph traversals: %w", err)
 	}
 	return traversals, nil
+}
+
+// PathPatterns returns bounded grouped two-hop path patterns from the local graph.
+func (s *Store) PathPatterns(ctx context.Context, limit int) (_ []PathPattern, err error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("kuzu is not configured")
+	}
+	if limit <= 0 {
+		return nil, nil
+	}
+	tables, err := s.graphTables(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !tables["entity"] || !tables["relation"] {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(
+		"MATCH (src:entity)-[left:relation]->(mid:entity)-[right:relation]->(dst:entity) "+
+			"RETURN src.entity_type, left.relation, mid.entity_type, right.relation, dst.entity_type, COUNT(*) "+
+			"ORDER BY COUNT(*) DESC, src.entity_type, left.relation, mid.entity_type, right.relation, dst.entity_type LIMIT %d",
+		limit,
+	))
+	if err != nil {
+		return nil, fmt.Errorf("query graph path patterns: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close graph path patterns: %w", closeErr)
+		}
+	}()
+
+	patterns := make([]PathPattern, 0, limit)
+	for rows.Next() {
+		var pattern PathPattern
+		if err := rows.Scan(
+			&pattern.FromType,
+			&pattern.FirstRelation,
+			&pattern.ViaType,
+			&pattern.SecondRelation,
+			&pattern.ToType,
+			&pattern.Count,
+		); err != nil {
+			return nil, fmt.Errorf("scan graph path pattern: %w", err)
+		}
+		patterns = append(patterns, pattern)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate graph path patterns: %w", err)
+	}
+	return patterns, nil
 }
 
 // IntegrityChecks returns a fixed set of local graph invariant checks.

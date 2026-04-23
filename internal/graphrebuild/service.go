@@ -33,6 +33,7 @@ type graphStore interface {
 	Close() error
 	Counts(context.Context) (graphstorekuzu.Counts, error)
 	IntegrityChecks(context.Context) ([]graphstorekuzu.IntegrityCheck, error)
+	PathPatterns(context.Context, int) ([]graphstorekuzu.PathPattern, error)
 	SampleTraversals(context.Context, int) ([]graphstorekuzu.Traversal, error)
 }
 
@@ -80,6 +81,7 @@ type StageConfirmation struct {
 	LinksProjected     uint32 `json:"links_projected,omitempty"`
 	AssertionsPassed   uint32 `json:"assertions_passed,omitempty"`
 	AssertionsFailed   uint32 `json:"assertions_failed,omitempty"`
+	PatternsVerified   uint32 `json:"patterns_verified,omitempty"`
 	TraversalsVerified uint32 `json:"traversals_verified,omitempty"`
 	GraphNodes         int64  `json:"graph_nodes,omitempty"`
 	GraphLinks         int64  `json:"graph_links,omitempty"`
@@ -103,27 +105,39 @@ type AssertionPreview struct {
 	Passed   bool   `json:"passed"`
 }
 
+// PathPatternPreview captures one grouped two-hop graph pattern from the local graph.
+type PathPatternPreview struct {
+	Pattern        string `json:"pattern"`
+	FromType       string `json:"from_type"`
+	FirstRelation  string `json:"first_relation"`
+	ViaType        string `json:"via_type"`
+	SecondRelation string `json:"second_relation"`
+	ToType         string `json:"to_type"`
+	Count          int64  `json:"count"`
+}
+
 // Result summarizes a dry-run rebuild execution.
 type Result struct {
-	RuntimeID          string               `json:"runtime_id"`
-	SourceID           string               `json:"source_id"`
-	TenantID           string               `json:"tenant_id,omitempty"`
-	DryRun             bool                 `json:"dry_run"`
-	PagesRead          uint32               `json:"pages_read"`
-	EventsRead         uint32               `json:"events_read"`
-	EntitiesProjected  uint32               `json:"entities_projected"`
-	LinksProjected     uint32               `json:"links_projected"`
-	GraphNodes         int64                `json:"graph_nodes"`
-	GraphLinks         int64                `json:"graph_links"`
-	StageConfirmations []*StageConfirmation `json:"stage_confirmations,omitempty"`
-	EventKinds         []*CountPreview      `json:"event_kinds,omitempty"`
-	GraphEntityTypes   []*CountPreview      `json:"graph_entity_types,omitempty"`
-	GraphRelationTypes []*CountPreview      `json:"graph_relation_types,omitempty"`
-	GraphAssertions    []*AssertionPreview  `json:"graph_assertions,omitempty"`
-	GraphTraversals    []*TraversalPreview  `json:"graph_traversals,omitempty"`
-	Events             []*EventPreview      `json:"events,omitempty"`
-	PreviewEntities    []*EntityPreview     `json:"preview_entities,omitempty"`
-	PreviewLinks       []*LinkPreview       `json:"preview_links,omitempty"`
+	RuntimeID          string                `json:"runtime_id"`
+	SourceID           string                `json:"source_id"`
+	TenantID           string                `json:"tenant_id,omitempty"`
+	DryRun             bool                  `json:"dry_run"`
+	PagesRead          uint32                `json:"pages_read"`
+	EventsRead         uint32                `json:"events_read"`
+	EntitiesProjected  uint32                `json:"entities_projected"`
+	LinksProjected     uint32                `json:"links_projected"`
+	GraphNodes         int64                 `json:"graph_nodes"`
+	GraphLinks         int64                 `json:"graph_links"`
+	StageConfirmations []*StageConfirmation  `json:"stage_confirmations,omitempty"`
+	EventKinds         []*CountPreview       `json:"event_kinds,omitempty"`
+	GraphEntityTypes   []*CountPreview       `json:"graph_entity_types,omitempty"`
+	GraphRelationTypes []*CountPreview       `json:"graph_relation_types,omitempty"`
+	GraphAssertions    []*AssertionPreview   `json:"graph_assertions,omitempty"`
+	GraphPathPatterns  []*PathPatternPreview `json:"graph_path_patterns,omitempty"`
+	GraphTraversals    []*TraversalPreview   `json:"graph_traversals,omitempty"`
+	Events             []*EventPreview       `json:"events,omitempty"`
+	PreviewEntities    []*EntityPreview      `json:"preview_entities,omitempty"`
+	PreviewLinks       []*LinkPreview        `json:"preview_links,omitempty"`
 }
 
 // Service rebuilds a local graph from stored source runtimes.
@@ -276,6 +290,19 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		DurationMillis:   durationMillis(integrityStart),
 		AssertionsPassed: assertionsPassed,
 		AssertionsFailed: assertionsFailed,
+	})
+
+	patternStart := time.Now()
+	patterns, err := graph.PathPatterns(ctx, previewLimit)
+	if err != nil {
+		return nil, err
+	}
+	result.GraphPathPatterns = pathPatternPreviews(patterns)
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:             "verify_path_patterns",
+		Status:           stageStatusSuccess,
+		DurationMillis:   durationMillis(patternStart),
+		PatternsVerified: uint32(len(result.GraphPathPatterns)),
 	})
 
 	traversalStart := time.Now()
@@ -598,6 +625,30 @@ func assertionCounts(assertions []*AssertionPreview) (uint32, uint32) {
 		failed++
 	}
 	return passed, failed
+}
+
+func pathPatternPreviews(patterns []graphstorekuzu.PathPattern) []*PathPatternPreview {
+	previews := make([]*PathPatternPreview, 0, len(patterns))
+	for _, pattern := range patterns {
+		previews = append(previews, &PathPatternPreview{
+			Pattern:        pathPatternLabel(pattern),
+			FromType:       pattern.FromType,
+			FirstRelation:  pattern.FirstRelation,
+			ViaType:        pattern.ViaType,
+			SecondRelation: pattern.SecondRelation,
+			ToType:         pattern.ToType,
+			Count:          pattern.Count,
+		})
+	}
+	return previews
+}
+
+func pathPatternLabel(pattern graphstorekuzu.PathPattern) string {
+	return strings.TrimSpace(pattern.FromType) +
+		" -[" + strings.TrimSpace(pattern.FirstRelation) + "]-> " +
+		strings.TrimSpace(pattern.ViaType) +
+		" -[" + strings.TrimSpace(pattern.SecondRelation) + "]-> " +
+		strings.TrimSpace(pattern.ToType)
 }
 
 func traversalPreviews(traversals []graphstorekuzu.Traversal) []*TraversalPreview {
