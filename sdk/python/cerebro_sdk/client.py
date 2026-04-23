@@ -59,6 +59,16 @@ class Client:
         result, _ = self._request_json("GET", path)
         return result
 
+    def get_entity_neighborhood(self, root_urn: str, limit: int = 0) -> Any:
+        normalized_root_urn = root_urn.strip()
+        if not normalized_root_urn:
+            raise ValueError("root_urn is required")
+        query = {"root_urn": normalized_root_urn}
+        if limit > 0:
+            query["limit"] = str(limit)
+        result, _ = self._request_json("GET", f"/graph/neighborhood?{parse.urlencode(query)}")
+        return result
+
     def integration(self, runtime_id: str, tenant_id: str, integration: str) -> "IntegrationClient":
         return IntegrationClient(self, runtime_id=runtime_id, tenant_id=tenant_id, integration=integration)
 
@@ -298,6 +308,13 @@ class IntegrationClient:
 
     def list_claims(self, filters: Optional[Dict[str, Any]] = None) -> Any:
         return self.client.list_claims(self.runtime_id, filters)
+
+    def graph_neighborhood(self, root: Any, limit: int = 0) -> Any:
+        if isinstance(root, dict):
+            root_urn = str(root["urn"]).strip()
+        else:
+            root_urn = str(root).strip()
+        return self.client.get_entity_neighborhood(root_urn, limit)
 
     def ref(self, kind: str, external_id: str, label: str = "") -> Dict[str, str]:
         normalized_kind = kind.strip()
