@@ -72,6 +72,9 @@ const (
 	// BootstrapServiceWriteClaimsProcedure is the fully-qualified name of the BootstrapService's
 	// WriteClaims RPC.
 	BootstrapServiceWriteClaimsProcedure = "/cerebro.v1.BootstrapService/WriteClaims"
+	// BootstrapServiceListClaimsProcedure is the fully-qualified name of the BootstrapService's
+	// ListClaims RPC.
+	BootstrapServiceListClaimsProcedure = "/cerebro.v1.BootstrapService/ListClaims"
 	// BootstrapServiceEvaluateSourceRuntimeFindingsProcedure is the fully-qualified name of the
 	// BootstrapService's EvaluateSourceRuntimeFindings RPC.
 	BootstrapServiceEvaluateSourceRuntimeFindingsProcedure = "/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindings"
@@ -95,6 +98,7 @@ type BootstrapServiceClient interface {
 	GetSourceRuntime(context.Context, *connect.Request[v1.GetSourceRuntimeRequest]) (*connect.Response[v1.GetSourceRuntimeResponse], error)
 	SyncSourceRuntime(context.Context, *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error)
 	WriteClaims(context.Context, *connect.Request[v1.WriteClaimsRequest]) (*connect.Response[v1.WriteClaimsResponse], error)
+	ListClaims(context.Context, *connect.Request[v1.ListClaimsRequest]) (*connect.Response[v1.ListClaimsResponse], error)
 	EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error)
 	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
 }
@@ -188,6 +192,12 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("WriteClaims")),
 			connect.WithClientOptions(opts...),
 		),
+		listClaims: connect.NewClient[v1.ListClaimsRequest, v1.ListClaimsResponse](
+			httpClient,
+			baseURL+BootstrapServiceListClaimsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListClaims")),
+			connect.WithClientOptions(opts...),
+		),
 		evaluateSourceRuntimeFindings: connect.NewClient[v1.EvaluateSourceRuntimeFindingsRequest, v1.EvaluateSourceRuntimeFindingsResponse](
 			httpClient,
 			baseURL+BootstrapServiceEvaluateSourceRuntimeFindingsProcedure,
@@ -218,6 +228,7 @@ type bootstrapServiceClient struct {
 	getSourceRuntime              *connect.Client[v1.GetSourceRuntimeRequest, v1.GetSourceRuntimeResponse]
 	syncSourceRuntime             *connect.Client[v1.SyncSourceRuntimeRequest, v1.SyncSourceRuntimeResponse]
 	writeClaims                   *connect.Client[v1.WriteClaimsRequest, v1.WriteClaimsResponse]
+	listClaims                    *connect.Client[v1.ListClaimsRequest, v1.ListClaimsResponse]
 	evaluateSourceRuntimeFindings *connect.Client[v1.EvaluateSourceRuntimeFindingsRequest, v1.EvaluateSourceRuntimeFindingsResponse]
 	getEntityNeighborhood         *connect.Client[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse]
 }
@@ -287,6 +298,11 @@ func (c *bootstrapServiceClient) WriteClaims(ctx context.Context, req *connect.R
 	return c.writeClaims.CallUnary(ctx, req)
 }
 
+// ListClaims calls cerebro.v1.BootstrapService.ListClaims.
+func (c *bootstrapServiceClient) ListClaims(ctx context.Context, req *connect.Request[v1.ListClaimsRequest]) (*connect.Response[v1.ListClaimsResponse], error) {
+	return c.listClaims.CallUnary(ctx, req)
+}
+
 // EvaluateSourceRuntimeFindings calls cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings.
 func (c *bootstrapServiceClient) EvaluateSourceRuntimeFindings(ctx context.Context, req *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error) {
 	return c.evaluateSourceRuntimeFindings.CallUnary(ctx, req)
@@ -312,6 +328,7 @@ type BootstrapServiceHandler interface {
 	GetSourceRuntime(context.Context, *connect.Request[v1.GetSourceRuntimeRequest]) (*connect.Response[v1.GetSourceRuntimeResponse], error)
 	SyncSourceRuntime(context.Context, *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error)
 	WriteClaims(context.Context, *connect.Request[v1.WriteClaimsRequest]) (*connect.Response[v1.WriteClaimsResponse], error)
+	ListClaims(context.Context, *connect.Request[v1.ListClaimsRequest]) (*connect.Response[v1.ListClaimsResponse], error)
 	EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error)
 	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
 }
@@ -401,6 +418,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("WriteClaims")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceListClaimsHandler := connect.NewUnaryHandler(
+		BootstrapServiceListClaimsProcedure,
+		svc.ListClaims,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListClaims")),
+		connect.WithHandlerOptions(opts...),
+	)
 	bootstrapServiceEvaluateSourceRuntimeFindingsHandler := connect.NewUnaryHandler(
 		BootstrapServiceEvaluateSourceRuntimeFindingsProcedure,
 		svc.EvaluateSourceRuntimeFindings,
@@ -441,6 +464,8 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceSyncSourceRuntimeHandler.ServeHTTP(w, r)
 		case BootstrapServiceWriteClaimsProcedure:
 			bootstrapServiceWriteClaimsHandler.ServeHTTP(w, r)
+		case BootstrapServiceListClaimsProcedure:
+			bootstrapServiceListClaimsHandler.ServeHTTP(w, r)
 		case BootstrapServiceEvaluateSourceRuntimeFindingsProcedure:
 			bootstrapServiceEvaluateSourceRuntimeFindingsHandler.ServeHTTP(w, r)
 		case BootstrapServiceGetEntityNeighborhoodProcedure:
@@ -504,6 +529,10 @@ func (UnimplementedBootstrapServiceHandler) SyncSourceRuntime(context.Context, *
 
 func (UnimplementedBootstrapServiceHandler) WriteClaims(context.Context, *connect.Request[v1.WriteClaimsRequest]) (*connect.Response[v1.WriteClaimsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.WriteClaims is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListClaims(context.Context, *connect.Request[v1.ListClaimsRequest]) (*connect.Response[v1.ListClaimsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListClaims is not implemented"))
 }
 
 func (UnimplementedBootstrapServiceHandler) EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error) {

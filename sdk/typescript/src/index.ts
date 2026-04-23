@@ -86,6 +86,17 @@ export interface ClaimOptions {
   claim_type?: string;
 }
 
+export interface ListClaimsOptions {
+  claim_id?: string;
+  subject_urn?: string;
+  predicate?: string;
+  object_urn?: string;
+  object_value?: string;
+  claim_type?: string;
+  status?: string;
+  limit?: number;
+}
+
 export interface IntegrationOptions {
   runtimeId: string;
   tenantId: string;
@@ -145,6 +156,18 @@ export class Client {
 
   async writeClaims(runtimeId: string, claims: Claim[]): Promise<Record<string, unknown>> {
     return this.requestJson<Record<string, unknown>>("POST", `/source-runtimes/${encodeURIComponent(runtimeId)}/claims`, { claims });
+  }
+
+  async listClaims(runtimeId: string, options: ListClaimsOptions = {}): Promise<Record<string, unknown>> {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(options)) {
+      if (value === undefined || value === null || value === "") {
+        continue;
+      }
+      query.set(key, String(value));
+    }
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.requestJson<Record<string, unknown>>("GET", `/source-runtimes/${encodeURIComponent(runtimeId)}/claims${suffix}`);
   }
 
   integration(options: IntegrationOptions): IntegrationClient {
@@ -452,6 +475,10 @@ export class IntegrationClient {
 
   async writeClaims(claims: Claim[]): Promise<Record<string, unknown>> {
     return this.client.writeClaims(this.runtimeId, claims);
+  }
+
+  async listClaims(options: ListClaimsOptions = {}): Promise<Record<string, unknown>> {
+    return this.client.listClaims(this.runtimeId, options);
   }
 
   ref(kind: string, externalId: string, label = ""): EntityRef {

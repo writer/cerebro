@@ -3,7 +3,10 @@ package claims
 import (
 	"context"
 	"errors"
+	"sort"
+	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -31,8 +34,9 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 }
 
 type stubClaimStore struct {
-	claims map[string]*ports.ClaimRecord
-	err    error
+	claims      map[string]*ports.ClaimRecord
+	listRequest ports.ListClaimsRequest
+	err         error
 }
 
 func (s *stubClaimStore) Ping(context.Context) error { return nil }
@@ -46,6 +50,35 @@ func (s *stubClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord
 	}
 	s.claims[claim.ID] = cloneClaimRecord(claim)
 	return cloneClaimRecord(claim), nil
+}
+
+func (s *stubClaimStore) ListClaims(_ context.Context, request ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
+	s.listRequest = request
+	claims := make([]*ports.ClaimRecord, 0, len(s.claims))
+	for _, claim := range s.claims {
+		if !claimMatches(request, claim) {
+			continue
+		}
+		claims = append(claims, cloneClaimRecord(claim))
+	}
+	sort.Slice(claims, func(i, j int) bool {
+		left := claims[i]
+		right := claims[j]
+		switch {
+		case left.ObservedAt.Equal(right.ObservedAt):
+			return left.ID < right.ID
+		case left.ObservedAt.IsZero():
+			return false
+		case right.ObservedAt.IsZero():
+			return true
+		default:
+			return left.ObservedAt.After(right.ObservedAt)
+		}
+	})
+	if request.Limit != 0 && len(claims) > int(request.Limit) {
+		claims = claims[:int(request.Limit)]
+	}
+	return claims, nil
 }
 
 type projectionRecorder struct {
@@ -191,6 +224,87 @@ func TestWriteClaimsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil)
 	if _, err := service.WriteClaims(context.Background(), WriteRequest{RuntimeID: "writer-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("WriteClaims() error = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+}
+
+func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-status": {
+				ID:          "claim-status",
+				RuntimeID:   "writer-jira",
+				TenantID:    "writer",
+				SubjectURN:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+				Predicate:   "status",
+				ObjectValue: "in_progress",
+				ClaimType:   claimTypeAttribute,
+				Status:      claimStatusAsserted,
+				ObservedAt:  timeFromProto(timestamppb.New(timestamppb.Now().AsTime().Add(-time.Minute))),
+			},
+			"claim-assignee": {
+				ID:         "claim-assignee",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+				Predicate:  "assigned_to",
+				ObjectURN:  "urn:cerebro:writer:runtime:writer-jira:user:acct:42",
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+				ObservedAt: timeFromProto(timestamppb.Now()),
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {
+					Id:       "writer-jira",
+					SourceId: "sdk",
+					TenantId: "writer",
+				},
+			},
+		},
+		store,
+		nil,
+		nil,
+	)
+
+	response, err := service.ListClaims(context.Background(), ListRequest{
+		RuntimeID:   "writer-jira",
+		Predicate:   "status",
+		ObjectValue: "in_progress",
+		Limit:       1,
+	})
+	if err != nil {
+		t.Fatalf("ListClaims() error = %v", err)
+	}
+	if got := len(response.Claims); got != 1 {
+		t.Fatalf("len(ListClaims().Claims) = %d, want 1", got)
+	}
+	if got := response.Claims[0].GetPredicate(); got != "status" {
+		t.Fatalf("ListClaims().Claims[0].Predicate = %q, want status", got)
+	}
+	if got := response.Claims[0].GetObjectValue(); got != "in_progress" {
+		t.Fatalf("ListClaims().Claims[0].ObjectValue = %q, want in_progress", got)
+	}
+	if got := store.listRequest.RuntimeID; got != "writer-jira" {
+		t.Fatalf("ListClaims().RuntimeID = %q, want writer-jira", got)
+	}
+	if got := store.listRequest.Predicate; got != "status" {
+		t.Fatalf("ListClaims().Predicate = %q, want status", got)
+	}
+	if got := store.listRequest.ObjectValue; got != "in_progress" {
+		t.Fatalf("ListClaims().ObjectValue = %q, want in_progress", got)
+	}
+	if got := store.listRequest.Limit; got != 1 {
+		t.Fatalf("ListClaims().Limit = %d, want 1", got)
+	}
+}
+
+func TestListClaimsRequiresAvailableDependencies(t *testing.T) {
+	service := New(nil, nil, nil, nil)
+	if _, err := service.ListClaims(context.Background(), ListRequest{RuntimeID: "writer-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("ListClaims() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
 
@@ -370,4 +484,42 @@ func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
 		ToURN:      link.ToURN,
 		Attributes: attributes,
 	}
+}
+
+func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) bool {
+	if claim == nil {
+		return false
+	}
+	if strings.TrimSpace(claim.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+		return false
+	}
+	if request.ClaimID != "" && strings.TrimSpace(claim.ID) != strings.TrimSpace(request.ClaimID) {
+		return false
+	}
+	if request.SubjectURN != "" && strings.TrimSpace(claim.SubjectURN) != strings.TrimSpace(request.SubjectURN) {
+		return false
+	}
+	if request.Predicate != "" && strings.TrimSpace(claim.Predicate) != strings.TrimSpace(request.Predicate) {
+		return false
+	}
+	if request.ObjectURN != "" && strings.TrimSpace(claim.ObjectURN) != strings.TrimSpace(request.ObjectURN) {
+		return false
+	}
+	if request.ObjectValue != "" && strings.TrimSpace(claim.ObjectValue) != strings.TrimSpace(request.ObjectValue) {
+		return false
+	}
+	if request.ClaimType != "" && strings.TrimSpace(claim.ClaimType) != strings.TrimSpace(request.ClaimType) {
+		return false
+	}
+	if request.Status != "" && strings.TrimSpace(claim.Status) != strings.TrimSpace(request.Status) {
+		return false
+	}
+	return true
+}
+
+func timeFromProto(value *timestamppb.Timestamp) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return value.AsTime().UTC()
 }

@@ -71,6 +71,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
+	mux.HandleFunc("GET /source-runtimes/{runtimeID}/claims", app.handleListClaims)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/claims", app.handleWriteClaims)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
 	app.server = &http.Server{
@@ -252,6 +253,52 @@ func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, response)
 }
 
+func (a *App) handleListClaims(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.ListClaimsRequest{
+		RuntimeId:   r.PathValue("runtimeID"),
+		ClaimId:     r.URL.Query().Get("claim_id"),
+		SubjectUrn:  r.URL.Query().Get("subject_urn"),
+		Predicate:   r.URL.Query().Get("predicate"),
+		ObjectUrn:   r.URL.Query().Get("object_urn"),
+		ObjectValue: r.URL.Query().Get("object_value"),
+		ClaimType:   r.URL.Query().Get("claim_type"),
+		Status:      r.URL.Query().Get("status"),
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		body := []byte(`{"limit":` + limit + `}`)
+		if err := protojson.Unmarshal(body, request); err != nil {
+			writeClaimError(w, err)
+			return
+		}
+		request.RuntimeId = r.PathValue("runtimeID")
+		request.ClaimId = r.URL.Query().Get("claim_id")
+		request.SubjectUrn = r.URL.Query().Get("subject_urn")
+		request.Predicate = r.URL.Query().Get("predicate")
+		request.ObjectUrn = r.URL.Query().Get("object_urn")
+		request.ObjectValue = r.URL.Query().Get("object_value")
+		request.ClaimType = r.URL.Query().Get("claim_type")
+		request.Status = r.URL.Query().Get("status")
+	}
+	response, err := a.claimService().ListClaims(r.Context(), claims.ListRequest{
+		RuntimeID:   request.GetRuntimeId(),
+		ClaimID:     request.GetClaimId(),
+		SubjectURN:  request.GetSubjectUrn(),
+		Predicate:   request.GetPredicate(),
+		ObjectURN:   request.GetObjectUrn(),
+		ObjectValue: request.GetObjectValue(),
+		ClaimType:   request.GetClaimType(),
+		Status:      request.GetStatus(),
+		Limit:       request.GetLimit(),
+	})
+	if err != nil {
+		writeClaimError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.ListClaimsResponse{
+		Claims: response.Claims,
+	})
+}
+
 func (a *App) handleWriteClaims(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.WriteClaimsRequest{}
 	if err := readProtoJSON(r, request); err != nil {
@@ -425,6 +472,31 @@ func (s *bootstrapService) WriteClaims(ctx context.Context, req *connect.Request
 		ClaimsWritten:          response.ClaimsWritten,
 		EntitiesUpserted:       response.EntitiesUpserted,
 		RelationLinksProjected: response.RelationLinksProjected,
+	}), nil
+}
+
+func (s *bootstrapService) ListClaims(ctx context.Context, req *connect.Request[cerebrov1.ListClaimsRequest]) (*connect.Response[cerebrov1.ListClaimsResponse], error) {
+	response, err := claims.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+		sourceProjectionStateStore(s.deps.StateStore),
+		sourceProjectionGraphStore(s.deps.GraphStore),
+	).ListClaims(ctx, claims.ListRequest{
+		RuntimeID:   req.Msg.GetRuntimeId(),
+		ClaimID:     req.Msg.GetClaimId(),
+		SubjectURN:  req.Msg.GetSubjectUrn(),
+		Predicate:   req.Msg.GetPredicate(),
+		ObjectURN:   req.Msg.GetObjectUrn(),
+		ObjectValue: req.Msg.GetObjectValue(),
+		ClaimType:   req.Msg.GetClaimType(),
+		Status:      req.Msg.GetStatus(),
+		Limit:       req.Msg.GetLimit(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.ListClaimsResponse{
+		Claims: response.Claims,
 	}), nil
 }
 
