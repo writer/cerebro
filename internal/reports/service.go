@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,11 +19,21 @@ import (
 )
 
 const (
-	findingSummaryReportID     = "finding-summary"
-	findingSummaryReportName   = "Finding Summary"
-	findingSummaryReportStatus = "completed"
-	reportParameterTenantID    = "tenant_id"
-	reportParameterRuntimeID   = "runtime_id"
+	findingSummaryReportID           = "finding-summary"
+	findingSummaryReportName         = "Finding Summary"
+	findingSummaryReportStatus       = "completed"
+	reportParameterTenantID          = "tenant_id"
+	reportParameterRuntimeID         = "runtime_id"
+	reportParameterResourceLimit     = "resource_limit"
+	reportParameterGraphLimit        = "graph_limit"
+	defaultResourceEvidenceLimit     = 3
+	maxResourceEvidenceLimit         = 10
+	defaultNeighborhoodEvidenceLimit = 3
+	maxNeighborhoodEvidenceLimit     = 10
+	graphEvidenceStatusIncluded      = "included"
+	graphEvidenceStatusUnconfigured  = "unconfigured"
+	graphEvidenceEntryStatusIncluded = "included"
+	graphEvidenceEntryStatusNotFound = "not_found"
 )
 
 var (
@@ -36,13 +47,15 @@ var (
 // Service exposes the first durable report-run foundation.
 type Service struct {
 	findingStore ports.FindingStore
+	graphStore   ports.GraphQueryStore
 	reportStore  ports.ReportStore
 }
 
 // New constructs the report service.
-func New(findingStore ports.FindingStore, reportStore ports.ReportStore) *Service {
+func New(findingStore ports.FindingStore, graphStore ports.GraphQueryStore, reportStore ports.ReportStore) *Service {
 	return &Service{
 		findingStore: findingStore,
+		graphStore:   graphStore,
 		reportStore:  reportStore,
 	}
 }
@@ -135,6 +148,16 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	if runtimeID == "" {
 		return nil, invalidReportRequestf("report parameter %q is required", reportParameterRuntimeID)
 	}
+	resourceLimit, err := normalizePositiveLimit(parameters[reportParameterResourceLimit], defaultResourceEvidenceLimit, maxResourceEvidenceLimit, reportParameterResourceLimit)
+	if err != nil {
+		return nil, err
+	}
+	graphLimit, err := normalizePositiveLimit(parameters[reportParameterGraphLimit], defaultNeighborhoodEvidenceLimit, maxNeighborhoodEvidenceLimit, reportParameterGraphLimit)
+	if err != nil {
+		return nil, err
+	}
+	persistNormalizedLimit(parameters, reportParameterResourceLimit, resourceLimit)
+	persistNormalizedLimit(parameters, reportParameterGraphLimit, graphLimit)
 	findings, err := s.findingStore.ListFindings(ctx, ports.ListFindingsRequest{TenantID: tenantID, RuntimeID: runtimeID})
 	if err != nil {
 		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", tenantID, runtimeID, err)
@@ -142,6 +165,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	severityCounts := make(map[string]int, len(findings))
 	statusCounts := make(map[string]int, len(findings))
 	ruleCounts := make(map[string]int, len(findings))
+	resourceCounts := make(map[string]int, len(findings))
 	for _, finding := range findings {
 		if finding == nil {
 			continue
@@ -158,6 +182,18 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		if ruleID != "" {
 			ruleCounts[ruleID]++
 		}
+		if resourceURN := primaryResourceURN(finding); resourceURN != "" {
+			resourceCounts[resourceURN]++
+		}
+	}
+	graphEvidenceStatus := graphEvidenceStatusUnconfigured
+	graphEvidence := []any{}
+	if s.graphStore != nil {
+		graphEvidenceStatus = graphEvidenceStatusIncluded
+		graphEvidence, err = s.graphEvidence(ctx, resourceCounts, resourceLimit, graphLimit)
+		if err != nil {
+			return nil, err
+		}
 	}
 	result, err := structpb.NewStruct(map[string]any{
 		reportParameterTenantID:  tenantID,
@@ -166,6 +202,9 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		"severity_counts":        countEntries(severityCounts, "severity"),
 		"status_counts":          countEntries(statusCounts, "status"),
 		"rule_counts":            countEntries(ruleCounts, "rule_id"),
+		"resource_counts":        countEntries(resourceCounts, "resource_urn"),
+		"graph_evidence_status":  graphEvidenceStatus,
+		"graph_evidence":         graphEvidence,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build finding summary report result: %w", err)
@@ -173,11 +212,45 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	return result, nil
 }
 
+func (s *Service) graphEvidence(ctx context.Context, resourceCounts map[string]int, resourceLimit int, graphLimit int) ([]any, error) {
+	entries := sortedCountEntries(resourceCounts)
+	if len(entries) > resourceLimit {
+		entries = entries[:resourceLimit]
+	}
+	evidence := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		neighborhood, err := s.graphStore.GetEntityNeighborhood(ctx, entry.Key, graphLimit)
+		switch {
+		case err == nil:
+			if neighborhood == nil {
+				neighborhood = &ports.EntityNeighborhood{}
+			}
+			evidence = append(evidence, map[string]any{
+				"resource_urn":  entry.Key,
+				"finding_count": entry.Count,
+				"status":        graphEvidenceEntryStatusIncluded,
+				"root":          graphNodePayload(neighborhood.Root),
+				"neighbors":     graphNodesPayload(neighborhood.Neighbors),
+				"relations":     graphRelationsPayload(neighborhood.Relations),
+			})
+		case errors.Is(err, ports.ErrGraphEntityNotFound):
+			evidence = append(evidence, map[string]any{
+				"resource_urn":  entry.Key,
+				"finding_count": entry.Count,
+				"status":        graphEvidenceEntryStatusNotFound,
+			})
+		default:
+			return nil, fmt.Errorf("load graph evidence for %q: %w", entry.Key, err)
+		}
+	}
+	return evidence, nil
+}
+
 func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
 		Name:        findingSummaryReportName,
-		Description: "Materialize one tenant/runtime-scoped summary of persisted findings, grouped by severity, status, and rule.",
+		Description: "Materialize one tenant/runtime-scoped summary of persisted findings, grouped by severity, status, rule, and bounded graph evidence for top resources when the graph is configured.",
 		Parameters: []*cerebrov1.ReportParameter{
 			{
 				Id:          reportParameterTenantID,
@@ -188,6 +261,16 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 				Id:          reportParameterRuntimeID,
 				Description: "Stored source runtime identifier whose persisted findings should be summarized.",
 				Required:    true,
+			},
+			{
+				Id:          reportParameterResourceLimit,
+				Description: "Optional maximum number of resource roots to include in the graph evidence section.",
+				Required:    false,
+			},
+			{
+				Id:          reportParameterGraphLimit,
+				Description: "Optional maximum neighborhood size to read for each graph evidence root.",
+				Required:    false,
 			},
 		},
 	}
@@ -217,6 +300,16 @@ func normalizeParameters(parameters map[string]string) map[string]string {
 	return normalized
 }
 
+func persistNormalizedLimit(parameters map[string]string, parameterID string, value int) {
+	if parameters == nil {
+		return
+	}
+	if _, ok := parameters[parameterID]; !ok {
+		return
+	}
+	parameters[parameterID] = strconv.Itoa(value)
+}
+
 func reportRunID(reportID string, generatedAt time.Time) (string, error) {
 	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-")
 	random := make([]byte, 8)
@@ -226,11 +319,24 @@ func reportRunID(reportID string, generatedAt time.Time) (string, error) {
 	return replacer.Replace(strings.TrimSpace(reportID)) + "-" + fmt.Sprintf("%d", generatedAt.UnixNano()) + "-" + hex.EncodeToString(random), nil
 }
 
+type countEntry struct {
+	Key   string
+	Count int
+}
+
 func countEntries(counts map[string]int, keyName string) []any {
-	type countEntry struct {
-		Key   string
-		Count int
+	entries := sortedCountEntries(counts)
+	values := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		values = append(values, map[string]any{
+			keyName: entry.Key,
+			"count": entry.Count,
+		})
 	}
+	return values
+}
+
+func sortedCountEntries(counts map[string]int) []countEntry {
 	entries := make([]countEntry, 0, len(counts))
 	for key, count := range counts {
 		entries = append(entries, countEntry{Key: key, Count: count})
@@ -249,12 +355,76 @@ func countEntries(counts map[string]int, keyName string) []any {
 			return 0
 		}
 	})
-	values := make([]any, 0, len(entries))
-	for _, entry := range entries {
-		values = append(values, map[string]any{
-			keyName: entry.Key,
-			"count": entry.Count,
+	return entries
+}
+
+func primaryResourceURN(finding *ports.FindingRecord) string {
+	if finding == nil {
+		return ""
+	}
+	if value := strings.TrimSpace(finding.Attributes["primary_resource_urn"]); value != "" {
+		return value
+	}
+	primaryActorURN := strings.TrimSpace(finding.Attributes["primary_actor_urn"])
+	for _, resourceURN := range finding.ResourceURNs {
+		trimmed := strings.TrimSpace(resourceURN)
+		if trimmed == "" || trimmed == primaryActorURN {
+			continue
+		}
+		return trimmed
+	}
+	return ""
+}
+
+func normalizePositiveLimit(raw string, defaultValue int, maxValue int, parameterID string) (int, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return defaultValue, nil
+	}
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, invalidReportRequestf("report parameter %q must be a positive integer: %v", parameterID, err)
+	}
+	switch {
+	case parsed <= 0:
+		return 0, invalidReportRequestf("report parameter %q must be greater than zero", parameterID)
+	case parsed > maxValue:
+		return maxValue, nil
+	default:
+		return parsed, nil
+	}
+}
+
+func graphNodePayload(node *ports.NeighborhoodNode) map[string]any {
+	if node == nil {
+		return map[string]any{}
+	}
+	return map[string]any{
+		"urn":         node.URN,
+		"entity_type": node.EntityType,
+		"label":       node.Label,
+	}
+}
+
+func graphNodesPayload(nodes []*ports.NeighborhoodNode) []any {
+	payload := make([]any, 0, len(nodes))
+	for _, node := range nodes {
+		payload = append(payload, graphNodePayload(node))
+	}
+	return payload
+}
+
+func graphRelationsPayload(relations []*ports.NeighborhoodRelation) []any {
+	payload := make([]any, 0, len(relations))
+	for _, relation := range relations {
+		if relation == nil {
+			continue
+		}
+		payload = append(payload, map[string]any{
+			"from_urn": relation.FromURN,
+			"relation": relation.Relation,
+			"to_urn":   relation.ToURN,
 		})
 	}
-	return values
+	return payload
 }

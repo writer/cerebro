@@ -288,6 +288,7 @@ func (s *bootstrapService) CheckHealth(ctx context.Context, _ *connect.Request[c
 func (s *bootstrapService) ListReportDefinitions(_ context.Context, _ *connect.Request[cerebrov1.ListReportDefinitionsRequest]) (*connect.Response[cerebrov1.ListReportDefinitionsResponse], error) {
 	return connect.NewResponse(reports.New(
 		findingStore(s.deps.StateStore),
+		graphQueryStore(s.deps.GraphStore),
 		reportStore(s.deps.StateStore),
 	).List()), nil
 }
@@ -295,6 +296,7 @@ func (s *bootstrapService) ListReportDefinitions(_ context.Context, _ *connect.R
 func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[cerebrov1.RunReportRequest]) (*connect.Response[cerebrov1.RunReportResponse], error) {
 	response, err := reports.New(
 		findingStore(s.deps.StateStore),
+		graphQueryStore(s.deps.GraphStore),
 		reportStore(s.deps.StateStore),
 	).Run(ctx, req.Msg)
 	if err != nil {
@@ -306,6 +308,7 @@ func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[c
 func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Request[cerebrov1.GetReportRunRequest]) (*connect.Response[cerebrov1.GetReportRunResponse], error) {
 	response, err := reports.New(
 		findingStore(s.deps.StateStore),
+		graphQueryStore(s.deps.GraphStore),
 		reportStore(s.deps.StateStore),
 	).Get(ctx, req.Msg)
 	if err != nil {
@@ -447,6 +450,7 @@ func (a *App) sourceService() *sourceops.Service {
 func (a *App) reportService() *reports.Service {
 	return reports.New(
 		findingStore(a.deps.StateStore),
+		graphQueryStore(a.deps.GraphStore),
 		reportStore(a.deps.StateStore),
 	)
 }
