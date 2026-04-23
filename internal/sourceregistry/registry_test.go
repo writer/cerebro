@@ -7,11 +7,18 @@ func TestBuiltin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Builtin() error = %v", err)
 	}
-	source, ok := registry.Get("github")
+	github, ok := registry.Get("github")
 	if !ok {
 		t.Fatal("Get(github) = false, want true")
 	}
-	if source.Spec().Name != "GitHub" {
-		t.Fatalf("Spec().Name = %q, want %q", source.Spec().Name, "GitHub")
+	if github.Spec().Name != "GitHub" {
+		t.Fatalf("github Spec().Name = %q, want %q", github.Spec().Name, "GitHub")
+	}
+	okta, ok := registry.Get("okta")
+	if !ok {
+		t.Fatal("Get(okta) = false, want true")
+	}
+	if okta.Spec().Name != "Okta" {
+		t.Fatalf("okta Spec().Name = %q, want %q", okta.Spec().Name, "Okta")
 	}
 }
