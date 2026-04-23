@@ -34,6 +34,7 @@ type graphStore interface {
 	Counts(context.Context) (graphstorekuzu.Counts, error)
 	IntegrityChecks(context.Context) ([]graphstorekuzu.IntegrityCheck, error)
 	PathPatterns(context.Context, int) ([]graphstorekuzu.PathPattern, error)
+	Topology(context.Context) (graphstorekuzu.Topology, error)
 	SampleTraversals(context.Context, int) ([]graphstorekuzu.Traversal, error)
 }
 
@@ -82,6 +83,7 @@ type StageConfirmation struct {
 	AssertionsPassed   uint32 `json:"assertions_passed,omitempty"`
 	AssertionsFailed   uint32 `json:"assertions_failed,omitempty"`
 	PatternsVerified   uint32 `json:"patterns_verified,omitempty"`
+	TopologyBuckets    uint32 `json:"topology_buckets,omitempty"`
 	TraversalsVerified uint32 `json:"traversals_verified,omitempty"`
 	GraphNodes         int64  `json:"graph_nodes,omitempty"`
 	GraphLinks         int64  `json:"graph_links,omitempty"`
@@ -116,6 +118,12 @@ type PathPatternPreview struct {
 	Count          int64  `json:"count"`
 }
 
+// TopologyPreview captures one connectivity bucket in the local graph.
+type TopologyPreview struct {
+	Name  string `json:"name"`
+	Count int64  `json:"count"`
+}
+
 // Result summarizes a dry-run rebuild execution.
 type Result struct {
 	RuntimeID          string                `json:"runtime_id"`
@@ -134,6 +142,7 @@ type Result struct {
 	GraphRelationTypes []*CountPreview       `json:"graph_relation_types,omitempty"`
 	GraphAssertions    []*AssertionPreview   `json:"graph_assertions,omitempty"`
 	GraphPathPatterns  []*PathPatternPreview `json:"graph_path_patterns,omitempty"`
+	GraphTopology      []*TopologyPreview    `json:"graph_topology,omitempty"`
 	GraphTraversals    []*TraversalPreview   `json:"graph_traversals,omitempty"`
 	Events             []*EventPreview       `json:"events,omitempty"`
 	PreviewEntities    []*EntityPreview      `json:"preview_entities,omitempty"`
@@ -303,6 +312,19 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		Status:           stageStatusSuccess,
 		DurationMillis:   durationMillis(patternStart),
 		PatternsVerified: uint32(len(result.GraphPathPatterns)),
+	})
+
+	topologyStart := time.Now()
+	topology, err := graph.Topology(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result.GraphTopology = topologyPreviews(topology)
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:            "verify_topology",
+		Status:          stageStatusSuccess,
+		DurationMillis:  durationMillis(topologyStart),
+		TopologyBuckets: uint32(len(result.GraphTopology)),
 	})
 
 	traversalStart := time.Now()
@@ -649,6 +671,16 @@ func pathPatternLabel(pattern graphstorekuzu.PathPattern) string {
 		strings.TrimSpace(pattern.ViaType) +
 		" -[" + strings.TrimSpace(pattern.SecondRelation) + "]-> " +
 		strings.TrimSpace(pattern.ToType)
+}
+
+func topologyPreviews(topology graphstorekuzu.Topology) []*TopologyPreview {
+	previews := []*TopologyPreview{
+		{Name: "isolated", Count: topology.Isolated},
+		{Name: "sources_only", Count: topology.SourcesOnly},
+		{Name: "sinks_only", Count: topology.SinksOnly},
+		{Name: "intermediates", Count: topology.Intermediates},
+	}
+	return previews
 }
 
 func traversalPreviews(traversals []graphstorekuzu.Traversal) []*TraversalPreview {

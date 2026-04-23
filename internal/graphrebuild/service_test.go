@@ -150,10 +150,10 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if result.GraphLinks != 5 {
 		t.Fatalf("GraphLinks = %d, want 5", result.GraphLinks)
 	}
-	if len(result.StageConfirmations) != 8 {
-		t.Fatalf("len(StageConfirmations) = %d, want 8", len(result.StageConfirmations))
+	if len(result.StageConfirmations) != 9 {
+		t.Fatalf("len(StageConfirmations) = %d, want 9", len(result.StageConfirmations))
 	}
-	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph", "verify_integrity", "verify_path_patterns", "verify_traversals")
+	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph", "verify_integrity", "verify_path_patterns", "verify_topology", "verify_traversals")
 	if got := result.StageConfirmations[5].AssertionsPassed; got != 5 {
 		t.Fatalf("verify_integrity assertions_passed = %d, want 5", got)
 	}
@@ -163,7 +163,10 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if got := result.StageConfirmations[6].PatternsVerified; got != 3 {
 		t.Fatalf("verify_path_patterns patterns_verified = %d, want 3", got)
 	}
-	if got := result.StageConfirmations[7].TraversalsVerified; got != 3 {
+	if got := result.StageConfirmations[7].TopologyBuckets; got != 4 {
+		t.Fatalf("verify_topology topology_buckets = %d, want 4", got)
+	}
+	if got := result.StageConfirmations[8].TraversalsVerified; got != 3 {
 		t.Fatalf("verify_traversals traversals_verified = %d, want 3", got)
 	}
 	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
@@ -198,6 +201,21 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 	if !containsPathPatternPreview(result.GraphPathPatterns, "github.user -[authored]-> github.pull_request -[belongs_to]-> github.repo", 1) {
 		t.Fatalf("GraphPathPatterns missing authored pattern: %#v", result.GraphPathPatterns)
+	}
+	if len(result.GraphTopology) != 4 {
+		t.Fatalf("len(GraphTopology) = %d, want 4", len(result.GraphTopology))
+	}
+	if !containsTopologyPreview(result.GraphTopology, "isolated", 0) {
+		t.Fatalf("GraphTopology missing isolated bucket: %#v", result.GraphTopology)
+	}
+	if !containsTopologyPreview(result.GraphTopology, "sources_only", 1) {
+		t.Fatalf("GraphTopology missing sources_only bucket: %#v", result.GraphTopology)
+	}
+	if !containsTopologyPreview(result.GraphTopology, "sinks_only", 2) {
+		t.Fatalf("GraphTopology missing sinks_only bucket: %#v", result.GraphTopology)
+	}
+	if !containsTopologyPreview(result.GraphTopology, "intermediates", 2) {
+		t.Fatalf("GraphTopology missing intermediates bucket: %#v", result.GraphTopology)
 	}
 	if len(result.GraphTraversals) != 3 {
 		t.Fatalf("len(GraphTraversals) = %d, want 3", len(result.GraphTraversals))
@@ -288,7 +306,10 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if got := result.StageConfirmations[6].PatternsVerified; got != 1 {
 		t.Fatalf("verify_path_patterns patterns_verified = %d, want 1", got)
 	}
-	if got := result.StageConfirmations[7].TraversalsVerified; got != 1 {
+	if got := result.StageConfirmations[7].TopologyBuckets; got != 4 {
+		t.Fatalf("verify_topology topology_buckets = %d, want 4", got)
+	}
+	if got := result.StageConfirmations[8].TraversalsVerified; got != 1 {
 		t.Fatalf("verify_traversals traversals_verified = %d, want 1", got)
 	}
 	if len(result.GraphPathPatterns) != 1 {
@@ -296,6 +317,9 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	}
 	if !containsPathPatternPreview(result.GraphPathPatterns, "github.user -[acted_on]-> github.repo -[belongs_to]-> github.org", 1) {
 		t.Fatalf("GraphPathPatterns missing acted_on pattern: %#v", result.GraphPathPatterns)
+	}
+	if !containsTopologyPreview(result.GraphTopology, "isolated", 0) || !containsTopologyPreview(result.GraphTopology, "sources_only", 1) || !containsTopologyPreview(result.GraphTopology, "sinks_only", 2) || !containsTopologyPreview(result.GraphTopology, "intermediates", 1) {
+		t.Fatalf("GraphTopology unexpected values: %#v", result.GraphTopology)
 	}
 	if !containsTraversalPath(result.GraphTraversals, "octocat -[acted_on]-> writer/cerebro -[belongs_to]-> writer") {
 		t.Fatalf("GraphTraversals missing acted_on path: %#v", result.GraphTraversals)
@@ -385,6 +409,15 @@ func containsAssertion(assertions []*AssertionPreview, name string, actual int64
 func containsPathPatternPreview(patterns []*PathPatternPreview, label string, count int64) bool {
 	for _, pattern := range patterns {
 		if pattern != nil && pattern.Pattern == label && pattern.Count == count {
+			return true
+		}
+	}
+	return false
+}
+
+func containsTopologyPreview(topology []*TopologyPreview, name string, count int64) bool {
+	for _, bucket := range topology {
+		if bucket != nil && bucket.Name == name && bucket.Count == count {
 			return true
 		}
 	}
