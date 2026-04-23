@@ -45,7 +45,7 @@ func run(pass *analysis.Pass) (any, error) {
 				continue
 			}
 			for _, field := range st.Fields.List {
-				target, ok := backPointerTarget(pass.TypesInfo.TypeOf(field.Type))
+				target, ok := backPointerTarget(pass, pass.TypesInfo.TypeOf(field.Type))
 				if !ok {
 					continue
 				}
@@ -60,13 +60,22 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-func backPointerTarget(t types.Type) (string, bool) {
+func backPointerTarget(pass *analysis.Pass, t types.Type) (string, bool) {
 	ptr, ok := t.(*types.Pointer)
 	if !ok {
 		return "", false
 	}
 	named, ok := ptr.Elem().(*types.Named)
 	if !ok || named.Obj() == nil {
+		return "", false
+	}
+	if named.Obj().Pkg() == nil {
+		return "", false
+	}
+	path := named.Obj().Pkg().Path()
+	if pass != nil && path == pass.Pkg.Path() {
+		// Back-pointers to the current package's App/Server types are still back-pointers.
+	} else if path != "github.com/writer/cerebro" && !strings.HasPrefix(path, "github.com/writer/cerebro/") {
 		return "", false
 	}
 	switch named.Obj().Name() {
