@@ -8,6 +8,7 @@ import (
 
 	appendlogjetstream "github.com/writer/cerebro/internal/appendlog/jetstream"
 	"github.com/writer/cerebro/internal/config"
+	graphstorekuzu "github.com/writer/cerebro/internal/graphstore/kuzu"
 	statestorepostgres "github.com/writer/cerebro/internal/statestore/postgres"
 )
 
@@ -53,6 +54,14 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		deps.StateStore = stateStore
 		closers = append(closers, stateStore)
 	}
+	if cfg.GraphStore.Driver == config.GraphStoreDriverKuzu {
+		graphStore, err := graphstorekuzu.Open(cfg.GraphStore)
+		if err != nil {
+			return fail(fmt.Errorf("open graph store: %w", err))
+		}
+		deps.GraphStore = graphStore
+		closers = append(closers, graphStore)
+	}
 	pingCtx, cancel := context.WithTimeout(ctx, dependencyPingTimeout)
 	defer cancel()
 	if deps.AppendLog != nil {
@@ -63,6 +72,11 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	if deps.StateStore != nil {
 		if err := deps.StateStore.Ping(pingCtx); err != nil {
 			return fail(fmt.Errorf("ping state store: %w", err))
+		}
+	}
+	if deps.GraphStore != nil {
+		if err := deps.GraphStore.Ping(pingCtx); err != nil {
+			return fail(fmt.Errorf("ping graph store: %w", err))
 		}
 	}
 	return deps, closeAll, nil

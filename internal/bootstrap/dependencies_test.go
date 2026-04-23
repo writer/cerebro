@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/writer/cerebro/internal/config"
@@ -17,6 +18,9 @@ func TestOpenDependenciesAllowsUnconfiguredStores(t *testing.T) {
 	}
 	if deps.StateStore != nil {
 		t.Fatal("StateStore != nil, want nil")
+	}
+	if deps.GraphStore != nil {
+		t.Fatal("GraphStore != nil, want nil")
 	}
 	if err := closeAll(); err != nil {
 		t.Fatalf("closeAll() error = %v", err)
@@ -38,5 +42,32 @@ func TestOpenDependenciesRejectsIncompletePostgresConfig(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("OpenDependencies() error = nil, want non-nil")
+	}
+}
+
+func TestOpenDependenciesRejectsIncompleteKuzuConfig(t *testing.T) {
+	_, _, err := OpenDependencies(context.Background(), config.Config{
+		GraphStore: config.GraphStoreConfig{Driver: config.GraphStoreDriverKuzu},
+	})
+	if err == nil {
+		t.Fatal("OpenDependencies() error = nil, want non-nil")
+	}
+}
+
+func TestOpenDependenciesConfiguresKuzu(t *testing.T) {
+	deps, closeAll, err := OpenDependencies(context.Background(), config.Config{
+		GraphStore: config.GraphStoreConfig{
+			Driver:   config.GraphStoreDriverKuzu,
+			KuzuPath: filepath.Join(t.TempDir(), "graph"),
+		},
+	})
+	if err != nil {
+		t.Fatalf("OpenDependencies() error = %v", err)
+	}
+	if deps.GraphStore == nil {
+		t.Fatal("GraphStore = nil, want non-nil")
+	}
+	if err := closeAll(); err != nil {
+		t.Fatalf("closeAll() error = %v", err)
 	}
 }
