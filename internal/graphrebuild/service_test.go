@@ -174,6 +174,11 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 	assertReadPage(t, result.ReadPages[0], 1, 1, "1", "1", "github-audit-1", "github-audit-1")
 	assertReadPage(t, result.ReadPages[1], 2, 1, "2", "", "github-pr-1", "github-pr-1")
+	if len(result.EventProjections) != 2 {
+		t.Fatalf("len(EventProjections) = %d, want 2", len(result.EventProjections))
+	}
+	assertEventProjection(t, result.EventProjections[0], "github-audit-1", "github.audit", 4, 3, 4, 3)
+	assertEventProjection(t, result.EventProjections[1], "github-pr-1", "github.pull_request", 5, 4, 5, 5)
 	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
 		t.Fatalf("event kind github.audit = %d, want 1", got)
 	}
@@ -321,6 +326,10 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 		t.Fatalf("len(ReadPages) = %d, want 1", len(result.ReadPages))
 	}
 	assertReadPage(t, result.ReadPages[0], 1, 1, "1", "1", "github-audit-1", "github-audit-1")
+	if len(result.EventProjections) != 1 {
+		t.Fatalf("len(EventProjections) = %d, want 1", len(result.EventProjections))
+	}
+	assertEventProjection(t, result.EventProjections[0], "github-audit-1", "github.audit", 4, 3, 4, 3)
 	if len(result.GraphPathPatterns) != 1 {
 		t.Fatalf("len(GraphPathPatterns) = %d, want 1", len(result.GraphPathPatterns))
 	}
@@ -458,5 +467,30 @@ func assertReadPage(t *testing.T, page *ReadPagePreview, wantPage uint32, wantEv
 	}
 	if page.Watermark == "" {
 		t.Fatal("page.Watermark = empty, want non-empty")
+	}
+}
+
+func assertEventProjection(t *testing.T, projection *EventProjectionPreview, wantEventID string, wantKind string, wantEntities uint32, wantLinks uint32, wantGraphNodes int64, wantGraphLinks int64) {
+	t.Helper()
+	if projection == nil {
+		t.Fatal("event projection = nil")
+	}
+	if projection.EventID != wantEventID {
+		t.Fatalf("projection.EventID = %q, want %q", projection.EventID, wantEventID)
+	}
+	if projection.Kind != wantKind {
+		t.Fatalf("projection.Kind = %q, want %q", projection.Kind, wantKind)
+	}
+	if projection.EntitiesProjected != wantEntities {
+		t.Fatalf("projection.EntitiesProjected = %d, want %d", projection.EntitiesProjected, wantEntities)
+	}
+	if projection.LinksProjected != wantLinks {
+		t.Fatalf("projection.LinksProjected = %d, want %d", projection.LinksProjected, wantLinks)
+	}
+	if projection.GraphNodesAfter != wantGraphNodes {
+		t.Fatalf("projection.GraphNodesAfter = %d, want %d", projection.GraphNodesAfter, wantGraphNodes)
+	}
+	if projection.GraphLinksAfter != wantGraphLinks {
+		t.Fatalf("projection.GraphLinksAfter = %d, want %d", projection.GraphLinksAfter, wantGraphLinks)
 	}
 }

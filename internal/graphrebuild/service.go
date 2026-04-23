@@ -76,6 +76,16 @@ type LinkPreview struct {
 	ToURN    string `json:"to_urn"`
 }
 
+// EventProjectionPreview captures the graph projection impact of one event.
+type EventProjectionPreview struct {
+	EventID           string `json:"event_id"`
+	Kind              string `json:"kind"`
+	EntitiesProjected uint32 `json:"entities_projected"`
+	LinksProjected    uint32 `json:"links_projected"`
+	GraphNodesAfter   int64  `json:"graph_nodes_after"`
+	GraphLinksAfter   int64  `json:"graph_links_after"`
+}
+
 // CountPreview captures one grouped count in the rebuild output.
 type CountPreview struct {
 	Name  string `json:"name"`
@@ -137,28 +147,29 @@ type TopologyPreview struct {
 
 // Result summarizes a dry-run rebuild execution.
 type Result struct {
-	RuntimeID          string                `json:"runtime_id"`
-	SourceID           string                `json:"source_id"`
-	TenantID           string                `json:"tenant_id,omitempty"`
-	DryRun             bool                  `json:"dry_run"`
-	PagesRead          uint32                `json:"pages_read"`
-	EventsRead         uint32                `json:"events_read"`
-	EntitiesProjected  uint32                `json:"entities_projected"`
-	LinksProjected     uint32                `json:"links_projected"`
-	GraphNodes         int64                 `json:"graph_nodes"`
-	GraphLinks         int64                 `json:"graph_links"`
-	StageConfirmations []*StageConfirmation  `json:"stage_confirmations,omitempty"`
-	ReadPages          []*ReadPagePreview    `json:"read_pages,omitempty"`
-	EventKinds         []*CountPreview       `json:"event_kinds,omitempty"`
-	GraphEntityTypes   []*CountPreview       `json:"graph_entity_types,omitempty"`
-	GraphRelationTypes []*CountPreview       `json:"graph_relation_types,omitempty"`
-	GraphAssertions    []*AssertionPreview   `json:"graph_assertions,omitempty"`
-	GraphPathPatterns  []*PathPatternPreview `json:"graph_path_patterns,omitempty"`
-	GraphTopology      []*TopologyPreview    `json:"graph_topology,omitempty"`
-	GraphTraversals    []*TraversalPreview   `json:"graph_traversals,omitempty"`
-	Events             []*EventPreview       `json:"events,omitempty"`
-	PreviewEntities    []*EntityPreview      `json:"preview_entities,omitempty"`
-	PreviewLinks       []*LinkPreview        `json:"preview_links,omitempty"`
+	RuntimeID          string                    `json:"runtime_id"`
+	SourceID           string                    `json:"source_id"`
+	TenantID           string                    `json:"tenant_id,omitempty"`
+	DryRun             bool                      `json:"dry_run"`
+	PagesRead          uint32                    `json:"pages_read"`
+	EventsRead         uint32                    `json:"events_read"`
+	EntitiesProjected  uint32                    `json:"entities_projected"`
+	LinksProjected     uint32                    `json:"links_projected"`
+	GraphNodes         int64                     `json:"graph_nodes"`
+	GraphLinks         int64                     `json:"graph_links"`
+	StageConfirmations []*StageConfirmation      `json:"stage_confirmations,omitempty"`
+	ReadPages          []*ReadPagePreview        `json:"read_pages,omitempty"`
+	EventProjections   []*EventProjectionPreview `json:"event_projections,omitempty"`
+	EventKinds         []*CountPreview           `json:"event_kinds,omitempty"`
+	GraphEntityTypes   []*CountPreview           `json:"graph_entity_types,omitempty"`
+	GraphRelationTypes []*CountPreview           `json:"graph_relation_types,omitempty"`
+	GraphAssertions    []*AssertionPreview       `json:"graph_assertions,omitempty"`
+	GraphPathPatterns  []*PathPatternPreview     `json:"graph_path_patterns,omitempty"`
+	GraphTopology      []*TopologyPreview        `json:"graph_topology,omitempty"`
+	GraphTraversals    []*TraversalPreview       `json:"graph_traversals,omitempty"`
+	Events             []*EventPreview           `json:"events,omitempty"`
+	PreviewEntities    []*EntityPreview          `json:"preview_entities,omitempty"`
+	PreviewLinks       []*LinkPreview            `json:"preview_links,omitempty"`
 }
 
 // Service rebuilds a local graph from stored source runtimes.
@@ -272,6 +283,7 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	}
 	result.EntitiesProjected = projectSummary.EntitiesProjected
 	result.LinksProjected = projectSummary.LinksProjected
+	result.EventProjections = projectSummary.EventProjections
 	result.GraphEntityTypes = projectSummary.GraphEntityTypes
 	result.GraphRelationTypes = projectSummary.GraphRelationTypes
 	result.PreviewEntities = projectSummary.PreviewEntities
@@ -456,6 +468,7 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 type projectSummary struct {
 	EntitiesProjected  uint32
 	LinksProjected     uint32
+	EventProjections   []*EventProjectionPreview
 	GraphEntityTypes   []*CountPreview
 	GraphRelationTypes []*CountPreview
 	PreviewEntities    []*EntityPreview
@@ -473,6 +486,20 @@ func (s *Service) projectEvents(ctx context.Context, graph graphStore, events []
 		}
 		summary.EntitiesProjected += projected.EntitiesProjected
 		summary.LinksProjected += projected.LinksProjected
+		if len(summary.EventProjections) < previewLimit {
+			counts, err := graph.Counts(ctx)
+			if err != nil {
+				return nil, err
+			}
+			summary.EventProjections = append(summary.EventProjections, &EventProjectionPreview{
+				EventID:           strings.TrimSpace(event.GetId()),
+				Kind:              strings.TrimSpace(event.GetKind()),
+				EntitiesProjected: projected.EntitiesProjected,
+				LinksProjected:    projected.LinksProjected,
+				GraphNodesAfter:   counts.Nodes,
+				GraphLinksAfter:   counts.Relations,
+			})
+		}
 	}
 	summary.GraphEntityTypes = previewer.entityTypes()
 	summary.GraphRelationTypes = previewer.relationTypes()
