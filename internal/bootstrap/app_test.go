@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
+	oktasource "github.com/writer/cerebro/sources/okta"
 )
 
 type stubAppendLog struct {
@@ -74,8 +75,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 		t.Fatalf("decode /sources response: %v", err)
 	}
 	entries, ok := sourcesPayload["sources"].([]any)
-	if !ok || len(entries) != 1 {
-		t.Fatalf("/sources entries = %#v, want single entry", sourcesPayload["sources"])
+	if !ok || len(entries) != 2 {
+		t.Fatalf("/sources entries = %#v, want 2 entries", sourcesPayload["sources"])
 	}
 	checkResp, err := server.Client().Get(server.URL + "/sources/github/check?token=test")
 	if err != nil {
@@ -129,6 +130,58 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(previewEvents) != 1 {
 		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])
 	}
+	oktaCheckResp, err := server.Client().Get(server.URL + "/sources/okta/check?domain=writer.okta.com&family=user&token=test")
+	if err != nil {
+		t.Fatalf("GET /sources/okta/check error = %v", err)
+	}
+	defer func() {
+		if closeErr := oktaCheckResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/okta/check response body: %v", closeErr)
+		}
+	}()
+	var oktaCheckPayload map[string]any
+	if err := json.NewDecoder(oktaCheckResp.Body).Decode(&oktaCheckPayload); err != nil {
+		t.Fatalf("decode /sources/okta/check response: %v", err)
+	}
+	if oktaCheckPayload["status"] != "ok" {
+		t.Fatalf("okta check status = %#v, want %q", oktaCheckPayload["status"], "ok")
+	}
+	oktaDiscoverResp, err := server.Client().Get(server.URL + "/sources/okta/discover?domain=writer.okta.com&family=user&token=test")
+	if err != nil {
+		t.Fatalf("GET /sources/okta/discover error = %v", err)
+	}
+	defer func() {
+		if closeErr := oktaDiscoverResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/okta/discover response body: %v", closeErr)
+		}
+	}()
+	var oktaDiscoverPayload map[string]any
+	if err := json.NewDecoder(oktaDiscoverResp.Body).Decode(&oktaDiscoverPayload); err != nil {
+		t.Fatalf("decode /sources/okta/discover response: %v", err)
+	}
+	if urns, ok := oktaDiscoverPayload["urns"].([]any); !ok || len(urns) != 2 {
+		t.Fatalf("okta discover urns = %#v, want 2 entries", oktaDiscoverPayload["urns"])
+	}
+	oktaReadResp, err := server.Client().Get(server.URL + "/sources/okta/read?domain=writer.okta.com&family=user&token=test")
+	if err != nil {
+		t.Fatalf("GET /sources/okta/read error = %v", err)
+	}
+	defer func() {
+		if closeErr := oktaReadResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/okta/read response body: %v", closeErr)
+		}
+	}()
+	var oktaReadPayload map[string]any
+	if err := json.NewDecoder(oktaReadResp.Body).Decode(&oktaReadPayload); err != nil {
+		t.Fatalf("decode /sources/okta/read response: %v", err)
+	}
+	if events, ok := oktaReadPayload["events"].([]any); !ok || len(events) != 1 {
+		t.Fatalf("okta read events = %#v, want 1 entry", oktaReadPayload["events"])
+	}
+	oktaPreviewEvents, ok := oktaReadPayload["preview_events"].([]any)
+	if !ok || len(oktaPreviewEvents) != 1 {
+		t.Fatalf("okta read preview_events = %#v, want 1 entry", oktaReadPayload["preview_events"])
+	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	versionResp, err := client.GetVersion(context.Background(), connect.NewRequest(&cerebrov1.GetVersionRequest{}))
@@ -150,8 +203,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSources() error = %v", err)
 	}
-	if len(listResp.Msg.Sources) != 1 {
-		t.Fatalf("len(ListSources.Sources) = %d, want 1", len(listResp.Msg.Sources))
+	if len(listResp.Msg.Sources) != 2 {
+		t.Fatalf("len(ListSources.Sources) = %d, want 2", len(listResp.Msg.Sources))
 	}
 	checkSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
 		SourceId: "github",
@@ -189,6 +242,54 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !readSourceResp.Msg.PreviewEvents[0].PayloadDecoded {
 		t.Fatal("ReadSource.PreviewEvents[0].PayloadDecoded = false, want true")
 	}
+	oktaCheckSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
+		SourceId: "okta",
+		Config: map[string]string{
+			"domain": "writer.okta.com",
+			"family": "user",
+			"token":  "test",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("CheckSource(okta) error = %v", err)
+	}
+	if oktaCheckSourceResp.Msg.Status != "ok" {
+		t.Fatalf("CheckSource(okta) status = %q, want %q", oktaCheckSourceResp.Msg.Status, "ok")
+	}
+	oktaDiscoverSourceResp, err := client.DiscoverSource(context.Background(), connect.NewRequest(&cerebrov1.DiscoverSourceRequest{
+		SourceId: "okta",
+		Config: map[string]string{
+			"domain": "writer.okta.com",
+			"family": "user",
+			"token":  "test",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("DiscoverSource(okta) error = %v", err)
+	}
+	if len(oktaDiscoverSourceResp.Msg.Urns) != 2 {
+		t.Fatalf("len(DiscoverSource(okta).Urns) = %d, want 2", len(oktaDiscoverSourceResp.Msg.Urns))
+	}
+	oktaReadSourceResp, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
+		SourceId: "okta",
+		Config: map[string]string{
+			"domain": "writer.okta.com",
+			"family": "user",
+			"token":  "test",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("ReadSource(okta) error = %v", err)
+	}
+	if len(oktaReadSourceResp.Msg.Events) != 1 {
+		t.Fatalf("len(ReadSource(okta).Events) = %d, want 1", len(oktaReadSourceResp.Msg.Events))
+	}
+	if len(oktaReadSourceResp.Msg.PreviewEvents) != 1 {
+		t.Fatalf("len(ReadSource(okta).PreviewEvents) = %d, want 1", len(oktaReadSourceResp.Msg.PreviewEvents))
+	}
+	if !oktaReadSourceResp.Msg.PreviewEvents[0].PayloadDecoded {
+		t.Fatal("ReadSource(okta).PreviewEvents[0].PayloadDecoded = false, want true")
+	}
 }
 
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
@@ -218,5 +319,9 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source)
+	okta, err := oktasource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
+	return sourcecdk.NewRegistry(source, okta)
 }

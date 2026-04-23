@@ -8,24 +8,25 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
+	oktasource "github.com/writer/cerebro/sources/okta"
 )
 
 func TestList(t *testing.T) {
-	registry, err := newGitHubRegistry()
+	registry, err := newFixtureRegistry()
 	if err != nil {
-		t.Fatalf("newGitHubRegistry() error = %v", err)
+		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
 	service := New(registry)
 	response := service.List()
-	if len(response.Sources) != 1 {
-		t.Fatalf("len(List().Sources) = %d, want 1", len(response.Sources))
+	if len(response.Sources) != 2 {
+		t.Fatalf("len(List().Sources) = %d, want 2", len(response.Sources))
 	}
 }
 
 func TestCheckDiscoverAndRead(t *testing.T) {
-	registry, err := newGitHubRegistry()
+	registry, err := newFixtureRegistry()
 	if err != nil {
-		t.Fatalf("newGitHubRegistry() error = %v", err)
+		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
 	service := New(registry)
 	ctx := context.Background()
@@ -73,6 +74,60 @@ func TestCheckDiscoverAndRead(t *testing.T) {
 	}
 }
 
+func TestCheckDiscoverAndReadOkta(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry)
+	ctx := context.Background()
+
+	config := map[string]string{
+		"domain": "writer.okta.com",
+		"family": "user",
+		"token":  "test",
+	}
+
+	checkResp, err := service.Check(ctx, &cerebrov1.CheckSourceRequest{
+		SourceId: "okta",
+		Config:   config,
+	})
+	if err != nil {
+		t.Fatalf("Check(okta) error = %v", err)
+	}
+	if checkResp.Status != "ok" {
+		t.Fatalf("Check(okta).Status = %q, want %q", checkResp.Status, "ok")
+	}
+
+	discoverResp, err := service.Discover(ctx, &cerebrov1.DiscoverSourceRequest{
+		SourceId: "okta",
+		Config:   config,
+	})
+	if err != nil {
+		t.Fatalf("Discover(okta) error = %v", err)
+	}
+	if len(discoverResp.Urns) != 2 {
+		t.Fatalf("len(Discover(okta).Urns) = %d, want 2", len(discoverResp.Urns))
+	}
+
+	readResp, err := service.Read(ctx, &cerebrov1.ReadSourceRequest{
+		SourceId: "okta",
+		Config:   config,
+	})
+	if err != nil {
+		t.Fatalf("Read(okta) error = %v", err)
+	}
+	if len(readResp.Events) != 1 {
+		t.Fatalf("len(Read(okta).Events) = %d, want 1", len(readResp.Events))
+	}
+	if len(readResp.PreviewEvents) != 1 {
+		t.Fatalf("len(Read(okta).PreviewEvents) = %d, want 1", len(readResp.PreviewEvents))
+	}
+	if !readResp.PreviewEvents[0].PayloadDecoded {
+		t.Fatal("Read(okta).PreviewEvents[0].PayloadDecoded = false, want true")
+	}
+}
+
 func TestUnknownSource(t *testing.T) {
 	service := New(nil)
 	_, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "github"})
@@ -81,10 +136,14 @@ func TestUnknownSource(t *testing.T) {
 	}
 }
 
-func newGitHubRegistry() (*sourcecdk.Registry, error) {
+func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source)
+	okta, err := oktasource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
+	return sourcecdk.NewRegistry(source, okta)
 }
