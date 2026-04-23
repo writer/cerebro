@@ -875,25 +875,48 @@ func TestReportEndpoints(t *testing.T) {
 	runtimeStore := &stubRuntimeStore{
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
-				ID:        "finding-1",
-				RuntimeID: "writer-okta-audit",
-				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
-				Severity:  "HIGH",
-				Status:    "open",
+				ID:           "finding-1",
+				RuntimeID:    "writer-okta-audit",
+				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
+				Severity:     "HIGH",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				Attributes: map[string]string{
+					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				},
 			},
 			"finding-2": {
-				ID:        "finding-2",
-				RuntimeID: "writer-okta-audit",
-				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
-				Severity:  "HIGH",
-				Status:    "resolved",
+				ID:           "finding-2",
+				RuntimeID:    "writer-okta-audit",
+				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
+				Severity:     "HIGH",
+				Status:       "resolved",
+				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				Attributes: map[string]string{
+					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				},
+			},
+		},
+	}
+	graphStore := &stubGraphStore{
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{
+				URN:        "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				EntityType: "okta.resource",
+				Label:      "Require MFA",
+			},
+			Neighbors: []*ports.NeighborhoodNode{
+				{URN: "urn:cerebro:writer:okta_user:00u2", EntityType: "okta.user", Label: "admin@writer.com"},
+			},
+			Relations: []*ports.NeighborhoodRelation{
+				{FromURN: "urn:cerebro:writer:okta_user:00u2", Relation: "acted_on", ToURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1"},
 			},
 		},
 	}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		AppendLog:  &recordingAppendLog{},
 		StateStore: runtimeStore,
-		GraphStore: &stubGraphStore{},
+		GraphStore: graphStore,
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -916,7 +939,7 @@ func TestReportEndpoints(t *testing.T) {
 		t.Fatalf("/reports payload = %#v, want 1 entry", listPayload["reports"])
 	}
 
-	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?runtime_id=writer-okta-audit", nil)
+	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?runtime_id=writer-okta-audit&graph_limit=2", nil)
 	if err != nil {
 		t.Fatalf("new run report request: %v", err)
 	}
@@ -947,12 +970,32 @@ func TestReportEndpoints(t *testing.T) {
 	if got := resultBody["total_findings"]; got != float64(2) {
 		t.Fatalf("run total_findings = %#v, want 2", got)
 	}
+	if got := resultBody["graph_evidence_status"]; got != "included" {
+		t.Fatalf("run graph_evidence_status = %#v, want included", got)
+	}
+	graphEvidencePayload, ok := resultBody["graph_evidence"].([]any)
+	if !ok || len(graphEvidencePayload) != 1 {
+		t.Fatalf("run graph_evidence = %#v, want 1 entry", resultBody["graph_evidence"])
+	}
+	graphEvidenceEntry, ok := graphEvidencePayload[0].(map[string]any)
+	if !ok {
+		t.Fatalf("run graph evidence entry = %#v, want object", graphEvidencePayload[0])
+	}
+	if got := graphEvidenceEntry["resource_urn"]; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+		t.Fatalf("run graph evidence resource_urn = %#v, want policy rule urn", got)
+	}
 	runID, ok := runBody["id"].(string)
 	if !ok || runID == "" {
 		t.Fatalf("run id = %#v, want non-empty string", runBody["id"])
 	}
 	if len(runtimeStore.reportRuns) != 1 {
 		t.Fatalf("len(runtimeStore.reportRuns) = %d, want 1", len(runtimeStore.reportRuns))
+	}
+	if graphStore.neighborhoodRootURN != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+		t.Fatalf("graph evidence root urn = %q, want policy rule urn", graphStore.neighborhoodRootURN)
+	}
+	if graphStore.neighborhoodLimit != 2 {
+		t.Fatalf("graph evidence limit = %d, want 2", graphStore.neighborhoodLimit)
 	}
 
 	getResp, err := server.Client().Get(server.URL + "/report-runs/" + runID)
