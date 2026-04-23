@@ -161,6 +161,7 @@ def onboard_workspace_posture(
         "submitted_claims": claims,
         "persisted_claims": persisted.get("claims", []),
         "graph_layering": graph_layering,
+        "graph_summary": summarize_graph_layering(graph_layering),
     }
 
 
@@ -259,6 +260,69 @@ def load_graph_layering(integration: IntegrationClient, posture: Dict[str, Any])
     return {
         "workspace": workspace_graph.get(workspace_ref["urn"], {"root_urn": workspace_ref["urn"], "error": "missing graph response"}),
         "projects": project_graphs,
+    }
+
+
+def summarize_graph_layering(graph_layering: Dict[str, Any]) -> Dict[str, Any]:
+    roots = []
+    node_counts: Dict[str, int] = {}
+    relation_counts: Dict[str, int] = {}
+    neighborhood_sizes: Dict[str, Dict[str, int]] = {}
+    errors: Dict[str, str] = {}
+    seen_nodes = set()
+    seen_relations = set()
+    entries = [graph_layering.get("workspace")] + list(graph_layering.get("projects", {}).values())
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        error = optional_string(entry.get("error"))
+        root_urn = optional_string(entry.get("root_urn"))
+        if error and root_urn:
+            errors[root_urn] = error
+            continue
+        root = entry.get("root")
+        if not isinstance(root, dict):
+            continue
+        root_key = require_value(root.get("urn"), "graph root urn")
+        roots.append(
+            {
+                "urn": root_key,
+                "entity_type": optional_string(root.get("entity_type")) or "unknown",
+                "label": optional_string(root.get("label")) or root_key,
+            }
+        )
+        neighborhood_sizes[root_key] = {
+            "neighbors": len(entry.get("neighbors", [])),
+            "relations": len(entry.get("relations", [])),
+        }
+        for node in [root] + list(entry.get("neighbors", [])):
+            if not isinstance(node, dict):
+                continue
+            node_urn = optional_string(node.get("urn"))
+            entity_type = optional_string(node.get("entity_type")) or "unknown"
+            if node_urn is None or node_urn in seen_nodes:
+                continue
+            seen_nodes.add(node_urn)
+            node_counts[entity_type] = node_counts.get(entity_type, 0) + 1
+        for relation in entry.get("relations", []):
+            if not isinstance(relation, dict):
+                continue
+            from_urn = optional_string(relation.get("from_urn"))
+            name = optional_string(relation.get("relation"))
+            to_urn = optional_string(relation.get("to_urn"))
+            if from_urn is None or name is None or to_urn is None:
+                continue
+            key = (from_urn, name, to_urn)
+            if key in seen_relations:
+                continue
+            seen_relations.add(key)
+            relation_counts[name] = relation_counts.get(name, 0) + 1
+    return {
+        "roots": roots,
+        "node_counts_by_type": node_counts,
+        "relation_counts_by_type": relation_counts,
+        "neighborhood_sizes": neighborhood_sizes,
+        "errors": errors,
     }
 
 
