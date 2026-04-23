@@ -794,10 +794,11 @@ type SourceRuntime struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	SourceId      string                 `protobuf:"bytes,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
-	Config        map[string]string      `protobuf:"bytes,3,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Checkpoint    *SourceCheckpoint      `protobuf:"bytes,4,opt,name=checkpoint,proto3" json:"checkpoint,omitempty"`
-	NextCursor    *SourceCursor          `protobuf:"bytes,5,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	LastSyncedAt  *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=last_synced_at,json=lastSyncedAt,proto3" json:"last_synced_at,omitempty"`
+	TenantId      string                 `protobuf:"bytes,3,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Config        map[string]string      `protobuf:"bytes,4,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Checkpoint    *SourceCheckpoint      `protobuf:"bytes,5,opt,name=checkpoint,proto3" json:"checkpoint,omitempty"`
+	NextCursor    *SourceCursor          `protobuf:"bytes,6,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
+	LastSyncedAt  *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_synced_at,json=lastSyncedAt,proto3" json:"last_synced_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -842,6 +843,13 @@ func (x *SourceRuntime) GetId() string {
 func (x *SourceRuntime) GetSourceId() string {
 	if x != nil {
 		return x.SourceId
+	}
+	return ""
+}
+
+func (x *SourceRuntime) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
 	}
 	return ""
 }
@@ -1109,13 +1117,15 @@ func (x *SyncSourceRuntimeRequest) GetPageLimit() uint32 {
 
 // SyncSourceRuntimeResponse returns the updated runtime and sync totals.
 type SyncSourceRuntimeResponse struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Runtime        *SourceRuntime         `protobuf:"bytes,1,opt,name=runtime,proto3" json:"runtime,omitempty"`
-	Source         *SourceSpec            `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
-	PagesRead      uint32                 `protobuf:"varint,3,opt,name=pages_read,json=pagesRead,proto3" json:"pages_read,omitempty"`
-	EventsAppended uint32                 `protobuf:"varint,4,opt,name=events_appended,json=eventsAppended,proto3" json:"events_appended,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Runtime           *SourceRuntime         `protobuf:"bytes,1,opt,name=runtime,proto3" json:"runtime,omitempty"`
+	Source            *SourceSpec            `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	PagesRead         uint32                 `protobuf:"varint,3,opt,name=pages_read,json=pagesRead,proto3" json:"pages_read,omitempty"`
+	EventsAppended    uint32                 `protobuf:"varint,4,opt,name=events_appended,json=eventsAppended,proto3" json:"events_appended,omitempty"`
+	EntitiesProjected uint32                 `protobuf:"varint,5,opt,name=entities_projected,json=entitiesProjected,proto3" json:"entities_projected,omitempty"`
+	LinksProjected    uint32                 `protobuf:"varint,6,opt,name=links_projected,json=linksProjected,proto3" json:"links_projected,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *SyncSourceRuntimeResponse) Reset() {
@@ -1172,6 +1182,20 @@ func (x *SyncSourceRuntimeResponse) GetPagesRead() uint32 {
 func (x *SyncSourceRuntimeResponse) GetEventsAppended() uint32 {
 	if x != nil {
 		return x.EventsAppended
+	}
+	return 0
+}
+
+func (x *SyncSourceRuntimeResponse) GetEntitiesProjected() uint32 {
+	if x != nil {
+		return x.EntitiesProjected
+	}
+	return 0
+}
+
+func (x *SyncSourceRuntimeResponse) GetLinksProjected() uint32 {
+	if x != nil {
+		return x.LinksProjected
 	}
 	return 0
 }
@@ -1243,17 +1267,18 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"checkpoint\x129\n" +
 	"\vnext_cursor\x18\x04 \x01(\v2\x18.cerebro.v1.SourceCursorR\n" +
 	"nextCursor\x12E\n" +
-	"\x0epreview_events\x18\x05 \x03(\v2\x1e.cerebro.v1.SourcePreviewEventR\rpreviewEvents\"\xf1\x02\n" +
+	"\x0epreview_events\x18\x05 \x03(\v2\x1e.cerebro.v1.SourcePreviewEventR\rpreviewEvents\"\x8e\x03\n" +
 	"\rSourceRuntime\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
-	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12=\n" +
-	"\x06config\x18\x03 \x03(\v2%.cerebro.v1.SourceRuntime.ConfigEntryR\x06config\x12<\n" +
+	"\tsource_id\x18\x02 \x01(\tR\bsourceId\x12\x1b\n" +
+	"\ttenant_id\x18\x03 \x01(\tR\btenantId\x12=\n" +
+	"\x06config\x18\x04 \x03(\v2%.cerebro.v1.SourceRuntime.ConfigEntryR\x06config\x12<\n" +
 	"\n" +
-	"checkpoint\x18\x04 \x01(\v2\x1c.cerebro.v1.SourceCheckpointR\n" +
+	"checkpoint\x18\x05 \x01(\v2\x1c.cerebro.v1.SourceCheckpointR\n" +
 	"checkpoint\x129\n" +
-	"\vnext_cursor\x18\x05 \x01(\v2\x18.cerebro.v1.SourceCursorR\n" +
+	"\vnext_cursor\x18\x06 \x01(\v2\x18.cerebro.v1.SourceCursorR\n" +
 	"nextCursor\x12@\n" +
-	"\x0elast_synced_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\flastSyncedAt\x1a9\n" +
+	"\x0elast_synced_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\flastSyncedAt\x1a9\n" +
 	"\vConfigEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"N\n" +
@@ -1268,13 +1293,15 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x18SyncSourceRuntimeRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
-	"page_limit\x18\x02 \x01(\rR\tpageLimit\"\xc8\x01\n" +
+	"page_limit\x18\x02 \x01(\rR\tpageLimit\"\xa0\x02\n" +
 	"\x19SyncSourceRuntimeResponse\x123\n" +
 	"\aruntime\x18\x01 \x01(\v2\x19.cerebro.v1.SourceRuntimeR\aruntime\x12.\n" +
 	"\x06source\x18\x02 \x01(\v2\x16.cerebro.v1.SourceSpecR\x06source\x12\x1d\n" +
 	"\n" +
 	"pages_read\x18\x03 \x01(\rR\tpagesRead\x12'\n" +
-	"\x0fevents_appended\x18\x04 \x01(\rR\x0eeventsAppended2\x95\x06\n" +
+	"\x0fevents_appended\x18\x04 \x01(\rR\x0eeventsAppended\x12-\n" +
+	"\x12entities_projected\x18\x05 \x01(\rR\x11entitiesProjected\x12'\n" +
+	"\x0flinks_projected\x18\x06 \x01(\rR\x0elinksProjected2\x95\x06\n" +
 	"\x10BootstrapService\x12K\n" +
 	"\n" +
 	"GetVersion\x12\x1d.cerebro.v1.GetVersionRequest\x1a\x1e.cerebro.v1.GetVersionResponse\x12N\n" +

@@ -110,10 +110,11 @@ message ReadSourceResponse {
 message SourceRuntime {
   string id = 1;
   string source_id = 2;
-  map<string, string> config = 3;
-  SourceCheckpoint checkpoint = 4;
-  SourceCursor next_cursor = 5;
-  google.protobuf.Timestamp last_synced_at = 6;
+  string tenant_id = 3;
+  map<string, string> config = 4;
+  SourceCheckpoint checkpoint = 5;
+  SourceCursor next_cursor = 6;
+  google.protobuf.Timestamp last_synced_at = 7;
 }
 
 // PutSourceRuntimeRequest stores or updates one source runtime definition.
@@ -148,4 +149,6 @@ message SyncSourceRuntimeResponse {
   SourceSpec source = 2;
   uint32 pages_read = 3;
   uint32 events_appended = 4;
+  uint32 entities_projected = 5;
+  uint32 links_projected = 6;
 }
