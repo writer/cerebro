@@ -1,4 +1,4 @@
-.PHONY: build serve test lint lint-bootstrap clean hooks pre-commit verify check check-structural check-structural-build check-structural-test
+.PHONY: build serve test lint lint-bootstrap clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -31,7 +31,7 @@ hooks:
 pre-commit:
 	./scripts/pre_commit_checks.sh
 
-check: build test lint check-structural check-structural-test
+check: build test lint check-structural check-structural-test check-arch
 
 check-structural: check-structural-build
 	@$(LINTER_BIN) ./cmd/...
@@ -42,4 +42,9 @@ check-structural-build:
 check-structural-test:
 	@GOFLAGS= cd $(LINTER_MODULE) && go test ./...
 
-verify: build test lint check-structural check-structural-test
+check-arch:
+	go test ./tools/archtests/...
+
+check-hook-integrity: check-arch
+
+verify: build test lint check-structural check-structural-test check-arch
