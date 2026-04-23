@@ -24,6 +24,12 @@ type Store struct {
 	schemaReady bool
 }
 
+// Counts summarizes the entity and relationship totals in the graph.
+type Counts struct {
+	Nodes     int64
+	Relations int64
+}
+
 // Open opens a Kuzu-backed graph projection store.
 func Open(cfg config.GraphStoreConfig) (*Store, error) {
 	rawPath := strings.TrimSpace(cfg.KuzuPath)
@@ -66,6 +72,31 @@ func (s *Store) Ping(ctx context.Context) error {
 		return fmt.Errorf("unexpected kuzu ping result %d", result)
 	}
 	return nil
+}
+
+// Counts returns the current number of projected nodes and relationships.
+func (s *Store) Counts(ctx context.Context) (Counts, error) {
+	if s == nil || s.db == nil {
+		return Counts{}, errors.New("kuzu is not configured")
+	}
+	tables, err := s.graphTables(ctx)
+	if err != nil {
+		return Counts{}, err
+	}
+	if !tables["entity"] {
+		return Counts{}, nil
+	}
+	var counts Counts
+	if err := s.db.QueryRowContext(ctx, "MATCH (e:entity) RETURN COUNT(e) AS count").Scan(&counts.Nodes); err != nil {
+		return Counts{}, fmt.Errorf("count entity nodes: %w", err)
+	}
+	if !tables["relation"] {
+		return counts, nil
+	}
+	if err := s.db.QueryRowContext(ctx, "MATCH (src:entity)-[r:relation]->(dst:entity) RETURN COUNT(r) AS count").Scan(&counts.Relations); err != nil {
+		return Counts{}, fmt.Errorf("count relation edges: %w", err)
+	}
+	return counts, nil
 }
 
 // UpsertProjectedEntity upserts one normalized entity in the graph store.

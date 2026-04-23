@@ -51,6 +51,8 @@ func run(args []string) error {
 	switch command {
 	case "serve":
 		return serve()
+	case "graph":
+		return runGraph(args[1:])
 	case "source":
 		return runSource(args[1:])
 	case "source-runtime":
@@ -59,7 +61,7 @@ func run(args []string) error {
 		fmt.Printf("%s %s\n", buildinfo.ServiceName, buildinfo.Version)
 		return nil
 	}
-	return usageError(fmt.Sprintf("usage: %s [serve|version|source|source-runtime]", os.Args[0]))
+	return usageError(fmt.Sprintf("usage: %s [serve|version|graph|source|source-runtime]", os.Args[0]))
 }
 
 func serve() error {
