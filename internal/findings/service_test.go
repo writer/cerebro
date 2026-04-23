@@ -63,6 +63,17 @@ func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.Findi
 	return cloneFinding(cloned), nil
 }
 
+func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	findings := []*ports.FindingRecord{}
+	for _, finding := range s.findings {
+		if finding == nil || finding.RuntimeID != request.RuntimeID {
+			continue
+		}
+		findings = append(findings, cloneFinding(finding))
+	}
+	return findings, nil
+}
+
 func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{

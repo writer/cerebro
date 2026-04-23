@@ -39,6 +39,15 @@ const (
 	// BootstrapServiceCheckHealthProcedure is the fully-qualified name of the BootstrapService's
 	// CheckHealth RPC.
 	BootstrapServiceCheckHealthProcedure = "/cerebro.v1.BootstrapService/CheckHealth"
+	// BootstrapServiceListReportDefinitionsProcedure is the fully-qualified name of the
+	// BootstrapService's ListReportDefinitions RPC.
+	BootstrapServiceListReportDefinitionsProcedure = "/cerebro.v1.BootstrapService/ListReportDefinitions"
+	// BootstrapServiceRunReportProcedure is the fully-qualified name of the BootstrapService's
+	// RunReport RPC.
+	BootstrapServiceRunReportProcedure = "/cerebro.v1.BootstrapService/RunReport"
+	// BootstrapServiceGetReportRunProcedure is the fully-qualified name of the BootstrapService's
+	// GetReportRun RPC.
+	BootstrapServiceGetReportRunProcedure = "/cerebro.v1.BootstrapService/GetReportRun"
 	// BootstrapServiceListSourcesProcedure is the fully-qualified name of the BootstrapService's
 	// ListSources RPC.
 	BootstrapServiceListSourcesProcedure = "/cerebro.v1.BootstrapService/ListSources"
@@ -72,6 +81,9 @@ const (
 type BootstrapServiceClient interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
 	CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error)
+	ListReportDefinitions(context.Context, *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error)
+	RunReport(context.Context, *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error)
+	GetReportRun(context.Context, *connect.Request[v1.GetReportRunRequest]) (*connect.Response[v1.GetReportRunResponse], error)
 	ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error)
 	CheckSource(context.Context, *connect.Request[v1.CheckSourceRequest]) (*connect.Response[v1.CheckSourceResponse], error)
 	DiscoverSource(context.Context, *connect.Request[v1.DiscoverSourceRequest]) (*connect.Response[v1.DiscoverSourceResponse], error)
@@ -104,6 +116,24 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			httpClient,
 			baseURL+BootstrapServiceCheckHealthProcedure,
 			connect.WithSchema(bootstrapServiceMethods.ByName("CheckHealth")),
+			connect.WithClientOptions(opts...),
+		),
+		listReportDefinitions: connect.NewClient[v1.ListReportDefinitionsRequest, v1.ListReportDefinitionsResponse](
+			httpClient,
+			baseURL+BootstrapServiceListReportDefinitionsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListReportDefinitions")),
+			connect.WithClientOptions(opts...),
+		),
+		runReport: connect.NewClient[v1.RunReportRequest, v1.RunReportResponse](
+			httpClient,
+			baseURL+BootstrapServiceRunReportProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("RunReport")),
+			connect.WithClientOptions(opts...),
+		),
+		getReportRun: connect.NewClient[v1.GetReportRunRequest, v1.GetReportRunResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetReportRunProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetReportRun")),
 			connect.WithClientOptions(opts...),
 		),
 		listSources: connect.NewClient[v1.ListSourcesRequest, v1.ListSourcesResponse](
@@ -167,6 +197,9 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 type bootstrapServiceClient struct {
 	getVersion                    *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
 	checkHealth                   *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
+	listReportDefinitions         *connect.Client[v1.ListReportDefinitionsRequest, v1.ListReportDefinitionsResponse]
+	runReport                     *connect.Client[v1.RunReportRequest, v1.RunReportResponse]
+	getReportRun                  *connect.Client[v1.GetReportRunRequest, v1.GetReportRunResponse]
 	listSources                   *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
 	checkSource                   *connect.Client[v1.CheckSourceRequest, v1.CheckSourceResponse]
 	discoverSource                *connect.Client[v1.DiscoverSourceRequest, v1.DiscoverSourceResponse]
@@ -186,6 +219,21 @@ func (c *bootstrapServiceClient) GetVersion(ctx context.Context, req *connect.Re
 // CheckHealth calls cerebro.v1.BootstrapService.CheckHealth.
 func (c *bootstrapServiceClient) CheckHealth(ctx context.Context, req *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error) {
 	return c.checkHealth.CallUnary(ctx, req)
+}
+
+// ListReportDefinitions calls cerebro.v1.BootstrapService.ListReportDefinitions.
+func (c *bootstrapServiceClient) ListReportDefinitions(ctx context.Context, req *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error) {
+	return c.listReportDefinitions.CallUnary(ctx, req)
+}
+
+// RunReport calls cerebro.v1.BootstrapService.RunReport.
+func (c *bootstrapServiceClient) RunReport(ctx context.Context, req *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error) {
+	return c.runReport.CallUnary(ctx, req)
+}
+
+// GetReportRun calls cerebro.v1.BootstrapService.GetReportRun.
+func (c *bootstrapServiceClient) GetReportRun(ctx context.Context, req *connect.Request[v1.GetReportRunRequest]) (*connect.Response[v1.GetReportRunResponse], error) {
+	return c.getReportRun.CallUnary(ctx, req)
 }
 
 // ListSources calls cerebro.v1.BootstrapService.ListSources.
@@ -237,6 +285,9 @@ func (c *bootstrapServiceClient) GetEntityNeighborhood(ctx context.Context, req 
 type BootstrapServiceHandler interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
 	CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error)
+	ListReportDefinitions(context.Context, *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error)
+	RunReport(context.Context, *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error)
+	GetReportRun(context.Context, *connect.Request[v1.GetReportRunRequest]) (*connect.Response[v1.GetReportRunResponse], error)
 	ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error)
 	CheckSource(context.Context, *connect.Request[v1.CheckSourceRequest]) (*connect.Response[v1.CheckSourceResponse], error)
 	DiscoverSource(context.Context, *connect.Request[v1.DiscoverSourceRequest]) (*connect.Response[v1.DiscoverSourceResponse], error)
@@ -265,6 +316,24 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		BootstrapServiceCheckHealthProcedure,
 		svc.CheckHealth,
 		connect.WithSchema(bootstrapServiceMethods.ByName("CheckHealth")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceListReportDefinitionsHandler := connect.NewUnaryHandler(
+		BootstrapServiceListReportDefinitionsProcedure,
+		svc.ListReportDefinitions,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListReportDefinitions")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceRunReportHandler := connect.NewUnaryHandler(
+		BootstrapServiceRunReportProcedure,
+		svc.RunReport,
+		connect.WithSchema(bootstrapServiceMethods.ByName("RunReport")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceGetReportRunHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetReportRunProcedure,
+		svc.GetReportRun,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetReportRun")),
 		connect.WithHandlerOptions(opts...),
 	)
 	bootstrapServiceListSourcesHandler := connect.NewUnaryHandler(
@@ -327,6 +396,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceGetVersionHandler.ServeHTTP(w, r)
 		case BootstrapServiceCheckHealthProcedure:
 			bootstrapServiceCheckHealthHandler.ServeHTTP(w, r)
+		case BootstrapServiceListReportDefinitionsProcedure:
+			bootstrapServiceListReportDefinitionsHandler.ServeHTTP(w, r)
+		case BootstrapServiceRunReportProcedure:
+			bootstrapServiceRunReportHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetReportRunProcedure:
+			bootstrapServiceGetReportRunHandler.ServeHTTP(w, r)
 		case BootstrapServiceListSourcesProcedure:
 			bootstrapServiceListSourcesHandler.ServeHTTP(w, r)
 		case BootstrapServiceCheckSourceProcedure:
@@ -360,6 +435,18 @@ func (UnimplementedBootstrapServiceHandler) GetVersion(context.Context, *connect
 
 func (UnimplementedBootstrapServiceHandler) CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.CheckHealth is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListReportDefinitions(context.Context, *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListReportDefinitions is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) RunReport(context.Context, *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.RunReport is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetReportRun(context.Context, *connect.Request[v1.GetReportRunRequest]) (*connect.Response[v1.GetReportRunResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetReportRun is not implemented"))
 }
 
 func (UnimplementedBootstrapServiceHandler) ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error) {
