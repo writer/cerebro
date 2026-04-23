@@ -44,6 +44,9 @@ func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) 
 	if err != nil {
 		return nil, err
 	}
+	if err := validatePreviewConfig(req.GetConfig()); err != nil {
+		return nil, err
+	}
 	if err := source.Check(ctx, sourcecdk.NewConfig(req.GetConfig())); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidSourceConfig, err)
 	}
@@ -57,6 +60,9 @@ func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) 
 func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceRequest) (*cerebrov1.DiscoverSourceResponse, error) {
 	source, err := s.lookup(req.GetSourceId())
 	if err != nil {
+		return nil, err
+	}
+	if err := validatePreviewConfig(req.GetConfig()); err != nil {
 		return nil, err
 	}
 	urns, err := source.Discover(ctx, sourcecdk.NewConfig(req.GetConfig()))
@@ -79,6 +85,9 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*
 	if err != nil {
 		return nil, err
 	}
+	if err := validatePreviewConfig(req.GetConfig()); err != nil {
+		return nil, err
+	}
 	pull, err := source.Read(ctx, sourcecdk.NewConfig(req.GetConfig()), req.GetCursor())
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidSourceConfig, err)
@@ -94,6 +103,15 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*
 		NextCursor:    pull.NextCursor,
 		PreviewEvents: previews,
 	}, nil
+}
+
+func validatePreviewConfig(config map[string]string) error {
+	for key := range config {
+		if strings.EqualFold(strings.TrimSpace(key), "base_url") {
+			return fmt.Errorf("%w: source config key %q is not allowed for previews", ErrInvalidSourceConfig, key)
+		}
+	}
+	return nil
 }
 
 func (s *Service) lookup(sourceID string) (sourcecdk.Source, error) {
