@@ -21,8 +21,12 @@ import (
 )
 
 const (
+	modeSource          = "source"
+	modeReplay          = "replay"
 	defaultPageLimit    = 1
 	maxPageLimit        = 100
+	defaultEventLimit   = 100
+	maxEventLimit       = 1000
 	defaultPreviewLimit = 5
 	maxPreviewLimit     = 20
 	stageStatusSuccess  = "success"
@@ -40,8 +44,10 @@ type graphStore interface {
 
 // Request configures one local graph rebuild dry-run.
 type Request struct {
+	Mode         string
 	RuntimeID    string
 	PageLimit    uint32
+	EventLimit   uint32
 	PreviewLimit int
 }
 
@@ -147,6 +153,7 @@ type TopologyPreview struct {
 
 // Result summarizes a dry-run rebuild execution.
 type Result struct {
+	Mode               string                    `json:"mode"`
 	RuntimeID          string                    `json:"runtime_id"`
 	SourceID           string                    `json:"source_id"`
 	TenantID           string                    `json:"tenant_id,omitempty"`
@@ -176,16 +183,18 @@ type Result struct {
 type Service struct {
 	registry     *sourcecdk.Registry
 	runtimeStore ports.SourceRuntimeStore
+	replayer     ports.EventReplayer
 	openGraph    func(path string) (graphStore, error)
 	makeTempDir  func() (string, error)
 	removeAll    func(string) error
 }
 
 // New constructs a graph rebuild service.
-func New(registry *sourcecdk.Registry, runtimeStore ports.SourceRuntimeStore) *Service {
+func New(registry *sourcecdk.Registry, runtimeStore ports.SourceRuntimeStore, replayer ports.EventReplayer) *Service {
 	return &Service{
 		registry:     registry,
 		runtimeStore: runtimeStore,
+		replayer:     replayer,
 		openGraph: func(path string) (graphStore, error) {
 			return graphstorekuzu.Open(config.GraphStoreConfig{
 				Driver:   "kuzu",
@@ -199,7 +208,7 @@ func New(registry *sourcecdk.Registry, runtimeStore ports.SourceRuntimeStore) *S
 	}
 }
 
-// RebuildDryRun projects a bounded number of source pages into a temporary local Kuzu graph.
+// RebuildDryRun projects bounded source or append-log events into a temporary local Kuzu graph.
 func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, err error) {
 	if s == nil || s.runtimeStore == nil {
 		return nil, fmt.Errorf("source runtime store is required")
@@ -208,16 +217,17 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	if runtimeID == "" {
 		return nil, fmt.Errorf("runtime id is required")
 	}
+	mode, err := normalizeMode(req.Mode)
+	if err != nil {
+		return nil, err
+	}
 	resolveStart := time.Now()
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
 		return nil, err
 	}
-	source, err := s.lookupSource(strings.TrimSpace(runtime.GetSourceId()))
-	if err != nil {
-		return nil, err
-	}
 	result := &Result{
+		Mode:      mode,
 		RuntimeID: runtime.GetId(),
 		SourceID:  runtime.GetSourceId(),
 		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
@@ -258,26 +268,46 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	})
 
 	previewLimit := normalizePreviewLimit(req.PreviewLimit)
-	readStart := time.Now()
-	readSummary, err := s.readEvents(ctx, source, runtime, normalizePageLimit(req.PageLimit))
-	if err != nil {
-		return nil, err
+	var eventSummary *readSummary
+	switch mode {
+	case modeSource:
+		source, err := s.lookupSource(strings.TrimSpace(runtime.GetSourceId()))
+		if err != nil {
+			return nil, err
+		}
+		readStart := time.Now()
+		eventSummary, err = s.readEvents(ctx, source, runtime, normalizePageLimit(req.PageLimit))
+		if err != nil {
+			return nil, err
+		}
+		result.PagesRead = eventSummary.PagesRead
+		result.ReadPages = eventSummary.Pages
+		result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+			Name:           "read_source",
+			Status:         stageStatusSuccess,
+			DurationMillis: durationMillis(readStart),
+			PagesRead:      eventSummary.PagesRead,
+			EventsRead:     eventSummary.EventsRead,
+		})
+	case modeReplay:
+		replayStart := time.Now()
+		eventSummary, err = s.replayEvents(ctx, runtime, normalizeEventLimit(req.EventLimit))
+		if err != nil {
+			return nil, err
+		}
+		result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+			Name:           "replay_log",
+			Status:         stageStatusSuccess,
+			DurationMillis: durationMillis(replayStart),
+			EventsRead:     eventSummary.EventsRead,
+		})
 	}
-	result.PagesRead = readSummary.PagesRead
-	result.EventsRead = readSummary.EventsRead
-	result.ReadPages = readSummary.Pages
-	result.EventKinds = countPreviews(readSummary.EventKinds)
-	result.Events = eventPreviews(readSummary.Events, previewLimit)
-	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
-		Name:           "read_source",
-		Status:         stageStatusSuccess,
-		DurationMillis: durationMillis(readStart),
-		PagesRead:      readSummary.PagesRead,
-		EventsRead:     readSummary.EventsRead,
-	})
+	result.EventsRead = eventSummary.EventsRead
+	result.EventKinds = countPreviews(eventSummary.EventKinds)
+	result.Events = eventPreviews(eventSummary.Events, previewLimit)
 
 	projectStart := time.Now()
-	projectSummary, err := s.projectEvents(ctx, graph, readSummary.Events, previewLimit)
+	projectSummary, err := s.projectEvents(ctx, graph, eventSummary.Events, previewLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -378,6 +408,19 @@ func (s *Service) lookupSource(id string) (sourcecdk.Source, error) {
 	return source, nil
 }
 
+func normalizeMode(mode string) (string, error) {
+	value := strings.TrimSpace(mode)
+	if value == "" {
+		return modeSource, nil
+	}
+	switch value {
+	case modeSource, modeReplay:
+		return value, nil
+	default:
+		return "", fmt.Errorf("unsupported rebuild mode %q", value)
+	}
+}
+
 func normalizePageLimit(pageLimit uint32) uint32 {
 	if pageLimit == 0 {
 		return defaultPageLimit
@@ -386,6 +429,16 @@ func normalizePageLimit(pageLimit uint32) uint32 {
 		return maxPageLimit
 	}
 	return pageLimit
+}
+
+func normalizeEventLimit(eventLimit uint32) uint32 {
+	if eventLimit == 0 {
+		return defaultEventLimit
+	}
+	if eventLimit > maxEventLimit {
+		return maxEventLimit
+	}
+	return eventLimit
 }
 
 func normalizePreviewLimit(limit int) int {
@@ -409,6 +462,12 @@ func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEn
 	if tenantID := strings.TrimSpace(runtime.GetTenantId()); tenantID != "" {
 		materialized.TenantId = tenantID
 	}
+	if runtimeID := strings.TrimSpace(runtime.GetId()); runtimeID != "" {
+		if materialized.Attributes == nil {
+			materialized.Attributes = make(map[string]string)
+		}
+		materialized.Attributes[ports.EventAttributeSourceRuntimeID] = runtimeID
+	}
 	return materialized
 }
 
@@ -418,6 +477,34 @@ type readSummary struct {
 	PagesRead  uint32
 	EventsRead uint32
 	EventKinds map[string]uint32
+}
+
+func (s *Service) replayEvents(ctx context.Context, runtime *cerebrov1.SourceRuntime, eventLimit uint32) (*readSummary, error) {
+	if s == nil || s.replayer == nil {
+		return nil, fmt.Errorf("append log replayer is required for replay mode")
+	}
+	replayed, err := s.replayer.Replay(ctx, ports.ReplayRequest{
+		RuntimeID: strings.TrimSpace(runtime.GetId()),
+		Limit:     eventLimit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	summary := &readSummary{EventKinds: make(map[string]uint32)}
+	for _, event := range replayed {
+		materialized := materializeEvent(runtime, event)
+		if materialized == nil {
+			continue
+		}
+		summary.Events = append(summary.Events, materialized)
+		summary.EventsRead++
+		kind := strings.TrimSpace(materialized.GetKind())
+		if kind == "" {
+			continue
+		}
+		summary.EventKinds[kind]++
+	}
+	return summary, nil
 }
 
 func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runtime *cerebrov1.SourceRuntime, pageLimit uint32) (*readSummary, error) {

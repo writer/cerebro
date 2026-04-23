@@ -83,6 +83,29 @@ func (s *testSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebro
 	return pull, nil
 }
 
+type eventReplayer struct {
+	requests []ports.ReplayRequest
+	events   []*cerebrov1.EventEnvelope
+}
+
+func (r *eventReplayer) Replay(_ context.Context, req ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
+	r.requests = append(r.requests, req)
+	replayed := make([]*cerebrov1.EventEnvelope, 0, len(r.events))
+	for _, event := range r.events {
+		if event == nil {
+			continue
+		}
+		if event.GetAttributes()[ports.EventAttributeSourceRuntimeID] != req.RuntimeID {
+			continue
+		}
+		replayed = append(replayed, proto.Clone(event).(*cerebrov1.EventEnvelope))
+		if req.Limit > 0 && uint32(len(replayed)) >= req.Limit {
+			break
+		}
+	}
+	return replayed, nil
+}
+
 func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(&testSource{
 		spec: &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"},
@@ -122,7 +145,7 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 			},
 		},
 	}
-	service := New(registry, store)
+	service := New(registry, store, nil)
 
 	result, err := service.RebuildDryRun(context.Background(), Request{
 		RuntimeID:    "writer-github",
@@ -283,7 +306,7 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 				Config:   map[string]string{"token": "fixture-token"},
 			},
 		},
-	})
+	}, nil)
 
 	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github"})
 	if err != nil {
@@ -344,6 +367,91 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	}
 }
 
+func TestRebuildDryRunReplaysRuntimeIntoTemporaryGraph(t *testing.T) {
+	replayer := &eventReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			testRuntimeEvent("github-audit-1", "github.audit", "writer-github", map[string]string{
+				"org":           "writer",
+				"repo":          "writer/cerebro",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "repository",
+				"actor":         "octocat",
+				"action":        "repo.create",
+			}),
+			testRuntimeEvent("github-pr-1", "github.pull_request", "writer-github", map[string]string{
+				"owner":       "writer",
+				"repository":  "writer/cerebro",
+				"pull_number": "418",
+				"author":      "octocat",
+				"state":       "open",
+				"html_url":    "https://github.com/writer/cerebro/pull/418",
+			}),
+			testRuntimeEvent("github-pr-2", "github.pull_request", "other-runtime", map[string]string{
+				"owner":       "writer",
+				"repository":  "writer/platform",
+				"pull_number": "419",
+				"author":      "hubot",
+			}),
+		},
+	}
+	service := New(nil, &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				TenantId: "writer-dogfood",
+			},
+		},
+	}, replayer)
+
+	result, err := service.RebuildDryRun(context.Background(), Request{
+		Mode:         modeReplay,
+		RuntimeID:    "writer-github",
+		EventLimit:   2,
+		PreviewLimit: 10,
+	})
+	if err != nil {
+		t.Fatalf("RebuildDryRun() error = %v", err)
+	}
+	if len(replayer.requests) != 1 {
+		t.Fatalf("len(replayer.requests) = %d, want 1", len(replayer.requests))
+	}
+	if got := replayer.requests[0].RuntimeID; got != "writer-github" {
+		t.Fatalf("Replay().RuntimeID = %q, want %q", got, "writer-github")
+	}
+	if got := replayer.requests[0].Limit; got != 2 {
+		t.Fatalf("Replay().Limit = %d, want 2", got)
+	}
+	if result.Mode != modeReplay {
+		t.Fatalf("result.Mode = %q, want %q", result.Mode, modeReplay)
+	}
+	if result.PagesRead != 0 {
+		t.Fatalf("PagesRead = %d, want 0", result.PagesRead)
+	}
+	if result.EventsRead != 2 {
+		t.Fatalf("EventsRead = %d, want 2", result.EventsRead)
+	}
+	if len(result.ReadPages) != 0 {
+		t.Fatalf("len(ReadPages) = %d, want 0", len(result.ReadPages))
+	}
+	if len(result.StageConfirmations) != 9 {
+		t.Fatalf("len(StageConfirmations) = %d, want 9", len(result.StageConfirmations))
+	}
+	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "replay_log", "project_graph", "count_graph", "verify_integrity", "verify_path_patterns", "verify_topology", "verify_traversals")
+	if got := result.StageConfirmations[2].EventsRead; got != 2 {
+		t.Fatalf("replay_log events_read = %d, want 2", got)
+	}
+	if result.GraphNodes != 5 {
+		t.Fatalf("GraphNodes = %d, want 5", result.GraphNodes)
+	}
+	if result.GraphLinks != 5 {
+		t.Fatalf("GraphLinks = %d, want 5", result.GraphLinks)
+	}
+	if !containsTraversalPath(result.GraphTraversals, "octocat -[authored]-> writer/cerebro#418 -[belongs_to]-> writer/cerebro") {
+		t.Fatalf("GraphTraversals missing authored path: %#v", result.GraphTraversals)
+	}
+}
+
 func testEvent(id string, kind string, attributes map[string]string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         id,
@@ -353,6 +461,15 @@ func testEvent(id string, kind string, attributes map[string]string) *cerebrov1.
 		OccurredAt: timestamppb.Now(),
 		Attributes: attributes,
 	}
+}
+
+func testRuntimeEvent(id string, kind string, runtimeID string, attributes map[string]string) *cerebrov1.EventEnvelope {
+	event := testEvent(id, kind, attributes)
+	if event.Attributes == nil {
+		event.Attributes = make(map[string]string)
+	}
+	event.Attributes[ports.EventAttributeSourceRuntimeID] = runtimeID
+	return event
 }
 
 func containsEntityURN(entities []*EntityPreview, want string) bool {

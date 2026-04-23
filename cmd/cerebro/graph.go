@@ -12,16 +12,17 @@ import (
 	"github.com/writer/cerebro/internal/bootstrap"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphrebuild"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceregistry"
 )
 
 func runGraph(args []string) error {
 	if len(args) == 0 {
-		return usageError(fmt.Sprintf("usage: %s graph rebuild <runtime-id> [dry_run=true] [page_limit=N] [preview_limit=N]", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s graph rebuild <runtime-id> [dry_run=true] [mode=source|replay] [page_limit=N] [event_limit=N] [preview_limit=N]", os.Args[0]))
 	}
 	switch args[0] {
 	case "rebuild":
-		runtimeID, pageLimit, previewLimit, dryRun, err := parseGraphRebuildArgs(args[1:])
+		runtimeID, mode, pageLimit, eventLimit, previewLimit, dryRun, err := parseGraphRebuildArgs(args[1:])
 		if err != nil {
 			return err
 		}
@@ -46,10 +47,18 @@ func runGraph(args []string) error {
 		if err != nil {
 			return fmt.Errorf("open source registry: %w", err)
 		}
-		service := graphrebuild.New(registry, sourceRuntimeStore(deps.StateStore))
+		var replayer ports.EventReplayer
+		if deps.AppendLog != nil {
+			if typed, ok := deps.AppendLog.(ports.EventReplayer); ok {
+				replayer = typed
+			}
+		}
+		service := graphrebuild.New(registry, sourceRuntimeStore(deps.StateStore), replayer)
 		result, err := service.RebuildDryRun(ctx, graphrebuild.Request{
+			Mode:         mode,
 			RuntimeID:    runtimeID,
 			PageLimit:    pageLimit,
+			EventLimit:   eventLimit,
 			PreviewLimit: previewLimit,
 		})
 		if err != nil {
@@ -57,49 +66,59 @@ func runGraph(args []string) error {
 		}
 		return printJSON(result)
 	default:
-		return usageError(fmt.Sprintf("usage: %s graph rebuild <runtime-id> [dry_run=true] [page_limit=N] [preview_limit=N]", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s graph rebuild <runtime-id> [dry_run=true] [mode=source|replay] [page_limit=N] [event_limit=N] [preview_limit=N]", os.Args[0]))
 	}
 }
 
-func parseGraphRebuildArgs(args []string) (string, uint32, int, bool, error) {
+func parseGraphRebuildArgs(args []string) (string, string, uint32, uint32, int, bool, error) {
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-		return "", 0, 0, false, usageError(fmt.Sprintf("usage: %s graph rebuild <runtime-id> [dry_run=true] [page_limit=N] [preview_limit=N]", os.Args[0]))
+		return "", "", 0, 0, 0, false, usageError(fmt.Sprintf("usage: %s graph rebuild <runtime-id> [dry_run=true] [mode=source|replay] [page_limit=N] [event_limit=N] [preview_limit=N]", os.Args[0]))
 	}
 	runtimeID := strings.TrimSpace(args[0])
 	dryRun := true
 	var (
+		mode         string
 		pageLimit    uint32
+		eventLimit   uint32
 		previewLimit int
 	)
 	for _, arg := range args[1:] {
 		key, value, ok := strings.Cut(arg, "=")
 		if !ok {
-			return "", 0, 0, false, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+			return "", "", 0, 0, 0, false, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
 		}
 		switch strings.TrimSpace(key) {
 		case "dry_run":
 			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
 			if err != nil {
-				return "", 0, 0, false, fmt.Errorf("parse dry_run: %w", err)
+				return "", "", 0, 0, 0, false, fmt.Errorf("parse dry_run: %w", err)
 			}
 			dryRun = parsed
+		case "mode":
+			mode = strings.TrimSpace(value)
 		case "page_limit":
 			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
 			if err != nil {
-				return "", 0, 0, false, fmt.Errorf("parse page_limit: %w", err)
+				return "", "", 0, 0, 0, false, fmt.Errorf("parse page_limit: %w", err)
 			}
 			pageLimit = uint32(parsed)
+		case "event_limit":
+			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+			if err != nil {
+				return "", "", 0, 0, 0, false, fmt.Errorf("parse event_limit: %w", err)
+			}
+			eventLimit = uint32(parsed)
 		case "preview_limit":
 			parsed, err := strconv.Atoi(strings.TrimSpace(value))
 			if err != nil {
-				return "", 0, 0, false, fmt.Errorf("parse preview_limit: %w", err)
+				return "", "", 0, 0, 0, false, fmt.Errorf("parse preview_limit: %w", err)
 			}
 			previewLimit = parsed
 		default:
-			return "", 0, 0, false, usageError(fmt.Sprintf("unsupported graph rebuild argument %q", key))
+			return "", "", 0, 0, 0, false, usageError(fmt.Sprintf("unsupported graph rebuild argument %q", key))
 		}
 	}
-	return runtimeID, pageLimit, previewLimit, dryRun, nil
+	return runtimeID, mode, pageLimit, eventLimit, previewLimit, dryRun, nil
 }
 
 func printJSON(value any) error {

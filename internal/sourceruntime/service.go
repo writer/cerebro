@@ -222,8 +222,17 @@ func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEn
 		return nil
 	}
 	cloned := proto.Clone(event).(*cerebrov1.EventEnvelope)
-	if runtime != nil && strings.TrimSpace(runtime.GetTenantId()) != "" {
+	if runtime == nil {
+		return cloned
+	}
+	if strings.TrimSpace(runtime.GetTenantId()) != "" {
 		cloned.TenantId = strings.TrimSpace(runtime.GetTenantId())
+	}
+	if strings.TrimSpace(runtime.GetId()) != "" {
+		if cloned.Attributes == nil {
+			cloned.Attributes = make(map[string]string)
+		}
+		cloned.Attributes[ports.EventAttributeSourceRuntimeID] = strings.TrimSpace(runtime.GetId())
 	}
 	return cloned
 }

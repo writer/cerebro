@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 type fakePublisher struct {
@@ -25,6 +26,27 @@ func (f *fakePublisher) AccountInfo(context.Context) (*natsjetstream.AccountInfo
 func (f *fakePublisher) PublishMsg(_ context.Context, msg *nats.Msg, _ ...natsjetstream.PublishOpt) (*natsjetstream.PubAck, error) {
 	f.published = msg
 	return &natsjetstream.PubAck{}, f.publishErr
+}
+
+type fakeReplayManager struct {
+	streams []*natsjetstream.StreamInfo
+	msgs    map[string]map[uint64]*natsjetstream.RawStreamMsg
+	err     error
+}
+
+func (f *fakeReplayManager) Streams(context.Context) ([]*natsjetstream.StreamInfo, error) {
+	return f.streams, f.err
+}
+
+func (f *fakeReplayManager) GetMsg(_ context.Context, stream string, seq uint64) (*natsjetstream.RawStreamMsg, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	raw := f.msgs[stream][seq]
+	if raw == nil {
+		return nil, natsjetstream.ErrMsgNotFound
+	}
+	return raw, nil
 }
 
 func TestAppendPublishesEnvelope(t *testing.T) {
@@ -70,4 +92,68 @@ func TestPingSurfacesPublisherError(t *testing.T) {
 	if err := log.Ping(context.Background()); err == nil {
 		t.Fatal("Ping() error = nil, want non-nil")
 	}
+}
+
+func TestReplayFiltersEventsByRuntime(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 4},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+				2: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-2", "github.pull_request", "other-runtime")),
+				3: rawReplayMsg(t, "events.github.pull_request", replayEvent("evt-3", "github.pull_request", "writer-github")),
+				4: rawReplayMsg(t, "events.ignored", replayEvent("evt-4", "ignored", "")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{
+		RuntimeID: "writer-github",
+		Limit:     2,
+	})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	if events[0].GetId() != "evt-1" || events[1].GetId() != "evt-3" {
+		t.Fatalf("replayed ids = [%q, %q], want [evt-1, evt-3]", events[0].GetId(), events[1].GetId())
+	}
+}
+
+func TestReplayRejectsMissingRuntimeID(t *testing.T) {
+	log := &Log{replay: &fakeReplayManager{}, subjectPrefix: "events"}
+	if _, err := log.Replay(context.Background(), ports.ReplayRequest{}); err == nil {
+		t.Fatal("Replay() error = nil, want non-nil")
+	}
+}
+
+func replayEvent(id string, kind string, runtimeID string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:       id,
+		Kind:     kind,
+		SourceId: "github",
+		Attributes: map[string]string{
+			ports.EventAttributeSourceRuntimeID: runtimeID,
+		},
+	}
+}
+
+func rawReplayMsg(t *testing.T, subject string, event *cerebrov1.EventEnvelope) *natsjetstream.RawStreamMsg {
+	t.Helper()
+	payload, err := proto.Marshal(event)
+	if err != nil {
+		t.Fatalf("proto.Marshal() error = %v", err)
+	}
+	return &natsjetstream.RawStreamMsg{Subject: subject, Data: payload}
 }
