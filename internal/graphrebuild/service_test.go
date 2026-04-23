@@ -150,6 +150,28 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if result.GraphLinks != 5 {
 		t.Fatalf("GraphLinks = %d, want 5", result.GraphLinks)
 	}
+	if len(result.StageConfirmations) != 5 {
+		t.Fatalf("len(StageConfirmations) = %d, want 5", len(result.StageConfirmations))
+	}
+	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph")
+	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
+		t.Fatalf("event kind github.audit = %d, want 1", got)
+	}
+	if got := countValue(result.EventKinds, "github.pull_request"); got != 1 {
+		t.Fatalf("event kind github.pull_request = %d, want 1", got)
+	}
+	if got := countValue(result.GraphEntityTypes, "github.pull_request"); got != 1 {
+		t.Fatalf("graph entity type github.pull_request = %d, want 1", got)
+	}
+	if got := countValue(result.GraphEntityTypes, "identifier.login"); got != 1 {
+		t.Fatalf("graph entity type identifier.login = %d, want 1", got)
+	}
+	if got := countValue(result.GraphRelationTypes, "belongs_to"); got != 2 {
+		t.Fatalf("graph relation type belongs_to = %d, want 2", got)
+	}
+	if got := countValue(result.GraphRelationTypes, "authored"); got != 1 {
+		t.Fatalf("graph relation type authored = %d, want 1", got)
+	}
 	if len(result.Events) != 2 {
 		t.Fatalf("len(Events) = %d, want 2", len(result.Events))
 	}
@@ -218,6 +240,12 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if result.GraphLinks != 3 {
 		t.Fatalf("GraphLinks = %d, want 3", result.GraphLinks)
 	}
+	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
+		t.Fatalf("event kind github.audit = %d, want 1", got)
+	}
+	if got := countValue(result.GraphEntityTypes, "github.repo"); got != 1 {
+		t.Fatalf("graph entity type github.repo = %d, want 1", got)
+	}
 }
 
 func testEvent(id string, kind string, attributes map[string]string) *cerebrov1.EventEnvelope {
@@ -250,4 +278,31 @@ func containsLink(links []*LinkPreview, fromURN string, relation string, toURN s
 		}
 	}
 	return false
+}
+
+func countValue(counts []*CountPreview, name string) uint32 {
+	for _, count := range counts {
+		if count != nil && count.Name == name {
+			return count.Count
+		}
+	}
+	return 0
+}
+
+func assertStageNames(t *testing.T, stages []*StageConfirmation, want ...string) {
+	t.Helper()
+	if len(stages) != len(want) {
+		t.Fatalf("len(stages) = %d, want %d", len(stages), len(want))
+	}
+	for index, stage := range stages {
+		if stage == nil {
+			t.Fatalf("stage %d = nil", index)
+		}
+		if stage.Name != want[index] {
+			t.Fatalf("stage %d name = %q, want %q", index, stage.Name, want[index])
+		}
+		if stage.Status != stageStatusSuccess {
+			t.Fatalf("stage %d status = %q, want %q", index, stage.Status, stageStatusSuccess)
+		}
+	}
 }
