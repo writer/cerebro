@@ -4,6 +4,7 @@ package cerebro.v1;
 
 option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
 
+import "cerebro/v1/primitives.proto";
 import "cerebro/v1/source.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -12,6 +13,9 @@ service BootstrapService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
   rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
   rpc ListSources(ListSourcesRequest) returns (ListSourcesResponse);
+  rpc CheckSource(CheckSourceRequest) returns (CheckSourceResponse);
+  rpc DiscoverSource(DiscoverSourceRequest) returns (DiscoverSourceResponse);
+  rpc ReadSource(ReadSourceRequest) returns (ReadSourceResponse);
 }
 
 // GetVersionRequest requests static build metadata from the running service.
@@ -49,4 +53,43 @@ message ListSourcesRequest {}
 // ListSourcesResponse returns the registered in-process source specs.
 message ListSourcesResponse {
   repeated SourceSpec sources = 1;
+}
+
+// CheckSourceRequest validates source configuration for a named source.
+message CheckSourceRequest {
+  string source_id = 1;
+  map<string, string> config = 2;
+}
+
+// CheckSourceResponse returns the validated source metadata.
+message CheckSourceResponse {
+  SourceSpec source = 1;
+  string status = 2;
+}
+
+// DiscoverSourceRequest requests the current URNs for a named source.
+message DiscoverSourceRequest {
+  string source_id = 1;
+  map<string, string> config = 2;
+}
+
+// DiscoverSourceResponse returns the discovered URNs for a source.
+message DiscoverSourceResponse {
+  SourceSpec source = 1;
+  repeated string urns = 2;
+}
+
+// ReadSourceRequest requests one page of source events.
+message ReadSourceRequest {
+  string source_id = 1;
+  map<string, string> config = 2;
+  SourceCursor cursor = 3;
+}
+
+// ReadSourceResponse returns one page of source events plus replay cursors.
+message ReadSourceResponse {
+  SourceSpec source = 1;
+  repeated EventEnvelope events = 2;
+  SourceCheckpoint checkpoint = 3;
+  SourceCursor next_cursor = 4;
 }
