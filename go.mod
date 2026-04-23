@@ -6,6 +6,7 @@ toolchain go1.26.2
 
 require (
 	connectrpc.com/connect v1.19.2
+	github.com/google/go-github/v66 v66.0.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kuzudb/go-kuzu v0.11.3
 	github.com/nats-io/nats.go v1.51.0
@@ -14,6 +15,7 @@ require (
 )
 
 require (
+	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
