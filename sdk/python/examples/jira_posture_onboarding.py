@@ -2,7 +2,7 @@ import json
 import os
 from typing import Any, Dict, Optional
 
-from cerebro_sdk import APIError, Client, IntegrationClient
+from cerebro_sdk import Client, IntegrationClient
 
 
 def build_workspace_claims(integration: IntegrationClient, posture: Dict[str, Any]) -> list[Dict[str, Any]]:
@@ -244,26 +244,22 @@ def load_graph_layering(integration: IntegrationClient, posture: Dict[str, Any])
     workspace_key = require_value(posture.get("workspace_key"), "workspace_key")
     workspace_name = optional_string(posture.get("workspace_name")) or workspace_key
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
-    project_graphs: Dict[str, Any] = {}
+    project_refs = []
+    project_keys = []
     for project in posture.get("projects", []):
         project_key = require_value(project.get("key"), "projects[].key")
         project_name = optional_string(project.get("name")) or project_key
-        project_ref = integration.ref("project", project_key, project_name)
-        project_graphs[project_key] = safe_graph_neighborhood(integration, project_ref, limit=12)
+        project_refs.append(integration.ref("project", project_key, project_name))
+        project_keys.append(project_key)
+    workspace_graph = integration.graph_layering([workspace_ref], limit=50)
+    project_layering = integration.graph_layering(project_refs, limit=12)
+    project_graphs = {}
+    for project_key, project_ref in zip(project_keys, project_refs):
+        project_graphs[project_key] = project_layering.get(project_ref["urn"], {"root_urn": project_ref["urn"], "error": "missing graph response"})
     return {
-        "workspace": safe_graph_neighborhood(integration, workspace_ref, limit=50),
+        "workspace": workspace_graph.get(workspace_ref["urn"], {"root_urn": workspace_ref["urn"], "error": "missing graph response"}),
         "projects": project_graphs,
     }
-
-
-def safe_graph_neighborhood(integration: IntegrationClient, root: Dict[str, str], limit: int) -> Dict[str, Any]:
-    try:
-        return integration.graph_neighborhood(root, limit)
-    except APIError as err:
-        return {
-            "root_urn": root["urn"],
-            "error": str(err),
-        }
 
 
 def optional_string(value: Any) -> Optional[str]:

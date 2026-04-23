@@ -1,4 +1,4 @@
-import { APIError, Client, type Claim, type IntegrationClient } from "../src/index.js";
+import { Client, type Claim, type IntegrationClient } from "../src/index.js";
 
 declare const process: {
   env: Record<string, string | undefined>;
@@ -300,35 +300,31 @@ async function loadGraphLayering(
 ): Promise<Record<string, unknown>> {
   const workspaceKey = requireValue(posture.workspaceKey, "posture.workspaceKey");
   const workspaceRef = integration.ref("workspace", workspaceKey, posture.workspaceName?.trim() || workspaceKey);
-  const projectEntries = await Promise.all(
-    (posture.projects ?? []).map(async (project) => {
-      const projectKey = requireValue(project.key, "posture.projects[].key");
-      const projectRef = integration.ref("project", projectKey, project.name?.trim() || projectKey);
-      return [projectKey, await safeGraphNeighborhood(integration, projectRef, 12)] as const;
-    }),
+  const projectEntries = (posture.projects ?? []).map((project) => {
+    const projectKey = requireValue(project.key, "posture.projects[].key");
+    const projectRef = integration.ref("project", projectKey, project.name?.trim() || projectKey);
+    return [projectKey, projectRef] as const;
+  });
+  const workspaceLayering = await integration.graphLayering([workspaceRef], 50);
+  const projectLayering = await integration.graphLayering(
+    projectEntries.map(([, projectRef]) => projectRef),
+    12,
   );
   return {
-    workspace: await safeGraphNeighborhood(integration, workspaceRef, 50),
-    projects: Object.fromEntries(projectEntries),
+    workspace: workspaceLayering[workspaceRef.urn] ?? {
+      root_urn: workspaceRef.urn,
+      error: "missing graph response",
+    },
+    projects: Object.fromEntries(
+      projectEntries.map(([projectKey, projectRef]) => [
+        projectKey,
+        projectLayering[projectRef.urn] ?? {
+          root_urn: projectRef.urn,
+          error: "missing graph response",
+        },
+      ]),
+    ),
   };
-}
-
-async function safeGraphNeighborhood(
-  integration: IntegrationClient,
-  root: { urn: string },
-  limit: number,
-): Promise<unknown> {
-  try {
-    return await integration.graphNeighborhood(root.urn, limit);
-  } catch (error) {
-    if (error instanceof APIError) {
-      return {
-        root_urn: root.urn,
-        error: error.message,
-      };
-    }
-    throw error;
-  }
 }
 
 function requireValue(value: string, name: string): string {

@@ -316,6 +316,26 @@ class IntegrationClient:
             root_urn = str(root).strip()
         return self.client.get_entity_neighborhood(root_urn, limit)
 
+    def graph_layering(self, roots: list[Any], limit: int = 0) -> Dict[str, Any]:
+        layering: Dict[str, Any] = {}
+        seen = set()
+        for root in roots:
+            if isinstance(root, dict):
+                root_urn = str(root["urn"]).strip()
+            else:
+                root_urn = str(root).strip()
+            if not root_urn or root_urn in seen:
+                continue
+            seen.add(root_urn)
+            try:
+                layering[root_urn] = self.graph_neighborhood(root_urn, limit)
+            except APIError as err:
+                layering[root_urn] = {
+                    "root_urn": root_urn,
+                    "error": str(err),
+                }
+        return layering
+
     def ref(self, kind: str, external_id: str, label: str = "") -> Dict[str, str]:
         normalized_kind = kind.strip()
         normalized_external_id = external_id.strip()

@@ -115,6 +115,13 @@ export interface GraphNeighborhood {
   relations?: GraphRelation[];
 }
 
+export interface GraphNeighborhoodError {
+  root_urn: string;
+  error: string;
+}
+
+export type GraphLayering = Record<string, GraphNeighborhood | GraphNeighborhoodError>;
+
 export interface IntegrationOptions {
   runtimeId: string;
   tenantId: string;
@@ -514,6 +521,31 @@ export class IntegrationClient {
   async graphNeighborhood(root: EntityRef | string, limit = 0): Promise<GraphNeighborhood> {
     const rootUrn = typeof root === "string" ? root.trim() : root.urn.trim();
     return this.client.getEntityNeighborhood(rootUrn, limit);
+  }
+
+  async graphLayering(roots: Array<EntityRef | string>, limit = 0): Promise<GraphLayering> {
+    const layering: GraphLayering = {};
+    const seen = new Set<string>();
+    for (const root of roots) {
+      const rootUrn = typeof root === "string" ? root.trim() : root.urn.trim();
+      if (!rootUrn || seen.has(rootUrn)) {
+        continue;
+      }
+      seen.add(rootUrn);
+      try {
+        layering[rootUrn] = await this.graphNeighborhood(rootUrn, limit);
+      } catch (error) {
+        if (error instanceof APIError) {
+          layering[rootUrn] = {
+            root_urn: rootUrn,
+            error: error.message,
+          };
+          continue;
+        }
+        throw error;
+      }
+    }
+    return layering;
   }
 
   ref(kind: string, externalId: string, label = ""): EntityRef {
