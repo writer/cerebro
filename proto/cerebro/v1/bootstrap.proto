@@ -4,12 +4,14 @@ package cerebro.v1;
 
 option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
 
+import "cerebro/v1/source.proto";
 import "google/protobuf/timestamp.proto";
 
 // BootstrapService is the minimal control-plane surface for the rewrite skeleton.
 service BootstrapService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
   rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
+  rpc ListSources(ListSourcesRequest) returns (ListSourcesResponse);
 }
 
 // GetVersionRequest requests static build metadata from the running service.
@@ -39,4 +41,12 @@ message CheckHealthResponse {
   string status = 1;
   google.protobuf.Timestamp checked_at = 2;
   repeated ComponentStatus components = 3;
+}
+
+// ListSourcesRequest requests the currently registered source catalog.
+message ListSourcesRequest {}
+
+// ListSourcesResponse returns the registered in-process source specs.
+message ListSourcesResponse {
+  repeated SourceSpec sources = 1;
 }
