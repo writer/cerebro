@@ -17,6 +17,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
+	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphquery"
@@ -70,6 +71,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
+	mux.HandleFunc("POST /source-runtimes/{runtimeID}/claims", app.handleWriteClaims)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -250,6 +252,28 @@ func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, response)
 }
 
+func (a *App) handleWriteClaims(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.WriteClaimsRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeClaimError(w, err)
+		return
+	}
+	request.RuntimeId = r.PathValue("runtimeID")
+	response, err := a.claimService().WriteClaims(r.Context(), claims.WriteRequest{
+		RuntimeID: request.GetRuntimeId(),
+		Claims:    request.GetClaims(),
+	})
+	if err != nil {
+		writeClaimError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.WriteClaimsResponse{
+		ClaimsWritten:          response.ClaimsWritten,
+		EntitiesUpserted:       response.EntitiesUpserted,
+		RelationLinksProjected: response.RelationLinksProjected,
+	})
+}
+
 func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.EvaluateSourceRuntimeFindingsRequest{}
 	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
@@ -384,6 +408,26 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 	return connect.NewResponse(response), nil
 }
 
+func (s *bootstrapService) WriteClaims(ctx context.Context, req *connect.Request[cerebrov1.WriteClaimsRequest]) (*connect.Response[cerebrov1.WriteClaimsResponse], error) {
+	response, err := claims.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+		sourceProjectionStateStore(s.deps.StateStore),
+		sourceProjectionGraphStore(s.deps.GraphStore),
+	).WriteClaims(ctx, claims.WriteRequest{
+		RuntimeID: req.Msg.GetRuntimeId(),
+		Claims:    req.Msg.GetClaims(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.WriteClaimsResponse{
+		ClaimsWritten:          response.ClaimsWritten,
+		EntitiesUpserted:       response.EntitiesUpserted,
+		RelationLinksProjected: response.RelationLinksProjected,
+	}), nil
+}
+
 func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingsResponse], error) {
 	response, err := findings.New(
 		sourceRuntimeStore(s.deps.StateStore),
@@ -464,6 +508,15 @@ func (a *App) runtimeService() *sourceruntime.Service {
 	)
 }
 
+func (a *App) claimService() *claims.Service {
+	return claims.New(
+		sourceRuntimeStore(a.deps.StateStore),
+		claimStore(a.deps.StateStore),
+		sourceProjectionStateStore(a.deps.StateStore),
+		sourceProjectionGraphStore(a.deps.GraphStore),
+	)
+}
+
 func (a *App) findingService() *findings.Service {
 	return findings.New(
 		sourceRuntimeStore(a.deps.StateStore),
@@ -525,6 +578,17 @@ func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
+		statusCode = http.StatusServiceUnavailable
+	}
+	http.Error(w, err.Error(), statusCode)
+}
+
+func writeClaimError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusBadRequest
+	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		statusCode = http.StatusNotFound
+	case errors.Is(err, claims.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	}
 	http.Error(w, err.Error(), statusCode)
@@ -629,6 +693,14 @@ func findingStore(store ports.StateStore) ports.FindingStore {
 		return nil
 	}
 	return findingStore
+}
+
+func claimStore(store ports.StateStore) ports.ClaimStore {
+	claimStore, ok := store.(ports.ClaimStore)
+	if !ok {
+		return nil
+	}
+	return claimStore
 }
 
 func reportStore(store ports.StateStore) ports.ReportStore {

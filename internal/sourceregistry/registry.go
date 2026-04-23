@@ -6,6 +6,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
+	sdksource "github.com/writer/cerebro/sources/sdk"
 )
 
 type builtinSourceLoader struct {
@@ -24,6 +25,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "okta",
 		load: func() (sourcecdk.Source, error) {
 			return oktasource.New()
+		},
+	},
+	{
+		name: "sdk",
+		load: func() (sourcecdk.Source, error) {
+			return sdksource.New()
 		},
 	},
 }
