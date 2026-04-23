@@ -15,7 +15,7 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
-	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceregistry"
 )
 
 type stubAppendLog struct {
@@ -31,23 +31,10 @@ type stubStore struct {
 
 func (s stubStore) Ping(context.Context) error { return s.err }
 
-type stubSource struct {
-	spec *cerebrov1.SourceSpec
-}
-
-func (s stubSource) Spec() *cerebrov1.SourceSpec                   { return s.spec }
-func (s stubSource) Check(context.Context, sourcecdk.Config) error { return nil }
-func (s stubSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
-	return nil, nil
-}
-func (s stubSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	return sourcecdk.Pull{}, nil
-}
-
 func TestBootstrapEndpoints(t *testing.T) {
-	registry, err := sourcecdk.NewRegistry(stubSource{spec: &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"}})
+	registry, err := sourceregistry.Builtin()
 	if err != nil {
-		t.Fatalf("NewRegistry() error = %v", err)
+		t.Fatalf("Builtin() error = %v", err)
 	}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
 	server := httptest.NewServer(app.Handler())
@@ -89,6 +76,54 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(entries) != 1 {
 		t.Fatalf("/sources entries = %#v, want single entry", sourcesPayload["sources"])
 	}
+	checkResp, err := server.Client().Get(server.URL + "/sources/github/check?token=test")
+	if err != nil {
+		t.Fatalf("GET /sources/github/check error = %v", err)
+	}
+	defer func() {
+		if closeErr := checkResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/github/check response body: %v", closeErr)
+		}
+	}()
+	var checkPayload map[string]any
+	if err := json.NewDecoder(checkResp.Body).Decode(&checkPayload); err != nil {
+		t.Fatalf("decode /sources/github/check response: %v", err)
+	}
+	if checkPayload["status"] != "ok" {
+		t.Fatalf("check status = %#v, want %q", checkPayload["status"], "ok")
+	}
+	discoverResp, err := server.Client().Get(server.URL + "/sources/github/discover?token=test")
+	if err != nil {
+		t.Fatalf("GET /sources/github/discover error = %v", err)
+	}
+	defer func() {
+		if closeErr := discoverResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/github/discover response body: %v", closeErr)
+		}
+	}()
+	var discoverPayload map[string]any
+	if err := json.NewDecoder(discoverResp.Body).Decode(&discoverPayload); err != nil {
+		t.Fatalf("decode /sources/github/discover response: %v", err)
+	}
+	if urns, ok := discoverPayload["urns"].([]any); !ok || len(urns) != 2 {
+		t.Fatalf("discover urns = %#v, want 2 entries", discoverPayload["urns"])
+	}
+	readResp, err := server.Client().Get(server.URL + "/sources/github/read?token=test")
+	if err != nil {
+		t.Fatalf("GET /sources/github/read error = %v", err)
+	}
+	defer func() {
+		if closeErr := readResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/github/read response body: %v", closeErr)
+		}
+	}()
+	var readPayload map[string]any
+	if err := json.NewDecoder(readResp.Body).Decode(&readPayload); err != nil {
+		t.Fatalf("decode /sources/github/read response: %v", err)
+	}
+	if events, ok := readPayload["events"].([]any); !ok || len(events) != 1 {
+		t.Fatalf("read events = %#v, want 1 entry", readPayload["events"])
+	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	versionResp, err := client.GetVersion(context.Background(), connect.NewRequest(&cerebrov1.GetVersionRequest{}))
@@ -112,6 +147,36 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}
 	if len(listResp.Msg.Sources) != 1 {
 		t.Fatalf("len(ListSources.Sources) = %d, want 1", len(listResp.Msg.Sources))
+	}
+	checkSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
+		SourceId: "github",
+		Config:   map[string]string{"token": "test"},
+	}))
+	if err != nil {
+		t.Fatalf("CheckSource() error = %v", err)
+	}
+	if checkSourceResp.Msg.Status != "ok" {
+		t.Fatalf("CheckSource status = %q, want %q", checkSourceResp.Msg.Status, "ok")
+	}
+	discoverSourceResp, err := client.DiscoverSource(context.Background(), connect.NewRequest(&cerebrov1.DiscoverSourceRequest{
+		SourceId: "github",
+		Config:   map[string]string{"token": "test"},
+	}))
+	if err != nil {
+		t.Fatalf("DiscoverSource() error = %v", err)
+	}
+	if len(discoverSourceResp.Msg.Urns) != 2 {
+		t.Fatalf("len(DiscoverSource.Urns) = %d, want 2", len(discoverSourceResp.Msg.Urns))
+	}
+	readSourceResp, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
+		SourceId: "github",
+		Config:   map[string]string{"token": "test"},
+	}))
+	if err != nil {
+		t.Fatalf("ReadSource() error = %v", err)
+	}
+	if len(readSourceResp.Msg.Events) != 1 {
+		t.Fatalf("len(ReadSource.Events) = %d, want 1", len(readSourceResp.Msg.Events))
 	}
 }
 
