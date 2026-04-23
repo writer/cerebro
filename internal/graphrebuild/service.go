@@ -32,6 +32,7 @@ type graphStore interface {
 	ports.ProjectionGraphStore
 	Close() error
 	Counts(context.Context) (graphstorekuzu.Counts, error)
+	SampleTraversals(context.Context, int) ([]graphstorekuzu.Traversal, error)
 }
 
 // Request configures one local graph rebuild dry-run.
@@ -69,15 +70,26 @@ type CountPreview struct {
 
 // StageConfirmation captures local confirmation for one rebuild stage.
 type StageConfirmation struct {
-	Name              string `json:"name"`
-	Status            string `json:"status"`
-	DurationMillis    int64  `json:"duration_ms"`
-	PagesRead         uint32 `json:"pages_read,omitempty"`
-	EventsRead        uint32 `json:"events_read,omitempty"`
-	EntitiesProjected uint32 `json:"entities_projected,omitempty"`
-	LinksProjected    uint32 `json:"links_projected,omitempty"`
-	GraphNodes        int64  `json:"graph_nodes,omitempty"`
-	GraphLinks        int64  `json:"graph_links,omitempty"`
+	Name               string `json:"name"`
+	Status             string `json:"status"`
+	DurationMillis     int64  `json:"duration_ms"`
+	PagesRead          uint32 `json:"pages_read,omitempty"`
+	EventsRead         uint32 `json:"events_read,omitempty"`
+	EntitiesProjected  uint32 `json:"entities_projected,omitempty"`
+	LinksProjected     uint32 `json:"links_projected,omitempty"`
+	TraversalsVerified uint32 `json:"traversals_verified,omitempty"`
+	GraphNodes         int64  `json:"graph_nodes,omitempty"`
+	GraphLinks         int64  `json:"graph_links,omitempty"`
+}
+
+// TraversalPreview captures one sampled two-hop path returned from the local graph.
+type TraversalPreview struct {
+	Path           string `json:"path"`
+	FromURN        string `json:"from_urn"`
+	FirstRelation  string `json:"first_relation"`
+	ViaURN         string `json:"via_urn"`
+	SecondRelation string `json:"second_relation"`
+	ToURN          string `json:"to_urn"`
 }
 
 // Result summarizes a dry-run rebuild execution.
@@ -96,6 +108,7 @@ type Result struct {
 	EventKinds         []*CountPreview      `json:"event_kinds,omitempty"`
 	GraphEntityTypes   []*CountPreview      `json:"graph_entity_types,omitempty"`
 	GraphRelationTypes []*CountPreview      `json:"graph_relation_types,omitempty"`
+	GraphTraversals    []*TraversalPreview  `json:"graph_traversals,omitempty"`
 	Events             []*EventPreview      `json:"events,omitempty"`
 	PreviewEntities    []*EntityPreview     `json:"preview_entities,omitempty"`
 	PreviewLinks       []*LinkPreview       `json:"preview_links,omitempty"`
@@ -236,6 +249,19 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		DurationMillis: durationMillis(countStart),
 		GraphNodes:     counts.Nodes,
 		GraphLinks:     counts.Relations,
+	})
+
+	traversalStart := time.Now()
+	traversals, err := graph.SampleTraversals(ctx, previewLimit)
+	if err != nil {
+		return nil, err
+	}
+	result.GraphTraversals = traversalPreviews(traversals)
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:               "verify_traversals",
+		Status:             stageStatusSuccess,
+		DurationMillis:     durationMillis(traversalStart),
+		TraversalsVerified: uint32(len(result.GraphTraversals)),
 	})
 	return result, nil
 }
@@ -516,6 +542,35 @@ func countPreviews(counts map[string]uint32) []*CountPreview {
 		return previews[i].Count > previews[j].Count
 	})
 	return previews
+}
+
+func traversalPreviews(traversals []graphstorekuzu.Traversal) []*TraversalPreview {
+	previews := make([]*TraversalPreview, 0, len(traversals))
+	for _, traversal := range traversals {
+		previews = append(previews, &TraversalPreview{
+			Path:           traversalPath(traversal),
+			FromURN:        traversal.FromURN,
+			FirstRelation:  traversal.FirstRelation,
+			ViaURN:         traversal.ViaURN,
+			SecondRelation: traversal.SecondRelation,
+			ToURN:          traversal.ToURN,
+		})
+	}
+	return previews
+}
+
+func traversalPath(traversal graphstorekuzu.Traversal) string {
+	from := firstNonEmptyLabel(traversal.FromLabel, traversal.FromURN)
+	via := firstNonEmptyLabel(traversal.ViaLabel, traversal.ViaURN)
+	to := firstNonEmptyLabel(traversal.ToLabel, traversal.ToURN)
+	return from + " -[" + traversal.FirstRelation + "]-> " + via + " -[" + traversal.SecondRelation + "]-> " + to
+}
+
+func firstNonEmptyLabel(label string, fallback string) string {
+	if strings.TrimSpace(label) != "" {
+		return strings.TrimSpace(label)
+	}
+	return strings.TrimSpace(fallback)
 }
 
 func durationMillis(start time.Time) int64 {

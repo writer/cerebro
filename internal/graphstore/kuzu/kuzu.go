@@ -30,6 +30,18 @@ type Counts struct {
 	Relations int64
 }
 
+// Traversal captures one sampled two-hop path from the local graph.
+type Traversal struct {
+	FromURN        string
+	FromLabel      string
+	FirstRelation  string
+	ViaURN         string
+	ViaLabel       string
+	SecondRelation string
+	ToURN          string
+	ToLabel        string
+}
+
 // Open opens a Kuzu-backed graph projection store.
 func Open(cfg config.GraphStoreConfig) (*Store, error) {
 	rawPath := strings.TrimSpace(cfg.KuzuPath)
@@ -97,6 +109,59 @@ func (s *Store) Counts(ctx context.Context) (Counts, error) {
 		return Counts{}, fmt.Errorf("count relation edges: %w", err)
 	}
 	return counts, nil
+}
+
+// SampleTraversals returns a bounded set of traversable two-hop paths from the local graph.
+func (s *Store) SampleTraversals(ctx context.Context, limit int) (_ []Traversal, err error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("kuzu is not configured")
+	}
+	if limit <= 0 {
+		return nil, nil
+	}
+	tables, err := s.graphTables(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !tables["entity"] || !tables["relation"] {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(
+		"MATCH (src:entity)-[left:relation]->(mid:entity)-[right:relation]->(dst:entity) "+
+			"RETURN src.urn, src.label, left.relation, mid.urn, mid.label, right.relation, dst.urn, dst.label "+
+			"ORDER BY src.urn, left.relation, mid.urn, right.relation, dst.urn LIMIT %d",
+		limit,
+	))
+	if err != nil {
+		return nil, fmt.Errorf("sample graph traversals: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close graph traversals: %w", closeErr)
+		}
+	}()
+
+	traversals := make([]Traversal, 0, limit)
+	for rows.Next() {
+		var traversal Traversal
+		if err := rows.Scan(
+			&traversal.FromURN,
+			&traversal.FromLabel,
+			&traversal.FirstRelation,
+			&traversal.ViaURN,
+			&traversal.ViaLabel,
+			&traversal.SecondRelation,
+			&traversal.ToURN,
+			&traversal.ToLabel,
+		); err != nil {
+			return nil, fmt.Errorf("scan graph traversal: %w", err)
+		}
+		traversals = append(traversals, traversal)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate graph traversals: %w", err)
+	}
+	return traversals, nil
 }
 
 // UpsertProjectedEntity upserts one normalized entity in the graph store.

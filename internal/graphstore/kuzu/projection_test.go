@@ -111,6 +111,20 @@ func TestProjectorBuildsTraversableLocalGraph(t *testing.T) {
 	if pathCount != 1 {
 		t.Fatalf("authored pull-request path count = %d, want 1", pathCount)
 	}
+
+	traversals, err := store.SampleTraversals(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("SampleTraversals() error = %v", err)
+	}
+	if !containsTraversal(traversals,
+		"urn:cerebro:writer:github_user:alice",
+		"authored",
+		"urn:cerebro:writer:github_pull_request:writer/cerebro#447",
+		"belongs_to",
+		"urn:cerebro:writer:github_repo:writer/cerebro",
+	) {
+		t.Fatalf("SampleTraversals() missing authored path: %#v", traversals)
+	}
 }
 
 func TestProjectorKeepsLocalGraphIdentityLinksTenantScoped(t *testing.T) {
@@ -248,4 +262,17 @@ func mustJSON(t *testing.T, value any) []byte {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
 	return payload
+}
+
+func containsTraversal(traversals []Traversal, fromURN string, firstRelation string, viaURN string, secondRelation string, toURN string) bool {
+	for _, traversal := range traversals {
+		if traversal.FromURN == fromURN &&
+			traversal.FirstRelation == firstRelation &&
+			traversal.ViaURN == viaURN &&
+			traversal.SecondRelation == secondRelation &&
+			traversal.ToURN == toURN {
+			return true
+		}
+	}
+	return false
 }

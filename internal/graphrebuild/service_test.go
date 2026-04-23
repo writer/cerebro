@@ -150,10 +150,13 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if result.GraphLinks != 5 {
 		t.Fatalf("GraphLinks = %d, want 5", result.GraphLinks)
 	}
-	if len(result.StageConfirmations) != 5 {
-		t.Fatalf("len(StageConfirmations) = %d, want 5", len(result.StageConfirmations))
+	if len(result.StageConfirmations) != 6 {
+		t.Fatalf("len(StageConfirmations) = %d, want 6", len(result.StageConfirmations))
 	}
-	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph")
+	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph", "verify_traversals")
+	if got := result.StageConfirmations[5].TraversalsVerified; got != 3 {
+		t.Fatalf("verify_traversals traversals_verified = %d, want 3", got)
+	}
 	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
 		t.Fatalf("event kind github.audit = %d, want 1", got)
 	}
@@ -171,6 +174,12 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 	if got := countValue(result.GraphRelationTypes, "authored"); got != 1 {
 		t.Fatalf("graph relation type authored = %d, want 1", got)
+	}
+	if len(result.GraphTraversals) != 3 {
+		t.Fatalf("len(GraphTraversals) = %d, want 3", len(result.GraphTraversals))
+	}
+	if !containsTraversalPath(result.GraphTraversals, "octocat -[authored]-> writer/cerebro#418 -[belongs_to]-> writer/cerebro") {
+		t.Fatalf("GraphTraversals missing authored path: %#v", result.GraphTraversals)
 	}
 	if len(result.Events) != 2 {
 		t.Fatalf("len(Events) = %d, want 2", len(result.Events))
@@ -246,6 +255,15 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if got := countValue(result.GraphEntityTypes, "github.repo"); got != 1 {
 		t.Fatalf("graph entity type github.repo = %d, want 1", got)
 	}
+	if len(result.GraphTraversals) != 1 {
+		t.Fatalf("len(GraphTraversals) = %d, want 1", len(result.GraphTraversals))
+	}
+	if got := result.StageConfirmations[5].TraversalsVerified; got != 1 {
+		t.Fatalf("verify_traversals traversals_verified = %d, want 1", got)
+	}
+	if !containsTraversalPath(result.GraphTraversals, "octocat -[acted_on]-> writer/cerebro -[belongs_to]-> writer") {
+		t.Fatalf("GraphTraversals missing acted_on path: %#v", result.GraphTraversals)
+	}
 }
 
 func testEvent(id string, kind string, attributes map[string]string) *cerebrov1.EventEnvelope {
@@ -305,4 +323,13 @@ func assertStageNames(t *testing.T, stages []*StageConfirmation, want ...string)
 			t.Fatalf("stage %d status = %q, want %q", index, stage.Status, stageStatusSuccess)
 		}
 	}
+}
+
+func containsTraversalPath(traversals []*TraversalPreview, want string) bool {
+	for _, traversal := range traversals {
+		if traversal != nil && traversal.Path == want {
+			return true
+		}
+	}
+	return false
 }
