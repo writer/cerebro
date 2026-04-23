@@ -153,9 +153,12 @@ func (s *stubRuntimeStore) UpsertFinding(_ context.Context, finding *ports.Findi
 }
 
 type stubGraphStore struct {
-	err      error
-	entities map[string]*ports.ProjectedEntity
-	links    map[string]*ports.ProjectedLink
+	err                 error
+	entities            map[string]*ports.ProjectedEntity
+	links               map[string]*ports.ProjectedLink
+	neighborhood        *ports.EntityNeighborhood
+	neighborhoodRootURN string
+	neighborhoodLimit   int
 }
 
 func (s *stubGraphStore) Ping(context.Context) error {
@@ -188,6 +191,18 @@ func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.Proj
 	}
 	s.links[projectedLinkKey(link)] = cloneProjectedLink(link)
 	return nil
+}
+
+func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.neighborhoodRootURN = rootURN
+	s.neighborhoodLimit = limit
+	if s.neighborhood == nil {
+		return nil, ports.ErrGraphEntityNotFound
+	}
+	return cloneNeighborhood(s.neighborhood), nil
 }
 
 func TestBootstrapEndpoints(t *testing.T) {
@@ -741,6 +756,86 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 }
 
+func TestGraphNeighborhoodEndpoints(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	graphStore := &stubGraphStore{
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{
+				URN:        "urn:cerebro:writer:github_pull_request:writer/cerebro#447",
+				EntityType: "github.pull_request",
+				Label:      "writer/cerebro#447",
+			},
+			Neighbors: []*ports.NeighborhoodNode{
+				{URN: "urn:cerebro:writer:github_repo:writer/cerebro", EntityType: "github.repo", Label: "writer/cerebro"},
+				{URN: "urn:cerebro:writer:github_user:alice", EntityType: "github.user", Label: "Alice"},
+			},
+			Relations: []*ports.NeighborhoodRelation{
+				{FromURN: "urn:cerebro:writer:github_user:alice", Relation: "authored", ToURN: "urn:cerebro:writer:github_pull_request:writer/cerebro#447"},
+				{FromURN: "urn:cerebro:writer:github_pull_request:writer/cerebro#447", Relation: "belongs_to", ToURN: "urn:cerebro:writer:github_repo:writer/cerebro"},
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  &recordingAppendLog{},
+		StateStore: &stubRuntimeStore{},
+		GraphStore: graphStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/graph/neighborhood?root_urn=urn:cerebro:writer:github_pull_request:writer/cerebro%23447&limit=5")
+	if err != nil {
+		t.Fatalf("GET /graph/neighborhood error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /graph/neighborhood response body: %v", closeErr)
+		}
+	}()
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /graph/neighborhood response: %v", err)
+	}
+	rootPayload, ok := payload["root"].(map[string]any)
+	if !ok {
+		t.Fatalf("graph root payload = %#v, want object", payload["root"])
+	}
+	if got := rootPayload["entity_type"]; got != "github.pull_request" {
+		t.Fatalf("graph root entity_type = %#v, want github.pull_request", got)
+	}
+	neighborsPayload, ok := payload["neighbors"].([]any)
+	if !ok || len(neighborsPayload) != 2 {
+		t.Fatalf("graph neighbors payload = %#v, want 2 entries", payload["neighbors"])
+	}
+	if graphStore.neighborhoodRootURN != "urn:cerebro:writer:github_pull_request:writer/cerebro#447" {
+		t.Fatalf("graph neighborhood root urn = %q, want pull request urn", graphStore.neighborhoodRootURN)
+	}
+	if graphStore.neighborhoodLimit != 5 {
+		t.Fatalf("graph neighborhood limit = %d, want 5", graphStore.neighborhoodLimit)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	neighborhoodResp, err := client.GetEntityNeighborhood(context.Background(), connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{
+		RootUrn: "urn:cerebro:writer:github_pull_request:writer/cerebro#447",
+		Limit:   2,
+	}))
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
+	}
+	if got := neighborhoodResp.Msg.GetRoot().GetUrn(); got != "urn:cerebro:writer:github_pull_request:writer/cerebro#447" {
+		t.Fatalf("GetEntityNeighborhood root urn = %q, want pull request urn", got)
+	}
+	if len(neighborhoodResp.Msg.GetNeighbors()) != 2 {
+		t.Fatalf("len(GetEntityNeighborhood.Neighbors) = %d, want 2", len(neighborhoodResp.Msg.GetNeighbors()))
+	}
+	if len(neighborhoodResp.Msg.GetRelations()) != 2 {
+		t.Fatalf("len(GetEntityNeighborhood.Relations) = %d, want 2", len(neighborhoodResp.Msg.GetRelations()))
+	}
+}
+
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {
@@ -816,6 +911,46 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		Attributes:      attributes,
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
+	}
+}
+
+func cloneNeighborhood(neighborhood *ports.EntityNeighborhood) *ports.EntityNeighborhood {
+	if neighborhood == nil {
+		return nil
+	}
+	cloned := &ports.EntityNeighborhood{
+		Root:      cloneNeighborhoodNode(neighborhood.Root),
+		Neighbors: make([]*ports.NeighborhoodNode, 0, len(neighborhood.Neighbors)),
+		Relations: make([]*ports.NeighborhoodRelation, 0, len(neighborhood.Relations)),
+	}
+	for _, neighbor := range neighborhood.Neighbors {
+		cloned.Neighbors = append(cloned.Neighbors, cloneNeighborhoodNode(neighbor))
+	}
+	for _, relation := range neighborhood.Relations {
+		cloned.Relations = append(cloned.Relations, cloneNeighborhoodRelation(relation))
+	}
+	return cloned
+}
+
+func cloneNeighborhoodNode(node *ports.NeighborhoodNode) *ports.NeighborhoodNode {
+	if node == nil {
+		return nil
+	}
+	return &ports.NeighborhoodNode{
+		URN:        node.URN,
+		EntityType: node.EntityType,
+		Label:      node.Label,
+	}
+}
+
+func cloneNeighborhoodRelation(relation *ports.NeighborhoodRelation) *ports.NeighborhoodRelation {
+	if relation == nil {
+		return nil
+	}
+	return &ports.NeighborhoodRelation{
+		FromURN:  relation.FromURN,
+		Relation: relation.Relation,
+		ToURN:    relation.ToURN,
 	}
 }
 

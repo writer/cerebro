@@ -63,6 +63,9 @@ const (
 	// BootstrapServiceEvaluateSourceRuntimeFindingsProcedure is the fully-qualified name of the
 	// BootstrapService's EvaluateSourceRuntimeFindings RPC.
 	BootstrapServiceEvaluateSourceRuntimeFindingsProcedure = "/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindings"
+	// BootstrapServiceGetEntityNeighborhoodProcedure is the fully-qualified name of the
+	// BootstrapService's GetEntityNeighborhood RPC.
+	BootstrapServiceGetEntityNeighborhoodProcedure = "/cerebro.v1.BootstrapService/GetEntityNeighborhood"
 )
 
 // BootstrapServiceClient is a client for the cerebro.v1.BootstrapService service.
@@ -77,6 +80,7 @@ type BootstrapServiceClient interface {
 	GetSourceRuntime(context.Context, *connect.Request[v1.GetSourceRuntimeRequest]) (*connect.Response[v1.GetSourceRuntimeResponse], error)
 	SyncSourceRuntime(context.Context, *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error)
 	EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error)
+	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
 }
 
 // NewBootstrapServiceClient constructs a client for the cerebro.v1.BootstrapService service. By
@@ -150,6 +154,12 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("EvaluateSourceRuntimeFindings")),
 			connect.WithClientOptions(opts...),
 		),
+		getEntityNeighborhood: connect.NewClient[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetEntityNeighborhoodProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetEntityNeighborhood")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -165,6 +175,7 @@ type bootstrapServiceClient struct {
 	getSourceRuntime              *connect.Client[v1.GetSourceRuntimeRequest, v1.GetSourceRuntimeResponse]
 	syncSourceRuntime             *connect.Client[v1.SyncSourceRuntimeRequest, v1.SyncSourceRuntimeResponse]
 	evaluateSourceRuntimeFindings *connect.Client[v1.EvaluateSourceRuntimeFindingsRequest, v1.EvaluateSourceRuntimeFindingsResponse]
+	getEntityNeighborhood         *connect.Client[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse]
 }
 
 // GetVersion calls cerebro.v1.BootstrapService.GetVersion.
@@ -217,6 +228,11 @@ func (c *bootstrapServiceClient) EvaluateSourceRuntimeFindings(ctx context.Conte
 	return c.evaluateSourceRuntimeFindings.CallUnary(ctx, req)
 }
 
+// GetEntityNeighborhood calls cerebro.v1.BootstrapService.GetEntityNeighborhood.
+func (c *bootstrapServiceClient) GetEntityNeighborhood(ctx context.Context, req *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error) {
+	return c.getEntityNeighborhood.CallUnary(ctx, req)
+}
+
 // BootstrapServiceHandler is an implementation of the cerebro.v1.BootstrapService service.
 type BootstrapServiceHandler interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
@@ -229,6 +245,7 @@ type BootstrapServiceHandler interface {
 	GetSourceRuntime(context.Context, *connect.Request[v1.GetSourceRuntimeRequest]) (*connect.Response[v1.GetSourceRuntimeResponse], error)
 	SyncSourceRuntime(context.Context, *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error)
 	EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error)
+	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
 }
 
 // NewBootstrapServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -298,6 +315,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("EvaluateSourceRuntimeFindings")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceGetEntityNeighborhoodHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetEntityNeighborhoodProcedure,
+		svc.GetEntityNeighborhood,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetEntityNeighborhood")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/cerebro.v1.BootstrapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BootstrapServiceGetVersionProcedure:
@@ -320,6 +343,8 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceSyncSourceRuntimeHandler.ServeHTTP(w, r)
 		case BootstrapServiceEvaluateSourceRuntimeFindingsProcedure:
 			bootstrapServiceEvaluateSourceRuntimeFindingsHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetEntityNeighborhoodProcedure:
+			bootstrapServiceGetEntityNeighborhoodHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -367,4 +392,8 @@ func (UnimplementedBootstrapServiceHandler) SyncSourceRuntime(context.Context, *
 
 func (UnimplementedBootstrapServiceHandler) EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetEntityNeighborhood is not implemented"))
 }
