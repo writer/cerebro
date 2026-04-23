@@ -6,6 +6,7 @@ option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
 
 import "cerebro/v1/primitives.proto";
 import "cerebro/v1/source.proto";
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
 // BootstrapService is the minimal control-plane surface for the rewrite skeleton.
@@ -86,10 +87,18 @@ message ReadSourceRequest {
   SourceCursor cursor = 3;
 }
 
+// SourcePreviewEvent exposes a decoded payload view for preview consumers.
+message SourcePreviewEvent {
+  EventEnvelope event = 1;
+  google.protobuf.Value payload = 2;
+  bool payload_decoded = 3;
+}
+
 // ReadSourceResponse returns one page of source events plus replay cursors.
 message ReadSourceResponse {
   SourceSpec source = 1;
   repeated EventEnvelope events = 2;
   SourceCheckpoint checkpoint = 3;
   SourceCursor next_cursor = 4;
+  repeated SourcePreviewEvent preview_events = 5;
 }

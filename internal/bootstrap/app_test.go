@@ -125,6 +125,10 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if events, ok := readPayload["events"].([]any); !ok || len(events) != 1 {
 		t.Fatalf("read events = %#v, want 1 entry", readPayload["events"])
 	}
+	previewEvents, ok := readPayload["preview_events"].([]any)
+	if !ok || len(previewEvents) != 1 {
+		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])
+	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	versionResp, err := client.GetVersion(context.Background(), connect.NewRequest(&cerebrov1.GetVersionRequest{}))
@@ -178,6 +182,12 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}
 	if len(readSourceResp.Msg.Events) != 1 {
 		t.Fatalf("len(ReadSource.Events) = %d, want 1", len(readSourceResp.Msg.Events))
+	}
+	if len(readSourceResp.Msg.PreviewEvents) != 1 {
+		t.Fatalf("len(ReadSource.PreviewEvents) = %d, want 1", len(readSourceResp.Msg.PreviewEvents))
+	}
+	if !readSourceResp.Msg.PreviewEvents[0].PayloadDecoded {
+		t.Fatal("ReadSource.PreviewEvents[0].PayloadDecoded = false, want true")
 	}
 }
 
