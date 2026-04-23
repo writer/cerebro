@@ -1,0 +1,4 @@
+id: sdk
+name: SDK Push Source
+description: Generic push-based source used by SDK-onboarded applications.
+emitted_kinds: []

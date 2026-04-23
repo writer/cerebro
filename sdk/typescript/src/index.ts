@@ -52,6 +52,46 @@ export interface ClientConfig {
   fetchImpl?: typeof fetch;
 }
 
+export interface EntityRef {
+  urn: string;
+  entity_type: string;
+  label?: string;
+}
+
+export interface Claim {
+  id?: string;
+  subject_urn?: string;
+  subject_ref?: EntityRef;
+  predicate: string;
+  object_urn?: string;
+  object_ref?: EntityRef;
+  object_value?: string;
+  claim_type?: string;
+  status?: string;
+  source_event_id?: string;
+  observed_at?: string;
+  valid_from?: string;
+  valid_to?: string;
+  attributes?: Record<string, string>;
+}
+
+export interface ClaimOptions {
+  id?: string;
+  status?: string;
+  source_event_id?: string;
+  observed_at?: string;
+  valid_from?: string;
+  valid_to?: string;
+  attributes?: Record<string, string>;
+  claim_type?: string;
+}
+
+export interface IntegrationOptions {
+  runtimeId: string;
+  tenantId: string;
+  integration: string;
+}
+
 export class APIError extends Error {
   statusCode: number;
   code?: string;
@@ -93,6 +133,22 @@ export class Client {
 
   async getProtectedResourceMetadata(): Promise<ProtectedResourceMetadata> {
     return this.requestJson<ProtectedResourceMetadata>("GET", "/.well-known/oauth-protected-resource");
+  }
+
+  async putSourceRuntime(runtimeId: string, runtime: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.requestJson<Record<string, unknown>>("PUT", `/source-runtimes/${encodeURIComponent(runtimeId)}`, { runtime });
+  }
+
+  async getSourceRuntime(runtimeId: string): Promise<Record<string, unknown>> {
+    return this.requestJson<Record<string, unknown>>("GET", `/source-runtimes/${encodeURIComponent(runtimeId)}`);
+  }
+
+  async writeClaims(runtimeId: string, claims: Claim[]): Promise<Record<string, unknown>> {
+    return this.requestJson<Record<string, unknown>>("POST", `/source-runtimes/${encodeURIComponent(runtimeId)}/claims`, { claims });
+  }
+
+  integration(options: IntegrationOptions): IntegrationClient {
+    return new IntegrationClient(this, options);
   }
 
   async listManagedCredentials(): Promise<Record<string, unknown>> {
@@ -358,5 +414,117 @@ export class Client {
       }
     }
     return response;
+  }
+}
+
+export class IntegrationClient {
+  private readonly client: Client;
+  private readonly runtimeId: string;
+  private readonly tenantId: string;
+  private readonly integrationName: string;
+
+  constructor(client: Client, options: IntegrationOptions) {
+    if (!options.runtimeId) {
+      throw new Error("runtimeId is required");
+    }
+    if (!options.tenantId) {
+      throw new Error("tenantId is required");
+    }
+    if (!options.integration) {
+      throw new Error("integration is required");
+    }
+    this.client = client;
+    this.runtimeId = options.runtimeId;
+    this.tenantId = options.tenantId;
+    this.integrationName = options.integration;
+  }
+
+  async ensureRuntime(config: Record<string, string> = {}): Promise<Record<string, unknown>> {
+    return this.client.putSourceRuntime(this.runtimeId, {
+      source_id: "sdk",
+      tenant_id: this.tenantId,
+      config: {
+        integration: this.integrationName,
+        ...config,
+      },
+    });
+  }
+
+  async writeClaims(claims: Claim[]): Promise<Record<string, unknown>> {
+    return this.client.writeClaims(this.runtimeId, claims);
+  }
+
+  ref(kind: string, externalId: string, label = ""): EntityRef {
+    const normalizedKind = kind.trim();
+    const normalizedExternalId = externalId.trim();
+    if (!normalizedKind) {
+      throw new Error("kind is required");
+    }
+    if (!normalizedExternalId) {
+      throw new Error("externalId is required");
+    }
+    return {
+      urn: this.buildURN(normalizedKind, normalizedExternalId),
+      entity_type: normalizedKind,
+      label: label.trim() || normalizedExternalId,
+    };
+  }
+
+  exists(subject: EntityRef, options: ClaimOptions = {}): Claim {
+    return this.buildClaim(subject, "exists", {
+      ...options,
+      claim_type: options.claim_type ?? "existence",
+    });
+  }
+
+  attr(subject: EntityRef, predicate: string, value: string, options: ClaimOptions = {}): Claim {
+    return this.buildClaim(subject, predicate, {
+      ...options,
+      claim_type: options.claim_type ?? "attribute",
+      object_value: value.trim(),
+    });
+  }
+
+  rel(subject: EntityRef, predicate: string, object: EntityRef, options: ClaimOptions = {}): Claim {
+    return this.buildClaim(subject, predicate, {
+      ...options,
+      claim_type: options.claim_type ?? "relation",
+      object_ref: object,
+      object_urn: object.urn,
+    });
+  }
+
+  private buildClaim(subject: EntityRef, predicate: string, options: ClaimOptions & {
+    object_ref?: EntityRef;
+    object_urn?: string;
+    object_value?: string;
+  }): Claim {
+    const normalizedPredicate = predicate.trim();
+    if (!subject.urn.trim()) {
+      throw new Error("subject.urn is required");
+    }
+    if (!normalizedPredicate) {
+      throw new Error("predicate is required");
+    }
+    return {
+      id: options.id,
+      subject_urn: subject.urn.trim(),
+      subject_ref: subject,
+      predicate: normalizedPredicate,
+      object_ref: options.object_ref,
+      object_urn: options.object_urn?.trim(),
+      object_value: options.object_value?.trim(),
+      claim_type: options.claim_type,
+      status: options.status,
+      source_event_id: options.source_event_id,
+      observed_at: options.observed_at,
+      valid_from: options.valid_from,
+      valid_to: options.valid_to,
+      attributes: options.attributes,
+    };
+  }
+
+  private buildURN(kind: string, externalId: string): string {
+    return ["urn", "cerebro", this.tenantId, "runtime", this.runtimeId, kind, externalId].join(":");
   }
 }

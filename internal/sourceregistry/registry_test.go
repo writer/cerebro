@@ -21,4 +21,11 @@ func TestBuiltin(t *testing.T) {
 	if okta.Spec().Name != "Okta" {
 		t.Fatalf("okta Spec().Name = %q, want %q", okta.Spec().Name, "Okta")
 	}
+	sdk, ok := registry.Get("sdk")
+	if !ok {
+		t.Fatal("Get(sdk) = false, want true")
+	}
+	if sdk.Spec().Name != "SDK Push Source" {
+		t.Fatalf("sdk Spec().Name = %q, want %q", sdk.Spec().Name, "SDK Push Source")
+	}
 }

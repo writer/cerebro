@@ -23,6 +23,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
+	sdksource "github.com/writer/cerebro/sources/sdk"
 )
 
 type stubAppendLog struct {
@@ -83,6 +84,7 @@ type stubRuntimeStore struct {
 	runtimes   map[string]*cerebrov1.SourceRuntime
 	entities   map[string]*ports.ProjectedEntity
 	links      map[string]*ports.ProjectedLink
+	claims     map[string]*ports.ClaimRecord
 	findings   map[string]*ports.FindingRecord
 	reportRuns map[string]*cerebrov1.ReportRun
 }
@@ -151,6 +153,20 @@ func (s *stubRuntimeStore) UpsertFinding(_ context.Context, finding *ports.Findi
 	}
 	s.findings[finding.ID] = cloneFinding(finding)
 	return cloneFinding(finding), nil
+}
+
+func (s *stubRuntimeStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if claim == nil {
+		return nil, nil
+	}
+	if s.claims == nil {
+		s.claims = make(map[string]*ports.ClaimRecord)
+	}
+	s.claims[claim.ID] = cloneClaim(claim)
+	return cloneClaim(claim), nil
 }
 
 func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
@@ -287,8 +303,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 		t.Fatalf("decode /sources response: %v", err)
 	}
 	entries, ok := sourcesPayload["sources"].([]any)
-	if !ok || len(entries) != 2 {
-		t.Fatalf("/sources entries = %#v, want 2 entries", sourcesPayload["sources"])
+	if !ok || len(entries) != 3 {
+		t.Fatalf("/sources entries = %#v, want 3 entries", sourcesPayload["sources"])
 	}
 	checkResp, err := server.Client().Get(server.URL + "/sources/github/check?token=test")
 	if err != nil {
@@ -415,8 +431,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSources() error = %v", err)
 	}
-	if len(listResp.Msg.Sources) != 2 {
-		t.Fatalf("len(ListSources.Sources) = %d, want 2", len(listResp.Msg.Sources))
+	if len(listResp.Msg.Sources) != 3 {
+		t.Fatalf("len(ListSources.Sources) = %d, want 3", len(listResp.Msg.Sources))
 	}
 	checkSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
 		SourceId: "github",
@@ -787,6 +803,128 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 }
 
+func TestClaimEndpoints(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-jira": {
+				Id:       "writer-jira",
+				SourceId: "sdk",
+				TenantId: "writer",
+				Config: map[string]string{
+					"integration": "jira",
+				},
+			},
+		},
+	}
+	graphStore := &stubGraphStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  &recordingAppendLog{},
+		StateStore: runtimeStore,
+		GraphStore: graphStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	userURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	writeBody, err := protojson.Marshal(&cerebrov1.WriteClaimsRequest{
+		Claims: []*cerebrov1.Claim{
+			{
+				SubjectRef: &cerebrov1.EntityRef{
+					Urn:        issueURN,
+					EntityType: "ticket",
+					Label:      "ENG-123",
+				},
+				Predicate:     "status",
+				ObjectValue:   "in_progress",
+				ClaimType:     "attribute",
+				SourceEventId: "jira-event-1",
+			},
+			{
+				SubjectRef: &cerebrov1.EntityRef{
+					Urn:        issueURN,
+					EntityType: "ticket",
+					Label:      "ENG-123",
+				},
+				Predicate: "assigned_to",
+				ObjectRef: &cerebrov1.EntityRef{
+					Urn:        userURN,
+					EntityType: "user",
+					Label:      "Alice",
+				},
+				ClaimType:     "relation",
+				SourceEventId: "jira-event-1",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal write claims body: %v", err)
+	}
+	writeReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-jira/claims", bytes.NewReader(writeBody))
+	if err != nil {
+		t.Fatalf("new write claims request: %v", err)
+	}
+	writeReq.Header.Set("Content-Type", "application/json")
+	writeResp, err := server.Client().Do(writeReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/claims error = %v", err)
+	}
+	defer func() {
+		if closeErr := writeResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close write claims response body: %v", closeErr)
+		}
+	}()
+	var writePayload map[string]any
+	if err := json.NewDecoder(writeResp.Body).Decode(&writePayload); err != nil {
+		t.Fatalf("decode write claims response: %v", err)
+	}
+	if got := writePayload["claims_written"]; got != float64(2) {
+		t.Fatalf("write claims claims_written = %#v, want 2", got)
+	}
+	if got := writePayload["entities_upserted"]; got != float64(2) {
+		t.Fatalf("write claims entities_upserted = %#v, want 2", got)
+	}
+	if got := writePayload["relation_links_projected"]; got != float64(1) {
+		t.Fatalf("write claims relation_links_projected = %#v, want 1", got)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	writeClaimsResp, err := client.WriteClaims(context.Background(), connect.NewRequest(&cerebrov1.WriteClaimsRequest{
+		RuntimeId: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				SubjectRef: &cerebrov1.EntityRef{
+					Urn:        issueURN,
+					EntityType: "ticket",
+					Label:      "ENG-123",
+				},
+				Predicate:  "exists",
+				ClaimType:  "existence",
+				ObservedAt: timestamppb.New(time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)),
+			},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if got := writeClaimsResp.Msg.GetClaimsWritten(); got != 1 {
+		t.Fatalf("WriteClaims claims_written = %d, want 1", got)
+	}
+	if len(runtimeStore.claims) != 3 {
+		t.Fatalf("len(runtimeStore.claims) = %d, want 3", len(runtimeStore.claims))
+	}
+	if len(runtimeStore.entities) != 2 {
+		t.Fatalf("len(runtimeStore.entities) = %d, want 2", len(runtimeStore.entities))
+	}
+	if len(graphStore.links) != 1 {
+		t.Fatalf("len(graphStore.links) = %d, want 1", len(graphStore.links))
+	}
+}
+
 func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -1059,7 +1197,11 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source, okta)
+	sdk, err := sdksource.New()
+	if err != nil {
+		return nil, err
+	}
+	return sourcecdk.NewRegistry(source, okta, sdk)
 }
 
 func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {
@@ -1125,6 +1267,34 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		Attributes:      attributes,
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
+	}
+}
+
+func cloneClaim(claim *ports.ClaimRecord) *ports.ClaimRecord {
+	if claim == nil {
+		return nil
+	}
+	attributes := make(map[string]string, len(claim.Attributes))
+	for key, value := range claim.Attributes {
+		attributes[key] = value
+	}
+	return &ports.ClaimRecord{
+		ID:            claim.ID,
+		RuntimeID:     claim.RuntimeID,
+		TenantID:      claim.TenantID,
+		SubjectURN:    claim.SubjectURN,
+		SubjectRef:    cloneEntityRef(claim.SubjectRef),
+		Predicate:     claim.Predicate,
+		ObjectURN:     claim.ObjectURN,
+		ObjectRef:     cloneEntityRef(claim.ObjectRef),
+		ObjectValue:   claim.ObjectValue,
+		ClaimType:     claim.ClaimType,
+		Status:        claim.Status,
+		SourceEventID: claim.SourceEventID,
+		ObservedAt:    claim.ObservedAt,
+		ValidFrom:     claim.ValidFrom,
+		ValidTo:       claim.ValidTo,
+		Attributes:    attributes,
 	}
 }
 
@@ -1200,4 +1370,11 @@ func findingTestEvent(id string, eventType string, outcome string) *cerebrov1.Ev
 
 func projectedLinkKey(link *ports.ProjectedLink) string {
 	return link.FromURN + "|" + link.Relation + "|" + link.ToURN
+}
+
+func cloneEntityRef(ref *cerebrov1.EntityRef) *cerebrov1.EntityRef {
+	if ref == nil {
+		return nil
+	}
+	return proto.Clone(ref).(*cerebrov1.EntityRef)
 }

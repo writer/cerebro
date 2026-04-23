@@ -123,6 +123,216 @@ func (x *EventEnvelope) GetAttributes() map[string]string {
 	return nil
 }
 
+// EntityRef is a lightweight entity seed used by claim writers.
+type EntityRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Urn           string                 `protobuf:"bytes,1,opt,name=urn,proto3" json:"urn,omitempty"`
+	EntityType    string                 `protobuf:"bytes,2,opt,name=entity_type,json=entityType,proto3" json:"entity_type,omitempty"`
+	Label         string                 `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EntityRef) Reset() {
+	*x = EntityRef{}
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EntityRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EntityRef) ProtoMessage() {}
+
+func (x *EntityRef) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EntityRef.ProtoReflect.Descriptor instead.
+func (*EntityRef) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *EntityRef) GetUrn() string {
+	if x != nil {
+		return x.Urn
+	}
+	return ""
+}
+
+func (x *EntityRef) GetEntityType() string {
+	if x != nil {
+		return x.EntityType
+	}
+	return ""
+}
+
+func (x *EntityRef) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+// Claim is a generic source-attributed assertion over one subject.
+type Claim struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	SubjectUrn    string                 `protobuf:"bytes,2,opt,name=subject_urn,json=subjectUrn,proto3" json:"subject_urn,omitempty"`
+	SubjectRef    *EntityRef             `protobuf:"bytes,3,opt,name=subject_ref,json=subjectRef,proto3" json:"subject_ref,omitempty"`
+	Predicate     string                 `protobuf:"bytes,4,opt,name=predicate,proto3" json:"predicate,omitempty"`
+	ObjectUrn     string                 `protobuf:"bytes,5,opt,name=object_urn,json=objectUrn,proto3" json:"object_urn,omitempty"`
+	ObjectRef     *EntityRef             `protobuf:"bytes,6,opt,name=object_ref,json=objectRef,proto3" json:"object_ref,omitempty"`
+	ObjectValue   string                 `protobuf:"bytes,7,opt,name=object_value,json=objectValue,proto3" json:"object_value,omitempty"`
+	ClaimType     string                 `protobuf:"bytes,8,opt,name=claim_type,json=claimType,proto3" json:"claim_type,omitempty"`
+	Status        string                 `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"`
+	SourceEventId string                 `protobuf:"bytes,10,opt,name=source_event_id,json=sourceEventId,proto3" json:"source_event_id,omitempty"`
+	ObservedAt    *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	ValidFrom     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=valid_from,json=validFrom,proto3" json:"valid_from,omitempty"`
+	ValidTo       *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=valid_to,json=validTo,proto3" json:"valid_to,omitempty"`
+	Attributes    map[string]string      `protobuf:"bytes,14,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Claim) Reset() {
+	*x = Claim{}
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Claim) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Claim) ProtoMessage() {}
+
+func (x *Claim) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Claim.ProtoReflect.Descriptor instead.
+func (*Claim) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Claim) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Claim) GetSubjectUrn() string {
+	if x != nil {
+		return x.SubjectUrn
+	}
+	return ""
+}
+
+func (x *Claim) GetSubjectRef() *EntityRef {
+	if x != nil {
+		return x.SubjectRef
+	}
+	return nil
+}
+
+func (x *Claim) GetPredicate() string {
+	if x != nil {
+		return x.Predicate
+	}
+	return ""
+}
+
+func (x *Claim) GetObjectUrn() string {
+	if x != nil {
+		return x.ObjectUrn
+	}
+	return ""
+}
+
+func (x *Claim) GetObjectRef() *EntityRef {
+	if x != nil {
+		return x.ObjectRef
+	}
+	return nil
+}
+
+func (x *Claim) GetObjectValue() string {
+	if x != nil {
+		return x.ObjectValue
+	}
+	return ""
+}
+
+func (x *Claim) GetClaimType() string {
+	if x != nil {
+		return x.ClaimType
+	}
+	return ""
+}
+
+func (x *Claim) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *Claim) GetSourceEventId() string {
+	if x != nil {
+		return x.SourceEventId
+	}
+	return ""
+}
+
+func (x *Claim) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
+func (x *Claim) GetValidFrom() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ValidFrom
+	}
+	return nil
+}
+
+func (x *Claim) GetValidTo() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ValidTo
+	}
+	return nil
+}
+
+func (x *Claim) GetAttributes() map[string]string {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
+}
+
 // StreamSpec describes a durable append-only stream of events.
 type StreamSpec struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -136,7 +346,7 @@ type StreamSpec struct {
 
 func (x *StreamSpec) Reset() {
 	*x = StreamSpec{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[1]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -148,7 +358,7 @@ func (x *StreamSpec) String() string {
 func (*StreamSpec) ProtoMessage() {}
 
 func (x *StreamSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[1]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -161,7 +371,7 @@ func (x *StreamSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamSpec.ProtoReflect.Descriptor instead.
 func (*StreamSpec) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{1}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *StreamSpec) GetId() string {
@@ -205,7 +415,7 @@ type ViewSpec struct {
 
 func (x *ViewSpec) Reset() {
 	*x = ViewSpec{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[2]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -217,7 +427,7 @@ func (x *ViewSpec) String() string {
 func (*ViewSpec) ProtoMessage() {}
 
 func (x *ViewSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[2]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -230,7 +440,7 @@ func (x *ViewSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ViewSpec.ProtoReflect.Descriptor instead.
 func (*ViewSpec) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{2}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ViewSpec) GetId() string {
@@ -275,7 +485,7 @@ type RuleSpec struct {
 
 func (x *RuleSpec) Reset() {
 	*x = RuleSpec{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[3]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -287,7 +497,7 @@ func (x *RuleSpec) String() string {
 func (*RuleSpec) ProtoMessage() {}
 
 func (x *RuleSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[3]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -300,7 +510,7 @@ func (x *RuleSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuleSpec.ProtoReflect.Descriptor instead.
 func (*RuleSpec) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{3}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *RuleSpec) GetId() string {
@@ -351,7 +561,7 @@ type ActionSpec struct {
 
 func (x *ActionSpec) Reset() {
 	*x = ActionSpec{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[4]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -363,7 +573,7 @@ func (x *ActionSpec) String() string {
 func (*ActionSpec) ProtoMessage() {}
 
 func (x *ActionSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[4]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -376,7 +586,7 @@ func (x *ActionSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActionSpec.ProtoReflect.Descriptor instead.
 func (*ActionSpec) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{4}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ActionSpec) GetId() string {
@@ -420,7 +630,7 @@ type AgentSpec struct {
 
 func (x *AgentSpec) Reset() {
 	*x = AgentSpec{}
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[5]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -432,7 +642,7 @@ func (x *AgentSpec) String() string {
 func (*AgentSpec) ProtoMessage() {}
 
 func (x *AgentSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_primitives_proto_msgTypes[5]
+	mi := &file_cerebro_v1_primitives_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -445,7 +655,7 @@ func (x *AgentSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentSpec.ProtoReflect.Descriptor instead.
 func (*AgentSpec) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{5}
+	return file_cerebro_v1_primitives_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *AgentSpec) GetId() string {
@@ -497,6 +707,39 @@ const file_cerebro_v1_primitives_proto_rawDesc = "" +
 	"attributes\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"T\n" +
+	"\tEntityRef\x12\x10\n" +
+	"\x03urn\x18\x01 \x01(\tR\x03urn\x12\x1f\n" +
+	"\ventity_type\x18\x02 \x01(\tR\n" +
+	"entityType\x12\x14\n" +
+	"\x05label\x18\x03 \x01(\tR\x05label\"\x96\x05\n" +
+	"\x05Claim\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
+	"\vsubject_urn\x18\x02 \x01(\tR\n" +
+	"subjectUrn\x126\n" +
+	"\vsubject_ref\x18\x03 \x01(\v2\x15.cerebro.v1.EntityRefR\n" +
+	"subjectRef\x12\x1c\n" +
+	"\tpredicate\x18\x04 \x01(\tR\tpredicate\x12\x1d\n" +
+	"\n" +
+	"object_urn\x18\x05 \x01(\tR\tobjectUrn\x124\n" +
+	"\n" +
+	"object_ref\x18\x06 \x01(\v2\x15.cerebro.v1.EntityRefR\tobjectRef\x12!\n" +
+	"\fobject_value\x18\a \x01(\tR\vobjectValue\x12\x1d\n" +
+	"\n" +
+	"claim_type\x18\b \x01(\tR\tclaimType\x12\x16\n" +
+	"\x06status\x18\t \x01(\tR\x06status\x12&\n" +
+	"\x0fsource_event_id\x18\n" +
+	" \x01(\tR\rsourceEventId\x12;\n" +
+	"\vobserved_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\x129\n" +
+	"\n" +
+	"valid_from\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tvalidFrom\x125\n" +
+	"\bvalid_to\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\avalidTo\x12A\n" +
+	"\n" +
+	"attributes\x18\x0e \x03(\v2!.cerebro.v1.Claim.AttributesEntryR\n" +
+	"attributes\x1a=\n" +
+	"\x0fAttributesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"w\n" +
 	"\n" +
 	"StreamSpec\x12\x0e\n" +
@@ -541,25 +784,34 @@ func file_cerebro_v1_primitives_proto_rawDescGZIP() []byte {
 	return file_cerebro_v1_primitives_proto_rawDescData
 }
 
-var file_cerebro_v1_primitives_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_cerebro_v1_primitives_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_cerebro_v1_primitives_proto_goTypes = []any{
 	(*EventEnvelope)(nil),         // 0: cerebro.v1.EventEnvelope
-	(*StreamSpec)(nil),            // 1: cerebro.v1.StreamSpec
-	(*ViewSpec)(nil),              // 2: cerebro.v1.ViewSpec
-	(*RuleSpec)(nil),              // 3: cerebro.v1.RuleSpec
-	(*ActionSpec)(nil),            // 4: cerebro.v1.ActionSpec
-	(*AgentSpec)(nil),             // 5: cerebro.v1.AgentSpec
-	nil,                           // 6: cerebro.v1.EventEnvelope.AttributesEntry
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(*EntityRef)(nil),             // 1: cerebro.v1.EntityRef
+	(*Claim)(nil),                 // 2: cerebro.v1.Claim
+	(*StreamSpec)(nil),            // 3: cerebro.v1.StreamSpec
+	(*ViewSpec)(nil),              // 4: cerebro.v1.ViewSpec
+	(*RuleSpec)(nil),              // 5: cerebro.v1.RuleSpec
+	(*ActionSpec)(nil),            // 6: cerebro.v1.ActionSpec
+	(*AgentSpec)(nil),             // 7: cerebro.v1.AgentSpec
+	nil,                           // 8: cerebro.v1.EventEnvelope.AttributesEntry
+	nil,                           // 9: cerebro.v1.Claim.AttributesEntry
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
 }
 var file_cerebro_v1_primitives_proto_depIdxs = []int32{
-	7, // 0: cerebro.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
-	6, // 1: cerebro.v1.EventEnvelope.attributes:type_name -> cerebro.v1.EventEnvelope.AttributesEntry
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	10, // 0: cerebro.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
+	8,  // 1: cerebro.v1.EventEnvelope.attributes:type_name -> cerebro.v1.EventEnvelope.AttributesEntry
+	1,  // 2: cerebro.v1.Claim.subject_ref:type_name -> cerebro.v1.EntityRef
+	1,  // 3: cerebro.v1.Claim.object_ref:type_name -> cerebro.v1.EntityRef
+	10, // 4: cerebro.v1.Claim.observed_at:type_name -> google.protobuf.Timestamp
+	10, // 5: cerebro.v1.Claim.valid_from:type_name -> google.protobuf.Timestamp
+	10, // 6: cerebro.v1.Claim.valid_to:type_name -> google.protobuf.Timestamp
+	9,  // 7: cerebro.v1.Claim.attributes:type_name -> cerebro.v1.Claim.AttributesEntry
+	8,  // [8:8] is the sub-list for method output_type
+	8,  // [8:8] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_primitives_proto_init() }
@@ -573,7 +825,7 @@ func file_cerebro_v1_primitives_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_v1_primitives_proto_rawDesc), len(file_cerebro_v1_primitives_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

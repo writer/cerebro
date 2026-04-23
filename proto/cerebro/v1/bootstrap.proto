@@ -23,6 +23,7 @@ service BootstrapService {
   rpc PutSourceRuntime(PutSourceRuntimeRequest) returns (PutSourceRuntimeResponse);
   rpc GetSourceRuntime(GetSourceRuntimeRequest) returns (GetSourceRuntimeResponse);
   rpc SyncSourceRuntime(SyncSourceRuntimeRequest) returns (SyncSourceRuntimeResponse);
+  rpc WriteClaims(WriteClaimsRequest) returns (WriteClaimsResponse);
   rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
   rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
 }
@@ -211,6 +212,19 @@ message SyncSourceRuntimeResponse {
   uint32 events_appended = 4;
   uint32 entities_projected = 5;
   uint32 links_projected = 6;
+}
+
+// WriteClaimsRequest persists one batch of runtime-scoped claims.
+message WriteClaimsRequest {
+  string runtime_id = 1;
+  repeated Claim claims = 2;
+}
+
+// WriteClaimsResponse reports the persisted and projected batch totals.
+message WriteClaimsResponse {
+  uint32 claims_written = 1;
+  uint32 entities_upserted = 2;
+  uint32 relation_links_projected = 3;
 }
 
 // Finding is the normalized persisted finding view for the first runtime evaluator slice.
