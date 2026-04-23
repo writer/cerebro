@@ -15,6 +15,7 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 type stubAppendLog struct {
@@ -30,8 +31,25 @@ type stubStore struct {
 
 func (s stubStore) Ping(context.Context) error { return s.err }
 
+type stubSource struct {
+	spec *cerebrov1.SourceSpec
+}
+
+func (s stubSource) Spec() *cerebrov1.SourceSpec                   { return s.spec }
+func (s stubSource) Check(context.Context, sourcecdk.Config) error { return nil }
+func (s stubSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+func (s stubSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{}, nil
+}
+
 func TestBootstrapEndpoints(t *testing.T) {
-	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{})
+	registry, err := sourcecdk.NewRegistry(stubSource{spec: &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"}})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
@@ -54,6 +72,23 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if payload["status"] != "ready" {
 		t.Fatalf("health status = %#v, want %q", payload["status"], "ready")
 	}
+	sourcesResp, err := server.Client().Get(server.URL + "/sources")
+	if err != nil {
+		t.Fatalf("GET /sources error = %v", err)
+	}
+	defer func() {
+		if closeErr := sourcesResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources response body: %v", closeErr)
+		}
+	}()
+	var sourcesPayload map[string]any
+	if err := json.NewDecoder(sourcesResp.Body).Decode(&sourcesPayload); err != nil {
+		t.Fatalf("decode /sources response: %v", err)
+	}
+	entries, ok := sourcesPayload["sources"].([]any)
+	if !ok || len(entries) != 1 {
+		t.Fatalf("/sources entries = %#v, want single entry", sourcesPayload["sources"])
+	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	versionResp, err := client.GetVersion(context.Background(), connect.NewRequest(&cerebrov1.GetVersionRequest{}))
@@ -71,6 +106,13 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if healthResp.Msg.Status != "ready" {
 		t.Fatalf("CheckHealth status = %q, want %q", healthResp.Msg.Status, "ready")
 	}
+	listResp, err := client.ListSources(context.Background(), connect.NewRequest(&cerebrov1.ListSourcesRequest{}))
+	if err != nil {
+		t.Fatalf("ListSources() error = %v", err)
+	}
+	if len(listResp.Msg.Sources) != 1 {
+		t.Fatalf("len(ListSources.Sources) = %d, want 1", len(listResp.Msg.Sources))
+	}
 }
 
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
@@ -78,7 +120,7 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 		AppendLog:  stubAppendLog{},
 		StateStore: stubStore{err: errors.New("state store unavailable")},
 		GraphStore: stubStore{},
-	})
+	}, nil)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
