@@ -18,6 +18,7 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -60,6 +61,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /sources/{sourceID}/check", app.handleCheckSource)
 	mux.HandleFunc("GET /sources/{sourceID}/discover", app.handleDiscoverSource)
 	mux.HandleFunc("GET /sources/{sourceID}/read", app.handleReadSource)
+	mux.HandleFunc("GET /graph/neighborhood", app.handleGetEntityNeighborhood)
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
@@ -137,6 +139,27 @@ func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.GetEntityNeighborhoodRequest{}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		body := []byte(`{"limit":` + limit + `}`)
+		if err := protojson.Unmarshal(body, request); err != nil {
+			writeGraphQueryError(w, err)
+			return
+		}
+	}
+	request.RootUrn = r.URL.Query().Get("root_urn")
+	response, err := a.graphQueryService().GetEntityNeighborhood(r.Context(), graphquery.NeighborhoodRequest{
+		RootURN: request.GetRootUrn(),
+		Limit:   request.GetLimit(),
+	})
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, graphNeighborhoodResponse(response))
 }
 
 func (a *App) handlePutSourceRuntime(w http.ResponseWriter, r *http.Request) {
@@ -303,6 +326,19 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 	return connect.NewResponse(findingResponse(response)), nil
 }
 
+func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *connect.Request[cerebrov1.GetEntityNeighborhoodRequest]) (*connect.Response[cerebrov1.GetEntityNeighborhoodResponse], error) {
+	response, err := graphquery.New(
+		graphQueryStore(s.deps.GraphStore),
+	).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
+		RootURN: req.Msg.GetRootUrn(),
+		Limit:   req.Msg.GetLimit(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(graphNeighborhoodResponse(response)), nil
+}
+
 func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHealthResponse {
 	components := []*cerebrov1.ComponentStatus{
 		componentStatus(ctx, "append_log", deps.AppendLog),
@@ -355,6 +391,10 @@ func (a *App) findingService() *findings.Service {
 	)
 }
 
+func (a *App) graphQueryService() *graphquery.Service {
+	return graphquery.New(graphQueryStore(a.deps.GraphStore))
+}
+
 func sourceConfigFromQuery(r *http.Request) map[string]string {
 	values := make(map[string]string)
 	for key, rawValues := range r.URL.Query() {
@@ -391,6 +431,17 @@ func writeFindingError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, findings.ErrRuntimeUnavailable):
+		statusCode = http.StatusServiceUnavailable
+	}
+	http.Error(w, err.Error(), statusCode)
+}
+
+func writeGraphQueryError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusBadRequest
+	switch {
+	case errors.Is(err, ports.ErrGraphEntityNotFound):
+		statusCode = http.StatusNotFound
+	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	}
 	http.Error(w, err.Error(), statusCode)
@@ -438,6 +489,14 @@ func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) p
 		return nil
 	}
 	return sourceprojection.New(state, graph)
+}
+
+func graphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
+	queryStore, ok := store.(ports.GraphQueryStore)
+	if !ok {
+		return nil
+	}
+	return queryStore
 }
 
 func findingStore(store ports.StateStore) ports.FindingStore {
@@ -501,6 +560,46 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		message.LastObservedAt = timestamppb.New(finding.LastObservedAt)
 	}
 	return message
+}
+
+func graphNeighborhoodResponse(neighborhood *ports.EntityNeighborhood) *cerebrov1.GetEntityNeighborhoodResponse {
+	if neighborhood == nil {
+		return &cerebrov1.GetEntityNeighborhoodResponse{}
+	}
+	response := &cerebrov1.GetEntityNeighborhoodResponse{
+		Root:      graphEntityMessage(neighborhood.Root),
+		Neighbors: make([]*cerebrov1.GraphEntity, 0, len(neighborhood.Neighbors)),
+		Relations: make([]*cerebrov1.GraphRelation, 0, len(neighborhood.Relations)),
+	}
+	for _, neighbor := range neighborhood.Neighbors {
+		response.Neighbors = append(response.Neighbors, graphEntityMessage(neighbor))
+	}
+	for _, relation := range neighborhood.Relations {
+		response.Relations = append(response.Relations, graphRelationMessage(relation))
+	}
+	return response
+}
+
+func graphEntityMessage(node *ports.NeighborhoodNode) *cerebrov1.GraphEntity {
+	if node == nil {
+		return nil
+	}
+	return &cerebrov1.GraphEntity{
+		Urn:        node.URN,
+		EntityType: node.EntityType,
+		Label:      node.Label,
+	}
+}
+
+func graphRelationMessage(relation *ports.NeighborhoodRelation) *cerebrov1.GraphRelation {
+	if relation == nil {
+		return nil
+	}
+	return &cerebrov1.GraphRelation{
+		FromUrn:  relation.FromURN,
+		Relation: relation.Relation,
+		ToUrn:    relation.ToURN,
+	}
 }
 
 type pinger interface {

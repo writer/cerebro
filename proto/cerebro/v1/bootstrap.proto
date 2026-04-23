@@ -21,6 +21,7 @@ service BootstrapService {
   rpc GetSourceRuntime(GetSourceRuntimeRequest) returns (GetSourceRuntimeResponse);
   rpc SyncSourceRuntime(SyncSourceRuntimeRequest) returns (SyncSourceRuntimeResponse);
   rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
+  rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
 }
 
 // GetVersionRequest requests static build metadata from the running service.
@@ -185,4 +186,31 @@ message EvaluateSourceRuntimeFindingsResponse {
   uint32 events_evaluated = 3;
   uint32 findings_upserted = 4;
   repeated Finding findings = 5;
+}
+
+// GraphEntity is the normalized graph node view exposed by the first query surface.
+message GraphEntity {
+  string urn = 1;
+  string entity_type = 2;
+  string label = 3;
+}
+
+// GraphRelation is the normalized graph edge view exposed by the first query surface.
+message GraphRelation {
+  string from_urn = 1;
+  string relation = 2;
+  string to_urn = 3;
+}
+
+// GetEntityNeighborhoodRequest requests one bounded graph neighborhood around a root URN.
+message GetEntityNeighborhoodRequest {
+  string root_urn = 1;
+  uint32 limit = 2;
+}
+
+// GetEntityNeighborhoodResponse returns the bounded neighbors and relations around one root URN.
+message GetEntityNeighborhoodResponse {
+  GraphEntity root = 1;
+  repeated GraphEntity neighbors = 2;
+  repeated GraphRelation relations = 3;
 }
