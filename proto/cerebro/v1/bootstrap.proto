@@ -13,6 +13,9 @@ import "google/protobuf/timestamp.proto";
 service BootstrapService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
   rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
+  rpc ListReportDefinitions(ListReportDefinitionsRequest) returns (ListReportDefinitionsResponse);
+  rpc RunReport(RunReportRequest) returns (RunReportResponse);
+  rpc GetReportRun(GetReportRunRequest) returns (GetReportRunResponse);
   rpc ListSources(ListSourcesRequest) returns (ListSourcesResponse);
   rpc CheckSource(CheckSourceRequest) returns (CheckSourceResponse);
   rpc DiscoverSource(DiscoverSourceRequest) returns (DiscoverSourceResponse);
@@ -51,6 +54,61 @@ message CheckHealthResponse {
   string status = 1;
   google.protobuf.Timestamp checked_at = 2;
   repeated ComponentStatus components = 3;
+}
+
+// ReportParameter describes one supported report input parameter.
+message ReportParameter {
+  string id = 1;
+  string description = 2;
+  bool required = 3;
+}
+
+// ReportDefinition exposes one built-in durable report contract.
+message ReportDefinition {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated ReportParameter parameters = 4;
+}
+
+// ReportRun is the durable result envelope for one built-in report execution.
+message ReportRun {
+  string id = 1;
+  string report_id = 2;
+  map<string, string> parameters = 3;
+  string status = 4;
+  google.protobuf.Timestamp generated_at = 5;
+  google.protobuf.Struct result = 6;
+}
+
+// ListReportDefinitionsRequest requests the built-in report catalog.
+message ListReportDefinitionsRequest {}
+
+// ListReportDefinitionsResponse returns the built-in report catalog.
+message ListReportDefinitionsResponse {
+  repeated ReportDefinition reports = 1;
+}
+
+// RunReportRequest requests one durable report run.
+message RunReportRequest {
+  string report_id = 1;
+  map<string, string> parameters = 2;
+}
+
+// RunReportResponse returns the resolved definition plus the persisted run.
+message RunReportResponse {
+  ReportDefinition report = 1;
+  ReportRun run = 2;
+}
+
+// GetReportRunRequest looks up one persisted report run.
+message GetReportRunRequest {
+  string id = 1;
+}
+
+// GetReportRunResponse returns one persisted report run.
+message GetReportRunResponse {
+  ReportRun run = 1;
 }
 
 // ListSourcesRequest requests the currently registered source catalog.

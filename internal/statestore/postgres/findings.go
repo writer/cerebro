@@ -163,6 +163,67 @@ RETURNING
 	return stored.record()
 }
 
+// ListFindings loads persisted findings for one runtime.
+func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequest) (_ []*ports.FindingRecord, err error) {
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return nil, errors.New("finding runtime id is required")
+	}
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT
+  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  resource_urns_json::text, event_ids_json::text, attributes_json::text, first_observed_at, last_observed_at
+FROM findings
+WHERE runtime_id = $1
+ORDER BY last_observed_at DESC, id`, runtimeID)
+	if err != nil {
+		return nil, fmt.Errorf("query findings for runtime %q: %w", runtimeID, err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close findings rows: %w", closeErr)
+		}
+	}()
+
+	findings := []*ports.FindingRecord{}
+	for rows.Next() {
+		var row findingRow
+		if err := rows.Scan(
+			&row.ID,
+			&row.Fingerprint,
+			&row.TenantID,
+			&row.RuntimeID,
+			&row.RuleID,
+			&row.Title,
+			&row.Severity,
+			&row.Status,
+			&row.Summary,
+			&row.ResourceURNsJSON,
+			&row.EventIDsJSON,
+			&row.AttributesJSON,
+			&row.FirstObservedAt,
+			&row.LastObservedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan finding row: %w", err)
+		}
+		record, err := row.record()
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate findings rows: %w", err)
+	}
+	return findings, nil
+}
+
 func (s *Store) ensureFindingTables(ctx context.Context) error {
 	for _, statement := range ensureFindingStatements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {

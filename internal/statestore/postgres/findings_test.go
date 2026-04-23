@@ -53,3 +53,17 @@ func TestUpsertFindingRejectsUnconfiguredStore(t *testing.T) {
 		t.Fatal("UpsertFinding() error = nil, want non-nil")
 	}
 }
+
+func TestListFindingsRejectsMissingRuntimeID(t *testing.T) {
+	store := &Store{}
+	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{}); err == nil {
+		t.Fatal("ListFindings() error = nil, want non-nil")
+	}
+}
+
+func TestListFindingsRejectsUnconfiguredStore(t *testing.T) {
+	store := &Store{}
+	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{RuntimeID: "writer-okta-audit"}); err == nil {
+		t.Fatal("ListFindings() error = nil, want non-nil")
+	}
+}

@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
@@ -58,6 +59,9 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	app := &App{cfg: cfg, deps: deps, sources: sources, mux: mux}
 	mux.HandleFunc("/health", app.handleHealth)
 	mux.HandleFunc("/healthz", app.handleHealth)
+	mux.HandleFunc("GET /reports", app.handleListReportDefinitions)
+	mux.HandleFunc("POST /reports/{reportID}/runs", app.handleRunReport)
+	mux.HandleFunc("GET /report-runs/{runID}", app.handleGetReportRun)
 	mux.HandleFunc("/sources", app.handleSources)
 	mux.HandleFunc("GET /sources/{sourceID}/check", app.handleCheckSource)
 	mux.HandleFunc("GET /sources/{sourceID}/discover", app.handleDiscoverSource)
@@ -100,6 +104,42 @@ func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleSources(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, a.sourceService().List())
+}
+
+func (a *App) handleListReportDefinitions(w http.ResponseWriter, r *http.Request) {
+	writeProtoJSON(w, http.StatusOK, a.reportService().List())
+}
+
+func (a *App) handleRunReport(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.RunReportRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeReportError(w, err)
+		return
+	}
+	request.ReportId = r.PathValue("reportID")
+	if request.Parameters == nil {
+		request.Parameters = map[string]string{}
+	}
+	for key, value := range sourceConfigFromQuery(r) {
+		request.Parameters[key] = value
+	}
+	response, err := a.reportService().Run(r.Context(), request)
+	if err != nil {
+		writeReportError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleGetReportRun(w http.ResponseWriter, r *http.Request) {
+	response, err := a.reportService().Get(r.Context(), &cerebrov1.GetReportRunRequest{
+		Id: r.PathValue("runID"),
+	})
+	if err != nil {
+		writeReportError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, response)
 }
 
 func (a *App) handleCheckSource(w http.ResponseWriter, r *http.Request) {
@@ -245,6 +285,35 @@ func (s *bootstrapService) CheckHealth(ctx context.Context, _ *connect.Request[c
 	return connect.NewResponse(healthResponse(ctx, s.deps)), nil
 }
 
+func (s *bootstrapService) ListReportDefinitions(_ context.Context, _ *connect.Request[cerebrov1.ListReportDefinitionsRequest]) (*connect.Response[cerebrov1.ListReportDefinitionsResponse], error) {
+	return connect.NewResponse(reports.New(
+		findingStore(s.deps.StateStore),
+		reportStore(s.deps.StateStore),
+	).List()), nil
+}
+
+func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[cerebrov1.RunReportRequest]) (*connect.Response[cerebrov1.RunReportResponse], error) {
+	response, err := reports.New(
+		findingStore(s.deps.StateStore),
+		reportStore(s.deps.StateStore),
+	).Run(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Request[cerebrov1.GetReportRunRequest]) (*connect.Response[cerebrov1.GetReportRunResponse], error) {
+	response, err := reports.New(
+		findingStore(s.deps.StateStore),
+		reportStore(s.deps.StateStore),
+	).Get(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(response), nil
+}
+
 func (s *bootstrapService) ListSources(_ context.Context, _ *connect.Request[cerebrov1.ListSourcesRequest]) (*connect.Response[cerebrov1.ListSourcesResponse], error) {
 	return connect.NewResponse(sourceops.New(s.sources).List()), nil
 }
@@ -375,6 +444,13 @@ func (a *App) sourceService() *sourceops.Service {
 	return sourceops.New(a.sources)
 }
 
+func (a *App) reportService() *reports.Service {
+	return reports.New(
+		findingStore(a.deps.StateStore),
+		reportStore(a.deps.StateStore),
+	)
+}
+
 func (a *App) runtimeService() *sourceruntime.Service {
 	return sourceruntime.New(
 		a.sources,
@@ -411,6 +487,17 @@ func writeSourceError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusBadRequest
 	if errors.Is(err, sourceops.ErrSourceNotFound) {
 		statusCode = http.StatusNotFound
+	}
+	http.Error(w, err.Error(), statusCode)
+}
+
+func writeReportError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusBadRequest
+	switch {
+	case errors.Is(err, reports.ErrReportNotFound), errors.Is(err, ports.ErrReportRunNotFound):
+		statusCode = http.StatusNotFound
+	case errors.Is(err, reports.ErrRuntimeUnavailable):
+		statusCode = http.StatusServiceUnavailable
 	}
 	http.Error(w, err.Error(), statusCode)
 }
@@ -525,6 +612,14 @@ func findingStore(store ports.StateStore) ports.FindingStore {
 		return nil
 	}
 	return findingStore
+}
+
+func reportStore(store ports.StateStore) ports.ReportStore {
+	reportStore, ok := store.(ports.ReportStore)
+	if !ok {
+		return nil
+	}
+	return reportStore
 }
 
 func eventReplayer(appendLog ports.AppendLog) ports.EventReplayer {

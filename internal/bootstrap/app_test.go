@@ -79,11 +79,12 @@ func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayReque
 }
 
 type stubRuntimeStore struct {
-	err      error
-	runtimes map[string]*cerebrov1.SourceRuntime
-	entities map[string]*ports.ProjectedEntity
-	links    map[string]*ports.ProjectedLink
-	findings map[string]*ports.FindingRecord
+	err        error
+	runtimes   map[string]*cerebrov1.SourceRuntime
+	entities   map[string]*ports.ProjectedEntity
+	links      map[string]*ports.ProjectedLink
+	findings   map[string]*ports.FindingRecord
+	reportRuns map[string]*cerebrov1.ReportRun
 }
 
 func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
@@ -150,6 +151,45 @@ func (s *stubRuntimeStore) UpsertFinding(_ context.Context, finding *ports.Findi
 	}
 	s.findings[finding.ID] = cloneFinding(finding)
 	return cloneFinding(finding), nil
+}
+
+func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	findings := []*ports.FindingRecord{}
+	for _, finding := range s.findings {
+		if finding == nil || finding.RuntimeID != request.RuntimeID {
+			continue
+		}
+		findings = append(findings, cloneFinding(finding))
+	}
+	return findings, nil
+}
+
+func (s *stubRuntimeStore) PutReportRun(_ context.Context, run *cerebrov1.ReportRun) error {
+	if s.err != nil {
+		return s.err
+	}
+	if run == nil {
+		return nil
+	}
+	if s.reportRuns == nil {
+		s.reportRuns = make(map[string]*cerebrov1.ReportRun)
+	}
+	s.reportRuns[run.GetId()] = cloneReportRun(run)
+	return nil
+}
+
+func (s *stubRuntimeStore) GetReportRun(_ context.Context, id string) (*cerebrov1.ReportRun, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	run, ok := s.reportRuns[id]
+	if !ok {
+		return nil, ports.ErrReportRunNotFound
+	}
+	return cloneReportRun(run), nil
 }
 
 type stubGraphStore struct {
@@ -863,6 +903,146 @@ func TestGraphQueryStoreRejectsTypedNilStore(t *testing.T) {
 	}
 }
 
+func TestReportEndpoints(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	runtimeStore := &stubRuntimeStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:        "finding-1",
+				RuntimeID: "writer-okta-audit",
+				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
+				Severity:  "HIGH",
+				Status:    "open",
+			},
+			"finding-2": {
+				ID:        "finding-2",
+				RuntimeID: "writer-okta-audit",
+				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
+				Severity:  "HIGH",
+				Status:    "resolved",
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  &recordingAppendLog{},
+		StateStore: runtimeStore,
+		GraphStore: &stubGraphStore{},
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	listResp, err := server.Client().Get(server.URL + "/reports")
+	if err != nil {
+		t.Fatalf("GET /reports error = %v", err)
+	}
+	defer func() {
+		if closeErr := listResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /reports response body: %v", closeErr)
+		}
+	}()
+	var listPayload map[string]any
+	if err := json.NewDecoder(listResp.Body).Decode(&listPayload); err != nil {
+		t.Fatalf("decode /reports response: %v", err)
+	}
+	reportsPayload, ok := listPayload["reports"].([]any)
+	if !ok || len(reportsPayload) != 1 {
+		t.Fatalf("/reports payload = %#v, want 1 entry", listPayload["reports"])
+	}
+
+	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?runtime_id=writer-okta-audit", nil)
+	if err != nil {
+		t.Fatalf("new run report request: %v", err)
+	}
+	runResp, err := server.Client().Do(runReq)
+	if err != nil {
+		t.Fatalf("POST /reports/{id}/runs error = %v", err)
+	}
+	defer func() {
+		if closeErr := runResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /reports/{id}/runs response body: %v", closeErr)
+		}
+	}()
+	var runPayload map[string]any
+	if err := json.NewDecoder(runResp.Body).Decode(&runPayload); err != nil {
+		t.Fatalf("decode /reports/{id}/runs response: %v", err)
+	}
+	runBody, ok := runPayload["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("run payload = %#v, want object", runPayload["run"])
+	}
+	if got := runBody["report_id"]; got != "finding-summary" {
+		t.Fatalf("run report_id = %#v, want finding-summary", got)
+	}
+	resultBody, ok := runBody["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("run result payload = %#v, want object", runBody["result"])
+	}
+	if got := resultBody["total_findings"]; got != float64(2) {
+		t.Fatalf("run total_findings = %#v, want 2", got)
+	}
+	runID, ok := runBody["id"].(string)
+	if !ok || runID == "" {
+		t.Fatalf("run id = %#v, want non-empty string", runBody["id"])
+	}
+	if len(runtimeStore.reportRuns) != 1 {
+		t.Fatalf("len(runtimeStore.reportRuns) = %d, want 1", len(runtimeStore.reportRuns))
+	}
+
+	getResp, err := server.Client().Get(server.URL + "/report-runs/" + runID)
+	if err != nil {
+		t.Fatalf("GET /report-runs/{id} error = %v", err)
+	}
+	defer func() {
+		if closeErr := getResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /report-runs/{id} response body: %v", closeErr)
+		}
+	}()
+	var getPayload map[string]any
+	if err := json.NewDecoder(getResp.Body).Decode(&getPayload); err != nil {
+		t.Fatalf("decode /report-runs/{id} response: %v", err)
+	}
+	getRunPayload, ok := getPayload["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("get run payload = %#v, want object", getPayload["run"])
+	}
+	if got := getRunPayload["id"]; got != runID {
+		t.Fatalf("get run id = %#v, want %q", got, runID)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	listReportsResp, err := client.ListReportDefinitions(context.Background(), connect.NewRequest(&cerebrov1.ListReportDefinitionsRequest{}))
+	if err != nil {
+		t.Fatalf("ListReportDefinitions() error = %v", err)
+	}
+	if len(listReportsResp.Msg.GetReports()) != 1 {
+		t.Fatalf("len(ListReportDefinitions.Reports) = %d, want 1", len(listReportsResp.Msg.GetReports()))
+	}
+	runReportResp, err := client.RunReport(context.Background(), connect.NewRequest(&cerebrov1.RunReportRequest{
+		ReportId: "finding-summary",
+		Parameters: map[string]string{
+			"runtime_id": "writer-okta-audit",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("RunReport() error = %v", err)
+	}
+	if got := runReportResp.Msg.GetRun().GetReportId(); got != "finding-summary" {
+		t.Fatalf("RunReport report id = %q, want finding-summary", got)
+	}
+	getRunResp, err := client.GetReportRun(context.Background(), connect.NewRequest(&cerebrov1.GetReportRunRequest{
+		Id: runReportResp.Msg.GetRun().GetId(),
+	}))
+	if err != nil {
+		t.Fatalf("GetReportRun() error = %v", err)
+	}
+	if got := getRunResp.Msg.GetRun().GetId(); got != runReportResp.Msg.GetRun().GetId() {
+		t.Fatalf("GetReportRun id = %q, want %q", got, runReportResp.Msg.GetRun().GetId())
+	}
+}
+
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {
@@ -939,6 +1119,13 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
 	}
+}
+
+func cloneReportRun(run *cerebrov1.ReportRun) *cerebrov1.ReportRun {
+	if run == nil {
+		return nil
+	}
+	return proto.Clone(run).(*cerebrov1.ReportRun)
 }
 
 func cloneNeighborhood(neighborhood *ports.EntityNeighborhood) *ports.EntityNeighborhood {
