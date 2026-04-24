@@ -104,10 +104,17 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	findingStore := &stubFindingStore{
 		findings: []*ports.FindingRecord{
 			{
-				ID:           "finding-1",
-				RuntimeID:    "writer-okta-audit",
-				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
-				PolicyID:     "pol-1",
+				ID:        "finding-1",
+				RuntimeID: "writer-okta-audit",
+				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
+				PolicyID:  "pol-1",
+				CheckID:   "identity-okta-policy-rule-lifecycle-tampering-30d",
+				CheckName: "Okta Policy Rule Lifecycle Tampering (30 days)",
+				ControlRefs: []ports.FindingControlRef{
+					{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+					{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+					{FrameworkName: "ISO 27001:2022", ControlID: "A.8.9"},
+				},
 				Severity:     "HIGH",
 				Status:       "open",
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
@@ -116,10 +123,16 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 				},
 			},
 			{
-				ID:           "finding-2",
-				RuntimeID:    "writer-okta-audit",
-				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
-				PolicyID:     "pol-1",
+				ID:        "finding-2",
+				RuntimeID: "writer-okta-audit",
+				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
+				PolicyID:  "pol-1",
+				CheckID:   "identity-okta-policy-rule-lifecycle-tampering-30d",
+				CheckName: "Okta Policy Rule Lifecycle Tampering (30 days)",
+				ControlRefs: []ports.FindingControlRef{
+					{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+					{FrameworkName: "ISO 27001:2022", ControlID: "A.8.9"},
+				},
 				Severity:     "HIGH",
 				Status:       "resolved",
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
@@ -193,6 +206,42 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	policyCounts, ok := result["policy_counts"].([]any)
 	if !ok || len(policyCounts) != 1 {
 		t.Fatalf("Run().Run.Result[policy_counts] = %#v, want 1 entry", result["policy_counts"])
+	}
+	checkCounts, ok := result["check_counts"].([]any)
+	if !ok || len(checkCounts) != 1 {
+		t.Fatalf("Run().Run.Result[check_counts] = %#v, want 1 entry", result["check_counts"])
+	}
+	checkEntry, ok := checkCounts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("check count entry = %#v, want object", checkCounts[0])
+	}
+	if got := checkEntry["check_id"]; got != "identity-okta-policy-rule-lifecycle-tampering-30d" {
+		t.Fatalf("check count check_id = %#v, want identity-okta-policy-rule-lifecycle-tampering-30d", got)
+	}
+	if got := checkEntry["check_name"]; got != "Okta Policy Rule Lifecycle Tampering (30 days)" {
+		t.Fatalf("check count check_name = %#v, want check name", got)
+	}
+	if got := checkEntry["count"]; got != float64(2) {
+		t.Fatalf("check count count = %#v, want 2", got)
+	}
+	controlCounts, ok := result["control_counts"].([]any)
+	if !ok || len(controlCounts) != 2 {
+		t.Fatalf("Run().Run.Result[control_counts] = %#v, want 2 entries", result["control_counts"])
+	}
+	for _, rawEntry := range controlCounts {
+		entry, ok := rawEntry.(map[string]any)
+		if !ok {
+			t.Fatalf("control count entry = %#v, want object", rawEntry)
+		}
+		if got := entry["framework_name"]; got == "" {
+			t.Fatalf("control count framework_name = %#v, want non-empty", got)
+		}
+		if got := entry["control_id"]; got == "" {
+			t.Fatalf("control count control_id = %#v, want non-empty", got)
+		}
+		if got := entry["count"]; got != float64(2) {
+			t.Fatalf("control count = %#v, want 2", got)
+		}
 	}
 	resourceCounts, ok := result["resource_counts"].([]any)
 	if !ok || len(resourceCounts) != 1 {
@@ -284,6 +333,9 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ObservedPolicyIDs: append([]string(nil), finding.ObservedPolicyIDs...),
 		PolicyID:          finding.PolicyID,
 		PolicyName:        finding.PolicyName,
+		CheckID:           finding.CheckID,
+		CheckName:         finding.CheckName,
+		ControlRefs:       append([]ports.FindingControlRef(nil), finding.ControlRefs...),
 		Attributes:        cloneAttributes(finding.Attributes),
 		Assignee:          finding.Assignee,
 		StatusReason:      finding.StatusReason,

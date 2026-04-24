@@ -26,9 +26,12 @@ var ensureFindingStatements = []string{
   resource_urns_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   event_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   observed_policy_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  control_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   policy_id TEXT NOT NULL DEFAULT '',
   policy_name TEXT NOT NULL DEFAULT '',
+  check_id TEXT NOT NULL DEFAULT '',
+  check_name TEXT NOT NULL DEFAULT '',
   assignee TEXT NOT NULL DEFAULT '',
   status_reason TEXT NOT NULL DEFAULT '',
   status_updated_at TIMESTAMPTZ,
@@ -38,18 +41,23 @@ var ensureFindingStatements = []string{
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS observed_policy_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS control_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS policy_id TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS policy_name TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS check_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS check_name TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS assignee TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_reason TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_rule_idx ON findings (runtime_id, rule_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_policy_idx ON findings (runtime_id, policy_id)`,
+	`CREATE INDEX IF NOT EXISTS findings_runtime_check_idx ON findings (runtime_id, check_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_status_idx ON findings (runtime_id, status)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_severity_idx ON findings (runtime_id, severity)`,
 	`CREATE INDEX IF NOT EXISTS findings_resource_urns_gin_idx ON findings USING GIN (resource_urns_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_event_ids_gin_idx ON findings USING GIN (event_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_observed_policy_ids_gin_idx ON findings USING GIN (observed_policy_ids_json)`,
+	`CREATE INDEX IF NOT EXISTS findings_control_refs_gin_idx ON findings USING GIN (control_refs_json)`,
 }
 
 // UpsertFinding persists one normalized finding in the current-state store.
@@ -111,12 +119,18 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding observed policy ids: %w", err)
 	}
+	controlRefsJSON, err := findingControlRefsJSON(finding.ControlRefs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding control refs: %w", err)
+	}
 	attributesJSON, err := findingAttributesJSON(finding.Attributes)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding attributes: %w", err)
 	}
 	policyID := strings.TrimSpace(finding.PolicyID)
 	policyName := strings.TrimSpace(finding.PolicyName)
+	checkID := strings.TrimSpace(finding.CheckID)
+	checkName := strings.TrimSpace(finding.CheckName)
 	assignee := strings.TrimSpace(finding.Assignee)
 	statusReason := strings.TrimSpace(finding.StatusReason)
 	var statusUpdatedAt any
@@ -135,11 +149,11 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if err := s.db.QueryRowContext(ctx, `
 INSERT INTO findings (
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json, event_ids_json, observed_policy_ids_json, attributes_json, policy_id, policy_name,
-  assignee, status_reason, status_updated_at,
+  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, attributes_json,
+  policy_id, policy_name, check_id, check_name, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16, $17, $18, $19, $20)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
@@ -156,9 +170,12 @@ DO UPDATE SET
   resource_urns_json = EXCLUDED.resource_urns_json,
   event_ids_json = EXCLUDED.event_ids_json,
   observed_policy_ids_json = EXCLUDED.observed_policy_ids_json,
+  control_refs_json = EXCLUDED.control_refs_json,
   attributes_json = EXCLUDED.attributes_json,
   policy_id = EXCLUDED.policy_id,
   policy_name = EXCLUDED.policy_name,
+  check_id = EXCLUDED.check_id,
+  check_name = EXCLUDED.check_name,
   assignee = CASE
     WHEN findings.assignee <> '' AND EXCLUDED.assignee = '' THEN findings.assignee
     ELSE EXCLUDED.assignee
@@ -176,8 +193,8 @@ DO UPDATE SET
   updated_at = NOW()
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, policy_id, policy_name,
-  attributes_json::text, assignee, status_reason, status_updated_at,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at`,
 		id,
 		fingerprint,
@@ -191,9 +208,12 @@ RETURNING
 		resourceURNsJSON,
 		eventIDsJSON,
 		observedPolicyIDsJSON,
+		controlRefsJSON,
 		attributesJSON,
 		policyID,
 		policyName,
+		checkID,
+		checkName,
 		assignee,
 		statusReason,
 		statusUpdatedAt,
@@ -212,8 +232,11 @@ RETURNING
 		&stored.ResourceURNsJSON,
 		&stored.EventIDsJSON,
 		&stored.ObservedPolicyIDsJSON,
+		&stored.ControlRefsJSON,
 		&stored.PolicyID,
 		&stored.PolicyName,
+		&stored.CheckID,
+		&stored.CheckName,
 		&stored.AttributesJSON,
 		&stored.Assignee,
 		&stored.StatusReason,
@@ -264,8 +287,11 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 			&row.ResourceURNsJSON,
 			&row.EventIDsJSON,
 			&row.ObservedPolicyIDsJSON,
+			&row.ControlRefsJSON,
 			&row.PolicyID,
 			&row.PolicyName,
+			&row.CheckID,
+			&row.CheckName,
 			&row.AttributesJSON,
 			&row.Assignee,
 			&row.StatusReason,
@@ -303,8 +329,8 @@ func (s *Store) GetFinding(ctx context.Context, id string) (*ports.FindingRecord
 	if err := s.db.QueryRowContext(ctx, `
 SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, policy_id, policy_name,
-  attributes_json::text, assignee, status_reason, status_updated_at,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at
 FROM findings
 WHERE id = $1`,
@@ -322,8 +348,11 @@ WHERE id = $1`,
 		&row.ResourceURNsJSON,
 		&row.EventIDsJSON,
 		&row.ObservedPolicyIDsJSON,
+		&row.ControlRefsJSON,
 		&row.PolicyID,
 		&row.PolicyName,
+		&row.CheckID,
+		&row.CheckName,
 		&row.AttributesJSON,
 		&row.Assignee,
 		&row.StatusReason,
@@ -367,8 +396,8 @@ SET status = $2, status_reason = $3, status_updated_at = $4, updated_at = NOW()
 WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, policy_id, policy_name,
-  attributes_json::text, assignee, status_reason, status_updated_at,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at`,
 		findingID,
 		status,
@@ -387,8 +416,11 @@ RETURNING
 		&row.ResourceURNsJSON,
 		&row.EventIDsJSON,
 		&row.ObservedPolicyIDsJSON,
+		&row.ControlRefsJSON,
 		&row.PolicyID,
 		&row.PolicyName,
+		&row.CheckID,
+		&row.CheckName,
 		&row.AttributesJSON,
 		&row.Assignee,
 		&row.StatusReason,
@@ -423,8 +455,8 @@ SET assignee = $2, updated_at = NOW()
 WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, policy_id, policy_name,
-  attributes_json::text, assignee, status_reason, status_updated_at,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at`,
 		findingID,
 		strings.TrimSpace(request.Assignee),
@@ -441,8 +473,11 @@ RETURNING
 		&row.ResourceURNsJSON,
 		&row.EventIDsJSON,
 		&row.ObservedPolicyIDsJSON,
+		&row.ControlRefsJSON,
 		&row.PolicyID,
 		&row.PolicyName,
+		&row.CheckID,
+		&row.CheckName,
 		&row.AttributesJSON,
 		&row.Assignee,
 		&row.StatusReason,
@@ -479,8 +514,8 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 	query := `
 SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, policy_id, policy_name,
-  attributes_json::text, assignee, status_reason, status_updated_at,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
@@ -529,6 +564,35 @@ func findingAttributesJSON(attributes map[string]string) (string, error) {
 	return string(payload), nil
 }
 
+func findingControlRefsJSON(values []ports.FindingControlRef) (string, error) {
+	normalized := make([]ports.FindingControlRef, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		frameworkName := strings.TrimSpace(value.FrameworkName)
+		controlID := strings.TrimSpace(value.ControlID)
+		if frameworkName == "" || controlID == "" {
+			continue
+		}
+		key := frameworkName + "|" + controlID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, ports.FindingControlRef{
+			FrameworkName: frameworkName,
+			ControlID:     controlID,
+		})
+	}
+	if len(normalized) == 0 {
+		return `[]`, nil
+	}
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
 func addFindingFilter(clauses *[]string, args *[]any, column string, value string) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -565,8 +629,11 @@ type findingRow struct {
 	ResourceURNsJSON      string
 	EventIDsJSON          string
 	ObservedPolicyIDsJSON string
+	ControlRefsJSON       string
 	PolicyID              string
 	PolicyName            string
+	CheckID               string
+	CheckName             string
 	AttributesJSON        string
 	Assignee              string
 	StatusReason          string
@@ -588,6 +655,10 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 	if err := json.Unmarshal([]byte(r.ObservedPolicyIDsJSON), &observedPolicyIDs); err != nil {
 		return nil, fmt.Errorf("decode finding observed policy ids: %w", err)
 	}
+	controlRefs := []ports.FindingControlRef{}
+	if err := json.Unmarshal([]byte(r.ControlRefsJSON), &controlRefs); err != nil {
+		return nil, fmt.Errorf("decode finding control refs: %w", err)
+	}
 	attributes := map[string]string{}
 	if err := json.Unmarshal([]byte(r.AttributesJSON), &attributes); err != nil {
 		return nil, fmt.Errorf("decode finding attributes: %w", err)
@@ -607,6 +678,9 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 		ObservedPolicyIDs: observedPolicyIDs,
 		PolicyID:          r.PolicyID,
 		PolicyName:        r.PolicyName,
+		CheckID:           r.CheckID,
+		CheckName:         r.CheckName,
+		ControlRefs:       controlRefs,
 		Attributes:        attributes,
 		Assignee:          r.Assignee,
 		StatusReason:      r.StatusReason,

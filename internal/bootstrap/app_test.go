@@ -1053,6 +1053,16 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := findingPayload["policy_name"]; got != "pol-1" {
 		t.Fatalf("evaluate finding policy_name = %#v, want pol-1", got)
 	}
+	if got := findingPayload["check_id"]; got != "identity-okta-policy-rule-lifecycle-tampering-30d" {
+		t.Fatalf("evaluate finding check_id = %#v, want identity-okta-policy-rule-lifecycle-tampering-30d", got)
+	}
+	if got := findingPayload["check_name"]; got != "Okta Policy Rule Lifecycle Tampering (30 days)" {
+		t.Fatalf("evaluate finding check_name = %#v, want check name", got)
+	}
+	controlRefs, ok := findingPayload["control_refs"].([]any)
+	if !ok || len(controlRefs) != 2 {
+		t.Fatalf("evaluate finding control_refs = %#v, want 2 entries", findingPayload["control_refs"])
+	}
 	runPayload, ok := evaluatePayload["run"].(map[string]any)
 	if !ok {
 		t.Fatalf("evaluate run payload = %#v, want object", evaluatePayload["run"])
@@ -1298,6 +1308,12 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := listFindingsResp.Msg.GetFindings()[0].GetPolicyId(); got != "pol-1" {
 		t.Fatalf("ListFindings().Findings[0].PolicyId = %q, want pol-1", got)
+	}
+	if got := listFindingsResp.Msg.GetFindings()[0].GetCheckId(); got != "identity-okta-policy-rule-lifecycle-tampering-30d" {
+		t.Fatalf("ListFindings().Findings[0].CheckId = %q, want identity-okta-policy-rule-lifecycle-tampering-30d", got)
+	}
+	if got := len(listFindingsResp.Msg.GetFindings()[0].GetControlRefs()); got != 2 {
+		t.Fatalf("len(ListFindings().Findings[0].ControlRefs) = %d, want 2", got)
 	}
 	if got := runtimeStore.findingListRequest.RuleID; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("runtimeStore.findingListRequest.RuleID = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
@@ -2063,6 +2079,8 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(eventIDs, finding.EventIDs)
 	observedPolicyIDs := make([]string, len(finding.ObservedPolicyIDs))
 	copy(observedPolicyIDs, finding.ObservedPolicyIDs)
+	controlRefs := make([]ports.FindingControlRef, len(finding.ControlRefs))
+	copy(controlRefs, finding.ControlRefs)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
@@ -2082,6 +2100,9 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ObservedPolicyIDs: observedPolicyIDs,
 		PolicyID:          finding.PolicyID,
 		PolicyName:        finding.PolicyName,
+		CheckID:           finding.CheckID,
+		CheckName:         finding.CheckName,
+		ControlRefs:       controlRefs,
 		Attributes:        attributes,
 		Assignee:          finding.Assignee,
 		StatusReason:      finding.StatusReason,

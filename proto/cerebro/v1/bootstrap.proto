@@ -366,6 +366,12 @@ enum FindingStatus {
   FINDING_STATUS_SUPPRESSED = 3;
 }
 
+// FindingControlRef maps one finding to one compliance framework control.
+message FindingControlRef {
+  string framework_name = 1;
+  string control_id = 2;
+}
+
 // Finding is the normalized persisted finding view for the first runtime evaluator slice.
 message Finding {
   string id = 1;
@@ -388,6 +394,9 @@ message Finding {
   repeated string observed_policy_ids = 18;
   string policy_id = 19;
   string policy_name = 20;
+  string check_id = 21;
+  string check_name = 22;
+  repeated FindingControlRef control_refs = 23;
 }
 
 // GetFindingRequest loads one persisted finding by its durable identifier.

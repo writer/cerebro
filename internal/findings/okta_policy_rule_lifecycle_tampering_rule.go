@@ -16,10 +16,12 @@ import (
 )
 
 const (
-	oktaPolicyRuleLifecycleTamperingRuleID   = "identity-okta-policy-rule-lifecycle-tampering"
-	oktaPolicyRuleLifecycleTamperingTitle    = "Okta Policy Rule Lifecycle Tampering"
-	oktaPolicyRuleLifecycleTamperingSeverity = "HIGH"
-	oktaPolicyRuleLifecycleTamperingStatus   = "open"
+	oktaPolicyRuleLifecycleTamperingRuleID    = "identity-okta-policy-rule-lifecycle-tampering"
+	oktaPolicyRuleLifecycleTamperingTitle     = "Okta Policy Rule Lifecycle Tampering"
+	oktaPolicyRuleLifecycleTamperingSeverity  = "HIGH"
+	oktaPolicyRuleLifecycleTamperingStatus    = "open"
+	oktaPolicyRuleLifecycleTamperingCheckID   = "identity-okta-policy-rule-lifecycle-tampering-30d"
+	oktaPolicyRuleLifecycleTamperingCheckName = "Okta Policy Rule Lifecycle Tampering (30 days)"
 )
 
 var (
@@ -32,6 +34,16 @@ var (
 		"success": {},
 		"allow":   {},
 		"allowed": {},
+	}
+	oktaPolicyRuleLifecycleTamperingControlRefs = []ports.FindingControlRef{
+		{
+			FrameworkName: "SOC 2",
+			ControlID:     "CC6.2",
+		},
+		{
+			FrameworkName: "ISO 27001:2022",
+			ControlID:     "A.8.9",
+		},
 	}
 )
 
@@ -130,6 +142,9 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 		ObservedPolicyIDs: observedPolicyIDs,
 		PolicyID:          policyID,
 		PolicyName:        policyName,
+		CheckID:           oktaPolicyRuleLifecycleTamperingCheckID,
+		CheckName:         oktaPolicyRuleLifecycleTamperingCheckName,
+		ControlRefs:       cloneFindingControlRefs(oktaPolicyRuleLifecycleTamperingControlRefs),
 		Attributes:        attributes,
 		FirstObservedAt:   observedAt,
 		LastObservedAt:    observedAt,
@@ -214,6 +229,25 @@ func trimEmptyAttributes(attributes map[string]string) {
 			delete(attributes, key)
 		}
 	}
+}
+
+func cloneFindingControlRefs(values []ports.FindingControlRef) []ports.FindingControlRef {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make([]ports.FindingControlRef, 0, len(values))
+	for _, value := range values {
+		frameworkName := strings.TrimSpace(value.FrameworkName)
+		controlID := strings.TrimSpace(value.ControlID)
+		if frameworkName == "" || controlID == "" {
+			continue
+		}
+		cloned = append(cloned, ports.FindingControlRef{
+			FrameworkName: frameworkName,
+			ControlID:     controlID,
+		})
+	}
+	return cloned
 }
 
 func hashFindingFingerprint(parts ...string) string {

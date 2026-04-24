@@ -1343,6 +1343,9 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		ObservedPolicyIds: append([]string(nil), finding.ObservedPolicyIDs...),
 		PolicyId:          finding.PolicyID,
 		PolicyName:        finding.PolicyName,
+		CheckId:           finding.CheckID,
+		CheckName:         finding.CheckName,
+		ControlRefs:       findingControlRefMessages(finding.ControlRefs),
 		Attributes:        make(map[string]string, len(finding.Attributes)),
 		Assignee:          finding.Assignee,
 		StatusReason:      finding.StatusReason,
@@ -1360,6 +1363,25 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		message.LastObservedAt = timestamppb.New(finding.LastObservedAt)
 	}
 	return message
+}
+
+func findingControlRefMessages(values []ports.FindingControlRef) []*cerebrov1.FindingControlRef {
+	if len(values) == 0 {
+		return nil
+	}
+	messages := make([]*cerebrov1.FindingControlRef, 0, len(values))
+	for _, value := range values {
+		frameworkName := strings.TrimSpace(value.FrameworkName)
+		controlID := strings.TrimSpace(value.ControlID)
+		if frameworkName == "" || controlID == "" {
+			continue
+		}
+		messages = append(messages, &cerebrov1.FindingControlRef{
+			FrameworkName: frameworkName,
+			ControlId:     controlID,
+		})
+	}
+	return messages
 }
 
 func findingStatusMessage(status string) cerebrov1.FindingStatus {

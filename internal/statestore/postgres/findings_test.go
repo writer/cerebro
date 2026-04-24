@@ -118,3 +118,43 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 		t.Fatalf("findingListQuery().args[8] = %#v, want 25", got)
 	}
 }
+
+func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
+	record, err := (findingRow{
+		ID:                    "finding-1",
+		Fingerprint:           "fingerprint-1",
+		TenantID:              "writer",
+		RuntimeID:             "writer-okta-audit",
+		RuleID:                "identity-okta-policy-rule-lifecycle-tampering",
+		Title:                 "Okta Policy Rule Lifecycle Tampering",
+		Severity:              "HIGH",
+		Status:                "open",
+		Summary:               "admin@writer.com performed policy.rule.update on pol-1",
+		ResourceURNsJSON:      `["urn:cerebro:writer:okta_resource:policyrule:pol-1"]`,
+		EventIDsJSON:          `["okta-audit-2"]`,
+		ObservedPolicyIDsJSON: `["pol-1"]`,
+		ControlRefsJSON:       `[{"framework_name":"SOC 2","control_id":"CC6.2"},{"framework_name":"ISO 27001:2022","control_id":"A.8.9"}]`,
+		PolicyID:              "pol-1",
+		PolicyName:            "pol-1",
+		CheckID:               "identity-okta-policy-rule-lifecycle-tampering-30d",
+		CheckName:             "Okta Policy Rule Lifecycle Tampering (30 days)",
+		AttributesJSON:        `{"primary_resource_urn":"urn:cerebro:writer:okta_resource:policyrule:pol-1"}`,
+		FirstObservedAt:       time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+		LastObservedAt:        time.Date(2026, 4, 23, 12, 1, 0, 0, time.UTC),
+	}).record()
+	if err != nil {
+		t.Fatalf("findingRow.record() error = %v", err)
+	}
+	if got := record.CheckID; got != "identity-okta-policy-rule-lifecycle-tampering-30d" {
+		t.Fatalf("findingRow.record().CheckID = %q, want identity-okta-policy-rule-lifecycle-tampering-30d", got)
+	}
+	if got := record.CheckName; got != "Okta Policy Rule Lifecycle Tampering (30 days)" {
+		t.Fatalf("findingRow.record().CheckName = %q, want check name", got)
+	}
+	if got := len(record.ControlRefs); got != 2 {
+		t.Fatalf("len(findingRow.record().ControlRefs) = %d, want 2", got)
+	}
+	if got := record.ControlRefs[0].FrameworkName; got != "SOC 2" {
+		t.Fatalf("findingRow.record().ControlRefs[0].FrameworkName = %q, want SOC 2", got)
+	}
+}

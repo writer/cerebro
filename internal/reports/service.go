@@ -153,6 +153,8 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	statusCounts := make(map[string]int, len(findings))
 	ruleCounts := make(map[string]int, len(findings))
 	policyCounts := make(map[string]int, len(findings))
+	checkCounts := make(map[string]*checkCountEntry, len(findings))
+	controlCounts := make(map[string]*controlCountEntry, len(findings))
 	resourceCounts := make(map[string]int, len(findings))
 	for _, finding := range findings {
 		if finding == nil {
@@ -174,6 +176,38 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		if policyID != "" {
 			policyCounts[policyID]++
 		}
+		checkID := strings.TrimSpace(finding.CheckID)
+		if checkID != "" {
+			entry, ok := checkCounts[checkID]
+			if !ok {
+				entry = &checkCountEntry{
+					CheckID:   checkID,
+					CheckName: strings.TrimSpace(finding.CheckName),
+				}
+				checkCounts[checkID] = entry
+			}
+			entry.Count++
+		}
+		seenControlRefs := make(map[string]struct{}, len(finding.ControlRefs))
+		for _, controlRef := range finding.ControlRefs {
+			normalized, key := normalizeControlRef(controlRef)
+			if key == "" {
+				continue
+			}
+			if _, seen := seenControlRefs[key]; seen {
+				continue
+			}
+			seenControlRefs[key] = struct{}{}
+			entry, ok := controlCounts[key]
+			if !ok {
+				entry = &controlCountEntry{
+					FrameworkName: normalized.FrameworkName,
+					ControlID:     normalized.ControlID,
+				}
+				controlCounts[key] = entry
+			}
+			entry.Count++
+		}
 		if resourceURN := primaryResourceURN(finding); resourceURN != "" {
 			resourceCounts[resourceURN]++
 		}
@@ -194,6 +228,8 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		"status_counts":          countEntries(statusCounts, "status"),
 		"rule_counts":            countEntries(ruleCounts, "rule_id"),
 		"policy_counts":          countEntries(policyCounts, "policy_id"),
+		"check_counts":           checkCountEntries(checkCounts),
+		"control_counts":         controlCountEntries(controlCounts),
 		"resource_counts":        countEntries(resourceCounts, "resource_urn"),
 		"graph_evidence_status":  graphEvidenceStatus,
 		"graph_evidence":         graphEvidence,
@@ -242,7 +278,7 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
 		Name:        findingSummaryReportName,
-		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, rule, and policy, with bounded graph evidence for top resources when the graph is configured.",
+		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, rule, policy, check, and control, with bounded graph evidence for top resources when the graph is configured.",
 		Parameters: []*cerebrov1.ReportParameter{
 			{
 				Id:          reportParameterRuntimeID,
@@ -297,6 +333,18 @@ type countEntry struct {
 	Count int
 }
 
+type checkCountEntry struct {
+	CheckID   string
+	CheckName string
+	Count     int
+}
+
+type controlCountEntry struct {
+	FrameworkName string
+	ControlID     string
+	Count         int
+}
+
 func countEntries(counts map[string]int, keyName string) []any {
 	entries := sortedCountEntries(counts)
 	values := make([]any, 0, len(entries))
@@ -304,6 +352,32 @@ func countEntries(counts map[string]int, keyName string) []any {
 		values = append(values, map[string]any{
 			keyName: entry.Key,
 			"count": entry.Count,
+		})
+	}
+	return values
+}
+
+func checkCountEntries(counts map[string]*checkCountEntry) []any {
+	entries := sortedCheckCountEntries(counts)
+	values := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		values = append(values, map[string]any{
+			"check_id":   entry.CheckID,
+			"check_name": entry.CheckName,
+			"count":      entry.Count,
+		})
+	}
+	return values
+}
+
+func controlCountEntries(counts map[string]*controlCountEntry) []any {
+	entries := sortedControlCountEntries(counts)
+	values := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		values = append(values, map[string]any{
+			"framework_name": entry.FrameworkName,
+			"control_id":     entry.ControlID,
+			"count":          entry.Count,
 		})
 	}
 	return values
@@ -329,6 +403,65 @@ func sortedCountEntries(counts map[string]int) []countEntry {
 		}
 	})
 	return entries
+}
+
+func sortedCheckCountEntries(counts map[string]*checkCountEntry) []*checkCountEntry {
+	entries := make([]*checkCountEntry, 0, len(counts))
+	for _, entry := range counts {
+		entries = append(entries, entry)
+	}
+	slices.SortFunc(entries, func(left *checkCountEntry, right *checkCountEntry) int {
+		switch {
+		case left.Count > right.Count:
+			return -1
+		case left.Count < right.Count:
+			return 1
+		case left.CheckID < right.CheckID:
+			return -1
+		case left.CheckID > right.CheckID:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return entries
+}
+
+func sortedControlCountEntries(counts map[string]*controlCountEntry) []*controlCountEntry {
+	entries := make([]*controlCountEntry, 0, len(counts))
+	for _, entry := range counts {
+		entries = append(entries, entry)
+	}
+	slices.SortFunc(entries, func(left *controlCountEntry, right *controlCountEntry) int {
+		switch {
+		case left.Count > right.Count:
+			return -1
+		case left.Count < right.Count:
+			return 1
+		case left.FrameworkName < right.FrameworkName:
+			return -1
+		case left.FrameworkName > right.FrameworkName:
+			return 1
+		case left.ControlID < right.ControlID:
+			return -1
+		case left.ControlID > right.ControlID:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return entries
+}
+
+func normalizeControlRef(value ports.FindingControlRef) (ports.FindingControlRef, string) {
+	normalized := ports.FindingControlRef{
+		FrameworkName: strings.TrimSpace(value.FrameworkName),
+		ControlID:     strings.TrimSpace(value.ControlID),
+	}
+	if normalized.FrameworkName == "" || normalized.ControlID == "" {
+		return ports.FindingControlRef{}, ""
+	}
+	return normalized, normalized.FrameworkName + "|" + normalized.ControlID
 }
 
 func primaryResourceURN(finding *ports.FindingRecord) string {

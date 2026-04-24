@@ -8,6 +8,12 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
+// FindingControlRef maps one finding to one compliance framework control.
+type FindingControlRef struct {
+	FrameworkName string `json:"framework_name"`
+	ControlID     string `json:"control_id"`
+}
+
 // FindingRecord is the normalized persisted finding shape.
 type FindingRecord struct {
 	ID                string
@@ -24,6 +30,9 @@ type FindingRecord struct {
 	ObservedPolicyIDs []string
 	PolicyID          string
 	PolicyName        string
+	CheckID           string
+	CheckName         string
+	ControlRefs       []FindingControlRef
 	Attributes        map[string]string
 	Assignee          string
 	StatusReason      string

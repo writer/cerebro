@@ -406,6 +406,21 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if len(finding.ObservedPolicyIDs) != 1 || finding.ObservedPolicyIDs[0] != "pol-1" {
 		t.Fatalf("Finding.ObservedPolicyIDs = %#v, want [pol-1]", finding.ObservedPolicyIDs)
 	}
+	if finding.CheckID != "identity-okta-policy-rule-lifecycle-tampering-30d" {
+		t.Fatalf("Finding.CheckID = %q, want identity-okta-policy-rule-lifecycle-tampering-30d", finding.CheckID)
+	}
+	if finding.CheckName != "Okta Policy Rule Lifecycle Tampering (30 days)" {
+		t.Fatalf("Finding.CheckName = %q, want check name", finding.CheckName)
+	}
+	if len(finding.ControlRefs) != 2 {
+		t.Fatalf("len(Finding.ControlRefs) = %d, want 2", len(finding.ControlRefs))
+	}
+	if got := finding.ControlRefs[0].FrameworkName; got != "SOC 2" {
+		t.Fatalf("Finding.ControlRefs[0].FrameworkName = %q, want SOC 2", got)
+	}
+	if got := finding.ControlRefs[0].ControlID; got != "CC6.2" {
+		t.Fatalf("Finding.ControlRefs[0].ControlID = %q, want CC6.2", got)
+	}
 	if len(store.findings) != 1 {
 		t.Fatalf("len(store.findings) = %d, want 1", len(store.findings))
 	}
@@ -1220,6 +1235,8 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(eventIDs, finding.EventIDs)
 	observedPolicyIDs := make([]string, len(finding.ObservedPolicyIDs))
 	copy(observedPolicyIDs, finding.ObservedPolicyIDs)
+	controlRefs := make([]ports.FindingControlRef, len(finding.ControlRefs))
+	copy(controlRefs, finding.ControlRefs)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
@@ -1239,6 +1256,9 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ObservedPolicyIDs: observedPolicyIDs,
 		PolicyID:          finding.PolicyID,
 		PolicyName:        finding.PolicyName,
+		CheckID:           finding.CheckID,
+		CheckName:         finding.CheckName,
+		ControlRefs:       controlRefs,
 		Attributes:        attributes,
 		Assignee:          finding.Assignee,
 		StatusReason:      finding.StatusReason,
