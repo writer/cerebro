@@ -31,6 +31,7 @@ service BootstrapService {
   rpc GetFindingEvaluationRun(GetFindingEvaluationRunRequest) returns (GetFindingEvaluationRunResponse);
   rpc ListFindingEvidence(ListFindingEvidenceRequest) returns (ListFindingEvidenceResponse);
   rpc GetFindingEvidence(GetFindingEvidenceRequest) returns (GetFindingEvidenceResponse);
+  rpc EvaluateSourceRuntimeFindingRules(EvaluateSourceRuntimeFindingRulesRequest) returns (EvaluateSourceRuntimeFindingRulesResponse);
   rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
   rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
 }
@@ -381,6 +382,28 @@ message EvaluateSourceRuntimeFindingsRequest {
   string id = 1;
   uint32 event_limit = 2;
   string rule_id = 3;
+}
+
+// EvaluateSourceRuntimeFindingRulesRequest replays one stored runtime through one or more registered finding rules.
+message EvaluateSourceRuntimeFindingRulesRequest {
+  string id = 1;
+  repeated string rule_ids = 2;
+  uint32 event_limit = 3;
+}
+
+// FindingRuleEvaluation returns the persisted outputs for one rule within a multi-rule evaluation pass.
+message FindingRuleEvaluation {
+  RuleSpec rule = 1;
+  repeated Finding findings = 2;
+  FindingEvaluationRun run = 3;
+  repeated FindingEvidence evidence = 4;
+}
+
+// EvaluateSourceRuntimeFindingRulesResponse returns one replay pass over a runtime with one result per evaluated rule.
+message EvaluateSourceRuntimeFindingRulesResponse {
+  SourceRuntime runtime = 1;
+  uint32 events_evaluated = 2;
+  repeated FindingRuleEvaluation evaluations = 3;
 }
 
 // EvaluateSourceRuntimeFindingsResponse returns the evaluated runtime, selected rule spec, and persisted findings.

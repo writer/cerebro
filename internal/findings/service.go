@@ -58,6 +58,13 @@ type EvaluateRequest struct {
 	EventLimit uint32
 }
 
+// EvaluateRulesRequest scopes one replay-backed multi-rule evaluation.
+type EvaluateRulesRequest struct {
+	RuntimeID  string
+	RuleIDs    []string
+	EventLimit uint32
+}
+
 // ListRequest scopes one persisted finding query.
 type ListRequest struct {
 	RuntimeID   string
@@ -78,6 +85,21 @@ type EvaluateResult struct {
 	Findings        []*ports.FindingRecord
 	Run             *cerebrov1.FindingEvaluationRun
 	Evidence        []*cerebrov1.FindingEvidence
+}
+
+// RuleEvaluationResult reports one rule's outputs inside a multi-rule evaluation pass.
+type RuleEvaluationResult struct {
+	Rule     *cerebrov1.RuleSpec
+	Findings []*ports.FindingRecord
+	Run      *cerebrov1.FindingEvaluationRun
+	Evidence []*cerebrov1.FindingEvidence
+}
+
+// EvaluateRulesResult reports one multi-rule evaluation over one runtime replay.
+type EvaluateRulesResult struct {
+	Runtime         *cerebrov1.SourceRuntime
+	EventsEvaluated uint32
+	Evaluations     []*RuleEvaluationResult
 }
 
 // ListResult reports one persisted finding query.
@@ -228,6 +250,111 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	return result, nil
 }
 
+// EvaluateSourceRuntimeRules replays one runtime once and evaluates one or more registered rules over that shared pass.
+func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request EvaluateRulesRequest) (*EvaluateRulesResult, error) {
+	if s == nil || s.runtimeStore == nil || s.replayer == nil || s.store == nil || s.runStore == nil || s.evidenceStore == nil || s.claimStore == nil || s.rules == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return nil, errors.New("source runtime id is required")
+	}
+	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
+	if err != nil {
+		return nil, err
+	}
+	rules, err := s.selectRules(runtime, request.RuleIDs)
+	if err != nil {
+		return nil, err
+	}
+	startedAt := time.Now().UTC()
+	states := make([]*ruleEvaluationState, 0, len(rules))
+	result := &EvaluateRulesResult{
+		Runtime:     runtime,
+		Evaluations: make([]*RuleEvaluationResult, 0, len(rules)),
+	}
+	for _, rule := range rules {
+		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), request.EventLimit, startedAt)
+		if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
+			return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+		}
+		state := &ruleEvaluationState{
+			rule: rule,
+			result: &RuleEvaluationResult{
+				Rule: rule.Spec(),
+				Run:  run,
+			},
+		}
+		states = append(states, state)
+		result.Evaluations = append(result.Evaluations, state.result)
+	}
+	events, err := s.replayer.Replay(ctx, ports.ReplayRequest{
+		RuntimeID: runtimeID,
+		Limit:     normalizeEventLimit(request.EventLimit),
+	})
+	if err != nil {
+		evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
+		for _, state := range states {
+			if failErr := s.markRuleEvaluationFailed(ctx, state, evaluationErr); failErr != nil {
+				return nil, failErr
+			}
+		}
+		return nil, evaluationErr
+	}
+	result.EventsEvaluated = uint32(len(events))
+	for _, event := range events {
+		for _, state := range states {
+			if state.failed {
+				continue
+			}
+			state.eventsEvaluated++
+			emitted, err := state.rule.Evaluate(ctx, runtime, event)
+			if err != nil {
+				if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("evaluate finding rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
+					return nil, failErr
+				}
+				continue
+			}
+			for _, record := range emitted {
+				if record == nil {
+					continue
+				}
+				stored, err := s.store.UpsertFinding(ctx, record)
+				if err != nil {
+					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
+						return nil, failErr
+					}
+					break
+				}
+				state.result.Findings = append(state.result.Findings, stored)
+				evidence, err := s.buildFindingEvidence(ctx, stored, state.result.Run)
+				if err != nil {
+					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)); failErr != nil {
+						return nil, failErr
+					}
+					break
+				}
+				if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
+					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)); failErr != nil {
+						return nil, failErr
+					}
+					break
+				}
+				state.result.Evidence = append(state.result.Evidence, evidence)
+			}
+		}
+	}
+	for _, state := range states {
+		if state.failed {
+			continue
+		}
+		if err := s.finishCompletedRun(ctx, state.result.Run, state.eventsEvaluated, findingIDs(state.result.Findings)); err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
 // ListFindings loads persisted findings for one runtime.
 func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListResult, error) {
 	if s == nil || s.runtimeStore == nil || s.store == nil {
@@ -340,6 +467,13 @@ func (s *Service) GetEvidence(ctx context.Context, id string) (*cerebrov1.Findin
 	return evidence, nil
 }
 
+type ruleEvaluationState struct {
+	rule            Rule
+	result          *RuleEvaluationResult
+	eventsEvaluated uint32
+	failed          bool
+}
+
 func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (Rule, error) {
 	trimmedRuleID := strings.TrimSpace(ruleID)
 	if trimmedRuleID != "" {
@@ -361,6 +495,40 @@ func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (R
 	default:
 		return nil, fmt.Errorf("%w for runtime %q", ErrRuleSelectionRequired, strings.TrimSpace(runtime.GetId()))
 	}
+}
+
+func (s *Service) selectRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string) ([]Rule, error) {
+	if len(ruleIDs) == 0 {
+		applicable := s.rules.ForRuntime(runtime)
+		if len(applicable) == 0 {
+			return nil, fmt.Errorf("%w: %s", ErrRuleUnavailable, strings.TrimSpace(runtime.GetId()))
+		}
+		return applicable, nil
+	}
+	selected := make([]Rule, 0, len(ruleIDs))
+	seen := make(map[string]struct{}, len(ruleIDs))
+	for _, rawID := range ruleIDs {
+		trimmedID := strings.TrimSpace(rawID)
+		if trimmedID == "" {
+			continue
+		}
+		if _, ok := seen[trimmedID]; ok {
+			continue
+		}
+		rule, ok := s.rules.Get(trimmedID)
+		if !ok {
+			return nil, fmt.Errorf("%w: %s", ErrRuleNotFound, trimmedID)
+		}
+		if !rule.SupportsRuntime(runtime) {
+			return nil, fmt.Errorf("%w: %s", ErrRuleUnsupported, trimmedID)
+		}
+		seen[trimmedID] = struct{}{}
+		selected = append(selected, rule)
+	}
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("%w for runtime %q", ErrRuleSelectionRequired, strings.TrimSpace(runtime.GetId()))
+	}
+	return selected, nil
 }
 
 func normalizeEventLimit(limit uint32) uint32 {
@@ -425,6 +593,24 @@ func (s *Service) finishFailedRun(ctx context.Context, run *cerebrov1.FindingEva
 		)
 	}
 	return evaluationErr
+}
+
+func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvaluationState, evaluationErr error) error {
+	if state == nil || state.result == nil || state.result.Run == nil {
+		return evaluationErr
+	}
+	state.failed = true
+	run := state.result.Run
+	run.Status = "failed"
+	run.EventsEvaluated = state.eventsEvaluated
+	run.FindingsUpserted = uint32(len(state.result.Findings))
+	run.FindingIds = append([]string(nil), findingIDs(state.result.Findings)...)
+	run.Error = strings.TrimSpace(evaluationErr.Error())
+	run.FinishedAt = timestamppb.New(time.Now().UTC())
+	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
+		return fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+	}
+	return nil
 }
 
 func findingIDs(findings []*ports.FindingRecord) []string {

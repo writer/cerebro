@@ -78,6 +78,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/findings", app.handleListFindings)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-evidence", app.handleListFindingEvidence)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-evaluation-runs", app.handleListFindingEvaluationRuns)
+	mux.HandleFunc("POST /source-runtimes/{runtimeID}/finding-rules/evaluate", app.handleEvaluateSourceRuntimeFindingRules)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -379,6 +380,35 @@ func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, findingResponse(response))
+}
+
+func (a *App) handleEvaluateSourceRuntimeFindingRules(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.EvaluateSourceRuntimeFindingRulesRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
+		body := []byte(`{"event_limit":` + eventLimit + `}`)
+		if err := protojson.Unmarshal(body, request); err != nil {
+			writeFindingError(w, err)
+			return
+		}
+	}
+	request.Id = r.PathValue("runtimeID")
+	if ruleIDs := r.URL.Query()["rule_id"]; len(ruleIDs) != 0 {
+		request.RuleIds = ruleIDs
+	}
+	response, err := a.findingService().EvaluateSourceRuntimeRules(r.Context(), findings.EvaluateRulesRequest{
+		RuntimeID:  request.GetId(),
+		RuleIDs:    request.GetRuleIds(),
+		EventLimit: request.GetEventLimit(),
+	})
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, findingRulesResponse(response))
 }
 
 func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
@@ -770,6 +800,25 @@ func (s *bootstrapService) GetFindingEvidence(ctx context.Context, req *connect.
 	return connect.NewResponse(&cerebrov1.GetFindingEvidenceResponse{Evidence: evidence}), nil
 }
 
+func (s *bootstrapService) EvaluateSourceRuntimeFindingRules(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingRulesResponse], error) {
+	response, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+		RuntimeID:  req.Msg.GetId(),
+		RuleIDs:    req.Msg.GetRuleIds(),
+		EventLimit: req.Msg.GetEventLimit(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(findingRulesResponse(response)), nil
+}
+
 func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingsResponse], error) {
 	response, err := findings.New(
 		sourceRuntimeStore(s.deps.StateStore),
@@ -1072,6 +1121,33 @@ func findingResponse(result *findings.EvaluateResult) *cerebrov1.EvaluateSourceR
 		Evidence:         result.Evidence,
 	}
 	return response
+}
+
+func findingRulesResponse(result *findings.EvaluateRulesResult) *cerebrov1.EvaluateSourceRuntimeFindingRulesResponse {
+	if result == nil {
+		return &cerebrov1.EvaluateSourceRuntimeFindingRulesResponse{}
+	}
+	evaluations := make([]*cerebrov1.FindingRuleEvaluation, 0, len(result.Evaluations))
+	for _, evaluation := range result.Evaluations {
+		evaluations = append(evaluations, findingRuleEvaluationMessage(evaluation))
+	}
+	return &cerebrov1.EvaluateSourceRuntimeFindingRulesResponse{
+		Runtime:         result.Runtime,
+		EventsEvaluated: result.EventsEvaluated,
+		Evaluations:     evaluations,
+	}
+}
+
+func findingRuleEvaluationMessage(result *findings.RuleEvaluationResult) *cerebrov1.FindingRuleEvaluation {
+	if result == nil {
+		return &cerebrov1.FindingRuleEvaluation{}
+	}
+	return &cerebrov1.FindingRuleEvaluation{
+		Rule:     result.Rule,
+		Findings: findingMessages(result.Findings),
+		Run:      result.Run,
+		Evidence: result.Evidence,
+	}
 }
 
 func listFindingsResponse(result *findings.ListResult) *cerebrov1.ListFindingsResponse {
