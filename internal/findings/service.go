@@ -54,12 +54,29 @@ type EvaluateRequest struct {
 	EventLimit uint32
 }
 
+// ListRequest scopes one persisted finding query.
+type ListRequest struct {
+	RuntimeID   string
+	FindingID   string
+	RuleID      string
+	Severity    string
+	Status      string
+	ResourceURN string
+	EventID     string
+	Limit       uint32
+}
+
 // EvaluateResult reports the persisted findings emitted for one runtime evaluation.
 type EvaluateResult struct {
 	Runtime         *cerebrov1.SourceRuntime
 	Rule            *cerebrov1.RuleSpec
 	EventsEvaluated uint32
 	Findings        []*ports.FindingRecord
+}
+
+// ListResult reports one persisted finding query.
+type ListResult struct {
+	Findings []*ports.FindingRecord
 }
 
 // New constructs a replay-backed finding service.
@@ -111,6 +128,34 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 		result.Findings = append(result.Findings, stored)
 	}
 	return result, nil
+}
+
+// ListFindings loads persisted findings for one runtime.
+func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListResult, error) {
+	if s == nil || s.runtimeStore == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return nil, errors.New("source runtime id is required")
+	}
+	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
+		return nil, err
+	}
+	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+		RuntimeID:   runtimeID,
+		FindingID:   strings.TrimSpace(request.FindingID),
+		RuleID:      strings.TrimSpace(request.RuleID),
+		Severity:    strings.TrimSpace(request.Severity),
+		Status:      strings.TrimSpace(request.Status),
+		ResourceURN: strings.TrimSpace(request.ResourceURN),
+		EventID:     strings.TrimSpace(request.EventID),
+		Limit:       request.Limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list findings for runtime %q: %w", runtimeID, err)
+	}
+	return &ListResult{Findings: findings}, nil
 }
 
 func normalizeEventLimit(limit uint32) uint32 {

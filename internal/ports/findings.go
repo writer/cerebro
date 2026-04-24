@@ -25,7 +25,14 @@ type FindingRecord struct {
 
 // ListFindingsRequest scopes one finding query.
 type ListFindingsRequest struct {
-	RuntimeID string
+	RuntimeID   string
+	FindingID   string
+	RuleID      string
+	Severity    string
+	Status      string
+	ResourceURN string
+	EventID     string
+	Limit       uint32
 }
 
 // FindingStore persists normalized findings in the state store.

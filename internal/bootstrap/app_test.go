@@ -82,14 +82,15 @@ func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayReque
 }
 
 type stubRuntimeStore struct {
-	err              error
-	runtimes         map[string]*cerebrov1.SourceRuntime
-	entities         map[string]*ports.ProjectedEntity
-	links            map[string]*ports.ProjectedLink
-	claims           map[string]*ports.ClaimRecord
-	claimListRequest ports.ListClaimsRequest
-	findings         map[string]*ports.FindingRecord
-	reportRuns       map[string]*cerebrov1.ReportRun
+	err                error
+	runtimes           map[string]*cerebrov1.SourceRuntime
+	entities           map[string]*ports.ProjectedEntity
+	links              map[string]*ports.ProjectedLink
+	claims             map[string]*ports.ClaimRecord
+	claimListRequest   ports.ListClaimsRequest
+	findings           map[string]*ports.FindingRecord
+	findingListRequest ports.ListFindingsRequest
+	reportRuns         map[string]*cerebrov1.ReportRun
 }
 
 func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
@@ -208,12 +209,30 @@ func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFin
 	if s.err != nil {
 		return nil, s.err
 	}
+	s.findingListRequest = request
 	findings := []*ports.FindingRecord{}
 	for _, finding := range s.findings {
-		if finding == nil || finding.RuntimeID != request.RuntimeID {
+		if !findingMatches(request, finding) {
 			continue
 		}
 		findings = append(findings, cloneFinding(finding))
+	}
+	sort.Slice(findings, func(i, j int) bool {
+		left := findings[i]
+		right := findings[j]
+		switch {
+		case left.LastObservedAt.Equal(right.LastObservedAt):
+			return left.ID < right.ID
+		case left.LastObservedAt.IsZero():
+			return false
+		case right.LastObservedAt.IsZero():
+			return true
+		default:
+			return left.LastObservedAt.After(right.LastObservedAt)
+		}
+	})
+	if request.Limit != 0 && len(findings) > int(request.Limit) {
+		findings = findings[:int(request.Limit)]
 	}
 	return findings, nil
 }
@@ -812,6 +831,30 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := findingPayload["summary"]; got != "admin@writer.com performed policy.rule.update on pol-1" {
 		t.Fatalf("evaluate finding summary = %#v, want admin summary", got)
 	}
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/findings?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=open&event_id=okta-audit-2&limit=1")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes/{id}/findings error = %v", err)
+	}
+	defer func() {
+		if closeErr := listResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close list findings response body: %v", closeErr)
+		}
+	}()
+	var listPayload map[string]any
+	if err := json.NewDecoder(listResp.Body).Decode(&listPayload); err != nil {
+		t.Fatalf("decode list findings response: %v", err)
+	}
+	listedFindings, ok := listPayload["findings"].([]any)
+	if !ok || len(listedFindings) != 1 {
+		t.Fatalf("list findings payload = %#v, want 1 entry", listPayload["findings"])
+	}
+	listedFinding, ok := listedFindings[0].(map[string]any)
+	if !ok {
+		t.Fatalf("list findings entry = %#v, want object", listedFindings[0])
+	}
+	if got := listedFinding["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
+		t.Fatalf("list finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	evaluateFindingsResp, err := client.EvaluateSourceRuntimeFindings(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingsRequest{
@@ -832,6 +875,33 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := evaluateFindingsResp.Msg.GetRule().GetId(); got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("EvaluateSourceRuntimeFindings rule id = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
+	listFindingsResp, err := client.ListFindings(context.Background(), connect.NewRequest(&cerebrov1.ListFindingsRequest{
+		RuntimeId:   "writer-okta-audit",
+		RuleId:      "identity-okta-policy-rule-lifecycle-tampering",
+		Severity:    "HIGH",
+		Status:      "open",
+		ResourceUrn: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		EventId:     "okta-audit-2",
+		Limit:       1,
+	}))
+	if err != nil {
+		t.Fatalf("ListFindings() error = %v", err)
+	}
+	if got := len(listFindingsResp.Msg.GetFindings()); got != 1 {
+		t.Fatalf("len(ListFindings().Findings) = %d, want 1", got)
+	}
+	if got := listFindingsResp.Msg.GetFindings()[0].GetId(); got == "" {
+		t.Fatal("ListFindings().Findings[0].ID = empty, want non-empty")
+	}
+	if got := runtimeStore.findingListRequest.RuleID; got != "identity-okta-policy-rule-lifecycle-tampering" {
+		t.Fatalf("runtimeStore.findingListRequest.RuleID = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
+	if got := runtimeStore.findingListRequest.ResourceURN; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+		t.Fatalf("runtimeStore.findingListRequest.ResourceURN = %q, want policy rule urn", got)
+	}
+	if got := runtimeStore.findingListRequest.EventID; got != "okta-audit-2" {
+		t.Fatalf("runtimeStore.findingListRequest.EventID = %q, want okta-audit-2", got)
 	}
 	if len(runtimeStore.findings) != 1 {
 		t.Fatalf("len(runtimeStore.findings) = %d, want 1", len(runtimeStore.findings))
@@ -1447,6 +1517,34 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	}
 }
 
+func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
+	if finding == nil {
+		return false
+	}
+	if strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+		return false
+	}
+	if request.FindingID != "" && strings.TrimSpace(finding.ID) != strings.TrimSpace(request.FindingID) {
+		return false
+	}
+	if request.RuleID != "" && strings.TrimSpace(finding.RuleID) != strings.TrimSpace(request.RuleID) {
+		return false
+	}
+	if request.Severity != "" && strings.TrimSpace(finding.Severity) != strings.TrimSpace(request.Severity) {
+		return false
+	}
+	if request.Status != "" && strings.TrimSpace(finding.Status) != strings.TrimSpace(request.Status) {
+		return false
+	}
+	if request.ResourceURN != "" && !containsTrimmed(finding.ResourceURNs, request.ResourceURN) {
+		return false
+	}
+	if request.EventID != "" && !containsTrimmed(finding.EventIDs, request.EventID) {
+		return false
+	}
+	return true
+}
+
 func cloneClaim(claim *ports.ClaimRecord) *ports.ClaimRecord {
 	if claim == nil {
 		return nil
@@ -1507,6 +1605,16 @@ func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) boo
 		return false
 	}
 	return true
+}
+
+func containsTrimmed(values []string, expected string) bool {
+	trimmedExpected := strings.TrimSpace(expected)
+	for _, value := range values {
+		if strings.TrimSpace(value) == trimmedExpected {
+			return true
+		}
+	}
+	return false
 }
 
 func cloneReportRun(run *cerebrov1.ReportRun) *cerebrov1.ReportRun {
