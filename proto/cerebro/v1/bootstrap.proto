@@ -219,6 +219,7 @@ message SyncSourceRuntimeResponse {
 message WriteClaimsRequest {
   string runtime_id = 1;
   repeated Claim claims = 2;
+  bool replace_existing = 3;
 }
 
 // WriteClaimsResponse reports the persisted and projected batch totals.
@@ -226,6 +227,7 @@ message WriteClaimsResponse {
   uint32 claims_written = 1;
   uint32 entities_upserted = 2;
   uint32 relation_links_projected = 3;
+  uint32 claims_retracted = 4;
 }
 
 // ListClaimsRequest queries persisted claims for one stored runtime.
@@ -239,6 +241,7 @@ message ListClaimsRequest {
   string claim_type = 7;
   string status = 8;
   uint32 limit = 9;
+  string source_event_id = 10;
 }
 
 // ListClaimsResponse returns the matched persisted claims.

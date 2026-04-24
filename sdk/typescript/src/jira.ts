@@ -377,13 +377,18 @@ export async function onboardJiraWorkspacePosture(
   });
   const runtimeConfig: Record<string, string> = {};
   const workspaceKey = options.posture.workspaceKey.trim();
+  const sourceEventId = options.posture.eventId?.trim();
   if (workspaceKey) {
     runtimeConfig.workspace = workspaceKey;
   }
   await integration.ensureRuntime(runtimeConfig);
   const claims = buildJiraWorkspaceClaims(integration, options.posture);
-  const writeResult = await integration.writeClaims(claims);
-  const persisted = await integration.listClaims({ limit: 100 });
+  const writeResult = await integration.writeClaims(claims, { replace_existing: true });
+  const persisted = await integration.listClaims({
+    limit: 100,
+    status: "asserted",
+    ...(sourceEventId ? { source_event_id: sourceEventId } : {}),
+  });
   const graphLayering = await loadJiraWorkspaceGraphLayering(integration, options.posture);
   return {
     workspace_urn: claims[0]?.subject_urn ?? "",

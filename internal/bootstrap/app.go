@@ -254,14 +254,15 @@ func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleListClaims(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.ListClaimsRequest{
-		RuntimeId:   r.PathValue("runtimeID"),
-		ClaimId:     r.URL.Query().Get("claim_id"),
-		SubjectUrn:  r.URL.Query().Get("subject_urn"),
-		Predicate:   r.URL.Query().Get("predicate"),
-		ObjectUrn:   r.URL.Query().Get("object_urn"),
-		ObjectValue: r.URL.Query().Get("object_value"),
-		ClaimType:   r.URL.Query().Get("claim_type"),
-		Status:      r.URL.Query().Get("status"),
+		RuntimeId:     r.PathValue("runtimeID"),
+		ClaimId:       r.URL.Query().Get("claim_id"),
+		SubjectUrn:    r.URL.Query().Get("subject_urn"),
+		Predicate:     r.URL.Query().Get("predicate"),
+		ObjectUrn:     r.URL.Query().Get("object_urn"),
+		ObjectValue:   r.URL.Query().Get("object_value"),
+		ClaimType:     r.URL.Query().Get("claim_type"),
+		Status:        r.URL.Query().Get("status"),
+		SourceEventId: r.URL.Query().Get("source_event_id"),
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
@@ -277,17 +278,19 @@ func (a *App) handleListClaims(w http.ResponseWriter, r *http.Request) {
 		request.ObjectValue = r.URL.Query().Get("object_value")
 		request.ClaimType = r.URL.Query().Get("claim_type")
 		request.Status = r.URL.Query().Get("status")
+		request.SourceEventId = r.URL.Query().Get("source_event_id")
 	}
 	response, err := a.claimService().ListClaims(r.Context(), claims.ListRequest{
-		RuntimeID:   request.GetRuntimeId(),
-		ClaimID:     request.GetClaimId(),
-		SubjectURN:  request.GetSubjectUrn(),
-		Predicate:   request.GetPredicate(),
-		ObjectURN:   request.GetObjectUrn(),
-		ObjectValue: request.GetObjectValue(),
-		ClaimType:   request.GetClaimType(),
-		Status:      request.GetStatus(),
-		Limit:       request.GetLimit(),
+		RuntimeID:     request.GetRuntimeId(),
+		ClaimID:       request.GetClaimId(),
+		SubjectURN:    request.GetSubjectUrn(),
+		Predicate:     request.GetPredicate(),
+		ObjectURN:     request.GetObjectUrn(),
+		ObjectValue:   request.GetObjectValue(),
+		ClaimType:     request.GetClaimType(),
+		Status:        request.GetStatus(),
+		SourceEventID: request.GetSourceEventId(),
+		Limit:         request.GetLimit(),
 	})
 	if err != nil {
 		writeClaimError(w, err)
@@ -306,8 +309,9 @@ func (a *App) handleWriteClaims(w http.ResponseWriter, r *http.Request) {
 	}
 	request.RuntimeId = r.PathValue("runtimeID")
 	response, err := a.claimService().WriteClaims(r.Context(), claims.WriteRequest{
-		RuntimeID: request.GetRuntimeId(),
-		Claims:    request.GetClaims(),
+		RuntimeID:       request.GetRuntimeId(),
+		Claims:          request.GetClaims(),
+		ReplaceExisting: request.GetReplaceExisting(),
 	})
 	if err != nil {
 		writeClaimError(w, err)
@@ -317,6 +321,7 @@ func (a *App) handleWriteClaims(w http.ResponseWriter, r *http.Request) {
 		ClaimsWritten:          response.ClaimsWritten,
 		EntitiesUpserted:       response.EntitiesUpserted,
 		RelationLinksProjected: response.RelationLinksProjected,
+		ClaimsRetracted:        response.ClaimsRetracted,
 	})
 }
 
@@ -461,8 +466,9 @@ func (s *bootstrapService) WriteClaims(ctx context.Context, req *connect.Request
 		sourceProjectionStateStore(s.deps.StateStore),
 		sourceProjectionGraphStore(s.deps.GraphStore),
 	).WriteClaims(ctx, claims.WriteRequest{
-		RuntimeID: req.Msg.GetRuntimeId(),
-		Claims:    req.Msg.GetClaims(),
+		RuntimeID:       req.Msg.GetRuntimeId(),
+		Claims:          req.Msg.GetClaims(),
+		ReplaceExisting: req.Msg.GetReplaceExisting(),
 	})
 	if err != nil {
 		return nil, err
@@ -471,6 +477,7 @@ func (s *bootstrapService) WriteClaims(ctx context.Context, req *connect.Request
 		ClaimsWritten:          response.ClaimsWritten,
 		EntitiesUpserted:       response.EntitiesUpserted,
 		RelationLinksProjected: response.RelationLinksProjected,
+		ClaimsRetracted:        response.ClaimsRetracted,
 	}), nil
 }
 
@@ -481,15 +488,16 @@ func (s *bootstrapService) ListClaims(ctx context.Context, req *connect.Request[
 		sourceProjectionStateStore(s.deps.StateStore),
 		sourceProjectionGraphStore(s.deps.GraphStore),
 	).ListClaims(ctx, claims.ListRequest{
-		RuntimeID:   req.Msg.GetRuntimeId(),
-		ClaimID:     req.Msg.GetClaimId(),
-		SubjectURN:  req.Msg.GetSubjectUrn(),
-		Predicate:   req.Msg.GetPredicate(),
-		ObjectURN:   req.Msg.GetObjectUrn(),
-		ObjectValue: req.Msg.GetObjectValue(),
-		ClaimType:   req.Msg.GetClaimType(),
-		Status:      req.Msg.GetStatus(),
-		Limit:       req.Msg.GetLimit(),
+		RuntimeID:     req.Msg.GetRuntimeId(),
+		ClaimID:       req.Msg.GetClaimId(),
+		SubjectURN:    req.Msg.GetSubjectUrn(),
+		Predicate:     req.Msg.GetPredicate(),
+		ObjectURN:     req.Msg.GetObjectUrn(),
+		ObjectValue:   req.Msg.GetObjectValue(),
+		ClaimType:     req.Msg.GetClaimType(),
+		Status:        req.Msg.GetStatus(),
+		SourceEventID: req.Msg.GetSourceEventId(),
+		Limit:         req.Msg.GetLimit(),
 	})
 	if err != nil {
 		return nil, err

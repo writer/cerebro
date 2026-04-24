@@ -22,6 +22,7 @@ const (
 	claimTypeRelation       = "relation"
 	claimTypeClassification = "classification"
 	claimStatusAsserted     = "asserted"
+	claimStatusRetracted    = "retracted"
 )
 
 // ErrRuntimeUnavailable indicates that the runtime or claim store boundary is unavailable.
@@ -37,8 +38,9 @@ type Service struct {
 
 // WriteRequest scopes one runtime-scoped claim batch.
 type WriteRequest struct {
-	RuntimeID string
-	Claims    []*cerebrov1.Claim
+	RuntimeID       string
+	Claims          []*cerebrov1.Claim
+	ReplaceExisting bool
 }
 
 // WriteResult reports one claim batch write.
@@ -46,19 +48,21 @@ type WriteResult struct {
 	ClaimsWritten          uint32
 	EntitiesUpserted       uint32
 	RelationLinksProjected uint32
+	ClaimsRetracted        uint32
 }
 
 // ListRequest scopes one runtime-scoped claim query.
 type ListRequest struct {
-	RuntimeID   string
-	ClaimID     string
-	SubjectURN  string
-	Predicate   string
-	ObjectURN   string
-	ObjectValue string
-	ClaimType   string
-	Status      string
-	Limit       uint32
+	RuntimeID     string
+	ClaimID       string
+	SubjectURN    string
+	Predicate     string
+	ObjectURN     string
+	ObjectValue   string
+	ClaimType     string
+	Status        string
+	SourceEventID string
+	Limit         uint32
 }
 
 // ListResult reports one runtime-scoped claim query.
@@ -92,11 +96,15 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 	result := &WriteResult{}
 	upsertedEntities := make(map[string]struct{})
 	upsertedLinks := make(map[string]struct{})
+	normalizedClaims := make([]*cerebrov1.Claim, 0, len(request.Claims))
 	for index, raw := range request.Claims {
 		claim, err := normalizeClaim(raw, runtime)
 		if err != nil {
 			return nil, fmt.Errorf("normalize claim %d: %w", index, err)
 		}
+		normalizedClaims = append(normalizedClaims, claim)
+	}
+	for _, claim := range normalizedClaims {
 		if entity := projectedEntity(runtime, claim.GetSubjectRef(), claim.GetSubjectUrn()); entity != nil {
 			wrote, err := s.upsertEntity(ctx, entity, upsertedEntities)
 			if err != nil {
@@ -129,6 +137,13 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 		}
 		result.ClaimsWritten++
 	}
+	if request.ReplaceExisting {
+		retracted, err := s.retractMissingClaims(ctx, runtimeID, normalizedClaims)
+		if err != nil {
+			return nil, err
+		}
+		result.ClaimsRetracted = retracted
+	}
 	return result, nil
 }
 
@@ -145,15 +160,16 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 		return nil, err
 	}
 	records, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
-		RuntimeID:   runtimeID,
-		ClaimID:     strings.TrimSpace(request.ClaimID),
-		SubjectURN:  strings.TrimSpace(request.SubjectURN),
-		Predicate:   strings.TrimSpace(request.Predicate),
-		ObjectURN:   strings.TrimSpace(request.ObjectURN),
-		ObjectValue: strings.TrimSpace(request.ObjectValue),
-		ClaimType:   strings.TrimSpace(request.ClaimType),
-		Status:      strings.TrimSpace(request.Status),
-		Limit:       request.Limit,
+		RuntimeID:     runtimeID,
+		ClaimID:       strings.TrimSpace(request.ClaimID),
+		SubjectURN:    strings.TrimSpace(request.SubjectURN),
+		Predicate:     strings.TrimSpace(request.Predicate),
+		ObjectURN:     strings.TrimSpace(request.ObjectURN),
+		ObjectValue:   strings.TrimSpace(request.ObjectValue),
+		ClaimType:     strings.TrimSpace(request.ClaimType),
+		Status:        strings.TrimSpace(request.Status),
+		SourceEventID: strings.TrimSpace(request.SourceEventID),
+		Limit:         request.Limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list claims for runtime %q: %w", runtimeID, err)
@@ -166,6 +182,105 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 		response.Claims = append(response.Claims, protoClaim(record))
 	}
 	return response, nil
+}
+
+func (s *Service) retractMissingClaims(ctx context.Context, runtimeID string, claims []*cerebrov1.Claim) (uint32, error) {
+	incomingIDs := make(map[string]struct{}, len(claims))
+	for _, claim := range claims {
+		if claim == nil {
+			continue
+		}
+		if claimID := strings.TrimSpace(claim.GetId()); claimID != "" {
+			incomingIDs[claimID] = struct{}{}
+		}
+	}
+	existing, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
+		RuntimeID: runtimeID,
+		Status:    claimStatusAsserted,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("list existing claims for runtime %q: %w", runtimeID, err)
+	}
+	retractAt := snapshotObservedAt(claims)
+	snapshotEventID := snapshotSourceEventID(claims)
+	var retracted uint32
+	for _, existingClaim := range existing {
+		if existingClaim == nil {
+			continue
+		}
+		if _, ok := incomingIDs[strings.TrimSpace(existingClaim.ID)]; ok {
+			continue
+		}
+		if _, err := s.store.UpsertClaim(ctx, retractedClaim(existingClaim, retractAt, snapshotEventID)); err != nil {
+			return retracted, fmt.Errorf("retract claim %q: %w", existingClaim.ID, err)
+		}
+		retracted++
+	}
+	return retracted, nil
+}
+
+func snapshotObservedAt(claims []*cerebrov1.Claim) time.Time {
+	latest := time.Time{}
+	for _, claim := range claims {
+		if claim == nil || claim.GetObservedAt() == nil {
+			continue
+		}
+		observedAt := claim.GetObservedAt().AsTime().UTC()
+		if observedAt.IsZero() {
+			continue
+		}
+		if latest.IsZero() || observedAt.After(latest) {
+			latest = observedAt
+		}
+	}
+	if latest.IsZero() {
+		return time.Now().UTC()
+	}
+	return latest
+}
+
+func snapshotSourceEventID(claims []*cerebrov1.Claim) string {
+	for _, claim := range claims {
+		if claim == nil {
+			continue
+		}
+		if sourceEventID := strings.TrimSpace(claim.GetSourceEventId()); sourceEventID != "" {
+			return sourceEventID
+		}
+	}
+	return ""
+}
+
+func retractedClaim(claim *ports.ClaimRecord, retractAt time.Time, sourceEventID string) *ports.ClaimRecord {
+	if claim == nil {
+		return nil
+	}
+	attributes := make(map[string]string, len(claim.Attributes))
+	for key, value := range claim.Attributes {
+		attributes[key] = value
+	}
+	retracted := &ports.ClaimRecord{
+		ID:            strings.TrimSpace(claim.ID),
+		RuntimeID:     strings.TrimSpace(claim.RuntimeID),
+		TenantID:      strings.TrimSpace(claim.TenantID),
+		SubjectURN:    strings.TrimSpace(claim.SubjectURN),
+		SubjectRef:    cloneEntityRef(claim.SubjectRef),
+		Predicate:     strings.TrimSpace(claim.Predicate),
+		ObjectURN:     strings.TrimSpace(claim.ObjectURN),
+		ObjectRef:     cloneEntityRef(claim.ObjectRef),
+		ObjectValue:   strings.TrimSpace(claim.ObjectValue),
+		ClaimType:     strings.TrimSpace(claim.ClaimType),
+		Status:        claimStatusRetracted,
+		SourceEventID: strings.TrimSpace(claim.SourceEventID),
+		ObservedAt:    retractAt.UTC(),
+		ValidFrom:     claim.ValidFrom.UTC(),
+		ValidTo:       retractAt.UTC(),
+		Attributes:    attributes,
+	}
+	if sourceEventID != "" {
+		retracted.SourceEventID = sourceEventID
+	}
+	return retracted
 }
 
 func (s *Service) upsertEntity(ctx context.Context, entity *ports.ProjectedEntity, seen map[string]struct{}) (bool, error) {

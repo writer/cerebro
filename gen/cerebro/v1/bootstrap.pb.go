@@ -1695,11 +1695,12 @@ func (x *SyncSourceRuntimeResponse) GetLinksProjected() uint32 {
 
 // WriteClaimsRequest persists one batch of runtime-scoped claims.
 type WriteClaimsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RuntimeId     string                 `protobuf:"bytes,1,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"`
-	Claims        []*Claim               `protobuf:"bytes,2,rep,name=claims,proto3" json:"claims,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	RuntimeId       string                 `protobuf:"bytes,1,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"`
+	Claims          []*Claim               `protobuf:"bytes,2,rep,name=claims,proto3" json:"claims,omitempty"`
+	ReplaceExisting bool                   `protobuf:"varint,3,opt,name=replace_existing,json=replaceExisting,proto3" json:"replace_existing,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *WriteClaimsRequest) Reset() {
@@ -1746,12 +1747,20 @@ func (x *WriteClaimsRequest) GetClaims() []*Claim {
 	return nil
 }
 
+func (x *WriteClaimsRequest) GetReplaceExisting() bool {
+	if x != nil {
+		return x.ReplaceExisting
+	}
+	return false
+}
+
 // WriteClaimsResponse reports the persisted and projected batch totals.
 type WriteClaimsResponse struct {
 	state                  protoimpl.MessageState `protogen:"open.v1"`
 	ClaimsWritten          uint32                 `protobuf:"varint,1,opt,name=claims_written,json=claimsWritten,proto3" json:"claims_written,omitempty"`
 	EntitiesUpserted       uint32                 `protobuf:"varint,2,opt,name=entities_upserted,json=entitiesUpserted,proto3" json:"entities_upserted,omitempty"`
 	RelationLinksProjected uint32                 `protobuf:"varint,3,opt,name=relation_links_projected,json=relationLinksProjected,proto3" json:"relation_links_projected,omitempty"`
+	ClaimsRetracted        uint32                 `protobuf:"varint,4,opt,name=claims_retracted,json=claimsRetracted,proto3" json:"claims_retracted,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -1807,6 +1816,13 @@ func (x *WriteClaimsResponse) GetRelationLinksProjected() uint32 {
 	return 0
 }
 
+func (x *WriteClaimsResponse) GetClaimsRetracted() uint32 {
+	if x != nil {
+		return x.ClaimsRetracted
+	}
+	return 0
+}
+
 // ListClaimsRequest queries persisted claims for one stored runtime.
 type ListClaimsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1819,6 +1835,7 @@ type ListClaimsRequest struct {
 	ClaimType     string                 `protobuf:"bytes,7,opt,name=claim_type,json=claimType,proto3" json:"claim_type,omitempty"`
 	Status        string                 `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`
 	Limit         uint32                 `protobuf:"varint,9,opt,name=limit,proto3" json:"limit,omitempty"`
+	SourceEventId string                 `protobuf:"bytes,10,opt,name=source_event_id,json=sourceEventId,proto3" json:"source_event_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1914,6 +1931,13 @@ func (x *ListClaimsRequest) GetLimit() uint32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *ListClaimsRequest) GetSourceEventId() string {
+	if x != nil {
+		return x.SourceEventId
+	}
+	return ""
 }
 
 // ListClaimsResponse returns the matched persisted claims.
@@ -2618,15 +2642,17 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"pages_read\x18\x03 \x01(\rR\tpagesRead\x12'\n" +
 	"\x0fevents_appended\x18\x04 \x01(\rR\x0eeventsAppended\x12-\n" +
 	"\x12entities_projected\x18\x05 \x01(\rR\x11entitiesProjected\x12'\n" +
-	"\x0flinks_projected\x18\x06 \x01(\rR\x0elinksProjected\"^\n" +
+	"\x0flinks_projected\x18\x06 \x01(\rR\x0elinksProjected\"\x89\x01\n" +
 	"\x12WriteClaimsRequest\x12\x1d\n" +
 	"\n" +
 	"runtime_id\x18\x01 \x01(\tR\truntimeId\x12)\n" +
-	"\x06claims\x18\x02 \x03(\v2\x11.cerebro.v1.ClaimR\x06claims\"\xa3\x01\n" +
+	"\x06claims\x18\x02 \x03(\v2\x11.cerebro.v1.ClaimR\x06claims\x12)\n" +
+	"\x10replace_existing\x18\x03 \x01(\bR\x0freplaceExisting\"\xce\x01\n" +
 	"\x13WriteClaimsResponse\x12%\n" +
 	"\x0eclaims_written\x18\x01 \x01(\rR\rclaimsWritten\x12+\n" +
 	"\x11entities_upserted\x18\x02 \x01(\rR\x10entitiesUpserted\x128\n" +
-	"\x18relation_links_projected\x18\x03 \x01(\rR\x16relationLinksProjected\"\x9b\x02\n" +
+	"\x18relation_links_projected\x18\x03 \x01(\rR\x16relationLinksProjected\x12)\n" +
+	"\x10claims_retracted\x18\x04 \x01(\rR\x0fclaimsRetracted\"\xc3\x02\n" +
 	"\x11ListClaimsRequest\x12\x1d\n" +
 	"\n" +
 	"runtime_id\x18\x01 \x01(\tR\truntimeId\x12\x19\n" +
@@ -2640,7 +2666,9 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\n" +
 	"claim_type\x18\a \x01(\tR\tclaimType\x12\x16\n" +
 	"\x06status\x18\b \x01(\tR\x06status\x12\x14\n" +
-	"\x05limit\x18\t \x01(\rR\x05limit\"?\n" +
+	"\x05limit\x18\t \x01(\rR\x05limit\x12&\n" +
+	"\x0fsource_event_id\x18\n" +
+	" \x01(\tR\rsourceEventId\"?\n" +
 	"\x12ListClaimsResponse\x12)\n" +
 	"\x06claims\x18\x01 \x03(\v2\x11.cerebro.v1.ClaimR\x06claims\"\xc8\x04\n" +
 	"\aFinding\x12\x0e\n" +
