@@ -336,6 +336,68 @@ class IntegrationClient:
                 }
         return layering
 
+    def graph_summary(self, layering: Dict[str, Any]) -> Dict[str, Any]:
+        roots = []
+        node_counts: Dict[str, int] = {}
+        relation_counts: Dict[str, int] = {}
+        neighborhood_sizes: Dict[str, Dict[str, int]] = {}
+        errors: Dict[str, str] = {}
+        seen_nodes = set()
+        seen_relations = set()
+        for root_urn, entry in layering.items():
+            if not isinstance(entry, dict):
+                continue
+            error = _optional_string(entry.get("error"))
+            if error is not None:
+                errors[_optional_string(entry.get("root_urn")) or root_urn] = error
+                continue
+            root = entry.get("root")
+            if not isinstance(root, dict):
+                continue
+            root_key = _optional_string(root.get("urn"))
+            if root_key is None:
+                continue
+            roots.append(
+                {
+                    "urn": root_key,
+                    "entity_type": _optional_string(root.get("entity_type")) or "unknown",
+                    "label": _optional_string(root.get("label")) or root_key,
+                }
+            )
+            neighborhood_sizes[root_key] = {
+                "neighbors": len(entry.get("neighbors", [])),
+                "relations": len(entry.get("relations", [])),
+            }
+            for node in [root] + list(entry.get("neighbors", [])):
+                if not isinstance(node, dict):
+                    continue
+                node_urn = _optional_string(node.get("urn"))
+                entity_type = _optional_string(node.get("entity_type")) or "unknown"
+                if node_urn is None or node_urn in seen_nodes:
+                    continue
+                seen_nodes.add(node_urn)
+                node_counts[entity_type] = node_counts.get(entity_type, 0) + 1
+            for relation in entry.get("relations", []):
+                if not isinstance(relation, dict):
+                    continue
+                from_urn = _optional_string(relation.get("from_urn"))
+                name = _optional_string(relation.get("relation"))
+                to_urn = _optional_string(relation.get("to_urn"))
+                if from_urn is None or name is None or to_urn is None:
+                    continue
+                key = (from_urn, name, to_urn)
+                if key in seen_relations:
+                    continue
+                seen_relations.add(key)
+                relation_counts[name] = relation_counts.get(name, 0) + 1
+        return {
+            "roots": roots,
+            "node_counts_by_type": node_counts,
+            "relation_counts_by_type": relation_counts,
+            "neighborhood_sizes": neighborhood_sizes,
+            "errors": errors,
+        }
+
     def ref(self, kind: str, external_id: str, label: str = "") -> Dict[str, str]:
         normalized_kind = kind.strip()
         normalized_external_id = external_id.strip()
@@ -388,3 +450,10 @@ class IntegrationClient:
 
     def _build_urn(self, kind: str, external_id: str) -> str:
         return ":".join(["urn", "cerebro", self.tenant_id, "runtime", self.runtime_id, kind, external_id])
+
+
+def _optional_string(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
