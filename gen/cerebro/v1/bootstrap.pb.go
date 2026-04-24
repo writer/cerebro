@@ -2804,6 +2804,7 @@ type ListFindingsRequest struct {
 	ResourceUrn   string                 `protobuf:"bytes,6,opt,name=resource_urn,json=resourceUrn,proto3" json:"resource_urn,omitempty"`
 	EventId       string                 `protobuf:"bytes,7,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	Limit         uint32                 `protobuf:"varint,8,opt,name=limit,proto3" json:"limit,omitempty"`
+	PolicyId      string                 `protobuf:"bytes,9,opt,name=policy_id,json=policyId,proto3" json:"policy_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2894,28 +2895,38 @@ func (x *ListFindingsRequest) GetLimit() uint32 {
 	return 0
 }
 
+func (x *ListFindingsRequest) GetPolicyId() string {
+	if x != nil {
+		return x.PolicyId
+	}
+	return ""
+}
+
 // Finding is the normalized persisted finding view for the first runtime evaluator slice.
 type Finding struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Fingerprint     string                 `protobuf:"bytes,2,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
-	TenantId        string                 `protobuf:"bytes,3,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	RuntimeId       string                 `protobuf:"bytes,4,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"`
-	RuleId          string                 `protobuf:"bytes,5,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
-	Title           string                 `protobuf:"bytes,6,opt,name=title,proto3" json:"title,omitempty"`
-	Severity        string                 `protobuf:"bytes,7,opt,name=severity,proto3" json:"severity,omitempty"`
-	Status          FindingStatus          `protobuf:"varint,8,opt,name=status,proto3,enum=cerebro.v1.FindingStatus" json:"status,omitempty"`
-	Summary         string                 `protobuf:"bytes,9,opt,name=summary,proto3" json:"summary,omitempty"`
-	ResourceUrns    []string               `protobuf:"bytes,10,rep,name=resource_urns,json=resourceUrns,proto3" json:"resource_urns,omitempty"`
-	EventIds        []string               `protobuf:"bytes,11,rep,name=event_ids,json=eventIds,proto3" json:"event_ids,omitempty"`
-	Attributes      map[string]string      `protobuf:"bytes,12,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	FirstObservedAt *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=first_observed_at,json=firstObservedAt,proto3" json:"first_observed_at,omitempty"`
-	LastObservedAt  *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=last_observed_at,json=lastObservedAt,proto3" json:"last_observed_at,omitempty"`
-	Assignee        string                 `protobuf:"bytes,15,opt,name=assignee,proto3" json:"assignee,omitempty"`
-	StatusReason    string                 `protobuf:"bytes,16,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"`
-	StatusUpdatedAt *timestamppb.Timestamp `protobuf:"bytes,17,opt,name=status_updated_at,json=statusUpdatedAt,proto3" json:"status_updated_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Fingerprint       string                 `protobuf:"bytes,2,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	TenantId          string                 `protobuf:"bytes,3,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	RuntimeId         string                 `protobuf:"bytes,4,opt,name=runtime_id,json=runtimeId,proto3" json:"runtime_id,omitempty"`
+	RuleId            string                 `protobuf:"bytes,5,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
+	Title             string                 `protobuf:"bytes,6,opt,name=title,proto3" json:"title,omitempty"`
+	Severity          string                 `protobuf:"bytes,7,opt,name=severity,proto3" json:"severity,omitempty"`
+	Status            FindingStatus          `protobuf:"varint,8,opt,name=status,proto3,enum=cerebro.v1.FindingStatus" json:"status,omitempty"`
+	Summary           string                 `protobuf:"bytes,9,opt,name=summary,proto3" json:"summary,omitempty"`
+	ResourceUrns      []string               `protobuf:"bytes,10,rep,name=resource_urns,json=resourceUrns,proto3" json:"resource_urns,omitempty"`
+	EventIds          []string               `protobuf:"bytes,11,rep,name=event_ids,json=eventIds,proto3" json:"event_ids,omitempty"`
+	Attributes        map[string]string      `protobuf:"bytes,12,rep,name=attributes,proto3" json:"attributes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	FirstObservedAt   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=first_observed_at,json=firstObservedAt,proto3" json:"first_observed_at,omitempty"`
+	LastObservedAt    *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=last_observed_at,json=lastObservedAt,proto3" json:"last_observed_at,omitempty"`
+	Assignee          string                 `protobuf:"bytes,15,opt,name=assignee,proto3" json:"assignee,omitempty"`
+	StatusReason      string                 `protobuf:"bytes,16,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"`
+	StatusUpdatedAt   *timestamppb.Timestamp `protobuf:"bytes,17,opt,name=status_updated_at,json=statusUpdatedAt,proto3" json:"status_updated_at,omitempty"`
+	ObservedPolicyIds []string               `protobuf:"bytes,18,rep,name=observed_policy_ids,json=observedPolicyIds,proto3" json:"observed_policy_ids,omitempty"`
+	PolicyId          string                 `protobuf:"bytes,19,opt,name=policy_id,json=policyId,proto3" json:"policy_id,omitempty"`
+	PolicyName        string                 `protobuf:"bytes,20,opt,name=policy_name,json=policyName,proto3" json:"policy_name,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Finding) Reset() {
@@ -3065,6 +3076,27 @@ func (x *Finding) GetStatusUpdatedAt() *timestamppb.Timestamp {
 		return x.StatusUpdatedAt
 	}
 	return nil
+}
+
+func (x *Finding) GetObservedPolicyIds() []string {
+	if x != nil {
+		return x.ObservedPolicyIds
+	}
+	return nil
+}
+
+func (x *Finding) GetPolicyId() string {
+	if x != nil {
+		return x.PolicyId
+	}
+	return ""
+}
+
+func (x *Finding) GetPolicyName() string {
+	if x != nil {
+		return x.PolicyName
+	}
+	return ""
 }
 
 // GetFindingRequest loads one persisted finding by its durable identifier.
@@ -4310,7 +4342,7 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x0fsource_event_id\x18\n" +
 	" \x01(\tR\rsourceEventId\"?\n" +
 	"\x12ListClaimsResponse\x12)\n" +
-	"\x06claims\x18\x01 \x03(\v2\x11.cerebro.v1.ClaimR\x06claims\"\x8f\x02\n" +
+	"\x06claims\x18\x01 \x03(\v2\x11.cerebro.v1.ClaimR\x06claims\"\xac\x02\n" +
 	"\x13ListFindingsRequest\x12\x1d\n" +
 	"\n" +
 	"runtime_id\x18\x01 \x01(\tR\truntimeId\x12\x1d\n" +
@@ -4321,7 +4353,8 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x06status\x18\x05 \x01(\x0e2\x19.cerebro.v1.FindingStatusR\x06status\x12!\n" +
 	"\fresource_urn\x18\x06 \x01(\tR\vresourceUrn\x12\x19\n" +
 	"\bevent_id\x18\a \x01(\tR\aeventId\x12\x14\n" +
-	"\x05limit\x18\b \x01(\rR\x05limit\"\xec\x05\n" +
+	"\x05limit\x18\b \x01(\rR\x05limit\x12\x1b\n" +
+	"\tpolicy_id\x18\t \x01(\tR\bpolicyId\"\xda\x06\n" +
 	"\aFinding\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\vfingerprint\x18\x02 \x01(\tR\vfingerprint\x12\x1b\n" +
@@ -4343,7 +4376,11 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x10last_observed_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\x0elastObservedAt\x12\x1a\n" +
 	"\bassignee\x18\x0f \x01(\tR\bassignee\x12#\n" +
 	"\rstatus_reason\x18\x10 \x01(\tR\fstatusReason\x12F\n" +
-	"\x11status_updated_at\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\x0fstatusUpdatedAt\x1a=\n" +
+	"\x11status_updated_at\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\x0fstatusUpdatedAt\x12.\n" +
+	"\x13observed_policy_ids\x18\x12 \x03(\tR\x11observedPolicyIds\x12\x1b\n" +
+	"\tpolicy_id\x18\x13 \x01(\tR\bpolicyId\x12\x1f\n" +
+	"\vpolicy_name\x18\x14 \x01(\tR\n" +
+	"policyName\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"#\n" +

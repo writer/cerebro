@@ -76,6 +76,7 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 		RuleID:      "identity-okta-policy-rule-lifecycle-tampering",
 		Severity:    "HIGH",
 		Status:      "open",
+		PolicyID:    "pol-1",
 		ResourceURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
 		EventID:     "okta-audit-2",
 		Limit:       25,
@@ -89,27 +90,31 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 		"rule_id = $3",
 		"severity = $4",
 		"status = $5",
-		"resource_urns_json @> $6::jsonb",
-		"event_ids_json @> $7::jsonb",
-		"LIMIT $8",
+		"policy_id = $6",
+		"resource_urns_json @> $7::jsonb",
+		"event_ids_json @> $8::jsonb",
+		"LIMIT $9",
 	} {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("findingListQuery() query missing %q: %s", fragment, query)
 		}
 	}
-	if got := len(args); got != 8 {
-		t.Fatalf("len(findingListQuery().args) = %d, want 8", got)
+	if got := len(args); got != 9 {
+		t.Fatalf("len(findingListQuery().args) = %d, want 9", got)
 	}
 	if got := args[0]; got != "writer-okta-audit" {
 		t.Fatalf("findingListQuery().args[0] = %#v, want writer-okta-audit", got)
 	}
-	if got := args[5]; got != `["urn:cerebro:writer:okta_resource:policyrule:pol-1"]` {
-		t.Fatalf("findingListQuery().args[5] = %#v, want resource urn array json", got)
+	if got := args[5]; got != "pol-1" {
+		t.Fatalf("findingListQuery().args[5] = %#v, want pol-1", got)
 	}
-	if got := args[6]; got != `["okta-audit-2"]` {
-		t.Fatalf("findingListQuery().args[6] = %#v, want event id array json", got)
+	if got := args[6]; got != `["urn:cerebro:writer:okta_resource:policyrule:pol-1"]` {
+		t.Fatalf("findingListQuery().args[6] = %#v, want resource urn array json", got)
 	}
-	if got := args[7]; got != int64(25) {
-		t.Fatalf("findingListQuery().args[7] = %#v, want 25", got)
+	if got := args[7]; got != `["okta-audit-2"]` {
+		t.Fatalf("findingListQuery().args[7] = %#v, want event id array json", got)
+	}
+	if got := args[8]; got != int64(25) {
+		t.Fatalf("findingListQuery().args[8] = %#v, want 25", got)
 	}
 }

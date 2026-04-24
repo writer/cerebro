@@ -1047,6 +1047,12 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := findingPayload["summary"]; got != "admin@writer.com performed policy.rule.update on pol-1" {
 		t.Fatalf("evaluate finding summary = %#v, want admin summary", got)
 	}
+	if got := findingPayload["policy_id"]; got != "pol-1" {
+		t.Fatalf("evaluate finding policy_id = %#v, want pol-1", got)
+	}
+	if got := findingPayload["policy_name"]; got != "pol-1" {
+		t.Fatalf("evaluate finding policy_name = %#v, want pol-1", got)
+	}
 	runPayload, ok := evaluatePayload["run"].(map[string]any)
 	if !ok {
 		t.Fatalf("evaluate run payload = %#v, want object", evaluatePayload["run"])
@@ -1276,6 +1282,7 @@ func TestFindingEndpoints(t *testing.T) {
 		RuleId:      "identity-okta-policy-rule-lifecycle-tampering",
 		Severity:    "HIGH",
 		Status:      cerebrov1.FindingStatus_FINDING_STATUS_OPEN,
+		PolicyId:    "pol-1",
 		ResourceUrn: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
 		EventId:     "okta-audit-2",
 		Limit:       1,
@@ -1289,6 +1296,9 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := listFindingsResp.Msg.GetFindings()[0].GetId(); got == "" {
 		t.Fatal("ListFindings().Findings[0].ID = empty, want non-empty")
 	}
+	if got := listFindingsResp.Msg.GetFindings()[0].GetPolicyId(); got != "pol-1" {
+		t.Fatalf("ListFindings().Findings[0].PolicyId = %q, want pol-1", got)
+	}
 	if got := runtimeStore.findingListRequest.RuleID; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("runtimeStore.findingListRequest.RuleID = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
@@ -1297,6 +1307,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := runtimeStore.findingListRequest.EventID; got != "okta-audit-2" {
 		t.Fatalf("runtimeStore.findingListRequest.EventID = %q, want okta-audit-2", got)
+	}
+	if got := runtimeStore.findingListRequest.PolicyID; got != "pol-1" {
+		t.Fatalf("runtimeStore.findingListRequest.PolicyID = %q, want pol-1", got)
 	}
 	listRunsResp, err := client.ListFindingEvaluationRuns(context.Background(), connect.NewRequest(&cerebrov1.ListFindingEvaluationRunsRequest{
 		RuntimeId: "writer-okta-audit",
@@ -2048,28 +2061,33 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(resourceURNs, finding.ResourceURNs)
 	eventIDs := make([]string, len(finding.EventIDs))
 	copy(eventIDs, finding.EventIDs)
+	observedPolicyIDs := make([]string, len(finding.ObservedPolicyIDs))
+	copy(observedPolicyIDs, finding.ObservedPolicyIDs)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
 	}
 	return &ports.FindingRecord{
-		ID:              finding.ID,
-		Fingerprint:     finding.Fingerprint,
-		TenantID:        finding.TenantID,
-		RuntimeID:       finding.RuntimeID,
-		RuleID:          finding.RuleID,
-		Title:           finding.Title,
-		Severity:        finding.Severity,
-		Status:          finding.Status,
-		Summary:         finding.Summary,
-		ResourceURNs:    resourceURNs,
-		EventIDs:        eventIDs,
-		Attributes:      attributes,
-		Assignee:        finding.Assignee,
-		StatusReason:    finding.StatusReason,
-		StatusUpdatedAt: finding.StatusUpdatedAt,
-		FirstObservedAt: finding.FirstObservedAt,
-		LastObservedAt:  finding.LastObservedAt,
+		ID:                finding.ID,
+		Fingerprint:       finding.Fingerprint,
+		TenantID:          finding.TenantID,
+		RuntimeID:         finding.RuntimeID,
+		RuleID:            finding.RuleID,
+		Title:             finding.Title,
+		Severity:          finding.Severity,
+		Status:            finding.Status,
+		Summary:           finding.Summary,
+		ResourceURNs:      resourceURNs,
+		EventIDs:          eventIDs,
+		ObservedPolicyIDs: observedPolicyIDs,
+		PolicyID:          finding.PolicyID,
+		PolicyName:        finding.PolicyName,
+		Attributes:        attributes,
+		Assignee:          finding.Assignee,
+		StatusReason:      finding.StatusReason,
+		StatusUpdatedAt:   finding.StatusUpdatedAt,
+		FirstObservedAt:   finding.FirstObservedAt,
+		LastObservedAt:    finding.LastObservedAt,
 	}
 }
 
@@ -2114,6 +2132,9 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 		return false
 	}
 	if request.EventID != "" && !containsTrimmed(finding.EventIDs, request.EventID) {
+		return false
+	}
+	if request.PolicyID != "" && strings.TrimSpace(finding.PolicyID) != strings.TrimSpace(request.PolicyID) {
 		return false
 	}
 	return true

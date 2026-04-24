@@ -107,6 +107,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 				ID:           "finding-1",
 				RuntimeID:    "writer-okta-audit",
 				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
+				PolicyID:     "pol-1",
 				Severity:     "HIGH",
 				Status:       "open",
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
@@ -118,6 +119,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 				ID:           "finding-2",
 				RuntimeID:    "writer-okta-audit",
 				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
+				PolicyID:     "pol-1",
 				Severity:     "HIGH",
 				Status:       "resolved",
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
@@ -187,6 +189,10 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	severityCounts, ok := result["severity_counts"].([]any)
 	if !ok || len(severityCounts) != 1 {
 		t.Fatalf("Run().Run.Result[severity_counts] = %#v, want 1 entry", result["severity_counts"])
+	}
+	policyCounts, ok := result["policy_counts"].([]any)
+	if !ok || len(policyCounts) != 1 {
+		t.Fatalf("Run().Run.Result[policy_counts] = %#v, want 1 entry", result["policy_counts"])
 	}
 	resourceCounts, ok := result["resource_counts"].([]any)
 	if !ok || len(resourceCounts) != 1 {
@@ -264,23 +270,26 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		return nil
 	}
 	return &ports.FindingRecord{
-		ID:              finding.ID,
-		Fingerprint:     finding.Fingerprint,
-		TenantID:        finding.TenantID,
-		RuntimeID:       finding.RuntimeID,
-		RuleID:          finding.RuleID,
-		Title:           finding.Title,
-		Severity:        finding.Severity,
-		Status:          finding.Status,
-		Summary:         finding.Summary,
-		ResourceURNs:    append([]string(nil), finding.ResourceURNs...),
-		EventIDs:        append([]string(nil), finding.EventIDs...),
-		Attributes:      cloneAttributes(finding.Attributes),
-		Assignee:        finding.Assignee,
-		StatusReason:    finding.StatusReason,
-		StatusUpdatedAt: finding.StatusUpdatedAt,
-		FirstObservedAt: finding.FirstObservedAt,
-		LastObservedAt:  finding.LastObservedAt,
+		ID:                finding.ID,
+		Fingerprint:       finding.Fingerprint,
+		TenantID:          finding.TenantID,
+		RuntimeID:         finding.RuntimeID,
+		RuleID:            finding.RuleID,
+		Title:             finding.Title,
+		Severity:          finding.Severity,
+		Status:            finding.Status,
+		Summary:           finding.Summary,
+		ResourceURNs:      append([]string(nil), finding.ResourceURNs...),
+		EventIDs:          append([]string(nil), finding.EventIDs...),
+		ObservedPolicyIDs: append([]string(nil), finding.ObservedPolicyIDs...),
+		PolicyID:          finding.PolicyID,
+		PolicyName:        finding.PolicyName,
+		Attributes:        cloneAttributes(finding.Attributes),
+		Assignee:          finding.Assignee,
+		StatusReason:      finding.StatusReason,
+		StatusUpdatedAt:   finding.StatusUpdatedAt,
+		FirstObservedAt:   finding.FirstObservedAt,
+		LastObservedAt:    finding.LastObservedAt,
 	}
 }
 

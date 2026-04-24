@@ -152,6 +152,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	severityCounts := make(map[string]int, len(findings))
 	statusCounts := make(map[string]int, len(findings))
 	ruleCounts := make(map[string]int, len(findings))
+	policyCounts := make(map[string]int, len(findings))
 	resourceCounts := make(map[string]int, len(findings))
 	for _, finding := range findings {
 		if finding == nil {
@@ -168,6 +169,10 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		ruleID := strings.TrimSpace(finding.RuleID)
 		if ruleID != "" {
 			ruleCounts[ruleID]++
+		}
+		policyID := strings.TrimSpace(finding.PolicyID)
+		if policyID != "" {
+			policyCounts[policyID]++
 		}
 		if resourceURN := primaryResourceURN(finding); resourceURN != "" {
 			resourceCounts[resourceURN]++
@@ -188,6 +193,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		"severity_counts":        countEntries(severityCounts, "severity"),
 		"status_counts":          countEntries(statusCounts, "status"),
 		"rule_counts":            countEntries(ruleCounts, "rule_id"),
+		"policy_counts":          countEntries(policyCounts, "policy_id"),
 		"resource_counts":        countEntries(resourceCounts, "resource_urn"),
 		"graph_evidence_status":  graphEvidenceStatus,
 		"graph_evidence":         graphEvidence,
@@ -236,7 +242,7 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
 		Name:        findingSummaryReportName,
-		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, and rule, with bounded graph evidence for top resources when the graph is configured.",
+		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, rule, and policy, with bounded graph evidence for top resources when the graph is configured.",
 		Parameters: []*cerebrov1.ReportParameter{
 			{
 				Id:          reportParameterRuntimeID,

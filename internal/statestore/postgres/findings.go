@@ -25,7 +25,10 @@ var ensureFindingStatements = []string{
   summary TEXT NOT NULL,
   resource_urns_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   event_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  observed_policy_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  policy_id TEXT NOT NULL DEFAULT '',
+  policy_name TEXT NOT NULL DEFAULT '',
   assignee TEXT NOT NULL DEFAULT '',
   status_reason TEXT NOT NULL DEFAULT '',
   status_updated_at TIMESTAMPTZ,
@@ -34,14 +37,19 @@ var ensureFindingStatements = []string{
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS observed_policy_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS policy_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS policy_name TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS assignee TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_reason TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_rule_idx ON findings (runtime_id, rule_id)`,
+	`CREATE INDEX IF NOT EXISTS findings_runtime_policy_idx ON findings (runtime_id, policy_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_status_idx ON findings (runtime_id, status)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_severity_idx ON findings (runtime_id, severity)`,
 	`CREATE INDEX IF NOT EXISTS findings_resource_urns_gin_idx ON findings USING GIN (resource_urns_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_event_ids_gin_idx ON findings USING GIN (event_ids_json)`,
+	`CREATE INDEX IF NOT EXISTS findings_observed_policy_ids_gin_idx ON findings USING GIN (observed_policy_ids_json)`,
 }
 
 // UpsertFinding persists one normalized finding in the current-state store.
@@ -99,10 +107,16 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding event ids: %w", err)
 	}
+	observedPolicyIDsJSON, err := findingStringsJSON(finding.ObservedPolicyIDs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding observed policy ids: %w", err)
+	}
 	attributesJSON, err := findingAttributesJSON(finding.Attributes)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding attributes: %w", err)
 	}
+	policyID := strings.TrimSpace(finding.PolicyID)
+	policyName := strings.TrimSpace(finding.PolicyName)
 	assignee := strings.TrimSpace(finding.Assignee)
 	statusReason := strings.TrimSpace(finding.StatusReason)
 	var statusUpdatedAt any
@@ -121,10 +135,11 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if err := s.db.QueryRowContext(ctx, `
 INSERT INTO findings (
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json, event_ids_json, attributes_json, assignee, status_reason, status_updated_at,
+  resource_urns_json, event_ids_json, observed_policy_ids_json, attributes_json, policy_id, policy_name,
+  assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, $14, $15, $16, $17)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16, $17, $18, $19, $20)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
@@ -140,7 +155,10 @@ DO UPDATE SET
   summary = EXCLUDED.summary,
   resource_urns_json = EXCLUDED.resource_urns_json,
   event_ids_json = EXCLUDED.event_ids_json,
+  observed_policy_ids_json = EXCLUDED.observed_policy_ids_json,
   attributes_json = EXCLUDED.attributes_json,
+  policy_id = EXCLUDED.policy_id,
+  policy_name = EXCLUDED.policy_name,
   assignee = CASE
     WHEN findings.assignee <> '' AND EXCLUDED.assignee = '' THEN findings.assignee
     ELSE EXCLUDED.assignee
@@ -158,7 +176,8 @@ DO UPDATE SET
   updated_at = NOW()
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, attributes_json::text, assignee, status_reason, status_updated_at,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, policy_id, policy_name,
+  attributes_json::text, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at`,
 		id,
 		fingerprint,
@@ -171,7 +190,10 @@ RETURNING
 		summary,
 		resourceURNsJSON,
 		eventIDsJSON,
+		observedPolicyIDsJSON,
 		attributesJSON,
+		policyID,
+		policyName,
 		assignee,
 		statusReason,
 		statusUpdatedAt,
@@ -189,6 +211,9 @@ RETURNING
 		&stored.Summary,
 		&stored.ResourceURNsJSON,
 		&stored.EventIDsJSON,
+		&stored.ObservedPolicyIDsJSON,
+		&stored.PolicyID,
+		&stored.PolicyName,
 		&stored.AttributesJSON,
 		&stored.Assignee,
 		&stored.StatusReason,
@@ -238,6 +263,9 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 			&row.Summary,
 			&row.ResourceURNsJSON,
 			&row.EventIDsJSON,
+			&row.ObservedPolicyIDsJSON,
+			&row.PolicyID,
+			&row.PolicyName,
 			&row.AttributesJSON,
 			&row.Assignee,
 			&row.StatusReason,
@@ -275,7 +303,8 @@ func (s *Store) GetFinding(ctx context.Context, id string) (*ports.FindingRecord
 	if err := s.db.QueryRowContext(ctx, `
 SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, attributes_json::text, assignee, status_reason, status_updated_at,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, policy_id, policy_name,
+  attributes_json::text, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at
 FROM findings
 WHERE id = $1`,
@@ -292,6 +321,9 @@ WHERE id = $1`,
 		&row.Summary,
 		&row.ResourceURNsJSON,
 		&row.EventIDsJSON,
+		&row.ObservedPolicyIDsJSON,
+		&row.PolicyID,
+		&row.PolicyName,
 		&row.AttributesJSON,
 		&row.Assignee,
 		&row.StatusReason,
@@ -335,7 +367,8 @@ SET status = $2, status_reason = $3, status_updated_at = $4, updated_at = NOW()
 WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, attributes_json::text, assignee, status_reason, status_updated_at,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, policy_id, policy_name,
+  attributes_json::text, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at`,
 		findingID,
 		status,
@@ -353,6 +386,9 @@ RETURNING
 		&row.Summary,
 		&row.ResourceURNsJSON,
 		&row.EventIDsJSON,
+		&row.ObservedPolicyIDsJSON,
+		&row.PolicyID,
+		&row.PolicyName,
 		&row.AttributesJSON,
 		&row.Assignee,
 		&row.StatusReason,
@@ -387,7 +423,8 @@ SET assignee = $2, updated_at = NOW()
 WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, attributes_json::text, assignee, status_reason, status_updated_at,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, policy_id, policy_name,
+  attributes_json::text, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at`,
 		findingID,
 		strings.TrimSpace(request.Assignee),
@@ -403,6 +440,9 @@ RETURNING
 		&row.Summary,
 		&row.ResourceURNsJSON,
 		&row.EventIDsJSON,
+		&row.ObservedPolicyIDsJSON,
+		&row.PolicyID,
+		&row.PolicyName,
 		&row.AttributesJSON,
 		&row.Assignee,
 		&row.StatusReason,
@@ -429,6 +469,7 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
 	addFindingFilter(&clauses, &args, "severity", request.Severity)
 	addFindingFilter(&clauses, &args, "status", request.Status)
+	addFindingFilter(&clauses, &args, "policy_id", request.PolicyID)
 	if err := addFindingArrayContainsFilter(&clauses, &args, "resource_urns_json", request.ResourceURN); err != nil {
 		return "", nil, err
 	}
@@ -438,7 +479,8 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 	query := `
 SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, attributes_json::text, assignee, status_reason, status_updated_at,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, policy_id, policy_name,
+  attributes_json::text, assignee, status_reason, status_updated_at,
   first_observed_at, last_observed_at
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
@@ -511,23 +553,26 @@ func addFindingArrayContainsFilter(clauses *[]string, args *[]any, column string
 }
 
 type findingRow struct {
-	ID               string
-	Fingerprint      string
-	TenantID         string
-	RuntimeID        string
-	RuleID           string
-	Title            string
-	Severity         string
-	Status           string
-	Summary          string
-	ResourceURNsJSON string
-	EventIDsJSON     string
-	AttributesJSON   string
-	Assignee         string
-	StatusReason     string
-	StatusUpdatedAt  sql.NullTime
-	FirstObservedAt  time.Time
-	LastObservedAt   time.Time
+	ID                    string
+	Fingerprint           string
+	TenantID              string
+	RuntimeID             string
+	RuleID                string
+	Title                 string
+	Severity              string
+	Status                string
+	Summary               string
+	ResourceURNsJSON      string
+	EventIDsJSON          string
+	ObservedPolicyIDsJSON string
+	PolicyID              string
+	PolicyName            string
+	AttributesJSON        string
+	Assignee              string
+	StatusReason          string
+	StatusUpdatedAt       sql.NullTime
+	FirstObservedAt       time.Time
+	LastObservedAt        time.Time
 }
 
 func (r findingRow) record() (*ports.FindingRecord, error) {
@@ -539,28 +584,35 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 	if err := json.Unmarshal([]byte(r.EventIDsJSON), &eventIDs); err != nil {
 		return nil, fmt.Errorf("decode finding event ids: %w", err)
 	}
+	observedPolicyIDs := []string{}
+	if err := json.Unmarshal([]byte(r.ObservedPolicyIDsJSON), &observedPolicyIDs); err != nil {
+		return nil, fmt.Errorf("decode finding observed policy ids: %w", err)
+	}
 	attributes := map[string]string{}
 	if err := json.Unmarshal([]byte(r.AttributesJSON), &attributes); err != nil {
 		return nil, fmt.Errorf("decode finding attributes: %w", err)
 	}
 	return &ports.FindingRecord{
-		ID:              r.ID,
-		Fingerprint:     r.Fingerprint,
-		TenantID:        r.TenantID,
-		RuntimeID:       r.RuntimeID,
-		RuleID:          r.RuleID,
-		Title:           r.Title,
-		Severity:        r.Severity,
-		Status:          r.Status,
-		Summary:         r.Summary,
-		ResourceURNs:    resourceURNs,
-		EventIDs:        eventIDs,
-		Attributes:      attributes,
-		Assignee:        r.Assignee,
-		StatusReason:    r.StatusReason,
-		FirstObservedAt: r.FirstObservedAt.UTC(),
-		LastObservedAt:  r.LastObservedAt.UTC(),
-		StatusUpdatedAt: findingStatusUpdatedAt(r.StatusUpdatedAt),
+		ID:                r.ID,
+		Fingerprint:       r.Fingerprint,
+		TenantID:          r.TenantID,
+		RuntimeID:         r.RuntimeID,
+		RuleID:            r.RuleID,
+		Title:             r.Title,
+		Severity:          r.Severity,
+		Status:            r.Status,
+		Summary:           r.Summary,
+		ResourceURNs:      resourceURNs,
+		EventIDs:          eventIDs,
+		ObservedPolicyIDs: observedPolicyIDs,
+		PolicyID:          r.PolicyID,
+		PolicyName:        r.PolicyName,
+		Attributes:        attributes,
+		Assignee:          r.Assignee,
+		StatusReason:      r.StatusReason,
+		FirstObservedAt:   r.FirstObservedAt.UTC(),
+		LastObservedAt:    r.LastObservedAt.UTC(),
+		StatusUpdatedAt:   findingStatusUpdatedAt(r.StatusUpdatedAt),
 	}, nil
 }
 

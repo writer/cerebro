@@ -77,6 +77,7 @@ type ListRequest struct {
 	Status      string
 	ResourceURN string
 	EventID     string
+	PolicyID    string
 	Limit       uint32
 }
 
@@ -378,6 +379,7 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 		Status:      strings.TrimSpace(request.Status),
 		ResourceURN: strings.TrimSpace(request.ResourceURN),
 		EventID:     strings.TrimSpace(request.EventID),
+		PolicyID:    strings.TrimSpace(request.PolicyID),
 		Limit:       request.Limit,
 	})
 	if err != nil {

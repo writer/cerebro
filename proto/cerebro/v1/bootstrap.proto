@@ -356,6 +356,7 @@ message ListFindingsRequest {
   string resource_urn = 6;
   string event_id = 7;
   uint32 limit = 8;
+  string policy_id = 9;
 }
 
 enum FindingStatus {
@@ -384,6 +385,9 @@ message Finding {
   string assignee = 15;
   string status_reason = 16;
   google.protobuf.Timestamp status_updated_at = 17;
+  repeated string observed_policy_ids = 18;
+  string policy_id = 19;
+  string policy_name = 20;
 }
 
 // GetFindingRequest loads one persisted finding by its durable identifier.

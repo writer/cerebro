@@ -496,6 +496,7 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 		Severity:    r.URL.Query().Get("severity"),
 		ResourceUrn: r.URL.Query().Get("resource_urn"),
 		EventId:     r.URL.Query().Get("event_id"),
+		PolicyId:    r.URL.Query().Get("policy_id"),
 	}
 	if rawStatus := r.URL.Query().Get("status"); rawStatus != "" {
 		status, err := parseFindingStatus(rawStatus)
@@ -517,6 +518,7 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 		request.Severity = r.URL.Query().Get("severity")
 		request.ResourceUrn = r.URL.Query().Get("resource_urn")
 		request.EventId = r.URL.Query().Get("event_id")
+		request.PolicyId = r.URL.Query().Get("policy_id")
 		if rawStatus := r.URL.Query().Get("status"); rawStatus != "" {
 			status, err := parseFindingStatus(rawStatus)
 			if err != nil {
@@ -534,6 +536,7 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 		Status:      findingStatusString(request.GetStatus()),
 		ResourceURN: request.GetResourceUrn(),
 		EventID:     request.GetEventId(),
+		PolicyID:    request.GetPolicyId(),
 		Limit:       request.GetLimit(),
 	})
 	if err != nil {
@@ -805,6 +808,7 @@ func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Reques
 		Status:      findingStatusString(req.Msg.GetStatus()),
 		ResourceURN: req.Msg.GetResourceUrn(),
 		EventID:     req.Msg.GetEventId(),
+		PolicyID:    req.Msg.GetPolicyId(),
 		Limit:       req.Msg.GetLimit(),
 	})
 	if err != nil {
@@ -1325,20 +1329,23 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		return nil
 	}
 	message := &cerebrov1.Finding{
-		Id:           finding.ID,
-		Fingerprint:  finding.Fingerprint,
-		TenantId:     finding.TenantID,
-		RuntimeId:    finding.RuntimeID,
-		RuleId:       finding.RuleID,
-		Title:        finding.Title,
-		Severity:     finding.Severity,
-		Status:       findingStatusMessage(finding.Status),
-		Summary:      finding.Summary,
-		ResourceUrns: append([]string(nil), finding.ResourceURNs...),
-		EventIds:     append([]string(nil), finding.EventIDs...),
-		Attributes:   make(map[string]string, len(finding.Attributes)),
-		Assignee:     finding.Assignee,
-		StatusReason: finding.StatusReason,
+		Id:                finding.ID,
+		Fingerprint:       finding.Fingerprint,
+		TenantId:          finding.TenantID,
+		RuntimeId:         finding.RuntimeID,
+		RuleId:            finding.RuleID,
+		Title:             finding.Title,
+		Severity:          finding.Severity,
+		Status:            findingStatusMessage(finding.Status),
+		Summary:           finding.Summary,
+		ResourceUrns:      append([]string(nil), finding.ResourceURNs...),
+		EventIds:          append([]string(nil), finding.EventIDs...),
+		ObservedPolicyIds: append([]string(nil), finding.ObservedPolicyIDs...),
+		PolicyId:          finding.PolicyID,
+		PolicyName:        finding.PolicyName,
+		Attributes:        make(map[string]string, len(finding.Attributes)),
+		Assignee:          finding.Assignee,
+		StatusReason:      finding.StatusReason,
 	}
 	for key, value := range finding.Attributes {
 		message.Attributes[key] = value

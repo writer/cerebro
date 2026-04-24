@@ -397,6 +397,15 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	if finding.Attributes["primary_resource_urn"] != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
 		t.Fatalf("Finding.Attributes[primary_resource_urn] = %q, want resource urn", finding.Attributes["primary_resource_urn"])
 	}
+	if finding.PolicyID != "pol-1" {
+		t.Fatalf("Finding.PolicyID = %q, want pol-1", finding.PolicyID)
+	}
+	if finding.PolicyName != "pol-1" {
+		t.Fatalf("Finding.PolicyName = %q, want pol-1", finding.PolicyName)
+	}
+	if len(finding.ObservedPolicyIDs) != 1 || finding.ObservedPolicyIDs[0] != "pol-1" {
+		t.Fatalf("Finding.ObservedPolicyIDs = %#v, want [pol-1]", finding.ObservedPolicyIDs)
+	}
 	if len(store.findings) != 1 {
 		t.Fatalf("len(store.findings) = %d, want 1", len(store.findings))
 	}
@@ -758,6 +767,7 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 				RuleID:         oktaPolicyRuleLifecycleTamperingRuleID,
 				Severity:       "HIGH",
 				Status:         "open",
+				PolicyID:       "pol-1",
 				ResourceURNs:   []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
 				EventIDs:       []string{"okta-audit-2"},
 				LastObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
@@ -796,6 +806,7 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 		RuleID:      oktaPolicyRuleLifecycleTamperingRuleID,
 		Severity:    "HIGH",
 		Status:      "open",
+		PolicyID:    "pol-1",
 		ResourceURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
 		EventID:     "okta-audit-2",
 		Limit:       1,
@@ -826,6 +837,9 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 	}
 	if got := store.request.EventID; got != "okta-audit-2" {
 		t.Fatalf("ListFindings().EventID = %q, want okta-audit-2", got)
+	}
+	if got := store.request.PolicyID; got != "pol-1" {
+		t.Fatalf("ListFindings().PolicyID = %q, want pol-1", got)
 	}
 	if got := store.request.Limit; got != 1 {
 		t.Fatalf("ListFindings().Limit = %d, want 1", got)
@@ -1204,28 +1218,33 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(resourceURNs, finding.ResourceURNs)
 	eventIDs := make([]string, len(finding.EventIDs))
 	copy(eventIDs, finding.EventIDs)
+	observedPolicyIDs := make([]string, len(finding.ObservedPolicyIDs))
+	copy(observedPolicyIDs, finding.ObservedPolicyIDs)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
 	}
 	return &ports.FindingRecord{
-		ID:              finding.ID,
-		Fingerprint:     finding.Fingerprint,
-		TenantID:        finding.TenantID,
-		RuntimeID:       finding.RuntimeID,
-		RuleID:          finding.RuleID,
-		Title:           finding.Title,
-		Severity:        finding.Severity,
-		Status:          finding.Status,
-		Summary:         finding.Summary,
-		ResourceURNs:    resourceURNs,
-		EventIDs:        eventIDs,
-		Attributes:      attributes,
-		Assignee:        finding.Assignee,
-		StatusReason:    finding.StatusReason,
-		StatusUpdatedAt: finding.StatusUpdatedAt,
-		FirstObservedAt: finding.FirstObservedAt,
-		LastObservedAt:  finding.LastObservedAt,
+		ID:                finding.ID,
+		Fingerprint:       finding.Fingerprint,
+		TenantID:          finding.TenantID,
+		RuntimeID:         finding.RuntimeID,
+		RuleID:            finding.RuleID,
+		Title:             finding.Title,
+		Severity:          finding.Severity,
+		Status:            finding.Status,
+		Summary:           finding.Summary,
+		ResourceURNs:      resourceURNs,
+		EventIDs:          eventIDs,
+		ObservedPolicyIDs: observedPolicyIDs,
+		PolicyID:          finding.PolicyID,
+		PolicyName:        finding.PolicyName,
+		Attributes:        attributes,
+		Assignee:          finding.Assignee,
+		StatusReason:      finding.StatusReason,
+		StatusUpdatedAt:   finding.StatusUpdatedAt,
+		FirstObservedAt:   finding.FirstObservedAt,
+		LastObservedAt:    finding.LastObservedAt,
 	}
 }
 
@@ -1312,6 +1331,9 @@ func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRec
 		return false
 	}
 	if request.EventID != "" && !containsTrimmed(finding.EventIDs, request.EventID) {
+		return false
+	}
+	if request.PolicyID != "" && strings.TrimSpace(finding.PolicyID) != strings.TrimSpace(request.PolicyID) {
 		return false
 	}
 	return true

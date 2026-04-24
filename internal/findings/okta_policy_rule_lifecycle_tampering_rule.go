@@ -95,6 +95,12 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 	if err != nil {
 		return nil, fmt.Errorf("project finding context for event %q: %w", event.GetId(), err)
 	}
+	policyID := strings.TrimSpace(event.GetAttributes()["resource_id"])
+	policyName := firstNonEmpty(resourceLabel, policyID)
+	observedPolicyIDs := []string{}
+	if policyID != "" {
+		observedPolicyIDs = append(observedPolicyIDs, policyID)
+	}
 	attributes := map[string]string{
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"event_type":           strings.TrimSpace(event.GetAttributes()["event_type"]),
@@ -110,20 +116,23 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 	}
 	fingerprint := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, event.GetId())
 	return &ports.FindingRecord{
-		ID:              fingerprint,
-		Fingerprint:     fingerprint,
-		TenantID:        strings.TrimSpace(event.GetTenantId()),
-		RuntimeID:       strings.TrimSpace(runtimeID),
-		RuleID:          oktaPolicyRuleLifecycleTamperingRuleID,
-		Title:           oktaPolicyRuleLifecycleTamperingTitle,
-		Severity:        oktaPolicyRuleLifecycleTamperingSeverity,
-		Status:          oktaPolicyRuleLifecycleTamperingStatus,
-		Summary:         findingSummary(event, actorLabel, resourceLabel),
-		ResourceURNs:    resourceURNs,
-		EventIDs:        []string{strings.TrimSpace(event.GetId())},
-		Attributes:      attributes,
-		FirstObservedAt: observedAt,
-		LastObservedAt:  observedAt,
+		ID:                fingerprint,
+		Fingerprint:       fingerprint,
+		TenantID:          strings.TrimSpace(event.GetTenantId()),
+		RuntimeID:         strings.TrimSpace(runtimeID),
+		RuleID:            oktaPolicyRuleLifecycleTamperingRuleID,
+		Title:             oktaPolicyRuleLifecycleTamperingTitle,
+		Severity:          oktaPolicyRuleLifecycleTamperingSeverity,
+		Status:            oktaPolicyRuleLifecycleTamperingStatus,
+		Summary:           findingSummary(event, actorLabel, resourceLabel),
+		ResourceURNs:      resourceURNs,
+		EventIDs:          []string{strings.TrimSpace(event.GetId())},
+		ObservedPolicyIDs: observedPolicyIDs,
+		PolicyID:          policyID,
+		PolicyName:        policyName,
+		Attributes:        attributes,
+		FirstObservedAt:   observedAt,
+		LastObservedAt:    observedAt,
 	}, nil
 }
 

@@ -10,23 +10,26 @@ import (
 
 // FindingRecord is the normalized persisted finding shape.
 type FindingRecord struct {
-	ID              string
-	Fingerprint     string
-	TenantID        string
-	RuntimeID       string
-	RuleID          string
-	Title           string
-	Severity        string
-	Status          string
-	Summary         string
-	ResourceURNs    []string
-	EventIDs        []string
-	Attributes      map[string]string
-	Assignee        string
-	StatusReason    string
-	StatusUpdatedAt time.Time
-	FirstObservedAt time.Time
-	LastObservedAt  time.Time
+	ID                string
+	Fingerprint       string
+	TenantID          string
+	RuntimeID         string
+	RuleID            string
+	Title             string
+	Severity          string
+	Status            string
+	Summary           string
+	ResourceURNs      []string
+	EventIDs          []string
+	ObservedPolicyIDs []string
+	PolicyID          string
+	PolicyName        string
+	Attributes        map[string]string
+	Assignee          string
+	StatusReason      string
+	StatusUpdatedAt   time.Time
+	FirstObservedAt   time.Time
+	LastObservedAt    time.Time
 }
 
 // ListFindingsRequest scopes one finding query.
@@ -38,6 +41,7 @@ type ListFindingsRequest struct {
 	Status      string
 	ResourceURN string
 	EventID     string
+	PolicyID    string
 	Limit       uint32
 }
 
