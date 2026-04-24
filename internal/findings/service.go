@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,8 +14,9 @@ import (
 )
 
 const (
-	defaultEventLimit = 100
-	maxEventLimit     = 1000
+	defaultEventLimit       = 100
+	maxEventLimit           = 1000
+	defaultEvidenceClaimCap = 100
 )
 
 var (
@@ -40,11 +42,13 @@ var (
 // fingerprints, and runtime-level lineage all stay explicit instead of collapsing into an
 // opaque multi-rule batch.
 type Service struct {
-	runtimeStore ports.SourceRuntimeStore
-	replayer     ports.EventReplayer
-	store        ports.FindingStore
-	runStore     ports.FindingEvaluationRunStore
-	rules        *Registry
+	runtimeStore  ports.SourceRuntimeStore
+	replayer      ports.EventReplayer
+	store         ports.FindingStore
+	runStore      ports.FindingEvaluationRunStore
+	evidenceStore ports.FindingEvidenceStore
+	claimStore    ports.ClaimStore
+	rules         *Registry
 }
 
 // EvaluateRequest scopes one replay-backed finding evaluation.
@@ -73,6 +77,7 @@ type EvaluateResult struct {
 	EventsEvaluated uint32
 	Findings        []*ports.FindingRecord
 	Run             *cerebrov1.FindingEvaluationRun
+	Evidence        []*cerebrov1.FindingEvidence
 }
 
 // ListResult reports one persisted finding query.
@@ -93,19 +98,53 @@ type ListEvaluationRunsResult struct {
 	Runs []*cerebrov1.FindingEvaluationRun
 }
 
+// ListEvidenceRequest scopes one persisted finding evidence query.
+type ListEvidenceRequest struct {
+	RuntimeID    string
+	FindingID    string
+	RunID        string
+	RuleID       string
+	ClaimID      string
+	EventID      string
+	GraphRootURN string
+	Limit        uint32
+}
+
+// ListEvidenceResult reports one persisted finding evidence query.
+type ListEvidenceResult struct {
+	Evidence []*cerebrov1.FindingEvidence
+}
+
 // New constructs a replay-backed finding service with the built-in rule registry.
-func New(runtimeStore ports.SourceRuntimeStore, replayer ports.EventReplayer, store ports.FindingStore, runStore ports.FindingEvaluationRunStore) *Service {
-	return NewWithRegistry(runtimeStore, replayer, store, runStore, Builtin())
+func New(
+	runtimeStore ports.SourceRuntimeStore,
+	replayer ports.EventReplayer,
+	store ports.FindingStore,
+	runStore ports.FindingEvaluationRunStore,
+	evidenceStore ports.FindingEvidenceStore,
+	claimStore ports.ClaimStore,
+) *Service {
+	return NewWithRegistry(runtimeStore, replayer, store, runStore, evidenceStore, claimStore, Builtin())
 }
 
 // NewWithRegistry constructs a replay-backed finding service with one explicit rule registry.
-func NewWithRegistry(runtimeStore ports.SourceRuntimeStore, replayer ports.EventReplayer, store ports.FindingStore, runStore ports.FindingEvaluationRunStore, rules *Registry) *Service {
+func NewWithRegistry(
+	runtimeStore ports.SourceRuntimeStore,
+	replayer ports.EventReplayer,
+	store ports.FindingStore,
+	runStore ports.FindingEvaluationRunStore,
+	evidenceStore ports.FindingEvidenceStore,
+	claimStore ports.ClaimStore,
+	rules *Registry,
+) *Service {
 	return &Service{
-		runtimeStore: runtimeStore,
-		replayer:     replayer,
-		store:        store,
-		runStore:     runStore,
-		rules:        rules,
+		runtimeStore:  runtimeStore,
+		replayer:      replayer,
+		store:         store,
+		runStore:      runStore,
+		evidenceStore: evidenceStore,
+		claimStore:    claimStore,
+		rules:         rules,
 	}
 }
 
@@ -121,7 +160,7 @@ func (s *Service) ListRules() *cerebrov1.ListFindingRulesResponse {
 
 // EvaluateSourceRuntime replays one runtime and persists findings for one selected registered rule.
 func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateRequest) (*EvaluateResult, error) {
-	if s == nil || s.runtimeStore == nil || s.replayer == nil || s.store == nil || s.runStore == nil || s.rules == nil {
+	if s == nil || s.runtimeStore == nil || s.replayer == nil || s.store == nil || s.runStore == nil || s.evidenceStore == nil || s.claimStore == nil || s.rules == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
@@ -171,6 +210,16 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
 			result.Findings = append(result.Findings, stored)
+			evidence, err := s.buildFindingEvidence(ctx, stored, run)
+			if err != nil {
+				evaluationErr := fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)
+				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+			}
+			if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
+				evaluationErr := fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)
+				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+			}
+			result.Evidence = append(result.Evidence, evidence)
 		}
 	}
 	if err := s.finishCompletedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings)); err != nil {
@@ -245,6 +294,50 @@ func (s *Service) GetEvaluationRun(ctx context.Context, id string) (*cerebrov1.F
 		return nil, err
 	}
 	return run, nil
+}
+
+// ListEvidence loads persisted finding evidence for one runtime.
+func (s *Service) ListEvidence(ctx context.Context, request ListEvidenceRequest) (*ListEvidenceResult, error) {
+	if s == nil || s.runtimeStore == nil || s.evidenceStore == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return nil, errors.New("source runtime id is required")
+	}
+	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
+		return nil, err
+	}
+	evidence, err := s.evidenceStore.ListFindingEvidence(ctx, ports.ListFindingEvidenceRequest{
+		RuntimeID:    runtimeID,
+		FindingID:    strings.TrimSpace(request.FindingID),
+		RunID:        strings.TrimSpace(request.RunID),
+		RuleID:       strings.TrimSpace(request.RuleID),
+		ClaimID:      strings.TrimSpace(request.ClaimID),
+		EventID:      strings.TrimSpace(request.EventID),
+		GraphRootURN: strings.TrimSpace(request.GraphRootURN),
+		Limit:        request.Limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list finding evidence for runtime %q: %w", runtimeID, err)
+	}
+	return &ListEvidenceResult{Evidence: evidence}, nil
+}
+
+// GetEvidence loads one persisted finding evidence record.
+func (s *Service) GetEvidence(ctx context.Context, id string) (*cerebrov1.FindingEvidence, error) {
+	if s == nil || s.evidenceStore == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return nil, errors.New("finding evidence id is required")
+	}
+	evidence, err := s.evidenceStore.GetFindingEvidence(ctx, trimmedID)
+	if err != nil {
+		return nil, err
+	}
+	return evidence, nil
 }
 
 func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (Rule, error) {
@@ -345,4 +438,82 @@ func findingIDs(findings []*ports.FindingRecord) []string {
 		}
 	}
 	return ids
+}
+
+func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.FindingRecord, run *cerebrov1.FindingEvaluationRun) (*cerebrov1.FindingEvidence, error) {
+	if finding == nil {
+		return nil, errors.New("finding is required")
+	}
+	if run == nil {
+		return nil, errors.New("finding evaluation run is required")
+	}
+	claimIDs, err := s.claimIDsForFinding(ctx, finding)
+	if err != nil {
+		return nil, err
+	}
+	graphRootURNs := uniqueSortedStrings(finding.ResourceURNs)
+	eventIDs := uniqueSortedStrings(finding.EventIDs)
+	createdAt := time.Now().UTC()
+	return &cerebrov1.FindingEvidence{
+		Id:            findingEvidenceID(finding.RuntimeID, finding.ID, run.GetId()),
+		RuntimeId:     strings.TrimSpace(finding.RuntimeID),
+		RuleId:        strings.TrimSpace(finding.RuleID),
+		FindingId:     strings.TrimSpace(finding.ID),
+		RunId:         strings.TrimSpace(run.GetId()),
+		ClaimIds:      claimIDs,
+		EventIds:      eventIDs,
+		GraphRootUrns: graphRootURNs,
+		CreatedAt:     timestamppb.New(createdAt),
+	}, nil
+}
+
+func (s *Service) claimIDsForFinding(ctx context.Context, finding *ports.FindingRecord) ([]string, error) {
+	if finding == nil {
+		return nil, errors.New("finding is required")
+	}
+	claimIDs := make([]string, 0, len(finding.EventIDs))
+	for _, eventID := range uniqueSortedStrings(finding.EventIDs) {
+		claims, err := s.claimStore.ListClaims(ctx, ports.ListClaimsRequest{
+			RuntimeID:     strings.TrimSpace(finding.RuntimeID),
+			SourceEventID: eventID,
+			Limit:         defaultEvidenceClaimCap,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list claims for event %q: %w", eventID, err)
+		}
+		for _, claim := range claims {
+			if claim == nil || strings.TrimSpace(claim.ID) == "" {
+				continue
+			}
+			claimIDs = append(claimIDs, claim.ID)
+		}
+	}
+	return uniqueSortedStrings(claimIDs), nil
+}
+
+func uniqueSortedStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		unique = append(unique, trimmed)
+	}
+	sort.Strings(unique)
+	return unique
+}
+
+func findingEvidenceID(runtimeID string, findingID string, runID string) string {
+	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
+	prefix := replacer.Replace(strings.TrimSpace(runtimeID) + "-" + strings.TrimSpace(findingID) + "-" + strings.TrimSpace(runID))
+	return "finding-evidence-" + prefix
 }

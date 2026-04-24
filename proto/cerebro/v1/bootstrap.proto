@@ -29,6 +29,8 @@ service BootstrapService {
   rpc ListFindings(ListFindingsRequest) returns (ListFindingsResponse);
   rpc ListFindingEvaluationRuns(ListFindingEvaluationRunsRequest) returns (ListFindingEvaluationRunsResponse);
   rpc GetFindingEvaluationRun(GetFindingEvaluationRunRequest) returns (GetFindingEvaluationRunResponse);
+  rpc ListFindingEvidence(ListFindingEvidenceRequest) returns (ListFindingEvidenceResponse);
+  rpc GetFindingEvidence(GetFindingEvidenceRequest) returns (GetFindingEvidenceResponse);
   rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
   rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
 }
@@ -139,6 +141,46 @@ message GetFindingEvaluationRunRequest {
 // GetFindingEvaluationRunResponse returns one persisted finding evaluation run.
 message GetFindingEvaluationRunResponse {
   FindingEvaluationRun run = 1;
+}
+
+// FindingEvidence links one persisted finding and one evaluation run to its supporting claims, events, and graph roots.
+message FindingEvidence {
+  string id = 1;
+  string runtime_id = 2;
+  string rule_id = 3;
+  string finding_id = 4;
+  string run_id = 5;
+  repeated string claim_ids = 6;
+  repeated string event_ids = 7;
+  repeated string graph_root_urns = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+// ListFindingEvidenceRequest queries persisted finding evidence for one stored runtime.
+message ListFindingEvidenceRequest {
+  string runtime_id = 1;
+  string finding_id = 2;
+  string run_id = 3;
+  string rule_id = 4;
+  string claim_id = 5;
+  string event_id = 6;
+  string graph_root_urn = 7;
+  uint32 limit = 8;
+}
+
+// ListFindingEvidenceResponse returns the matched persisted finding evidence records.
+message ListFindingEvidenceResponse {
+  repeated FindingEvidence evidence = 1;
+}
+
+// GetFindingEvidenceRequest looks up one persisted finding evidence record.
+message GetFindingEvidenceRequest {
+  string id = 1;
+}
+
+// GetFindingEvidenceResponse returns one persisted finding evidence record.
+message GetFindingEvidenceResponse {
+  FindingEvidence evidence = 1;
 }
 
 // RunReportRequest requests one durable report run.
@@ -349,6 +391,7 @@ message EvaluateSourceRuntimeFindingsResponse {
   uint32 findings_upserted = 4;
   repeated Finding findings = 5;
   FindingEvaluationRun run = 6;
+  repeated FindingEvidence evidence = 7;
 }
 
 // GraphEntity is the normalized graph node view exposed by the first query surface.
