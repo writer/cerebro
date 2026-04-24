@@ -162,6 +162,11 @@ def onboard_workspace_posture(
         "persisted_claims": persisted.get("claims", []),
         "graph_layering": graph_layering,
         "graph_summary": graph_layering.get("summary", {}),
+        "posture_findings": build_posture_findings(
+            integration,
+            posture,
+            graph_layering.get("summary", {}),
+        ),
     }
 
 
@@ -264,6 +269,135 @@ def load_graph_layering(integration: IntegrationClient, posture: Dict[str, Any])
         "projects": project_graphs,
         "summary": integration.graph_summary(combined_layering),
     }
+
+
+def build_posture_findings(
+    integration: IntegrationClient,
+    posture: Dict[str, Any],
+    graph_summary: Dict[str, Any],
+) -> list[Dict[str, Any]]:
+    findings = []
+    workspace_key = require_value(posture.get("workspace_key"), "workspace_key")
+    workspace_name = optional_string(posture.get("workspace_name")) or workspace_key
+    workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
+
+    if posture.get("public_signup_enabled", False):
+        findings.append(
+            finding(
+                "jira_workspace_public_signup_enabled",
+                "HIGH",
+                "Jira workspace allows self-service signup",
+                f"{workspace_name} allows self-service signup, which increases exposure to unmanaged identities.",
+                [workspace_ref["urn"]],
+            )
+        )
+    if posture.get("anonymous_access_enabled", False):
+        findings.append(
+            finding(
+                "jira_workspace_anonymous_access_enabled",
+                "HIGH",
+                "Jira workspace permits anonymous access",
+                f"{workspace_name} exposes content to unauthenticated users.",
+                [workspace_ref["urn"]],
+            )
+        )
+    if not posture.get("approved_marketplace_apps_only", True):
+        findings.append(
+            finding(
+                "jira_workspace_marketplace_policy_open",
+                "MEDIUM",
+                "Jira workspace does not restrict marketplace apps",
+                f"{workspace_name} allows marketplace apps outside the approved set.",
+                [workspace_ref["urn"]],
+            )
+        )
+
+    admin_count = int(graph_summary.get("relation_counts_by_type", {}).get("administers", 0))
+    if admin_count > 5:
+        findings.append(
+            finding(
+                "jira_workspace_admin_sprawl",
+                "MEDIUM",
+                "Jira workspace has elevated admin sprawl",
+                f"{workspace_name} has {admin_count} admin relationships in the graph neighborhood.",
+                [workspace_ref["urn"]],
+                {"admin_count": str(admin_count)},
+            )
+        )
+
+    for project in posture.get("projects", []):
+        project_key = require_value(project.get("key"), "projects[].key")
+        project_name = optional_string(project.get("name")) or project_key
+        project_ref = integration.ref("project", project_key, project_name)
+        classification = optional_string(project.get("classification")) or "internal"
+        if classification == "restricted" and not project.get("issue_level_security_enabled", True):
+            findings.append(
+                finding(
+                    f"jira_project_{project_key.lower()}_restricted_issue_security_disabled",
+                    "HIGH",
+                    "Restricted Jira project lacks issue-level security",
+                    f"{project_name} is marked restricted but issue-level security is disabled.",
+                    [project_ref["urn"], workspace_ref["urn"]],
+                )
+            )
+        if project.get("anonymous_browse_enabled", False):
+            findings.append(
+                finding(
+                    f"jira_project_{project_key.lower()}_anonymous_browse_enabled",
+                    "HIGH",
+                    "Jira project allows anonymous browsing",
+                    f"{project_name} allows anonymous issue browsing.",
+                    [project_ref["urn"], workspace_ref["urn"]],
+                )
+            )
+        if project.get("service_desk_public_portal_enabled", False):
+            findings.append(
+                finding(
+                    f"jira_project_{project_key.lower()}_public_portal_enabled",
+                    "HIGH" if classification == "restricted" else "MEDIUM",
+                    "Jira project exposes a public service desk portal",
+                    f"{project_name} exposes a public portal for {classification} data.",
+                    [project_ref["urn"], workspace_ref["urn"]],
+                )
+            )
+
+    for app in posture.get("apps", []):
+        if app.get("approved_by_security", True):
+            continue
+        app_key = require_value(app.get("key"), "apps[].key")
+        app_name = optional_string(app.get("name")) or app_key
+        app_ref = integration.ref("app", app_key, app_name)
+        findings.append(
+            finding(
+                f"jira_app_{app_key.lower()}_unapproved",
+                "MEDIUM",
+                "Unapproved Jira marketplace app is installed",
+                f"{app_name} is installed on {workspace_name} without security approval.",
+                [app_ref["urn"], workspace_ref["urn"]],
+            )
+        )
+
+    return findings
+
+
+def finding(
+    finding_id: str,
+    severity: str,
+    title: str,
+    summary: str,
+    resource_urns: list[str],
+    attributes: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    payload = {
+        "id": finding_id,
+        "severity": severity,
+        "title": title,
+        "summary": summary,
+        "resource_urns": resource_urns,
+    }
+    if attributes:
+        payload["attributes"] = attributes
+    return payload
 
 
 def optional_string(value: Any) -> Optional[str]:
