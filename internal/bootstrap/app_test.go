@@ -794,7 +794,7 @@ func TestFindingEndpoints(t *testing.T) {
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
 
-	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?event_limit=2", nil)
+	evaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?event_limit=2&rule_id=identity-okta-policy-rule-lifecycle-tampering", nil)
 	if err != nil {
 		t.Fatalf("new evaluate findings request: %v", err)
 	}
@@ -855,10 +855,23 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := listedFinding["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("list finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
+	missingRuleResp, err := server.Client().Post(server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?rule_id=does-not-exist", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/findings/evaluate unknown rule error = %v", err)
+	}
+	defer func() {
+		if closeErr := missingRuleResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close unknown rule response body: %v", closeErr)
+		}
+	}()
+	if got := missingRuleResp.StatusCode; got != http.StatusNotFound {
+		t.Fatalf("unknown rule status = %d, want %d", got, http.StatusNotFound)
+	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	evaluateFindingsResp, err := client.EvaluateSourceRuntimeFindings(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingsRequest{
 		Id:         "writer-okta-audit",
+		RuleId:     "identity-okta-policy-rule-lifecycle-tampering",
 		EventLimit: 5,
 	}))
 	if err != nil {

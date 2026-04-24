@@ -285,13 +285,14 @@ message ListFindingsResponse {
   repeated Finding findings = 1;
 }
 
-// EvaluateSourceRuntimeFindingsRequest replays one stored runtime through the first built-in finding evaluator.
+// EvaluateSourceRuntimeFindingsRequest replays one stored runtime through one registered finding rule.
 message EvaluateSourceRuntimeFindingsRequest {
   string id = 1;
   uint32 event_limit = 2;
+  string rule_id = 3;
 }
 
-// EvaluateSourceRuntimeFindingsResponse returns the evaluated runtime, fixed rule spec, and persisted findings.
+// EvaluateSourceRuntimeFindingsResponse returns the evaluated runtime, selected rule spec, and persisted findings.
 message EvaluateSourceRuntimeFindingsResponse {
   SourceRuntime runtime = 1;
   RuleSpec rule = 2;

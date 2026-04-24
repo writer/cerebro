@@ -2280,11 +2280,12 @@ func (x *ListFindingsResponse) GetFindings() []*Finding {
 	return nil
 }
 
-// EvaluateSourceRuntimeFindingsRequest replays one stored runtime through the first built-in finding evaluator.
+// EvaluateSourceRuntimeFindingsRequest replays one stored runtime through one registered finding rule.
 type EvaluateSourceRuntimeFindingsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	EventLimit    uint32                 `protobuf:"varint,2,opt,name=event_limit,json=eventLimit,proto3" json:"event_limit,omitempty"`
+	RuleId        string                 `protobuf:"bytes,3,opt,name=rule_id,json=ruleId,proto3" json:"rule_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2333,7 +2334,14 @@ func (x *EvaluateSourceRuntimeFindingsRequest) GetEventLimit() uint32 {
 	return 0
 }
 
-// EvaluateSourceRuntimeFindingsResponse returns the evaluated runtime, fixed rule spec, and persisted findings.
+func (x *EvaluateSourceRuntimeFindingsRequest) GetRuleId() string {
+	if x != nil {
+		return x.RuleId
+	}
+	return ""
+}
+
+// EvaluateSourceRuntimeFindingsResponse returns the evaluated runtime, selected rule spec, and persisted findings.
 type EvaluateSourceRuntimeFindingsResponse struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	Runtime          *SourceRuntime         `protobuf:"bytes,1,opt,name=runtime,proto3" json:"runtime,omitempty"`
@@ -2851,11 +2859,12 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"G\n" +
 	"\x14ListFindingsResponse\x12/\n" +
-	"\bfindings\x18\x01 \x03(\v2\x13.cerebro.v1.FindingR\bfindings\"W\n" +
+	"\bfindings\x18\x01 \x03(\v2\x13.cerebro.v1.FindingR\bfindings\"p\n" +
 	"$EvaluateSourceRuntimeFindingsRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vevent_limit\x18\x02 \x01(\rR\n" +
-	"eventLimit\"\x8f\x02\n" +
+	"eventLimit\x12\x17\n" +
+	"\arule_id\x18\x03 \x01(\tR\x06ruleId\"\x8f\x02\n" +
 	"%EvaluateSourceRuntimeFindingsResponse\x123\n" +
 	"\aruntime\x18\x01 \x01(\v2\x19.cerebro.v1.SourceRuntimeR\aruntime\x12(\n" +
 	"\x04rule\x18\x02 \x01(\v2\x14.cerebro.v1.RuleSpecR\x04rule\x12)\n" +

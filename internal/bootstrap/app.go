@@ -328,6 +328,7 @@ func (a *App) handleWriteClaims(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.EvaluateSourceRuntimeFindingsRequest{}
+	request.RuleId = r.URL.Query().Get("rule_id")
 	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
 		body := []byte(`{"event_limit":` + eventLimit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
@@ -336,8 +337,10 @@ func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http
 		}
 	}
 	request.Id = r.PathValue("runtimeID")
+	request.RuleId = r.URL.Query().Get("rule_id")
 	response, err := a.findingService().EvaluateSourceRuntime(r.Context(), findings.EvaluateRequest{
 		RuntimeID:  request.GetId(),
+		RuleID:     request.GetRuleId(),
 		EventLimit: request.GetEventLimit(),
 	})
 	if err != nil {
@@ -577,6 +580,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 		findingStore(s.deps.StateStore),
 	).EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
 		RuntimeID:  req.Msg.GetId(),
+		RuleID:     req.Msg.GetRuleId(),
 		EventLimit: req.Msg.GetEventLimit(),
 	})
 	if err != nil {
@@ -727,6 +731,8 @@ func writeFindingError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusBadRequest
 	switch {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		statusCode = http.StatusNotFound
+	case errors.Is(err, findings.ErrRuleNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, findings.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
