@@ -27,6 +27,8 @@ service BootstrapService {
   rpc WriteClaims(WriteClaimsRequest) returns (WriteClaimsResponse);
   rpc ListClaims(ListClaimsRequest) returns (ListClaimsResponse);
   rpc ListFindings(ListFindingsRequest) returns (ListFindingsResponse);
+  rpc ListFindingEvaluationRuns(ListFindingEvaluationRunsRequest) returns (ListFindingEvaluationRunsResponse);
+  rpc GetFindingEvaluationRun(GetFindingEvaluationRunRequest) returns (GetFindingEvaluationRunResponse);
   rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
   rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
 }
@@ -99,6 +101,44 @@ message ListFindingRulesRequest {}
 // ListFindingRulesResponse returns the discoverable finding rule catalog for explicit rule selection.
 message ListFindingRulesResponse {
   repeated RuleSpec rules = 1;
+}
+
+// FindingEvaluationRun is the durable audit envelope for one rule evaluation over one source runtime.
+message FindingEvaluationRun {
+  string id = 1;
+  string runtime_id = 2;
+  string rule_id = 3;
+  string status = 4;
+  uint32 event_limit = 5;
+  uint32 events_evaluated = 6;
+  uint32 findings_upserted = 7;
+  repeated string finding_ids = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp finished_at = 10;
+  string error = 11;
+}
+
+// ListFindingEvaluationRunsRequest requests persisted finding evaluation runs for one stored runtime.
+message ListFindingEvaluationRunsRequest {
+  string runtime_id = 1;
+  string rule_id = 2;
+  string status = 3;
+  uint32 limit = 4;
+}
+
+// ListFindingEvaluationRunsResponse returns the matched persisted finding evaluation runs.
+message ListFindingEvaluationRunsResponse {
+  repeated FindingEvaluationRun runs = 1;
+}
+
+// GetFindingEvaluationRunRequest looks up one persisted finding evaluation run.
+message GetFindingEvaluationRunRequest {
+  string id = 1;
+}
+
+// GetFindingEvaluationRunResponse returns one persisted finding evaluation run.
+message GetFindingEvaluationRunResponse {
+  FindingEvaluationRun run = 1;
 }
 
 // RunReportRequest requests one durable report run.
@@ -308,6 +348,7 @@ message EvaluateSourceRuntimeFindingsResponse {
   uint32 events_evaluated = 3;
   uint32 findings_upserted = 4;
   repeated Finding findings = 5;
+  FindingEvaluationRun run = 6;
 }
 
 // GraphEntity is the normalized graph node view exposed by the first query surface.

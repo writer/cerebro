@@ -30,12 +30,13 @@ The rule registry fixes that.
 - Keep the service generic and deterministic.
 - Make rules discoverable to platform clients.
 - Keep persisted finding lineage explicit through `rule_id`.
+- Make each evaluation attempt durable and inspectable after the request returns.
 - Make adding a new detector a registration step, not a service fork.
 - Preserve the current storage model where findings remain current-state records in Postgres.
 
 ## Current Platform Model
 
-The current findings platform now has five layers.
+The current findings platform now has six layers.
 
 ### 1. Runtime Replay
 
@@ -78,7 +79,28 @@ Why the service selects exactly one rule per call:
 
 That is why the API now accepts `rule_id` for explicit rule selection.
 
-### 4. Persisted Finding Reads
+### 4. Durable Evaluation Runs
+
+Each evaluation now persists a `FindingEvaluationRun` record before replay starts and finishes that record with either completed or failed status.
+
+Why this layer exists:
+
+- evaluation is operational work, not just a transient HTTP response
+- platform clients need a durable audit trail for when a rule last ran
+- failures need to be inspectable without scraping logs
+- reports and future orchestration can anchor on a run identifier instead of guessing from timestamps
+
+The run captures:
+
+- which `runtime_id` and `rule_id` were evaluated
+- how many events were replayed
+- which finding IDs were upserted
+- whether the run completed or failed
+- when the run started and finished
+
+This keeps evaluation lineage separate from the findings themselves. Findings remain current-state security outcomes; runs explain how those outcomes were produced.
+
+### 5. Persisted Finding Reads
 
 Persisted findings remain the contract clients consume after evaluation:
 
@@ -87,7 +109,7 @@ Persisted findings remain the contract clients consume after evaluation:
 
 These reads stay generic and source-agnostic. Rules populate persisted findings; clients read findings, not source-specific detector internals.
 
-### 5. Reporting
+### 6. Reporting
 
 Reports such as `finding-summary` operate on persisted findings instead of on raw source logic.
 
@@ -118,7 +140,18 @@ curl -X POST \
   "http://localhost:8080/source-runtimes/writer-okta-audit/findings/evaluate?rule_id=identity-okta-policy-rule-lifecycle-tampering&event_limit=100"
 ```
 
-This replays one runtime and persists findings emitted by the selected rule.
+This replays one runtime, persists findings emitted by the selected rule, and returns the durable evaluation run metadata.
+
+### Inspect evaluation runs
+
+```bash
+curl \
+  "http://localhost:8080/source-runtimes/writer-okta-audit/finding-evaluation-runs?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=completed&limit=20"
+
+curl http://localhost:8080/finding-evaluation-runs/<run-id>
+```
+
+These endpoints answer operational questions like "when did this rule last run?", "did it fail?", and "which findings came from that pass?"
 
 ### Read persisted findings
 
@@ -146,10 +179,11 @@ Why it was extracted into its own file:
 ## Code Map
 
 - `internal/findings/registry.go` — rule interface and rule catalog
-- `internal/findings/service.go` — replay orchestration and explicit rule selection
+- `internal/findings/service.go` — replay orchestration, explicit rule selection, and durable evaluation run lifecycle
 - `internal/findings/okta_policy_rule_lifecycle_tampering_rule.go` — first built-in finding rule
+- `internal/statestore/postgres/findingevaluationruns.go` — persisted evaluation run storage and query filters
 - `internal/bootstrap/app.go` — HTTP and ConnectRPC exposure
-- `proto/cerebro/v1/bootstrap.proto` — transport contract for rule listing and rule-scoped evaluation
+- `proto/cerebro/v1/bootstrap.proto` — transport contract for rule listing, rule-scoped evaluation, and run inspection
 
 ## How To Add A New Finding Rule
 
@@ -172,6 +206,7 @@ Still intentionally out of scope:
 - cross-runtime or tenant-wide rule orchestration
 - control/check mapping
 - evidence bundles beyond current finding attributes and graph/report joins
+- retries, leases, or scheduler-owned evaluation execution
 - suppression, assignment, and lifecycle workflows in the bootstrap surface
 
 ## Why This Is The Right Intermediate Step
@@ -180,6 +215,7 @@ This change is intentionally small but architectural:
 
 - it makes findings extensible without pretending the full policy/control system already exists
 - it gives clients a discoverable rule catalog now
+- it gives the platform a durable execution history instead of burying evaluation inside request logs
 - it preserves replay as the authoritative evaluation substrate
 - it keeps rule logic, finding persistence, and reporting as separate layers
 
