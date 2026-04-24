@@ -22,6 +22,9 @@ type FindingRecord struct {
 	ResourceURNs    []string
 	EventIDs        []string
 	Attributes      map[string]string
+	Assignee        string
+	StatusReason    string
+	StatusUpdatedAt time.Time
 	FirstObservedAt time.Time
 	LastObservedAt  time.Time
 }
@@ -41,8 +44,25 @@ type ListFindingsRequest struct {
 // ErrFindingEvaluationRunNotFound indicates that a persisted finding evaluation run does not exist.
 var ErrFindingEvaluationRunNotFound = errors.New("finding evaluation run not found")
 
+// ErrFindingNotFound indicates that a persisted finding does not exist.
+var ErrFindingNotFound = errors.New("finding not found")
+
 // ErrFindingEvidenceNotFound indicates that persisted finding evidence does not exist.
 var ErrFindingEvidenceNotFound = errors.New("finding evidence not found")
+
+// FindingStatusUpdate scopes one persisted finding lifecycle mutation.
+type FindingStatusUpdate struct {
+	FindingID string
+	Status    string
+	Reason    string
+	UpdatedAt time.Time
+}
+
+// FindingAssigneeUpdate scopes one persisted finding assignee mutation.
+type FindingAssigneeUpdate struct {
+	FindingID string
+	Assignee  string
+}
 
 // ListFindingEvaluationRunsRequest scopes one finding evaluation run query.
 type ListFindingEvaluationRunsRequest struct {
@@ -68,7 +88,10 @@ type ListFindingEvidenceRequest struct {
 type FindingStore interface {
 	StateStore
 	UpsertFinding(context.Context, *FindingRecord) (*FindingRecord, error)
+	GetFinding(context.Context, string) (*FindingRecord, error)
 	ListFindings(context.Context, ListFindingsRequest) ([]*FindingRecord, error)
+	UpdateFindingStatus(context.Context, FindingStatusUpdate) (*FindingRecord, error)
+	UpdateFindingAssignee(context.Context, FindingAssigneeUpdate) (*FindingRecord, error)
 }
 
 // FindingEvaluationRunStore persists durable finding evaluation runs in the state store.

@@ -27,6 +27,10 @@ service BootstrapService {
   rpc WriteClaims(WriteClaimsRequest) returns (WriteClaimsResponse);
   rpc ListClaims(ListClaimsRequest) returns (ListClaimsResponse);
   rpc ListFindings(ListFindingsRequest) returns (ListFindingsResponse);
+  rpc GetFinding(GetFindingRequest) returns (GetFindingResponse);
+  rpc ResolveFinding(ResolveFindingRequest) returns (ResolveFindingResponse);
+  rpc SuppressFinding(SuppressFindingRequest) returns (SuppressFindingResponse);
+  rpc AssignFinding(AssignFindingRequest) returns (AssignFindingResponse);
   rpc ListFindingEvaluationRuns(ListFindingEvaluationRunsRequest) returns (ListFindingEvaluationRunsResponse);
   rpc GetFindingEvaluationRun(GetFindingEvaluationRunRequest) returns (GetFindingEvaluationRunResponse);
   rpc ListFindingEvidence(ListFindingEvidenceRequest) returns (ListFindingEvidenceResponse);
@@ -348,10 +352,17 @@ message ListFindingsRequest {
   string finding_id = 2;
   string rule_id = 3;
   string severity = 4;
-  string status = 5;
+  FindingStatus status = 5;
   string resource_urn = 6;
   string event_id = 7;
   uint32 limit = 8;
+}
+
+enum FindingStatus {
+  FINDING_STATUS_UNSPECIFIED = 0;
+  FINDING_STATUS_OPEN = 1;
+  FINDING_STATUS_RESOLVED = 2;
+  FINDING_STATUS_SUPPRESSED = 3;
 }
 
 // Finding is the normalized persisted finding view for the first runtime evaluator slice.
@@ -363,13 +374,59 @@ message Finding {
   string rule_id = 5;
   string title = 6;
   string severity = 7;
-  string status = 8;
+  FindingStatus status = 8;
   string summary = 9;
   repeated string resource_urns = 10;
   repeated string event_ids = 11;
   map<string, string> attributes = 12;
   google.protobuf.Timestamp first_observed_at = 13;
   google.protobuf.Timestamp last_observed_at = 14;
+  string assignee = 15;
+  string status_reason = 16;
+  google.protobuf.Timestamp status_updated_at = 17;
+}
+
+// GetFindingRequest loads one persisted finding by its durable identifier.
+message GetFindingRequest {
+  string id = 1;
+}
+
+// GetFindingResponse returns one persisted finding view.
+message GetFindingResponse {
+  Finding finding = 1;
+}
+
+// ResolveFindingRequest marks one persisted finding as resolved.
+message ResolveFindingRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+// ResolveFindingResponse returns the updated resolved finding.
+message ResolveFindingResponse {
+  Finding finding = 1;
+}
+
+// SuppressFindingRequest marks one persisted finding as suppressed.
+message SuppressFindingRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+// SuppressFindingResponse returns the updated suppressed finding.
+message SuppressFindingResponse {
+  Finding finding = 1;
+}
+
+// AssignFindingRequest updates or clears one persisted finding assignee.
+message AssignFindingRequest {
+  string id = 1;
+  string assignee = 2;
+}
+
+// AssignFindingResponse returns the updated assigned finding.
+message AssignFindingResponse {
+  Finding finding = 1;
 }
 
 // ListFindingsResponse returns the matched persisted findings.

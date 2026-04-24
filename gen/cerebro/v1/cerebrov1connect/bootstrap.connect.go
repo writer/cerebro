@@ -81,6 +81,18 @@ const (
 	// BootstrapServiceListFindingsProcedure is the fully-qualified name of the BootstrapService's
 	// ListFindings RPC.
 	BootstrapServiceListFindingsProcedure = "/cerebro.v1.BootstrapService/ListFindings"
+	// BootstrapServiceGetFindingProcedure is the fully-qualified name of the BootstrapService's
+	// GetFinding RPC.
+	BootstrapServiceGetFindingProcedure = "/cerebro.v1.BootstrapService/GetFinding"
+	// BootstrapServiceResolveFindingProcedure is the fully-qualified name of the BootstrapService's
+	// ResolveFinding RPC.
+	BootstrapServiceResolveFindingProcedure = "/cerebro.v1.BootstrapService/ResolveFinding"
+	// BootstrapServiceSuppressFindingProcedure is the fully-qualified name of the BootstrapService's
+	// SuppressFinding RPC.
+	BootstrapServiceSuppressFindingProcedure = "/cerebro.v1.BootstrapService/SuppressFinding"
+	// BootstrapServiceAssignFindingProcedure is the fully-qualified name of the BootstrapService's
+	// AssignFinding RPC.
+	BootstrapServiceAssignFindingProcedure = "/cerebro.v1.BootstrapService/AssignFinding"
 	// BootstrapServiceListFindingEvaluationRunsProcedure is the fully-qualified name of the
 	// BootstrapService's ListFindingEvaluationRuns RPC.
 	BootstrapServiceListFindingEvaluationRunsProcedure = "/cerebro.v1.BootstrapService/ListFindingEvaluationRuns"
@@ -122,6 +134,10 @@ type BootstrapServiceClient interface {
 	WriteClaims(context.Context, *connect.Request[v1.WriteClaimsRequest]) (*connect.Response[v1.WriteClaimsResponse], error)
 	ListClaims(context.Context, *connect.Request[v1.ListClaimsRequest]) (*connect.Response[v1.ListClaimsResponse], error)
 	ListFindings(context.Context, *connect.Request[v1.ListFindingsRequest]) (*connect.Response[v1.ListFindingsResponse], error)
+	GetFinding(context.Context, *connect.Request[v1.GetFindingRequest]) (*connect.Response[v1.GetFindingResponse], error)
+	ResolveFinding(context.Context, *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error)
+	SuppressFinding(context.Context, *connect.Request[v1.SuppressFindingRequest]) (*connect.Response[v1.SuppressFindingResponse], error)
+	AssignFinding(context.Context, *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error)
 	ListFindingEvaluationRuns(context.Context, *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error)
 	GetFindingEvaluationRun(context.Context, *connect.Request[v1.GetFindingEvaluationRunRequest]) (*connect.Response[v1.GetFindingEvaluationRunResponse], error)
 	ListFindingEvidence(context.Context, *connect.Request[v1.ListFindingEvidenceRequest]) (*connect.Response[v1.ListFindingEvidenceResponse], error)
@@ -238,6 +254,30 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("ListFindings")),
 			connect.WithClientOptions(opts...),
 		),
+		getFinding: connect.NewClient[v1.GetFindingRequest, v1.GetFindingResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetFindingProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetFinding")),
+			connect.WithClientOptions(opts...),
+		),
+		resolveFinding: connect.NewClient[v1.ResolveFindingRequest, v1.ResolveFindingResponse](
+			httpClient,
+			baseURL+BootstrapServiceResolveFindingProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ResolveFinding")),
+			connect.WithClientOptions(opts...),
+		),
+		suppressFinding: connect.NewClient[v1.SuppressFindingRequest, v1.SuppressFindingResponse](
+			httpClient,
+			baseURL+BootstrapServiceSuppressFindingProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("SuppressFinding")),
+			connect.WithClientOptions(opts...),
+		),
+		assignFinding: connect.NewClient[v1.AssignFindingRequest, v1.AssignFindingResponse](
+			httpClient,
+			baseURL+BootstrapServiceAssignFindingProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("AssignFinding")),
+			connect.WithClientOptions(opts...),
+		),
 		listFindingEvaluationRuns: connect.NewClient[v1.ListFindingEvaluationRunsRequest, v1.ListFindingEvaluationRunsResponse](
 			httpClient,
 			baseURL+BootstrapServiceListFindingEvaluationRunsProcedure,
@@ -301,6 +341,10 @@ type bootstrapServiceClient struct {
 	writeClaims                       *connect.Client[v1.WriteClaimsRequest, v1.WriteClaimsResponse]
 	listClaims                        *connect.Client[v1.ListClaimsRequest, v1.ListClaimsResponse]
 	listFindings                      *connect.Client[v1.ListFindingsRequest, v1.ListFindingsResponse]
+	getFinding                        *connect.Client[v1.GetFindingRequest, v1.GetFindingResponse]
+	resolveFinding                    *connect.Client[v1.ResolveFindingRequest, v1.ResolveFindingResponse]
+	suppressFinding                   *connect.Client[v1.SuppressFindingRequest, v1.SuppressFindingResponse]
+	assignFinding                     *connect.Client[v1.AssignFindingRequest, v1.AssignFindingResponse]
 	listFindingEvaluationRuns         *connect.Client[v1.ListFindingEvaluationRunsRequest, v1.ListFindingEvaluationRunsResponse]
 	getFindingEvaluationRun           *connect.Client[v1.GetFindingEvaluationRunRequest, v1.GetFindingEvaluationRunResponse]
 	listFindingEvidence               *connect.Client[v1.ListFindingEvidenceRequest, v1.ListFindingEvidenceResponse]
@@ -390,6 +434,26 @@ func (c *bootstrapServiceClient) ListFindings(ctx context.Context, req *connect.
 	return c.listFindings.CallUnary(ctx, req)
 }
 
+// GetFinding calls cerebro.v1.BootstrapService.GetFinding.
+func (c *bootstrapServiceClient) GetFinding(ctx context.Context, req *connect.Request[v1.GetFindingRequest]) (*connect.Response[v1.GetFindingResponse], error) {
+	return c.getFinding.CallUnary(ctx, req)
+}
+
+// ResolveFinding calls cerebro.v1.BootstrapService.ResolveFinding.
+func (c *bootstrapServiceClient) ResolveFinding(ctx context.Context, req *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error) {
+	return c.resolveFinding.CallUnary(ctx, req)
+}
+
+// SuppressFinding calls cerebro.v1.BootstrapService.SuppressFinding.
+func (c *bootstrapServiceClient) SuppressFinding(ctx context.Context, req *connect.Request[v1.SuppressFindingRequest]) (*connect.Response[v1.SuppressFindingResponse], error) {
+	return c.suppressFinding.CallUnary(ctx, req)
+}
+
+// AssignFinding calls cerebro.v1.BootstrapService.AssignFinding.
+func (c *bootstrapServiceClient) AssignFinding(ctx context.Context, req *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error) {
+	return c.assignFinding.CallUnary(ctx, req)
+}
+
 // ListFindingEvaluationRuns calls cerebro.v1.BootstrapService.ListFindingEvaluationRuns.
 func (c *bootstrapServiceClient) ListFindingEvaluationRuns(ctx context.Context, req *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error) {
 	return c.listFindingEvaluationRuns.CallUnary(ctx, req)
@@ -444,6 +508,10 @@ type BootstrapServiceHandler interface {
 	WriteClaims(context.Context, *connect.Request[v1.WriteClaimsRequest]) (*connect.Response[v1.WriteClaimsResponse], error)
 	ListClaims(context.Context, *connect.Request[v1.ListClaimsRequest]) (*connect.Response[v1.ListClaimsResponse], error)
 	ListFindings(context.Context, *connect.Request[v1.ListFindingsRequest]) (*connect.Response[v1.ListFindingsResponse], error)
+	GetFinding(context.Context, *connect.Request[v1.GetFindingRequest]) (*connect.Response[v1.GetFindingResponse], error)
+	ResolveFinding(context.Context, *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error)
+	SuppressFinding(context.Context, *connect.Request[v1.SuppressFindingRequest]) (*connect.Response[v1.SuppressFindingResponse], error)
+	AssignFinding(context.Context, *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error)
 	ListFindingEvaluationRuns(context.Context, *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error)
 	GetFindingEvaluationRun(context.Context, *connect.Request[v1.GetFindingEvaluationRunRequest]) (*connect.Response[v1.GetFindingEvaluationRunResponse], error)
 	ListFindingEvidence(context.Context, *connect.Request[v1.ListFindingEvidenceRequest]) (*connect.Response[v1.ListFindingEvidenceResponse], error)
@@ -556,6 +624,30 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("ListFindings")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceGetFindingHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetFindingProcedure,
+		svc.GetFinding,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetFinding")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceResolveFindingHandler := connect.NewUnaryHandler(
+		BootstrapServiceResolveFindingProcedure,
+		svc.ResolveFinding,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ResolveFinding")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceSuppressFindingHandler := connect.NewUnaryHandler(
+		BootstrapServiceSuppressFindingProcedure,
+		svc.SuppressFinding,
+		connect.WithSchema(bootstrapServiceMethods.ByName("SuppressFinding")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceAssignFindingHandler := connect.NewUnaryHandler(
+		BootstrapServiceAssignFindingProcedure,
+		svc.AssignFinding,
+		connect.WithSchema(bootstrapServiceMethods.ByName("AssignFinding")),
+		connect.WithHandlerOptions(opts...),
+	)
 	bootstrapServiceListFindingEvaluationRunsHandler := connect.NewUnaryHandler(
 		BootstrapServiceListFindingEvaluationRunsProcedure,
 		svc.ListFindingEvaluationRuns,
@@ -632,6 +724,14 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceListClaimsHandler.ServeHTTP(w, r)
 		case BootstrapServiceListFindingsProcedure:
 			bootstrapServiceListFindingsHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetFindingProcedure:
+			bootstrapServiceGetFindingHandler.ServeHTTP(w, r)
+		case BootstrapServiceResolveFindingProcedure:
+			bootstrapServiceResolveFindingHandler.ServeHTTP(w, r)
+		case BootstrapServiceSuppressFindingProcedure:
+			bootstrapServiceSuppressFindingHandler.ServeHTTP(w, r)
+		case BootstrapServiceAssignFindingProcedure:
+			bootstrapServiceAssignFindingHandler.ServeHTTP(w, r)
 		case BootstrapServiceListFindingEvaluationRunsProcedure:
 			bootstrapServiceListFindingEvaluationRunsHandler.ServeHTTP(w, r)
 		case BootstrapServiceGetFindingEvaluationRunProcedure:
@@ -717,6 +817,22 @@ func (UnimplementedBootstrapServiceHandler) ListClaims(context.Context, *connect
 
 func (UnimplementedBootstrapServiceHandler) ListFindings(context.Context, *connect.Request[v1.ListFindingsRequest]) (*connect.Response[v1.ListFindingsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListFindings is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetFinding(context.Context, *connect.Request[v1.GetFindingRequest]) (*connect.Response[v1.GetFindingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetFinding is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ResolveFinding(context.Context, *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ResolveFinding is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) SuppressFinding(context.Context, *connect.Request[v1.SuppressFindingRequest]) (*connect.Response[v1.SuppressFindingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.SuppressFinding is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) AssignFinding(context.Context, *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.AssignFinding is not implemented"))
 }
 
 func (UnimplementedBootstrapServiceHandler) ListFindingEvaluationRuns(context.Context, *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error) {

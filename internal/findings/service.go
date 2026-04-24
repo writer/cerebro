@@ -17,6 +17,9 @@ const (
 	defaultEventLimit       = 100
 	maxEventLimit           = 1000
 	defaultEvidenceClaimCap = 100
+	findingStatusOpen       = "open"
+	findingStatusResolved   = "resolved"
+	findingStatusSuppressed = "suppressed"
 )
 
 var (
@@ -383,6 +386,51 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 	return &ListResult{Findings: findings}, nil
 }
 
+// GetFinding loads one persisted finding by durable identifier.
+func (s *Service) GetFinding(ctx context.Context, id string) (*ports.FindingRecord, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	findingID := strings.TrimSpace(id)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	finding, err := s.store.GetFinding(ctx, findingID)
+	if err != nil {
+		return nil, err
+	}
+	return finding, nil
+}
+
+// ResolveFinding marks one persisted finding as resolved.
+func (s *Service) ResolveFinding(ctx context.Context, id string, reason string) (*ports.FindingRecord, error) {
+	return s.updateFindingStatus(ctx, id, findingStatusResolved, reason)
+}
+
+// SuppressFinding marks one persisted finding as suppressed.
+func (s *Service) SuppressFinding(ctx context.Context, id string, reason string) (*ports.FindingRecord, error) {
+	return s.updateFindingStatus(ctx, id, findingStatusSuppressed, reason)
+}
+
+// AssignFinding updates or clears one persisted finding assignee.
+func (s *Service) AssignFinding(ctx context.Context, id string, assignee string) (*ports.FindingRecord, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	findingID := strings.TrimSpace(id)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	finding, err := s.store.UpdateFindingAssignee(ctx, ports.FindingAssigneeUpdate{
+		FindingID: findingID,
+		Assignee:  strings.TrimSpace(assignee),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("assign finding %q: %w", findingID, err)
+	}
+	return finding, nil
+}
+
 // ListEvaluationRuns loads persisted finding evaluation runs for one runtime.
 func (s *Service) ListEvaluationRuns(ctx context.Context, request ListEvaluationRunsRequest) (*ListEvaluationRunsResult, error) {
 	if s == nil || s.runtimeStore == nil || s.runStore == nil {
@@ -540,6 +588,26 @@ func normalizeEventLimit(limit uint32) uint32 {
 	default:
 		return limit
 	}
+}
+
+func (s *Service) updateFindingStatus(ctx context.Context, id string, status string, reason string) (*ports.FindingRecord, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	findingID := strings.TrimSpace(id)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	finding, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+		FindingID: findingID,
+		Status:    strings.TrimSpace(status),
+		Reason:    strings.TrimSpace(reason),
+		UpdatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("update finding %q status to %q: %w", findingID, status, err)
+	}
+	return finding, nil
 }
 
 func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32, startedAt time.Time) *cerebrov1.FindingEvaluationRun {

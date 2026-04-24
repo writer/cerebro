@@ -20,6 +20,15 @@ func (s *stubFindingStore) UpsertFinding(context.Context, *ports.FindingRecord) 
 	return nil, nil
 }
 
+func (s *stubFindingStore) GetFinding(_ context.Context, id string) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding != nil && finding.ID == id {
+			return cloneFinding(finding), nil
+		}
+	}
+	return nil, ports.ErrFindingNotFound
+}
+
 func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
 	s.request = request
 	findings := make([]*ports.FindingRecord, 0, len(s.findings))
@@ -27,6 +36,32 @@ func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFin
 		findings = append(findings, cloneFinding(finding))
 	}
 	return findings, nil
+}
+
+func (s *stubFindingStore) UpdateFindingStatus(_ context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding == nil || finding.ID != request.FindingID {
+			continue
+		}
+		cloned := cloneFinding(finding)
+		cloned.Status = request.Status
+		cloned.StatusReason = request.Reason
+		cloned.StatusUpdatedAt = request.UpdatedAt
+		return cloned, nil
+	}
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *stubFindingStore) UpdateFindingAssignee(_ context.Context, request ports.FindingAssigneeUpdate) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding == nil || finding.ID != request.FindingID {
+			continue
+		}
+		cloned := cloneFinding(finding)
+		cloned.Assignee = request.Assignee
+		return cloned, nil
+	}
+	return nil, ports.ErrFindingNotFound
 }
 
 type stubGraphStore struct {
@@ -241,6 +276,9 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ResourceURNs:    append([]string(nil), finding.ResourceURNs...),
 		EventIDs:        append([]string(nil), finding.EventIDs...),
 		Attributes:      cloneAttributes(finding.Attributes),
+		Assignee:        finding.Assignee,
+		StatusReason:    finding.StatusReason,
+		StatusUpdatedAt: finding.StatusUpdatedAt,
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
 	}

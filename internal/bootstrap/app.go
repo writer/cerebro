@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -63,6 +65,10 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /finding-rules", app.handleListFindingRules)
 	mux.HandleFunc("POST /reports/{reportID}/runs", app.handleRunReport)
 	mux.HandleFunc("GET /report-runs/{runID}", app.handleGetReportRun)
+	mux.HandleFunc("GET /findings/{findingID}", app.handleGetFinding)
+	mux.HandleFunc("POST /findings/{findingID}/resolve", app.handleResolveFinding)
+	mux.HandleFunc("POST /findings/{findingID}/suppress", app.handleSuppressFinding)
+	mux.HandleFunc("PUT /findings/{findingID}/assign", app.handleAssignFinding)
 	mux.HandleFunc("GET /finding-evaluation-runs/{runID}", app.handleGetFindingEvaluationRun)
 	mux.HandleFunc("GET /finding-evidence/{evidenceID}", app.handleGetFindingEvidence)
 	mux.HandleFunc("/sources", app.handleSources)
@@ -121,6 +127,77 @@ func (a *App) handleListReportDefinitions(w http.ResponseWriter, r *http.Request
 
 func (a *App) handleListFindingRules(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, a.findingService().ListRules())
+}
+
+func (a *App) handleGetFinding(w http.ResponseWriter, r *http.Request) {
+	finding, err := a.findingService().GetFinding(r.Context(), r.PathValue("findingID"))
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetFindingResponse{
+		Finding: findingMessage(finding),
+	})
+}
+
+func (a *App) handleResolveFinding(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.ResolveFindingRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	request.Id = r.PathValue("findingID")
+	if rawReason := r.URL.Query().Get("reason"); rawReason != "" {
+		request.Reason = rawReason
+	}
+	finding, err := a.findingService().ResolveFinding(r.Context(), request.GetId(), request.GetReason())
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.ResolveFindingResponse{
+		Finding: findingMessage(finding),
+	})
+}
+
+func (a *App) handleSuppressFinding(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.SuppressFindingRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	request.Id = r.PathValue("findingID")
+	if rawReason := r.URL.Query().Get("reason"); rawReason != "" {
+		request.Reason = rawReason
+	}
+	finding, err := a.findingService().SuppressFinding(r.Context(), request.GetId(), request.GetReason())
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.SuppressFindingResponse{
+		Finding: findingMessage(finding),
+	})
+}
+
+func (a *App) handleAssignFinding(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.AssignFindingRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	request.Id = r.PathValue("findingID")
+	if rawAssignee, ok := r.URL.Query()["assignee"]; ok && len(rawAssignee) != 0 {
+		request.Assignee = rawAssignee[len(rawAssignee)-1]
+	}
+	finding, err := a.findingService().AssignFinding(r.Context(), request.GetId(), request.GetAssignee())
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.AssignFindingResponse{
+		Finding: findingMessage(finding),
+	})
 }
 
 func (a *App) handleGetFindingEvaluationRun(w http.ResponseWriter, r *http.Request) {
@@ -417,9 +494,16 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 		FindingId:   r.URL.Query().Get("finding_id"),
 		RuleId:      r.URL.Query().Get("rule_id"),
 		Severity:    r.URL.Query().Get("severity"),
-		Status:      r.URL.Query().Get("status"),
 		ResourceUrn: r.URL.Query().Get("resource_urn"),
 		EventId:     r.URL.Query().Get("event_id"),
+	}
+	if rawStatus := r.URL.Query().Get("status"); rawStatus != "" {
+		status, err := parseFindingStatus(rawStatus)
+		if err != nil {
+			writeFindingError(w, err)
+			return
+		}
+		request.Status = status
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
@@ -431,16 +515,23 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 		request.FindingId = r.URL.Query().Get("finding_id")
 		request.RuleId = r.URL.Query().Get("rule_id")
 		request.Severity = r.URL.Query().Get("severity")
-		request.Status = r.URL.Query().Get("status")
 		request.ResourceUrn = r.URL.Query().Get("resource_urn")
 		request.EventId = r.URL.Query().Get("event_id")
+		if rawStatus := r.URL.Query().Get("status"); rawStatus != "" {
+			status, err := parseFindingStatus(rawStatus)
+			if err != nil {
+				writeFindingError(w, err)
+				return
+			}
+			request.Status = status
+		}
 	}
 	response, err := a.findingService().ListFindings(r.Context(), findings.ListRequest{
 		RuntimeID:   request.GetRuntimeId(),
 		FindingID:   request.GetFindingId(),
 		RuleID:      request.GetRuleId(),
 		Severity:    request.GetSeverity(),
-		Status:      request.GetStatus(),
+		Status:      findingStatusString(request.GetStatus()),
 		ResourceURN: request.GetResourceUrn(),
 		EventID:     request.GetEventId(),
 		Limit:       request.GetLimit(),
@@ -711,7 +802,7 @@ func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Reques
 		FindingID:   req.Msg.GetFindingId(),
 		RuleID:      req.Msg.GetRuleId(),
 		Severity:    req.Msg.GetSeverity(),
-		Status:      req.Msg.GetStatus(),
+		Status:      findingStatusString(req.Msg.GetStatus()),
 		ResourceURN: req.Msg.GetResourceUrn(),
 		EventID:     req.Msg.GetEventId(),
 		Limit:       req.Msg.GetLimit(),
@@ -720,6 +811,66 @@ func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Reques
 		return nil, err
 	}
 	return connect.NewResponse(listFindingsResponse(response)), nil
+}
+
+func (s *bootstrapService) GetFinding(ctx context.Context, req *connect.Request[cerebrov1.GetFindingRequest]) (*connect.Response[cerebrov1.GetFindingResponse], error) {
+	finding, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).GetFinding(ctx, req.Msg.GetId())
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.GetFindingResponse{Finding: findingMessage(finding)}), nil
+}
+
+func (s *bootstrapService) ResolveFinding(ctx context.Context, req *connect.Request[cerebrov1.ResolveFindingRequest]) (*connect.Response[cerebrov1.ResolveFindingResponse], error) {
+	finding, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).ResolveFinding(ctx, req.Msg.GetId(), req.Msg.GetReason())
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.ResolveFindingResponse{Finding: findingMessage(finding)}), nil
+}
+
+func (s *bootstrapService) SuppressFinding(ctx context.Context, req *connect.Request[cerebrov1.SuppressFindingRequest]) (*connect.Response[cerebrov1.SuppressFindingResponse], error) {
+	finding, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).SuppressFinding(ctx, req.Msg.GetId(), req.Msg.GetReason())
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.SuppressFindingResponse{Finding: findingMessage(finding)}), nil
+}
+
+func (s *bootstrapService) AssignFinding(ctx context.Context, req *connect.Request[cerebrov1.AssignFindingRequest]) (*connect.Response[cerebrov1.AssignFindingResponse], error) {
+	finding, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).AssignFinding(ctx, req.Msg.GetId(), req.Msg.GetAssignee())
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.AssignFindingResponse{Finding: findingMessage(finding)}), nil
 }
 
 func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect.Request[cerebrov1.ListFindingEvidenceRequest]) (*connect.Response[cerebrov1.ListFindingEvidenceResponse], error) {
@@ -986,6 +1137,8 @@ func writeFindingError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, findings.ErrRuleNotFound):
 		statusCode = http.StatusNotFound
+	case errors.Is(err, ports.ErrFindingNotFound):
+		statusCode = http.StatusNotFound
 	case errors.Is(err, ports.ErrFindingEvaluationRunNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, ports.ErrFindingEvidenceNotFound):
@@ -1179,14 +1332,19 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		RuleId:       finding.RuleID,
 		Title:        finding.Title,
 		Severity:     finding.Severity,
-		Status:       finding.Status,
+		Status:       findingStatusMessage(finding.Status),
 		Summary:      finding.Summary,
 		ResourceUrns: append([]string(nil), finding.ResourceURNs...),
 		EventIds:     append([]string(nil), finding.EventIDs...),
 		Attributes:   make(map[string]string, len(finding.Attributes)),
+		Assignee:     finding.Assignee,
+		StatusReason: finding.StatusReason,
 	}
 	for key, value := range finding.Attributes {
 		message.Attributes[key] = value
+	}
+	if !finding.StatusUpdatedAt.IsZero() {
+		message.StatusUpdatedAt = timestamppb.New(finding.StatusUpdatedAt)
 	}
 	if !finding.FirstObservedAt.IsZero() {
 		message.FirstObservedAt = timestamppb.New(finding.FirstObservedAt)
@@ -1195,6 +1353,45 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		message.LastObservedAt = timestamppb.New(finding.LastObservedAt)
 	}
 	return message
+}
+
+func findingStatusMessage(status string) cerebrov1.FindingStatus {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "open":
+		return cerebrov1.FindingStatus_FINDING_STATUS_OPEN
+	case "resolved":
+		return cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED
+	case "suppressed":
+		return cerebrov1.FindingStatus_FINDING_STATUS_SUPPRESSED
+	default:
+		return cerebrov1.FindingStatus_FINDING_STATUS_UNSPECIFIED
+	}
+}
+
+func findingStatusString(status cerebrov1.FindingStatus) string {
+	switch status {
+	case cerebrov1.FindingStatus_FINDING_STATUS_OPEN:
+		return "open"
+	case cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED:
+		return "resolved"
+	case cerebrov1.FindingStatus_FINDING_STATUS_SUPPRESSED:
+		return "suppressed"
+	default:
+		return ""
+	}
+}
+
+func parseFindingStatus(raw string) (cerebrov1.FindingStatus, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "open", "finding_status_open":
+		return cerebrov1.FindingStatus_FINDING_STATUS_OPEN, nil
+	case "resolved", "finding_status_resolved":
+		return cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED, nil
+	case "suppressed", "finding_status_suppressed":
+		return cerebrov1.FindingStatus_FINDING_STATUS_SUPPRESSED, nil
+	default:
+		return cerebrov1.FindingStatus_FINDING_STATUS_UNSPECIFIED, fmt.Errorf("unsupported finding status %q", raw)
+	}
 }
 
 func graphNeighborhoodResponse(neighborhood *ports.EntityNeighborhood) *cerebrov1.GetEntityNeighborhoodResponse {

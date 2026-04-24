@@ -159,7 +159,22 @@ func (s *stubRuntimeStore) UpsertFinding(_ context.Context, finding *ports.Findi
 	if s.findings == nil {
 		s.findings = make(map[string]*ports.FindingRecord)
 	}
-	s.findings[finding.ID] = cloneFinding(finding)
+	cloned := cloneFinding(finding)
+	if existing, ok := s.findings[cloned.ID]; ok {
+		cloned = preserveFindingWorkflow(existing, cloned)
+	}
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
+func (s *stubRuntimeStore) GetFinding(_ context.Context, id string) (*ports.FindingRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	finding, ok := s.findings[id]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
 	return cloneFinding(finding), nil
 }
 
@@ -239,6 +254,36 @@ func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFin
 		findings = findings[:int(request.Limit)]
 	}
 	return findings, nil
+}
+
+func (s *stubRuntimeStore) UpdateFindingStatus(_ context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	cloned.Status = strings.TrimSpace(request.Status)
+	cloned.StatusReason = strings.TrimSpace(request.Reason)
+	cloned.StatusUpdatedAt = request.UpdatedAt.UTC()
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
+func (s *stubRuntimeStore) UpdateFindingAssignee(_ context.Context, request ports.FindingAssigneeUpdate) (*ports.FindingRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	cloned.Assignee = strings.TrimSpace(request.Assignee)
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
 }
 
 func (s *stubRuntimeStore) PutFindingEvidence(_ context.Context, evidence *cerebrov1.FindingEvidence) error {
@@ -1230,7 +1275,7 @@ func TestFindingEndpoints(t *testing.T) {
 		RuntimeId:   "writer-okta-audit",
 		RuleId:      "identity-okta-policy-rule-lifecycle-tampering",
 		Severity:    "HIGH",
-		Status:      "open",
+		Status:      cerebrov1.FindingStatus_FINDING_STATUS_OPEN,
 		ResourceUrn: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
 		EventId:     "okta-audit-2",
 		Limit:       1,
@@ -1317,6 +1362,81 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := getEvaluationRunResp.Msg.GetRun().GetId(); got != evaluateFindingsResp.Msg.GetRun().GetId() {
 		t.Fatalf("GetFindingEvaluationRun().Run.Id = %q, want %q", got, evaluateFindingsResp.Msg.GetRun().GetId())
+	}
+	assignBody, err := protojson.Marshal(&cerebrov1.AssignFindingRequest{Assignee: "secops"})
+	if err != nil {
+		t.Fatalf("marshal assign finding body: %v", err)
+	}
+	assignReq, err := http.NewRequest(http.MethodPut, server.URL+"/findings/"+evaluateFindingsResp.Msg.GetFindings()[0].GetId()+"/assign", bytes.NewReader(assignBody))
+	if err != nil {
+		t.Fatalf("new assign finding request: %v", err)
+	}
+	assignReq.Header.Set("Content-Type", "application/json")
+	assignResp, err := server.Client().Do(assignReq)
+	if err != nil {
+		t.Fatalf("PUT /findings/{id}/assign error = %v", err)
+	}
+	defer func() {
+		if closeErr := assignResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close assign finding response body: %v", closeErr)
+		}
+	}()
+	var assignPayload map[string]any
+	if err := json.NewDecoder(assignResp.Body).Decode(&assignPayload); err != nil {
+		t.Fatalf("decode assign finding response: %v", err)
+	}
+	assignFinding, ok := assignPayload["finding"].(map[string]any)
+	if !ok {
+		t.Fatalf("assign finding payload = %#v, want object", assignPayload["finding"])
+	}
+	if got := assignFinding["assignee"]; got != "secops" {
+		t.Fatalf("assign finding assignee = %#v, want secops", got)
+	}
+	resolveFindingResp, err := client.ResolveFinding(context.Background(), connect.NewRequest(&cerebrov1.ResolveFindingRequest{
+		Id:     evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
+		Reason: "verified remediation",
+	}))
+	if err != nil {
+		t.Fatalf("ResolveFinding() error = %v", err)
+	}
+	if got := resolveFindingResp.Msg.GetFinding().GetStatus(); got != cerebrov1.FindingStatus_FINDING_STATUS_RESOLVED {
+		t.Fatalf("ResolveFinding().Finding.Status = %v, want FINDING_STATUS_RESOLVED", got)
+	}
+	if got := resolveFindingResp.Msg.GetFinding().GetStatusReason(); got != "verified remediation" {
+		t.Fatalf("ResolveFinding().Finding.StatusReason = %q, want verified remediation", got)
+	}
+	getFindingResp, err := server.Client().Get(server.URL + "/findings/" + evaluateFindingsResp.Msg.GetFindings()[0].GetId())
+	if err != nil {
+		t.Fatalf("GET /findings/{id} error = %v", err)
+	}
+	defer func() {
+		if closeErr := getFindingResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close get finding response body: %v", closeErr)
+		}
+	}()
+	var getFindingPayload map[string]any
+	if err := json.NewDecoder(getFindingResp.Body).Decode(&getFindingPayload); err != nil {
+		t.Fatalf("decode get finding response: %v", err)
+	}
+	getFindingBody, ok := getFindingPayload["finding"].(map[string]any)
+	if !ok {
+		t.Fatalf("get finding payload = %#v, want object", getFindingPayload["finding"])
+	}
+	if got := getFindingBody["status"]; got != "FINDING_STATUS_RESOLVED" {
+		t.Fatalf("get finding status = %#v, want FINDING_STATUS_RESOLVED", got)
+	}
+	if got := getFindingBody["assignee"]; got != "secops" {
+		t.Fatalf("get finding assignee = %#v, want secops", got)
+	}
+	suppressFindingResp, err := client.SuppressFinding(context.Background(), connect.NewRequest(&cerebrov1.SuppressFindingRequest{
+		Id:     evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
+		Reason: "accepted risk",
+	}))
+	if err != nil {
+		t.Fatalf("SuppressFinding() error = %v", err)
+	}
+	if got := suppressFindingResp.Msg.GetFinding().GetStatus(); got != cerebrov1.FindingStatus_FINDING_STATUS_SUPPRESSED {
+		t.Fatalf("SuppressFinding().Finding.Status = %v, want FINDING_STATUS_SUPPRESSED", got)
 	}
 	if got := runtimeStore.findingEvaluationRunListRequest.RuleID; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("runtimeStore.findingEvaluationRunListRequest.RuleID = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
@@ -1945,9 +2065,30 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ResourceURNs:    resourceURNs,
 		EventIDs:        eventIDs,
 		Attributes:      attributes,
+		Assignee:        finding.Assignee,
+		StatusReason:    finding.StatusReason,
+		StatusUpdatedAt: finding.StatusUpdatedAt,
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
 	}
+}
+
+func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.FindingRecord) *ports.FindingRecord {
+	if existing == nil || incoming == nil {
+		return incoming
+	}
+	if strings.TrimSpace(existing.Assignee) != "" && strings.TrimSpace(incoming.Assignee) == "" {
+		incoming.Assignee = strings.TrimSpace(existing.Assignee)
+	}
+	if strings.TrimSpace(incoming.Status) == "open" {
+		switch strings.TrimSpace(existing.Status) {
+		case "resolved", "suppressed":
+			incoming.Status = strings.TrimSpace(existing.Status)
+			incoming.StatusReason = strings.TrimSpace(existing.StatusReason)
+			incoming.StatusUpdatedAt = existing.StatusUpdatedAt
+		}
+	}
+	return incoming
 }
 
 func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {

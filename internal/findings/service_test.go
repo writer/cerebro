@@ -68,8 +68,19 @@ func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.Findi
 		s.findings = make(map[string]*ports.FindingRecord)
 	}
 	cloned := cloneFinding(finding)
+	if existing, ok := s.findings[cloned.ID]; ok {
+		cloned = preserveFindingWorkflow(existing, cloned)
+	}
 	s.findings[cloned.ID] = cloned
 	return cloneFinding(cloned), nil
+}
+
+func (s *stubFindingStore) GetFinding(_ context.Context, id string) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[id]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	return cloneFinding(finding), nil
 }
 
 func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
@@ -99,6 +110,30 @@ func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFin
 		findings = findings[:int(request.Limit)]
 	}
 	return findings, nil
+}
+
+func (s *stubFindingStore) UpdateFindingStatus(_ context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	cloned.Status = strings.TrimSpace(request.Status)
+	cloned.StatusReason = strings.TrimSpace(request.Reason)
+	cloned.StatusUpdatedAt = request.UpdatedAt.UTC()
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
+func (s *stubFindingStore) UpdateFindingAssignee(_ context.Context, request ports.FindingAssigneeUpdate) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	cloned.Assignee = strings.TrimSpace(request.Assignee)
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
 }
 
 func (s *stubFindingStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
@@ -804,6 +839,122 @@ func TestListFindingsRequiresAvailableDependencies(t *testing.T) {
 	}
 }
 
+func TestGetFindingReturnsPersistedFinding(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:     "finding-1",
+				Status: "open",
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	finding, err := service.GetFinding(context.Background(), "finding-1")
+	if err != nil {
+		t.Fatalf("GetFinding() error = %v", err)
+	}
+	if got := finding.ID; got != "finding-1" {
+		t.Fatalf("GetFinding().ID = %q, want finding-1", got)
+	}
+}
+
+func TestResolveFindingUpdatesPersistedWorkflow(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {ID: "finding-1", Status: "open"},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	finding, err := service.ResolveFinding(context.Background(), "finding-1", "verified remediation")
+	if err != nil {
+		t.Fatalf("ResolveFinding() error = %v", err)
+	}
+	if got := finding.Status; got != "resolved" {
+		t.Fatalf("ResolveFinding().Status = %q, want resolved", got)
+	}
+	if got := finding.StatusReason; got != "verified remediation" {
+		t.Fatalf("ResolveFinding().StatusReason = %q, want verified remediation", got)
+	}
+	if finding.StatusUpdatedAt.IsZero() {
+		t.Fatal("ResolveFinding().StatusUpdatedAt = zero, want non-zero")
+	}
+}
+
+func TestAssignFindingUpdatesPersistedWorkflow(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {ID: "finding-1", Status: "open"},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	finding, err := service.AssignFinding(context.Background(), "finding-1", "secops")
+	if err != nil {
+		t.Fatalf("AssignFinding() error = %v", err)
+	}
+	if got := finding.Assignee; got != "secops" {
+		t.Fatalf("AssignFinding().Assignee = %q, want secops", got)
+	}
+}
+
+func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newAuditEvent("okta-audit-1", "user.session.start", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+		},
+	}
+	store := &stubFindingStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-1": {
+				ID:            "claim-1",
+				RuntimeID:     "writer-okta-audit",
+				SourceEventID: "okta-audit-2",
+			},
+		},
+	}
+	service := New(&stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {
+				Id:       "writer-okta-audit",
+				SourceId: "okta",
+				TenantId: "writer",
+			},
+		},
+	}, replayer, store, store, store, store)
+
+	first, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID:  "writer-okta-audit",
+		EventLimit: 25,
+	})
+	if err != nil {
+		t.Fatalf("first EvaluateSourceRuntime() error = %v", err)
+	}
+	findingID := first.Findings[0].ID
+	if _, err := service.AssignFinding(context.Background(), findingID, "secops"); err != nil {
+		t.Fatalf("AssignFinding() error = %v", err)
+	}
+	if _, err := service.ResolveFinding(context.Background(), findingID, "triaged"); err != nil {
+		t.Fatalf("ResolveFinding() error = %v", err)
+	}
+
+	second, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID:  "writer-okta-audit",
+		EventLimit: 25,
+	})
+	if err != nil {
+		t.Fatalf("second EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := second.Findings[0].Status; got != "resolved" {
+		t.Fatalf("second EvaluateSourceRuntime().Findings[0].Status = %q, want resolved", got)
+	}
+	if got := second.Findings[0].Assignee; got != "secops" {
+		t.Fatalf("second EvaluateSourceRuntime().Findings[0].Assignee = %q, want secops", got)
+	}
+	if got := second.Findings[0].StatusReason; got != "triaged" {
+		t.Fatalf("second EvaluateSourceRuntime().Findings[0].StatusReason = %q, want triaged", got)
+	}
+}
+
 func TestListEvaluationRunsReturnsFilteredRuns(t *testing.T) {
 	store := &stubFindingStore{
 		runs: map[string]*cerebrov1.FindingEvaluationRun{
@@ -1070,9 +1221,30 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ResourceURNs:    resourceURNs,
 		EventIDs:        eventIDs,
 		Attributes:      attributes,
+		Assignee:        finding.Assignee,
+		StatusReason:    finding.StatusReason,
+		StatusUpdatedAt: finding.StatusUpdatedAt,
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
 	}
+}
+
+func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.FindingRecord) *ports.FindingRecord {
+	if existing == nil || incoming == nil {
+		return incoming
+	}
+	if strings.TrimSpace(existing.Assignee) != "" && strings.TrimSpace(incoming.Assignee) == "" {
+		incoming.Assignee = strings.TrimSpace(existing.Assignee)
+	}
+	if strings.TrimSpace(incoming.Status) == "open" {
+		switch strings.TrimSpace(existing.Status) {
+		case "resolved", "suppressed":
+			incoming.Status = strings.TrimSpace(existing.Status)
+			incoming.StatusReason = strings.TrimSpace(existing.StatusReason)
+			incoming.StatusUpdatedAt = existing.StatusUpdatedAt
+		}
+	}
+	return incoming
 }
 
 func cloneClaim(claim *ports.ClaimRecord) *ports.ClaimRecord {
