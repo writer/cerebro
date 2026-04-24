@@ -1,0 +1,36 @@
+[
+  {
+    "subject_ref": {
+      "urn": "urn:cerebro:writer:runtime:writer-jira-posture:workspace:writer",
+      "entity_type": "workspace",
+      "label": "Writer Jira"
+    },
+    "predicate": "sso_enforced",
+    "object_value": "true",
+    "claim_type": "attribute"
+  },
+  {
+    "subject_ref": {
+      "urn": "urn:cerebro:writer:runtime:writer-jira-posture:project:SEC",
+      "entity_type": "project",
+      "label": "Security"
+    },
+    "predicate": "belongs_to",
+    "object_ref": {
+      "urn": "urn:cerebro:writer:runtime:writer-jira-posture:workspace:writer",
+      "entity_type": "workspace",
+      "label": "Writer Jira"
+    },
+    "claim_type": "relation"
+  },
+  {
+    "subject_ref": {
+      "urn": "urn:cerebro:writer:runtime:writer-jira-posture:app:slack",
+      "entity_type": "app",
+      "label": "Slack for Jira"
+    },
+    "predicate": "approved_by_security",
+    "object_value": "true",
+    "claim_type": "attribute"
+  }
+]
