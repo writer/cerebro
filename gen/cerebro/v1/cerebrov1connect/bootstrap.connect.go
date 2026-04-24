@@ -42,6 +42,9 @@ const (
 	// BootstrapServiceListReportDefinitionsProcedure is the fully-qualified name of the
 	// BootstrapService's ListReportDefinitions RPC.
 	BootstrapServiceListReportDefinitionsProcedure = "/cerebro.v1.BootstrapService/ListReportDefinitions"
+	// BootstrapServiceListFindingRulesProcedure is the fully-qualified name of the BootstrapService's
+	// ListFindingRules RPC.
+	BootstrapServiceListFindingRulesProcedure = "/cerebro.v1.BootstrapService/ListFindingRules"
 	// BootstrapServiceRunReportProcedure is the fully-qualified name of the BootstrapService's
 	// RunReport RPC.
 	BootstrapServiceRunReportProcedure = "/cerebro.v1.BootstrapService/RunReport"
@@ -91,6 +94,7 @@ type BootstrapServiceClient interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
 	CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error)
 	ListReportDefinitions(context.Context, *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error)
+	ListFindingRules(context.Context, *connect.Request[v1.ListFindingRulesRequest]) (*connect.Response[v1.ListFindingRulesResponse], error)
 	RunReport(context.Context, *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error)
 	GetReportRun(context.Context, *connect.Request[v1.GetReportRunRequest]) (*connect.Response[v1.GetReportRunResponse], error)
 	ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error)
@@ -134,6 +138,12 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			httpClient,
 			baseURL+BootstrapServiceListReportDefinitionsProcedure,
 			connect.WithSchema(bootstrapServiceMethods.ByName("ListReportDefinitions")),
+			connect.WithClientOptions(opts...),
+		),
+		listFindingRules: connect.NewClient[v1.ListFindingRulesRequest, v1.ListFindingRulesResponse](
+			httpClient,
+			baseURL+BootstrapServiceListFindingRulesProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListFindingRules")),
 			connect.WithClientOptions(opts...),
 		),
 		runReport: connect.NewClient[v1.RunReportRequest, v1.RunReportResponse](
@@ -228,6 +238,7 @@ type bootstrapServiceClient struct {
 	getVersion                    *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
 	checkHealth                   *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
 	listReportDefinitions         *connect.Client[v1.ListReportDefinitionsRequest, v1.ListReportDefinitionsResponse]
+	listFindingRules              *connect.Client[v1.ListFindingRulesRequest, v1.ListFindingRulesResponse]
 	runReport                     *connect.Client[v1.RunReportRequest, v1.RunReportResponse]
 	getReportRun                  *connect.Client[v1.GetReportRunRequest, v1.GetReportRunResponse]
 	listSources                   *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
@@ -257,6 +268,11 @@ func (c *bootstrapServiceClient) CheckHealth(ctx context.Context, req *connect.R
 // ListReportDefinitions calls cerebro.v1.BootstrapService.ListReportDefinitions.
 func (c *bootstrapServiceClient) ListReportDefinitions(ctx context.Context, req *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error) {
 	return c.listReportDefinitions.CallUnary(ctx, req)
+}
+
+// ListFindingRules calls cerebro.v1.BootstrapService.ListFindingRules.
+func (c *bootstrapServiceClient) ListFindingRules(ctx context.Context, req *connect.Request[v1.ListFindingRulesRequest]) (*connect.Response[v1.ListFindingRulesResponse], error) {
+	return c.listFindingRules.CallUnary(ctx, req)
 }
 
 // RunReport calls cerebro.v1.BootstrapService.RunReport.
@@ -334,6 +350,7 @@ type BootstrapServiceHandler interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
 	CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error)
 	ListReportDefinitions(context.Context, *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error)
+	ListFindingRules(context.Context, *connect.Request[v1.ListFindingRulesRequest]) (*connect.Response[v1.ListFindingRulesResponse], error)
 	RunReport(context.Context, *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error)
 	GetReportRun(context.Context, *connect.Request[v1.GetReportRunRequest]) (*connect.Response[v1.GetReportRunResponse], error)
 	ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error)
@@ -373,6 +390,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		BootstrapServiceListReportDefinitionsProcedure,
 		svc.ListReportDefinitions,
 		connect.WithSchema(bootstrapServiceMethods.ByName("ListReportDefinitions")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceListFindingRulesHandler := connect.NewUnaryHandler(
+		BootstrapServiceListFindingRulesProcedure,
+		svc.ListFindingRules,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListFindingRules")),
 		connect.WithHandlerOptions(opts...),
 	)
 	bootstrapServiceRunReportHandler := connect.NewUnaryHandler(
@@ -467,6 +490,8 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceCheckHealthHandler.ServeHTTP(w, r)
 		case BootstrapServiceListReportDefinitionsProcedure:
 			bootstrapServiceListReportDefinitionsHandler.ServeHTTP(w, r)
+		case BootstrapServiceListFindingRulesProcedure:
+			bootstrapServiceListFindingRulesHandler.ServeHTTP(w, r)
 		case BootstrapServiceRunReportProcedure:
 			bootstrapServiceRunReportHandler.ServeHTTP(w, r)
 		case BootstrapServiceGetReportRunProcedure:
@@ -514,6 +539,10 @@ func (UnimplementedBootstrapServiceHandler) CheckHealth(context.Context, *connec
 
 func (UnimplementedBootstrapServiceHandler) ListReportDefinitions(context.Context, *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListReportDefinitions is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListFindingRules(context.Context, *connect.Request[v1.ListFindingRulesRequest]) (*connect.Response[v1.ListFindingRulesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListFindingRules is not implemented"))
 }
 
 func (UnimplementedBootstrapServiceHandler) RunReport(context.Context, *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error) {

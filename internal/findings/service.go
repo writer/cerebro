@@ -33,6 +33,10 @@ var (
 )
 
 // Service replays runtime events through one selected finding rule and persists emitted findings.
+//
+// The service intentionally selects one rule per call so the returned RuleSpec, persisted
+// fingerprints, and runtime-level lineage all stay explicit instead of collapsing into an
+// opaque multi-rule batch.
 type Service struct {
 	runtimeStore ports.SourceRuntimeStore
 	replayer     ports.EventReplayer
@@ -84,6 +88,16 @@ func NewWithRegistry(runtimeStore ports.SourceRuntimeStore, replayer ports.Event
 		replayer:     replayer,
 		store:        store,
 		rules:        rules,
+	}
+}
+
+// ListRules returns the discoverable registered finding rule catalog.
+func (s *Service) ListRules() *cerebrov1.ListFindingRulesResponse {
+	if s == nil || s.rules == nil {
+		return &cerebrov1.ListFindingRulesResponse{}
+	}
+	return &cerebrov1.ListFindingRulesResponse{
+		Rules: s.rules.List(),
 	}
 }
 

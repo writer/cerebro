@@ -60,6 +60,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("/health", app.handleHealth)
 	mux.HandleFunc("/healthz", app.handleHealth)
 	mux.HandleFunc("GET /reports", app.handleListReportDefinitions)
+	mux.HandleFunc("GET /finding-rules", app.handleListFindingRules)
 	mux.HandleFunc("POST /reports/{reportID}/runs", app.handleRunReport)
 	mux.HandleFunc("GET /report-runs/{runID}", app.handleGetReportRun)
 	mux.HandleFunc("/sources", app.handleSources)
@@ -111,6 +112,10 @@ func (a *App) handleSources(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleListReportDefinitions(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, a.reportService().List())
+}
+
+func (a *App) handleListFindingRules(w http.ResponseWriter, r *http.Request) {
+	writeProtoJSON(w, http.StatusOK, a.findingService().ListRules())
 }
 
 func (a *App) handleRunReport(w http.ResponseWriter, r *http.Request) {
@@ -411,6 +416,14 @@ func (s *bootstrapService) ListReportDefinitions(_ context.Context, _ *connect.R
 		graphQueryStore(s.deps.GraphStore),
 		reportStore(s.deps.StateStore),
 	).List()), nil
+}
+
+func (s *bootstrapService) ListFindingRules(_ context.Context, _ *connect.Request[cerebrov1.ListFindingRulesRequest]) (*connect.Response[cerebrov1.ListFindingRulesResponse], error) {
+	return connect.NewResponse(findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+	).ListRules()), nil
 }
 
 func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[cerebrov1.RunReportRequest]) (*connect.Response[cerebrov1.RunReportResponse], error) {

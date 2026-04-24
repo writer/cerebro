@@ -14,6 +14,7 @@ service BootstrapService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
   rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
   rpc ListReportDefinitions(ListReportDefinitionsRequest) returns (ListReportDefinitionsResponse);
+  rpc ListFindingRules(ListFindingRulesRequest) returns (ListFindingRulesResponse);
   rpc RunReport(RunReportRequest) returns (RunReportResponse);
   rpc GetReportRun(GetReportRunRequest) returns (GetReportRunResponse);
   rpc ListSources(ListSourcesRequest) returns (ListSourcesResponse);
@@ -90,6 +91,14 @@ message ListReportDefinitionsRequest {}
 // ListReportDefinitionsResponse returns the built-in report catalog.
 message ListReportDefinitionsResponse {
   repeated ReportDefinition reports = 1;
+}
+
+// ListFindingRulesRequest requests the registered finding rule catalog.
+message ListFindingRulesRequest {}
+
+// ListFindingRulesResponse returns the discoverable finding rule catalog for explicit rule selection.
+message ListFindingRulesResponse {
+  repeated RuleSpec rules = 1;
 }
 
 // RunReportRequest requests one durable report run.

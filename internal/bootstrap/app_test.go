@@ -766,6 +766,53 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 }
 
+func TestFindingRuleEndpoints(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/finding-rules")
+	if err != nil {
+		t.Fatalf("GET /finding-rules error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /finding-rules response body: %v", closeErr)
+		}
+	}()
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /finding-rules response: %v", err)
+	}
+	rulesPayload, ok := payload["rules"].([]any)
+	if !ok || len(rulesPayload) != 1 {
+		t.Fatalf("/finding-rules payload = %#v, want 1 rule", payload["rules"])
+	}
+	rulePayload, ok := rulesPayload[0].(map[string]any)
+	if !ok {
+		t.Fatalf("/finding-rules rule entry = %#v, want object", rulesPayload[0])
+	}
+	if got := rulePayload["id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
+		t.Fatalf("/finding-rules rule id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	listResp, err := client.ListFindingRules(context.Background(), connect.NewRequest(&cerebrov1.ListFindingRulesRequest{}))
+	if err != nil {
+		t.Fatalf("ListFindingRules() error = %v", err)
+	}
+	if got := len(listResp.Msg.GetRules()); got != 1 {
+		t.Fatalf("len(ListFindingRules().Rules) = %d, want 1", got)
+	}
+	if got := listResp.Msg.GetRules()[0].GetId(); got != "identity-okta-policy-rule-lifecycle-tampering" {
+		t.Fatalf("ListFindingRules().Rules[0].Id = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
+}
+
 func TestFindingEndpoints(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

@@ -178,6 +178,17 @@ func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T
 	}
 }
 
+func TestListRulesReturnsBuiltinCatalog(t *testing.T) {
+	service := New(nil, nil, nil)
+	response := service.ListRules()
+	if got := len(response.GetRules()); got != 1 {
+		t.Fatalf("len(ListRules().Rules) = %d, want 1", got)
+	}
+	if got := response.GetRules()[0].GetId(); got != oktaPolicyRuleLifecycleTamperingRuleID {
+		t.Fatalf("ListRules().Rules[0].Id = %q, want %q", got, oktaPolicyRuleLifecycleTamperingRuleID)
+	}
+}
+
 func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
