@@ -178,6 +178,121 @@ func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {
+					Id:       "writer-okta-audit",
+					SourceId: "okta",
+					TenantId: "writer",
+				},
+			},
+		},
+		replayer,
+		&stubFindingStore{},
+	)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID:  "writer-okta-audit",
+		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
+		EventLimit: 10,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := result.Rule.GetId(); got != oktaPolicyRuleLifecycleTamperingRuleID {
+		t.Fatalf("EvaluateSourceRuntime().Rule.ID = %q, want %q", got, oktaPolicyRuleLifecycleTamperingRuleID)
+	}
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(EvaluateSourceRuntime().Findings) = %d, want 1", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeFindingsRejectsUnknownRule(t *testing.T) {
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {
+					Id:       "writer-okta-audit",
+					SourceId: "okta",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubReplayer{},
+		&stubFindingStore{},
+	)
+	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+		RuleID:    "rule-does-not-exist",
+	}); !errors.Is(err, ErrRuleNotFound) {
+		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuleNotFound)
+	}
+}
+
+func TestEvaluateSourceRuntimeFindingsRequiresRuleIDWhenMultipleRulesSupportRuntime(t *testing.T) {
+	registry, err := NewRegistry(
+		&stubRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		&stubRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {
+					Id:       "writer-okta-audit",
+					SourceId: "okta",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubReplayer{},
+		&stubFindingStore{},
+		registry,
+	)
+	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+	}); !errors.Is(err, ErrRuleSelectionRequired) {
+		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuleSelectionRequired)
+	}
+}
+
+func TestEvaluateSourceRuntimeFindingsRejectsUnsupportedRule(t *testing.T) {
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-github-audit": {
+					Id:       "writer-github-audit",
+					SourceId: "github",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubReplayer{},
+		&stubFindingStore{},
+	)
+	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-github-audit",
+		RuleID:    oktaPolicyRuleLifecycleTamperingRuleID,
+	}); !errors.Is(err, ErrRuleUnsupported) {
+		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuleUnsupported)
+	}
+}
+
 func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{
