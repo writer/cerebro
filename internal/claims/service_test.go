@@ -216,6 +216,104 @@ func TestWriteClaimsPersistsClaimsAndProjectsRelations(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	observedAt := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+	statusID := hashClaimID("writer-jira", claimTypeAttribute, issueURN, "status")
+	assigneeID := hashClaimID("writer-jira", claimTypeRelation, issueURN, "assigned_to")
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			statusID: {
+				ID:            statusID,
+				RuntimeID:     "writer-jira",
+				TenantID:      "writer",
+				SubjectURN:    issueURN,
+				Predicate:     "status",
+				ObjectValue:   "in_progress",
+				ClaimType:     claimTypeAttribute,
+				Status:        claimStatusAsserted,
+				SourceEventID: "jira-event-1",
+				ObservedAt:    observedAt.Add(-time.Hour),
+			},
+			assigneeID: {
+				ID:            assigneeID,
+				RuntimeID:     "writer-jira",
+				TenantID:      "writer",
+				SubjectURN:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectURN:     assigneeURN,
+				ObjectRef:     &cerebrov1.EntityRef{Urn: assigneeURN, EntityType: "user", Label: "Alice"},
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventID: "jira-event-1",
+				ObservedAt:    observedAt.Add(-time.Hour),
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {
+					Id:       "writer-jira",
+					SourceId: "sdk",
+					TenantId: "writer",
+				},
+			},
+		},
+		store,
+		nil,
+		nil,
+	)
+
+	result, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID:       "writer-jira",
+		ReplaceExisting: true,
+		Claims: []*cerebrov1.Claim{
+			{
+				SubjectRef: &cerebrov1.EntityRef{
+					Urn:        issueURN,
+					EntityType: "ticket",
+					Label:      "ENG-123",
+				},
+				Predicate:     "status",
+				ObjectValue:   "done",
+				ClaimType:     claimTypeAttribute,
+				ObservedAt:    timestamppb.New(observedAt),
+				SourceEventId: "jira-event-2",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if got := result.ClaimsWritten; got != 1 {
+		t.Fatalf("WriteClaims().ClaimsWritten = %d, want 1", got)
+	}
+	if got := result.ClaimsRetracted; got != 1 {
+		t.Fatalf("WriteClaims().ClaimsRetracted = %d, want 1", got)
+	}
+	if got := store.listRequest.RuntimeID; got != "writer-jira" {
+		t.Fatalf("retract list runtime_id = %q, want writer-jira", got)
+	}
+	if got := store.listRequest.Status; got != claimStatusAsserted {
+		t.Fatalf("retract list status = %q, want %q", got, claimStatusAsserted)
+	}
+	retracted := store.claims[assigneeID]
+	if retracted == nil {
+		t.Fatal("retracted claim = nil, want non-nil")
+	}
+	if got := retracted.Status; got != claimStatusRetracted {
+		t.Fatalf("retracted claim status = %q, want %q", got, claimStatusRetracted)
+	}
+	if got := retracted.SourceEventID; got != "jira-event-2" {
+		t.Fatalf("retracted claim source_event_id = %q, want jira-event-2", got)
+	}
+	if !retracted.ValidTo.Equal(observedAt) {
+		t.Fatalf("retracted claim valid_to = %v, want %v", retracted.ValidTo, observedAt)
+	}
+}
+
 func TestWriteClaimsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil)
 	if _, err := service.WriteClaims(context.Background(), WriteRequest{RuntimeID: "writer-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {
@@ -227,26 +325,28 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	store := &stubClaimStore{
 		claims: map[string]*ports.ClaimRecord{
 			"claim-status": {
-				ID:          "claim-status",
-				RuntimeID:   "writer-jira",
-				TenantID:    "writer",
-				SubjectURN:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
-				Predicate:   "status",
-				ObjectValue: "in_progress",
-				ClaimType:   claimTypeAttribute,
-				Status:      claimStatusAsserted,
-				ObservedAt:  timeFromProto(timestamppb.New(timestamppb.Now().AsTime().Add(-time.Minute))),
+				ID:            "claim-status",
+				RuntimeID:     "writer-jira",
+				TenantID:      "writer",
+				SubjectURN:    "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+				Predicate:     "status",
+				ObjectValue:   "in_progress",
+				ClaimType:     claimTypeAttribute,
+				Status:        claimStatusAsserted,
+				SourceEventID: "jira-event-1",
+				ObservedAt:    timeFromProto(timestamppb.New(timestamppb.Now().AsTime().Add(-time.Minute))),
 			},
 			"claim-assignee": {
-				ID:         "claim-assignee",
-				RuntimeID:  "writer-jira",
-				TenantID:   "writer",
-				SubjectURN: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
-				Predicate:  "assigned_to",
-				ObjectURN:  "urn:cerebro:writer:runtime:writer-jira:user:acct:42",
-				ClaimType:  claimTypeRelation,
-				Status:     claimStatusAsserted,
-				ObservedAt: timeFromProto(timestamppb.Now()),
+				ID:            "claim-assignee",
+				RuntimeID:     "writer-jira",
+				TenantID:      "writer",
+				SubjectURN:    "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+				Predicate:     "assigned_to",
+				ObjectURN:     "urn:cerebro:writer:runtime:writer-jira:user:acct:42",
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventID: "jira-event-2",
+				ObservedAt:    timeFromProto(timestamppb.Now()),
 			},
 		},
 	}
@@ -266,10 +366,11 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	)
 
 	response, err := service.ListClaims(context.Background(), ListRequest{
-		RuntimeID:   "writer-jira",
-		Predicate:   "status",
-		ObjectValue: "in_progress",
-		Limit:       1,
+		RuntimeID:     "writer-jira",
+		Predicate:     "status",
+		ObjectValue:   "in_progress",
+		SourceEventID: "jira-event-1",
+		Limit:         1,
 	})
 	if err != nil {
 		t.Fatalf("ListClaims() error = %v", err)
@@ -291,6 +392,9 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	}
 	if got := store.listRequest.ObjectValue; got != "in_progress" {
 		t.Fatalf("ListClaims().ObjectValue = %q, want in_progress", got)
+	}
+	if got := store.listRequest.SourceEventID; got != "jira-event-1" {
+		t.Fatalf("ListClaims().SourceEventID = %q, want jira-event-1", got)
 	}
 	if got := store.listRequest.Limit; got != 1 {
 		t.Fatalf("ListClaims().Limit = %d, want 1", got)
@@ -419,6 +523,9 @@ func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) boo
 		return false
 	}
 	if request.Status != "" && strings.TrimSpace(claim.Status) != strings.TrimSpace(request.Status) {
+		return false
+	}
+	if request.SourceEventID != "" && strings.TrimSpace(claim.SourceEventID) != strings.TrimSpace(request.SourceEventID) {
 		return false
 	}
 	return true

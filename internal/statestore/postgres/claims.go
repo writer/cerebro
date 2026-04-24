@@ -40,6 +40,7 @@ var ensureClaimStatements = []string{
 	`CREATE INDEX IF NOT EXISTS claims_runtime_object_idx ON claims (runtime_id, object_urn)`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_type_status_idx ON claims (runtime_id, claim_type, status)`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_object_value_idx ON claims (runtime_id, object_value)`,
+	`CREATE INDEX IF NOT EXISTS claims_runtime_source_event_idx ON claims (runtime_id, source_event_id)`,
 }
 
 // UpsertClaim persists one normalized claim in the current-state store.
@@ -162,6 +163,7 @@ func (s *Store) ListClaims(ctx context.Context, request ports.ListClaimsRequest)
 	addFilter("object_value", request.ObjectValue)
 	addFilter("claim_type", request.ClaimType)
 	addFilter("status", request.Status)
+	addFilter("source_event_id", request.SourceEventID)
 
 	query := `
 SELECT runtime_id, tenant_id, claim_json::text
