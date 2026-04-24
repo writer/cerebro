@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -66,6 +67,13 @@ func TestListFindingsRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
 	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{RuntimeID: "writer-okta-audit"}); err == nil {
 		t.Fatal("ListFindings() error = nil, want non-nil")
+	}
+}
+
+func TestUpdateFindingDueDateRejectsMissingDueDate(t *testing.T) {
+	store := &Store{}
+	if _, err := store.UpdateFindingDueDate(context.Background(), ports.FindingDueDateUpdate{FindingID: "finding-1"}); err == nil {
+		t.Fatal("UpdateFindingDueDate() error = nil, want non-nil")
 	}
 }
 
@@ -138,6 +146,7 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 		PolicyName:            "pol-1",
 		CheckID:               "identity-okta-policy-rule-lifecycle-tampering-30d",
 		CheckName:             "Okta Policy Rule Lifecycle Tampering (30 days)",
+		DueAt:                 sql.NullTime{Time: time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), Valid: true},
 		AttributesJSON:        `{"primary_resource_urn":"urn:cerebro:writer:okta_resource:policyrule:pol-1"}`,
 		FirstObservedAt:       time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 		LastObservedAt:        time.Date(2026, 4, 23, 12, 1, 0, 0, time.UTC),
@@ -156,5 +165,8 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 	}
 	if got := record.ControlRefs[0].FrameworkName; got != "SOC 2" {
 		t.Fatalf("findingRow.record().ControlRefs[0].FrameworkName = %q, want SOC 2", got)
+	}
+	if got := record.DueAt; !got.Equal(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)) {
+		t.Fatalf("findingRow.record().DueAt = %v, want 2026-05-01 12:00:00 +0000 UTC", got)
 	}
 }

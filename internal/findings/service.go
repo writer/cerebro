@@ -433,6 +433,29 @@ func (s *Service) AssignFinding(ctx context.Context, id string, assignee string)
 	return finding, nil
 }
 
+// SetFindingDueDate updates one persisted finding due date.
+func (s *Service) SetFindingDueDate(ctx context.Context, id string, dueAt time.Time) (*ports.FindingRecord, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	findingID := strings.TrimSpace(id)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	normalizedDueAt := dueAt.UTC()
+	if normalizedDueAt.IsZero() {
+		return nil, errors.New("finding due date is required")
+	}
+	finding, err := s.store.UpdateFindingDueDate(ctx, ports.FindingDueDateUpdate{
+		FindingID: findingID,
+		DueAt:     normalizedDueAt,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("set finding %q due date: %w", findingID, err)
+	}
+	return finding, nil
+}
+
 // ListEvaluationRuns loads persisted finding evaluation runs for one runtime.
 func (s *Service) ListEvaluationRuns(ctx context.Context, request ListEvaluationRunsRequest) (*ListEvaluationRunsResult, error) {
 	if s == nil || s.runtimeStore == nil || s.runStore == nil {

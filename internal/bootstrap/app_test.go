@@ -286,6 +286,20 @@ func (s *stubRuntimeStore) UpdateFindingAssignee(_ context.Context, request port
 	return cloneFinding(cloned), nil
 }
 
+func (s *stubRuntimeStore) UpdateFindingDueDate(_ context.Context, request ports.FindingDueDateUpdate) (*ports.FindingRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	cloned.DueAt = request.DueAt.UTC()
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
 func (s *stubRuntimeStore) PutFindingEvidence(_ context.Context, evidence *cerebrov1.FindingEvidence) error {
 	if s.err != nil {
 		return s.err
@@ -1421,6 +1435,47 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := assignFinding["assignee"]; got != "secops" {
 		t.Fatalf("assign finding assignee = %#v, want secops", got)
 	}
+	httpDueAt := "2026-05-01T12:00:00Z"
+	dueBody, err := protojson.Marshal(&cerebrov1.SetFindingDueDateRequest{DueAt: timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))})
+	if err != nil {
+		t.Fatalf("marshal due date body: %v", err)
+	}
+	dueReq, err := http.NewRequest(http.MethodPut, server.URL+"/findings/"+evaluateFindingsResp.Msg.GetFindings()[0].GetId()+"/due", bytes.NewReader(dueBody))
+	if err != nil {
+		t.Fatalf("new due date request: %v", err)
+	}
+	dueReq.Header.Set("Content-Type", "application/json")
+	dueResp, err := server.Client().Do(dueReq)
+	if err != nil {
+		t.Fatalf("PUT /findings/{id}/due error = %v", err)
+	}
+	defer func() {
+		if closeErr := dueResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close due date response body: %v", closeErr)
+		}
+	}()
+	var duePayload map[string]any
+	if err := json.NewDecoder(dueResp.Body).Decode(&duePayload); err != nil {
+		t.Fatalf("decode due date response: %v", err)
+	}
+	dueFinding, ok := duePayload["finding"].(map[string]any)
+	if !ok {
+		t.Fatalf("due finding payload = %#v, want object", duePayload["finding"])
+	}
+	if got := dueFinding["due_at"]; got != httpDueAt {
+		t.Fatalf("due finding due_at = %#v, want %q", got, httpDueAt)
+	}
+	connectDueAt := time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC)
+	setDueDateResp, err := client.SetFindingDueDate(context.Background(), connect.NewRequest(&cerebrov1.SetFindingDueDateRequest{
+		Id:    evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
+		DueAt: timestamppb.New(connectDueAt),
+	}))
+	if err != nil {
+		t.Fatalf("SetFindingDueDate() error = %v", err)
+	}
+	if got := setDueDateResp.Msg.GetFinding().GetDueAt().AsTime(); !got.Equal(connectDueAt) {
+		t.Fatalf("SetFindingDueDate().Finding.DueAt = %v, want %v", got, connectDueAt)
+	}
 	resolveFindingResp, err := client.ResolveFinding(context.Background(), connect.NewRequest(&cerebrov1.ResolveFindingRequest{
 		Id:     evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
 		Reason: "verified remediation",
@@ -1456,6 +1511,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := getFindingBody["assignee"]; got != "secops" {
 		t.Fatalf("get finding assignee = %#v, want secops", got)
+	}
+	if got := getFindingBody["due_at"]; got != "2026-05-02T12:00:00Z" {
+		t.Fatalf("get finding due_at = %#v, want 2026-05-02T12:00:00Z", got)
 	}
 	suppressFindingResp, err := client.SuppressFinding(context.Background(), connect.NewRequest(&cerebrov1.SuppressFindingRequest{
 		Id:     evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
@@ -2105,6 +2163,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ControlRefs:       controlRefs,
 		Attributes:        attributes,
 		Assignee:          finding.Assignee,
+		DueAt:             finding.DueAt,
 		StatusReason:      finding.StatusReason,
 		StatusUpdatedAt:   finding.StatusUpdatedAt,
 		FirstObservedAt:   finding.FirstObservedAt,
@@ -2118,6 +2177,9 @@ func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.Find
 	}
 	if strings.TrimSpace(existing.Assignee) != "" && strings.TrimSpace(incoming.Assignee) == "" {
 		incoming.Assignee = strings.TrimSpace(existing.Assignee)
+	}
+	if !existing.DueAt.IsZero() && incoming.DueAt.IsZero() {
+		incoming.DueAt = existing.DueAt
 	}
 	if strings.TrimSpace(incoming.Status) == "open" {
 		switch strings.TrimSpace(existing.Status) {

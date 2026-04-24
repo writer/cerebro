@@ -33,6 +33,7 @@ var ensureFindingStatements = []string{
   check_id TEXT NOT NULL DEFAULT '',
   check_name TEXT NOT NULL DEFAULT '',
   assignee TEXT NOT NULL DEFAULT '',
+  due_at TIMESTAMPTZ,
   status_reason TEXT NOT NULL DEFAULT '',
   status_updated_at TIMESTAMPTZ,
   first_observed_at TIMESTAMPTZ NOT NULL,
@@ -47,11 +48,13 @@ var ensureFindingStatements = []string{
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS check_id TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS check_name TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS assignee TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS due_at TIMESTAMPTZ`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_reason TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_rule_idx ON findings (runtime_id, rule_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_policy_idx ON findings (runtime_id, policy_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_check_idx ON findings (runtime_id, check_id)`,
+	`CREATE INDEX IF NOT EXISTS findings_runtime_due_at_idx ON findings (runtime_id, due_at)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_status_idx ON findings (runtime_id, status)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_severity_idx ON findings (runtime_id, severity)`,
 	`CREATE INDEX IF NOT EXISTS findings_resource_urns_gin_idx ON findings USING GIN (resource_urns_json)`,
@@ -132,6 +135,10 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	checkID := strings.TrimSpace(finding.CheckID)
 	checkName := strings.TrimSpace(finding.CheckName)
 	assignee := strings.TrimSpace(finding.Assignee)
+	var dueAt any
+	if !finding.DueAt.IsZero() {
+		dueAt = finding.DueAt.UTC()
+	}
 	statusReason := strings.TrimSpace(finding.StatusReason)
 	var statusUpdatedAt any
 	if !finding.StatusUpdatedAt.IsZero() {
@@ -150,10 +157,10 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 INSERT INTO findings (
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, attributes_json,
-  policy_id, policy_name, check_id, check_name, assignee, status_reason, status_updated_at,
-  first_observed_at, last_observed_at
+  policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
@@ -180,6 +187,7 @@ DO UPDATE SET
     WHEN findings.assignee <> '' AND EXCLUDED.assignee = '' THEN findings.assignee
     ELSE EXCLUDED.assignee
   END,
+  due_at = COALESCE(EXCLUDED.due_at, findings.due_at),
   status_reason = CASE
     WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_reason
     ELSE EXCLUDED.status_reason
@@ -194,8 +202,8 @@ DO UPDATE SET
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, status_reason, status_updated_at,
-  first_observed_at, last_observed_at`,
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at`,
 		id,
 		fingerprint,
 		tenantID,
@@ -215,6 +223,7 @@ RETURNING
 		checkID,
 		checkName,
 		assignee,
+		dueAt,
 		statusReason,
 		statusUpdatedAt,
 		firstObservedAt,
@@ -239,6 +248,7 @@ RETURNING
 		&stored.CheckName,
 		&stored.AttributesJSON,
 		&stored.Assignee,
+		&stored.DueAt,
 		&stored.StatusReason,
 		&stored.StatusUpdatedAt,
 		&stored.FirstObservedAt,
@@ -294,6 +304,7 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 			&row.CheckName,
 			&row.AttributesJSON,
 			&row.Assignee,
+			&row.DueAt,
 			&row.StatusReason,
 			&row.StatusUpdatedAt,
 			&row.FirstObservedAt,
@@ -330,8 +341,8 @@ func (s *Store) GetFinding(ctx context.Context, id string) (*ports.FindingRecord
 SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, status_reason, status_updated_at,
-  first_observed_at, last_observed_at
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at
 FROM findings
 WHERE id = $1`,
 		findingID,
@@ -355,6 +366,7 @@ WHERE id = $1`,
 		&row.CheckName,
 		&row.AttributesJSON,
 		&row.Assignee,
+		&row.DueAt,
 		&row.StatusReason,
 		&row.StatusUpdatedAt,
 		&row.FirstObservedAt,
@@ -397,8 +409,8 @@ WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, status_reason, status_updated_at,
-  first_observed_at, last_observed_at`,
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at`,
 		findingID,
 		status,
 		statusReason,
@@ -423,6 +435,7 @@ RETURNING
 		&row.CheckName,
 		&row.AttributesJSON,
 		&row.Assignee,
+		&row.DueAt,
 		&row.StatusReason,
 		&row.StatusUpdatedAt,
 		&row.FirstObservedAt,
@@ -456,8 +469,8 @@ WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, status_reason, status_updated_at,
-  first_observed_at, last_observed_at`,
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at`,
 		findingID,
 		strings.TrimSpace(request.Assignee),
 	).Scan(
@@ -480,6 +493,7 @@ RETURNING
 		&row.CheckName,
 		&row.AttributesJSON,
 		&row.Assignee,
+		&row.DueAt,
 		&row.StatusReason,
 		&row.StatusUpdatedAt,
 		&row.FirstObservedAt,
@@ -489,6 +503,68 @@ RETURNING
 			return nil, ports.ErrFindingNotFound
 		}
 		return nil, fmt.Errorf("update finding %q assignee: %w", findingID, err)
+	}
+	return row.record()
+}
+
+// UpdateFindingDueDate updates one persisted finding due date.
+func (s *Store) UpdateFindingDueDate(ctx context.Context, request ports.FindingDueDateUpdate) (*ports.FindingRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return nil, err
+	}
+	findingID := strings.TrimSpace(request.FindingID)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	dueAt := request.DueAt.UTC()
+	if dueAt.IsZero() {
+		return nil, errors.New("finding due date is required")
+	}
+	var row findingRow
+	if err := s.db.QueryRowContext(ctx, `
+UPDATE findings
+SET due_at = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING
+  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at`,
+		findingID,
+		dueAt,
+	).Scan(
+		&row.ID,
+		&row.Fingerprint,
+		&row.TenantID,
+		&row.RuntimeID,
+		&row.RuleID,
+		&row.Title,
+		&row.Severity,
+		&row.Status,
+		&row.Summary,
+		&row.ResourceURNsJSON,
+		&row.EventIDsJSON,
+		&row.ObservedPolicyIDsJSON,
+		&row.ControlRefsJSON,
+		&row.PolicyID,
+		&row.PolicyName,
+		&row.CheckID,
+		&row.CheckName,
+		&row.AttributesJSON,
+		&row.Assignee,
+		&row.DueAt,
+		&row.StatusReason,
+		&row.StatusUpdatedAt,
+		&row.FirstObservedAt,
+		&row.LastObservedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ports.ErrFindingNotFound
+		}
+		return nil, fmt.Errorf("update finding %q due date: %w", findingID, err)
 	}
 	return row.record()
 }
@@ -515,8 +591,8 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, status_reason, status_updated_at,
-  first_observed_at, last_observed_at
+  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
 ORDER BY last_observed_at DESC, id`
@@ -636,6 +712,7 @@ type findingRow struct {
 	CheckName             string
 	AttributesJSON        string
 	Assignee              string
+	DueAt                 sql.NullTime
 	StatusReason          string
 	StatusUpdatedAt       sql.NullTime
 	FirstObservedAt       time.Time
@@ -683,14 +760,15 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 		ControlRefs:       controlRefs,
 		Attributes:        attributes,
 		Assignee:          r.Assignee,
+		DueAt:             findingTimestamp(r.DueAt),
 		StatusReason:      r.StatusReason,
 		FirstObservedAt:   r.FirstObservedAt.UTC(),
 		LastObservedAt:    r.LastObservedAt.UTC(),
-		StatusUpdatedAt:   findingStatusUpdatedAt(r.StatusUpdatedAt),
+		StatusUpdatedAt:   findingTimestamp(r.StatusUpdatedAt),
 	}, nil
 }
 
-func findingStatusUpdatedAt(value sql.NullTime) time.Time {
+func findingTimestamp(value sql.NullTime) time.Time {
 	if !value.Valid || value.Time.IsZero() {
 		return time.Time{}
 	}

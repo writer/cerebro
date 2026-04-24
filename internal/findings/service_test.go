@@ -136,6 +136,17 @@ func (s *stubFindingStore) UpdateFindingAssignee(_ context.Context, request port
 	return cloneFinding(cloned), nil
 }
 
+func (s *stubFindingStore) UpdateFindingDueDate(_ context.Context, request ports.FindingDueDateUpdate) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	cloned.DueAt = request.DueAt.UTC()
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
 func (s *stubFindingStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
 	if claim == nil {
 		return nil, errors.New("claim is required")
@@ -925,6 +936,23 @@ func TestAssignFindingUpdatesPersistedWorkflow(t *testing.T) {
 	}
 }
 
+func TestSetFindingDueDateUpdatesPersistedWorkflow(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {ID: "finding-1", Status: "open"},
+		},
+	}
+	service := New(nil, nil, store, store, store, store)
+	dueAt := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	finding, err := service.SetFindingDueDate(context.Background(), "finding-1", dueAt)
+	if err != nil {
+		t.Fatalf("SetFindingDueDate() error = %v", err)
+	}
+	if got := finding.DueAt; !got.Equal(dueAt) {
+		t.Fatalf("SetFindingDueDate().DueAt = %v, want %v", got, dueAt)
+	}
+}
+
 func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
@@ -959,8 +987,12 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 		t.Fatalf("first EvaluateSourceRuntime() error = %v", err)
 	}
 	findingID := first.Findings[0].ID
+	dueAt := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
 	if _, err := service.AssignFinding(context.Background(), findingID, "secops"); err != nil {
 		t.Fatalf("AssignFinding() error = %v", err)
+	}
+	if _, err := service.SetFindingDueDate(context.Background(), findingID, dueAt); err != nil {
+		t.Fatalf("SetFindingDueDate() error = %v", err)
 	}
 	if _, err := service.ResolveFinding(context.Background(), findingID, "triaged"); err != nil {
 		t.Fatalf("ResolveFinding() error = %v", err)
@@ -978,6 +1010,9 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	}
 	if got := second.Findings[0].Assignee; got != "secops" {
 		t.Fatalf("second EvaluateSourceRuntime().Findings[0].Assignee = %q, want secops", got)
+	}
+	if got := second.Findings[0].DueAt; !got.Equal(dueAt) {
+		t.Fatalf("second EvaluateSourceRuntime().Findings[0].DueAt = %v, want %v", got, dueAt)
 	}
 	if got := second.Findings[0].StatusReason; got != "triaged" {
 		t.Fatalf("second EvaluateSourceRuntime().Findings[0].StatusReason = %q, want triaged", got)
@@ -1261,6 +1296,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ControlRefs:       controlRefs,
 		Attributes:        attributes,
 		Assignee:          finding.Assignee,
+		DueAt:             finding.DueAt,
 		StatusReason:      finding.StatusReason,
 		StatusUpdatedAt:   finding.StatusUpdatedAt,
 		FirstObservedAt:   finding.FirstObservedAt,
@@ -1274,6 +1310,9 @@ func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.Find
 	}
 	if strings.TrimSpace(existing.Assignee) != "" && strings.TrimSpace(incoming.Assignee) == "" {
 		incoming.Assignee = strings.TrimSpace(existing.Assignee)
+	}
+	if !existing.DueAt.IsZero() && incoming.DueAt.IsZero() {
+		incoming.DueAt = existing.DueAt
 	}
 	if strings.TrimSpace(incoming.Status) == "open" {
 		switch strings.TrimSpace(existing.Status) {

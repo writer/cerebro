@@ -151,11 +151,13 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	}
 	severityCounts := make(map[string]int, len(findings))
 	statusCounts := make(map[string]int, len(findings))
+	dueStatusCounts := make(map[string]int, len(findings))
 	ruleCounts := make(map[string]int, len(findings))
 	policyCounts := make(map[string]int, len(findings))
 	checkCounts := make(map[string]*checkCountEntry, len(findings))
 	controlCounts := make(map[string]*controlCountEntry, len(findings))
 	resourceCounts := make(map[string]int, len(findings))
+	now := time.Now().UTC()
 	for _, finding := range findings {
 		if finding == nil {
 			continue
@@ -168,6 +170,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		if status != "" {
 			statusCounts[status]++
 		}
+		dueStatusCounts[dueStatusBucket(finding, now)]++
 		ruleID := strings.TrimSpace(finding.RuleID)
 		if ruleID != "" {
 			ruleCounts[ruleID]++
@@ -226,6 +229,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		"total_findings":         len(findings),
 		"severity_counts":        countEntries(severityCounts, "severity"),
 		"status_counts":          countEntries(statusCounts, "status"),
+		"due_status_counts":      countEntries(dueStatusCounts, "due_status"),
 		"rule_counts":            countEntries(ruleCounts, "rule_id"),
 		"policy_counts":          countEntries(policyCounts, "policy_id"),
 		"check_counts":           checkCountEntries(checkCounts),
@@ -278,7 +282,7 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
 		Name:        findingSummaryReportName,
-		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, rule, policy, check, and control, with bounded graph evidence for top resources when the graph is configured.",
+		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, due-date posture, rule, policy, check, and control, with bounded graph evidence for top resources when the graph is configured.",
 		Parameters: []*cerebrov1.ReportParameter{
 			{
 				Id:          reportParameterRuntimeID,
@@ -381,6 +385,16 @@ func controlCountEntries(counts map[string]*controlCountEntry) []any {
 		})
 	}
 	return values
+}
+
+func dueStatusBucket(finding *ports.FindingRecord, now time.Time) string {
+	if finding == nil || finding.DueAt.IsZero() {
+		return "unscheduled"
+	}
+	if strings.TrimSpace(finding.Status) == "open" && finding.DueAt.UTC().Before(now) {
+		return "overdue"
+	}
+	return "scheduled"
 }
 
 func sortedCountEntries(counts map[string]int) []countEntry {

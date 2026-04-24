@@ -69,6 +69,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("POST /findings/{findingID}/resolve", app.handleResolveFinding)
 	mux.HandleFunc("POST /findings/{findingID}/suppress", app.handleSuppressFinding)
 	mux.HandleFunc("PUT /findings/{findingID}/assign", app.handleAssignFinding)
+	mux.HandleFunc("PUT /findings/{findingID}/due", app.handleSetFindingDueDate)
 	mux.HandleFunc("GET /finding-evaluation-runs/{runID}", app.handleGetFindingEvaluationRun)
 	mux.HandleFunc("GET /finding-evidence/{evidenceID}", app.handleGetFindingEvidence)
 	mux.HandleFunc("/sources", app.handleSources)
@@ -196,6 +197,27 @@ func (a *App) handleAssignFinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.AssignFindingResponse{
+		Finding: findingMessage(finding),
+	})
+}
+
+func (a *App) handleSetFindingDueDate(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.SetFindingDueDateRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	request.Id = r.PathValue("findingID")
+	var dueAt time.Time
+	if request.GetDueAt() != nil {
+		dueAt = request.GetDueAt().AsTime()
+	}
+	finding, err := a.findingService().SetFindingDueDate(r.Context(), request.GetId(), dueAt)
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.SetFindingDueDateResponse{
 		Finding: findingMessage(finding),
 	})
 }
@@ -877,6 +899,25 @@ func (s *bootstrapService) AssignFinding(ctx context.Context, req *connect.Reque
 	return connect.NewResponse(&cerebrov1.AssignFindingResponse{Finding: findingMessage(finding)}), nil
 }
 
+func (s *bootstrapService) SetFindingDueDate(ctx context.Context, req *connect.Request[cerebrov1.SetFindingDueDateRequest]) (*connect.Response[cerebrov1.SetFindingDueDateResponse], error) {
+	var dueAt time.Time
+	if req.Msg.GetDueAt() != nil {
+		dueAt = req.Msg.GetDueAt().AsTime()
+	}
+	finding, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).SetFindingDueDate(ctx, req.Msg.GetId(), dueAt)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.SetFindingDueDateResponse{Finding: findingMessage(finding)}), nil
+}
+
 func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect.Request[cerebrov1.ListFindingEvidenceRequest]) (*connect.Response[cerebrov1.ListFindingEvidenceResponse], error) {
 	response, err := findings.New(
 		sourceRuntimeStore(s.deps.StateStore),
@@ -1355,6 +1396,9 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 	}
 	if !finding.StatusUpdatedAt.IsZero() {
 		message.StatusUpdatedAt = timestamppb.New(finding.StatusUpdatedAt)
+	}
+	if !finding.DueAt.IsZero() {
+		message.DueAt = timestamppb.New(finding.DueAt)
 	}
 	if !finding.FirstObservedAt.IsZero() {
 		message.FirstObservedAt = timestamppb.New(finding.FirstObservedAt)

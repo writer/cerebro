@@ -31,6 +31,7 @@ service BootstrapService {
   rpc ResolveFinding(ResolveFindingRequest) returns (ResolveFindingResponse);
   rpc SuppressFinding(SuppressFindingRequest) returns (SuppressFindingResponse);
   rpc AssignFinding(AssignFindingRequest) returns (AssignFindingResponse);
+  rpc SetFindingDueDate(SetFindingDueDateRequest) returns (SetFindingDueDateResponse);
   rpc ListFindingEvaluationRuns(ListFindingEvaluationRunsRequest) returns (ListFindingEvaluationRunsResponse);
   rpc GetFindingEvaluationRun(GetFindingEvaluationRunRequest) returns (GetFindingEvaluationRunResponse);
   rpc ListFindingEvidence(ListFindingEvidenceRequest) returns (ListFindingEvidenceResponse);
@@ -397,6 +398,7 @@ message Finding {
   string check_id = 21;
   string check_name = 22;
   repeated FindingControlRef control_refs = 23;
+  google.protobuf.Timestamp due_at = 24;
 }
 
 // GetFindingRequest loads one persisted finding by its durable identifier.
@@ -439,6 +441,17 @@ message AssignFindingRequest {
 
 // AssignFindingResponse returns the updated assigned finding.
 message AssignFindingResponse {
+  Finding finding = 1;
+}
+
+// SetFindingDueDateRequest updates one persisted finding due date.
+message SetFindingDueDateRequest {
+  string id = 1;
+  google.protobuf.Timestamp due_at = 2;
+}
+
+// SetFindingDueDateResponse returns the updated finding with due date metadata.
+message SetFindingDueDateResponse {
   Finding finding = 1;
 }
 

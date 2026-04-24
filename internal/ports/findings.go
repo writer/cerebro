@@ -35,6 +35,7 @@ type FindingRecord struct {
 	ControlRefs       []FindingControlRef
 	Attributes        map[string]string
 	Assignee          string
+	DueAt             time.Time
 	StatusReason      string
 	StatusUpdatedAt   time.Time
 	FirstObservedAt   time.Time
@@ -77,6 +78,12 @@ type FindingAssigneeUpdate struct {
 	Assignee  string
 }
 
+// FindingDueDateUpdate scopes one persisted finding due date mutation.
+type FindingDueDateUpdate struct {
+	FindingID string
+	DueAt     time.Time
+}
+
 // ListFindingEvaluationRunsRequest scopes one finding evaluation run query.
 type ListFindingEvaluationRunsRequest struct {
 	RuntimeID string
@@ -105,6 +112,7 @@ type FindingStore interface {
 	ListFindings(context.Context, ListFindingsRequest) ([]*FindingRecord, error)
 	UpdateFindingStatus(context.Context, FindingStatusUpdate) (*FindingRecord, error)
 	UpdateFindingAssignee(context.Context, FindingAssigneeUpdate) (*FindingRecord, error)
+	UpdateFindingDueDate(context.Context, FindingDueDateUpdate) (*FindingRecord, error)
 }
 
 // FindingEvaluationRunStore persists durable finding evaluation runs in the state store.
