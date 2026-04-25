@@ -77,6 +77,18 @@ func (s *stubFindingStore) UpdateFindingDueDate(_ context.Context, request ports
 	return nil, ports.ErrFindingNotFound
 }
 
+func (s *stubFindingStore) AddFindingNote(_ context.Context, request ports.FindingNoteCreate) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding == nil || finding.ID != request.FindingID {
+			continue
+		}
+		cloned := cloneFinding(finding)
+		cloned.Notes = append(cloned.Notes, request.Note)
+		return cloned, nil
+	}
+	return nil, ports.ErrFindingNotFound
+}
+
 type stubGraphStore struct {
 	rootURN       string
 	limit         int
@@ -130,9 +142,15 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 					{FrameworkName: "SOC 2", ControlID: "CC6.2"},
 					{FrameworkName: "ISO 27001:2022", ControlID: "A.8.9"},
 				},
+				FindingWorkflow: ports.FindingWorkflow{
+					Notes: []ports.FindingNote{
+						{ID: "note-1", Body: "Escalate to identity engineering.", CreatedAt: time.Now().UTC().Add(-time.Hour)},
+						{ID: "note-2", Body: "Awaiting owner confirmation.", CreatedAt: time.Now().UTC()},
+					},
+					DueAt: overdueDueAt,
+				},
 				Severity:     "HIGH",
 				Status:       "open",
-				DueAt:        overdueDueAt,
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
 				Attributes: map[string]string{
 					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
@@ -149,9 +167,11 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 					{FrameworkName: "SOC 2", ControlID: "CC6.2"},
 					{FrameworkName: "ISO 27001:2022", ControlID: "A.8.9"},
 				},
+				FindingWorkflow: ports.FindingWorkflow{
+					DueAt: scheduledDueAt,
+				},
 				Severity:     "HIGH",
 				Status:       "resolved",
-				DueAt:        scheduledDueAt,
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
 				Attributes: map[string]string{
 					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
@@ -241,6 +261,12 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	}
 	if !seenDueStatuses["overdue"] || !seenDueStatuses["scheduled"] {
 		t.Fatalf("due status buckets = %#v, want overdue and scheduled", seenDueStatuses)
+	}
+	if got := result["note_count"]; got != float64(2) {
+		t.Fatalf("Run().Run.Result[note_count] = %#v, want 2", got)
+	}
+	if got := result["noted_finding_count"]; got != float64(1) {
+		t.Fatalf("Run().Run.Result[noted_finding_count] = %#v, want 1", got)
 	}
 	policyCounts, ok := result["policy_counts"].([]any)
 	if !ok || len(policyCounts) != 1 {
@@ -375,13 +401,16 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		CheckID:           finding.CheckID,
 		CheckName:         finding.CheckName,
 		ControlRefs:       append([]ports.FindingControlRef(nil), finding.ControlRefs...),
-		Attributes:        cloneAttributes(finding.Attributes),
-		Assignee:          finding.Assignee,
-		DueAt:             finding.DueAt,
-		StatusReason:      finding.StatusReason,
-		StatusUpdatedAt:   finding.StatusUpdatedAt,
-		FirstObservedAt:   finding.FirstObservedAt,
-		LastObservedAt:    finding.LastObservedAt,
+		FindingWorkflow: ports.FindingWorkflow{
+			Notes:           append([]ports.FindingNote(nil), finding.Notes...),
+			Assignee:        finding.Assignee,
+			DueAt:           finding.DueAt,
+			StatusReason:    finding.StatusReason,
+			StatusUpdatedAt: finding.StatusUpdatedAt,
+		},
+		Attributes:      cloneAttributes(finding.Attributes),
+		FirstObservedAt: finding.FirstObservedAt,
+		LastObservedAt:  finding.LastObservedAt,
 	}
 }
 

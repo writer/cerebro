@@ -14,6 +14,22 @@ type FindingControlRef struct {
 	ControlID     string `json:"control_id"`
 }
 
+// FindingNote captures one analyst note attached to one finding.
+type FindingNote struct {
+	ID        string    `json:"id"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// FindingWorkflow captures mutable analyst-managed finding workflow metadata.
+type FindingWorkflow struct {
+	Notes           []FindingNote
+	Assignee        string
+	DueAt           time.Time
+	StatusReason    string
+	StatusUpdatedAt time.Time
+}
+
 // FindingRecord is the normalized persisted finding shape.
 type FindingRecord struct {
 	ID                string
@@ -33,13 +49,10 @@ type FindingRecord struct {
 	CheckID           string
 	CheckName         string
 	ControlRefs       []FindingControlRef
-	Attributes        map[string]string
-	Assignee          string
-	DueAt             time.Time
-	StatusReason      string
-	StatusUpdatedAt   time.Time
-	FirstObservedAt   time.Time
-	LastObservedAt    time.Time
+	FindingWorkflow
+	Attributes      map[string]string
+	FirstObservedAt time.Time
+	LastObservedAt  time.Time
 }
 
 // ListFindingsRequest scopes one finding query.
@@ -84,6 +97,12 @@ type FindingDueDateUpdate struct {
 	DueAt     time.Time
 }
 
+// FindingNoteCreate scopes one appended finding note.
+type FindingNoteCreate struct {
+	FindingID string
+	Note      FindingNote
+}
+
 // ListFindingEvaluationRunsRequest scopes one finding evaluation run query.
 type ListFindingEvaluationRunsRequest struct {
 	RuntimeID string
@@ -113,6 +132,7 @@ type FindingStore interface {
 	UpdateFindingStatus(context.Context, FindingStatusUpdate) (*FindingRecord, error)
 	UpdateFindingAssignee(context.Context, FindingAssigneeUpdate) (*FindingRecord, error)
 	UpdateFindingDueDate(context.Context, FindingDueDateUpdate) (*FindingRecord, error)
+	AddFindingNote(context.Context, FindingNoteCreate) (*FindingRecord, error)
 }
 
 // FindingEvaluationRunStore persists durable finding evaluation runs in the state store.

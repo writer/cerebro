@@ -300,6 +300,20 @@ func (s *stubRuntimeStore) UpdateFindingDueDate(_ context.Context, request ports
 	return cloneFinding(cloned), nil
 }
 
+func (s *stubRuntimeStore) AddFindingNote(_ context.Context, request ports.FindingNoteCreate) (*ports.FindingRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	cloned.Notes = append(cloned.Notes, request.Note)
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
 func (s *stubRuntimeStore) PutFindingEvidence(_ context.Context, evidence *cerebrov1.FindingEvidence) error {
 	if s.err != nil {
 		return s.err
@@ -1465,6 +1479,46 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := dueFinding["due_at"]; got != httpDueAt {
 		t.Fatalf("due finding due_at = %#v, want %q", got, httpDueAt)
 	}
+	noteBody, err := protojson.Marshal(&cerebrov1.AddFindingNoteRequest{Note: "Escalate to identity engineering."})
+	if err != nil {
+		t.Fatalf("marshal add finding note body: %v", err)
+	}
+	noteReq, err := http.NewRequest(http.MethodPost, server.URL+"/findings/"+evaluateFindingsResp.Msg.GetFindings()[0].GetId()+"/notes", bytes.NewReader(noteBody))
+	if err != nil {
+		t.Fatalf("new add note request: %v", err)
+	}
+	noteReq.Header.Set("Content-Type", "application/json")
+	noteResp, err := server.Client().Do(noteReq)
+	if err != nil {
+		t.Fatalf("POST /findings/{id}/notes error = %v", err)
+	}
+	defer func() {
+		if closeErr := noteResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close note response body: %v", closeErr)
+		}
+	}()
+	var notePayload map[string]any
+	if err := json.NewDecoder(noteResp.Body).Decode(&notePayload); err != nil {
+		t.Fatalf("decode note response: %v", err)
+	}
+	noteFinding, ok := notePayload["finding"].(map[string]any)
+	if !ok {
+		t.Fatalf("note finding payload = %#v, want object", notePayload["finding"])
+	}
+	noteEntries, ok := noteFinding["notes"].([]any)
+	if !ok || len(noteEntries) != 1 {
+		t.Fatalf("note finding notes = %#v, want 1 entry", noteFinding["notes"])
+	}
+	addNoteResp, err := client.AddFindingNote(context.Background(), connect.NewRequest(&cerebrov1.AddFindingNoteRequest{
+		Id:   evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
+		Note: "Create follow-up review task.",
+	}))
+	if err != nil {
+		t.Fatalf("AddFindingNote() error = %v", err)
+	}
+	if got := len(addNoteResp.Msg.GetFinding().GetNotes()); got != 2 {
+		t.Fatalf("len(AddFindingNote().Finding.Notes) = %d, want 2", got)
+	}
 	connectDueAt := time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC)
 	setDueDateResp, err := client.SetFindingDueDate(context.Background(), connect.NewRequest(&cerebrov1.SetFindingDueDateRequest{
 		Id:    evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
@@ -1514,6 +1568,10 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := getFindingBody["due_at"]; got != "2026-05-02T12:00:00Z" {
 		t.Fatalf("get finding due_at = %#v, want 2026-05-02T12:00:00Z", got)
+	}
+	getFindingNotes, ok := getFindingBody["notes"].([]any)
+	if !ok || len(getFindingNotes) != 2 {
+		t.Fatalf("get finding notes = %#v, want 2 entries", getFindingBody["notes"])
 	}
 	suppressFindingResp, err := client.SuppressFinding(context.Background(), connect.NewRequest(&cerebrov1.SuppressFindingRequest{
 		Id:     evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
@@ -2139,6 +2197,8 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(observedPolicyIDs, finding.ObservedPolicyIDs)
 	controlRefs := make([]ports.FindingControlRef, len(finding.ControlRefs))
 	copy(controlRefs, finding.ControlRefs)
+	notes := make([]ports.FindingNote, len(finding.Notes))
+	copy(notes, finding.Notes)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
@@ -2161,13 +2221,16 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		CheckID:           finding.CheckID,
 		CheckName:         finding.CheckName,
 		ControlRefs:       controlRefs,
-		Attributes:        attributes,
-		Assignee:          finding.Assignee,
-		DueAt:             finding.DueAt,
-		StatusReason:      finding.StatusReason,
-		StatusUpdatedAt:   finding.StatusUpdatedAt,
-		FirstObservedAt:   finding.FirstObservedAt,
-		LastObservedAt:    finding.LastObservedAt,
+		FindingWorkflow: ports.FindingWorkflow{
+			Notes:           notes,
+			Assignee:        finding.Assignee,
+			DueAt:           finding.DueAt,
+			StatusReason:    finding.StatusReason,
+			StatusUpdatedAt: finding.StatusUpdatedAt,
+		},
+		Attributes:      attributes,
+		FirstObservedAt: finding.FirstObservedAt,
+		LastObservedAt:  finding.LastObservedAt,
 	}
 }
 
@@ -2180,6 +2243,9 @@ func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.Find
 	}
 	if !existing.DueAt.IsZero() && incoming.DueAt.IsZero() {
 		incoming.DueAt = existing.DueAt
+	}
+	if len(existing.Notes) != 0 && len(incoming.Notes) == 0 {
+		incoming.Notes = append([]ports.FindingNote(nil), existing.Notes...)
 	}
 	if strings.TrimSpace(incoming.Status) == "open" {
 		switch strings.TrimSpace(existing.Status) {

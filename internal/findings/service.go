@@ -456,6 +456,34 @@ func (s *Service) SetFindingDueDate(ctx context.Context, id string, dueAt time.T
 	return finding, nil
 }
 
+// AddFindingNote appends one analyst note to one persisted finding.
+func (s *Service) AddFindingNote(ctx context.Context, id string, note string) (*ports.FindingRecord, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	findingID := strings.TrimSpace(id)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	body := strings.TrimSpace(note)
+	if body == "" {
+		return nil, errors.New("finding note is required")
+	}
+	createdAt := time.Now().UTC()
+	finding, err := s.store.AddFindingNote(ctx, ports.FindingNoteCreate{
+		FindingID: findingID,
+		Note: ports.FindingNote{
+			ID:        findingNoteID(findingID, createdAt),
+			Body:      body,
+			CreatedAt: createdAt,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("add finding %q note: %w", findingID, err)
+	}
+	return finding, nil
+}
+
 // ListEvaluationRuns loads persisted finding evaluation runs for one runtime.
 func (s *Service) ListEvaluationRuns(ctx context.Context, request ListEvaluationRunsRequest) (*ListEvaluationRunsResult, error) {
 	if s == nil || s.runtimeStore == nil || s.runStore == nil {
@@ -651,6 +679,11 @@ func findingEvaluationRunID(runtimeID string, ruleID string, startedAt time.Time
 	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
 	prefix := replacer.Replace(strings.TrimSpace(runtimeID) + "-" + strings.TrimSpace(ruleID))
 	return "finding-evaluation-run-" + prefix + "-" + fmt.Sprintf("%d", startedAt.UnixNano())
+}
+
+func findingNoteID(findingID string, createdAt time.Time) string {
+	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
+	return "finding-note-" + replacer.Replace(strings.TrimSpace(findingID)) + "-" + fmt.Sprintf("%d", createdAt.UnixNano())
 }
 
 func (s *Service) finishCompletedRun(ctx context.Context, run *cerebrov1.FindingEvaluationRun, eventsEvaluated uint32, findingIDs []string) error {

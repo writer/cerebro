@@ -2955,6 +2955,67 @@ func (x *FindingControlRef) GetControlId() string {
 	return ""
 }
 
+// FindingNote captures one analyst note attached to one finding.
+type FindingNote struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Body          string                 `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FindingNote) Reset() {
+	*x = FindingNote{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FindingNote) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FindingNote) ProtoMessage() {}
+
+func (x *FindingNote) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FindingNote.ProtoReflect.Descriptor instead.
+func (*FindingNote) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *FindingNote) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *FindingNote) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+func (x *FindingNote) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
 // Finding is the normalized persisted finding view for the first runtime evaluator slice.
 type Finding struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
@@ -2982,13 +3043,14 @@ type Finding struct {
 	CheckName         string                 `protobuf:"bytes,22,opt,name=check_name,json=checkName,proto3" json:"check_name,omitempty"`
 	ControlRefs       []*FindingControlRef   `protobuf:"bytes,23,rep,name=control_refs,json=controlRefs,proto3" json:"control_refs,omitempty"`
 	DueAt             *timestamppb.Timestamp `protobuf:"bytes,24,opt,name=due_at,json=dueAt,proto3" json:"due_at,omitempty"`
+	Notes             []*FindingNote         `protobuf:"bytes,25,rep,name=notes,proto3" json:"notes,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *Finding) Reset() {
 	*x = Finding{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[48]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3000,7 +3062,7 @@ func (x *Finding) String() string {
 func (*Finding) ProtoMessage() {}
 
 func (x *Finding) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[48]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3013,7 +3075,7 @@ func (x *Finding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Finding.ProtoReflect.Descriptor instead.
 func (*Finding) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{48}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *Finding) GetId() string {
@@ -3184,6 +3246,13 @@ func (x *Finding) GetDueAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Finding) GetNotes() []*FindingNote {
+	if x != nil {
+		return x.Notes
+	}
+	return nil
+}
+
 // GetFindingRequest loads one persisted finding by its durable identifier.
 type GetFindingRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3194,7 +3263,7 @@ type GetFindingRequest struct {
 
 func (x *GetFindingRequest) Reset() {
 	*x = GetFindingRequest{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[49]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3206,7 +3275,7 @@ func (x *GetFindingRequest) String() string {
 func (*GetFindingRequest) ProtoMessage() {}
 
 func (x *GetFindingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[49]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3219,7 +3288,7 @@ func (x *GetFindingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFindingRequest.ProtoReflect.Descriptor instead.
 func (*GetFindingRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{49}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *GetFindingRequest) GetId() string {
@@ -3239,7 +3308,7 @@ type GetFindingResponse struct {
 
 func (x *GetFindingResponse) Reset() {
 	*x = GetFindingResponse{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[50]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3251,7 +3320,7 @@ func (x *GetFindingResponse) String() string {
 func (*GetFindingResponse) ProtoMessage() {}
 
 func (x *GetFindingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[50]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3264,7 +3333,7 @@ func (x *GetFindingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFindingResponse.ProtoReflect.Descriptor instead.
 func (*GetFindingResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{50}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *GetFindingResponse) GetFinding() *Finding {
@@ -3285,7 +3354,7 @@ type ResolveFindingRequest struct {
 
 func (x *ResolveFindingRequest) Reset() {
 	*x = ResolveFindingRequest{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[51]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3297,7 +3366,7 @@ func (x *ResolveFindingRequest) String() string {
 func (*ResolveFindingRequest) ProtoMessage() {}
 
 func (x *ResolveFindingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[51]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3310,7 +3379,7 @@ func (x *ResolveFindingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveFindingRequest.ProtoReflect.Descriptor instead.
 func (*ResolveFindingRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{51}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ResolveFindingRequest) GetId() string {
@@ -3337,7 +3406,7 @@ type ResolveFindingResponse struct {
 
 func (x *ResolveFindingResponse) Reset() {
 	*x = ResolveFindingResponse{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[52]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3349,7 +3418,7 @@ func (x *ResolveFindingResponse) String() string {
 func (*ResolveFindingResponse) ProtoMessage() {}
 
 func (x *ResolveFindingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[52]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3362,7 +3431,7 @@ func (x *ResolveFindingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveFindingResponse.ProtoReflect.Descriptor instead.
 func (*ResolveFindingResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{52}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ResolveFindingResponse) GetFinding() *Finding {
@@ -3383,7 +3452,7 @@ type SuppressFindingRequest struct {
 
 func (x *SuppressFindingRequest) Reset() {
 	*x = SuppressFindingRequest{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[53]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3395,7 +3464,7 @@ func (x *SuppressFindingRequest) String() string {
 func (*SuppressFindingRequest) ProtoMessage() {}
 
 func (x *SuppressFindingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[53]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3408,7 +3477,7 @@ func (x *SuppressFindingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SuppressFindingRequest.ProtoReflect.Descriptor instead.
 func (*SuppressFindingRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{53}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *SuppressFindingRequest) GetId() string {
@@ -3435,7 +3504,7 @@ type SuppressFindingResponse struct {
 
 func (x *SuppressFindingResponse) Reset() {
 	*x = SuppressFindingResponse{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[54]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3447,7 +3516,7 @@ func (x *SuppressFindingResponse) String() string {
 func (*SuppressFindingResponse) ProtoMessage() {}
 
 func (x *SuppressFindingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[54]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3460,7 +3529,7 @@ func (x *SuppressFindingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SuppressFindingResponse.ProtoReflect.Descriptor instead.
 func (*SuppressFindingResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{54}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *SuppressFindingResponse) GetFinding() *Finding {
@@ -3481,7 +3550,7 @@ type AssignFindingRequest struct {
 
 func (x *AssignFindingRequest) Reset() {
 	*x = AssignFindingRequest{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[55]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3493,7 +3562,7 @@ func (x *AssignFindingRequest) String() string {
 func (*AssignFindingRequest) ProtoMessage() {}
 
 func (x *AssignFindingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[55]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3506,7 +3575,7 @@ func (x *AssignFindingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssignFindingRequest.ProtoReflect.Descriptor instead.
 func (*AssignFindingRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{55}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *AssignFindingRequest) GetId() string {
@@ -3533,7 +3602,7 @@ type AssignFindingResponse struct {
 
 func (x *AssignFindingResponse) Reset() {
 	*x = AssignFindingResponse{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[56]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3545,7 +3614,7 @@ func (x *AssignFindingResponse) String() string {
 func (*AssignFindingResponse) ProtoMessage() {}
 
 func (x *AssignFindingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[56]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3558,7 +3627,7 @@ func (x *AssignFindingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssignFindingResponse.ProtoReflect.Descriptor instead.
 func (*AssignFindingResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{56}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *AssignFindingResponse) GetFinding() *Finding {
@@ -3579,7 +3648,7 @@ type SetFindingDueDateRequest struct {
 
 func (x *SetFindingDueDateRequest) Reset() {
 	*x = SetFindingDueDateRequest{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[57]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3591,7 +3660,7 @@ func (x *SetFindingDueDateRequest) String() string {
 func (*SetFindingDueDateRequest) ProtoMessage() {}
 
 func (x *SetFindingDueDateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[57]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3604,7 +3673,7 @@ func (x *SetFindingDueDateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetFindingDueDateRequest.ProtoReflect.Descriptor instead.
 func (*SetFindingDueDateRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{57}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *SetFindingDueDateRequest) GetId() string {
@@ -3631,7 +3700,7 @@ type SetFindingDueDateResponse struct {
 
 func (x *SetFindingDueDateResponse) Reset() {
 	*x = SetFindingDueDateResponse{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[58]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3643,7 +3712,7 @@ func (x *SetFindingDueDateResponse) String() string {
 func (*SetFindingDueDateResponse) ProtoMessage() {}
 
 func (x *SetFindingDueDateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[58]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3656,10 +3725,108 @@ func (x *SetFindingDueDateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetFindingDueDateResponse.ProtoReflect.Descriptor instead.
 func (*SetFindingDueDateResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{58}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *SetFindingDueDateResponse) GetFinding() *Finding {
+	if x != nil {
+		return x.Finding
+	}
+	return nil
+}
+
+// AddFindingNoteRequest appends one note to one persisted finding.
+type AddFindingNoteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Note          string                 `protobuf:"bytes,2,opt,name=note,proto3" json:"note,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddFindingNoteRequest) Reset() {
+	*x = AddFindingNoteRequest{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[60]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddFindingNoteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddFindingNoteRequest) ProtoMessage() {}
+
+func (x *AddFindingNoteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[60]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddFindingNoteRequest.ProtoReflect.Descriptor instead.
+func (*AddFindingNoteRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{60}
+}
+
+func (x *AddFindingNoteRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AddFindingNoteRequest) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+// AddFindingNoteResponse returns the updated finding with appended notes.
+type AddFindingNoteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Finding       *Finding               `protobuf:"bytes,1,opt,name=finding,proto3" json:"finding,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddFindingNoteResponse) Reset() {
+	*x = AddFindingNoteResponse{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[61]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddFindingNoteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddFindingNoteResponse) ProtoMessage() {}
+
+func (x *AddFindingNoteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[61]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddFindingNoteResponse.ProtoReflect.Descriptor instead.
+func (*AddFindingNoteResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{61}
+}
+
+func (x *AddFindingNoteResponse) GetFinding() *Finding {
 	if x != nil {
 		return x.Finding
 	}
@@ -3676,7 +3843,7 @@ type ListFindingsResponse struct {
 
 func (x *ListFindingsResponse) Reset() {
 	*x = ListFindingsResponse{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[59]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3688,7 +3855,7 @@ func (x *ListFindingsResponse) String() string {
 func (*ListFindingsResponse) ProtoMessage() {}
 
 func (x *ListFindingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[59]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3701,7 +3868,7 @@ func (x *ListFindingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFindingsResponse.ProtoReflect.Descriptor instead.
 func (*ListFindingsResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{59}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *ListFindingsResponse) GetFindings() []*Finding {
@@ -3723,7 +3890,7 @@ type EvaluateSourceRuntimeFindingsRequest struct {
 
 func (x *EvaluateSourceRuntimeFindingsRequest) Reset() {
 	*x = EvaluateSourceRuntimeFindingsRequest{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[60]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3735,7 +3902,7 @@ func (x *EvaluateSourceRuntimeFindingsRequest) String() string {
 func (*EvaluateSourceRuntimeFindingsRequest) ProtoMessage() {}
 
 func (x *EvaluateSourceRuntimeFindingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[60]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3748,7 +3915,7 @@ func (x *EvaluateSourceRuntimeFindingsRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use EvaluateSourceRuntimeFindingsRequest.ProtoReflect.Descriptor instead.
 func (*EvaluateSourceRuntimeFindingsRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{60}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *EvaluateSourceRuntimeFindingsRequest) GetId() string {
@@ -3784,7 +3951,7 @@ type EvaluateSourceRuntimeFindingRulesRequest struct {
 
 func (x *EvaluateSourceRuntimeFindingRulesRequest) Reset() {
 	*x = EvaluateSourceRuntimeFindingRulesRequest{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[61]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3796,7 +3963,7 @@ func (x *EvaluateSourceRuntimeFindingRulesRequest) String() string {
 func (*EvaluateSourceRuntimeFindingRulesRequest) ProtoMessage() {}
 
 func (x *EvaluateSourceRuntimeFindingRulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[61]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3809,7 +3976,7 @@ func (x *EvaluateSourceRuntimeFindingRulesRequest) ProtoReflect() protoreflect.M
 
 // Deprecated: Use EvaluateSourceRuntimeFindingRulesRequest.ProtoReflect.Descriptor instead.
 func (*EvaluateSourceRuntimeFindingRulesRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{61}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *EvaluateSourceRuntimeFindingRulesRequest) GetId() string {
@@ -3846,7 +4013,7 @@ type FindingRuleEvaluation struct {
 
 func (x *FindingRuleEvaluation) Reset() {
 	*x = FindingRuleEvaluation{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[62]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3858,7 +4025,7 @@ func (x *FindingRuleEvaluation) String() string {
 func (*FindingRuleEvaluation) ProtoMessage() {}
 
 func (x *FindingRuleEvaluation) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[62]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3871,7 +4038,7 @@ func (x *FindingRuleEvaluation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FindingRuleEvaluation.ProtoReflect.Descriptor instead.
 func (*FindingRuleEvaluation) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{62}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *FindingRuleEvaluation) GetRule() *RuleSpec {
@@ -3914,7 +4081,7 @@ type EvaluateSourceRuntimeFindingRulesResponse struct {
 
 func (x *EvaluateSourceRuntimeFindingRulesResponse) Reset() {
 	*x = EvaluateSourceRuntimeFindingRulesResponse{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[63]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3926,7 +4093,7 @@ func (x *EvaluateSourceRuntimeFindingRulesResponse) String() string {
 func (*EvaluateSourceRuntimeFindingRulesResponse) ProtoMessage() {}
 
 func (x *EvaluateSourceRuntimeFindingRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[63]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3939,7 +4106,7 @@ func (x *EvaluateSourceRuntimeFindingRulesResponse) ProtoReflect() protoreflect.
 
 // Deprecated: Use EvaluateSourceRuntimeFindingRulesResponse.ProtoReflect.Descriptor instead.
 func (*EvaluateSourceRuntimeFindingRulesResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{63}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *EvaluateSourceRuntimeFindingRulesResponse) GetRuntime() *SourceRuntime {
@@ -3979,7 +4146,7 @@ type EvaluateSourceRuntimeFindingsResponse struct {
 
 func (x *EvaluateSourceRuntimeFindingsResponse) Reset() {
 	*x = EvaluateSourceRuntimeFindingsResponse{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[64]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3991,7 +4158,7 @@ func (x *EvaluateSourceRuntimeFindingsResponse) String() string {
 func (*EvaluateSourceRuntimeFindingsResponse) ProtoMessage() {}
 
 func (x *EvaluateSourceRuntimeFindingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[64]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4004,7 +4171,7 @@ func (x *EvaluateSourceRuntimeFindingsResponse) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use EvaluateSourceRuntimeFindingsResponse.ProtoReflect.Descriptor instead.
 func (*EvaluateSourceRuntimeFindingsResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{64}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *EvaluateSourceRuntimeFindingsResponse) GetRuntime() *SourceRuntime {
@@ -4068,7 +4235,7 @@ type GraphEntity struct {
 
 func (x *GraphEntity) Reset() {
 	*x = GraphEntity{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[65]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4080,7 +4247,7 @@ func (x *GraphEntity) String() string {
 func (*GraphEntity) ProtoMessage() {}
 
 func (x *GraphEntity) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[65]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4093,7 +4260,7 @@ func (x *GraphEntity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphEntity.ProtoReflect.Descriptor instead.
 func (*GraphEntity) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{65}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *GraphEntity) GetUrn() string {
@@ -4129,7 +4296,7 @@ type GraphRelation struct {
 
 func (x *GraphRelation) Reset() {
 	*x = GraphRelation{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[66]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4141,7 +4308,7 @@ func (x *GraphRelation) String() string {
 func (*GraphRelation) ProtoMessage() {}
 
 func (x *GraphRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[66]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4154,7 +4321,7 @@ func (x *GraphRelation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphRelation.ProtoReflect.Descriptor instead.
 func (*GraphRelation) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{66}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *GraphRelation) GetFromUrn() string {
@@ -4189,7 +4356,7 @@ type GetEntityNeighborhoodRequest struct {
 
 func (x *GetEntityNeighborhoodRequest) Reset() {
 	*x = GetEntityNeighborhoodRequest{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[67]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4201,7 +4368,7 @@ func (x *GetEntityNeighborhoodRequest) String() string {
 func (*GetEntityNeighborhoodRequest) ProtoMessage() {}
 
 func (x *GetEntityNeighborhoodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[67]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4214,7 +4381,7 @@ func (x *GetEntityNeighborhoodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEntityNeighborhoodRequest.ProtoReflect.Descriptor instead.
 func (*GetEntityNeighborhoodRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{67}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *GetEntityNeighborhoodRequest) GetRootUrn() string {
@@ -4243,7 +4410,7 @@ type GetEntityNeighborhoodResponse struct {
 
 func (x *GetEntityNeighborhoodResponse) Reset() {
 	*x = GetEntityNeighborhoodResponse{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[68]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4255,7 +4422,7 @@ func (x *GetEntityNeighborhoodResponse) String() string {
 func (*GetEntityNeighborhoodResponse) ProtoMessage() {}
 
 func (x *GetEntityNeighborhoodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[68]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4268,7 +4435,7 @@ func (x *GetEntityNeighborhoodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEntityNeighborhoodResponse.ProtoReflect.Descriptor instead.
 func (*GetEntityNeighborhoodResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{68}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *GetEntityNeighborhoodResponse) GetRoot() *GraphEntity {
@@ -4541,7 +4708,12 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x11FindingControlRef\x12%\n" +
 	"\x0eframework_name\x18\x01 \x01(\tR\rframeworkName\x12\x1d\n" +
 	"\n" +
-	"control_id\x18\x02 \x01(\tR\tcontrolId\"\x89\b\n" +
+	"control_id\x18\x02 \x01(\tR\tcontrolId\"l\n" +
+	"\vFindingNote\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04body\x18\x02 \x01(\tR\x04body\x129\n" +
+	"\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xb8\b\n" +
 	"\aFinding\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\vfingerprint\x18\x02 \x01(\tR\vfingerprint\x12\x1b\n" +
@@ -4572,7 +4744,8 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\n" +
 	"check_name\x18\x16 \x01(\tR\tcheckName\x12@\n" +
 	"\fcontrol_refs\x18\x17 \x03(\v2\x1d.cerebro.v1.FindingControlRefR\vcontrolRefs\x121\n" +
-	"\x06due_at\x18\x18 \x01(\v2\x1a.google.protobuf.TimestampR\x05dueAt\x1a=\n" +
+	"\x06due_at\x18\x18 \x01(\v2\x1a.google.protobuf.TimestampR\x05dueAt\x12-\n" +
+	"\x05notes\x18\x19 \x03(\v2\x17.cerebro.v1.FindingNoteR\x05notes\x1a=\n" +
 	"\x0fAttributesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"#\n" +
@@ -4599,6 +4772,11 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x121\n" +
 	"\x06due_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x05dueAt\"J\n" +
 	"\x19SetFindingDueDateResponse\x12-\n" +
+	"\afinding\x18\x01 \x01(\v2\x13.cerebro.v1.FindingR\afinding\";\n" +
+	"\x15AddFindingNoteRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04note\x18\x02 \x01(\tR\x04note\"G\n" +
+	"\x16AddFindingNoteResponse\x12-\n" +
 	"\afinding\x18\x01 \x01(\v2\x13.cerebro.v1.FindingR\afinding\"G\n" +
 	"\x14ListFindingsResponse\x12/\n" +
 	"\bfindings\x18\x01 \x03(\v2\x13.cerebro.v1.FindingR\bfindings\"p\n" +
@@ -4649,7 +4827,7 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x1aFINDING_STATUS_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13FINDING_STATUS_OPEN\x10\x01\x12\x1b\n" +
 	"\x17FINDING_STATUS_RESOLVED\x10\x02\x12\x1d\n" +
-	"\x19FINDING_STATUS_SUPPRESSED\x10\x032\xec\x14\n" +
+	"\x19FINDING_STATUS_SUPPRESSED\x10\x032\xc5\x15\n" +
 	"\x10BootstrapService\x12K\n" +
 	"\n" +
 	"GetVersion\x12\x1d.cerebro.v1.GetVersionRequest\x1a\x1e.cerebro.v1.GetVersionResponse\x12N\n" +
@@ -4675,7 +4853,8 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x0eResolveFinding\x12!.cerebro.v1.ResolveFindingRequest\x1a\".cerebro.v1.ResolveFindingResponse\x12Z\n" +
 	"\x0fSuppressFinding\x12\".cerebro.v1.SuppressFindingRequest\x1a#.cerebro.v1.SuppressFindingResponse\x12T\n" +
 	"\rAssignFinding\x12 .cerebro.v1.AssignFindingRequest\x1a!.cerebro.v1.AssignFindingResponse\x12`\n" +
-	"\x11SetFindingDueDate\x12$.cerebro.v1.SetFindingDueDateRequest\x1a%.cerebro.v1.SetFindingDueDateResponse\x12x\n" +
+	"\x11SetFindingDueDate\x12$.cerebro.v1.SetFindingDueDateRequest\x1a%.cerebro.v1.SetFindingDueDateResponse\x12W\n" +
+	"\x0eAddFindingNote\x12!.cerebro.v1.AddFindingNoteRequest\x1a\".cerebro.v1.AddFindingNoteResponse\x12x\n" +
 	"\x19ListFindingEvaluationRuns\x12,.cerebro.v1.ListFindingEvaluationRunsRequest\x1a-.cerebro.v1.ListFindingEvaluationRunsResponse\x12r\n" +
 	"\x17GetFindingEvaluationRun\x12*.cerebro.v1.GetFindingEvaluationRunRequest\x1a+.cerebro.v1.GetFindingEvaluationRunResponse\x12f\n" +
 	"\x13ListFindingEvidence\x12&.cerebro.v1.ListFindingEvidenceRequest\x1a'.cerebro.v1.ListFindingEvidenceResponse\x12c\n" +
@@ -4697,7 +4876,7 @@ func file_cerebro_v1_bootstrap_proto_rawDescGZIP() []byte {
 }
 
 var file_cerebro_v1_bootstrap_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_cerebro_v1_bootstrap_proto_msgTypes = make([]protoimpl.MessageInfo, 76)
+var file_cerebro_v1_bootstrap_proto_msgTypes = make([]protoimpl.MessageInfo, 79)
 var file_cerebro_v1_bootstrap_proto_goTypes = []any{
 	(FindingStatus)(0),                                // 0: cerebro.v1.FindingStatus
 	(*GetVersionRequest)(nil),                         // 1: cerebro.v1.GetVersionRequest
@@ -4748,179 +4927,187 @@ var file_cerebro_v1_bootstrap_proto_goTypes = []any{
 	(*ListClaimsResponse)(nil),                        // 46: cerebro.v1.ListClaimsResponse
 	(*ListFindingsRequest)(nil),                       // 47: cerebro.v1.ListFindingsRequest
 	(*FindingControlRef)(nil),                         // 48: cerebro.v1.FindingControlRef
-	(*Finding)(nil),                                   // 49: cerebro.v1.Finding
-	(*GetFindingRequest)(nil),                         // 50: cerebro.v1.GetFindingRequest
-	(*GetFindingResponse)(nil),                        // 51: cerebro.v1.GetFindingResponse
-	(*ResolveFindingRequest)(nil),                     // 52: cerebro.v1.ResolveFindingRequest
-	(*ResolveFindingResponse)(nil),                    // 53: cerebro.v1.ResolveFindingResponse
-	(*SuppressFindingRequest)(nil),                    // 54: cerebro.v1.SuppressFindingRequest
-	(*SuppressFindingResponse)(nil),                   // 55: cerebro.v1.SuppressFindingResponse
-	(*AssignFindingRequest)(nil),                      // 56: cerebro.v1.AssignFindingRequest
-	(*AssignFindingResponse)(nil),                     // 57: cerebro.v1.AssignFindingResponse
-	(*SetFindingDueDateRequest)(nil),                  // 58: cerebro.v1.SetFindingDueDateRequest
-	(*SetFindingDueDateResponse)(nil),                 // 59: cerebro.v1.SetFindingDueDateResponse
-	(*ListFindingsResponse)(nil),                      // 60: cerebro.v1.ListFindingsResponse
-	(*EvaluateSourceRuntimeFindingsRequest)(nil),      // 61: cerebro.v1.EvaluateSourceRuntimeFindingsRequest
-	(*EvaluateSourceRuntimeFindingRulesRequest)(nil),  // 62: cerebro.v1.EvaluateSourceRuntimeFindingRulesRequest
-	(*FindingRuleEvaluation)(nil),                     // 63: cerebro.v1.FindingRuleEvaluation
-	(*EvaluateSourceRuntimeFindingRulesResponse)(nil), // 64: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse
-	(*EvaluateSourceRuntimeFindingsResponse)(nil),     // 65: cerebro.v1.EvaluateSourceRuntimeFindingsResponse
-	(*GraphEntity)(nil),                               // 66: cerebro.v1.GraphEntity
-	(*GraphRelation)(nil),                             // 67: cerebro.v1.GraphRelation
-	(*GetEntityNeighborhoodRequest)(nil),              // 68: cerebro.v1.GetEntityNeighborhoodRequest
-	(*GetEntityNeighborhoodResponse)(nil),             // 69: cerebro.v1.GetEntityNeighborhoodResponse
-	nil,                                               // 70: cerebro.v1.ReportRun.ParametersEntry
-	nil,                                               // 71: cerebro.v1.RunReportRequest.ParametersEntry
-	nil,                                               // 72: cerebro.v1.CheckSourceRequest.ConfigEntry
-	nil,                                               // 73: cerebro.v1.DiscoverSourceRequest.ConfigEntry
-	nil,                                               // 74: cerebro.v1.ReadSourceRequest.ConfigEntry
-	nil,                                               // 75: cerebro.v1.SourceRuntime.ConfigEntry
-	nil,                                               // 76: cerebro.v1.Finding.AttributesEntry
-	(*timestamppb.Timestamp)(nil),                     // 77: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                           // 78: google.protobuf.Struct
-	(*RuleSpec)(nil),                                  // 79: cerebro.v1.RuleSpec
-	(*SourceSpec)(nil),                                // 80: cerebro.v1.SourceSpec
-	(*SourceCursor)(nil),                              // 81: cerebro.v1.SourceCursor
-	(*EventEnvelope)(nil),                             // 82: cerebro.v1.EventEnvelope
-	(*structpb.Value)(nil),                            // 83: google.protobuf.Value
-	(*SourceCheckpoint)(nil),                          // 84: cerebro.v1.SourceCheckpoint
-	(*Claim)(nil),                                     // 85: cerebro.v1.Claim
+	(*FindingNote)(nil),                               // 49: cerebro.v1.FindingNote
+	(*Finding)(nil),                                   // 50: cerebro.v1.Finding
+	(*GetFindingRequest)(nil),                         // 51: cerebro.v1.GetFindingRequest
+	(*GetFindingResponse)(nil),                        // 52: cerebro.v1.GetFindingResponse
+	(*ResolveFindingRequest)(nil),                     // 53: cerebro.v1.ResolveFindingRequest
+	(*ResolveFindingResponse)(nil),                    // 54: cerebro.v1.ResolveFindingResponse
+	(*SuppressFindingRequest)(nil),                    // 55: cerebro.v1.SuppressFindingRequest
+	(*SuppressFindingResponse)(nil),                   // 56: cerebro.v1.SuppressFindingResponse
+	(*AssignFindingRequest)(nil),                      // 57: cerebro.v1.AssignFindingRequest
+	(*AssignFindingResponse)(nil),                     // 58: cerebro.v1.AssignFindingResponse
+	(*SetFindingDueDateRequest)(nil),                  // 59: cerebro.v1.SetFindingDueDateRequest
+	(*SetFindingDueDateResponse)(nil),                 // 60: cerebro.v1.SetFindingDueDateResponse
+	(*AddFindingNoteRequest)(nil),                     // 61: cerebro.v1.AddFindingNoteRequest
+	(*AddFindingNoteResponse)(nil),                    // 62: cerebro.v1.AddFindingNoteResponse
+	(*ListFindingsResponse)(nil),                      // 63: cerebro.v1.ListFindingsResponse
+	(*EvaluateSourceRuntimeFindingsRequest)(nil),      // 64: cerebro.v1.EvaluateSourceRuntimeFindingsRequest
+	(*EvaluateSourceRuntimeFindingRulesRequest)(nil),  // 65: cerebro.v1.EvaluateSourceRuntimeFindingRulesRequest
+	(*FindingRuleEvaluation)(nil),                     // 66: cerebro.v1.FindingRuleEvaluation
+	(*EvaluateSourceRuntimeFindingRulesResponse)(nil), // 67: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse
+	(*EvaluateSourceRuntimeFindingsResponse)(nil),     // 68: cerebro.v1.EvaluateSourceRuntimeFindingsResponse
+	(*GraphEntity)(nil),                               // 69: cerebro.v1.GraphEntity
+	(*GraphRelation)(nil),                             // 70: cerebro.v1.GraphRelation
+	(*GetEntityNeighborhoodRequest)(nil),              // 71: cerebro.v1.GetEntityNeighborhoodRequest
+	(*GetEntityNeighborhoodResponse)(nil),             // 72: cerebro.v1.GetEntityNeighborhoodResponse
+	nil,                                               // 73: cerebro.v1.ReportRun.ParametersEntry
+	nil,                                               // 74: cerebro.v1.RunReportRequest.ParametersEntry
+	nil,                                               // 75: cerebro.v1.CheckSourceRequest.ConfigEntry
+	nil,                                               // 76: cerebro.v1.DiscoverSourceRequest.ConfigEntry
+	nil,                                               // 77: cerebro.v1.ReadSourceRequest.ConfigEntry
+	nil,                                               // 78: cerebro.v1.SourceRuntime.ConfigEntry
+	nil,                                               // 79: cerebro.v1.Finding.AttributesEntry
+	(*timestamppb.Timestamp)(nil),                     // 80: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                           // 81: google.protobuf.Struct
+	(*RuleSpec)(nil),                                  // 82: cerebro.v1.RuleSpec
+	(*SourceSpec)(nil),                                // 83: cerebro.v1.SourceSpec
+	(*SourceCursor)(nil),                              // 84: cerebro.v1.SourceCursor
+	(*EventEnvelope)(nil),                             // 85: cerebro.v1.EventEnvelope
+	(*structpb.Value)(nil),                            // 86: google.protobuf.Value
+	(*SourceCheckpoint)(nil),                          // 87: cerebro.v1.SourceCheckpoint
+	(*Claim)(nil),                                     // 88: cerebro.v1.Claim
 }
 var file_cerebro_v1_bootstrap_proto_depIdxs = []int32{
-	77,  // 0: cerebro.v1.CheckHealthResponse.checked_at:type_name -> google.protobuf.Timestamp
+	80,  // 0: cerebro.v1.CheckHealthResponse.checked_at:type_name -> google.protobuf.Timestamp
 	4,   // 1: cerebro.v1.CheckHealthResponse.components:type_name -> cerebro.v1.ComponentStatus
 	6,   // 2: cerebro.v1.ReportDefinition.parameters:type_name -> cerebro.v1.ReportParameter
-	70,  // 3: cerebro.v1.ReportRun.parameters:type_name -> cerebro.v1.ReportRun.ParametersEntry
-	77,  // 4: cerebro.v1.ReportRun.generated_at:type_name -> google.protobuf.Timestamp
-	78,  // 5: cerebro.v1.ReportRun.result:type_name -> google.protobuf.Struct
+	73,  // 3: cerebro.v1.ReportRun.parameters:type_name -> cerebro.v1.ReportRun.ParametersEntry
+	80,  // 4: cerebro.v1.ReportRun.generated_at:type_name -> google.protobuf.Timestamp
+	81,  // 5: cerebro.v1.ReportRun.result:type_name -> google.protobuf.Struct
 	7,   // 6: cerebro.v1.ListReportDefinitionsResponse.reports:type_name -> cerebro.v1.ReportDefinition
-	79,  // 7: cerebro.v1.ListFindingRulesResponse.rules:type_name -> cerebro.v1.RuleSpec
-	77,  // 8: cerebro.v1.FindingEvaluationRun.started_at:type_name -> google.protobuf.Timestamp
-	77,  // 9: cerebro.v1.FindingEvaluationRun.finished_at:type_name -> google.protobuf.Timestamp
+	82,  // 7: cerebro.v1.ListFindingRulesResponse.rules:type_name -> cerebro.v1.RuleSpec
+	80,  // 8: cerebro.v1.FindingEvaluationRun.started_at:type_name -> google.protobuf.Timestamp
+	80,  // 9: cerebro.v1.FindingEvaluationRun.finished_at:type_name -> google.protobuf.Timestamp
 	13,  // 10: cerebro.v1.ListFindingEvaluationRunsResponse.runs:type_name -> cerebro.v1.FindingEvaluationRun
 	13,  // 11: cerebro.v1.GetFindingEvaluationRunResponse.run:type_name -> cerebro.v1.FindingEvaluationRun
-	77,  // 12: cerebro.v1.FindingEvidence.created_at:type_name -> google.protobuf.Timestamp
+	80,  // 12: cerebro.v1.FindingEvidence.created_at:type_name -> google.protobuf.Timestamp
 	18,  // 13: cerebro.v1.ListFindingEvidenceResponse.evidence:type_name -> cerebro.v1.FindingEvidence
 	18,  // 14: cerebro.v1.GetFindingEvidenceResponse.evidence:type_name -> cerebro.v1.FindingEvidence
-	71,  // 15: cerebro.v1.RunReportRequest.parameters:type_name -> cerebro.v1.RunReportRequest.ParametersEntry
+	74,  // 15: cerebro.v1.RunReportRequest.parameters:type_name -> cerebro.v1.RunReportRequest.ParametersEntry
 	7,   // 16: cerebro.v1.RunReportResponse.report:type_name -> cerebro.v1.ReportDefinition
 	8,   // 17: cerebro.v1.RunReportResponse.run:type_name -> cerebro.v1.ReportRun
 	8,   // 18: cerebro.v1.GetReportRunResponse.run:type_name -> cerebro.v1.ReportRun
-	80,  // 19: cerebro.v1.ListSourcesResponse.sources:type_name -> cerebro.v1.SourceSpec
-	72,  // 20: cerebro.v1.CheckSourceRequest.config:type_name -> cerebro.v1.CheckSourceRequest.ConfigEntry
-	80,  // 21: cerebro.v1.CheckSourceResponse.source:type_name -> cerebro.v1.SourceSpec
-	73,  // 22: cerebro.v1.DiscoverSourceRequest.config:type_name -> cerebro.v1.DiscoverSourceRequest.ConfigEntry
-	80,  // 23: cerebro.v1.DiscoverSourceResponse.source:type_name -> cerebro.v1.SourceSpec
-	74,  // 24: cerebro.v1.ReadSourceRequest.config:type_name -> cerebro.v1.ReadSourceRequest.ConfigEntry
-	81,  // 25: cerebro.v1.ReadSourceRequest.cursor:type_name -> cerebro.v1.SourceCursor
-	82,  // 26: cerebro.v1.SourcePreviewEvent.event:type_name -> cerebro.v1.EventEnvelope
-	83,  // 27: cerebro.v1.SourcePreviewEvent.payload:type_name -> google.protobuf.Value
-	80,  // 28: cerebro.v1.ReadSourceResponse.source:type_name -> cerebro.v1.SourceSpec
-	82,  // 29: cerebro.v1.ReadSourceResponse.events:type_name -> cerebro.v1.EventEnvelope
-	84,  // 30: cerebro.v1.ReadSourceResponse.checkpoint:type_name -> cerebro.v1.SourceCheckpoint
-	81,  // 31: cerebro.v1.ReadSourceResponse.next_cursor:type_name -> cerebro.v1.SourceCursor
+	83,  // 19: cerebro.v1.ListSourcesResponse.sources:type_name -> cerebro.v1.SourceSpec
+	75,  // 20: cerebro.v1.CheckSourceRequest.config:type_name -> cerebro.v1.CheckSourceRequest.ConfigEntry
+	83,  // 21: cerebro.v1.CheckSourceResponse.source:type_name -> cerebro.v1.SourceSpec
+	76,  // 22: cerebro.v1.DiscoverSourceRequest.config:type_name -> cerebro.v1.DiscoverSourceRequest.ConfigEntry
+	83,  // 23: cerebro.v1.DiscoverSourceResponse.source:type_name -> cerebro.v1.SourceSpec
+	77,  // 24: cerebro.v1.ReadSourceRequest.config:type_name -> cerebro.v1.ReadSourceRequest.ConfigEntry
+	84,  // 25: cerebro.v1.ReadSourceRequest.cursor:type_name -> cerebro.v1.SourceCursor
+	85,  // 26: cerebro.v1.SourcePreviewEvent.event:type_name -> cerebro.v1.EventEnvelope
+	86,  // 27: cerebro.v1.SourcePreviewEvent.payload:type_name -> google.protobuf.Value
+	83,  // 28: cerebro.v1.ReadSourceResponse.source:type_name -> cerebro.v1.SourceSpec
+	85,  // 29: cerebro.v1.ReadSourceResponse.events:type_name -> cerebro.v1.EventEnvelope
+	87,  // 30: cerebro.v1.ReadSourceResponse.checkpoint:type_name -> cerebro.v1.SourceCheckpoint
+	84,  // 31: cerebro.v1.ReadSourceResponse.next_cursor:type_name -> cerebro.v1.SourceCursor
 	34,  // 32: cerebro.v1.ReadSourceResponse.preview_events:type_name -> cerebro.v1.SourcePreviewEvent
-	75,  // 33: cerebro.v1.SourceRuntime.config:type_name -> cerebro.v1.SourceRuntime.ConfigEntry
-	84,  // 34: cerebro.v1.SourceRuntime.checkpoint:type_name -> cerebro.v1.SourceCheckpoint
-	81,  // 35: cerebro.v1.SourceRuntime.next_cursor:type_name -> cerebro.v1.SourceCursor
-	77,  // 36: cerebro.v1.SourceRuntime.last_synced_at:type_name -> google.protobuf.Timestamp
+	78,  // 33: cerebro.v1.SourceRuntime.config:type_name -> cerebro.v1.SourceRuntime.ConfigEntry
+	87,  // 34: cerebro.v1.SourceRuntime.checkpoint:type_name -> cerebro.v1.SourceCheckpoint
+	84,  // 35: cerebro.v1.SourceRuntime.next_cursor:type_name -> cerebro.v1.SourceCursor
+	80,  // 36: cerebro.v1.SourceRuntime.last_synced_at:type_name -> google.protobuf.Timestamp
 	36,  // 37: cerebro.v1.PutSourceRuntimeRequest.runtime:type_name -> cerebro.v1.SourceRuntime
 	36,  // 38: cerebro.v1.PutSourceRuntimeResponse.runtime:type_name -> cerebro.v1.SourceRuntime
 	36,  // 39: cerebro.v1.GetSourceRuntimeResponse.runtime:type_name -> cerebro.v1.SourceRuntime
 	36,  // 40: cerebro.v1.SyncSourceRuntimeResponse.runtime:type_name -> cerebro.v1.SourceRuntime
-	80,  // 41: cerebro.v1.SyncSourceRuntimeResponse.source:type_name -> cerebro.v1.SourceSpec
-	85,  // 42: cerebro.v1.WriteClaimsRequest.claims:type_name -> cerebro.v1.Claim
-	85,  // 43: cerebro.v1.ListClaimsResponse.claims:type_name -> cerebro.v1.Claim
+	83,  // 41: cerebro.v1.SyncSourceRuntimeResponse.source:type_name -> cerebro.v1.SourceSpec
+	88,  // 42: cerebro.v1.WriteClaimsRequest.claims:type_name -> cerebro.v1.Claim
+	88,  // 43: cerebro.v1.ListClaimsResponse.claims:type_name -> cerebro.v1.Claim
 	0,   // 44: cerebro.v1.ListFindingsRequest.status:type_name -> cerebro.v1.FindingStatus
-	0,   // 45: cerebro.v1.Finding.status:type_name -> cerebro.v1.FindingStatus
-	76,  // 46: cerebro.v1.Finding.attributes:type_name -> cerebro.v1.Finding.AttributesEntry
-	77,  // 47: cerebro.v1.Finding.first_observed_at:type_name -> google.protobuf.Timestamp
-	77,  // 48: cerebro.v1.Finding.last_observed_at:type_name -> google.protobuf.Timestamp
-	77,  // 49: cerebro.v1.Finding.status_updated_at:type_name -> google.protobuf.Timestamp
-	48,  // 50: cerebro.v1.Finding.control_refs:type_name -> cerebro.v1.FindingControlRef
-	77,  // 51: cerebro.v1.Finding.due_at:type_name -> google.protobuf.Timestamp
-	49,  // 52: cerebro.v1.GetFindingResponse.finding:type_name -> cerebro.v1.Finding
-	49,  // 53: cerebro.v1.ResolveFindingResponse.finding:type_name -> cerebro.v1.Finding
-	49,  // 54: cerebro.v1.SuppressFindingResponse.finding:type_name -> cerebro.v1.Finding
-	49,  // 55: cerebro.v1.AssignFindingResponse.finding:type_name -> cerebro.v1.Finding
-	77,  // 56: cerebro.v1.SetFindingDueDateRequest.due_at:type_name -> google.protobuf.Timestamp
-	49,  // 57: cerebro.v1.SetFindingDueDateResponse.finding:type_name -> cerebro.v1.Finding
-	49,  // 58: cerebro.v1.ListFindingsResponse.findings:type_name -> cerebro.v1.Finding
-	79,  // 59: cerebro.v1.FindingRuleEvaluation.rule:type_name -> cerebro.v1.RuleSpec
-	49,  // 60: cerebro.v1.FindingRuleEvaluation.findings:type_name -> cerebro.v1.Finding
-	13,  // 61: cerebro.v1.FindingRuleEvaluation.run:type_name -> cerebro.v1.FindingEvaluationRun
-	18,  // 62: cerebro.v1.FindingRuleEvaluation.evidence:type_name -> cerebro.v1.FindingEvidence
-	36,  // 63: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse.runtime:type_name -> cerebro.v1.SourceRuntime
-	63,  // 64: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse.evaluations:type_name -> cerebro.v1.FindingRuleEvaluation
-	36,  // 65: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.runtime:type_name -> cerebro.v1.SourceRuntime
-	79,  // 66: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.rule:type_name -> cerebro.v1.RuleSpec
-	49,  // 67: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.findings:type_name -> cerebro.v1.Finding
-	13,  // 68: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.run:type_name -> cerebro.v1.FindingEvaluationRun
-	18,  // 69: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.evidence:type_name -> cerebro.v1.FindingEvidence
-	66,  // 70: cerebro.v1.GetEntityNeighborhoodResponse.root:type_name -> cerebro.v1.GraphEntity
-	66,  // 71: cerebro.v1.GetEntityNeighborhoodResponse.neighbors:type_name -> cerebro.v1.GraphEntity
-	67,  // 72: cerebro.v1.GetEntityNeighborhoodResponse.relations:type_name -> cerebro.v1.GraphRelation
-	1,   // 73: cerebro.v1.BootstrapService.GetVersion:input_type -> cerebro.v1.GetVersionRequest
-	3,   // 74: cerebro.v1.BootstrapService.CheckHealth:input_type -> cerebro.v1.CheckHealthRequest
-	9,   // 75: cerebro.v1.BootstrapService.ListReportDefinitions:input_type -> cerebro.v1.ListReportDefinitionsRequest
-	11,  // 76: cerebro.v1.BootstrapService.ListFindingRules:input_type -> cerebro.v1.ListFindingRulesRequest
-	23,  // 77: cerebro.v1.BootstrapService.RunReport:input_type -> cerebro.v1.RunReportRequest
-	25,  // 78: cerebro.v1.BootstrapService.GetReportRun:input_type -> cerebro.v1.GetReportRunRequest
-	27,  // 79: cerebro.v1.BootstrapService.ListSources:input_type -> cerebro.v1.ListSourcesRequest
-	29,  // 80: cerebro.v1.BootstrapService.CheckSource:input_type -> cerebro.v1.CheckSourceRequest
-	31,  // 81: cerebro.v1.BootstrapService.DiscoverSource:input_type -> cerebro.v1.DiscoverSourceRequest
-	33,  // 82: cerebro.v1.BootstrapService.ReadSource:input_type -> cerebro.v1.ReadSourceRequest
-	37,  // 83: cerebro.v1.BootstrapService.PutSourceRuntime:input_type -> cerebro.v1.PutSourceRuntimeRequest
-	39,  // 84: cerebro.v1.BootstrapService.GetSourceRuntime:input_type -> cerebro.v1.GetSourceRuntimeRequest
-	41,  // 85: cerebro.v1.BootstrapService.SyncSourceRuntime:input_type -> cerebro.v1.SyncSourceRuntimeRequest
-	43,  // 86: cerebro.v1.BootstrapService.WriteClaims:input_type -> cerebro.v1.WriteClaimsRequest
-	45,  // 87: cerebro.v1.BootstrapService.ListClaims:input_type -> cerebro.v1.ListClaimsRequest
-	47,  // 88: cerebro.v1.BootstrapService.ListFindings:input_type -> cerebro.v1.ListFindingsRequest
-	50,  // 89: cerebro.v1.BootstrapService.GetFinding:input_type -> cerebro.v1.GetFindingRequest
-	52,  // 90: cerebro.v1.BootstrapService.ResolveFinding:input_type -> cerebro.v1.ResolveFindingRequest
-	54,  // 91: cerebro.v1.BootstrapService.SuppressFinding:input_type -> cerebro.v1.SuppressFindingRequest
-	56,  // 92: cerebro.v1.BootstrapService.AssignFinding:input_type -> cerebro.v1.AssignFindingRequest
-	58,  // 93: cerebro.v1.BootstrapService.SetFindingDueDate:input_type -> cerebro.v1.SetFindingDueDateRequest
-	14,  // 94: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:input_type -> cerebro.v1.ListFindingEvaluationRunsRequest
-	16,  // 95: cerebro.v1.BootstrapService.GetFindingEvaluationRun:input_type -> cerebro.v1.GetFindingEvaluationRunRequest
-	19,  // 96: cerebro.v1.BootstrapService.ListFindingEvidence:input_type -> cerebro.v1.ListFindingEvidenceRequest
-	21,  // 97: cerebro.v1.BootstrapService.GetFindingEvidence:input_type -> cerebro.v1.GetFindingEvidenceRequest
-	62,  // 98: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesRequest
-	61,  // 99: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingsRequest
-	68,  // 100: cerebro.v1.BootstrapService.GetEntityNeighborhood:input_type -> cerebro.v1.GetEntityNeighborhoodRequest
-	2,   // 101: cerebro.v1.BootstrapService.GetVersion:output_type -> cerebro.v1.GetVersionResponse
-	5,   // 102: cerebro.v1.BootstrapService.CheckHealth:output_type -> cerebro.v1.CheckHealthResponse
-	10,  // 103: cerebro.v1.BootstrapService.ListReportDefinitions:output_type -> cerebro.v1.ListReportDefinitionsResponse
-	12,  // 104: cerebro.v1.BootstrapService.ListFindingRules:output_type -> cerebro.v1.ListFindingRulesResponse
-	24,  // 105: cerebro.v1.BootstrapService.RunReport:output_type -> cerebro.v1.RunReportResponse
-	26,  // 106: cerebro.v1.BootstrapService.GetReportRun:output_type -> cerebro.v1.GetReportRunResponse
-	28,  // 107: cerebro.v1.BootstrapService.ListSources:output_type -> cerebro.v1.ListSourcesResponse
-	30,  // 108: cerebro.v1.BootstrapService.CheckSource:output_type -> cerebro.v1.CheckSourceResponse
-	32,  // 109: cerebro.v1.BootstrapService.DiscoverSource:output_type -> cerebro.v1.DiscoverSourceResponse
-	35,  // 110: cerebro.v1.BootstrapService.ReadSource:output_type -> cerebro.v1.ReadSourceResponse
-	38,  // 111: cerebro.v1.BootstrapService.PutSourceRuntime:output_type -> cerebro.v1.PutSourceRuntimeResponse
-	40,  // 112: cerebro.v1.BootstrapService.GetSourceRuntime:output_type -> cerebro.v1.GetSourceRuntimeResponse
-	42,  // 113: cerebro.v1.BootstrapService.SyncSourceRuntime:output_type -> cerebro.v1.SyncSourceRuntimeResponse
-	44,  // 114: cerebro.v1.BootstrapService.WriteClaims:output_type -> cerebro.v1.WriteClaimsResponse
-	46,  // 115: cerebro.v1.BootstrapService.ListClaims:output_type -> cerebro.v1.ListClaimsResponse
-	60,  // 116: cerebro.v1.BootstrapService.ListFindings:output_type -> cerebro.v1.ListFindingsResponse
-	51,  // 117: cerebro.v1.BootstrapService.GetFinding:output_type -> cerebro.v1.GetFindingResponse
-	53,  // 118: cerebro.v1.BootstrapService.ResolveFinding:output_type -> cerebro.v1.ResolveFindingResponse
-	55,  // 119: cerebro.v1.BootstrapService.SuppressFinding:output_type -> cerebro.v1.SuppressFindingResponse
-	57,  // 120: cerebro.v1.BootstrapService.AssignFinding:output_type -> cerebro.v1.AssignFindingResponse
-	59,  // 121: cerebro.v1.BootstrapService.SetFindingDueDate:output_type -> cerebro.v1.SetFindingDueDateResponse
-	15,  // 122: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:output_type -> cerebro.v1.ListFindingEvaluationRunsResponse
-	17,  // 123: cerebro.v1.BootstrapService.GetFindingEvaluationRun:output_type -> cerebro.v1.GetFindingEvaluationRunResponse
-	20,  // 124: cerebro.v1.BootstrapService.ListFindingEvidence:output_type -> cerebro.v1.ListFindingEvidenceResponse
-	22,  // 125: cerebro.v1.BootstrapService.GetFindingEvidence:output_type -> cerebro.v1.GetFindingEvidenceResponse
-	64,  // 126: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse
-	65,  // 127: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingsResponse
-	69,  // 128: cerebro.v1.BootstrapService.GetEntityNeighborhood:output_type -> cerebro.v1.GetEntityNeighborhoodResponse
-	101, // [101:129] is the sub-list for method output_type
-	73,  // [73:101] is the sub-list for method input_type
-	73,  // [73:73] is the sub-list for extension type_name
-	73,  // [73:73] is the sub-list for extension extendee
-	0,   // [0:73] is the sub-list for field type_name
+	80,  // 45: cerebro.v1.FindingNote.created_at:type_name -> google.protobuf.Timestamp
+	0,   // 46: cerebro.v1.Finding.status:type_name -> cerebro.v1.FindingStatus
+	79,  // 47: cerebro.v1.Finding.attributes:type_name -> cerebro.v1.Finding.AttributesEntry
+	80,  // 48: cerebro.v1.Finding.first_observed_at:type_name -> google.protobuf.Timestamp
+	80,  // 49: cerebro.v1.Finding.last_observed_at:type_name -> google.protobuf.Timestamp
+	80,  // 50: cerebro.v1.Finding.status_updated_at:type_name -> google.protobuf.Timestamp
+	48,  // 51: cerebro.v1.Finding.control_refs:type_name -> cerebro.v1.FindingControlRef
+	80,  // 52: cerebro.v1.Finding.due_at:type_name -> google.protobuf.Timestamp
+	49,  // 53: cerebro.v1.Finding.notes:type_name -> cerebro.v1.FindingNote
+	50,  // 54: cerebro.v1.GetFindingResponse.finding:type_name -> cerebro.v1.Finding
+	50,  // 55: cerebro.v1.ResolveFindingResponse.finding:type_name -> cerebro.v1.Finding
+	50,  // 56: cerebro.v1.SuppressFindingResponse.finding:type_name -> cerebro.v1.Finding
+	50,  // 57: cerebro.v1.AssignFindingResponse.finding:type_name -> cerebro.v1.Finding
+	80,  // 58: cerebro.v1.SetFindingDueDateRequest.due_at:type_name -> google.protobuf.Timestamp
+	50,  // 59: cerebro.v1.SetFindingDueDateResponse.finding:type_name -> cerebro.v1.Finding
+	50,  // 60: cerebro.v1.AddFindingNoteResponse.finding:type_name -> cerebro.v1.Finding
+	50,  // 61: cerebro.v1.ListFindingsResponse.findings:type_name -> cerebro.v1.Finding
+	82,  // 62: cerebro.v1.FindingRuleEvaluation.rule:type_name -> cerebro.v1.RuleSpec
+	50,  // 63: cerebro.v1.FindingRuleEvaluation.findings:type_name -> cerebro.v1.Finding
+	13,  // 64: cerebro.v1.FindingRuleEvaluation.run:type_name -> cerebro.v1.FindingEvaluationRun
+	18,  // 65: cerebro.v1.FindingRuleEvaluation.evidence:type_name -> cerebro.v1.FindingEvidence
+	36,  // 66: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse.runtime:type_name -> cerebro.v1.SourceRuntime
+	66,  // 67: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse.evaluations:type_name -> cerebro.v1.FindingRuleEvaluation
+	36,  // 68: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.runtime:type_name -> cerebro.v1.SourceRuntime
+	82,  // 69: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.rule:type_name -> cerebro.v1.RuleSpec
+	50,  // 70: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.findings:type_name -> cerebro.v1.Finding
+	13,  // 71: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.run:type_name -> cerebro.v1.FindingEvaluationRun
+	18,  // 72: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.evidence:type_name -> cerebro.v1.FindingEvidence
+	69,  // 73: cerebro.v1.GetEntityNeighborhoodResponse.root:type_name -> cerebro.v1.GraphEntity
+	69,  // 74: cerebro.v1.GetEntityNeighborhoodResponse.neighbors:type_name -> cerebro.v1.GraphEntity
+	70,  // 75: cerebro.v1.GetEntityNeighborhoodResponse.relations:type_name -> cerebro.v1.GraphRelation
+	1,   // 76: cerebro.v1.BootstrapService.GetVersion:input_type -> cerebro.v1.GetVersionRequest
+	3,   // 77: cerebro.v1.BootstrapService.CheckHealth:input_type -> cerebro.v1.CheckHealthRequest
+	9,   // 78: cerebro.v1.BootstrapService.ListReportDefinitions:input_type -> cerebro.v1.ListReportDefinitionsRequest
+	11,  // 79: cerebro.v1.BootstrapService.ListFindingRules:input_type -> cerebro.v1.ListFindingRulesRequest
+	23,  // 80: cerebro.v1.BootstrapService.RunReport:input_type -> cerebro.v1.RunReportRequest
+	25,  // 81: cerebro.v1.BootstrapService.GetReportRun:input_type -> cerebro.v1.GetReportRunRequest
+	27,  // 82: cerebro.v1.BootstrapService.ListSources:input_type -> cerebro.v1.ListSourcesRequest
+	29,  // 83: cerebro.v1.BootstrapService.CheckSource:input_type -> cerebro.v1.CheckSourceRequest
+	31,  // 84: cerebro.v1.BootstrapService.DiscoverSource:input_type -> cerebro.v1.DiscoverSourceRequest
+	33,  // 85: cerebro.v1.BootstrapService.ReadSource:input_type -> cerebro.v1.ReadSourceRequest
+	37,  // 86: cerebro.v1.BootstrapService.PutSourceRuntime:input_type -> cerebro.v1.PutSourceRuntimeRequest
+	39,  // 87: cerebro.v1.BootstrapService.GetSourceRuntime:input_type -> cerebro.v1.GetSourceRuntimeRequest
+	41,  // 88: cerebro.v1.BootstrapService.SyncSourceRuntime:input_type -> cerebro.v1.SyncSourceRuntimeRequest
+	43,  // 89: cerebro.v1.BootstrapService.WriteClaims:input_type -> cerebro.v1.WriteClaimsRequest
+	45,  // 90: cerebro.v1.BootstrapService.ListClaims:input_type -> cerebro.v1.ListClaimsRequest
+	47,  // 91: cerebro.v1.BootstrapService.ListFindings:input_type -> cerebro.v1.ListFindingsRequest
+	51,  // 92: cerebro.v1.BootstrapService.GetFinding:input_type -> cerebro.v1.GetFindingRequest
+	53,  // 93: cerebro.v1.BootstrapService.ResolveFinding:input_type -> cerebro.v1.ResolveFindingRequest
+	55,  // 94: cerebro.v1.BootstrapService.SuppressFinding:input_type -> cerebro.v1.SuppressFindingRequest
+	57,  // 95: cerebro.v1.BootstrapService.AssignFinding:input_type -> cerebro.v1.AssignFindingRequest
+	59,  // 96: cerebro.v1.BootstrapService.SetFindingDueDate:input_type -> cerebro.v1.SetFindingDueDateRequest
+	61,  // 97: cerebro.v1.BootstrapService.AddFindingNote:input_type -> cerebro.v1.AddFindingNoteRequest
+	14,  // 98: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:input_type -> cerebro.v1.ListFindingEvaluationRunsRequest
+	16,  // 99: cerebro.v1.BootstrapService.GetFindingEvaluationRun:input_type -> cerebro.v1.GetFindingEvaluationRunRequest
+	19,  // 100: cerebro.v1.BootstrapService.ListFindingEvidence:input_type -> cerebro.v1.ListFindingEvidenceRequest
+	21,  // 101: cerebro.v1.BootstrapService.GetFindingEvidence:input_type -> cerebro.v1.GetFindingEvidenceRequest
+	65,  // 102: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesRequest
+	64,  // 103: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingsRequest
+	71,  // 104: cerebro.v1.BootstrapService.GetEntityNeighborhood:input_type -> cerebro.v1.GetEntityNeighborhoodRequest
+	2,   // 105: cerebro.v1.BootstrapService.GetVersion:output_type -> cerebro.v1.GetVersionResponse
+	5,   // 106: cerebro.v1.BootstrapService.CheckHealth:output_type -> cerebro.v1.CheckHealthResponse
+	10,  // 107: cerebro.v1.BootstrapService.ListReportDefinitions:output_type -> cerebro.v1.ListReportDefinitionsResponse
+	12,  // 108: cerebro.v1.BootstrapService.ListFindingRules:output_type -> cerebro.v1.ListFindingRulesResponse
+	24,  // 109: cerebro.v1.BootstrapService.RunReport:output_type -> cerebro.v1.RunReportResponse
+	26,  // 110: cerebro.v1.BootstrapService.GetReportRun:output_type -> cerebro.v1.GetReportRunResponse
+	28,  // 111: cerebro.v1.BootstrapService.ListSources:output_type -> cerebro.v1.ListSourcesResponse
+	30,  // 112: cerebro.v1.BootstrapService.CheckSource:output_type -> cerebro.v1.CheckSourceResponse
+	32,  // 113: cerebro.v1.BootstrapService.DiscoverSource:output_type -> cerebro.v1.DiscoverSourceResponse
+	35,  // 114: cerebro.v1.BootstrapService.ReadSource:output_type -> cerebro.v1.ReadSourceResponse
+	38,  // 115: cerebro.v1.BootstrapService.PutSourceRuntime:output_type -> cerebro.v1.PutSourceRuntimeResponse
+	40,  // 116: cerebro.v1.BootstrapService.GetSourceRuntime:output_type -> cerebro.v1.GetSourceRuntimeResponse
+	42,  // 117: cerebro.v1.BootstrapService.SyncSourceRuntime:output_type -> cerebro.v1.SyncSourceRuntimeResponse
+	44,  // 118: cerebro.v1.BootstrapService.WriteClaims:output_type -> cerebro.v1.WriteClaimsResponse
+	46,  // 119: cerebro.v1.BootstrapService.ListClaims:output_type -> cerebro.v1.ListClaimsResponse
+	63,  // 120: cerebro.v1.BootstrapService.ListFindings:output_type -> cerebro.v1.ListFindingsResponse
+	52,  // 121: cerebro.v1.BootstrapService.GetFinding:output_type -> cerebro.v1.GetFindingResponse
+	54,  // 122: cerebro.v1.BootstrapService.ResolveFinding:output_type -> cerebro.v1.ResolveFindingResponse
+	56,  // 123: cerebro.v1.BootstrapService.SuppressFinding:output_type -> cerebro.v1.SuppressFindingResponse
+	58,  // 124: cerebro.v1.BootstrapService.AssignFinding:output_type -> cerebro.v1.AssignFindingResponse
+	60,  // 125: cerebro.v1.BootstrapService.SetFindingDueDate:output_type -> cerebro.v1.SetFindingDueDateResponse
+	62,  // 126: cerebro.v1.BootstrapService.AddFindingNote:output_type -> cerebro.v1.AddFindingNoteResponse
+	15,  // 127: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:output_type -> cerebro.v1.ListFindingEvaluationRunsResponse
+	17,  // 128: cerebro.v1.BootstrapService.GetFindingEvaluationRun:output_type -> cerebro.v1.GetFindingEvaluationRunResponse
+	20,  // 129: cerebro.v1.BootstrapService.ListFindingEvidence:output_type -> cerebro.v1.ListFindingEvidenceResponse
+	22,  // 130: cerebro.v1.BootstrapService.GetFindingEvidence:output_type -> cerebro.v1.GetFindingEvidenceResponse
+	67,  // 131: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse
+	68,  // 132: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingsResponse
+	72,  // 133: cerebro.v1.BootstrapService.GetEntityNeighborhood:output_type -> cerebro.v1.GetEntityNeighborhoodResponse
+	105, // [105:134] is the sub-list for method output_type
+	76,  // [76:105] is the sub-list for method input_type
+	76,  // [76:76] is the sub-list for extension type_name
+	76,  // [76:76] is the sub-list for extension extendee
+	0,   // [0:76] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_bootstrap_proto_init() }
@@ -4936,7 +5123,7 @@ func file_cerebro_v1_bootstrap_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_v1_bootstrap_proto_rawDesc), len(file_cerebro_v1_bootstrap_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   76,
+			NumMessages:   79,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

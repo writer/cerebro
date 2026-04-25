@@ -70,6 +70,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("POST /findings/{findingID}/suppress", app.handleSuppressFinding)
 	mux.HandleFunc("PUT /findings/{findingID}/assign", app.handleAssignFinding)
 	mux.HandleFunc("PUT /findings/{findingID}/due", app.handleSetFindingDueDate)
+	mux.HandleFunc("POST /findings/{findingID}/notes", app.handleAddFindingNote)
 	mux.HandleFunc("GET /finding-evaluation-runs/{runID}", app.handleGetFindingEvaluationRun)
 	mux.HandleFunc("GET /finding-evidence/{evidenceID}", app.handleGetFindingEvidence)
 	mux.HandleFunc("/sources", app.handleSources)
@@ -218,6 +219,23 @@ func (a *App) handleSetFindingDueDate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, &cerebrov1.SetFindingDueDateResponse{
+		Finding: findingMessage(finding),
+	})
+}
+
+func (a *App) handleAddFindingNote(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.AddFindingNoteRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	request.Id = r.PathValue("findingID")
+	finding, err := a.findingService().AddFindingNote(r.Context(), request.GetId(), request.GetNote())
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.AddFindingNoteResponse{
 		Finding: findingMessage(finding),
 	})
 }
@@ -918,6 +936,21 @@ func (s *bootstrapService) SetFindingDueDate(ctx context.Context, req *connect.R
 	return connect.NewResponse(&cerebrov1.SetFindingDueDateResponse{Finding: findingMessage(finding)}), nil
 }
 
+func (s *bootstrapService) AddFindingNote(ctx context.Context, req *connect.Request[cerebrov1.AddFindingNoteRequest]) (*connect.Response[cerebrov1.AddFindingNoteResponse], error) {
+	finding, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+		findingEvidenceStore(s.deps.StateStore),
+		claimStore(s.deps.StateStore),
+	).AddFindingNote(ctx, req.Msg.GetId(), req.Msg.GetNote())
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.AddFindingNoteResponse{Finding: findingMessage(finding)}), nil
+}
+
 func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect.Request[cerebrov1.ListFindingEvidenceRequest]) (*connect.Response[cerebrov1.ListFindingEvidenceResponse], error) {
 	response, err := findings.New(
 		sourceRuntimeStore(s.deps.StateStore),
@@ -1387,6 +1420,7 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 		CheckId:           finding.CheckID,
 		CheckName:         finding.CheckName,
 		ControlRefs:       findingControlRefMessages(finding.ControlRefs),
+		Notes:             findingNoteMessages(finding.Notes),
 		Attributes:        make(map[string]string, len(finding.Attributes)),
 		Assignee:          finding.Assignee,
 		StatusReason:      finding.StatusReason,
@@ -1424,6 +1458,28 @@ func findingControlRefMessages(values []ports.FindingControlRef) []*cerebrov1.Fi
 			FrameworkName: frameworkName,
 			ControlId:     controlID,
 		})
+	}
+	return messages
+}
+
+func findingNoteMessages(values []ports.FindingNote) []*cerebrov1.FindingNote {
+	if len(values) == 0 {
+		return nil
+	}
+	messages := make([]*cerebrov1.FindingNote, 0, len(values))
+	for _, value := range values {
+		body := strings.TrimSpace(value.Body)
+		if body == "" {
+			continue
+		}
+		message := &cerebrov1.FindingNote{
+			Id:   strings.TrimSpace(value.ID),
+			Body: body,
+		}
+		if !value.CreatedAt.IsZero() {
+			message.CreatedAt = timestamppb.New(value.CreatedAt)
+		}
+		messages = append(messages, message)
 	}
 	return messages
 }

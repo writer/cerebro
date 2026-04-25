@@ -157,6 +157,8 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	checkCounts := make(map[string]*checkCountEntry, len(findings))
 	controlCounts := make(map[string]*controlCountEntry, len(findings))
 	resourceCounts := make(map[string]int, len(findings))
+	noteCount := 0
+	notedFindingCount := 0
 	now := time.Now().UTC()
 	for _, finding := range findings {
 		if finding == nil {
@@ -214,6 +216,10 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		if resourceURN := primaryResourceURN(finding); resourceURN != "" {
 			resourceCounts[resourceURN]++
 		}
+		if len(finding.Notes) != 0 {
+			notedFindingCount++
+			noteCount += len(finding.Notes)
+		}
 	}
 	graphEvidenceStatus := graphEvidenceStatusUnconfigured
 	graphEvidence := []any{}
@@ -234,6 +240,8 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		"policy_counts":          countEntries(policyCounts, "policy_id"),
 		"check_counts":           checkCountEntries(checkCounts),
 		"control_counts":         controlCountEntries(controlCounts),
+		"noted_finding_count":    notedFindingCount,
+		"note_count":             noteCount,
 		"resource_counts":        countEntries(resourceCounts, "resource_urn"),
 		"graph_evidence_status":  graphEvidenceStatus,
 		"graph_evidence":         graphEvidence,
@@ -282,7 +290,7 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
 		Name:        findingSummaryReportName,
-		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, due-date posture, rule, policy, check, and control, with bounded graph evidence for top resources when the graph is configured.",
+		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, due-date posture, rule, policy, check, and control, with note activity and bounded graph evidence for top resources when the graph is configured.",
 		Parameters: []*cerebrov1.ReportParameter{
 			{
 				Id:          reportParameterRuntimeID,

@@ -32,6 +32,7 @@ service BootstrapService {
   rpc SuppressFinding(SuppressFindingRequest) returns (SuppressFindingResponse);
   rpc AssignFinding(AssignFindingRequest) returns (AssignFindingResponse);
   rpc SetFindingDueDate(SetFindingDueDateRequest) returns (SetFindingDueDateResponse);
+  rpc AddFindingNote(AddFindingNoteRequest) returns (AddFindingNoteResponse);
   rpc ListFindingEvaluationRuns(ListFindingEvaluationRunsRequest) returns (ListFindingEvaluationRunsResponse);
   rpc GetFindingEvaluationRun(GetFindingEvaluationRunRequest) returns (GetFindingEvaluationRunResponse);
   rpc ListFindingEvidence(ListFindingEvidenceRequest) returns (ListFindingEvidenceResponse);
@@ -373,6 +374,13 @@ message FindingControlRef {
   string control_id = 2;
 }
 
+// FindingNote captures one analyst note attached to one finding.
+message FindingNote {
+  string id = 1;
+  string body = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
 // Finding is the normalized persisted finding view for the first runtime evaluator slice.
 message Finding {
   string id = 1;
@@ -399,6 +407,7 @@ message Finding {
   string check_name = 22;
   repeated FindingControlRef control_refs = 23;
   google.protobuf.Timestamp due_at = 24;
+  repeated FindingNote notes = 25;
 }
 
 // GetFindingRequest loads one persisted finding by its durable identifier.
@@ -452,6 +461,17 @@ message SetFindingDueDateRequest {
 
 // SetFindingDueDateResponse returns the updated finding with due date metadata.
 message SetFindingDueDateResponse {
+  Finding finding = 1;
+}
+
+// AddFindingNoteRequest appends one note to one persisted finding.
+message AddFindingNoteRequest {
+  string id = 1;
+  string note = 2;
+}
+
+// AddFindingNoteResponse returns the updated finding with appended notes.
+message AddFindingNoteResponse {
   Finding finding = 1;
 }
 

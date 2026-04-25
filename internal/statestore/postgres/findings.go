@@ -27,6 +27,7 @@ var ensureFindingStatements = []string{
   event_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   observed_policy_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   control_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  notes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   policy_id TEXT NOT NULL DEFAULT '',
   policy_name TEXT NOT NULL DEFAULT '',
@@ -43,6 +44,7 @@ var ensureFindingStatements = []string{
 )`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS observed_policy_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS control_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS notes_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS policy_id TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS policy_name TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS check_id TEXT NOT NULL DEFAULT ''`,
@@ -61,6 +63,7 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_event_ids_gin_idx ON findings USING GIN (event_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_observed_policy_ids_gin_idx ON findings USING GIN (observed_policy_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_control_refs_gin_idx ON findings USING GIN (control_refs_json)`,
+	`CREATE INDEX IF NOT EXISTS findings_notes_gin_idx ON findings USING GIN (notes_json)`,
 }
 
 // UpsertFinding persists one normalized finding in the current-state store.
@@ -126,6 +129,10 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding control refs: %w", err)
 	}
+	notesJSON, err := findingNotesJSON(finding.Notes)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding notes: %w", err)
+	}
 	attributesJSON, err := findingAttributesJSON(finding.Attributes)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding attributes: %w", err)
@@ -156,11 +163,11 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if err := s.db.QueryRowContext(ctx, `
 INSERT INTO findings (
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, attributes_json,
+  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, attributes_json,
   policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
@@ -178,6 +185,10 @@ DO UPDATE SET
   event_ids_json = EXCLUDED.event_ids_json,
   observed_policy_ids_json = EXCLUDED.observed_policy_ids_json,
   control_refs_json = EXCLUDED.control_refs_json,
+  notes_json = CASE
+    WHEN jsonb_array_length(EXCLUDED.notes_json) = 0 THEN findings.notes_json
+    ELSE EXCLUDED.notes_json
+  END,
   attributes_json = EXCLUDED.attributes_json,
   policy_id = EXCLUDED.policy_id,
   policy_name = EXCLUDED.policy_name,
@@ -202,7 +213,7 @@ DO UPDATE SET
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at`,
 		id,
 		fingerprint,
@@ -217,6 +228,7 @@ RETURNING
 		eventIDsJSON,
 		observedPolicyIDsJSON,
 		controlRefsJSON,
+		notesJSON,
 		attributesJSON,
 		policyID,
 		policyName,
@@ -242,6 +254,7 @@ RETURNING
 		&stored.EventIDsJSON,
 		&stored.ObservedPolicyIDsJSON,
 		&stored.ControlRefsJSON,
+		&stored.NotesJSON,
 		&stored.PolicyID,
 		&stored.PolicyName,
 		&stored.CheckID,
@@ -298,6 +311,7 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 			&row.EventIDsJSON,
 			&row.ObservedPolicyIDsJSON,
 			&row.ControlRefsJSON,
+			&row.NotesJSON,
 			&row.PolicyID,
 			&row.PolicyName,
 			&row.CheckID,
@@ -341,7 +355,7 @@ func (s *Store) GetFinding(ctx context.Context, id string) (*ports.FindingRecord
 SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at
 FROM findings
 WHERE id = $1`,
@@ -360,6 +374,7 @@ WHERE id = $1`,
 		&row.EventIDsJSON,
 		&row.ObservedPolicyIDsJSON,
 		&row.ControlRefsJSON,
+		&row.NotesJSON,
 		&row.PolicyID,
 		&row.PolicyName,
 		&row.CheckID,
@@ -409,7 +424,7 @@ WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at`,
 		findingID,
 		status,
@@ -429,6 +444,7 @@ RETURNING
 		&row.EventIDsJSON,
 		&row.ObservedPolicyIDsJSON,
 		&row.ControlRefsJSON,
+		&row.NotesJSON,
 		&row.PolicyID,
 		&row.PolicyName,
 		&row.CheckID,
@@ -469,7 +485,7 @@ WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at`,
 		findingID,
 		strings.TrimSpace(request.Assignee),
@@ -487,6 +503,7 @@ RETURNING
 		&row.EventIDsJSON,
 		&row.ObservedPolicyIDsJSON,
 		&row.ControlRefsJSON,
+		&row.NotesJSON,
 		&row.PolicyID,
 		&row.PolicyName,
 		&row.CheckID,
@@ -531,7 +548,7 @@ WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at`,
 		findingID,
 		dueAt,
@@ -549,6 +566,7 @@ RETURNING
 		&row.EventIDsJSON,
 		&row.ObservedPolicyIDsJSON,
 		&row.ControlRefsJSON,
+		&row.NotesJSON,
 		&row.PolicyID,
 		&row.PolicyName,
 		&row.CheckID,
@@ -565,6 +583,72 @@ RETURNING
 			return nil, ports.ErrFindingNotFound
 		}
 		return nil, fmt.Errorf("update finding %q due date: %w", findingID, err)
+	}
+	return row.record()
+}
+
+// AddFindingNote appends one persisted finding note.
+func (s *Store) AddFindingNote(ctx context.Context, request ports.FindingNoteCreate) (*ports.FindingRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return nil, err
+	}
+	findingID := strings.TrimSpace(request.FindingID)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	notesJSON, err := findingNotesJSON([]ports.FindingNote{request.Note})
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding note: %w", err)
+	}
+	if notesJSON == `[]` {
+		return nil, errors.New("finding note is required")
+	}
+	var row findingRow
+	if err := s.db.QueryRowContext(ctx, `
+UPDATE findings
+SET notes_json = COALESCE(notes_json, '[]'::jsonb) || $2::jsonb, updated_at = NOW()
+WHERE id = $1
+RETURNING
+  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at`,
+		findingID,
+		notesJSON,
+	).Scan(
+		&row.ID,
+		&row.Fingerprint,
+		&row.TenantID,
+		&row.RuntimeID,
+		&row.RuleID,
+		&row.Title,
+		&row.Severity,
+		&row.Status,
+		&row.Summary,
+		&row.ResourceURNsJSON,
+		&row.EventIDsJSON,
+		&row.ObservedPolicyIDsJSON,
+		&row.ControlRefsJSON,
+		&row.NotesJSON,
+		&row.PolicyID,
+		&row.PolicyName,
+		&row.CheckID,
+		&row.CheckName,
+		&row.AttributesJSON,
+		&row.Assignee,
+		&row.DueAt,
+		&row.StatusReason,
+		&row.StatusUpdatedAt,
+		&row.FirstObservedAt,
+		&row.LastObservedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ports.ErrFindingNotFound
+		}
+		return nil, fmt.Errorf("add note to finding %q: %w", findingID, err)
 	}
 	return row.record()
 }
@@ -591,7 +675,7 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
@@ -669,6 +753,34 @@ func findingControlRefsJSON(values []ports.FindingControlRef) (string, error) {
 	return string(payload), nil
 }
 
+func findingNotesJSON(values []ports.FindingNote) (string, error) {
+	normalized := make([]ports.FindingNote, 0, len(values))
+	for _, value := range values {
+		id := strings.TrimSpace(value.ID)
+		body := strings.TrimSpace(value.Body)
+		if body == "" {
+			continue
+		}
+		createdAt := value.CreatedAt.UTC()
+		if createdAt.IsZero() {
+			continue
+		}
+		normalized = append(normalized, ports.FindingNote{
+			ID:        id,
+			Body:      body,
+			CreatedAt: createdAt,
+		})
+	}
+	if len(normalized) == 0 {
+		return `[]`, nil
+	}
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
 func addFindingFilter(clauses *[]string, args *[]any, column string, value string) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -692,6 +804,14 @@ func addFindingArrayContainsFilter(clauses *[]string, args *[]any, column string
 	return nil
 }
 
+type findingWorkflowRow struct {
+	NotesJSON       string
+	Assignee        string
+	DueAt           sql.NullTime
+	StatusReason    string
+	StatusUpdatedAt sql.NullTime
+}
+
 type findingRow struct {
 	ID                    string
 	Fingerprint           string
@@ -711,12 +831,9 @@ type findingRow struct {
 	CheckID               string
 	CheckName             string
 	AttributesJSON        string
-	Assignee              string
-	DueAt                 sql.NullTime
-	StatusReason          string
-	StatusUpdatedAt       sql.NullTime
-	FirstObservedAt       time.Time
-	LastObservedAt        time.Time
+	findingWorkflowRow
+	FirstObservedAt time.Time
+	LastObservedAt  time.Time
 }
 
 func (r findingRow) record() (*ports.FindingRecord, error) {
@@ -735,6 +852,10 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 	controlRefs := []ports.FindingControlRef{}
 	if err := json.Unmarshal([]byte(r.ControlRefsJSON), &controlRefs); err != nil {
 		return nil, fmt.Errorf("decode finding control refs: %w", err)
+	}
+	notes := []ports.FindingNote{}
+	if err := json.Unmarshal([]byte(r.NotesJSON), &notes); err != nil {
+		return nil, fmt.Errorf("decode finding notes: %w", err)
 	}
 	attributes := map[string]string{}
 	if err := json.Unmarshal([]byte(r.AttributesJSON), &attributes); err != nil {
@@ -758,13 +879,16 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 		CheckID:           r.CheckID,
 		CheckName:         r.CheckName,
 		ControlRefs:       controlRefs,
-		Attributes:        attributes,
-		Assignee:          r.Assignee,
-		DueAt:             findingTimestamp(r.DueAt),
-		StatusReason:      r.StatusReason,
-		FirstObservedAt:   r.FirstObservedAt.UTC(),
-		LastObservedAt:    r.LastObservedAt.UTC(),
-		StatusUpdatedAt:   findingTimestamp(r.StatusUpdatedAt),
+		FindingWorkflow: ports.FindingWorkflow{
+			Notes:           notes,
+			Assignee:        r.Assignee,
+			DueAt:           findingTimestamp(r.DueAt),
+			StatusReason:    r.StatusReason,
+			StatusUpdatedAt: findingTimestamp(r.StatusUpdatedAt),
+		},
+		Attributes:      attributes,
+		FirstObservedAt: r.FirstObservedAt.UTC(),
+		LastObservedAt:  r.LastObservedAt.UTC(),
 	}, nil
 }
 

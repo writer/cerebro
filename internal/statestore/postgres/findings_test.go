@@ -77,6 +77,13 @@ func TestUpdateFindingDueDateRejectsMissingDueDate(t *testing.T) {
 	}
 }
 
+func TestAddFindingNoteRejectsEmptyNote(t *testing.T) {
+	store := &Store{}
+	if _, err := store.AddFindingNote(context.Background(), ports.FindingNoteCreate{FindingID: "finding-1"}); err == nil {
+		t.Fatal("AddFindingNote() error = nil, want non-nil")
+	}
+}
+
 func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		RuntimeID:   "writer-okta-audit",
@@ -146,10 +153,13 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 		PolicyName:            "pol-1",
 		CheckID:               "identity-okta-policy-rule-lifecycle-tampering-30d",
 		CheckName:             "Okta Policy Rule Lifecycle Tampering (30 days)",
-		DueAt:                 sql.NullTime{Time: time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), Valid: true},
 		AttributesJSON:        `{"primary_resource_urn":"urn:cerebro:writer:okta_resource:policyrule:pol-1"}`,
-		FirstObservedAt:       time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
-		LastObservedAt:        time.Date(2026, 4, 23, 12, 1, 0, 0, time.UTC),
+		findingWorkflowRow: findingWorkflowRow{
+			NotesJSON: `[{"id":"note-1","body":"Escalate to identity engineering.","created_at":"2026-05-01T11:00:00Z"}]`,
+			DueAt:     sql.NullTime{Time: time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), Valid: true},
+		},
+		FirstObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+		LastObservedAt:  time.Date(2026, 4, 23, 12, 1, 0, 0, time.UTC),
 	}).record()
 	if err != nil {
 		t.Fatalf("findingRow.record() error = %v", err)
@@ -168,5 +178,11 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 	}
 	if got := record.DueAt; !got.Equal(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)) {
 		t.Fatalf("findingRow.record().DueAt = %v, want 2026-05-01 12:00:00 +0000 UTC", got)
+	}
+	if got := len(record.Notes); got != 1 {
+		t.Fatalf("len(findingRow.record().Notes) = %d, want 1", got)
+	}
+	if got := record.Notes[0].Body; got != "Escalate to identity engineering." {
+		t.Fatalf("findingRow.record().Notes[0].Body = %q, want note body", got)
 	}
 }
