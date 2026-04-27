@@ -2,15 +2,15 @@ package knowledge
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
+	"github.com/writer/cerebro/internal/workflowprojection"
 )
 
 const (
@@ -21,13 +21,11 @@ const (
 	defaultGraphLookupLimit = 1
 	decisionEntityType      = "decision"
 	outcomeEntityType       = "outcome"
-	evidenceEntityType      = "evidence"
 	actionEntityType        = "action"
 	relationTargets         = "targets"
 	relationBasedOn         = "based_on"
 	relationExecutedBy      = "executed_by"
 	relationEvaluates       = "evaluates"
-	graphEntityLabelLimit   = 160
 	defaultPlatformTenant   = "platform"
 )
 
@@ -36,8 +34,9 @@ var ErrRuntimeUnavailable = errors.New("knowledge runtime is unavailable")
 
 // Service records workflow primitives onto the graph-backed platform layer.
 type Service struct {
-	query ports.GraphQueryStore
-	graph ports.ProjectionGraphStore
+	query     ports.GraphQueryStore
+	graph     ports.ProjectionGraphStore
+	appendLog ports.AppendLog
 }
 
 // DecisionWriteRequest scopes one platform decision write.
@@ -120,6 +119,15 @@ func New(query ports.GraphQueryStore, graph ports.ProjectionGraphStore) *Service
 	return &Service{query: query, graph: graph}
 }
 
+// WithAppendLog wires an optional durable append log for workflow events.
+func (s *Service) WithAppendLog(appendLog ports.AppendLog) *Service {
+	if s == nil {
+		return nil
+	}
+	s.appendLog = appendLog
+	return s
+}
+
 // WriteDecision records one decision node plus its target, evidence, and action links.
 func (s *Service) WriteDecision(ctx context.Context, request DecisionWriteRequest) (*DecisionWriteResult, error) {
 	if s == nil || s.query == nil || s.graph == nil {
@@ -135,76 +143,45 @@ func (s *Service) WriteDecision(ctx context.Context, request DecisionWriteReques
 	}
 	tenantID := inferTenantID(request.Metadata, targetIDs...)
 	sourceSystem := firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem)
-	decisionID := canonicalWorkflowID(tenantID, decisionEntityType, request.ID, decisionType, targetIDs, request.ObservedAt)
+	decisionID := workflowevents.CanonicalWorkflowID(tenantID, decisionEntityType, request.ID, decisionType, targetIDs, request.ObservedAt)
 	observedAt := normalizeObservedAt(request.ObservedAt)
 	validFrom := normalizeValidFrom(request.ValidFrom, observedAt)
 	status := firstNonEmpty(strings.TrimSpace(request.Status), defaultDecisionStatus)
-	attributes, err := decisionAttributes(request, observedAt, validFrom)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.graph.UpsertProjectedEntity(ctx, &ports.ProjectedEntity{
-		URN:        decisionID,
-		TenantID:   tenantID,
-		SourceID:   sourceSystem,
-		EntityType: decisionEntityType,
-		Label:      decisionLabel(decisionType, status, request.Rationale),
-		Attributes: attributes,
-	}); err != nil {
-		return nil, fmt.Errorf("upsert decision %q: %w", decisionID, err)
-	}
 	for _, targetID := range targetIDs {
 		if err := s.requireEntity(ctx, targetID); err != nil {
 			return nil, err
 		}
-		if err := s.graph.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceSystem,
-			FromURN:  decisionID,
-			ToURN:    targetID,
-			Relation: relationTargets,
-			Attributes: map[string]string{
-				"decision_id": decisionID,
-			},
-		}); err != nil {
-			return nil, fmt.Errorf("link decision %q to target %q: %w", decisionID, targetID, err)
-		}
 	}
-	for _, evidenceID := range normalizeIDs(request.EvidenceIDs) {
-		referenceURN, err := s.ensureReferenceEntity(ctx, tenantID, sourceSystem, evidenceEntityType, evidenceID)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.graph.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceSystem,
-			FromURN:  decisionID,
-			ToURN:    referenceURN,
-			Relation: relationBasedOn,
-			Attributes: map[string]string{
-				"decision_id": decisionID,
-			},
-		}); err != nil {
-			return nil, fmt.Errorf("link decision %q to evidence %q: %w", decisionID, referenceURN, err)
-		}
+	validTo := ""
+	if !request.ValidTo.UTC().IsZero() {
+		validTo = request.ValidTo.UTC().Format(time.RFC3339Nano)
 	}
-	for _, actionID := range normalizeIDs(request.ActionIDs) {
-		referenceURN, err := s.ensureReferenceEntity(ctx, tenantID, sourceSystem, actionEntityType, actionID)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.graph.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceSystem,
-			FromURN:  decisionID,
-			ToURN:    referenceURN,
-			Relation: relationExecutedBy,
-			Attributes: map[string]string{
-				"decision_id": decisionID,
-			},
-		}); err != nil {
-			return nil, fmt.Errorf("link decision %q to action %q: %w", decisionID, referenceURN, err)
-		}
+	event, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
+		TenantID:      tenantID,
+		DecisionID:    decisionID,
+		DecisionType:  decisionType,
+		Status:        status,
+		MadeBy:        strings.TrimSpace(request.MadeBy),
+		Rationale:     strings.TrimSpace(request.Rationale),
+		TargetIDs:     targetIDs,
+		EvidenceIDs:   normalizeIDs(request.EvidenceIDs),
+		ActionIDs:     normalizeIDs(request.ActionIDs),
+		SourceSystem:  sourceSystem,
+		SourceEventID: strings.TrimSpace(request.SourceEventID),
+		ObservedAt:    observedAt.Format(time.RFC3339Nano),
+		ValidFrom:     validFrom.Format(time.RFC3339Nano),
+		ValidTo:       validTo,
+		Confidence:    request.Confidence,
+		Metadata:      request.Metadata,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.recordWorkflowEvent(ctx, event); err != nil {
+		return nil, fmt.Errorf("append decision workflow event %q: %w", event.GetId(), err)
+	}
+	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
+		return nil, fmt.Errorf("project decision workflow event %q: %w", event.GetId(), err)
 	}
 	return &DecisionWriteResult{
 		DecisionID:  decisionID,
@@ -229,7 +206,7 @@ func (s *Service) WriteAction(ctx context.Context, request ActionWriteRequest) (
 	sourceSystem := firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem)
 	decisionID := ""
 	if strings.TrimSpace(request.DecisionID) != "" {
-		decisionID = canonicalWorkflowID(tenantID, decisionEntityType, request.DecisionID, decisionEntityType, targetIDs, request.ValidFrom)
+		decisionID = workflowevents.CanonicalWorkflowID(tenantID, decisionEntityType, request.DecisionID, decisionEntityType, targetIDs, request.ValidFrom)
 		if err := s.requireEntity(ctx, decisionID); err != nil {
 			return nil, err
 		}
@@ -237,52 +214,44 @@ func (s *Service) WriteAction(ctx context.Context, request ActionWriteRequest) (
 	observedAt := normalizeObservedAt(request.ObservedAt)
 	validFrom := normalizeValidFrom(request.ValidFrom, observedAt)
 	actionType := firstNonEmpty(strings.TrimSpace(request.InsightType), defaultActionType)
-	actionID := canonicalWorkflowID(tenantID, actionEntityType, request.ID, actionType, append([]string{decisionID}, targetIDs...), request.ObservedAt)
-	attributes, err := actionAttributes(request, decisionID, actionType, observedAt, validFrom)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.graph.UpsertProjectedEntity(ctx, &ports.ProjectedEntity{
-		URN:        actionID,
-		TenantID:   tenantID,
-		SourceID:   sourceSystem,
-		EntityType: actionEntityType,
-		Label:      actionLabel(request.Title, request.Summary, actionType),
-		Attributes: attributes,
-	}); err != nil {
-		return nil, fmt.Errorf("upsert action %q: %w", actionID, err)
-	}
+	actionID := workflowevents.CanonicalWorkflowID(tenantID, actionEntityType, request.ID, actionType, append([]string{decisionID}, targetIDs...), request.ObservedAt)
 	for _, targetID := range targetIDs {
 		if err := s.requireEntity(ctx, targetID); err != nil {
 			return nil, err
 		}
-		if err := s.graph.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceSystem,
-			FromURN:  actionID,
-			ToURN:    targetID,
-			Relation: relationTargets,
-			Attributes: map[string]string{
-				"action_id": actionID,
-			},
-		}); err != nil {
-			return nil, fmt.Errorf("link action %q to target %q: %w", actionID, targetID, err)
-		}
 	}
-	if decisionID != "" {
-		if err := s.graph.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceSystem,
-			FromURN:  decisionID,
-			ToURN:    actionID,
-			Relation: relationExecutedBy,
-			Attributes: map[string]string{
-				"decision_id": decisionID,
-				"action_id":   actionID,
-			},
-		}); err != nil {
-			return nil, fmt.Errorf("link decision %q to action %q: %w", decisionID, actionID, err)
-		}
+	validTo := ""
+	if !request.ValidTo.UTC().IsZero() {
+		validTo = request.ValidTo.UTC().Format(time.RFC3339Nano)
+	}
+	event, err := workflowevents.NewActionRecordedEvent(workflowevents.ActionRecorded{
+		TenantID:         tenantID,
+		ActionID:         actionID,
+		ActionType:       actionType,
+		Status:           defaultActionStatus,
+		RecommendationID: strings.TrimSpace(request.RecommendationID),
+		InsightType:      strings.TrimSpace(request.InsightType),
+		Title:            title,
+		Summary:          strings.TrimSpace(request.Summary),
+		DecisionID:       decisionID,
+		TargetIDs:        targetIDs,
+		SourceSystem:     sourceSystem,
+		SourceEventID:    strings.TrimSpace(request.SourceEventID),
+		ObservedAt:       observedAt.Format(time.RFC3339Nano),
+		ValidFrom:        validFrom.Format(time.RFC3339Nano),
+		ValidTo:          validTo,
+		Confidence:       request.Confidence,
+		AutoGenerated:    request.AutoGenerated,
+		Metadata:         request.Metadata,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.recordWorkflowEvent(ctx, event); err != nil {
+		return nil, fmt.Errorf("append action workflow event %q: %w", event.GetId(), err)
+	}
+	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
+		return nil, fmt.Errorf("project action workflow event %q: %w", event.GetId(), err)
 	}
 	return &ActionWriteResult{
 		ActionID:    actionID,
@@ -307,7 +276,7 @@ func (s *Service) WriteOutcome(ctx context.Context, request OutcomeWriteRequest)
 	targetIDs := normalizeIDs(request.TargetIDs)
 	tenantID := inferTenantID(request.Metadata, append(targetIDs, request.DecisionID)...)
 	sourceSystem := firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem)
-	decisionID := canonicalWorkflowID(tenantID, decisionEntityType, request.DecisionID, decisionEntityType, targetIDs, request.ValidFrom)
+	decisionID := workflowevents.CanonicalWorkflowID(tenantID, decisionEntityType, request.DecisionID, decisionEntityType, targetIDs, request.ValidFrom)
 	if strings.TrimSpace(request.DecisionID) == "" {
 		return nil, errors.New("outcome decision id is required")
 	}
@@ -316,50 +285,40 @@ func (s *Service) WriteOutcome(ctx context.Context, request OutcomeWriteRequest)
 	}
 	observedAt := normalizeObservedAt(request.ObservedAt)
 	validFrom := normalizeValidFrom(request.ValidFrom, observedAt)
-	outcomeID := canonicalWorkflowID(tenantID, outcomeEntityType, request.ID, outcomeType, append([]string{decisionID}, targetIDs...), request.ObservedAt)
-	attributes, err := outcomeAttributes(request, decisionID, observedAt, validFrom)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.graph.UpsertProjectedEntity(ctx, &ports.ProjectedEntity{
-		URN:        outcomeID,
-		TenantID:   tenantID,
-		SourceID:   sourceSystem,
-		EntityType: outcomeEntityType,
-		Label:      outcomeLabel(outcomeType, verdict),
-		Attributes: attributes,
-	}); err != nil {
-		return nil, fmt.Errorf("upsert outcome %q: %w", outcomeID, err)
-	}
-	if err := s.graph.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-		TenantID: tenantID,
-		SourceID: sourceSystem,
-		FromURN:  outcomeID,
-		ToURN:    decisionID,
-		Relation: relationEvaluates,
-		Attributes: map[string]string{
-			"outcome_id":  outcomeID,
-			"decision_id": decisionID,
-		},
-	}); err != nil {
-		return nil, fmt.Errorf("link outcome %q to decision %q: %w", outcomeID, decisionID, err)
-	}
+	outcomeID := workflowevents.CanonicalWorkflowID(tenantID, outcomeEntityType, request.ID, outcomeType, append([]string{decisionID}, targetIDs...), request.ObservedAt)
 	for _, targetID := range targetIDs {
 		if err := s.requireEntity(ctx, targetID); err != nil {
 			return nil, err
 		}
-		if err := s.graph.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceSystem,
-			FromURN:  outcomeID,
-			ToURN:    targetID,
-			Relation: relationTargets,
-			Attributes: map[string]string{
-				"outcome_id": outcomeID,
-			},
-		}); err != nil {
-			return nil, fmt.Errorf("link outcome %q to target %q: %w", outcomeID, targetID, err)
-		}
+	}
+	validTo := ""
+	if !request.ValidTo.UTC().IsZero() {
+		validTo = request.ValidTo.UTC().Format(time.RFC3339Nano)
+	}
+	event, err := workflowevents.NewOutcomeRecordedEvent(workflowevents.OutcomeRecorded{
+		TenantID:      tenantID,
+		OutcomeID:     outcomeID,
+		DecisionID:    decisionID,
+		OutcomeType:   outcomeType,
+		Verdict:       verdict,
+		ImpactScore:   request.ImpactScore,
+		TargetIDs:     targetIDs,
+		SourceSystem:  sourceSystem,
+		SourceEventID: strings.TrimSpace(request.SourceEventID),
+		ObservedAt:    observedAt.Format(time.RFC3339Nano),
+		ValidFrom:     validFrom.Format(time.RFC3339Nano),
+		ValidTo:       validTo,
+		Confidence:    request.Confidence,
+		Metadata:      request.Metadata,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.recordWorkflowEvent(ctx, event); err != nil {
+		return nil, fmt.Errorf("append outcome workflow event %q: %w", event.GetId(), err)
+	}
+	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
+		return nil, fmt.Errorf("project outcome workflow event %q: %w", event.GetId(), err)
 	}
 	return &OutcomeWriteResult{
 		OutcomeID:   outcomeID,
@@ -385,109 +344,11 @@ func (s *Service) requireEntity(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *Service) ensureReferenceEntity(ctx context.Context, tenantID string, sourceSystem string, entityType string, value string) (string, error) {
-	referenceID := strings.TrimSpace(value)
-	if referenceID == "" {
-		return "", errors.New("reference id is required")
+func (s *Service) recordWorkflowEvent(ctx context.Context, event *cerebrov1.EventEnvelope) error {
+	if s == nil || s.appendLog == nil {
+		return nil
 	}
-	if strings.HasPrefix(referenceID, "urn:") {
-		return referenceID, nil
-	}
-	urn := canonicalWorkflowID(tenantID, entityType, referenceID, entityType, nil, time.Time{})
-	if err := s.graph.UpsertProjectedEntity(ctx, &ports.ProjectedEntity{
-		URN:        urn,
-		TenantID:   tenantID,
-		SourceID:   sourceSystem,
-		EntityType: entityType,
-		Label:      graphEntityLabel(referenceID),
-		Attributes: map[string]string{
-			"reference_id": referenceID,
-		},
-	}); err != nil {
-		return "", fmt.Errorf("upsert %s reference %q: %w", entityType, urn, err)
-	}
-	return urn, nil
-}
-
-func decisionAttributes(request DecisionWriteRequest, observedAt time.Time, validFrom time.Time) (map[string]string, error) {
-	attributes := map[string]string{
-		"decision_type":   strings.TrimSpace(request.DecisionType),
-		"status":          firstNonEmpty(strings.TrimSpace(request.Status), defaultDecisionStatus),
-		"made_by":         strings.TrimSpace(request.MadeBy),
-		"rationale":       strings.TrimSpace(request.Rationale),
-		"source_system":   firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem),
-		"source_event_id": strings.TrimSpace(request.SourceEventID),
-		"observed_at":     observedAt.Format(time.RFC3339Nano),
-		"valid_from":      validFrom.Format(time.RFC3339Nano),
-	}
-	if !request.ValidTo.UTC().IsZero() {
-		attributes["valid_to"] = request.ValidTo.UTC().Format(time.RFC3339Nano)
-	}
-	if request.Confidence != 0 {
-		attributes["confidence"] = fmt.Sprintf("%.6g", request.Confidence)
-	}
-	metadataJSON, err := metadataJSON(request.Metadata)
-	if err != nil {
-		return nil, fmt.Errorf("marshal decision metadata: %w", err)
-	}
-	attributes["metadata_json"] = metadataJSON
-	return attributes, nil
-}
-
-func actionAttributes(request ActionWriteRequest, decisionID string, actionType string, observedAt time.Time, validFrom time.Time) (map[string]string, error) {
-	attributes := map[string]string{
-		"action_type":       actionType,
-		"status":            defaultActionStatus,
-		"title":             strings.TrimSpace(request.Title),
-		"summary":           strings.TrimSpace(request.Summary),
-		"decision_id":       decisionID,
-		"recommendation_id": strings.TrimSpace(request.RecommendationID),
-		"insight_type":      strings.TrimSpace(request.InsightType),
-		"source_system":     firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem),
-		"source_event_id":   strings.TrimSpace(request.SourceEventID),
-		"observed_at":       observedAt.Format(time.RFC3339Nano),
-		"valid_from":        validFrom.Format(time.RFC3339Nano),
-		"auto_generated":    fmt.Sprintf("%t", request.AutoGenerated),
-	}
-	if !request.ValidTo.UTC().IsZero() {
-		attributes["valid_to"] = request.ValidTo.UTC().Format(time.RFC3339Nano)
-	}
-	if request.Confidence != 0 {
-		attributes["confidence"] = fmt.Sprintf("%.6g", request.Confidence)
-	}
-	metadataJSON, err := metadataJSON(request.Metadata)
-	if err != nil {
-		return nil, fmt.Errorf("marshal action metadata: %w", err)
-	}
-	attributes["metadata_json"] = metadataJSON
-	return attributes, nil
-}
-
-func outcomeAttributes(request OutcomeWriteRequest, decisionID string, observedAt time.Time, validFrom time.Time) (map[string]string, error) {
-	attributes := map[string]string{
-		"decision_id":     decisionID,
-		"outcome_type":    strings.TrimSpace(request.OutcomeType),
-		"verdict":         strings.TrimSpace(request.Verdict),
-		"source_system":   firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem),
-		"source_event_id": strings.TrimSpace(request.SourceEventID),
-		"observed_at":     observedAt.Format(time.RFC3339Nano),
-		"valid_from":      validFrom.Format(time.RFC3339Nano),
-	}
-	if !request.ValidTo.UTC().IsZero() {
-		attributes["valid_to"] = request.ValidTo.UTC().Format(time.RFC3339Nano)
-	}
-	if request.ImpactScore != 0 {
-		attributes["impact_score"] = fmt.Sprintf("%.6g", request.ImpactScore)
-	}
-	if request.Confidence != 0 {
-		attributes["confidence"] = fmt.Sprintf("%.6g", request.Confidence)
-	}
-	metadataJSON, err := metadataJSON(request.Metadata)
-	if err != nil {
-		return nil, fmt.Errorf("marshal outcome metadata: %w", err)
-	}
-	attributes["metadata_json"] = metadataJSON
-	return attributes, nil
+	return s.appendLog.Append(ctx, event)
 }
 
 func inferTenantID(metadata map[string]any, ids ...string) string {
@@ -505,22 +366,6 @@ func inferTenantID(metadata map[string]any, ids ...string) string {
 		}
 	}
 	return defaultPlatformTenant
-}
-
-func canonicalWorkflowID(tenantID string, entityType string, providedID string, kind string, relatedIDs []string, at time.Time) string {
-	value := strings.TrimSpace(providedID)
-	if strings.HasPrefix(value, "urn:") {
-		return value
-	}
-	if value == "" {
-		payload := append([]string{entityType, kind}, relatedIDs...)
-		if !at.UTC().IsZero() {
-			payload = append(payload, at.UTC().Format(time.RFC3339Nano))
-		}
-		value = shortHash(strings.Join(payload, "\n"))
-	}
-	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
-	return fmt.Sprintf("urn:cerebro:%s:%s:%s", strings.TrimSpace(tenantID), entityType, replacer.Replace(value))
 }
 
 func normalizeIDs(values []string) []string {
@@ -554,51 +399,6 @@ func normalizeValidFrom(value time.Time, observedAt time.Time) time.Time {
 		return observedAt
 	}
 	return validFrom
-}
-
-func decisionLabel(decisionType string, status string, rationale string) string {
-	if trimmed := graphEntityLabel(strings.TrimSpace(rationale)); trimmed != "" {
-		return trimmed
-	}
-	return graphEntityLabel(strings.TrimSpace(decisionType) + " " + strings.TrimSpace(status))
-}
-
-func outcomeLabel(outcomeType string, verdict string) string {
-	return graphEntityLabel(strings.TrimSpace(outcomeType) + " " + strings.TrimSpace(verdict))
-}
-
-func actionLabel(title string, summary string, actionType string) string {
-	if trimmed := graphEntityLabel(strings.TrimSpace(title)); trimmed != "" {
-		return trimmed
-	}
-	if trimmed := graphEntityLabel(strings.TrimSpace(summary)); trimmed != "" {
-		return trimmed
-	}
-	return graphEntityLabel(strings.TrimSpace(actionType))
-}
-
-func graphEntityLabel(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if len(trimmed) <= graphEntityLabelLimit {
-		return trimmed
-	}
-	return strings.TrimSpace(trimmed[:graphEntityLabelLimit-1]) + "…"
-}
-
-func metadataJSON(value map[string]any) (string, error) {
-	if len(value) == 0 {
-		return `{}`, nil
-	}
-	payload, err := json.Marshal(value)
-	if err != nil {
-		return "", err
-	}
-	return string(payload), nil
-}
-
-func shortHash(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:8])
 }
 
 func firstNonEmpty(values ...string) string {

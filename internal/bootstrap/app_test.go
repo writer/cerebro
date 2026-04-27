@@ -1731,8 +1731,10 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 			},
 		},
 	}
+	appendLog := &recordingAppendLog{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		GraphStore: graphStore,
+		AppendLog:  appendLog,
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -1865,6 +1867,9 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	}
 	if _, ok := graphStore.links[outcomeID+"|targets|"+targetURN]; !ok {
 		t.Fatal("outcome target link missing")
+	}
+	if len(appendLog.events) != 3 {
+		t.Fatalf("len(appendLog.events) = %d, want 3", len(appendLog.events))
 	}
 }
 

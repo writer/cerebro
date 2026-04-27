@@ -1236,7 +1236,7 @@ func (s *bootstrapService) WriteDecision(ctx context.Context, req *connect.Reque
 	result, err := knowledge.New(
 		graphQueryStore(s.deps.GraphStore),
 		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WriteDecision(ctx, knowledge.DecisionWriteRequest{
+	).WithAppendLog(s.deps.AppendLog).WriteDecision(ctx, knowledge.DecisionWriteRequest{
 		ID:            req.Msg.GetId(),
 		DecisionType:  req.Msg.GetDecisionType(),
 		Status:        req.Msg.GetStatus(),
@@ -1270,7 +1270,7 @@ func (s *bootstrapService) WriteAction(ctx context.Context, req *connect.Request
 	result, err := knowledge.New(
 		graphQueryStore(s.deps.GraphStore),
 		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WriteAction(ctx, knowledge.ActionWriteRequest{
+	).WithAppendLog(s.deps.AppendLog).WriteAction(ctx, knowledge.ActionWriteRequest{
 		ID:               req.Msg.GetId(),
 		RecommendationID: req.Msg.GetRecommendationId(),
 		InsightType:      req.Msg.GetInsightType(),
@@ -1305,7 +1305,7 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 	result, err := knowledge.New(
 		graphQueryStore(s.deps.GraphStore),
 		sourceProjectionGraphStore(s.deps.GraphStore),
-	).WriteOutcome(ctx, knowledge.OutcomeWriteRequest{
+	).WithAppendLog(s.deps.AppendLog).WriteOutcome(ctx, knowledge.OutcomeWriteRequest{
 		ID:            req.Msg.GetId(),
 		DecisionID:    req.Msg.GetDecisionId(),
 		OutcomeType:   req.Msg.GetOutcomeType(),
@@ -1419,7 +1419,7 @@ func (a *App) knowledgeService() *knowledge.Service {
 	return knowledge.New(
 		graphQueryStore(a.deps.GraphStore),
 		sourceProjectionGraphStore(a.deps.GraphStore),
-	)
+	).WithAppendLog(a.deps.AppendLog)
 }
 
 func (a *App) graphQueryService() *graphquery.Service {

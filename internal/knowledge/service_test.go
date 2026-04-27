@@ -6,12 +6,15 @@ import (
 	"testing"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 type stubGraphStore struct {
-	entities map[string]*ports.ProjectedEntity
-	links    map[string]*ports.ProjectedLink
+	entities  map[string]*ports.ProjectedEntity
+	links     map[string]*ports.ProjectedLink
+	upsertErr error
 }
 
 func (s *stubGraphStore) Ping(context.Context) error { return nil }
@@ -30,6 +33,9 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 }
 
 func (s *stubGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if s.upsertErr != nil {
+		return s.upsertErr
+	}
 	if entity == nil {
 		return nil
 	}
@@ -52,6 +58,9 @@ func (s *stubGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.
 }
 
 func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if s.upsertErr != nil {
+		return s.upsertErr
+	}
 	if link == nil {
 		return nil
 	}
@@ -71,6 +80,21 @@ func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.Proj
 		Relation:   link.Relation,
 		Attributes: attributes,
 	}
+	return nil
+}
+
+type recordingAppendLog struct {
+	err    error
+	events []*cerebrov1.EventEnvelope
+}
+
+func (s *recordingAppendLog) Ping(context.Context) error { return s.err }
+
+func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.events = append(s.events, event)
 	return nil
 }
 
@@ -228,6 +252,109 @@ func TestWriteActionRecordsTargetsAndDecisionLink(t *testing.T) {
 	}
 	if _, ok := store.links[decision.DecisionID+"|"+relationExecutedBy+"|"+result.ActionID]; !ok {
 		t.Fatal("decision action link missing")
+	}
+}
+
+func TestWriteDecisionAppendsWorkflowEventBeforeProjection(t *testing.T) {
+	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	store := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			targetURN: {
+				URN:        targetURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				EntityType: "okta.resource",
+				Label:      "Require MFA",
+			},
+		},
+	}
+	appendLog := &recordingAppendLog{}
+	service := New(store, store).WithAppendLog(appendLog)
+	result, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
+		ID:           "decision-1",
+		DecisionType: "finding-triage",
+		TargetIDs:    []string{targetURN},
+	})
+	if err != nil {
+		t.Fatalf("WriteDecision() error = %v", err)
+	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
+	}
+	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindKnowledgeDecisionRecorded {
+		t.Fatalf("appended event kind = %q, want %q", got, workflowevents.EventKindKnowledgeDecisionRecorded)
+	}
+	if got := appendLog.events[0].GetAttributes()[workflowevents.EventAttributeDecisionID]; got != result.DecisionID {
+		t.Fatalf("appended decision_id = %q, want %q", got, result.DecisionID)
+	}
+}
+
+func TestWriteDecisionAppendFailurePreventsGraphProjection(t *testing.T) {
+	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	store := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			targetURN: {
+				URN:        targetURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				EntityType: "okta.resource",
+				Label:      "Require MFA",
+			},
+		},
+	}
+	appendErr := errors.New("append failed")
+	service := New(store, store).WithAppendLog(&recordingAppendLog{err: appendErr})
+	if _, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
+		ID:           "decision-1",
+		DecisionType: "finding-triage",
+		TargetIDs:    []string{targetURN},
+	}); !errors.Is(err, appendErr) {
+		t.Fatalf("WriteDecision() error = %v, want %v", err, appendErr)
+	}
+	if _, ok := store.entities["urn:cerebro:writer:decision:decision-1"]; ok {
+		t.Fatal("decision entity was projected despite append failure")
+	}
+}
+
+func TestWriteActionProjectionFailureLeavesAppendedWorkflowEvent(t *testing.T) {
+	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	store := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			targetURN: {
+				URN:        targetURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				EntityType: "okta.resource",
+				Label:      "Require MFA",
+			},
+		},
+	}
+	service := New(store, store)
+	decision, err := service.WriteDecision(context.Background(), DecisionWriteRequest{
+		ID:           "decision-1",
+		DecisionType: "finding-triage",
+		TargetIDs:    []string{targetURN},
+	})
+	if err != nil {
+		t.Fatalf("WriteDecision() error = %v", err)
+	}
+	upsertErr := errors.New("graph failed")
+	store.upsertErr = upsertErr
+	appendLog := &recordingAppendLog{}
+	if _, err := service.WithAppendLog(appendLog).WriteAction(context.Background(), ActionWriteRequest{
+		ID:          "action-1",
+		InsightType: "remediation",
+		Title:       "Open remediation ticket",
+		DecisionID:  decision.DecisionID,
+		TargetIDs:   []string{targetURN},
+	}); !errors.Is(err, upsertErr) {
+		t.Fatalf("WriteAction() error = %v, want %v", err, upsertErr)
+	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
+	}
+	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindKnowledgeActionRecorded {
+		t.Fatalf("appended event kind = %q, want %q", got, workflowevents.EventKindKnowledgeActionRecorded)
 	}
 }
 
