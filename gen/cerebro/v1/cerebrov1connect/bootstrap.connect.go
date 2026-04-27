@@ -120,6 +120,12 @@ const (
 	// BootstrapServiceEvaluateSourceRuntimeFindingsProcedure is the fully-qualified name of the
 	// BootstrapService's EvaluateSourceRuntimeFindings RPC.
 	BootstrapServiceEvaluateSourceRuntimeFindingsProcedure = "/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindings"
+	// BootstrapServiceWriteDecisionProcedure is the fully-qualified name of the BootstrapService's
+	// WriteDecision RPC.
+	BootstrapServiceWriteDecisionProcedure = "/cerebro.v1.BootstrapService/WriteDecision"
+	// BootstrapServiceWriteOutcomeProcedure is the fully-qualified name of the BootstrapService's
+	// WriteOutcome RPC.
+	BootstrapServiceWriteOutcomeProcedure = "/cerebro.v1.BootstrapService/WriteOutcome"
 	// BootstrapServiceGetEntityNeighborhoodProcedure is the fully-qualified name of the
 	// BootstrapService's GetEntityNeighborhood RPC.
 	BootstrapServiceGetEntityNeighborhoodProcedure = "/cerebro.v1.BootstrapService/GetEntityNeighborhood"
@@ -156,6 +162,8 @@ type BootstrapServiceClient interface {
 	GetFindingEvidence(context.Context, *connect.Request[v1.GetFindingEvidenceRequest]) (*connect.Response[v1.GetFindingEvidenceResponse], error)
 	EvaluateSourceRuntimeFindingRules(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingRulesResponse], error)
 	EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error)
+	WriteDecision(context.Context, *connect.Request[v1.WriteDecisionRequest]) (*connect.Response[v1.WriteDecisionResponse], error)
+	WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error)
 	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
 }
 
@@ -344,6 +352,18 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("EvaluateSourceRuntimeFindings")),
 			connect.WithClientOptions(opts...),
 		),
+		writeDecision: connect.NewClient[v1.WriteDecisionRequest, v1.WriteDecisionResponse](
+			httpClient,
+			baseURL+BootstrapServiceWriteDecisionProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("WriteDecision")),
+			connect.WithClientOptions(opts...),
+		),
+		writeOutcome: connect.NewClient[v1.WriteOutcomeRequest, v1.WriteOutcomeResponse](
+			httpClient,
+			baseURL+BootstrapServiceWriteOutcomeProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("WriteOutcome")),
+			connect.WithClientOptions(opts...),
+		),
 		getEntityNeighborhood: connect.NewClient[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse](
 			httpClient,
 			baseURL+BootstrapServiceGetEntityNeighborhoodProcedure,
@@ -384,6 +404,8 @@ type bootstrapServiceClient struct {
 	getFindingEvidence                *connect.Client[v1.GetFindingEvidenceRequest, v1.GetFindingEvidenceResponse]
 	evaluateSourceRuntimeFindingRules *connect.Client[v1.EvaluateSourceRuntimeFindingRulesRequest, v1.EvaluateSourceRuntimeFindingRulesResponse]
 	evaluateSourceRuntimeFindings     *connect.Client[v1.EvaluateSourceRuntimeFindingsRequest, v1.EvaluateSourceRuntimeFindingsResponse]
+	writeDecision                     *connect.Client[v1.WriteDecisionRequest, v1.WriteDecisionResponse]
+	writeOutcome                      *connect.Client[v1.WriteOutcomeRequest, v1.WriteOutcomeResponse]
 	getEntityNeighborhood             *connect.Client[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse]
 }
 
@@ -533,6 +555,16 @@ func (c *bootstrapServiceClient) EvaluateSourceRuntimeFindings(ctx context.Conte
 	return c.evaluateSourceRuntimeFindings.CallUnary(ctx, req)
 }
 
+// WriteDecision calls cerebro.v1.BootstrapService.WriteDecision.
+func (c *bootstrapServiceClient) WriteDecision(ctx context.Context, req *connect.Request[v1.WriteDecisionRequest]) (*connect.Response[v1.WriteDecisionResponse], error) {
+	return c.writeDecision.CallUnary(ctx, req)
+}
+
+// WriteOutcome calls cerebro.v1.BootstrapService.WriteOutcome.
+func (c *bootstrapServiceClient) WriteOutcome(ctx context.Context, req *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error) {
+	return c.writeOutcome.CallUnary(ctx, req)
+}
+
 // GetEntityNeighborhood calls cerebro.v1.BootstrapService.GetEntityNeighborhood.
 func (c *bootstrapServiceClient) GetEntityNeighborhood(ctx context.Context, req *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error) {
 	return c.getEntityNeighborhood.CallUnary(ctx, req)
@@ -569,6 +601,8 @@ type BootstrapServiceHandler interface {
 	GetFindingEvidence(context.Context, *connect.Request[v1.GetFindingEvidenceRequest]) (*connect.Response[v1.GetFindingEvidenceResponse], error)
 	EvaluateSourceRuntimeFindingRules(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingRulesResponse], error)
 	EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error)
+	WriteDecision(context.Context, *connect.Request[v1.WriteDecisionRequest]) (*connect.Response[v1.WriteDecisionResponse], error)
+	WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error)
 	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
 }
 
@@ -753,6 +787,18 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("EvaluateSourceRuntimeFindings")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceWriteDecisionHandler := connect.NewUnaryHandler(
+		BootstrapServiceWriteDecisionProcedure,
+		svc.WriteDecision,
+		connect.WithSchema(bootstrapServiceMethods.ByName("WriteDecision")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceWriteOutcomeHandler := connect.NewUnaryHandler(
+		BootstrapServiceWriteOutcomeProcedure,
+		svc.WriteOutcome,
+		connect.WithSchema(bootstrapServiceMethods.ByName("WriteOutcome")),
+		connect.WithHandlerOptions(opts...),
+	)
 	bootstrapServiceGetEntityNeighborhoodHandler := connect.NewUnaryHandler(
 		BootstrapServiceGetEntityNeighborhoodProcedure,
 		svc.GetEntityNeighborhood,
@@ -819,6 +865,10 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceEvaluateSourceRuntimeFindingRulesHandler.ServeHTTP(w, r)
 		case BootstrapServiceEvaluateSourceRuntimeFindingsProcedure:
 			bootstrapServiceEvaluateSourceRuntimeFindingsHandler.ServeHTTP(w, r)
+		case BootstrapServiceWriteDecisionProcedure:
+			bootstrapServiceWriteDecisionHandler.ServeHTTP(w, r)
+		case BootstrapServiceWriteOutcomeProcedure:
+			bootstrapServiceWriteOutcomeHandler.ServeHTTP(w, r)
 		case BootstrapServiceGetEntityNeighborhoodProcedure:
 			bootstrapServiceGetEntityNeighborhoodHandler.ServeHTTP(w, r)
 		default:
@@ -944,6 +994,14 @@ func (UnimplementedBootstrapServiceHandler) EvaluateSourceRuntimeFindingRules(co
 
 func (UnimplementedBootstrapServiceHandler) EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) WriteDecision(context.Context, *connect.Request[v1.WriteDecisionRequest]) (*connect.Response[v1.WriteDecisionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.WriteDecision is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.WriteOutcome is not implemented"))
 }
 
 func (UnimplementedBootstrapServiceHandler) GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error) {

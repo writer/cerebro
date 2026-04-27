@@ -515,6 +515,15 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 	}
 	s.neighborhoodRootURN = rootURN
 	s.neighborhoodLimit = limit
+	if entity, ok := s.entities[rootURN]; ok && entity != nil {
+		return &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{
+				URN:        entity.URN,
+				EntityType: entity.EntityType,
+				Label:      entity.Label,
+			},
+		}, nil
+	}
 	if s.neighborhood == nil {
 		return nil, ports.ErrGraphEntityNotFound
 	}
@@ -1683,6 +1692,110 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := len(graphStore.links); got != 14 {
 		t.Fatalf("len(graphStore.links) = %d, want 14", got)
+	}
+}
+
+func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	graphStore := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			targetURN: {
+				URN:        targetURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				EntityType: "okta.resource",
+				Label:      "Require MFA",
+			},
+		},
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		GraphStore: graphStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+
+	decisionBody, err := protojson.Marshal(&cerebrov1.WriteDecisionRequest{
+		DecisionType: "finding-triage",
+		Status:       "approved",
+		MadeBy:       "secops",
+		Rationale:    "accepted risk pending remediation",
+		TargetIds:    []string{targetURN},
+		EvidenceIds:  []string{"finding-evidence-1"},
+		ActionIds:    []string{"ticket-ENG-123"},
+	})
+	if err != nil {
+		t.Fatalf("marshal write decision body: %v", err)
+	}
+	decisionReq, err := http.NewRequest(http.MethodPost, server.URL+"/platform/knowledge/decisions", bytes.NewReader(decisionBody))
+	if err != nil {
+		t.Fatalf("new write decision request: %v", err)
+	}
+	decisionReq.Header.Set("Content-Type", "application/json")
+	decisionResp, err := server.Client().Do(decisionReq)
+	if err != nil {
+		t.Fatalf("POST /platform/knowledge/decisions error = %v", err)
+	}
+	defer func() {
+		if closeErr := decisionResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close write decision response body: %v", closeErr)
+		}
+	}()
+	if decisionResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /platform/knowledge/decisions status = %d, want %d", decisionResp.StatusCode, http.StatusCreated)
+	}
+	var decisionPayload map[string]any
+	if err := json.NewDecoder(decisionResp.Body).Decode(&decisionPayload); err != nil {
+		t.Fatalf("decode write decision response: %v", err)
+	}
+	decisionID, ok := decisionPayload["decision_id"].(string)
+	if !ok || decisionID == "" {
+		t.Fatalf("decision_id = %#v, want non-empty string", decisionPayload["decision_id"])
+	}
+	if got := decisionPayload["target_count"]; got != float64(1) {
+		t.Fatalf("decision target_count = %#v, want 1", got)
+	}
+	if _, ok := graphStore.entities["urn:cerebro:writer:evidence:finding-evidence-1"]; !ok {
+		t.Fatal("decision evidence entity missing")
+	}
+	if _, ok := graphStore.entities["urn:cerebro:writer:action:ticket-ENG-123"]; !ok {
+		t.Fatal("decision action entity missing")
+	}
+	if _, ok := graphStore.links[decisionID+"|targets|"+targetURN]; !ok {
+		t.Fatal("decision target link missing")
+	}
+
+	outcomeResp, err := client.WriteOutcome(context.Background(), connect.NewRequest(&cerebrov1.WriteOutcomeRequest{
+		DecisionId:  decisionID,
+		OutcomeType: "finding-resolution",
+		Verdict:     "resolved",
+		TargetIds:   []string{targetURN},
+	}))
+	if err != nil {
+		t.Fatalf("WriteOutcome() error = %v", err)
+	}
+	if got := outcomeResp.Msg.GetDecisionId(); got != decisionID {
+		t.Fatalf("WriteOutcome().DecisionId = %q, want %q", got, decisionID)
+	}
+	if got := outcomeResp.Msg.GetTargetCount(); got != 1 {
+		t.Fatalf("WriteOutcome().TargetCount = %d, want 1", got)
+	}
+	outcomeID := outcomeResp.Msg.GetOutcomeId()
+	if outcomeID == "" {
+		t.Fatal("WriteOutcome().OutcomeId = empty, want non-empty")
+	}
+	if _, ok := graphStore.entities[outcomeID]; !ok {
+		t.Fatalf("outcome entity %q missing", outcomeID)
+	}
+	if _, ok := graphStore.links[outcomeID+"|evaluates|"+decisionID]; !ok {
+		t.Fatal("outcome evaluates link missing")
+	}
+	if _, ok := graphStore.links[outcomeID+"|targets|"+targetURN]; !ok {
+		t.Fatal("outcome target link missing")
 	}
 }
 

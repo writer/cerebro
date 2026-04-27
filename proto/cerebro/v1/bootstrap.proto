@@ -40,6 +40,8 @@ service BootstrapService {
   rpc GetFindingEvidence(GetFindingEvidenceRequest) returns (GetFindingEvidenceResponse);
   rpc EvaluateSourceRuntimeFindingRules(EvaluateSourceRuntimeFindingRulesRequest) returns (EvaluateSourceRuntimeFindingRulesResponse);
   rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
+  rpc WriteDecision(WriteDecisionRequest) returns (WriteDecisionResponse);
+  rpc WriteOutcome(WriteOutcomeRequest) returns (WriteOutcomeResponse);
   rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
 }
 
@@ -541,6 +543,55 @@ message EvaluateSourceRuntimeFindingsResponse {
   repeated Finding findings = 5;
   FindingEvaluationRun run = 6;
   repeated FindingEvidence evidence = 7;
+}
+
+// WriteDecisionRequest records one platform decision and its linked targets.
+message WriteDecisionRequest {
+  string id = 1;
+  string decision_type = 2;
+  string status = 3;
+  string made_by = 4;
+  string rationale = 5;
+  repeated string target_ids = 6;
+  repeated string evidence_ids = 7;
+  repeated string action_ids = 8;
+  string source_system = 9;
+  string source_event_id = 10;
+  google.protobuf.Timestamp observed_at = 11;
+  google.protobuf.Timestamp valid_from = 12;
+  google.protobuf.Timestamp valid_to = 13;
+  double confidence = 14;
+  google.protobuf.Struct metadata = 15;
+}
+
+// WriteDecisionResponse returns the recorded decision identifier and target count.
+message WriteDecisionResponse {
+  string decision_id = 1;
+  uint32 target_count = 2;
+}
+
+// WriteOutcomeRequest records one outcome tied back to one decision and optional targets.
+message WriteOutcomeRequest {
+  string id = 1;
+  string decision_id = 2;
+  string outcome_type = 3;
+  string verdict = 4;
+  double impact_score = 5;
+  repeated string target_ids = 6;
+  string source_system = 7;
+  string source_event_id = 8;
+  google.protobuf.Timestamp observed_at = 9;
+  google.protobuf.Timestamp valid_from = 10;
+  google.protobuf.Timestamp valid_to = 11;
+  double confidence = 12;
+  google.protobuf.Struct metadata = 13;
+}
+
+// WriteOutcomeResponse returns the recorded outcome identifier, decision, and target count.
+message WriteOutcomeResponse {
+  string outcome_id = 1;
+  string decision_id = 2;
+  uint32 target_count = 3;
 }
 
 // GraphEntity is the normalized graph node view exposed by the first query surface.

@@ -22,6 +22,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -78,6 +79,8 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /sources/{sourceID}/check", app.handleCheckSource)
 	mux.HandleFunc("GET /sources/{sourceID}/discover", app.handleDiscoverSource)
 	mux.HandleFunc("GET /sources/{sourceID}/read", app.handleReadSource)
+	mux.HandleFunc("POST /platform/knowledge/decisions", app.handleWriteDecision)
+	mux.HandleFunc("POST /graph/write/outcome", app.handleWriteOutcome)
 	mux.HandleFunc("GET /graph/neighborhood", app.handleGetEntityNeighborhood)
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
@@ -356,6 +359,79 @@ func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleWriteDecision(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.WriteDecisionRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeKnowledgeError(w, err)
+		return
+	}
+	metadata := map[string]any{}
+	if request.GetMetadata() != nil {
+		metadata = request.GetMetadata().AsMap()
+	}
+	result, err := a.knowledgeService().WriteDecision(r.Context(), knowledge.DecisionWriteRequest{
+		ID:            request.GetId(),
+		DecisionType:  request.GetDecisionType(),
+		Status:        request.GetStatus(),
+		MadeBy:        request.GetMadeBy(),
+		Rationale:     request.GetRationale(),
+		TargetIDs:     request.GetTargetIds(),
+		EvidenceIDs:   request.GetEvidenceIds(),
+		ActionIDs:     request.GetActionIds(),
+		SourceSystem:  request.GetSourceSystem(),
+		SourceEventID: request.GetSourceEventId(),
+		ObservedAt:    timestampValue(request.GetObservedAt()),
+		ValidFrom:     timestampValue(request.GetValidFrom()),
+		ValidTo:       timestampValue(request.GetValidTo()),
+		Confidence:    request.GetConfidence(),
+		Metadata:      metadata,
+	})
+	if err != nil {
+		writeKnowledgeError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusCreated, &cerebrov1.WriteDecisionResponse{
+		DecisionId:  result.DecisionID,
+		TargetCount: result.TargetCount,
+	})
+}
+
+func (a *App) handleWriteOutcome(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.WriteOutcomeRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeKnowledgeError(w, err)
+		return
+	}
+	metadata := map[string]any{}
+	if request.GetMetadata() != nil {
+		metadata = request.GetMetadata().AsMap()
+	}
+	result, err := a.knowledgeService().WriteOutcome(r.Context(), knowledge.OutcomeWriteRequest{
+		ID:            request.GetId(),
+		DecisionID:    request.GetDecisionId(),
+		OutcomeType:   request.GetOutcomeType(),
+		Verdict:       request.GetVerdict(),
+		ImpactScore:   request.GetImpactScore(),
+		TargetIDs:     request.GetTargetIds(),
+		SourceSystem:  request.GetSourceSystem(),
+		SourceEventID: request.GetSourceEventId(),
+		ObservedAt:    timestampValue(request.GetObservedAt()),
+		ValidFrom:     timestampValue(request.GetValidFrom()),
+		ValidTo:       timestampValue(request.GetValidTo()),
+		Confidence:    request.GetConfidence(),
+		Metadata:      metadata,
+	})
+	if err != nil {
+		writeKnowledgeError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusCreated, &cerebrov1.WriteOutcomeResponse{
+		OutcomeId:   result.OutcomeID,
+		DecisionId:  result.DecisionID,
+		TargetCount: result.TargetCount,
+	})
 }
 
 func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request) {
@@ -1112,6 +1188,73 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 	return connect.NewResponse(findingResponse(response)), nil
 }
 
+func (s *bootstrapService) WriteDecision(ctx context.Context, req *connect.Request[cerebrov1.WriteDecisionRequest]) (*connect.Response[cerebrov1.WriteDecisionResponse], error) {
+	metadata := map[string]any{}
+	if req.Msg.GetMetadata() != nil {
+		metadata = req.Msg.GetMetadata().AsMap()
+	}
+	result, err := knowledge.New(
+		graphQueryStore(s.deps.GraphStore),
+		sourceProjectionGraphStore(s.deps.GraphStore),
+	).WriteDecision(ctx, knowledge.DecisionWriteRequest{
+		ID:            req.Msg.GetId(),
+		DecisionType:  req.Msg.GetDecisionType(),
+		Status:        req.Msg.GetStatus(),
+		MadeBy:        req.Msg.GetMadeBy(),
+		Rationale:     req.Msg.GetRationale(),
+		TargetIDs:     req.Msg.GetTargetIds(),
+		EvidenceIDs:   req.Msg.GetEvidenceIds(),
+		ActionIDs:     req.Msg.GetActionIds(),
+		SourceSystem:  req.Msg.GetSourceSystem(),
+		SourceEventID: req.Msg.GetSourceEventId(),
+		ObservedAt:    timestampValue(req.Msg.GetObservedAt()),
+		ValidFrom:     timestampValue(req.Msg.GetValidFrom()),
+		ValidTo:       timestampValue(req.Msg.GetValidTo()),
+		Confidence:    req.Msg.GetConfidence(),
+		Metadata:      metadata,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.WriteDecisionResponse{
+		DecisionId:  result.DecisionID,
+		TargetCount: result.TargetCount,
+	}), nil
+}
+
+func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Request[cerebrov1.WriteOutcomeRequest]) (*connect.Response[cerebrov1.WriteOutcomeResponse], error) {
+	metadata := map[string]any{}
+	if req.Msg.GetMetadata() != nil {
+		metadata = req.Msg.GetMetadata().AsMap()
+	}
+	result, err := knowledge.New(
+		graphQueryStore(s.deps.GraphStore),
+		sourceProjectionGraphStore(s.deps.GraphStore),
+	).WriteOutcome(ctx, knowledge.OutcomeWriteRequest{
+		ID:            req.Msg.GetId(),
+		DecisionID:    req.Msg.GetDecisionId(),
+		OutcomeType:   req.Msg.GetOutcomeType(),
+		Verdict:       req.Msg.GetVerdict(),
+		ImpactScore:   req.Msg.GetImpactScore(),
+		TargetIDs:     req.Msg.GetTargetIds(),
+		SourceSystem:  req.Msg.GetSourceSystem(),
+		SourceEventID: req.Msg.GetSourceEventId(),
+		ObservedAt:    timestampValue(req.Msg.GetObservedAt()),
+		ValidFrom:     timestampValue(req.Msg.GetValidFrom()),
+		ValidTo:       timestampValue(req.Msg.GetValidTo()),
+		Confidence:    req.Msg.GetConfidence(),
+		Metadata:      metadata,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.WriteOutcomeResponse{
+		OutcomeId:   result.OutcomeID,
+		DecisionId:  result.DecisionID,
+		TargetCount: result.TargetCount,
+	}), nil
+}
+
 func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *connect.Request[cerebrov1.GetEntityNeighborhoodRequest]) (*connect.Response[cerebrov1.GetEntityNeighborhoodResponse], error) {
 	response, err := graphquery.New(
 		graphQueryStore(s.deps.GraphStore),
@@ -1197,6 +1340,13 @@ func (a *App) findingService() *findings.Service {
 	).WithGraphStore(sourceProjectionGraphStore(a.deps.GraphStore))
 }
 
+func (a *App) knowledgeService() *knowledge.Service {
+	return knowledge.New(
+		graphQueryStore(a.deps.GraphStore),
+		sourceProjectionGraphStore(a.deps.GraphStore),
+	)
+}
+
 func (a *App) graphQueryService() *graphquery.Service {
 	return graphquery.New(graphQueryStore(a.deps.GraphStore))
 }
@@ -1272,6 +1422,17 @@ func writeFindingError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), statusCode)
 }
 
+func writeKnowledgeError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusBadRequest
+	switch {
+	case errors.Is(err, ports.ErrGraphEntityNotFound):
+		statusCode = http.StatusNotFound
+	case errors.Is(err, knowledge.ErrRuntimeUnavailable):
+		statusCode = http.StatusServiceUnavailable
+	}
+	http.Error(w, err.Error(), statusCode)
+}
+
 func writeGraphQueryError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusBadRequest
 	switch {
@@ -1283,6 +1444,12 @@ func writeGraphQueryError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), statusCode)
 }
 
+func timestampValue(value *timestamppb.Timestamp) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return value.AsTime()
+}
 func readProtoJSON(r *http.Request, message proto.Message) error {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
