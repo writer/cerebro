@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -167,6 +168,23 @@ func TestGitHubDependabotFindingsEndToEndWithGHCLI(t *testing.T) {
 	if len(alertNeighborhood.Relations) == 0 || len(findingNeighborhood.Relations) == 0 {
 		t.Fatal("graph neighborhood relations = 0, want source/finding graph links")
 	}
+	if outputPath := strings.TrimSpace(os.Getenv("CEREBRO_GITHUB_FINDINGS_GRAPH_PREVIEW_OUT")); outputPath != "" {
+		writeGitHubFindingsGraphPreview(t, outputPath, githubFindingsGraphPreview{
+			Owner:                 config["owner"],
+			Repo:                  config["repo"],
+			RuntimeID:             runtimeID,
+			LiveAlertState:        liveAlertState,
+			SynthesizedOpenState:  synthesizedOpenState,
+			EventsRead:            len(events),
+			FindingsProjected:     len(result.Findings),
+			PrimaryResourceURN:    primaryResourceURN,
+			FindingURN:            findingURN,
+			AlertNeighborhood:     newGraphPreviewNeighborhood(alertNeighborhood),
+			FindingNeighborhood:   newGraphPreviewNeighborhood(findingNeighborhood),
+			RequiredAlertEdges:    []string{"affected_by", "affects", "annotated_with", "belongs_to", "has_finding", "tracked_by"},
+			RequiredWorkflowEdges: []string{"decision --targets--> finding", "outcome --targets--> finding", "github.dependabot_alert --has_finding--> finding"},
+		})
+	}
 	t.Logf(
 		"validated live github findings owner=%s repo=%s live_state=%s events=%d findings=%d primary_resource=%s alert_neighbors=%d alert_relations=%d finding_neighbors=%d finding_relations=%d",
 		config["owner"],
@@ -186,6 +204,42 @@ type githubFindingsE2EReplayer struct {
 	events []*cerebrov1.EventEnvelope
 }
 
+type githubFindingsGraphPreview struct {
+	Owner                 string                   `json:"owner"`
+	Repo                  string                   `json:"repo"`
+	RuntimeID             string                   `json:"runtime_id"`
+	LiveAlertState        string                   `json:"live_alert_state"`
+	SynthesizedOpenState  bool                     `json:"synthesized_open_state"`
+	EventsRead            int                      `json:"events_read"`
+	FindingsProjected     int                      `json:"findings_projected"`
+	PrimaryResourceURN    string                   `json:"primary_resource_urn"`
+	FindingURN            string                   `json:"finding_urn"`
+	AlertNeighborhood     graphPreviewNeighborhood `json:"alert_neighborhood"`
+	FindingNeighborhood   graphPreviewNeighborhood `json:"finding_neighborhood"`
+	RequiredAlertEdges    []string                 `json:"required_alert_edges"`
+	RequiredWorkflowEdges []string                 `json:"required_workflow_edges"`
+}
+
+type graphPreviewNeighborhood struct {
+	Root      graphPreviewNode       `json:"root"`
+	Neighbors []graphPreviewNode     `json:"neighbors"`
+	Relations []graphPreviewRelation `json:"relations"`
+}
+
+type graphPreviewNode struct {
+	URN        string `json:"urn"`
+	EntityType string `json:"entity_type"`
+	Label      string `json:"label"`
+}
+
+type graphPreviewRelation struct {
+	FromURN  string `json:"from_urn"`
+	Relation string `json:"relation"`
+	ToURN    string `json:"to_urn"`
+	FromType string `json:"from_type"`
+	ToType   string `json:"to_type"`
+}
+
 func (r *githubFindingsE2EReplayer) Replay(_ context.Context, request ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
 	events := make([]*cerebrov1.EventEnvelope, 0, len(r.events))
 	for _, event := range r.events {
@@ -198,6 +252,66 @@ func (r *githubFindingsE2EReplayer) Replay(_ context.Context, request ports.Repl
 		}
 	}
 	return events, nil
+}
+
+func writeGitHubFindingsGraphPreview(t *testing.T, outputPath string, preview githubFindingsGraphPreview) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		t.Fatalf("create graph preview output directory: %v", err)
+	}
+	payload, err := json.MarshalIndent(preview, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal graph preview: %v", err)
+	}
+	payload = append(payload, '\n')
+	if err := os.WriteFile(outputPath, payload, 0o644); err != nil {
+		t.Fatalf("write graph preview: %v", err)
+	}
+}
+
+func newGraphPreviewNeighborhood(neighborhood *ports.EntityNeighborhood) graphPreviewNeighborhood {
+	nodeTypes := map[string]string{}
+	preview := graphPreviewNeighborhood{}
+	if neighborhood == nil {
+		return preview
+	}
+	if neighborhood.Root != nil {
+		preview.Root = newGraphPreviewNode(neighborhood.Root)
+		nodeTypes[neighborhood.Root.URN] = neighborhood.Root.EntityType
+	}
+	preview.Neighbors = make([]graphPreviewNode, 0, len(neighborhood.Neighbors))
+	for _, node := range neighborhood.Neighbors {
+		if node == nil {
+			continue
+		}
+		preview.Neighbors = append(preview.Neighbors, newGraphPreviewNode(node))
+		nodeTypes[node.URN] = node.EntityType
+	}
+	preview.Relations = make([]graphPreviewRelation, 0, len(neighborhood.Relations))
+	for _, relation := range neighborhood.Relations {
+		if relation == nil {
+			continue
+		}
+		preview.Relations = append(preview.Relations, graphPreviewRelation{
+			FromURN:  relation.FromURN,
+			Relation: relation.Relation,
+			ToURN:    relation.ToURN,
+			FromType: nodeTypes[relation.FromURN],
+			ToType:   nodeTypes[relation.ToURN],
+		})
+	}
+	return preview
+}
+
+func newGraphPreviewNode(node *ports.NeighborhoodNode) graphPreviewNode {
+	if node == nil {
+		return graphPreviewNode{}
+	}
+	return graphPreviewNode{
+		URN:        node.URN,
+		EntityType: node.EntityType,
+		Label:      node.Label,
+	}
 }
 
 func neighborhoodHasRelation(neighborhood *ports.EntityNeighborhood, relation string) bool {
