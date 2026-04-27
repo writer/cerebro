@@ -78,6 +78,55 @@ func TestAnalyzeCompoundRisksDeduplicatesFindingsAndAppliesLimit(t *testing.T) {
 	}
 }
 
+func TestAnalyzeCompoundRisksNormalizesCrossSourceDimensions(t *testing.T) {
+	oktaOne := compoundRiskFinding("okta-1", oktaPolicyRuleLifecycleTamperingRuleID, "HIGH", "admin@writer.com", "", "urn:cerebro:writer:okta_resource:policyrule:rule-1", "")
+	oktaOne.RuntimeID = "writer-okta-audit"
+	oktaOne.Attributes["event_type"] = "policy.rule.update"
+	oktaOne.Attributes["primary_actor_urn"] = "urn:cerebro:writer:okta_actor:user:00u1"
+	oktaOne.Attributes["rule_source_id"] = "okta"
+	delete(oktaOne.Attributes, "resource_type")
+
+	oktaTwo := compoundRiskFinding("okta-2", oktaPolicyRuleLifecycleTamperingRuleID, "HIGH", "admin@writer.com", "", "urn:cerebro:writer:okta_resource:policyrule:rule-2", "")
+	oktaTwo.RuntimeID = "writer-okta-audit"
+	oktaTwo.Attributes["event_type"] = "policy.rule.deactivate"
+	oktaTwo.Attributes["primary_actor_urn"] = "urn:cerebro:writer:okta_actor:user:00u1"
+	oktaTwo.Attributes["rule_source_id"] = "okta"
+	delete(oktaTwo.Attributes, "resource_type")
+
+	dependabotOne := compoundRiskFinding("gh-1", githubDependabotOpenAlertRuleID, "HIGH", "", "", "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7", "")
+	dependabotOne.RuntimeID = "writer-github"
+	dependabotOne.Attributes["repository"] = "writer/cerebro"
+	dependabotOne.Attributes["rule_source_id"] = "github"
+	delete(dependabotOne.Attributes, "repo")
+
+	dependabotTwo := compoundRiskFinding("gh-2", githubDependabotOpenAlertRuleID, "HIGH", "", "", "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:8", "")
+	dependabotTwo.RuntimeID = "writer-github"
+	dependabotTwo.Attributes["repository"] = "writer/cerebro"
+	dependabotTwo.Attributes["rule_source_id"] = "github"
+	delete(dependabotTwo.Attributes, "repo")
+
+	report := AnalyzeCompoundRisks([]*ports.FindingRecord{oktaOne, oktaTwo, dependabotOne, dependabotTwo}, CompoundRiskOptions{Limit: 10})
+
+	if got := report.Actors[0].Key; got != "urn:cerebro:writer:okta_actor:user:00u1" {
+		t.Fatalf("Actors[0].Key = %q, want normalized actor urn", got)
+	}
+	if got := report.Actors[0].Label; got != "admin@writer.com" {
+		t.Fatalf("Actors[0].Label = %q, want actor label", got)
+	}
+	if got := report.Actors[0].Actions[0].Value; got != "policy.rule.deactivate" && got != "policy.rule.update" {
+		t.Fatalf("Actors[0].Actions[0].Value = %q, want Okta event type action", got)
+	}
+	if got := report.Repositories[0].Key; got != "writer/cerebro" {
+		t.Fatalf("Repositories[0].Key = %q, want repository attribute fallback", got)
+	}
+	if !compoundRiskGroupsContain(report.Sources, "github") || !compoundRiskGroupsContain(report.Sources, "okta") {
+		t.Fatalf("Sources = %#v, want github and okta source groups", report.Sources)
+	}
+	if !compoundRiskGroupsContain(report.ResourceTypes, "github_dependabot_alert") || !compoundRiskGroupsContain(report.ResourceTypes, "okta_resource") {
+		t.Fatalf("ResourceTypes = %#v, want inferred GitHub and Okta resource types", report.ResourceTypes)
+	}
+}
+
 func compoundRiskFinding(id string, ruleID string, severity string, actor string, repo string, resourceURN string, action string) *ports.FindingRecord {
 	return &ports.FindingRecord{
 		ID:           id,
@@ -96,4 +145,13 @@ func compoundRiskFinding(id string, ruleID string, severity string, actor string
 			"repo":                 repo,
 		},
 	}
+}
+
+func compoundRiskGroupsContain(groups []CompoundRiskGroup, key string) bool {
+	for _, group := range groups {
+		if group.Key == key {
+			return true
+		}
+	}
+	return false
 }
