@@ -47,42 +47,25 @@ var (
 	}
 )
 
-type oktaPolicyRuleLifecycleTamperingRule struct{}
-
 func newOktaPolicyRuleLifecycleTamperingRule() Rule {
-	return &oktaPolicyRuleLifecycleTamperingRule{}
-}
-
-func (*oktaPolicyRuleLifecycleTamperingRule) Spec() *cerebrov1.RuleSpec {
-	return &cerebrov1.RuleSpec{
-		Id:          oktaPolicyRuleLifecycleTamperingRuleID,
-		Name:        oktaPolicyRuleLifecycleTamperingTitle,
-		Description: "Detect successful Okta policy rule update, deactivate, or delete events replayed from one source runtime.",
-		InputStreamIds: []string{
-			"source-runtime-replay",
+	return newEventRule(eventRuleConfig{
+		spec: &cerebrov1.RuleSpec{
+			Id:          oktaPolicyRuleLifecycleTamperingRuleID,
+			Name:        oktaPolicyRuleLifecycleTamperingTitle,
+			Description: "Detect successful Okta policy rule update, deactivate, or delete events replayed from one source runtime.",
+			InputStreamIds: []string{
+				"source-runtime-replay",
+			},
+			OutputKinds: []string{
+				"finding.okta_policy_rule_lifecycle_tampering",
+			},
 		},
-		OutputKinds: []string{
-			"finding.okta_policy_rule_lifecycle_tampering",
+		sourceID: "okta",
+		match:    matchesOktaPolicyRuleLifecycleTampering,
+		build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+			return oktaPolicyRuleLifecycleTamperingFinding(ctx, event, runtime.GetId())
 		},
-	}
-}
-
-func (*oktaPolicyRuleLifecycleTamperingRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
-	return runtime != nil && strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), "okta")
-}
-
-func (*oktaPolicyRuleLifecycleTamperingRule) Evaluate(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
-	if runtime == nil {
-		return nil, errors.New("source runtime is required")
-	}
-	if !matchesOktaPolicyRuleLifecycleTampering(event) {
-		return nil, nil
-	}
-	record, err := oktaPolicyRuleLifecycleTamperingFinding(ctx, event, runtime.GetId())
-	if err != nil {
-		return nil, err
-	}
-	return []*ports.FindingRecord{record}, nil
+	})
 }
 
 func matchesOktaPolicyRuleLifecycleTampering(event *cerebrov1.EventEnvelope) bool {

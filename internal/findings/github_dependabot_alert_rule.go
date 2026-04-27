@@ -32,42 +32,25 @@ var githubDependabotOpenAlertControlRefs = []ports.FindingControlRef{
 	},
 }
 
-type githubDependabotOpenAlertRule struct{}
-
 func newGitHubDependabotOpenAlertRule() Rule {
-	return &githubDependabotOpenAlertRule{}
-}
-
-func (*githubDependabotOpenAlertRule) Spec() *cerebrov1.RuleSpec {
-	return &cerebrov1.RuleSpec{
-		Id:          githubDependabotOpenAlertRuleID,
-		Name:        githubDependabotOpenAlertTitle,
-		Description: "Detect open GitHub Dependabot alerts replayed from one source runtime.",
-		InputStreamIds: []string{
-			"source-runtime-replay",
+	return newEventRule(eventRuleConfig{
+		spec: &cerebrov1.RuleSpec{
+			Id:          githubDependabotOpenAlertRuleID,
+			Name:        githubDependabotOpenAlertTitle,
+			Description: "Detect open GitHub Dependabot alerts replayed from one source runtime.",
+			InputStreamIds: []string{
+				"source-runtime-replay",
+			},
+			OutputKinds: []string{
+				"finding.github_dependabot_open_alert",
+			},
 		},
-		OutputKinds: []string{
-			"finding.github_dependabot_open_alert",
+		sourceID: "github",
+		match:    matchesGitHubDependabotOpenAlert,
+		build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+			return githubDependabotOpenAlertFinding(ctx, event, runtime.GetId())
 		},
-	}
-}
-
-func (*githubDependabotOpenAlertRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
-	return runtime != nil && strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), "github")
-}
-
-func (*githubDependabotOpenAlertRule) Evaluate(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
-	if runtime == nil {
-		return nil, errors.New("source runtime is required")
-	}
-	if !matchesGitHubDependabotOpenAlert(event) {
-		return nil, nil
-	}
-	record, err := githubDependabotOpenAlertFinding(ctx, event, runtime.GetId())
-	if err != nil {
-		return nil, err
-	}
-	return []*ports.FindingRecord{record}, nil
+	})
 }
 
 func matchesGitHubDependabotOpenAlert(event *cerebrov1.EventEnvelope) bool {
