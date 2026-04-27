@@ -279,9 +279,11 @@ func TestGitHubAuditFindingsGraphPreviewWithGHCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
 	}
-	allPreviewFindings := auditGraphPreviewFindings(result)
+	allFindingRecords := auditGraphFindingRecords(result)
+	allPreviewFindings := auditGraphPreviewFindings(allFindingRecords)
 	previewLimit := githubAuditGraphPreviewLimit()
 	previewFindings := limitAuditPreviewFindings(allPreviewFindings, previewLimit)
+	compoundRisks := findings.AnalyzeCompoundRisks(allFindingRecords, findings.CompoundRiskOptions{Limit: previewLimit, SampleLimit: 3})
 	neighborhoods := make([]graphPreviewNeighborhood, 0, len(previewFindings))
 	for _, finding := range allPreviewFindings {
 		neighborhood, err := graphquery.New(graphStore).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
@@ -312,6 +314,7 @@ func TestGitHubAuditFindingsGraphPreviewWithGHCLI(t *testing.T) {
 		GraphNodes:          counts.Nodes,
 		GraphRelations:      counts.Relations,
 		Findings:            previewFindings,
+		CompoundRisks:       compoundRisks,
 		Neighborhoods:       neighborhoods,
 		RequiredFindingEdge: "primary_resource --has_finding--> finding",
 	}
@@ -361,6 +364,7 @@ type githubAuditFindingsGraphPreview struct {
 	GraphNodes          int64                       `json:"graph_nodes"`
 	GraphRelations      int64                       `json:"graph_relations"`
 	Findings            []githubAuditPreviewFinding `json:"findings"`
+	CompoundRisks       findings.CompoundRiskReport `json:"compound_risks"`
 	Neighborhoods       []graphPreviewNeighborhood  `json:"neighborhoods"`
 	RequiredFindingEdge string                      `json:"required_finding_edge"`
 }
@@ -492,12 +496,12 @@ func githubAuditSOTARuleIDs() []string {
 	}
 }
 
-func auditGraphPreviewFindings(result *findings.EvaluateRulesResult) []githubAuditPreviewFinding {
+func auditGraphFindingRecords(result *findings.EvaluateRulesResult) []*ports.FindingRecord {
 	if result == nil {
 		return nil
 	}
 	seen := map[string]struct{}{}
-	preview := []githubAuditPreviewFinding{}
+	records := []*ports.FindingRecord{}
 	for _, evaluation := range result.Evaluations {
 		if evaluation == nil {
 			continue
@@ -506,23 +510,34 @@ func auditGraphPreviewFindings(result *findings.EvaluateRulesResult) []githubAud
 			if finding == nil {
 				continue
 			}
-			findingURN := "urn:cerebro:" + finding.TenantID + ":finding:" + finding.ID
-			if _, ok := seen[findingURN]; ok {
+			if _, ok := seen[finding.ID]; ok {
 				continue
 			}
-			seen[findingURN] = struct{}{}
-			preview = append(preview, githubAuditPreviewFinding{
-				RuleID:             finding.RuleID,
-				Action:             finding.Attributes["action"],
-				Actor:              finding.Attributes["actor"],
-				Repo:               finding.Attributes["repo"],
-				Summary:            finding.Summary,
-				Severity:           finding.Severity,
-				PrimaryResourceURN: finding.Attributes["primary_resource_urn"],
-				FindingURN:         findingURN,
-				ResourceURNs:       append([]string(nil), finding.ResourceURNs...),
-			})
+			seen[finding.ID] = struct{}{}
+			records = append(records, finding)
 		}
+	}
+	return records
+}
+
+func auditGraphPreviewFindings(records []*ports.FindingRecord) []githubAuditPreviewFinding {
+	preview := []githubAuditPreviewFinding{}
+	for _, finding := range records {
+		if finding == nil {
+			continue
+		}
+		findingURN := "urn:cerebro:" + finding.TenantID + ":finding:" + finding.ID
+		preview = append(preview, githubAuditPreviewFinding{
+			RuleID:             finding.RuleID,
+			Action:             finding.Attributes["action"],
+			Actor:              finding.Attributes["actor"],
+			Repo:               finding.Attributes["repo"],
+			Summary:            finding.Summary,
+			Severity:           finding.Severity,
+			PrimaryResourceURN: finding.Attributes["primary_resource_urn"],
+			FindingURN:         findingURN,
+			ResourceURNs:       append([]string(nil), finding.ResourceURNs...),
+		})
 	}
 	sort.Slice(preview, func(i int, j int) bool {
 		if preview[i].RuleID == preview[j].RuleID {
