@@ -94,6 +94,46 @@ func TestGitHubOrganizationOwnerAddedFixture(t *testing.T) {
 	assertRuleFixture(t, newGitHubOrganizationOwnerAddedRule(), "testdata/rules/github-organization-owner-added.json")
 }
 
+func TestGitHubCodeSecurityControlsDisabledFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubCodeSecurityControlsDisabledRule(), "testdata/rules/github-code-security-controls-disabled.json")
+}
+
+func TestGitHubOrgAuthControlModifiedFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubOrgAuthControlModifiedRule(), "testdata/rules/github-org-auth-control-modified.json")
+}
+
+func TestGitHubOrgIPAllowListModifiedFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubOrgIPAllowListModifiedRule(), "testdata/rules/github-org-ip-allow-list-modified.json")
+}
+
+func TestGitHubAppIntegrationInstalledFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubAppIntegrationInstalledRule(), "testdata/rules/github-app-integration-installed.json")
+}
+
+func TestGitHubPersonalAccessTokenCreatedFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubPersonalAccessTokenCreatedRule(), "testdata/rules/github-personal-access-token-created.json")
+}
+
+func TestGitHubProtectedBranchPolicyOverrideFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubProtectedBranchPolicyOverrideRule(), "testdata/rules/github-protected-branch-policy-override.json")
+}
+
+func TestGitHubRepositoryRulesetModifiedFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubRepositoryRulesetModifiedRule(), "testdata/rules/github-repository-ruleset-modified.json")
+}
+
+func TestGitHubCriticalResourceDeletedFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubCriticalResourceDeletedRule(), "testdata/rules/github-critical-resource-deleted.json")
+}
+
+func TestGitHubWebhookModifiedFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubWebhookModifiedRule(), "testdata/rules/github-webhook-modified.json")
+}
+
+func TestGitHubPrivateRepositoryForkingEnabledFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubPrivateRepositoryForkingEnabledRule(), "testdata/rules/github-private-repository-forking-enabled.json")
+}
+
 func assertRuleFixture(t *testing.T, rule Rule, path string) {
 	t.Helper()
 	payload, err := os.ReadFile(path)

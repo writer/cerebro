@@ -138,6 +138,130 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
+	events := []struct {
+		id       string
+		attrs    map[string]string
+		resource string
+	}{
+		{
+			id: "github-audit-secret-scanning-disabled",
+			attrs: map[string]string{
+				"action":        "repository_secret_scanning.disable",
+				"repo":          "writer/cerebro",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "repository_secret_scanning",
+			},
+			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+		},
+		{
+			id: "github-audit-org-auth-modified",
+			attrs: map[string]string{
+				"action":        "org.disable_two_factor_requirement",
+				"resource_id":   "writer",
+				"resource_type": "org",
+			},
+			resource: "urn:cerebro:writer:github_resource:org:writer",
+		},
+		{
+			id: "github-audit-ip-allow-list-disabled",
+			attrs: map[string]string{
+				"action":        "ip_allow_list.disable",
+				"resource_id":   "writer",
+				"resource_type": "ip_allow_list",
+			},
+			resource: "urn:cerebro:writer:github_resource:ip_allow_list:writer",
+		},
+		{
+			id: "github-audit-app-installed",
+			attrs: map[string]string{
+				"action":        "integration_installation.create",
+				"name":          "ci-deployer",
+				"resource_id":   "writer",
+				"resource_type": "integration_installation",
+			},
+			resource: "urn:cerebro:writer:github_resource:integration_installation:writer",
+		},
+		{
+			id: "github-audit-pat-created",
+			attrs: map[string]string{
+				"action":        "personal_access_token.access_granted",
+				"resource_id":   "octocat",
+				"resource_type": "personal_access_token",
+				"user":          "octocat",
+			},
+			resource: "urn:cerebro:writer:github_resource:personal_access_token:octocat",
+		},
+		{
+			id: "github-audit-branch-policy-override",
+			attrs: map[string]string{
+				"action":        "protected_branch.policy_override",
+				"branch":        "main",
+				"repo":          "writer/cerebro",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "protected_branch",
+			},
+			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+		},
+		{
+			id: "github-audit-ruleset-modified",
+			attrs: map[string]string{
+				"action":        "repository_ruleset.destroy",
+				"repo":          "writer/cerebro",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "repository_ruleset",
+				"ruleset_id":    "42",
+				"ruleset_name":  "main protections",
+			},
+			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+		},
+		{
+			id: "github-audit-webhook-modified",
+			attrs: map[string]string{
+				"action":        "hook.create",
+				"hook_id":       "99",
+				"repo":          "writer/cerebro",
+				"resource_id":   "writer/cerebro",
+				"resource_type": "hook",
+			},
+			resource: "urn:cerebro:writer:github_repo:writer/cerebro",
+		},
+	}
+	for _, tt := range events {
+		t.Run(tt.id, func(t *testing.T) {
+			state := &projectionRecorder{}
+			graph := &projectionRecorder{}
+			attrs := map[string]string{
+				"actor": "admin",
+				"org":   "writer",
+			}
+			for key, value := range tt.attrs {
+				attrs[key] = value
+			}
+			_, err := New(state, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+				Id:         tt.id,
+				TenantId:   "writer",
+				SourceId:   "github",
+				Kind:       "github.audit",
+				Attributes: attrs,
+			})
+			if err != nil {
+				t.Fatalf("Project() error = %v", err)
+			}
+			actorURN := "urn:cerebro:writer:github_user:admin"
+			if _, ok := graph.entities[actorURN]; !ok {
+				t.Fatalf("graph actor %q missing", actorURN)
+			}
+			if _, ok := graph.entities[tt.resource]; !ok {
+				t.Fatalf("graph resource %q missing", tt.resource)
+			}
+			if _, ok := graph.links[actorURN+"|"+relationActedOn+"|"+tt.resource]; !ok {
+				t.Fatalf("graph acted_on link missing for %s -> %s: %#v", actorURN, tt.resource, graph.links)
+			}
+		})
+	}
+}
+
 func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

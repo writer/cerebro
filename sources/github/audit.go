@@ -258,10 +258,17 @@ func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings se
 }
 
 var auditAdditionalAttributeKeys = []string{
+	"branch",
+	"hook_id",
+	"integration",
+	"name",
 	"number",
 	"permission",
 	"previous_visibility",
 	"repository_public",
+	"ruleset_enforcement",
+	"ruleset_id",
+	"ruleset_name",
 	"runner_group_name",
 	"runner_name",
 	"transport_protocol_name",

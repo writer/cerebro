@@ -1,0 +1,71 @@
+{
+  "rule_id": "github-critical-resource-deleted",
+  "runtime": {
+    "id": "writer-github-audit",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-audit-repo-destroyed",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer/cerebro",
+        "resource_type": "repo",
+        "source_runtime_id": "writer-github-audit",
+        "action": "repo.destroy",
+        "repo": "writer/cerebro"
+      }
+    },
+    {
+      "id": "github-audit-repo-archived",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer/cerebro",
+        "resource_type": "repo",
+        "source_runtime_id": "writer-github-audit",
+        "action": "repo.archived",
+        "repo": "writer/cerebro"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-critical-resource-deleted",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "admin deleted GitHub resource repo.destroy for writer/cerebro",
+      "event_ids": [
+        "github-audit-repo-destroyed"
+      ],
+      "attributes": {
+        "action": "repo.destroy",
+        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "repo": "writer/cerebro",
+        "rule_tags": "github,destructive-action,impact,attack.t1485"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-audit-repo-archived",
+      "reason": "negative fixture should not match"
+    }
+  ]
+}

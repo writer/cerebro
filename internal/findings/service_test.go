@@ -981,6 +981,16 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 		githubSelfHostedRunnerChangeRuleID,
 		githubRepositoryCollaboratorAddedRuleID,
 		githubOrganizationOwnerAddedRuleID,
+		githubCodeSecurityControlsDisabledRuleID,
+		githubOrgAuthControlModifiedRuleID,
+		githubOrgIPAllowListModifiedRuleID,
+		githubAppIntegrationInstalledRuleID,
+		githubPersonalAccessTokenCreatedRuleID,
+		githubProtectedBranchPolicyOverrideRuleID,
+		githubRepositoryRulesetModifiedRuleID,
+		githubCriticalResourceDeletedRuleID,
+		githubWebhookModifiedRuleID,
+		githubPrivateRepositoryForkingEnabledRuleID,
 	}
 	service := New(
 		&stubRuntimeStore{
@@ -1002,6 +1012,16 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 				newGitHubAuditSignalEvent("github-audit-runner-registered", map[string]string{"action": "repo.register_self_hosted_runner", "repo": "writer/cerebro", "resource_type": "repo"}),
 				newGitHubAuditSignalEvent("github-audit-collaborator-added", map[string]string{"action": "repo.add_member", "repo": "writer/cerebro", "resource_type": "repo", "user": "octocat"}),
 				newGitHubAuditSignalEvent("github-audit-owner-added", map[string]string{"action": "org.add_member", "resource_id": "writer", "resource_type": "org", "permission": "admin", "user": "octocat"}),
+				newGitHubAuditSignalEvent("github-audit-code-security-disabled", map[string]string{"action": "dependabot_alerts.disable", "repo": "writer/cerebro", "resource_type": "dependabot_alerts"}),
+				newGitHubAuditSignalEvent("github-audit-org-auth-modified", map[string]string{"action": "org.disable_two_factor_requirement", "resource_id": "writer", "resource_type": "org"}),
+				newGitHubAuditSignalEvent("github-audit-ip-allow-list-disabled", map[string]string{"action": "ip_allow_list.disable", "resource_id": "writer", "resource_type": "ip_allow_list"}),
+				newGitHubAuditSignalEvent("github-audit-app-installed", map[string]string{"action": "integration_installation.create", "name": "ci-deployer", "resource_id": "writer", "resource_type": "integration_installation"}),
+				newGitHubAuditSignalEvent("github-audit-pat-created", map[string]string{"action": "personal_access_token.access_granted", "operation_type": "create", "resource_id": "octocat", "resource_type": "personal_access_token", "user": "octocat"}),
+				newGitHubAuditSignalEvent("github-audit-branch-policy-override", map[string]string{"action": "protected_branch.policy_override", "branch": "main", "repo": "writer/cerebro", "resource_type": "protected_branch"}),
+				newGitHubAuditSignalEvent("github-audit-ruleset-modified", map[string]string{"action": "repository_ruleset.destroy", "repo": "writer/cerebro", "resource_type": "repository_ruleset", "ruleset_id": "42", "ruleset_name": "main protections"}),
+				newGitHubAuditSignalEvent("github-audit-repo-destroyed", map[string]string{"action": "repo.destroy", "repo": "writer/cerebro", "resource_type": "repo"}),
+				newGitHubAuditSignalEvent("github-audit-hook-created", map[string]string{"action": "hook.create", "hook_id": "99", "repo": "writer/cerebro", "resource_type": "hook"}),
+				newGitHubAuditSignalEvent("github-audit-private-forking-enabled", map[string]string{"action": "private_repository_forking.enable", "resource_id": "writer", "resource_type": "org"}),
 			},
 		},
 		&stubFindingStore{},
@@ -1026,6 +1046,13 @@ func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
 	for _, ruleID := range ruleIDs {
 		if findingsByRule[ruleID] == nil {
 			t.Fatalf("EvaluateSourceRuntimeRules() missing finding for %q", ruleID)
+		}
+		primaryResourceURN := findingsByRule[ruleID].Attributes["primary_resource_urn"]
+		if primaryResourceURN == "" {
+			t.Fatalf("finding %q missing primary_resource_urn", ruleID)
+		}
+		if !slices.Contains(findingsByRule[ruleID].ResourceURNs, primaryResourceURN) {
+			t.Fatalf("finding %q ResourceURNs missing primary resource %q: %#v", ruleID, primaryResourceURN, findingsByRule[ruleID].ResourceURNs)
 		}
 	}
 	if got := findingsByRule[githubRepositoryMadePublicRuleID].Summary; got != "admin changed writer/cerebro visibility from private to public" {

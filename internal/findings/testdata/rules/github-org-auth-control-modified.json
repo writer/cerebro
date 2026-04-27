@@ -1,0 +1,69 @@
+{
+  "rule_id": "github-org-auth-control-modified",
+  "runtime": {
+    "id": "writer-github-audit",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-audit-org-auth-modified",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer",
+        "resource_type": "org",
+        "source_runtime_id": "writer-github-audit",
+        "action": "org.disable_two_factor_requirement"
+      }
+    },
+    {
+      "id": "github-audit-org-invite",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer",
+        "resource_type": "org",
+        "source_runtime_id": "writer-github-audit",
+        "action": "org.invite_member"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-org-auth-control-modified",
+      "severity": "CRITICAL",
+      "status": "open",
+      "summary": "admin modified GitHub organization authentication control org.disable_two_factor_requirement for writer",
+      "event_ids": [
+        "github-audit-org-auth-modified"
+      ],
+      "attributes": {
+        "action": "org.disable_two_factor_requirement",
+        "org": "writer",
+        "primary_resource_urn": "urn:cerebro:writer:github_resource:org:writer",
+        "rule_tags": "github,organization,authentication,persistence,privilege-escalation,defense-evasion,attack.t1098"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-audit-org-invite",
+      "reason": "negative fixture should not match"
+    }
+  ]
+}
