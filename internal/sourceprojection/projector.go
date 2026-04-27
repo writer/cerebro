@@ -13,6 +13,8 @@ import (
 
 const (
 	relationActedOn       = "acted_on"
+	relationAffectedBy    = "affected_by"
+	relationAffects       = "affects"
 	relationAuthored      = "authored"
 	relationBelongsTo     = "belongs_to"
 	relationHasIdentifier = "has_identifier"
@@ -78,6 +80,8 @@ func projectionsForEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 		return githubPullRequestProjections(event)
 	case "github.audit":
 		return githubAuditProjections(event)
+	case "github.dependabot_alert":
+		return githubDependabotAlertProjections(event)
 	case "okta.user":
 		return oktaUserProjections(event)
 	case "okta.audit":
@@ -274,6 +278,116 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, resourceURN, relationTargeted, map[string]string{"event_id": event.GetId()}))
 		}
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), targetURN, targetUser)
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	repository := strings.TrimSpace(attributes["repository"])
+	owner := strings.TrimSpace(attributes["owner"])
+	alertNumber := strings.TrimSpace(attributes["alert_number"])
+	packageName := strings.TrimSpace(attributes["package"])
+	ecosystem := strings.TrimSpace(attributes["ecosystem"])
+	advisoryID := firstNonEmpty(attributes["advisory_ghsa_id"], attributes["advisory_cve_id"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	if owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        orgURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.org",
+			Label:      owner,
+			Attributes: map[string]string{"org": owner},
+		})
+	}
+
+	repoURN := projectionURN(tenantID, "github_repo", repository)
+	if repository != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        repoURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.repo",
+			Label:      repository,
+			Attributes: map[string]string{"repository": repository},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	alertURN := projectionURN(tenantID, "github_dependabot_alert", repository, alertNumber)
+	if repository != "" && alertNumber != "" {
+		label := firstNonEmpty(attributes["advisory_ghsa_id"], attributes["advisory_cve_id"], repository+"#"+alertNumber)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        alertURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.dependabot_alert",
+			Label:      label,
+			Attributes: map[string]string{
+				"alert_number":       alertNumber,
+				"ecosystem":          ecosystem,
+				"html_url":           strings.TrimSpace(attributes["html_url"]),
+				"package":            packageName,
+				"repository":         repository,
+				"severity":           strings.TrimSpace(attributes["severity"]),
+				"state":              strings.TrimSpace(attributes["state"]),
+				"vulnerability_id":   advisoryID,
+				"vulnerability_type": "dependabot",
+			},
+		})
+		if repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	advisoryURN := projectionURN(tenantID, "github_advisory", advisoryID)
+	if advisoryID != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        advisoryURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.security_advisory",
+			Label:      advisoryID,
+			Attributes: map[string]string{
+				"cve_id":   strings.TrimSpace(attributes["advisory_cve_id"]),
+				"ghsa_id":  strings.TrimSpace(attributes["advisory_ghsa_id"]),
+				"severity": strings.TrimSpace(attributes["advisory_severity"]),
+			},
+		})
+		if alertURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, advisoryURN, relationAffectedBy, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	packageURN := projectionURN(tenantID, "package", ecosystem, packageName)
+	if packageName != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        packageURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "package",
+			Label:      firstNonEmpty(ecosystem+"/"+packageName, packageName),
+			Attributes: map[string]string{
+				"ecosystem": ecosystem,
+				"name":      packageName,
+			},
+		})
+		if alertURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, packageURN, relationAffects, map[string]string{"event_id": event.GetId()}))
+		}
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)

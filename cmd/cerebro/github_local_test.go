@@ -114,6 +114,34 @@ func TestPrepareSourceConfigWithCLIAuditHydratesOwnerAndToken(t *testing.T) {
 	}
 }
 
+func TestPrepareSourceConfigWithCLIDependabotHydratesRepoAndToken(t *testing.T) {
+	cli := &fakeGitHubLocalCLI{
+		token: "gh-token",
+		repo: githubLocalRepo{
+			Name: "cerebro",
+			Owner: githubLocalRepoOwner{
+				Login: "writer",
+			},
+		},
+	}
+
+	config, err := prepareSourceConfigWithCLI(context.Background(), githubSourceID, "read", map[string]string{
+		"family": "dependabot_alert",
+	}, cli)
+	if err != nil {
+		t.Fatalf("prepareSourceConfigWithCLI() error = %v", err)
+	}
+	if got := config["owner"]; got != "writer" {
+		t.Fatalf("config[owner] = %q, want %q", got, "writer")
+	}
+	if got := config["repo"]; got != "cerebro" {
+		t.Fatalf("config[repo] = %q, want %q", got, "cerebro")
+	}
+	if got := config["token"]; got != "gh-token" {
+		t.Fatalf("config[token] = %q, want %q", got, "gh-token")
+	}
+}
+
 func TestPrepareSourceRuntimeWithCLIHydratesGitHubRuntime(t *testing.T) {
 	cli := &fakeGitHubLocalCLI{
 		token: "gh-token",

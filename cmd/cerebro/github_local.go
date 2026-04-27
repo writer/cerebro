@@ -146,7 +146,8 @@ func githubRuntimeRequiresRepo(config map[string]string) bool {
 }
 
 func githubRequiresToken(config map[string]string) bool {
-	return strings.TrimSpace(config["family"]) == "audit"
+	family := strings.TrimSpace(config["family"])
+	return family == "audit" || family == "dependabot_alert"
 }
 
 func cloneConfig(config map[string]string) map[string]string {

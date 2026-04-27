@@ -57,6 +57,7 @@ func NewRegistry(rules ...Rule) (*Registry, error) {
 func Builtin() *Registry {
 	return &Registry{
 		rules: map[string]Rule{
+			githubDependabotOpenAlertRuleID:        newGitHubDependabotOpenAlertRule(),
 			oktaPolicyRuleLifecycleTamperingRuleID: newOktaPolicyRuleLifecycleTamperingRule(),
 		},
 	}

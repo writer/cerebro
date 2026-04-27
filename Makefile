@@ -1,4 +1,4 @@
-.PHONY: build serve test workflow-e2e-test workflow-replay-test workflow-replay workflow-neighborhood graph-rebuild-dryrun lint lint-bootstrap proto-lint proto-generate clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
+.PHONY: build serve test workflow-e2e-test workflow-replay-test github-findings-e2e workflow-replay workflow-neighborhood graph-rebuild-dryrun lint lint-bootstrap proto-lint proto-generate clean hooks pre-commit verify check check-structural check-structural-build check-structural-test check-arch check-hook-integrity
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
@@ -9,6 +9,8 @@ LINTER_BIN := $(GO_BIN)/cerebrolint
 WORKFLOW_E2E_PACKAGES := ./internal/workflowevents ./internal/workflowprojection ./internal/knowledge ./internal/findings ./internal/bootstrap
 WORKFLOW_E2E_TESTS := Test(NewDecisionRecordedEventIsStableAndDecodable|ProjectKnowledgeWorkflowEvents|ProjectFindingWorkflowEvents|ReplayProjectsWorkflowEvents|WriteDecisionAppendsWorkflowEventBeforeProjection|WriteDecisionAppendFailurePreventsGraphProjection|WriteActionProjectionFailureLeavesAppendedWorkflowEvent|ResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured|AddFindingNoteUpdatesPersistedWorkflow|LinkFindingTicketUpdatesPersistedWorkflow|PlatformKnowledgeDecisionAndOutcomeEndpoints|FindingEndpoints|WorkflowReplayEndpoint|GraphNeighborhoodEndpoints)
 WORKFLOW_REPLAY_TESTS := Test(ReplayProjectsWorkflowEvents|ReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute|WorkflowReplayEndpoint)
+GITHUB_FINDINGS_OWNER ?=
+GITHUB_FINDINGS_REPO ?=
 CEREBRO_BASE_URL ?= http://127.0.0.1:8080
 WORKFLOW_REPLAY_KIND_PREFIX ?= workflow.v1.
 WORKFLOW_REPLAY_KIND ?= knowledge_decision
@@ -36,6 +38,9 @@ workflow-e2e-test:
 
 workflow-replay-test:
 	go test ./internal/workflowprojection ./internal/appendlog/jetstream ./internal/bootstrap -run '$(WORKFLOW_REPLAY_TESTS)$$' -count=1 -v
+
+github-findings-e2e:
+	CEREBRO_RUN_GITHUB_FINDINGS_E2E=1 CEREBRO_GITHUB_FINDINGS_OWNER="$(GITHUB_FINDINGS_OWNER)" CEREBRO_GITHUB_FINDINGS_REPO="$(GITHUB_FINDINGS_REPO)" go test ./cmd/cerebro -run '^TestGitHubDependabotFindingsEndToEndWithGHCLI$$' -count=1 -v
 
 workflow-replay:
 	curl -sS -X POST "$(CEREBRO_BASE_URL)/platform/workflow/replay" \

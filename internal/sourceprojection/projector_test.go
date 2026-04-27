@@ -84,6 +84,60 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubDependabotAlert(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	result, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-dependabot-alert-7",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.dependabot_alert",
+		Attributes: map[string]string{
+			"advisory_ghsa_id":   "GHSA-xxxx-yyyy-zzzz",
+			"alert_number":       "7",
+			"ecosystem":          "go",
+			"owner":              "writer",
+			"package":            "golang.org/x/crypto",
+			"repo":               "cerebro",
+			"repository":         "writer/cerebro",
+			"severity":           "high",
+			"state":              "open",
+			"vulnerability_type": "dependabot",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	if result.EntitiesProjected != 5 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 5", result.EntitiesProjected)
+	}
+	if result.LinksProjected != 4 {
+		t.Fatalf("Project().LinksProjected = %d, want 4", result.LinksProjected)
+	}
+
+	alertURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
+	repoURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	advisoryURN := "urn:cerebro:writer:github_advisory:GHSA-xxxx-yyyy-zzzz"
+	packageURN := "urn:cerebro:writer:package:go:golang.org/x/crypto"
+	if _, ok := state.entities[alertURN]; !ok {
+		t.Fatalf("state entity %q missing", alertURN)
+	}
+	if _, ok := graph.entities[alertURN]; !ok {
+		t.Fatalf("graph entity %q missing", alertURN)
+	}
+	if _, ok := state.links[alertURN+"|"+relationBelongsTo+"|"+repoURN]; !ok {
+		t.Fatal("alert repository link missing")
+	}
+	if _, ok := state.links[alertURN+"|"+relationAffectedBy+"|"+advisoryURN]; !ok {
+		t.Fatal("alert advisory link missing")
+	}
+	if _, ok := state.links[alertURN+"|"+relationAffects+"|"+packageURN]; !ok {
+		t.Fatal("alert package link missing")
+	}
+}
+
 func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

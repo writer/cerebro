@@ -3,6 +3,7 @@ package findings
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -570,6 +571,67 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsReplaysGitHubDependabotAlert(t *testing.T) {
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newGitHubDependabotAlertEvent("github-dependabot-alert-7", "open"),
+			newGitHubDependabotAlertEvent("github-dependabot-alert-8", "fixed"),
+		},
+	}
+	store := &stubFindingStore{}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-github": {
+					Id:       "writer-github",
+					SourceId: "github",
+					TenantId: "writer",
+				},
+			},
+		},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+	)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID:  "writer-github",
+		RuleID:     githubDependabotOpenAlertRuleID,
+		EventLimit: 25,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := result.EventsEvaluated; got != 2 {
+		t.Fatalf("EventsEvaluated = %d, want 2", got)
+	}
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(Findings) = %d, want 1", got)
+	}
+	finding := result.Findings[0]
+	if got := finding.RuleID; got != githubDependabotOpenAlertRuleID {
+		t.Fatalf("Finding.RuleID = %q, want %q", got, githubDependabotOpenAlertRuleID)
+	}
+	if got := finding.Severity; got != "HIGH" {
+		t.Fatalf("Finding.Severity = %q, want HIGH", got)
+	}
+	if got := finding.PolicyID; got != "GHSA-xxxx-yyyy-zzzz" {
+		t.Fatalf("Finding.PolicyID = %q, want GHSA", got)
+	}
+	primaryResourceURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
+	if got := finding.Attributes["primary_resource_urn"]; got != primaryResourceURN {
+		t.Fatalf("Finding primary resource urn = %q, want %q", got, primaryResourceURN)
+	}
+	if !slices.Contains(finding.ResourceURNs, primaryResourceURN) {
+		t.Fatalf("Finding.ResourceURNs missing %q: %#v", primaryResourceURN, finding.ResourceURNs)
+	}
+	if got := len(result.Evidence); got != 1 {
+		t.Fatalf("len(Evidence) = %d, want 1", got)
+	}
+}
+
 func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
 	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
@@ -580,11 +642,15 @@ func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T
 func TestListRulesReturnsBuiltinCatalog(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
 	response := service.ListRules()
-	if got := len(response.GetRules()); got != 1 {
-		t.Fatalf("len(ListRules().Rules) = %d, want 1", got)
+	if got := len(response.GetRules()); got != 2 {
+		t.Fatalf("len(ListRules().Rules) = %d, want 2", got)
 	}
-	if got := response.GetRules()[0].GetId(); got != oktaPolicyRuleLifecycleTamperingRuleID {
-		t.Fatalf("ListRules().Rules[0].Id = %q, want %q", got, oktaPolicyRuleLifecycleTamperingRuleID)
+	ruleIDs := []string{response.GetRules()[0].GetId(), response.GetRules()[1].GetId()}
+	if !slices.Contains(ruleIDs, githubDependabotOpenAlertRuleID) {
+		t.Fatalf("ListRules().Rules missing %q: %#v", githubDependabotOpenAlertRuleID, ruleIDs)
+	}
+	if !slices.Contains(ruleIDs, oktaPolicyRuleLifecycleTamperingRuleID) {
+		t.Fatalf("ListRules().Rules missing %q: %#v", oktaPolicyRuleLifecycleTamperingRuleID, ruleIDs)
 	}
 }
 
@@ -1554,6 +1620,40 @@ func newAuditEvent(id string, eventType string, outcome string) *cerebrov1.Event
 			"actor_display_name":                "Admin Example",
 			"outcome_result":                    outcome,
 			ports.EventAttributeSourceRuntimeID: "writer-okta-audit",
+		},
+	}
+}
+
+func newGitHubDependabotAlertEvent(id string, state string) *cerebrov1.EventEnvelope {
+	alertNumber := "7"
+	if strings.Contains(id, "8") {
+		alertNumber = "8"
+	}
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "github",
+		Kind:       "github.dependabot_alert",
+		OccurredAt: timestamppb.New(time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  "github/dependabot_alert/v1",
+		Attributes: map[string]string{
+			"advisory_cve_id":                   "CVE-2026-0001",
+			"advisory_ghsa_id":                  "GHSA-xxxx-yyyy-zzzz",
+			"advisory_severity":                 "high",
+			"alert_number":                      alertNumber,
+			"ecosystem":                         "go",
+			"family":                            "dependabot_alert",
+			"first_patched_version":             "0.31.0",
+			"html_url":                          "https://github.com/writer/cerebro/security/dependabot/" + alertNumber,
+			"owner":                             "writer",
+			"package":                           "golang.org/x/crypto",
+			"repo":                              "cerebro",
+			"repository":                        "writer/cerebro",
+			"severity":                          "high",
+			"state":                             state,
+			"vulnerability_severity":            "high",
+			"vulnerable_version_range":          "< 0.31.0",
+			ports.EventAttributeSourceRuntimeID: "writer-github",
 		},
 	}
 }
