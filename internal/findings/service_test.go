@@ -13,6 +13,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 )
 
 type stubRuntimeStore struct {
@@ -45,6 +46,17 @@ func (s *stubReplayer) Replay(_ context.Context, request ports.ReplayRequest) ([
 		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
 	}
 	return events, nil
+}
+
+type recordingAppendLog struct {
+	events []*cerebrov1.EventEnvelope
+}
+
+func (s *recordingAppendLog) Ping(context.Context) error { return nil }
+
+func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	s.events = append(s.events, proto.Clone(event).(*cerebrov1.EventEnvelope))
+	return nil
 }
 
 type stubFindingStore struct {
@@ -1049,7 +1061,8 @@ func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T
 			},
 		},
 	}
-	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithGraphQueryStore(graphStore)
+	appendLog := &recordingAppendLog{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithGraphQueryStore(graphStore).WithAppendLog(appendLog)
 	finding, err := service.ResolveFinding(context.Background(), "finding-1", "verified remediation")
 	if err != nil {
 		t.Fatalf("ResolveFinding() error = %v", err)
@@ -1075,6 +1088,12 @@ func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T
 	}
 	if outcomeCount != 1 {
 		t.Fatalf("outcome entity count = %d, want 1", outcomeCount)
+	}
+	if len(appendLog.events) != 3 {
+		t.Fatalf("len(appendLog.events) = %d, want 3", len(appendLog.events))
+	}
+	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingStatusChanged {
+		t.Fatalf("first append event kind = %q, want %q", got, workflowevents.EventKindFindingStatusChanged)
 	}
 }
 
@@ -1125,7 +1144,8 @@ func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 		},
 	}
 	graphStore := &stubGraphStore{}
-	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore)
+	appendLog := &recordingAppendLog{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithAppendLog(appendLog)
 	finding, err := service.AddFindingNote(context.Background(), "finding-1", "Escalate to identity engineering.")
 	if err != nil {
 		t.Fatalf("AddFindingNote() error = %v", err)
@@ -1152,6 +1172,12 @@ func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|annotated_with|"+annotationURN]; !ok {
 		t.Fatal("finding annotation link missing")
 	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
+	}
+	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingNoteAdded {
+		t.Fatalf("append event kind = %q, want %q", got, workflowevents.EventKindFindingNoteAdded)
+	}
 }
 
 func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
@@ -1168,7 +1194,8 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 		},
 	}
 	graphStore := &stubGraphStore{}
-	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore)
+	appendLog := &recordingAppendLog{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithAppendLog(appendLog)
 	finding, err := service.LinkFindingTicket(
 		context.Background(),
 		"finding-1",
@@ -1197,6 +1224,12 @@ func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
 	}
 	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|tracked_by|"+ticketURN]; !ok {
 		t.Fatal("finding ticket link missing")
+	}
+	if len(appendLog.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(appendLog.events))
+	}
+	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingTicketLinked {
+		t.Fatalf("append event kind = %q, want %q", got, workflowevents.EventKindFindingTicketLinked)
 	}
 }
 

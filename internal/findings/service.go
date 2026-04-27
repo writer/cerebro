@@ -54,6 +54,7 @@ type Service struct {
 	claimStore    ports.ClaimStore
 	graphQuery    ports.GraphQueryStore
 	graph         ports.ProjectionGraphStore
+	appendLog     ports.AppendLog
 	rules         *Registry
 }
 
@@ -192,6 +193,15 @@ func (s *Service) WithGraphQueryStore(graphQuery ports.GraphQueryStore) *Service
 		return nil
 	}
 	s.graphQuery = graphQuery
+	return s
+}
+
+// WithAppendLog wires one optional durable append log used for workflow metadata events.
+func (s *Service) WithAppendLog(appendLog ports.AppendLog) *Service {
+	if s == nil {
+		return nil
+	}
+	s.appendLog = appendLog
 	return s
 }
 
@@ -721,7 +731,9 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 	if err != nil {
 		return nil, fmt.Errorf("update finding %q status to %q: %w", findingID, status, err)
 	}
-	_ = s.recordFindingStatusWorkflow(ctx, finding)
+	if err := s.recordFindingStatusWorkflow(ctx, finding); err != nil {
+		return nil, fmt.Errorf("record finding %q status workflow: %w", findingID, err)
+	}
 	return finding, nil
 }
 

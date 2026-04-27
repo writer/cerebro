@@ -17,6 +17,9 @@ const (
 	EventKindKnowledgeDecisionRecorded = "workflow.v1.knowledge.decision_recorded"
 	EventKindKnowledgeActionRecorded   = "workflow.v1.knowledge.action_recorded"
 	EventKindKnowledgeOutcomeRecorded  = "workflow.v1.knowledge.outcome_recorded"
+	EventKindFindingNoteAdded          = "workflow.v1.finding.note_added"
+	EventKindFindingTicketLinked       = "workflow.v1.finding.ticket_linked"
+	EventKindFindingStatusChanged      = "workflow.v1.finding.status_changed"
 
 	EventAttributeTenantID     = "tenant_id"
 	EventAttributeSourceSystem = "source_system"
@@ -24,6 +27,7 @@ const (
 	EventAttributeDecisionID   = "decision_id"
 	EventAttributeActionID     = "action_id"
 	EventAttributeOutcomeID    = "outcome_id"
+	EventAttributeFindingID    = "finding_id"
 	EventAttributeSourceEvent  = "source_event_id"
 )
 
@@ -31,6 +35,9 @@ const (
 	SchemaKnowledgeDecisionRecorded = "urn:cerebro:events/workflow.knowledge.decision_recorded/v1"
 	SchemaKnowledgeActionRecorded   = "urn:cerebro:events/workflow.knowledge.action_recorded/v1"
 	SchemaKnowledgeOutcomeRecorded  = "urn:cerebro:events/workflow.knowledge.outcome_recorded/v1"
+	SchemaFindingNoteAdded          = "urn:cerebro:events/workflow.finding.note_added/v1"
+	SchemaFindingTicketLinked       = "urn:cerebro:events/workflow.finding.ticket_linked/v1"
+	SchemaFindingStatusChanged      = "urn:cerebro:events/workflow.finding.status_changed/v1"
 )
 
 // DecisionRecorded captures one durable workflow decision event payload.
@@ -93,6 +100,50 @@ type OutcomeRecorded struct {
 	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
+// FindingSnapshot captures the finding fields needed to rebuild workflow graph projections.
+type FindingSnapshot struct {
+	TenantID           string   `json:"tenant_id"`
+	SourceSystem       string   `json:"source_system"`
+	FindingID          string   `json:"finding_id"`
+	Title              string   `json:"title,omitempty"`
+	RuleID             string   `json:"rule_id,omitempty"`
+	Severity           string   `json:"severity,omitempty"`
+	Status             string   `json:"status,omitempty"`
+	RuntimeID          string   `json:"runtime_id,omitempty"`
+	PolicyID           string   `json:"policy_id,omitempty"`
+	CheckID            string   `json:"check_id,omitempty"`
+	PrimaryResourceURN string   `json:"primary_resource_urn,omitempty"`
+	ResourceURNs       []string `json:"resource_urns,omitempty"`
+}
+
+// FindingNoteAdded captures one durable finding note event payload.
+type FindingNoteAdded struct {
+	Finding   FindingSnapshot `json:"finding"`
+	NoteID    string          `json:"note_id"`
+	Body      string          `json:"body"`
+	CreatedAt string          `json:"created_at"`
+}
+
+// FindingTicketLinked captures one durable finding ticket event payload.
+type FindingTicketLinked struct {
+	Finding    FindingSnapshot `json:"finding"`
+	URL        string          `json:"url"`
+	Name       string          `json:"name,omitempty"`
+	ExternalID string          `json:"external_id,omitempty"`
+	LinkedAt   string          `json:"linked_at"`
+}
+
+// FindingStatusChanged captures one durable finding status event payload.
+type FindingStatusChanged struct {
+	Finding     FindingSnapshot `json:"finding"`
+	Status      string          `json:"status"`
+	Reason      string          `json:"reason,omitempty"`
+	UpdatedAt   string          `json:"updated_at"`
+	DecisionID  string          `json:"decision_id,omitempty"`
+	OutcomeID   string          `json:"outcome_id,omitempty"`
+	OutcomeType string          `json:"outcome_type,omitempty"`
+}
+
 // NewDecisionRecordedEvent builds the durable event envelope for one recorded decision.
 func NewDecisionRecordedEvent(payload DecisionRecorded) (*cerebrov1.EventEnvelope, error) {
 	return newEvent(EventKindKnowledgeDecisionRecorded, SchemaKnowledgeDecisionRecorded, payload.TenantID, payload.SourceSystem, payload.DecisionID, payload.ObservedAt, payload, map[string]string{
@@ -122,6 +173,32 @@ func NewOutcomeRecordedEvent(payload OutcomeRecorded) (*cerebrov1.EventEnvelope,
 	})
 }
 
+// NewFindingNoteAddedEvent builds the durable event envelope for one finding note.
+func NewFindingNoteAddedEvent(payload FindingNoteAdded) (*cerebrov1.EventEnvelope, error) {
+	return newEvent(EventKindFindingNoteAdded, SchemaFindingNoteAdded, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.NoteID, payload.CreatedAt, payload, map[string]string{
+		EventAttributeWorkflowKind: "finding_note",
+		EventAttributeFindingID:    payload.Finding.FindingID,
+	})
+}
+
+// NewFindingTicketLinkedEvent builds the durable event envelope for one finding ticket link.
+func NewFindingTicketLinkedEvent(payload FindingTicketLinked) (*cerebrov1.EventEnvelope, error) {
+	return newEvent(EventKindFindingTicketLinked, SchemaFindingTicketLinked, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.URL, payload.LinkedAt, payload, map[string]string{
+		EventAttributeWorkflowKind: "finding_ticket",
+		EventAttributeFindingID:    payload.Finding.FindingID,
+	})
+}
+
+// NewFindingStatusChangedEvent builds the durable event envelope for one finding status change.
+func NewFindingStatusChangedEvent(payload FindingStatusChanged) (*cerebrov1.EventEnvelope, error) {
+	return newEvent(EventKindFindingStatusChanged, SchemaFindingStatusChanged, payload.Finding.TenantID, payload.Finding.SourceSystem, payload.Finding.FindingID+"|"+payload.Status+"|"+payload.UpdatedAt, payload.UpdatedAt, payload, map[string]string{
+		EventAttributeWorkflowKind: "finding_status",
+		EventAttributeFindingID:    payload.Finding.FindingID,
+		EventAttributeDecisionID:   payload.DecisionID,
+		EventAttributeOutcomeID:    payload.OutcomeID,
+	})
+}
+
 // DecodeDecisionRecorded decodes a decision event payload.
 func DecodeDecisionRecorded(event *cerebrov1.EventEnvelope) (*DecisionRecorded, error) {
 	payload := &DecisionRecorded{}
@@ -144,6 +221,33 @@ func DecodeActionRecorded(event *cerebrov1.EventEnvelope) (*ActionRecorded, erro
 func DecodeOutcomeRecorded(event *cerebrov1.EventEnvelope) (*OutcomeRecorded, error) {
 	payload := &OutcomeRecorded{}
 	if err := decodePayload(event, EventKindKnowledgeOutcomeRecorded, payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+// DecodeFindingNoteAdded decodes a finding note event payload.
+func DecodeFindingNoteAdded(event *cerebrov1.EventEnvelope) (*FindingNoteAdded, error) {
+	payload := &FindingNoteAdded{}
+	if err := decodePayload(event, EventKindFindingNoteAdded, payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+// DecodeFindingTicketLinked decodes a finding ticket event payload.
+func DecodeFindingTicketLinked(event *cerebrov1.EventEnvelope) (*FindingTicketLinked, error) {
+	payload := &FindingTicketLinked{}
+	if err := decodePayload(event, EventKindFindingTicketLinked, payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+// DecodeFindingStatusChanged decodes a finding status event payload.
+func DecodeFindingStatusChanged(event *cerebrov1.EventEnvelope) (*FindingStatusChanged, error) {
+	payload := &FindingStatusChanged{}
+	if err := decodePayload(event, EventKindFindingStatusChanged, payload); err != nil {
 		return nil, err
 	}
 	return payload, nil

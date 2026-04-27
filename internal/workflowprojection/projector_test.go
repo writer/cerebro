@@ -120,6 +120,59 @@ func TestProjectKnowledgeWorkflowEvents(t *testing.T) {
 	}
 }
 
+func TestProjectFindingWorkflowEvents(t *testing.T) {
+	graph := &projectionRecorder{}
+	service := New(graph)
+	finding := workflowevents.FindingSnapshot{
+		TenantID:           "writer",
+		SourceSystem:       "writer-okta-audit",
+		FindingID:          "finding-1",
+		Title:              "Okta Policy Rule Lifecycle Tampering",
+		RuleID:             "identity-okta-policy-rule-lifecycle-tampering",
+		Severity:           "high",
+		Status:             "open",
+		RuntimeID:          "writer-okta-audit",
+		PrimaryResourceURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		ResourceURNs:       []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+	}
+	noteEvent, err := workflowevents.NewFindingNoteAddedEvent(workflowevents.FindingNoteAdded{
+		Finding:   finding,
+		NoteID:    "note-1",
+		Body:      "Escalate to identity engineering.",
+		CreatedAt: "2026-04-27T12:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingNoteAddedEvent() error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), noteEvent); err != nil {
+		t.Fatalf("Project(note) error = %v", err)
+	}
+	annotationURN := "urn:cerebro:writer:annotation:finding-note:finding-1:note-1"
+	if _, ok := graph.links["urn:cerebro:writer:finding:finding-1|annotated_with|"+annotationURN]; !ok {
+		t.Fatal("finding annotation link missing")
+	}
+
+	ticketEvent, err := workflowevents.NewFindingTicketLinkedEvent(workflowevents.FindingTicketLinked{
+		Finding:    finding,
+		URL:        "https://jira.writer.com/browse/ENG-123",
+		Name:       "ENG-123",
+		ExternalID: "ENG-123",
+		LinkedAt:   "2026-04-27T12:30:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingTicketLinkedEvent() error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), ticketEvent); err != nil {
+		t.Fatalf("Project(ticket) error = %v", err)
+	}
+	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; !ok {
+		t.Fatal("finding anchor missing")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; !ok {
+		t.Fatal("resource finding link missing")
+	}
+}
+
 func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {
 	attributes := make(map[string]string, len(entity.Attributes))
 	for key, value := range entity.Attributes {

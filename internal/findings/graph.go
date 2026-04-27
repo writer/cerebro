@@ -9,19 +9,15 @@ import (
 	"strings"
 	"time"
 
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
+	"github.com/writer/cerebro/internal/workflowprojection"
 )
 
 const (
-	findingGraphEntityType           = "finding"
-	findingGraphAnnotationEntityType = "annotation"
-	findingGraphTicketEntityType     = "ticket"
-	findingGraphFindingRelation      = "has_finding"
-	findingGraphAnnotationRelation   = "annotated_with"
-	findingGraphTicketRelation       = "tracked_by"
-	findingGraphLabelLimit           = 160
-	findingDecisionStatusCompleted   = "completed"
+	findingDecisionStatusCompleted = "completed"
 )
 
 func (s *Service) projectFindingNote(ctx context.Context, finding *ports.FindingRecord, note ports.FindingNote) error {
@@ -40,45 +36,16 @@ func (s *Service) projectFindingNote(ctx context.Context, finding *ports.Finding
 		return nil
 	}
 	tenantID, sourceID := findingGraphScope(finding)
-	targetURNs, err := s.ensureFindingGraphAnchor(ctx, finding)
+	event, err := workflowevents.NewFindingNoteAddedEvent(workflowevents.FindingNoteAdded{
+		Finding:   findingWorkflowSnapshot(finding, tenantID, sourceID),
+		NoteID:    strings.TrimSpace(note.ID),
+		Body:      body,
+		CreatedAt: createdAt.Format(time.RFC3339Nano),
+	})
 	if err != nil {
 		return err
 	}
-	annotationURN := findingGraphAnnotationURN(tenantID, finding, note)
-	if err := s.graph.UpsertProjectedEntity(ctx, &ports.ProjectedEntity{
-		URN:        annotationURN,
-		TenantID:   tenantID,
-		SourceID:   sourceID,
-		EntityType: findingGraphAnnotationEntityType,
-		Label:      findingGraphLabel(body),
-		Attributes: map[string]string{
-			"finding_id":           strings.TrimSpace(finding.ID),
-			"note_id":              strings.TrimSpace(note.ID),
-			"body":                 body,
-			"created_at":           createdAt.Format(time.RFC3339Nano),
-			"workflow":             "finding_note",
-			"runtime_id":           strings.TrimSpace(finding.RuntimeID),
-			"primary_resource_urn": findingPrimaryResourceURN(finding),
-		},
-	}); err != nil {
-		return fmt.Errorf("upsert finding note annotation %q: %w", annotationURN, err)
-	}
-	for _, targetURN := range targetURNs {
-		if err := s.graph.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceID,
-			FromURN:  targetURN,
-			ToURN:    annotationURN,
-			Relation: findingGraphAnnotationRelation,
-			Attributes: map[string]string{
-				"finding_id": strings.TrimSpace(finding.ID),
-				"note_id":    strings.TrimSpace(note.ID),
-			},
-		}); err != nil {
-			return fmt.Errorf("upsert finding note annotation link %q -> %q: %w", targetURN, annotationURN, err)
-		}
-	}
-	return nil
+	return s.recordAndProjectWorkflowEvent(ctx, event)
 }
 
 func (s *Service) projectFindingTicket(ctx context.Context, finding *ports.FindingRecord, ticket ports.FindingTicket) error {
@@ -97,114 +64,52 @@ func (s *Service) projectFindingTicket(ctx context.Context, finding *ports.Findi
 		return nil
 	}
 	tenantID, sourceID := findingGraphScope(finding)
-	targetURNs, err := s.ensureFindingGraphAnchor(ctx, finding)
+	event, err := workflowevents.NewFindingTicketLinkedEvent(workflowevents.FindingTicketLinked{
+		Finding:    findingWorkflowSnapshot(finding, tenantID, sourceID),
+		URL:        normalizedURL,
+		Name:       strings.TrimSpace(ticket.Name),
+		ExternalID: strings.TrimSpace(ticket.ExternalID),
+		LinkedAt:   linkedAt.Format(time.RFC3339Nano),
+	})
 	if err != nil {
 		return err
 	}
-	ticketURN := findingGraphTicketURN(tenantID, normalizedURL)
-	if err := s.graph.UpsertProjectedEntity(ctx, &ports.ProjectedEntity{
-		URN:        ticketURN,
-		TenantID:   tenantID,
-		SourceID:   sourceID,
-		EntityType: findingGraphTicketEntityType,
-		Label:      findingGraphTicketLabel(ticket),
-		Attributes: map[string]string{
-			"finding_id":           strings.TrimSpace(finding.ID),
-			"url":                  normalizedURL,
-			"name":                 strings.TrimSpace(ticket.Name),
-			"external_id":          strings.TrimSpace(ticket.ExternalID),
-			"linked_at":            linkedAt.Format(time.RFC3339Nano),
-			"workflow":             "finding_ticket",
-			"runtime_id":           strings.TrimSpace(finding.RuntimeID),
-			"primary_resource_urn": findingPrimaryResourceURN(finding),
-		},
-	}); err != nil {
-		return fmt.Errorf("upsert finding ticket %q: %w", ticketURN, err)
-	}
-	for _, targetURN := range targetURNs {
-		if err := s.graph.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceID,
-			FromURN:  targetURN,
-			ToURN:    ticketURN,
-			Relation: findingGraphTicketRelation,
-			Attributes: map[string]string{
-				"finding_id":  strings.TrimSpace(finding.ID),
-				"ticket_url":  normalizedURL,
-				"external_id": strings.TrimSpace(ticket.ExternalID),
-			},
-		}); err != nil {
-			return fmt.Errorf("upsert finding ticket link %q -> %q: %w", targetURN, ticketURN, err)
-		}
-	}
-	return nil
-}
-
-func (s *Service) ensureFindingGraphAnchor(ctx context.Context, finding *ports.FindingRecord) ([]string, error) {
-	if s == nil || s.graph == nil {
-		return nil, nil
-	}
-	if finding == nil {
-		return nil, errors.New("finding is required")
-	}
-	tenantID, sourceID := findingGraphScope(finding)
-	anchorURN := findingGraphFindingURN(tenantID, finding)
-	if err := s.graph.UpsertProjectedEntity(ctx, &ports.ProjectedEntity{
-		URN:        anchorURN,
-		TenantID:   tenantID,
-		SourceID:   sourceID,
-		EntityType: findingGraphEntityType,
-		Label:      findingGraphLabel(strings.TrimSpace(finding.Title)),
-		Attributes: map[string]string{
-			"finding_id":           strings.TrimSpace(finding.ID),
-			"rule_id":              strings.TrimSpace(finding.RuleID),
-			"severity":             strings.TrimSpace(finding.Severity),
-			"status":               strings.TrimSpace(finding.Status),
-			"runtime_id":           strings.TrimSpace(finding.RuntimeID),
-			"policy_id":            strings.TrimSpace(finding.PolicyID),
-			"check_id":             strings.TrimSpace(finding.CheckID),
-			"primary_resource_urn": findingPrimaryResourceURN(finding),
-		},
-	}); err != nil {
-		return nil, fmt.Errorf("upsert finding graph anchor %q: %w", anchorURN, err)
-	}
-	resourceURNs := uniqueSortedStrings(finding.ResourceURNs)
-	for _, resourceURN := range resourceURNs {
-		if err := s.graph.UpsertProjectedLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceID,
-			FromURN:  resourceURN,
-			ToURN:    anchorURN,
-			Relation: findingGraphFindingRelation,
-			Attributes: map[string]string{
-				"finding_id": strings.TrimSpace(finding.ID),
-			},
-		}); err != nil {
-			return nil, fmt.Errorf("upsert finding graph anchor link %q -> %q: %w", resourceURN, anchorURN, err)
-		}
-	}
-	return uniqueSortedStrings(append(resourceURNs, anchorURN)), nil
+	return s.recordAndProjectWorkflowEvent(ctx, event)
 }
 
 func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *ports.FindingRecord) error {
-	if s == nil || s.graph == nil || s.graphQuery == nil || finding == nil {
+	if s == nil || s.graph == nil || finding == nil {
 		return nil
 	}
 	status := strings.TrimSpace(finding.Status)
 	if status != findingStatusResolved && status != findingStatusSuppressed {
 		return nil
 	}
-	if _, err := s.ensureFindingGraphAnchor(ctx, finding); err != nil {
-		return err
-	}
-	tenantID, _ := findingGraphScope(finding)
+	tenantID, sourceID := findingGraphScope(finding)
 	targetURNs := []string{findingGraphFindingURN(tenantID, finding)}
-	if len(targetURNs) == 0 {
-		return nil
-	}
 	decisionType := "finding-resolution"
 	if status == findingStatusSuppressed {
 		decisionType = "finding-suppression"
+	}
+	decisionID := workflowevents.CanonicalWorkflowID(tenantID, "decision", findingStatusDecisionID(finding), decisionType, targetURNs, finding.StatusUpdatedAt)
+	outcomeID := workflowevents.CanonicalWorkflowID(tenantID, "outcome", findingStatusOutcomeID(finding), decisionType, append([]string{decisionID}, targetURNs...), finding.StatusUpdatedAt)
+	statusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
+		Finding:     findingWorkflowSnapshot(finding, tenantID, sourceID),
+		Status:      status,
+		Reason:      strings.TrimSpace(finding.StatusReason),
+		UpdatedAt:   finding.StatusUpdatedAt.UTC().Format(time.RFC3339Nano),
+		DecisionID:  decisionID,
+		OutcomeID:   outcomeID,
+		OutcomeType: decisionType,
+	})
+	if err != nil {
+		return err
+	}
+	if err := s.recordAndProjectWorkflowEvent(ctx, statusEvent); err != nil {
+		return err
+	}
+	if s.graphQuery == nil {
+		return nil
 	}
 	workflowMetadata := map[string]any{
 		"tenant_id":            strings.TrimSpace(finding.TenantID),
@@ -219,7 +124,7 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 	if rationale := strings.TrimSpace(finding.StatusReason); rationale != "" {
 		workflowMetadata["rationale"] = rationale
 	}
-	service := knowledge.New(s.graphQuery, s.graph)
+	service := knowledge.New(s.graphQuery, s.graph).WithAppendLog(s.appendLog)
 	decision, err := service.WriteDecision(ctx, knowledge.DecisionWriteRequest{
 		ID:            findingStatusDecisionID(finding),
 		DecisionType:  decisionType,
@@ -250,6 +155,41 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 	return err
 }
 
+func (s *Service) recordAndProjectWorkflowEvent(ctx context.Context, event *cerebrov1.EventEnvelope) error {
+	if s == nil || event == nil {
+		return nil
+	}
+	if s.appendLog != nil {
+		if err := s.appendLog.Append(ctx, event); err != nil {
+			return err
+		}
+	}
+	if s.graph == nil {
+		return nil
+	}
+	if _, err := workflowprojection.New(s.graph).Project(ctx, event); err != nil {
+		return err
+	}
+	return nil
+}
+
+func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sourceID string) workflowevents.FindingSnapshot {
+	return workflowevents.FindingSnapshot{
+		TenantID:           strings.TrimSpace(tenantID),
+		SourceSystem:       strings.TrimSpace(sourceID),
+		FindingID:          strings.TrimSpace(finding.ID),
+		Title:              strings.TrimSpace(finding.Title),
+		RuleID:             strings.TrimSpace(finding.RuleID),
+		Severity:           strings.TrimSpace(finding.Severity),
+		Status:             strings.TrimSpace(finding.Status),
+		RuntimeID:          strings.TrimSpace(finding.RuntimeID),
+		PolicyID:           strings.TrimSpace(finding.PolicyID),
+		CheckID:            strings.TrimSpace(finding.CheckID),
+		PrimaryResourceURN: findingPrimaryResourceURN(finding),
+		ResourceURNs:       uniqueSortedStrings(finding.ResourceURNs),
+	}
+}
+
 func findingGraphScope(finding *ports.FindingRecord) (string, string) {
 	tenantID := strings.TrimSpace(finding.TenantID)
 	sourceID := strings.TrimSpace(finding.RuntimeID)
@@ -263,26 +203,8 @@ func findingGraphFindingURN(tenantID string, finding *ports.FindingRecord) strin
 	return fmt.Sprintf("urn:cerebro:%s:finding:%s", strings.TrimSpace(tenantID), strings.TrimSpace(finding.ID))
 }
 
-func findingGraphAnnotationURN(tenantID string, finding *ports.FindingRecord, note ports.FindingNote) string {
-	noteID := strings.TrimSpace(note.ID)
-	if noteID == "" {
-		noteID = findingGraphHash(strings.TrimSpace(finding.ID), strings.TrimSpace(note.Body), note.CreatedAt.UTC().Format(time.RFC3339Nano))
-	}
-	return fmt.Sprintf("urn:cerebro:%s:annotation:finding-note:%s:%s", strings.TrimSpace(tenantID), strings.TrimSpace(finding.ID), noteID)
-}
-
 func findingGraphTicketURN(tenantID string, ticketURL string) string {
 	return fmt.Sprintf("urn:cerebro:%s:ticket:linked:%s", strings.TrimSpace(tenantID), findingGraphHash(strings.TrimSpace(ticketURL)))
-}
-
-func findingGraphTicketLabel(ticket ports.FindingTicket) string {
-	if label := findingGraphLabel(strings.TrimSpace(ticket.Name)); label != "" {
-		return label
-	}
-	if label := findingGraphLabel(strings.TrimSpace(ticket.ExternalID)); label != "" {
-		return label
-	}
-	return findingGraphLabel(strings.TrimSpace(ticket.URL))
 }
 
 func findingPrimaryResourceURN(finding *ports.FindingRecord) string {
@@ -298,14 +220,6 @@ func findingPrimaryResourceURN(finding *ports.FindingRecord) string {
 		}
 	}
 	return ""
-}
-
-func findingGraphLabel(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if len(trimmed) <= findingGraphLabelLimit {
-		return trimmed
-	}
-	return strings.TrimSpace(trimmed[:findingGraphLabelLimit-1]) + "…"
 }
 
 func findingGraphHash(values ...string) string {
