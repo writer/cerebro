@@ -85,3 +85,24 @@ func TestRegistryForRuntimeFiltersSupportedRules(t *testing.T) {
 		t.Fatalf("ForRuntime()[0].Spec().Id = %q, want rule-a", got)
 	}
 }
+
+func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
+	packs := builtinRulePacks()
+	if got := len(packs); got != 2 {
+		t.Fatalf("len(builtinRulePacks()) = %d, want 2", got)
+	}
+	rules := flattenRulePacks(packs)
+	if got := len(rules); got != 2 {
+		t.Fatalf("len(flattenRulePacks()) = %d, want 2", got)
+	}
+	registry, err := NewRegistry(rules...)
+	if err != nil {
+		t.Fatalf("NewRegistry(flattenRulePacks()) error = %v", err)
+	}
+	if _, ok := registry.Get(githubDependabotOpenAlertRuleID); !ok {
+		t.Fatalf("registry missing %q", githubDependabotOpenAlertRuleID)
+	}
+	if _, ok := registry.Get(oktaPolicyRuleLifecycleTamperingRuleID); !ok {
+		t.Fatalf("registry missing %q", oktaPolicyRuleLifecycleTamperingRuleID)
+	}
+}
