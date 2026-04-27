@@ -92,8 +92,8 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 		t.Fatalf("len(builtinRulePacks()) = %d, want 2", got)
 	}
 	rules := flattenRulePacks(packs)
-	if got := len(rules); got != 2 {
-		t.Fatalf("len(flattenRulePacks()) = %d, want 2", got)
+	if got := len(rules); got < 10 {
+		t.Fatalf("len(flattenRulePacks()) = %d, want at least 10", got)
 	}
 	registry, err := NewRegistry(rules...)
 	if err != nil {
@@ -101,6 +101,9 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	}
 	if _, ok := registry.Get(githubDependabotOpenAlertRuleID); !ok {
 		t.Fatalf("registry missing %q", githubDependabotOpenAlertRuleID)
+	}
+	if _, ok := registry.Get(githubSecretScanningDisabledRuleID); !ok {
+		t.Fatalf("registry missing %q", githubSecretScanningDisabledRuleID)
 	}
 	if _, ok := registry.Get(oktaPolicyRuleLifecycleTamperingRuleID); !ok {
 		t.Fatalf("registry missing %q", oktaPolicyRuleLifecycleTamperingRuleID)

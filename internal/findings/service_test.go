@@ -648,12 +648,18 @@ func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T
 func TestListRulesReturnsBuiltinCatalog(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
 	response := service.ListRules()
-	if got := len(response.GetRules()); got != 2 {
-		t.Fatalf("len(ListRules().Rules) = %d, want 2", got)
+	if got := len(response.GetRules()); got < 10 {
+		t.Fatalf("len(ListRules().Rules) = %d, want at least 10", got)
 	}
-	ruleIDs := []string{response.GetRules()[0].GetId(), response.GetRules()[1].GetId()}
+	ruleIDs := make([]string, 0, len(response.GetRules()))
+	for _, rule := range response.GetRules() {
+		ruleIDs = append(ruleIDs, rule.GetId())
+	}
 	if !slices.Contains(ruleIDs, githubDependabotOpenAlertRuleID) {
 		t.Fatalf("ListRules().Rules missing %q: %#v", githubDependabotOpenAlertRuleID, ruleIDs)
+	}
+	if !slices.Contains(ruleIDs, githubSecretScanningDisabledRuleID) {
+		t.Fatalf("ListRules().Rules missing %q: %#v", githubSecretScanningDisabledRuleID, ruleIDs)
 	}
 	if !slices.Contains(ruleIDs, oktaPolicyRuleLifecycleTamperingRuleID) {
 		t.Fatalf("ListRules().Rules missing %q: %#v", oktaPolicyRuleLifecycleTamperingRuleID, ruleIDs)
@@ -962,6 +968,71 @@ func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 	}
 	if got := result.Evaluations[0].Rule.GetId(); got != "rule-b" {
 		t.Fatalf("EvaluateSourceRuntimeRules().Evaluations[0].Rule.Id = %q, want rule-b", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesReplaysGitHubAuditSOTASignals(t *testing.T) {
+	ruleIDs := []string{
+		githubSecretScanningDisabledRuleID,
+		githubPushProtectionDisabledRuleID,
+		githubBranchProtectionDisabledRuleID,
+		githubRepositoryMadePublicRuleID,
+		githubSecretScanningAlertCreatedRuleID,
+		githubSelfHostedRunnerChangeRuleID,
+		githubRepositoryCollaboratorAddedRuleID,
+		githubOrganizationOwnerAddedRuleID,
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-github-audit": {
+					Id:       "writer-github-audit",
+					SourceId: "github",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubReplayer{
+			events: []*cerebrov1.EventEnvelope{
+				newGitHubAuditSignalEvent("github-audit-secret-scanning-disabled", map[string]string{"action": "repository_secret_scanning.disable", "repo": "writer/cerebro", "resource_type": "repository_secret_scanning"}),
+				newGitHubAuditSignalEvent("github-audit-push-protection-disabled", map[string]string{"action": "org.secret_scanning_push_protection_disable", "resource_id": "writer", "resource_type": "org"}),
+				newGitHubAuditSignalEvent("github-audit-branch-protection-disabled", map[string]string{"action": "protected_branch.destroy", "repo": "writer/cerebro", "resource_type": "protected_branch"}),
+				newGitHubAuditSignalEvent("github-audit-repo-made-public", map[string]string{"action": "repo.access", "repo": "writer/cerebro", "previous_visibility": "private", "visibility": "public", "resource_type": "repo"}),
+				newGitHubAuditSignalEvent("github-audit-secret-alert-created", map[string]string{"action": "secret_scanning_alert.create", "repo": "writer/cerebro", "number": "12", "resource_type": "secret_scanning_alert"}),
+				newGitHubAuditSignalEvent("github-audit-runner-registered", map[string]string{"action": "repo.register_self_hosted_runner", "repo": "writer/cerebro", "resource_type": "repo"}),
+				newGitHubAuditSignalEvent("github-audit-collaborator-added", map[string]string{"action": "repo.add_member", "repo": "writer/cerebro", "resource_type": "repo", "user": "octocat"}),
+				newGitHubAuditSignalEvent("github-audit-owner-added", map[string]string{"action": "org.add_member", "resource_id": "writer", "resource_type": "org", "permission": "admin", "user": "octocat"}),
+			},
+		},
+		&stubFindingStore{},
+		&stubFindingStore{},
+		&stubFindingStore{},
+		&stubFindingStore{},
+	)
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+		RuntimeID:  "writer-github-audit",
+		RuleIDs:    ruleIDs,
+		EventLimit: 20,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+	}
+	findingsByRule := map[string]*ports.FindingRecord{}
+	for _, evaluation := range result.Evaluations {
+		if len(evaluation.Findings) == 1 {
+			findingsByRule[evaluation.Rule.GetId()] = evaluation.Findings[0]
+		}
+	}
+	for _, ruleID := range ruleIDs {
+		if findingsByRule[ruleID] == nil {
+			t.Fatalf("EvaluateSourceRuntimeRules() missing finding for %q", ruleID)
+		}
+	}
+	if got := findingsByRule[githubRepositoryMadePublicRuleID].Summary; got != "admin changed writer/cerebro visibility from private to public" {
+		t.Fatalf("repository public summary = %q", got)
+	}
+	if got := findingsByRule[githubOrganizationOwnerAddedRuleID].Severity; got != "HIGH" {
+		t.Fatalf("organization owner severity = %q, want HIGH", got)
 	}
 }
 
@@ -1661,6 +1732,29 @@ func newGitHubDependabotAlertEvent(id string, state string) *cerebrov1.EventEnve
 			"vulnerable_version_range":          "< 0.31.0",
 			ports.EventAttributeSourceRuntimeID: "writer-github",
 		},
+	}
+}
+
+func newGitHubAuditSignalEvent(id string, attributes map[string]string) *cerebrov1.EventEnvelope {
+	eventAttributes := map[string]string{
+		"actor":                             "admin",
+		"family":                            "audit",
+		"operation_type":                    "modify",
+		"org":                               "writer",
+		"resource_id":                       firstNonEmpty(attributes["repo"], "writer"),
+		ports.EventAttributeSourceRuntimeID: "writer-github-audit",
+	}
+	for key, value := range attributes {
+		eventAttributes[key] = value
+	}
+	return &cerebrov1.EventEnvelope{
+		Id:         id,
+		TenantId:   "writer",
+		SourceId:   "github",
+		Kind:       "github.audit",
+		OccurredAt: timestamppb.New(time.Date(2026, 4, 27, 12, 0, 0, 0, time.UTC)),
+		SchemaRef:  "github/audit/v1",
+		Attributes: eventAttributes,
 	}
 }
 

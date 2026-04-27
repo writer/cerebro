@@ -15,7 +15,15 @@ func builtinRulePacks() []RulePack {
 			Name:        "GitHub",
 			Description: "GitHub security and repository findings.",
 			Rules: []Rule{
+				newGitHubBranchProtectionDisabledRule(),
 				newGitHubDependabotOpenAlertRule(),
+				newGitHubOrganizationOwnerAddedRule(),
+				newGitHubPushProtectionDisabledRule(),
+				newGitHubRepositoryCollaboratorAddedRule(),
+				newGitHubRepositoryMadePublicRule(),
+				newGitHubSecretScanningAlertCreatedRule(),
+				newGitHubSecretScanningDisabledRule(),
+				newGitHubSelfHostedRunnerChangeRule(),
 			},
 		},
 		{

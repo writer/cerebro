@@ -225,6 +225,12 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if got := first.Events[0].Kind; got != "github.audit" {
 		t.Fatalf("first.Events[0].Kind = %q, want github.audit", got)
 	}
+	if got := first.Events[0].Attributes["permission"]; got != "admin" {
+		t.Fatalf("first.Events[0].Attributes[permission] = %q, want admin", got)
+	}
+	if got := first.Events[0].Attributes["previous_visibility"]; got != "private" {
+		t.Fatalf("first.Events[0].Attributes[previous_visibility] = %q, want private", got)
+	}
 	var payload map[string]any
 	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
 		t.Fatalf("unmarshal audit payload: %v", err)
@@ -387,6 +393,8 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			"operation_type":              "create",
 			"org":                         "writer",
 			"org_id":                      1,
+			"permission":                  "admin",
+			"previous_visibility":         "private",
 			"programmatic_access_type":    "GitHub App server-to-server token",
 			"public_repo":                 false,
 			"repo":                        "writer/cerebro",

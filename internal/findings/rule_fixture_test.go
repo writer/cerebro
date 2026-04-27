@@ -62,6 +62,38 @@ func TestGitHubDependabotOpenAlertFixture(t *testing.T) {
 	assertRuleFixture(t, newGitHubDependabotOpenAlertRule(), "testdata/rules/github-dependabot-open-alert.json")
 }
 
+func TestGitHubSecretScanningDisabledFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubSecretScanningDisabledRule(), "testdata/rules/github-secret-scanning-disabled.json")
+}
+
+func TestGitHubPushProtectionDisabledFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubPushProtectionDisabledRule(), "testdata/rules/github-push-protection-disabled.json")
+}
+
+func TestGitHubBranchProtectionDisabledFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubBranchProtectionDisabledRule(), "testdata/rules/github-branch-protection-disabled.json")
+}
+
+func TestGitHubRepositoryMadePublicFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubRepositoryMadePublicRule(), "testdata/rules/github-repository-made-public.json")
+}
+
+func TestGitHubSecretScanningAlertCreatedFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubSecretScanningAlertCreatedRule(), "testdata/rules/github-secret-scanning-alert-created.json")
+}
+
+func TestGitHubSelfHostedRunnerChangeFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubSelfHostedRunnerChangeRule(), "testdata/rules/github-self-hosted-runner-change.json")
+}
+
+func TestGitHubRepositoryCollaboratorAddedFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubRepositoryCollaboratorAddedRule(), "testdata/rules/github-repository-collaborator-added.json")
+}
+
+func TestGitHubOrganizationOwnerAddedFixture(t *testing.T) {
+	assertRuleFixture(t, newGitHubOrganizationOwnerAddedRule(), "testdata/rules/github-organization-owner-added.json")
+}
+
 func assertRuleFixture(t *testing.T, rule Rule, path string) {
 	t.Helper()
 	payload, err := os.ReadFile(path)

@@ -1025,8 +1025,8 @@ func TestFindingRuleEndpoints(t *testing.T) {
 		t.Fatalf("decode /finding-rules response: %v", err)
 	}
 	rulesPayload, ok := payload["rules"].([]any)
-	if !ok || len(rulesPayload) != 2 {
-		t.Fatalf("/finding-rules payload = %#v, want 2 rules", payload["rules"])
+	if !ok || len(rulesPayload) < 10 {
+		t.Fatalf("/finding-rules payload = %#v, want at least 10 rules", payload["rules"])
 	}
 	ruleIDs := map[string]struct{}{}
 	for _, rawRule := range rulesPayload {
@@ -1040,7 +1040,7 @@ func TestFindingRuleEndpoints(t *testing.T) {
 		}
 		ruleIDs[ruleID] = struct{}{}
 	}
-	for _, ruleID := range []string{"github-dependabot-open-alert", "identity-okta-policy-rule-lifecycle-tampering"} {
+	for _, ruleID := range []string{"github-dependabot-open-alert", "github-secret-scanning-disabled", "identity-okta-policy-rule-lifecycle-tampering"} {
 		if _, ok := ruleIDs[ruleID]; !ok {
 			t.Fatalf("/finding-rules missing %q in %#v", ruleID, ruleIDs)
 		}
@@ -1051,14 +1051,14 @@ func TestFindingRuleEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListFindingRules() error = %v", err)
 	}
-	if got := len(listResp.Msg.GetRules()); got != 2 {
-		t.Fatalf("len(ListFindingRules().Rules) = %d, want 2", got)
+	if got := len(listResp.Msg.GetRules()); got < 10 {
+		t.Fatalf("len(ListFindingRules().Rules) = %d, want at least 10", got)
 	}
 	connectRuleIDs := map[string]struct{}{}
 	for _, rule := range listResp.Msg.GetRules() {
 		connectRuleIDs[rule.GetId()] = struct{}{}
 	}
-	for _, ruleID := range []string{"github-dependabot-open-alert", "identity-okta-policy-rule-lifecycle-tampering"} {
+	for _, ruleID := range []string{"github-dependabot-open-alert", "github-secret-scanning-disabled", "identity-okta-policy-rule-lifecycle-tampering"} {
 		if _, ok := connectRuleIDs[ruleID]; !ok {
 			t.Fatalf("ListFindingRules() missing %q in %#v", ruleID, connectRuleIDs)
 		}

@@ -1,0 +1,76 @@
+{
+  "rule_id": "github-repository-made-public",
+  "runtime": {
+    "id": "writer-github-audit",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-audit-repo-made-public",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T00:03:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "action": "repo.access",
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "previous_visibility": "private",
+        "repo": "writer/cerebro",
+        "resource_id": "writer/cerebro",
+        "resource_type": "repo",
+        "source_runtime_id": "writer-github-audit",
+        "visibility": "public"
+      }
+    },
+    {
+      "id": "github-audit-repo-internal-public",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T00:03:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "action": "repo.access",
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "previous_visibility": "internal",
+        "repo": "writer/cerebro",
+        "resource_id": "writer/cerebro",
+        "resource_type": "repo",
+        "source_runtime_id": "writer-github-audit",
+        "visibility": "public"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-repository-made-public",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "admin changed writer/cerebro visibility from private to public",
+      "event_ids": ["github-audit-repo-made-public"],
+      "attributes": {
+        "action": "repo.access",
+        "previous_visibility": "private",
+        "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
+        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "repo": "writer/cerebro",
+        "rule_tags": "github,repository,exfiltration,impact,attack.t1567.001",
+        "visibility": "public"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-audit-repo-internal-public",
+      "reason": "only private-to-public transitions should match"
+    }
+  ]
+}
