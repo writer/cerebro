@@ -70,7 +70,16 @@ func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayReque
 		if event == nil {
 			continue
 		}
-		if event.GetAttributes()[ports.EventAttributeSourceRuntimeID] != request.RuntimeID {
+		if request.RuntimeID != "" && event.GetAttributes()[ports.EventAttributeSourceRuntimeID] != request.RuntimeID {
+			continue
+		}
+		if request.KindPrefix != "" && !strings.HasPrefix(event.GetKind(), request.KindPrefix) {
+			continue
+		}
+		if request.TenantID != "" && event.GetTenantId() != request.TenantID {
+			continue
+		}
+		if !matchesReplayAttributes(event, request.AttributeEquals) {
 			continue
 		}
 		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
@@ -79,6 +88,15 @@ func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayReque
 		}
 	}
 	return events, nil
+}
+
+func matchesReplayAttributes(event *cerebrov1.EventEnvelope, expected map[string]string) bool {
+	for key, value := range expected {
+		if event.GetAttributes()[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 type stubRuntimeStore struct {

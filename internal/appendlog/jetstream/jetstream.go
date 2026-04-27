@@ -147,9 +147,9 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	if l == nil || l.replay == nil {
 		return nil, errors.New("jetstream is not configured")
 	}
-	runtimeID := strings.TrimSpace(req.RuntimeID)
-	if runtimeID == "" {
-		return nil, errors.New("runtime id is required")
+	request := normalizeReplayRequest(req)
+	if request.RuntimeID == "" && request.KindPrefix == "" && request.TenantID == "" && len(request.AttributeEquals) == 0 {
+		return nil, errors.New("at least one replay filter is required")
 	}
 	stream, err := l.replayStream(ctx)
 	if err != nil {
@@ -174,7 +174,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		if err := proto.Unmarshal(raw.Data, event); err != nil {
 			return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
 		}
-		if strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]) != runtimeID {
+		if !matchesReplayRequest(event, request) {
 			continue
 		}
 		events = append(events, event)
@@ -183,6 +183,46 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		}
 	}
 	return events, nil
+}
+
+func normalizeReplayRequest(req ports.ReplayRequest) ports.ReplayRequest {
+	normalized := ports.ReplayRequest{
+		RuntimeID:       strings.TrimSpace(req.RuntimeID),
+		KindPrefix:      strings.TrimSpace(req.KindPrefix),
+		TenantID:        strings.TrimSpace(req.TenantID),
+		AttributeEquals: make(map[string]string, len(req.AttributeEquals)),
+		Limit:           req.Limit,
+	}
+	for key, value := range req.AttributeEquals {
+		trimmedKey := strings.TrimSpace(key)
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedKey == "" {
+			continue
+		}
+		normalized.AttributeEquals[trimmedKey] = trimmedValue
+	}
+	return normalized
+}
+
+func matchesReplayRequest(event *cerebrov1.EventEnvelope, req ports.ReplayRequest) bool {
+	if event == nil {
+		return false
+	}
+	if req.RuntimeID != "" && strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]) != req.RuntimeID {
+		return false
+	}
+	if req.KindPrefix != "" && !strings.HasPrefix(strings.TrimSpace(event.GetKind()), req.KindPrefix) {
+		return false
+	}
+	if req.TenantID != "" && strings.TrimSpace(event.GetTenantId()) != req.TenantID {
+		return false
+	}
+	for key, value := range req.AttributeEquals {
+		if strings.TrimSpace(event.GetAttributes()[key]) != value {
+			return false
+		}
+	}
+	return true
 }
 
 func (l *Log) replayStream(ctx context.Context) (*jetstream.StreamInfo, error) {
