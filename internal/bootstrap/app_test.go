@@ -1687,11 +1687,30 @@ func TestFindingEndpoints(t *testing.T) {
 	if len(runtimeStore.findingEvidence) != 4 {
 		t.Fatalf("len(runtimeStore.findingEvidence) = %d, want 4", len(runtimeStore.findingEvidence))
 	}
-	if got := len(graphStore.entities); got != 5 {
-		t.Fatalf("len(graphStore.entities) = %d, want 5", got)
+	if got := len(graphStore.entities); got != 9 {
+		t.Fatalf("len(graphStore.entities) = %d, want 9", got)
 	}
-	if got := len(graphStore.links); got != 14 {
-		t.Fatalf("len(graphStore.links) = %d, want 14", got)
+	if got := len(graphStore.links); got != 20 {
+		t.Fatalf("len(graphStore.links) = %d, want 20", got)
+	}
+	decisionCount := 0
+	outcomeCount := 0
+	for _, entity := range graphStore.entities {
+		if entity == nil {
+			continue
+		}
+		switch entity.EntityType {
+		case "decision":
+			decisionCount++
+		case "outcome":
+			outcomeCount++
+		}
+	}
+	if decisionCount != 2 {
+		t.Fatalf("decision entity count = %d, want 2", decisionCount)
+	}
+	if outcomeCount != 2 {
+		t.Fatalf("outcome entity count = %d, want 2", outcomeCount)
 	}
 }
 

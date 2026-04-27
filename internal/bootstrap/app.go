@@ -980,7 +980,7 @@ func (s *bootstrapService) ResolveFinding(ctx context.Context, req *connect.Requ
 		findingEvaluationRunStore(s.deps.StateStore),
 		findingEvidenceStore(s.deps.StateStore),
 		claimStore(s.deps.StateStore),
-	).ResolveFinding(ctx, req.Msg.GetId(), req.Msg.GetReason())
+	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).ResolveFinding(ctx, req.Msg.GetId(), req.Msg.GetReason())
 	if err != nil {
 		return nil, err
 	}
@@ -995,7 +995,7 @@ func (s *bootstrapService) SuppressFinding(ctx context.Context, req *connect.Req
 		findingEvaluationRunStore(s.deps.StateStore),
 		findingEvidenceStore(s.deps.StateStore),
 		claimStore(s.deps.StateStore),
-	).SuppressFinding(ctx, req.Msg.GetId(), req.Msg.GetReason())
+	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).SuppressFinding(ctx, req.Msg.GetId(), req.Msg.GetReason())
 	if err != nil {
 		return nil, err
 	}
@@ -1044,7 +1044,7 @@ func (s *bootstrapService) AddFindingNote(ctx context.Context, req *connect.Requ
 		findingEvaluationRunStore(s.deps.StateStore),
 		findingEvidenceStore(s.deps.StateStore),
 		claimStore(s.deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).AddFindingNote(ctx, req.Msg.GetId(), req.Msg.GetNote())
+	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).AddFindingNote(ctx, req.Msg.GetId(), req.Msg.GetNote())
 	if err != nil {
 		return nil, err
 	}
@@ -1059,7 +1059,7 @@ func (s *bootstrapService) LinkFindingTicket(ctx context.Context, req *connect.R
 		findingEvaluationRunStore(s.deps.StateStore),
 		findingEvidenceStore(s.deps.StateStore),
 		claimStore(s.deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).LinkFindingTicket(
+	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).LinkFindingTicket(
 		ctx,
 		req.Msg.GetId(),
 		req.Msg.GetUrl(),
@@ -1337,7 +1337,7 @@ func (a *App) findingService() *findings.Service {
 		findingEvaluationRunStore(a.deps.StateStore),
 		findingEvidenceStore(a.deps.StateStore),
 		claimStore(a.deps.StateStore),
-	).WithGraphStore(sourceProjectionGraphStore(a.deps.GraphStore))
+	).WithGraphStore(sourceProjectionGraphStore(a.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(a.deps.GraphStore))
 }
 
 func (a *App) knowledgeService() *knowledge.Service {

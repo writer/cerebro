@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -20,6 +21,7 @@ const (
 	findingGraphAnnotationRelation   = "annotated_with"
 	findingGraphTicketRelation       = "tracked_by"
 	findingGraphLabelLimit           = 160
+	findingDecisionStatusCompleted   = "completed"
 )
 
 func (s *Service) projectFindingNote(ctx context.Context, finding *ports.FindingRecord, note ports.FindingNote) error {
@@ -184,6 +186,70 @@ func (s *Service) ensureFindingGraphAnchor(ctx context.Context, finding *ports.F
 	return uniqueSortedStrings(append(resourceURNs, anchorURN)), nil
 }
 
+func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *ports.FindingRecord) error {
+	if s == nil || s.graph == nil || s.graphQuery == nil || finding == nil {
+		return nil
+	}
+	status := strings.TrimSpace(finding.Status)
+	if status != findingStatusResolved && status != findingStatusSuppressed {
+		return nil
+	}
+	if _, err := s.ensureFindingGraphAnchor(ctx, finding); err != nil {
+		return err
+	}
+	tenantID, _ := findingGraphScope(finding)
+	targetURNs := []string{findingGraphFindingURN(tenantID, finding)}
+	if len(targetURNs) == 0 {
+		return nil
+	}
+	decisionType := "finding-resolution"
+	if status == findingStatusSuppressed {
+		decisionType = "finding-suppression"
+	}
+	workflowMetadata := map[string]any{
+		"tenant_id":            strings.TrimSpace(finding.TenantID),
+		"finding_id":           strings.TrimSpace(finding.ID),
+		"finding_status":       status,
+		"runtime_id":           strings.TrimSpace(finding.RuntimeID),
+		"rule_id":              strings.TrimSpace(finding.RuleID),
+		"policy_id":            strings.TrimSpace(finding.PolicyID),
+		"check_id":             strings.TrimSpace(finding.CheckID),
+		"primary_resource_urn": findingPrimaryResourceURN(finding),
+	}
+	if rationale := strings.TrimSpace(finding.StatusReason); rationale != "" {
+		workflowMetadata["rationale"] = rationale
+	}
+	service := knowledge.New(s.graphQuery, s.graph)
+	decision, err := service.WriteDecision(ctx, knowledge.DecisionWriteRequest{
+		ID:            findingStatusDecisionID(finding),
+		DecisionType:  decisionType,
+		Status:        findingDecisionStatusCompleted,
+		Rationale:     strings.TrimSpace(finding.StatusReason),
+		TargetIDs:     targetURNs,
+		SourceSystem:  "findings",
+		SourceEventID: strings.TrimSpace(finding.ID),
+		ObservedAt:    finding.StatusUpdatedAt,
+		ValidFrom:     finding.StatusUpdatedAt,
+		Metadata:      workflowMetadata,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = service.WriteOutcome(ctx, knowledge.OutcomeWriteRequest{
+		ID:            findingStatusOutcomeID(finding),
+		DecisionID:    decision.DecisionID,
+		OutcomeType:   decisionType,
+		Verdict:       status,
+		TargetIDs:     targetURNs,
+		SourceSystem:  "findings",
+		SourceEventID: strings.TrimSpace(finding.ID),
+		ObservedAt:    finding.StatusUpdatedAt,
+		ValidFrom:     finding.StatusUpdatedAt,
+		Metadata:      workflowMetadata,
+	})
+	return err
+}
+
 func findingGraphScope(finding *ports.FindingRecord) (string, string) {
 	tenantID := strings.TrimSpace(finding.TenantID)
 	sourceID := strings.TrimSpace(finding.RuntimeID)
@@ -245,4 +311,12 @@ func findingGraphLabel(value string) string {
 func findingGraphHash(values ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(values, "\n")))
 	return hex.EncodeToString(sum[:8])
+}
+
+func findingStatusDecisionID(finding *ports.FindingRecord) string {
+	return "finding-" + strings.TrimSpace(finding.ID) + "-decision-" + strings.TrimSpace(finding.Status)
+}
+
+func findingStatusOutcomeID(finding *ports.FindingRecord) string {
+	return "finding-" + strings.TrimSpace(finding.ID) + "-outcome-" + strings.TrimSpace(finding.Status)
 }

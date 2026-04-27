@@ -185,6 +185,20 @@ type stubGraphStore struct {
 
 func (s *stubGraphStore) Ping(context.Context) error { return nil }
 
+func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string, _ int) (*ports.EntityNeighborhood, error) {
+	entity, ok := s.entities[rootURN]
+	if !ok || entity == nil {
+		return nil, ports.ErrGraphEntityNotFound
+	}
+	return &ports.EntityNeighborhood{
+		Root: &ports.NeighborhoodNode{
+			URN:        entity.URN,
+			EntityType: entity.EntityType,
+			Label:      entity.Label,
+		},
+	}, nil
+}
+
 func (s *stubGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
 	if entity == nil {
 		return nil
@@ -1000,6 +1014,67 @@ func TestResolveFindingUpdatesPersistedWorkflow(t *testing.T) {
 	}
 	if finding.StatusUpdatedAt.IsZero() {
 		t.Fatal("ResolveFinding().StatusUpdatedAt = zero, want non-zero")
+	}
+}
+
+func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:           "finding-1",
+				TenantID:     "writer",
+				RuntimeID:    "writer-okta-audit",
+				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
+				Title:        "Okta Policy Rule Lifecycle Tampering",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:okta_actor:user:00u1", "urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+			},
+		},
+	}
+	graphStore := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:okta_actor:user:00u1": {
+				URN:        "urn:cerebro:writer:okta_actor:user:00u1",
+				TenantID:   "writer",
+				SourceID:   "okta",
+				EntityType: "okta.actor",
+				Label:      "admin@writer.com",
+			},
+			"urn:cerebro:writer:okta_resource:policyrule:pol-1": {
+				URN:        "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				TenantID:   "writer",
+				SourceID:   "okta",
+				EntityType: "okta.resource",
+				Label:      "Require MFA",
+			},
+		},
+	}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithGraphQueryStore(graphStore)
+	finding, err := service.ResolveFinding(context.Background(), "finding-1", "verified remediation")
+	if err != nil {
+		t.Fatalf("ResolveFinding() error = %v", err)
+	}
+	if got := finding.Status; got != "resolved" {
+		t.Fatalf("ResolveFinding().Status = %q, want resolved", got)
+	}
+	decisionCount := 0
+	outcomeCount := 0
+	for _, entity := range graphStore.entities {
+		if entity == nil {
+			continue
+		}
+		switch entity.EntityType {
+		case "decision":
+			decisionCount++
+		case "outcome":
+			outcomeCount++
+		}
+	}
+	if decisionCount != 1 {
+		t.Fatalf("decision entity count = %d, want 1", decisionCount)
+	}
+	if outcomeCount != 1 {
+		t.Fatalf("outcome entity count = %d, want 1", outcomeCount)
 	}
 }
 

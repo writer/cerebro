@@ -52,6 +52,7 @@ type Service struct {
 	runStore      ports.FindingEvaluationRunStore
 	evidenceStore ports.FindingEvidenceStore
 	claimStore    ports.ClaimStore
+	graphQuery    ports.GraphQueryStore
 	graph         ports.ProjectionGraphStore
 	rules         *Registry
 }
@@ -182,6 +183,15 @@ func (s *Service) WithGraphStore(graph ports.ProjectionGraphStore) *Service {
 		return nil
 	}
 	s.graph = graph
+	return s
+}
+
+// WithGraphQueryStore wires one optional graph query boundary used by workflow bridges.
+func (s *Service) WithGraphQueryStore(graphQuery ports.GraphQueryStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.graphQuery = graphQuery
 	return s
 }
 
@@ -711,6 +721,7 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 	if err != nil {
 		return nil, fmt.Errorf("update finding %q status to %q: %w", findingID, status, err)
 	}
+	_ = s.recordFindingStatusWorkflow(ctx, finding)
 	return finding, nil
 }
 
