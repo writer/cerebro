@@ -32,21 +32,31 @@ var githubDependabotOpenAlertControlRefs = []ports.FindingControlRef{
 	},
 }
 
+var githubDependabotOpenAlertDefinition = RuleDefinition{
+	ID:                 githubDependabotOpenAlertRuleID,
+	Name:               githubDependabotOpenAlertTitle,
+	Description:        "Detect open GitHub Dependabot alerts replayed from one source runtime.",
+	SourceID:           "github",
+	EventKinds:         []string{"github.dependabot_alert"},
+	OutputKind:         "finding.github_dependabot_open_alert",
+	Severity:           "dynamic",
+	Status:             githubDependabotOpenAlertStatus,
+	Maturity:           "test",
+	Tags:               []string{"github", "dependabot", "vulnerability", "supply-chain", "attack.initial-access"},
+	References:         []string{"https://docs.github.com/en/code-security/dependabot/dependabot-alerts/about-dependabot-alerts"},
+	FalsePositives:     []string{"Accepted risk or non-exploitable vulnerable dependency in a non-runtime path."},
+	Runbook:            "Review affected package, advisory, vulnerable range, and repository usage; upgrade to the first patched version or document accepted risk.",
+	RequiredAttributes: []string{"repository", "alert_number", "state"},
+	FingerprintFields:  []string{"repository", "alert_number"},
+	ControlRefs:        githubDependabotOpenAlertControlRefs,
+}
+
+var githubDependabotAlertKindMatcher = eventKindMatcher(githubDependabotOpenAlertDefinition.EventKinds...)
+
 func newGitHubDependabotOpenAlertRule() Rule {
 	return newEventRule(eventRuleConfig{
-		spec: &cerebrov1.RuleSpec{
-			Id:          githubDependabotOpenAlertRuleID,
-			Name:        githubDependabotOpenAlertTitle,
-			Description: "Detect open GitHub Dependabot alerts replayed from one source runtime.",
-			InputStreamIds: []string{
-				"source-runtime-replay",
-			},
-			OutputKinds: []string{
-				"finding.github_dependabot_open_alert",
-			},
-		},
-		sourceID: "github",
-		match:    matchesGitHubDependabotOpenAlert,
+		definition: githubDependabotOpenAlertDefinition,
+		match:      matchesGitHubDependabotOpenAlert,
 		build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
 			return githubDependabotOpenAlertFinding(ctx, event, runtime.GetId())
 		},
@@ -54,13 +64,12 @@ func newGitHubDependabotOpenAlertRule() Rule {
 }
 
 func matchesGitHubDependabotOpenAlert(event *cerebrov1.EventEnvelope) bool {
-	if event == nil || !strings.EqualFold(strings.TrimSpace(event.GetKind()), "github.dependabot_alert") {
+	if !githubDependabotAlertKindMatcher(event) {
 		return false
 	}
-	attributes := event.GetAttributes()
+	attributes := eventAttributes(event)
 	return strings.EqualFold(strings.TrimSpace(attributes["state"]), findingStatusOpen) &&
-		strings.TrimSpace(attributes["repository"]) != "" &&
-		strings.TrimSpace(attributes["alert_number"]) != ""
+		hasRequiredAttributes(event, "repository", "alert_number")
 }
 
 func githubDependabotOpenAlertFinding(ctx context.Context, event *cerebrov1.EventEnvelope, runtimeID string) (*ports.FindingRecord, error) {
@@ -89,6 +98,9 @@ func githubDependabotOpenAlertFinding(ctx context.Context, event *cerebrov1.Even
 		"state":                    strings.TrimSpace(attributes["state"]),
 		"vulnerable_version_range": strings.TrimSpace(attributes["vulnerable_version_range"]),
 	}
+	for key, value := range githubDependabotOpenAlertDefinition.AttributeMap() {
+		findingAttributes["rule_"+key] = value
+	}
 	trimEmptyAttributes(findingAttributes)
 	observedAt := time.Time{}
 	if timestamp := event.GetOccurredAt(); timestamp != nil {
@@ -116,7 +128,7 @@ func githubDependabotOpenAlertFinding(ctx context.Context, event *cerebrov1.Even
 		PolicyName:        firstNonEmpty(strings.TrimSpace(attributes["advisory_ghsa_id"]), strings.TrimSpace(attributes["advisory_cve_id"]), primaryResourceLabel),
 		CheckID:           githubDependabotOpenAlertCheckID,
 		CheckName:         githubDependabotOpenAlertCheckName,
-		ControlRefs:       cloneFindingControlRefs(githubDependabotOpenAlertControlRefs),
+		ControlRefs:       cloneFindingControlRefs(githubDependabotOpenAlertDefinition.ControlRefs),
 		Attributes:        findingAttributes,
 		FirstObservedAt:   observedAt,
 		LastObservedAt:    observedAt,

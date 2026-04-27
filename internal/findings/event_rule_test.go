@@ -32,6 +32,44 @@ func TestEventRuleScaffoldClonesSpecAndMatchesRuntimeSource(t *testing.T) {
 	}
 }
 
+func TestRuleDefinitionBuildsSpecAndAttributes(t *testing.T) {
+	definition := RuleDefinition{
+		ID:                 "github-rule",
+		Name:               "GitHub Rule",
+		Description:        "Detects a GitHub event.",
+		SourceID:           "github",
+		EventKinds:         []string{"github.audit"},
+		OutputKind:         "finding.github_rule",
+		Severity:           "HIGH",
+		Status:             "open",
+		Maturity:           "test",
+		Tags:               []string{"github", "attack.t1562"},
+		References:         []string{"https://example.com/rule"},
+		FalsePositives:     []string{"approved admin activity"},
+		Runbook:            "Review actor and repository.",
+		RequiredAttributes: []string{"action", "repository"},
+		FingerprintFields:  []string{"repository", "action"},
+		ControlRefs:        []ports.FindingControlRef{{FrameworkName: "SOC 2", ControlID: "CC7.1"}},
+	}
+	if err := definition.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	spec := definition.RuleSpec()
+	if got := spec.GetId(); got != "github-rule" {
+		t.Fatalf("RuleSpec().Id = %q, want github-rule", got)
+	}
+	if got := spec.GetOutputKinds()[0]; got != "finding.github_rule" {
+		t.Fatalf("RuleSpec().OutputKinds[0] = %q, want finding.github_rule", got)
+	}
+	attributes := definition.AttributeMap()
+	if got := attributes["tags"]; got != "github,attack.t1562" {
+		t.Fatalf("AttributeMap()[tags] = %q, want github,attack.t1562", got)
+	}
+	if got := attributes["required_attributes"]; got != "action,repository" {
+		t.Fatalf("AttributeMap()[required_attributes] = %q, want action,repository", got)
+	}
+}
+
 func TestEventRuleScaffoldEvaluatesMatcherAndBuilder(t *testing.T) {
 	buildCalls := 0
 	rule := newEventRule(eventRuleConfig{
@@ -92,6 +130,17 @@ func TestEventRuleScaffoldRequiresRuntimeAndConfiguration(t *testing.T) {
 	unconfigured := newEventRule(eventRuleConfig{spec: &cerebrov1.RuleSpec{Id: "bad-rule"}})
 	if _, err := unconfigured.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "runtime"}, &cerebrov1.EventEnvelope{}); err == nil {
 		t.Fatal("Evaluate(unconfigured) error = nil, want non-nil")
+	}
+
+	invalidDefinition := newEventRule(eventRuleConfig{
+		definition: RuleDefinition{ID: "bad-rule"},
+		match:      func(*cerebrov1.EventEnvelope) bool { return true },
+		build: func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+			return nil, nil
+		},
+	})
+	if _, err := invalidDefinition.Evaluate(context.Background(), &cerebrov1.SourceRuntime{Id: "runtime"}, &cerebrov1.EventEnvelope{}); err == nil {
+		t.Fatal("Evaluate(invalid definition) error = nil, want non-nil")
 	}
 }
 

@@ -620,6 +620,12 @@ func TestEvaluateSourceRuntimeFindingsReplaysGitHubDependabotAlert(t *testing.T)
 	if got := finding.PolicyID; got != "GHSA-xxxx-yyyy-zzzz" {
 		t.Fatalf("Finding.PolicyID = %q, want GHSA", got)
 	}
+	if got := finding.Attributes["rule_tags"]; got != "github,dependabot,vulnerability,supply-chain,attack.initial-access" {
+		t.Fatalf("Finding rule tags = %q, want github Dependabot tags", got)
+	}
+	if got := finding.Attributes["rule_required_attributes"]; got != "repository,alert_number,state" {
+		t.Fatalf("Finding rule required attributes = %q, want repository,alert_number,state", got)
+	}
 	primaryResourceURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
 	if got := finding.Attributes["primary_resource_urn"]; got != primaryResourceURN {
 		t.Fatalf("Finding primary resource urn = %q, want %q", got, primaryResourceURN)

@@ -47,21 +47,31 @@ var (
 	}
 )
 
+var oktaPolicyRuleLifecycleTamperingDefinition = RuleDefinition{
+	ID:                 oktaPolicyRuleLifecycleTamperingRuleID,
+	Name:               oktaPolicyRuleLifecycleTamperingTitle,
+	Description:        "Detect successful Okta policy rule update, deactivate, or delete events replayed from one source runtime.",
+	SourceID:           "okta",
+	EventKinds:         []string{"okta.audit"},
+	OutputKind:         "finding.okta_policy_rule_lifecycle_tampering",
+	Severity:           oktaPolicyRuleLifecycleTamperingSeverity,
+	Status:             oktaPolicyRuleLifecycleTamperingStatus,
+	Maturity:           "test",
+	Tags:               []string{"okta", "identity", "policy", "defense-evasion", "attack.t1562"},
+	References:         []string{"https://help.okta.com/en-us/content/topics/reports/reports_syslog.htm"},
+	FalsePositives:     []string{"Authorized identity platform administration during approved change windows."},
+	Runbook:            "Review actor, target policy rule, administrative change ticket, and adjacent identity events before reverting or escalating.",
+	RequiredAttributes: []string{"event_type", "resource_id"},
+	FingerprintFields:  []string{"event_id"},
+	ControlRefs:        oktaPolicyRuleLifecycleTamperingControlRefs,
+}
+
+var oktaAuditKindMatcher = eventKindMatcher(oktaPolicyRuleLifecycleTamperingDefinition.EventKinds...)
+
 func newOktaPolicyRuleLifecycleTamperingRule() Rule {
 	return newEventRule(eventRuleConfig{
-		spec: &cerebrov1.RuleSpec{
-			Id:          oktaPolicyRuleLifecycleTamperingRuleID,
-			Name:        oktaPolicyRuleLifecycleTamperingTitle,
-			Description: "Detect successful Okta policy rule update, deactivate, or delete events replayed from one source runtime.",
-			InputStreamIds: []string{
-				"source-runtime-replay",
-			},
-			OutputKinds: []string{
-				"finding.okta_policy_rule_lifecycle_tampering",
-			},
-		},
-		sourceID: "okta",
-		match:    matchesOktaPolicyRuleLifecycleTampering,
+		definition: oktaPolicyRuleLifecycleTamperingDefinition,
+		match:      matchesOktaPolicyRuleLifecycleTampering,
 		build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
 			return oktaPolicyRuleLifecycleTamperingFinding(ctx, event, runtime.GetId())
 		},
@@ -69,10 +79,10 @@ func newOktaPolicyRuleLifecycleTamperingRule() Rule {
 }
 
 func matchesOktaPolicyRuleLifecycleTampering(event *cerebrov1.EventEnvelope) bool {
-	if event == nil || !strings.EqualFold(strings.TrimSpace(event.GetKind()), "okta.audit") {
+	if !oktaAuditKindMatcher(event) || !hasRequiredAttributes(event, "event_type") {
 		return false
 	}
-	attributes := event.GetAttributes()
+	attributes := eventAttributes(event)
 	eventType := strings.ToLower(strings.TrimSpace(attributes["event_type"]))
 	if _, ok := oktaPolicyRuleLifecycleTamperingEventTypes[eventType]; !ok {
 		return false
@@ -104,6 +114,9 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 		"primary_actor_urn":    actorURN,
 		"primary_resource_urn": resourceURN,
 	}
+	for key, value := range oktaPolicyRuleLifecycleTamperingDefinition.AttributeMap() {
+		attributes["rule_"+key] = value
+	}
 	trimEmptyAttributes(attributes)
 	observedAt := time.Time{}
 	if timestamp := event.GetOccurredAt(); timestamp != nil {
@@ -127,7 +140,7 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 		PolicyName:        policyName,
 		CheckID:           oktaPolicyRuleLifecycleTamperingCheckID,
 		CheckName:         oktaPolicyRuleLifecycleTamperingCheckName,
-		ControlRefs:       cloneFindingControlRefs(oktaPolicyRuleLifecycleTamperingControlRefs),
+		ControlRefs:       cloneFindingControlRefs(oktaPolicyRuleLifecycleTamperingDefinition.ControlRefs),
 		Attributes:        attributes,
 		FirstObservedAt:   observedAt,
 		LastObservedAt:    observedAt,
