@@ -135,6 +135,22 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		PrimaryResourceURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
 		ResourceURNs:       []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
 	}
+	recordedEvent, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    finding,
+		RecordedAt: "2026-04-27T11:59:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingRecordedEvent() error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), recordedEvent); err != nil {
+		t.Fatalf("Project(recorded) error = %v", err)
+	}
+	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; !ok {
+		t.Fatal("finding anchor missing after recorded event")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; !ok {
+		t.Fatal("resource finding link missing after recorded event")
+	}
 	noteEvent, err := workflowevents.NewFindingNoteAddedEvent(workflowevents.FindingNoteAdded{
 		Finding:   finding,
 		NoteID:    "note-1",

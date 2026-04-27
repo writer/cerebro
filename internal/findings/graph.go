@@ -20,6 +20,31 @@ const (
 	findingDecisionStatusCompleted = "completed"
 )
 
+func (s *Service) projectFindingAnchor(ctx context.Context, finding *ports.FindingRecord) error {
+	if s == nil || s.graph == nil {
+		return nil
+	}
+	if finding == nil {
+		return errors.New("finding is required")
+	}
+	tenantID, sourceID := findingGraphScope(finding)
+	recordedAt := finding.LastObservedAt.UTC()
+	if recordedAt.IsZero() {
+		recordedAt = finding.FirstObservedAt.UTC()
+	}
+	if recordedAt.IsZero() {
+		recordedAt = time.Now().UTC()
+	}
+	event, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
+		Finding:    findingWorkflowSnapshot(finding, tenantID, sourceID),
+		RecordedAt: recordedAt.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return err
+	}
+	return s.recordAndProjectWorkflowEvent(ctx, event)
+}
+
 func (s *Service) projectFindingNote(ctx context.Context, finding *ports.FindingRecord, note ports.FindingNote) error {
 	if s == nil || s.graph == nil {
 		return nil

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -200,6 +201,136 @@ func TestGitHubDependabotFindingsEndToEndWithGHCLI(t *testing.T) {
 	)
 }
 
+func TestGitHubAuditFindingsGraphPreviewWithGHCLI(t *testing.T) {
+	if os.Getenv("CEREBRO_RUN_GITHUB_AUDIT_FINDINGS_E2E") != "1" {
+		t.Skip("set CEREBRO_RUN_GITHUB_AUDIT_FINDINGS_E2E=1 to run the live GitHub audit findings graph preview")
+	}
+
+	ctx := context.Background()
+	config := map[string]string{
+		"family":   "audit",
+		"include":  "all",
+		"per_page": firstNonEmptyEnv("CEREBRO_GITHUB_AUDIT_FINDINGS_PER_PAGE", "100"),
+	}
+	if owner := firstNonEmptyEnv("CEREBRO_GITHUB_AUDIT_FINDINGS_OWNER", ""); owner != "" {
+		config["owner"] = owner
+	} else if owner := strings.TrimSpace(os.Getenv("CEREBRO_GITHUB_FINDINGS_OWNER")); owner != "" {
+		config["owner"] = owner
+	}
+	config, err := prepareSourceConfigWithCLI(ctx, githubSourceID, "read", config, execGitHubLocalCLI{})
+	if err != nil {
+		t.Fatalf("prepareSourceConfigWithCLI() error = %v", err)
+	}
+
+	registry, err := sourceregistry.Builtin()
+	if err != nil {
+		t.Fatalf("Builtin() error = %v", err)
+	}
+	phrases := githubAuditFindingPhrases()
+	events, err := readGitHubAuditEventsForLiveFindings(ctx, sourceops.New(registry), config, phrases)
+	if err != nil {
+		t.Fatalf("readGitHubAuditEventsForLiveFindings() error = %v", err)
+	}
+
+	runtimeID := "live-github-audit"
+	events = cloneEventsForRuntime(events, runtimeID)
+	graphPath := t.TempDir() + "/graph"
+	graphStore, err := graphstorekuzu.Open(configpkg.GraphStoreConfig{
+		Driver:   configpkg.GraphStoreDriverKuzu,
+		KuzuPath: graphPath,
+	})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer func() {
+		if closeErr := graphStore.Close(); closeErr != nil {
+			t.Fatalf("Close() error = %v", closeErr)
+		}
+	}()
+	projector := sourceprojection.New(nil, graphStore)
+	for _, event := range events {
+		if _, err := projector.Project(ctx, event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	state := newGitHubFindingsE2EStore(&cerebrov1.SourceRuntime{
+		Id:       runtimeID,
+		SourceId: githubSourceID,
+		TenantId: config["owner"],
+		Config: map[string]string{
+			"family": "audit",
+			"owner":  config["owner"],
+		},
+	})
+	findingService := findings.New(
+		state,
+		&githubFindingsE2EReplayer{events: events},
+		state,
+		state,
+		state,
+		state,
+	).WithGraphStore(graphStore).WithGraphQueryStore(graphStore)
+	result, err := findingService.EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{
+		RuntimeID:  runtimeID,
+		RuleIDs:    githubAuditSOTARuleIDs(),
+		EventLimit: uint32(len(events)),
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+	}
+	allPreviewFindings := auditGraphPreviewFindings(result)
+	previewLimit := githubAuditGraphPreviewLimit()
+	previewFindings := limitAuditPreviewFindings(allPreviewFindings, previewLimit)
+	neighborhoods := make([]graphPreviewNeighborhood, 0, len(previewFindings))
+	for _, finding := range allPreviewFindings {
+		neighborhood, err := graphquery.New(graphStore).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
+			RootURN: finding.FindingURN,
+			Limit:   50,
+		})
+		if err != nil {
+			t.Fatalf("GetEntityNeighborhood(%q) error = %v", finding.FindingURN, err)
+		}
+		if !neighborhoodHasEdge(neighborhood, finding.PrimaryResourceURN, "has_finding", finding.FindingURN) {
+			t.Fatalf("finding neighborhood missing has_finding edge %s -> %s: %#v", finding.PrimaryResourceURN, finding.FindingURN, neighborhood.Relations)
+		}
+		if len(neighborhoods) < previewLimit {
+			neighborhoods = append(neighborhoods, newGraphPreviewNeighborhood(neighborhood))
+		}
+	}
+	counts, err := graphStore.Counts(ctx)
+	if err != nil {
+		t.Fatalf("Counts() error = %v", err)
+	}
+	preview := githubAuditFindingsGraphPreview{
+		Org:                 config["owner"],
+		RuntimeID:           runtimeID,
+		EventsRead:          len(events),
+		Phrases:             phrases,
+		FindingsProjected:   len(allPreviewFindings),
+		FindingsPreviewed:   len(previewFindings),
+		GraphNodes:          counts.Nodes,
+		GraphRelations:      counts.Relations,
+		Findings:            previewFindings,
+		Neighborhoods:       neighborhoods,
+		RequiredFindingEdge: "primary_resource --has_finding--> finding",
+	}
+	if outputPath := strings.TrimSpace(os.Getenv("CEREBRO_GITHUB_AUDIT_FINDINGS_GRAPH_PREVIEW_OUT")); outputPath != "" {
+		writeGitHubFindingsGraphPreview(t, outputPath, preview)
+	}
+	if len(allPreviewFindings) == 0 {
+		t.Skipf("no live GitHub audit events matched built-in SOTA finding rules for org %s across %d audit events", config["owner"], len(events))
+	}
+	t.Logf(
+		"validated live github audit findings graph org=%s events=%d findings=%d graph_nodes=%d graph_relations=%d",
+		config["owner"],
+		len(events),
+		len(allPreviewFindings),
+		counts.Nodes,
+		counts.Relations,
+	)
+}
+
 type githubFindingsE2EReplayer struct {
 	events []*cerebrov1.EventEnvelope
 }
@@ -218,6 +349,32 @@ type githubFindingsGraphPreview struct {
 	FindingNeighborhood   graphPreviewNeighborhood `json:"finding_neighborhood"`
 	RequiredAlertEdges    []string                 `json:"required_alert_edges"`
 	RequiredWorkflowEdges []string                 `json:"required_workflow_edges"`
+}
+
+type githubAuditFindingsGraphPreview struct {
+	Org                 string                      `json:"org"`
+	RuntimeID           string                      `json:"runtime_id"`
+	EventsRead          int                         `json:"events_read"`
+	Phrases             []string                    `json:"phrases"`
+	FindingsProjected   int                         `json:"findings_projected"`
+	FindingsPreviewed   int                         `json:"findings_previewed"`
+	GraphNodes          int64                       `json:"graph_nodes"`
+	GraphRelations      int64                       `json:"graph_relations"`
+	Findings            []githubAuditPreviewFinding `json:"findings"`
+	Neighborhoods       []graphPreviewNeighborhood  `json:"neighborhoods"`
+	RequiredFindingEdge string                      `json:"required_finding_edge"`
+}
+
+type githubAuditPreviewFinding struct {
+	RuleID             string   `json:"rule_id"`
+	Action             string   `json:"action"`
+	Actor              string   `json:"actor"`
+	Repo               string   `json:"repo,omitempty"`
+	Summary            string   `json:"summary"`
+	Severity           string   `json:"severity"`
+	PrimaryResourceURN string   `json:"primary_resource_urn"`
+	FindingURN         string   `json:"finding_urn"`
+	ResourceURNs       []string `json:"resource_urns"`
 }
 
 type graphPreviewNeighborhood struct {
@@ -254,7 +411,179 @@ func (r *githubFindingsE2EReplayer) Replay(_ context.Context, request ports.Repl
 	return events, nil
 }
 
-func writeGitHubFindingsGraphPreview(t *testing.T, outputPath string, preview githubFindingsGraphPreview) {
+func readGitHubAuditEventsForLiveFindings(ctx context.Context, ops *sourceops.Service, config map[string]string, phrases []string) ([]*cerebrov1.EventEnvelope, error) {
+	eventsByID := map[string]*cerebrov1.EventEnvelope{}
+	for _, phrase := range phrases {
+		requestConfig := cloneStringMap(config)
+		if trimmed := strings.TrimSpace(phrase); trimmed != "" {
+			requestConfig["phrase"] = trimmed
+		}
+		response, err := ops.Read(ctx, &cerebrov1.ReadSourceRequest{
+			SourceId: githubSourceID,
+			Config:   requestConfig,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, event := range response.GetEvents() {
+			if event == nil || strings.TrimSpace(event.GetId()) == "" {
+				continue
+			}
+			eventsByID[event.GetId()] = event
+		}
+	}
+	events := make([]*cerebrov1.EventEnvelope, 0, len(eventsByID))
+	for _, event := range eventsByID {
+		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
+	}
+	sort.Slice(events, func(i int, j int) bool {
+		return events[i].GetId() < events[j].GetId()
+	})
+	return events, nil
+}
+
+func githubAuditFindingPhrases() []string {
+	if raw := strings.TrimSpace(os.Getenv("CEREBRO_GITHUB_AUDIT_FINDINGS_PHRASES")); raw != "" {
+		return splitCSV(raw)
+	}
+	return []string{
+		"",
+		"action:repository_secret_scanning.disable",
+		"action:org.secret_scanning_push_protection_disable",
+		"action:protected_branch.destroy",
+		"action:repo.access",
+		"action:secret_scanning_alert.create",
+		"action:repo.register_self_hosted_runner",
+		"action:repo.add_member",
+		"action:org.add_member",
+		"action:dependabot_alerts.disable",
+		"action:org.disable_two_factor_requirement",
+		"action:ip_allow_list.disable",
+		"action:integration_installation.create",
+		"action:personal_access_token.access_granted",
+		"action:protected_branch.policy_override",
+		"action:repository_ruleset.destroy",
+		"action:repo.destroy",
+		"action:hook.create",
+		"action:private_repository_forking.enable",
+	}
+}
+
+func githubAuditSOTARuleIDs() []string {
+	return []string{
+		"github-secret-scanning-disabled",
+		"github-push-protection-disabled",
+		"github-branch-protection-disabled",
+		"github-repository-made-public",
+		"github-secret-scanning-alert-created",
+		"github-self-hosted-runner-change",
+		"github-repository-collaborator-added",
+		"github-organization-owner-added",
+		"github-code-security-controls-disabled",
+		"github-org-auth-control-modified",
+		"github-org-ip-allow-list-modified",
+		"github-app-integration-installed",
+		"github-personal-access-token-created",
+		"github-protected-branch-policy-override",
+		"github-repository-ruleset-modified",
+		"github-critical-resource-deleted",
+		"github-webhook-modified",
+		"github-private-repository-forking-enabled",
+	}
+}
+
+func auditGraphPreviewFindings(result *findings.EvaluateRulesResult) []githubAuditPreviewFinding {
+	if result == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	preview := []githubAuditPreviewFinding{}
+	for _, evaluation := range result.Evaluations {
+		if evaluation == nil {
+			continue
+		}
+		for _, finding := range evaluation.Findings {
+			if finding == nil {
+				continue
+			}
+			findingURN := "urn:cerebro:" + finding.TenantID + ":finding:" + finding.ID
+			if _, ok := seen[findingURN]; ok {
+				continue
+			}
+			seen[findingURN] = struct{}{}
+			preview = append(preview, githubAuditPreviewFinding{
+				RuleID:             finding.RuleID,
+				Action:             finding.Attributes["action"],
+				Actor:              finding.Attributes["actor"],
+				Repo:               finding.Attributes["repo"],
+				Summary:            finding.Summary,
+				Severity:           finding.Severity,
+				PrimaryResourceURN: finding.Attributes["primary_resource_urn"],
+				FindingURN:         findingURN,
+				ResourceURNs:       append([]string(nil), finding.ResourceURNs...),
+			})
+		}
+	}
+	sort.Slice(preview, func(i int, j int) bool {
+		if preview[i].RuleID == preview[j].RuleID {
+			return preview[i].FindingURN < preview[j].FindingURN
+		}
+		return preview[i].RuleID < preview[j].RuleID
+	})
+	return preview
+}
+
+func limitAuditPreviewFindings(findings []githubAuditPreviewFinding, limit int) []githubAuditPreviewFinding {
+	if limit < 1 || len(findings) <= limit {
+		return append([]githubAuditPreviewFinding(nil), findings...)
+	}
+	preview := make([]githubAuditPreviewFinding, 0, limit)
+	selected := map[string]struct{}{}
+	rules := map[string]struct{}{}
+	for _, finding := range findings {
+		if len(preview) >= limit {
+			break
+		}
+		if _, ok := rules[finding.RuleID]; ok {
+			continue
+		}
+		rules[finding.RuleID] = struct{}{}
+		selected[finding.FindingURN] = struct{}{}
+		preview = append(preview, finding)
+	}
+	for _, finding := range findings {
+		if len(preview) >= limit {
+			break
+		}
+		if _, ok := selected[finding.FindingURN]; ok {
+			continue
+		}
+		preview = append(preview, finding)
+	}
+	return preview
+}
+
+func githubAuditGraphPreviewLimit() int {
+	const defaultLimit = 25
+	raw := strings.TrimSpace(os.Getenv("CEREBRO_GITHUB_AUDIT_FINDINGS_PREVIEW_LIMIT"))
+	if raw == "" {
+		return defaultLimit
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit < 1 {
+		return defaultLimit
+	}
+	return limit
+}
+
+func firstNonEmptyEnv(key string, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func writeGitHubFindingsGraphPreview(t *testing.T, outputPath string, preview any) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		t.Fatalf("create graph preview output directory: %v", err)
@@ -317,6 +646,15 @@ func newGraphPreviewNode(node *ports.NeighborhoodNode) graphPreviewNode {
 func neighborhoodHasRelation(neighborhood *ports.EntityNeighborhood, relation string) bool {
 	for _, graphRelation := range neighborhood.Relations {
 		if graphRelation.Relation == relation {
+			return true
+		}
+	}
+	return false
+}
+
+func neighborhoodHasEdge(neighborhood *ports.EntityNeighborhood, fromURN string, relation string, toURN string) bool {
+	for _, graphRelation := range neighborhood.Relations {
+		if graphRelation.FromURN == fromURN && graphRelation.Relation == relation && graphRelation.ToURN == toURN {
 			return true
 		}
 	}

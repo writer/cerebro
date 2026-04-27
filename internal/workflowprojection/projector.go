@@ -57,6 +57,8 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		return s.projectAction(ctx, event)
 	case workflowevents.EventKindKnowledgeOutcomeRecorded:
 		return s.projectOutcome(ctx, event)
+	case workflowevents.EventKindFindingRecorded:
+		return s.projectFindingRecorded(ctx, event)
 	case workflowevents.EventKindFindingNoteAdded:
 		return s.projectFindingNote(ctx, event)
 	case workflowevents.EventKindFindingTicketLinked:
@@ -227,6 +229,18 @@ func (s *Service) projectOutcome(ctx context.Context, event *cerebrov1.EventEnve
 		}, &result); err != nil {
 			return ports.ProjectionResult{}, err
 		}
+	}
+	return result, nil
+}
+
+func (s *Service) projectFindingRecorded(ctx context.Context, event *cerebrov1.EventEnvelope) (ports.ProjectionResult, error) {
+	payload, err := workflowevents.DecodeFindingRecorded(event)
+	if err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	result := ports.ProjectionResult{}
+	if _, err := s.ensureFindingAnchor(ctx, payload.Finding, &result); err != nil {
+		return ports.ProjectionResult{}, err
 	}
 	return result, nil
 }

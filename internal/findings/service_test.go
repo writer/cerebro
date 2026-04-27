@@ -638,6 +638,58 @@ func TestEvaluateSourceRuntimeFindingsReplaysGitHubDependabotAlert(t *testing.T)
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.T) {
+	store := &stubFindingStore{}
+	graph := &stubGraphStore{}
+	appendLog := &recordingAppendLog{}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-github": {
+					Id:       "writer-github",
+					SourceId: "github",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubReplayer{
+			events: []*cerebrov1.EventEnvelope{
+				newGitHubDependabotAlertEvent("github-dependabot-alert-7", "open"),
+			},
+		},
+		store,
+		store,
+		store,
+		store,
+	).WithGraphStore(graph).WithAppendLog(appendLog)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-github",
+		RuleID:    githubDependabotOpenAlertRuleID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(Findings) = %d, want 1", got)
+	}
+	finding := result.Findings[0]
+	findingURN := "urn:cerebro:writer:finding:" + finding.ID
+	primaryResourceURN := finding.Attributes["primary_resource_urn"]
+	if _, ok := graph.entities[findingURN]; !ok {
+		t.Fatalf("graph finding entity %q missing", findingURN)
+	}
+	if _, ok := graph.links[primaryResourceURN+"|has_finding|"+findingURN]; !ok {
+		t.Fatalf("graph has_finding link missing for %s -> %s", primaryResourceURN, findingURN)
+	}
+	if got := len(appendLog.events); got != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", got)
+	}
+	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingRecorded {
+		t.Fatalf("appendLog.events[0].Kind = %q, want %q", got, workflowevents.EventKindFindingRecorded)
+	}
+}
+
 func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
 	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {

@@ -277,6 +277,10 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
 			result.Evidence = append(result.Evidence, evidence)
+			if err := s.projectFindingAnchor(ctx, stored); err != nil {
+				evaluationErr := fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)
+				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+			}
 		}
 	}
 	if err := s.finishCompletedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings)); err != nil {
@@ -376,6 +380,12 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					break
 				}
 				state.result.Evidence = append(state.result.Evidence, evidence)
+				if err := s.projectFindingAnchor(ctx, stored); err != nil {
+					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)); failErr != nil {
+						return nil, failErr
+					}
+					break
+				}
 			}
 		}
 	}
