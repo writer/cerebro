@@ -84,6 +84,13 @@ func TestAddFindingNoteRejectsEmptyNote(t *testing.T) {
 	}
 }
 
+func TestLinkFindingTicketRejectsEmptyURL(t *testing.T) {
+	store := &Store{}
+	if _, err := store.LinkFindingTicket(context.Background(), ports.FindingTicketLink{FindingID: "finding-1"}); err == nil {
+		t.Fatal("LinkFindingTicket() error = nil, want non-nil")
+	}
+}
+
 func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		RuntimeID:   "writer-okta-audit",
@@ -155,8 +162,9 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 		CheckName:             "Okta Policy Rule Lifecycle Tampering (30 days)",
 		AttributesJSON:        `{"primary_resource_urn":"urn:cerebro:writer:okta_resource:policyrule:pol-1"}`,
 		findingWorkflowRow: findingWorkflowRow{
-			NotesJSON: `[{"id":"note-1","body":"Escalate to identity engineering.","created_at":"2026-05-01T11:00:00Z"}]`,
-			DueAt:     sql.NullTime{Time: time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), Valid: true},
+			NotesJSON:   `[{"id":"note-1","body":"Escalate to identity engineering.","created_at":"2026-05-01T11:00:00Z"}]`,
+			TicketsJSON: `[{"url":"https://jira.writer.com/browse/ENG-123","name":"ENG-123","external_id":"ENG-123","linked_at":"2026-05-01T11:30:00Z"}]`,
+			DueAt:       sql.NullTime{Time: time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC), Valid: true},
 		},
 		FirstObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
 		LastObservedAt:  time.Date(2026, 4, 23, 12, 1, 0, 0, time.UTC),
@@ -184,5 +192,11 @@ func TestFindingRowRecordDecodesCheckAndControlMetadata(t *testing.T) {
 	}
 	if got := record.Notes[0].Body; got != "Escalate to identity engineering." {
 		t.Fatalf("findingRow.record().Notes[0].Body = %q, want note body", got)
+	}
+	if got := len(record.Tickets); got != 1 {
+		t.Fatalf("len(findingRow.record().Tickets) = %d, want 1", got)
+	}
+	if got := record.Tickets[0].URL; got != "https://jira.writer.com/browse/ENG-123" {
+		t.Fatalf("findingRow.record().Tickets[0].URL = %q, want ticket url", got)
 	}
 }

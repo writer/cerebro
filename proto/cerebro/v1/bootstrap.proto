@@ -33,6 +33,7 @@ service BootstrapService {
   rpc AssignFinding(AssignFindingRequest) returns (AssignFindingResponse);
   rpc SetFindingDueDate(SetFindingDueDateRequest) returns (SetFindingDueDateResponse);
   rpc AddFindingNote(AddFindingNoteRequest) returns (AddFindingNoteResponse);
+  rpc LinkFindingTicket(LinkFindingTicketRequest) returns (LinkFindingTicketResponse);
   rpc ListFindingEvaluationRuns(ListFindingEvaluationRunsRequest) returns (ListFindingEvaluationRunsResponse);
   rpc GetFindingEvaluationRun(GetFindingEvaluationRunRequest) returns (GetFindingEvaluationRunResponse);
   rpc ListFindingEvidence(ListFindingEvidenceRequest) returns (ListFindingEvidenceResponse);
@@ -381,6 +382,14 @@ message FindingNote {
   google.protobuf.Timestamp created_at = 3;
 }
 
+// FindingTicket captures one external ticket reference attached to one finding.
+message FindingTicket {
+  string url = 1;
+  string name = 2;
+  string external_id = 3;
+  google.protobuf.Timestamp linked_at = 4;
+}
+
 // Finding is the normalized persisted finding view for the first runtime evaluator slice.
 message Finding {
   string id = 1;
@@ -408,6 +417,7 @@ message Finding {
   repeated FindingControlRef control_refs = 23;
   google.protobuf.Timestamp due_at = 24;
   repeated FindingNote notes = 25;
+  repeated FindingTicket tickets = 26;
 }
 
 // GetFindingRequest loads one persisted finding by its durable identifier.
@@ -472,6 +482,19 @@ message AddFindingNoteRequest {
 
 // AddFindingNoteResponse returns the updated finding with appended notes.
 message AddFindingNoteResponse {
+  Finding finding = 1;
+}
+
+// LinkFindingTicketRequest appends one ticket link to one persisted finding.
+message LinkFindingTicketRequest {
+  string id = 1;
+  string url = 2;
+  string name = 3;
+  string external_id = 4;
+}
+
+// LinkFindingTicketResponse returns the updated finding with linked tickets.
+message LinkFindingTicketResponse {
   Finding finding = 1;
 }
 

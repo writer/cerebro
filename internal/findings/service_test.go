@@ -158,6 +158,78 @@ func (s *stubFindingStore) AddFindingNote(_ context.Context, request ports.Findi
 	return cloneFinding(cloned), nil
 }
 
+func (s *stubFindingStore) LinkFindingTicket(_ context.Context, request ports.FindingTicketLink) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	exists := false
+	for _, ticket := range cloned.Tickets {
+		if strings.TrimSpace(ticket.URL) == strings.TrimSpace(request.Ticket.URL) {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		cloned.Tickets = append(cloned.Tickets, request.Ticket)
+	}
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
+type stubGraphStore struct {
+	entities map[string]*ports.ProjectedEntity
+	links    map[string]*ports.ProjectedLink
+}
+
+func (s *stubGraphStore) Ping(context.Context) error { return nil }
+
+func (s *stubGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if entity == nil {
+		return nil
+	}
+	if s.entities == nil {
+		s.entities = make(map[string]*ports.ProjectedEntity)
+	}
+	attributes := make(map[string]string, len(entity.Attributes))
+	for key, value := range entity.Attributes {
+		attributes[key] = value
+	}
+	s.entities[entity.URN] = &ports.ProjectedEntity{
+		URN:        entity.URN,
+		TenantID:   entity.TenantID,
+		SourceID:   entity.SourceID,
+		EntityType: entity.EntityType,
+		Label:      entity.Label,
+		Attributes: attributes,
+	}
+	return nil
+}
+
+func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	if s.links == nil {
+		s.links = make(map[string]*ports.ProjectedLink)
+	}
+	attributes := make(map[string]string, len(link.Attributes))
+	for key, value := range link.Attributes {
+		attributes[key] = value
+	}
+	key := link.FromURN + "|" + link.Relation + "|" + link.ToURN
+	s.links[key] = &ports.ProjectedLink{
+		TenantID:   link.TenantID,
+		SourceID:   link.SourceID,
+		FromURN:    link.FromURN,
+		ToURN:      link.ToURN,
+		Relation:   link.Relation,
+		Attributes: attributes,
+	}
+	return nil
+}
+
 func (s *stubFindingStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
 	if claim == nil {
 		return nil, errors.New("claim is required")
@@ -967,10 +1039,18 @@ func TestSetFindingDueDateUpdatesPersistedWorkflow(t *testing.T) {
 func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{
-			"finding-1": {ID: "finding-1", Status: "open"},
+			"finding-1": {
+				ID:           "finding-1",
+				TenantID:     "writer",
+				RuntimeID:    "writer-okta-audit",
+				Title:        "Okta Policy Rule Lifecycle Tampering",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+			},
 		},
 	}
-	service := New(nil, nil, store, store, store, store)
+	graphStore := &stubGraphStore{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore)
 	finding, err := service.AddFindingNote(context.Background(), "finding-1", "Escalate to identity engineering.")
 	if err != nil {
 		t.Fatalf("AddFindingNote() error = %v", err)
@@ -983,6 +1063,65 @@ func TestAddFindingNoteUpdatesPersistedWorkflow(t *testing.T) {
 	}
 	if finding.Notes[0].CreatedAt.IsZero() {
 		t.Fatal("AddFindingNote().Notes[0].CreatedAt = zero, want non-zero")
+	}
+	annotationURN := "urn:cerebro:writer:annotation:finding-note:finding-1:" + finding.Notes[0].ID
+	if _, ok := graphStore.entities[annotationURN]; !ok {
+		t.Fatalf("graph annotation %q missing", annotationURN)
+	}
+	if _, ok := graphStore.entities["urn:cerebro:writer:finding:finding-1"]; !ok {
+		t.Fatal("graph finding anchor missing")
+	}
+	if _, ok := graphStore.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|annotated_with|"+annotationURN]; !ok {
+		t.Fatal("resource annotation link missing")
+	}
+	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|annotated_with|"+annotationURN]; !ok {
+		t.Fatal("finding annotation link missing")
+	}
+}
+
+func TestLinkFindingTicketUpdatesPersistedWorkflow(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:           "finding-1",
+				TenantID:     "writer",
+				RuntimeID:    "writer-okta-audit",
+				Title:        "Okta Policy Rule Lifecycle Tampering",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+			},
+		},
+	}
+	graphStore := &stubGraphStore{}
+	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore)
+	finding, err := service.LinkFindingTicket(
+		context.Background(),
+		"finding-1",
+		"https://jira.writer.com/browse/ENG-123",
+		"ENG-123",
+		"ENG-123",
+	)
+	if err != nil {
+		t.Fatalf("LinkFindingTicket() error = %v", err)
+	}
+	if got := len(finding.Tickets); got != 1 {
+		t.Fatalf("len(LinkFindingTicket().Tickets) = %d, want 1", got)
+	}
+	if got := finding.Tickets[0].URL; got != "https://jira.writer.com/browse/ENG-123" {
+		t.Fatalf("LinkFindingTicket().Tickets[0].URL = %q, want ticket url", got)
+	}
+	if finding.Tickets[0].LinkedAt.IsZero() {
+		t.Fatal("LinkFindingTicket().Tickets[0].LinkedAt = zero, want non-zero")
+	}
+	ticketURN := findingGraphTicketURN("writer", finding.Tickets[0].URL)
+	if _, ok := graphStore.entities[ticketURN]; !ok {
+		t.Fatalf("graph ticket %q missing", ticketURN)
+	}
+	if _, ok := graphStore.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|tracked_by|"+ticketURN]; !ok {
+		t.Fatal("resource ticket link missing")
+	}
+	if _, ok := graphStore.links["urn:cerebro:writer:finding:finding-1|tracked_by|"+ticketURN]; !ok {
+		t.Fatal("finding ticket link missing")
 	}
 }
 
@@ -1030,6 +1169,9 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	if _, err := service.AddFindingNote(context.Background(), findingID, "Escalate to identity engineering."); err != nil {
 		t.Fatalf("AddFindingNote() error = %v", err)
 	}
+	if _, err := service.LinkFindingTicket(context.Background(), findingID, "https://jira.writer.com/browse/ENG-123", "ENG-123", "ENG-123"); err != nil {
+		t.Fatalf("LinkFindingTicket() error = %v", err)
+	}
 	if _, err := service.ResolveFinding(context.Background(), findingID, "triaged"); err != nil {
 		t.Fatalf("ResolveFinding() error = %v", err)
 	}
@@ -1055,6 +1197,12 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 	}
 	if got := second.Findings[0].Notes[0].Body; got != "Escalate to identity engineering." {
 		t.Fatalf("second EvaluateSourceRuntime().Findings[0].Notes[0].Body = %q, want note body", got)
+	}
+	if got := len(second.Findings[0].Tickets); got != 1 {
+		t.Fatalf("len(second EvaluateSourceRuntime().Findings[0].Tickets) = %d, want 1", got)
+	}
+	if got := second.Findings[0].Tickets[0].URL; got != "https://jira.writer.com/browse/ENG-123" {
+		t.Fatalf("second EvaluateSourceRuntime().Findings[0].Tickets[0].URL = %q, want ticket url", got)
 	}
 	if got := second.Findings[0].StatusReason; got != "triaged" {
 		t.Fatalf("second EvaluateSourceRuntime().Findings[0].StatusReason = %q, want triaged", got)
@@ -1316,6 +1464,8 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(controlRefs, finding.ControlRefs)
 	notes := make([]ports.FindingNote, len(finding.Notes))
 	copy(notes, finding.Notes)
+	tickets := make([]ports.FindingTicket, len(finding.Tickets))
+	copy(tickets, finding.Tickets)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
@@ -1340,6 +1490,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ControlRefs:       controlRefs,
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
+			Tickets:         tickets,
 			Assignee:        finding.Assignee,
 			DueAt:           finding.DueAt,
 			StatusReason:    finding.StatusReason,
@@ -1363,6 +1514,9 @@ func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.Find
 	}
 	if len(existing.Notes) != 0 && len(incoming.Notes) == 0 {
 		incoming.Notes = append([]ports.FindingNote(nil), existing.Notes...)
+	}
+	if len(existing.Tickets) != 0 && len(incoming.Tickets) == 0 {
+		incoming.Tickets = append([]ports.FindingTicket(nil), existing.Tickets...)
 	}
 	if strings.TrimSpace(incoming.Status) == "open" {
 		switch strings.TrimSpace(existing.Status) {

@@ -28,6 +28,7 @@ var ensureFindingStatements = []string{
   observed_policy_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   control_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   notes_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  tickets_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   policy_id TEXT NOT NULL DEFAULT '',
   policy_name TEXT NOT NULL DEFAULT '',
@@ -45,6 +46,7 @@ var ensureFindingStatements = []string{
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS observed_policy_ids_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS control_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS notes_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
+	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS tickets_json JSONB NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS policy_id TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS policy_name TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS check_id TEXT NOT NULL DEFAULT ''`,
@@ -64,6 +66,7 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_observed_policy_ids_gin_idx ON findings USING GIN (observed_policy_ids_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_control_refs_gin_idx ON findings USING GIN (control_refs_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_notes_gin_idx ON findings USING GIN (notes_json)`,
+	`CREATE INDEX IF NOT EXISTS findings_tickets_gin_idx ON findings USING GIN (tickets_json)`,
 }
 
 // UpsertFinding persists one normalized finding in the current-state store.
@@ -133,6 +136,10 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding notes: %w", err)
 	}
+	ticketsJSON, err := findingTicketsJSON(finding.Tickets)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding tickets: %w", err)
+	}
 	attributesJSON, err := findingAttributesJSON(finding.Attributes)
 	if err != nil {
 		return nil, fmt.Errorf("marshal finding attributes: %w", err)
@@ -163,11 +170,11 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if err := s.db.QueryRowContext(ctx, `
 INSERT INTO findings (
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, attributes_json,
+  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, attributes_json,
   policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 ON CONFLICT (id)
 DO UPDATE SET
   fingerprint = EXCLUDED.fingerprint,
@@ -188,6 +195,10 @@ DO UPDATE SET
   notes_json = CASE
     WHEN jsonb_array_length(EXCLUDED.notes_json) = 0 THEN findings.notes_json
     ELSE EXCLUDED.notes_json
+  END,
+  tickets_json = CASE
+    WHEN jsonb_array_length(EXCLUDED.tickets_json) = 0 THEN findings.tickets_json
+    ELSE EXCLUDED.tickets_json
   END,
   attributes_json = EXCLUDED.attributes_json,
   policy_id = EXCLUDED.policy_id,
@@ -213,7 +224,7 @@ DO UPDATE SET
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at`,
 		id,
 		fingerprint,
@@ -229,6 +240,7 @@ RETURNING
 		observedPolicyIDsJSON,
 		controlRefsJSON,
 		notesJSON,
+		ticketsJSON,
 		attributesJSON,
 		policyID,
 		policyName,
@@ -255,6 +267,7 @@ RETURNING
 		&stored.ObservedPolicyIDsJSON,
 		&stored.ControlRefsJSON,
 		&stored.NotesJSON,
+		&stored.TicketsJSON,
 		&stored.PolicyID,
 		&stored.PolicyName,
 		&stored.CheckID,
@@ -312,6 +325,7 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 			&row.ObservedPolicyIDsJSON,
 			&row.ControlRefsJSON,
 			&row.NotesJSON,
+			&row.TicketsJSON,
 			&row.PolicyID,
 			&row.PolicyName,
 			&row.CheckID,
@@ -355,7 +369,7 @@ func (s *Store) GetFinding(ctx context.Context, id string) (*ports.FindingRecord
 SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at
 FROM findings
 WHERE id = $1`,
@@ -375,6 +389,7 @@ WHERE id = $1`,
 		&row.ObservedPolicyIDsJSON,
 		&row.ControlRefsJSON,
 		&row.NotesJSON,
+		&row.TicketsJSON,
 		&row.PolicyID,
 		&row.PolicyName,
 		&row.CheckID,
@@ -424,7 +439,7 @@ WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at`,
 		findingID,
 		status,
@@ -445,6 +460,7 @@ RETURNING
 		&row.ObservedPolicyIDsJSON,
 		&row.ControlRefsJSON,
 		&row.NotesJSON,
+		&row.TicketsJSON,
 		&row.PolicyID,
 		&row.PolicyName,
 		&row.CheckID,
@@ -485,7 +501,7 @@ WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at`,
 		findingID,
 		strings.TrimSpace(request.Assignee),
@@ -504,6 +520,7 @@ RETURNING
 		&row.ObservedPolicyIDsJSON,
 		&row.ControlRefsJSON,
 		&row.NotesJSON,
+		&row.TicketsJSON,
 		&row.PolicyID,
 		&row.PolicyName,
 		&row.CheckID,
@@ -548,7 +565,7 @@ WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at`,
 		findingID,
 		dueAt,
@@ -567,6 +584,7 @@ RETURNING
 		&row.ObservedPolicyIDsJSON,
 		&row.ControlRefsJSON,
 		&row.NotesJSON,
+		&row.TicketsJSON,
 		&row.PolicyID,
 		&row.PolicyName,
 		&row.CheckID,
@@ -614,7 +632,7 @@ WHERE id = $1
 RETURNING
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at`,
 		findingID,
 		notesJSON,
@@ -633,6 +651,7 @@ RETURNING
 		&row.ObservedPolicyIDsJSON,
 		&row.ControlRefsJSON,
 		&row.NotesJSON,
+		&row.TicketsJSON,
 		&row.PolicyID,
 		&row.PolicyName,
 		&row.CheckID,
@@ -649,6 +668,82 @@ RETURNING
 			return nil, ports.ErrFindingNotFound
 		}
 		return nil, fmt.Errorf("add note to finding %q: %w", findingID, err)
+	}
+	return row.record()
+}
+
+// LinkFindingTicket appends one persisted finding ticket reference.
+func (s *Store) LinkFindingTicket(ctx context.Context, request ports.FindingTicketLink) (*ports.FindingRecord, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureFindingTables(ctx); err != nil {
+		return nil, err
+	}
+	findingID := strings.TrimSpace(request.FindingID)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	ticketsJSON, err := findingTicketsJSON([]ports.FindingTicket{request.Ticket})
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding ticket: %w", err)
+	}
+	if ticketsJSON == `[]` {
+		return nil, errors.New("finding ticket url is required")
+	}
+	dedupeJSON, err := findingTicketURLMatchJSON(request.Ticket.URL)
+	if err != nil {
+		return nil, fmt.Errorf("marshal finding ticket dedupe: %w", err)
+	}
+	var row findingRow
+	if err := s.db.QueryRowContext(ctx, `
+UPDATE findings
+SET tickets_json = CASE
+      WHEN COALESCE(tickets_json, '[]'::jsonb) @> $3::jsonb THEN COALESCE(tickets_json, '[]'::jsonb)
+      ELSE COALESCE(tickets_json, '[]'::jsonb) || $2::jsonb
+    END,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING
+  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at`,
+		findingID,
+		ticketsJSON,
+		dedupeJSON,
+	).Scan(
+		&row.ID,
+		&row.Fingerprint,
+		&row.TenantID,
+		&row.RuntimeID,
+		&row.RuleID,
+		&row.Title,
+		&row.Severity,
+		&row.Status,
+		&row.Summary,
+		&row.ResourceURNsJSON,
+		&row.EventIDsJSON,
+		&row.ObservedPolicyIDsJSON,
+		&row.ControlRefsJSON,
+		&row.NotesJSON,
+		&row.TicketsJSON,
+		&row.PolicyID,
+		&row.PolicyName,
+		&row.CheckID,
+		&row.CheckName,
+		&row.AttributesJSON,
+		&row.Assignee,
+		&row.DueAt,
+		&row.StatusReason,
+		&row.StatusUpdatedAt,
+		&row.FirstObservedAt,
+		&row.LastObservedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ports.ErrFindingNotFound
+		}
+		return nil, fmt.Errorf("link ticket to finding %q: %w", findingID, err)
 	}
 	return row.record()
 }
@@ -675,7 +770,7 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
   status_updated_at, first_observed_at, last_observed_at
 FROM findings
 WHERE ` + strings.Join(clauses, " AND ") + `
@@ -781,6 +876,51 @@ func findingNotesJSON(values []ports.FindingNote) (string, error) {
 	return string(payload), nil
 }
 
+func findingTicketsJSON(values []ports.FindingTicket) (string, error) {
+	normalized := make([]ports.FindingTicket, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		url := strings.TrimSpace(value.URL)
+		if url == "" {
+			continue
+		}
+		if _, ok := seen[url]; ok {
+			continue
+		}
+		seen[url] = struct{}{}
+		linkedAt := value.LinkedAt.UTC()
+		if linkedAt.IsZero() {
+			continue
+		}
+		normalized = append(normalized, ports.FindingTicket{
+			URL:        url,
+			Name:       strings.TrimSpace(value.Name),
+			ExternalID: strings.TrimSpace(value.ExternalID),
+			LinkedAt:   linkedAt,
+		})
+	}
+	if len(normalized) == 0 {
+		return `[]`, nil
+	}
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
+func findingTicketURLMatchJSON(value string) (string, error) {
+	url := strings.TrimSpace(value)
+	if url == "" {
+		return `[]`, nil
+	}
+	payload, err := json.Marshal([]map[string]string{{"url": url}})
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
+}
+
 func addFindingFilter(clauses *[]string, args *[]any, column string, value string) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -806,6 +946,7 @@ func addFindingArrayContainsFilter(clauses *[]string, args *[]any, column string
 
 type findingWorkflowRow struct {
 	NotesJSON       string
+	TicketsJSON     string
 	Assignee        string
 	DueAt           sql.NullTime
 	StatusReason    string
@@ -857,6 +998,10 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 	if err := json.Unmarshal([]byte(r.NotesJSON), &notes); err != nil {
 		return nil, fmt.Errorf("decode finding notes: %w", err)
 	}
+	tickets := []ports.FindingTicket{}
+	if err := json.Unmarshal([]byte(r.TicketsJSON), &tickets); err != nil {
+		return nil, fmt.Errorf("decode finding tickets: %w", err)
+	}
 	attributes := map[string]string{}
 	if err := json.Unmarshal([]byte(r.AttributesJSON), &attributes); err != nil {
 		return nil, fmt.Errorf("decode finding attributes: %w", err)
@@ -881,6 +1026,7 @@ func (r findingRow) record() (*ports.FindingRecord, error) {
 		ControlRefs:       controlRefs,
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
+			Tickets:         tickets,
 			Assignee:        r.Assignee,
 			DueAt:           findingTimestamp(r.DueAt),
 			StatusReason:    r.StatusReason,

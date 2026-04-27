@@ -314,6 +314,29 @@ func (s *stubRuntimeStore) AddFindingNote(_ context.Context, request ports.Findi
 	return cloneFinding(cloned), nil
 }
 
+func (s *stubRuntimeStore) LinkFindingTicket(_ context.Context, request ports.FindingTicketLink) (*ports.FindingRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	finding, ok := s.findings[request.FindingID]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneFinding(finding)
+	exists := false
+	for _, ticket := range cloned.Tickets {
+		if strings.TrimSpace(ticket.URL) == strings.TrimSpace(request.Ticket.URL) {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		cloned.Tickets = append(cloned.Tickets, request.Ticket)
+	}
+	s.findings[cloned.ID] = cloned
+	return cloneFinding(cloned), nil
+}
+
 func (s *stubRuntimeStore) PutFindingEvidence(_ context.Context, evidence *cerebrov1.FindingEvidence) error {
 	if s.err != nil {
 		return s.err
@@ -1030,10 +1053,11 @@ func TestFindingEndpoints(t *testing.T) {
 			},
 		},
 	}
+	graphStore := &stubGraphStore{}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		AppendLog:  appendLog,
 		StateStore: runtimeStore,
-		GraphStore: &stubGraphStore{},
+		GraphStore: graphStore,
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
@@ -1519,6 +1543,52 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := len(addNoteResp.Msg.GetFinding().GetNotes()); got != 2 {
 		t.Fatalf("len(AddFindingNote().Finding.Notes) = %d, want 2", got)
 	}
+	ticketBody, err := protojson.Marshal(&cerebrov1.LinkFindingTicketRequest{
+		Url:        "https://jira.writer.com/browse/ENG-123",
+		Name:       "ENG-123",
+		ExternalId: "ENG-123",
+	})
+	if err != nil {
+		t.Fatalf("marshal finding ticket body: %v", err)
+	}
+	ticketReq, err := http.NewRequest(http.MethodPost, server.URL+"/findings/"+evaluateFindingsResp.Msg.GetFindings()[0].GetId()+"/tickets", bytes.NewReader(ticketBody))
+	if err != nil {
+		t.Fatalf("new finding ticket request: %v", err)
+	}
+	ticketReq.Header.Set("Content-Type", "application/json")
+	ticketResp, err := server.Client().Do(ticketReq)
+	if err != nil {
+		t.Fatalf("POST /findings/{id}/tickets error = %v", err)
+	}
+	defer func() {
+		if closeErr := ticketResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close ticket response body: %v", closeErr)
+		}
+	}()
+	var ticketPayload map[string]any
+	if err := json.NewDecoder(ticketResp.Body).Decode(&ticketPayload); err != nil {
+		t.Fatalf("decode ticket response: %v", err)
+	}
+	ticketFinding, ok := ticketPayload["finding"].(map[string]any)
+	if !ok {
+		t.Fatalf("ticket finding payload = %#v, want object", ticketPayload["finding"])
+	}
+	ticketEntries, ok := ticketFinding["tickets"].([]any)
+	if !ok || len(ticketEntries) != 1 {
+		t.Fatalf("ticket finding tickets = %#v, want 1 entry", ticketFinding["tickets"])
+	}
+	linkTicketResp, err := client.LinkFindingTicket(context.Background(), connect.NewRequest(&cerebrov1.LinkFindingTicketRequest{
+		Id:         evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
+		Url:        "https://linear.app/writer/issue/SEC-42",
+		Name:       "SEC-42",
+		ExternalId: "SEC-42",
+	}))
+	if err != nil {
+		t.Fatalf("LinkFindingTicket() error = %v", err)
+	}
+	if got := len(linkTicketResp.Msg.GetFinding().GetTickets()); got != 2 {
+		t.Fatalf("len(LinkFindingTicket().Finding.Tickets) = %d, want 2", got)
+	}
 	connectDueAt := time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC)
 	setDueDateResp, err := client.SetFindingDueDate(context.Background(), connect.NewRequest(&cerebrov1.SetFindingDueDateRequest{
 		Id:    evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
@@ -1573,6 +1643,10 @@ func TestFindingEndpoints(t *testing.T) {
 	if !ok || len(getFindingNotes) != 2 {
 		t.Fatalf("get finding notes = %#v, want 2 entries", getFindingBody["notes"])
 	}
+	getFindingTickets, ok := getFindingBody["tickets"].([]any)
+	if !ok || len(getFindingTickets) != 2 {
+		t.Fatalf("get finding tickets = %#v, want 2 entries", getFindingBody["tickets"])
+	}
 	suppressFindingResp, err := client.SuppressFinding(context.Background(), connect.NewRequest(&cerebrov1.SuppressFindingRequest{
 		Id:     evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
 		Reason: "accepted risk",
@@ -1603,6 +1677,12 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if len(runtimeStore.findingEvidence) != 4 {
 		t.Fatalf("len(runtimeStore.findingEvidence) = %d, want 4", len(runtimeStore.findingEvidence))
+	}
+	if got := len(graphStore.entities); got != 5 {
+		t.Fatalf("len(graphStore.entities) = %d, want 5", got)
+	}
+	if got := len(graphStore.links); got != 14 {
+		t.Fatalf("len(graphStore.links) = %d, want 14", got)
 	}
 }
 
@@ -2199,6 +2279,8 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 	copy(controlRefs, finding.ControlRefs)
 	notes := make([]ports.FindingNote, len(finding.Notes))
 	copy(notes, finding.Notes)
+	tickets := make([]ports.FindingTicket, len(finding.Tickets))
+	copy(tickets, finding.Tickets)
 	attributes := make(map[string]string, len(finding.Attributes))
 	for key, value := range finding.Attributes {
 		attributes[key] = value
@@ -2223,6 +2305,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ControlRefs:       controlRefs,
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           notes,
+			Tickets:         tickets,
 			Assignee:        finding.Assignee,
 			DueAt:           finding.DueAt,
 			StatusReason:    finding.StatusReason,
@@ -2246,6 +2329,9 @@ func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.Find
 	}
 	if len(existing.Notes) != 0 && len(incoming.Notes) == 0 {
 		incoming.Notes = append([]ports.FindingNote(nil), existing.Notes...)
+	}
+	if len(existing.Tickets) != 0 && len(incoming.Tickets) == 0 {
+		incoming.Tickets = append([]ports.FindingTicket(nil), existing.Tickets...)
 	}
 	if strings.TrimSpace(incoming.Status) == "open" {
 		switch strings.TrimSpace(existing.Status) {

@@ -99,6 +99,9 @@ const (
 	// BootstrapServiceAddFindingNoteProcedure is the fully-qualified name of the BootstrapService's
 	// AddFindingNote RPC.
 	BootstrapServiceAddFindingNoteProcedure = "/cerebro.v1.BootstrapService/AddFindingNote"
+	// BootstrapServiceLinkFindingTicketProcedure is the fully-qualified name of the BootstrapService's
+	// LinkFindingTicket RPC.
+	BootstrapServiceLinkFindingTicketProcedure = "/cerebro.v1.BootstrapService/LinkFindingTicket"
 	// BootstrapServiceListFindingEvaluationRunsProcedure is the fully-qualified name of the
 	// BootstrapService's ListFindingEvaluationRuns RPC.
 	BootstrapServiceListFindingEvaluationRunsProcedure = "/cerebro.v1.BootstrapService/ListFindingEvaluationRuns"
@@ -146,6 +149,7 @@ type BootstrapServiceClient interface {
 	AssignFinding(context.Context, *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error)
 	SetFindingDueDate(context.Context, *connect.Request[v1.SetFindingDueDateRequest]) (*connect.Response[v1.SetFindingDueDateResponse], error)
 	AddFindingNote(context.Context, *connect.Request[v1.AddFindingNoteRequest]) (*connect.Response[v1.AddFindingNoteResponse], error)
+	LinkFindingTicket(context.Context, *connect.Request[v1.LinkFindingTicketRequest]) (*connect.Response[v1.LinkFindingTicketResponse], error)
 	ListFindingEvaluationRuns(context.Context, *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error)
 	GetFindingEvaluationRun(context.Context, *connect.Request[v1.GetFindingEvaluationRunRequest]) (*connect.Response[v1.GetFindingEvaluationRunResponse], error)
 	ListFindingEvidence(context.Context, *connect.Request[v1.ListFindingEvidenceRequest]) (*connect.Response[v1.ListFindingEvidenceResponse], error)
@@ -298,6 +302,12 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("AddFindingNote")),
 			connect.WithClientOptions(opts...),
 		),
+		linkFindingTicket: connect.NewClient[v1.LinkFindingTicketRequest, v1.LinkFindingTicketResponse](
+			httpClient,
+			baseURL+BootstrapServiceLinkFindingTicketProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("LinkFindingTicket")),
+			connect.WithClientOptions(opts...),
+		),
 		listFindingEvaluationRuns: connect.NewClient[v1.ListFindingEvaluationRunsRequest, v1.ListFindingEvaluationRunsResponse](
 			httpClient,
 			baseURL+BootstrapServiceListFindingEvaluationRunsProcedure,
@@ -367,6 +377,7 @@ type bootstrapServiceClient struct {
 	assignFinding                     *connect.Client[v1.AssignFindingRequest, v1.AssignFindingResponse]
 	setFindingDueDate                 *connect.Client[v1.SetFindingDueDateRequest, v1.SetFindingDueDateResponse]
 	addFindingNote                    *connect.Client[v1.AddFindingNoteRequest, v1.AddFindingNoteResponse]
+	linkFindingTicket                 *connect.Client[v1.LinkFindingTicketRequest, v1.LinkFindingTicketResponse]
 	listFindingEvaluationRuns         *connect.Client[v1.ListFindingEvaluationRunsRequest, v1.ListFindingEvaluationRunsResponse]
 	getFindingEvaluationRun           *connect.Client[v1.GetFindingEvaluationRunRequest, v1.GetFindingEvaluationRunResponse]
 	listFindingEvidence               *connect.Client[v1.ListFindingEvidenceRequest, v1.ListFindingEvidenceResponse]
@@ -486,6 +497,11 @@ func (c *bootstrapServiceClient) AddFindingNote(ctx context.Context, req *connec
 	return c.addFindingNote.CallUnary(ctx, req)
 }
 
+// LinkFindingTicket calls cerebro.v1.BootstrapService.LinkFindingTicket.
+func (c *bootstrapServiceClient) LinkFindingTicket(ctx context.Context, req *connect.Request[v1.LinkFindingTicketRequest]) (*connect.Response[v1.LinkFindingTicketResponse], error) {
+	return c.linkFindingTicket.CallUnary(ctx, req)
+}
+
 // ListFindingEvaluationRuns calls cerebro.v1.BootstrapService.ListFindingEvaluationRuns.
 func (c *bootstrapServiceClient) ListFindingEvaluationRuns(ctx context.Context, req *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error) {
 	return c.listFindingEvaluationRuns.CallUnary(ctx, req)
@@ -546,6 +562,7 @@ type BootstrapServiceHandler interface {
 	AssignFinding(context.Context, *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error)
 	SetFindingDueDate(context.Context, *connect.Request[v1.SetFindingDueDateRequest]) (*connect.Response[v1.SetFindingDueDateResponse], error)
 	AddFindingNote(context.Context, *connect.Request[v1.AddFindingNoteRequest]) (*connect.Response[v1.AddFindingNoteResponse], error)
+	LinkFindingTicket(context.Context, *connect.Request[v1.LinkFindingTicketRequest]) (*connect.Response[v1.LinkFindingTicketResponse], error)
 	ListFindingEvaluationRuns(context.Context, *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error)
 	GetFindingEvaluationRun(context.Context, *connect.Request[v1.GetFindingEvaluationRunRequest]) (*connect.Response[v1.GetFindingEvaluationRunResponse], error)
 	ListFindingEvidence(context.Context, *connect.Request[v1.ListFindingEvidenceRequest]) (*connect.Response[v1.ListFindingEvidenceResponse], error)
@@ -694,6 +711,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("AddFindingNote")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceLinkFindingTicketHandler := connect.NewUnaryHandler(
+		BootstrapServiceLinkFindingTicketProcedure,
+		svc.LinkFindingTicket,
+		connect.WithSchema(bootstrapServiceMethods.ByName("LinkFindingTicket")),
+		connect.WithHandlerOptions(opts...),
+	)
 	bootstrapServiceListFindingEvaluationRunsHandler := connect.NewUnaryHandler(
 		BootstrapServiceListFindingEvaluationRunsProcedure,
 		svc.ListFindingEvaluationRuns,
@@ -782,6 +805,8 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceSetFindingDueDateHandler.ServeHTTP(w, r)
 		case BootstrapServiceAddFindingNoteProcedure:
 			bootstrapServiceAddFindingNoteHandler.ServeHTTP(w, r)
+		case BootstrapServiceLinkFindingTicketProcedure:
+			bootstrapServiceLinkFindingTicketHandler.ServeHTTP(w, r)
 		case BootstrapServiceListFindingEvaluationRunsProcedure:
 			bootstrapServiceListFindingEvaluationRunsHandler.ServeHTTP(w, r)
 		case BootstrapServiceGetFindingEvaluationRunProcedure:
@@ -891,6 +916,10 @@ func (UnimplementedBootstrapServiceHandler) SetFindingDueDate(context.Context, *
 
 func (UnimplementedBootstrapServiceHandler) AddFindingNote(context.Context, *connect.Request[v1.AddFindingNoteRequest]) (*connect.Response[v1.AddFindingNoteResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.AddFindingNote is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) LinkFindingTicket(context.Context, *connect.Request[v1.LinkFindingTicketRequest]) (*connect.Response[v1.LinkFindingTicketResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.LinkFindingTicket is not implemented"))
 }
 
 func (UnimplementedBootstrapServiceHandler) ListFindingEvaluationRuns(context.Context, *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error) {

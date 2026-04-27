@@ -89,6 +89,18 @@ func (s *stubFindingStore) AddFindingNote(_ context.Context, request ports.Findi
 	return nil, ports.ErrFindingNotFound
 }
 
+func (s *stubFindingStore) LinkFindingTicket(_ context.Context, request ports.FindingTicketLink) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding == nil || finding.ID != request.FindingID {
+			continue
+		}
+		cloned := cloneFinding(finding)
+		cloned.Tickets = append(cloned.Tickets, request.Ticket)
+		return cloned, nil
+	}
+	return nil, ports.ErrFindingNotFound
+}
+
 type stubGraphStore struct {
 	rootURN       string
 	limit         int
@@ -146,6 +158,9 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 					Notes: []ports.FindingNote{
 						{ID: "note-1", Body: "Escalate to identity engineering.", CreatedAt: time.Now().UTC().Add(-time.Hour)},
 						{ID: "note-2", Body: "Awaiting owner confirmation.", CreatedAt: time.Now().UTC()},
+					},
+					Tickets: []ports.FindingTicket{
+						{URL: "https://jira.writer.com/browse/ENG-123", Name: "ENG-123", ExternalID: "ENG-123", LinkedAt: time.Now().UTC().Add(-30 * time.Minute)},
 					},
 					DueAt: overdueDueAt,
 				},
@@ -267,6 +282,12 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	}
 	if got := result["noted_finding_count"]; got != float64(1) {
 		t.Fatalf("Run().Run.Result[noted_finding_count] = %#v, want 1", got)
+	}
+	if got := result["ticket_count"]; got != float64(1) {
+		t.Fatalf("Run().Run.Result[ticket_count] = %#v, want 1", got)
+	}
+	if got := result["ticketed_finding_count"]; got != float64(1) {
+		t.Fatalf("Run().Run.Result[ticketed_finding_count] = %#v, want 1", got)
 	}
 	policyCounts, ok := result["policy_counts"].([]any)
 	if !ok || len(policyCounts) != 1 {
@@ -403,6 +424,7 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		ControlRefs:       append([]ports.FindingControlRef(nil), finding.ControlRefs...),
 		FindingWorkflow: ports.FindingWorkflow{
 			Notes:           append([]ports.FindingNote(nil), finding.Notes...),
+			Tickets:         append([]ports.FindingTicket(nil), finding.Tickets...),
 			Assignee:        finding.Assignee,
 			DueAt:           finding.DueAt,
 			StatusReason:    finding.StatusReason,

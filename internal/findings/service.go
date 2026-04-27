@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -51,6 +52,7 @@ type Service struct {
 	runStore      ports.FindingEvaluationRunStore
 	evidenceStore ports.FindingEvidenceStore
 	claimStore    ports.ClaimStore
+	graph         ports.ProjectionGraphStore
 	rules         *Registry
 }
 
@@ -172,6 +174,15 @@ func NewWithRegistry(
 		claimStore:    claimStore,
 		rules:         rules,
 	}
+}
+
+// WithGraphStore wires one optional graph projection boundary used for workflow metadata.
+func (s *Service) WithGraphStore(graph ports.ProjectionGraphStore) *Service {
+	if s == nil {
+		return nil
+	}
+	s.graph = graph
+	return s
 }
 
 // ListRules returns the discoverable registered finding rule catalog.
@@ -470,16 +481,56 @@ func (s *Service) AddFindingNote(ctx context.Context, id string, note string) (*
 		return nil, errors.New("finding note is required")
 	}
 	createdAt := time.Now().UTC()
+	noteRecord := ports.FindingNote{
+		ID:        findingNoteID(findingID, createdAt),
+		Body:      body,
+		CreatedAt: createdAt,
+	}
 	finding, err := s.store.AddFindingNote(ctx, ports.FindingNoteCreate{
 		FindingID: findingID,
-		Note: ports.FindingNote{
-			ID:        findingNoteID(findingID, createdAt),
-			Body:      body,
-			CreatedAt: createdAt,
-		},
+		Note:      noteRecord,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("add finding %q note: %w", findingID, err)
+	}
+	if err := s.projectFindingNote(ctx, finding, noteRecord); err != nil {
+		return nil, fmt.Errorf("project finding %q note into graph: %w", findingID, err)
+	}
+	return finding, nil
+}
+
+// LinkFindingTicket appends one external ticket reference to one persisted finding.
+func (s *Service) LinkFindingTicket(ctx context.Context, id string, ticketURL string, name string, externalID string) (*ports.FindingRecord, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	findingID := strings.TrimSpace(id)
+	if findingID == "" {
+		return nil, errors.New("finding id is required")
+	}
+	normalizedURL := strings.TrimSpace(ticketURL)
+	if normalizedURL == "" {
+		return nil, errors.New("finding ticket url is required")
+	}
+	if _, err := url.ParseRequestURI(normalizedURL); err != nil {
+		return nil, fmt.Errorf("finding ticket url is invalid: %w", err)
+	}
+	linkedAt := time.Now().UTC()
+	ticket := ports.FindingTicket{
+		URL:        normalizedURL,
+		Name:       strings.TrimSpace(name),
+		ExternalID: strings.TrimSpace(externalID),
+		LinkedAt:   linkedAt,
+	}
+	finding, err := s.store.LinkFindingTicket(ctx, ports.FindingTicketLink{
+		FindingID: findingID,
+		Ticket:    ticket,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("link ticket to finding %q: %w", findingID, err)
+	}
+	if err := s.projectFindingTicket(ctx, finding, ticket); err != nil {
+		return nil, fmt.Errorf("project finding %q ticket into graph: %w", findingID, err)
 	}
 	return finding, nil
 }

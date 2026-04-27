@@ -159,6 +159,8 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	resourceCounts := make(map[string]int, len(findings))
 	noteCount := 0
 	notedFindingCount := 0
+	ticketCount := 0
+	ticketedFindingCount := 0
 	now := time.Now().UTC()
 	for _, finding := range findings {
 		if finding == nil {
@@ -220,6 +222,10 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 			notedFindingCount++
 			noteCount += len(finding.Notes)
 		}
+		if len(finding.Tickets) != 0 {
+			ticketedFindingCount++
+			ticketCount += len(finding.Tickets)
+		}
 	}
 	graphEvidenceStatus := graphEvidenceStatusUnconfigured
 	graphEvidence := []any{}
@@ -242,6 +248,8 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		"control_counts":         controlCountEntries(controlCounts),
 		"noted_finding_count":    notedFindingCount,
 		"note_count":             noteCount,
+		"ticketed_finding_count": ticketedFindingCount,
+		"ticket_count":           ticketCount,
 		"resource_counts":        countEntries(resourceCounts, "resource_urn"),
 		"graph_evidence_status":  graphEvidenceStatus,
 		"graph_evidence":         graphEvidence,
@@ -290,7 +298,7 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
 		Name:        findingSummaryReportName,
-		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, due-date posture, rule, policy, check, and control, with note activity and bounded graph evidence for top resources when the graph is configured.",
+		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, due-date posture, rule, policy, check, and control, with note and ticket activity plus bounded graph evidence for top resources when the graph is configured.",
 		Parameters: []*cerebrov1.ReportParameter{
 			{
 				Id:          reportParameterRuntimeID,
