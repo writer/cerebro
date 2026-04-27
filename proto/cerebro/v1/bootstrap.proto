@@ -41,6 +41,7 @@ service BootstrapService {
   rpc EvaluateSourceRuntimeFindingRules(EvaluateSourceRuntimeFindingRulesRequest) returns (EvaluateSourceRuntimeFindingRulesResponse);
   rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
   rpc WriteDecision(WriteDecisionRequest) returns (WriteDecisionResponse);
+  rpc WriteAction(WriteActionRequest) returns (WriteActionResponse);
   rpc WriteOutcome(WriteOutcomeRequest) returns (WriteOutcomeResponse);
   rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
 }
@@ -568,6 +569,32 @@ message WriteDecisionRequest {
 message WriteDecisionResponse {
   string decision_id = 1;
   uint32 target_count = 2;
+}
+
+// WriteActionRequest records one action tied to recommendation context and optional decision state.
+message WriteActionRequest {
+  string id = 1;
+  string recommendation_id = 2;
+  string insight_type = 3;
+  string title = 4;
+  string summary = 5;
+  string decision_id = 6;
+  repeated string target_ids = 7;
+  string source_system = 8;
+  string source_event_id = 9;
+  google.protobuf.Timestamp observed_at = 10;
+  google.protobuf.Timestamp valid_from = 11;
+  google.protobuf.Timestamp valid_to = 12;
+  double confidence = 13;
+  bool auto_generated = 14;
+  google.protobuf.Struct metadata = 15;
+}
+
+// WriteActionResponse returns the recorded action identifier, optional decision, and target count.
+message WriteActionResponse {
+  string action_id = 1;
+  string decision_id = 2;
+  uint32 target_count = 3;
 }
 
 // WriteOutcomeRequest records one outcome tied back to one decision and optional targets.
