@@ -23,6 +23,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/workflowevents"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
@@ -42,9 +43,10 @@ type stubStore struct {
 func (s stubStore) Ping(context.Context) error { return s.err }
 
 type recordingAppendLog struct {
-	err          error
-	events       []*cerebrov1.EventEnvelope
-	replayEvents []*cerebrov1.EventEnvelope
+	err            error
+	events         []*cerebrov1.EventEnvelope
+	replayEvents   []*cerebrov1.EventEnvelope
+	replayRequests []ports.ReplayRequest
 }
 
 func (s *recordingAppendLog) Ping(context.Context) error { return s.err }
@@ -61,6 +63,7 @@ func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayReque
 	if s.err != nil {
 		return nil, s.err
 	}
+	s.replayRequests = append(s.replayRequests, request)
 	source := s.events
 	if len(s.replayEvents) != 0 {
 		source = s.replayEvents
@@ -1888,6 +1891,100 @@ func TestPlatformKnowledgeDecisionAndOutcomeEndpoints(t *testing.T) {
 	}
 	if len(appendLog.events) != 3 {
 		t.Fatalf("len(appendLog.events) = %d, want 3", len(appendLog.events))
+	}
+}
+
+func TestWorkflowReplayEndpoint(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	decisionID := "urn:cerebro:writer:decision:decision-1"
+	decisionEvent, err := workflowevents.NewDecisionRecordedEvent(workflowevents.DecisionRecorded{
+		TenantID:     "writer",
+		DecisionID:   decisionID,
+		DecisionType: "finding-triage",
+		Status:       "approved",
+		TargetIDs:    []string{targetURN},
+		SourceSystem: "findings",
+		ObservedAt:   "2026-04-27T12:00:00Z",
+		ValidFrom:    "2026-04-27T12:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("NewDecisionRecordedEvent() error = %v", err)
+	}
+	appendLog := &recordingAppendLog{replayEvents: []*cerebrov1.EventEnvelope{decisionEvent}}
+	graphStore := &stubGraphStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  appendLog,
+		GraphStore: graphStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body, err := protojson.Marshal(&cerebrov1.ReplayWorkflowEventsRequest{
+		TenantId: "writer",
+		AttributeEquals: map[string]string{
+			"workflow_kind": "knowledge_decision",
+		},
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("marshal ReplayWorkflowEventsRequest: %v", err)
+	}
+	resp, err := server.Client().Post(server.URL+"/platform/workflow/replay", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST /platform/workflow/replay error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /platform/workflow/replay response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /platform/workflow/replay status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var replayPayload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&replayPayload); err != nil {
+		t.Fatalf("decode ReplayWorkflowEventsResponse: %v", err)
+	}
+	if replayPayload["events_read"] != float64(1) || replayPayload["events_projected"] != float64(1) {
+		t.Fatalf("replay counts = read:%v projected:%v, want 1/1", replayPayload["events_read"], replayPayload["events_projected"])
+	}
+	if _, ok := graphStore.entities[decisionID]; !ok {
+		t.Fatalf("decision entity %q missing after replay", decisionID)
+	}
+	if _, ok := graphStore.links[decisionID+"|targets|"+targetURN]; !ok {
+		t.Fatal("decision target link missing after replay")
+	}
+	if len(appendLog.replayRequests) != 1 {
+		t.Fatalf("len(replayRequests) = %d, want 1", len(appendLog.replayRequests))
+	}
+	if got := appendLog.replayRequests[0].KindPrefix; got != "workflow.v1." {
+		t.Fatalf("HTTP replay kind prefix = %q, want workflow.v1.", got)
+	}
+	if got := appendLog.replayRequests[0].AttributeEquals["workflow_kind"]; got != "knowledge_decision" {
+		t.Fatalf("HTTP replay workflow_kind filter = %q, want knowledge_decision", got)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	connectResp, err := client.ReplayWorkflowEvents(context.Background(), connect.NewRequest(&cerebrov1.ReplayWorkflowEventsRequest{
+		KindPrefix: "workflow.v1.knowledge.",
+		TenantId:   "writer",
+		Limit:      1,
+	}))
+	if err != nil {
+		t.Fatalf("ReplayWorkflowEvents() error = %v", err)
+	}
+	if got := connectResp.Msg.GetEntitiesProjected(); got != 1 {
+		t.Fatalf("ReplayWorkflowEvents().EntitiesProjected = %d, want 1", got)
+	}
+	if len(appendLog.replayRequests) != 2 {
+		t.Fatalf("len(replayRequests) = %d, want 2", len(appendLog.replayRequests))
+	}
+	if got := appendLog.replayRequests[1].KindPrefix; got != "workflow.v1.knowledge." {
+		t.Fatalf("Connect replay kind prefix = %q, want workflow.v1.knowledge.", got)
 	}
 }
 

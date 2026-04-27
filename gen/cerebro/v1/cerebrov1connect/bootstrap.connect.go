@@ -129,6 +129,9 @@ const (
 	// BootstrapServiceWriteOutcomeProcedure is the fully-qualified name of the BootstrapService's
 	// WriteOutcome RPC.
 	BootstrapServiceWriteOutcomeProcedure = "/cerebro.v1.BootstrapService/WriteOutcome"
+	// BootstrapServiceReplayWorkflowEventsProcedure is the fully-qualified name of the
+	// BootstrapService's ReplayWorkflowEvents RPC.
+	BootstrapServiceReplayWorkflowEventsProcedure = "/cerebro.v1.BootstrapService/ReplayWorkflowEvents"
 	// BootstrapServiceGetEntityNeighborhoodProcedure is the fully-qualified name of the
 	// BootstrapService's GetEntityNeighborhood RPC.
 	BootstrapServiceGetEntityNeighborhoodProcedure = "/cerebro.v1.BootstrapService/GetEntityNeighborhood"
@@ -168,6 +171,7 @@ type BootstrapServiceClient interface {
 	WriteDecision(context.Context, *connect.Request[v1.WriteDecisionRequest]) (*connect.Response[v1.WriteDecisionResponse], error)
 	WriteAction(context.Context, *connect.Request[v1.WriteActionRequest]) (*connect.Response[v1.WriteActionResponse], error)
 	WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error)
+	ReplayWorkflowEvents(context.Context, *connect.Request[v1.ReplayWorkflowEventsRequest]) (*connect.Response[v1.ReplayWorkflowEventsResponse], error)
 	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
 }
 
@@ -374,6 +378,12 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("WriteOutcome")),
 			connect.WithClientOptions(opts...),
 		),
+		replayWorkflowEvents: connect.NewClient[v1.ReplayWorkflowEventsRequest, v1.ReplayWorkflowEventsResponse](
+			httpClient,
+			baseURL+BootstrapServiceReplayWorkflowEventsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ReplayWorkflowEvents")),
+			connect.WithClientOptions(opts...),
+		),
 		getEntityNeighborhood: connect.NewClient[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse](
 			httpClient,
 			baseURL+BootstrapServiceGetEntityNeighborhoodProcedure,
@@ -417,6 +427,7 @@ type bootstrapServiceClient struct {
 	writeDecision                     *connect.Client[v1.WriteDecisionRequest, v1.WriteDecisionResponse]
 	writeAction                       *connect.Client[v1.WriteActionRequest, v1.WriteActionResponse]
 	writeOutcome                      *connect.Client[v1.WriteOutcomeRequest, v1.WriteOutcomeResponse]
+	replayWorkflowEvents              *connect.Client[v1.ReplayWorkflowEventsRequest, v1.ReplayWorkflowEventsResponse]
 	getEntityNeighborhood             *connect.Client[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse]
 }
 
@@ -581,6 +592,11 @@ func (c *bootstrapServiceClient) WriteOutcome(ctx context.Context, req *connect.
 	return c.writeOutcome.CallUnary(ctx, req)
 }
 
+// ReplayWorkflowEvents calls cerebro.v1.BootstrapService.ReplayWorkflowEvents.
+func (c *bootstrapServiceClient) ReplayWorkflowEvents(ctx context.Context, req *connect.Request[v1.ReplayWorkflowEventsRequest]) (*connect.Response[v1.ReplayWorkflowEventsResponse], error) {
+	return c.replayWorkflowEvents.CallUnary(ctx, req)
+}
+
 // GetEntityNeighborhood calls cerebro.v1.BootstrapService.GetEntityNeighborhood.
 func (c *bootstrapServiceClient) GetEntityNeighborhood(ctx context.Context, req *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error) {
 	return c.getEntityNeighborhood.CallUnary(ctx, req)
@@ -620,6 +636,7 @@ type BootstrapServiceHandler interface {
 	WriteDecision(context.Context, *connect.Request[v1.WriteDecisionRequest]) (*connect.Response[v1.WriteDecisionResponse], error)
 	WriteAction(context.Context, *connect.Request[v1.WriteActionRequest]) (*connect.Response[v1.WriteActionResponse], error)
 	WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error)
+	ReplayWorkflowEvents(context.Context, *connect.Request[v1.ReplayWorkflowEventsRequest]) (*connect.Response[v1.ReplayWorkflowEventsResponse], error)
 	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
 }
 
@@ -822,6 +839,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("WriteOutcome")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceReplayWorkflowEventsHandler := connect.NewUnaryHandler(
+		BootstrapServiceReplayWorkflowEventsProcedure,
+		svc.ReplayWorkflowEvents,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ReplayWorkflowEvents")),
+		connect.WithHandlerOptions(opts...),
+	)
 	bootstrapServiceGetEntityNeighborhoodHandler := connect.NewUnaryHandler(
 		BootstrapServiceGetEntityNeighborhoodProcedure,
 		svc.GetEntityNeighborhood,
@@ -894,6 +917,8 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceWriteActionHandler.ServeHTTP(w, r)
 		case BootstrapServiceWriteOutcomeProcedure:
 			bootstrapServiceWriteOutcomeHandler.ServeHTTP(w, r)
+		case BootstrapServiceReplayWorkflowEventsProcedure:
+			bootstrapServiceReplayWorkflowEventsHandler.ServeHTTP(w, r)
 		case BootstrapServiceGetEntityNeighborhoodProcedure:
 			bootstrapServiceGetEntityNeighborhoodHandler.ServeHTTP(w, r)
 		default:
@@ -1031,6 +1056,10 @@ func (UnimplementedBootstrapServiceHandler) WriteAction(context.Context, *connec
 
 func (UnimplementedBootstrapServiceHandler) WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.WriteOutcome is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ReplayWorkflowEvents(context.Context, *connect.Request[v1.ReplayWorkflowEventsRequest]) (*connect.Response[v1.ReplayWorkflowEventsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ReplayWorkflowEvents is not implemented"))
 }
 
 func (UnimplementedBootstrapServiceHandler) GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error) {

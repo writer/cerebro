@@ -43,6 +43,7 @@ service BootstrapService {
   rpc WriteDecision(WriteDecisionRequest) returns (WriteDecisionResponse);
   rpc WriteAction(WriteActionRequest) returns (WriteActionResponse);
   rpc WriteOutcome(WriteOutcomeRequest) returns (WriteOutcomeResponse);
+  rpc ReplayWorkflowEvents(ReplayWorkflowEventsRequest) returns (ReplayWorkflowEventsResponse);
   rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
 }
 
@@ -619,6 +620,22 @@ message WriteOutcomeResponse {
   string outcome_id = 1;
   string decision_id = 2;
   uint32 target_count = 3;
+}
+
+// ReplayWorkflowEventsRequest replays durable workflow events into graph projections.
+message ReplayWorkflowEventsRequest {
+  string kind_prefix = 1;
+  string tenant_id = 2;
+  map<string, string> attribute_equals = 3;
+  uint32 limit = 4;
+}
+
+// ReplayWorkflowEventsResponse returns graph projection counts from one replay pass.
+message ReplayWorkflowEventsResponse {
+  uint32 events_read = 1;
+  uint32 events_projected = 2;
+  uint32 entities_projected = 3;
+  uint32 links_projected = 4;
 }
 
 // GraphEntity is the normalized graph node view exposed by the first query surface.

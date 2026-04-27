@@ -5044,6 +5044,144 @@ func (x *WriteOutcomeResponse) GetTargetCount() uint32 {
 	return 0
 }
 
+// ReplayWorkflowEventsRequest replays durable workflow events into graph projections.
+type ReplayWorkflowEventsRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	KindPrefix      string                 `protobuf:"bytes,1,opt,name=kind_prefix,json=kindPrefix,proto3" json:"kind_prefix,omitempty"`
+	TenantId        string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	AttributeEquals map[string]string      `protobuf:"bytes,3,rep,name=attribute_equals,json=attributeEquals,proto3" json:"attribute_equals,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Limit           uint32                 `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ReplayWorkflowEventsRequest) Reset() {
+	*x = ReplayWorkflowEventsRequest{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplayWorkflowEventsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplayWorkflowEventsRequest) ProtoMessage() {}
+
+func (x *ReplayWorkflowEventsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplayWorkflowEventsRequest.ProtoReflect.Descriptor instead.
+func (*ReplayWorkflowEventsRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{77}
+}
+
+func (x *ReplayWorkflowEventsRequest) GetKindPrefix() string {
+	if x != nil {
+		return x.KindPrefix
+	}
+	return ""
+}
+
+func (x *ReplayWorkflowEventsRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ReplayWorkflowEventsRequest) GetAttributeEquals() map[string]string {
+	if x != nil {
+		return x.AttributeEquals
+	}
+	return nil
+}
+
+func (x *ReplayWorkflowEventsRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+// ReplayWorkflowEventsResponse returns graph projection counts from one replay pass.
+type ReplayWorkflowEventsResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	EventsRead        uint32                 `protobuf:"varint,1,opt,name=events_read,json=eventsRead,proto3" json:"events_read,omitempty"`
+	EventsProjected   uint32                 `protobuf:"varint,2,opt,name=events_projected,json=eventsProjected,proto3" json:"events_projected,omitempty"`
+	EntitiesProjected uint32                 `protobuf:"varint,3,opt,name=entities_projected,json=entitiesProjected,proto3" json:"entities_projected,omitempty"`
+	LinksProjected    uint32                 `protobuf:"varint,4,opt,name=links_projected,json=linksProjected,proto3" json:"links_projected,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ReplayWorkflowEventsResponse) Reset() {
+	*x = ReplayWorkflowEventsResponse{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplayWorkflowEventsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplayWorkflowEventsResponse) ProtoMessage() {}
+
+func (x *ReplayWorkflowEventsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplayWorkflowEventsResponse.ProtoReflect.Descriptor instead.
+func (*ReplayWorkflowEventsResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *ReplayWorkflowEventsResponse) GetEventsRead() uint32 {
+	if x != nil {
+		return x.EventsRead
+	}
+	return 0
+}
+
+func (x *ReplayWorkflowEventsResponse) GetEventsProjected() uint32 {
+	if x != nil {
+		return x.EventsProjected
+	}
+	return 0
+}
+
+func (x *ReplayWorkflowEventsResponse) GetEntitiesProjected() uint32 {
+	if x != nil {
+		return x.EntitiesProjected
+	}
+	return 0
+}
+
+func (x *ReplayWorkflowEventsResponse) GetLinksProjected() uint32 {
+	if x != nil {
+		return x.LinksProjected
+	}
+	return 0
+}
+
 // GraphEntity is the normalized graph node view exposed by the first query surface.
 type GraphEntity struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -5056,7 +5194,7 @@ type GraphEntity struct {
 
 func (x *GraphEntity) Reset() {
 	*x = GraphEntity{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[77]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5068,7 +5206,7 @@ func (x *GraphEntity) String() string {
 func (*GraphEntity) ProtoMessage() {}
 
 func (x *GraphEntity) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[77]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5081,7 +5219,7 @@ func (x *GraphEntity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphEntity.ProtoReflect.Descriptor instead.
 func (*GraphEntity) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{77}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *GraphEntity) GetUrn() string {
@@ -5117,7 +5255,7 @@ type GraphRelation struct {
 
 func (x *GraphRelation) Reset() {
 	*x = GraphRelation{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[78]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5129,7 +5267,7 @@ func (x *GraphRelation) String() string {
 func (*GraphRelation) ProtoMessage() {}
 
 func (x *GraphRelation) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[78]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5142,7 +5280,7 @@ func (x *GraphRelation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GraphRelation.ProtoReflect.Descriptor instead.
 func (*GraphRelation) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{78}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *GraphRelation) GetFromUrn() string {
@@ -5177,7 +5315,7 @@ type GetEntityNeighborhoodRequest struct {
 
 func (x *GetEntityNeighborhoodRequest) Reset() {
 	*x = GetEntityNeighborhoodRequest{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[79]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5189,7 +5327,7 @@ func (x *GetEntityNeighborhoodRequest) String() string {
 func (*GetEntityNeighborhoodRequest) ProtoMessage() {}
 
 func (x *GetEntityNeighborhoodRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[79]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5202,7 +5340,7 @@ func (x *GetEntityNeighborhoodRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEntityNeighborhoodRequest.ProtoReflect.Descriptor instead.
 func (*GetEntityNeighborhoodRequest) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{79}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *GetEntityNeighborhoodRequest) GetRootUrn() string {
@@ -5231,7 +5369,7 @@ type GetEntityNeighborhoodResponse struct {
 
 func (x *GetEntityNeighborhoodResponse) Reset() {
 	*x = GetEntityNeighborhoodResponse{}
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[80]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5243,7 +5381,7 @@ func (x *GetEntityNeighborhoodResponse) String() string {
 func (*GetEntityNeighborhoodResponse) ProtoMessage() {}
 
 func (x *GetEntityNeighborhoodResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[80]
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5256,7 +5394,7 @@ func (x *GetEntityNeighborhoodResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEntityNeighborhoodResponse.ProtoReflect.Descriptor instead.
 func (*GetEntityNeighborhoodResponse) Descriptor() ([]byte, []int) {
-	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{80}
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *GetEntityNeighborhoodResponse) GetRoot() *GraphEntity {
@@ -5724,7 +5862,22 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"outcome_id\x18\x01 \x01(\tR\toutcomeId\x12\x1f\n" +
 	"\vdecision_id\x18\x02 \x01(\tR\n" +
 	"decisionId\x12!\n" +
-	"\ftarget_count\x18\x03 \x01(\rR\vtargetCount\"V\n" +
+	"\ftarget_count\x18\x03 \x01(\rR\vtargetCount\"\x9e\x02\n" +
+	"\x1bReplayWorkflowEventsRequest\x12\x1f\n" +
+	"\vkind_prefix\x18\x01 \x01(\tR\n" +
+	"kindPrefix\x12\x1b\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12g\n" +
+	"\x10attribute_equals\x18\x03 \x03(\v2<.cerebro.v1.ReplayWorkflowEventsRequest.AttributeEqualsEntryR\x0fattributeEquals\x12\x14\n" +
+	"\x05limit\x18\x04 \x01(\rR\x05limit\x1aB\n" +
+	"\x14AttributeEqualsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc2\x01\n" +
+	"\x1cReplayWorkflowEventsResponse\x12\x1f\n" +
+	"\vevents_read\x18\x01 \x01(\rR\n" +
+	"eventsRead\x12)\n" +
+	"\x10events_projected\x18\x02 \x01(\rR\x0feventsProjected\x12-\n" +
+	"\x12entities_projected\x18\x03 \x01(\rR\x11entitiesProjected\x12'\n" +
+	"\x0flinks_projected\x18\x04 \x01(\rR\x0elinksProjected\"V\n" +
 	"\vGraphEntity\x12\x10\n" +
 	"\x03urn\x18\x01 \x01(\tR\x03urn\x12\x1f\n" +
 	"\ventity_type\x18\x02 \x01(\tR\n" +
@@ -5745,7 +5898,7 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x1aFINDING_STATUS_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13FINDING_STATUS_OPEN\x10\x01\x12\x1b\n" +
 	"\x17FINDING_STATUS_RESOLVED\x10\x02\x12\x1d\n" +
-	"\x19FINDING_STATUS_SUPPRESSED\x10\x032\xa0\x18\n" +
+	"\x19FINDING_STATUS_SUPPRESSED\x10\x032\x8b\x19\n" +
 	"\x10BootstrapService\x12K\n" +
 	"\n" +
 	"GetVersion\x12\x1d.cerebro.v1.GetVersionRequest\x1a\x1e.cerebro.v1.GetVersionResponse\x12N\n" +
@@ -5782,7 +5935,8 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x1dEvaluateSourceRuntimeFindings\x120.cerebro.v1.EvaluateSourceRuntimeFindingsRequest\x1a1.cerebro.v1.EvaluateSourceRuntimeFindingsResponse\x12T\n" +
 	"\rWriteDecision\x12 .cerebro.v1.WriteDecisionRequest\x1a!.cerebro.v1.WriteDecisionResponse\x12N\n" +
 	"\vWriteAction\x12\x1e.cerebro.v1.WriteActionRequest\x1a\x1f.cerebro.v1.WriteActionResponse\x12Q\n" +
-	"\fWriteOutcome\x12\x1f.cerebro.v1.WriteOutcomeRequest\x1a .cerebro.v1.WriteOutcomeResponse\x12l\n" +
+	"\fWriteOutcome\x12\x1f.cerebro.v1.WriteOutcomeRequest\x1a .cerebro.v1.WriteOutcomeResponse\x12i\n" +
+	"\x14ReplayWorkflowEvents\x12'.cerebro.v1.ReplayWorkflowEventsRequest\x1a(.cerebro.v1.ReplayWorkflowEventsResponse\x12l\n" +
 	"\x15GetEntityNeighborhood\x12(.cerebro.v1.GetEntityNeighborhoodRequest\x1a).cerebro.v1.GetEntityNeighborhoodResponseB4Z2github.com/writer/cerebro/gen/cerebro/v1;cerebrov1b\x06proto3"
 
 var (
@@ -5798,7 +5952,7 @@ func file_cerebro_v1_bootstrap_proto_rawDescGZIP() []byte {
 }
 
 var file_cerebro_v1_bootstrap_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_cerebro_v1_bootstrap_proto_msgTypes = make([]protoimpl.MessageInfo, 88)
+var file_cerebro_v1_bootstrap_proto_msgTypes = make([]protoimpl.MessageInfo, 91)
 var file_cerebro_v1_bootstrap_proto_goTypes = []any{
 	(FindingStatus)(0),                                // 0: cerebro.v1.FindingStatus
 	(*GetVersionRequest)(nil),                         // 1: cerebro.v1.GetVersionRequest
@@ -5878,190 +6032,196 @@ var file_cerebro_v1_bootstrap_proto_goTypes = []any{
 	(*WriteActionResponse)(nil),                       // 75: cerebro.v1.WriteActionResponse
 	(*WriteOutcomeRequest)(nil),                       // 76: cerebro.v1.WriteOutcomeRequest
 	(*WriteOutcomeResponse)(nil),                      // 77: cerebro.v1.WriteOutcomeResponse
-	(*GraphEntity)(nil),                               // 78: cerebro.v1.GraphEntity
-	(*GraphRelation)(nil),                             // 79: cerebro.v1.GraphRelation
-	(*GetEntityNeighborhoodRequest)(nil),              // 80: cerebro.v1.GetEntityNeighborhoodRequest
-	(*GetEntityNeighborhoodResponse)(nil),             // 81: cerebro.v1.GetEntityNeighborhoodResponse
-	nil,                                               // 82: cerebro.v1.ReportRun.ParametersEntry
-	nil,                                               // 83: cerebro.v1.RunReportRequest.ParametersEntry
-	nil,                                               // 84: cerebro.v1.CheckSourceRequest.ConfigEntry
-	nil,                                               // 85: cerebro.v1.DiscoverSourceRequest.ConfigEntry
-	nil,                                               // 86: cerebro.v1.ReadSourceRequest.ConfigEntry
-	nil,                                               // 87: cerebro.v1.SourceRuntime.ConfigEntry
-	nil,                                               // 88: cerebro.v1.Finding.AttributesEntry
-	(*timestamppb.Timestamp)(nil),                     // 89: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),                           // 90: google.protobuf.Struct
-	(*RuleSpec)(nil),                                  // 91: cerebro.v1.RuleSpec
-	(*SourceSpec)(nil),                                // 92: cerebro.v1.SourceSpec
-	(*SourceCursor)(nil),                              // 93: cerebro.v1.SourceCursor
-	(*EventEnvelope)(nil),                             // 94: cerebro.v1.EventEnvelope
-	(*structpb.Value)(nil),                            // 95: google.protobuf.Value
-	(*SourceCheckpoint)(nil),                          // 96: cerebro.v1.SourceCheckpoint
-	(*Claim)(nil),                                     // 97: cerebro.v1.Claim
+	(*ReplayWorkflowEventsRequest)(nil),               // 78: cerebro.v1.ReplayWorkflowEventsRequest
+	(*ReplayWorkflowEventsResponse)(nil),              // 79: cerebro.v1.ReplayWorkflowEventsResponse
+	(*GraphEntity)(nil),                               // 80: cerebro.v1.GraphEntity
+	(*GraphRelation)(nil),                             // 81: cerebro.v1.GraphRelation
+	(*GetEntityNeighborhoodRequest)(nil),              // 82: cerebro.v1.GetEntityNeighborhoodRequest
+	(*GetEntityNeighborhoodResponse)(nil),             // 83: cerebro.v1.GetEntityNeighborhoodResponse
+	nil,                                               // 84: cerebro.v1.ReportRun.ParametersEntry
+	nil,                                               // 85: cerebro.v1.RunReportRequest.ParametersEntry
+	nil,                                               // 86: cerebro.v1.CheckSourceRequest.ConfigEntry
+	nil,                                               // 87: cerebro.v1.DiscoverSourceRequest.ConfigEntry
+	nil,                                               // 88: cerebro.v1.ReadSourceRequest.ConfigEntry
+	nil,                                               // 89: cerebro.v1.SourceRuntime.ConfigEntry
+	nil,                                               // 90: cerebro.v1.Finding.AttributesEntry
+	nil,                                               // 91: cerebro.v1.ReplayWorkflowEventsRequest.AttributeEqualsEntry
+	(*timestamppb.Timestamp)(nil),                     // 92: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),                           // 93: google.protobuf.Struct
+	(*RuleSpec)(nil),                                  // 94: cerebro.v1.RuleSpec
+	(*SourceSpec)(nil),                                // 95: cerebro.v1.SourceSpec
+	(*SourceCursor)(nil),                              // 96: cerebro.v1.SourceCursor
+	(*EventEnvelope)(nil),                             // 97: cerebro.v1.EventEnvelope
+	(*structpb.Value)(nil),                            // 98: google.protobuf.Value
+	(*SourceCheckpoint)(nil),                          // 99: cerebro.v1.SourceCheckpoint
+	(*Claim)(nil),                                     // 100: cerebro.v1.Claim
 }
 var file_cerebro_v1_bootstrap_proto_depIdxs = []int32{
-	89,  // 0: cerebro.v1.CheckHealthResponse.checked_at:type_name -> google.protobuf.Timestamp
+	92,  // 0: cerebro.v1.CheckHealthResponse.checked_at:type_name -> google.protobuf.Timestamp
 	4,   // 1: cerebro.v1.CheckHealthResponse.components:type_name -> cerebro.v1.ComponentStatus
 	6,   // 2: cerebro.v1.ReportDefinition.parameters:type_name -> cerebro.v1.ReportParameter
-	82,  // 3: cerebro.v1.ReportRun.parameters:type_name -> cerebro.v1.ReportRun.ParametersEntry
-	89,  // 4: cerebro.v1.ReportRun.generated_at:type_name -> google.protobuf.Timestamp
-	90,  // 5: cerebro.v1.ReportRun.result:type_name -> google.protobuf.Struct
+	84,  // 3: cerebro.v1.ReportRun.parameters:type_name -> cerebro.v1.ReportRun.ParametersEntry
+	92,  // 4: cerebro.v1.ReportRun.generated_at:type_name -> google.protobuf.Timestamp
+	93,  // 5: cerebro.v1.ReportRun.result:type_name -> google.protobuf.Struct
 	7,   // 6: cerebro.v1.ListReportDefinitionsResponse.reports:type_name -> cerebro.v1.ReportDefinition
-	91,  // 7: cerebro.v1.ListFindingRulesResponse.rules:type_name -> cerebro.v1.RuleSpec
-	89,  // 8: cerebro.v1.FindingEvaluationRun.started_at:type_name -> google.protobuf.Timestamp
-	89,  // 9: cerebro.v1.FindingEvaluationRun.finished_at:type_name -> google.protobuf.Timestamp
+	94,  // 7: cerebro.v1.ListFindingRulesResponse.rules:type_name -> cerebro.v1.RuleSpec
+	92,  // 8: cerebro.v1.FindingEvaluationRun.started_at:type_name -> google.protobuf.Timestamp
+	92,  // 9: cerebro.v1.FindingEvaluationRun.finished_at:type_name -> google.protobuf.Timestamp
 	13,  // 10: cerebro.v1.ListFindingEvaluationRunsResponse.runs:type_name -> cerebro.v1.FindingEvaluationRun
 	13,  // 11: cerebro.v1.GetFindingEvaluationRunResponse.run:type_name -> cerebro.v1.FindingEvaluationRun
-	89,  // 12: cerebro.v1.FindingEvidence.created_at:type_name -> google.protobuf.Timestamp
+	92,  // 12: cerebro.v1.FindingEvidence.created_at:type_name -> google.protobuf.Timestamp
 	18,  // 13: cerebro.v1.ListFindingEvidenceResponse.evidence:type_name -> cerebro.v1.FindingEvidence
 	18,  // 14: cerebro.v1.GetFindingEvidenceResponse.evidence:type_name -> cerebro.v1.FindingEvidence
-	83,  // 15: cerebro.v1.RunReportRequest.parameters:type_name -> cerebro.v1.RunReportRequest.ParametersEntry
+	85,  // 15: cerebro.v1.RunReportRequest.parameters:type_name -> cerebro.v1.RunReportRequest.ParametersEntry
 	7,   // 16: cerebro.v1.RunReportResponse.report:type_name -> cerebro.v1.ReportDefinition
 	8,   // 17: cerebro.v1.RunReportResponse.run:type_name -> cerebro.v1.ReportRun
 	8,   // 18: cerebro.v1.GetReportRunResponse.run:type_name -> cerebro.v1.ReportRun
-	92,  // 19: cerebro.v1.ListSourcesResponse.sources:type_name -> cerebro.v1.SourceSpec
-	84,  // 20: cerebro.v1.CheckSourceRequest.config:type_name -> cerebro.v1.CheckSourceRequest.ConfigEntry
-	92,  // 21: cerebro.v1.CheckSourceResponse.source:type_name -> cerebro.v1.SourceSpec
-	85,  // 22: cerebro.v1.DiscoverSourceRequest.config:type_name -> cerebro.v1.DiscoverSourceRequest.ConfigEntry
-	92,  // 23: cerebro.v1.DiscoverSourceResponse.source:type_name -> cerebro.v1.SourceSpec
-	86,  // 24: cerebro.v1.ReadSourceRequest.config:type_name -> cerebro.v1.ReadSourceRequest.ConfigEntry
-	93,  // 25: cerebro.v1.ReadSourceRequest.cursor:type_name -> cerebro.v1.SourceCursor
-	94,  // 26: cerebro.v1.SourcePreviewEvent.event:type_name -> cerebro.v1.EventEnvelope
-	95,  // 27: cerebro.v1.SourcePreviewEvent.payload:type_name -> google.protobuf.Value
-	92,  // 28: cerebro.v1.ReadSourceResponse.source:type_name -> cerebro.v1.SourceSpec
-	94,  // 29: cerebro.v1.ReadSourceResponse.events:type_name -> cerebro.v1.EventEnvelope
-	96,  // 30: cerebro.v1.ReadSourceResponse.checkpoint:type_name -> cerebro.v1.SourceCheckpoint
-	93,  // 31: cerebro.v1.ReadSourceResponse.next_cursor:type_name -> cerebro.v1.SourceCursor
+	95,  // 19: cerebro.v1.ListSourcesResponse.sources:type_name -> cerebro.v1.SourceSpec
+	86,  // 20: cerebro.v1.CheckSourceRequest.config:type_name -> cerebro.v1.CheckSourceRequest.ConfigEntry
+	95,  // 21: cerebro.v1.CheckSourceResponse.source:type_name -> cerebro.v1.SourceSpec
+	87,  // 22: cerebro.v1.DiscoverSourceRequest.config:type_name -> cerebro.v1.DiscoverSourceRequest.ConfigEntry
+	95,  // 23: cerebro.v1.DiscoverSourceResponse.source:type_name -> cerebro.v1.SourceSpec
+	88,  // 24: cerebro.v1.ReadSourceRequest.config:type_name -> cerebro.v1.ReadSourceRequest.ConfigEntry
+	96,  // 25: cerebro.v1.ReadSourceRequest.cursor:type_name -> cerebro.v1.SourceCursor
+	97,  // 26: cerebro.v1.SourcePreviewEvent.event:type_name -> cerebro.v1.EventEnvelope
+	98,  // 27: cerebro.v1.SourcePreviewEvent.payload:type_name -> google.protobuf.Value
+	95,  // 28: cerebro.v1.ReadSourceResponse.source:type_name -> cerebro.v1.SourceSpec
+	97,  // 29: cerebro.v1.ReadSourceResponse.events:type_name -> cerebro.v1.EventEnvelope
+	99,  // 30: cerebro.v1.ReadSourceResponse.checkpoint:type_name -> cerebro.v1.SourceCheckpoint
+	96,  // 31: cerebro.v1.ReadSourceResponse.next_cursor:type_name -> cerebro.v1.SourceCursor
 	34,  // 32: cerebro.v1.ReadSourceResponse.preview_events:type_name -> cerebro.v1.SourcePreviewEvent
-	87,  // 33: cerebro.v1.SourceRuntime.config:type_name -> cerebro.v1.SourceRuntime.ConfigEntry
-	96,  // 34: cerebro.v1.SourceRuntime.checkpoint:type_name -> cerebro.v1.SourceCheckpoint
-	93,  // 35: cerebro.v1.SourceRuntime.next_cursor:type_name -> cerebro.v1.SourceCursor
-	89,  // 36: cerebro.v1.SourceRuntime.last_synced_at:type_name -> google.protobuf.Timestamp
+	89,  // 33: cerebro.v1.SourceRuntime.config:type_name -> cerebro.v1.SourceRuntime.ConfigEntry
+	99,  // 34: cerebro.v1.SourceRuntime.checkpoint:type_name -> cerebro.v1.SourceCheckpoint
+	96,  // 35: cerebro.v1.SourceRuntime.next_cursor:type_name -> cerebro.v1.SourceCursor
+	92,  // 36: cerebro.v1.SourceRuntime.last_synced_at:type_name -> google.protobuf.Timestamp
 	36,  // 37: cerebro.v1.PutSourceRuntimeRequest.runtime:type_name -> cerebro.v1.SourceRuntime
 	36,  // 38: cerebro.v1.PutSourceRuntimeResponse.runtime:type_name -> cerebro.v1.SourceRuntime
 	36,  // 39: cerebro.v1.GetSourceRuntimeResponse.runtime:type_name -> cerebro.v1.SourceRuntime
 	36,  // 40: cerebro.v1.SyncSourceRuntimeResponse.runtime:type_name -> cerebro.v1.SourceRuntime
-	92,  // 41: cerebro.v1.SyncSourceRuntimeResponse.source:type_name -> cerebro.v1.SourceSpec
-	97,  // 42: cerebro.v1.WriteClaimsRequest.claims:type_name -> cerebro.v1.Claim
-	97,  // 43: cerebro.v1.ListClaimsResponse.claims:type_name -> cerebro.v1.Claim
+	95,  // 41: cerebro.v1.SyncSourceRuntimeResponse.source:type_name -> cerebro.v1.SourceSpec
+	100, // 42: cerebro.v1.WriteClaimsRequest.claims:type_name -> cerebro.v1.Claim
+	100, // 43: cerebro.v1.ListClaimsResponse.claims:type_name -> cerebro.v1.Claim
 	0,   // 44: cerebro.v1.ListFindingsRequest.status:type_name -> cerebro.v1.FindingStatus
-	89,  // 45: cerebro.v1.FindingNote.created_at:type_name -> google.protobuf.Timestamp
-	89,  // 46: cerebro.v1.FindingTicket.linked_at:type_name -> google.protobuf.Timestamp
+	92,  // 45: cerebro.v1.FindingNote.created_at:type_name -> google.protobuf.Timestamp
+	92,  // 46: cerebro.v1.FindingTicket.linked_at:type_name -> google.protobuf.Timestamp
 	0,   // 47: cerebro.v1.Finding.status:type_name -> cerebro.v1.FindingStatus
-	88,  // 48: cerebro.v1.Finding.attributes:type_name -> cerebro.v1.Finding.AttributesEntry
-	89,  // 49: cerebro.v1.Finding.first_observed_at:type_name -> google.protobuf.Timestamp
-	89,  // 50: cerebro.v1.Finding.last_observed_at:type_name -> google.protobuf.Timestamp
-	89,  // 51: cerebro.v1.Finding.status_updated_at:type_name -> google.protobuf.Timestamp
+	90,  // 48: cerebro.v1.Finding.attributes:type_name -> cerebro.v1.Finding.AttributesEntry
+	92,  // 49: cerebro.v1.Finding.first_observed_at:type_name -> google.protobuf.Timestamp
+	92,  // 50: cerebro.v1.Finding.last_observed_at:type_name -> google.protobuf.Timestamp
+	92,  // 51: cerebro.v1.Finding.status_updated_at:type_name -> google.protobuf.Timestamp
 	48,  // 52: cerebro.v1.Finding.control_refs:type_name -> cerebro.v1.FindingControlRef
-	89,  // 53: cerebro.v1.Finding.due_at:type_name -> google.protobuf.Timestamp
+	92,  // 53: cerebro.v1.Finding.due_at:type_name -> google.protobuf.Timestamp
 	49,  // 54: cerebro.v1.Finding.notes:type_name -> cerebro.v1.FindingNote
 	50,  // 55: cerebro.v1.Finding.tickets:type_name -> cerebro.v1.FindingTicket
 	51,  // 56: cerebro.v1.GetFindingResponse.finding:type_name -> cerebro.v1.Finding
 	51,  // 57: cerebro.v1.ResolveFindingResponse.finding:type_name -> cerebro.v1.Finding
 	51,  // 58: cerebro.v1.SuppressFindingResponse.finding:type_name -> cerebro.v1.Finding
 	51,  // 59: cerebro.v1.AssignFindingResponse.finding:type_name -> cerebro.v1.Finding
-	89,  // 60: cerebro.v1.SetFindingDueDateRequest.due_at:type_name -> google.protobuf.Timestamp
+	92,  // 60: cerebro.v1.SetFindingDueDateRequest.due_at:type_name -> google.protobuf.Timestamp
 	51,  // 61: cerebro.v1.SetFindingDueDateResponse.finding:type_name -> cerebro.v1.Finding
 	51,  // 62: cerebro.v1.AddFindingNoteResponse.finding:type_name -> cerebro.v1.Finding
 	51,  // 63: cerebro.v1.LinkFindingTicketResponse.finding:type_name -> cerebro.v1.Finding
 	51,  // 64: cerebro.v1.ListFindingsResponse.findings:type_name -> cerebro.v1.Finding
-	91,  // 65: cerebro.v1.FindingRuleEvaluation.rule:type_name -> cerebro.v1.RuleSpec
+	94,  // 65: cerebro.v1.FindingRuleEvaluation.rule:type_name -> cerebro.v1.RuleSpec
 	51,  // 66: cerebro.v1.FindingRuleEvaluation.findings:type_name -> cerebro.v1.Finding
 	13,  // 67: cerebro.v1.FindingRuleEvaluation.run:type_name -> cerebro.v1.FindingEvaluationRun
 	18,  // 68: cerebro.v1.FindingRuleEvaluation.evidence:type_name -> cerebro.v1.FindingEvidence
 	36,  // 69: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse.runtime:type_name -> cerebro.v1.SourceRuntime
 	69,  // 70: cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse.evaluations:type_name -> cerebro.v1.FindingRuleEvaluation
 	36,  // 71: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.runtime:type_name -> cerebro.v1.SourceRuntime
-	91,  // 72: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.rule:type_name -> cerebro.v1.RuleSpec
+	94,  // 72: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.rule:type_name -> cerebro.v1.RuleSpec
 	51,  // 73: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.findings:type_name -> cerebro.v1.Finding
 	13,  // 74: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.run:type_name -> cerebro.v1.FindingEvaluationRun
 	18,  // 75: cerebro.v1.EvaluateSourceRuntimeFindingsResponse.evidence:type_name -> cerebro.v1.FindingEvidence
-	89,  // 76: cerebro.v1.WriteDecisionRequest.observed_at:type_name -> google.protobuf.Timestamp
-	89,  // 77: cerebro.v1.WriteDecisionRequest.valid_from:type_name -> google.protobuf.Timestamp
-	89,  // 78: cerebro.v1.WriteDecisionRequest.valid_to:type_name -> google.protobuf.Timestamp
-	90,  // 79: cerebro.v1.WriteDecisionRequest.metadata:type_name -> google.protobuf.Struct
-	89,  // 80: cerebro.v1.WriteActionRequest.observed_at:type_name -> google.protobuf.Timestamp
-	89,  // 81: cerebro.v1.WriteActionRequest.valid_from:type_name -> google.protobuf.Timestamp
-	89,  // 82: cerebro.v1.WriteActionRequest.valid_to:type_name -> google.protobuf.Timestamp
-	90,  // 83: cerebro.v1.WriteActionRequest.metadata:type_name -> google.protobuf.Struct
-	89,  // 84: cerebro.v1.WriteOutcomeRequest.observed_at:type_name -> google.protobuf.Timestamp
-	89,  // 85: cerebro.v1.WriteOutcomeRequest.valid_from:type_name -> google.protobuf.Timestamp
-	89,  // 86: cerebro.v1.WriteOutcomeRequest.valid_to:type_name -> google.protobuf.Timestamp
-	90,  // 87: cerebro.v1.WriteOutcomeRequest.metadata:type_name -> google.protobuf.Struct
-	78,  // 88: cerebro.v1.GetEntityNeighborhoodResponse.root:type_name -> cerebro.v1.GraphEntity
-	78,  // 89: cerebro.v1.GetEntityNeighborhoodResponse.neighbors:type_name -> cerebro.v1.GraphEntity
-	79,  // 90: cerebro.v1.GetEntityNeighborhoodResponse.relations:type_name -> cerebro.v1.GraphRelation
-	1,   // 91: cerebro.v1.BootstrapService.GetVersion:input_type -> cerebro.v1.GetVersionRequest
-	3,   // 92: cerebro.v1.BootstrapService.CheckHealth:input_type -> cerebro.v1.CheckHealthRequest
-	9,   // 93: cerebro.v1.BootstrapService.ListReportDefinitions:input_type -> cerebro.v1.ListReportDefinitionsRequest
-	11,  // 94: cerebro.v1.BootstrapService.ListFindingRules:input_type -> cerebro.v1.ListFindingRulesRequest
-	23,  // 95: cerebro.v1.BootstrapService.RunReport:input_type -> cerebro.v1.RunReportRequest
-	25,  // 96: cerebro.v1.BootstrapService.GetReportRun:input_type -> cerebro.v1.GetReportRunRequest
-	27,  // 97: cerebro.v1.BootstrapService.ListSources:input_type -> cerebro.v1.ListSourcesRequest
-	29,  // 98: cerebro.v1.BootstrapService.CheckSource:input_type -> cerebro.v1.CheckSourceRequest
-	31,  // 99: cerebro.v1.BootstrapService.DiscoverSource:input_type -> cerebro.v1.DiscoverSourceRequest
-	33,  // 100: cerebro.v1.BootstrapService.ReadSource:input_type -> cerebro.v1.ReadSourceRequest
-	37,  // 101: cerebro.v1.BootstrapService.PutSourceRuntime:input_type -> cerebro.v1.PutSourceRuntimeRequest
-	39,  // 102: cerebro.v1.BootstrapService.GetSourceRuntime:input_type -> cerebro.v1.GetSourceRuntimeRequest
-	41,  // 103: cerebro.v1.BootstrapService.SyncSourceRuntime:input_type -> cerebro.v1.SyncSourceRuntimeRequest
-	43,  // 104: cerebro.v1.BootstrapService.WriteClaims:input_type -> cerebro.v1.WriteClaimsRequest
-	45,  // 105: cerebro.v1.BootstrapService.ListClaims:input_type -> cerebro.v1.ListClaimsRequest
-	47,  // 106: cerebro.v1.BootstrapService.ListFindings:input_type -> cerebro.v1.ListFindingsRequest
-	52,  // 107: cerebro.v1.BootstrapService.GetFinding:input_type -> cerebro.v1.GetFindingRequest
-	54,  // 108: cerebro.v1.BootstrapService.ResolveFinding:input_type -> cerebro.v1.ResolveFindingRequest
-	56,  // 109: cerebro.v1.BootstrapService.SuppressFinding:input_type -> cerebro.v1.SuppressFindingRequest
-	58,  // 110: cerebro.v1.BootstrapService.AssignFinding:input_type -> cerebro.v1.AssignFindingRequest
-	60,  // 111: cerebro.v1.BootstrapService.SetFindingDueDate:input_type -> cerebro.v1.SetFindingDueDateRequest
-	62,  // 112: cerebro.v1.BootstrapService.AddFindingNote:input_type -> cerebro.v1.AddFindingNoteRequest
-	64,  // 113: cerebro.v1.BootstrapService.LinkFindingTicket:input_type -> cerebro.v1.LinkFindingTicketRequest
-	14,  // 114: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:input_type -> cerebro.v1.ListFindingEvaluationRunsRequest
-	16,  // 115: cerebro.v1.BootstrapService.GetFindingEvaluationRun:input_type -> cerebro.v1.GetFindingEvaluationRunRequest
-	19,  // 116: cerebro.v1.BootstrapService.ListFindingEvidence:input_type -> cerebro.v1.ListFindingEvidenceRequest
-	21,  // 117: cerebro.v1.BootstrapService.GetFindingEvidence:input_type -> cerebro.v1.GetFindingEvidenceRequest
-	68,  // 118: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesRequest
-	67,  // 119: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingsRequest
-	72,  // 120: cerebro.v1.BootstrapService.WriteDecision:input_type -> cerebro.v1.WriteDecisionRequest
-	74,  // 121: cerebro.v1.BootstrapService.WriteAction:input_type -> cerebro.v1.WriteActionRequest
-	76,  // 122: cerebro.v1.BootstrapService.WriteOutcome:input_type -> cerebro.v1.WriteOutcomeRequest
-	80,  // 123: cerebro.v1.BootstrapService.GetEntityNeighborhood:input_type -> cerebro.v1.GetEntityNeighborhoodRequest
-	2,   // 124: cerebro.v1.BootstrapService.GetVersion:output_type -> cerebro.v1.GetVersionResponse
-	5,   // 125: cerebro.v1.BootstrapService.CheckHealth:output_type -> cerebro.v1.CheckHealthResponse
-	10,  // 126: cerebro.v1.BootstrapService.ListReportDefinitions:output_type -> cerebro.v1.ListReportDefinitionsResponse
-	12,  // 127: cerebro.v1.BootstrapService.ListFindingRules:output_type -> cerebro.v1.ListFindingRulesResponse
-	24,  // 128: cerebro.v1.BootstrapService.RunReport:output_type -> cerebro.v1.RunReportResponse
-	26,  // 129: cerebro.v1.BootstrapService.GetReportRun:output_type -> cerebro.v1.GetReportRunResponse
-	28,  // 130: cerebro.v1.BootstrapService.ListSources:output_type -> cerebro.v1.ListSourcesResponse
-	30,  // 131: cerebro.v1.BootstrapService.CheckSource:output_type -> cerebro.v1.CheckSourceResponse
-	32,  // 132: cerebro.v1.BootstrapService.DiscoverSource:output_type -> cerebro.v1.DiscoverSourceResponse
-	35,  // 133: cerebro.v1.BootstrapService.ReadSource:output_type -> cerebro.v1.ReadSourceResponse
-	38,  // 134: cerebro.v1.BootstrapService.PutSourceRuntime:output_type -> cerebro.v1.PutSourceRuntimeResponse
-	40,  // 135: cerebro.v1.BootstrapService.GetSourceRuntime:output_type -> cerebro.v1.GetSourceRuntimeResponse
-	42,  // 136: cerebro.v1.BootstrapService.SyncSourceRuntime:output_type -> cerebro.v1.SyncSourceRuntimeResponse
-	44,  // 137: cerebro.v1.BootstrapService.WriteClaims:output_type -> cerebro.v1.WriteClaimsResponse
-	46,  // 138: cerebro.v1.BootstrapService.ListClaims:output_type -> cerebro.v1.ListClaimsResponse
-	66,  // 139: cerebro.v1.BootstrapService.ListFindings:output_type -> cerebro.v1.ListFindingsResponse
-	53,  // 140: cerebro.v1.BootstrapService.GetFinding:output_type -> cerebro.v1.GetFindingResponse
-	55,  // 141: cerebro.v1.BootstrapService.ResolveFinding:output_type -> cerebro.v1.ResolveFindingResponse
-	57,  // 142: cerebro.v1.BootstrapService.SuppressFinding:output_type -> cerebro.v1.SuppressFindingResponse
-	59,  // 143: cerebro.v1.BootstrapService.AssignFinding:output_type -> cerebro.v1.AssignFindingResponse
-	61,  // 144: cerebro.v1.BootstrapService.SetFindingDueDate:output_type -> cerebro.v1.SetFindingDueDateResponse
-	63,  // 145: cerebro.v1.BootstrapService.AddFindingNote:output_type -> cerebro.v1.AddFindingNoteResponse
-	65,  // 146: cerebro.v1.BootstrapService.LinkFindingTicket:output_type -> cerebro.v1.LinkFindingTicketResponse
-	15,  // 147: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:output_type -> cerebro.v1.ListFindingEvaluationRunsResponse
-	17,  // 148: cerebro.v1.BootstrapService.GetFindingEvaluationRun:output_type -> cerebro.v1.GetFindingEvaluationRunResponse
-	20,  // 149: cerebro.v1.BootstrapService.ListFindingEvidence:output_type -> cerebro.v1.ListFindingEvidenceResponse
-	22,  // 150: cerebro.v1.BootstrapService.GetFindingEvidence:output_type -> cerebro.v1.GetFindingEvidenceResponse
-	70,  // 151: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse
-	71,  // 152: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingsResponse
-	73,  // 153: cerebro.v1.BootstrapService.WriteDecision:output_type -> cerebro.v1.WriteDecisionResponse
-	75,  // 154: cerebro.v1.BootstrapService.WriteAction:output_type -> cerebro.v1.WriteActionResponse
-	77,  // 155: cerebro.v1.BootstrapService.WriteOutcome:output_type -> cerebro.v1.WriteOutcomeResponse
-	81,  // 156: cerebro.v1.BootstrapService.GetEntityNeighborhood:output_type -> cerebro.v1.GetEntityNeighborhoodResponse
-	124, // [124:157] is the sub-list for method output_type
-	91,  // [91:124] is the sub-list for method input_type
-	91,  // [91:91] is the sub-list for extension type_name
-	91,  // [91:91] is the sub-list for extension extendee
-	0,   // [0:91] is the sub-list for field type_name
+	92,  // 76: cerebro.v1.WriteDecisionRequest.observed_at:type_name -> google.protobuf.Timestamp
+	92,  // 77: cerebro.v1.WriteDecisionRequest.valid_from:type_name -> google.protobuf.Timestamp
+	92,  // 78: cerebro.v1.WriteDecisionRequest.valid_to:type_name -> google.protobuf.Timestamp
+	93,  // 79: cerebro.v1.WriteDecisionRequest.metadata:type_name -> google.protobuf.Struct
+	92,  // 80: cerebro.v1.WriteActionRequest.observed_at:type_name -> google.protobuf.Timestamp
+	92,  // 81: cerebro.v1.WriteActionRequest.valid_from:type_name -> google.protobuf.Timestamp
+	92,  // 82: cerebro.v1.WriteActionRequest.valid_to:type_name -> google.protobuf.Timestamp
+	93,  // 83: cerebro.v1.WriteActionRequest.metadata:type_name -> google.protobuf.Struct
+	92,  // 84: cerebro.v1.WriteOutcomeRequest.observed_at:type_name -> google.protobuf.Timestamp
+	92,  // 85: cerebro.v1.WriteOutcomeRequest.valid_from:type_name -> google.protobuf.Timestamp
+	92,  // 86: cerebro.v1.WriteOutcomeRequest.valid_to:type_name -> google.protobuf.Timestamp
+	93,  // 87: cerebro.v1.WriteOutcomeRequest.metadata:type_name -> google.protobuf.Struct
+	91,  // 88: cerebro.v1.ReplayWorkflowEventsRequest.attribute_equals:type_name -> cerebro.v1.ReplayWorkflowEventsRequest.AttributeEqualsEntry
+	80,  // 89: cerebro.v1.GetEntityNeighborhoodResponse.root:type_name -> cerebro.v1.GraphEntity
+	80,  // 90: cerebro.v1.GetEntityNeighborhoodResponse.neighbors:type_name -> cerebro.v1.GraphEntity
+	81,  // 91: cerebro.v1.GetEntityNeighborhoodResponse.relations:type_name -> cerebro.v1.GraphRelation
+	1,   // 92: cerebro.v1.BootstrapService.GetVersion:input_type -> cerebro.v1.GetVersionRequest
+	3,   // 93: cerebro.v1.BootstrapService.CheckHealth:input_type -> cerebro.v1.CheckHealthRequest
+	9,   // 94: cerebro.v1.BootstrapService.ListReportDefinitions:input_type -> cerebro.v1.ListReportDefinitionsRequest
+	11,  // 95: cerebro.v1.BootstrapService.ListFindingRules:input_type -> cerebro.v1.ListFindingRulesRequest
+	23,  // 96: cerebro.v1.BootstrapService.RunReport:input_type -> cerebro.v1.RunReportRequest
+	25,  // 97: cerebro.v1.BootstrapService.GetReportRun:input_type -> cerebro.v1.GetReportRunRequest
+	27,  // 98: cerebro.v1.BootstrapService.ListSources:input_type -> cerebro.v1.ListSourcesRequest
+	29,  // 99: cerebro.v1.BootstrapService.CheckSource:input_type -> cerebro.v1.CheckSourceRequest
+	31,  // 100: cerebro.v1.BootstrapService.DiscoverSource:input_type -> cerebro.v1.DiscoverSourceRequest
+	33,  // 101: cerebro.v1.BootstrapService.ReadSource:input_type -> cerebro.v1.ReadSourceRequest
+	37,  // 102: cerebro.v1.BootstrapService.PutSourceRuntime:input_type -> cerebro.v1.PutSourceRuntimeRequest
+	39,  // 103: cerebro.v1.BootstrapService.GetSourceRuntime:input_type -> cerebro.v1.GetSourceRuntimeRequest
+	41,  // 104: cerebro.v1.BootstrapService.SyncSourceRuntime:input_type -> cerebro.v1.SyncSourceRuntimeRequest
+	43,  // 105: cerebro.v1.BootstrapService.WriteClaims:input_type -> cerebro.v1.WriteClaimsRequest
+	45,  // 106: cerebro.v1.BootstrapService.ListClaims:input_type -> cerebro.v1.ListClaimsRequest
+	47,  // 107: cerebro.v1.BootstrapService.ListFindings:input_type -> cerebro.v1.ListFindingsRequest
+	52,  // 108: cerebro.v1.BootstrapService.GetFinding:input_type -> cerebro.v1.GetFindingRequest
+	54,  // 109: cerebro.v1.BootstrapService.ResolveFinding:input_type -> cerebro.v1.ResolveFindingRequest
+	56,  // 110: cerebro.v1.BootstrapService.SuppressFinding:input_type -> cerebro.v1.SuppressFindingRequest
+	58,  // 111: cerebro.v1.BootstrapService.AssignFinding:input_type -> cerebro.v1.AssignFindingRequest
+	60,  // 112: cerebro.v1.BootstrapService.SetFindingDueDate:input_type -> cerebro.v1.SetFindingDueDateRequest
+	62,  // 113: cerebro.v1.BootstrapService.AddFindingNote:input_type -> cerebro.v1.AddFindingNoteRequest
+	64,  // 114: cerebro.v1.BootstrapService.LinkFindingTicket:input_type -> cerebro.v1.LinkFindingTicketRequest
+	14,  // 115: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:input_type -> cerebro.v1.ListFindingEvaluationRunsRequest
+	16,  // 116: cerebro.v1.BootstrapService.GetFindingEvaluationRun:input_type -> cerebro.v1.GetFindingEvaluationRunRequest
+	19,  // 117: cerebro.v1.BootstrapService.ListFindingEvidence:input_type -> cerebro.v1.ListFindingEvidenceRequest
+	21,  // 118: cerebro.v1.BootstrapService.GetFindingEvidence:input_type -> cerebro.v1.GetFindingEvidenceRequest
+	68,  // 119: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesRequest
+	67,  // 120: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:input_type -> cerebro.v1.EvaluateSourceRuntimeFindingsRequest
+	72,  // 121: cerebro.v1.BootstrapService.WriteDecision:input_type -> cerebro.v1.WriteDecisionRequest
+	74,  // 122: cerebro.v1.BootstrapService.WriteAction:input_type -> cerebro.v1.WriteActionRequest
+	76,  // 123: cerebro.v1.BootstrapService.WriteOutcome:input_type -> cerebro.v1.WriteOutcomeRequest
+	78,  // 124: cerebro.v1.BootstrapService.ReplayWorkflowEvents:input_type -> cerebro.v1.ReplayWorkflowEventsRequest
+	82,  // 125: cerebro.v1.BootstrapService.GetEntityNeighborhood:input_type -> cerebro.v1.GetEntityNeighborhoodRequest
+	2,   // 126: cerebro.v1.BootstrapService.GetVersion:output_type -> cerebro.v1.GetVersionResponse
+	5,   // 127: cerebro.v1.BootstrapService.CheckHealth:output_type -> cerebro.v1.CheckHealthResponse
+	10,  // 128: cerebro.v1.BootstrapService.ListReportDefinitions:output_type -> cerebro.v1.ListReportDefinitionsResponse
+	12,  // 129: cerebro.v1.BootstrapService.ListFindingRules:output_type -> cerebro.v1.ListFindingRulesResponse
+	24,  // 130: cerebro.v1.BootstrapService.RunReport:output_type -> cerebro.v1.RunReportResponse
+	26,  // 131: cerebro.v1.BootstrapService.GetReportRun:output_type -> cerebro.v1.GetReportRunResponse
+	28,  // 132: cerebro.v1.BootstrapService.ListSources:output_type -> cerebro.v1.ListSourcesResponse
+	30,  // 133: cerebro.v1.BootstrapService.CheckSource:output_type -> cerebro.v1.CheckSourceResponse
+	32,  // 134: cerebro.v1.BootstrapService.DiscoverSource:output_type -> cerebro.v1.DiscoverSourceResponse
+	35,  // 135: cerebro.v1.BootstrapService.ReadSource:output_type -> cerebro.v1.ReadSourceResponse
+	38,  // 136: cerebro.v1.BootstrapService.PutSourceRuntime:output_type -> cerebro.v1.PutSourceRuntimeResponse
+	40,  // 137: cerebro.v1.BootstrapService.GetSourceRuntime:output_type -> cerebro.v1.GetSourceRuntimeResponse
+	42,  // 138: cerebro.v1.BootstrapService.SyncSourceRuntime:output_type -> cerebro.v1.SyncSourceRuntimeResponse
+	44,  // 139: cerebro.v1.BootstrapService.WriteClaims:output_type -> cerebro.v1.WriteClaimsResponse
+	46,  // 140: cerebro.v1.BootstrapService.ListClaims:output_type -> cerebro.v1.ListClaimsResponse
+	66,  // 141: cerebro.v1.BootstrapService.ListFindings:output_type -> cerebro.v1.ListFindingsResponse
+	53,  // 142: cerebro.v1.BootstrapService.GetFinding:output_type -> cerebro.v1.GetFindingResponse
+	55,  // 143: cerebro.v1.BootstrapService.ResolveFinding:output_type -> cerebro.v1.ResolveFindingResponse
+	57,  // 144: cerebro.v1.BootstrapService.SuppressFinding:output_type -> cerebro.v1.SuppressFindingResponse
+	59,  // 145: cerebro.v1.BootstrapService.AssignFinding:output_type -> cerebro.v1.AssignFindingResponse
+	61,  // 146: cerebro.v1.BootstrapService.SetFindingDueDate:output_type -> cerebro.v1.SetFindingDueDateResponse
+	63,  // 147: cerebro.v1.BootstrapService.AddFindingNote:output_type -> cerebro.v1.AddFindingNoteResponse
+	65,  // 148: cerebro.v1.BootstrapService.LinkFindingTicket:output_type -> cerebro.v1.LinkFindingTicketResponse
+	15,  // 149: cerebro.v1.BootstrapService.ListFindingEvaluationRuns:output_type -> cerebro.v1.ListFindingEvaluationRunsResponse
+	17,  // 150: cerebro.v1.BootstrapService.GetFindingEvaluationRun:output_type -> cerebro.v1.GetFindingEvaluationRunResponse
+	20,  // 151: cerebro.v1.BootstrapService.ListFindingEvidence:output_type -> cerebro.v1.ListFindingEvidenceResponse
+	22,  // 152: cerebro.v1.BootstrapService.GetFindingEvidence:output_type -> cerebro.v1.GetFindingEvidenceResponse
+	70,  // 153: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingRulesResponse
+	71,  // 154: cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings:output_type -> cerebro.v1.EvaluateSourceRuntimeFindingsResponse
+	73,  // 155: cerebro.v1.BootstrapService.WriteDecision:output_type -> cerebro.v1.WriteDecisionResponse
+	75,  // 156: cerebro.v1.BootstrapService.WriteAction:output_type -> cerebro.v1.WriteActionResponse
+	77,  // 157: cerebro.v1.BootstrapService.WriteOutcome:output_type -> cerebro.v1.WriteOutcomeResponse
+	79,  // 158: cerebro.v1.BootstrapService.ReplayWorkflowEvents:output_type -> cerebro.v1.ReplayWorkflowEventsResponse
+	83,  // 159: cerebro.v1.BootstrapService.GetEntityNeighborhood:output_type -> cerebro.v1.GetEntityNeighborhoodResponse
+	126, // [126:160] is the sub-list for method output_type
+	92,  // [92:126] is the sub-list for method input_type
+	92,  // [92:92] is the sub-list for extension type_name
+	92,  // [92:92] is the sub-list for extension extendee
+	0,   // [0:92] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_bootstrap_proto_init() }
@@ -6077,7 +6237,7 @@ func file_cerebro_v1_bootstrap_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_v1_bootstrap_proto_rawDesc), len(file_cerebro_v1_bootstrap_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   88,
+			NumMessages:   91,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

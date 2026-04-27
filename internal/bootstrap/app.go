@@ -29,6 +29,7 @@ import (
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/workflowprojection"
 )
 
 // Dependencies are the future store/log boundaries that will be wired into the rewrite.
@@ -83,6 +84,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("POST /platform/knowledge/actions", app.handleWriteAction)
 	mux.HandleFunc("POST /graph/actuate/recommendation", app.handleWriteAction)
 	mux.HandleFunc("POST /graph/write/outcome", app.handleWriteOutcome)
+	mux.HandleFunc("POST /platform/workflow/replay", app.handleReplayWorkflowEvents)
 	mux.HandleFunc("GET /graph/neighborhood", app.handleGetEntityNeighborhood)
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
@@ -472,6 +474,25 @@ func (a *App) handleWriteOutcome(w http.ResponseWriter, r *http.Request) {
 		DecisionId:  result.DecisionID,
 		TargetCount: result.TargetCount,
 	})
+}
+
+func (a *App) handleReplayWorkflowEvents(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.ReplayWorkflowEventsRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeWorkflowReplayError(w, err)
+		return
+	}
+	result, err := a.workflowReplayService().Replay(r.Context(), workflowprojection.ReplayRequest{
+		KindPrefix:      request.GetKindPrefix(),
+		TenantID:        request.GetTenantId(),
+		AttributeEquals: request.GetAttributeEquals(),
+		Limit:           request.GetLimit(),
+	})
+	if err != nil {
+		writeWorkflowReplayError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, workflowReplayResponse(result))
 }
 
 func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request) {
@@ -1330,6 +1351,22 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 	}), nil
 }
 
+func (s *bootstrapService) ReplayWorkflowEvents(ctx context.Context, req *connect.Request[cerebrov1.ReplayWorkflowEventsRequest]) (*connect.Response[cerebrov1.ReplayWorkflowEventsResponse], error) {
+	result, err := workflowprojection.NewReplayer(
+		eventReplayer(s.deps.AppendLog),
+		sourceProjectionGraphStore(s.deps.GraphStore),
+	).Replay(ctx, workflowprojection.ReplayRequest{
+		KindPrefix:      req.Msg.GetKindPrefix(),
+		TenantID:        req.Msg.GetTenantId(),
+		AttributeEquals: req.Msg.GetAttributeEquals(),
+		Limit:           req.Msg.GetLimit(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(workflowReplayResponse(result)), nil
+}
+
 func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *connect.Request[cerebrov1.GetEntityNeighborhoodRequest]) (*connect.Response[cerebrov1.GetEntityNeighborhoodResponse], error) {
 	response, err := graphquery.New(
 		graphQueryStore(s.deps.GraphStore),
@@ -1426,6 +1463,13 @@ func (a *App) graphQueryService() *graphquery.Service {
 	return graphquery.New(graphQueryStore(a.deps.GraphStore))
 }
 
+func (a *App) workflowReplayService() *workflowprojection.Replayer {
+	return workflowprojection.NewReplayer(
+		eventReplayer(a.deps.AppendLog),
+		sourceProjectionGraphStore(a.deps.GraphStore),
+	)
+}
+
 func sourceConfigFromQuery(r *http.Request) map[string]string {
 	values := make(map[string]string)
 	for key, rawValues := range r.URL.Query() {
@@ -1514,6 +1558,14 @@ func writeGraphQueryError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ports.ErrGraphEntityNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
+		statusCode = http.StatusServiceUnavailable
+	}
+	http.Error(w, err.Error(), statusCode)
+}
+
+func writeWorkflowReplayError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusBadRequest
+	if errors.Is(err, workflowprojection.ErrRuntimeUnavailable) {
 		statusCode = http.StatusServiceUnavailable
 	}
 	http.Error(w, err.Error(), statusCode)
@@ -1831,6 +1883,18 @@ func parseFindingStatus(raw string) (cerebrov1.FindingStatus, error) {
 		return cerebrov1.FindingStatus_FINDING_STATUS_SUPPRESSED, nil
 	default:
 		return cerebrov1.FindingStatus_FINDING_STATUS_UNSPECIFIED, fmt.Errorf("unsupported finding status %q", raw)
+	}
+}
+
+func workflowReplayResponse(result *workflowprojection.ReplayResult) *cerebrov1.ReplayWorkflowEventsResponse {
+	if result == nil {
+		return &cerebrov1.ReplayWorkflowEventsResponse{}
+	}
+	return &cerebrov1.ReplayWorkflowEventsResponse{
+		EventsRead:        result.EventsRead,
+		EventsProjected:   result.EventsProjected,
+		EntitiesProjected: result.EntitiesProjected,
+		LinksProjected:    result.LinksProjected,
 	}
 }
 
