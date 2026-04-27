@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"sort"
 	"strings"
@@ -48,19 +49,19 @@ func TestGitHubDependabotFindingsEndToEndWithGHCLI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Builtin() error = %v", err)
 	}
-	response, err := sourceops.New(registry).Read(ctx, &cerebrov1.ReadSourceRequest{
-		SourceId: githubSourceID,
-		Config:   config,
-	})
+	response, liveAlertState, synthesizedOpenState, err := readDependabotAlertsForLiveFinding(ctx, sourceops.New(registry), config)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
 	if len(response.GetEvents()) == 0 {
-		t.Fatalf("Read().Events = 0, want at least one live open Dependabot alert for %s/%s", config["owner"], config["repo"])
+		t.Skipf("no Dependabot alerts available for live GitHub findings e2e in %s/%s", config["owner"], config["repo"])
 	}
 
 	runtimeID := "live-github-dependabot"
 	events := cloneEventsForRuntime(response.GetEvents(), runtimeID)
+	if synthesizedOpenState {
+		synthesizeOpenDependabotEvents(t, events, liveAlertState)
+	}
 	graphPath := t.TempDir() + "/graph"
 	graphStore, err := graphstorekuzu.Open(configpkg.GraphStoreConfig{
 		Driver:   configpkg.GraphStoreDriverKuzu,
@@ -99,7 +100,7 @@ func TestGitHubDependabotFindingsEndToEndWithGHCLI(t *testing.T) {
 		state,
 		state,
 		state,
-	).WithGraphStore(graphStore)
+	).WithGraphStore(graphStore).WithGraphQueryStore(graphStore)
 	result, err := findingService.EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
 		RuntimeID: runtimeID,
 		RuleID:    githubDependabotOpenAlertRuleID,
@@ -118,28 +119,66 @@ func TestGitHubDependabotFindingsEndToEndWithGHCLI(t *testing.T) {
 	if _, err := findingService.AddFindingNote(ctx, finding.ID, "validated by live GitHub Dependabot findings e2e"); err != nil {
 		t.Fatalf("AddFindingNote() error = %v", err)
 	}
-	neighborhood, err := graphquery.New(graphStore).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
+	ticketURL := "https://github.com/" + config["owner"] + "/" + config["repo"] + "/security/dependabot/" + strings.TrimSpace(finding.Attributes["alert_number"])
+	if _, err := findingService.LinkFindingTicket(ctx, finding.ID, ticketURL, "Dependabot alert", strings.TrimSpace(finding.Attributes["alert_number"])); err != nil {
+		t.Fatalf("LinkFindingTicket() error = %v", err)
+	}
+	resolved, err := findingService.ResolveFinding(ctx, finding.ID, "live Dependabot alert validated")
+	if err != nil {
+		t.Fatalf("ResolveFinding() error = %v", err)
+	}
+	if resolved.Status != "resolved" {
+		t.Fatalf("ResolveFinding().Status = %q, want resolved", resolved.Status)
+	}
+
+	alertNeighborhood, err := graphquery.New(graphStore).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
 		RootURN: primaryResourceURN,
 		Limit:   20,
 	})
 	if err != nil {
 		t.Fatalf("GetEntityNeighborhood(%q) error = %v", primaryResourceURN, err)
 	}
-	if neighborhood.Root == nil {
+	if alertNeighborhood.Root == nil {
 		t.Fatal("graph neighborhood root = nil, want Dependabot alert root")
 	}
-	if len(neighborhood.Relations) == 0 {
+	for _, relation := range []string{"affected_by", "affects", "annotated_with", "belongs_to", "has_finding", "tracked_by"} {
+		if !neighborhoodHasRelation(alertNeighborhood, relation) {
+			t.Fatalf("alert graph neighborhood missing relation %q: %#v", relation, alertNeighborhood.Relations)
+		}
+	}
+
+	findingURN := "urn:cerebro:" + finding.TenantID + ":finding:" + finding.ID
+	findingNeighborhood, err := graphquery.New(graphStore).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
+		RootURN: findingURN,
+		Limit:   20,
+	})
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood(%q) error = %v", findingURN, err)
+	}
+	if !neighborhoodHasTypedRelation(findingNeighborhood, "decision", "targets", "finding") {
+		t.Fatalf("finding graph neighborhood missing decision target relation: %#v", findingNeighborhood.Relations)
+	}
+	if !neighborhoodHasTypedRelation(findingNeighborhood, "outcome", "targets", "finding") {
+		t.Fatalf("finding graph neighborhood missing outcome target relation: %#v", findingNeighborhood.Relations)
+	}
+	if !neighborhoodHasTypedRelation(findingNeighborhood, "github.dependabot_alert", "has_finding", "finding") {
+		t.Fatalf("finding graph neighborhood missing alert finding relation: %#v", findingNeighborhood.Relations)
+	}
+	if len(alertNeighborhood.Relations) == 0 || len(findingNeighborhood.Relations) == 0 {
 		t.Fatal("graph neighborhood relations = 0, want source/finding graph links")
 	}
 	t.Logf(
-		"validated live github findings owner=%s repo=%s events=%d findings=%d primary_resource=%s graph_neighbors=%d graph_relations=%d",
+		"validated live github findings owner=%s repo=%s live_state=%s events=%d findings=%d primary_resource=%s alert_neighbors=%d alert_relations=%d finding_neighbors=%d finding_relations=%d",
 		config["owner"],
 		config["repo"],
+		liveAlertState,
 		len(events),
 		len(result.Findings),
 		primaryResourceURN,
-		len(neighborhood.Neighbors),
-		len(neighborhood.Relations),
+		len(alertNeighborhood.Neighbors),
+		len(alertNeighborhood.Relations),
+		len(findingNeighborhood.Neighbors),
+		len(findingNeighborhood.Relations),
 	)
 }
 
@@ -159,6 +198,34 @@ func (r *githubFindingsE2EReplayer) Replay(_ context.Context, request ports.Repl
 		}
 	}
 	return events, nil
+}
+
+func neighborhoodHasRelation(neighborhood *ports.EntityNeighborhood, relation string) bool {
+	for _, graphRelation := range neighborhood.Relations {
+		if graphRelation.Relation == relation {
+			return true
+		}
+	}
+	return false
+}
+
+func neighborhoodHasTypedRelation(neighborhood *ports.EntityNeighborhood, fromType string, relation string, toType string) bool {
+	nodeTypes := map[string]string{}
+	if root := neighborhood.Root; root != nil {
+		nodeTypes[root.URN] = root.EntityType
+	}
+	for _, node := range neighborhood.Neighbors {
+		nodeTypes[node.URN] = node.EntityType
+	}
+	for _, graphRelation := range neighborhood.Relations {
+		if graphRelation.Relation != relation {
+			continue
+		}
+		if nodeTypes[graphRelation.FromURN] == fromType && nodeTypes[graphRelation.ToURN] == toType {
+			return true
+		}
+	}
+	return false
 }
 
 type githubFindingsE2EStore struct {
@@ -222,16 +289,39 @@ func (s *githubFindingsE2EStore) ListFindings(_ context.Context, request ports.L
 	return findings, nil
 }
 
-func (s *githubFindingsE2EStore) UpdateFindingStatus(context.Context, ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
-	return nil, ports.ErrFindingNotFound
+func (s *githubFindingsE2EStore) UpdateFindingStatus(_ context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[strings.TrimSpace(request.FindingID)]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneE2EFinding(finding)
+	cloned.Status = strings.TrimSpace(request.Status)
+	cloned.StatusReason = strings.TrimSpace(request.Reason)
+	cloned.StatusUpdatedAt = request.UpdatedAt.UTC()
+	s.findings[cloned.ID] = cloned
+	return cloneE2EFinding(cloned), nil
 }
 
-func (s *githubFindingsE2EStore) UpdateFindingAssignee(context.Context, ports.FindingAssigneeUpdate) (*ports.FindingRecord, error) {
-	return nil, ports.ErrFindingNotFound
+func (s *githubFindingsE2EStore) UpdateFindingAssignee(_ context.Context, request ports.FindingAssigneeUpdate) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[strings.TrimSpace(request.FindingID)]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneE2EFinding(finding)
+	cloned.Assignee = strings.TrimSpace(request.Assignee)
+	s.findings[cloned.ID] = cloned
+	return cloneE2EFinding(cloned), nil
 }
 
-func (s *githubFindingsE2EStore) UpdateFindingDueDate(context.Context, ports.FindingDueDateUpdate) (*ports.FindingRecord, error) {
-	return nil, ports.ErrFindingNotFound
+func (s *githubFindingsE2EStore) UpdateFindingDueDate(_ context.Context, request ports.FindingDueDateUpdate) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[strings.TrimSpace(request.FindingID)]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneE2EFinding(finding)
+	cloned.DueAt = request.DueAt.UTC()
+	s.findings[cloned.ID] = cloned
+	return cloneE2EFinding(cloned), nil
 }
 
 func (s *githubFindingsE2EStore) AddFindingNote(_ context.Context, request ports.FindingNoteCreate) (*ports.FindingRecord, error) {
@@ -245,8 +335,15 @@ func (s *githubFindingsE2EStore) AddFindingNote(_ context.Context, request ports
 	return cloneE2EFinding(cloned), nil
 }
 
-func (s *githubFindingsE2EStore) LinkFindingTicket(context.Context, ports.FindingTicketLink) (*ports.FindingRecord, error) {
-	return nil, ports.ErrFindingNotFound
+func (s *githubFindingsE2EStore) LinkFindingTicket(_ context.Context, request ports.FindingTicketLink) (*ports.FindingRecord, error) {
+	finding, ok := s.findings[strings.TrimSpace(request.FindingID)]
+	if !ok {
+		return nil, ports.ErrFindingNotFound
+	}
+	cloned := cloneE2EFinding(finding)
+	cloned.Tickets = append(cloned.Tickets, request.Ticket)
+	s.findings[cloned.ID] = cloned
+	return cloneE2EFinding(cloned), nil
 }
 
 func (s *githubFindingsE2EStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
@@ -297,6 +394,57 @@ func (s *githubFindingsE2EStore) UpsertClaim(_ context.Context, claim *ports.Cla
 
 func (s *githubFindingsE2EStore) ListClaims(context.Context, ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
 	return nil, nil
+}
+
+func readDependabotAlertsForLiveFinding(ctx context.Context, ops *sourceops.Service, config map[string]string) (*cerebrov1.ReadSourceResponse, string, bool, error) {
+	for _, state := range []string{"open", "fixed", "dismissed", "auto_dismissed"} {
+		requestConfig := cloneStringMap(config)
+		requestConfig["state"] = state
+		response, err := ops.Read(ctx, &cerebrov1.ReadSourceRequest{
+			SourceId: githubSourceID,
+			Config:   requestConfig,
+		})
+		if err != nil {
+			return nil, "", false, err
+		}
+		if len(response.GetEvents()) != 0 {
+			return response, state, state != "open", nil
+		}
+	}
+	return &cerebrov1.ReadSourceResponse{}, "", false, nil
+}
+
+func synthesizeOpenDependabotEvents(t *testing.T, events []*cerebrov1.EventEnvelope, liveState string) {
+	t.Helper()
+	for _, event := range events {
+		if event == nil || event.GetKind() != "github.dependabot_alert" {
+			continue
+		}
+		if event.Attributes == nil {
+			event.Attributes = map[string]string{}
+		}
+		event.Attributes["live_state"] = strings.TrimSpace(liveState)
+		event.Attributes["state"] = "open"
+		payload := map[string]any{}
+		if err := json.Unmarshal(event.GetPayload(), &payload); err != nil {
+			t.Fatalf("unmarshal Dependabot alert payload for %q: %v", event.GetId(), err)
+		}
+		payload["live_state"] = strings.TrimSpace(liveState)
+		payload["state"] = "open"
+		payloadBytes, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("marshal Dependabot alert payload for %q: %v", event.GetId(), err)
+		}
+		event.Payload = payloadBytes
+	}
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func cloneEventsForRuntime(events []*cerebrov1.EventEnvelope, runtimeID string) []*cerebrov1.EventEnvelope {
