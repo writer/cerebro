@@ -16,6 +16,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kuzudb/go-kuzu v0.11.3
 	github.com/nats-io/nats.go v1.51.0
+	github.com/neo4j/neo4j-go-driver/v5 v5.28.4
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )

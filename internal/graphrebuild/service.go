@@ -13,6 +13,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphstore"
 	graphstorekuzu "github.com/writer/cerebro/internal/graphstore/kuzu"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -35,11 +36,11 @@ const (
 type graphStore interface {
 	ports.ProjectionGraphStore
 	Close() error
-	Counts(context.Context) (graphstorekuzu.Counts, error)
-	IntegrityChecks(context.Context) ([]graphstorekuzu.IntegrityCheck, error)
-	PathPatterns(context.Context, int) ([]graphstorekuzu.PathPattern, error)
-	Topology(context.Context) (graphstorekuzu.Topology, error)
-	SampleTraversals(context.Context, int) ([]graphstorekuzu.Traversal, error)
+	Counts(context.Context) (graphstore.Counts, error)
+	IntegrityChecks(context.Context) ([]graphstore.IntegrityCheck, error)
+	PathPatterns(context.Context, int) ([]graphstore.PathPattern, error)
+	Topology(context.Context) (graphstore.Topology, error)
+	SampleTraversals(context.Context, int) ([]graphstore.Traversal, error)
 }
 
 // Request configures one local graph rebuild dry-run.
@@ -760,7 +761,7 @@ func countPreviews(counts map[string]uint32) []*CountPreview {
 	return previews
 }
 
-func assertionPreviews(checks []graphstorekuzu.IntegrityCheck) []*AssertionPreview {
+func assertionPreviews(checks []graphstore.IntegrityCheck) []*AssertionPreview {
 	previews := make([]*AssertionPreview, 0, len(checks))
 	for _, check := range checks {
 		previews = append(previews, &AssertionPreview{
@@ -789,7 +790,7 @@ func assertionCounts(assertions []*AssertionPreview) (uint32, uint32) {
 	return passed, failed
 }
 
-func pathPatternPreviews(patterns []graphstorekuzu.PathPattern) []*PathPatternPreview {
+func pathPatternPreviews(patterns []graphstore.PathPattern) []*PathPatternPreview {
 	previews := make([]*PathPatternPreview, 0, len(patterns))
 	for _, pattern := range patterns {
 		previews = append(previews, &PathPatternPreview{
@@ -805,7 +806,7 @@ func pathPatternPreviews(patterns []graphstorekuzu.PathPattern) []*PathPatternPr
 	return previews
 }
 
-func pathPatternLabel(pattern graphstorekuzu.PathPattern) string {
+func pathPatternLabel(pattern graphstore.PathPattern) string {
 	return strings.TrimSpace(pattern.FromType) +
 		" -[" + strings.TrimSpace(pattern.FirstRelation) + "]-> " +
 		strings.TrimSpace(pattern.ViaType) +
@@ -813,7 +814,7 @@ func pathPatternLabel(pattern graphstorekuzu.PathPattern) string {
 		strings.TrimSpace(pattern.ToType)
 }
 
-func topologyPreviews(topology graphstorekuzu.Topology) []*TopologyPreview {
+func topologyPreviews(topology graphstore.Topology) []*TopologyPreview {
 	previews := []*TopologyPreview{
 		{Name: "isolated", Count: topology.Isolated},
 		{Name: "sources_only", Count: topology.SourcesOnly},
@@ -823,7 +824,7 @@ func topologyPreviews(topology graphstorekuzu.Topology) []*TopologyPreview {
 	return previews
 }
 
-func traversalPreviews(traversals []graphstorekuzu.Traversal) []*TraversalPreview {
+func traversalPreviews(traversals []graphstore.Traversal) []*TraversalPreview {
 	previews := make([]*TraversalPreview, 0, len(traversals))
 	for _, traversal := range traversals {
 		previews = append(previews, &TraversalPreview{
@@ -838,7 +839,7 @@ func traversalPreviews(traversals []graphstorekuzu.Traversal) []*TraversalPrevie
 	return previews
 }
 
-func traversalPath(traversal graphstorekuzu.Traversal) string {
+func traversalPath(traversal graphstore.Traversal) string {
 	from := firstNonEmptyLabel(traversal.FromLabel, traversal.FromURN)
 	via := firstNonEmptyLabel(traversal.ViaLabel, traversal.ViaURN)
 	to := firstNonEmptyLabel(traversal.ToLabel, traversal.ToURN)
