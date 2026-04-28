@@ -127,13 +127,27 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		TenantID:           "writer",
 		SourceSystem:       "writer-okta-audit",
 		FindingID:          "finding-1",
+		Fingerprint:        "fp-1",
 		Title:              "Okta Policy Rule Lifecycle Tampering",
+		Summary:            "policy rule was deactivated by a privileged actor",
 		RuleID:             "identity-okta-policy-rule-lifecycle-tampering",
 		Severity:           "high",
 		Status:             "open",
 		RuntimeID:          "writer-okta-audit",
 		PrimaryResourceURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
 		ResourceURNs:       []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+		EventIDs:           []string{"evt-1", "evt-2"},
+		FirstObservedAt:    "2026-04-27T11:58:00Z",
+		LastObservedAt:     "2026-04-27T11:59:00Z",
+		ResourceCount:      1,
+		EventCount:         2,
+		RiskScore:          47,
+		RiskReasons:        []string{"privileged_actor", "risky_action"},
+		Metadata: map[string]string{
+			"actor_urn":     "urn:cerebro:writer:okta_actor:user:00u1",
+			"resource_type": "okta_resource",
+			"source_family": "okta",
+		},
 	}
 	recordedEvent, err := workflowevents.NewFindingRecordedEvent(workflowevents.FindingRecorded{
 		Finding:    finding,
@@ -145,8 +159,18 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if _, err := service.Project(context.Background(), recordedEvent); err != nil {
 		t.Fatalf("Project(recorded) error = %v", err)
 	}
-	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; !ok {
+	findingEntity, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]
+	if !ok {
 		t.Fatal("finding anchor missing after recorded event")
+	}
+	if got := findingEntity.Attributes["risk_score"]; got != "47" {
+		t.Fatalf("finding risk_score attribute = %q, want 47", got)
+	}
+	if got := findingEntity.Attributes["event_count"]; got != "2" {
+		t.Fatalf("finding event_count attribute = %q, want 2", got)
+	}
+	if got := findingEntity.Attributes["actor_urn"]; got != "urn:cerebro:writer:okta_actor:user:00u1" {
+		t.Fatalf("finding actor_urn attribute = %q, want normalized actor urn", got)
 	}
 	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; !ok {
 		t.Fatal("resource finding link missing after recorded event")

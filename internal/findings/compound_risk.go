@@ -32,15 +32,18 @@ type CompoundRiskReport struct {
 
 // CompoundRiskGroup captures one correlated set of findings sharing the same dimension.
 type CompoundRiskGroup struct {
-	Kind            string              `json:"kind"`
-	Key             string              `json:"key"`
-	Label           string              `json:"label,omitempty"`
-	Score           int                 `json:"score"`
-	FindingCount    int                 `json:"finding_count"`
-	RuleIDs         []string            `json:"rule_ids"`
-	Severities      []CompoundRiskCount `json:"severities"`
-	Actions         []CompoundRiskCount `json:"actions"`
-	SampleSummaries []string            `json:"sample_summaries"`
+	Kind            string                `json:"kind"`
+	Key             string                `json:"key"`
+	Label           string                `json:"label,omitempty"`
+	Score           int                   `json:"score"`
+	ContextScore    int                   `json:"context_score"`
+	RiskReasons     []string              `json:"risk_reasons,omitempty"`
+	FindingCount    int                   `json:"finding_count"`
+	RuleIDs         []string              `json:"rule_ids"`
+	Severities      []CompoundRiskCount   `json:"severities"`
+	Actions         []CompoundRiskCount   `json:"actions"`
+	SampleSummaries []string              `json:"sample_summaries"`
+	Evidence        FindingEvidenceBundle `json:"evidence"`
 }
 
 // CompoundRiskCount is one deterministic value/count pair.
@@ -56,7 +59,7 @@ type compoundRiskBucket struct {
 	findings []*ports.FindingRecord
 }
 
-// AnalyzeCompoundRisks groups findings into actor, resource, and repository clusters.
+// AnalyzeCompoundRisks groups findings into source-agnostic actor, resource, repository, source, and resource-type clusters.
 func AnalyzeCompoundRisks(records []*ports.FindingRecord, options CompoundRiskOptions) CompoundRiskReport {
 	records = dedupeCompoundRiskFindings(records)
 	return CompoundRiskReport{
@@ -139,7 +142,7 @@ func compoundRiskDimensionFor(record *ports.FindingRecord, kind string) compound
 			label: firstNonEmpty(attributes["actor"], attributes["actor_alternate_id"], attributes["user"], key),
 		}
 	case compoundRiskKindRepository:
-		key := firstNonEmpty(attributes["repo"], attributes["repository"], githubRepositoryFromFinding(record))
+		key := repositoryFromFinding(record)
 		return compoundRiskDimension{key: key, label: key}
 	case compoundRiskKindResource:
 		key := firstNonEmpty(attributes["primary_resource_urn"], firstFindingResourceURN(record))
@@ -148,16 +151,10 @@ func compoundRiskDimensionFor(record *ports.FindingRecord, kind string) compound
 			label: firstNonEmpty(attributes["resource_label"], attributes["repo"], attributes["repository"], attributes["resource_id"], attributes["policy_id"], key),
 		}
 	case compoundRiskKindSource:
-		key := firstNonEmpty(attributes["source_family"], attributes["family"], attributes["rule_source_id"], sourceIDFromRuntime(record.RuntimeID), sourceIDFromRule(record.RuleID))
+		key := sourceIDForFinding(record)
 		return compoundRiskDimension{key: key, label: key}
 	case compoundRiskKindType:
-		key := firstNonEmpty(
-			attributes["resource_type"],
-			resourceTypeFromURN(attributes["primary_resource_urn"]),
-			resourceTypeFromURN(firstFindingResourceURN(record)),
-			attributes["vulnerability_type"],
-			attributes["ecosystem"],
-		)
+		key := genericResourceType(record)
 		return compoundRiskDimension{key: key, label: key}
 	}
 	return compoundRiskDimension{}
@@ -197,6 +194,7 @@ func newCompoundRiskGroup(bucket compoundRiskBucket, options CompoundRiskOptions
 	score := 0
 	maxSeverity := 0
 	samples := make([]string, 0, compoundRiskSampleLimit(options))
+	context := riskContextForFindings(bucket.findings)
 	for _, finding := range bucket.findings {
 		if finding == nil {
 			continue
@@ -224,16 +222,20 @@ func newCompoundRiskGroup(bucket compoundRiskBucket, options CompoundRiskOptions
 	}
 	ruleIDs := sortedCompoundRiskKeys(rules)
 	score += 3 * max(0, len(ruleIDs)-1)
+	score += context.Score
 	group := CompoundRiskGroup{
 		Kind:            bucket.kind,
 		Key:             bucket.key,
 		Label:           bucket.label,
 		Score:           score,
+		ContextScore:    context.Score,
+		RiskReasons:     context.Reasons,
 		FindingCount:    len(bucket.findings),
 		RuleIDs:         ruleIDs,
 		Severities:      sortedCompoundRiskCounts(severities),
 		Actions:         sortedCompoundRiskCounts(actions),
 		SampleSummaries: samples,
+		Evidence:        newFindingEvidenceBundle(bucket.findings),
 	}
 	if maxSeverity >= compoundRiskSeverityScore("HIGH") {
 		return group
@@ -303,28 +305,46 @@ func firstFindingResourceURN(record *ports.FindingRecord) string {
 	return ""
 }
 
-func githubRepositoryFromFinding(record *ports.FindingRecord) string {
+func repositoryFromFinding(record *ports.FindingRecord) string {
 	if record == nil {
 		return ""
 	}
+	attributes := record.Attributes
+	if repository := firstNonEmpty(
+		attributes["repo"],
+		attributes["repository"],
+		attributes["repository_name"],
+		attributes["project"],
+		attributes["project_key"],
+		attributes["service"],
+		attributes["service_name"],
+	); repository != "" {
+		return repository
+	}
 	for _, resourceURN := range record.ResourceURNs {
-		if repository := githubRepositoryFromURN(resourceURN); repository != "" {
+		if repository := repositoryFromURN(resourceURN); repository != "" {
 			return repository
 		}
 	}
-	return githubRepositoryFromURN(record.Attributes["primary_resource_urn"])
+	return repositoryFromURN(record.Attributes["primary_resource_urn"])
 }
 
-func githubRepositoryFromURN(value string) string {
+func repositoryFromURN(value string) string {
 	parts := strings.Split(strings.TrimSpace(value), ":")
 	if len(parts) < 5 {
 		return ""
 	}
-	if parts[3] != "github_repo" && parts[3] != "github_dependabot_alert" && parts[3] != "github_pull_request" {
+	resourceType := parts[3]
+	if !strings.Contains(resourceType, "repo") &&
+		!strings.Contains(resourceType, "repository") &&
+		!strings.Contains(resourceType, "project") &&
+		!strings.Contains(resourceType, "service") &&
+		!strings.Contains(resourceType, "pull_request") &&
+		!strings.Contains(resourceType, "dependabot_alert") {
 		return ""
 	}
 	repository := strings.Join(parts[4:], ":")
-	if parts[3] == "github_dependabot_alert" {
+	if strings.Contains(resourceType, "alert") {
 		if idx := strings.LastIndex(repository, ":"); idx > 0 {
 			repository = repository[:idx]
 		}
@@ -348,26 +368,34 @@ func resourceTypeFromURN(value string) string {
 
 func sourceIDFromRuntime(runtimeID string) string {
 	value := strings.ToLower(strings.TrimSpace(runtimeID))
-	switch {
-	case strings.Contains(value, "github"):
-		return "github"
-	case strings.Contains(value, "okta"):
-		return "okta"
-	default:
+	if value == "" {
 		return ""
 	}
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ':' || r == '/' || r == '_' || r == '-'
+	})
+	candidate := ""
+	for _, part := range parts {
+		if part == "" || part == "live" || part == "audit" || part == "runtime" || part == "source" {
+			continue
+		}
+		candidate = part
+	}
+	if candidate != "" {
+		return candidate
+	}
+	return value
 }
 
 func sourceIDFromRule(ruleID string) string {
 	value := strings.ToLower(strings.TrimSpace(ruleID))
-	switch {
-	case strings.HasPrefix(value, "github-"):
-		return "github"
-	case strings.Contains(value, "okta"):
-		return "okta"
-	default:
+	if value == "" {
 		return ""
 	}
+	if idx := strings.Index(value, "-"); idx > 0 {
+		return value[:idx]
+	}
+	return value
 }
 
 func sortedCompoundRiskKeys(values map[string]int) []string {

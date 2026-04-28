@@ -283,8 +283,8 @@ func TestGitHubAuditFindingsGraphPreviewWithGHCLI(t *testing.T) {
 	allPreviewFindings := auditGraphPreviewFindings(allFindingRecords)
 	previewLimit := githubAuditGraphPreviewLimit()
 	previewFindings := limitAuditPreviewFindings(allPreviewFindings, previewLimit)
-	compoundRisks := findings.AnalyzeCompoundRisks(allFindingRecords, findings.CompoundRiskOptions{Limit: previewLimit, SampleLimit: 3})
 	neighborhoods := make([]graphPreviewNeighborhood, 0, len(previewFindings))
+	neighborhoodsByFindingURN := map[string]*ports.EntityNeighborhood{}
 	for _, finding := range allPreviewFindings {
 		neighborhood, err := graphquery.New(graphStore).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
 			RootURN: finding.FindingURN,
@@ -296,10 +296,16 @@ func TestGitHubAuditFindingsGraphPreviewWithGHCLI(t *testing.T) {
 		if !neighborhoodHasEdge(neighborhood, finding.PrimaryResourceURN, "has_finding", finding.FindingURN) {
 			t.Fatalf("finding neighborhood missing has_finding edge %s -> %s: %#v", finding.PrimaryResourceURN, finding.FindingURN, neighborhood.Relations)
 		}
+		neighborhoodsByFindingURN[finding.FindingURN] = neighborhood
 		if len(neighborhoods) < previewLimit {
 			neighborhoods = append(neighborhoods, newGraphPreviewNeighborhood(neighborhood))
 		}
 	}
+	riskAnalysis := findings.AnalyzeFindingExposure(allFindingRecords, findings.FindingExposureAnalysisOptions{
+		Limit:              previewLimit,
+		SampleLimit:        3,
+		GraphNeighborhoods: neighborhoodsByFindingURN,
+	})
 	counts, err := graphStore.Counts(ctx)
 	if err != nil {
 		t.Fatalf("Counts() error = %v", err)
@@ -314,7 +320,8 @@ func TestGitHubAuditFindingsGraphPreviewWithGHCLI(t *testing.T) {
 		GraphNodes:          counts.Nodes,
 		GraphRelations:      counts.Relations,
 		Findings:            previewFindings,
-		CompoundRisks:       compoundRisks,
+		CompoundRisks:       riskAnalysis.CompoundRisks,
+		RiskAnalysis:        riskAnalysis,
 		Neighborhoods:       neighborhoods,
 		RequiredFindingEdge: "primary_resource --has_finding--> finding",
 	}
@@ -355,18 +362,19 @@ type githubFindingsGraphPreview struct {
 }
 
 type githubAuditFindingsGraphPreview struct {
-	Org                 string                      `json:"org"`
-	RuntimeID           string                      `json:"runtime_id"`
-	EventsRead          int                         `json:"events_read"`
-	Phrases             []string                    `json:"phrases"`
-	FindingsProjected   int                         `json:"findings_projected"`
-	FindingsPreviewed   int                         `json:"findings_previewed"`
-	GraphNodes          int64                       `json:"graph_nodes"`
-	GraphRelations      int64                       `json:"graph_relations"`
-	Findings            []githubAuditPreviewFinding `json:"findings"`
-	CompoundRisks       findings.CompoundRiskReport `json:"compound_risks"`
-	Neighborhoods       []graphPreviewNeighborhood  `json:"neighborhoods"`
-	RequiredFindingEdge string                      `json:"required_finding_edge"`
+	Org                 string                                 `json:"org"`
+	RuntimeID           string                                 `json:"runtime_id"`
+	EventsRead          int                                    `json:"events_read"`
+	Phrases             []string                               `json:"phrases"`
+	FindingsProjected   int                                    `json:"findings_projected"`
+	FindingsPreviewed   int                                    `json:"findings_previewed"`
+	GraphNodes          int64                                  `json:"graph_nodes"`
+	GraphRelations      int64                                  `json:"graph_relations"`
+	Findings            []githubAuditPreviewFinding            `json:"findings"`
+	CompoundRisks       findings.CompoundRiskReport            `json:"compound_risks"`
+	RiskAnalysis        findings.FindingExposureAnalysisReport `json:"risk_analysis"`
+	Neighborhoods       []graphPreviewNeighborhood             `json:"neighborhoods"`
+	RequiredFindingEdge string                                 `json:"required_finding_edge"`
 }
 
 type githubAuditPreviewFinding struct {

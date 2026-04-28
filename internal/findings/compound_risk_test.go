@@ -21,8 +21,17 @@ func TestAnalyzeCompoundRisksGroupsFindingsByActorResourceAndRepository(t *testi
 	if got := actor.Key; got != "alice" {
 		t.Fatalf("Actors[0].Key = %q, want alice", got)
 	}
-	if got := actor.Score; got != 13 {
-		t.Fatalf("Actors[0].Score = %d, want 13", got)
+	if got := actor.Score; got <= 13 {
+		t.Fatalf("Actors[0].Score = %d, want contextual score above legacy baseline", got)
+	}
+	if actor.ContextScore == 0 {
+		t.Fatal("Actors[0].ContextScore = 0, want contextual risk score")
+	}
+	if len(actor.RiskReasons) == 0 {
+		t.Fatal("Actors[0].RiskReasons = 0, want contextual risk reasons")
+	}
+	if got := actor.Evidence.FindingCount; got != 3 {
+		t.Fatalf("Actors[0].Evidence.FindingCount = %d, want 3", got)
 	}
 	if got := actor.FindingCount; got != 3 {
 		t.Fatalf("Actors[0].FindingCount = %d, want 3", got)

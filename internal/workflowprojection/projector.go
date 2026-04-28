@@ -363,30 +363,19 @@ func (s *Service) ensureFindingAnchor(ctx context.Context, finding workflowevent
 		SourceID:   sourceID,
 		EntityType: findingEntityType,
 		Label:      graphEntityLabel(finding.Title),
-		Attributes: map[string]string{
-			"finding_id":           strings.TrimSpace(finding.FindingID),
-			"rule_id":              strings.TrimSpace(finding.RuleID),
-			"severity":             strings.TrimSpace(finding.Severity),
-			"status":               strings.TrimSpace(finding.Status),
-			"runtime_id":           strings.TrimSpace(finding.RuntimeID),
-			"policy_id":            strings.TrimSpace(finding.PolicyID),
-			"check_id":             strings.TrimSpace(finding.CheckID),
-			"primary_resource_urn": strings.TrimSpace(finding.PrimaryResourceURN),
-		},
+		Attributes: findingAnchorAttributes(finding),
 	}, result); err != nil {
 		return nil, err
 	}
 	resourceURNs := normalizeIDs(finding.ResourceURNs)
 	for _, resourceURN := range resourceURNs {
 		if err := s.upsertLink(ctx, &ports.ProjectedLink{
-			TenantID: tenantID,
-			SourceID: sourceID,
-			FromURN:  resourceURN,
-			ToURN:    anchorURN,
-			Relation: relationHasFinding,
-			Attributes: map[string]string{
-				"finding_id": strings.TrimSpace(finding.FindingID),
-			},
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			FromURN:    resourceURN,
+			ToURN:      anchorURN,
+			Relation:   relationHasFinding,
+			Attributes: findingAnchorLinkAttributes(finding),
 		}, result); err != nil {
 			return nil, err
 		}
@@ -501,6 +490,99 @@ func outcomeAttributes(payload *workflowevents.OutcomeRecorded) map[string]strin
 		attributes["confidence"] = fmt.Sprintf("%.6g", payload.Confidence)
 	}
 	return attributes
+}
+
+func findingAnchorAttributes(finding workflowevents.FindingSnapshot) map[string]string {
+	attributes := map[string]string{
+		"finding_id":           strings.TrimSpace(finding.FindingID),
+		"fingerprint":          strings.TrimSpace(finding.Fingerprint),
+		"summary":              graphEntityLabel(finding.Summary),
+		"rule_id":              strings.TrimSpace(finding.RuleID),
+		"severity":             strings.TrimSpace(finding.Severity),
+		"status":               strings.TrimSpace(finding.Status),
+		"runtime_id":           strings.TrimSpace(finding.RuntimeID),
+		"policy_id":            strings.TrimSpace(finding.PolicyID),
+		"check_id":             strings.TrimSpace(finding.CheckID),
+		"primary_resource_urn": strings.TrimSpace(finding.PrimaryResourceURN),
+		"first_observed_at":    strings.TrimSpace(finding.FirstObservedAt),
+		"last_observed_at":     strings.TrimSpace(finding.LastObservedAt),
+	}
+	if finding.ResourceCount != 0 {
+		attributes["resource_count"] = fmt.Sprintf("%d", finding.ResourceCount)
+	}
+	if finding.EventCount != 0 {
+		attributes["event_count"] = fmt.Sprintf("%d", finding.EventCount)
+	}
+	if finding.RiskScore != 0 {
+		attributes["risk_score"] = fmt.Sprintf("%d", finding.RiskScore)
+	}
+	if len(finding.EventIDs) != 0 {
+		attributes["event_ids"] = strings.Join(normalizeIDs(finding.EventIDs), ",")
+	}
+	if len(finding.RiskReasons) != 0 {
+		attributes["risk_reasons"] = strings.Join(normalizeIDs(finding.RiskReasons), ",")
+	}
+	if refs := findingControlRefsAttribute(finding.ControlRefs); refs != "" {
+		attributes["control_refs"] = refs
+	}
+	for key, value := range finding.Metadata {
+		trimmedKey := strings.TrimSpace(key)
+		if trimmedKey == "" {
+			continue
+		}
+		if _, exists := attributes[trimmedKey]; exists {
+			attributes["context_"+trimmedKey] = strings.TrimSpace(value)
+			continue
+		}
+		attributes[trimmedKey] = strings.TrimSpace(value)
+	}
+	trimEmptyProjectionAttributes(attributes)
+	return attributes
+}
+
+func findingAnchorLinkAttributes(finding workflowevents.FindingSnapshot) map[string]string {
+	attributes := map[string]string{
+		"finding_id":           strings.TrimSpace(finding.FindingID),
+		"rule_id":              strings.TrimSpace(finding.RuleID),
+		"severity":             strings.TrimSpace(finding.Severity),
+		"status":               strings.TrimSpace(finding.Status),
+		"primary_resource_urn": strings.TrimSpace(finding.PrimaryResourceURN),
+		"last_observed_at":     strings.TrimSpace(finding.LastObservedAt),
+	}
+	if finding.RiskScore != 0 {
+		attributes["risk_score"] = fmt.Sprintf("%d", finding.RiskScore)
+	}
+	if finding.EventCount != 0 {
+		attributes["event_count"] = fmt.Sprintf("%d", finding.EventCount)
+	}
+	trimEmptyProjectionAttributes(attributes)
+	return attributes
+}
+
+func findingControlRefsAttribute(refs []workflowevents.FindingControlRefSnapshot) string {
+	if len(refs) == 0 {
+		return ""
+	}
+	values := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		frameworkName := strings.TrimSpace(ref.FrameworkName)
+		controlID := strings.TrimSpace(ref.ControlID)
+		if frameworkName == "" && controlID == "" {
+			continue
+		}
+		values = append(values, frameworkName+":"+controlID)
+	}
+	return strings.Join(normalizeIDs(values), ",")
+}
+
+func trimEmptyProjectionAttributes(attributes map[string]string) {
+	for key, value := range attributes {
+		if strings.TrimSpace(value) == "" {
+			delete(attributes, key)
+			continue
+		}
+		attributes[key] = strings.TrimSpace(value)
+	}
 }
 
 func decisionLabel(decisionType string, status string, rationale string) string {

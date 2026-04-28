@@ -199,11 +199,16 @@ func (s *Service) recordAndProjectWorkflowEvent(ctx context.Context, event *cere
 }
 
 func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sourceID string) workflowevents.FindingSnapshot {
+	resourceURNs := uniqueSortedStrings(finding.ResourceURNs)
+	eventIDs := uniqueSortedStrings(finding.EventIDs)
+	risk := AnalyzeFindingRiskContext(finding, time.Time{})
 	return workflowevents.FindingSnapshot{
 		TenantID:           strings.TrimSpace(tenantID),
 		SourceSystem:       strings.TrimSpace(sourceID),
 		FindingID:          strings.TrimSpace(finding.ID),
+		Fingerprint:        strings.TrimSpace(finding.Fingerprint),
 		Title:              strings.TrimSpace(finding.Title),
+		Summary:            strings.TrimSpace(finding.Summary),
 		RuleID:             strings.TrimSpace(finding.RuleID),
 		Severity:           strings.TrimSpace(finding.Severity),
 		Status:             strings.TrimSpace(finding.Status),
@@ -211,8 +216,49 @@ func findingWorkflowSnapshot(finding *ports.FindingRecord, tenantID string, sour
 		PolicyID:           strings.TrimSpace(finding.PolicyID),
 		CheckID:            strings.TrimSpace(finding.CheckID),
 		PrimaryResourceURN: findingPrimaryResourceURN(finding),
-		ResourceURNs:       uniqueSortedStrings(finding.ResourceURNs),
+		ResourceURNs:       resourceURNs,
+		EventIDs:           eventIDs,
+		FirstObservedAt:    findingSnapshotTimestamp(finding.FirstObservedAt),
+		LastObservedAt:     findingSnapshotTimestamp(finding.LastObservedAt),
+		ResourceCount:      len(resourceURNs),
+		EventCount:         len(eventIDs),
+		ControlRefs:        findingControlRefSnapshots(finding.ControlRefs),
+		RiskScore:          risk.Score,
+		RiskReasons:        risk.Reasons,
+		Metadata:           findingRiskMetadata(finding),
 	}
+}
+
+func findingSnapshotTimestamp(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func findingControlRefSnapshots(refs []ports.FindingControlRef) []workflowevents.FindingControlRefSnapshot {
+	if len(refs) == 0 {
+		return nil
+	}
+	values := make([]workflowevents.FindingControlRefSnapshot, 0, len(refs))
+	seen := map[string]struct{}{}
+	for _, ref := range refs {
+		frameworkName := strings.TrimSpace(ref.FrameworkName)
+		controlID := strings.TrimSpace(ref.ControlID)
+		if frameworkName == "" && controlID == "" {
+			continue
+		}
+		key := frameworkName + "|" + controlID
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		values = append(values, workflowevents.FindingControlRefSnapshot{
+			FrameworkName: frameworkName,
+			ControlID:     controlID,
+		})
+	}
+	return values
 }
 
 func findingGraphScope(finding *ports.FindingRecord) (string, string) {

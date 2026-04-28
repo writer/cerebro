@@ -104,18 +104,35 @@ type OutcomeRecorded struct {
 
 // FindingSnapshot captures the finding fields needed to rebuild workflow graph projections.
 type FindingSnapshot struct {
-	TenantID           string   `json:"tenant_id"`
-	SourceSystem       string   `json:"source_system"`
-	FindingID          string   `json:"finding_id"`
-	Title              string   `json:"title,omitempty"`
-	RuleID             string   `json:"rule_id,omitempty"`
-	Severity           string   `json:"severity,omitempty"`
-	Status             string   `json:"status,omitempty"`
-	RuntimeID          string   `json:"runtime_id,omitempty"`
-	PolicyID           string   `json:"policy_id,omitempty"`
-	CheckID            string   `json:"check_id,omitempty"`
-	PrimaryResourceURN string   `json:"primary_resource_urn,omitempty"`
-	ResourceURNs       []string `json:"resource_urns,omitempty"`
+	TenantID           string                      `json:"tenant_id"`
+	SourceSystem       string                      `json:"source_system"`
+	FindingID          string                      `json:"finding_id"`
+	Fingerprint        string                      `json:"fingerprint,omitempty"`
+	Title              string                      `json:"title,omitempty"`
+	Summary            string                      `json:"summary,omitempty"`
+	RuleID             string                      `json:"rule_id,omitempty"`
+	Severity           string                      `json:"severity,omitempty"`
+	Status             string                      `json:"status,omitempty"`
+	RuntimeID          string                      `json:"runtime_id,omitempty"`
+	PolicyID           string                      `json:"policy_id,omitempty"`
+	CheckID            string                      `json:"check_id,omitempty"`
+	PrimaryResourceURN string                      `json:"primary_resource_urn,omitempty"`
+	ResourceURNs       []string                    `json:"resource_urns,omitempty"`
+	EventIDs           []string                    `json:"event_ids,omitempty"`
+	FirstObservedAt    string                      `json:"first_observed_at,omitempty"`
+	LastObservedAt     string                      `json:"last_observed_at,omitempty"`
+	ResourceCount      int                         `json:"resource_count,omitempty"`
+	EventCount         int                         `json:"event_count,omitempty"`
+	ControlRefs        []FindingControlRefSnapshot `json:"control_refs,omitempty"`
+	RiskScore          int                         `json:"risk_score,omitempty"`
+	RiskReasons        []string                    `json:"risk_reasons,omitempty"`
+	Metadata           map[string]string           `json:"metadata,omitempty"`
+}
+
+// FindingControlRefSnapshot captures one generic compliance/control reference for graph projection.
+type FindingControlRefSnapshot struct {
+	FrameworkName string `json:"framework_name"`
+	ControlID     string `json:"control_id"`
 }
 
 // FindingRecorded captures one durable finding graph anchor event.
