@@ -50,6 +50,13 @@ func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
 	}
 }
 
+func TestEmailLikeExtractsSSOSessionEmail(t *testing.T) {
+	arn := "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@example.com"
+	if got := emailLike(arn); got != "alice@example.com" {
+		t.Fatalf("emailLike() = %q, want alice@example.com", got)
+	}
+}
+
 func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {

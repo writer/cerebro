@@ -115,9 +115,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			runtime.Checkpoint = cloneCheckpoint(pull.Checkpoint)
 		}
 		runtime.NextCursor = cloneCursor(pull.NextCursor)
-		if len(pull.Events) == 0 {
-			break
-		}
 		pagesRead++
 		for _, event := range pull.Events {
 			syncedEvent := materializeEvent(runtime, event)

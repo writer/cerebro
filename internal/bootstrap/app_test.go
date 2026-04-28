@@ -939,11 +939,11 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if got := syncPayload["events_appended"]; got != float64(1) {
 		t.Fatalf("sync events_appended = %#v, want 1", got)
 	}
-	if got := syncPayload["entities_projected"]; got != float64(3) {
-		t.Fatalf("sync entities_projected = %#v, want 3", got)
+	if got := syncPayload["entities_projected"]; got != float64(4) {
+		t.Fatalf("sync entities_projected = %#v, want 4", got)
 	}
-	if got := syncPayload["links_projected"]; got != float64(2) {
-		t.Fatalf("sync links_projected = %#v, want 2", got)
+	if got := syncPayload["links_projected"]; got != float64(4) {
+		t.Fatalf("sync links_projected = %#v, want 4", got)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
@@ -988,11 +988,11 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	if syncRuntimeResp.Msg.GetEventsAppended() != 1 {
 		t.Fatalf("SyncSourceRuntime events_appended = %d, want 1", syncRuntimeResp.Msg.GetEventsAppended())
 	}
-	if syncRuntimeResp.Msg.GetEntitiesProjected() != 3 {
-		t.Fatalf("SyncSourceRuntime entities_projected = %d, want 3", syncRuntimeResp.Msg.GetEntitiesProjected())
+	if syncRuntimeResp.Msg.GetEntitiesProjected() != 4 {
+		t.Fatalf("SyncSourceRuntime entities_projected = %d, want 4", syncRuntimeResp.Msg.GetEntitiesProjected())
 	}
-	if syncRuntimeResp.Msg.GetLinksProjected() != 2 {
-		t.Fatalf("SyncSourceRuntime links_projected = %d, want 2", syncRuntimeResp.Msg.GetLinksProjected())
+	if syncRuntimeResp.Msg.GetLinksProjected() != 4 {
+		t.Fatalf("SyncSourceRuntime links_projected = %d, want 4", syncRuntimeResp.Msg.GetLinksProjected())
 	}
 	if len(appendLog.events) != 2 {
 		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))

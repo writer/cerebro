@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -11,28 +12,31 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+var emailIdentifierPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
+
 const (
-	relationActedOn           = "acted_on"
-	relationAffectedBy        = "affected_by"
-	relationAffects           = "affects"
-	relationAuthored          = "authored"
-	relationBelongsTo         = "belongs_to"
-	relationCanPerform        = "can_perform"
-	relationHasIdentifier     = "has_identifier"
-	relationAssignedTo        = "assigned_to"
-	relationCanAssume         = "can_assume"
-	relationCanAdmin          = "can_admin"
-	relationCanImpersonate    = "can_impersonate"
-	relationCanReach          = "can_reach"
-	relationHasClassification = "has_classification"
-	relationHasEvidence       = "has_evidence"
-	relationMemberOf          = "member_of"
-	relationObservedOn        = "observed_on"
-	relationOwnedBy           = "owned_by"
-	relationRunsAs            = "runs_as"
-	relationSupports          = "supports"
-	relationTaggedAs          = "tagged_as"
-	relationTargeted          = "targeted"
+	relationActedOn            = "acted_on"
+	relationAffectedBy         = "affected_by"
+	relationAffects            = "affects"
+	relationAuthored           = "authored"
+	relationBelongsTo          = "belongs_to"
+	relationCanPerform         = "can_perform"
+	relationHasIdentifier      = "has_identifier"
+	relationAssignedTo         = "assigned_to"
+	relationCanAssume          = "can_assume"
+	relationCanAdmin           = "can_admin"
+	relationCanImpersonate     = "can_impersonate"
+	relationCanReach           = "can_reach"
+	relationHasClassification  = "has_classification"
+	relationHasEvidence        = "has_evidence"
+	relationMemberOf           = "member_of"
+	relationObservedOn         = "observed_on"
+	relationOwnedBy            = "owned_by"
+	relationRepresentsIdentity = "represents_identity"
+	relationRunsAs             = "runs_as"
+	relationSupports           = "supports"
+	relationTaggedAs           = "tagged_as"
+	relationTargeted           = "targeted"
 )
 
 // Service materializes synced source events into current-state and graph stores.
@@ -574,6 +578,18 @@ func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[str
 	if identifierURN == "" {
 		return
 	}
+	canonicalIdentityURN, canonicalIdentityType := canonicalIdentityURN(tenantID, value)
+	if canonicalIdentityURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        canonicalIdentityURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: canonicalIdentityType,
+			Label:      label,
+			Attributes: map[string]string{"value": label},
+		})
+		addLink(links, projectedLink(tenantID, sourceID, fromURN, canonicalIdentityURN, relationRepresentsIdentity, nil))
+	}
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        identifierURN,
 		TenantID:   tenantID,
@@ -583,6 +599,9 @@ func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[str
 		Attributes: map[string]string{"value": label},
 	})
 	addLink(links, projectedLink(tenantID, sourceID, fromURN, identifierURN, relationHasIdentifier, nil))
+	if canonicalIdentityURN != "" {
+		addLink(links, projectedLink(tenantID, sourceID, canonicalIdentityURN, identifierURN, relationHasIdentifier, nil))
+	}
 }
 
 func projectedLink(tenantID string, sourceID string, fromURN string, toURN string, relation string, attributes map[string]string) *ports.ProjectedLink {
@@ -676,16 +695,29 @@ func identifierURN(tenantID string, raw string) (string, string, string) {
 	if value == "" {
 		return "", "", ""
 	}
-	if looksLikeEmail(value) {
-		normalized := normalizeIdentifier(value)
+	if email := extractEmailIdentifier(value); email != "" {
+		normalized := normalizeIdentifier(email)
 		return projectionURN(tenantID, "identifier", "email", normalized), "identifier.email", normalized
 	}
 	normalized := normalizeIdentifier(value)
 	return projectionURN(tenantID, "identifier", "login", normalized), "identifier.login", normalized
 }
 
-func looksLikeEmail(value string) bool {
-	return strings.Contains(strings.TrimSpace(value), "@")
+func canonicalIdentityURN(tenantID string, raw string) (string, string) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", ""
+	}
+	if email := extractEmailIdentifier(value); email != "" {
+		normalized := normalizeIdentifier(email)
+		return projectionURN(tenantID, "identity", "email", normalized), "identity.email"
+	}
+	normalized := normalizeIdentifier(value)
+	return projectionURN(tenantID, "identity", "login", normalized), "identity.login"
+}
+
+func extractEmailIdentifier(value string) string {
+	return strings.TrimSpace(emailIdentifierPattern.FindString(strings.TrimSpace(value)))
 }
 
 func sameIdentifier(left string, right string) bool {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +29,8 @@ import (
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
+
+var emailPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
 
 const (
 	defaultFamily          = familyCloudTrail
@@ -1094,10 +1097,7 @@ func isAdminPolicy(values ...string) bool {
 
 func emailLike(value string) string {
 	trimmed := strings.TrimSpace(value)
-	if strings.Contains(trimmed, "@") {
-		return strings.ToLower(trimmed)
-	}
-	return ""
+	return strings.ToLower(strings.TrimSpace(emailPattern.FindString(trimmed)))
 }
 
 func boolString(value bool) string {

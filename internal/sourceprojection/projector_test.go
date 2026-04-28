@@ -64,11 +64,11 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 5 {
-		t.Fatalf("Project().EntitiesProjected = %d, want 5", result.EntitiesProjected)
+	if result.EntitiesProjected != 6 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 6", result.EntitiesProjected)
 	}
-	if result.LinksProjected != 4 {
-		t.Fatalf("Project().LinksProjected = %d, want 4", result.LinksProjected)
+	if result.LinksProjected != 6 {
+		t.Fatalf("Project().LinksProjected = %d, want 6", result.LinksProjected)
 	}
 
 	prURN := "urn:cerebro:writer:github_pull_request:writer/cerebro#447"
@@ -293,6 +293,21 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 				"user_id": "00u1",
 			},
 		},
+		{
+			Id:       "aws-cloudtrail-sso",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.cloudtrail",
+			Attributes: map[string]string{
+				"actor_alternate_id": "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com",
+				"actor_id":           "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com",
+				"actor_type":         "AssumedRole",
+				"domain":             "123456789012",
+				"event_type":         "ListRoles",
+				"resource_id":        "123456789012",
+				"resource_type":      "account",
+			},
+		},
 	}
 
 	for _, event := range events {
@@ -302,14 +317,28 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	}
 
 	identifierURN := "urn:cerebro:writer:identifier:email:alice@writer.com"
+	canonicalIdentityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
 	if _, ok := state.entities[identifierURN]; !ok {
 		t.Fatalf("identifier entity %q missing", identifierURN)
+	}
+	if _, ok := state.entities[canonicalIdentityURN]; !ok {
+		t.Fatalf("canonical identity entity %q missing", canonicalIdentityURN)
 	}
 	if _, ok := state.links["urn:cerebro:writer:github_user:alice@writer.com|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("github identifier link missing for %q", identifierURN)
 	}
 	if _, ok := state.links["urn:cerebro:writer:okta_user:00u1|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("okta identifier link missing for %q", identifierURN)
+	}
+	if _, ok := state.links["urn:cerebro:writer:github_user:alice@writer.com|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
+		t.Fatalf("github canonical identity link missing for %q", canonicalIdentityURN)
+	}
+	if _, ok := state.links["urn:cerebro:writer:okta_user:00u1|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
+		t.Fatalf("okta canonical identity link missing for %q", canonicalIdentityURN)
+	}
+	awsActorURN := "urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com"
+	if _, ok := state.links[awsActorURN+"|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
+		t.Fatalf("aws canonical identity link missing for %q", canonicalIdentityURN)
 	}
 }
 
@@ -495,6 +524,7 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 	}
 
 	identifierURN := "urn:cerebro:writer:identifier:email:admin@writer.com"
+	canonicalIdentityURN := "urn:cerebro:writer:identity:email:admin@writer.com"
 	oktaUserURN := "urn:cerebro:writer:okta_user:00u-admin"
 	googleUserURN := "urn:cerebro:writer:google_workspace_user:1001"
 	awsUserURN := "urn:cerebro:writer:aws_user:AIDAADMIN"
@@ -503,6 +533,11 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 	assertProjectedLink(t, state, googleUserURN, relationHasIdentifier, identifierURN)
 	assertProjectedLink(t, state, awsUserURN, relationHasIdentifier, identifierURN)
 	assertProjectedLink(t, state, gcpUserURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, state, oktaUserURN, relationRepresentsIdentity, canonicalIdentityURN)
+	assertProjectedLink(t, state, googleUserURN, relationRepresentsIdentity, canonicalIdentityURN)
+	assertProjectedLink(t, state, awsUserURN, relationRepresentsIdentity, canonicalIdentityURN)
+	assertProjectedLink(t, state, gcpUserURN, relationRepresentsIdentity, canonicalIdentityURN)
+	assertProjectedLink(t, state, canonicalIdentityURN, relationHasIdentifier, identifierURN)
 	assertProjectedLink(t, state, oktaUserURN, relationMemberOf, "urn:cerebro:writer:okta_group:grp-security")
 	assertProjectedLink(t, state, googleUserURN, relationMemberOf, "urn:cerebro:writer:google_workspace_group:security@writer.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:google_workspace_group:security@writer.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:security@writer.com")

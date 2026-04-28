@@ -146,8 +146,8 @@ func TestProjectorBuildsTraversableLocalGraph(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Topology() error = %v", err)
 	}
-	if topology.Isolated != 0 || topology.SourcesOnly != 1 || topology.SinksOnly != 2 || topology.Intermediates != 2 {
-		t.Fatalf("Topology() = %#v, want isolated=0 sources=1 sinks=2 intermediates=2", topology)
+	if topology.Isolated != 0 || topology.SourcesOnly != 1 || topology.SinksOnly != 2 || topology.Intermediates != 3 {
+		t.Fatalf("Topology() = %#v, want isolated=0 sources=1 sinks=2 intermediates=3", topology)
 	}
 }
 
@@ -204,6 +204,17 @@ func TestProjectorKeepsLocalGraphIdentityLinksTenantScoped(t *testing.T) {
 	))
 	if sharedIdentifierPathCount != 1 {
 		t.Fatalf("shared identifier path count = %d, want 1", sharedIdentifierPathCount)
+	}
+
+	sharedIdentityPathCount := queryGraphCount(t, store, fmt.Sprintf(
+		"MATCH (github_user:entity {urn: %s})-[github_identity:relation]->(identity:entity {urn: %s})<-[okta_identity:relation]-(okta_user:entity {urn: %s}) "+
+			"WHERE github_identity.relation = 'represents_identity' AND okta_identity.relation = 'represents_identity' RETURN COUNT(identity)",
+		cypherString("urn:cerebro:writer:github_user:alice@writer.com"),
+		cypherString("urn:cerebro:writer:identity:email:alice@writer.com"),
+		cypherString("urn:cerebro:writer:okta_user:00u1"),
+	))
+	if sharedIdentityPathCount != 1 {
+		t.Fatalf("shared identity path count = %d, want 1", sharedIdentityPathCount)
 	}
 
 	identifierCount := queryGraphCount(t, store,
