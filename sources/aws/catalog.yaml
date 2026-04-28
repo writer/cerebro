@@ -8,4 +8,6 @@ emitted_kinds:
   - aws.iam_group_membership
   - aws.iam_role
   - aws.iam_role_assignment
+  - aws.iam_role_trust
   - aws.iam_user
+  - aws.resource_exposure

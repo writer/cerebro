@@ -618,6 +618,333 @@ func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationAssignedTo, "urn:cerebro:writer:gcp_credential:projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1")
 }
 
+func TestProjectAzureIdentityEdges(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "azure-user-admin",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.user",
+			Attributes: map[string]string{
+				"domain":         "tenant-1",
+				"email":          "admin@writer.com",
+				"login":          "admin@writer.com",
+				"mfa_enrolled":   "false",
+				"principal_type": "user",
+				"user_id":        "user-1",
+			},
+		},
+		{
+			Id:       "azure-group",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.group",
+			Attributes: map[string]string{
+				"domain":      "tenant-1",
+				"group_email": "security@writer.com",
+				"group_id":    "group-1",
+				"group_name":  "Security",
+			},
+		},
+		{
+			Id:       "azure-member",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.group_membership",
+			Attributes: map[string]string{
+				"domain":       "tenant-1",
+				"group_id":     "group-1",
+				"member_email": "admin@writer.com",
+				"member_id":    "user-1",
+				"member_type":  "user",
+			},
+		},
+		{
+			Id:       "azure-app",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.application",
+			Attributes: map[string]string{
+				"app_id":   "app-client-1",
+				"app_name": "Prod App",
+				"domain":   "tenant-1",
+			},
+		},
+		{
+			Id:       "azure-sp",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.service_principal",
+			Attributes: map[string]string{
+				"app_id":         "app-client-1",
+				"display_name":   "Prod App",
+				"domain":         "tenant-1",
+				"login":          "app-client-1",
+				"principal_type": "service_principal",
+				"user_id":        "sp-1",
+			},
+		},
+		{
+			Id:       "azure-global-admin",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.directory_role_assignment",
+			Attributes: map[string]string{
+				"domain":        "tenant-1",
+				"is_admin":      "true",
+				"role_id":       "global-admin",
+				"role_name":     "Global Administrator",
+				"role_type":     "azure_directory_role",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "user-1",
+				"subject_type":  "user",
+			},
+		},
+		{
+			Id:       "azure-reader",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.iam_role_assignment",
+			Attributes: map[string]string{
+				"domain":       "tenant-1",
+				"is_admin":     "false",
+				"role_id":      "Reader",
+				"role_name":    "Reader",
+				"role_type":    "azure_rbac_role",
+				"subject_id":   "sp-1",
+				"subject_type": "service_principal",
+			},
+		},
+		{
+			Id:       "azure-credential",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.credential",
+			Attributes: map[string]string{
+				"credential_id":   "app-password-1",
+				"credential_type": "azure_application_password",
+				"domain":          "tenant-1",
+				"subject_id":      "app-client-1",
+				"subject_type":    "application",
+			},
+		},
+		{
+			Id:       "azure-audit",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.directory_audit",
+			Attributes: map[string]string{
+				"actor_email":   "admin@writer.com",
+				"actor_id":      "user-1",
+				"domain":        "tenant-1",
+				"event_type":    "Update conditional access policy",
+				"resource_id":   "policy-1",
+				"resource_type": "conditional_access_policy",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	azureUserURN := "urn:cerebro:writer:azure_user:user-1"
+	azureServicePrincipalURN := "urn:cerebro:writer:azure_service_principal:sp-1"
+	azureApplicationURN := "urn:cerebro:writer:azure_application:app-client-1"
+	assertProjectedLink(t, state, azureUserURN, relationHasIdentifier, "urn:cerebro:writer:identifier:email:admin@writer.com")
+	assertProjectedLink(t, state, azureUserURN, relationMemberOf, "urn:cerebro:writer:azure_group:group-1")
+	assertProjectedLink(t, state, azureUserURN, relationCanAdmin, "urn:cerebro:writer:azure_admin_role:global-admin")
+	assertProjectedLink(t, state, azureServicePrincipalURN, relationAssignedTo, azureApplicationURN)
+	assertProjectedLink(t, state, azureServicePrincipalURN, relationAssignedTo, "urn:cerebro:writer:azure_role:Reader")
+	assertProjectedLinkMissing(t, state, azureServicePrincipalURN, relationCanAdmin, "urn:cerebro:writer:azure_admin_role:Reader")
+	assertProjectedLink(t, state, azureApplicationURN, relationAssignedTo, "urn:cerebro:writer:azure_credential:app-password-1")
+	assertProjectedLink(t, state, azureUserURN, relationActedOn, "urn:cerebro:writer:azure_conditional_access_policy:policy-1")
+}
+
+func TestProjectCloudExposureAndPrivilegePaths(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "aws-public-sg",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.resource_exposure",
+			Attributes: map[string]string{
+				"domain":            "123456789012",
+				"exposed_to":        "public_internet",
+				"exposure_id":       "sg-1-0",
+				"exposure_type":     "public_network_ingress",
+				"family":            "resource_exposure",
+				"internet_exposed":  "true",
+				"resource_id":       "arn:aws:ec2:us-east-1:123456789012:security-group/sg-1",
+				"resource_name":     "prod-web",
+				"resource_provider": "aws",
+				"resource_type":     "security_group",
+				"source_cidr":       "0.0.0.0/0",
+			},
+		},
+		{
+			Id:       "aws-role-trust",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.iam_role_trust",
+			Attributes: map[string]string{
+				"domain":       "123456789012",
+				"path_type":    "assume_role_trust",
+				"relationship": "can_assume",
+				"subject_id":   "arn:aws:iam::999999999999:role/ExternalAdmin",
+				"subject_type": "role",
+				"target_id":    "arn:aws:iam::123456789012:role/AdminRole",
+				"target_name":  "AdminRole",
+				"target_type":  "role",
+			},
+		},
+		{
+			Id:       "gcp-impersonation",
+			TenantId: "writer",
+			SourceId: "gcp",
+			Kind:     "gcp.service_account_impersonation",
+			Attributes: map[string]string{
+				"domain":        "writer-prod",
+				"path_type":     "service_account_impersonation",
+				"relationship":  "can_impersonate",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "admin@writer.com",
+				"subject_type":  "user",
+				"target_email":  "sa@writer-prod.iam.gserviceaccount.com",
+				"target_id":     "sa@writer-prod.iam.gserviceaccount.com",
+				"target_type":   "service_account",
+			},
+		},
+		{
+			Id:       "azure-app-role",
+			TenantId: "writer",
+			SourceId: "azure",
+			Kind:     "azure.app_role_assignment",
+			Attributes: map[string]string{
+				"domain":       "tenant-1",
+				"path_type":    "app_role_assignment",
+				"relationship": "assigned_to",
+				"role_id":      "role-1",
+				"subject_id":   "sp-1",
+				"subject_type": "service_principal",
+				"target_id":    "sp-resource-1",
+				"target_type":  "service_principal",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_public_principal:public_internet", relationCanReach, "urn:cerebro:writer:aws_security_group:arn:aws:ec2:us-east-1:123456789012:security-group/sg-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_role:arn:aws:iam::999999999999:role/ExternalAdmin", relationCanAssume, "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole")
+	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_user:admin@writer.com", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:azure_service_principal:sp-1", relationAssignedTo, "urn:cerebro:writer:azure_service_principal:sp-resource-1")
+}
+
+func TestProjectEffectivePermissionsKubernetesRuntimeAndData(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "aws-effective-admin",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.effective_permission",
+			Attributes: map[string]string{
+				"actions":       "*",
+				"domain":        "123456789012",
+				"effect":        "allow",
+				"is_admin":      "true",
+				"resource_id":   "123456789012",
+				"resource_type": "account",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "admin@writer.com",
+				"subject_type":  "user",
+			},
+		},
+		{
+			Id:       "k8s-workload",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.workload",
+			Attributes: map[string]string{
+				"cluster_id":           "prod-cluster",
+				"namespace":            "payments",
+				"service_account_name": "api",
+				"workload_kind":        "Deployment",
+				"workload_name":        "payments-api",
+				"workload_uid":         "workload-1",
+			},
+		},
+		{
+			Id:       "k8s-workload-identity",
+			TenantId: "writer",
+			SourceId: "kubernetes",
+			Kind:     "kubernetes.workload_identity_binding",
+			Attributes: map[string]string{
+				"cloud_provider":       "gcp",
+				"cluster_id":           "prod-cluster",
+				"namespace":            "payments",
+				"path_type":            "workload_identity",
+				"relationship":         "can_impersonate",
+				"service_account_name": "api",
+				"target_email":         "payments-sa@writer-prod.iam.gserviceaccount.com",
+				"target_id":            "payments-sa@writer-prod.iam.gserviceaccount.com",
+				"target_type":          "service_account",
+			},
+		},
+		{
+			Id:       "runtime-evidence",
+			TenantId: "writer",
+			SourceId: "runtime",
+			Kind:     "runtime.evidence",
+			Attributes: map[string]string{
+				"confidence":    "0.92",
+				"evidence_id":   "evidence-1",
+				"evidence_type": "credential_use",
+				"resource_urn":  "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1",
+				"verdict":       "confirmed",
+			},
+		},
+		{
+			Id:       "asset-crown-jewel",
+			TenantId: "writer",
+			SourceId: "asset",
+			Kind:     "asset.crown_jewel",
+			Attributes: map[string]string{
+				"contains_secrets":    "true",
+				"crown_jewel":         "true",
+				"data_classification": "restricted",
+				"resource_id":         "prod-secrets",
+				"resource_name":       "Production Secrets",
+				"resource_type":       "secret_store",
+				"source_provider":     "aws",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:admin@writer.com", relationCanPerform, "urn:cerebro:writer:aws_account:123456789012")
+	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1", relationRunsAs, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api")
+	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_service_account:prod-cluster:payments:api", relationCanImpersonate, "urn:cerebro:writer:gcp_service_account:payments-sa@writer-prod.iam.gserviceaccount.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1", relationHasEvidence, "urn:cerebro:writer:runtime_evidence:evidence-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:runtime_evidence:evidence-1", relationObservedOn, "urn:cerebro:writer:kubernetes_workload:prod-cluster:payments:workload-1")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationHasClassification, "urn:cerebro:writer:data_classification:restricted")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_secret_store:prod-secrets", relationTaggedAs, "urn:cerebro:writer:asset_tag:crown_jewel")
+}
+
 func assertProjectedLink(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {
 	t.Helper()
 	key := fromURN + "|" + relation + "|" + toURN

@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	cloudtrailtypes "github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -27,17 +30,19 @@ import (
 var catalogFS embed.FS
 
 const (
-	defaultFamily       = familyCloudTrail
-	defaultRegion       = "us-east-1"
-	defaultPageSize     = 10
-	maxPageSize         = 200
-	familyAccessKey     = "access_key"
-	familyCloudTrail    = "cloudtrail"
-	familyIAMGroup      = "iam_group"
-	familyIAMMembership = "iam_group_membership"
-	familyIAMRoleAssign = "iam_role_assignment"
-	familyIAMRole       = "iam_role"
-	familyIAMUser       = "iam_user"
+	defaultFamily          = familyCloudTrail
+	defaultRegion          = "us-east-1"
+	defaultPageSize        = 10
+	maxPageSize            = 200
+	familyAccessKey        = "access_key"
+	familyCloudTrail       = "cloudtrail"
+	familyIAMGroup         = "iam_group"
+	familyIAMMembership    = "iam_group_membership"
+	familyIAMRoleTrust     = "iam_role_trust"
+	familyIAMRoleAssign    = "iam_role_assignment"
+	familyIAMRole          = "iam_role"
+	familyIAMUser          = "iam_user"
+	familyResourceExposure = "resource_exposure"
 )
 
 // Source reads AWS IAM inventory and CloudTrail activity through the AWS SDK for Go v2.
@@ -71,6 +76,7 @@ type awsClientFactory func(context.Context, settings) (awsClients, error)
 type awsClients struct {
 	iam        awsIAMAPI
 	cloudTrail awsCloudTrailAPI
+	ec2        awsEC2API
 }
 
 type awsIAMAPI interface {
@@ -88,6 +94,10 @@ type awsCloudTrailAPI interface {
 	LookupEvents(context.Context, *cloudtrail.LookupEventsInput, ...func(*cloudtrail.Options)) (*cloudtrail.LookupEventsOutput, error)
 }
 
+type awsEC2API interface {
+	DescribeSecurityGroups(context.Context, *ec2.DescribeSecurityGroupsInput, ...func(*ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
+}
+
 type awsFamilyOptions[T any] struct {
 	Name           string
 	Label          string
@@ -102,6 +112,37 @@ type iamPolicyAssignment struct {
 	PrincipalType string
 	PrincipalName string
 	Policy        iamtypes.AttachedPolicy
+}
+
+type awsResourceExposure struct {
+	ResourceID   string
+	ResourceName string
+	ExposureID   string
+	SourceCIDR   string
+	Protocol     string
+	PortRange    string
+	Region       string
+	Scope        string
+	Group        ec2types.SecurityGroup
+	Permission   ec2types.IpPermission
+}
+
+type iamRoleTrust struct {
+	Role      iamtypes.Role
+	Statement trustStatement
+	Principal string
+}
+
+type trustPolicyDocument struct {
+	Statement []trustStatement `json:"Statement"`
+}
+
+type trustStatement struct {
+	Sid       string          `json:"Sid"`
+	Effect    string          `json:"Effect"`
+	Action    any             `json:"Action"`
+	Principal json.RawMessage `json:"Principal"`
+	Condition map[string]any  `json:"Condition"`
 }
 
 type cloudTrailDetail struct {
@@ -199,6 +240,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			},
 			CursorFallback: func(event cloudtrailtypes.Event) string { return awssdk.ToString(event.EventId) },
 		}),
+		awsFamily(s.clients, awsFamilyOptions[awsResourceExposure]{
+			Name:  familyResourceExposure,
+			Label: "aws resource exposures",
+			List:  listResourceExposures,
+			Event: resourceExposureEvent,
+			URN: func(settings settings, exposure awsResourceExposure) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:aws_resource_exposure:%s", settings.accountID, firstNonEmpty(exposure.ExposureID, exposure.ResourceID)), nil
+			},
+		}),
 		awsFamily(s.clients, awsFamilyOptions[iamtypes.Group]{
 			Name:  familyIAMGroup,
 			Label: "aws iam groups",
@@ -224,6 +274,16 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			Event: iamRoleAssignmentEvent,
 			URN: func(settings settings, assignment iamPolicyAssignment) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:iam_role_assignment:%s:%s", settings.accountID, assignment.PrincipalName, firstNonEmpty(awssdk.ToString(assignment.Policy.PolicyArn), awssdk.ToString(assignment.Policy.PolicyName))), nil
+			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[iamRoleTrust]{
+			Name:  familyIAMRoleTrust,
+			Label: "aws iam role trust policies",
+			List:  listIAMRoleTrusts,
+			Event: iamRoleTrustEvent,
+			URN: func(settings settings, trust iamRoleTrust) (string, error) {
+				roleID := firstNonEmpty(awssdk.ToString(trust.Role.RoleId), awssdk.ToString(trust.Role.RoleName))
+				return fmt.Sprintf("urn:cerebro:%s:iam_role_trust:%s:%s", settings.accountID, roleID, sanitizeEventID(trust.Principal)), nil
 			},
 		}),
 		awsFamily(s.clients, awsFamilyOptions[iamtypes.Role]{
@@ -304,7 +364,7 @@ func newAWSClients(ctx context.Context, settings settings) (awsClients, error) {
 	if err != nil {
 		return awsClients{}, fmt.Errorf("load aws config: %w", err)
 	}
-	return awsClients{iam: iam.NewFromConfig(cfg), cloudTrail: cloudtrail.NewFromConfig(cfg)}, nil
+	return awsClients{iam: iam.NewFromConfig(cfg), cloudTrail: cloudtrail.NewFromConfig(cfg), ec2: ec2.NewFromConfig(cfg)}, nil
 }
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
@@ -346,7 +406,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyCloudTrail, familyIAMGroup, familyIAMRole, familyIAMUser:
+	case familyCloudTrail, familyIAMGroup, familyIAMRole, familyIAMRoleTrust, familyIAMUser, familyResourceExposure:
 	case familyAccessKey:
 		if settings.userName == "" {
 			settings.userName = settings.principalName
@@ -370,7 +430,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_name is required when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, iam_group, iam_group_membership, iam_role, iam_role_assignment, or iam_user")
+		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, iam_group, iam_group_membership, iam_role, iam_role_assignment, iam_role_trust, iam_user, or resource_exposure")
 	}
 	return settings, nil
 }
@@ -397,6 +457,45 @@ func listIAMRoles(ctx context.Context, clients awsClients, _ settings, cursor st
 		return nil, "", err
 	}
 	return out.Roles, nextMarker(out.IsTruncated, out.Marker), nil
+}
+
+func listIAMRoleTrusts(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamRoleTrust, string, error) {
+	roles, next, err := listIAMRoles(ctx, clients, settings, cursor, limit)
+	if err != nil {
+		return nil, "", err
+	}
+	trusts := make([]iamRoleTrust, 0)
+	for _, role := range roles {
+		trusts = append(trusts, roleTrusts(role)...)
+	}
+	return trusts, next, nil
+}
+
+func listResourceExposures(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]awsResourceExposure, string, error) {
+	out, err := clients.ec2.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{NextToken: stringPtr(cursor), MaxResults: int32Ptr(ec2PageSize(limit))})
+	if err != nil {
+		return nil, "", err
+	}
+	exposures := make([]awsResourceExposure, 0)
+	for _, group := range out.SecurityGroups {
+		for permissionIndex, permission := range group.IpPermissions {
+			for _, ipRange := range permission.IpRanges {
+				cidr := awssdk.ToString(ipRange.CidrIp)
+				if !publicCIDR(cidr) {
+					continue
+				}
+				exposures = append(exposures, securityGroupExposure(settings, group, permission, cidr, permissionIndex))
+			}
+			for _, ipRange := range permission.Ipv6Ranges {
+				cidr := awssdk.ToString(ipRange.CidrIpv6)
+				if !publicCIDR(cidr) {
+					continue
+				}
+				exposures = append(exposures, securityGroupExposure(settings, group, permission, cidr, permissionIndex))
+			}
+		}
+	}
+	return exposures, awssdk.ToString(out.NextToken), nil
 }
 
 func listIAMGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]iamtypes.Group, string, error) {
@@ -549,6 +648,39 @@ func iamRoleEvent(settings settings, role iamtypes.Role) (*primitives.Event, err
 	return sourceEvent(settings, "aws-iam-role-"+firstNonEmpty(awssdk.ToString(role.RoleId), awssdk.ToString(role.RoleName)), "aws.iam_role", "aws/iam_role/v1", payload, attributes, firstTime(role.CreateDate))
 }
 
+func iamRoleTrustEvent(settings settings, trust iamRoleTrust) (*primitives.Event, error) {
+	roleName := awssdk.ToString(trust.Role.RoleName)
+	roleARN := awssdk.ToString(trust.Role.Arn)
+	subjectType, subjectID := awsTrustPrincipal(trust.Principal)
+	attributes := map[string]string{
+		"domain":               settings.accountID,
+		"external_id_required": boolString(trustExternalIDRequired(trust.Statement)),
+		"family":               familyIAMRoleTrust,
+		"is_external":          boolString(trustExternal(settings.accountID, trust.Principal)),
+		"is_public":            boolString(subjectType == "public"),
+		"path_type":            "assume_role_trust",
+		"principal_arn":        trust.Principal,
+		"relationship":         "can_assume",
+		"role_id":              firstNonEmpty(roleARN, roleName),
+		"role_name":            roleName,
+		"role_type":            "aws_iam_role",
+		"statement_sid":        trust.Statement.Sid,
+		"subject_id":           subjectID,
+		"subject_type":         subjectType,
+		"target_arn":           roleARN,
+		"target_id":            firstNonEmpty(roleARN, roleName),
+		"target_name":          roleName,
+		"target_type":          "role",
+		"trust_action":         strings.Join(stringList(trust.Statement.Action), ","),
+	}
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "role": trust.Role, "statement": trust.Statement, "principal": trust.Principal})
+	if err != nil {
+		return nil, err
+	}
+	id := fmt.Sprintf("aws-iam-role-trust-%s-%s", firstNonEmpty(roleName, roleARN), trust.Principal)
+	return sourceEvent(settings, id, "aws.iam_role_trust", "aws/iam_role_trust/v1", payload, attributes, firstTime(trust.Role.CreateDate))
+}
+
 func iamRoleAssignmentEvent(settings settings, assignment iamPolicyAssignment) (*primitives.Event, error) {
 	policyName := awssdk.ToString(assignment.Policy.PolicyName)
 	policyARN := awssdk.ToString(assignment.Policy.PolicyArn)
@@ -594,6 +726,36 @@ func accessKeyEvent(settings settings, key iamtypes.AccessKeyMetadata) (*primiti
 		return nil, err
 	}
 	return sourceEvent(settings, "aws-access-key-"+firstNonEmpty(awssdk.ToString(key.AccessKeyId), userName), "aws.access_key", "aws/access_key/v1", payload, attributes, firstTime(key.CreateDate))
+}
+
+func resourceExposureEvent(settings settings, exposure awsResourceExposure) (*primitives.Event, error) {
+	attributes := map[string]string{
+		"action":            "allow",
+		"direction":         "ingress",
+		"domain":            settings.accountID,
+		"exposed_to":        "public_internet",
+		"exposure_id":       exposure.ExposureID,
+		"exposure_type":     "public_network_ingress",
+		"external_exposure": "true",
+		"family":            familyResourceExposure,
+		"internet_exposed":  "true",
+		"port_range":        exposure.PortRange,
+		"protocol":          exposure.Protocol,
+		"public":            "true",
+		"region":            exposure.Region,
+		"resource_id":       exposure.ResourceID,
+		"resource_name":     exposure.ResourceName,
+		"resource_provider": "aws",
+		"resource_type":     "security_group",
+		"rule_id":           exposure.ExposureID,
+		"scope":             exposure.Scope,
+		"source_cidr":       exposure.SourceCIDR,
+	}
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "security_group": exposure.Group, "permission": exposure.Permission})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-resource-exposure-"+exposure.ExposureID, "aws.resource_exposure", "aws/resource_exposure/v1", payload, attributes, time.Now().UTC())
 }
 
 func cloudTrailEvent(settings settings, event cloudtrailtypes.Event) (*primitives.Event, error) {
@@ -755,6 +917,155 @@ func cloudTrailResource(event cloudtrailtypes.Event, detail cloudTrailDetail) (s
 		return awssdk.ToString(resource.ResourceName), awssdk.ToString(resource.ResourceType)
 	}
 	return firstNonEmpty(awssdk.ToString(event.EventSource), awssdk.ToString(event.EventName)), "resource"
+}
+
+func roleTrusts(role iamtypes.Role) []iamRoleTrust {
+	raw := awssdk.ToString(role.AssumeRolePolicyDocument)
+	if raw == "" {
+		return nil
+	}
+	if decoded, err := url.QueryUnescape(raw); err == nil {
+		raw = decoded
+	}
+	document := trustPolicyDocument{}
+	if err := json.Unmarshal([]byte(raw), &document); err != nil {
+		return nil
+	}
+	trusts := make([]iamRoleTrust, 0)
+	for _, statement := range document.Statement {
+		if !strings.EqualFold(statement.Effect, "Allow") || !containsStringAction(statement.Action, "sts:AssumeRole") {
+			continue
+		}
+		for _, principal := range trustPrincipals(statement.Principal) {
+			trusts = append(trusts, iamRoleTrust{Role: role, Statement: statement, Principal: principal})
+		}
+	}
+	return trusts
+}
+
+func trustPrincipals(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	if string(raw) == `"*"` {
+		return []string{"*"}
+	}
+	var values map[string]any
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil
+	}
+	principals := make([]string, 0)
+	for _, value := range values {
+		principals = append(principals, stringList(value)...)
+	}
+	return principals
+}
+
+func awsTrustPrincipal(value string) (string, string) {
+	trimmed := strings.TrimSpace(value)
+	switch {
+	case trimmed == "*" || strings.EqualFold(trimmed, "anonymous"):
+		return "public", "public"
+	case strings.Contains(trimmed, ":role/"):
+		return "role", trimmed
+	case strings.Contains(trimmed, ":user/"):
+		return "user", trimmed
+	case strings.Contains(trimmed, "@"):
+		return "user", trimmed
+	default:
+		return "account", trimmed
+	}
+}
+
+func trustExternal(accountID string, principal string) bool {
+	trimmed := strings.TrimSpace(principal)
+	return trimmed == "*" || accountID != "" && strings.Contains(trimmed, ":iam::") && !strings.Contains(trimmed, ":iam::"+accountID+":")
+}
+
+func trustExternalIDRequired(statement trustStatement) bool {
+	for key, value := range statement.Condition {
+		if strings.Contains(strings.ToLower(key), "externalid") || containsAny(strings.ToLower(fmt.Sprint(value)), "sts:externalid", "externalid") {
+			return true
+		}
+	}
+	return false
+}
+
+func containsStringAction(value any, expected string) bool {
+	for _, action := range stringList(value) {
+		if strings.EqualFold(action, expected) || action == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+func stringList(value any) []string {
+	switch typed := value.(type) {
+	case string:
+		return []string{typed}
+	case []string:
+		return typed
+	case []any:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if rendered := strings.TrimSpace(fmt.Sprint(item)); rendered != "" {
+				values = append(values, rendered)
+			}
+		}
+		return values
+	default:
+		if rendered := strings.TrimSpace(fmt.Sprint(value)); rendered != "" && rendered != "<nil>" {
+			return []string{rendered}
+		}
+		return nil
+	}
+}
+
+func securityGroupExposure(settings settings, group ec2types.SecurityGroup, permission ec2types.IpPermission, cidr string, permissionIndex int) awsResourceExposure {
+	resourceID := firstNonEmpty(awssdk.ToString(group.SecurityGroupArn), awssdk.ToString(group.GroupId), awssdk.ToString(group.GroupName))
+	exposureID := fmt.Sprintf("%s-%d-%s", firstNonEmpty(awssdk.ToString(group.GroupId), awssdk.ToString(group.GroupName)), permissionIndex, cidr)
+	return awsResourceExposure{
+		ResourceID:   resourceID,
+		ResourceName: firstNonEmpty(awssdk.ToString(group.GroupName), resourceID),
+		ExposureID:   sanitizeEventID(exposureID),
+		SourceCIDR:   cidr,
+		Protocol:     awssdk.ToString(permission.IpProtocol),
+		PortRange:    portRange(permission.FromPort, permission.ToPort),
+		Region:       settings.region,
+		Scope:        firstNonEmpty(awssdk.ToString(group.VpcId), settings.accountID),
+		Group:        group,
+		Permission:   permission,
+	}
+}
+
+func publicCIDR(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed == "0.0.0.0/0" || trimmed == "::/0"
+}
+
+func portRange(from *int32, to *int32) string {
+	if from == nil && to == nil {
+		return "all"
+	}
+	if from != nil && to != nil && *from == *to {
+		return strconv.FormatInt(int64(*from), 10)
+	}
+	return fmt.Sprintf("%s-%s", int32String(from), int32String(to))
+}
+
+func int32String(value *int32) string {
+	if value == nil {
+		return "*"
+	}
+	return strconv.FormatInt(int64(*value), 10)
+}
+
+func ec2PageSize(limit int) int {
+	if limit > 0 && limit < 5 {
+		return 5
+	}
+	return limit
 }
 
 func firstTime(values ...*time.Time) time.Time {

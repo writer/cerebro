@@ -410,7 +410,7 @@ func matchesIdentityPrivilegedNoMFAAccess(event *cerebrov1.EventEnvelope, attrib
 
 func identityPrivileged(attributes map[string]string) bool {
 	return findingAttributeBool(attributes, "is_admin", "is_delegated_admin", "admin", "privileged", "actor_privileged") ||
-		containsAny(strings.ToLower(firstNonEmpty(attributes["role"], attributes["role_id"], attributes["role_type"], attributes["role_name"])), "admin", "super", "owner", "editor", "poweruser", "administratoraccess", "iamfullaccess")
+		containsAny(strings.ToLower(firstNonEmpty(attributes["role"], attributes["role_id"], attributes["role_type"], attributes["role_name"])), "admin", "super", "owner", "editor", "contributor", "poweruser", "administratoraccess", "iamfullaccess", "globaladministrator", "privilegedroleadministrator", "applicationadministrator", "cloudapplicationadministrator", "authenticationadministrator", "useraccessadministrator")
 }
 
 func identityMFAEnabled(attributes map[string]string) bool {

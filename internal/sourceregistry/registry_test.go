@@ -14,6 +14,13 @@ func TestBuiltin(t *testing.T) {
 	if aws.Spec().Name != "AWS" {
 		t.Fatalf("aws Spec().Name = %q, want %q", aws.Spec().Name, "AWS")
 	}
+	azure, ok := registry.Get("azure")
+	if !ok {
+		t.Fatal("Get(azure) = false, want true")
+	}
+	if azure.Spec().Name != "Azure" {
+		t.Fatalf("azure Spec().Name = %q, want %q", azure.Spec().Name, "Azure")
+	}
 	gcp, ok := registry.Get("gcp")
 	if !ok {
 		t.Fatal("Get(gcp) = false, want true")

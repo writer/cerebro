@@ -24,15 +24,17 @@ import (
 var catalogFS embed.FS
 
 const (
-	defaultFamily     = familyAudit
-	defaultPageSize   = 10
-	maxPageSize       = 200
-	familyAudit       = "audit"
-	familyGroup       = "group"
-	familyGroupMember = "group_membership"
-	familyRoleAssign  = "iam_role_assignment"
-	familyServiceAcct = "service_account"
-	familySAKey       = "service_account_key"
+	defaultFamily          = familyAudit
+	defaultPageSize        = 10
+	maxPageSize            = 200
+	familyAudit            = "audit"
+	familyGroup            = "group"
+	familyGroupMember      = "group_membership"
+	familyRoleAssign       = "iam_role_assignment"
+	familyResourceExposure = "resource_exposure"
+	familySAImpersonation  = "service_account_impersonation"
+	familyServiceAcct      = "service_account"
+	familySAKey            = "service_account_key"
 )
 
 // Source reads GCP IAM, Cloud Identity, and Cloud Audit surfaces.
@@ -57,6 +59,7 @@ type settings struct {
 type pageResponse struct {
 	Accounts      []json.RawMessage `json:"accounts"`
 	Groups        []json.RawMessage `json:"groups"`
+	Items         []json.RawMessage `json:"items"`
 	Memberships   []json.RawMessage `json:"memberships"`
 	Entries       []json.RawMessage `json:"entries"`
 	Keys          []json.RawMessage `json:"keys"`
@@ -126,6 +129,30 @@ type policyBinding struct {
 }
 
 type roleAssignmentRecord struct {
+	Role   string
+	Member string
+	raw    json.RawMessage
+}
+
+type firewallRecord struct {
+	ID                    string            `json:"id"`
+	Name                  string            `json:"name"`
+	Network               string            `json:"network"`
+	Direction             string            `json:"direction"`
+	Disabled              bool              `json:"disabled"`
+	SourceRanges          []string          `json:"sourceRanges"`
+	Allowed               []firewallAllowed `json:"allowed"`
+	TargetTags            []string          `json:"targetTags"`
+	TargetServiceAccounts []string          `json:"targetServiceAccounts"`
+	raw                   json.RawMessage
+}
+
+type firewallAllowed struct {
+	IPProtocol string   `json:"IPProtocol"`
+	Ports      []string `json:"ports"`
+}
+
+type serviceAccountImpersonationRecord struct {
 	Role   string
 	Member string
 	raw    json.RawMessage
@@ -252,6 +279,24 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_iam_role_assignment:%s:%s", tenantID(settings), sanitizeURNPart(assignment.Member), sanitizeURNPart(assignment.Role)), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[firewallRecord]{
+			Name:  familyResourceExposure,
+			Label: "gcp resource exposures",
+			List:  listResourceExposures,
+			Event: resourceExposureEvent,
+			URN: func(settings settings, firewall firewallRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_resource_exposure:%s", tenantID(settings), firstNonEmpty(firewall.ID, firewall.Name)), nil
+			},
+		}),
+		gcpFamily(s, gcpFamilyOptions[serviceAccountImpersonationRecord]{
+			Name:  familySAImpersonation,
+			Label: "gcp service account impersonation bindings",
+			List:  listServiceAccountImpersonation,
+			Event: serviceAccountImpersonationEvent,
+			URN: func(settings settings, binding serviceAccountImpersonationRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account_impersonation:%s:%s", tenantID(settings), sanitizeURNPart(binding.Member), sanitizeURNPart(binding.Role)), nil
+			},
+		}),
 		gcpFamily(s, gcpFamilyOptions[serviceAccountRecord]{
 			Name:  familyServiceAcct,
 			Label: "gcp service accounts",
@@ -329,16 +374,16 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		return settings, fmt.Errorf("gcp token is required")
 	}
 	switch settings.family {
-	case familyAudit, familyRoleAssign, familyServiceAcct:
+	case familyAudit, familyResourceExposure, familyRoleAssign, familyServiceAcct:
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
-	case familySAKey:
+	case familySAImpersonation, familySAKey:
 		if settings.projectID == "" {
-			return settings, fmt.Errorf("gcp project_id is required when family=%q", familySAKey)
+			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
 		if settings.serviceAccountEmail == "" {
-			return settings, fmt.Errorf("gcp service_account_email is required when family=%q", familySAKey)
+			return settings, fmt.Errorf("gcp service_account_email is required when family=%q", settings.family)
 		}
 	case familyGroup:
 		if settings.customerID == "" {
@@ -349,7 +394,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("gcp group_key is required when family=%q", familyGroupMember)
 		}
 	default:
-		return settings, fmt.Errorf("gcp family must be one of audit, group, group_membership, iam_role_assignment, service_account, or service_account_key")
+		return settings, fmt.Errorf("gcp family must be one of audit, group, group_membership, iam_role_assignment, resource_exposure, service_account, service_account_impersonation, or service_account_key")
 	}
 	return settings, nil
 }
@@ -435,6 +480,49 @@ func listRoleAssignments(ctx context.Context, source *Source, settings settings,
 		}
 		for _, member := range binding.Members {
 			records = append(records, roleAssignmentRecord{Role: binding.Role, Member: member, raw: raw})
+		}
+	}
+	return records, "", nil
+}
+
+func listResourceExposures(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]firewallRecord, string, error) {
+	query := url.Values{"maxResults": {strconv.Itoa(limit)}}
+	addQuery(query, "pageToken", pageToken)
+	var response pageResponse
+	path := "/compute/v1/projects/" + url.PathEscape(settings.projectID) + "/global/firewalls"
+	if err := getJSON(ctx, source, settings, computeBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	firewalls, _, err := decodeRecords(response.Items, "gcp firewall", func(record *firewallRecord, raw json.RawMessage) { record.raw = append(json.RawMessage(nil), raw...) })
+	if err != nil {
+		return nil, "", err
+	}
+	exposed := make([]firewallRecord, 0, len(firewalls))
+	for _, firewall := range firewalls {
+		if firewallPublicIngress(firewall) {
+			exposed = append(exposed, firewall)
+		}
+	}
+	return exposed, response.NextPageToken, nil
+}
+
+func listServiceAccountImpersonation(ctx context.Context, source *Source, settings settings, _ string, _ int) ([]serviceAccountImpersonationRecord, string, error) {
+	var response policyResponse
+	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/serviceAccounts/" + url.PathEscape(settings.serviceAccountEmail) + ":getIamPolicy"
+	if err := getJSON(ctx, source, settings, serviceBaseURL, http.MethodPost, path, nil, map[string]any{}, &response); err != nil {
+		return nil, "", err
+	}
+	records := make([]serviceAccountImpersonationRecord, 0)
+	for _, binding := range response.Bindings {
+		if !impersonationRole(binding.Role) {
+			continue
+		}
+		raw, err := json.Marshal(binding)
+		if err != nil {
+			return nil, "", err
+		}
+		for _, member := range binding.Members {
+			records = append(records, serviceAccountImpersonationRecord{Role: binding.Role, Member: member, raw: raw})
 		}
 	}
 	return records, "", nil
@@ -557,6 +645,67 @@ func roleAssignmentEvent(settings settings, record roleAssignmentRecord) (*primi
 	}
 	id := fmt.Sprintf("gcp-iam-role-assignment-%s-%s", sanitizeURNPart(memberID), sanitizeURNPart(record.Role))
 	return sourceEvent(settings, id, "gcp.iam_role_assignment", "gcp/iam_role_assignment/v1", payload, attributes, time.Now().UTC())
+}
+
+func resourceExposureEvent(settings settings, record firewallRecord) (*primitives.Event, error) {
+	allowed := firewallPrimaryAllowed(record)
+	sourceCIDR := firstPublicCIDR(record.SourceRanges)
+	resourceID := firstNonEmpty(record.ID, record.Name)
+	attributes := map[string]string{
+		"action":            "allow",
+		"direction":         "ingress",
+		"domain":            tenantID(settings),
+		"exposed_to":        "public_internet",
+		"exposure_id":       firstNonEmpty(record.ID, record.Name),
+		"exposure_type":     "public_network_ingress",
+		"external_exposure": "true",
+		"family":            familyResourceExposure,
+		"internet_exposed":  "true",
+		"port_range":        strings.Join(allowed.Ports, ","),
+		"protocol":          allowed.IPProtocol,
+		"public":            "true",
+		"resource_id":       resourceID,
+		"resource_name":     firstNonEmpty(record.Name, resourceID),
+		"resource_provider": "gcp",
+		"resource_type":     "firewall_rule",
+		"rule_id":           firstNonEmpty(record.ID, record.Name),
+		"rule_name":         record.Name,
+		"scope":             record.Network,
+		"source_cidr":       sourceCIDR,
+	}
+	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "gcp-resource-exposure-"+firstNonEmpty(record.ID, record.Name), "gcp.resource_exposure", "gcp/resource_exposure/v1", payload, attributes, time.Now().UTC())
+}
+
+func serviceAccountImpersonationEvent(settings settings, record serviceAccountImpersonationRecord) (*primitives.Event, error) {
+	memberType, memberID, memberEmail := parseMember(record.Member)
+	attributes := map[string]string{
+		"domain":        tenantID(settings),
+		"family":        familySAImpersonation,
+		"is_admin":      "true",
+		"member":        record.Member,
+		"path_type":     "service_account_impersonation",
+		"relationship":  "can_impersonate",
+		"role_id":       record.Role,
+		"role_name":     record.Role,
+		"role_type":     "gcp_service_account_iam_role",
+		"subject_email": memberEmail,
+		"subject_id":    memberID,
+		"subject_type":  memberType,
+		"target_email":  settings.serviceAccountEmail,
+		"target_id":     settings.serviceAccountEmail,
+		"target_name":   settings.serviceAccountEmail,
+		"target_type":   "service_account",
+	}
+	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID, "service_account_email": settings.serviceAccountEmail})
+	if err != nil {
+		return nil, err
+	}
+	id := fmt.Sprintf("gcp-service-account-impersonation-%s-%s", sanitizeURNPart(memberID), sanitizeURNPart(record.Role))
+	return sourceEvent(settings, id, "gcp.service_account_impersonation", "gcp/service_account_impersonation/v1", payload, attributes, time.Now().UTC())
 }
 
 func auditEvent(settings settings, record auditRecord) (*primitives.Event, error) {
@@ -751,6 +900,38 @@ func isAdminRole(value string) bool {
 	return strings.Contains(role, "owner") || strings.Contains(role, "editor") || strings.Contains(role, "admin")
 }
 
+func firewallPublicIngress(record firewallRecord) bool {
+	return strings.EqualFold(record.Direction, "INGRESS") && !record.Disabled && firstPublicCIDR(record.SourceRanges) != "" && len(record.Allowed) != 0
+}
+
+func firstPublicCIDR(values []string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "0.0.0.0/0" || trimmed == "::/0" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func firewallPrimaryAllowed(record firewallRecord) firewallAllowed {
+	if len(record.Allowed) == 0 {
+		return firewallAllowed{IPProtocol: "all"}
+	}
+	allowed := record.Allowed[0]
+	if len(allowed.Ports) == 0 {
+		allowed.Ports = []string{"all"}
+	}
+	return allowed
+}
+
+func impersonationRole(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	return normalized == "roles/iam.serviceaccounttokencreator" ||
+		normalized == "roles/iam.serviceaccountuser" ||
+		normalized == "roles/iam.workloadidentityuser"
+}
+
 func disabledStatus(disabled bool) string {
 	if disabled {
 		return "DISABLED"
@@ -770,6 +951,7 @@ func tenantID(settings settings) string {
 }
 
 func serviceBaseURL() string         { return "https://iam.googleapis.com" }
+func computeBaseURL() string         { return "https://www.googleapis.com" }
 func identityBaseURL() string        { return "https://cloudidentity.googleapis.com" }
 func loggingBaseURL() string         { return "https://logging.googleapis.com" }
 func resourceManagerBaseURL() string { return "https://cloudresourcemanager.googleapis.com" }

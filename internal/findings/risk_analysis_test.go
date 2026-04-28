@@ -127,16 +127,46 @@ func TestAnalyzeFindingRiskContextUsesGenericSignals(t *testing.T) {
 	finding.Attributes["internet_exposed"] = "true"
 	finding.Attributes["is_kev"] = "true"
 	finding.Attributes["epss_score"] = "0.72"
+	finding.Attributes["crown_jewel"] = "true"
 	finding.Attributes["data_classification"] = "confidential"
 
 	context := AnalyzeFindingRiskContext(finding, now)
-	for _, reason := range []string{"critical_asset", "external_exposure", "known_exploited", "epss_high", "sensitive_data", "recent_24h"} {
+	for _, reason := range []string{"critical_asset", "external_exposure", "known_exploited", "epss_high", "sensitive_data", "crown_jewel", "recent_24h"} {
 		if !stringSliceContains(context.Reasons, reason) {
 			t.Fatalf("Risk reasons = %#v, want %q", context.Reasons, reason)
 		}
 	}
 	if context.Score < 80 {
 		t.Fatalf("Risk score = %d, want generic contextual score >= 80", context.Score)
+	}
+}
+
+func TestAnalyzeFindingAttackPathsUsesRelationWeights(t *testing.T) {
+	finding := compoundRiskFinding("cloud-1", cloudPublicResourceExposureRuleID, "HIGH", "", "", "urn:cerebro:writer:aws_secret_store:prod-secrets", "public_network_ingress")
+	finding.Attributes["internet_exposed"] = "true"
+	paths := AnalyzeFindingAttackPaths([]*ports.FindingRecord{finding}, map[string]*ports.EntityNeighborhood{
+		"cloud": {
+			Root: &ports.NeighborhoodNode{URN: "urn:cerebro:writer:aws_secret_store:prod-secrets", EntityType: "aws.secret_store", Label: "prod-secrets"},
+			Neighbors: []*ports.NeighborhoodNode{
+				{URN: "urn:cerebro:writer:aws_public_principal:public_internet", EntityType: "aws.public_principal", Label: "public internet"},
+				{URN: "urn:cerebro:writer:aws_user:viewer", EntityType: "aws.user", Label: "viewer"},
+				{URN: "urn:cerebro:writer:finding:cloud-1", EntityType: "finding", Label: "cloud-1"},
+			},
+			Relations: []*ports.NeighborhoodRelation{
+				{FromURN: "urn:cerebro:writer:aws_public_principal:public_internet", Relation: "can_reach", ToURN: "urn:cerebro:writer:aws_secret_store:prod-secrets"},
+				{FromURN: "urn:cerebro:writer:aws_user:viewer", Relation: "member_of", ToURN: "urn:cerebro:writer:aws_secret_store:prod-secrets"},
+				{FromURN: "urn:cerebro:writer:aws_secret_store:prod-secrets", Relation: "has_finding", ToURN: "urn:cerebro:writer:finding:cloud-1"},
+			},
+		},
+	}, FindingExposureAnalysisOptions{Limit: 10})
+	if len(paths) < 2 {
+		t.Fatalf("len(paths) = %d, want at least 2", len(paths))
+	}
+	if got := paths[0].Steps[0].Relation; got != "can_reach" {
+		t.Fatalf("top path relation = %q, want can_reach from weighted scoring; paths=%#v", got, paths)
+	}
+	if !stringSliceContains(paths[0].Reasons, "edge_weight:can_reach:7") {
+		t.Fatalf("top path reasons = %#v, want can_reach weight", paths[0].Reasons)
 	}
 }
 

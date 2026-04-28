@@ -13,6 +13,7 @@ type identityProjectionProfile struct {
 
 var (
 	awsIdentityProfile             = identityProjectionProfile{Provider: "aws"}
+	azureIdentityProfile           = identityProjectionProfile{Provider: "azure"}
 	gcpIdentityProfile             = identityProjectionProfile{Provider: "gcp"}
 	oktaIdentityProfile            = identityProjectionProfile{Provider: "okta"}
 	googleWorkspaceIdentityProfile = identityProjectionProfile{Provider: "google_workspace"}
@@ -68,6 +69,60 @@ func awsIAMRoleAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.P
 
 func awsCloudTrailProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityAuditProjections(event, awsIdentityProfile)
+}
+
+func azureUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityUserProjections(event, azureIdentityProfile)
+}
+
+func azureServicePrincipalProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	entities, links, err := identityUserProjections(event, azureIdentityProfile)
+	if err != nil {
+		return nil, nil, err
+	}
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	servicePrincipalURN := identityPrincipalURN(tenantID, azureIdentityProfile.Provider, "service_principal", firstNonEmpty(attributes["user_id"], attributes["subject_id"], attributes["id"]), "")
+	applicationURN := identityApplicationURN(tenantID, azureIdentityProfile.Provider, attributes["app_id"])
+	if servicePrincipalURN != "" && applicationURN != "" {
+		entities = append(entities, &ports.ProjectedEntity{
+			URN:        applicationURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: azureIdentityProfile.entityType("application"),
+			Label:      firstNonEmpty(attributes["app_name"], attributes["display_name"], attributes["app_id"]),
+			Attributes: map[string]string{"app_id": attributes["app_id"]},
+		})
+		links = append(links, projectedLink(tenantID, event.GetSourceId(), servicePrincipalURN, applicationURN, relationAssignedTo, map[string]string{"event_id": event.GetId()}))
+	}
+	return entities, links, nil
+}
+
+func azureApplicationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityApplicationProjections(event, azureIdentityProfile)
+}
+
+func azureCredentialProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityCredentialProjections(event, azureIdentityProfile)
+}
+
+func azureGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityGroupProjections(event, azureIdentityProfile)
+}
+
+func azureGroupMembershipProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityGroupMembershipProjections(event, azureIdentityProfile)
+}
+
+func azureRoleAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityRoleAssignmentProjections(event, azureIdentityProfile)
+}
+
+func azureAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityAuditProjections(event, azureIdentityProfile)
 }
 
 func gcpServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -524,6 +579,10 @@ func identityPrincipalURN(tenantID string, provider string, principalType string
 	switch identityPrincipalType(principalType) {
 	case "group":
 		return identityGroupURN(tenantID, provider, principalID, email)
+	case "application":
+		return identityApplicationURN(tenantID, provider, principalID)
+	case "service_principal":
+		return projectionURN(tenantID, provider+"_service_principal", firstNonEmpty(principalID, email))
 	case "service_account":
 		return projectionURN(tenantID, provider+"_service_account", firstNonEmpty(principalID, email))
 	case "role":
@@ -540,8 +599,14 @@ func identityPrincipalType(value string) string {
 	if strings.Contains(normalized, "group") {
 		return "group"
 	}
+	if strings.Contains(normalized, "service_principal") || strings.Contains(normalized, "serviceprincipal") {
+		return "service_principal"
+	}
 	if strings.Contains(normalized, "service_account") || strings.Contains(normalized, "serviceaccount") {
 		return "service_account"
+	}
+	if strings.Contains(normalized, "application") {
+		return "application"
 	}
 	if strings.Contains(normalized, "role") {
 		return "role"
@@ -561,9 +626,16 @@ func identityProjectionPrivileged(attributes map[string]string) bool {
 		strings.Contains(value, "super") ||
 		strings.Contains(value, "owner") ||
 		strings.Contains(value, "editor") ||
+		strings.Contains(value, "contributor") ||
 		strings.Contains(value, "poweruser") ||
 		strings.Contains(value, "administratoraccess") ||
-		strings.Contains(value, "iamfullaccess")
+		strings.Contains(value, "iamfullaccess") ||
+		strings.Contains(value, "globaladministrator") ||
+		strings.Contains(value, "privilegedroleadministrator") ||
+		strings.Contains(value, "applicationadministrator") ||
+		strings.Contains(value, "cloudapplicationadministrator") ||
+		strings.Contains(value, "authenticationadministrator") ||
+		strings.Contains(value, "useraccessadministrator")
 }
 
 func projectionBool(value string) bool {

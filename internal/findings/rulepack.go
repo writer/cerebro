@@ -44,6 +44,24 @@ func builtinRulePacks() []RulePack {
 				newOktaPolicyRuleLifecycleTamperingRule(),
 			}, newIdentitySignalRules()...),
 		},
+		{
+			ID:          "cloud",
+			Name:        "Cloud",
+			Description: "Cloud resource exposure and privilege path findings.",
+			Rules:       newCloudSignalRules(),
+		},
+		{
+			ID:          "runtime",
+			Name:        "Runtime",
+			Description: "Runtime evidence findings.",
+			Rules:       []Rule{newRuntimeActiveThreatEvidenceRule()},
+		},
+		{
+			ID:          "data",
+			Name:        "Data",
+			Description: "Sensitive data and crown-jewel findings.",
+			Rules:       []Rule{newDataSensitiveAssetRiskRule()},
+		},
 	}
 }
 

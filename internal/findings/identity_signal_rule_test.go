@@ -130,6 +130,20 @@ func TestIdentitySignalRulesDetectCloudRoleAssignments(t *testing.T) {
 			},
 			resourceURN: "urn:cerebro:writer:gcp_admin_role:roles/owner",
 		},
+		{
+			name:     "azure",
+			sourceID: "azure",
+			kind:     "azure.directory_role_assignment",
+			attributes: map[string]string{
+				"domain":        "tenant-1",
+				"role_id":       "global-admin",
+				"role_name":     "Global Administrator",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "user-1",
+				"subject_type":  "user",
+			},
+			resourceURN: "urn:cerebro:writer:azure_admin_role:global-admin",
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "writer"}
@@ -178,6 +192,20 @@ func TestIdentitySignalRulesIgnoreReadOnlyCloudRoleAssignments(t *testing.T) {
 				"is_admin":      "false",
 				"role_id":       "roles/viewer",
 				"role_name":     "roles/viewer",
+				"subject_email": "viewer@writer.com",
+				"subject_id":    "viewer@writer.com",
+				"subject_type":  "user",
+			},
+		},
+		{
+			name:     "azure-reader",
+			sourceID: "azure",
+			kind:     "azure.iam_role_assignment",
+			attributes: map[string]string{
+				"domain":        "tenant-1",
+				"is_admin":      "false",
+				"role_id":       "Reader",
+				"role_name":     "Reader",
 				"subject_email": "viewer@writer.com",
 				"subject_id":    "viewer@writer.com",
 				"subject_type":  "user",
@@ -234,6 +262,19 @@ func TestIdentitySignalRulesDetectCloudCredentials(t *testing.T) {
 				"subject_type":    "service_account",
 			},
 			resourceURN: "urn:cerebro:writer:gcp_credential:projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1",
+		},
+		{
+			name:     "azure-application-password",
+			sourceID: "azure",
+			kind:     "azure.credential",
+			attributes: map[string]string{
+				"credential_id":   "app-password-1",
+				"credential_type": "azure_application_password",
+				"domain":          "tenant-1",
+				"subject_id":      "app-client-1",
+				"subject_type":    "application",
+			},
+			resourceURN: "urn:cerebro:writer:azure_credential:app-password-1",
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

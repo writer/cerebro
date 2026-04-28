@@ -260,9 +260,11 @@ func appendFindingAttackPath(paths []FindingAttackPath, seen map[string]struct{}
 	}
 	seen[key] = struct{}{}
 	context := AnalyzeFindingRiskContext(finding, time.Time{})
-	score := context.Score + len(steps)*5
+	weightScore, weightReasons := weightedAttackPathScore(steps)
+	score := context.Score + weightScore
 	pattern := attackPathPattern(steps)
 	reasons := append([]string{"graph_path", "pattern:" + pattern}, context.Reasons...)
+	reasons = append(reasons, weightReasons...)
 	return append(paths, FindingAttackPath{
 		Pattern:    pattern,
 		Score:      score,
@@ -359,7 +361,48 @@ func AnalyzeFindingRiskContext(finding *ports.FindingRecord, now time.Time) Find
 		score += 6
 		reasons = append(reasons, "sensitive_data")
 	}
+	if findingAttributeBool(attributes, "crown_jewel", "contains_secrets") {
+		score += 12
+		reasons = append(reasons, "crown_jewel")
+	}
 	return FindingRiskContext{Score: score, Reasons: uniqueSortedStrings(reasons)}
+}
+
+func weightedAttackPathScore(steps []FindingAttackPathStep) (int, []string) {
+	score := 0
+	reasons := make([]string, 0, len(steps))
+	for _, step := range steps {
+		weight := attackPathRelationWeight(step.Relation)
+		score += weight
+		if weight > 0 {
+			reasons = append(reasons, "edge_weight:"+strings.TrimSpace(step.Relation)+":"+strconv.Itoa(weight))
+		}
+	}
+	if len(steps) > 1 {
+		score += len(steps) * 2
+	}
+	return score, uniqueSortedStrings(reasons)
+}
+
+func attackPathRelationWeight(relation string) int {
+	switch strings.ToLower(strings.TrimSpace(relation)) {
+	case "can_admin":
+		return 10
+	case "can_assume", "can_impersonate", "can_perform":
+		return 8
+	case "can_reach":
+		return 7
+	case "acted_on", "has_evidence", "supports":
+		return 5
+	case "assigned_to", "member_of", "runs_as":
+		return 4
+	case "has_finding":
+		return 3
+	case "has_identifier", "has_classification", "tagged_as":
+		return 1
+	default:
+		return 2
+	}
 }
 
 func riskContextForFindings(findings []*ports.FindingRecord) FindingRiskContext {

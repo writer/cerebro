@@ -5,6 +5,7 @@ import (
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 	awssource "github.com/writer/cerebro/sources/aws"
+	azuresource "github.com/writer/cerebro/sources/azure"
 	gcpsource "github.com/writer/cerebro/sources/gcp"
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
@@ -22,6 +23,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "aws",
 		load: func() (sourcecdk.Source, error) {
 			return awssource.New()
+		},
+	},
+	{
+		name: "azure",
+		load: func() (sourcecdk.Source, error) {
+			return azuresource.New()
 		},
 	},
 	{

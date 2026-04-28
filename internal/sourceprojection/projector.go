@@ -12,16 +12,27 @@ import (
 )
 
 const (
-	relationActedOn       = "acted_on"
-	relationAffectedBy    = "affected_by"
-	relationAffects       = "affects"
-	relationAuthored      = "authored"
-	relationBelongsTo     = "belongs_to"
-	relationHasIdentifier = "has_identifier"
-	relationAssignedTo    = "assigned_to"
-	relationCanAdmin      = "can_admin"
-	relationMemberOf      = "member_of"
-	relationTargeted      = "targeted"
+	relationActedOn           = "acted_on"
+	relationAffectedBy        = "affected_by"
+	relationAffects           = "affects"
+	relationAuthored          = "authored"
+	relationBelongsTo         = "belongs_to"
+	relationCanPerform        = "can_perform"
+	relationHasIdentifier     = "has_identifier"
+	relationAssignedTo        = "assigned_to"
+	relationCanAssume         = "can_assume"
+	relationCanAdmin          = "can_admin"
+	relationCanImpersonate    = "can_impersonate"
+	relationCanReach          = "can_reach"
+	relationHasClassification = "has_classification"
+	relationHasEvidence       = "has_evidence"
+	relationMemberOf          = "member_of"
+	relationObservedOn        = "observed_on"
+	relationOwnedBy           = "owned_by"
+	relationRunsAs            = "runs_as"
+	relationSupports          = "supports"
+	relationTaggedAs          = "tagged_as"
+	relationTargeted          = "targeted"
 )
 
 // Service materializes synced source events into current-state and graph stores.
