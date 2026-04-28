@@ -338,8 +338,11 @@ func matchesIdentityAuthControlTampering(_ *cerebrov1.EventEnvelope, attributes 
 }
 
 func matchesIdentityAdminPrivilegeGranted(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
-	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole, identityCapabilityRoleAssignment) {
+	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole) {
 		return true
+	}
+	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityRoleAssignment) {
+		return identityPrivileged(attributes)
 	}
 	action := identityAction(attributes)
 	return containsAny(action, "privilege.grant", "role.assignment", "assign_role", "grant_admin", "delegated_admin", "super_admin")
@@ -392,8 +395,11 @@ func matchesIdentityPrivilegedNoMFAAccess(event *cerebrov1.EventEnvelope, attrib
 	if matchesIdentityPrivilegedWithoutMFA(event, attributes) {
 		return true
 	}
-	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole, identityCapabilityRoleAssignment) {
+	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole) {
 		return true
+	}
+	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityRoleAssignment) {
+		return identityPrivileged(attributes)
 	}
 	action := identityAction(attributes)
 	return containsAny(action, "assign", "member", "role", "admin") && identityPrivileged(attributes) && !identityMFAEnabled(attributes)
@@ -401,7 +407,7 @@ func matchesIdentityPrivilegedNoMFAAccess(event *cerebrov1.EventEnvelope, attrib
 
 func identityPrivileged(attributes map[string]string) bool {
 	return findingAttributeBool(attributes, "is_admin", "is_delegated_admin", "admin", "privileged", "actor_privileged") ||
-		containsAny(strings.ToLower(firstNonEmpty(attributes["role"], attributes["role_id"], attributes["role_type"], attributes["role_name"])), "admin", "super")
+		containsAny(strings.ToLower(firstNonEmpty(attributes["role"], attributes["role_id"], attributes["role_type"], attributes["role_name"])), "admin", "super", "owner", "editor", "poweruser", "administratoraccess", "iamfullaccess")
 }
 
 func identityMFAEnabled(attributes map[string]string) bool {

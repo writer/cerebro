@@ -1,0 +1,9 @@
+id: aws
+name: AWS
+description: AWS IAM inventory and CloudTrail source.
+emitted_kinds:
+  - aws.cloudtrail
+  - aws.iam_group
+  - aws.iam_group_membership
+  - aws.iam_role_assignment
+  - aws.iam_user

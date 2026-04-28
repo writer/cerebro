@@ -7,6 +7,20 @@ func TestBuiltin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Builtin() error = %v", err)
 	}
+	aws, ok := registry.Get("aws")
+	if !ok {
+		t.Fatal("Get(aws) = false, want true")
+	}
+	if aws.Spec().Name != "AWS" {
+		t.Fatalf("aws Spec().Name = %q, want %q", aws.Spec().Name, "AWS")
+	}
+	gcp, ok := registry.Get("gcp")
+	if !ok {
+		t.Fatal("Get(gcp) = false, want true")
+	}
+	if gcp.Spec().Name != "GCP" {
+		t.Fatalf("gcp Spec().Name = %q, want %q", gcp.Spec().Name, "GCP")
+	}
 	github, ok := registry.Get("github")
 	if !ok {
 		t.Fatal("Get(github) = false, want true")

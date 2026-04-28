@@ -12,6 +12,8 @@ type identityProjectionProfile struct {
 }
 
 var (
+	awsIdentityProfile             = identityProjectionProfile{Provider: "aws"}
+	gcpIdentityProfile             = identityProjectionProfile{Provider: "gcp"}
 	oktaIdentityProfile            = identityProjectionProfile{Provider: "okta"}
 	googleWorkspaceIdentityProfile = identityProjectionProfile{Provider: "google_workspace"}
 )
@@ -38,6 +40,46 @@ func oktaAppAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 
 func oktaAdminRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityRoleAssignmentProjections(event, oktaIdentityProfile)
+}
+
+func awsIAMUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityUserProjections(event, awsIdentityProfile)
+}
+
+func awsIAMGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityGroupProjections(event, awsIdentityProfile)
+}
+
+func awsIAMGroupMembershipProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityGroupMembershipProjections(event, awsIdentityProfile)
+}
+
+func awsIAMRoleAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityRoleAssignmentProjections(event, awsIdentityProfile)
+}
+
+func awsCloudTrailProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityAuditProjections(event, awsIdentityProfile)
+}
+
+func gcpServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityUserProjections(event, gcpIdentityProfile)
+}
+
+func gcpGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityGroupProjections(event, gcpIdentityProfile)
+}
+
+func gcpGroupMembershipProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityGroupMembershipProjections(event, gcpIdentityProfile)
+}
+
+func gcpIAMRoleAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityRoleAssignmentProjections(event, gcpIdentityProfile)
+}
+
+func gcpAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityAuditProjections(event, gcpIdentityProfile)
 }
 
 func googleWorkspaceUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -71,19 +113,20 @@ func identityUserProjections(event *cerebrov1.EventEnvelope, profile identityPro
 	userID := firstNonEmpty(attributes["user_id"], attributes["id"], attributes["primary_email"], attributes["email"], attributes["login"])
 	email := firstNonEmpty(attributes["email"], attributes["primary_email"], attributes["login"])
 	login := firstNonEmpty(attributes["login"], attributes["primary_email"], attributes["email"])
+	principalType := identityPrincipalType(firstNonEmpty(attributes["principal_type"], attributes["subject_type"], "user"))
 
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	orgURN := identityOrgURN(tenantID, provider, domain)
 	addIdentityOrg(entities, tenantID, event.GetSourceId(), provider, domain, orgURN)
 
-	userURN := identityUserURN(tenantID, provider, userID, email)
+	userURN := identityPrincipalURN(tenantID, provider, principalType, userID, email)
 	if userURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        userURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: profile.entityType("user"),
+			EntityType: profile.entityType(principalType),
 			Label:      firstNonEmpty(attributes["display_name"], attributes["name"], email, login, userID),
 			Attributes: map[string]string{
 				"domain":             domain,
@@ -292,30 +335,41 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile i
 	subjectEmail := firstNonEmpty(attributes["subject_email"], attributes["email"])
 	subjectURN := identityPrincipalURN(tenantID, provider, subjectType, subjectID, subjectEmail)
 	roleID := firstNonEmpty(attributes["role_id"], attributes["role_assignment_id"], attributes["role_name"], attributes["role_type"])
-	roleURN := projectionURN(tenantID, provider+"_admin_role", roleID)
+	privileged := identityProjectionPrivileged(attributes)
+	roleKind := "role"
+	relation := relationAssignedTo
+	if privileged {
+		roleKind = "admin_role"
+		relation = relationCanAdmin
+	}
+	roleURN := projectionURN(tenantID, provider+"_"+roleKind, roleID)
 	if subjectURN != "" {
+		subjectAttributes := map[string]string{"email": subjectEmail, "subject_type": subjectType}
+		if privileged {
+			subjectAttributes["is_admin"] = "true"
+		}
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        subjectURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
 			EntityType: profile.entityType(identityPrincipalType(subjectType)),
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
-			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType, "is_admin": "true"},
+			Attributes: subjectAttributes,
 		})
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), subjectURN, subjectEmail)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), subjectURN, firstNonEmpty(subjectEmail, subjectID))
 	}
 	if roleURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        roleURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: profile.entityType("admin_role"),
+			EntityType: profile.entityType(roleKind),
 			Label:      firstNonEmpty(attributes["role_name"], attributes["role_type"], roleID),
-			Attributes: map[string]string{"role_id": roleID, "role_type": strings.TrimSpace(attributes["role_type"])},
+			Attributes: map[string]string{"is_admin": boolString(privileged), "role_id": roleID, "role_type": strings.TrimSpace(attributes["role_type"])},
 		})
 	}
 	if subjectURN != "" && roleURN != "" {
-		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relationCanAdmin, map[string]string{"event_id": event.GetId()}))
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relation, map[string]string{"event_id": event.GetId()}))
 	}
 	return identityProjectionResult(entities, links)
 }
@@ -415,6 +469,12 @@ func identityPrincipalURN(tenantID string, provider string, principalType string
 	switch identityPrincipalType(principalType) {
 	case "group":
 		return identityGroupURN(tenantID, provider, principalID, email)
+	case "service_account":
+		return projectionURN(tenantID, provider+"_service_account", firstNonEmpty(principalID, email))
+	case "role":
+		return projectionURN(tenantID, provider+"_role", principalID)
+	case "public":
+		return projectionURN(tenantID, provider+"_public_principal", principalID)
 	default:
 		return identityUserURN(tenantID, provider, principalID, email)
 	}
@@ -425,5 +485,44 @@ func identityPrincipalType(value string) string {
 	if strings.Contains(normalized, "group") {
 		return "group"
 	}
+	if strings.Contains(normalized, "service_account") || strings.Contains(normalized, "serviceaccount") {
+		return "service_account"
+	}
+	if strings.Contains(normalized, "role") {
+		return "role"
+	}
+	if strings.Contains(normalized, "public") || strings.Contains(normalized, "allusers") || strings.Contains(normalized, "allauthenticatedusers") {
+		return "public"
+	}
 	return "user"
+}
+
+func identityProjectionPrivileged(attributes map[string]string) bool {
+	if projectionBool(attributes["is_admin"]) || projectionBool(attributes["is_delegated_admin"]) || projectionBool(attributes["admin"]) || projectionBool(attributes["privileged"]) {
+		return true
+	}
+	value := normalizeIdentifier(firstNonEmpty(attributes["role"], attributes["role_id"], attributes["role_type"], attributes["role_name"]))
+	return strings.Contains(value, "admin") ||
+		strings.Contains(value, "super") ||
+		strings.Contains(value, "owner") ||
+		strings.Contains(value, "editor") ||
+		strings.Contains(value, "poweruser") ||
+		strings.Contains(value, "administratoraccess") ||
+		strings.Contains(value, "iamfullaccess")
+}
+
+func projectionBool(value string) bool {
+	switch normalizeIdentifier(value) {
+	case "1", "t", "true", "y", "yes", "enabled":
+		return true
+	default:
+		return false
+	}
+}
+
+func boolString(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
 }

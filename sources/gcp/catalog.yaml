@@ -1,0 +1,9 @@
+id: gcp
+name: GCP
+description: GCP IAM, Cloud Identity, service account, and audit log source.
+emitted_kinds:
+  - gcp.audit
+  - gcp.group
+  - gcp.group_membership
+  - gcp.iam_role_assignment
+  - gcp.service_account

@@ -357,6 +357,48 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 			},
 		},
 		{
+			Id:       "aws-user-admin",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.iam_user",
+			Attributes: map[string]string{
+				"domain":       "123456789012",
+				"email":        "admin@writer.com",
+				"is_admin":     "true",
+				"login":        "admin@writer.com",
+				"mfa_enrolled": "false",
+				"user_id":      "AIDAADMIN",
+			},
+		},
+		{
+			Id:       "aws-admin-policy",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.iam_role_assignment",
+			Attributes: map[string]string{
+				"domain":        "123456789012",
+				"role_id":       "AdministratorAccess",
+				"role_name":     "AdministratorAccess",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "AIDAADMIN",
+				"subject_type":  "user",
+			},
+		},
+		{
+			Id:       "gcp-owner-binding",
+			TenantId: "writer",
+			SourceId: "gcp",
+			Kind:     "gcp.iam_role_assignment",
+			Attributes: map[string]string{
+				"domain":        "writer-prod",
+				"role_id":       "roles/owner",
+				"role_name":     "roles/owner",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "admin@writer.com",
+				"subject_type":  "user",
+			},
+		},
+		{
 			Id:       "okta-group",
 			TenantId: "writer",
 			SourceId: "okta",
@@ -455,14 +497,95 @@ func TestProjectIdentityProviderJoinEdges(t *testing.T) {
 	identifierURN := "urn:cerebro:writer:identifier:email:admin@writer.com"
 	oktaUserURN := "urn:cerebro:writer:okta_user:00u-admin"
 	googleUserURN := "urn:cerebro:writer:google_workspace_user:1001"
+	awsUserURN := "urn:cerebro:writer:aws_user:AIDAADMIN"
+	gcpUserURN := "urn:cerebro:writer:gcp_user:admin@writer.com"
 	assertProjectedLink(t, state, oktaUserURN, relationHasIdentifier, identifierURN)
 	assertProjectedLink(t, state, googleUserURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, state, awsUserURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, state, gcpUserURN, relationHasIdentifier, identifierURN)
 	assertProjectedLink(t, state, oktaUserURN, relationMemberOf, "urn:cerebro:writer:okta_group:grp-security")
 	assertProjectedLink(t, state, googleUserURN, relationMemberOf, "urn:cerebro:writer:google_workspace_group:security@writer.com")
 	assertProjectedLink(t, state, "urn:cerebro:writer:google_workspace_group:security@writer.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:security@writer.com")
 	assertProjectedLink(t, state, oktaUserURN, relationAssignedTo, "urn:cerebro:writer:okta_application:app-prod")
 	assertProjectedLink(t, state, googleUserURN, relationCanAdmin, "urn:cerebro:writer:google_workspace_admin_role:super-admin")
+	assertProjectedLink(t, state, awsUserURN, relationCanAdmin, "urn:cerebro:writer:aws_admin_role:AdministratorAccess")
+	assertProjectedLink(t, state, gcpUserURN, relationCanAdmin, "urn:cerebro:writer:gcp_admin_role:roles/owner")
 	assertProjectedLink(t, state, googleUserURN, relationActedOn, "urn:cerebro:writer:google_workspace_security_setting:two_step")
+}
+
+func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "aws-readonly-policy",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.iam_role_assignment",
+			Attributes: map[string]string{
+				"domain":        "123456789012",
+				"role_id":       "ReadOnlyAccess",
+				"role_name":     "ReadOnlyAccess",
+				"subject_email": "analyst@writer.com",
+				"subject_id":    "analyst@writer.com",
+				"subject_type":  "user",
+			},
+		},
+		{
+			Id:       "gcp-viewer-binding",
+			TenantId: "writer",
+			SourceId: "gcp",
+			Kind:     "gcp.iam_role_assignment",
+			Attributes: map[string]string{
+				"domain":        "writer-prod",
+				"role_id":       "roles/viewer",
+				"role_name":     "roles/viewer",
+				"subject_email": "viewer@writer.com",
+				"subject_id":    "viewer@writer.com",
+				"subject_type":  "user",
+			},
+		},
+		{
+			Id:       "gcp-service-account",
+			TenantId: "writer",
+			SourceId: "gcp",
+			Kind:     "gcp.service_account",
+			Attributes: map[string]string{
+				"domain":         "writer-prod",
+				"email":          "sa@writer-prod.iam.gserviceaccount.com",
+				"principal_type": "service_account",
+				"unique_id":      "sa-1",
+				"user_id":        "sa@writer-prod.iam.gserviceaccount.com",
+			},
+		},
+		{
+			Id:       "gcp-service-owner",
+			TenantId: "writer",
+			SourceId: "gcp",
+			Kind:     "gcp.iam_role_assignment",
+			Attributes: map[string]string{
+				"domain":        "writer-prod",
+				"is_admin":      "true",
+				"role_id":       "roles/owner",
+				"role_name":     "roles/owner",
+				"subject_email": "sa@writer-prod.iam.gserviceaccount.com",
+				"subject_id":    "sa@writer-prod.iam.gserviceaccount.com",
+				"subject_type":  "service_account",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationAssignedTo, "urn:cerebro:writer:aws_role:ReadOnlyAccess")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationCanAdmin, "urn:cerebro:writer:aws_admin_role:ReadOnlyAccess")
+	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_user:viewer@writer.com", relationAssignedTo, "urn:cerebro:writer:gcp_role:roles/viewer")
+	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:gcp_user:viewer@writer.com", relationCanAdmin, "urn:cerebro:writer:gcp_admin_role:roles/viewer")
+	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationCanAdmin, "urn:cerebro:writer:gcp_admin_role:roles/owner")
+	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:sa@writer-prod.iam.gserviceaccount.com")
 }
 
 func assertProjectedLink(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {
@@ -470,6 +593,14 @@ func assertProjectedLink(t *testing.T, recorder *projectionRecorder, fromURN str
 	key := fromURN + "|" + relation + "|" + toURN
 	if _, ok := recorder.links[key]; !ok {
 		t.Fatalf("projected link %q missing; links=%v", key, recorder.links)
+	}
+}
+
+func assertProjectedLinkMissing(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {
+	t.Helper()
+	key := fromURN + "|" + relation + "|" + toURN
+	if _, ok := recorder.links[key]; ok {
+		t.Fatalf("projected link %q unexpectedly present; links=%v", key, recorder.links)
 	}
 }
 

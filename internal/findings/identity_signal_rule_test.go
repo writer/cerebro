@@ -93,6 +93,111 @@ func TestIdentitySignalRulesDetectPrivilegedNoMFAUser(t *testing.T) {
 	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:identifier:email:admin@writer.com")
 }
 
+func TestIdentitySignalRulesDetectCloudRoleAssignments(t *testing.T) {
+	rules := identityRulesByID(t)
+	for _, tt := range []struct {
+		name        string
+		sourceID    string
+		kind        string
+		attributes  map[string]string
+		resourceURN string
+	}{
+		{
+			name:     "aws",
+			sourceID: "aws",
+			kind:     "aws.iam_role_assignment",
+			attributes: map[string]string{
+				"domain":        "123456789012",
+				"role_id":       "AdministratorAccess",
+				"role_name":     "AdministratorAccess",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "AIDAADMIN",
+				"subject_type":  "user",
+			},
+			resourceURN: "urn:cerebro:writer:aws_admin_role:AdministratorAccess",
+		},
+		{
+			name:     "gcp",
+			sourceID: "gcp",
+			kind:     "gcp.iam_role_assignment",
+			attributes: map[string]string{
+				"domain":        "writer-prod",
+				"role_id":       "roles/owner",
+				"role_name":     "roles/owner",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "admin@writer.com",
+				"subject_type":  "user",
+			},
+			resourceURN: "urn:cerebro:writer:gcp_admin_role:roles/owner",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "writer"}
+			event := &cerebrov1.EventEnvelope{Id: tt.name + "-role-assignment", TenantId: "writer", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
+			records, err := rules[identityAdminPrivilegeGrantedRuleID].Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate() error = %v", err)
+			}
+			if len(records) != 1 {
+				t.Fatalf("len(records) = %d, want 1", len(records))
+			}
+			assertFindingResourceURN(t, records[0].ResourceURNs, tt.resourceURN)
+			assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:identifier:email:admin@writer.com")
+		})
+	}
+}
+
+func TestIdentitySignalRulesIgnoreReadOnlyCloudRoleAssignments(t *testing.T) {
+	rules := identityRulesByID(t)
+	for _, tt := range []struct {
+		name       string
+		sourceID   string
+		kind       string
+		attributes map[string]string
+	}{
+		{
+			name:     "aws-readonly",
+			sourceID: "aws",
+			kind:     "aws.iam_role_assignment",
+			attributes: map[string]string{
+				"domain":        "123456789012",
+				"is_admin":      "false",
+				"role_id":       "ReadOnlyAccess",
+				"role_name":     "ReadOnlyAccess",
+				"subject_email": "analyst@writer.com",
+				"subject_id":    "analyst@writer.com",
+				"subject_type":  "user",
+			},
+		},
+		{
+			name:     "gcp-viewer",
+			sourceID: "gcp",
+			kind:     "gcp.iam_role_assignment",
+			attributes: map[string]string{
+				"domain":        "writer-prod",
+				"is_admin":      "false",
+				"role_id":       "roles/viewer",
+				"role_name":     "roles/viewer",
+				"subject_email": "viewer@writer.com",
+				"subject_id":    "viewer@writer.com",
+				"subject_type":  "user",
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "writer"}
+			event := &cerebrov1.EventEnvelope{Id: tt.name + "-role-assignment", TenantId: "writer", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
+			records, err := rules[identityAdminPrivilegeGrantedRuleID].Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate() error = %v", err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("len(records) = %d, want 0", len(records))
+			}
+		})
+	}
+}
+
 func identityRulesByID(t *testing.T) map[string]Rule {
 	t.Helper()
 	rules := map[string]Rule{}

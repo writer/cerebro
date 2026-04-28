@@ -30,6 +30,14 @@ var builtinIdentityCapabilities = newIdentityCapabilityRegistry()
 
 func newIdentityCapabilityRegistry() identityCapabilityRegistry {
 	return identityCapabilityRegistry{events: []identityEventCapability{
+		{SourceID: "aws", Kind: "aws.cloudtrail", Capability: identityCapabilityAudit},
+		{SourceID: "aws", Kind: "aws.iam_group_membership", Capability: identityCapabilityGroupMembership},
+		{SourceID: "aws", Kind: "aws.iam_role_assignment", Capability: identityCapabilityRoleAssignment},
+		{SourceID: "aws", Kind: "aws.iam_user", Capability: identityCapabilityUser},
+		{SourceID: "gcp", Kind: "gcp.audit", Capability: identityCapabilityAudit},
+		{SourceID: "gcp", Kind: "gcp.group_membership", Capability: identityCapabilityGroupMembership},
+		{SourceID: "gcp", Kind: "gcp.iam_role_assignment", Capability: identityCapabilityRoleAssignment},
+		{SourceID: "gcp", Kind: "gcp.service_account", Capability: identityCapabilityUser},
 		{SourceID: "okta", Kind: "okta.admin_role", Capability: identityCapabilityAdminRole},
 		{SourceID: "okta", Kind: "okta.app_assignment", Capability: identityCapabilityAppAssignment},
 		{SourceID: "okta", Kind: "okta.audit", Capability: identityCapabilityAudit},
