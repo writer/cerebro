@@ -805,6 +805,9 @@ func decodeRecords[T any](rawRecords []json.RawMessage, label string, setRaw fun
 
 func gcpPullFromRecords[T any](records []T, next string, build func(T) (*primitives.Event, error)) (sourcecdk.Pull, error) {
 	if len(records) == 0 {
+		if next != "" {
+			return sourcecdk.Pull{NextCursor: &cerebrov1.SourceCursor{Opaque: next}}, nil
+		}
 		return sourcecdk.Pull{}, nil
 	}
 	events := make([]*primitives.Event, 0, len(records))

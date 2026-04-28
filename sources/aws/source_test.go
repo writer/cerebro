@@ -37,6 +37,19 @@ func TestCheckRequiresAccountID(t *testing.T) {
 	}
 }
 
+func TestAWSPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
+	pull, err := awsPullFromRecords[string](nil, "next-page", nil, nil)
+	if err != nil {
+		t.Fatalf("awsPullFromRecords() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(Events) = %d, want 0", len(pull.Events))
+	}
+	if got := pull.NextCursor.GetOpaque(); got != "next-page" {
+		t.Fatalf("NextCursor = %q, want next-page", got)
+	}
+}
+
 func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {

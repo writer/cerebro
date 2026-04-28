@@ -33,6 +33,19 @@ func TestCheckRequiresProjectAndToken(t *testing.T) {
 	}
 }
 
+func TestGCPPullFromRecordsPreservesNextCursorWithoutEvents(t *testing.T) {
+	pull, err := gcpPullFromRecords[string](nil, "next-page", nil)
+	if err != nil {
+		t.Fatalf("gcpPullFromRecords() error = %v", err)
+	}
+	if len(pull.Events) != 0 {
+		t.Fatalf("len(Events) = %d, want 0", len(pull.Events))
+	}
+	if got := pull.NextCursor.GetOpaque(); got != "next-page" {
+		t.Fatalf("NextCursor = %q, want next-page", got)
+	}
+}
+
 func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {
