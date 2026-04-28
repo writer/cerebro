@@ -45,7 +45,9 @@ func TestNewFixtureReplaysAWSFamilies(t *testing.T) {
 		config map[string]string
 		kind   string
 	}{
+		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
 		{family: familyIAMUser, kind: "aws.iam_user"},
+		{family: familyIAMRole, kind: "aws.iam_role"},
 		{family: familyIAMGroup, kind: "aws.iam_group"},
 		{family: familyIAMMembership, config: map[string]string{"group_name": "Security"}, kind: "aws.iam_group_membership"},
 		{family: familyIAMRoleAssign, config: map[string]string{"principal_name": "admin@writer.com", "principal_type": "user"}, kind: "aws.iam_role_assignment"},
@@ -83,6 +85,42 @@ func TestReadAWSIAMUserPreview(t *testing.T) {
 	}
 	if got := pull.Events[0].Attributes["email"]; got != "admin@writer.com" {
 		t.Fatalf("email = %q, want admin@writer.com", got)
+	}
+}
+
+func TestReadAWSRoleAndAccessKeyPreview(t *testing.T) {
+	source := newTestSource(t, fakeAWS{
+		roles: []iamtypes.Role{{
+			Arn: awssdk.String("arn:aws:iam::123456789012:role/AdminRole"), RoleId: awssdk.String("AROADMIN"), RoleName: awssdk.String("AdminRole"), CreateDate: timePtr("2026-01-01T00:00:00Z"),
+		}},
+		accessKeys: []iamtypes.AccessKeyMetadata{{
+			AccessKeyId: awssdk.String("AKIAEXAMPLE"), UserName: awssdk.String("admin@writer.com"), Status: iamtypes.StatusTypeActive, CreateDate: timePtr("2026-01-01T00:00:00Z"),
+		}},
+	})
+	for _, tt := range []struct {
+		family string
+		config map[string]string
+		kind   string
+	}{
+		{family: familyIAMRole, kind: "aws.iam_role"},
+		{family: familyAccessKey, config: map[string]string{"user_name": "admin@writer.com"}, kind: "aws.access_key"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			config := map[string]string{"account_id": "123456789012", "family": tt.family}
+			for key, value := range tt.config {
+				config[key] = value
+			}
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("kind = %q, want %q", got, tt.kind)
+			}
+		})
 	}
 }
 
@@ -146,6 +184,8 @@ func newTestSource(t *testing.T, fake fakeAWS) *Source {
 type fakeAWS struct {
 	users            []iamtypes.User
 	groups           []iamtypes.Group
+	roles            []iamtypes.Role
+	accessKeys       []iamtypes.AccessKeyMetadata
 	attachedPolicies []iamtypes.AttachedPolicy
 	cloudTrailEvents []cloudtrailtypes.Event
 }
@@ -156,6 +196,14 @@ func (f fakeAWS) ListUsers(context.Context, *iam.ListUsersInput, ...func(*iam.Op
 
 func (f fakeAWS) ListGroups(context.Context, *iam.ListGroupsInput, ...func(*iam.Options)) (*iam.ListGroupsOutput, error) {
 	return &iam.ListGroupsOutput{Groups: f.groups}, nil
+}
+
+func (f fakeAWS) ListRoles(context.Context, *iam.ListRolesInput, ...func(*iam.Options)) (*iam.ListRolesOutput, error) {
+	return &iam.ListRolesOutput{Roles: f.roles}, nil
+}
+
+func (f fakeAWS) ListAccessKeys(context.Context, *iam.ListAccessKeysInput, ...func(*iam.Options)) (*iam.ListAccessKeysOutput, error) {
+	return &iam.ListAccessKeysOutput{AccessKeyMetadata: f.accessKeys}, nil
 }
 
 func (f fakeAWS) GetGroup(context.Context, *iam.GetGroupInput, ...func(*iam.Options)) (*iam.GetGroupOutput, error) {

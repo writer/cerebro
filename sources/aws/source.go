@@ -31,10 +31,12 @@ const (
 	defaultRegion       = "us-east-1"
 	defaultPageSize     = 10
 	maxPageSize         = 200
+	familyAccessKey     = "access_key"
 	familyCloudTrail    = "cloudtrail"
 	familyIAMGroup      = "iam_group"
 	familyIAMMembership = "iam_group_membership"
 	familyIAMRoleAssign = "iam_role_assignment"
+	familyIAMRole       = "iam_role"
 	familyIAMUser       = "iam_user"
 )
 
@@ -56,6 +58,7 @@ type settings struct {
 	groupName       string
 	principalType   string
 	principalName   string
+	userName        string
 	lookupKey       string
 	lookupValue     string
 	startTime       string
@@ -73,6 +76,8 @@ type awsClients struct {
 type awsIAMAPI interface {
 	ListUsers(context.Context, *iam.ListUsersInput, ...func(*iam.Options)) (*iam.ListUsersOutput, error)
 	ListGroups(context.Context, *iam.ListGroupsInput, ...func(*iam.Options)) (*iam.ListGroupsOutput, error)
+	ListRoles(context.Context, *iam.ListRolesInput, ...func(*iam.Options)) (*iam.ListRolesOutput, error)
+	ListAccessKeys(context.Context, *iam.ListAccessKeysInput, ...func(*iam.Options)) (*iam.ListAccessKeysOutput, error)
 	GetGroup(context.Context, *iam.GetGroupInput, ...func(*iam.Options)) (*iam.GetGroupOutput, error)
 	ListAttachedUserPolicies(context.Context, *iam.ListAttachedUserPoliciesInput, ...func(*iam.Options)) (*iam.ListAttachedUserPoliciesOutput, error)
 	ListAttachedGroupPolicies(context.Context, *iam.ListAttachedGroupPoliciesInput, ...func(*iam.Options)) (*iam.ListAttachedGroupPoliciesOutput, error)
@@ -171,6 +176,16 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string { return settings.family },
+		awsFamily(s.clients, awsFamilyOptions[iamtypes.AccessKeyMetadata]{
+			Name:  familyAccessKey,
+			Label: "aws iam access keys",
+			List:  listAccessKeys,
+			Event: accessKeyEvent,
+			URN: func(settings settings, key iamtypes.AccessKeyMetadata) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:access_key:%s:%s", settings.accountID, settings.userName, awssdk.ToString(key.AccessKeyId)), nil
+			},
+			CursorFallback: func(key iamtypes.AccessKeyMetadata) string { return awssdk.ToString(key.AccessKeyId) },
+		}),
 		awsFamily(s.clients, awsFamilyOptions[cloudtrailtypes.Event]{
 			Name:  familyCloudTrail,
 			Label: "aws cloudtrail events",
@@ -210,6 +225,16 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			URN: func(settings settings, assignment iamPolicyAssignment) (string, error) {
 				return fmt.Sprintf("urn:cerebro:%s:iam_role_assignment:%s:%s", settings.accountID, assignment.PrincipalName, firstNonEmpty(awssdk.ToString(assignment.Policy.PolicyArn), awssdk.ToString(assignment.Policy.PolicyName))), nil
 			},
+		}),
+		awsFamily(s.clients, awsFamilyOptions[iamtypes.Role]{
+			Name:  familyIAMRole,
+			Label: "aws iam roles",
+			List:  listIAMRoles,
+			Event: iamRoleEvent,
+			URN: func(settings settings, role iamtypes.Role) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:iam_role:%s", settings.accountID, firstNonEmpty(awssdk.ToString(role.RoleId), awssdk.ToString(role.RoleName))), nil
+			},
+			CursorFallback: func(role iamtypes.Role) string { return awssdk.ToString(role.RoleName) },
 		}),
 		awsFamily(s.clients, awsFamilyOptions[iamtypes.User]{
 			Name:  familyIAMUser,
@@ -294,6 +319,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		groupName:       configValue(cfg, "group_name"),
 		principalType:   configValue(cfg, "principal_type"),
 		principalName:   configValue(cfg, "principal_name"),
+		userName:        configValue(cfg, "user_name"),
 		lookupKey:       configValue(cfg, "lookup_key"),
 		lookupValue:     configValue(cfg, "lookup_value"),
 		startTime:       configValue(cfg, "start_time"),
@@ -320,7 +346,14 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.perPage = perPage
 	}
 	switch settings.family {
-	case familyCloudTrail, familyIAMGroup, familyIAMUser:
+	case familyCloudTrail, familyIAMGroup, familyIAMRole, familyIAMUser:
+	case familyAccessKey:
+		if settings.userName == "" {
+			settings.userName = settings.principalName
+		}
+		if settings.userName == "" {
+			return settings, fmt.Errorf("aws user_name is required when family=%q", familyAccessKey)
+		}
 	case familyIAMMembership:
 		if settings.groupName == "" {
 			return settings, fmt.Errorf("aws group_name is required when family=%q", familyIAMMembership)
@@ -337,9 +370,17 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("aws principal_name is required when family=%q", familyIAMRoleAssign)
 		}
 	default:
-		return settings, fmt.Errorf("aws family must be one of cloudtrail, iam_group, iam_group_membership, iam_role_assignment, or iam_user")
+		return settings, fmt.Errorf("aws family must be one of access_key, cloudtrail, iam_group, iam_group_membership, iam_role, iam_role_assignment, or iam_user")
 	}
 	return settings, nil
+}
+
+func listAccessKeys(ctx context.Context, clients awsClients, settings settings, cursor string, limit int) ([]iamtypes.AccessKeyMetadata, string, error) {
+	out, err := clients.iam.ListAccessKeys(ctx, &iam.ListAccessKeysInput{UserName: awssdk.String(settings.userName), Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+	if err != nil {
+		return nil, "", err
+	}
+	return out.AccessKeyMetadata, nextMarker(out.IsTruncated, out.Marker), nil
 }
 
 func listIAMUsers(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]iamtypes.User, string, error) {
@@ -348,6 +389,14 @@ func listIAMUsers(ctx context.Context, clients awsClients, _ settings, cursor st
 		return nil, "", err
 	}
 	return out.Users, nextMarker(out.IsTruncated, out.Marker), nil
+}
+
+func listIAMRoles(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]iamtypes.Role, string, error) {
+	out, err := clients.iam.ListRoles(ctx, &iam.ListRolesInput{Marker: stringPtr(cursor), MaxItems: int32Ptr(limit)})
+	if err != nil {
+		return nil, "", err
+	}
+	return out.Roles, nextMarker(out.IsTruncated, out.Marker), nil
 }
 
 func listIAMGroups(ctx context.Context, clients awsClients, _ settings, cursor string, limit int) ([]iamtypes.Group, string, error) {
@@ -481,6 +530,25 @@ func iamGroupMembershipEvent(settings settings, user iamtypes.User) (*primitives
 	return sourceEvent(settings, id, "aws.iam_group_membership", "aws/iam_group_membership/v1", payload, attributes, firstTime(user.CreateDate))
 }
 
+func iamRoleEvent(settings settings, role iamtypes.Role) (*primitives.Event, error) {
+	attributes := map[string]string{
+		"arn":            awssdk.ToString(role.Arn),
+		"domain":         settings.accountID,
+		"family":         familyIAMRole,
+		"principal_type": "role",
+		"user_id":        firstNonEmpty(awssdk.ToString(role.RoleId), awssdk.ToString(role.Arn), awssdk.ToString(role.RoleName)),
+		"login":          awssdk.ToString(role.RoleName),
+		"display_name":   awssdk.ToString(role.RoleName),
+		"is_admin":       boolString(containsAny(strings.ToLower(awssdk.ToString(role.RoleName)), "admin", "power", "owner")),
+	}
+	addTimeAttribute(attributes, "created_at", role.CreateDate)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "role": role})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-iam-role-"+firstNonEmpty(awssdk.ToString(role.RoleId), awssdk.ToString(role.RoleName)), "aws.iam_role", "aws/iam_role/v1", payload, attributes, firstTime(role.CreateDate))
+}
+
 func iamRoleAssignmentEvent(settings settings, assignment iamPolicyAssignment) (*primitives.Event, error) {
 	policyName := awssdk.ToString(assignment.Policy.PolicyName)
 	policyARN := awssdk.ToString(assignment.Policy.PolicyArn)
@@ -503,6 +571,29 @@ func iamRoleAssignmentEvent(settings settings, assignment iamPolicyAssignment) (
 	}
 	id := fmt.Sprintf("aws-iam-role-assignment-%s-%s", assignment.PrincipalName, firstNonEmpty(policyARN, policyName))
 	return sourceEvent(settings, id, "aws.iam_role_assignment", "aws/iam_role_assignment/v1", payload, attributes, time.Now().UTC())
+}
+
+func accessKeyEvent(settings settings, key iamtypes.AccessKeyMetadata) (*primitives.Event, error) {
+	userName := firstNonEmpty(awssdk.ToString(key.UserName), settings.userName)
+	attributes := map[string]string{
+		"credential_id":   awssdk.ToString(key.AccessKeyId),
+		"credential_type": "aws_access_key",
+		"domain":          settings.accountID,
+		"event_type":      "aws_access_key_present",
+		"family":          familyAccessKey,
+		"resource_id":     awssdk.ToString(key.AccessKeyId),
+		"resource_type":   "access_key",
+		"status":          string(key.Status),
+		"subject_email":   emailLike(userName),
+		"subject_id":      userName,
+		"subject_type":    "user",
+	}
+	addTimeAttribute(attributes, "created_at", key.CreateDate)
+	payload, err := json.Marshal(map[string]any{"account_id": settings.accountID, "access_key": key})
+	if err != nil {
+		return nil, err
+	}
+	return sourceEvent(settings, "aws-access-key-"+firstNonEmpty(awssdk.ToString(key.AccessKeyId), userName), "aws.access_key", "aws/access_key/v1", payload, attributes, firstTime(key.CreateDate))
 }
 
 func cloudTrailEvent(settings settings, event cloudtrailtypes.Event) (*primitives.Event, error) {

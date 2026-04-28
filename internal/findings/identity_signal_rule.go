@@ -97,7 +97,7 @@ func newIdentitySignalRules() []Rule {
 				[]string{"identity", "token", "oauth", "persistence", "attack.t1098"},
 			),
 			sourceIDs:  sourceIDs,
-			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
+			eventKinds: capabilities.EventKinds(identityCapabilityAudit, identityCapabilityCredential),
 			predicate:  matchesIdentityAPITokenOrOAuthCreated,
 		}),
 		newIdentitySignalRule(identitySignalConfig{
@@ -356,6 +356,9 @@ func matchesIdentityMFAFactorResetOrDisabled(_ *cerebrov1.EventEnvelope, attribu
 
 func matchesIdentityAPITokenOrOAuthCreated(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
 	action := identityAction(attributes)
+	if strings.TrimSpace(attributes["credential_id"]) != "" || strings.TrimSpace(attributes["credential_type"]) != "" {
+		return true
+	}
 	return containsAny(action, "api_token", "oauth", "api_client", "domain_wide", "client_access", "application") &&
 		containsAny(action, "create", "authorize", "grant", "add")
 }

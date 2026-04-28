@@ -48,6 +48,7 @@ func TestNewFixtureReplaysGCPFamilies(t *testing.T) {
 		{family: familyGroupMember, config: map[string]string{"group_key": "security@writer.com"}, kind: "gcp.group_membership"},
 		{family: familyRoleAssign, kind: "gcp.iam_role_assignment"},
 		{family: familyAudit, kind: "gcp.audit"},
+		{family: familySAKey, config: map[string]string{"service_account_email": "sa@writer-prod.iam.gserviceaccount.com"}, kind: "gcp.service_account_key"},
 	} {
 		t.Run(tt.family, func(t *testing.T) {
 			config := map[string]string{"project_id": "writer-prod", "family": tt.family, "token": "test-token"}
@@ -120,6 +121,31 @@ func TestReadLiveGCPRoleAndAuditPreview(t *testing.T) {
 	}
 }
 
+func TestReadLiveGCPServiceAccountKeyPreview(t *testing.T) {
+	server := httptest.NewServer(newGCPAPIHandler(t))
+	defer server.Close()
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	pull, err := source.Read(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url":              server.URL,
+		"family":                familySAKey,
+		"project_id":            "writer-prod",
+		"service_account_email": "sa@writer-prod.iam.gserviceaccount.com",
+		"token":                 "test-token",
+	}), nil)
+	if err != nil {
+		t.Fatalf("Read(service_account_key) error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(pull.Events))
+	}
+	if got := pull.Events[0].Attributes["credential_type"]; got != "gcp_service_account_key" {
+		t.Fatalf("credential_type = %q, want gcp_service_account_key", got)
+	}
+}
+
 func TestReadLiveGCPGroupMembershipResolvesGroupKeys(t *testing.T) {
 	server := httptest.NewServer(newGCPAPIHandler(t))
 	defer server.Close()
@@ -160,6 +186,8 @@ func newGCPAPIHandler(t *testing.T) http.Handler {
 		switch r.URL.Path {
 		case "/v1/projects/writer-prod/serviceAccounts":
 			writeJSON(t, w, map[string]any{"accounts": []map[string]any{{"name": "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com", "email": "sa@writer-prod.iam.gserviceaccount.com", "uniqueId": "sa-1", "displayName": "Prod SA"}}})
+		case "/v1/projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys":
+			writeJSON(t, w, map[string]any{"keys": []map[string]any{{"name": "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1", "keyType": "USER_MANAGED", "validAfterTime": "2026-04-23T00:00:00Z"}}})
 		case "/v1/groups:lookup":
 			if got := r.URL.Query().Get("groupKey.id"); got != "security@writer.com" {
 				t.Fatalf("groupKey.id = %q, want security@writer.com", got)

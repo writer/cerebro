@@ -32,6 +32,7 @@ const (
 	familyGroupMember = "group_membership"
 	familyRoleAssign  = "iam_role_assignment"
 	familyServiceAcct = "service_account"
+	familySAKey       = "service_account_key"
 )
 
 // Source reads GCP IAM, Cloud Identity, and Cloud Audit surfaces.
@@ -42,14 +43,15 @@ type Source struct {
 }
 
 type settings struct {
-	family     string
-	projectID  string
-	customerID string
-	groupKey   string
-	token      string
-	baseURL    string
-	filter     string
-	perPage    int
+	family              string
+	projectID           string
+	customerID          string
+	groupKey            string
+	serviceAccountEmail string
+	token               string
+	baseURL             string
+	filter              string
+	perPage             int
 }
 
 type pageResponse struct {
@@ -57,6 +59,7 @@ type pageResponse struct {
 	Groups        []json.RawMessage `json:"groups"`
 	Memberships   []json.RawMessage `json:"memberships"`
 	Entries       []json.RawMessage `json:"entries"`
+	Keys          []json.RawMessage `json:"keys"`
 	NextPageToken string            `json:"nextPageToken"`
 }
 
@@ -70,6 +73,18 @@ type serviceAccountRecord struct {
 	Disabled       bool   `json:"disabled"`
 	OAuth2ClientID string `json:"oauth2ClientId"`
 	raw            json.RawMessage
+}
+
+type serviceAccountKeyRecord struct {
+	Name            string `json:"name"`
+	PrivateKeyType  string `json:"privateKeyType"`
+	KeyAlgorithm    string `json:"keyAlgorithm"`
+	ValidAfterTime  string `json:"validAfterTime"`
+	ValidBeforeTime string `json:"validBeforeTime"`
+	KeyOrigin       string `json:"keyOrigin"`
+	KeyType         string `json:"keyType"`
+	Disabled        bool   `json:"disabled"`
+	raw             json.RawMessage
 }
 
 type groupRecord struct {
@@ -246,6 +261,15 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account:%s", tenantID(settings), firstNonEmpty(account.UniqueID, account.Email)), nil
 			},
 		}),
+		gcpFamily(s, gcpFamilyOptions[serviceAccountKeyRecord]{
+			Name:  familySAKey,
+			Label: "gcp service account keys",
+			List:  listServiceAccountKeys,
+			Event: serviceAccountKeyEvent,
+			URN: func(settings settings, key serviceAccountKeyRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account_key:%s", tenantID(settings), firstNonEmpty(key.Name, settings.serviceAccountEmail)), nil
+			},
+		}),
 	)
 }
 
@@ -278,14 +302,15 @@ func gcpFamily[T any](source *Source, options gcpFamilyOptions[T]) sourcecdk.Fam
 
 func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	settings := settings{
-		family:     configValue(cfg, "family"),
-		projectID:  configValue(cfg, "project_id"),
-		customerID: configValue(cfg, "customer_id"),
-		groupKey:   configValue(cfg, "group_key"),
-		token:      configValue(cfg, "token"),
-		baseURL:    strings.TrimRight(configValue(cfg, "base_url"), "/"),
-		filter:     configValue(cfg, "filter"),
-		perPage:    defaultPageSize,
+		family:              configValue(cfg, "family"),
+		projectID:           configValue(cfg, "project_id"),
+		customerID:          configValue(cfg, "customer_id"),
+		groupKey:            configValue(cfg, "group_key"),
+		serviceAccountEmail: configValue(cfg, "service_account_email"),
+		token:               configValue(cfg, "token"),
+		baseURL:             strings.TrimRight(configValue(cfg, "base_url"), "/"),
+		filter:              configValue(cfg, "filter"),
+		perPage:             defaultPageSize,
 	}
 	if settings.family == "" {
 		settings.family = defaultFamily
@@ -308,6 +333,13 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		if settings.projectID == "" {
 			return settings, fmt.Errorf("gcp project_id is required when family=%q", settings.family)
 		}
+	case familySAKey:
+		if settings.projectID == "" {
+			return settings, fmt.Errorf("gcp project_id is required when family=%q", familySAKey)
+		}
+		if settings.serviceAccountEmail == "" {
+			return settings, fmt.Errorf("gcp service_account_email is required when family=%q", familySAKey)
+		}
 	case familyGroup:
 		if settings.customerID == "" {
 			return settings, fmt.Errorf("gcp customer_id is required when family=%q", familyGroup)
@@ -317,7 +349,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 			return settings, fmt.Errorf("gcp group_key is required when family=%q", familyGroupMember)
 		}
 	default:
-		return settings, fmt.Errorf("gcp family must be one of audit, group, group_membership, iam_role_assignment, or service_account")
+		return settings, fmt.Errorf("gcp family must be one of audit, group, group_membership, iam_role_assignment, service_account, or service_account_key")
 	}
 	return settings, nil
 }
@@ -330,6 +362,20 @@ func listServiceAccounts(ctx context.Context, source *Source, settings settings,
 		return nil, "", err
 	}
 	records, _, err := decodeRecords(response.Accounts, "gcp service account", func(record *serviceAccountRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+	return records, response.NextPageToken, err
+}
+
+func listServiceAccountKeys(ctx context.Context, source *Source, settings settings, pageToken string, limit int) ([]serviceAccountKeyRecord, string, error) {
+	query := url.Values{"pageSize": {strconv.Itoa(limit)}}
+	addQuery(query, "pageToken", pageToken)
+	var response pageResponse
+	path := "/v1/projects/" + url.PathEscape(settings.projectID) + "/serviceAccounts/" + url.PathEscape(settings.serviceAccountEmail) + "/keys"
+	if err := getJSON(ctx, source, settings, serviceBaseURL, http.MethodGet, path, query, nil, &response); err != nil {
+		return nil, "", err
+	}
+	records, _, err := decodeRecords(response.Keys, "gcp service account key", func(record *serviceAccountKeyRecord, raw json.RawMessage) {
 		record.raw = append(json.RawMessage(nil), raw...)
 	})
 	return records, response.NextPageToken, err
@@ -427,6 +473,33 @@ func serviceAccountEvent(settings settings, record serviceAccountRecord) (*primi
 		return nil, err
 	}
 	return sourceEvent(settings, "gcp-service-account-"+firstNonEmpty(record.UniqueID, record.Email), "gcp.service_account", "gcp/service_account/v1", payload, attributes, time.Now().UTC())
+}
+
+func serviceAccountKeyEvent(settings settings, record serviceAccountKeyRecord) (*primitives.Event, error) {
+	attributes := map[string]string{
+		"credential_id":   firstNonEmpty(record.Name, settings.serviceAccountEmail),
+		"credential_type": "gcp_service_account_key",
+		"domain":          tenantID(settings),
+		"event_type":      "gcp_service_account_key_present",
+		"family":          familySAKey,
+		"resource_id":     firstNonEmpty(record.Name, settings.serviceAccountEmail),
+		"resource_type":   "service_account_key",
+		"status":          disabledStatus(record.Disabled),
+		"subject_email":   settings.serviceAccountEmail,
+		"subject_id":      settings.serviceAccountEmail,
+		"subject_type":    "service_account",
+	}
+	payload, err := payloadWithRaw(record.raw, map[string]any{"project_id": settings.projectID, "service_account_email": settings.serviceAccountEmail})
+	if err != nil {
+		return nil, err
+	}
+	occurredAt := time.Now().UTC()
+	if record.ValidAfterTime != "" {
+		if parsed, err := time.Parse(time.RFC3339Nano, record.ValidAfterTime); err == nil {
+			occurredAt = parsed.UTC()
+		}
+	}
+	return sourceEvent(settings, "gcp-service-account-key-"+firstNonEmpty(record.Name, settings.serviceAccountEmail), "gcp.service_account_key", "gcp/service_account_key/v1", payload, attributes, occurredAt)
 }
 
 func groupEvent(settings settings, record groupRecord) (*primitives.Event, error) {

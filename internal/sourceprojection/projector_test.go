@@ -573,6 +573,34 @@ func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
 				"subject_type":  "service_account",
 			},
 		},
+		{
+			Id:       "aws-access-key",
+			TenantId: "writer",
+			SourceId: "aws",
+			Kind:     "aws.access_key",
+			Attributes: map[string]string{
+				"credential_id":   "AKIAEXAMPLE",
+				"credential_type": "aws_access_key",
+				"domain":          "123456789012",
+				"subject_email":   "analyst@writer.com",
+				"subject_id":      "analyst@writer.com",
+				"subject_type":    "user",
+			},
+		},
+		{
+			Id:       "gcp-service-key",
+			TenantId: "writer",
+			SourceId: "gcp",
+			Kind:     "gcp.service_account_key",
+			Attributes: map[string]string{
+				"credential_id":   "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1",
+				"credential_type": "gcp_service_account_key",
+				"domain":          "writer-prod",
+				"subject_email":   "sa@writer-prod.iam.gserviceaccount.com",
+				"subject_id":      "sa@writer-prod.iam.gserviceaccount.com",
+				"subject_type":    "service_account",
+			},
+		},
 	}
 	for _, event := range events {
 		if _, err := service.Project(context.Background(), event); err != nil {
@@ -586,6 +614,8 @@ func TestProjectCloudReadOnlyRoleAssignmentsAvoidAdminEdges(t *testing.T) {
 	assertProjectedLinkMissing(t, state, "urn:cerebro:writer:gcp_user:viewer@writer.com", relationCanAdmin, "urn:cerebro:writer:gcp_admin_role:roles/viewer")
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationCanAdmin, "urn:cerebro:writer:gcp_admin_role:roles/owner")
 	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:sa@writer-prod.iam.gserviceaccount.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:aws_user:analyst@writer.com", relationAssignedTo, "urn:cerebro:writer:aws_credential:AKIAEXAMPLE")
+	assertProjectedLink(t, state, "urn:cerebro:writer:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com", relationAssignedTo, "urn:cerebro:writer:gcp_credential:projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1")
 }
 
 func assertProjectedLink(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {

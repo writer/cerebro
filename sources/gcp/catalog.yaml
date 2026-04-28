@@ -7,3 +7,4 @@ emitted_kinds:
   - gcp.group_membership
   - gcp.iam_role_assignment
   - gcp.service_account
+  - gcp.service_account_key

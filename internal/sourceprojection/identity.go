@@ -46,6 +46,14 @@ func awsIAMUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEn
 	return identityUserProjections(event, awsIdentityProfile)
 }
 
+func awsIAMRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityUserProjections(event, awsIdentityProfile)
+}
+
+func awsAccessKeyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityCredentialProjections(event, awsIdentityProfile)
+}
+
 func awsIAMGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityGroupProjections(event, awsIdentityProfile)
 }
@@ -64,6 +72,10 @@ func awsCloudTrailProjections(event *cerebrov1.EventEnvelope) ([]*ports.Projecte
 
 func gcpServiceAccountProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	return identityUserProjections(event, gcpIdentityProfile)
+}
+
+func gcpServiceAccountKeyProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	return identityCredentialProjections(event, gcpIdentityProfile)
 }
 
 func gcpGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -370,6 +382,49 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile i
 	}
 	if subjectURN != "" && roleURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, roleURN, relation, map[string]string{"event_id": event.GetId()}))
+	}
+	return identityProjectionResult(entities, links)
+}
+
+func identityCredentialProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	provider := profile.Provider
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+	subjectType := strings.ToLower(firstNonEmpty(attributes["subject_type"], attributes["principal_type"], "user"))
+	subjectID := firstNonEmpty(attributes["subject_id"], attributes["assigned_to"], attributes["user_id"], attributes["email"])
+	subjectEmail := firstNonEmpty(attributes["subject_email"], attributes["email"])
+	subjectURN := identityPrincipalURN(tenantID, provider, subjectType, subjectID, subjectEmail)
+	credentialID := firstNonEmpty(attributes["credential_id"], attributes["access_key_id"], attributes["key_id"], attributes["resource_id"])
+	credentialType := firstNonEmpty(attributes["credential_type"], attributes["resource_type"], "credential")
+	credentialURN := projectionURN(tenantID, provider+"_credential", credentialID)
+	if subjectURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        subjectURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.entityType(identityPrincipalType(subjectType)),
+			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
+			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType},
+		})
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), subjectURN, firstNonEmpty(subjectEmail, subjectID))
+	}
+	if credentialURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        credentialURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: profile.entityType("credential"),
+			Label:      firstNonEmpty(attributes["credential_name"], credentialID),
+			Attributes: map[string]string{"credential_id": credentialID, "credential_type": credentialType, "status": strings.TrimSpace(attributes["status"])},
+		})
+	}
+	if subjectURN != "" && credentialURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, credentialURN, relationAssignedTo, map[string]string{"event_id": event.GetId()}))
 	}
 	return identityProjectionResult(entities, links)
 }

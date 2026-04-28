@@ -198,6 +198,59 @@ func TestIdentitySignalRulesIgnoreReadOnlyCloudRoleAssignments(t *testing.T) {
 	}
 }
 
+func TestIdentitySignalRulesDetectCloudCredentials(t *testing.T) {
+	rules := identityRulesByID(t)
+	for _, tt := range []struct {
+		name        string
+		sourceID    string
+		kind        string
+		attributes  map[string]string
+		resourceURN string
+	}{
+		{
+			name:     "aws-access-key",
+			sourceID: "aws",
+			kind:     "aws.access_key",
+			attributes: map[string]string{
+				"credential_id":   "AKIAEXAMPLE",
+				"credential_type": "aws_access_key",
+				"domain":          "123456789012",
+				"subject_email":   "admin@writer.com",
+				"subject_id":      "admin@writer.com",
+				"subject_type":    "user",
+			},
+			resourceURN: "urn:cerebro:writer:aws_credential:AKIAEXAMPLE",
+		},
+		{
+			name:     "gcp-service-account-key",
+			sourceID: "gcp",
+			kind:     "gcp.service_account_key",
+			attributes: map[string]string{
+				"credential_id":   "projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1",
+				"credential_type": "gcp_service_account_key",
+				"domain":          "writer-prod",
+				"subject_email":   "sa@writer-prod.iam.gserviceaccount.com",
+				"subject_id":      "sa@writer-prod.iam.gserviceaccount.com",
+				"subject_type":    "service_account",
+			},
+			resourceURN: "urn:cerebro:writer:gcp_credential:projects/writer-prod/serviceAccounts/sa@writer-prod.iam.gserviceaccount.com/keys/key-1",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := &cerebrov1.SourceRuntime{Id: tt.name + "-runtime", SourceId: tt.sourceID, TenantId: "writer"}
+			event := &cerebrov1.EventEnvelope{Id: tt.name, TenantId: "writer", SourceId: tt.sourceID, Kind: tt.kind, Attributes: tt.attributes}
+			records, err := rules[identityAPIOrOAuthCredentialCreatedRuleID].Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate() error = %v", err)
+			}
+			if len(records) != 1 {
+				t.Fatalf("len(records) = %d, want 1", len(records))
+			}
+			assertFindingResourceURN(t, records[0].ResourceURNs, tt.resourceURN)
+		})
+	}
+}
+
 func identityRulesByID(t *testing.T) map[string]Rule {
 	t.Helper()
 	rules := map[string]Rule{}
