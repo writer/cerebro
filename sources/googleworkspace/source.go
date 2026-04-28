@@ -37,8 +37,9 @@ const (
 
 // Source reads Google Workspace Directory and Admin audit records.
 type Source struct {
-	spec   *cerebrov1.SourceSpec
-	client *http.Client
+	spec     *cerebrov1.SourceSpec
+	client   *http.Client
+	families *sourcecdk.FamilyEngine[settings]
 }
 
 type settings struct {
@@ -145,7 +146,12 @@ func New() (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Source{spec: spec, client: &http.Client{Timeout: 30 * time.Second}}, nil
+	source := &Source{spec: spec, client: &http.Client{Timeout: 30 * time.Second}}
+	source.families, err = source.newFamilyEngine()
+	if err != nil {
+		return nil, err
+	}
+	return source, nil
 }
 
 // Spec returns static source metadata.
@@ -155,20 +161,39 @@ func (s *Source) Spec() *cerebrov1.SourceSpec {
 
 // Check validates that the configured family is reachable.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
-	settings, err := parseSettings(cfg)
-	if err != nil {
-		return err
-	}
-	_, _, err = s.readRawPage(ctx, settings, "", 1)
-	return err
+	return s.families.Check(ctx, cfg)
 }
 
 // Discover returns tenant-scoped URNs for the selected family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	settings, err := parseSettings(cfg)
-	if err != nil {
-		return nil, err
+	return s.families.Discover(ctx, cfg)
+}
+
+// Read returns one page of normalized Google Workspace events.
+func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return s.families.Read(ctx, cfg, cursor)
+}
+
+func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
+	families := []sourcecdk.Family[settings]{}
+	for _, family := range []string{familyAudit, familyGroup, familyGroupMember, familyRoleAssign, familyUser} {
+		familyName := family
+		families = append(families, sourcecdk.Family[settings]{
+			Name: familyName,
+			Check: func(ctx context.Context, settings settings) error {
+				_, _, err := s.readRawPage(ctx, settings, "", 1)
+				return err
+			},
+			Discover: s.discoverFamily,
+			Read:     s.readFamily,
+		})
 	}
+	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string {
+		return settings.family
+	}, families...)
+}
+
+func (s *Source) discoverFamily(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
 	rawRecords, _, err := s.readRawPage(ctx, settings, "", settings.perPage)
 	if err != nil {
 		return nil, err
@@ -186,14 +211,8 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	return urns, nil
 }
 
-// Read returns one page of normalized Google Workspace events.
-func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	settings, err := parseSettings(cfg)
-	if err != nil {
-		return sourcecdk.Pull{}, err
-	}
-	pageToken := strings.TrimSpace(cursor.GetOpaque())
-	rawRecords, next, err := s.readRawPage(ctx, settings, pageToken, settings.perPage)
+func (s *Source) readFamily(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	rawRecords, next, err := s.readRawPage(ctx, settings, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}

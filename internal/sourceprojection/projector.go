@@ -26,13 +26,22 @@ const (
 
 // Service materializes synced source events into current-state and graph stores.
 type Service struct {
-	state ports.ProjectionStateStore
-	graph ports.ProjectionGraphStore
+	state    ports.ProjectionStateStore
+	graph    ports.ProjectionGraphStore
+	registry *Registry
 }
 
 // New constructs a source projector.
 func New(state ports.ProjectionStateStore, graph ports.ProjectionGraphStore) *Service {
-	return &Service{state: state, graph: graph}
+	return NewWithRegistry(state, graph, BuiltinRegistry())
+}
+
+// NewWithRegistry constructs a source projector with an explicit event projector registry.
+func NewWithRegistry(state ports.ProjectionStateStore, graph ports.ProjectionGraphStore, registry *Registry) *Service {
+	if registry == nil {
+		registry = BuiltinRegistry()
+	}
+	return &Service{state: state, graph: graph, registry: registry}
 }
 
 // Project applies one source event to the configured state and graph stores.
@@ -43,7 +52,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	if s == nil || (s.state == nil && s.graph == nil) {
 		return ports.ProjectionResult{}, nil
 	}
-	entities, links, err := projectionsForEvent(event)
+	entities, links, err := s.registry.Project(event)
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
@@ -75,43 +84,6 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		EntitiesProjected: uint32(len(entities)),
 		LinksProjected:    uint32(len(links)),
 	}, nil
-}
-
-func projectionsForEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	switch strings.TrimSpace(event.GetKind()) {
-	case "github.pull_request":
-		return githubPullRequestProjections(event)
-	case "github.audit":
-		return githubAuditProjections(event)
-	case "github.dependabot_alert":
-		return githubDependabotAlertProjections(event)
-	case "okta.user":
-		return oktaUserProjections(event)
-	case "okta.group":
-		return oktaGroupProjections(event)
-	case "okta.group_membership":
-		return oktaGroupMembershipProjections(event)
-	case "okta.application":
-		return oktaApplicationProjections(event)
-	case "okta.app_assignment":
-		return oktaAppAssignmentProjections(event)
-	case "okta.admin_role":
-		return oktaAdminRoleProjections(event)
-	case "okta.audit":
-		return oktaAuditProjections(event)
-	case "google_workspace.user":
-		return googleWorkspaceUserProjections(event)
-	case "google_workspace.group":
-		return googleWorkspaceGroupProjections(event)
-	case "google_workspace.group_member":
-		return googleWorkspaceGroupMemberProjections(event)
-	case "google_workspace.role_assignment":
-		return googleWorkspaceRoleAssignmentProjections(event)
-	case "google_workspace.audit":
-		return googleWorkspaceAuditProjections(event)
-	default:
-		return nil, nil, nil
-	}
 }
 
 func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

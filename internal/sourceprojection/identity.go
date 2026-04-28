@@ -7,52 +7,66 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+type identityProjectionProfile struct {
+	Provider string
+}
+
+var (
+	oktaIdentityProfile            = identityProjectionProfile{Provider: "okta"}
+	googleWorkspaceIdentityProfile = identityProjectionProfile{Provider: "google_workspace"}
+)
+
+func (p identityProjectionProfile) entityType(kind string) string {
+	return p.Provider + "." + kind
+}
+
 func oktaGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, "okta")
+	return identityGroupProjections(event, oktaIdentityProfile)
 }
 
 func oktaGroupMembershipProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupMembershipProjections(event, "okta")
+	return identityGroupMembershipProjections(event, oktaIdentityProfile)
 }
 
 func oktaApplicationProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityApplicationProjections(event, "okta")
+	return identityApplicationProjections(event, oktaIdentityProfile)
 }
 
 func oktaAppAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAppAssignmentProjections(event, "okta")
+	return identityAppAssignmentProjections(event, oktaIdentityProfile)
 }
 
 func oktaAdminRoleProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityRoleAssignmentProjections(event, "okta")
+	return identityRoleAssignmentProjections(event, oktaIdentityProfile)
 }
 
 func googleWorkspaceUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityUserProjections(event, "google_workspace")
+	return identityUserProjections(event, googleWorkspaceIdentityProfile)
 }
 
 func googleWorkspaceGroupProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupProjections(event, "google_workspace")
+	return identityGroupProjections(event, googleWorkspaceIdentityProfile)
 }
 
 func googleWorkspaceGroupMemberProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityGroupMembershipProjections(event, "google_workspace")
+	return identityGroupMembershipProjections(event, googleWorkspaceIdentityProfile)
 }
 
 func googleWorkspaceRoleAssignmentProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityRoleAssignmentProjections(event, "google_workspace")
+	return identityRoleAssignmentProjections(event, googleWorkspaceIdentityProfile)
 }
 
 func googleWorkspaceAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	return identityAuditProjections(event, "google_workspace")
+	return identityAuditProjections(event, googleWorkspaceIdentityProfile)
 }
 
-func identityUserProjections(event *cerebrov1.EventEnvelope, provider string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func identityUserProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
+	provider := profile.Provider
 	domain := strings.TrimSpace(attributes["domain"])
 	userID := firstNonEmpty(attributes["user_id"], attributes["id"], attributes["primary_email"], attributes["email"], attributes["login"])
 	email := firstNonEmpty(attributes["email"], attributes["primary_email"], attributes["login"])
@@ -69,7 +83,7 @@ func identityUserProjections(event *cerebrov1.EventEnvelope, provider string) ([
 			URN:        userURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + ".user",
+			EntityType: profile.entityType("user"),
 			Label:      firstNonEmpty(attributes["display_name"], attributes["name"], email, login, userID),
 			Attributes: map[string]string{
 				"domain":             domain,
@@ -98,12 +112,13 @@ func identityUserProjections(event *cerebrov1.EventEnvelope, provider string) ([
 	return identityProjectionResult(entities, links)
 }
 
-func identityGroupProjections(event *cerebrov1.EventEnvelope, provider string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func identityGroupProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
+	provider := profile.Provider
 	domain := strings.TrimSpace(attributes["domain"])
 	groupID := firstNonEmpty(attributes["group_id"], attributes["id"], attributes["group_email"], attributes["email"])
 	groupEmail := firstNonEmpty(attributes["group_email"], attributes["email"])
@@ -118,7 +133,7 @@ func identityGroupProjections(event *cerebrov1.EventEnvelope, provider string) (
 			URN:        groupURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + ".group",
+			EntityType: profile.entityType("group"),
 			Label:      firstNonEmpty(attributes["group_name"], attributes["name"], groupEmail, groupID),
 			Attributes: map[string]string{
 				"domain":             domain,
@@ -139,12 +154,13 @@ func identityGroupProjections(event *cerebrov1.EventEnvelope, provider string) (
 	return identityProjectionResult(entities, links)
 }
 
-func identityGroupMembershipProjections(event *cerebrov1.EventEnvelope, provider string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func identityGroupMembershipProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
+	provider := profile.Provider
 	groupURN := identityGroupURN(tenantID, provider, attributes["group_id"], firstNonEmpty(attributes["group_email"], attributes["email"]))
 	memberEmail := firstNonEmpty(attributes["member_email"], attributes["email"], attributes["user_email"])
 	memberID := firstNonEmpty(attributes["member_user_id"], attributes["user_id"], attributes["member_id"], memberEmail)
@@ -158,7 +174,7 @@ func identityGroupMembershipProjections(event *cerebrov1.EventEnvelope, provider
 			URN:        groupURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + ".group",
+			EntityType: profile.entityType("group"),
 			Label:      firstNonEmpty(attributes["group_name"], attributes["group_email"], attributes["group_id"]),
 			Attributes: map[string]string{
 				"group_id":    strings.TrimSpace(attributes["group_id"]),
@@ -171,7 +187,7 @@ func identityGroupMembershipProjections(event *cerebrov1.EventEnvelope, provider
 			URN:        memberURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + "." + identityPrincipalType(memberType),
+			EntityType: profile.entityType(identityPrincipalType(memberType)),
 			Label:      firstNonEmpty(attributes["member_name"], memberEmail, memberID),
 			Attributes: map[string]string{
 				"email":       memberEmail,
@@ -193,12 +209,13 @@ func identityGroupMembershipProjections(event *cerebrov1.EventEnvelope, provider
 	return identityProjectionResult(entities, links)
 }
 
-func identityApplicationProjections(event *cerebrov1.EventEnvelope, provider string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func identityApplicationProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
+	provider := profile.Provider
 	appURN := identityApplicationURN(tenantID, provider, firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]))
 	entities := map[string]*ports.ProjectedEntity{}
 	if appURN != "" {
@@ -206,7 +223,7 @@ func identityApplicationProjections(event *cerebrov1.EventEnvelope, provider str
 			URN:        appURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + ".application",
+			EntityType: profile.entityType("application"),
 			Label:      firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["name"], attributes["client_id"], attributes["app_id"]),
 			Attributes: map[string]string{
 				"app_id":      firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"], attributes["id"]),
@@ -220,12 +237,13 @@ func identityApplicationProjections(event *cerebrov1.EventEnvelope, provider str
 	return identityProjectionResult(entities, nil)
 }
 
-func identityAppAssignmentProjections(event *cerebrov1.EventEnvelope, provider string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func identityAppAssignmentProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
+	provider := profile.Provider
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	subjectType := strings.ToLower(firstNonEmpty(attributes["subject_type"], attributes["principal_type"], "user"))
@@ -238,7 +256,7 @@ func identityAppAssignmentProjections(event *cerebrov1.EventEnvelope, provider s
 			URN:        subjectURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + "." + identityPrincipalType(subjectType),
+			EntityType: profile.entityType(identityPrincipalType(subjectType)),
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType},
 		})
@@ -249,7 +267,7 @@ func identityAppAssignmentProjections(event *cerebrov1.EventEnvelope, provider s
 			URN:        appURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + ".application",
+			EntityType: profile.entityType("application"),
 			Label:      firstNonEmpty(attributes["app_name"], attributes["app_label"], attributes["client_id"], attributes["app_id"]),
 			Attributes: map[string]string{"app_id": firstNonEmpty(attributes["app_id"], attributes["application_id"], attributes["client_id"])},
 		})
@@ -260,12 +278,13 @@ func identityAppAssignmentProjections(event *cerebrov1.EventEnvelope, provider s
 	return identityProjectionResult(entities, links)
 }
 
-func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, provider string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
+	provider := profile.Provider
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	subjectType := strings.ToLower(firstNonEmpty(attributes["subject_type"], attributes["principal_type"], "user"))
@@ -279,7 +298,7 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, provider 
 			URN:        subjectURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + "." + identityPrincipalType(subjectType),
+			EntityType: profile.entityType(identityPrincipalType(subjectType)),
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType, "is_admin": "true"},
 		})
@@ -290,7 +309,7 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, provider 
 			URN:        roleURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + ".admin_role",
+			EntityType: profile.entityType("admin_role"),
 			Label:      firstNonEmpty(attributes["role_name"], attributes["role_type"], roleID),
 			Attributes: map[string]string{"role_id": roleID, "role_type": strings.TrimSpace(attributes["role_type"])},
 		})
@@ -301,12 +320,13 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, provider 
 	return identityProjectionResult(entities, links)
 }
 
-func identityAuditProjections(event *cerebrov1.EventEnvelope, provider string) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityProjectionProfile) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
 		return nil, nil, err
 	}
 	attributes := event.GetAttributes()
+	provider := profile.Provider
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 	actorEmail := firstNonEmpty(attributes["actor_email"], attributes["actor_alternate_id"], attributes["email"])
@@ -319,7 +339,7 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, provider string) (
 			URN:        actorURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + ".user",
+			EntityType: profile.entityType("user"),
 			Label:      firstNonEmpty(attributes["actor_name"], actorEmail, attributes["actor_id"]),
 			Attributes: map[string]string{"email": actorEmail, "actor_id": strings.TrimSpace(attributes["actor_id"])},
 		})
@@ -330,7 +350,7 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, provider string) (
 			URN:        resourceURN,
 			TenantID:   tenantID,
 			SourceID:   event.GetSourceId(),
-			EntityType: provider + "." + strings.ReplaceAll(resourceType, "_", "."),
+			EntityType: profile.entityType(strings.ReplaceAll(resourceType, "_", ".")),
 			Label:      firstNonEmpty(attributes["resource_name"], attributes["target_name"], resourceID),
 			Attributes: map[string]string{"resource_id": resourceID, "resource_type": resourceType},
 		})

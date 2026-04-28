@@ -2,15 +2,12 @@ package findings
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
-	"github.com/writer/cerebro/internal/sourceprojection"
 )
 
 const (
@@ -73,7 +70,10 @@ func matchesGitHubDependabotOpenAlert(event *cerebrov1.EventEnvelope) bool {
 }
 
 func githubDependabotOpenAlertFinding(ctx context.Context, event *cerebrov1.EventEnvelope, runtimeID string) (*ports.FindingRecord, error) {
-	resourceURNs, primaryResourceURN, primaryResourceLabel, err := githubDependabotAlertContext(ctx, event)
+	projectedContext, err := buildFindingProjectionContext(ctx, event, findingProjectionContextOptions{
+		PrimaryEntityType:  "github.dependabot_alert",
+		CollectAllEntities: true,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("project finding context for event %q: %w", event.GetId(), err)
 	}
@@ -91,7 +91,7 @@ func githubDependabotOpenAlertFinding(ctx context.Context, event *cerebrov1.Even
 		"event_id":                 strings.TrimSpace(event.GetId()),
 		"html_url":                 strings.TrimSpace(attributes["html_url"]),
 		"package":                  strings.TrimSpace(attributes["package"]),
-		"primary_resource_urn":     primaryResourceURN,
+		"primary_resource_urn":     projectedContext.PrimaryResourceURN,
 		"repository":               strings.TrimSpace(attributes["repository"]),
 		"severity":                 strings.TrimSpace(attributes["severity"]),
 		"source_runtime_id":        strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]),
@@ -120,12 +120,12 @@ func githubDependabotOpenAlertFinding(ctx context.Context, event *cerebrov1.Even
 		Title:             githubDependabotOpenAlertTitle,
 		Severity:          normalizeFindingSeverity(attributes["severity"]),
 		Status:            githubDependabotOpenAlertStatus,
-		Summary:           githubDependabotAlertSummary(attributes, primaryResourceLabel),
-		ResourceURNs:      resourceURNs,
+		Summary:           githubDependabotAlertSummary(attributes, projectedContext.ResourceLabel),
+		ResourceURNs:      projectedContext.ResourceURNs,
 		EventIDs:          []string{strings.TrimSpace(event.GetId())},
 		ObservedPolicyIDs: observedPolicyIDs,
 		PolicyID:          policyID,
-		PolicyName:        firstNonEmpty(strings.TrimSpace(attributes["advisory_ghsa_id"]), strings.TrimSpace(attributes["advisory_cve_id"]), primaryResourceLabel),
+		PolicyName:        firstNonEmpty(strings.TrimSpace(attributes["advisory_ghsa_id"]), strings.TrimSpace(attributes["advisory_cve_id"]), projectedContext.ResourceLabel),
 		CheckID:           githubDependabotOpenAlertCheckID,
 		CheckName:         githubDependabotOpenAlertCheckName,
 		ControlRefs:       cloneFindingControlRefs(githubDependabotOpenAlertDefinition.ControlRefs),
@@ -133,45 +133,6 @@ func githubDependabotOpenAlertFinding(ctx context.Context, event *cerebrov1.Even
 		FirstObservedAt:   observedAt,
 		LastObservedAt:    observedAt,
 	}, nil
-}
-
-func githubDependabotAlertContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]string, string, string, error) {
-	recorder := &projectionRecorder{
-		entities: make(map[string]*ports.ProjectedEntity),
-		links:    make(map[string]*ports.ProjectedLink),
-	}
-	if ctx == nil {
-		return nil, "", "", errors.New("context is required")
-	}
-	if _, err := sourceprojection.New(nil, recorder).Project(ctx, event); err != nil {
-		return nil, "", "", err
-	}
-	resourceURNs := make([]string, 0, len(recorder.entities))
-	seenURNs := make(map[string]struct{}, len(recorder.entities))
-	var primaryURN string
-	var primaryLabel string
-	for _, entity := range recorder.entities {
-		if entity == nil {
-			continue
-		}
-		urn := strings.TrimSpace(entity.URN)
-		if urn == "" {
-			continue
-		}
-		if _, ok := seenURNs[urn]; !ok {
-			seenURNs[urn] = struct{}{}
-			resourceURNs = append(resourceURNs, urn)
-		}
-		if primaryURN == "" && strings.EqualFold(strings.TrimSpace(entity.EntityType), "github.dependabot_alert") {
-			primaryURN = urn
-			primaryLabel = strings.TrimSpace(entity.Label)
-		}
-	}
-	slices.Sort(resourceURNs)
-	if primaryURN == "" && len(resourceURNs) != 0 {
-		primaryURN = resourceURNs[0]
-	}
-	return resourceURNs, primaryURN, primaryLabel, nil
 }
 
 func githubDependabotAlertSummary(attributes map[string]string, primaryResourceLabel string) string {

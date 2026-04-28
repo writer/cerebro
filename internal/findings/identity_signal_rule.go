@@ -8,7 +8,6 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
-	"github.com/writer/cerebro/internal/sourceprojection"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -46,6 +45,8 @@ func newIdentitySignalRule(config identitySignalConfig) Rule {
 }
 
 func newIdentitySignalRules() []Rule {
+	capabilities := builtinIdentityCapabilities
+	sourceIDs := capabilities.SourceIDs()
 	return []Rule{
 		newIdentitySignalRule(identitySignalConfig{
 			definition: identityRuleDefinition(
@@ -56,8 +57,8 @@ func newIdentitySignalRules() []Rule {
 				"finding.identity_auth_control_lifecycle_tampering",
 				[]string{"identity", "control-plane", "defense-evasion", "attack.t1562"},
 			),
-			sourceIDs:  []string{"okta", "google_workspace"},
-			eventKinds: []string{"okta.audit", "google_workspace.audit"},
+			sourceIDs:  sourceIDs,
+			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
 			predicate:  matchesIdentityAuthControlTampering,
 		}),
 		newIdentitySignalRule(identitySignalConfig{
@@ -69,8 +70,8 @@ func newIdentitySignalRules() []Rule {
 				"finding.identity_admin_privilege_granted",
 				[]string{"identity", "privilege-escalation", "attack.t1098"},
 			),
-			sourceIDs:  []string{"okta", "google_workspace"},
-			eventKinds: []string{"okta.audit", "okta.admin_role", "google_workspace.role_assignment", "google_workspace.audit"},
+			sourceIDs:  sourceIDs,
+			eventKinds: capabilities.EventKinds(identityCapabilityAdminRole, identityCapabilityAudit, identityCapabilityRoleAssignment),
 			predicate:  matchesIdentityAdminPrivilegeGranted,
 		}),
 		newIdentitySignalRule(identitySignalConfig{
@@ -82,8 +83,8 @@ func newIdentitySignalRules() []Rule {
 				"finding.identity_mfa_factor_reset_or_disabled",
 				[]string{"identity", "mfa", "credential-access", "attack.t1556"},
 			),
-			sourceIDs:  []string{"okta", "google_workspace"},
-			eventKinds: []string{"okta.audit", "google_workspace.audit"},
+			sourceIDs:  sourceIDs,
+			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
 			predicate:  matchesIdentityMFAFactorResetOrDisabled,
 		}),
 		newIdentitySignalRule(identitySignalConfig{
@@ -95,8 +96,8 @@ func newIdentitySignalRules() []Rule {
 				"finding.identity_api_token_or_oauth_app_created",
 				[]string{"identity", "token", "oauth", "persistence", "attack.t1098"},
 			),
-			sourceIDs:  []string{"okta", "google_workspace"},
-			eventKinds: []string{"okta.audit", "google_workspace.audit"},
+			sourceIDs:  sourceIDs,
+			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
 			predicate:  matchesIdentityAPITokenOrOAuthCreated,
 		}),
 		newIdentitySignalRule(identitySignalConfig{
@@ -108,8 +109,8 @@ func newIdentitySignalRules() []Rule {
 				"finding.identity_privileged_account_without_mfa",
 				[]string{"identity", "mfa", "privileged-access", "attack.t1078"},
 			),
-			sourceIDs:  []string{"okta", "google_workspace"},
-			eventKinds: []string{"okta.user", "google_workspace.user"},
+			sourceIDs:  sourceIDs,
+			eventKinds: capabilities.EventKinds(identityCapabilityUser),
 			predicate:  matchesIdentityPrivilegedWithoutMFA,
 		}),
 		newIdentitySignalRule(identitySignalConfig{
@@ -121,8 +122,8 @@ func newIdentitySignalRules() []Rule {
 				"finding.identity_stale_privileged_account",
 				[]string{"identity", "privileged-access", "hygiene"},
 			),
-			sourceIDs:  []string{"okta", "google_workspace"},
-			eventKinds: []string{"okta.user", "google_workspace.user"},
+			sourceIDs:  sourceIDs,
+			eventKinds: capabilities.EventKinds(identityCapabilityUser),
 			predicate:  matchesIdentityStalePrivilegedAccount,
 		}),
 		newIdentitySignalRule(identitySignalConfig{
@@ -134,8 +135,8 @@ func newIdentitySignalRules() []Rule {
 				"finding.identity_external_or_personal_group_member",
 				[]string{"identity", "group", "external-access"},
 			),
-			sourceIDs:  []string{"okta", "google_workspace"},
-			eventKinds: []string{"okta.group_membership", "google_workspace.group_member"},
+			sourceIDs:  sourceIDs,
+			eventKinds: capabilities.EventKinds(identityCapabilityGroupMembership),
 			predicate:  matchesIdentityExternalGroupMember,
 		}),
 		newIdentitySignalRule(identitySignalConfig{
@@ -147,8 +148,8 @@ func newIdentitySignalRules() []Rule {
 				"finding.identity_control_tamper_or_credential_change",
 				[]string{"identity", "correlation", "credential-access", "defense-evasion"},
 			),
-			sourceIDs:  []string{"okta", "google_workspace"},
-			eventKinds: []string{"okta.audit", "google_workspace.audit"},
+			sourceIDs:  sourceIDs,
+			eventKinds: capabilities.EventKinds(identityCapabilityAudit),
 			predicate:  matchesIdentityControlTamperOrCredentialChange,
 		}),
 		newIdentitySignalRule(identitySignalConfig{
@@ -160,8 +161,8 @@ func newIdentitySignalRules() []Rule {
 				"finding.identity_privileged_no_mfa_sensitive_access",
 				[]string{"identity", "graph-join", "privileged-access", "mfa"},
 			),
-			sourceIDs:  []string{"okta", "google_workspace"},
-			eventKinds: []string{"okta.user", "okta.app_assignment", "okta.admin_role", "google_workspace.user", "google_workspace.role_assignment", "google_workspace.group_member"},
+			sourceIDs:  sourceIDs,
+			eventKinds: capabilities.EventKinds(identityCapabilityAdminRole, identityCapabilityAppAssignment, identityCapabilityGroupMembership, identityCapabilityRoleAssignment, identityCapabilityUser),
 			predicate:  matchesIdentityPrivilegedNoMFAAccess,
 		}),
 	}
@@ -230,7 +231,19 @@ func (r *identitySignalRule) Evaluate(ctx context.Context, runtime *cerebrov1.So
 }
 
 func (r *identitySignalRule) buildFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
-	context, err := identityProjectionContext(ctx, event)
+	eventAttrs := eventAttributes(event)
+	projectedContext, err := buildFindingProjectionContext(ctx, event, findingProjectionContextOptions{
+		PrimaryRelations:   []string{"acted_on", "assigned_to", "can_admin", "member_of"},
+		CollectAllLinkURNs: true,
+		ActorFallbacks:     []string{eventAttrs["actor_email"], eventAttrs["actor_alternate_id"], eventAttrs["actor_display_name"], eventAttrs["email"], eventAttrs["member_email"]},
+		ResourceFallbacks:  []string{eventAttrs["resource_id"], eventAttrs["target_id"], eventAttrs["user_id"], eventAttrs["group_id"], eventAttrs["role_id"], eventAttrs["app_id"], eventAttrs["client_id"]},
+		SkipFallbackEntity: func(entity *ports.ProjectedEntity) bool {
+			if entity == nil {
+				return true
+			}
+			return strings.HasPrefix(entity.EntityType, "identifier.") || strings.HasSuffix(entity.EntityType, ".org")
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -238,9 +251,9 @@ func (r *identitySignalRule) buildFinding(ctx context.Context, runtime *cerebrov
 	if event.GetOccurredAt() != nil {
 		observedAt = event.GetOccurredAt().AsTime().UTC()
 	}
-	attributes := identityFindingAttributes(event, runtime, r.config, context)
-	fingerprint := hashFindingFingerprint(r.config.definition.ID, event.GetId(), context.primaryResourceURN, compoundRiskAction(&ports.FindingRecord{Attributes: attributes}))
-	summary := identityFindingSummary(attributes, r.config, context)
+	attributes := identityFindingAttributes(event, runtime, r.config, projectedContext)
+	fingerprint := hashFindingFingerprint(r.config.definition.ID, event.GetId(), projectedContext.PrimaryResourceURN, compoundRiskAction(&ports.FindingRecord{Attributes: attributes}))
+	summary := identityFindingSummary(attributes, r.config, projectedContext)
 	return &ports.FindingRecord{
 		ID:                fingerprint,
 		Fingerprint:       fingerprint,
@@ -251,7 +264,7 @@ func (r *identitySignalRule) buildFinding(ctx context.Context, runtime *cerebrov
 		Severity:          r.config.definition.Severity,
 		Status:            r.config.definition.Status,
 		Summary:           summary,
-		ResourceURNs:      context.resourceURNs,
+		ResourceURNs:      projectedContext.ResourceURNs,
 		EventIDs:          []string{strings.TrimSpace(event.GetId())},
 		ObservedPolicyIDs: githubObservedPolicyIDs(firstNonEmpty(attributes["policy_id"], attributes["resource_id"])),
 		PolicyID:          firstNonEmpty(attributes["policy_id"], attributes["resource_id"]),
@@ -265,62 +278,7 @@ func (r *identitySignalRule) buildFinding(ctx context.Context, runtime *cerebrov
 	}, nil
 }
 
-type identityContext struct {
-	primaryActorURN    string
-	primaryResourceURN string
-	actorLabel         string
-	resourceLabel      string
-	resourceURNs       []string
-}
-
-func identityProjectionContext(ctx context.Context, event *cerebrov1.EventEnvelope) (identityContext, error) {
-	recorder := &projectionRecorder{
-		entities: make(map[string]*ports.ProjectedEntity),
-		links:    make(map[string]*ports.ProjectedLink),
-	}
-	if _, err := sourceprojection.New(nil, recorder).Project(ctx, event); err != nil {
-		return identityContext{}, err
-	}
-	context := identityContext{}
-	seen := map[string]struct{}{}
-	for _, link := range recorder.links {
-		switch strings.TrimSpace(link.Relation) {
-		case "acted_on", "assigned_to", "can_admin", "member_of":
-			if context.primaryActorURN == "" {
-				context.primaryActorURN = strings.TrimSpace(link.FromURN)
-			}
-			if context.primaryResourceURN == "" {
-				context.primaryResourceURN = strings.TrimSpace(link.ToURN)
-			}
-		}
-		for _, urn := range []string{link.FromURN, link.ToURN} {
-			if trimmed := strings.TrimSpace(urn); trimmed != "" {
-				if _, ok := seen[trimmed]; !ok {
-					seen[trimmed] = struct{}{}
-					context.resourceURNs = append(context.resourceURNs, trimmed)
-				}
-			}
-		}
-	}
-	if context.primaryResourceURN == "" {
-		for urn, entity := range recorder.entities {
-			if strings.HasPrefix(entity.EntityType, "identifier.") || strings.HasSuffix(entity.EntityType, ".org") {
-				continue
-			}
-			context.primaryResourceURN = urn
-			if _, ok := seen[urn]; !ok {
-				seen[urn] = struct{}{}
-				context.resourceURNs = append(context.resourceURNs, urn)
-			}
-			break
-		}
-	}
-	context.actorLabel = entityLabel(recorder.entities[context.primaryActorURN])
-	context.resourceLabel = entityLabel(recorder.entities[context.primaryResourceURN])
-	return context, nil
-}
-
-func identityFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov1.SourceRuntime, config identitySignalConfig, context identityContext) map[string]string {
+func identityFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov1.SourceRuntime, config identitySignalConfig, context findingProjectionContext) map[string]string {
 	eventAttrs := eventAttributes(event)
 	attributes := map[string]string{
 		"action":               identityAction(eventAttrs),
@@ -329,10 +287,10 @@ func identityFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov
 		"event_kind":           strings.TrimSpace(event.GetKind()),
 		"event_type":           identityAction(eventAttrs),
 		"family":               strings.TrimSpace(eventAttrs["family"]),
-		"primary_actor_urn":    context.primaryActorURN,
-		"primary_resource_urn": context.primaryResourceURN,
+		"primary_actor_urn":    context.PrimaryActorURN,
+		"primary_resource_urn": context.PrimaryResourceURN,
 		"resource_id":          firstNonEmpty(eventAttrs["resource_id"], eventAttrs["user_id"], eventAttrs["group_id"], eventAttrs["role_id"], eventAttrs["app_id"], eventAttrs["client_id"]),
-		"resource_label":       context.resourceLabel,
+		"resource_label":       context.ResourceLabel,
 		"resource_type":        firstNonEmpty(eventAttrs["resource_type"], eventAttrs["target_type"], eventAttrs["family"]),
 		"source_family":        strings.TrimSpace(event.GetSourceId()),
 		"source_runtime_id":    strings.TrimSpace(runtime.GetId()),
@@ -350,12 +308,12 @@ func identityFindingAttributes(event *cerebrov1.EventEnvelope, runtime *cerebrov
 	return attributes
 }
 
-func identityFindingSummary(attributes map[string]string, config identitySignalConfig, context identityContext) string {
+func identityFindingSummary(attributes map[string]string, config identitySignalConfig, context findingProjectionContext) string {
 	if config.summary != nil {
 		return config.summary(attributes)
 	}
-	actor := firstNonEmpty(attributes["actor"], context.actorLabel, "identity actor")
-	resource := firstNonEmpty(context.resourceLabel, attributes["resource_id"], attributes["user"], "identity resource")
+	actor := firstNonEmpty(attributes["actor"], context.ActorLabel, "identity actor")
+	resource := firstNonEmpty(context.ResourceLabel, attributes["resource_id"], attributes["user"], "identity resource")
 	return fmt.Sprintf("%s triggered %s on %s", actor, attributes["event_type"], resource)
 }
 
@@ -380,7 +338,7 @@ func matchesIdentityAuthControlTampering(_ *cerebrov1.EventEnvelope, attributes 
 }
 
 func matchesIdentityAdminPrivilegeGranted(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
-	if strings.HasSuffix(event.GetKind(), ".role_assignment") || strings.HasSuffix(event.GetKind(), ".admin_role") {
+	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole, identityCapabilityRoleAssignment) {
 		return true
 	}
 	action := identityAction(attributes)
@@ -434,7 +392,7 @@ func matchesIdentityPrivilegedNoMFAAccess(event *cerebrov1.EventEnvelope, attrib
 	if matchesIdentityPrivilegedWithoutMFA(event, attributes) {
 		return true
 	}
-	if strings.HasSuffix(event.GetKind(), ".role_assignment") || strings.HasSuffix(event.GetKind(), ".admin_role") {
+	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityAdminRole, identityCapabilityRoleAssignment) {
 		return true
 	}
 	action := identityAction(attributes)

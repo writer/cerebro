@@ -5,24 +5,13 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
-
-	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 //go:embed testdata/*.json
 var fixtureFS embed.FS
-
-type fixtureSource struct {
-	spec   *cerebrov1.SourceSpec
-	urns   map[string][]sourcecdk.URN
-	events map[string][]*primitives.Event
-}
 
 // NewFixture constructs the deterministic Google Workspace source used by tests.
 func NewFixture() (sourcecdk.Source, error) {
@@ -30,11 +19,7 @@ func NewFixture() (sourcecdk.Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	source := &fixtureSource{
-		spec:   spec,
-		urns:   map[string][]sourcecdk.URN{},
-		events: map[string][]*primitives.Event{},
-	}
+	families := []sourcecdk.FixtureFamily{}
 	for _, family := range []string{familyAudit, familyGroup, familyGroupMember, familyRoleAssign, familyUser} {
 		records, err := loadRawFixture("testdata/read_" + family + ".json")
 		if err != nil {
@@ -50,73 +35,28 @@ func NewFixture() (sourcecdk.Source, error) {
 			application: "admin",
 			perPage:     1,
 		}
+		urns := []sourcecdk.URN{}
+		events := []*cerebrov1.EventEnvelope{}
 		for _, record := range records {
 			event, err := sourceEvent(settings, record)
 			if err != nil {
 				return nil, err
 			}
-			source.events[family] = append(source.events[family], event)
+			events = append(events, event)
 			urn, err := discoverURN(settings, record)
 			if err == nil && urn != "" {
-				source.urns[family] = append(source.urns[family], urn)
+				urns = append(urns, urn)
 			}
 		}
+		families = append(families, sourcecdk.FixtureFamily{Name: family, URNs: urns, Events: events})
 	}
-	return source, nil
-}
-
-func (s *fixtureSource) Spec() *cerebrov1.SourceSpec {
-	return s.spec
-}
-
-func (s *fixtureSource) Check(_ context.Context, cfg sourcecdk.Config) error {
-	_, err := parseSettings(cfg)
-	return err
-}
-
-func (s *fixtureSource) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	settings, err := parseSettings(cfg)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.Check(ctx, cfg); err != nil {
-		return nil, err
-	}
-	return cloneURNs(s.urns[settings.family]), nil
-}
-
-func (s *fixtureSource) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	settings, err := parseSettings(cfg)
-	if err != nil {
-		return sourcecdk.Pull{}, err
-	}
-	if err := s.Check(ctx, cfg); err != nil {
-		return sourcecdk.Pull{}, err
-	}
-	index := 0
-	if cursor != nil && strings.TrimSpace(cursor.Opaque) != "" {
-		parsed, err := strconv.Atoi(cursor.Opaque)
-		if err != nil {
-			return sourcecdk.Pull{}, fmt.Errorf("parse cursor: %w", err)
-		}
-		index = parsed
-	}
-	events := s.events[settings.family]
-	if index >= len(events) {
-		return sourcecdk.Pull{}, nil
-	}
-	event := proto.Clone(events[index]).(*cerebrov1.EventEnvelope)
-	pull := sourcecdk.Pull{
-		Events: []*primitives.Event{event},
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark:    event.OccurredAt,
-			CursorOpaque: strconv.Itoa(index + 1),
-		},
-	}
-	if index+1 < len(events) {
-		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(index + 1)}
-	}
-	return pull, nil
+	return sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{
+		Spec:          spec,
+		DefaultFamily: defaultFamily,
+		Check:         checkFixtureConfig,
+		ResolveFamily: resolveFixtureFamily,
+		Families:      families,
+	})
 }
 
 func loadRawFixture(path string) ([]json.RawMessage, error) {
@@ -131,8 +71,15 @@ func loadRawFixture(path string) ([]json.RawMessage, error) {
 	return records, nil
 }
 
-func cloneURNs(values []sourcecdk.URN) []sourcecdk.URN {
-	cloned := make([]sourcecdk.URN, len(values))
-	copy(cloned, values)
-	return cloned
+func checkFixtureConfig(_ context.Context, cfg sourcecdk.Config) error {
+	_, err := parseSettings(cfg)
+	return err
+}
+
+func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {
+	settings, err := parseSettings(cfg)
+	if err != nil {
+		return "", fmt.Errorf("parse google_workspace fixture settings: %w", err)
+	}
+	return settings.family, nil
 }

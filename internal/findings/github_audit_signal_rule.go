@@ -724,12 +724,24 @@ func newGitHubAuditSignalRule(config githubAuditSignalConfig) Rule {
 }
 
 func githubAuditSignalFinding(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope, config githubAuditSignalConfig) (*ports.FindingRecord, error) {
-	resourceURNs, actorURN, resourceURN, _, _, err := projectedEntityContext(ctx, event)
+	projectedContext, err := buildFindingProjectionContext(ctx, event, findingProjectionContextOptions{
+		PrimaryRelations:   []string{"acted_on"},
+		CollectAllLinkURNs: true,
+		ActorFallbacks: []string{
+			event.GetAttributes()["actor"],
+			event.GetAttributes()["user"],
+		},
+		ResourceFallbacks: []string{
+			event.GetAttributes()["repo"],
+			event.GetAttributes()["resource_id"],
+			event.GetAttributes()["resource_type"],
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("project finding context for event %q: %w", event.GetId(), err)
 	}
 	attributes := eventAttributes(event)
-	findingAttributes := githubAuditSignalAttributes(event, config, actorURN, resourceURN)
+	findingAttributes := githubAuditSignalAttributes(event, config, projectedContext.PrimaryActorURN, projectedContext.PrimaryResourceURN)
 	observedAt := time.Time{}
 	if timestamp := event.GetOccurredAt(); timestamp != nil {
 		observedAt = timestamp.AsTime().UTC()
@@ -755,7 +767,7 @@ func githubAuditSignalFinding(ctx context.Context, runtime *cerebrov1.SourceRunt
 		Severity:          normalizeFindingSeverity(severity),
 		Status:            config.definition.Status,
 		Summary:           githubAuditSignalSummary(attributes, config),
-		ResourceURNs:      resourceURNs,
+		ResourceURNs:      projectedContext.ResourceURNs,
 		EventIDs:          []string{strings.TrimSpace(event.GetId())},
 		ObservedPolicyIDs: githubObservedPolicyIDs(policyID),
 		PolicyID:          policyID,
