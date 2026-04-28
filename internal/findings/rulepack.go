@@ -40,9 +40,9 @@ func builtinRulePacks() []RulePack {
 			ID:          "identity",
 			Name:        "Identity",
 			Description: "Identity platform control-plane findings.",
-			Rules: []Rule{
+			Rules: append([]Rule{
 				newOktaPolicyRuleLifecycleTamperingRule(),
-			},
+			}, newIdentitySignalRules()...),
 		},
 	}
 }

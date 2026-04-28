@@ -1,0 +1,26 @@
+[
+  {
+    "id": "okta-group-membership-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.group_membership",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/group_membership/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "group_id": "grp-security",
+      "user_id": "00u1"
+    },
+    "attributes": {
+      "domain": "writer.okta.com",
+      "email": "admin@writer.com",
+      "family": "group_membership",
+      "group_id": "grp-security",
+      "member_email": "admin@writer.com",
+      "member_id": "00u1",
+      "member_type": "user",
+      "member_user_id": "00u1",
+      "user_id": "00u1"
+    }
+  }
+]

@@ -1,0 +1,46 @@
+[
+  {
+    "id": {
+      "time": "2026-04-23T00:00:00.000Z",
+      "uniqueQualifier": "audit-1",
+      "applicationName": "admin",
+      "customerId": "C01"
+    },
+    "actor": {
+      "email": "admin@writer.com",
+      "profileId": "1001"
+    },
+    "events": [
+      {
+        "name": "CHANGE_TWO_STEP_VERIFICATION_ENFORCEMENT",
+        "type": "SECURITY_SETTINGS",
+        "parameters": [
+          {"name": "RESOURCE_TYPE", "value": "security_setting"},
+          {"name": "SETTING_NAME", "value": "2SV enforcement"}
+        ]
+      }
+    ]
+  },
+  {
+    "id": {
+      "time": "2026-04-23T00:05:00.000Z",
+      "uniqueQualifier": "audit-2",
+      "applicationName": "admin",
+      "customerId": "C01"
+    },
+    "actor": {
+      "email": "admin@writer.com",
+      "profileId": "1001"
+    },
+    "events": [
+      {
+        "name": "AUTHORIZE_API_CLIENT_ACCESS",
+        "type": "APPLICATION_SETTINGS",
+        "parameters": [
+          {"name": "CLIENT_ID", "value": "oauth-client-1"},
+          {"name": "APP_NAME", "value": "Sensitive OAuth App"}
+        ]
+      }
+    ]
+  }
+]

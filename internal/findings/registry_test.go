@@ -108,4 +108,7 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	if _, ok := registry.Get(oktaPolicyRuleLifecycleTamperingRuleID); !ok {
 		t.Fatalf("registry missing %q", oktaPolicyRuleLifecycleTamperingRuleID)
 	}
+	if _, ok := registry.Get(identityAdminPrivilegeGrantedRuleID); !ok {
+		t.Fatalf("registry missing %q", identityAdminPrivilegeGrantedRuleID)
+	}
 }

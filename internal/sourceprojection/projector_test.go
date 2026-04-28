@@ -313,6 +313,166 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	}
 }
 
+func TestProjectIdentityProviderJoinEdges(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+	events := []*cerebrov1.EventEnvelope{
+		{
+			Id:       "okta-user-admin",
+			TenantId: "writer",
+			SourceId: "okta",
+			Kind:     "okta.user",
+			Attributes: map[string]string{
+				"domain":  "writer.okta.com",
+				"email":   "admin@writer.com",
+				"login":   "admin@writer.com",
+				"status":  "ACTIVE",
+				"user_id": "00u-admin",
+			},
+		},
+		{
+			Id:       "google-user-admin",
+			TenantId: "writer",
+			SourceId: "google_workspace",
+			Kind:     "google_workspace.user",
+			Attributes: map[string]string{
+				"domain":        "writer.com",
+				"email":         "admin@writer.com",
+				"primary_email": "admin@writer.com",
+				"user_id":       "1001",
+				"is_admin":      "true",
+				"mfa_enrolled":  "false",
+			},
+		},
+		{
+			Id:       "google-admin-role",
+			TenantId: "writer",
+			SourceId: "google_workspace",
+			Kind:     "google_workspace.role_assignment",
+			Attributes: map[string]string{
+				"domain":       "writer.com",
+				"role_id":      "super-admin",
+				"subject_id":   "1001",
+				"subject_type": "user",
+			},
+		},
+		{
+			Id:       "okta-group",
+			TenantId: "writer",
+			SourceId: "okta",
+			Kind:     "okta.group",
+			Attributes: map[string]string{
+				"domain":     "writer.okta.com",
+				"group_id":   "grp-security",
+				"group_name": "Security",
+			},
+		},
+		{
+			Id:       "okta-membership",
+			TenantId: "writer",
+			SourceId: "okta",
+			Kind:     "okta.group_membership",
+			Attributes: map[string]string{
+				"domain":         "writer.okta.com",
+				"group_id":       "grp-security",
+				"member_email":   "admin@writer.com",
+				"member_user_id": "00u-admin",
+				"member_type":    "user",
+			},
+		},
+		{
+			Id:       "google-group",
+			TenantId: "writer",
+			SourceId: "google_workspace",
+			Kind:     "google_workspace.group",
+			Attributes: map[string]string{
+				"domain":      "writer.com",
+				"group_id":    "group-1",
+				"group_email": "security@writer.com",
+				"group_name":  "Security",
+			},
+		},
+		{
+			Id:       "google-member",
+			TenantId: "writer",
+			SourceId: "google_workspace",
+			Kind:     "google_workspace.group_member",
+			Attributes: map[string]string{
+				"domain":       "writer.com",
+				"group_id":     "security@writer.com",
+				"group_email":  "security@writer.com",
+				"member_email": "admin@writer.com",
+				"member_id":    "1001",
+				"member_type":  "user",
+				"role":         "OWNER",
+			},
+		},
+		{
+			Id:       "okta-app",
+			TenantId: "writer",
+			SourceId: "okta",
+			Kind:     "okta.application",
+			Attributes: map[string]string{
+				"app_id":   "app-prod",
+				"app_name": "Production Console",
+				"domain":   "writer.okta.com",
+			},
+		},
+		{
+			Id:       "okta-app-assignment",
+			TenantId: "writer",
+			SourceId: "okta",
+			Kind:     "okta.app_assignment",
+			Attributes: map[string]string{
+				"app_id":        "app-prod",
+				"domain":        "writer.okta.com",
+				"subject_email": "admin@writer.com",
+				"subject_id":    "00u-admin",
+				"subject_type":  "user",
+			},
+		},
+		{
+			Id:       "google-audit",
+			TenantId: "writer",
+			SourceId: "google_workspace",
+			Kind:     "google_workspace.audit",
+			Attributes: map[string]string{
+				"actor_email":   "admin@writer.com",
+				"actor_id":      "1001",
+				"domain":        "writer.com",
+				"event_type":    "CHANGE_TWO_STEP_VERIFICATION_ENFORCEMENT",
+				"resource_id":   "two_step",
+				"resource_type": "security_setting",
+			},
+		},
+	}
+	for _, event := range events {
+		if _, err := service.Project(context.Background(), event); err != nil {
+			t.Fatalf("Project(%q) error = %v", event.GetId(), err)
+		}
+	}
+
+	identifierURN := "urn:cerebro:writer:identifier:email:admin@writer.com"
+	oktaUserURN := "urn:cerebro:writer:okta_user:00u-admin"
+	googleUserURN := "urn:cerebro:writer:google_workspace_user:1001"
+	assertProjectedLink(t, state, oktaUserURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, state, googleUserURN, relationHasIdentifier, identifierURN)
+	assertProjectedLink(t, state, oktaUserURN, relationMemberOf, "urn:cerebro:writer:okta_group:grp-security")
+	assertProjectedLink(t, state, googleUserURN, relationMemberOf, "urn:cerebro:writer:google_workspace_group:security@writer.com")
+	assertProjectedLink(t, state, "urn:cerebro:writer:google_workspace_group:security@writer.com", relationHasIdentifier, "urn:cerebro:writer:identifier:email:security@writer.com")
+	assertProjectedLink(t, state, oktaUserURN, relationAssignedTo, "urn:cerebro:writer:okta_application:app-prod")
+	assertProjectedLink(t, state, googleUserURN, relationCanAdmin, "urn:cerebro:writer:google_workspace_admin_role:super-admin")
+	assertProjectedLink(t, state, googleUserURN, relationActedOn, "urn:cerebro:writer:google_workspace_security_setting:two_step")
+}
+
+func assertProjectedLink(t *testing.T, recorder *projectionRecorder, fromURN string, relation string, toURN string) {
+	t.Helper()
+	key := fromURN + "|" + relation + "|" + toURN
+	if _, ok := recorder.links[key]; !ok {
+		t.Fatalf("projected link %q missing; links=%v", key, recorder.links)
+	}
+}
+
 func mustJSON(t *testing.T, value any) []byte {
 	t.Helper()
 	payload, err := json.Marshal(value)

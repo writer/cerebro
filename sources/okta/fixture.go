@@ -32,11 +32,9 @@ type fixtureEvent struct {
 }
 
 type fixtureSource struct {
-	spec        *cerebrov1.SourceSpec
-	auditURNs   []sourcecdk.URN
-	userURNs    []sourcecdk.URN
-	auditEvents []*primitives.Event
-	userEvents  []*primitives.Event
+	spec   *cerebrov1.SourceSpec
+	urns   map[string][]sourcecdk.URN
+	events map[string][]*primitives.Event
 }
 
 // NewFixture constructs the deterministic Okta source used by tests.
@@ -45,29 +43,24 @@ func NewFixture() (sourcecdk.Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	auditURNs, err := loadFixtureURNs("testdata/discover_audit.json")
-	if err != nil {
-		return nil, err
+	source := &fixtureSource{
+		spec:   spec,
+		urns:   map[string][]sourcecdk.URN{},
+		events: map[string][]*primitives.Event{},
 	}
-	userURNs, err := loadFixtureURNs("testdata/discover_user.json")
-	if err != nil {
-		return nil, err
+	for _, family := range []string{familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyGroup, familyGroupMember, familyUser} {
+		urns, err := loadFixtureURNs("testdata/discover_" + family + ".json")
+		if err != nil {
+			return nil, err
+		}
+		events, err := loadFixtureEvents("testdata/read_" + family + ".json")
+		if err != nil {
+			return nil, err
+		}
+		source.urns[family] = urns
+		source.events[family] = events
 	}
-	auditEvents, err := loadFixtureEvents("testdata/read_audit.json")
-	if err != nil {
-		return nil, err
-	}
-	userEvents, err := loadFixtureEvents("testdata/read_user.json")
-	if err != nil {
-		return nil, err
-	}
-	return &fixtureSource{
-		spec:        spec,
-		auditURNs:   auditURNs,
-		userURNs:    userURNs,
-		auditEvents: auditEvents,
-		userEvents:  userEvents,
-	}, nil
+	return source, nil
 }
 
 func (s *fixtureSource) Spec() *cerebrov1.SourceSpec {
@@ -88,10 +81,8 @@ func (s *fixtureSource) Discover(ctx context.Context, cfg sourcecdk.Config) ([]s
 		return nil, err
 	}
 	switch settings.family {
-	case familyAudit:
-		return cloneURNs(s.auditURNs), nil
-	case familyUser:
-		return cloneURNs(s.userURNs), nil
+	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyGroup, familyGroupMember, familyUser:
+		return cloneURNs(s.urns[settings.family]), nil
 	default:
 		return nil, fmt.Errorf("unsupported okta family %q", settings.family)
 	}
@@ -132,14 +123,7 @@ func (s *fixtureSource) Read(ctx context.Context, cfg sourcecdk.Config, cursor *
 }
 
 func (s *fixtureSource) eventsForFamily(family string) []*primitives.Event {
-	switch family {
-	case familyAudit:
-		return s.auditEvents
-	case familyUser:
-		return s.userEvents
-	default:
-		return nil
-	}
+	return s.events[family]
 }
 
 func loadFixtureURNs(path string) ([]sourcecdk.URN, error) {

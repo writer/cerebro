@@ -14,6 +14,13 @@ func TestBuiltin(t *testing.T) {
 	if github.Spec().Name != "GitHub" {
 		t.Fatalf("github Spec().Name = %q, want %q", github.Spec().Name, "GitHub")
 	}
+	googleWorkspace, ok := registry.Get("google_workspace")
+	if !ok {
+		t.Fatal("Get(google_workspace) = false, want true")
+	}
+	if googleWorkspace.Spec().Name != "Google Workspace" {
+		t.Fatalf("google_workspace Spec().Name = %q, want %q", googleWorkspace.Spec().Name, "Google Workspace")
+	}
 	okta, ok := registry.Get("okta")
 	if !ok {
 		t.Fatal("Get(okta) = false, want true")

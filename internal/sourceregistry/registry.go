@@ -5,6 +5,7 @@ import (
 
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
+	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
 )
@@ -19,6 +20,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "github",
 		load: func() (sourcecdk.Source, error) {
 			return githubsource.New()
+		},
+	},
+	{
+		name: "google_workspace",
+		load: func() (sourcecdk.Source, error) {
+			return googleworkspacesource.New()
 		},
 	},
 	{

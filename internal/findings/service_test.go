@@ -467,6 +467,7 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
 		RuntimeID:  "writer-okta-audit",
+		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
 	if err != nil {
@@ -1483,6 +1484,7 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 
 	first, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
 		RuntimeID:  "writer-okta-audit",
+		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
 	if err != nil {
@@ -1508,6 +1510,7 @@ func TestEvaluateSourceRuntimePreservesManualWorkflowFields(t *testing.T) {
 
 	second, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
 		RuntimeID:  "writer-okta-audit",
+		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
 		EventLimit: 25,
 	})
 	if err != nil {

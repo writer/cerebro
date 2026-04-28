@@ -1,0 +1,16 @@
+[
+  {
+    "id": "member-1",
+    "email": "admin@writer.com",
+    "type": "USER",
+    "role": "OWNER",
+    "status": "ACTIVE"
+  },
+  {
+    "id": "member-2",
+    "email": "external@gmail.com",
+    "type": "USER",
+    "role": "MEMBER",
+    "status": "ACTIVE"
+  }
+]

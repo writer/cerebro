@@ -8,6 +8,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
+	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	oktasource "github.com/writer/cerebro/sources/okta"
 )
 
@@ -18,8 +19,8 @@ func TestList(t *testing.T) {
 	}
 	service := New(registry)
 	response := service.List()
-	if len(response.Sources) != 2 {
-		t.Fatalf("len(List().Sources) = %d, want 2", len(response.Sources))
+	if len(response.Sources) != 3 {
+		t.Fatalf("len(List().Sources) = %d, want 3", len(response.Sources))
 	}
 }
 
@@ -128,6 +129,55 @@ func TestCheckDiscoverAndReadOkta(t *testing.T) {
 	}
 }
 
+func TestCheckDiscoverAndReadGoogleWorkspace(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry)
+	ctx := context.Background()
+
+	config := map[string]string{
+		"domain":   "writer.com",
+		"family":   "user",
+		"token":    "test-token",
+		"per_page": "1",
+	}
+	checkResp, err := service.Check(ctx, &cerebrov1.CheckSourceRequest{
+		SourceId: "google_workspace",
+		Config:   config,
+	})
+	if err != nil {
+		t.Fatalf("Check(google_workspace) error = %v", err)
+	}
+	if checkResp.Status != "ok" {
+		t.Fatalf("Check(google_workspace).Status = %q, want ok", checkResp.Status)
+	}
+	discoverResp, err := service.Discover(ctx, &cerebrov1.DiscoverSourceRequest{
+		SourceId: "google_workspace",
+		Config:   config,
+	})
+	if err != nil {
+		t.Fatalf("Discover(google_workspace) error = %v", err)
+	}
+	if len(discoverResp.Urns) != 2 {
+		t.Fatalf("len(Discover(google_workspace).Urns) = %d, want 2", len(discoverResp.Urns))
+	}
+	readResp, err := service.Read(ctx, &cerebrov1.ReadSourceRequest{
+		SourceId: "google_workspace",
+		Config:   config,
+	})
+	if err != nil {
+		t.Fatalf("Read(google_workspace) error = %v", err)
+	}
+	if len(readResp.Events) != 1 {
+		t.Fatalf("len(Read(google_workspace).Events) = %d, want 1", len(readResp.Events))
+	}
+	if got := readResp.Events[0].GetKind(); got != "google_workspace.user" {
+		t.Fatalf("Read(google_workspace).Events[0].Kind = %q, want google_workspace.user", got)
+	}
+}
+
 func TestUnknownSource(t *testing.T) {
 	service := New(nil)
 	_, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "github"})
@@ -145,5 +195,9 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source, okta)
+	googleWorkspace, err := googleworkspacesource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
+	return sourcecdk.NewRegistry(source, googleWorkspace, okta)
 }

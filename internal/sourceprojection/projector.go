@@ -18,6 +18,9 @@ const (
 	relationAuthored      = "authored"
 	relationBelongsTo     = "belongs_to"
 	relationHasIdentifier = "has_identifier"
+	relationAssignedTo    = "assigned_to"
+	relationCanAdmin      = "can_admin"
+	relationMemberOf      = "member_of"
 	relationTargeted      = "targeted"
 )
 
@@ -84,8 +87,28 @@ func projectionsForEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 		return githubDependabotAlertProjections(event)
 	case "okta.user":
 		return oktaUserProjections(event)
+	case "okta.group":
+		return oktaGroupProjections(event)
+	case "okta.group_membership":
+		return oktaGroupMembershipProjections(event)
+	case "okta.application":
+		return oktaApplicationProjections(event)
+	case "okta.app_assignment":
+		return oktaAppAssignmentProjections(event)
+	case "okta.admin_role":
+		return oktaAdminRoleProjections(event)
 	case "okta.audit":
 		return oktaAuditProjections(event)
+	case "google_workspace.user":
+		return googleWorkspaceUserProjections(event)
+	case "google_workspace.group":
+		return googleWorkspaceGroupProjections(event)
+	case "google_workspace.group_member":
+		return googleWorkspaceGroupMemberProjections(event)
+	case "google_workspace.role_assignment":
+		return googleWorkspaceRoleAssignmentProjections(event)
+	case "google_workspace.audit":
+		return googleWorkspaceAuditProjections(event)
 	default:
 		return nil, nil, nil
 	}
