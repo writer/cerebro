@@ -273,11 +273,12 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 			SourceId: "github",
 			Kind:     "github.audit",
 			Attributes: map[string]string{
-				"actor":         "alice@writer.com",
-				"org":           "writer",
-				"repo":          "writer/cerebro",
-				"resource_id":   "writer/cerebro",
-				"resource_type": "repository",
+				"actor":                    "alice",
+				"external_identity_nameid": "alice@writer.com",
+				"org":                      "writer",
+				"repo":                     "writer/cerebro",
+				"resource_id":              "writer/cerebro",
+				"resource_type":            "repository",
 			},
 		},
 		{
@@ -324,13 +325,13 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	if _, ok := state.entities[canonicalIdentityURN]; !ok {
 		t.Fatalf("canonical identity entity %q missing", canonicalIdentityURN)
 	}
-	if _, ok := state.links["urn:cerebro:writer:github_user:alice@writer.com|"+relationHasIdentifier+"|"+identifierURN]; !ok {
+	if _, ok := state.links["urn:cerebro:writer:github_user:alice|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("github identifier link missing for %q", identifierURN)
 	}
 	if _, ok := state.links["urn:cerebro:writer:okta_user:00u1|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("okta identifier link missing for %q", identifierURN)
 	}
-	if _, ok := state.links["urn:cerebro:writer:github_user:alice@writer.com|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
+	if _, ok := state.links["urn:cerebro:writer:github_user:alice|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("github canonical identity link missing for %q", canonicalIdentityURN)
 	}
 	if _, ok := state.links["urn:cerebro:writer:okta_user:00u1|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {

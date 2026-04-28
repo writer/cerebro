@@ -195,6 +195,8 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	resourceID := strings.TrimSpace(attributes["resource_id"])
 	resourceType := strings.TrimSpace(attributes["resource_type"])
 	actor := strings.TrimSpace(attributes["actor"])
+	actorExternalNameID := strings.TrimSpace(attributes["external_identity_nameid"])
+	actorExternalUsername := strings.TrimSpace(attributes["external_identity_username"])
 	targetUser := strings.TrimSpace(attributes["user"])
 
 	entities := map[string]*ports.ProjectedEntity{}
@@ -263,7 +265,11 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			SourceID:   event.GetSourceId(),
 			EntityType: "github.user",
 			Label:      actor,
-			Attributes: map[string]string{"login": actor},
+			Attributes: map[string]string{
+				"external_identity_nameid":   actorExternalNameID,
+				"external_identity_username": actorExternalUsername,
+				"login":                      actor,
+			},
 		})
 		if resourceURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, map[string]string{
@@ -272,6 +278,12 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			}))
 		}
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), actorURN, actor)
+		if !sameIdentifier(actor, actorExternalNameID) {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), actorURN, actorExternalNameID)
+		}
+		if !sameIdentifier(actor, actorExternalUsername) && !sameIdentifier(actorExternalNameID, actorExternalUsername) {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), actorURN, actorExternalUsername)
+		}
 	}
 
 	targetURN := githubUserURN(tenantID, targetUser)

@@ -54,6 +54,15 @@ func TestOpenDependenciesRejectsIncompleteKuzuConfig(t *testing.T) {
 	}
 }
 
+func TestOpenDependenciesRejectsUnsupportedGraphStoreDriver(t *testing.T) {
+	_, _, err := OpenDependencies(context.Background(), config.Config{
+		GraphStore: config.GraphStoreConfig{Driver: "alternate"},
+	})
+	if err == nil {
+		t.Fatal("OpenDependencies() error = nil, want non-nil")
+	}
+}
+
 func TestOpenDependenciesConfiguresKuzu(t *testing.T) {
 	deps, closeAll, err := OpenDependencies(context.Background(), config.Config{
 		GraphStore: config.GraphStoreConfig{

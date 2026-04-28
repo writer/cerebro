@@ -231,6 +231,9 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if got := first.Events[0].Attributes["previous_visibility"]; got != "private" {
 		t.Fatalf("first.Events[0].Attributes[previous_visibility] = %q, want private", got)
 	}
+	if got := first.Events[0].Attributes["external_identity_nameid"]; got != "dependabot@writer.com" {
+		t.Fatalf("first.Events[0].Attributes[external_identity_nameid] = %q, want dependabot@writer.com", got)
+	}
 	var payload map[string]any
 	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
 		t.Fatalf("unmarshal audit payload: %v", err)
@@ -390,6 +393,7 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			"business":                    "writer",
 			"business_id":                 10550,
 			"created_at":                  1776916397852,
+			"external_identity_nameid":    "dependabot@writer.com",
 			"operation_type":              "create",
 			"org":                         "writer",
 			"org_id":                      1,
