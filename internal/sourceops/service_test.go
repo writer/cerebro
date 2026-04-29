@@ -200,6 +200,23 @@ func TestEmptySourceIDIsInvalidRequest(t *testing.T) {
 	}
 }
 
+func TestSourceValidationErrorsAreInvalidRequests(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry)
+	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "github"}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Check() error = %v, want ErrInvalidRequest", err)
+	}
+	if _, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "github"}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Discover() error = %v, want ErrInvalidRequest", err)
+	}
+	if _, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "github"}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Read() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {

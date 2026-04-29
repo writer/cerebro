@@ -202,6 +202,24 @@ func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 	}
 }
 
+func TestPutSourceConfigValidationErrorsAreInvalidRequests(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{}, nil, nil)
+
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-github",
+			SourceId: "github",
+		},
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Put() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
 func TestPutIgnoresClientSuppliedProgress(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

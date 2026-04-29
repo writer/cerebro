@@ -45,7 +45,7 @@ func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) 
 		return nil, err
 	}
 	if err := source.Check(ctx, sourcecdk.NewConfig(req.GetConfig())); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	return &cerebrov1.CheckSourceResponse{
 		Source: source.Spec(),
@@ -61,7 +61,7 @@ func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceReq
 	}
 	urns, err := source.Discover(ctx, sourcecdk.NewConfig(req.GetConfig()))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	values := make([]string, 0, len(urns))
 	for _, urn := range urns {
@@ -81,7 +81,7 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*
 	}
 	pull, err := source.Read(ctx, sourcecdk.NewConfig(req.GetConfig()), req.GetCursor())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	previews, err := previewEvents(pull.Events)
 	if err != nil {

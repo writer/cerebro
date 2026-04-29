@@ -70,7 +70,7 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 		return nil, err
 	}
 	if err := source.Check(ctx, sourcecdk.NewConfig(runtime.GetConfig())); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	if existing != nil {
 		if err := validateRuntimeTenantUnchanged(existing, runtime); err != nil {

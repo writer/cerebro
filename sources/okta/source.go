@@ -551,6 +551,15 @@ func normalizeDomain(raw string, allowLoopback bool) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse okta domain: %w", err)
 	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", fmt.Errorf("okta domain must not include user info, query, or fragment")
+	}
+	if strings.TrimSpace(parsed.Port()) != "" {
+		return "", fmt.Errorf("okta domain must not include a port")
+	}
+	if (parsed.Path != "" && parsed.Path != "/") || parsed.RawPath != "" {
+		return "", fmt.Errorf("okta domain must be a host")
+	}
 	host := strings.TrimSpace(parsed.Hostname())
 	if host == "" {
 		return "", fmt.Errorf("okta domain must be a valid host")

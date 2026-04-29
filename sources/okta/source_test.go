@@ -452,6 +452,11 @@ func TestRejectsUnsafeDomain(t *testing.T) {
 		"[::1]",
 		"[::1%25lo0]",
 		"[fe80::1]",
+		"writer.okta.com@evil.com",
+		"writer.okta.com/path",
+		"writer.okta.com?x=1",
+		"writer.okta.com#fragment",
+		"writer.okta.com:8443",
 	} {
 		t.Run(domain, func(t *testing.T) {
 			_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
