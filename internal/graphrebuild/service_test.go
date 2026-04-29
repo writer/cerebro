@@ -2,7 +2,9 @@ package graphrebuild
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 
 	"google.golang.org/protobuf/proto"
@@ -68,6 +70,10 @@ func (s *testSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebro
 	}
 	events := make([]*cerebrov1.EventEnvelope, 0, len(s.pages[index]))
 	for _, event := range s.pages[index] {
+		if event == nil {
+			events = append(events, nil)
+			continue
+		}
 		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
 	}
 	pull := sourcecdk.Pull{
@@ -546,6 +552,31 @@ func TestRebuildDryRunReplaysRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 	if !containsTraversalPath(result.GraphTraversals, "octocat -[authored]-> writer/cerebro#418 -[belongs_to]-> writer/cerebro") {
 		t.Fatalf("GraphTraversals missing authored path: %#v", result.GraphTraversals)
+	}
+}
+
+func TestRebuildDryRunRejectsNilEventWithPageContext(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(&testSource{
+		spec:  &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"},
+		pages: [][]*cerebrov1.EventEnvelope{{nil}},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				TenantId: "writer-dogfood",
+				Config:   map[string]string{"token": "fixture-token"},
+			},
+		},
+	}, nil)
+
+	_, err = service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github"})
+	if err == nil || !strings.Contains(fmt.Sprint(err), "read source page 1: nil event at index 0") {
+		t.Fatalf("RebuildDryRun() error = %v, want nil event page context", err)
 	}
 }
 
