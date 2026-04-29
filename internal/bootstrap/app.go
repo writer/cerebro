@@ -419,7 +419,7 @@ func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
 }
 
 func readProtoJSON(r *http.Request, message proto.Message) error {
