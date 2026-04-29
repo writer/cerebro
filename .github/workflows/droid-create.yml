@@ -280,7 +280,8 @@ jobs:
               safe_to_push = True
               checkout_repository = repository
               checkout_ref = default_branch
-              branch_name = f"droid/{mode}-{entity_number or 'manual'}-{run_id}"
+              safe_entity = slugify(entity_number or "manual")
+              branch_name = f"droid/{mode}-{safe_entity}-{run_id}"
               create_pr = "true"
               target_kind = "issue" if entity_number else "manual"
 
@@ -292,7 +293,9 @@ jobs:
           with open(out_path, "a", encoding="utf-8") as out:
               def emit(key, value):
                   value = "" if value is None else str(value)
-                  delimiter = f"EOF_{key.upper()}"
+                  delimiter = f"EOF_{key.upper()}_{os.urandom(8).hex()}"
+                  while delimiter in value:
+                      delimiter = f"EOF_{key.upper()}_{os.urandom(8).hex()}"
                   print(f"{key}<<{delimiter}", file=out)
                   print(value, file=out)
                   print(delimiter, file=out)
@@ -337,9 +340,14 @@ jobs:
 
       - name: Install Droid CLI
         shell: bash
+        env:
+          DROID_INSTALL_SHA256: 37f115fe2ff358ef8e2d8926bd3e69c27186f81c74868deee1bbd62f9f58f10d
         run: |
           set -euo pipefail
-          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli | sh
+          installer="${RUNNER_TEMP}/droid-install.sh"
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli -o "${installer}"
+          printf '%s  %s\n' "${DROID_INSTALL_SHA256}" "${installer}" | shasum -a 256 -c -
+          sh "${installer}"
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
           "${HOME}/.local/bin/droid" --version
 

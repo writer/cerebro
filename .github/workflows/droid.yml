@@ -58,6 +58,23 @@ jobs:
       id-token: write
       actions: read
     steps:
+      - name: Verify trusted actor
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          permission="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${GITHUB_ACTOR}/permission" --jq '.permission' 2>/dev/null || true)"
+          case "${permission}" in
+            admin|maintain|write)
+              echo "Actor ${GITHUB_ACTOR} has ${permission} permission."
+              ;;
+            *)
+              echo "::error::Actor ${GITHUB_ACTOR} must have write, maintain, or admin permission to run Droid."
+              exit 1
+              ;;
+          esac
+
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
