@@ -577,7 +577,7 @@ func normalizeBaseURL(raw string, domain string, allowLoopback bool) (string, er
 	if host == "" {
 		return "", fmt.Errorf("okta base_url must include a host")
 	}
-	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return "", fmt.Errorf("okta base_url must not include user info, query, or fragment")
 	}
 	if (parsed.Path != "" && parsed.Path != "/") || parsed.RawPath != "" {

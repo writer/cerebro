@@ -355,7 +355,7 @@ func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
 	if strings.TrimSpace(parsed.Hostname()) == "" {
 		return "", fmt.Errorf("github base_url must include a host")
 	}
-	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return "", fmt.Errorf("github base_url must not include user info, query, or fragment")
 	}
 	path := strings.TrimRight(parsed.EscapedPath(), "/")

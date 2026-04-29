@@ -407,6 +407,7 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 		"https://writer.okta.com:8443",
 		"https://writer.okta.com/path",
 		"https://user@writer.okta.com",
+		"https://writer.okta.com?",
 		"https://localhost.",
 	} {
 		t.Run(baseURL, func(t *testing.T) {

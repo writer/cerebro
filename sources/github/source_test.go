@@ -393,6 +393,7 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 		"https://user@github.example.com",
 		"https://github.example.com/path",
 		"https://github.example.com?token=leak",
+		"https://github.example.com?",
 		"https://localhost",
 		"https://localhost.",
 		"https://[::1%25lo0]",
