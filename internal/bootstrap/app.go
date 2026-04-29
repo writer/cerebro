@@ -384,6 +384,10 @@ func sourceRuntimeConnectError(err error) error {
 		return connect.NewError(connect.CodeUnavailable, err)
 	case errors.Is(err, sourceruntime.ErrInvalidRequest):
 		return connect.NewError(connect.CodeInvalidArgument, err)
+	case errors.Is(err, context.Canceled):
+		return connect.NewError(connect.CodeCanceled, err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
 	default:
 		return connect.NewError(connect.CodeInternal, err)
 	}

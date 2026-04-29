@@ -755,6 +755,12 @@ func TestSourceRuntimeRPCErrorCodes(t *testing.T) {
 	if _, err := unavailable.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{Id: "runtime"})); connect.CodeOf(err) != connect.CodeUnavailable {
 		t.Fatalf("SyncSourceRuntime() unavailable code = %v, want %v", connect.CodeOf(err), connect.CodeUnavailable)
 	}
+	if got := connect.CodeOf(sourceRuntimeConnectError(context.Canceled)); got != connect.CodeCanceled {
+		t.Fatalf("sourceRuntimeConnectError(context.Canceled) code = %v, want %v", got, connect.CodeCanceled)
+	}
+	if got := connect.CodeOf(sourceRuntimeConnectError(context.DeadlineExceeded)); got != connect.CodeDeadlineExceeded {
+		t.Fatalf("sourceRuntimeConnectError(context.DeadlineExceeded) code = %v, want %v", got, connect.CodeDeadlineExceeded)
+	}
 }
 
 func TestWriteSourceRuntimeErrorHidesInternalDetails(t *testing.T) {
