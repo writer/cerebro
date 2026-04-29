@@ -96,7 +96,9 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	if strings.ContainsAny(kind, " \t\r\n") {
 		return fmt.Errorf("event kind %q is not a valid NATS subject token", kind)
 	}
-	payload, err := proto.Marshal(event)
+	publishEvent := proto.Clone(event).(*cerebrov1.EventEnvelope)
+	publishEvent.Kind = kind
+	payload, err := proto.Marshal(publishEvent)
 	if err != nil {
 		return fmt.Errorf("marshal event: %w", err)
 	}

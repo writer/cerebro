@@ -58,6 +58,32 @@ func TestAppendPublishesEnvelope(t *testing.T) {
 	}
 }
 
+func TestAppendNormalizesKindInPublishedEnvelope(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	event := &cerebrov1.EventEnvelope{
+		Id:   "evt-1",
+		Kind: " entity.upsert ",
+	}
+	if err := log.Append(context.Background(), event); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if pub.published.Subject != "events.entity.upsert" {
+		t.Fatalf("subject = %q, want %q", pub.published.Subject, "events.entity.upsert")
+	}
+	var decoded cerebrov1.EventEnvelope
+	if err := proto.Unmarshal(pub.published.Data, &decoded); err != nil {
+		t.Fatalf("proto.Unmarshal() error = %v", err)
+	}
+	if decoded.Kind != "entity.upsert" {
+		t.Fatalf("decoded.Kind = %q, want %q", decoded.Kind, "entity.upsert")
+	}
+	if event.Kind != " entity.upsert " {
+		t.Fatalf("event.Kind = %q, want original input unchanged", event.Kind)
+	}
+}
+
 func TestAppendRejectsMissingKind(t *testing.T) {
 	log := &Log{js: &fakePublisher{}, subjectPrefix: "events"}
 	if err := log.Append(context.Background(), &cerebrov1.EventEnvelope{}); err == nil {
