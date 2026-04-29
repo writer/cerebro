@@ -1480,6 +1480,9 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := len(listFindingsResp.Msg.GetFindings()[0].GetControlRefs()); got != 2 {
 		t.Fatalf("len(ListFindings().Findings[0].ControlRefs) = %d, want 2", got)
 	}
+	if got := runtimeStore.findingListRequest.TenantID; got != "writer" {
+		t.Fatalf("runtimeStore.findingListRequest.TenantID = %q, want writer", got)
+	}
 	if got := runtimeStore.findingListRequest.RuleID; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("runtimeStore.findingListRequest.RuleID = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
@@ -2428,6 +2431,7 @@ func TestReportEndpoints(t *testing.T) {
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
 				ID:           "finding-1",
+				TenantID:     "writer",
 				RuntimeID:    "writer-okta-audit",
 				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:     "HIGH",
@@ -2439,6 +2443,7 @@ func TestReportEndpoints(t *testing.T) {
 			},
 			"finding-2": {
 				ID:           "finding-2",
+				TenantID:     "writer",
 				RuntimeID:    "writer-okta-audit",
 				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:     "HIGH",
@@ -2491,7 +2496,7 @@ func TestReportEndpoints(t *testing.T) {
 		t.Fatalf("/reports payload = %#v, want 1 entry", listPayload["reports"])
 	}
 
-	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?runtime_id=writer-okta-audit&graph_limit=2", nil)
+	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?tenant_id=writer&runtime_id=writer-okta-audit&graph_limit=2", nil)
 	if err != nil {
 		t.Fatalf("new run report request: %v", err)
 	}
@@ -2582,6 +2587,7 @@ func TestReportEndpoints(t *testing.T) {
 	runReportResp, err := client.RunReport(context.Background(), connect.NewRequest(&cerebrov1.RunReportRequest{
 		ReportId: "finding-summary",
 		Parameters: map[string]string{
+			"tenant_id":  "writer",
 			"runtime_id": "writer-okta-audit",
 		},
 	}))
@@ -2735,6 +2741,9 @@ func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.Find
 
 func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
 	if finding == nil {
+		return false
+	}
+	if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
 	if strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {

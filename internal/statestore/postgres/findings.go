@@ -285,8 +285,16 @@ RETURNING
 	return stored.record()
 }
 
-// ListFindings loads persisted findings for one runtime.
+// ListFindings loads persisted findings for one tenant/runtime scope.
 func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequest) (_ []*ports.FindingRecord, err error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("finding tenant id is required")
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return nil, errors.New("finding runtime id is required")
+	}
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
 	}
@@ -299,7 +307,7 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query findings for runtime %q: %w", strings.TrimSpace(request.RuntimeID), err)
+		return nil, fmt.Errorf("query findings for tenant %q runtime %q: %w", tenantID, runtimeID, err)
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && err == nil {
@@ -749,12 +757,16 @@ RETURNING
 }
 
 func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return "", nil, errors.New("finding tenant id is required")
+	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
 		return "", nil, errors.New("finding runtime id is required")
 	}
-	clauses := []string{"runtime_id = $1"}
-	args := []any{runtimeID}
+	clauses := []string{"tenant_id = $1", "runtime_id = $2"}
+	args := []any{tenantID, runtimeID}
 	addFindingFilter(&clauses, &args, "id", request.FindingID)
 	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
 	addFindingFilter(&clauses, &args, "severity", request.Severity)

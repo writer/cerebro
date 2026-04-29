@@ -409,10 +409,12 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 	if runtimeID == "" {
 		return nil, errors.New("source runtime id is required")
 	}
-	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
+	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
+	if err != nil {
 		return nil, err
 	}
 	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:    strings.TrimSpace(runtime.GetTenantId()),
 		RuntimeID:   runtimeID,
 		FindingID:   strings.TrimSpace(request.FindingID),
 		RuleID:      strings.TrimSpace(request.RuleID),
@@ -424,7 +426,7 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 		Limit:       request.Limit,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list findings for runtime %q: %w", runtimeID, err)
+		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", strings.TrimSpace(runtime.GetTenantId()), runtimeID, err)
 	}
 	return &ListResult{Findings: findings}, nil
 }
