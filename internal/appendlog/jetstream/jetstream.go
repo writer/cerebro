@@ -16,7 +16,11 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-const connectTimeout = 5 * time.Second
+const (
+	connectTimeout     = 5 * time.Second
+	defaultReplayLimit = 100
+	maxReplayLimit     = 1000
+)
 
 type publisher interface {
 	AccountInfo(context.Context) (*jetstream.AccountInfo, error)
@@ -25,7 +29,11 @@ type publisher interface {
 
 type replayManager interface {
 	Streams(context.Context) ([]*jetstream.StreamInfo, error)
-	GetMsg(context.Context, string, uint64) (*jetstream.RawStreamMsg, error)
+	Stream(context.Context, string) (replayStream, error)
+}
+
+type replayStream interface {
+	GetMsg(context.Context, uint64, ...jetstream.GetMsgOpt) (*jetstream.RawStreamMsg, error)
 }
 
 type jetStreamReplayManager struct {
@@ -44,12 +52,12 @@ func (m *jetStreamReplayManager) Streams(ctx context.Context) ([]*jetstream.Stre
 	return streams, nil
 }
 
-func (m *jetStreamReplayManager) GetMsg(ctx context.Context, stream string, seq uint64) (*jetstream.RawStreamMsg, error) {
+func (m *jetStreamReplayManager) Stream(ctx context.Context, stream string) (replayStream, error) {
 	streamRef, err := m.js.Stream(ctx, stream)
 	if err != nil {
 		return nil, err
 	}
-	return streamRef.GetMsg(ctx, seq)
+	return streamRef, nil
 }
 
 // Log is the JetStream-backed append-log implementation.
@@ -155,12 +163,17 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	if err != nil {
 		return nil, err
 	}
-	events := make([]*cerebrov1.EventEnvelope, 0)
+	limit := normalizeReplayLimit(request.Limit)
+	streamRef, err := l.replay.Stream(ctx, stream.Config.Name)
+	if err != nil {
+		return nil, fmt.Errorf("open replay stream %q: %w", stream.Config.Name, err)
+	}
+	events := make([]*cerebrov1.EventEnvelope, 0, limit)
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
 		return events, nil
 	}
 	for seq := stream.State.FirstSeq; seq <= stream.State.LastSeq; seq++ {
-		raw, err := l.replay.GetMsg(ctx, stream.Config.Name, seq)
+		raw, err := streamRef.GetMsg(ctx, seq)
 		if err != nil {
 			if errors.Is(err, jetstream.ErrMsgNotFound) {
 				continue
@@ -178,11 +191,21 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 			continue
 		}
 		events = append(events, event)
-		if req.Limit > 0 && uint32(len(events)) >= req.Limit {
+		if uint32(len(events)) >= limit {
 			break
 		}
 	}
 	return events, nil
+}
+
+func normalizeReplayLimit(limit uint32) uint32 {
+	if limit == 0 {
+		return defaultReplayLimit
+	}
+	if limit > maxReplayLimit {
+		return maxReplayLimit
+	}
+	return limit
 }
 
 func normalizeReplayRequest(req ports.ReplayRequest) ports.ReplayRequest {
