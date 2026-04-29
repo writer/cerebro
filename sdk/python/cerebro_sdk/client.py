@@ -51,6 +51,8 @@ class Client:
     ) -> Any:
         payload: Dict[str, Any] = {"claims": claims}
         if options:
+            if "claims" in options:
+                raise ValueError("options must not include 'claims'")
             payload.update(options)
         result, _ = self._request_json("POST", f"/source-runtimes/{parse.quote(runtime_id)}/claims", payload)
         return result

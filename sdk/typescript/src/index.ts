@@ -194,8 +194,8 @@ export class Client {
 
   async writeClaims(runtimeId: string, claims: Claim[], options: WriteClaimsOptions = {}): Promise<Record<string, unknown>> {
     return this.requestJson<Record<string, unknown>>("POST", `/source-runtimes/${encodeURIComponent(runtimeId)}/claims`, {
-      claims,
       ...options,
+      claims,
     });
   }
 
