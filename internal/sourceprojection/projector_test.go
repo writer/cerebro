@@ -156,6 +156,17 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	if _, ok := state.entities[identifierURN]; !ok {
 		t.Fatalf("identifier entity %q missing", identifierURN)
 	}
+	repoURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	repo := state.entities[repoURN]
+	if repo == nil {
+		t.Fatalf("repository entity %q missing", repoURN)
+	}
+	if got := repo.Attributes["repository"]; got != "writer/cerebro" {
+		t.Fatalf("repository attribute = %q, want writer/cerebro", got)
+	}
+	if got := repo.Attributes["resource_type"]; got != "repository" {
+		t.Fatalf("resource_type attribute = %q, want repository", got)
+	}
 	if _, ok := state.links["urn:cerebro:writer:github_user:alice@writer.com|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("github identifier link missing for %q", identifierURN)
 	}

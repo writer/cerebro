@@ -80,6 +80,27 @@ func TestUpsertProjectedRecordsEnsureProjectionTablesOnce(t *testing.T) {
 	}
 }
 
+func TestUpsertProjectedEntityMergesAttributesOnConflict(t *testing.T) {
+	recorder := &projectionSQLRecorder{}
+	store := newProjectionTestStore(t, recorder)
+
+	entity := &ports.ProjectedEntity{
+		URN:        "urn:cerebro:writer:github_repo:writer/cerebro",
+		TenantID:   "writer",
+		SourceID:   "github",
+		EntityType: "github.repo",
+		Attributes: map[string]string{"resource_type": "repository"},
+	}
+	if err := store.UpsertProjectedEntity(context.Background(), entity); err != nil {
+		t.Fatalf("UpsertProjectedEntity() error = %v", err)
+	}
+
+	query := recorder.lastUpsert()
+	if !strings.Contains(query, "attributes_json = entities.attributes_json || EXCLUDED.attributes_json") {
+		t.Fatalf("entity upsert query does not merge attributes_json: %s", query)
+	}
+}
+
 func TestUpsertProjectedRetriesEnsureAfterFailure(t *testing.T) {
 	recorder := &projectionSQLRecorder{failNextDDL: true}
 	store := newProjectionTestStore(t, recorder)
@@ -157,6 +178,7 @@ type projectionSQLRecorder struct {
 	mu          sync.Mutex
 	ddlExecs    int
 	upserts     int
+	upsertSQL   []string
 	failNextDDL bool
 }
 
@@ -172,6 +194,7 @@ func (r *projectionSQLRecorder) exec(query string) (driver.Result, error) {
 		return driver.RowsAffected(1), nil
 	}
 	r.upserts++
+	r.upsertSQL = append(r.upsertSQL, query)
 	return driver.RowsAffected(1), nil
 }
 
@@ -179,4 +202,13 @@ func (r *projectionSQLRecorder) counts() (int, int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.ddlExecs, r.upserts
+}
+
+func (r *projectionSQLRecorder) lastUpsert() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.upsertSQL) == 0 {
+		return ""
+	}
+	return r.upsertSQL[len(r.upsertSQL)-1]
 }

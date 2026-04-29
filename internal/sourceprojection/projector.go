@@ -439,6 +439,29 @@ func addEntity(entities map[string]*ports.ProjectedEntity, entity *ports.Project
 	if entity == nil || strings.TrimSpace(entity.URN) == "" {
 		return
 	}
+	if existing := entities[entity.URN]; existing != nil {
+		if strings.TrimSpace(entity.TenantID) != "" {
+			existing.TenantID = entity.TenantID
+		}
+		if strings.TrimSpace(entity.SourceID) != "" {
+			existing.SourceID = entity.SourceID
+		}
+		if strings.TrimSpace(entity.EntityType) != "" {
+			existing.EntityType = entity.EntityType
+		}
+		if strings.TrimSpace(entity.Label) != "" {
+			existing.Label = entity.Label
+		}
+		if len(entity.Attributes) != 0 {
+			if existing.Attributes == nil {
+				existing.Attributes = map[string]string{}
+			}
+			for key, value := range entity.Attributes {
+				existing.Attributes[key] = value
+			}
+		}
+		return
+	}
 	entities[entity.URN] = entity
 }
 

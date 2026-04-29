@@ -78,7 +78,7 @@ DO UPDATE SET
   source_id = EXCLUDED.source_id,
   entity_type = EXCLUDED.entity_type,
   label = EXCLUDED.label,
-  attributes_json = EXCLUDED.attributes_json,
+  attributes_json = entities.attributes_json || EXCLUDED.attributes_json,
   updated_at = NOW()`, urn, tenantID, sourceID, entityType, label, attributesJSON); err != nil {
 		return fmt.Errorf("upsert projected entity %q: %w", urn, err)
 	}
