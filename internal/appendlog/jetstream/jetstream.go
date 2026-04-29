@@ -219,7 +219,7 @@ func (l *Log) replayStream(ctx context.Context) (*jetstream.StreamInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list jetstream streams: %w", err)
 	}
-	probe := l.subjectPrefix + ".replay"
+	probe := l.subjectPrefix + ".replay.probe"
 	var match *jetstream.StreamInfo
 	for _, stream := range streams {
 		if stream == nil || !streamAcceptsSubject(stream, probe) {
@@ -254,7 +254,7 @@ func subjectMatches(pattern string, subject string) bool {
 	for index, token := range patternTokens {
 		switch token {
 		case ">":
-			return index < len(subjectTokens)
+			return index == len(patternTokens)-1 && index < len(subjectTokens)
 		case "*":
 			if index >= len(subjectTokens) {
 				return false

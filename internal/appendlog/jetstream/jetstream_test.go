@@ -180,6 +180,33 @@ func TestReplayRejectsMissingRuntimeID(t *testing.T) {
 	}
 }
 
+func TestReplayStreamMatchesMultiTokenWildcardSubjects(t *testing.T) {
+	log := &Log{
+		replay: &fakeReplayManager{
+			streams: []*natsjetstream.StreamInfo{
+				{
+					Config: natsjetstream.StreamConfig{
+						Name:     "CEREBRO_EVENTS",
+						Subjects: []string{"events.*.>"},
+					},
+				},
+			},
+		},
+		subjectPrefix: "events",
+	}
+
+	stream, err := log.replayStream(context.Background())
+	if err != nil {
+		t.Fatalf("replayStream() error = %v", err)
+	}
+	if stream == nil {
+		t.Fatal("replayStream() = nil, want non-nil")
+	}
+	if got := stream.Config.Name; got != "CEREBRO_EVENTS" {
+		t.Fatalf("replayStream().Config.Name = %q, want CEREBRO_EVENTS", got)
+	}
+}
+
 func TestSubjectMatchesRequiresRemainingTokensForWildcard(t *testing.T) {
 	tests := []struct {
 		pattern string
