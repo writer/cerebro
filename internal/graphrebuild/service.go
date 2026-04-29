@@ -163,8 +163,11 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		}
 		result.PagesRead++
 		result.EventsRead += uint32(len(pull.Events))
-		for _, event := range pull.Events {
+		for idx, event := range pull.Events {
 			materialized := materializeEvent(runtime, event)
+			if materialized == nil {
+				return nil, fmt.Errorf("read source page %d: nil event at index %d", page+1, idx)
+			}
 			previewer.addEvent(materialized)
 			projected, err := projector.Project(ctx, materialized)
 			if err != nil {
