@@ -7,13 +7,13 @@ from cerebro_sdk import Client, IntegrationClient
 
 def build_workspace_claims(integration: IntegrationClient, posture: Dict[str, Any]) -> list[Dict[str, Any]]:
     workspace_key = require_value(posture.get("workspace_key"), "workspace_key")
-    workspace_name = str(posture.get("workspace_name", workspace_key)).strip() or workspace_key
+    workspace_name = optional_string(posture.get("workspace_name")) or workspace_key
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
     source_event_id = optional_string(posture.get("event_id"))
     shared_options = {"source_event_id": source_event_id} if source_event_id else {}
-    admins = list(posture.get("admins", []))
-    projects = list(posture.get("projects", []))
-    apps = list(posture.get("apps", []))
+    admins = list(posture.get("admins") or [])
+    projects = list(posture.get("projects") or [])
+    apps = list(posture.get("apps") or [])
 
     claims = [
         integration.exists(workspace_ref, **shared_options),
@@ -129,7 +129,7 @@ def build_workspace_claims(integration: IntegrationClient, posture: Dict[str, An
                 **shared_options,
             )
         )
-        scopes = [optional_string(scope) for scope in app.get("scopes", [])]
+        scopes = [optional_string(scope) for scope in (app.get("scopes") or [])]
         normalized_scopes = [scope for scope in scopes if scope]
         if normalized_scopes:
             claims.append(integration.attr(app_ref, "scopes", ",".join(normalized_scopes), **shared_options))
