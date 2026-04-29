@@ -76,9 +76,9 @@ def build_jira_workspace_claims(
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
     source_event_id = optional_string(posture.get("event_id"))
     shared_options: Dict[str, Any] = {"source_event_id": source_event_id} if source_event_id else {}
-    admins = list(posture.get("admins", []))
-    projects = list(posture.get("projects", []))
-    apps = list(posture.get("apps", []))
+    admins = list(posture.get("admins") or [])
+    projects = list(posture.get("projects") or [])
+    apps = list(posture.get("apps") or [])
 
     claims = [
         integration.exists(workspace_ref, **shared_options),
@@ -194,7 +194,7 @@ def build_jira_workspace_claims(
                 **shared_options,
             )
         )
-        scopes = [optional_string(scope) for scope in app.get("scopes", [])]
+        scopes = [optional_string(scope) for scope in (app.get("scopes") or [])]
         normalized_scopes = [scope for scope in scopes if scope]
         if normalized_scopes:
             claims.append(integration.attr(app_ref, "scopes", ",".join(normalized_scopes), **shared_options))
@@ -211,7 +211,7 @@ def load_jira_workspace_graph_layering(
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
     project_refs = []
     project_keys = []
-    for project in posture.get("projects", []):
+    for project in posture.get("projects") or []:
         project_key = require_value(project.get("key"), "projects[].key")
         project_name = optional_string(project.get("name")) or project_key
         project_refs.append(integration.ref("project", project_key, project_name))
@@ -293,7 +293,7 @@ def build_jira_posture_findings(
             )
         )
 
-    for project in posture.get("projects", []):
+    for project in posture.get("projects") or []:
         project_key = require_value(project.get("key"), "projects[].key")
         project_name = optional_string(project.get("name")) or project_key
         project_ref = integration.ref("project", project_key, project_name)
@@ -329,7 +329,7 @@ def build_jira_posture_findings(
                 )
             )
 
-    for app in posture.get("apps", []):
+    for app in posture.get("apps") or []:
         if app.get("approved_by_security", True):
             continue
         app_key = require_value(app.get("key"), "apps[].key")
