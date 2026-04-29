@@ -1,6 +1,7 @@
 package archtests
 
 import (
+	"bytes"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -9,6 +10,27 @@ import (
 	"strings"
 	"testing"
 )
+
+var forbiddenGraphBackendMarkers = []string{
+	"arango",
+	"cayley",
+	"dgraph",
+	"gremlin",
+	"janusgraph",
+	"memgraph",
+	"nebula",
+	"neo4j",
+}
+
+var forbiddenGraphBackendEnvMarkers = []string{
+	"CEREBRO_GRAPH_BACKEND",
+	"CEREBRO_NEO4J_",
+	"CEREBRO_DGRAPH_",
+	"CEREBRO_ARANGO_",
+	"CEREBRO_GREMLIN_",
+	"CEREBRO_MEMGRAPH_",
+	"CEREBRO_NEBULA_",
+}
 
 func TestGraphStoreImplementationIsKuzuOnly(t *testing.T) {
 	root := repoRoot(t)
@@ -58,6 +80,79 @@ func TestGraphStoreImportsUseKuzuImplementationOnly(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatalf("scan graph store imports: %v", err)
+	}
+}
+
+func TestGraphStoreDependenciesAreKuzuOnly(t *testing.T) {
+	root := repoRoot(t)
+	for _, name := range []string{"go.mod", "go.sum"} {
+		body, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		lower := bytes.ToLower(body)
+		for _, marker := range forbiddenGraphBackendMarkers {
+			if bytes.Contains(lower, []byte(marker)) {
+				t.Fatalf("%s contains forbidden graph backend dependency marker %q", name, marker)
+			}
+		}
+	}
+}
+
+func TestGraphStoreProductionEnvVarsAreKuzuOnly(t *testing.T) {
+	root := repoRoot(t)
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", "vendor", "docs":
+				return filepath.SkipDir
+			default:
+				return nil
+			}
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") || strings.Contains(path, string(filepath.Separator)+"tools"+string(filepath.Separator)+"archtests"+string(filepath.Separator)) {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, marker := range forbiddenGraphBackendEnvMarkers {
+			if bytes.Contains(body, []byte(marker)) {
+				t.Fatalf("%s contains forbidden graph backend env var marker %q", shortPath(root, path), marker)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("scan graph store env vars: %v", err)
+	}
+}
+
+func TestGraphStoreDriverConstantsAreKuzuOnly(t *testing.T) {
+	root := repoRoot(t)
+	path := filepath.Join(root, "internal", "config", "config.go")
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse config.go: %v", err)
+	}
+	var graphDrivers []string
+	ast.Inspect(file, func(node ast.Node) bool {
+		valueSpec, ok := node.(*ast.ValueSpec)
+		if !ok {
+			return true
+		}
+		for _, name := range valueSpec.Names {
+			if strings.HasPrefix(name.Name, "GraphStoreDriver") {
+				graphDrivers = append(graphDrivers, name.Name)
+			}
+		}
+		return true
+	})
+	if strings.Join(graphDrivers, ",") != "GraphStoreDriverKuzu" {
+		t.Fatalf("graph store drivers = %v, want only GraphStoreDriverKuzu", graphDrivers)
 	}
 }
 

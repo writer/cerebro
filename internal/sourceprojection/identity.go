@@ -214,9 +214,9 @@ func identityUserProjections(event *cerebrov1.EventEnvelope, profile identityPro
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), userURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), userURN, email)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email)
 		if !sameIdentifier(email, login) {
-			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), userURN, login)
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, login)
 		}
 	}
 	return identityProjectionResult(entities, links)
@@ -259,7 +259,7 @@ func identityGroupProjections(event *cerebrov1.EventEnvelope, profile identityPr
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), groupURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), groupURN, groupEmail)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), groupURN, groupEmail)
 	}
 	return identityProjectionResult(entities, links)
 }
@@ -307,7 +307,7 @@ func identityGroupMembershipProjections(event *cerebrov1.EventEnvelope, profile 
 				"status":      strings.TrimSpace(attributes["member_status"]),
 			},
 		})
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), memberURN, memberEmail)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), memberURN, memberEmail)
 		if groupURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), memberURN, groupURN, relationMemberOf, map[string]string{
 				"event_id": event.GetId(),
@@ -315,7 +315,7 @@ func identityGroupMembershipProjections(event *cerebrov1.EventEnvelope, profile 
 			}))
 		}
 	}
-	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), groupURN, firstNonEmpty(attributes["group_email"], attributes["group_id"]))
+	addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), groupURN, firstNonEmpty(attributes["group_email"], attributes["group_id"]))
 	return identityProjectionResult(entities, links)
 }
 
@@ -370,7 +370,7 @@ func identityAppAssignmentProjections(event *cerebrov1.EventEnvelope, profile id
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType},
 		})
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), subjectURN, subjectEmail)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, subjectEmail)
 	}
 	if appURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -423,7 +423,7 @@ func identityRoleAssignmentProjections(event *cerebrov1.EventEnvelope, profile i
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: subjectAttributes,
 		})
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), subjectURN, firstNonEmpty(subjectEmail, subjectID))
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID))
 	}
 	if roleURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -466,7 +466,7 @@ func identityCredentialProjections(event *cerebrov1.EventEnvelope, profile ident
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType},
 		})
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), subjectURN, firstNonEmpty(subjectEmail, subjectID))
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID))
 	}
 	if credentialURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -507,7 +507,7 @@ func identityAuditProjections(event *cerebrov1.EventEnvelope, profile identityPr
 			Label:      firstNonEmpty(attributes["actor_name"], actorEmail, attributes["actor_id"]),
 			Attributes: map[string]string{"email": actorEmail, "actor_id": strings.TrimSpace(attributes["actor_id"])},
 		})
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), actorURN, actorEmail)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorEmail)
 	}
 	if resourceURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{

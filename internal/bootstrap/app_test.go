@@ -2875,10 +2875,22 @@ func cloneNeighborhoodRelation(relation *ports.NeighborhoodRelation) *ports.Neig
 		return nil
 	}
 	return &ports.NeighborhoodRelation{
-		FromURN:  relation.FromURN,
-		Relation: relation.Relation,
-		ToURN:    relation.ToURN,
+		FromURN:    relation.FromURN,
+		Relation:   relation.Relation,
+		ToURN:      relation.ToURN,
+		Attributes: cloneStringMap(relation.Attributes),
 	}
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func findingTestEvent(id string, eventType string, outcome string) *cerebrov1.EventEnvelope {

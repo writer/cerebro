@@ -7,48 +7,83 @@ import (
 )
 
 func TestParseGraphIngestArgs(t *testing.T) {
-	sourceID, config, tenantID, pageLimit, cursor, err := parseGraphIngestArgs([]string{
+	options, err := parseGraphIngestArgs([]string{
 		"github",
 		"tenant_id=writer",
 		"page_limit=5",
 		"cursor=next-page",
+		"checkpoint=true",
+		"checkpoint_id=github-writer",
 		"family=audit",
 		"owner=WriterInternal",
 	})
 	if err != nil {
 		t.Fatalf("parseGraphIngestArgs() error = %v", err)
 	}
-	if sourceID != "github" {
-		t.Fatalf("sourceID = %q, want github", sourceID)
+	if options.SourceID != "github" {
+		t.Fatalf("SourceID = %q, want github", options.SourceID)
 	}
-	if tenantID != "writer" {
-		t.Fatalf("tenantID = %q, want writer", tenantID)
+	if options.TenantID != "writer" {
+		t.Fatalf("TenantID = %q, want writer", options.TenantID)
 	}
-	if pageLimit != 5 {
-		t.Fatalf("pageLimit = %d, want 5", pageLimit)
+	if options.PageLimit != 5 {
+		t.Fatalf("PageLimit = %d, want 5", options.PageLimit)
 	}
-	if cursor == nil || cursor.GetOpaque() != "next-page" {
-		t.Fatalf("cursor = %#v, want next-page", cursor)
+	if options.Cursor == nil || options.Cursor.GetOpaque() != "next-page" {
+		t.Fatalf("Cursor = %#v, want next-page", options.Cursor)
 	}
-	if config["family"] != "audit" || config["owner"] != "WriterInternal" {
-		t.Fatalf("config = %#v, want source config preserved", config)
+	if !options.CheckpointEnabled || options.CheckpointID != "github-writer" {
+		t.Fatalf("checkpoint options = enabled:%t id:%q, want enabled github-writer", options.CheckpointEnabled, options.CheckpointID)
+	}
+	if options.SourceConfig["family"] != "audit" || options.SourceConfig["owner"] != "WriterInternal" {
+		t.Fatalf("SourceConfig = %#v, want source config preserved", options.SourceConfig)
 	}
 }
 
 func TestParseGraphIngestArgsDefaultsPageLimit(t *testing.T) {
-	_, _, _, pageLimit, _, err := parseGraphIngestArgs([]string{"aws", "family=cloudtrail"})
+	options, err := parseGraphIngestArgs([]string{"aws", "family=cloudtrail"})
 	if err != nil {
 		t.Fatalf("parseGraphIngestArgs() error = %v", err)
 	}
-	if pageLimit != defaultGraphIngestPageLimit {
-		t.Fatalf("pageLimit = %d, want %d", pageLimit, defaultGraphIngestPageLimit)
+	if options.PageLimit != defaultGraphIngestPageLimit {
+		t.Fatalf("PageLimit = %d, want %d", options.PageLimit, defaultGraphIngestPageLimit)
 	}
 }
 
 func TestParseGraphIngestArgsRejectsInvalidPageLimit(t *testing.T) {
-	_, _, _, _, _, err := parseGraphIngestArgs([]string{"aws", "page_limit=0"})
+	_, err := parseGraphIngestArgs([]string{"aws", "page_limit=0"})
 	if err == nil {
 		t.Fatal("parseGraphIngestArgs() error = nil, want non-nil")
+	}
+}
+
+func TestGraphIngestCheckpointIDScrubsSensitiveConfig(t *testing.T) {
+	options := graphIngestOptions{
+		SourceID: "github",
+		TenantID: "writer",
+		SourceConfig: map[string]string{
+			"owner": "WriterInternal",
+			"token": "secret-token-a",
+		},
+	}
+	first := graphIngestCheckpointID(options)
+	options.SourceConfig["token"] = "secret-token-b"
+	second := graphIngestCheckpointID(options)
+	if first != second {
+		t.Fatalf("checkpoint id changed after token mutation: %q != %q", first, second)
+	}
+}
+
+func TestParseGraphNeighborhoodArgs(t *testing.T) {
+	rootURN, limit, err := parseGraphNeighborhoodArgs([]string{"root_urn=urn:cerebro:writer:github_user:alice", "limit=7"})
+	if err != nil {
+		t.Fatalf("parseGraphNeighborhoodArgs() error = %v", err)
+	}
+	if rootURN != "urn:cerebro:writer:github_user:alice" {
+		t.Fatalf("rootURN = %q, want alice urn", rootURN)
+	}
+	if limit != 7 {
+		t.Fatalf("limit = %d, want 7", limit)
 	}
 }
 

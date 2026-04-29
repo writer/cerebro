@@ -487,9 +487,10 @@ func cloneNeighborhoodRelation(relation *ports.NeighborhoodRelation) *ports.Neig
 		return nil
 	}
 	return &ports.NeighborhoodRelation{
-		FromURN:  relation.FromURN,
-		Relation: relation.Relation,
-		ToURN:    relation.ToURN,
+		FromURN:    relation.FromURN,
+		Relation:   relation.Relation,
+		ToURN:      relation.ToURN,
+		Attributes: cloneAttributes(relation.Attributes),
 	}
 }
 

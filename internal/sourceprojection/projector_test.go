@@ -341,6 +341,23 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	if _, ok := state.links[awsActorURN+"|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("aws canonical identity link missing for %q", canonicalIdentityURN)
 	}
+	githubIdentityLink := state.links["urn:cerebro:writer:github_user:alice|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]
+	if got := githubIdentityLink.Attributes["evidence_type"]; got != "shared_identifier" {
+		t.Fatalf("github identity evidence_type = %q, want shared_identifier", got)
+	}
+	if got := githubIdentityLink.Attributes["confidence"]; got != "0.95" {
+		t.Fatalf("github identity confidence = %q, want 0.95", got)
+	}
+	if got := githubIdentityLink.Attributes["source_event_id"]; got != "github-audit-1" {
+		t.Fatalf("github identity source_event_id = %q, want github-audit-1", got)
+	}
+	awsIdentityLink := state.links[awsActorURN+"|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]
+	if got := awsIdentityLink.Attributes["match_type"]; got != "extracted_email" {
+		t.Fatalf("aws identity match_type = %q, want extracted_email", got)
+	}
+	if got := awsIdentityLink.Attributes["confidence"]; got != "0.85" {
+		t.Fatalf("aws identity confidence = %q, want 0.85", got)
+	}
 }
 
 func TestProjectIdentityProviderJoinEdges(t *testing.T) {

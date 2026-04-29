@@ -47,6 +47,9 @@ func TestGetEntityNeighborhoodReturnsRootNeighborsAndRelations(t *testing.T) {
 	if !containsNeighborhoodRelation(neighborhood.Relations, "urn:cerebro:writer:github_user:alice", "authored", "urn:cerebro:writer:github_pull_request:writer/cerebro#447") {
 		t.Fatalf("Relations missing authored edge: %#v", neighborhood.Relations)
 	}
+	if !containsNeighborhoodRelationAttribute(neighborhood.Relations, "urn:cerebro:writer:github_user:alice", "authored", "urn:cerebro:writer:github_pull_request:writer/cerebro#447", "event_id", "github-pr-447") {
+		t.Fatalf("Relations missing authored edge attributes: %#v", neighborhood.Relations)
+	}
 	if !containsNeighborhoodRelation(neighborhood.Relations, "urn:cerebro:writer:github_pull_request:writer/cerebro#447", "belongs_to", "urn:cerebro:writer:github_repo:writer/cerebro") {
 		t.Fatalf("Relations missing belongs_to edge: %#v", neighborhood.Relations)
 	}
@@ -72,6 +75,15 @@ func containsNeighborhoodNode(nodes []*ports.NeighborhoodNode, urn string, entit
 func containsNeighborhoodRelation(relations []*ports.NeighborhoodRelation, fromURN string, relation string, toURN string) bool {
 	for _, edge := range relations {
 		if edge != nil && edge.FromURN == fromURN && edge.Relation == relation && edge.ToURN == toURN {
+			return true
+		}
+	}
+	return false
+}
+
+func containsNeighborhoodRelationAttribute(relations []*ports.NeighborhoodRelation, fromURN string, relation string, toURN string, key string, value string) bool {
+	for _, edge := range relations {
+		if edge != nil && edge.FromURN == fromURN && edge.Relation == relation && edge.ToURN == toURN && edge.Attributes[key] == value {
 			return true
 		}
 	}

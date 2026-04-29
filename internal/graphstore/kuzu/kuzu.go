@@ -20,9 +20,10 @@ import (
 
 // Store is the Kuzu-backed graph projection store implementation.
 type Store struct {
-	db          *sql.DB
-	schemaMu    sync.Mutex
-	schemaReady bool
+	db                    *sql.DB
+	schemaMu              sync.Mutex
+	schemaReady           bool
+	checkpointSchemaReady bool
 }
 
 type Counts = graphstore.Counts
@@ -30,6 +31,7 @@ type Traversal = graphstore.Traversal
 type IntegrityCheck = graphstore.IntegrityCheck
 type PathPattern = graphstore.PathPattern
 type Topology = graphstore.Topology
+type IngestCheckpoint = graphstore.IngestCheckpoint
 
 // Open opens a Kuzu-backed graph projection store.
 func Open(cfg config.GraphStoreConfig) (*Store, error) {
