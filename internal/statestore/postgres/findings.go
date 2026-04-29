@@ -94,10 +94,12 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	}
 	firstObservedAt := finding.FirstObservedAt.UTC()
 	lastObservedAt := finding.LastObservedAt.UTC()
-	if firstObservedAt.IsZero() {
+	switch {
+	case firstObservedAt.IsZero() && lastObservedAt.IsZero():
+		return nil, errors.New("finding observed at is required")
+	case firstObservedAt.IsZero():
 		firstObservedAt = lastObservedAt
-	}
-	if lastObservedAt.IsZero() {
+	case lastObservedAt.IsZero():
 		lastObservedAt = firstObservedAt
 	}
 	var stored findingRow

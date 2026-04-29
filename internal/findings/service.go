@@ -149,7 +149,7 @@ func matchesOktaPolicyRuleLifecycleTampering(event *cerebrov1.EventEnvelope) boo
 	}
 	outcome := strings.ToLower(strings.TrimSpace(attributes["outcome_result"]))
 	if outcome == "" {
-		outcome = "success"
+		return false
 	}
 	_, ok := oktaPolicyRuleLifecycleTamperingOutcomes[outcome]
 	return ok

@@ -397,9 +397,13 @@ func writeFindingError(w http.ResponseWriter, err error) {
 }
 
 func readProtoJSON(r *http.Request, message proto.Message) error {
-	body, err := io.ReadAll(r.Body)
+	const maxBodyBytes int64 = 1 << 20
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
 	if err != nil {
 		return err
+	}
+	if int64(len(body)) > maxBodyBytes {
+		return errors.New("request body too large")
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil
