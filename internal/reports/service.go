@@ -556,11 +556,15 @@ func graphRelationsPayload(relations []*ports.NeighborhoodRelation) []any {
 		if relation == nil {
 			continue
 		}
-		payload = append(payload, map[string]any{
+		relationPayload := map[string]any{
 			"from_urn": relation.FromURN,
 			"relation": relation.Relation,
 			"to_urn":   relation.ToURN,
-		})
+		}
+		if len(relation.Attributes) > 0 {
+			relationPayload["attributes"] = relation.Attributes
+		}
+		payload = append(payload, relationPayload)
 	}
 	return payload
 }

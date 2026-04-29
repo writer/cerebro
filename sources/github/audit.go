@@ -247,6 +247,8 @@ func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings se
 	addAttribute(attributes, "actor", entry.GetActor())
 	addAttribute(attributes, "actor_is_agent", boolString(raw, "actor_is_agent"))
 	addAttribute(attributes, "actor_is_bot", boolString(raw, "actor_is_bot"))
+	addAttribute(attributes, "external_identity_nameid", entry.GetExternalIdentityNameID())
+	addAttribute(attributes, "external_identity_username", entry.GetExternalIdentityUsername())
 	addAttribute(attributes, "programmatic_access_type", rawString(raw, "programmatic_access_type"))
 	addAttribute(attributes, "repo", rawString(raw, "repo"))
 	addAttribute(attributes, "user", entry.GetUser())

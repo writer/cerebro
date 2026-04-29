@@ -131,7 +131,7 @@ func cloudPrivilegePathProjections(event *cerebrov1.EventEnvelope, profile ident
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType},
 		})
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), subjectURN, firstNonEmpty(subjectEmail, subjectID))
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID))
 	}
 	if targetURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -142,7 +142,7 @@ func cloudPrivilegePathProjections(event *cerebrov1.EventEnvelope, profile ident
 			Label:      firstNonEmpty(attributes["target_name"], attributes["resource_name"], targetEmail, targetID),
 			Attributes: map[string]string{"target_id": targetID, "target_type": targetType},
 		})
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), targetURN, targetEmail)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), targetURN, targetEmail)
 	}
 	if subjectURN != "" && targetURN != "" {
 		addLink(links, projectedLink(tenantID, event.GetSourceId(), subjectURN, targetURN, relation, map[string]string{
@@ -181,7 +181,7 @@ func cloudEffectivePermissionProjections(event *cerebrov1.EventEnvelope, profile
 			Label:      firstNonEmpty(attributes["subject_name"], subjectEmail, subjectID),
 			Attributes: map[string]string{"email": subjectEmail, "subject_type": subjectType},
 		})
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), subjectURN, firstNonEmpty(subjectEmail, subjectID))
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), subjectURN, firstNonEmpty(subjectEmail, subjectID))
 	}
 	if resourceURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{

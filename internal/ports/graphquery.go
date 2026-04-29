@@ -10,23 +10,24 @@ var ErrGraphEntityNotFound = errors.New("graph entity not found")
 
 // NeighborhoodNode is the normalized graph node shape returned by bounded neighborhood queries.
 type NeighborhoodNode struct {
-	URN        string
-	EntityType string
-	Label      string
+	URN        string `json:"urn"`
+	EntityType string `json:"entity_type"`
+	Label      string `json:"label"`
 }
 
 // NeighborhoodRelation is the normalized graph edge shape returned by bounded neighborhood queries.
 type NeighborhoodRelation struct {
-	FromURN  string
-	Relation string
-	ToURN    string
+	FromURN    string            `json:"from_urn"`
+	Relation   string            `json:"relation"`
+	ToURN      string            `json:"to_urn"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 // EntityNeighborhood is one bounded graph neighborhood centered on a root entity.
 type EntityNeighborhood struct {
-	Root      *NeighborhoodNode
-	Neighbors []*NeighborhoodNode
-	Relations []*NeighborhoodRelation
+	Root      *NeighborhoodNode       `json:"root,omitempty"`
+	Neighbors []*NeighborhoodNode     `json:"neighbors"`
+	Relations []*NeighborhoodRelation `json:"relations"`
 }
 
 // GraphQueryStore exposes bounded graph neighborhood reads.

@@ -273,11 +273,12 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 			SourceId: "github",
 			Kind:     "github.audit",
 			Attributes: map[string]string{
-				"actor":         "alice@writer.com",
-				"org":           "writer",
-				"repo":          "writer/cerebro",
-				"resource_id":   "writer/cerebro",
-				"resource_type": "repository",
+				"actor":                    "alice",
+				"external_identity_nameid": "alice@writer.com",
+				"org":                      "writer",
+				"repo":                     "writer/cerebro",
+				"resource_id":              "writer/cerebro",
+				"resource_type":            "repository",
 			},
 		},
 		{
@@ -324,13 +325,13 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	if _, ok := state.entities[canonicalIdentityURN]; !ok {
 		t.Fatalf("canonical identity entity %q missing", canonicalIdentityURN)
 	}
-	if _, ok := state.links["urn:cerebro:writer:github_user:alice@writer.com|"+relationHasIdentifier+"|"+identifierURN]; !ok {
+	if _, ok := state.links["urn:cerebro:writer:github_user:alice|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("github identifier link missing for %q", identifierURN)
 	}
 	if _, ok := state.links["urn:cerebro:writer:okta_user:00u1|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("okta identifier link missing for %q", identifierURN)
 	}
-	if _, ok := state.links["urn:cerebro:writer:github_user:alice@writer.com|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
+	if _, ok := state.links["urn:cerebro:writer:github_user:alice|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("github canonical identity link missing for %q", canonicalIdentityURN)
 	}
 	if _, ok := state.links["urn:cerebro:writer:okta_user:00u1|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
@@ -339,6 +340,23 @@ func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	awsActorURN := "urn:cerebro:writer:aws_user:arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_admin/alice@writer.com"
 	if _, ok := state.links[awsActorURN+"|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]; !ok {
 		t.Fatalf("aws canonical identity link missing for %q", canonicalIdentityURN)
+	}
+	githubIdentityLink := state.links["urn:cerebro:writer:github_user:alice|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]
+	if got := githubIdentityLink.Attributes["evidence_type"]; got != "shared_identifier" {
+		t.Fatalf("github identity evidence_type = %q, want shared_identifier", got)
+	}
+	if got := githubIdentityLink.Attributes["confidence"]; got != "0.95" {
+		t.Fatalf("github identity confidence = %q, want 0.95", got)
+	}
+	if got := githubIdentityLink.Attributes["source_event_id"]; got != "github-audit-1" {
+		t.Fatalf("github identity source_event_id = %q, want github-audit-1", got)
+	}
+	awsIdentityLink := state.links[awsActorURN+"|"+relationRepresentsIdentity+"|"+canonicalIdentityURN]
+	if got := awsIdentityLink.Attributes["match_type"]; got != "extracted_email" {
+		t.Fatalf("aws identity match_type = %q, want extracted_email", got)
+	}
+	if got := awsIdentityLink.Attributes["confidence"]; got != "0.85" {
+		t.Fatalf("aws identity confidence = %q, want 0.85", got)
 	}
 }
 
