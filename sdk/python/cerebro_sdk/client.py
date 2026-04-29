@@ -53,7 +53,7 @@ class Client:
             if value in (None, ""):
                 continue
             query[key] = str(value)
-        path = f"/source-runtimes/{parse.quote(runtime_id)}/claims"
+        path = f"/source-runtimes/{parse.quote(runtime_id, safe='')}/claims"
         if query:
             path = f"{path}?{parse.urlencode(query)}"
         result, _ = self._request_json("GET", path)
