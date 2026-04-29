@@ -253,6 +253,27 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	if runtime.GetLastSyncedAt() == nil {
 		t.Fatal("stored last_synced_at = nil, want non-nil")
 	}
+
+	secondResp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+		Id:        "writer-github",
+		PageLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("Sync(second) error = %v", err)
+	}
+	if secondResp.GetEventsAppended() != 0 {
+		t.Fatalf("Sync(second).EventsAppended = %d, want 0", secondResp.GetEventsAppended())
+	}
+	if secondResp.GetPagesRead() != 0 {
+		t.Fatalf("Sync(second).PagesRead = %d, want 0", secondResp.GetPagesRead())
+	}
+	if len(log.events) != 2 {
+		t.Fatalf("len(appendLog.events) after second sync = %d, want 2", len(log.events))
+	}
+	runtime = store.runtimes["writer-github"]
+	if runtime.GetCheckpoint().GetCursorOpaque() != "2" {
+		t.Fatalf("stored checkpoint cursor after second sync = %q, want %q", runtime.GetCheckpoint().GetCursorOpaque(), "2")
+	}
 }
 
 func TestPutResetsProgressWhenTenantChanges(t *testing.T) {

@@ -111,7 +111,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
-	cursor := cloneCursor(runtime.GetNextCursor())
+	cursor := resumeCursor(runtime)
 	var (
 		eventsAppended    uint32
 		pagesRead         uint32
@@ -306,6 +306,19 @@ func cloneCursor(cursor *cerebrov1.SourceCursor) *cerebrov1.SourceCursor {
 		return nil
 	}
 	return proto.Clone(cursor).(*cerebrov1.SourceCursor)
+}
+
+func resumeCursor(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceCursor {
+	if runtime == nil {
+		return nil
+	}
+	if cursor := cloneCursor(runtime.GetNextCursor()); cursor != nil {
+		return cursor
+	}
+	if runtime.GetCheckpoint().GetCursorOpaque() == "" {
+		return nil
+	}
+	return &cerebrov1.SourceCursor{Opaque: runtime.GetCheckpoint().GetCursorOpaque()}
 }
 
 func cloneCheckpoint(checkpoint *cerebrov1.SourceCheckpoint) *cerebrov1.SourceCheckpoint {
