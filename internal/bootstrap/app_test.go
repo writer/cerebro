@@ -210,6 +210,8 @@ func TestInvalidHTTPRequestErrorsReturnBadRequest(t *testing.T) {
 		{name: "finding", write: writeFindingError},
 		{name: "knowledge", write: writeKnowledgeError},
 		{name: "workflow replay", write: writeWorkflowReplayError},
+		{name: "graph query", write: writeGraphQueryError},
+		{name: "graph ingest", write: writeGraphIngestError},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()

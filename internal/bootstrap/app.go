@@ -543,8 +543,8 @@ func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request
 	request := &cerebrov1.GetEntityNeighborhoodRequest{}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeGraphQueryError(w, fmt.Errorf("%w: %w", graphquery.ErrInvalidRequest, err))
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeGraphQueryError(w, err)
 			return
 		}
 	}
@@ -569,8 +569,8 @@ func (a *App) handleRunGraphIngestRuntime(w http.ResponseWriter, r *http.Request
 	if pageLimit := r.URL.Query().Get("page_limit"); pageLimit != "" {
 		overrides := &cerebrov1.RunGraphIngestRuntimeRequest{}
 		body := []byte(`{"page_limit":` + pageLimit + `}`)
-		if err := protojson.Unmarshal(body, overrides); err != nil {
-			writeGraphIngestError(w, fmt.Errorf("%w: %w", graphingest.ErrInvalidRequest, err))
+		if err := unmarshalHTTPProtoJSON(body, overrides); err != nil {
+			writeGraphIngestError(w, err)
 			return
 		}
 		request.PageLimit = overrides.GetPageLimit()
@@ -578,8 +578,8 @@ func (a *App) handleRunGraphIngestRuntime(w http.ResponseWriter, r *http.Request
 	if resetCheckpoint := r.URL.Query().Get("reset_checkpoint"); resetCheckpoint != "" {
 		overrides := &cerebrov1.RunGraphIngestRuntimeRequest{}
 		body := []byte(`{"reset_checkpoint":` + resetCheckpoint + `}`)
-		if err := protojson.Unmarshal(body, overrides); err != nil {
-			writeGraphIngestError(w, fmt.Errorf("%w: %w", graphingest.ErrInvalidRequest, err))
+		if err := unmarshalHTTPProtoJSON(body, overrides); err != nil {
+			writeGraphIngestError(w, err)
 			return
 		}
 		request.ResetCheckpoint = overrides.GetResetCheckpoint()
@@ -622,8 +622,8 @@ func (a *App) handleListGraphIngestRuns(w http.ResponseWriter, r *http.Request) 
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeGraphIngestError(w, fmt.Errorf("%w: %w", graphingest.ErrInvalidRequest, err))
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeGraphIngestError(w, err)
 			return
 		}
 		request.RuntimeId = r.URL.Query().Get("runtime_id")
@@ -645,8 +645,8 @@ func (a *App) handleCheckGraphIngestHealth(w http.ResponseWriter, r *http.Reques
 	request := &cerebrov1.CheckGraphIngestHealthRequest{}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeGraphIngestError(w, fmt.Errorf("%w: %w", graphingest.ErrInvalidRequest, err))
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeGraphIngestError(w, err)
 			return
 		}
 	}
@@ -691,8 +691,8 @@ func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.SyncSourceRuntimeRequest{}
 	if pageLimit := r.URL.Query().Get("page_limit"); pageLimit != "" {
 		body := []byte(`{"page_limit":` + pageLimit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeSourceRuntimeError(w, invalidHTTPRequestError(err))
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeSourceRuntimeError(w, err)
 			return
 		}
 	}
@@ -719,8 +719,8 @@ func (a *App) handleListClaims(w http.ResponseWriter, r *http.Request) {
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeClaimError(w, invalidHTTPRequestError(err))
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeClaimError(w, err)
 			return
 		}
 		request.RuntimeId = r.PathValue("runtimeID")
@@ -783,8 +783,8 @@ func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http
 	request.RuleId = r.URL.Query().Get("rule_id")
 	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
 		body := []byte(`{"event_limit":` + eventLimit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeFindingError(w, invalidHTTPRequestError(err))
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeFindingError(w, err)
 			return
 		}
 	}
@@ -810,8 +810,8 @@ func (a *App) handleEvaluateSourceRuntimeFindingRules(w http.ResponseWriter, r *
 	}
 	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
 		body := []byte(`{"event_limit":` + eventLimit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeFindingError(w, invalidHTTPRequestError(err))
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeFindingError(w, err)
 			return
 		}
 	}
@@ -851,8 +851,8 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeFindingError(w, invalidHTTPRequestError(err))
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeFindingError(w, err)
 			return
 		}
 		request.RuntimeId = r.PathValue("runtimeID")
@@ -901,8 +901,8 @@ func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) 
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeFindingError(w, invalidHTTPRequestError(err))
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeFindingError(w, err)
 			return
 		}
 		request.RuntimeId = r.PathValue("runtimeID")
@@ -940,8 +940,8 @@ func (a *App) handleListFindingEvaluationRuns(w http.ResponseWriter, r *http.Req
 	}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeFindingError(w, invalidHTTPRequestError(err))
+		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+			writeFindingError(w, err)
 			return
 		}
 		request.RuntimeId = r.PathValue("runtimeID")
@@ -1942,7 +1942,7 @@ func writeGraphQueryError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, graphquery.ErrInvalidRequest):
+	case errors.Is(err, graphquery.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
@@ -1957,7 +1957,7 @@ func writeGraphIngestError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, graphingest.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, graphingest.ErrInvalidRequest):
+	case errors.Is(err, graphingest.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
@@ -1994,6 +1994,10 @@ func readProtoJSON(r *http.Request, message proto.Message) error {
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil
 	}
+	return unmarshalHTTPProtoJSON(body, message)
+}
+
+func unmarshalHTTPProtoJSON(body []byte, message proto.Message) error {
 	if err := protojson.Unmarshal(body, message); err != nil {
 		return invalidHTTPRequestError(err)
 	}
