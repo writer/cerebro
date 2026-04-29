@@ -11,6 +11,9 @@ var _ = func() int {
 
 func init() {
 	panic("allowed during init")
+	_ = func() int {
+		panic("closure panic is not package init") // want `panic is forbidden outside tests, init, and panicsafe`
+	}
 }
 
 type T struct{}

@@ -59,9 +59,13 @@ func run(pass *analysis.Pass) (any, error) {
 
 func enclosingIsPackageInit(stack []ast.Node) bool {
 	for i := len(stack) - 1; i >= 0; i-- {
-		decl, ok := stack[i].(*ast.FuncDecl)
-		if ok && decl.Name != nil {
-			return decl.Recv == nil && decl.Name.Name == "init"
+		switch fn := stack[i].(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.FuncDecl:
+			if fn.Name != nil {
+				return fn.Recv == nil && fn.Name.Name == "init"
+			}
 		}
 	}
 	return false
