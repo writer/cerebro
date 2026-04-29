@@ -74,9 +74,10 @@ func TestBootstrapEndpoints(t *testing.T) {
 }
 
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
+	const rawDependencyError = "state store unavailable at postgres://user:pass@internal-db:5432/cerebro"
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		AppendLog:  stubAppendLog{},
-		StateStore: stubStore{err: errors.New("state store unavailable")},
+		StateStore: stubStore{err: errors.New(rawDependencyError)},
 		GraphStore: stubStore{},
 	})
 	server := httptest.NewServer(app.Handler())
@@ -92,5 +93,11 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	}
 	if got := healthResp.Msg.Components[1].Status; got != "error" {
 		t.Fatalf("state_store status = %q, want %q", got, "error")
+	}
+	if got := healthResp.Msg.Components[1].Detail; got != "unhealthy" {
+		t.Fatalf("state_store detail = %q, want sanitized detail", got)
+	}
+	if got := healthResp.Msg.Components[1].Detail; got == rawDependencyError {
+		t.Fatalf("state_store detail leaked raw dependency error")
 	}
 }

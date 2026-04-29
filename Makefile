@@ -2,7 +2,7 @@
 
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
-BUF := GOTOOLCHAIN=go1.26.2 go run github.com/bufbuild/buf/cmd/buf@latest
+BUF := GOTOOLCHAIN=go1.26.2 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 APP_PACKAGES := ./cmd/... ./internal/...
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint

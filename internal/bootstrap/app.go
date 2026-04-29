@@ -129,7 +129,7 @@ func componentStatus(ctx context.Context, name string, dependency pinger) *cereb
 	}
 	if err := dependency.Ping(ctx); err != nil {
 		status.Status = "error"
-		status.Detail = err.Error()
+		status.Detail = "unhealthy"
 		return status
 	}
 	status.Status = "ready"
