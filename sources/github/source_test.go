@@ -426,6 +426,34 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 	}
 }
 
+func TestCheckDoesNotFollowRedirects(t *testing.T) {
+	redirectHit := false
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		redirectHit = true
+	}))
+	defer redirectTarget.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirectTarget.URL, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	err = source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url": redirector.URL,
+		"owner":    "writer",
+	}))
+	if err == nil {
+		t.Fatal("Check() error = nil, want non-nil redirect response")
+	}
+	if redirectHit {
+		t.Fatal("Check() followed redirect target")
+	}
+}
+
 func TestAcceptsEnterpriseAPIBaseURL(t *testing.T) {
 	for _, baseURL := range []string{
 		"https://ghe.example.com/api/v3",

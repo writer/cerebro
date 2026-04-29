@@ -224,6 +224,7 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: sourceHTTPTimeout}
 	}
+	httpClient = sourceHTTPClientNoRedirect(httpClient)
 	client := gogithub.NewClient(httpClient)
 	if settings.token != "" {
 		client = client.WithAuthToken(settings.token)
@@ -236,6 +237,20 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 		client = enterpriseClient
 	}
 	return client, settings, nil
+}
+
+func sourceHTTPClientNoRedirect(client *http.Client) *http.Client {
+	if client == nil {
+		client = &http.Client{Timeout: sourceHTTPTimeout}
+	}
+	if client.CheckRedirect != nil {
+		return client
+	}
+	cloned := *client
+	cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return &cloned
 }
 
 func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL bool) (settings, error) {

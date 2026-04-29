@@ -244,10 +244,8 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	source := &Source{
-		spec: spec,
-		client: &http.Client{
-			Timeout: oktaHTTPTimeout,
-		},
+		spec:   spec,
+		client: oktaHTTPClientNoRedirect(nil),
 	}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -823,7 +821,9 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 
 	client := s.client
 	if client == nil {
-		client = &http.Client{Timeout: oktaHTTPTimeout}
+		client = oktaHTTPClientNoRedirect(nil)
+	} else {
+		client = oktaHTTPClientNoRedirect(client)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -848,6 +848,20 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 		return headers, fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return headers, nil
+}
+
+func oktaHTTPClientNoRedirect(client *http.Client) *http.Client {
+	if client == nil {
+		client = &http.Client{Timeout: oktaHTTPTimeout}
+	}
+	if client.CheckRedirect != nil {
+		return client
+	}
+	cloned := *client
+	cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return &cloned
 }
 
 func readLimitedBody(body io.Reader) ([]byte, error) {

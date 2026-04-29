@@ -487,6 +487,34 @@ func TestGetJSONRejectsOversizedResponse(t *testing.T) {
 	}
 }
 
+func TestGetJSONDoesNotFollowRedirects(t *testing.T) {
+	redirectHit := false
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		redirectHit = true
+	}))
+	defer redirectTarget.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirectTarget.URL, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	var target []map[string]any
+	_, err = source.getJSON(context.Background(), settings{
+		baseURL: redirector.URL,
+		token:   "test-token",
+	}, "/api/v1/logs", nil, &target)
+	if err == nil {
+		t.Fatal("getJSON() error = nil, want non-nil redirect response")
+	}
+	if redirectHit {
+		t.Fatal("getJSON() followed redirect target")
+	}
+}
+
 func newOktaAPIHandler(t *testing.T) http.Handler {
 	t.Helper()
 
