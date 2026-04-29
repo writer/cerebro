@@ -304,7 +304,9 @@ func (a *App) handleRunReport(w http.ResponseWriter, r *http.Request) {
 	if request.Parameters == nil {
 		request.Parameters = map[string]string{}
 	}
-	config, err := sourceConfigFromRequest(r)
+	configReq := r.Clone(r.Context())
+	configReq.Header.Del("X-Cerebro-Source-Config")
+	config, err := sourceConfigFromRequest(configReq)
 	if err != nil {
 		writeReportError(w, err)
 		return

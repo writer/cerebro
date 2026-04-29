@@ -2511,6 +2511,7 @@ func TestReportEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new run report request: %v", err)
 	}
+	runReq.Header.Set("X-Cerebro-Source-Config", `{"token":"secret","api_key":"secret"}`)
 	runResp, err := server.Client().Do(runReq)
 	if err != nil {
 		t.Fatalf("POST /reports/{id}/runs error = %v", err)
@@ -2558,6 +2559,13 @@ func TestReportEndpoints(t *testing.T) {
 	}
 	if len(runtimeStore.reportRuns) != 1 {
 		t.Fatalf("len(runtimeStore.reportRuns) = %d, want 1", len(runtimeStore.reportRuns))
+	}
+	storedRun := runtimeStore.reportRuns[runID]
+	if _, ok := storedRun.GetParameters()["token"]; ok {
+		t.Fatalf("stored report parameters include token")
+	}
+	if _, ok := storedRun.GetParameters()["api_key"]; ok {
+		t.Fatalf("stored report parameters include api_key")
 	}
 	if graphStore.neighborhoodRootURN != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
 		t.Fatalf("graph evidence root urn = %q, want policy rule urn", graphStore.neighborhoodRootURN)
