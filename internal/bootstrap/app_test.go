@@ -32,6 +32,20 @@ type stubStore struct {
 
 func (s stubStore) Ping(context.Context) error { return s.err }
 
+func TestSourceConfigFromQueryDropsBaseURL(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources/github/read?token=test&base_url=http://127.0.0.1:1&cursor=2", nil)
+	config := sourceConfigFromQuery(req)
+	if _, ok := config["base_url"]; ok {
+		t.Fatalf("sourceConfigFromQuery() included base_url")
+	}
+	if _, ok := config["cursor"]; ok {
+		t.Fatalf("sourceConfigFromQuery() included cursor")
+	}
+	if got := config["token"]; got != "test" {
+		t.Fatalf("sourceConfigFromQuery()[token] = %q, want test", got)
+	}
+}
+
 func TestBootstrapEndpoints(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

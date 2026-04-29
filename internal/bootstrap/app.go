@@ -231,7 +231,7 @@ func (a *App) sourceService() *sourceops.Service {
 func sourceConfigFromQuery(r *http.Request) (map[string]string, error) {
 	values := make(map[string]string)
 	for key, rawValues := range r.URL.Query() {
-		if key == "cursor" || len(rawValues) == 0 {
+		if key == "cursor" || key == "base_url" || len(rawValues) == 0 {
 			continue
 		}
 		if sensitiveSourceConfigKey(key) {
