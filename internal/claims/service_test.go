@@ -32,11 +32,15 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 
 type stubClaimStore struct {
 	claims map[string]*ports.ClaimRecord
+	err    error
 }
 
 func (s *stubClaimStore) Ping(context.Context) error { return nil }
 
 func (s *stubClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
 	if s.claims == nil {
 		s.claims = make(map[string]*ports.ClaimRecord)
 	}
@@ -217,6 +221,95 @@ func TestWriteClaimsRejectsRelationWithoutObjectURN(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("WriteClaims() error = nil, want non-nil")
+	}
+}
+
+func TestWriteClaimsDoesNotProjectWhenPersistenceFails(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {
+					Id:       "writer-jira",
+					SourceId: "sdk",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubClaimStore{err: errors.New("persist failed")},
+		state,
+		nil,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				SubjectRef: &cerebrov1.EntityRef{
+					Urn:        "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+					EntityType: "ticket",
+				},
+				Predicate:   "status",
+				ObjectValue: "in_progress",
+				ClaimType:   claimTypeAttribute,
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("WriteClaims() error = nil, want non-nil")
+	}
+	if len(state.entities) != 0 {
+		t.Fatalf("len(state.entities) = %d, want 0", len(state.entities))
+	}
+	if len(state.links) != 0 {
+		t.Fatalf("len(state.links) = %d, want 0", len(state.links))
+	}
+}
+
+func TestNormalizeClaimIDIncludesObjectIdentity(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-jira"}
+	first, err := normalizeClaim(&cerebrov1.Claim{
+		SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		Predicate:  "assigned_to",
+		ObjectUrn:  "urn:cerebro:writer:runtime:writer-jira:user:alice",
+		ClaimType:  claimTypeRelation,
+	}, runtime)
+	if err != nil {
+		t.Fatalf("normalizeClaim(first) error = %v", err)
+	}
+	second, err := normalizeClaim(&cerebrov1.Claim{
+		SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		Predicate:  "assigned_to",
+		ObjectUrn:  "urn:cerebro:writer:runtime:writer-jira:user:bob",
+		ClaimType:  claimTypeRelation,
+	}, runtime)
+	if err != nil {
+		t.Fatalf("normalizeClaim(second) error = %v", err)
+	}
+	if first.GetId() == second.GetId() {
+		t.Fatalf("relation claim ids collided: %q", first.GetId())
+	}
+
+	attrFirst, err := normalizeClaim(&cerebrov1.Claim{
+		SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		Predicate:   "status",
+		ObjectValue: "open",
+		ClaimType:   claimTypeAttribute,
+	}, runtime)
+	if err != nil {
+		t.Fatalf("normalizeClaim(attrFirst) error = %v", err)
+	}
+	attrSecond, err := normalizeClaim(&cerebrov1.Claim{
+		SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		Predicate:   "status",
+		ObjectValue: "closed",
+		ClaimType:   claimTypeAttribute,
+	}, runtime)
+	if err != nil {
+		t.Fatalf("normalizeClaim(attrSecond) error = %v", err)
+	}
+	if attrFirst.GetId() == attrSecond.GetId() {
+		t.Fatalf("attribute claim ids collided: %q", attrFirst.GetId())
 	}
 }
 
