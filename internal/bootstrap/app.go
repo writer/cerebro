@@ -22,7 +22,9 @@ import (
 	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphingest"
 	"github.com/writer/cerebro/internal/graphquery"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/reports"
@@ -87,9 +89,13 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("POST /graph/write/outcome", app.handleWriteOutcome)
 	mux.HandleFunc("POST /platform/workflow/replay", app.handleReplayWorkflowEvents)
 	mux.HandleFunc("GET /graph/neighborhood", app.handleGetEntityNeighborhood)
+	mux.HandleFunc("GET /graph/ingest-health", app.handleCheckGraphIngestHealth)
+	mux.HandleFunc("GET /graph/ingest-runs", app.handleListGraphIngestRuns)
+	mux.HandleFunc("GET /graph/ingest-runs/{runID}", app.handleGetGraphIngestRun)
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
+	mux.HandleFunc("POST /source-runtimes/{runtimeID}/graph-ingest-runs", app.handleRunGraphIngestRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/claims", app.handleListClaims)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/claims", app.handleWriteClaims)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/findings", app.handleListFindings)
@@ -541,6 +547,104 @@ func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, graphNeighborhoodResponse(response))
+}
+
+func (a *App) handleRunGraphIngestRuntime(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.RunGraphIngestRuntimeRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeGraphIngestError(w, err)
+		return
+	}
+	if pageLimit := r.URL.Query().Get("page_limit"); pageLimit != "" {
+		overrides := &cerebrov1.RunGraphIngestRuntimeRequest{}
+		body := []byte(`{"page_limit":` + pageLimit + `}`)
+		if err := protojson.Unmarshal(body, overrides); err != nil {
+			writeGraphIngestError(w, err)
+			return
+		}
+		request.PageLimit = overrides.GetPageLimit()
+	}
+	if resetCheckpoint := r.URL.Query().Get("reset_checkpoint"); resetCheckpoint != "" {
+		overrides := &cerebrov1.RunGraphIngestRuntimeRequest{}
+		body := []byte(`{"reset_checkpoint":` + resetCheckpoint + `}`)
+		if err := protojson.Unmarshal(body, overrides); err != nil {
+			writeGraphIngestError(w, err)
+			return
+		}
+		request.ResetCheckpoint = overrides.GetResetCheckpoint()
+	}
+	if checkpointID := r.URL.Query().Get("checkpoint_id"); checkpointID != "" {
+		request.CheckpointId = checkpointID
+	}
+	request.RuntimeId = r.PathValue("runtimeID")
+	result, err := a.graphIngestService().RunRuntime(r.Context(), graphingest.RuntimeRequest{
+		RuntimeID:       request.GetRuntimeId(),
+		PageLimit:       request.GetPageLimit(),
+		CheckpointID:    request.GetCheckpointId(),
+		ResetCheckpoint: request.GetResetCheckpoint(),
+		Trigger:         "api",
+	})
+	if err != nil {
+		writeGraphIngestError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.RunGraphIngestRuntimeResponse{
+		Result: graphIngestRunResultMessage(result),
+	})
+}
+
+func (a *App) handleGetGraphIngestRun(w http.ResponseWriter, r *http.Request) {
+	run, err := a.graphIngestService().GetRun(r.Context(), r.PathValue("runID"))
+	if err != nil {
+		writeGraphIngestError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetGraphIngestRunResponse{
+		Run: graphIngestRunMessage(run),
+	})
+}
+
+func (a *App) handleListGraphIngestRuns(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.ListGraphIngestRunsRequest{
+		RuntimeId: r.URL.Query().Get("runtime_id"),
+		Status:    r.URL.Query().Get("status"),
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		body := []byte(`{"limit":` + limit + `}`)
+		if err := protojson.Unmarshal(body, request); err != nil {
+			writeGraphIngestError(w, err)
+			return
+		}
+		request.RuntimeId = r.URL.Query().Get("runtime_id")
+		request.Status = r.URL.Query().Get("status")
+	}
+	result, err := a.graphIngestService().ListRuns(r.Context(), graphstore.IngestRunFilter{
+		RuntimeID: request.GetRuntimeId(),
+		Status:    request.GetStatus(),
+		Limit:     int(request.GetLimit()),
+	})
+	if err != nil {
+		writeGraphIngestError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, graphIngestListResponse(result))
+}
+
+func (a *App) handleCheckGraphIngestHealth(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.CheckGraphIngestHealthRequest{}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		body := []byte(`{"limit":` + limit + `}`)
+		if err := protojson.Unmarshal(body, request); err != nil {
+			writeGraphIngestError(w, err)
+			return
+		}
+	}
+	result, err := a.graphIngestService().Health(r.Context(), request.GetLimit())
+	if err != nil {
+		writeGraphIngestError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, graphIngestHealthResponse(result))
 }
 
 func (a *App) handlePutSourceRuntime(w http.ResponseWriter, r *http.Request) {
@@ -1407,6 +1511,52 @@ func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *conne
 	return connect.NewResponse(graphNeighborhoodResponse(response)), nil
 }
 
+func (s *bootstrapService) RunGraphIngestRuntime(ctx context.Context, req *connect.Request[cerebrov1.RunGraphIngestRuntimeRequest]) (*connect.Response[cerebrov1.RunGraphIngestRuntimeResponse], error) {
+	result, err := newGraphIngestService(s.deps, s.sources).RunRuntime(ctx, graphingest.RuntimeRequest{
+		RuntimeID:       req.Msg.GetRuntimeId(),
+		PageLimit:       req.Msg.GetPageLimit(),
+		CheckpointID:    req.Msg.GetCheckpointId(),
+		ResetCheckpoint: req.Msg.GetResetCheckpoint(),
+		Trigger:         "api",
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.RunGraphIngestRuntimeResponse{
+		Result: graphIngestRunResultMessage(result),
+	}), nil
+}
+
+func (s *bootstrapService) GetGraphIngestRun(ctx context.Context, req *connect.Request[cerebrov1.GetGraphIngestRunRequest]) (*connect.Response[cerebrov1.GetGraphIngestRunResponse], error) {
+	run, err := newGraphIngestService(s.deps, s.sources).GetRun(ctx, req.Msg.GetId())
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&cerebrov1.GetGraphIngestRunResponse{
+		Run: graphIngestRunMessage(run),
+	}), nil
+}
+
+func (s *bootstrapService) ListGraphIngestRuns(ctx context.Context, req *connect.Request[cerebrov1.ListGraphIngestRunsRequest]) (*connect.Response[cerebrov1.ListGraphIngestRunsResponse], error) {
+	result, err := newGraphIngestService(s.deps, s.sources).ListRuns(ctx, graphstore.IngestRunFilter{
+		RuntimeID: req.Msg.GetRuntimeId(),
+		Status:    req.Msg.GetStatus(),
+		Limit:     int(req.Msg.GetLimit()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(graphIngestListResponse(result)), nil
+}
+
+func (s *bootstrapService) CheckGraphIngestHealth(ctx context.Context, req *connect.Request[cerebrov1.CheckGraphIngestHealthRequest]) (*connect.Response[cerebrov1.CheckGraphIngestHealthResponse], error) {
+	result, err := newGraphIngestService(s.deps, s.sources).Health(ctx, req.Msg.GetLimit())
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(graphIngestHealthResponse(result)), nil
+}
+
 func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHealthResponse {
 	components := []*cerebrov1.ComponentStatus{
 		componentStatus(ctx, "append_log", deps.AppendLog),
@@ -1490,10 +1640,23 @@ func (a *App) graphQueryService() *graphquery.Service {
 	return graphquery.New(graphQueryStore(a.deps.GraphStore))
 }
 
+func (a *App) graphIngestService() *graphingest.Service {
+	return newGraphIngestService(a.deps, a.sources)
+}
+
 func (a *App) workflowReplayService() *workflowprojection.Replayer {
 	return workflowprojection.NewReplayer(
 		eventReplayer(a.deps.AppendLog),
 		sourceProjectionGraphStore(a.deps.GraphStore),
+	)
+}
+
+func newGraphIngestService(deps Dependencies, sources *sourcecdk.Registry) *graphingest.Service {
+	return graphingest.New(
+		sources,
+		sourceRuntimeStore(deps.StateStore),
+		sourceProjector(nil, deps.GraphStore),
+		deps.GraphStore,
 	)
 }
 
@@ -1611,6 +1774,19 @@ func writeGraphQueryError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ports.ErrGraphEntityNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
+		statusCode = http.StatusServiceUnavailable
+	}
+	http.Error(w, err.Error(), statusCode)
+}
+
+func writeGraphIngestError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusBadRequest
+	switch {
+	case errors.Is(err, graphingest.ErrRunNotFound):
+		statusCode = http.StatusNotFound
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
+		statusCode = http.StatusNotFound
+	case errors.Is(err, graphingest.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	}
 	http.Error(w, err.Error(), statusCode)
@@ -1967,6 +2143,95 @@ func graphNeighborhoodResponse(neighborhood *ports.EntityNeighborhood) *cerebrov
 		response.Relations = append(response.Relations, graphRelationMessage(relation))
 	}
 	return response
+}
+
+func graphIngestRunResultMessage(result *graphingest.RunResult) *cerebrov1.GraphIngestRunResult {
+	if result == nil {
+		return &cerebrov1.GraphIngestRunResult{}
+	}
+	return &cerebrov1.GraphIngestRunResult{
+		Run:    graphIngestRunMessage(result.Run),
+		Ingest: graphIngestResultMessage(result.Ingest),
+	}
+}
+
+func graphIngestListResponse(result *graphingest.ListResult) *cerebrov1.ListGraphIngestRunsResponse {
+	if result == nil {
+		return &cerebrov1.ListGraphIngestRunsResponse{}
+	}
+	return &cerebrov1.ListGraphIngestRunsResponse{
+		Runs:        graphIngestRunMessages(result.Runs),
+		FailedCount: result.FailedCount,
+	}
+}
+
+func graphIngestHealthResponse(result *graphingest.HealthResult) *cerebrov1.CheckGraphIngestHealthResponse {
+	if result == nil {
+		return &cerebrov1.CheckGraphIngestHealthResponse{}
+	}
+	return &cerebrov1.CheckGraphIngestHealthResponse{
+		Status:       result.Status,
+		CheckedAt:    timestamppb.New(result.CheckedAt),
+		FailedCount:  result.FailedCount,
+		RunningCount: result.RunningCount,
+		FailedRuns:   graphIngestRunMessages(result.FailedRuns),
+	}
+}
+
+func graphIngestRunMessages(runs []graphstore.IngestRun) []*cerebrov1.GraphIngestRun {
+	messages := make([]*cerebrov1.GraphIngestRun, 0, len(runs))
+	for _, run := range runs {
+		messages = append(messages, graphIngestRunMessage(run))
+	}
+	return messages
+}
+
+func graphIngestRunMessage(run graphstore.IngestRun) *cerebrov1.GraphIngestRun {
+	return &cerebrov1.GraphIngestRun{
+		Id:                run.ID,
+		RuntimeId:         run.RuntimeID,
+		SourceId:          run.SourceID,
+		TenantId:          run.TenantID,
+		CheckpointId:      run.CheckpointID,
+		Status:            run.Status,
+		Trigger:           run.Trigger,
+		PagesRead:         run.PagesRead,
+		EventsRead:        run.EventsRead,
+		EntitiesProjected: run.EntitiesProjected,
+		LinksProjected:    run.LinksProjected,
+		GraphNodesBefore:  run.GraphNodesBefore,
+		GraphLinksBefore:  run.GraphLinksBefore,
+		GraphNodesAfter:   run.GraphNodesAfter,
+		GraphLinksAfter:   run.GraphLinksAfter,
+		StartedAt:         run.StartedAt,
+		FinishedAt:        run.FinishedAt,
+		Error:             run.Error,
+	}
+}
+
+func graphIngestResultMessage(result *graphingest.IngestResult) *cerebrov1.GraphIngestResult {
+	if result == nil {
+		return nil
+	}
+	return &cerebrov1.GraphIngestResult{
+		SourceId:               result.SourceID,
+		TenantId:               result.TenantID,
+		PagesRead:              result.PagesRead,
+		EventsRead:             result.EventsRead,
+		EntitiesProjected:      result.EntitiesProjected,
+		LinksProjected:         result.LinksProjected,
+		GraphNodesBefore:       result.GraphNodesBefore,
+		GraphLinksBefore:       result.GraphLinksBefore,
+		GraphNodesAfter:        result.GraphNodesAfter,
+		GraphLinksAfter:        result.GraphLinksAfter,
+		NextCursor:             result.NextCursor,
+		CheckpointId:           result.CheckpointID,
+		CheckpointCursor:       result.CheckpointCursor,
+		CheckpointResumed:      result.CheckpointResumed,
+		CheckpointPersisted:    result.CheckpointPersisted,
+		CheckpointComplete:     result.CheckpointComplete,
+		CheckpointAlreadyFresh: result.CheckpointAlreadyFresh,
+	}
 }
 
 func graphEntityMessage(node *ports.NeighborhoodNode) *cerebrov1.GraphEntity {

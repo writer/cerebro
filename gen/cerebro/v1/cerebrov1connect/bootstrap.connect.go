@@ -135,6 +135,18 @@ const (
 	// BootstrapServiceGetEntityNeighborhoodProcedure is the fully-qualified name of the
 	// BootstrapService's GetEntityNeighborhood RPC.
 	BootstrapServiceGetEntityNeighborhoodProcedure = "/cerebro.v1.BootstrapService/GetEntityNeighborhood"
+	// BootstrapServiceRunGraphIngestRuntimeProcedure is the fully-qualified name of the
+	// BootstrapService's RunGraphIngestRuntime RPC.
+	BootstrapServiceRunGraphIngestRuntimeProcedure = "/cerebro.v1.BootstrapService/RunGraphIngestRuntime"
+	// BootstrapServiceGetGraphIngestRunProcedure is the fully-qualified name of the BootstrapService's
+	// GetGraphIngestRun RPC.
+	BootstrapServiceGetGraphIngestRunProcedure = "/cerebro.v1.BootstrapService/GetGraphIngestRun"
+	// BootstrapServiceListGraphIngestRunsProcedure is the fully-qualified name of the
+	// BootstrapService's ListGraphIngestRuns RPC.
+	BootstrapServiceListGraphIngestRunsProcedure = "/cerebro.v1.BootstrapService/ListGraphIngestRuns"
+	// BootstrapServiceCheckGraphIngestHealthProcedure is the fully-qualified name of the
+	// BootstrapService's CheckGraphIngestHealth RPC.
+	BootstrapServiceCheckGraphIngestHealthProcedure = "/cerebro.v1.BootstrapService/CheckGraphIngestHealth"
 )
 
 // BootstrapServiceClient is a client for the cerebro.v1.BootstrapService service.
@@ -173,6 +185,10 @@ type BootstrapServiceClient interface {
 	WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error)
 	ReplayWorkflowEvents(context.Context, *connect.Request[v1.ReplayWorkflowEventsRequest]) (*connect.Response[v1.ReplayWorkflowEventsResponse], error)
 	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
+	RunGraphIngestRuntime(context.Context, *connect.Request[v1.RunGraphIngestRuntimeRequest]) (*connect.Response[v1.RunGraphIngestRuntimeResponse], error)
+	GetGraphIngestRun(context.Context, *connect.Request[v1.GetGraphIngestRunRequest]) (*connect.Response[v1.GetGraphIngestRunResponse], error)
+	ListGraphIngestRuns(context.Context, *connect.Request[v1.ListGraphIngestRunsRequest]) (*connect.Response[v1.ListGraphIngestRunsResponse], error)
+	CheckGraphIngestHealth(context.Context, *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error)
 }
 
 // NewBootstrapServiceClient constructs a client for the cerebro.v1.BootstrapService service. By
@@ -390,6 +406,30 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("GetEntityNeighborhood")),
 			connect.WithClientOptions(opts...),
 		),
+		runGraphIngestRuntime: connect.NewClient[v1.RunGraphIngestRuntimeRequest, v1.RunGraphIngestRuntimeResponse](
+			httpClient,
+			baseURL+BootstrapServiceRunGraphIngestRuntimeProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("RunGraphIngestRuntime")),
+			connect.WithClientOptions(opts...),
+		),
+		getGraphIngestRun: connect.NewClient[v1.GetGraphIngestRunRequest, v1.GetGraphIngestRunResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetGraphIngestRunProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetGraphIngestRun")),
+			connect.WithClientOptions(opts...),
+		),
+		listGraphIngestRuns: connect.NewClient[v1.ListGraphIngestRunsRequest, v1.ListGraphIngestRunsResponse](
+			httpClient,
+			baseURL+BootstrapServiceListGraphIngestRunsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListGraphIngestRuns")),
+			connect.WithClientOptions(opts...),
+		),
+		checkGraphIngestHealth: connect.NewClient[v1.CheckGraphIngestHealthRequest, v1.CheckGraphIngestHealthResponse](
+			httpClient,
+			baseURL+BootstrapServiceCheckGraphIngestHealthProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("CheckGraphIngestHealth")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -429,6 +469,10 @@ type bootstrapServiceClient struct {
 	writeOutcome                      *connect.Client[v1.WriteOutcomeRequest, v1.WriteOutcomeResponse]
 	replayWorkflowEvents              *connect.Client[v1.ReplayWorkflowEventsRequest, v1.ReplayWorkflowEventsResponse]
 	getEntityNeighborhood             *connect.Client[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse]
+	runGraphIngestRuntime             *connect.Client[v1.RunGraphIngestRuntimeRequest, v1.RunGraphIngestRuntimeResponse]
+	getGraphIngestRun                 *connect.Client[v1.GetGraphIngestRunRequest, v1.GetGraphIngestRunResponse]
+	listGraphIngestRuns               *connect.Client[v1.ListGraphIngestRunsRequest, v1.ListGraphIngestRunsResponse]
+	checkGraphIngestHealth            *connect.Client[v1.CheckGraphIngestHealthRequest, v1.CheckGraphIngestHealthResponse]
 }
 
 // GetVersion calls cerebro.v1.BootstrapService.GetVersion.
@@ -602,6 +646,26 @@ func (c *bootstrapServiceClient) GetEntityNeighborhood(ctx context.Context, req 
 	return c.getEntityNeighborhood.CallUnary(ctx, req)
 }
 
+// RunGraphIngestRuntime calls cerebro.v1.BootstrapService.RunGraphIngestRuntime.
+func (c *bootstrapServiceClient) RunGraphIngestRuntime(ctx context.Context, req *connect.Request[v1.RunGraphIngestRuntimeRequest]) (*connect.Response[v1.RunGraphIngestRuntimeResponse], error) {
+	return c.runGraphIngestRuntime.CallUnary(ctx, req)
+}
+
+// GetGraphIngestRun calls cerebro.v1.BootstrapService.GetGraphIngestRun.
+func (c *bootstrapServiceClient) GetGraphIngestRun(ctx context.Context, req *connect.Request[v1.GetGraphIngestRunRequest]) (*connect.Response[v1.GetGraphIngestRunResponse], error) {
+	return c.getGraphIngestRun.CallUnary(ctx, req)
+}
+
+// ListGraphIngestRuns calls cerebro.v1.BootstrapService.ListGraphIngestRuns.
+func (c *bootstrapServiceClient) ListGraphIngestRuns(ctx context.Context, req *connect.Request[v1.ListGraphIngestRunsRequest]) (*connect.Response[v1.ListGraphIngestRunsResponse], error) {
+	return c.listGraphIngestRuns.CallUnary(ctx, req)
+}
+
+// CheckGraphIngestHealth calls cerebro.v1.BootstrapService.CheckGraphIngestHealth.
+func (c *bootstrapServiceClient) CheckGraphIngestHealth(ctx context.Context, req *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error) {
+	return c.checkGraphIngestHealth.CallUnary(ctx, req)
+}
+
 // BootstrapServiceHandler is an implementation of the cerebro.v1.BootstrapService service.
 type BootstrapServiceHandler interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
@@ -638,6 +702,10 @@ type BootstrapServiceHandler interface {
 	WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error)
 	ReplayWorkflowEvents(context.Context, *connect.Request[v1.ReplayWorkflowEventsRequest]) (*connect.Response[v1.ReplayWorkflowEventsResponse], error)
 	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
+	RunGraphIngestRuntime(context.Context, *connect.Request[v1.RunGraphIngestRuntimeRequest]) (*connect.Response[v1.RunGraphIngestRuntimeResponse], error)
+	GetGraphIngestRun(context.Context, *connect.Request[v1.GetGraphIngestRunRequest]) (*connect.Response[v1.GetGraphIngestRunResponse], error)
+	ListGraphIngestRuns(context.Context, *connect.Request[v1.ListGraphIngestRunsRequest]) (*connect.Response[v1.ListGraphIngestRunsResponse], error)
+	CheckGraphIngestHealth(context.Context, *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error)
 }
 
 // NewBootstrapServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -851,6 +919,30 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("GetEntityNeighborhood")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceRunGraphIngestRuntimeHandler := connect.NewUnaryHandler(
+		BootstrapServiceRunGraphIngestRuntimeProcedure,
+		svc.RunGraphIngestRuntime,
+		connect.WithSchema(bootstrapServiceMethods.ByName("RunGraphIngestRuntime")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceGetGraphIngestRunHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetGraphIngestRunProcedure,
+		svc.GetGraphIngestRun,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetGraphIngestRun")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceListGraphIngestRunsHandler := connect.NewUnaryHandler(
+		BootstrapServiceListGraphIngestRunsProcedure,
+		svc.ListGraphIngestRuns,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListGraphIngestRuns")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceCheckGraphIngestHealthHandler := connect.NewUnaryHandler(
+		BootstrapServiceCheckGraphIngestHealthProcedure,
+		svc.CheckGraphIngestHealth,
+		connect.WithSchema(bootstrapServiceMethods.ByName("CheckGraphIngestHealth")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/cerebro.v1.BootstrapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BootstrapServiceGetVersionProcedure:
@@ -921,6 +1013,14 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceReplayWorkflowEventsHandler.ServeHTTP(w, r)
 		case BootstrapServiceGetEntityNeighborhoodProcedure:
 			bootstrapServiceGetEntityNeighborhoodHandler.ServeHTTP(w, r)
+		case BootstrapServiceRunGraphIngestRuntimeProcedure:
+			bootstrapServiceRunGraphIngestRuntimeHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetGraphIngestRunProcedure:
+			bootstrapServiceGetGraphIngestRunHandler.ServeHTTP(w, r)
+		case BootstrapServiceListGraphIngestRunsProcedure:
+			bootstrapServiceListGraphIngestRunsHandler.ServeHTTP(w, r)
+		case BootstrapServiceCheckGraphIngestHealthProcedure:
+			bootstrapServiceCheckGraphIngestHealthHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1064,4 +1164,20 @@ func (UnimplementedBootstrapServiceHandler) ReplayWorkflowEvents(context.Context
 
 func (UnimplementedBootstrapServiceHandler) GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetEntityNeighborhood is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) RunGraphIngestRuntime(context.Context, *connect.Request[v1.RunGraphIngestRuntimeRequest]) (*connect.Response[v1.RunGraphIngestRuntimeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.RunGraphIngestRuntime is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetGraphIngestRun(context.Context, *connect.Request[v1.GetGraphIngestRunRequest]) (*connect.Response[v1.GetGraphIngestRunResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetGraphIngestRun is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListGraphIngestRuns(context.Context, *connect.Request[v1.ListGraphIngestRunsRequest]) (*connect.Response[v1.ListGraphIngestRunsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListGraphIngestRuns is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) CheckGraphIngestHealth(context.Context, *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.CheckGraphIngestHealth is not implemented"))
 }

@@ -12,6 +12,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	configpkg "github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphingest"
 	graphstorekuzu "github.com/writer/cerebro/internal/graphstore/kuzu"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/primitives"
@@ -142,16 +143,18 @@ func TestGraphRuntimeIngestRecordsStatus(t *testing.T) {
 		},
 	}}
 	projector := sourceprojection.New(nil, store)
-	result, err := ingestRuntimeGraph(ctx, runtimeStore, sourceops.New(registry), projector, store, graphIngestRuntimeOptions{
+	service := graphingest.New(registry, runtimeStore, projector, store)
+	result, err := service.RunRuntime(ctx, graphingest.RuntimeRequest{
 		RuntimeID:    "writer-validation",
 		PageLimit:    2,
 		CheckpointID: "runtime-validation",
+		Trigger:      "test",
 	})
 	if err != nil {
-		t.Fatalf("ingestRuntimeGraph() error = %v", err)
+		t.Fatalf("RunRuntime() error = %v", err)
 	}
-	if len(result.Runs) != 1 || result.Runs[0].Run.Status != "completed" || result.Runs[0].Ingest.EventsRead != 2 {
-		t.Fatalf("ingestRuntimeGraph() = %#v, want one completed two-event run", result)
+	if result.Run.Status != "completed" || result.Ingest.EventsRead != 2 {
+		t.Fatalf("RunRuntime() = %#v, want completed two-event run", result)
 	}
 	completed, err := store.ListIngestRuns(ctx, graphstorekuzu.IngestRunFilter{RuntimeID: "writer-validation", Status: "completed", Limit: 10})
 	if err != nil {
@@ -161,14 +164,15 @@ func TestGraphRuntimeIngestRecordsStatus(t *testing.T) {
 		t.Fatalf("completed runs = %#v, want runtime-validation checkpoint", completed)
 	}
 
-	failedResult, err := ingestRuntimeGraph(ctx, runtimeStore, sourceops.New(registry), projector, store, graphIngestRuntimeOptions{
+	failedResult, err := service.RunRuntime(ctx, graphingest.RuntimeRequest{
 		RuntimeID: "writer-validation-failing",
 		PageLimit: defaultGraphIngestPageLimit,
+		Trigger:   "test",
 	})
 	if err == nil {
-		t.Fatal("ingestRuntimeGraph(failing) error = nil, want non-nil")
+		t.Fatal("RunRuntime(failing) error = nil, want non-nil")
 	}
-	if len(failedResult.Runs) != 1 || failedResult.Runs[0].Run.Status != "failed" || failedResult.Runs[0].Run.Error == "" {
+	if failedResult.Run.Status != "failed" || failedResult.Run.Error == "" {
 		t.Fatalf("failed ingest result = %#v, want failed run with error", failedResult)
 	}
 }

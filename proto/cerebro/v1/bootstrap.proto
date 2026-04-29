@@ -45,6 +45,10 @@ service BootstrapService {
   rpc WriteOutcome(WriteOutcomeRequest) returns (WriteOutcomeResponse);
   rpc ReplayWorkflowEvents(ReplayWorkflowEventsRequest) returns (ReplayWorkflowEventsResponse);
   rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
+  rpc RunGraphIngestRuntime(RunGraphIngestRuntimeRequest) returns (RunGraphIngestRuntimeResponse);
+  rpc GetGraphIngestRun(GetGraphIngestRunRequest) returns (GetGraphIngestRunResponse);
+  rpc ListGraphIngestRuns(ListGraphIngestRunsRequest) returns (ListGraphIngestRunsResponse);
+  rpc CheckGraphIngestHealth(CheckGraphIngestHealthRequest) returns (CheckGraphIngestHealthResponse);
 }
 
 // GetVersionRequest requests static build metadata from the running service.
@@ -664,4 +668,103 @@ message GetEntityNeighborhoodResponse {
   GraphEntity root = 1;
   repeated GraphEntity neighbors = 2;
   repeated GraphRelation relations = 3;
+}
+
+// GraphIngestRun is the durable status record for one graph ingest attempt.
+message GraphIngestRun {
+  string id = 1;
+  string runtime_id = 2;
+  string source_id = 3;
+  string tenant_id = 4;
+  string checkpoint_id = 5;
+  string status = 6;
+  string trigger = 7;
+  int64 pages_read = 8;
+  int64 events_read = 9;
+  int64 entities_projected = 10;
+  int64 links_projected = 11;
+  int64 graph_nodes_before = 12;
+  int64 graph_links_before = 13;
+  int64 graph_nodes_after = 14;
+  int64 graph_links_after = 15;
+  string started_at = 16;
+  string finished_at = 17;
+  string error = 18;
+}
+
+// GraphIngestResult summarizes one runtime ingest pass.
+message GraphIngestResult {
+  string source_id = 1;
+  string tenant_id = 2;
+  uint32 pages_read = 3;
+  uint32 events_read = 4;
+  uint32 entities_projected = 5;
+  uint32 links_projected = 6;
+  int64 graph_nodes_before = 7;
+  int64 graph_links_before = 8;
+  int64 graph_nodes_after = 9;
+  int64 graph_links_after = 10;
+  string next_cursor = 11;
+  string checkpoint_id = 12;
+  string checkpoint_cursor = 13;
+  bool checkpoint_resumed = 14;
+  bool checkpoint_persisted = 15;
+  bool checkpoint_complete = 16;
+  bool checkpoint_already_fresh = 17;
+}
+
+// GraphIngestRunResult returns the durable run record and ingest summary for one pass.
+message GraphIngestRunResult {
+  GraphIngestRun run = 1;
+  GraphIngestResult ingest = 2;
+}
+
+// RunGraphIngestRuntimeRequest starts one checkpointed graph ingest pass for a source runtime.
+message RunGraphIngestRuntimeRequest {
+  string runtime_id = 1;
+  uint32 page_limit = 2;
+  string checkpoint_id = 3;
+  bool reset_checkpoint = 4;
+}
+
+// RunGraphIngestRuntimeResponse returns the persisted run and ingest summary.
+message RunGraphIngestRuntimeResponse {
+  GraphIngestRunResult result = 1;
+}
+
+// GetGraphIngestRunRequest looks up one persisted graph ingest run.
+message GetGraphIngestRunRequest {
+  string id = 1;
+}
+
+// GetGraphIngestRunResponse returns one persisted graph ingest run.
+message GetGraphIngestRunResponse {
+  GraphIngestRun run = 1;
+}
+
+// ListGraphIngestRunsRequest queries persisted graph ingest runs.
+message ListGraphIngestRunsRequest {
+  string runtime_id = 1;
+  string status = 2;
+  uint32 limit = 3;
+}
+
+// ListGraphIngestRunsResponse returns persisted graph ingest runs plus failure visibility.
+message ListGraphIngestRunsResponse {
+  repeated GraphIngestRun runs = 1;
+  uint32 failed_count = 2;
+}
+
+// CheckGraphIngestHealthRequest checks recent graph ingest run health.
+message CheckGraphIngestHealthRequest {
+  uint32 limit = 1;
+}
+
+// CheckGraphIngestHealthResponse exposes failed/running graph ingest counts for alerting.
+message CheckGraphIngestHealthResponse {
+  string status = 1;
+  google.protobuf.Timestamp checked_at = 2;
+  uint32 failed_count = 3;
+  uint32 running_count = 4;
+  repeated GraphIngestRun failed_runs = 5;
 }
