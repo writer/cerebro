@@ -32,6 +32,7 @@ type graphStore interface {
 	ports.ProjectionGraphStore
 	Close() error
 	Counts(context.Context) (graphstorekuzu.Counts, error)
+	IntegrityChecks(context.Context) ([]graphstorekuzu.IntegrityCheck, error)
 	SampleTraversals(context.Context, int) ([]graphstorekuzu.Traversal, error)
 }
 
@@ -77,6 +78,8 @@ type StageConfirmation struct {
 	EventsRead         uint32 `json:"events_read,omitempty"`
 	EntitiesProjected  uint32 `json:"entities_projected,omitempty"`
 	LinksProjected     uint32 `json:"links_projected,omitempty"`
+	AssertionsPassed   uint32 `json:"assertions_passed,omitempty"`
+	AssertionsFailed   uint32 `json:"assertions_failed,omitempty"`
 	TraversalsVerified uint32 `json:"traversals_verified,omitempty"`
 	GraphNodes         int64  `json:"graph_nodes,omitempty"`
 	GraphLinks         int64  `json:"graph_links,omitempty"`
@@ -90,6 +93,14 @@ type TraversalPreview struct {
 	ViaURN         string `json:"via_urn"`
 	SecondRelation string `json:"second_relation"`
 	ToURN          string `json:"to_urn"`
+}
+
+// AssertionPreview captures one local graph integrity assertion.
+type AssertionPreview struct {
+	Name     string `json:"name"`
+	Actual   int64  `json:"actual"`
+	Expected int64  `json:"expected"`
+	Passed   bool   `json:"passed"`
 }
 
 // Result summarizes a dry-run rebuild execution.
@@ -108,6 +119,7 @@ type Result struct {
 	EventKinds         []*CountPreview      `json:"event_kinds,omitempty"`
 	GraphEntityTypes   []*CountPreview      `json:"graph_entity_types,omitempty"`
 	GraphRelationTypes []*CountPreview      `json:"graph_relation_types,omitempty"`
+	GraphAssertions    []*AssertionPreview  `json:"graph_assertions,omitempty"`
 	GraphTraversals    []*TraversalPreview  `json:"graph_traversals,omitempty"`
 	Events             []*EventPreview      `json:"events,omitempty"`
 	PreviewEntities    []*EntityPreview     `json:"preview_entities,omitempty"`
@@ -249,6 +261,21 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		DurationMillis: durationMillis(countStart),
 		GraphNodes:     counts.Nodes,
 		GraphLinks:     counts.Relations,
+	})
+
+	integrityStart := time.Now()
+	checks, err := graph.IntegrityChecks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result.GraphAssertions = assertionPreviews(checks)
+	assertionsPassed, assertionsFailed := assertionCounts(result.GraphAssertions)
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:             "verify_integrity",
+		Status:           stageStatusSuccess,
+		DurationMillis:   durationMillis(integrityStart),
+		AssertionsPassed: assertionsPassed,
+		AssertionsFailed: assertionsFailed,
 	})
 
 	traversalStart := time.Now()
@@ -542,6 +569,35 @@ func countPreviews(counts map[string]uint32) []*CountPreview {
 		return previews[i].Count > previews[j].Count
 	})
 	return previews
+}
+
+func assertionPreviews(checks []graphstorekuzu.IntegrityCheck) []*AssertionPreview {
+	previews := make([]*AssertionPreview, 0, len(checks))
+	for _, check := range checks {
+		previews = append(previews, &AssertionPreview{
+			Name:     check.Name,
+			Actual:   check.Actual,
+			Expected: check.Expected,
+			Passed:   check.Passed,
+		})
+	}
+	return previews
+}
+
+func assertionCounts(assertions []*AssertionPreview) (uint32, uint32) {
+	var passed uint32
+	var failed uint32
+	for _, assertion := range assertions {
+		if assertion == nil {
+			continue
+		}
+		if assertion.Passed {
+			passed++
+			continue
+		}
+		failed++
+	}
+	return passed, failed
 }
 
 func traversalPreviews(traversals []graphstorekuzu.Traversal) []*TraversalPreview {

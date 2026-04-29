@@ -125,6 +125,14 @@ func TestProjectorBuildsTraversableLocalGraph(t *testing.T) {
 	) {
 		t.Fatalf("SampleTraversals() missing authored path: %#v", traversals)
 	}
+
+	checks, err := store.IntegrityChecks(context.Background())
+	if err != nil {
+		t.Fatalf("IntegrityChecks() error = %v", err)
+	}
+	if failedIntegrityChecks(checks) != 0 {
+		t.Fatalf("IntegrityChecks() failed = %d, want 0: %#v", failedIntegrityChecks(checks), checks)
+	}
 }
 
 func TestProjectorKeepsLocalGraphIdentityLinksTenantScoped(t *testing.T) {
@@ -187,6 +195,73 @@ func TestProjectorKeepsLocalGraphIdentityLinksTenantScoped(t *testing.T) {
 	)
 	if identifierCount != 2 {
 		t.Fatalf("identifier count = %d, want 2", identifierCount)
+	}
+}
+
+func TestIntegrityChecksDetectTenantMismatch(t *testing.T) {
+	store := newTestStore(t)
+	projectEvents(t, store,
+		&cerebrov1.EventEnvelope{
+			Id:       "github-pr-447",
+			TenantId: "writer",
+			SourceId: "github",
+			Kind:     "github.pull_request",
+			Attributes: map[string]string{
+				"author":      "alice",
+				"owner":       "writer",
+				"pull_number": "447",
+				"repository":  "writer/cerebro",
+			},
+		},
+	)
+
+	if _, err := store.db.ExecContext(context.Background(), fmt.Sprintf(
+		"MATCH (e:entity {urn: %s}) SET e.tenant_id = %s",
+		cypherString("urn:cerebro:writer:github_repo:writer/cerebro"),
+		cypherString("writer-mismatch"),
+	)); err != nil {
+		t.Fatalf("ExecContext() error = %v", err)
+	}
+
+	checks, err := store.IntegrityChecks(context.Background())
+	if err != nil {
+		t.Fatalf("IntegrityChecks() error = %v", err)
+	}
+	if actual := integrityCheckActual(checks, "tenant_mismatched_relations"); actual != 2 {
+		t.Fatalf("tenant_mismatched_relations = %d, want 2", actual)
+	}
+}
+
+func TestIntegrityChecksRunEntityOnlyChecksWithoutRelationTable(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	if _, err := store.db.ExecContext(ctx, "CREATE NODE TABLE entity(urn STRING, tenant_id STRING, source_id STRING, entity_type STRING, label STRING, attributes_json STRING, PRIMARY KEY (urn))"); err != nil {
+		t.Fatalf("create entity table: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(
+		"CREATE (:entity {urn: %s, tenant_id: %s, source_id: %s, entity_type: %s, label: %s, attributes_json: %s})",
+		cypherString("urn:cerebro:writer:github_repo:writer/cerebro"),
+		cypherString("writer"),
+		cypherString("github"),
+		cypherString("github.repo"),
+		cypherString(""),
+		cypherString("{}"),
+	)); err != nil {
+		t.Fatalf("insert entity: %v", err)
+	}
+
+	checks, err := store.IntegrityChecks(ctx)
+	if err != nil {
+		t.Fatalf("IntegrityChecks() error = %v", err)
+	}
+	if actual := integrityCheckActual(checks, "blank_entity_labels"); actual != 1 {
+		t.Fatalf("blank_entity_labels = %d, want 1", actual)
+	}
+	if passed := integrityCheckPassed(checks, "blank_entity_labels"); passed {
+		t.Fatal("blank_entity_labels passed = true, want false")
+	}
+	if passed := integrityCheckPassed(checks, "blank_relation_types"); !passed {
+		t.Fatal("blank_relation_types passed = false, want true when relation table is absent")
 	}
 }
 
@@ -272,6 +347,34 @@ func containsTraversal(traversals []Traversal, fromURN string, firstRelation str
 			traversal.SecondRelation == secondRelation &&
 			traversal.ToURN == toURN {
 			return true
+		}
+	}
+	return false
+}
+
+func failedIntegrityChecks(checks []IntegrityCheck) int {
+	failed := 0
+	for _, check := range checks {
+		if !check.Passed {
+			failed++
+		}
+	}
+	return failed
+}
+
+func integrityCheckActual(checks []IntegrityCheck, name string) int64 {
+	for _, check := range checks {
+		if check.Name == name {
+			return check.Actual
+		}
+	}
+	return -1
+}
+
+func integrityCheckPassed(checks []IntegrityCheck, name string) bool {
+	for _, check := range checks {
+		if check.Name == name {
+			return check.Passed
 		}
 	}
 	return false
