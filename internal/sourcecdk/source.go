@@ -22,6 +22,10 @@ func ParseURN(raw string) (URN, error) {
 	if !strings.HasPrefix(value, "urn:cerebro:") {
 		return "", fmt.Errorf("invalid cerebro urn %q", value)
 	}
+	parts := strings.Split(value, ":")
+	if len(parts) != 5 || parts[0] != "urn" || parts[1] != "cerebro" || parts[2] == "" || parts[3] == "" || parts[4] == "" {
+		return "", fmt.Errorf("invalid cerebro urn %q", value)
+	}
 	return URN(value), nil
 }
 

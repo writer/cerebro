@@ -34,8 +34,16 @@ func TestParseURN(t *testing.T) {
 }
 
 func TestParseURNRejectsInvalidValue(t *testing.T) {
-	if _, err := ParseURN("user:123"); err == nil {
-		t.Fatal("ParseURN() error = nil, want non-nil")
+	for _, value := range []string{
+		"user:123",
+		"urn:cerebro:",
+		"urn:cerebro:tenant::id",
+		"urn:cerebro:tenant:user:",
+		"urn:cerebro:tenant:user:id:extra",
+	} {
+		if _, err := ParseURN(value); err == nil {
+			t.Fatalf("ParseURN(%q) error = nil, want non-nil", value)
+		}
 	}
 }
 
