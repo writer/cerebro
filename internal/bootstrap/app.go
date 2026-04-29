@@ -412,8 +412,10 @@ func sourceConnectError(err error) error {
 }
 
 func writeSourceRuntimeError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
+	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, sourceruntime.ErrInvalidRequest):
+		statusCode = http.StatusBadRequest
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):

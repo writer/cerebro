@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceruntime"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 )
@@ -724,14 +725,20 @@ func TestWriteSourceRuntimeErrorHidesInternalDetails(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeSourceRuntimeError(recorder, errors.New("dial tcp credential@db.internal:5432: i/o timeout"))
 
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
 	}
-	if got := recorder.Body.String(); got != http.StatusText(http.StatusBadRequest)+"\n" {
+	if got := recorder.Body.String(); got != http.StatusText(http.StatusInternalServerError)+"\n" {
 		t.Fatalf("body = %q, want generic status text", got)
 	}
 	if bytes.Contains(recorder.Body.Bytes(), []byte("credential")) || bytes.Contains(recorder.Body.Bytes(), []byte("db.internal")) {
 		t.Fatalf("body exposed internal error details: %q", recorder.Body.String())
+	}
+
+	invalid := httptest.NewRecorder()
+	writeSourceRuntimeError(invalid, sourceruntime.ErrInvalidRequest)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid request status = %d, want %d", invalid.Code, http.StatusBadRequest)
 	}
 }
 
