@@ -166,6 +166,7 @@ jobs:
           default_branch = os.environ.get("DEFAULT_BRANCH") or "main"
           token = os.environ["GITHUB_TOKEN"]
           run_id = os.environ["GITHUB_RUN_ID"]
+          trusted_permissions = {"admin", "maintain", "write"}
 
           with open(event_path, "r", encoding="utf-8") as handle:
               event = json.load(handle)
@@ -188,6 +189,15 @@ jobs:
 
           def labels_from(entity):
               return [label.get("name", "") for label in entity.get("labels") or []]
+
+          def permission_for(login):
+              if not login:
+                  return ""
+              try:
+                  data = api_get(f"/repos/{repository}/collaborators/{login}/permission")
+              except urllib.error.HTTPError:
+                  return ""
+              return data.get("permission") or ""
 
           def detect_mode(labels, text):
               lowered = (text or "").lower()
@@ -225,6 +235,8 @@ jobs:
           mode = os.environ.get("DISPATCH_MODE") or ""
           prompt = os.environ.get("DISPATCH_PROMPT") or ""
           target = (os.environ.get("DISPATCH_TARGET") or "").strip()
+          should_run = True
+          skip_reason = ""
           labels = []
           entity_number = ""
           entity_title = ""
@@ -277,6 +289,18 @@ jobs:
               prompt = event["review"].get("body") or ""
               labels = labels_from(pr)
               is_pr = True
+          elif event_name == "issues":
+              issue = event["issue"]
+              labels = labels_from(issue)
+              entity_number = str(issue["number"])
+              entity_title = issue.get("title") or ""
+              entity_body = issue.get("body") or ""
+              entity_url = issue.get("html_url") or ""
+              prompt = "\n\n".join(part for part in [entity_title, entity_body] if part)
+              issue_author = ((issue.get("user") or {}).get("login") or "").strip()
+              if permission_for(issue_author) not in trusted_permissions:
+                  should_run = False
+                  skip_reason = f"issue author {issue_author or 'unknown'} must have write, maintain, or admin permission for issue-driven Droid Create"
           elif event_name == "pull_request":
               pr = event["pull_request"]
               labels = labels_from(pr)
@@ -292,7 +316,7 @@ jobs:
               entity_url = pr.get("html_url") or ""
               labels = labels or labels_from(pr)
 
-          if event_name == "pull_request" and event.get("action") == "labeled":
+          if event_name in {"issues", "pull_request"} and event.get("action") == "labeled":
               mode = mode or detect_label_mode((event.get("label") or {}).get("name", ""))
           mode = mode or detect_mode(labels, prompt)
           if not mode:
@@ -312,6 +336,9 @@ jobs:
               head_repo = head["repo"]["full_name"]
               head_ref = head["ref"]
               safe_to_push = head_repo == repository
+              if not safe_to_push:
+                  should_run = False
+                  skip_reason = skip_reason or "the target branch is not writable by this repository workflow"
               checkout_repository = head_repo
               checkout_ref = head_ref
               branch_name = head_ref
@@ -354,13 +381,15 @@ jobs:
               emit_line("branch_name", branch_name)
               emit_line("create_pr", create_pr)
               emit_line("safe_to_push", str(safe_to_push).lower())
-              emit_line("should_run", str(safe_to_push).lower())
+              emit_line("should_run", str((safe_to_push and should_run)).lower())
+              emit("skip_reason", skip_reason)
               emit_line("default_branch", default_branch)
               emit("entity_title", entity_title)
               emit("prompt", prompt)
 
-          if not safe_to_push:
-              print("Pull request head is from a fork; skipping write-capable Droid Create run.")
+          if not (safe_to_push and should_run):
+              if skip_reason:
+                  print(skip_reason)
               sys.exit(0)
           PY
 
@@ -530,6 +559,7 @@ jobs:
         env:
           CREATE_PR: ${{ steps.ctx.outputs.create_pr }}
           SHOULD_RUN: ${{ steps.ctx.outputs.should_run || 'false' }}
+          SKIP_REASON: ${{ steps.ctx.outputs.skip_reason || '' }}
           ENTITY_NUMBER: ${{ steps.ctx.outputs.entity_number }}
           PUBLISHED: ${{ steps.publish.outputs.published || 'false' }}
           PR_URL: ${{ steps.publish.outputs.pr_url || '' }}
@@ -538,7 +568,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${SHOULD_RUN}" != "true" ]; then
-            message="Droid Create skipped because the target branch is not writable by this repository workflow."
+            message="Droid Create skipped: ${SKIP_REASON:-the target branch is not writable by this repository workflow}."
           elif [ "${JOB_STATUS}" != "success" ]; then
             message="Droid Create failed before publishing changes. See ${RUN_URL}."
           elif [ "${PUBLISHED}" != "true" ]; then
