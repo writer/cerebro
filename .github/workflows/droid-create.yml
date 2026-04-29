@@ -166,7 +166,6 @@ jobs:
           default_branch = os.environ.get("DEFAULT_BRANCH") or "main"
           token = os.environ["GITHUB_TOKEN"]
           run_id = os.environ["GITHUB_RUN_ID"]
-          trusted_permissions = {"admin", "maintain", "write"}
 
           with open(event_path, "r", encoding="utf-8") as handle:
               event = json.load(handle)
@@ -189,15 +188,6 @@ jobs:
 
           def labels_from(entity):
               return [label.get("name", "") for label in entity.get("labels") or []]
-
-          def permission_for(login):
-              if not login:
-                  return ""
-              try:
-                  data = api_get(f"/repos/{repository}/collaborators/{login}/permission")
-              except urllib.error.HTTPError:
-                  return ""
-              return data.get("permission") or ""
 
           def detect_mode(labels, text):
               lowered = (text or "").lower()
@@ -297,10 +287,6 @@ jobs:
               entity_body = issue.get("body") or ""
               entity_url = issue.get("html_url") or ""
               prompt = "\n\n".join(part for part in [entity_title, entity_body] if part)
-              issue_author = ((issue.get("user") or {}).get("login") or "").strip()
-              if permission_for(issue_author) not in trusted_permissions:
-                  should_run = False
-                  skip_reason = f"issue author {issue_author or 'unknown'} must have write, maintain, or admin permission for issue-driven Droid Create"
           elif event_name == "pull_request":
               pr = event["pull_request"]
               labels = labels_from(pr)
