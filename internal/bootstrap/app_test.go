@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/workflowevents"
@@ -493,9 +494,12 @@ type stubGraphStore struct {
 	err                 error
 	entities            map[string]*ports.ProjectedEntity
 	links               map[string]*ports.ProjectedLink
+	checkpoints         map[string]graphstore.IngestCheckpoint
+	ingestRuns          map[string]graphstore.IngestRun
 	neighborhood        *ports.EntityNeighborhood
 	neighborhoodRootURN string
 	neighborhoodLimit   int
+	ingestRunListFilter graphstore.IngestRunFilter
 }
 
 func (s *stubGraphStore) Ping(context.Context) error {
@@ -549,6 +553,73 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 		return nil, ports.ErrGraphEntityNotFound
 	}
 	return cloneNeighborhood(s.neighborhood), nil
+}
+
+func (s *stubGraphStore) GetIngestCheckpoint(_ context.Context, id string) (graphstore.IngestCheckpoint, bool, error) {
+	if s.err != nil {
+		return graphstore.IngestCheckpoint{}, false, s.err
+	}
+	checkpoint, ok := s.checkpoints[id]
+	return checkpoint, ok, nil
+}
+
+func (s *stubGraphStore) PutIngestCheckpoint(_ context.Context, checkpoint graphstore.IngestCheckpoint) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.checkpoints == nil {
+		s.checkpoints = make(map[string]graphstore.IngestCheckpoint)
+	}
+	s.checkpoints[checkpoint.ID] = checkpoint
+	return nil
+}
+
+func (s *stubGraphStore) PutIngestRun(_ context.Context, run graphstore.IngestRun) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.ingestRuns == nil {
+		s.ingestRuns = make(map[string]graphstore.IngestRun)
+	}
+	s.ingestRuns[run.ID] = run
+	return nil
+}
+
+func (s *stubGraphStore) GetIngestRun(_ context.Context, id string) (graphstore.IngestRun, bool, error) {
+	if s.err != nil {
+		return graphstore.IngestRun{}, false, s.err
+	}
+	run, ok := s.ingestRuns[id]
+	return run, ok, nil
+}
+
+func (s *stubGraphStore) ListIngestRuns(_ context.Context, filter graphstore.IngestRunFilter) ([]graphstore.IngestRun, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.ingestRunListFilter = filter
+	runs := make([]graphstore.IngestRun, 0, len(s.ingestRuns))
+	for _, run := range s.ingestRuns {
+		if filter.RuntimeID != "" && run.RuntimeID != filter.RuntimeID {
+			continue
+		}
+		if filter.Status != "" && run.Status != filter.Status {
+			continue
+		}
+		runs = append(runs, run)
+	}
+	sort.Slice(runs, func(i, j int) bool {
+		left := runs[i]
+		right := runs[j]
+		if left.StartedAt == right.StartedAt {
+			return left.ID > right.ID
+		}
+		return left.StartedAt > right.StartedAt
+	})
+	if filter.Limit > 0 && len(runs) > filter.Limit {
+		runs = runs[:filter.Limit]
+	}
+	return runs, nil
 }
 
 func TestBootstrapEndpoints(t *testing.T) {
@@ -999,6 +1070,131 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 	if len(runtimeStore.entities) == 0 || len(graphStore.entities) == 0 {
 		t.Fatalf("projected entities = state:%d graph:%d, want non-zero", len(runtimeStore.entities), len(graphStore.entities))
+	}
+}
+
+func TestGraphIngestEndpoints(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	runtimeStore := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-okta-users": {
+			Id:       "writer-okta-users",
+			SourceId: "okta",
+			TenantId: "writer",
+			Config: map[string]string{
+				"domain": "writer.okta.com",
+				"family": "user",
+				"token":  "test",
+			},
+		},
+		"writer-okta-bad": {
+			Id:       "writer-okta-bad",
+			SourceId: "okta",
+			TenantId: "writer",
+			Config: map[string]string{
+				"domain": "writer.okta.com",
+				"family": "missing",
+				"token":  "test",
+			},
+		},
+	}}
+	graphStore := &stubGraphStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		StateStore: runtimeStore,
+		GraphStore: graphStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-users/graph-ingest-runs?page_limit=1&checkpoint_id=graph-okta", nil)
+	if err != nil {
+		t.Fatalf("new graph ingest request: %v", err)
+	}
+	runResp, err := server.Client().Do(runReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/graph-ingest-runs error = %v", err)
+	}
+	defer func() {
+		if closeErr := runResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close graph ingest response body: %v", closeErr)
+		}
+	}()
+	if runResp.StatusCode != http.StatusOK {
+		t.Fatalf("graph ingest status = %d, want %d", runResp.StatusCode, http.StatusOK)
+	}
+	var runPayload map[string]any
+	if err := json.NewDecoder(runResp.Body).Decode(&runPayload); err != nil {
+		t.Fatalf("decode graph ingest response: %v", err)
+	}
+	resultPayload, ok := runPayload["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("graph ingest result = %#v, want object", runPayload["result"])
+	}
+	runRecord, ok := resultPayload["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("graph ingest run = %#v, want object", resultPayload["run"])
+	}
+	runID, ok := runRecord["id"].(string)
+	if !ok || runID == "" {
+		t.Fatalf("graph ingest run id = %#v, want non-empty string", runRecord["id"])
+	}
+	if got := runRecord["status"]; got != "completed" {
+		t.Fatalf("graph ingest status = %#v, want completed", got)
+	}
+	if got := runRecord["checkpoint_id"]; got != "graph-okta" {
+		t.Fatalf("graph ingest checkpoint_id = %#v, want graph-okta", got)
+	}
+
+	getResp, err := server.Client().Get(server.URL + "/graph/ingest-runs/" + runID)
+	if err != nil {
+		t.Fatalf("GET /graph/ingest-runs/{id} error = %v", err)
+	}
+	defer func() {
+		if closeErr := getResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close graph ingest get response body: %v", closeErr)
+		}
+	}()
+	var getPayload map[string]any
+	if err := json.NewDecoder(getResp.Body).Decode(&getPayload); err != nil {
+		t.Fatalf("decode graph ingest get response: %v", err)
+	}
+	getRun, ok := getPayload["run"].(map[string]any)
+	if !ok || getRun["id"] != runID {
+		t.Fatalf("graph ingest get run = %#v, want id %q", getPayload["run"], runID)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	_, err = client.RunGraphIngestRuntime(context.Background(), connect.NewRequest(&cerebrov1.RunGraphIngestRuntimeRequest{
+		RuntimeId: "writer-okta-bad",
+		PageLimit: 1,
+	}))
+	if err == nil {
+		t.Fatal("RunGraphIngestRuntime(bad) error = nil, want non-nil")
+	}
+	listResp, err := client.ListGraphIngestRuns(context.Background(), connect.NewRequest(&cerebrov1.ListGraphIngestRunsRequest{
+		Status: graphstore.IngestRunStatusFailed,
+		Limit:  5,
+	}))
+	if err != nil {
+		t.Fatalf("ListGraphIngestRuns(failed) error = %v", err)
+	}
+	if got := len(listResp.Msg.GetRuns()); got != 1 {
+		t.Fatalf("len(ListGraphIngestRuns(failed).Runs) = %d, want 1", got)
+	}
+	if got := listResp.Msg.GetFailedCount(); got != 1 {
+		t.Fatalf("ListGraphIngestRuns failed_count = %d, want 1", got)
+	}
+	healthResp, err := client.CheckGraphIngestHealth(context.Background(), connect.NewRequest(&cerebrov1.CheckGraphIngestHealthRequest{Limit: 5}))
+	if err != nil {
+		t.Fatalf("CheckGraphIngestHealth() error = %v", err)
+	}
+	if got := healthResp.Msg.GetStatus(); got != "degraded" {
+		t.Fatalf("CheckGraphIngestHealth status = %q, want degraded", got)
+	}
+	if got := healthResp.Msg.GetFailedCount(); got != 1 {
+		t.Fatalf("CheckGraphIngestHealth failed_count = %d, want 1", got)
 	}
 }
 
