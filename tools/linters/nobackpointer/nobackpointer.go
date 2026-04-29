@@ -61,7 +61,7 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 func backPointerTarget(pass *analysis.Pass, t types.Type) (string, bool) {
-	named, ok := namedPointerTarget(t)
+	named, ok := namedPointerTarget(pass, t, map[types.Type]struct{}{})
 	if !ok || named.Obj() == nil {
 		return "", false
 	}
@@ -76,8 +76,7 @@ func backPointerTarget(pass *analysis.Pass, t types.Type) (string, bool) {
 	}
 }
 
-func namedPointerTarget(t types.Type) (*types.Named, bool) {
-	seen := map[types.Type]struct{}{}
+func namedPointerTarget(pass *analysis.Pass, t types.Type, seen map[types.Type]struct{}) (*types.Named, bool) {
 	for t != nil {
 		t = types.Unalias(t)
 		if _, ok := seen[t]; ok {
@@ -86,18 +85,43 @@ func namedPointerTarget(t types.Type) (*types.Named, bool) {
 		seen[t] = struct{}{}
 		switch current := t.(type) {
 		case *types.Pointer:
-			named, ok := types.Unalias(current.Elem()).(*types.Named)
-			if !ok {
-				return nil, false
+			if named, ok := types.Unalias(current.Elem()).(*types.Named); ok && isBackPointerNamed(pass, named) {
+				return named, true
 			}
-			return named, true
+			t = current.Elem()
 		case *types.Named:
 			t = current.Underlying()
+		case *types.Array:
+			t = current.Elem()
+		case *types.Slice:
+			t = current.Elem()
+		case *types.Chan:
+			t = current.Elem()
+		case *types.Map:
+			if named, ok := namedPointerTarget(pass, current.Elem(), seen); ok {
+				return named, true
+			}
+			t = current.Key()
 		default:
 			return nil, false
 		}
 	}
 	return nil, false
+}
+
+func isBackPointerNamed(pass *analysis.Pass, named *types.Named) bool {
+	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil || pass == nil || pass.Pkg == nil {
+		return false
+	}
+	if named.Obj().Pkg().Path() != pass.Pkg.Path() {
+		return false
+	}
+	switch named.Obj().Name() {
+	case "App", "Server":
+		return true
+	default:
+		return false
+	}
 }
 
 func fieldLabel(field *ast.Field) string {
