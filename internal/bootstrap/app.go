@@ -298,7 +298,7 @@ func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[c
 		reportStore(s.deps.StateStore),
 	).Run(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, reportConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -309,7 +309,7 @@ func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Reques
 		reportStore(s.deps.StateStore),
 	).Get(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, reportConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -500,6 +500,17 @@ func writeReportError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusServiceUnavailable
 	}
 	http.Error(w, err.Error(), statusCode)
+}
+
+func reportConnectError(err error) error {
+	switch {
+	case errors.Is(err, reports.ErrReportNotFound), errors.Is(err, ports.ErrReportRunNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, reports.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	default:
+		return err
+	}
 }
 
 func writeSourceRuntimeError(w http.ResponseWriter, err error) {
