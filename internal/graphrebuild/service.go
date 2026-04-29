@@ -305,10 +305,10 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 		}
 		summary.PagesRead++
 		summary.EventsRead += uint32(len(pull.Events))
-		for _, event := range pull.Events {
+		for idx, event := range pull.Events {
 			materialized := materializeEvent(runtime, event)
 			if materialized == nil {
-				continue
+				return nil, fmt.Errorf("read source page %d: nil event at index %d", page+1, idx)
 			}
 			summary.Events = append(summary.Events, materialized)
 			kind := strings.TrimSpace(materialized.GetKind())
