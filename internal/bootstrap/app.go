@@ -2451,7 +2451,7 @@ type pinger interface {
 
 func componentStatus(ctx context.Context, name string, dependency pinger) *cerebrov1.ComponentStatus {
 	status := &cerebrov1.ComponentStatus{Name: name, Status: "unconfigured"}
-	if dependency == nil {
+	if dependency == nil || isNilInterface(dependency) {
 		return status
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, healthCheckTimeout)

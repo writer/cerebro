@@ -231,6 +231,12 @@ func (s *deadlineAwareStore) Ping(ctx context.Context) error {
 	return nil
 }
 
+type typedNilPinger struct{}
+
+func (s *typedNilPinger) Ping(context.Context) error {
+	return errors.New("typed nil pinger was called")
+}
+
 type recordingAppendLog struct {
 	err            error
 	events         []*cerebrov1.EventEnvelope
@@ -1143,6 +1149,17 @@ func TestBootstrapHealthPingsUseTimeoutContext(t *testing.T) {
 	}
 	if !stateStore.sawDeadline {
 		t.Fatal("state store ping did not receive a deadline")
+	}
+}
+
+func TestBootstrapHealthTreatsTypedNilPingerAsUnconfigured(t *testing.T) {
+	var stateStore *typedNilPinger
+	response := healthResponse(context.Background(), Dependencies{StateStore: stateStore})
+	if response.GetStatus() != "ready" {
+		t.Fatalf("health status = %q, want ready", response.GetStatus())
+	}
+	if got := response.GetComponents()[1].GetStatus(); got != "unconfigured" {
+		t.Fatalf("state_store status = %q, want unconfigured", got)
 	}
 }
 
