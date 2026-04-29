@@ -123,7 +123,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ github.token }}
-          ref: ${{ steps.ctx.outputs.head_ref }}
+          ref: ${{ steps.ctx.outputs.head_sha }}
 
       - name: Prepare working branch
         if: steps.ctx.outputs.should_run == 'true'
@@ -132,7 +132,7 @@ jobs:
           set -euo pipefail
           git config user.name "factory-droid[bot]"
           git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
-          git checkout -B -- "${{ steps.ctx.outputs.head_ref }}"
+          git checkout -B -- "${{ steps.ctx.outputs.head_ref }}" "${{ steps.ctx.outputs.head_sha }}"
 
       - name: Install Droid CLI
         if: steps.ctx.outputs.should_run == 'true'
