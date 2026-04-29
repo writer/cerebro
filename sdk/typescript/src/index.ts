@@ -100,7 +100,7 @@ export interface ListClaimsOptions {
 export interface GraphEntity {
   urn: string;
   entity_type: string;
-  label: string;
+  label?: string;
 }
 
 export interface GraphRelation {
