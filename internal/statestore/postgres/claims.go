@@ -17,7 +17,7 @@ import (
 
 var ensureClaimStatements = []string{
 	`CREATE TABLE IF NOT EXISTS claims (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
   runtime_id TEXT NOT NULL,
   tenant_id TEXT NOT NULL,
   subject_urn TEXT NOT NULL,
@@ -33,8 +33,31 @@ var ensureClaimStatements = []string{
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   claim_json JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, runtime_id, id)
 )`,
+	`DO $$
+DECLARE
+  pk_name TEXT;
+  pk_cols TEXT[];
+BEGIN
+  SELECT c.conname, array_agg(a.attname ORDER BY k.ord)
+  INTO pk_name, pk_cols
+  FROM pg_constraint c
+  JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord) ON TRUE
+  JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+  WHERE c.conrelid = 'claims'::regclass AND c.contype = 'p'
+  GROUP BY c.conname;
+
+  IF pk_name IS NULL THEN
+    ALTER TABLE claims ADD PRIMARY KEY (tenant_id, runtime_id, id);
+  ELSIF pk_cols = ARRAY['id']::TEXT[] THEN
+    EXECUTE format('ALTER TABLE claims DROP CONSTRAINT %I', pk_name);
+    ALTER TABLE claims ADD PRIMARY KEY (tenant_id, runtime_id, id);
+  ELSIF pk_cols <> ARRAY['tenant_id', 'runtime_id', 'id']::TEXT[] THEN
+    RAISE EXCEPTION 'unexpected claims primary key columns: %', pk_cols;
+  END IF;
+END $$`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_subject_idx ON claims (runtime_id, subject_urn)`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_predicate_idx ON claims (runtime_id, predicate)`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_object_idx ON claims (runtime_id, object_urn)`,
@@ -96,7 +119,7 @@ INSERT INTO claims (
   claim_type, status, source_event_id, observed_at, valid_from, valid_to, attributes_json, claim_json
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb)
-ON CONFLICT (id)
+ON CONFLICT (tenant_id, runtime_id, id)
 DO UPDATE SET
   runtime_id = EXCLUDED.runtime_id,
   tenant_id = EXCLUDED.tenant_id,
@@ -205,12 +228,7 @@ ORDER BY observed_at DESC NULLS LAST, updated_at DESC, id`
 }
 
 func (s *Store) ensureClaimTables(ctx context.Context) error {
-	for _, statement := range ensureClaimStatements {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("ensure claims tables: %w", err)
-		}
-	}
-	return nil
+	return s.ensureStatements(ctx, &s.claimTablesReady, "claims", ensureClaimStatements)
 }
 
 func claimAttributesJSON(attributes map[string]string) (string, error) {

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -37,5 +38,16 @@ func TestUpsertProjectedLinkRejectsMissingRelation(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("UpsertProjectedLink() error = nil, want non-nil")
+	}
+}
+
+func TestProjectionUpsertsMergeAttributes(t *testing.T) {
+	entitySQL := projectedEntityUpsertSQL()
+	if !strings.Contains(entitySQL, "attributes_json = entities.attributes_json || EXCLUDED.attributes_json") {
+		t.Fatalf("entity upsert does not merge attributes:\n%s", entitySQL)
+	}
+	linkSQL := projectedLinkUpsertSQL()
+	if !strings.Contains(linkSQL, "attributes_json = entity_links.attributes_json || EXCLUDED.attributes_json") {
+		t.Fatalf("link upsert does not merge attributes:\n%s", linkSQL)
 	}
 }

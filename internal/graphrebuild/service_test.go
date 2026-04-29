@@ -278,6 +278,54 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 }
 
+func TestRebuildDryRunProjectsEventsBeyondPreviewLimit(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(&testSource{
+		spec: &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"},
+		pages: [][]*cerebrov1.EventEnvelope{
+			{
+				testEvent("github-audit-1", "github.audit", map[string]string{
+					"org":           "writer",
+					"repo":          "writer/cerebro",
+					"resource_id":   "writer/cerebro",
+					"resource_type": "repository",
+					"actor":         "octocat",
+					"action":        "repo.create",
+				}),
+				testEvent("github-pr-1", "github.pull_request", map[string]string{
+					"owner":       "writer",
+					"repository":  "writer/cerebro",
+					"pull_number": "418",
+					"author":      "octocat",
+					"state":       "open",
+					"html_url":    "https://github.com/writer/cerebro/pull/418",
+				}),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer-dogfood", Config: map[string]string{"token": "fixture-token"}},
+		},
+	}, nil)
+
+	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github", PreviewLimit: 1})
+	if err != nil {
+		t.Fatalf("RebuildDryRun() error = %v", err)
+	}
+	if got := len(result.Events); got != 1 {
+		t.Fatalf("len(Events) = %d, want preview limit 1", got)
+	}
+	if result.EventsRead != 2 {
+		t.Fatalf("EventsRead = %d, want 2", result.EventsRead)
+	}
+	if result.GraphNodes < 6 {
+		t.Fatalf("GraphNodes = %d, want graph to include events beyond preview limit", result.GraphNodes)
+	}
+}
+
 func TestRebuildDryRunProjectsDependabotAlertGraph(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(&testSource{
 		spec: &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"},

@@ -14,6 +14,14 @@ func AlsoBad() {
 	_, _ = sql.Open("postgres", ":memory:") // want `embedded or in-memory database usage is forbidden`
 }
 
+const sqliteDriver = "sqlite"
+const memoryDSN = "file:legacy.db?mode=memory&cache=shared"
+
+func ConstantBad() {
+	_, _ = sql.Open(sqliteDriver, "file:legacy.db") // want `embedded or in-memory database usage is forbidden`
+	_, _ = sql.Open("postgres", memoryDSN)          // want `embedded or in-memory database usage is forbidden`
+}
+
 func Good() {
 	_, _ = sql.Open("postgres", "postgres://db")
 }

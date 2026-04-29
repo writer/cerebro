@@ -55,7 +55,7 @@ func sourceGet(t *testing.T, server *httptest.Server, path string, config map[st
 }
 
 func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
-	for _, key := range []string{"token", "api_key", "private_key", "key"} {
+	for _, key := range []string{"token", "api_key", "apiKey", "accessKeyId", "private_key", "privateKey", "key"} {
 		t.Run(key, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/sources/okta/check?"+key+"=secret", nil)
 			if _, err := sourceConfigFromRequest(req); err == nil {
@@ -104,6 +104,34 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 				t.Fatalf("connect.CodeOf() = %s, want %s", got, tt.code)
 			}
 		})
+	}
+}
+
+func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeSourceRuntimeError(recorder, errors.New("postgres password leaked"))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+	if strings.Contains(recorder.Body.String(), "postgres password leaked") {
+		t.Fatalf("response body exposed internal error: %q", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), http.StatusText(http.StatusBadRequest)) {
+		t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
+	}
+}
+
+func TestStoreBoundaryHelpersTreatTypedNilAsUnavailable(t *testing.T) {
+	var graph *stubGraphStore
+	if got := graphQueryStore(graph); got != nil {
+		t.Fatalf("graphQueryStore(typed nil) = %#v, want nil", got)
+	}
+	if got := sourceProjectionGraphStore(graph); got != nil {
+		t.Fatalf("sourceProjectionGraphStore(typed nil) = %#v, want nil", got)
+	}
+	var state *stubRuntimeStore
+	if got := sourceRuntimeStore(state); got != nil {
+		t.Fatalf("sourceRuntimeStore(typed nil) = %#v, want nil", got)
 	}
 }
 

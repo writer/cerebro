@@ -146,6 +146,22 @@ func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	}
 }
 
+func TestSensitiveConfigKeyCatchesCommonCamelCaseSecrets(t *testing.T) {
+	for _, key := range []string{
+		"apiKey",
+		"accessKeyId",
+		"clientSecret",
+		"privateKey",
+		"sessionToken",
+	} {
+		t.Run(key, func(t *testing.T) {
+			if !sensitiveConfigKey(key) {
+				t.Fatalf("sensitiveConfigKey(%q) = false, want true", key)
+			}
+		})
+	}
+}
+
 func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

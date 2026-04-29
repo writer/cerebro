@@ -482,6 +482,33 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	}
 }
 
+func TestListClaimsAppliesDefaultAndMaximumLimits(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		limit uint32
+		want  uint32
+	}{
+		{name: "default", limit: 0, want: defaultListLimit},
+		{name: "clamp", limit: maxListLimit + 1, want: maxListLimit},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &stubClaimStore{claims: map[string]*ports.ClaimRecord{}}
+			service := New(
+				&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"}}},
+				store,
+				nil,
+				nil,
+			)
+			if _, err := service.ListClaims(context.Background(), ListRequest{RuntimeID: "writer-jira", Limit: tt.limit}); err != nil {
+				t.Fatalf("ListClaims() error = %v", err)
+			}
+			if got := store.listRequest.Limit; got != tt.want {
+				t.Fatalf("ListClaims().Limit = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestListClaimsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil)
 	if _, err := service.ListClaims(context.Background(), ListRequest{RuntimeID: "writer-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {

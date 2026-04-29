@@ -1065,6 +1065,19 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 }
 
+func TestFindingEvidenceIDIncludesEventIDs(t *testing.T) {
+	first := findingEvidenceID("runtime", "finding", "run", []string{"event-1"})
+	second := findingEvidenceID("runtime", "finding", "run", []string{"event-2"})
+	if first == second {
+		t.Fatalf("findingEvidenceID() = %q for distinct events, want unique IDs", first)
+	}
+	reordered := findingEvidenceID("runtime", "finding", "run", []string{"event-2", "event-1"})
+	sorted := findingEvidenceID("runtime", "finding", "run", []string{"event-1", "event-2"})
+	if reordered != sorted {
+		t.Fatalf("findingEvidenceID() depends on event order: %q != %q", reordered, sorted)
+	}
+}
+
 func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 	registry, err := NewRegistry(
 		&emittingRule{

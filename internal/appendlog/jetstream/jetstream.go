@@ -75,6 +75,10 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 	if strings.TrimSpace(cfg.JetStreamURL) == "" {
 		return nil, errors.New("jetstream url is required")
 	}
+	prefix, err := normalizeSubjectPrefix(cfg.JetStreamSubjectPrefix)
+	if err != nil {
+		return nil, err
+	}
 	nc, err := nats.Connect(
 		cfg.JetStreamURL,
 		nats.Name("cerebro"),
@@ -88,10 +92,6 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 	if err != nil {
 		nc.Close()
 		return nil, fmt.Errorf("new jetstream client: %w", err)
-	}
-	prefix := strings.TrimSpace(cfg.JetStreamSubjectPrefix)
-	if prefix == "" {
-		prefix = "events"
 	}
 	return &Log{
 		conn:          nc,
@@ -134,11 +134,15 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	if err := validateEventKind(kind); err != nil {
 		return err
 	}
+	subject, err := eventSubject(l.subjectPrefix, kind)
+	if err != nil {
+		return err
+	}
 	payload, err := proto.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal event: %w", err)
 	}
-	msg := nats.NewMsg(l.subjectPrefix + "." + kind)
+	msg := nats.NewMsg(subject)
 	msg.Data = payload
 	if event.Id != "" {
 		msg.Header.Set(nats.MsgIdHdr, event.Id)
@@ -159,6 +163,10 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		return nil, errors.New("at least one replay filter is required")
 	}
 	stream, err := l.replayStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	prefix, err := normalizeSubjectPrefix(l.subjectPrefix)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +192,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 			}
 			return nil, fmt.Errorf("get replay message %s:%d: %w", stream.Config.Name, seq, err)
 		}
-		if raw == nil || !strings.HasPrefix(strings.TrimSpace(raw.Subject), l.subjectPrefix+".") {
+		if raw == nil || !strings.HasPrefix(strings.TrimSpace(raw.Subject), prefix+".") {
 			continue
 		}
 		event := &cerebrov1.EventEnvelope{}
@@ -202,17 +210,47 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	return events, nil
 }
 
+func eventSubject(prefix string, kind string) (string, error) {
+	normalizedPrefix, err := normalizeSubjectPrefix(prefix)
+	if err != nil {
+		return "", err
+	}
+	normalizedKind := strings.TrimSpace(kind)
+	if err := validateEventKind(normalizedKind); err != nil {
+		return "", err
+	}
+	return normalizedPrefix + "." + normalizedKind, nil
+}
+
+func normalizeSubjectPrefix(prefix string) (string, error) {
+	normalized := strings.TrimSpace(prefix)
+	if normalized == "" {
+		normalized = "events"
+	}
+	if err := validateSubjectTokens("subject prefix", normalized); err != nil {
+		return "", err
+	}
+	return normalized, nil
+}
+
 func validateEventKind(kind string) error {
-	if kind == "" {
+	if strings.TrimSpace(kind) == "" {
 		return errors.New("event kind is required")
 	}
-	for _, token := range strings.Split(kind, ".") {
+	return validateSubjectTokens("event kind", strings.TrimSpace(kind))
+}
+
+func validateSubjectTokens(label string, subject string) error {
+	if subject == "" {
+		return fmt.Errorf("%s is required", label)
+	}
+	for _, token := range strings.Split(subject, ".") {
 		if token == "" {
-			return fmt.Errorf("event kind %q is not a valid NATS subject", kind)
+			return fmt.Errorf("%s %q is not a valid NATS subject", label, subject)
 		}
 		for _, r := range token {
 			if unicode.IsSpace(r) || unicode.IsControl(r) || r == '*' || r == '>' {
-				return fmt.Errorf("event kind %q is not a valid NATS subject", kind)
+				return fmt.Errorf("%s %q is not a valid NATS subject", label, subject)
 			}
 		}
 	}
@@ -274,33 +312,54 @@ func (l *Log) replayStream(ctx context.Context) (*jetstream.StreamInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list jetstream streams: %w", err)
 	}
-	probe := l.subjectPrefix + ".replay"
+	prefix, err := normalizeSubjectPrefix(l.subjectPrefix)
+	if err != nil {
+		return nil, err
+	}
 	var match *jetstream.StreamInfo
 	for _, stream := range streams {
-		if stream == nil || !streamAcceptsSubject(stream, probe) {
+		if stream == nil || !streamAcceptsSubjectPrefix(stream, prefix) {
 			continue
 		}
 		if match != nil {
-			return nil, fmt.Errorf("multiple replay streams match subject prefix %q", l.subjectPrefix)
+			return nil, fmt.Errorf("multiple replay streams match subject prefix %q", prefix)
 		}
 		match = stream
 	}
 	if match == nil {
-		return nil, fmt.Errorf("no replay stream matches subject prefix %q", l.subjectPrefix)
+		return nil, fmt.Errorf("no replay stream matches subject prefix %q", prefix)
 	}
 	return match, nil
 }
 
-func streamAcceptsSubject(stream *jetstream.StreamInfo, subject string) bool {
+func streamAcceptsSubjectPrefix(stream *jetstream.StreamInfo, prefix string) bool {
 	if stream == nil {
 		return false
 	}
 	for _, pattern := range stream.Config.Subjects {
-		if subjectMatches(pattern, subject) {
+		if subjectPatternOverlapsPrefix(pattern, prefix) {
 			return true
 		}
 	}
 	return false
+}
+
+func subjectPatternOverlapsPrefix(pattern string, prefix string) bool {
+	patternTokens := strings.Split(strings.TrimSpace(pattern), ".")
+	prefixTokens := strings.Split(strings.TrimSpace(prefix), ".")
+	for index, prefixToken := range prefixTokens {
+		if index >= len(patternTokens) {
+			return false
+		}
+		patternToken := patternTokens[index]
+		if patternToken == ">" {
+			return true
+		}
+		if patternToken != "*" && patternToken != prefixToken {
+			return false
+		}
+	}
+	return len(patternTokens) != len(prefixTokens)
 }
 
 func subjectMatches(pattern string, subject string) bool {

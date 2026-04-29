@@ -122,6 +122,26 @@ func TestAppendRejectsInvalidKindSubjects(t *testing.T) {
 	}
 }
 
+func TestAppendRejectsInvalidSubjectPrefix(t *testing.T) {
+	log := &Log{js: &fakePublisher{}, subjectPrefix: "events.*"}
+	if err := log.Append(context.Background(), &cerebrov1.EventEnvelope{Kind: "entity.update"}); err == nil {
+		t.Fatal("Append() error = nil, want non-nil")
+	}
+}
+
+func TestEventSubjectDefaultsAndValidatesPrefix(t *testing.T) {
+	subject, err := eventSubject("", "entity.update")
+	if err != nil {
+		t.Fatalf("eventSubject() error = %v", err)
+	}
+	if subject != "events.entity.update" {
+		t.Fatalf("eventSubject() = %q, want events.entity.update", subject)
+	}
+	if _, err := eventSubject("events.", "entity.update"); err == nil {
+		t.Fatal("eventSubject(invalid prefix) error = nil, want non-nil")
+	}
+}
+
 func TestPingSurfacesPublisherError(t *testing.T) {
 	log := &Log{js: &fakePublisher{accountErr: errors.New("down")}, subjectPrefix: "events"}
 	if err := log.Ping(context.Background()); err == nil {
@@ -269,6 +289,55 @@ func TestSubjectMatchesRequiresTokenForFullWildcard(t *testing.T) {
 	}
 	if !subjectMatches("events.>", "events.github.audit") {
 		t.Fatal("subjectMatches(events.>, events.github.audit) = false, want true")
+	}
+}
+
+func TestReplayStreamMatchesMultiTokenSubjectPatterns(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.*.*"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 1},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+}
+
+func TestSubjectPatternOverlapsPrefix(t *testing.T) {
+	for _, tt := range []struct {
+		pattern string
+		prefix  string
+		want    bool
+	}{
+		{pattern: "events.>", prefix: "events", want: true},
+		{pattern: "events.*", prefix: "events", want: true},
+		{pattern: "events.*.*", prefix: "events", want: true},
+		{pattern: "events.github.>", prefix: "events", want: true},
+		{pattern: "events", prefix: "events", want: false},
+		{pattern: "other.>", prefix: "events", want: false},
+	} {
+		t.Run(tt.pattern, func(t *testing.T) {
+			if got := subjectPatternOverlapsPrefix(tt.pattern, tt.prefix); got != tt.want {
+				t.Fatalf("subjectPatternOverlapsPrefix(%q, %q) = %v, want %v", tt.pattern, tt.prefix, got, tt.want)
+			}
+		})
 	}
 }
 

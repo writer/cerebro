@@ -87,3 +87,13 @@ func TestFindingEvidenceListQueryIncludesOptionalFilters(t *testing.T) {
 		t.Fatalf("findingEvidenceListQuery().args[7] = %#v, want 25", got)
 	}
 }
+
+func TestFindingEvidenceUpsertPreservesCreatedAtOnConflict(t *testing.T) {
+	query := findingEvidenceUpsertSQL()
+	if strings.Contains(query, "created_at = EXCLUDED.created_at") {
+		t.Fatalf("finding evidence upsert overwrites created_at:\n%s", query)
+	}
+	if !strings.Contains(query, "jsonb_set(EXCLUDED.finding_evidence_json, '{created_at}'") {
+		t.Fatalf("finding evidence upsert does not preserve payload created_at:\n%s", query)
+	}
+}

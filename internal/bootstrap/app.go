@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -1701,6 +1702,10 @@ func sensitiveSourceConfigKey(key string) bool {
 	if strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password") {
 		return true
 	}
+	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
+	if strings.Contains(compact, "apikey") || strings.Contains(compact, "accesskey") || strings.Contains(compact, "privatekey") {
+		return true
+	}
 	return value == "key" || strings.HasSuffix(value, "_key")
 }
 
@@ -1749,7 +1754,7 @@ func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
 }
 
 func sourceRuntimeConnectError(err error) error {
@@ -1940,7 +1945,7 @@ func readProtoJSON(r *http.Request, message proto.Message) error {
 
 func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 	runtimeStore, ok := store.(ports.SourceRuntimeStore)
-	if !ok {
+	if !ok || isNilInterface(runtimeStore) {
 		return nil
 	}
 	return runtimeStore
@@ -1948,7 +1953,7 @@ func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 
 func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateStore {
 	projectionStore, ok := store.(ports.ProjectionStateStore)
-	if !ok {
+	if !ok || isNilInterface(projectionStore) {
 		return nil
 	}
 	return projectionStore
@@ -1956,7 +1961,7 @@ func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateSto
 
 func sourceProjectionGraphStore(store ports.GraphStore) ports.ProjectionGraphStore {
 	projectionStore, ok := store.(ports.ProjectionGraphStore)
-	if !ok {
+	if !ok || isNilInterface(projectionStore) {
 		return nil
 	}
 	return projectionStore
@@ -1973,7 +1978,7 @@ func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) p
 
 func graphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
 	queryStore, ok := store.(ports.GraphQueryStore)
-	if !ok {
+	if !ok || isNilInterface(queryStore) {
 		return nil
 	}
 	return queryStore
@@ -1981,7 +1986,7 @@ func graphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
 
 func findingStore(store ports.StateStore) ports.FindingStore {
 	findingStore, ok := store.(ports.FindingStore)
-	if !ok {
+	if !ok || isNilInterface(findingStore) {
 		return nil
 	}
 	return findingStore
@@ -1989,7 +1994,7 @@ func findingStore(store ports.StateStore) ports.FindingStore {
 
 func findingEvaluationRunStore(store ports.StateStore) ports.FindingEvaluationRunStore {
 	runStore, ok := store.(ports.FindingEvaluationRunStore)
-	if !ok {
+	if !ok || isNilInterface(runStore) {
 		return nil
 	}
 	return runStore
@@ -1997,7 +2002,7 @@ func findingEvaluationRunStore(store ports.StateStore) ports.FindingEvaluationRu
 
 func findingEvidenceStore(store ports.StateStore) ports.FindingEvidenceStore {
 	evidenceStore, ok := store.(ports.FindingEvidenceStore)
-	if !ok {
+	if !ok || isNilInterface(evidenceStore) {
 		return nil
 	}
 	return evidenceStore
@@ -2005,10 +2010,23 @@ func findingEvidenceStore(store ports.StateStore) ports.FindingEvidenceStore {
 
 func claimStore(store ports.StateStore) ports.ClaimStore {
 	claimStore, ok := store.(ports.ClaimStore)
-	if !ok {
+	if !ok || isNilInterface(claimStore) {
 		return nil
 	}
 	return claimStore
+}
+
+func isNilInterface(value any) bool {
+	if value == nil {
+		return true
+	}
+	reflected := reflect.ValueOf(value)
+	switch reflected.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return reflected.IsNil()
+	default:
+		return false
+	}
 }
 
 func reportStore(store ports.StateStore) ports.ReportStore {

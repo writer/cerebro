@@ -159,17 +159,8 @@ func (s *Store) ListFindingEvaluationRuns(ctx context.Context, request ports.Lis
 	return runs, nil
 }
 
-func ensureFindingEvaluationRunTable(ctx context.Context, db *sql.DB) error {
-	for _, statement := range ensureFindingEvaluationRunStatements {
-		if _, err := db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("ensure finding evaluation run tables: %w", err)
-		}
-	}
-	return nil
-}
-
 func (s *Store) ensureFindingEvaluationRunTables(ctx context.Context) error {
-	return ensureFindingEvaluationRunTable(ctx, s.db)
+	return s.ensureStatements(ctx, &s.findingEvaluationRunReady, "finding evaluation run", ensureFindingEvaluationRunStatements)
 }
 
 func findingEvaluationRunListQuery(request ports.ListFindingEvaluationRunsRequest) (string, []any, error) {

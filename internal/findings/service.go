@@ -853,7 +853,7 @@ func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.Findi
 	eventIDs := uniqueSortedStrings(finding.EventIDs)
 	createdAt := time.Now().UTC()
 	return &cerebrov1.FindingEvidence{
-		Id:            findingEvidenceID(finding.RuntimeID, finding.ID, run.GetId()),
+		Id:            findingEvidenceID(finding.RuntimeID, finding.ID, run.GetId(), eventIDs),
 		RuntimeId:     strings.TrimSpace(finding.RuntimeID),
 		RuleId:        strings.TrimSpace(finding.RuleID),
 		FindingId:     strings.TrimSpace(finding.ID),
@@ -910,8 +910,10 @@ func uniqueSortedStrings(values []string) []string {
 	return unique
 }
 
-func findingEvidenceID(runtimeID string, findingID string, runID string) string {
+func findingEvidenceID(runtimeID string, findingID string, runID string, eventIDs []string) string {
 	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
-	prefix := replacer.Replace(strings.TrimSpace(runtimeID) + "-" + strings.TrimSpace(findingID) + "-" + strings.TrimSpace(runID))
+	parts := []string{strings.TrimSpace(runtimeID), strings.TrimSpace(findingID), strings.TrimSpace(runID)}
+	parts = append(parts, uniqueSortedStrings(eventIDs)...)
+	prefix := replacer.Replace(strings.Join(parts, "-"))
 	return "finding-evidence-" + prefix
 }
