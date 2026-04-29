@@ -1735,7 +1735,7 @@ func reportConnectError(err error) error {
 	case errors.Is(err, reports.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
-		return connect.NewError(defaultConnectErrorCode(err), err)
+		return defaultConnectError(err)
 	}
 }
 
@@ -1743,7 +1743,7 @@ func sourceConnectError(err error) error {
 	if errors.Is(err, sourceops.ErrSourceNotFound) {
 		return connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewError(defaultConnectErrorCode(err), err)
+	return defaultConnectError(err)
 }
 
 func writeSourceRuntimeError(w http.ResponseWriter, err error) {
@@ -1764,7 +1764,7 @@ func sourceRuntimeConnectError(err error) error {
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
-		return connect.NewError(defaultConnectErrorCode(err), err)
+		return defaultConnectError(err)
 	}
 }
 
@@ -1786,7 +1786,7 @@ func claimConnectError(err error) error {
 	case errors.Is(err, claims.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
-		return connect.NewError(defaultConnectErrorCode(err), err)
+		return defaultConnectError(err)
 	}
 }
 
@@ -1801,6 +1801,14 @@ func defaultConnectErrorCode(err error) connect.Code {
 	}
 }
 
+func defaultConnectError(err error) error {
+	code := defaultConnectErrorCode(err)
+	if code == connect.CodeInternal {
+		return connect.NewError(code, errors.New("internal error"))
+	}
+	return connect.NewError(code, err)
+}
+
 func findingConnectError(err error) error {
 	switch {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
@@ -1812,7 +1820,7 @@ func findingConnectError(err error) error {
 	case errors.Is(err, findings.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
-		return connect.NewError(defaultConnectErrorCode(err), err)
+		return defaultConnectError(err)
 	}
 }
 
@@ -1823,7 +1831,7 @@ func knowledgeConnectError(err error) error {
 	case errors.Is(err, knowledge.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
-		return connect.NewError(defaultConnectErrorCode(err), err)
+		return defaultConnectError(err)
 	}
 }
 
@@ -1834,7 +1842,7 @@ func graphQueryConnectError(err error) error {
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
-		return connect.NewError(defaultConnectErrorCode(err), err)
+		return defaultConnectError(err)
 	}
 }
 
@@ -1847,7 +1855,7 @@ func graphIngestConnectError(err error) error {
 	case errors.Is(err, graphingest.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
-		return connect.NewError(defaultConnectErrorCode(err), err)
+		return defaultConnectError(err)
 	}
 }
 
@@ -1855,7 +1863,7 @@ func workflowReplayConnectError(err error) error {
 	if errors.Is(err, workflowprojection.ErrRuntimeUnavailable) {
 		return connect.NewError(connect.CodeUnavailable, err)
 	}
-	return connect.NewError(defaultConnectErrorCode(err), err)
+	return defaultConnectError(err)
 }
 
 func writeFindingError(w http.ResponseWriter, err error) {

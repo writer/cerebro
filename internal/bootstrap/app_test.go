@@ -107,6 +107,40 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 	}
 }
 
+func TestConnectInternalErrorsHideDetails(t *testing.T) {
+	internalErr := errors.New("postgres password leaked")
+	for _, tt := range []struct {
+		name string
+		err  error
+	}{
+		{name: "report", err: reportConnectError(internalErr)},
+		{name: "source", err: sourceConnectError(internalErr)},
+		{name: "runtime", err: sourceRuntimeConnectError(internalErr)},
+		{name: "claim", err: claimConnectError(internalErr)},
+		{name: "finding", err: findingConnectError(internalErr)},
+		{name: "knowledge", err: knowledgeConnectError(internalErr)},
+		{name: "workflow replay", err: workflowReplayConnectError(internalErr)},
+		{name: "graph query", err: graphQueryConnectError(internalErr)},
+		{name: "graph ingest", err: graphIngestConnectError(internalErr)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := connect.CodeOf(tt.err); got != connect.CodeInternal {
+				t.Fatalf("connect.CodeOf() = %s, want %s", got, connect.CodeInternal)
+			}
+			var connectErr *connect.Error
+			if !errors.As(tt.err, &connectErr) {
+				t.Fatalf("error = %T, want *connect.Error", tt.err)
+			}
+			if strings.Contains(connectErr.Message(), "postgres password leaked") {
+				t.Fatalf("connect error exposed internal detail: %q", connectErr.Message())
+			}
+			if !strings.Contains(connectErr.Message(), "internal error") {
+				t.Fatalf("connect error = %q, want generic internal error", connectErr.Message())
+			}
+		})
+	}
+}
+
 func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeSourceRuntimeError(recorder, errors.New("postgres password leaked"))
