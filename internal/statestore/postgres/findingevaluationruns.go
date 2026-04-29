@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -193,7 +194,7 @@ func addFindingEvaluationRunFilter(clauses *[]string, args *[]any, column string
 	*clauses = append(*clauses, fmt.Sprintf("%s = $%d", column, len(*args)))
 }
 
-func findingEvaluationRunTime(value interface{ AsTime() time.Time }) time.Time {
+func findingEvaluationRunTime(value *timestamppb.Timestamp) time.Time {
 	if value == nil {
 		return time.Time{}
 	}
