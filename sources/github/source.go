@@ -375,6 +375,9 @@ func isLoopbackHost(host string) bool {
 	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
 		return true
 	}
+	if address, _, ok := strings.Cut(value, "%"); ok {
+		value = address
+	}
 	ip := net.ParseIP(value)
 	return ip != nil && ip.IsLoopback()
 }

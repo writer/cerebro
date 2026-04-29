@@ -1151,7 +1151,7 @@ func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Reques
 		Limit:       req.Msg.GetLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(listFindingsResponse(response)), nil
 }
@@ -1166,7 +1166,7 @@ func (s *bootstrapService) GetFinding(ctx context.Context, req *connect.Request[
 		claimStore(s.deps.StateStore),
 	).GetFinding(ctx, req.Msg.GetId())
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.GetFindingResponse{Finding: findingMessage(finding)}), nil
 }
@@ -1181,7 +1181,7 @@ func (s *bootstrapService) ResolveFinding(ctx context.Context, req *connect.Requ
 		claimStore(s.deps.StateStore),
 	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog).ResolveFinding(ctx, req.Msg.GetId(), req.Msg.GetReason())
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.ResolveFindingResponse{Finding: findingMessage(finding)}), nil
 }
@@ -1196,7 +1196,7 @@ func (s *bootstrapService) SuppressFinding(ctx context.Context, req *connect.Req
 		claimStore(s.deps.StateStore),
 	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog).SuppressFinding(ctx, req.Msg.GetId(), req.Msg.GetReason())
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.SuppressFindingResponse{Finding: findingMessage(finding)}), nil
 }
@@ -1211,7 +1211,7 @@ func (s *bootstrapService) AssignFinding(ctx context.Context, req *connect.Reque
 		claimStore(s.deps.StateStore),
 	).AssignFinding(ctx, req.Msg.GetId(), req.Msg.GetAssignee())
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.AssignFindingResponse{Finding: findingMessage(finding)}), nil
 }
@@ -1230,7 +1230,7 @@ func (s *bootstrapService) SetFindingDueDate(ctx context.Context, req *connect.R
 		claimStore(s.deps.StateStore),
 	).SetFindingDueDate(ctx, req.Msg.GetId(), dueAt)
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.SetFindingDueDateResponse{Finding: findingMessage(finding)}), nil
 }
@@ -1245,7 +1245,7 @@ func (s *bootstrapService) AddFindingNote(ctx context.Context, req *connect.Requ
 		claimStore(s.deps.StateStore),
 	).WithGraphStore(sourceProjectionGraphStore(s.deps.GraphStore)).WithGraphQueryStore(graphQueryStore(s.deps.GraphStore)).WithAppendLog(s.deps.AppendLog).AddFindingNote(ctx, req.Msg.GetId(), req.Msg.GetNote())
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.AddFindingNoteResponse{Finding: findingMessage(finding)}), nil
 }
@@ -1266,7 +1266,7 @@ func (s *bootstrapService) LinkFindingTicket(ctx context.Context, req *connect.R
 		req.Msg.GetExternalId(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.LinkFindingTicketResponse{Finding: findingMessage(finding)}), nil
 }
@@ -1290,7 +1290,7 @@ func (s *bootstrapService) ListFindingEvidence(ctx context.Context, req *connect
 		Limit:        req.Msg.GetLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.ListFindingEvidenceResponse{
 		Evidence: response.Evidence,
@@ -1312,7 +1312,7 @@ func (s *bootstrapService) ListFindingEvaluationRuns(ctx context.Context, req *c
 		Limit:     req.Msg.GetLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.ListFindingEvaluationRunsResponse{
 		Runs: response.Runs,
@@ -1329,7 +1329,7 @@ func (s *bootstrapService) GetFindingEvaluationRun(ctx context.Context, req *con
 		claimStore(s.deps.StateStore),
 	).GetEvaluationRun(ctx, req.Msg.GetId())
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.GetFindingEvaluationRunResponse{Run: run}), nil
 }
@@ -1344,7 +1344,7 @@ func (s *bootstrapService) GetFindingEvidence(ctx context.Context, req *connect.
 		claimStore(s.deps.StateStore),
 	).GetEvidence(ctx, req.Msg.GetId())
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.GetFindingEvidenceResponse{Evidence: evidence}), nil
 }
@@ -1363,7 +1363,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindingRules(ctx context.Context
 		EventLimit: req.Msg.GetEventLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(findingRulesResponse(response)), nil
 }
@@ -1382,7 +1382,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 		EventLimit: req.Msg.GetEventLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, findingConnectError(err)
 	}
 	return connect.NewResponse(findingResponse(response)), nil
 }
@@ -1413,7 +1413,7 @@ func (s *bootstrapService) WriteDecision(ctx context.Context, req *connect.Reque
 		Metadata:      metadata,
 	})
 	if err != nil {
-		return nil, err
+		return nil, knowledgeConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.WriteDecisionResponse{
 		DecisionId:  result.DecisionID,
@@ -1447,7 +1447,7 @@ func (s *bootstrapService) WriteAction(ctx context.Context, req *connect.Request
 		Metadata:         metadata,
 	})
 	if err != nil {
-		return nil, err
+		return nil, knowledgeConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.WriteActionResponse{
 		ActionId:    result.ActionID,
@@ -1480,7 +1480,7 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 		Metadata:      metadata,
 	})
 	if err != nil {
-		return nil, err
+		return nil, knowledgeConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.WriteOutcomeResponse{
 		OutcomeId:   result.OutcomeID,
@@ -1500,7 +1500,7 @@ func (s *bootstrapService) ReplayWorkflowEvents(ctx context.Context, req *connec
 		Limit:           req.Msg.GetLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, workflowReplayConnectError(err)
 	}
 	return connect.NewResponse(workflowReplayResponse(result)), nil
 }
@@ -1513,7 +1513,7 @@ func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *conne
 		Limit:   req.Msg.GetLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, graphQueryConnectError(err)
 	}
 	return connect.NewResponse(graphNeighborhoodResponse(response)), nil
 }
@@ -1527,7 +1527,7 @@ func (s *bootstrapService) RunGraphIngestRuntime(ctx context.Context, req *conne
 		Trigger:         "api",
 	})
 	if err != nil {
-		return nil, err
+		return nil, graphIngestConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.RunGraphIngestRuntimeResponse{
 		Result: graphIngestRunResultMessage(result),
@@ -1537,7 +1537,7 @@ func (s *bootstrapService) RunGraphIngestRuntime(ctx context.Context, req *conne
 func (s *bootstrapService) GetGraphIngestRun(ctx context.Context, req *connect.Request[cerebrov1.GetGraphIngestRunRequest]) (*connect.Response[cerebrov1.GetGraphIngestRunResponse], error) {
 	run, err := newGraphIngestService(s.deps, s.sources).GetRun(ctx, req.Msg.GetId())
 	if err != nil {
-		return nil, err
+		return nil, graphIngestConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.GetGraphIngestRunResponse{
 		Run: graphIngestRunMessage(run),
@@ -1551,7 +1551,7 @@ func (s *bootstrapService) ListGraphIngestRuns(ctx context.Context, req *connect
 		Limit:     int(req.Msg.GetLimit()),
 	})
 	if err != nil {
-		return nil, err
+		return nil, graphIngestConnectError(err)
 	}
 	return connect.NewResponse(graphIngestListResponse(result)), nil
 }
@@ -1559,7 +1559,7 @@ func (s *bootstrapService) ListGraphIngestRuns(ctx context.Context, req *connect
 func (s *bootstrapService) CheckGraphIngestHealth(ctx context.Context, req *connect.Request[cerebrov1.CheckGraphIngestHealthRequest]) (*connect.Response[cerebrov1.CheckGraphIngestHealthResponse], error) {
 	result, err := newGraphIngestService(s.deps, s.sources).Health(ctx, req.Msg.GetLimit())
 	if err != nil {
-		return nil, err
+		return nil, graphIngestConnectError(err)
 	}
 	return connect.NewResponse(graphIngestHealthResponse(result)), nil
 }
@@ -1794,6 +1794,63 @@ func defaultConnectErrorCode(err error) connect.Code {
 	default:
 		return connect.CodeInternal
 	}
+}
+
+func findingConnectError(err error) error {
+	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
+		errors.Is(err, findings.ErrRuleNotFound),
+		errors.Is(err, ports.ErrFindingNotFound),
+		errors.Is(err, ports.ErrFindingEvaluationRunNotFound),
+		errors.Is(err, ports.ErrFindingEvidenceNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, findings.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	default:
+		return connect.NewError(defaultConnectErrorCode(err), err)
+	}
+}
+
+func knowledgeConnectError(err error) error {
+	switch {
+	case errors.Is(err, ports.ErrGraphEntityNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, knowledge.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	default:
+		return connect.NewError(defaultConnectErrorCode(err), err)
+	}
+}
+
+func graphQueryConnectError(err error) error {
+	switch {
+	case errors.Is(err, ports.ErrGraphEntityNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	default:
+		return connect.NewError(defaultConnectErrorCode(err), err)
+	}
+}
+
+func graphIngestConnectError(err error) error {
+	switch {
+	case errors.Is(err, graphingest.ErrRunNotFound),
+		errors.Is(err, ports.ErrSourceRuntimeNotFound),
+		errors.Is(err, sourceops.ErrSourceNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, graphingest.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	default:
+		return connect.NewError(defaultConnectErrorCode(err), err)
+	}
+}
+
+func workflowReplayConnectError(err error) error {
+	if errors.Is(err, workflowprojection.ErrRuntimeUnavailable) {
+		return connect.NewError(connect.CodeUnavailable, err)
+	}
+	return connect.NewError(defaultConnectErrorCode(err), err)
 }
 
 func writeFindingError(w http.ResponseWriter, err error) {

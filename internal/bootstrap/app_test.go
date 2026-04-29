@@ -21,13 +21,18 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphingest"
+	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/workflowevents"
+	"github.com/writer/cerebro/internal/workflowprojection"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
@@ -78,6 +83,21 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 		{name: "runtime unknown", err: sourceRuntimeConnectError(errors.New("persist failed")), code: connect.CodeInternal},
 		{name: "claim runtime not found", err: claimConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
 		{name: "claim unknown", err: claimConnectError(errors.New("persist failed")), code: connect.CodeInternal},
+		{name: "finding not found", err: findingConnectError(ports.ErrFindingNotFound), code: connect.CodeNotFound},
+		{name: "finding rule not found", err: findingConnectError(findings.ErrRuleNotFound), code: connect.CodeNotFound},
+		{name: "finding unavailable", err: findingConnectError(findings.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "finding unknown", err: findingConnectError(errors.New("finding store failed")), code: connect.CodeInternal},
+		{name: "knowledge entity not found", err: knowledgeConnectError(ports.ErrGraphEntityNotFound), code: connect.CodeNotFound},
+		{name: "knowledge unavailable", err: knowledgeConnectError(knowledge.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "knowledge unknown", err: knowledgeConnectError(errors.New("knowledge store failed")), code: connect.CodeInternal},
+		{name: "workflow replay unavailable", err: workflowReplayConnectError(workflowprojection.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "workflow replay unknown", err: workflowReplayConnectError(errors.New("replay failed")), code: connect.CodeInternal},
+		{name: "graph query entity not found", err: graphQueryConnectError(ports.ErrGraphEntityNotFound), code: connect.CodeNotFound},
+		{name: "graph query unavailable", err: graphQueryConnectError(graphquery.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "graph ingest run not found", err: graphIngestConnectError(graphingest.ErrRunNotFound), code: connect.CodeNotFound},
+		{name: "graph ingest source not found", err: graphIngestConnectError(sourceops.ErrSourceNotFound), code: connect.CodeNotFound},
+		{name: "graph ingest unavailable", err: graphIngestConnectError(graphingest.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "graph ingest unknown", err: graphIngestConnectError(errors.New("graph ingest failed")), code: connect.CodeInternal},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := connect.CodeOf(tt.err); got != tt.code {

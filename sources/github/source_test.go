@@ -395,6 +395,7 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 		"https://github.example.com?token=leak",
 		"https://localhost",
 		"https://localhost.",
+		"https://[::1%25lo0]",
 	} {
 		t.Run(baseURL, func(t *testing.T) {
 			err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{

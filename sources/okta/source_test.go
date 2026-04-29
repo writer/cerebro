@@ -430,6 +430,7 @@ func TestRejectsUnsafeDomain(t *testing.T) {
 		"127.0.0.1",
 		"127.0.0.1.",
 		"[::1]",
+		"[::1%25lo0]",
 	} {
 		t.Run(domain, func(t *testing.T) {
 			_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
