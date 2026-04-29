@@ -409,6 +409,10 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 		"https://user@writer.okta.com",
 		"https://writer.okta.com?",
 		"https://localhost.",
+		"https://127.1",
+		"https://2130706433",
+		"https://0177.0.0.1",
+		"https://0x7f000001",
 	} {
 		t.Run(baseURL, func(t *testing.T) {
 			err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
@@ -430,6 +434,10 @@ func TestRejectsUnsafeDomain(t *testing.T) {
 		"localhost.",
 		"127.0.0.1",
 		"127.0.0.1.",
+		"127.1",
+		"2130706433",
+		"0177.0.0.1",
+		"0x7f000001",
 		"[::1]",
 		"[::1%25lo0]",
 	} {

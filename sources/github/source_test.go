@@ -397,6 +397,10 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 		"https://localhost",
 		"https://localhost.",
 		"https://[::1%25lo0]",
+		"https://127.1",
+		"https://2130706433",
+		"https://0177.0.0.1",
+		"https://0x7f000001",
 	} {
 		t.Run(baseURL, func(t *testing.T) {
 			err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{

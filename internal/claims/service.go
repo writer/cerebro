@@ -127,6 +127,11 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 				result.EntitiesUpserted++
 			}
 		}
+		if retracted := retractedRelation(runtime, claim); retracted != nil {
+			if err := s.deleteLink(ctx, retracted); err != nil {
+				return nil, err
+			}
+		}
 		if projected := projectedRelation(runtime, claim); projected != nil {
 			wrote, err := s.upsertLink(ctx, projected, upsertedLinks)
 			if err != nil {
@@ -506,13 +511,24 @@ func projectedEntity(runtime *cerebrov1.SourceRuntime, ref *cerebrov1.EntityRef,
 }
 
 func projectedRelation(runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim) *ports.ProjectedLink {
+	if !strings.EqualFold(strings.TrimSpace(claim.GetStatus()), claimStatusAsserted) {
+		return nil
+	}
+	return relationLink(runtime, claim)
+}
+
+func retractedRelation(runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim) *ports.ProjectedLink {
+	if !strings.EqualFold(strings.TrimSpace(claim.GetStatus()), claimStatusRetracted) {
+		return nil
+	}
+	return relationLink(runtime, claim)
+}
+
+func relationLink(runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim) *ports.ProjectedLink {
 	if runtime == nil || claim == nil {
 		return nil
 	}
 	if !strings.EqualFold(strings.TrimSpace(claim.GetClaimType()), claimTypeRelation) {
-		return nil
-	}
-	if !strings.EqualFold(strings.TrimSpace(claim.GetStatus()), claimStatusAsserted) {
 		return nil
 	}
 	fromURN := strings.TrimSpace(claim.GetSubjectUrn())

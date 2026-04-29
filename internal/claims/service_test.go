@@ -349,6 +349,52 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsRetractedRelationDeletesProjectedLink(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	projection := &projectionRecorder{}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {
+					Id:       "writer-jira",
+					SourceId: "sdk",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubClaimStore{},
+		projection,
+		projection,
+	)
+
+	result, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusRetracted,
+				SourceEventId: "jira-event-3",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if got := result.RelationLinksProjected; got != 0 {
+		t.Fatalf("WriteClaims().RelationLinksProjected = %d, want 0", got)
+	}
+	if _, ok := projection.links[issueURN+"|assigned_to|"+assigneeURN]; ok {
+		t.Fatal("projected link was upserted for retracted relation")
+	}
+	if _, ok := projection.deletedLinks[issueURN+"|assigned_to|"+assigneeURN]; !ok {
+		t.Fatal("deleted projected link missing for explicitly retracted relation")
+	}
+}
+
 func TestWriteClaimsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil)
 	if _, err := service.WriteClaims(context.Background(), WriteRequest{RuntimeID: "writer-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {

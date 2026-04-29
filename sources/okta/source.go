@@ -605,7 +605,52 @@ func isLoopbackHost(host string) bool {
 		value = address
 	}
 	ip := net.ParseIP(value)
+	if ip == nil {
+		ip = parseNumericIPv4Host(value)
+	}
 	return ip != nil && ip.IsLoopback()
+}
+
+func parseNumericIPv4Host(host string) net.IP {
+	if strings.Contains(host, ":") {
+		return nil
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) == 0 || len(parts) > 4 {
+		return nil
+	}
+	values := make([]uint64, len(parts))
+	for i, part := range parts {
+		if part == "" {
+			return nil
+		}
+		value, err := strconv.ParseUint(part, 0, 32)
+		if err != nil {
+			return nil
+		}
+		values[i] = value
+	}
+	var ipv4 uint32
+	switch len(values) {
+	case 1:
+		ipv4 = uint32(values[0])
+	case 2:
+		if values[0] > 0xff || values[1] > 0xffffff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1])
+	case 3:
+		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2])
+	case 4:
+		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xff || values[3] > 0xff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2]<<8 | values[3])
+	}
+	return net.IPv4(byte(ipv4>>24), byte(ipv4>>16), byte(ipv4>>8), byte(ipv4))
 }
 
 func normalizeAuditSortOrder(raw string) (string, error) {
