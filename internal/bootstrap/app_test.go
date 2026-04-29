@@ -82,15 +82,17 @@ func (s *recordingAppendLog) Replay(_ context.Context, request ports.ReplayReque
 }
 
 type stubRuntimeStore struct {
-	err                error
-	runtimes           map[string]*cerebrov1.SourceRuntime
-	entities           map[string]*ports.ProjectedEntity
-	links              map[string]*ports.ProjectedLink
-	claims             map[string]*ports.ClaimRecord
-	claimListRequest   ports.ListClaimsRequest
-	findings           map[string]*ports.FindingRecord
-	findingListRequest ports.ListFindingsRequest
-	reportRuns         map[string]*cerebrov1.ReportRun
+	err                             error
+	runtimes                        map[string]*cerebrov1.SourceRuntime
+	entities                        map[string]*ports.ProjectedEntity
+	links                           map[string]*ports.ProjectedLink
+	claims                          map[string]*ports.ClaimRecord
+	claimListRequest                ports.ListClaimsRequest
+	findings                        map[string]*ports.FindingRecord
+	findingListRequest              ports.ListFindingsRequest
+	findingEvaluationRuns           map[string]*cerebrov1.FindingEvaluationRun
+	findingEvaluationRunListRequest ports.ListFindingEvaluationRunsRequest
+	reportRuns                      map[string]*cerebrov1.ReportRun
 }
 
 func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
@@ -235,6 +237,59 @@ func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFin
 		findings = findings[:int(request.Limit)]
 	}
 	return findings, nil
+}
+
+func (s *stubRuntimeStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
+	if s.err != nil {
+		return s.err
+	}
+	if run == nil {
+		return nil
+	}
+	if s.findingEvaluationRuns == nil {
+		s.findingEvaluationRuns = make(map[string]*cerebrov1.FindingEvaluationRun)
+	}
+	s.findingEvaluationRuns[run.GetId()] = cloneFindingEvaluationRun(run)
+	return nil
+}
+
+func (s *stubRuntimeStore) GetFindingEvaluationRun(_ context.Context, id string) (*cerebrov1.FindingEvaluationRun, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	run, ok := s.findingEvaluationRuns[id]
+	if !ok {
+		return nil, ports.ErrFindingEvaluationRunNotFound
+	}
+	return cloneFindingEvaluationRun(run), nil
+}
+
+func (s *stubRuntimeStore) ListFindingEvaluationRuns(_ context.Context, request ports.ListFindingEvaluationRunsRequest) ([]*cerebrov1.FindingEvaluationRun, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.findingEvaluationRunListRequest = request
+	runs := []*cerebrov1.FindingEvaluationRun{}
+	for _, run := range s.findingEvaluationRuns {
+		if !findingEvaluationRunMatches(request, run) {
+			continue
+		}
+		runs = append(runs, cloneFindingEvaluationRun(run))
+	}
+	sort.Slice(runs, func(i, j int) bool {
+		left := runs[i]
+		right := runs[j]
+		switch {
+		case left.GetStartedAt().AsTime().Equal(right.GetStartedAt().AsTime()):
+			return left.GetId() < right.GetId()
+		default:
+			return left.GetStartedAt().AsTime().After(right.GetStartedAt().AsTime())
+		}
+	})
+	if request.Limit != 0 && len(runs) > int(request.Limit) {
+		runs = runs[:int(request.Limit)]
+	}
+	return runs, nil
 }
 
 func (s *stubRuntimeStore) PutReportRun(_ context.Context, run *cerebrov1.ReportRun) error {
@@ -878,6 +933,20 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := findingPayload["summary"]; got != "admin@writer.com performed policy.rule.update on pol-1" {
 		t.Fatalf("evaluate finding summary = %#v, want admin summary", got)
 	}
+	runPayload, ok := evaluatePayload["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("evaluate run payload = %#v, want object", evaluatePayload["run"])
+	}
+	runID, ok := runPayload["id"].(string)
+	if !ok || runID == "" {
+		t.Fatalf("evaluate run id = %#v, want non-empty string", runPayload["id"])
+	}
+	if got := runPayload["status"]; got != "completed" {
+		t.Fatalf("evaluate run status = %#v, want completed", got)
+	}
+	if got := runPayload["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
+		t.Fatalf("evaluate run rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
 	listResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/findings?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=open&event_id=okta-audit-2&limit=1")
 	if err != nil {
 		t.Fatalf("GET /source-runtimes/{id}/findings error = %v", err)
@@ -901,6 +970,50 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := listedFinding["rule_id"]; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("list finding rule_id = %#v, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
+	runListResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-audit/finding-evaluation-runs?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=completed&limit=1")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes/{id}/finding-evaluation-runs error = %v", err)
+	}
+	defer func() {
+		if closeErr := runListResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close list evaluation runs response body: %v", closeErr)
+		}
+	}()
+	var runListPayload map[string]any
+	if err := json.NewDecoder(runListResp.Body).Decode(&runListPayload); err != nil {
+		t.Fatalf("decode list evaluation runs response: %v", err)
+	}
+	runEntries, ok := runListPayload["runs"].([]any)
+	if !ok || len(runEntries) != 1 {
+		t.Fatalf("list evaluation runs payload = %#v, want 1 entry", runListPayload["runs"])
+	}
+	runEntry, ok := runEntries[0].(map[string]any)
+	if !ok {
+		t.Fatalf("list evaluation run entry = %#v, want object", runEntries[0])
+	}
+	if got := runEntry["id"]; got != runID {
+		t.Fatalf("list evaluation run id = %#v, want %q", got, runID)
+	}
+	getRunResp, err := server.Client().Get(server.URL + "/finding-evaluation-runs/" + runID)
+	if err != nil {
+		t.Fatalf("GET /finding-evaluation-runs/{id} error = %v", err)
+	}
+	defer func() {
+		if closeErr := getRunResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close get evaluation run response body: %v", closeErr)
+		}
+	}()
+	var getRunPayload map[string]any
+	if err := json.NewDecoder(getRunResp.Body).Decode(&getRunPayload); err != nil {
+		t.Fatalf("decode get evaluation run response: %v", err)
+	}
+	getRunBody, ok := getRunPayload["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("get evaluation run payload = %#v, want object", getRunPayload["run"])
+	}
+	if got := getRunBody["id"]; got != runID {
+		t.Fatalf("get evaluation run id = %#v, want %q", got, runID)
 	}
 	missingRuleResp, err := server.Client().Post(server.URL+"/source-runtimes/writer-okta-audit/findings/evaluate?rule_id=does-not-exist", "application/json", nil)
 	if err != nil {
@@ -936,6 +1049,9 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := evaluateFindingsResp.Msg.GetRule().GetId(); got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("EvaluateSourceRuntimeFindings rule id = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
 	}
+	if got := evaluateFindingsResp.Msg.GetRun().GetId(); got == "" {
+		t.Fatal("EvaluateSourceRuntimeFindings run id = empty, want non-empty")
+	}
 	listFindingsResp, err := client.ListFindings(context.Background(), connect.NewRequest(&cerebrov1.ListFindingsRequest{
 		RuntimeId:   "writer-okta-audit",
 		RuleId:      "identity-okta-policy-rule-lifecycle-tampering",
@@ -962,6 +1078,36 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := runtimeStore.findingListRequest.EventID; got != "okta-audit-2" {
 		t.Fatalf("runtimeStore.findingListRequest.EventID = %q, want okta-audit-2", got)
+	}
+	listRunsResp, err := client.ListFindingEvaluationRuns(context.Background(), connect.NewRequest(&cerebrov1.ListFindingEvaluationRunsRequest{
+		RuntimeId: "writer-okta-audit",
+		RuleId:    "identity-okta-policy-rule-lifecycle-tampering",
+		Status:    "completed",
+		Limit:     1,
+	}))
+	if err != nil {
+		t.Fatalf("ListFindingEvaluationRuns() error = %v", err)
+	}
+	if got := len(listRunsResp.Msg.GetRuns()); got != 1 {
+		t.Fatalf("len(ListFindingEvaluationRuns().Runs) = %d, want 1", got)
+	}
+	getEvaluationRunResp, err := client.GetFindingEvaluationRun(context.Background(), connect.NewRequest(&cerebrov1.GetFindingEvaluationRunRequest{
+		Id: evaluateFindingsResp.Msg.GetRun().GetId(),
+	}))
+	if err != nil {
+		t.Fatalf("GetFindingEvaluationRun() error = %v", err)
+	}
+	if got := getEvaluationRunResp.Msg.GetRun().GetId(); got != evaluateFindingsResp.Msg.GetRun().GetId() {
+		t.Fatalf("GetFindingEvaluationRun().Run.Id = %q, want %q", got, evaluateFindingsResp.Msg.GetRun().GetId())
+	}
+	if got := runtimeStore.findingEvaluationRunListRequest.RuleID; got != "identity-okta-policy-rule-lifecycle-tampering" {
+		t.Fatalf("runtimeStore.findingEvaluationRunListRequest.RuleID = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
+	if got := runtimeStore.findingEvaluationRunListRequest.Status; got != "completed" {
+		t.Fatalf("runtimeStore.findingEvaluationRunListRequest.Status = %q, want completed", got)
+	}
+	if len(runtimeStore.findingEvaluationRuns) != 2 {
+		t.Fatalf("len(runtimeStore.findingEvaluationRuns) = %d, want 2", len(runtimeStore.findingEvaluationRuns))
 	}
 	if len(runtimeStore.findings) != 1 {
 		t.Fatalf("len(runtimeStore.findings) = %d, want 1", len(runtimeStore.findings))
@@ -1677,11 +1823,34 @@ func containsTrimmed(values []string, expected string) bool {
 	return false
 }
 
+func findingEvaluationRunMatches(request ports.ListFindingEvaluationRunsRequest, run *cerebrov1.FindingEvaluationRun) bool {
+	if run == nil {
+		return false
+	}
+	if strings.TrimSpace(run.GetRuntimeId()) != strings.TrimSpace(request.RuntimeID) {
+		return false
+	}
+	if request.RuleID != "" && strings.TrimSpace(run.GetRuleId()) != strings.TrimSpace(request.RuleID) {
+		return false
+	}
+	if request.Status != "" && strings.TrimSpace(run.GetStatus()) != strings.TrimSpace(request.Status) {
+		return false
+	}
+	return true
+}
+
 func cloneReportRun(run *cerebrov1.ReportRun) *cerebrov1.ReportRun {
 	if run == nil {
 		return nil
 	}
 	return proto.Clone(run).(*cerebrov1.ReportRun)
+}
+
+func cloneFindingEvaluationRun(run *cerebrov1.FindingEvaluationRun) *cerebrov1.FindingEvaluationRun {
+	if run == nil {
+		return nil
+	}
+	return proto.Clone(run).(*cerebrov1.FindingEvaluationRun)
 }
 
 func cloneNeighborhood(neighborhood *ports.EntityNeighborhood) *ports.EntityNeighborhood {

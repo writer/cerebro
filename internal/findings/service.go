@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -41,6 +43,7 @@ type Service struct {
 	runtimeStore ports.SourceRuntimeStore
 	replayer     ports.EventReplayer
 	store        ports.FindingStore
+	runStore     ports.FindingEvaluationRunStore
 	rules        *Registry
 }
 
@@ -69,6 +72,7 @@ type EvaluateResult struct {
 	Rule            *cerebrov1.RuleSpec
 	EventsEvaluated uint32
 	Findings        []*ports.FindingRecord
+	Run             *cerebrov1.FindingEvaluationRun
 }
 
 // ListResult reports one persisted finding query.
@@ -76,17 +80,31 @@ type ListResult struct {
 	Findings []*ports.FindingRecord
 }
 
+// ListEvaluationRunsRequest scopes one persisted finding evaluation run query.
+type ListEvaluationRunsRequest struct {
+	RuntimeID string
+	RuleID    string
+	Status    string
+	Limit     uint32
+}
+
+// ListEvaluationRunsResult reports one persisted finding evaluation run query.
+type ListEvaluationRunsResult struct {
+	Runs []*cerebrov1.FindingEvaluationRun
+}
+
 // New constructs a replay-backed finding service with the built-in rule registry.
-func New(runtimeStore ports.SourceRuntimeStore, replayer ports.EventReplayer, store ports.FindingStore) *Service {
-	return NewWithRegistry(runtimeStore, replayer, store, Builtin())
+func New(runtimeStore ports.SourceRuntimeStore, replayer ports.EventReplayer, store ports.FindingStore, runStore ports.FindingEvaluationRunStore) *Service {
+	return NewWithRegistry(runtimeStore, replayer, store, runStore, Builtin())
 }
 
 // NewWithRegistry constructs a replay-backed finding service with one explicit rule registry.
-func NewWithRegistry(runtimeStore ports.SourceRuntimeStore, replayer ports.EventReplayer, store ports.FindingStore, rules *Registry) *Service {
+func NewWithRegistry(runtimeStore ports.SourceRuntimeStore, replayer ports.EventReplayer, store ports.FindingStore, runStore ports.FindingEvaluationRunStore, rules *Registry) *Service {
 	return &Service{
 		runtimeStore: runtimeStore,
 		replayer:     replayer,
 		store:        store,
+		runStore:     runStore,
 		rules:        rules,
 	}
 }
@@ -103,7 +121,7 @@ func (s *Service) ListRules() *cerebrov1.ListFindingRulesResponse {
 
 // EvaluateSourceRuntime replays one runtime and persists findings for one selected registered rule.
 func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateRequest) (*EvaluateResult, error) {
-	if s == nil || s.runtimeStore == nil || s.replayer == nil || s.store == nil || s.rules == nil {
+	if s == nil || s.runtimeStore == nil || s.replayer == nil || s.store == nil || s.runStore == nil || s.rules == nil {
 		return nil, ErrRuntimeUnavailable
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
@@ -118,22 +136,31 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	if err != nil {
 		return nil, err
 	}
+	normalizedLimit := normalizeEventLimit(request.EventLimit)
+	startedAt := time.Now().UTC()
+	run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
+	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
+		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+	}
 	events, err := s.replayer.Replay(ctx, ports.ReplayRequest{
 		RuntimeID: runtimeID,
-		Limit:     normalizeEventLimit(request.EventLimit),
+		Limit:     normalizedLimit,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
+		evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
+		return nil, s.finishFailedRun(ctx, run, 0, nil, evaluationErr)
 	}
 	result := &EvaluateResult{
-		Runtime:         runtime,
-		Rule:            rule.Spec(),
-		EventsEvaluated: uint32(len(events)),
+		Runtime: runtime,
+		Rule:    rule.Spec(),
+		Run:     run,
 	}
+	var eventsEvaluated uint32
 	for _, event := range events {
 		emitted, err := rule.Evaluate(ctx, runtime, event)
 		if err != nil {
-			return nil, fmt.Errorf("evaluate finding rule %q for event %q: %w", result.Rule.GetId(), event.GetId(), err)
+			evaluationErr := fmt.Errorf("evaluate finding rule %q for event %q: %w", result.Rule.GetId(), event.GetId(), err)
+			return nil, s.finishFailedRun(ctx, run, eventsEvaluated, findingIDs(result.Findings), evaluationErr)
 		}
 		for _, record := range emitted {
 			if record == nil {
@@ -141,10 +168,16 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			}
 			stored, err := s.store.UpsertFinding(ctx, record)
 			if err != nil {
-				return nil, fmt.Errorf("persist finding for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
+				evaluationErr := fmt.Errorf("persist finding for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
+				return nil, s.finishFailedRun(ctx, run, eventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
 			result.Findings = append(result.Findings, stored)
 		}
+		eventsEvaluated++
+		result.EventsEvaluated = eventsEvaluated
+	}
+	if err := s.finishCompletedRun(ctx, run, eventsEvaluated, findingIDs(result.Findings)); err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -175,6 +208,46 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 		return nil, fmt.Errorf("list findings for runtime %q: %w", runtimeID, err)
 	}
 	return &ListResult{Findings: findings}, nil
+}
+
+// ListEvaluationRuns loads persisted finding evaluation runs for one runtime.
+func (s *Service) ListEvaluationRuns(ctx context.Context, request ListEvaluationRunsRequest) (*ListEvaluationRunsResult, error) {
+	if s == nil || s.runtimeStore == nil || s.runStore == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return nil, errors.New("source runtime id is required")
+	}
+	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
+		return nil, err
+	}
+	runs, err := s.runStore.ListFindingEvaluationRuns(ctx, ports.ListFindingEvaluationRunsRequest{
+		RuntimeID: runtimeID,
+		RuleID:    strings.TrimSpace(request.RuleID),
+		Status:    strings.TrimSpace(request.Status),
+		Limit:     request.Limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list finding evaluation runs for runtime %q: %w", runtimeID, err)
+	}
+	return &ListEvaluationRunsResult{Runs: runs}, nil
+}
+
+// GetEvaluationRun loads one persisted finding evaluation run.
+func (s *Service) GetEvaluationRun(ctx context.Context, id string) (*cerebrov1.FindingEvaluationRun, error) {
+	if s == nil || s.runStore == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return nil, errors.New("finding evaluation run id is required")
+	}
+	run, err := s.runStore.GetFindingEvaluationRun(ctx, trimmedID)
+	if err != nil {
+		return nil, err
+	}
+	return run, nil
 }
 
 func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (Rule, error) {
@@ -209,4 +282,70 @@ func normalizeEventLimit(limit uint32) uint32 {
 	default:
 		return limit
 	}
+}
+
+func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32, startedAt time.Time) *cerebrov1.FindingEvaluationRun {
+	normalizedStartedAt := startedAt.UTC()
+	return &cerebrov1.FindingEvaluationRun{
+		Id:         findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
+		RuntimeId:  strings.TrimSpace(runtimeID),
+		RuleId:     strings.TrimSpace(ruleID),
+		Status:     "running",
+		EventLimit: eventLimit,
+		StartedAt:  timestamppb.New(normalizedStartedAt),
+	}
+}
+
+func findingEvaluationRunID(runtimeID string, ruleID string, startedAt time.Time) string {
+	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
+	prefix := replacer.Replace(strings.TrimSpace(runtimeID) + "-" + strings.TrimSpace(ruleID))
+	return "finding-evaluation-run-" + prefix + "-" + fmt.Sprintf("%d", startedAt.UnixNano())
+}
+
+func (s *Service) finishCompletedRun(ctx context.Context, run *cerebrov1.FindingEvaluationRun, eventsEvaluated uint32, findingIDs []string) error {
+	if run == nil {
+		return nil
+	}
+	run.Status = "completed"
+	run.EventsEvaluated = eventsEvaluated
+	run.FindingsUpserted = uint32(len(findingIDs))
+	run.FindingIds = append([]string(nil), findingIDs...)
+	run.Error = ""
+	run.FinishedAt = timestamppb.New(time.Now().UTC())
+	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
+		return fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+	}
+	return nil
+}
+
+func (s *Service) finishFailedRun(ctx context.Context, run *cerebrov1.FindingEvaluationRun, eventsEvaluated uint32, findingIDs []string, evaluationErr error) error {
+	if run == nil {
+		return evaluationErr
+	}
+	run.Status = "failed"
+	run.EventsEvaluated = eventsEvaluated
+	run.FindingsUpserted = uint32(len(findingIDs))
+	run.FindingIds = append([]string(nil), findingIDs...)
+	run.Error = strings.TrimSpace(evaluationErr.Error())
+	run.FinishedAt = timestamppb.New(time.Now().UTC())
+	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
+		return errors.Join(
+			evaluationErr,
+			fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err),
+		)
+	}
+	return evaluationErr
+}
+
+func findingIDs(findings []*ports.FindingRecord) []string {
+	ids := make([]string, 0, len(findings))
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		if id := strings.TrimSpace(finding.ID); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
