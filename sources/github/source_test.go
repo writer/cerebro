@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	gogithub "github.com/google/go-github/v66/github"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -294,6 +296,12 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	}
 	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "audit-doc-2" {
 		t.Fatalf("second.Checkpoint = %#v, want audit-doc-2", second.Checkpoint)
+	}
+}
+
+func TestNextAuditCursorIgnoresBefore(t *testing.T) {
+	if got := nextAuditCursor(&gogithub.Response{Before: "cursor-1"}); got != "" {
+		t.Fatalf("nextAuditCursor() = %q, want empty cursor", got)
 	}
 }
 

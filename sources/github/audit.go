@@ -206,8 +206,6 @@ func nextAuditCursor(resp *gogithub.Response) string {
 		return strings.TrimSpace(resp.After)
 	case strings.TrimSpace(resp.Cursor) != "":
 		return strings.TrimSpace(resp.Cursor)
-	case strings.TrimSpace(resp.Before) != "":
-		return strings.TrimSpace(resp.Before)
 	case strings.TrimSpace(resp.NextPageToken) != "":
 		return strings.TrimSpace(resp.NextPageToken)
 	case resp.NextPage > 0:
