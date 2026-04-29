@@ -462,20 +462,25 @@ func TestCheckDoesNotFollowRedirects(t *testing.T) {
 }
 
 func TestAcceptsEnterpriseAPIBaseURL(t *testing.T) {
-	for _, baseURL := range []string{
-		"https://ghe.example.com/api/v3",
-		"https://ghe.example.com/api/v3/",
+	for _, tt := range []struct {
+		baseURL string
+		want    string
+	}{
+		{baseURL: "https://ghe.example.com/api/v3", want: "https://ghe.example.com"},
+		{baseURL: "https://ghe.example.com/api/v3/", want: "https://ghe.example.com"},
+		{baseURL: "https://api.ghe.example.com/api/v3", want: "https://api.ghe.example.com/api/v3"},
+		{baseURL: "https://ghe.api.example.com/api/v3/", want: "https://ghe.api.example.com/api/v3"},
 	} {
-		t.Run(baseURL, func(t *testing.T) {
+		t.Run(tt.baseURL, func(t *testing.T) {
 			settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
-				"base_url": baseURL,
+				"base_url": tt.baseURL,
 				"owner":    "writer",
 			}), false, false)
 			if err != nil {
 				t.Fatalf("parseSettings() error = %v", err)
 			}
-			if settings.baseURL != "https://ghe.example.com" {
-				t.Fatalf("baseURL = %q, want origin", settings.baseURL)
+			if settings.baseURL != tt.want {
+				t.Fatalf("baseURL = %q, want %q", settings.baseURL, tt.want)
 			}
 		})
 	}

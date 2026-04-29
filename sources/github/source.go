@@ -381,8 +381,17 @@ func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
 	if isUnsafeHost(host) && (!allowLoopback || !isLoopbackHost(host)) {
 		return "", fmt.Errorf("github base_url must not target loopback, private, or link-local hosts")
 	}
-	parsed.Path = ""
+	if path == "/api/v3" && isGitHubAPIHost(host) {
+		parsed.Path = "/api/v3"
+	} else {
+		parsed.Path = ""
+	}
 	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func isGitHubAPIHost(host string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(host))
+	return strings.HasPrefix(normalized, "api.") || strings.Contains(normalized, ".api.")
 }
 
 func isUnsafeHost(host string) bool {
