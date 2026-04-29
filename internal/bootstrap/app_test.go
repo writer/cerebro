@@ -92,6 +92,7 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 		{name: "finding rule not found", err: findingConnectError(findings.ErrRuleNotFound), code: connect.CodeNotFound},
 		{name: "finding rule selection required", err: findingConnectError(findings.ErrRuleSelectionRequired), code: connect.CodeInvalidArgument},
 		{name: "finding rule unsupported", err: findingConnectError(findings.ErrRuleUnsupported), code: connect.CodeInvalidArgument},
+		{name: "finding invalid", err: findingConnectError(findings.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "finding rule unavailable", err: findingConnectError(findings.ErrRuleUnavailable), code: connect.CodeFailedPrecondition},
 		{name: "finding unavailable", err: findingConnectError(findings.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
 		{name: "finding unknown", err: findingConnectError(errors.New("finding store failed")), code: connect.CodeInternal},

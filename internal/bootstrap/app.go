@@ -1840,7 +1840,8 @@ func findingConnectError(err error) error {
 		errors.Is(err, ports.ErrFindingEvidenceNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, findings.ErrRuleSelectionRequired),
-		errors.Is(err, findings.ErrRuleUnsupported):
+		errors.Is(err, findings.ErrRuleUnsupported),
+		errors.Is(err, findings.ErrInvalidRequest):
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, findings.ErrRuleUnavailable):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
@@ -1912,7 +1913,7 @@ func writeFindingError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, findings.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, findings.ErrRuleSelectionRequired), errors.Is(err, findings.ErrRuleUnsupported):
+	case errors.Is(err, findings.ErrRuleSelectionRequired), errors.Is(err, findings.ErrRuleUnsupported), errors.Is(err, findings.ErrInvalidRequest):
 		statusCode = http.StatusBadRequest
 	case errors.Is(err, findings.ErrRuleUnavailable):
 		statusCode = http.StatusPreconditionFailed

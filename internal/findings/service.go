@@ -30,6 +30,9 @@ var (
 	// ErrRuntimeUnavailable indicates that the runtime, replay, or finding store boundary is unavailable.
 	ErrRuntimeUnavailable = errors.New("finding runtime is unavailable")
 
+	// ErrInvalidRequest indicates that a finding request failed validation.
+	ErrInvalidRequest = errors.New("invalid finding request")
+
 	// ErrRuleNotFound indicates that one requested finding rule is not registered.
 	ErrRuleNotFound = errors.New("finding rule not found")
 
@@ -225,7 +228,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
@@ -308,7 +311,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
@@ -430,7 +433,7 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
@@ -461,7 +464,7 @@ func (s *Service) GetFinding(ctx context.Context, id string) (*ports.FindingReco
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	finding, err := s.store.GetFinding(ctx, findingID)
 	if err != nil {
@@ -487,7 +490,7 @@ func (s *Service) AssignFinding(ctx context.Context, id string, assignee string)
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	finding, err := s.store.UpdateFindingAssignee(ctx, ports.FindingAssigneeUpdate{
 		FindingID: findingID,
@@ -506,11 +509,11 @@ func (s *Service) SetFindingDueDate(ctx context.Context, id string, dueAt time.T
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	normalizedDueAt := dueAt.UTC()
 	if normalizedDueAt.IsZero() {
-		return nil, errors.New("finding due date is required")
+		return nil, fmt.Errorf("%w: finding due date is required", ErrInvalidRequest)
 	}
 	finding, err := s.store.UpdateFindingDueDate(ctx, ports.FindingDueDateUpdate{
 		FindingID: findingID,
@@ -529,11 +532,11 @@ func (s *Service) AddFindingNote(ctx context.Context, id string, note string) (*
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	body := strings.TrimSpace(note)
 	if body == "" {
-		return nil, errors.New("finding note is required")
+		return nil, fmt.Errorf("%w: finding note is required", ErrInvalidRequest)
 	}
 	createdAt := time.Now().UTC()
 	noteRecord := ports.FindingNote{
@@ -561,14 +564,14 @@ func (s *Service) LinkFindingTicket(ctx context.Context, id string, ticketURL st
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	normalizedURL := strings.TrimSpace(ticketURL)
 	if normalizedURL == "" {
-		return nil, errors.New("finding ticket url is required")
+		return nil, fmt.Errorf("%w: finding ticket url is required", ErrInvalidRequest)
 	}
 	if _, err := url.ParseRequestURI(normalizedURL); err != nil {
-		return nil, fmt.Errorf("finding ticket url is invalid: %w", err)
+		return nil, fmt.Errorf("%w: finding ticket url is invalid: %w", ErrInvalidRequest, err)
 	}
 	linkedAt := time.Now().UTC()
 	ticket := ports.FindingTicket{
@@ -597,7 +600,7 @@ func (s *Service) ListEvaluationRuns(ctx context.Context, request ListEvaluation
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
 		return nil, err
@@ -621,7 +624,7 @@ func (s *Service) GetEvaluationRun(ctx context.Context, id string) (*cerebrov1.F
 	}
 	trimmedID := strings.TrimSpace(id)
 	if trimmedID == "" {
-		return nil, errors.New("finding evaluation run id is required")
+		return nil, fmt.Errorf("%w: finding evaluation run id is required", ErrInvalidRequest)
 	}
 	run, err := s.runStore.GetFindingEvaluationRun(ctx, trimmedID)
 	if err != nil {
@@ -637,7 +640,7 @@ func (s *Service) ListEvidence(ctx context.Context, request ListEvidenceRequest)
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
 		return nil, err
@@ -665,7 +668,7 @@ func (s *Service) GetEvidence(ctx context.Context, id string) (*cerebrov1.Findin
 	}
 	trimmedID := strings.TrimSpace(id)
 	if trimmedID == "" {
-		return nil, errors.New("finding evidence id is required")
+		return nil, fmt.Errorf("%w: finding evidence id is required", ErrInvalidRequest)
 	}
 	evidence, err := s.evidenceStore.GetFindingEvidence(ctx, trimmedID)
 	if err != nil {
@@ -756,7 +759,7 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	finding, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
 		FindingID: findingID,

@@ -1508,6 +1508,78 @@ func TestListFindingsRequiresAvailableDependencies(t *testing.T) {
 	}
 }
 
+func TestFindingValidationErrorsAreInvalidRequests(t *testing.T) {
+	store := &stubFindingStore{}
+	service := New(&stubRuntimeStore{}, &stubReplayer{}, store, store, store, store)
+	for _, tt := range []struct {
+		name string
+		call func() error
+	}{
+		{name: "evaluate missing runtime", call: func() error {
+			_, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{})
+			return err
+		}},
+		{name: "evaluate rules missing runtime", call: func() error {
+			_, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{})
+			return err
+		}},
+		{name: "list findings missing runtime", call: func() error {
+			_, err := service.ListFindings(context.Background(), ListRequest{})
+			return err
+		}},
+		{name: "get finding missing id", call: func() error {
+			_, err := service.GetFinding(context.Background(), "")
+			return err
+		}},
+		{name: "resolve missing id", call: func() error {
+			_, err := service.ResolveFinding(context.Background(), "", "")
+			return err
+		}},
+		{name: "assign missing id", call: func() error {
+			_, err := service.AssignFinding(context.Background(), "", "alice")
+			return err
+		}},
+		{name: "due date missing", call: func() error {
+			_, err := service.SetFindingDueDate(context.Background(), "finding-1", time.Time{})
+			return err
+		}},
+		{name: "note missing", call: func() error {
+			_, err := service.AddFindingNote(context.Background(), "finding-1", "")
+			return err
+		}},
+		{name: "ticket url missing", call: func() error {
+			_, err := service.LinkFindingTicket(context.Background(), "finding-1", "", "", "")
+			return err
+		}},
+		{name: "ticket url invalid", call: func() error {
+			_, err := service.LinkFindingTicket(context.Background(), "finding-1", "://bad", "", "")
+			return err
+		}},
+		{name: "list runs missing runtime", call: func() error {
+			_, err := service.ListEvaluationRuns(context.Background(), ListEvaluationRunsRequest{})
+			return err
+		}},
+		{name: "get run missing id", call: func() error {
+			_, err := service.GetEvaluationRun(context.Background(), "")
+			return err
+		}},
+		{name: "list evidence missing runtime", call: func() error {
+			_, err := service.ListEvidence(context.Background(), ListEvidenceRequest{})
+			return err
+		}},
+		{name: "get evidence missing id", call: func() error {
+			_, err := service.GetEvidence(context.Background(), "")
+			return err
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.call(); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("error = %v, want ErrInvalidRequest", err)
+			}
+		})
+	}
+}
+
 func TestGetFindingReturnsPersistedFinding(t *testing.T) {
 	store := &stubFindingStore{
 		findings: map[string]*ports.FindingRecord{
