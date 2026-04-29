@@ -29,6 +29,19 @@ func TestPutSourceRuntimeRejectsMissingSourceID(t *testing.T) {
 	}
 }
 
+func TestDecodeSourceRuntimeDiscardsUnknownFields(t *testing.T) {
+	runtime, err := decodeSourceRuntime("runtime", `{"id":"runtime","source_id":"okta","future_field":"ignored"}`)
+	if err != nil {
+		t.Fatalf("decodeSourceRuntime() error = %v", err)
+	}
+	if runtime.GetId() != "runtime" {
+		t.Fatalf("decodeSourceRuntime().Id = %q, want runtime", runtime.GetId())
+	}
+	if runtime.GetSourceId() != "okta" {
+		t.Fatalf("decodeSourceRuntime().SourceId = %q, want okta", runtime.GetSourceId())
+	}
+}
+
 func TestPutSourceRuntimeEnsuresTableOnce(t *testing.T) {
 	recorder := &projectionSQLRecorder{}
 	store := newProjectionTestStore(t, recorder)

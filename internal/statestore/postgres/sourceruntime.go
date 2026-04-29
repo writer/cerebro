@@ -72,11 +72,7 @@ func (s *Store) GetSourceRuntime(ctx context.Context, runtimeID string) (*cerebr
 		}
 		return nil, fmt.Errorf("query source runtime %q: %w", id, err)
 	}
-	runtime := &cerebrov1.SourceRuntime{}
-	if err := protojson.Unmarshal([]byte(payload), runtime); err != nil {
-		return nil, fmt.Errorf("decode source runtime %q: %w", id, err)
-	}
-	return runtime, nil
+	return decodeSourceRuntime(id, payload)
 }
 
 func (s *Store) ensureSourceRuntimeTable(ctx context.Context) error {
@@ -90,4 +86,12 @@ func (s *Store) ensureSourceRuntimeTable(ctx context.Context) error {
 	}
 	s.sourceRuntimeReady = true
 	return nil
+}
+
+func decodeSourceRuntime(id string, payload string) (*cerebrov1.SourceRuntime, error) {
+	runtime := &cerebrov1.SourceRuntime{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal([]byte(payload), runtime); err != nil {
+		return nil, fmt.Errorf("decode source runtime %q: %w", id, err)
+	}
+	return runtime, nil
 }
