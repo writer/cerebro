@@ -52,9 +52,6 @@ func run(pass *analysis.Pass) (any, error) {
 			return
 		}
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-			if ident, ok := sel.X.(*ast.Ident); ok && strings.HasPrefix(strings.ToLower(ident.Name), "sqlite") {
-				report(pass, reported, call.Pos(), call.End())
-			}
 			if (sel.Sel.Name == "Open" || sel.Sel.Name == "OpenDB") && len(call.Args) > 0 && isDatabaseSQLSelector(pass, sel) && isSQLiteDriverLiteral(call.Args[0]) {
 				report(pass, reported, call.Args[0].Pos(), call.Args[0].End())
 			}

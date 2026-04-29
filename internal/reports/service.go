@@ -156,6 +156,8 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	if err != nil {
 		return nil, err
 	}
+	parameters[reportParameterResourceLimit] = strconv.Itoa(resourceLimit)
+	parameters[reportParameterGraphLimit] = strconv.Itoa(graphLimit)
 	findings, err := s.findingStore.ListFindings(ctx, ports.ListFindingsRequest{TenantID: tenantID, RuntimeID: runtimeID})
 	if err != nil {
 		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", tenantID, runtimeID, err)

@@ -70,6 +70,18 @@ type stubStore struct {
 
 func (s stubStore) Ping(context.Context) error { return s.err }
 
+type deadlineAwareStore struct {
+	sawDeadline bool
+}
+
+func (s *deadlineAwareStore) Ping(ctx context.Context) error {
+	if _, ok := ctx.Deadline(); !ok {
+		return errors.New("health check deadline is required")
+	}
+	s.sawDeadline = true
+	return nil
+}
+
 type recordingAppendLog struct {
 	err            error
 	events         []*cerebrov1.EventEnvelope
@@ -971,6 +983,28 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	}
 	if got := healthResp.Msg.Components[1].Detail; got == rawDependencyError {
 		t.Fatalf("state_store detail leaked raw dependency error")
+	}
+}
+
+func TestBootstrapHealthPingsUseTimeoutContext(t *testing.T) {
+	stateStore := &deadlineAwareStore{}
+	response := healthResponse(context.Background(), Dependencies{StateStore: stateStore})
+	if response.GetStatus() != "ready" {
+		t.Fatalf("health status = %q, want ready", response.GetStatus())
+	}
+	if !stateStore.sawDeadline {
+		t.Fatal("state store ping did not receive a deadline")
+	}
+}
+
+func TestReadProtoJSONRejectsOversizedBody(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/reports/finding-summary/runs", strings.NewReader(strings.Repeat("x", maxProtoJSONBodyBytes+1)))
+	err := readProtoJSON(req, &cerebrov1.RunReportRequest{})
+	if err == nil {
+		t.Fatal("readProtoJSON() error = nil, want non-nil")
+	}
+	if !errors.Is(err, errProtoJSONBodyTooLarge) {
+		t.Fatalf("readProtoJSON() error = %v, want size error", err)
 	}
 }
 

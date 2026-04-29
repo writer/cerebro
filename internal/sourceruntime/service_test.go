@@ -184,6 +184,49 @@ func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 	}
 }
 
+func TestPutRestoresRedactedSensitiveConfigBeforeMerge(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				TenantId: "writer",
+				Config:   map[string]string{"token": "preserved-value"},
+				Checkpoint: &cerebrov1.SourceCheckpoint{
+					CursorOpaque: "1",
+				},
+				NextCursor:   &cerebrov1.SourceCursor{Opaque: "1"},
+				LastSyncedAt: timestamppb.Now(),
+			},
+		},
+	}
+	service := New(registry, store, nil, nil)
+
+	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-github",
+			SourceId: "github",
+			Config:   map[string]string{"token": redactedValue},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if got := store.runtimes["writer-github"].GetConfig()["token"]; got != "preserved-value" {
+		t.Fatalf("stored token = %q, want preserved secret", got)
+	}
+	if got := resp.GetRuntime().GetConfig()["token"]; got != redactedValue {
+		t.Fatalf("response token = %q, want redacted", got)
+	}
+	if got := store.runtimes["writer-github"].GetNextCursor().GetOpaque(); got != "1" {
+		t.Fatalf("stored next cursor = %q, want preserved cursor", got)
+	}
+}
+
 func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

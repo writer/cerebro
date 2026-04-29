@@ -56,6 +56,25 @@ func TestUpsertFindingRejectsUnconfiguredStore(t *testing.T) {
 	}
 }
 
+func TestNormalizeFindingObservationWindowDefaultsBothZero(t *testing.T) {
+	now := time.Date(2026, 4, 29, 12, 0, 0, 0, time.UTC)
+	first, last := normalizeFindingObservationWindow(time.Time{}, time.Time{}, now)
+	if !first.Equal(now) {
+		t.Fatalf("first observed at = %v, want %v", first, now)
+	}
+	if !last.Equal(now) {
+		t.Fatalf("last observed at = %v, want %v", last, now)
+	}
+}
+
+func TestNormalizeFindingObservationWindowFillsMissingBound(t *testing.T) {
+	observedAt := time.Date(2026, 4, 29, 12, 0, 0, 0, time.UTC)
+	first, last := normalizeFindingObservationWindow(time.Time{}, observedAt, observedAt.Add(time.Hour))
+	if !first.Equal(observedAt) || !last.Equal(observedAt) {
+		t.Fatalf("window = (%v, %v), want both %v", first, last, observedAt)
+	}
+}
+
 func TestListFindingsRejectsMissingTenantID(t *testing.T) {
 	store := &Store{}
 	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{}); err == nil {

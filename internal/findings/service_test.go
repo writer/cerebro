@@ -432,6 +432,31 @@ func (r *emittingRule) Evaluate(_ context.Context, runtime *cerebrov1.SourceRunt
 	}, nil
 }
 
+type failingRule struct {
+	spec               *cerebrov1.RuleSpec
+	supportedSourceIDs map[string]struct{}
+	err                error
+}
+
+func (r *failingRule) Spec() *cerebrov1.RuleSpec {
+	if r == nil {
+		return nil
+	}
+	return r.spec
+}
+
+func (r *failingRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if r == nil || runtime == nil {
+		return false
+	}
+	_, ok := r.supportedSourceIDs[runtime.GetSourceId()]
+	return ok
+}
+
+func (r *failingRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	return nil, r.err
+}
+
 func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
@@ -572,6 +597,22 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 }
 
+func TestOktaPolicyRuleLifecycleTamperingRequiresSuccessfulOutcome(t *testing.T) {
+	missingOutcome := newAuditEvent("okta-audit-2", "policy.rule.update", "")
+	delete(missingOutcome.Attributes, "outcome_result")
+	if matchesOktaPolicyRuleLifecycleTampering(missingOutcome) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for missing outcome, want false")
+	}
+	failedOutcome := newAuditEvent("okta-audit-3", "policy.rule.update", "FAILURE")
+	if matchesOktaPolicyRuleLifecycleTampering(failedOutcome) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = true for failed outcome, want false")
+	}
+	successOutcome := newAuditEvent("okta-audit-4", "policy.rule.update", "SUCCESS")
+	if !matchesOktaPolicyRuleLifecycleTampering(successOutcome) {
+		t.Fatal("matchesOktaPolicyRuleLifecycleTampering() = false for success outcome, want true")
+	}
+}
+
 func TestEvaluateSourceRuntimeFindingsReplaysGitHubDependabotAlert(t *testing.T) {
 	replayer := &stubReplayer{
 		events: []*cerebrov1.EventEnvelope{
@@ -695,6 +736,70 @@ func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T
 	service := New(nil, nil, nil, nil, nil, nil)
 	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+}
+
+func TestEvaluateSourceRuntimeFindingsPersistsNormalizedFailedRun(t *testing.T) {
+	registry, err := NewRegistry(&failingRule{
+		spec: &cerebrov1.RuleSpec{
+			Id:   "failing-rule",
+			Name: "Failing Rule",
+		},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		err:                errors.New("rule failed"),
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+		},
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {
+					Id:       "writer-okta-audit",
+					SourceId: "okta",
+					TenantId: "writer",
+				},
+			},
+		},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	_, err = service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID:  "writer-okta-audit",
+		RuleID:     "failing-rule",
+		EventLimit: maxEventLimit + 1,
+	})
+	if err == nil {
+		t.Fatal("EvaluateSourceRuntime() error = nil, want non-nil")
+	}
+	if got := replayer.request.Limit; got != maxEventLimit {
+		t.Fatalf("Replay().Limit = %d, want %d", got, maxEventLimit)
+	}
+	if got := len(store.runs); got != 1 {
+		t.Fatalf("len(store.runs) = %d, want 1", got)
+	}
+	for _, run := range store.runs {
+		if got := run.GetStatus(); got != "failed" {
+			t.Fatalf("Run.Status = %q, want failed", got)
+		}
+		if got := run.GetEventLimit(); got != maxEventLimit {
+			t.Fatalf("Run.EventLimit = %d, want %d", got, maxEventLimit)
+		}
+		if got := run.GetEventsEvaluated(); got != 1 {
+			t.Fatalf("Run.EventsEvaluated = %d, want 1", got)
+		}
 	}
 }
 

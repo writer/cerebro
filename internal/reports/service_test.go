@@ -372,6 +372,12 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	if reportStore.run == nil {
 		t.Fatal("PutReportRun() not called")
 	}
+	if got := reportStore.run.GetParameters()[reportParameterResourceLimit]; got != "3" {
+		t.Fatalf("stored resource_limit = %q, want default 3", got)
+	}
+	if got := reportStore.run.GetParameters()[reportParameterGraphLimit]; got != "2" {
+		t.Fatalf("stored graph_limit = %q, want 2", got)
+	}
 }
 
 func TestGetReportRunRequiresAvailableStore(t *testing.T) {

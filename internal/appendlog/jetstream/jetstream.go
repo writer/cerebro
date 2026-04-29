@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -129,11 +130,8 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 		return errors.New("event is required")
 	}
 	kind := strings.TrimSpace(event.Kind)
-	if kind == "" {
-		return errors.New("event kind is required")
-	}
-	if strings.ContainsRune(kind, ' ') {
-		return fmt.Errorf("event kind %q is not a valid NATS subject token", kind)
+	if err := validateEventKind(kind); err != nil {
+		return err
 	}
 	payload, err := proto.Marshal(event)
 	if err != nil {
@@ -196,6 +194,23 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		}
 	}
 	return events, nil
+}
+
+func validateEventKind(kind string) error {
+	if kind == "" {
+		return errors.New("event kind is required")
+	}
+	for _, token := range strings.Split(kind, ".") {
+		if token == "" {
+			return fmt.Errorf("event kind %q is not a valid NATS subject", kind)
+		}
+		for _, r := range token {
+			if unicode.IsSpace(r) || unicode.IsControl(r) || r == '*' || r == '>' {
+				return fmt.Errorf("event kind %q is not a valid NATS subject", kind)
+			}
+		}
+	}
+	return nil
 }
 
 func normalizeReplayLimit(limit uint32) uint32 {

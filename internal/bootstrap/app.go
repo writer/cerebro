@@ -56,6 +56,13 @@ type bootstrapService struct {
 	sources *sourcecdk.Registry
 }
 
+const (
+	maxProtoJSONBodyBytes = 1 << 20
+	healthCheckTimeout    = 2 * time.Second
+)
+
+var errProtoJSONBodyTooLarge = errors.New("request JSON body exceeds maximum size")
+
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
 	mux := http.NewServeMux()
@@ -1807,9 +1814,15 @@ func timestampValue(value *timestamppb.Timestamp) time.Time {
 	return value.AsTime()
 }
 func readProtoJSON(r *http.Request, message proto.Message) error {
-	body, err := io.ReadAll(r.Body)
+	if r.Body == nil {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxProtoJSONBodyBytes+1))
 	if err != nil {
 		return err
+	}
+	if len(body) > maxProtoJSONBodyBytes {
+		return fmt.Errorf("%w: %d bytes", errProtoJSONBodyTooLarge, maxProtoJSONBodyBytes)
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil
@@ -2265,7 +2278,9 @@ func componentStatus(ctx context.Context, name string, dependency pinger) *cereb
 	if dependency == nil {
 		return status
 	}
-	if err := dependency.Ping(ctx); err != nil {
+	checkCtx, cancel := context.WithTimeout(ctx, healthCheckTimeout)
+	defer cancel()
+	if err := dependency.Ping(checkCtx); err != nil {
 		status.Status = "error"
 		status.Detail = "unhealthy"
 		return status

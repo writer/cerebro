@@ -158,14 +158,7 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	if !finding.StatusUpdatedAt.IsZero() {
 		statusUpdatedAt = finding.StatusUpdatedAt.UTC()
 	}
-	firstObservedAt := finding.FirstObservedAt.UTC()
-	lastObservedAt := finding.LastObservedAt.UTC()
-	if firstObservedAt.IsZero() {
-		firstObservedAt = lastObservedAt
-	}
-	if lastObservedAt.IsZero() {
-		lastObservedAt = firstObservedAt
-	}
+	firstObservedAt, lastObservedAt := normalizeFindingObservationWindow(finding.FirstObservedAt, finding.LastObservedAt, time.Now().UTC())
 	var stored findingRow
 	if err := s.db.QueryRowContext(ctx, `
 INSERT INTO findings (
@@ -283,6 +276,23 @@ RETURNING
 		return nil, fmt.Errorf("upsert finding %q: %w", id, err)
 	}
 	return stored.record()
+}
+
+func normalizeFindingObservationWindow(firstObservedAt time.Time, lastObservedAt time.Time, now time.Time) (time.Time, time.Time) {
+	firstObservedAt = firstObservedAt.UTC()
+	lastObservedAt = lastObservedAt.UTC()
+	if firstObservedAt.IsZero() {
+		firstObservedAt = lastObservedAt
+	}
+	if lastObservedAt.IsZero() {
+		lastObservedAt = firstObservedAt
+	}
+	if firstObservedAt.IsZero() {
+		now = now.UTC()
+		firstObservedAt = now
+		lastObservedAt = now
+	}
+	return firstObservedAt, lastObservedAt
 }
 
 // ListFindings loads persisted findings for one tenant/runtime scope.
