@@ -816,6 +816,18 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	if graphStore.neighborhoodLimit != 5 {
 		t.Fatalf("graph neighborhood limit = %d, want 5", graphStore.neighborhoodLimit)
 	}
+	invalidLimitResp, err := server.Client().Get(server.URL + "/graph/neighborhood?root_urn=urn:cerebro:writer:github_pull_request:writer/cerebro%23447&limit=abc")
+	if err != nil {
+		t.Fatalf("GET /graph/neighborhood invalid limit error = %v", err)
+	}
+	defer func() {
+		if closeErr := invalidLimitResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /graph/neighborhood invalid limit response body: %v", closeErr)
+		}
+	}()
+	if got := invalidLimitResp.StatusCode; got != http.StatusBadRequest {
+		t.Fatalf("invalid limit status = %d, want %d", got, http.StatusBadRequest)
+	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	neighborhoodResp, err := client.GetEntityNeighborhood(context.Background(), connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{

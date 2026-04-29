@@ -147,7 +147,7 @@ func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeGraphQueryError(w, err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 	}
