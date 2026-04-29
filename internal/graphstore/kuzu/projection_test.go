@@ -248,6 +248,39 @@ func TestIntegrityChecksDetectTenantMismatch(t *testing.T) {
 	}
 }
 
+func TestIntegrityChecksRunEntityOnlyChecksWithoutRelationTable(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	if _, err := store.db.ExecContext(ctx, "CREATE NODE TABLE entity(urn STRING, tenant_id STRING, source_id STRING, entity_type STRING, label STRING, attributes_json STRING, PRIMARY KEY (urn))"); err != nil {
+		t.Fatalf("create entity table: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(
+		"CREATE (:entity {urn: %s, tenant_id: %s, source_id: %s, entity_type: %s, label: %s, attributes_json: %s})",
+		cypherString("urn:cerebro:writer:github_repo:writer/cerebro"),
+		cypherString("writer"),
+		cypherString("github"),
+		cypherString("github.repo"),
+		cypherString(""),
+		cypherString("{}"),
+	)); err != nil {
+		t.Fatalf("insert entity: %v", err)
+	}
+
+	checks, err := store.IntegrityChecks(ctx)
+	if err != nil {
+		t.Fatalf("IntegrityChecks() error = %v", err)
+	}
+	if actual := integrityCheckActual(checks, "blank_entity_labels"); actual != 1 {
+		t.Fatalf("blank_entity_labels = %d, want 1", actual)
+	}
+	if passed := integrityCheckPassed(checks, "blank_entity_labels"); passed {
+		t.Fatal("blank_entity_labels passed = true, want false")
+	}
+	if passed := integrityCheckPassed(checks, "blank_relation_types"); !passed {
+		t.Fatal("blank_relation_types passed = false, want true when relation table is absent")
+	}
+}
+
 func TestUpsertProjectedEntityRejectsNilEntity(t *testing.T) {
 	store := &Store{}
 	if err := store.UpsertProjectedEntity(context.Background(), nil); err == nil {
@@ -363,6 +396,15 @@ func containsPathPattern(patterns []PathPattern, fromType string, firstRelation 
 			pattern.ToType == toType &&
 			pattern.Count == count {
 			return true
+		}
+	}
+	return false
+}
+
+func integrityCheckPassed(checks []IntegrityCheck, name string) bool {
+	for _, check := range checks {
+		if check.Name == name {
+			return check.Passed
 		}
 	}
 	return false
