@@ -59,8 +59,8 @@ func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
 	for _, key := range []string{"token", "api_key", "apiKey", "accessKeyId", "private_key", "privateKey", "key"} {
 		t.Run(key, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/sources/okta/check?"+key+"=secret", nil)
-			if _, err := sourceConfigFromRequest(req); err == nil {
-				t.Fatalf("sourceConfigFromRequest() error = nil, want non-nil")
+			if _, err := sourceConfigFromRequest(req); !errors.Is(err, sourceops.ErrInvalidRequest) {
+				t.Fatalf("sourceConfigFromRequest() error = %v, want ErrInvalidRequest", err)
 			}
 		})
 	}
@@ -162,6 +162,12 @@ func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), http.StatusText(http.StatusInternalServerError)) {
 		t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
+	}
+
+	invalid := httptest.NewRecorder()
+	writeSourceRuntimeError(invalid, sourceruntime.ErrInvalidRequest)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid runtime status = %d, want %d", invalid.Code, http.StatusBadRequest)
 	}
 }
 

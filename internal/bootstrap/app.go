@@ -322,7 +322,7 @@ func (a *App) handleRunReport(w http.ResponseWriter, r *http.Request) {
 	configReq.Header.Del("X-Cerebro-Source-Config")
 	config, err := sourceConfigFromRequest(configReq)
 	if err != nil {
-		writeReportError(w, err)
+		writeReportError(w, fmt.Errorf("%w: %w", reports.ErrInvalidRequest, err))
 		return
 	}
 	for key, value := range config {

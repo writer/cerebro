@@ -450,6 +450,8 @@ func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if err := s.ensureProjectionSchema(ctx); err != nil {
 		return err
 	}
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
 	statement := fmt.Sprintf(
 		"MATCH (src:entity {urn: %s})-[r:relation {relation: %s}]->(dst:entity {urn: %s}) DELETE r",
 		cypherString(fromURN),
