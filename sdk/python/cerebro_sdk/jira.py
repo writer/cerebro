@@ -443,8 +443,15 @@ def list_value(value: Any) -> list[Any]:
 def optional_string(value: Any) -> Optional[str]:
     if value is None:
         return None
-    normalized = str(value).strip()
-    return normalized or None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+    if isinstance(value, (int, float)):
+        normalized = str(value).strip()
+        return normalized or None
+    return None
 
 
 def require_value(value: Any, name: str) -> str:
