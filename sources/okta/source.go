@@ -475,13 +475,16 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 	if settings.domain == "" {
 		return settings, fmt.Errorf("okta domain is required")
 	}
-	domain, err := normalizeDomain(settings.domain)
+	domain, err := normalizeDomain(settings.domain, allowLoopbackBaseURL)
 	if err != nil {
 		return settings, err
 	}
 	settings.domain = domain
 	if settings.baseURL == "" {
-		settings.baseURL = "https://" + settings.domain
+		settings.baseURL, err = normalizeBaseURL("https://"+settings.domain, settings.domain, allowLoopbackBaseURL)
+		if err != nil {
+			return settings, err
+		}
 	} else {
 		settings.baseURL, err = normalizeBaseURL(settings.baseURL, settings.domain, allowLoopbackBaseURL)
 		if err != nil {
@@ -538,7 +541,7 @@ func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, e
 	return settings, nil
 }
 
-func normalizeDomain(raw string) (string, error) {
+func normalizeDomain(raw string, allowLoopback bool) (string, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
 		return "", fmt.Errorf("okta domain is required")
@@ -554,7 +557,11 @@ func normalizeDomain(raw string) (string, error) {
 	if host == "" {
 		return "", fmt.Errorf("okta domain must be a valid host")
 	}
-	return strings.ToLower(host), nil
+	host = strings.TrimRight(strings.ToLower(host), ".")
+	if !allowLoopback && isLoopbackHost(host) {
+		return "", fmt.Errorf("okta domain must not target loopback hosts")
+	}
+	return host, nil
 }
 
 func normalizeBaseURL(raw string, domain string, allowLoopback bool) (string, error) {
@@ -589,7 +596,8 @@ func normalizeBaseURL(raw string, domain string, allowLoopback bool) (string, er
 }
 
 func isLoopbackHost(host string) bool {
-	value := strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
+	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
+	value = strings.Trim(value, "[]")
 	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
 		return true
 	}

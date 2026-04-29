@@ -358,7 +358,8 @@ func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", fmt.Errorf("github base_url must not include user info, query, or fragment")
 	}
-	if (parsed.Path != "" && parsed.Path != "/") || parsed.RawPath != "" {
+	path := strings.TrimRight(parsed.EscapedPath(), "/")
+	if (path != "" && path != "/api/v3") || parsed.RawPath != "" {
 		return "", fmt.Errorf("github base_url must be an origin URL")
 	}
 	if !allowLoopback && isLoopbackHost(parsed.Hostname()) {
@@ -369,7 +370,8 @@ func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
 }
 
 func isLoopbackHost(host string) bool {
-	value := strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
+	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
+	value = strings.Trim(value, "[]")
 	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
 		return true
 	}

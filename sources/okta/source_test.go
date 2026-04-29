@@ -407,6 +407,7 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 		"https://writer.okta.com:8443",
 		"https://writer.okta.com/path",
 		"https://user@writer.okta.com",
+		"https://localhost.",
 	} {
 		t.Run(baseURL, func(t *testing.T) {
 			err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
@@ -417,6 +418,27 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 			}))
 			if err == nil {
 				t.Fatal("Check() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestRejectsUnsafeDomain(t *testing.T) {
+	for _, domain := range []string{
+		"localhost",
+		"localhost.",
+		"127.0.0.1",
+		"127.0.0.1.",
+		"[::1]",
+	} {
+		t.Run(domain, func(t *testing.T) {
+			_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+				"domain": domain,
+				"family": "audit",
+				"token":  "test-token",
+			}), false)
+			if err == nil {
+				t.Fatal("parseSettings() error = nil, want non-nil")
 			}
 		})
 	}

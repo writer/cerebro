@@ -68,11 +68,16 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 	}{
 		{name: "report not found", err: reportConnectError(reports.ErrReportNotFound), code: connect.CodeNotFound},
 		{name: "report unavailable", err: reportConnectError(reports.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
-		{name: "report validation", err: reportConnectError(errors.New("bad request")), code: connect.CodeInvalidArgument},
+		{name: "report unknown", err: reportConnectError(errors.New("storage failed")), code: connect.CodeInternal},
+		{name: "report canceled", err: reportConnectError(context.Canceled), code: connect.CodeCanceled},
+		{name: "report deadline", err: reportConnectError(context.DeadlineExceeded), code: connect.CodeDeadlineExceeded},
 		{name: "source not found", err: sourceConnectError(sourceops.ErrSourceNotFound), code: connect.CodeNotFound},
+		{name: "source unknown", err: sourceConnectError(errors.New("transport failed")), code: connect.CodeInternal},
 		{name: "runtime not found", err: sourceRuntimeConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
 		{name: "runtime unavailable", err: sourceRuntimeConnectError(sourceruntime.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "runtime unknown", err: sourceRuntimeConnectError(errors.New("persist failed")), code: connect.CodeInternal},
 		{name: "claim runtime not found", err: claimConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
+		{name: "claim unknown", err: claimConnectError(errors.New("persist failed")), code: connect.CodeInternal},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := connect.CodeOf(tt.err); got != tt.code {

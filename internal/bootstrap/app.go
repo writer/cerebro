@@ -1730,7 +1730,7 @@ func reportConnectError(err error) error {
 	case errors.Is(err, reports.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
-		return connect.NewError(connect.CodeInvalidArgument, err)
+		return connect.NewError(defaultConnectErrorCode(err), err)
 	}
 }
 
@@ -1738,7 +1738,7 @@ func sourceConnectError(err error) error {
 	if errors.Is(err, sourceops.ErrSourceNotFound) {
 		return connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewError(connect.CodeInvalidArgument, err)
+	return connect.NewError(defaultConnectErrorCode(err), err)
 }
 
 func writeSourceRuntimeError(w http.ResponseWriter, err error) {
@@ -1759,7 +1759,7 @@ func sourceRuntimeConnectError(err error) error {
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
-		return connect.NewError(connect.CodeInvalidArgument, err)
+		return connect.NewError(defaultConnectErrorCode(err), err)
 	}
 }
 
@@ -1781,7 +1781,18 @@ func claimConnectError(err error) error {
 	case errors.Is(err, claims.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
-		return connect.NewError(connect.CodeInvalidArgument, err)
+		return connect.NewError(defaultConnectErrorCode(err), err)
+	}
+}
+
+func defaultConnectErrorCode(err error) connect.Code {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return connect.CodeCanceled
+	case errors.Is(err, context.DeadlineExceeded):
+		return connect.CodeDeadlineExceeded
+	default:
+		return connect.CodeInternal
 	}
 }
 

@@ -394,6 +394,7 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 		"https://github.example.com/path",
 		"https://github.example.com?token=leak",
 		"https://localhost",
+		"https://localhost.",
 	} {
 		t.Run(baseURL, func(t *testing.T) {
 			err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
@@ -402,6 +403,26 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 			}))
 			if err == nil {
 				t.Fatal("Check() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestAcceptsEnterpriseAPIBaseURL(t *testing.T) {
+	for _, baseURL := range []string{
+		"https://ghe.example.com/api/v3",
+		"https://ghe.example.com/api/v3/",
+	} {
+		t.Run(baseURL, func(t *testing.T) {
+			settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+				"base_url": baseURL,
+				"owner":    "writer",
+			}), false, false)
+			if err != nil {
+				t.Fatalf("parseSettings() error = %v", err)
+			}
+			if settings.baseURL != "https://ghe.example.com" {
+				t.Fatalf("baseURL = %q, want origin", settings.baseURL)
 			}
 		})
 	}
