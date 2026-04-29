@@ -31,11 +31,12 @@ type Log struct {
 
 // Open dials JetStream and returns an append-log implementation.
 func Open(cfg config.AppendLogConfig) (*Log, error) {
-	if strings.TrimSpace(cfg.JetStreamURL) == "" {
+	url := strings.TrimSpace(cfg.JetStreamURL)
+	if url == "" {
 		return nil, errors.New("jetstream url is required")
 	}
 	nc, err := nats.Connect(
-		cfg.JetStreamURL,
+		url,
 		nats.Name("cerebro"),
 		nats.Timeout(connectTimeout),
 		nats.RetryOnFailedConnect(false),
@@ -92,7 +93,7 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	if kind == "" {
 		return errors.New("event kind is required")
 	}
-	if strings.ContainsRune(kind, ' ') {
+	if strings.ContainsAny(kind, " \t\r\n") {
 		return fmt.Errorf("event kind %q is not a valid NATS subject token", kind)
 	}
 	payload, err := proto.Marshal(event)
