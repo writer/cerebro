@@ -265,6 +265,7 @@ message SourcePreviewEvent {
   EventEnvelope event = 1;
   google.protobuf.Value payload = 2;
   bool payload_decoded = 3;
+  string event_id = 4;
 }
 
 // ReadSourceResponse returns one page of source events plus replay cursors.

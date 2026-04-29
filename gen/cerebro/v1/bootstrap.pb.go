@@ -1958,6 +1958,7 @@ type SourcePreviewEvent struct {
 	Event          *EventEnvelope         `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
 	Payload        *structpb.Value        `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
 	PayloadDecoded bool                   `protobuf:"varint,3,opt,name=payload_decoded,json=payloadDecoded,proto3" json:"payload_decoded,omitempty"`
+	EventId        string                 `protobuf:"bytes,4,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2011,6 +2012,13 @@ func (x *SourcePreviewEvent) GetPayloadDecoded() bool {
 		return x.PayloadDecoded
 	}
 	return false
+}
+
+func (x *SourcePreviewEvent) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
 }
 
 // ReadSourceResponse returns one page of source events plus replay cursors.
@@ -6423,11 +6431,12 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\x06cursor\x18\x03 \x01(\v2\x18.cerebro.v1.SourceCursorR\x06cursor\x1a9\n" +
 	"\vConfigEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa0\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbb\x01\n" +
 	"\x12SourcePreviewEvent\x12/\n" +
 	"\x05event\x18\x01 \x01(\v2\x19.cerebro.v1.EventEnvelopeR\x05event\x120\n" +
 	"\apayload\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\apayload\x12'\n" +
-	"\x0fpayload_decoded\x18\x03 \x01(\bR\x0epayloadDecoded\"\xb7\x02\n" +
+	"\x0fpayload_decoded\x18\x03 \x01(\bR\x0epayloadDecoded\x12\x19\n" +
+	"\bevent_id\x18\x04 \x01(\tR\aeventId\"\xb7\x02\n" +
 	"\x12ReadSourceResponse\x12.\n" +
 	"\x06source\x18\x01 \x01(\v2\x16.cerebro.v1.SourceSpecR\x06source\x121\n" +
 	"\x06events\x18\x02 \x03(\v2\x19.cerebro.v1.EventEnvelopeR\x06events\x12<\n" +

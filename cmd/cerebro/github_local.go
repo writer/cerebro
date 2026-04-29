@@ -111,17 +111,29 @@ func prepareSourceRuntimeWithCLI(ctx context.Context, runtime *cerebrov1.SourceR
 }
 
 func hydrateGitHubLocalConfig(ctx context.Context, config map[string]string, cli githubLocalCLI, requireRepo bool, requireToken bool) (map[string]string, error) {
+	config = cloneConfig(config)
 	needsRepo := strings.TrimSpace(config["owner"]) == "" || (requireRepo && strings.TrimSpace(config["repo"]) == "")
 	if needsRepo {
 		repo, err := cli.Repo(ctx)
 		if err != nil {
 			return nil, err
 		}
+		ghOwner := strings.TrimSpace(repo.Owner.Login)
+		ghRepo := strings.TrimSpace(repo.Name)
+		if ghOwner == "" || ghRepo == "" {
+			return nil, fmt.Errorf("resolve github repo from gh cli: owner and repo are required")
+		}
+		if existing := strings.TrimSpace(config["owner"]); existing != "" && existing != ghOwner {
+			return nil, fmt.Errorf("resolve github repo from gh cli: owner mismatch (config=%q gh=%q)", existing, ghOwner)
+		}
+		if existing := strings.TrimSpace(config["repo"]); existing != "" && existing != ghRepo {
+			return nil, fmt.Errorf("resolve github repo from gh cli: repo mismatch (config=%q gh=%q)", existing, ghRepo)
+		}
 		if strings.TrimSpace(config["owner"]) == "" {
-			config["owner"] = strings.TrimSpace(repo.Owner.Login)
+			config["owner"] = ghOwner
 		}
 		if requireRepo && strings.TrimSpace(config["repo"]) == "" {
-			config["repo"] = strings.TrimSpace(repo.Name)
+			config["repo"] = ghRepo
 		}
 	}
 	if strings.TrimSpace(config["token"]) == "" && (requireToken || needsRepo) {

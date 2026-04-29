@@ -3,6 +3,7 @@ package nobackgroundctx
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 	"path/filepath"
 	"strings"
 
@@ -30,21 +31,36 @@ func run(pass *analysis.Pass) (any, error) {
 		if fileAllowed(pass, call.Pos()) {
 			return
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return
-		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok || pkg.Name != "context" {
-			return
-		}
-		switch sel.Sel.Name {
-		case "Background", "TODO":
+		report := func(name string) {
 			pass.Report(analysis.Diagnostic{
 				Pos:     call.Pos(),
 				End:     call.End(),
-				Message: "context." + sel.Sel.Name + " is forbidden outside cmd/ and tests; accept a context from the caller instead. (see PLAN.md §7 sin #12)",
+				Message: "context." + name + " is forbidden outside cmd/ and tests; accept a context from the caller instead. (see PLAN.md §7 sin #12)",
 			})
+		}
+		switch fun := call.Fun.(type) {
+		case *ast.SelectorExpr:
+			pkgIdent, ok := fun.X.(*ast.Ident)
+			if !ok {
+				return
+			}
+			pkgName, ok := pass.TypesInfo.Uses[pkgIdent].(*types.PkgName)
+			if !ok || pkgName.Imported() == nil || pkgName.Imported().Path() != "context" {
+				return
+			}
+			switch fun.Sel.Name {
+			case "Background", "TODO":
+				report(fun.Sel.Name)
+			}
+		case *ast.Ident:
+			fn, ok := pass.TypesInfo.Uses[fun].(*types.Func)
+			if !ok || fn.Pkg() == nil || fn.Pkg().Path() != "context" {
+				return
+			}
+			switch fn.Name() {
+			case "Background", "TODO":
+				report(fn.Name())
+			}
 		}
 	})
 	return nil, nil

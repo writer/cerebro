@@ -30,6 +30,33 @@ import (
 	sdksource "github.com/writer/cerebro/sources/sdk"
 )
 
+func sourceGet(t *testing.T, server *httptest.Server, path string, config map[string]string) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(config) > 0 {
+		payload, err := json.Marshal(config)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("X-Cerebro-Source-Config", string(payload))
+	}
+	return server.Client().Do(req)
+}
+
+func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
+	for _, key := range []string{"token", "api_key", "private_key", "key"} {
+		t.Run(key, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/sources/okta/check?"+key+"=secret", nil)
+			if _, err := sourceConfigFromRequest(req); err == nil {
+				t.Fatalf("sourceConfigFromRequest() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
 type stubAppendLog struct {
 	err error
 }
@@ -667,7 +694,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(entries) != 3 {
 		t.Fatalf("/sources entries = %#v, want 3 entries", sourcesPayload["sources"])
 	}
-	checkResp, err := server.Client().Get(server.URL + "/sources/github/check?token=test")
+	checkResp, err := sourceGet(t, server, "/sources/github/check", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/github/check error = %v", err)
 	}
@@ -683,7 +710,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if checkPayload["status"] != "ok" {
 		t.Fatalf("check status = %#v, want %q", checkPayload["status"], "ok")
 	}
-	discoverResp, err := server.Client().Get(server.URL + "/sources/github/discover?token=test")
+	discoverResp, err := sourceGet(t, server, "/sources/github/discover", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/github/discover error = %v", err)
 	}
@@ -699,7 +726,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if urns, ok := discoverPayload["urns"].([]any); !ok || len(urns) != 2 {
 		t.Fatalf("discover urns = %#v, want 2 entries", discoverPayload["urns"])
 	}
-	readResp, err := server.Client().Get(server.URL + "/sources/github/read?token=test")
+	readResp, err := sourceGet(t, server, "/sources/github/read", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/github/read error = %v", err)
 	}
@@ -715,11 +742,36 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if events, ok := readPayload["events"].([]any); !ok || len(events) != 1 {
 		t.Fatalf("read events = %#v, want 1 entry", readPayload["events"])
 	}
+	repeatedCursorResp, err := sourceGet(t, server, "/sources/github/read?cursor=0&cursor=1", map[string]string{"token": "test"})
+	if err != nil {
+		t.Fatalf("GET /sources/github/read repeated cursor error = %v", err)
+	}
+	defer func() {
+		if closeErr := repeatedCursorResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close repeated cursor response body: %v", closeErr)
+		}
+	}()
+	var repeatedCursorPayload map[string]any
+	if err := json.NewDecoder(repeatedCursorResp.Body).Decode(&repeatedCursorPayload); err != nil {
+		t.Fatalf("decode repeated cursor response: %v", err)
+	}
+	repeatedCursorEvents, ok := repeatedCursorPayload["events"].([]any)
+	if !ok || len(repeatedCursorEvents) != 1 {
+		t.Fatalf("repeated cursor events = %#v, want 1 entry", repeatedCursorPayload["events"])
+	}
+	repeatedCursorEvent, ok := repeatedCursorEvents[0].(map[string]any)
+	if !ok || repeatedCursorEvent["id"] != "github-pr-1" {
+		t.Fatalf("repeated cursor event = %#v, want github-pr-1", repeatedCursorEvents[0])
+	}
 	previewEvents, ok := readPayload["preview_events"].([]any)
 	if !ok || len(previewEvents) != 1 {
 		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])
 	}
-	oktaCheckResp, err := server.Client().Get(server.URL + "/sources/okta/check?domain=writer.okta.com&family=user&token=test")
+	previewEvent, ok := previewEvents[0].(map[string]any)
+	if !ok || previewEvent["event_id"] != "github-audit-1" {
+		t.Fatalf("read preview_event = %#v, want event_id github-audit-1", previewEvents[0])
+	}
+	oktaCheckResp, err := sourceGet(t, server, "/sources/okta/check?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/okta/check error = %v", err)
 	}
@@ -735,7 +787,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if oktaCheckPayload["status"] != "ok" {
 		t.Fatalf("okta check status = %#v, want %q", oktaCheckPayload["status"], "ok")
 	}
-	oktaDiscoverResp, err := server.Client().Get(server.URL + "/sources/okta/discover?domain=writer.okta.com&family=user&token=test")
+	oktaDiscoverResp, err := sourceGet(t, server, "/sources/okta/discover?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/okta/discover error = %v", err)
 	}
@@ -751,7 +803,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if urns, ok := oktaDiscoverPayload["urns"].([]any); !ok || len(urns) != 2 {
 		t.Fatalf("okta discover urns = %#v, want 2 entries", oktaDiscoverPayload["urns"])
 	}
-	oktaReadResp, err := server.Client().Get(server.URL + "/sources/okta/read?domain=writer.okta.com&family=user&token=test")
+	oktaReadResp, err := sourceGet(t, server, "/sources/okta/read?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/okta/read error = %v", err)
 	}
@@ -770,6 +822,18 @@ func TestBootstrapEndpoints(t *testing.T) {
 	oktaPreviewEvents, ok := oktaReadPayload["preview_events"].([]any)
 	if !ok || len(oktaPreviewEvents) != 1 {
 		t.Fatalf("okta read preview_events = %#v, want 1 entry", oktaReadPayload["preview_events"])
+	}
+	leakyQueryResp, err := server.Client().Get(server.URL + "/sources/github/check?token=secret")
+	if err != nil {
+		t.Fatalf("GET /sources/github/check leaky query error = %v", err)
+	}
+	defer func() {
+		if closeErr := leakyQueryResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close leaky query response body: %v", closeErr)
+		}
+	}()
+	if leakyQueryResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("leaky query status = %d, want %d", leakyQueryResp.StatusCode, http.StatusBadRequest)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
@@ -882,9 +946,10 @@ func TestBootstrapEndpoints(t *testing.T) {
 }
 
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
+	const rawDependencyError = "state store unavailable at postgres://user:pass@internal-db:5432/cerebro"
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		AppendLog:  stubAppendLog{},
-		StateStore: stubStore{err: errors.New("state store unavailable")},
+		StateStore: stubStore{err: errors.New(rawDependencyError)},
 		GraphStore: stubStore{},
 	}, nil)
 	server := httptest.NewServer(app.Handler())
@@ -900,6 +965,12 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	}
 	if got := healthResp.Msg.Components[1].Status; got != "error" {
 		t.Fatalf("state_store status = %q, want %q", got, "error")
+	}
+	if got := healthResp.Msg.Components[1].Detail; got != "unhealthy" {
+		t.Fatalf("state_store detail = %q, want sanitized detail", got)
+	}
+	if got := healthResp.Msg.Components[1].Detail; got == rawDependencyError {
+		t.Fatalf("state_store detail leaked raw dependency error")
 	}
 }
 
@@ -1647,6 +1718,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := len(listFindingsResp.Msg.GetFindings()[0].GetControlRefs()); got != 2 {
 		t.Fatalf("len(ListFindings().Findings[0].ControlRefs) = %d, want 2", got)
+	}
+	if got := runtimeStore.findingListRequest.TenantID; got != "writer" {
+		t.Fatalf("runtimeStore.findingListRequest.TenantID = %q, want writer", got)
 	}
 	if got := runtimeStore.findingListRequest.RuleID; got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("runtimeStore.findingListRequest.RuleID = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
@@ -2483,11 +2557,11 @@ func TestWriteClaimsReplaceExistingReportsRetractedClaims(t *testing.T) {
 	if got := resp.Msg.GetClaimsWritten(); got != 1 {
 		t.Fatalf("replace claims_written = %d, want 1", got)
 	}
-	if got := resp.Msg.GetClaimsRetracted(); got != 1 {
-		t.Fatalf("replace claims_retracted = %d, want 1", got)
+	if got := resp.Msg.GetClaimsRetracted(); got != 2 {
+		t.Fatalf("replace claims_retracted = %d, want 2", got)
 	}
-	if len(runtimeStore.claims) != 2 {
-		t.Fatalf("len(runtimeStore.claims) = %d, want 2", len(runtimeStore.claims))
+	if len(runtimeStore.claims) != 3 {
+		t.Fatalf("len(runtimeStore.claims) = %d, want 3", len(runtimeStore.claims))
 	}
 	var retracted *ports.ClaimRecord
 	for _, claim := range runtimeStore.claims {
@@ -2596,6 +2670,7 @@ func TestReportEndpoints(t *testing.T) {
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
 				ID:           "finding-1",
+				TenantID:     "writer",
 				RuntimeID:    "writer-okta-audit",
 				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:     "HIGH",
@@ -2607,6 +2682,7 @@ func TestReportEndpoints(t *testing.T) {
 			},
 			"finding-2": {
 				ID:           "finding-2",
+				TenantID:     "writer",
 				RuntimeID:    "writer-okta-audit",
 				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:     "HIGH",
@@ -2659,10 +2735,11 @@ func TestReportEndpoints(t *testing.T) {
 		t.Fatalf("/reports payload = %#v, want 1 entry", listPayload["reports"])
 	}
 
-	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?runtime_id=writer-okta-audit&graph_limit=2", nil)
+	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?tenant_id=writer&runtime_id=writer-okta-audit&graph_limit=2", nil)
 	if err != nil {
 		t.Fatalf("new run report request: %v", err)
 	}
+	runReq.Header.Set("X-Cerebro-Source-Config", `{"token":"secret","api_key":"secret"}`)
 	runResp, err := server.Client().Do(runReq)
 	if err != nil {
 		t.Fatalf("POST /reports/{id}/runs error = %v", err)
@@ -2711,6 +2788,13 @@ func TestReportEndpoints(t *testing.T) {
 	if len(runtimeStore.reportRuns) != 1 {
 		t.Fatalf("len(runtimeStore.reportRuns) = %d, want 1", len(runtimeStore.reportRuns))
 	}
+	storedRun := runtimeStore.reportRuns[runID]
+	if _, ok := storedRun.GetParameters()["token"]; ok {
+		t.Fatalf("stored report parameters include token")
+	}
+	if _, ok := storedRun.GetParameters()["api_key"]; ok {
+		t.Fatalf("stored report parameters include api_key")
+	}
 	if graphStore.neighborhoodRootURN != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
 		t.Fatalf("graph evidence root urn = %q, want policy rule urn", graphStore.neighborhoodRootURN)
 	}
@@ -2750,6 +2834,7 @@ func TestReportEndpoints(t *testing.T) {
 	runReportResp, err := client.RunReport(context.Background(), connect.NewRequest(&cerebrov1.RunReportRequest{
 		ReportId: "finding-summary",
 		Parameters: map[string]string{
+			"tenant_id":  "writer",
 			"runtime_id": "writer-okta-audit",
 		},
 	}))
@@ -2903,6 +2988,9 @@ func preserveFindingWorkflow(existing *ports.FindingRecord, incoming *ports.Find
 
 func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
 	if finding == nil {
+		return false
+	}
+	if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
 	if strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {

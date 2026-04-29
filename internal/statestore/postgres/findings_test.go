@@ -56,16 +56,23 @@ func TestUpsertFindingRejectsUnconfiguredStore(t *testing.T) {
 	}
 }
 
-func TestListFindingsRejectsMissingRuntimeID(t *testing.T) {
+func TestListFindingsRejectsMissingTenantID(t *testing.T) {
 	store := &Store{}
 	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{}); err == nil {
 		t.Fatal("ListFindings() error = nil, want non-nil")
 	}
 }
 
+func TestListFindingsRejectsMissingRuntimeID(t *testing.T) {
+	store := &Store{}
+	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{TenantID: "writer"}); err == nil {
+		t.Fatal("ListFindings() error = nil, want non-nil")
+	}
+}
+
 func TestListFindingsRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
-	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{RuntimeID: "writer-okta-audit"}); err == nil {
+	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{TenantID: "writer", RuntimeID: "writer-okta-audit"}); err == nil {
 		t.Fatal("ListFindings() error = nil, want non-nil")
 	}
 }
@@ -93,6 +100,7 @@ func TestLinkFindingTicketRejectsEmptyURL(t *testing.T) {
 
 func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
+		TenantID:    "writer",
 		RuntimeID:   "writer-okta-audit",
 		FindingID:   "finding-1",
 		RuleID:      "identity-okta-policy-rule-lifecycle-tampering",
@@ -107,37 +115,41 @@ func TestFindingListQueryIncludesOptionalFilters(t *testing.T) {
 		t.Fatalf("findingListQuery() error = %v", err)
 	}
 	for _, fragment := range []string{
-		"runtime_id = $1",
-		"id = $2",
-		"rule_id = $3",
-		"severity = $4",
-		"status = $5",
-		"policy_id = $6",
-		"resource_urns_json @> $7::jsonb",
-		"event_ids_json @> $8::jsonb",
-		"LIMIT $9",
+		"tenant_id = $1",
+		"runtime_id = $2",
+		"id = $3",
+		"rule_id = $4",
+		"severity = $5",
+		"status = $6",
+		"policy_id = $7",
+		"resource_urns_json @> $8::jsonb",
+		"event_ids_json @> $9::jsonb",
+		"LIMIT $10",
 	} {
 		if !strings.Contains(query, fragment) {
 			t.Fatalf("findingListQuery() query missing %q: %s", fragment, query)
 		}
 	}
-	if got := len(args); got != 9 {
-		t.Fatalf("len(findingListQuery().args) = %d, want 9", got)
+	if got := len(args); got != 10 {
+		t.Fatalf("len(findingListQuery().args) = %d, want 10", got)
 	}
-	if got := args[0]; got != "writer-okta-audit" {
-		t.Fatalf("findingListQuery().args[0] = %#v, want writer-okta-audit", got)
+	if got := args[0]; got != "writer" {
+		t.Fatalf("findingListQuery().args[0] = %#v, want writer", got)
 	}
-	if got := args[5]; got != "pol-1" {
-		t.Fatalf("findingListQuery().args[5] = %#v, want pol-1", got)
+	if got := args[1]; got != "writer-okta-audit" {
+		t.Fatalf("findingListQuery().args[1] = %#v, want writer-okta-audit", got)
 	}
-	if got := args[6]; got != `["urn:cerebro:writer:okta_resource:policyrule:pol-1"]` {
-		t.Fatalf("findingListQuery().args[6] = %#v, want resource urn array json", got)
+	if got := args[6]; got != "pol-1" {
+		t.Fatalf("findingListQuery().args[6] = %#v, want pol-1", got)
 	}
-	if got := args[7]; got != `["okta-audit-2"]` {
-		t.Fatalf("findingListQuery().args[7] = %#v, want event id array json", got)
+	if got := args[7]; got != `["urn:cerebro:writer:okta_resource:policyrule:pol-1"]` {
+		t.Fatalf("findingListQuery().args[7] = %#v, want resource urn array json", got)
 	}
-	if got := args[8]; got != int64(25) {
-		t.Fatalf("findingListQuery().args[8] = %#v, want 25", got)
+	if got := args[8]; got != `["okta-audit-2"]` {
+		t.Fatalf("findingListQuery().args[8] = %#v, want event id array json", got)
+	}
+	if got := args[9]; got != int64(25) {
+		t.Fatalf("findingListQuery().args[9] = %#v, want 25", got)
 	}
 }
 

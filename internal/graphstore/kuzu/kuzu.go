@@ -1,3 +1,5 @@
+//go:build cgo
+
 package kuzu
 
 import (
@@ -277,26 +279,35 @@ func (s *Store) IntegrityChecks(ctx context.Context) ([]IntegrityCheck, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !tables["entity"] || !tables["relation"] {
-		for index := range checks {
+	hasEntity := tables["entity"]
+	hasRelation := tables["relation"]
+	run := func(index int, enabled bool, query string) error {
+		if !enabled {
 			checks[index].Passed = true
+			return nil
 		}
-		return checks, nil
-	}
-	queries := []string{
-		"MATCH (src:entity)-[r:relation]->(dst:entity) WHERE src.tenant_id <> dst.tenant_id OR src.tenant_id <> r.tenant_id OR dst.tenant_id <> r.tenant_id RETURN COUNT(r)",
-		"MATCH (e:entity) WHERE e.label = '' RETURN COUNT(e)",
-		"MATCH (e:entity) WHERE e.entity_type = '' RETURN COUNT(e)",
-		"MATCH (src:entity)-[r:relation]->(dst:entity) WHERE r.relation = '' RETURN COUNT(r)",
-		"MATCH (src:entity)-[r:relation]->(dst:entity) WHERE src.urn = dst.urn RETURN COUNT(r)",
-	}
-	for index, query := range queries {
 		actual, err := s.countQuery(ctx, query)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		checks[index].Actual = actual
 		checks[index].Passed = actual == checks[index].Expected
+		return nil
+	}
+	if err := run(0, hasEntity && hasRelation, "MATCH (src:entity)-[r:relation]->(dst:entity) WHERE src.tenant_id <> dst.tenant_id OR src.tenant_id <> r.tenant_id OR dst.tenant_id <> r.tenant_id RETURN COUNT(r)"); err != nil {
+		return nil, err
+	}
+	if err := run(1, hasEntity, "MATCH (e:entity) WHERE e.label = '' RETURN COUNT(e)"); err != nil {
+		return nil, err
+	}
+	if err := run(2, hasEntity, "MATCH (e:entity) WHERE e.entity_type = '' RETURN COUNT(e)"); err != nil {
+		return nil, err
+	}
+	if err := run(3, hasEntity && hasRelation, "MATCH (src:entity)-[r:relation]->(dst:entity) WHERE r.relation = '' RETURN COUNT(r)"); err != nil {
+		return nil, err
+	}
+	if err := run(4, hasEntity && hasRelation, "MATCH (src:entity)-[r:relation]->(dst:entity) WHERE src.urn = dst.urn RETURN COUNT(r)"); err != nil {
+		return nil, err
 	}
 	return checks, nil
 }

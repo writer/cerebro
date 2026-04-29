@@ -528,10 +528,10 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 			NextCursor:       nextCursor(pull.NextCursor),
 			Watermark:        formatWatermark(pull.Checkpoint),
 		}
-		for _, event := range pull.Events {
+		for idx, event := range pull.Events {
 			materialized := materializeEvent(runtime, event)
 			if materialized == nil {
-				continue
+				return nil, fmt.Errorf("read source page %d: nil event at index %d", page+1, idx)
 			}
 			summary.Events = append(summary.Events, materialized)
 			if pageSummary.FirstEventID == "" {
