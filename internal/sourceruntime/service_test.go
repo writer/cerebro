@@ -77,6 +77,22 @@ func (p *projector) Project(_ context.Context, event *cerebrov1.EventEnvelope) (
 	return p.result, nil
 }
 
+type nilEventSource struct{}
+
+func (nilEventSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "nil-events", Name: "Nil Events"}
+}
+
+func (nilEventSource) Check(context.Context, sourcecdk.Config) error { return nil }
+
+func (nilEventSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (nilEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{nil}}, nil
+}
+
 func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -330,6 +346,35 @@ func TestSyncRuntimeProjectsWithRuntimeTenant(t *testing.T) {
 	}
 	if got := projector.events[0].GetTenantId(); got != "writer" {
 		t.Fatalf("projected event tenant_id = %q, want %q", got, "writer")
+	}
+}
+
+func TestSyncRuntimeRejectsNilSourceEvent(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(nilEventSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-nil-events": {
+				Id:       "writer-nil-events",
+				SourceId: "nil-events",
+				TenantId: "writer",
+			},
+		},
+	}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-nil-events"})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Sync() error = %v, want ErrInvalidRequest", err)
+	}
+	if len(log.events) != 0 {
+		t.Fatalf("len(appendLog.events) = %d, want 0", len(log.events))
+	}
+	if got := store.runtimes["writer-nil-events"].GetLastSyncedAt(); got != nil {
+		t.Fatalf("stored last_synced_at = %#v, want nil", got)
 	}
 }
 

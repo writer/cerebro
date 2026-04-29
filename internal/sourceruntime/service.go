@@ -133,6 +133,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		pagesRead++
 		for _, event := range pull.Events {
 			syncedEvent := materializeEvent(runtime, event)
+			if syncedEvent == nil {
+				return nil, fmt.Errorf("%w: source %q returned nil event", ErrInvalidRequest, runtime.GetSourceId())
+			}
 			if err := s.appendLog.Append(ctx, syncedEvent); err != nil {
 				return nil, fmt.Errorf("append source event %q: %w", syncedEvent.GetId(), err)
 			}
