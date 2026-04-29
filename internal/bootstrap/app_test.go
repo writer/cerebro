@@ -644,6 +644,27 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if events, ok := readPayload["events"].([]any); !ok || len(events) != 1 {
 		t.Fatalf("read events = %#v, want 1 entry", readPayload["events"])
 	}
+	repeatedCursorResp, err := server.Client().Get(server.URL + "/sources/github/read?token=test&cursor=0&cursor=1")
+	if err != nil {
+		t.Fatalf("GET /sources/github/read repeated cursor error = %v", err)
+	}
+	defer func() {
+		if closeErr := repeatedCursorResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close repeated cursor response body: %v", closeErr)
+		}
+	}()
+	var repeatedCursorPayload map[string]any
+	if err := json.NewDecoder(repeatedCursorResp.Body).Decode(&repeatedCursorPayload); err != nil {
+		t.Fatalf("decode repeated cursor response: %v", err)
+	}
+	repeatedCursorEvents, ok := repeatedCursorPayload["events"].([]any)
+	if !ok || len(repeatedCursorEvents) != 1 {
+		t.Fatalf("repeated cursor events = %#v, want 1 entry", repeatedCursorPayload["events"])
+	}
+	repeatedCursorEvent, ok := repeatedCursorEvents[0].(map[string]any)
+	if !ok || repeatedCursorEvent["id"] != "github-pr-1" {
+		t.Fatalf("repeated cursor event = %#v, want github-pr-1", repeatedCursorEvents[0])
+	}
 	previewEvents, ok := readPayload["preview_events"].([]any)
 	if !ok || len(previewEvents) != 1 {
 		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])

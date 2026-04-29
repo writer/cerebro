@@ -354,8 +354,12 @@ func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
 		SourceId: r.PathValue("sourceID"),
 		Config:   sourceConfigFromQuery(r),
 	}
-	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
-		request.Cursor = &cerebrov1.SourceCursor{Opaque: cursor}
+	rawCursors := r.URL.Query()["cursor"]
+	if len(rawCursors) > 0 {
+		cursor := rawCursors[len(rawCursors)-1]
+		if cursor != "" {
+			request.Cursor = &cerebrov1.SourceCursor{Opaque: cursor}
+		}
 	}
 	response, err := a.sourceService().Read(r.Context(), request)
 	if err != nil {
