@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package cerebro.v1;
+
+option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
+
+import "google/protobuf/timestamp.proto";
+
+// EventEnvelope is the canonical append-log payload for the v1 rewrite.
+message EventEnvelope {
+  string id = 1;
+  string tenant_id = 2;
+  string source_id = 3;
+  string kind = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+  string schema_ref = 6;
+  bytes payload = 7;
+  map<string, string> attributes = 8;
+}
+
+// EntityRef is a lightweight entity seed used by claim writers.
+message EntityRef {
+  string urn = 1;
+  string entity_type = 2;
+  string label = 3;
+}
+
+// Claim is a generic source-attributed assertion over one subject.
+message Claim {
+  string id = 1;
+  string subject_urn = 2;
+  EntityRef subject_ref = 3;
+  string predicate = 4;
+  string object_urn = 5;
+  EntityRef object_ref = 6;
+  string object_value = 7;
+  string claim_type = 8;
+  string status = 9;
+  string source_event_id = 10;
+  google.protobuf.Timestamp observed_at = 11;
+  google.protobuf.Timestamp valid_from = 12;
+  google.protobuf.Timestamp valid_to = 13;
+  map<string, string> attributes = 14;
+}
+
+// StreamSpec describes a durable append-only stream of events.
+message StreamSpec {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string accepts_kinds = 4;
+}
+
+// ViewSpec describes a materialized read model.
+message ViewSpec {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string source_stream_ids = 4;
+}
+
+// RuleSpec describes a deterministic evaluator over one or more streams/views.
+message RuleSpec {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string input_stream_ids = 4;
+  repeated string output_kinds = 5;
+}
+
+// ActionSpec describes an idempotent side-effecting operation.
+message ActionSpec {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  bool idempotent = 4;
+}
+
+// AgentSpec describes a conversational orchestrator over the core primitives.
+message AgentSpec {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string tools = 4;
+}

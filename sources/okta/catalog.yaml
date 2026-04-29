@@ -1,0 +1,11 @@
+id: okta
+name: Okta
+description: Okta audit log, identity inventory, group, application, assignment, and admin role source.
+emitted_kinds:
+  - okta.audit
+  - okta.admin_role
+  - okta.app_assignment
+  - okta.application
+  - okta.group
+  - okta.group_membership
+  - okta.user

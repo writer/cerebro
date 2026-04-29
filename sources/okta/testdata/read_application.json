@@ -1,0 +1,23 @@
+[
+  {
+    "id": "okta-application-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.application",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/application/v1",
+    "payload": {
+      "id": "app-prod",
+      "domain": "writer.okta.com",
+      "label": "Production Console",
+      "name": "oidc_client"
+    },
+    "attributes": {
+      "app_id": "app-prod",
+      "app_name": "Production Console",
+      "domain": "writer.okta.com",
+      "family": "application",
+      "oauth2": "true"
+    }
+  }
+]

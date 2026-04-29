@@ -1,16 +1,26 @@
 package main
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
-func TestMainVersionCommand(t *testing.T) {
-	args := os.Args
-	t.Cleanup(func() {
-		os.Args = args
+func TestParseSourceRuntimePutArgsSeparatesTenantID(t *testing.T) {
+	runtime, err := parseSourceRuntimePutArgs([]string{
+		"writer-okta-users",
+		"okta",
+		"tenant_id=writer",
+		"domain=writer.okta.com",
+		"family=user",
+		"token=test",
 	})
-
-	os.Args = []string{"cerebro", "version"}
-	main()
+	if err != nil {
+		t.Fatalf("parseSourceRuntimePutArgs() error = %v", err)
+	}
+	if got := runtime.GetTenantId(); got != "writer" {
+		t.Fatalf("runtime.TenantId = %q, want %q", got, "writer")
+	}
+	if got := runtime.GetConfig()["domain"]; got != "writer.okta.com" {
+		t.Fatalf("runtime.Config[domain] = %q, want %q", got, "writer.okta.com")
+	}
+	if _, ok := runtime.GetConfig()["tenant_id"]; ok {
+		t.Fatal("runtime.Config[tenant_id] present, want omitted")
+	}
 }

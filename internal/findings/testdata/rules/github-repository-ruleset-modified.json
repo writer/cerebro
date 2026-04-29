@@ -1,0 +1,77 @@
+{
+  "rule_id": "github-repository-ruleset-modified",
+  "runtime": {
+    "id": "writer-github-audit",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-audit-ruleset-modified",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer/cerebro",
+        "resource_type": "repository_ruleset",
+        "source_runtime_id": "writer-github-audit",
+        "action": "repository_ruleset.destroy",
+        "repo": "writer/cerebro",
+        "ruleset_id": "42",
+        "ruleset_name": "main protections"
+      }
+    },
+    {
+      "id": "github-audit-ruleset-created",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer/cerebro",
+        "resource_type": "repository_ruleset",
+        "source_runtime_id": "writer-github-audit",
+        "action": "repository_ruleset.create",
+        "repo": "writer/cerebro",
+        "ruleset_id": "42",
+        "ruleset_name": "main protections"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-repository-ruleset-modified",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "admin modified GitHub repository ruleset main protections for writer/cerebro",
+      "event_ids": [
+        "github-audit-ruleset-modified"
+      ],
+      "attributes": {
+        "action": "repository_ruleset.destroy",
+        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "repo": "writer/cerebro",
+        "ruleset_id": "42",
+        "ruleset_name": "main protections",
+        "rule_tags": "github,ruleset,branch-protection,defense-evasion,attack.t1562"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-audit-ruleset-created",
+      "reason": "negative fixture should not match"
+    }
+  ]
+}

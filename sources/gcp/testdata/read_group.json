@@ -1,0 +1,1 @@
+[{"id":"gcp-group-security@writer.com","tenant_id":"C01","source_id":"gcp","kind":"gcp.group","occurred_at":"2026-04-23T00:00:00Z","schema_ref":"gcp/group/v1","payload":{"customer_id":"C01"},"attributes":{"domain":"C01","family":"group","group_email":"security@writer.com","group_id":"security@writer.com","group_name":"Security"}}]

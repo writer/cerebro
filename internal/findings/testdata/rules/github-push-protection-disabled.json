@@ -1,0 +1,67 @@
+{
+  "rule_id": "github-push-protection-disabled",
+  "runtime": {
+    "id": "writer-github-audit",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-audit-push-protection-disabled",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T00:01:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "action": "org.secret_scanning_push_protection_disable",
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer",
+        "resource_type": "org",
+        "source_runtime_id": "writer-github-audit"
+      }
+    },
+    {
+      "id": "github-audit-push-protection-enabled",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T00:01:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "action": "org.secret_scanning_push_protection_enable",
+        "actor": "admin",
+        "family": "audit",
+        "org": "writer",
+        "resource_id": "writer",
+        "resource_type": "org",
+        "source_runtime_id": "writer-github-audit"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-push-protection-disabled",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "admin disabled GitHub push protection for writer",
+      "event_ids": ["github-audit-push-protection-disabled"],
+      "attributes": {
+        "action": "org.secret_scanning_push_protection_disable",
+        "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
+        "primary_resource_urn": "urn:cerebro:writer:github_resource:org:writer",
+        "resource_id": "writer",
+        "rule_tags": "github,push-protection,secret-scanning,defense-evasion,attack.t1562.001"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-audit-push-protection-enabled",
+      "reason": "enable action is not a disabled push protection signal"
+    }
+  ]
+}

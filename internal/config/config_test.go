@@ -1,58 +1,131 @@
 package config
 
 import (
-	"os"
 	"testing"
+	"time"
 )
 
 func TestLoadDefaults(t *testing.T) {
-	os.Clearenv()
+	t.Setenv("CEREBRO_HTTP_ADDR", "")
+	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
+	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
+	t.Setenv("CEREBRO_JETSTREAM_URL", "")
+	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
+	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
+	t.Setenv("CEREBRO_POSTGRES_DSN", "")
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
+	t.Setenv("CEREBRO_KUZU_PATH", "")
 
-	cfg := Load()
-
-	if cfg.Port != 8080 {
-		t.Errorf("expected default port 8080, got %d", cfg.Port)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.LogLevel != "info" {
-		t.Errorf("expected default log level 'info', got '%s'", cfg.LogLevel)
+	if cfg.HTTPAddr != ":8080" {
+		t.Fatalf("HTTPAddr = %q, want %q", cfg.HTTPAddr, ":8080")
 	}
-	if cfg.SnowflakeDatabase != "CEREBRO" {
-		t.Errorf("expected default database 'CEREBRO', got '%s'", cfg.SnowflakeDatabase)
+	if cfg.ShutdownTimeout != 10*time.Second {
+		t.Fatalf("ShutdownTimeout = %v, want %v", cfg.ShutdownTimeout, 10*time.Second)
 	}
-	if cfg.SnowflakeSchema != "CEREBRO" {
-		t.Errorf("expected default schema 'CEREBRO', got '%s'", cfg.SnowflakeSchema)
+	if cfg.AppendLog.Driver != "" {
+		t.Fatalf("AppendLog.Driver = %q, want empty", cfg.AppendLog.Driver)
 	}
-	if cfg.CedarPoliciesPath != "policies" {
-		t.Errorf("expected default policies path 'policies', got '%s'", cfg.CedarPoliciesPath)
+	if cfg.StateStore.Driver != "" {
+		t.Fatalf("StateStore.Driver = %q, want empty", cfg.StateStore.Driver)
+	}
+	if cfg.GraphStore.Driver != "" {
+		t.Fatalf("GraphStore.Driver = %q, want empty", cfg.GraphStore.Driver)
 	}
 }
 
 func TestLoadFromEnv(t *testing.T) {
-	t.Setenv("API_PORT", "9000")
-	t.Setenv("LOG_LEVEL", "debug")
-	t.Setenv("SNOWFLAKE_ACCOUNT", "testaccount")
-	t.Setenv("SNOWFLAKE_USER", "testuser")
-	t.Setenv("SNOWFLAKE_DATABASE", "TESTDB")
-	t.Setenv("SNOWFLAKE_SCHEMA", "TESTSCHEMA")
+	t.Setenv("CEREBRO_HTTP_ADDR", "127.0.0.1:9000")
+	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "3s")
+	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
+	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
+	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
+	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
+	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverKuzu)
+	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
 
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.HTTPAddr != "127.0.0.1:9000" {
+		t.Fatalf("HTTPAddr = %q, want %q", cfg.HTTPAddr, "127.0.0.1:9000")
+	}
+	if cfg.ShutdownTimeout != 3*time.Second {
+		t.Fatalf("ShutdownTimeout = %v, want %v", cfg.ShutdownTimeout, 3*time.Second)
+	}
+	if cfg.AppendLog.Driver != AppendLogDriverJetStream {
+		t.Fatalf("AppendLog.Driver = %q, want %q", cfg.AppendLog.Driver, AppendLogDriverJetStream)
+	}
+	if cfg.AppendLog.JetStreamSubjectPrefix != "cerebro.events" {
+		t.Fatalf("JetStreamSubjectPrefix = %q, want %q", cfg.AppendLog.JetStreamSubjectPrefix, "cerebro.events")
+	}
+	if cfg.StateStore.Driver != StateStoreDriverPostgres {
+		t.Fatalf("StateStore.Driver = %q, want %q", cfg.StateStore.Driver, StateStoreDriverPostgres)
+	}
+	if cfg.GraphStore.Driver != GraphStoreDriverKuzu {
+		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverKuzu)
+	}
+}
 
-	if cfg.Port != 9000 {
-		t.Errorf("expected port 9000, got %d", cfg.Port)
+func TestLoadRejectsInvalidDuration(t *testing.T) {
+	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "not-a-duration")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
 	}
-	if cfg.LogLevel != "debug" {
-		t.Errorf("expected log level 'debug', got '%s'", cfg.LogLevel)
+}
+
+func TestLoadInfersDriversFromURLs(t *testing.T) {
+	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
+	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
+	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.SnowflakeAccount != "testaccount" {
-		t.Errorf("expected snowflake account 'testaccount', got '%s'", cfg.SnowflakeAccount)
+	if cfg.AppendLog.Driver != AppendLogDriverJetStream {
+		t.Fatalf("AppendLog.Driver = %q, want %q", cfg.AppendLog.Driver, AppendLogDriverJetStream)
 	}
-	if cfg.SnowflakeUser != "testuser" {
-		t.Errorf("expected snowflake user 'testuser', got '%s'", cfg.SnowflakeUser)
+	if cfg.AppendLog.JetStreamSubjectPrefix != "events" {
+		t.Fatalf("JetStreamSubjectPrefix = %q, want %q", cfg.AppendLog.JetStreamSubjectPrefix, "events")
 	}
-	if cfg.SnowflakeDatabase != "TESTDB" {
-		t.Errorf("expected database 'TESTDB', got '%s'", cfg.SnowflakeDatabase)
+	if cfg.StateStore.Driver != StateStoreDriverPostgres {
+		t.Fatalf("StateStore.Driver = %q, want %q", cfg.StateStore.Driver, StateStoreDriverPostgres)
 	}
-	if cfg.SnowflakeSchema != "TESTSCHEMA" {
-		t.Errorf("expected schema 'TESTSCHEMA', got '%s'", cfg.SnowflakeSchema)
+	if cfg.GraphStore.Driver != GraphStoreDriverKuzu {
+		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverKuzu)
+	}
+}
+
+func TestLoadRejectsUnknownAppendLogDriver(t *testing.T) {
+	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "unknown")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsMissingJetStreamURL(t *testing.T) {
+	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsMissingPostgresDSN(t *testing.T) {
+	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsMissingKuzuPath(t *testing.T) {
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverKuzu)
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
 	}
 }

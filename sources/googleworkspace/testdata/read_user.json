@@ -1,0 +1,30 @@
+[
+  {
+    "id": "1001",
+    "primaryEmail": "admin@writer.com",
+    "name": {"fullName": "Admin Writer"},
+    "isAdmin": true,
+    "isDelegatedAdmin": true,
+    "isEnrolledIn2Sv": false,
+    "isEnforcedIn2Sv": false,
+    "suspended": false,
+    "archived": false,
+    "creationTime": "2025-01-01T00:00:00.000Z",
+    "lastLoginTime": "2025-01-15T00:00:00.000Z",
+    "orgUnitPath": "/"
+  },
+  {
+    "id": "1002",
+    "primaryEmail": "alice@writer.com",
+    "name": {"fullName": "Alice Writer"},
+    "isAdmin": false,
+    "isDelegatedAdmin": false,
+    "isEnrolledIn2Sv": true,
+    "isEnforcedIn2Sv": true,
+    "suspended": false,
+    "archived": false,
+    "creationTime": "2026-04-20T00:00:00.000Z",
+    "lastLoginTime": "2026-04-23T00:00:00.000Z",
+    "orgUnitPath": "/Engineering"
+  }
+]

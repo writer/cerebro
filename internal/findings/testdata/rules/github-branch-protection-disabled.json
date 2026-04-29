@@ -1,0 +1,69 @@
+{
+  "rule_id": "github-branch-protection-disabled",
+  "runtime": {
+    "id": "writer-github-audit",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-audit-branch-protection-disabled",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T00:02:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "action": "protected_branch.destroy",
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "remove",
+        "org": "writer",
+        "repo": "writer/cerebro",
+        "resource_id": "writer/cerebro",
+        "resource_type": "protected_branch",
+        "source_runtime_id": "writer-github-audit"
+      }
+    },
+    {
+      "id": "github-audit-branch-protection-renamed",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T00:02:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "action": "protected_branch.update_name",
+        "actor": "admin",
+        "family": "audit",
+        "org": "writer",
+        "repo": "writer/cerebro",
+        "resource_id": "writer/cerebro",
+        "resource_type": "protected_branch",
+        "source_runtime_id": "writer-github-audit"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-branch-protection-disabled",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "admin removed branch protection from writer/cerebro",
+      "event_ids": ["github-audit-branch-protection-disabled"],
+      "attributes": {
+        "action": "protected_branch.destroy",
+        "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
+        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "repo": "writer/cerebro",
+        "rule_tags": "github,branch-protection,supply-chain,initial-access,attack.t1195"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-audit-branch-protection-renamed",
+      "reason": "branch rename is not branch protection removal"
+    }
+  ]
+}

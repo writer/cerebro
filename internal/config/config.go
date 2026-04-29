@@ -1,53 +1,120 @@
 package config
 
 import (
+	"fmt"
+	"os"
+	"strings"
 	"time"
-
-	"github.com/writer/cerebro/internal/app"
 )
 
+const defaultHTTPAddr = ":8080"
+const defaultShutdownTimeout = 10 * time.Second
+const defaultJetStreamSubjectPrefix = "events"
+
+const (
+	AppendLogDriverJetStream = "jetstream"
+	StateStoreDriverPostgres = "postgres"
+	GraphStoreDriverKuzu     = "kuzu"
+)
+
+// Config is the minimal bootstrap configuration for the rewrite skeleton.
 type Config struct {
-	Port                int
-	LogLevel            string
-	SnowflakeAccount    string
-	SnowflakeUser       string
-	SnowflakePrivateKey string
-	SnowflakeWarehouse  string
-	SnowflakeDatabase   string
-	SnowflakeSchema     string
-	SnowflakeRole       string
-	CedarPoliciesPath   string
-
-	// Rate limiting
-	RateLimitEnabled  bool
-	RateLimitRequests int
-	RateLimitWindow   time.Duration
-
-	// Slack integration
-	SlackSigningSecret string
-	SlackWebhookURL    string
+	HTTPAddr        string
+	ShutdownTimeout time.Duration
+	AppendLog       AppendLogConfig
+	StateStore      StateStoreConfig
+	GraphStore      GraphStoreConfig
 }
 
-func Load() *Config {
-	appCfg := app.LoadConfig()
+// AppendLogConfig selects and configures the append-log driver.
+type AppendLogConfig struct {
+	Driver                 string
+	JetStreamURL           string
+	JetStreamSubjectPrefix string
+}
 
-	return &Config{
-		Port:                appCfg.Port,
-		LogLevel:            appCfg.LogLevel,
-		SnowflakeAccount:    appCfg.SnowflakeAccount,
-		SnowflakeUser:       appCfg.SnowflakeUser,
-		SnowflakePrivateKey: appCfg.SnowflakePrivateKey,
-		SnowflakeWarehouse:  appCfg.SnowflakeWarehouse,
-		SnowflakeDatabase:   appCfg.SnowflakeDatabase,
-		SnowflakeSchema:     appCfg.SnowflakeSchema,
-		SnowflakeRole:       appCfg.SnowflakeRole,
-		CedarPoliciesPath:   appCfg.PoliciesPath,
+// StateStoreConfig selects and configures the current-state store driver.
+type StateStoreConfig struct {
+	Driver      string
+	PostgresDSN string
+}
 
-		RateLimitEnabled:  appCfg.RateLimitEnabled,
-		RateLimitRequests: appCfg.RateLimitRequests,
-		RateLimitWindow:   appCfg.RateLimitWindow,
+// GraphStoreConfig selects and configures the graph projection store driver.
+type GraphStoreConfig struct {
+	Driver   string
+	KuzuPath string
+}
 
-		SlackSigningSecret: appCfg.SlackSigningSecret,
-		SlackWebhookURL:    appCfg.SlackWebhookURL,
+// Load reads and validates process configuration.
+func Load() (Config, error) {
+	cfg := Config{
+		HTTPAddr:        strings.TrimSpace(os.Getenv("CEREBRO_HTTP_ADDR")),
+		ShutdownTimeout: defaultShutdownTimeout,
+		AppendLog: AppendLogConfig{
+			Driver:                 strings.TrimSpace(os.Getenv("CEREBRO_APPEND_LOG_DRIVER")),
+			JetStreamURL:           strings.TrimSpace(os.Getenv("CEREBRO_JETSTREAM_URL")),
+			JetStreamSubjectPrefix: strings.TrimSpace(os.Getenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX")),
+		},
+		StateStore: StateStoreConfig{
+			Driver:      strings.TrimSpace(os.Getenv("CEREBRO_STATE_STORE_DRIVER")),
+			PostgresDSN: strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN")),
+		},
+		GraphStore: GraphStoreConfig{
+			Driver:   strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_STORE_DRIVER")),
+			KuzuPath: strings.TrimSpace(os.Getenv("CEREBRO_KUZU_PATH")),
+		},
 	}
+	if cfg.HTTPAddr == "" {
+		cfg.HTTPAddr = defaultHTTPAddr
+	}
+	if raw, ok := os.LookupEnv("CEREBRO_SHUTDOWN_TIMEOUT"); ok && strings.TrimSpace(raw) != "" {
+		duration, err := time.ParseDuration(strings.TrimSpace(raw))
+		if err != nil {
+			return Config{}, fmt.Errorf("parse CEREBRO_SHUTDOWN_TIMEOUT: %w", err)
+		}
+		cfg.ShutdownTimeout = duration
+	}
+	if cfg.ShutdownTimeout <= 0 {
+		return Config{}, fmt.Errorf("CEREBRO_SHUTDOWN_TIMEOUT must be greater than zero")
+	}
+	if cfg.AppendLog.Driver == "" && cfg.AppendLog.JetStreamURL != "" {
+		cfg.AppendLog.Driver = AppendLogDriverJetStream
+	}
+	switch cfg.AppendLog.Driver {
+	case "":
+	case AppendLogDriverJetStream:
+		if cfg.AppendLog.JetStreamURL == "" {
+			return Config{}, fmt.Errorf("CEREBRO_JETSTREAM_URL is required when CEREBRO_APPEND_LOG_DRIVER=%q", AppendLogDriverJetStream)
+		}
+		if cfg.AppendLog.JetStreamSubjectPrefix == "" {
+			cfg.AppendLog.JetStreamSubjectPrefix = defaultJetStreamSubjectPrefix
+		}
+	default:
+		return Config{}, fmt.Errorf("unsupported CEREBRO_APPEND_LOG_DRIVER %q", cfg.AppendLog.Driver)
+	}
+	if cfg.StateStore.Driver == "" && cfg.StateStore.PostgresDSN != "" {
+		cfg.StateStore.Driver = StateStoreDriverPostgres
+	}
+	switch cfg.StateStore.Driver {
+	case "":
+	case StateStoreDriverPostgres:
+		if cfg.StateStore.PostgresDSN == "" {
+			return Config{}, fmt.Errorf("CEREBRO_POSTGRES_DSN is required when CEREBRO_STATE_STORE_DRIVER=%q", StateStoreDriverPostgres)
+		}
+	default:
+		return Config{}, fmt.Errorf("unsupported CEREBRO_STATE_STORE_DRIVER %q", cfg.StateStore.Driver)
+	}
+	if cfg.GraphStore.Driver == "" && cfg.GraphStore.KuzuPath != "" {
+		cfg.GraphStore.Driver = GraphStoreDriverKuzu
+	}
+	switch cfg.GraphStore.Driver {
+	case "":
+	case GraphStoreDriverKuzu:
+		if cfg.GraphStore.KuzuPath == "" {
+			return Config{}, fmt.Errorf("CEREBRO_KUZU_PATH is required when CEREBRO_GRAPH_STORE_DRIVER=%q", GraphStoreDriverKuzu)
+		}
+	default:
+		return Config{}, fmt.Errorf("unsupported CEREBRO_GRAPH_STORE_DRIVER %q", cfg.GraphStore.Driver)
+	}
+	return cfg, nil
 }

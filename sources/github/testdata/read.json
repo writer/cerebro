@@ -1,0 +1,34 @@
+[
+  {
+    "id": "github-audit-1",
+    "tenant_id": "writer",
+    "source_id": "github",
+    "kind": "github.audit",
+    "occurred_at": "2026-04-22T18:00:00Z",
+    "schema_ref": "github/audit/v1",
+    "payload": {
+      "action": "repo.create",
+      "actor": "octocat",
+      "repository": "writer/cerebro"
+    },
+    "attributes": {
+      "org": "writer"
+    }
+  },
+  {
+    "id": "github-pr-1",
+    "tenant_id": "writer",
+    "source_id": "github",
+    "kind": "github.pull_request",
+    "occurred_at": "2026-04-22T18:05:00Z",
+    "schema_ref": "github/pull_request/v1",
+    "payload": {
+      "number": 441,
+      "action": "opened",
+      "repository": "writer/cerebro"
+    },
+    "attributes": {
+      "org": "writer"
+    }
+  }
+]

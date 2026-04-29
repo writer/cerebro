@@ -1,0 +1,69 @@
+{
+  "rule_id": "github-private-repository-forking-enabled",
+  "runtime": {
+    "id": "writer-github-audit",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-audit-private-forking-enabled",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer",
+        "resource_type": "org",
+        "source_runtime_id": "writer-github-audit",
+        "action": "private_repository_forking.enable"
+      }
+    },
+    {
+      "id": "github-audit-repo-created-forking-negative",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer",
+        "resource_type": "org",
+        "source_runtime_id": "writer-github-audit",
+        "action": "repo.create"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-private-repository-forking-enabled",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "admin enabled or reset private repository forking for writer",
+      "event_ids": [
+        "github-audit-private-forking-enabled"
+      ],
+      "attributes": {
+        "action": "private_repository_forking.enable",
+        "org": "writer",
+        "primary_resource_urn": "urn:cerebro:writer:github_resource:org:writer",
+        "rule_tags": "github,private-forking,exfiltration,attack.t1020"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-audit-repo-created-forking-negative",
+      "reason": "negative fixture should not match"
+    }
+  ]
+}
