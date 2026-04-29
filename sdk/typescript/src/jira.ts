@@ -93,47 +93,47 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
     integration.exists(workspaceRef, sharedOptions),
     integration.attr(workspaceRef, "platform", "jira", sharedOptions),
     integration.attr(workspaceRef, "vendor", "atlassian", sharedOptions),
-    integration.attr(workspaceRef, "sso_enforced", boolValue(posture.ssoEnforced ?? true), sharedOptions),
+    integration.attr(workspaceRef, "sso_enforced", boolValue(defaultBool(posture.ssoEnforced, true)), sharedOptions),
     integration.attr(
       workspaceRef,
       "mfa_required_for_admins",
-      boolValue(posture.mfaRequiredForAdmins ?? true),
+      boolValue(defaultBool(posture.mfaRequiredForAdmins, true)),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "atlassian_guard_enabled",
-      boolValue(posture.atlassianGuardEnabled ?? true),
+      boolValue(defaultBool(posture.atlassianGuardEnabled, true)),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "audit_log_export_enabled",
-      boolValue(posture.auditLogExportEnabled ?? true),
+      boolValue(defaultBool(posture.auditLogExportEnabled, true)),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "api_token_expiration_enforced",
-      boolValue(posture.apiTokenExpirationEnforced ?? true),
+      boolValue(defaultBool(posture.apiTokenExpirationEnforced, true)),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "public_signup_enabled",
-      boolValue(posture.publicSignupEnabled ?? false),
+      boolValue(defaultBool(posture.publicSignupEnabled, false)),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "anonymous_access_enabled",
-      boolValue(posture.anonymousAccessEnabled ?? false),
+      boolValue(defaultBool(posture.anonymousAccessEnabled, false)),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "approved_marketplace_apps_only",
-      boolValue(posture.approvedMarketplaceAppsOnly ?? true),
+      boolValue(defaultBool(posture.approvedMarketplaceAppsOnly, true)),
       sharedOptions,
     ),
     integration.attr(workspaceRef, "admin_count", String(admins.length), sharedOptions),
@@ -161,7 +161,7 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
       integration.attr(
         projectRef,
         "issue_level_security_enabled",
-        boolValue(project.issueLevelSecurityEnabled ?? true),
+        boolValue(defaultBool(project.issueLevelSecurityEnabled, true)),
         sharedOptions,
       ),
     );
@@ -169,7 +169,7 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
       integration.attr(
         projectRef,
         "anonymous_browse_enabled",
-        boolValue(project.anonymousBrowseEnabled ?? false),
+        boolValue(defaultBool(project.anonymousBrowseEnabled, false)),
         sharedOptions,
       ),
     );
@@ -177,7 +177,7 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
       integration.attr(
         projectRef,
         "service_desk_public_portal_enabled",
-        boolValue(project.serviceDeskPublicPortalEnabled ?? false),
+        boolValue(defaultBool(project.serviceDeskPublicPortalEnabled, false)),
         sharedOptions,
       ),
     );
@@ -192,7 +192,7 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
       integration.attr(
         appRef,
         "approved_by_security",
-        boolValue(app.approvedBySecurity ?? true),
+        boolValue(defaultBool(app.approvedBySecurity, true)),
         sharedOptions,
       ),
     );
@@ -253,7 +253,7 @@ export function buildJiraPostureFindings(
   const workspaceName = posture.workspaceName?.trim() || workspaceKey;
   const workspaceRef = integration.ref("workspace", workspaceKey, workspaceName);
 
-  if (posture.publicSignupEnabled ?? false) {
+  if (defaultBool(posture.publicSignupEnabled, false)) {
     findings.push(
       finding(
         "jira_workspace_public_signup_enabled",
@@ -264,7 +264,7 @@ export function buildJiraPostureFindings(
       ),
     );
   }
-  if (posture.anonymousAccessEnabled ?? false) {
+  if (defaultBool(posture.anonymousAccessEnabled, false)) {
     findings.push(
       finding(
         "jira_workspace_anonymous_access_enabled",
@@ -275,7 +275,7 @@ export function buildJiraPostureFindings(
       ),
     );
   }
-  if (!(posture.approvedMarketplaceAppsOnly ?? true)) {
+  if (!defaultBool(posture.approvedMarketplaceAppsOnly, true)) {
     findings.push(
       finding(
         "jira_workspace_marketplace_policy_open",
@@ -307,7 +307,7 @@ export function buildJiraPostureFindings(
     const projectName = project.name?.trim() || projectKey;
     const projectRef = integration.ref("project", projectKey, projectName);
     const classification = project.classification?.trim() || "internal";
-    if (classification === "restricted" && !(project.issueLevelSecurityEnabled ?? true)) {
+    if (classification === "restricted" && !defaultBool(project.issueLevelSecurityEnabled, true)) {
       findings.push(
         finding(
           `jira_project_${projectKey.toLowerCase()}_restricted_issue_security_disabled`,
@@ -318,7 +318,7 @@ export function buildJiraPostureFindings(
         ),
       );
     }
-    if (project.anonymousBrowseEnabled ?? false) {
+    if (defaultBool(project.anonymousBrowseEnabled, false)) {
       findings.push(
         finding(
           `jira_project_${projectKey.toLowerCase()}_anonymous_browse_enabled`,
@@ -329,7 +329,7 @@ export function buildJiraPostureFindings(
         ),
       );
     }
-    if (project.serviceDeskPublicPortalEnabled ?? false) {
+    if (defaultBool(project.serviceDeskPublicPortalEnabled, false)) {
       findings.push(
         finding(
           `jira_project_${projectKey.toLowerCase()}_public_portal_enabled`,
@@ -343,7 +343,7 @@ export function buildJiraPostureFindings(
   }
 
   for (const app of posture.apps ?? []) {
-    if (app.approvedBySecurity ?? true) {
+    if (defaultBool(app.approvedBySecurity, true)) {
       continue;
     }
     const appKey = requireValue(app.key, "posture.apps[].key");
@@ -427,6 +427,28 @@ function finding(
 
 function boolValue(value: boolean): string {
   return value ? "true" : "false";
+}
+
+function defaultBool(value: unknown, defaultValue: boolean): boolean {
+  if (value === undefined || value === null) {
+    return defaultValue;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return defaultValue;
+    }
+    if (["1", "true", "t", "yes", "y", "on"].includes(normalized)) {
+      return true;
+    }
+    if (["0", "false", "f", "no", "n", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+  return Boolean(value);
 }
 
 function asNumberRecord(value: unknown): Record<string, number> {
