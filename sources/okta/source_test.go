@@ -115,6 +115,54 @@ func TestParseSettingsRejectsUnsafeBaseURL(t *testing.T) {
 	}
 }
 
+func TestParseSettingsRejectsUnsafeDomain(t *testing.T) {
+	for name, domain := range map[string]string{
+		"loopback-ipv4":    "127.0.0.1",
+		"link-local-ipv4":  "169.254.169.254",
+		"loopback-ipv6":    "[::1]",
+		"localhost":        "localhost",
+		"internal-host":    "metadata.google.internal",
+		"attacker-domain":  "attacker.example.com",
+		"lookalike-domain": "writer.okta.com.evil.com",
+		"userinfo":         "https://token@writer.okta.com",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+				"domain": domain,
+				"family": "audit",
+				"token":  "test-token",
+			}))
+			if err == nil {
+				t.Fatalf("parseSettings() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestParseSettingsAcceptsOktaDomains(t *testing.T) {
+	for name, domain := range map[string]string{
+		"okta":         "writer.okta.com",
+		"preview":      "writer.oktapreview.com",
+		"emea":         "writer.okta-emea.com",
+		"gov":          "writer.okta-gov.com",
+		"https-scheme": "https://writer.okta.com",
+	} {
+		t.Run(name, func(t *testing.T) {
+			settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+				"domain": domain,
+				"family": "audit",
+				"token":  "test-token",
+			}))
+			if err != nil {
+				t.Fatalf("parseSettings() error = %v", err)
+			}
+			if settings.baseURL != "https://"+settings.domain {
+				t.Fatalf("baseURL = %q, want https domain", settings.baseURL)
+			}
+		})
+	}
+}
+
 func TestNewFixtureReturnsFixtureURNs(t *testing.T) {
 	source, err := NewFixture()
 	if err != nil {

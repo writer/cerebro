@@ -16,8 +16,9 @@ import (
 // Store is the Postgres-backed current-state store implementation.
 type Store struct {
 	db                    *sql.DB
-	projectionTablesMu    sync.Mutex
+	schemaMu              sync.Mutex
 	projectionTablesReady bool
+	sourceRuntimeReady    bool
 }
 
 // Open opens a Postgres-backed current-state store.

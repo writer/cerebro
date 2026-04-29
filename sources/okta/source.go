@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,6 +33,13 @@ const (
 	familyAudit       = "audit"
 	familyUser        = "user"
 )
+
+var oktaDomainSuffixes = []string{
+	".okta.com",
+	".oktapreview.com",
+	".okta-emea.com",
+	".okta-gov.com",
+}
 
 // Source is the live Okta source preview used by the builtin registry.
 type Source struct {
@@ -423,7 +431,48 @@ func normalizeDomain(raw string) (string, error) {
 	if host == "" {
 		return "", fmt.Errorf("okta domain must be a valid host")
 	}
-	return strings.ToLower(host), nil
+	if strings.ToLower(strings.TrimSpace(parsed.Scheme)) != "https" {
+		return "", fmt.Errorf("okta domain must use https")
+	}
+	if parsed.User != nil || parsed.Port() != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("okta domain must be a bare hostname")
+	}
+	if path := strings.TrimSpace(parsed.EscapedPath()); path != "" && path != "/" {
+		return "", fmt.Errorf("okta domain must be a bare hostname")
+	}
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	if net.ParseIP(host) != nil || !validDNSHostname(host) || !allowedOktaDomain(host) {
+		return "", fmt.Errorf("okta domain must be an Okta tenant hostname")
+	}
+	return host, nil
+}
+
+func allowedOktaDomain(host string) bool {
+	for _, suffix := range oktaDomainSuffixes {
+		if strings.HasSuffix(host, suffix) && len(host) > len(suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func validDNSHostname(host string) bool {
+	labels := strings.Split(host, ".")
+	if len(labels) < 3 {
+		return false
+	}
+	for _, label := range labels {
+		if label == "" || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return false
+		}
+		for _, ch := range label {
+			if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' {
+				continue
+			}
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeBaseURL(raw string, domain string) (string, error) {

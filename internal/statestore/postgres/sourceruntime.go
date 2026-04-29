@@ -80,8 +80,14 @@ func (s *Store) GetSourceRuntime(ctx context.Context, runtimeID string) (*cerebr
 }
 
 func (s *Store) ensureSourceRuntimeTable(ctx context.Context) error {
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	if s.sourceRuntimeReady {
+		return nil
+	}
 	if _, err := s.db.ExecContext(ctx, ensureSourceRuntimeTableSQL); err != nil {
 		return fmt.Errorf("ensure source runtime table: %w", err)
 	}
+	s.sourceRuntimeReady = true
 	return nil
 }

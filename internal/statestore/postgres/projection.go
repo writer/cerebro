@@ -135,8 +135,8 @@ DO UPDATE SET
 }
 
 func (s *Store) ensureProjectionTables(ctx context.Context) error {
-	s.projectionTablesMu.Lock()
-	defer s.projectionTablesMu.Unlock()
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
 	if s.projectionTablesReady {
 		return nil
 	}

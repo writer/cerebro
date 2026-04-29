@@ -28,3 +28,51 @@ func TestPutSourceRuntimeRejectsMissingSourceID(t *testing.T) {
 		t.Fatal("PutSourceRuntime() error = nil, want non-nil")
 	}
 }
+
+func TestPutSourceRuntimeEnsuresTableOnce(t *testing.T) {
+	recorder := &projectionSQLRecorder{}
+	store := newProjectionTestStore(t, recorder)
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "runtime",
+		SourceId: "okta",
+	}
+
+	if err := store.PutSourceRuntime(context.Background(), runtime); err != nil {
+		t.Fatalf("PutSourceRuntime(first) error = %v", err)
+	}
+	if err := store.PutSourceRuntime(context.Background(), runtime); err != nil {
+		t.Fatalf("PutSourceRuntime(second) error = %v", err)
+	}
+
+	ddlExecs, upserts := recorder.counts()
+	if ddlExecs != 1 {
+		t.Fatalf("source runtime DDL executions = %d, want 1", ddlExecs)
+	}
+	if upserts != 2 {
+		t.Fatalf("source runtime upserts = %d, want 2", upserts)
+	}
+}
+
+func TestPutSourceRuntimeRetriesEnsureAfterFailure(t *testing.T) {
+	recorder := &projectionSQLRecorder{failNextDDL: true}
+	store := newProjectionTestStore(t, recorder)
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       "runtime",
+		SourceId: "okta",
+	}
+
+	if err := store.PutSourceRuntime(context.Background(), runtime); err == nil {
+		t.Fatal("PutSourceRuntime(first) error = nil, want non-nil")
+	}
+	if err := store.PutSourceRuntime(context.Background(), runtime); err != nil {
+		t.Fatalf("PutSourceRuntime(second) error = %v", err)
+	}
+
+	ddlExecs, upserts := recorder.counts()
+	if ddlExecs != 2 {
+		t.Fatalf("source runtime DDL executions = %d, want 2", ddlExecs)
+	}
+	if upserts != 1 {
+		t.Fatalf("source runtime upserts = %d, want 1", upserts)
+	}
+}
