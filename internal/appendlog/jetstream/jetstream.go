@@ -100,7 +100,11 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	if err != nil {
 		return fmt.Errorf("marshal event: %w", err)
 	}
-	msg := nats.NewMsg(l.subjectPrefix + "." + kind)
+	subject := l.subjectPrefix + "." + kind
+	if strings.HasPrefix(subject, ".") || strings.HasSuffix(subject, ".") || strings.Contains(subject, "..") || strings.ContainsAny(subject, " \t\r\n") {
+		return fmt.Errorf("publish subject %q is not a valid NATS subject", subject)
+	}
+	msg := nats.NewMsg(subject)
 	msg.Data = payload
 	if event.Id != "" {
 		msg.Header.Set(nats.MsgIdHdr, event.Id)

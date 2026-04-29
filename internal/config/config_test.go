@@ -70,6 +70,7 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 }
 
 func TestLoadInfersDriversFromURLs(t *testing.T) {
+	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
