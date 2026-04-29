@@ -1159,6 +1159,62 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := missingRuleResp.StatusCode; got != http.StatusNotFound {
 		t.Fatalf("unknown rule status = %d, want %d", got, http.StatusNotFound)
 	}
+	batchMissingRuleReq, err := http.NewRequest(
+		http.MethodPost,
+		server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2",
+		strings.NewReader(`{"rule_ids":["does-not-exist"]}`),
+	)
+	if err != nil {
+		t.Fatalf("new batch unknown rule request: %v", err)
+	}
+	batchMissingRuleResp, err := server.Client().Do(batchMissingRuleReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/finding-rules/evaluate unknown rule error = %v", err)
+	}
+	defer func() {
+		if closeErr := batchMissingRuleResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close batch unknown rule response body: %v", closeErr)
+		}
+	}()
+	if got := batchMissingRuleResp.StatusCode; got != http.StatusNotFound {
+		t.Fatalf("batch unknown rule status = %d, want %d", got, http.StatusNotFound)
+	}
+	batchEvaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2", nil)
+	if err != nil {
+		t.Fatalf("new batch evaluate request: %v", err)
+	}
+	batchEvaluateResp, err := server.Client().Do(batchEvaluateReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/finding-rules/evaluate error = %v", err)
+	}
+	defer func() {
+		if closeErr := batchEvaluateResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close batch evaluate response body: %v", closeErr)
+		}
+	}()
+	var batchEvaluatePayload map[string]any
+	if err := json.NewDecoder(batchEvaluateResp.Body).Decode(&batchEvaluatePayload); err != nil {
+		t.Fatalf("decode batch evaluate response: %v", err)
+	}
+	if got := batchEvaluatePayload["events_evaluated"]; got != float64(2) {
+		t.Fatalf("batch evaluate events_evaluated = %#v, want 2", got)
+	}
+	batchEvaluations, ok := batchEvaluatePayload["evaluations"].([]any)
+	if !ok || len(batchEvaluations) != 1 {
+		t.Fatalf("batch evaluate payload = %#v, want 1 evaluation", batchEvaluatePayload["evaluations"])
+	}
+	batchEvaluation, ok := batchEvaluations[0].(map[string]any)
+	if !ok {
+		t.Fatalf("batch evaluation entry = %#v, want object", batchEvaluations[0])
+	}
+	batchRule, ok := batchEvaluation["rule"].(map[string]any)
+	if !ok || batchRule["id"] != "identity-okta-policy-rule-lifecycle-tampering" {
+		t.Fatalf("batch evaluation rule = %#v, want builtin rule", batchEvaluation["rule"])
+	}
+	batchEvidence, ok := batchEvaluation["evidence"].([]any)
+	if !ok || len(batchEvidence) != 1 {
+		t.Fatalf("batch evaluation evidence = %#v, want 1 entry", batchEvaluation["evidence"])
+	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	evaluateFindingsResp, err := client.EvaluateSourceRuntimeFindings(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingsRequest{
@@ -1229,6 +1285,25 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := len(listRunsResp.Msg.GetRuns()); got != 1 {
 		t.Fatalf("len(ListFindingEvaluationRuns().Runs) = %d, want 1", got)
 	}
+	evaluateFindingRulesResp, err := client.EvaluateSourceRuntimeFindingRules(context.Background(), connect.NewRequest(&cerebrov1.EvaluateSourceRuntimeFindingRulesRequest{
+		Id:         "writer-okta-audit",
+		EventLimit: 2,
+	}))
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeFindingRules() error = %v", err)
+	}
+	if got := evaluateFindingRulesResp.Msg.GetEventsEvaluated(); got != 2 {
+		t.Fatalf("EvaluateSourceRuntimeFindingRules events_evaluated = %d, want 2", got)
+	}
+	if got := len(evaluateFindingRulesResp.Msg.GetEvaluations()); got != 1 {
+		t.Fatalf("len(EvaluateSourceRuntimeFindingRules().Evaluations) = %d, want 1", got)
+	}
+	if got := evaluateFindingRulesResp.Msg.GetEvaluations()[0].GetRule().GetId(); got != "identity-okta-policy-rule-lifecycle-tampering" {
+		t.Fatalf("EvaluateSourceRuntimeFindingRules rule id = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
+	if got := len(evaluateFindingRulesResp.Msg.GetEvaluations()[0].GetEvidence()); got != 1 {
+		t.Fatalf("len(EvaluateSourceRuntimeFindingRules().Evaluations[0].Evidence) = %d, want 1", got)
+	}
 	listEvidenceResp, err := client.ListFindingEvidence(context.Background(), connect.NewRequest(&cerebrov1.ListFindingEvidenceRequest{
 		RuntimeId:    "writer-okta-audit",
 		FindingId:    evaluateFindingsResp.Msg.GetFindings()[0].GetId(),
@@ -1275,14 +1350,14 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := runtimeStore.findingEvidenceListRequest.EventID; got != "okta-audit-2" {
 		t.Fatalf("runtimeStore.findingEvidenceListRequest.EventID = %q, want okta-audit-2", got)
 	}
-	if len(runtimeStore.findingEvaluationRuns) != 2 {
-		t.Fatalf("len(runtimeStore.findingEvaluationRuns) = %d, want 2", len(runtimeStore.findingEvaluationRuns))
+	if len(runtimeStore.findingEvaluationRuns) != 4 {
+		t.Fatalf("len(runtimeStore.findingEvaluationRuns) = %d, want 4", len(runtimeStore.findingEvaluationRuns))
 	}
 	if len(runtimeStore.findings) != 1 {
 		t.Fatalf("len(runtimeStore.findings) = %d, want 1", len(runtimeStore.findings))
 	}
-	if len(runtimeStore.findingEvidence) != 2 {
-		t.Fatalf("len(runtimeStore.findingEvidence) = %d, want 2", len(runtimeStore.findingEvidence))
+	if len(runtimeStore.findingEvidence) != 4 {
+		t.Fatalf("len(runtimeStore.findingEvidence) = %d, want 4", len(runtimeStore.findingEvidence))
 	}
 }
 

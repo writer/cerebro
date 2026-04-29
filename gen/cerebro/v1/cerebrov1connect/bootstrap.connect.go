@@ -93,6 +93,9 @@ const (
 	// BootstrapServiceGetFindingEvidenceProcedure is the fully-qualified name of the BootstrapService's
 	// GetFindingEvidence RPC.
 	BootstrapServiceGetFindingEvidenceProcedure = "/cerebro.v1.BootstrapService/GetFindingEvidence"
+	// BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure is the fully-qualified name of the
+	// BootstrapService's EvaluateSourceRuntimeFindingRules RPC.
+	BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure = "/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindingRules"
 	// BootstrapServiceEvaluateSourceRuntimeFindingsProcedure is the fully-qualified name of the
 	// BootstrapService's EvaluateSourceRuntimeFindings RPC.
 	BootstrapServiceEvaluateSourceRuntimeFindingsProcedure = "/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindings"
@@ -123,6 +126,7 @@ type BootstrapServiceClient interface {
 	GetFindingEvaluationRun(context.Context, *connect.Request[v1.GetFindingEvaluationRunRequest]) (*connect.Response[v1.GetFindingEvaluationRunResponse], error)
 	ListFindingEvidence(context.Context, *connect.Request[v1.ListFindingEvidenceRequest]) (*connect.Response[v1.ListFindingEvidenceResponse], error)
 	GetFindingEvidence(context.Context, *connect.Request[v1.GetFindingEvidenceRequest]) (*connect.Response[v1.GetFindingEvidenceResponse], error)
+	EvaluateSourceRuntimeFindingRules(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingRulesResponse], error)
 	EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error)
 	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
 }
@@ -258,6 +262,12 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("GetFindingEvidence")),
 			connect.WithClientOptions(opts...),
 		),
+		evaluateSourceRuntimeFindingRules: connect.NewClient[v1.EvaluateSourceRuntimeFindingRulesRequest, v1.EvaluateSourceRuntimeFindingRulesResponse](
+			httpClient,
+			baseURL+BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("EvaluateSourceRuntimeFindingRules")),
+			connect.WithClientOptions(opts...),
+		),
 		evaluateSourceRuntimeFindings: connect.NewClient[v1.EvaluateSourceRuntimeFindingsRequest, v1.EvaluateSourceRuntimeFindingsResponse](
 			httpClient,
 			baseURL+BootstrapServiceEvaluateSourceRuntimeFindingsProcedure,
@@ -275,28 +285,29 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // bootstrapServiceClient implements BootstrapServiceClient.
 type bootstrapServiceClient struct {
-	getVersion                    *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
-	checkHealth                   *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
-	listReportDefinitions         *connect.Client[v1.ListReportDefinitionsRequest, v1.ListReportDefinitionsResponse]
-	listFindingRules              *connect.Client[v1.ListFindingRulesRequest, v1.ListFindingRulesResponse]
-	runReport                     *connect.Client[v1.RunReportRequest, v1.RunReportResponse]
-	getReportRun                  *connect.Client[v1.GetReportRunRequest, v1.GetReportRunResponse]
-	listSources                   *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
-	checkSource                   *connect.Client[v1.CheckSourceRequest, v1.CheckSourceResponse]
-	discoverSource                *connect.Client[v1.DiscoverSourceRequest, v1.DiscoverSourceResponse]
-	readSource                    *connect.Client[v1.ReadSourceRequest, v1.ReadSourceResponse]
-	putSourceRuntime              *connect.Client[v1.PutSourceRuntimeRequest, v1.PutSourceRuntimeResponse]
-	getSourceRuntime              *connect.Client[v1.GetSourceRuntimeRequest, v1.GetSourceRuntimeResponse]
-	syncSourceRuntime             *connect.Client[v1.SyncSourceRuntimeRequest, v1.SyncSourceRuntimeResponse]
-	writeClaims                   *connect.Client[v1.WriteClaimsRequest, v1.WriteClaimsResponse]
-	listClaims                    *connect.Client[v1.ListClaimsRequest, v1.ListClaimsResponse]
-	listFindings                  *connect.Client[v1.ListFindingsRequest, v1.ListFindingsResponse]
-	listFindingEvaluationRuns     *connect.Client[v1.ListFindingEvaluationRunsRequest, v1.ListFindingEvaluationRunsResponse]
-	getFindingEvaluationRun       *connect.Client[v1.GetFindingEvaluationRunRequest, v1.GetFindingEvaluationRunResponse]
-	listFindingEvidence           *connect.Client[v1.ListFindingEvidenceRequest, v1.ListFindingEvidenceResponse]
-	getFindingEvidence            *connect.Client[v1.GetFindingEvidenceRequest, v1.GetFindingEvidenceResponse]
-	evaluateSourceRuntimeFindings *connect.Client[v1.EvaluateSourceRuntimeFindingsRequest, v1.EvaluateSourceRuntimeFindingsResponse]
-	getEntityNeighborhood         *connect.Client[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse]
+	getVersion                        *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
+	checkHealth                       *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
+	listReportDefinitions             *connect.Client[v1.ListReportDefinitionsRequest, v1.ListReportDefinitionsResponse]
+	listFindingRules                  *connect.Client[v1.ListFindingRulesRequest, v1.ListFindingRulesResponse]
+	runReport                         *connect.Client[v1.RunReportRequest, v1.RunReportResponse]
+	getReportRun                      *connect.Client[v1.GetReportRunRequest, v1.GetReportRunResponse]
+	listSources                       *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
+	checkSource                       *connect.Client[v1.CheckSourceRequest, v1.CheckSourceResponse]
+	discoverSource                    *connect.Client[v1.DiscoverSourceRequest, v1.DiscoverSourceResponse]
+	readSource                        *connect.Client[v1.ReadSourceRequest, v1.ReadSourceResponse]
+	putSourceRuntime                  *connect.Client[v1.PutSourceRuntimeRequest, v1.PutSourceRuntimeResponse]
+	getSourceRuntime                  *connect.Client[v1.GetSourceRuntimeRequest, v1.GetSourceRuntimeResponse]
+	syncSourceRuntime                 *connect.Client[v1.SyncSourceRuntimeRequest, v1.SyncSourceRuntimeResponse]
+	writeClaims                       *connect.Client[v1.WriteClaimsRequest, v1.WriteClaimsResponse]
+	listClaims                        *connect.Client[v1.ListClaimsRequest, v1.ListClaimsResponse]
+	listFindings                      *connect.Client[v1.ListFindingsRequest, v1.ListFindingsResponse]
+	listFindingEvaluationRuns         *connect.Client[v1.ListFindingEvaluationRunsRequest, v1.ListFindingEvaluationRunsResponse]
+	getFindingEvaluationRun           *connect.Client[v1.GetFindingEvaluationRunRequest, v1.GetFindingEvaluationRunResponse]
+	listFindingEvidence               *connect.Client[v1.ListFindingEvidenceRequest, v1.ListFindingEvidenceResponse]
+	getFindingEvidence                *connect.Client[v1.GetFindingEvidenceRequest, v1.GetFindingEvidenceResponse]
+	evaluateSourceRuntimeFindingRules *connect.Client[v1.EvaluateSourceRuntimeFindingRulesRequest, v1.EvaluateSourceRuntimeFindingRulesResponse]
+	evaluateSourceRuntimeFindings     *connect.Client[v1.EvaluateSourceRuntimeFindingsRequest, v1.EvaluateSourceRuntimeFindingsResponse]
+	getEntityNeighborhood             *connect.Client[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse]
 }
 
 // GetVersion calls cerebro.v1.BootstrapService.GetVersion.
@@ -399,6 +410,12 @@ func (c *bootstrapServiceClient) GetFindingEvidence(ctx context.Context, req *co
 	return c.getFindingEvidence.CallUnary(ctx, req)
 }
 
+// EvaluateSourceRuntimeFindingRules calls
+// cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules.
+func (c *bootstrapServiceClient) EvaluateSourceRuntimeFindingRules(ctx context.Context, req *connect.Request[v1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingRulesResponse], error) {
+	return c.evaluateSourceRuntimeFindingRules.CallUnary(ctx, req)
+}
+
 // EvaluateSourceRuntimeFindings calls cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings.
 func (c *bootstrapServiceClient) EvaluateSourceRuntimeFindings(ctx context.Context, req *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error) {
 	return c.evaluateSourceRuntimeFindings.CallUnary(ctx, req)
@@ -431,6 +448,7 @@ type BootstrapServiceHandler interface {
 	GetFindingEvaluationRun(context.Context, *connect.Request[v1.GetFindingEvaluationRunRequest]) (*connect.Response[v1.GetFindingEvaluationRunResponse], error)
 	ListFindingEvidence(context.Context, *connect.Request[v1.ListFindingEvidenceRequest]) (*connect.Response[v1.ListFindingEvidenceResponse], error)
 	GetFindingEvidence(context.Context, *connect.Request[v1.GetFindingEvidenceRequest]) (*connect.Response[v1.GetFindingEvidenceResponse], error)
+	EvaluateSourceRuntimeFindingRules(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingRulesResponse], error)
 	EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error)
 	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
 }
@@ -562,6 +580,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("GetFindingEvidence")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceEvaluateSourceRuntimeFindingRulesHandler := connect.NewUnaryHandler(
+		BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure,
+		svc.EvaluateSourceRuntimeFindingRules,
+		connect.WithSchema(bootstrapServiceMethods.ByName("EvaluateSourceRuntimeFindingRules")),
+		connect.WithHandlerOptions(opts...),
+	)
 	bootstrapServiceEvaluateSourceRuntimeFindingsHandler := connect.NewUnaryHandler(
 		BootstrapServiceEvaluateSourceRuntimeFindingsProcedure,
 		svc.EvaluateSourceRuntimeFindings,
@@ -616,6 +640,8 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceListFindingEvidenceHandler.ServeHTTP(w, r)
 		case BootstrapServiceGetFindingEvidenceProcedure:
 			bootstrapServiceGetFindingEvidenceHandler.ServeHTTP(w, r)
+		case BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure:
+			bootstrapServiceEvaluateSourceRuntimeFindingRulesHandler.ServeHTTP(w, r)
 		case BootstrapServiceEvaluateSourceRuntimeFindingsProcedure:
 			bootstrapServiceEvaluateSourceRuntimeFindingsHandler.ServeHTTP(w, r)
 		case BootstrapServiceGetEntityNeighborhoodProcedure:
@@ -707,6 +733,10 @@ func (UnimplementedBootstrapServiceHandler) ListFindingEvidence(context.Context,
 
 func (UnimplementedBootstrapServiceHandler) GetFindingEvidence(context.Context, *connect.Request[v1.GetFindingEvidenceRequest]) (*connect.Response[v1.GetFindingEvidenceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetFindingEvidence is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) EvaluateSourceRuntimeFindingRules(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingRulesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules is not implemented"))
 }
 
 func (UnimplementedBootstrapServiceHandler) EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error) {
