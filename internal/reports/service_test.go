@@ -123,6 +123,19 @@ func TestGetReportRunRequiresAvailableStore(t *testing.T) {
 	}
 }
 
+func TestRunFindingSummaryReportWrapsValidationErrors(t *testing.T) {
+	service := New(&stubFindingStore{}, &stubReportStore{})
+	_, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: findingSummaryReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID: "writer",
+		},
+	})
+	if !errors.Is(err, ErrInvalidReportRequest) {
+		t.Fatalf("Run() error = %v, want %v", err, ErrInvalidReportRequest)
+	}
+}
+
 func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	response := New(nil, nil).List()
 	if len(response.GetReports()) != 1 {

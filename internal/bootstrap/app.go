@@ -504,6 +504,8 @@ func writeReportError(w http.ResponseWriter, err error) {
 
 func reportConnectError(err error) error {
 	switch {
+	case errors.Is(err, reports.ErrInvalidReportRequest):
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, reports.ErrReportNotFound), errors.Is(err, ports.ErrReportRunNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, reports.ErrRuntimeUnavailable):

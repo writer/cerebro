@@ -62,11 +62,11 @@ func (s *Service) Run(ctx context.Context, request *cerebrov1.RunReportRequest) 
 		return nil, ErrRuntimeUnavailable
 	}
 	if request == nil {
-		return nil, errors.New("report request is required")
+		return nil, invalidReportRequest("report request is required")
 	}
 	reportID := strings.TrimSpace(request.GetReportId())
 	if reportID == "" {
-		return nil, errors.New("report id is required")
+		return nil, invalidReportRequest("report id is required")
 	}
 	definition, err := reportDefinition(reportID)
 	if err != nil {
@@ -113,11 +113,11 @@ func (s *Service) Get(ctx context.Context, request *cerebrov1.GetReportRunReques
 		return nil, ErrRuntimeUnavailable
 	}
 	if request == nil {
-		return nil, errors.New("get report run request is required")
+		return nil, invalidReportRequest("get report run request is required")
 	}
 	reportRunID := strings.TrimSpace(request.GetId())
 	if reportRunID == "" {
-		return nil, errors.New("report run id is required")
+		return nil, invalidReportRequest("report run id is required")
 	}
 	run, err := s.reportStore.GetReportRun(ctx, reportRunID)
 	if err != nil {
@@ -129,11 +129,11 @@ func (s *Service) Get(ctx context.Context, request *cerebrov1.GetReportRunReques
 func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]string) (*structpb.Struct, error) {
 	tenantID := strings.TrimSpace(parameters[reportParameterTenantID])
 	if tenantID == "" {
-		return nil, fmt.Errorf("report parameter %q is required", reportParameterTenantID)
+		return nil, invalidReportRequestf("report parameter %q is required", reportParameterTenantID)
 	}
 	runtimeID := strings.TrimSpace(parameters[reportParameterRuntimeID])
 	if runtimeID == "" {
-		return nil, fmt.Errorf("report parameter %q is required", reportParameterRuntimeID)
+		return nil, invalidReportRequestf("report parameter %q is required", reportParameterRuntimeID)
 	}
 	findings, err := s.findingStore.ListFindings(ctx, ports.ListFindingsRequest{TenantID: tenantID, RuntimeID: runtimeID})
 	if err != nil {

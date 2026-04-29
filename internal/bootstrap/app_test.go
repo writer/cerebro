@@ -20,6 +20,7 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
@@ -1046,6 +1047,12 @@ func TestReportEndpoints(t *testing.T) {
 	}
 }
 
+func TestReportConnectErrorMapsInvalidRequestsToInvalidArgument(t *testing.T) {
+	err := reportConnectError(reports.ErrInvalidReportRequest)
+	if got := connect.CodeOf(err); got != connect.CodeInvalidArgument {
+		t.Fatalf("connect.CodeOf(reportConnectError()) = %v, want %v", got, connect.CodeInvalidArgument)
+	}
+}
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {
