@@ -318,7 +318,7 @@ class IntegrationClient:
         seen = set()
         for root in roots:
             root_urn = normalize_root_urn(root, "root")
-            if not root_urn or root_urn in seen:
+            if root_urn in seen:
                 continue
             seen.add(root_urn)
             try:

@@ -7,7 +7,7 @@ from cerebro_sdk import Client, IntegrationClient
 
 def build_workspace_claims(integration: IntegrationClient, posture: Dict[str, Any]) -> list[Dict[str, Any]]:
     workspace_key = require_value(posture.get("workspace_key"), "workspace_key")
-    workspace_name = str(posture.get("workspace_name", workspace_key)).strip() or workspace_key
+    workspace_name = optional_string(posture.get("workspace_name")) or workspace_key
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
     source_event_id = optional_string(posture.get("event_id"))
     shared_options = {"source_event_id": source_event_id} if source_event_id else {}
