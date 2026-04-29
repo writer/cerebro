@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"reflect"
 	"time"
 
 	"connectrpc.com/connect"
@@ -437,8 +438,10 @@ func writeFindingError(w http.ResponseWriter, err error) {
 }
 
 func writeGraphQueryError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
+	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, graphquery.ErrInvalidArgument):
+		statusCode = http.StatusBadRequest
 	case errors.Is(err, ports.ErrGraphEntityNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
@@ -497,10 +500,23 @@ func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) p
 
 func graphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
 	queryStore, ok := store.(ports.GraphQueryStore)
-	if !ok {
+	if !ok || isNilInterface(queryStore) {
 		return nil
 	}
 	return queryStore
+}
+
+func isNilInterface(value any) bool {
+	if value == nil {
+		return true
+	}
+	reflected := reflect.ValueOf(value)
+	switch reflected.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return reflected.IsNil()
+	default:
+		return false
+	}
 }
 
 func findingStore(store ports.StateStore) ports.FindingStore {

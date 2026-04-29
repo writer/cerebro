@@ -836,6 +836,21 @@ func TestGraphNeighborhoodEndpoints(t *testing.T) {
 	}
 }
 
+func TestWriteGraphQueryErrorMapsInternalFailuresToServerError(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeGraphQueryError(recorder, errors.New("kuzu query failed"))
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("graph query error status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestGraphQueryStoreRejectsTypedNilStore(t *testing.T) {
+	var store *stubGraphStore
+	if got := graphQueryStore(store); got != nil {
+		t.Fatalf("graphQueryStore(typed nil) = %#v, want nil", got)
+	}
+}
+
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {
