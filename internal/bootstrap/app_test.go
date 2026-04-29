@@ -761,6 +761,20 @@ func TestSourceRuntimeRPCErrorCodes(t *testing.T) {
 	if got := connect.CodeOf(sourceRuntimeConnectError(context.DeadlineExceeded)); got != connect.CodeDeadlineExceeded {
 		t.Fatalf("sourceRuntimeConnectError(context.DeadlineExceeded) code = %v, want %v", got, connect.CodeDeadlineExceeded)
 	}
+	internalErr := sourceRuntimeConnectError(errors.New("dial tcp credential@db.internal:5432: i/o timeout"))
+	if got := connect.CodeOf(internalErr); got != connect.CodeInternal {
+		t.Fatalf("sourceRuntimeConnectError(internal) code = %v, want %v", got, connect.CodeInternal)
+	}
+	var connectErr *connect.Error
+	if !errors.As(internalErr, &connectErr) {
+		t.Fatalf("sourceRuntimeConnectError(internal) = %T, want *connect.Error", internalErr)
+	}
+	if strings.Contains(connectErr.Message(), "credential") || strings.Contains(connectErr.Message(), "db.internal") {
+		t.Fatalf("sourceRuntimeConnectError(internal) exposed details: %q", connectErr.Message())
+	}
+	if !strings.Contains(connectErr.Message(), "internal error") {
+		t.Fatalf("sourceRuntimeConnectError(internal) message = %q, want generic internal error", connectErr.Message())
+	}
 }
 
 func TestWriteSourceRuntimeErrorHidesInternalDetails(t *testing.T) {

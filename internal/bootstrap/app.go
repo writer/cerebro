@@ -389,7 +389,7 @@ func sourceRuntimeConnectError(err error) error {
 	case errors.Is(err, context.DeadlineExceeded):
 		return connect.NewError(connect.CodeDeadlineExceeded, err)
 	default:
-		return connect.NewError(connect.CodeInternal, err)
+		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
 	}
 }
 
