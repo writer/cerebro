@@ -1718,7 +1718,7 @@ func writeSourceError(w http.ResponseWriter, err error) {
 }
 
 func writeReportError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
+	statusCode := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, reports.ErrReportNotFound), errors.Is(err, ports.ErrReportRunNotFound):
 		statusCode = http.StatusNotFound
@@ -1727,7 +1727,7 @@ func writeReportError(w http.ResponseWriter, err error) {
 	case errors.Is(err, reports.ErrInvalidRequest):
 		statusCode = http.StatusBadRequest
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
 }
 
 func reportConnectError(err error) error {
