@@ -187,28 +187,22 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	})
 
 	previewLimit := normalizePreviewLimit(req.PreviewLimit)
-	readStart := time.Now()
-	readSummary, err := s.readEvents(ctx, source, runtime, normalizePageLimit(req.PageLimit))
+	readSummary, projectSummary, err := s.processEvents(ctx, source, runtime, graph, normalizePageLimit(req.PageLimit), previewLimit)
 	if err != nil {
 		return nil, err
 	}
 	result.PagesRead = readSummary.PagesRead
 	result.EventsRead = readSummary.EventsRead
 	result.EventKinds = countPreviews(readSummary.EventKinds)
-	result.Events = eventPreviews(readSummary.Events, previewLimit)
+	result.Events = readSummary.EventPreviews
 	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
 		Name:           "read_source",
 		Status:         stageStatusSuccess,
-		DurationMillis: durationMillis(readStart),
+		DurationMillis: readSummary.DurationMillis,
 		PagesRead:      readSummary.PagesRead,
 		EventsRead:     readSummary.EventsRead,
 	})
 
-	projectStart := time.Now()
-	projectSummary, err := s.projectEvents(ctx, graph, readSummary.Events, previewLimit)
-	if err != nil {
-		return nil, err
-	}
 	result.EntitiesProjected = projectSummary.EntitiesProjected
 	result.LinksProjected = projectSummary.LinksProjected
 	result.GraphEntityTypes = projectSummary.GraphEntityTypes
@@ -218,7 +212,7 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
 		Name:              "project_graph",
 		Status:            stageStatusSuccess,
-		DurationMillis:    durationMillis(projectStart),
+		DurationMillis:    projectSummary.DurationMillis,
 		EntitiesProjected: projectSummary.EntitiesProjected,
 		LinksProjected:    projectSummary.LinksProjected,
 	})
@@ -286,71 +280,73 @@ func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEn
 }
 
 type readSummary struct {
-	Events     []*cerebrov1.EventEnvelope
-	PagesRead  uint32
-	EventsRead uint32
-	EventKinds map[string]uint32
+	EventPreviews  []*EventPreview
+	PagesRead      uint32
+	EventsRead     uint32
+	EventKinds     map[string]uint32
+	DurationMillis int64
 }
 
-func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runtime *cerebrov1.SourceRuntime, pageLimit uint32) (*readSummary, error) {
-	summary := &readSummary{EventKinds: make(map[string]uint32)}
+func (s *Service) processEvents(ctx context.Context, source sourcecdk.Source, runtime *cerebrov1.SourceRuntime, graph graphStore, pageLimit uint32, previewLimit int) (*readSummary, *projectSummary, error) {
+	readSummary := &readSummary{EventKinds: make(map[string]uint32)}
+	previewer := newPreviewGraphStore(graph, previewLimit)
+	projector := sourceprojection.New(nil, previewer)
+	projectSummary := &projectSummary{}
 	var cursor *cerebrov1.SourceCursor
 	for page := uint32(0); page < pageLimit; page++ {
+		readStart := time.Now()
 		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtime.GetConfig()), cursor)
+		readSummary.DurationMillis += durationMillis(readStart)
 		if err != nil {
-			return nil, fmt.Errorf("read source page %d: %w", page+1, err)
+			return nil, nil, fmt.Errorf("read source page %d: %w", page+1, err)
 		}
 		if len(pull.Events) == 0 {
 			break
 		}
-		summary.PagesRead++
-		summary.EventsRead += uint32(len(pull.Events))
+		readSummary.PagesRead++
+		readSummary.EventsRead += uint32(len(pull.Events))
 		for idx, event := range pull.Events {
 			materialized := materializeEvent(runtime, event)
 			if materialized == nil {
-				return nil, fmt.Errorf("read source page %d: nil event at index %d", page+1, idx)
+				return nil, nil, fmt.Errorf("read source page %d: nil event at index %d", page+1, idx)
 			}
-			summary.Events = append(summary.Events, materialized)
+			if len(readSummary.EventPreviews) < previewLimit {
+				readSummary.EventPreviews = append(readSummary.EventPreviews, eventPreview(materialized))
+			}
 			kind := strings.TrimSpace(materialized.GetKind())
-			if kind == "" {
-				continue
+			if kind != "" {
+				readSummary.EventKinds[kind]++
 			}
-			summary.EventKinds[kind]++
+
+			projectStart := time.Now()
+			projected, err := projector.Project(ctx, materialized)
+			projectSummary.DurationMillis += durationMillis(projectStart)
+			if err != nil {
+				return nil, nil, fmt.Errorf("project event %q: %w", materialized.GetId(), err)
+			}
+			projectSummary.EntitiesProjected += projected.EntitiesProjected
+			projectSummary.LinksProjected += projected.LinksProjected
 		}
 		if pull.NextCursor == nil {
 			break
 		}
 		cursor = proto.Clone(pull.NextCursor).(*cerebrov1.SourceCursor)
 	}
-	return summary, nil
+	projectSummary.GraphEntityTypes = previewer.entityTypes()
+	projectSummary.GraphRelationTypes = previewer.relationTypes()
+	projectSummary.PreviewEntities = previewer.entities()
+	projectSummary.PreviewLinks = previewer.links()
+	return readSummary, projectSummary, nil
 }
 
 type projectSummary struct {
 	EntitiesProjected  uint32
 	LinksProjected     uint32
+	DurationMillis     int64
 	GraphEntityTypes   []*CountPreview
 	GraphRelationTypes []*CountPreview
 	PreviewEntities    []*EntityPreview
 	PreviewLinks       []*LinkPreview
-}
-
-func (s *Service) projectEvents(ctx context.Context, graph graphStore, events []*cerebrov1.EventEnvelope, previewLimit int) (*projectSummary, error) {
-	previewer := newPreviewGraphStore(graph, previewLimit)
-	projector := sourceprojection.New(nil, previewer)
-	summary := &projectSummary{}
-	for _, event := range events {
-		projected, err := projector.Project(ctx, event)
-		if err != nil {
-			return nil, fmt.Errorf("project event %q: %w", event.GetId(), err)
-		}
-		summary.EntitiesProjected += projected.EntitiesProjected
-		summary.LinksProjected += projected.LinksProjected
-	}
-	summary.GraphEntityTypes = previewer.entityTypes()
-	summary.GraphRelationTypes = previewer.relationTypes()
-	summary.PreviewEntities = previewer.entities()
-	summary.PreviewLinks = previewer.links()
-	return summary, nil
 }
 
 type previewGraphStore struct {
@@ -481,24 +477,11 @@ func (s *previewGraphStore) relationTypes() []*CountPreview {
 	return countPreviews(s.relationCounts)
 }
 
-func eventPreviews(events []*cerebrov1.EventEnvelope, limit int) []*EventPreview {
-	if len(events) == 0 || limit <= 0 {
-		return nil
+func eventPreview(event *cerebrov1.EventEnvelope) *EventPreview {
+	return &EventPreview{
+		ID:   strings.TrimSpace(event.GetId()),
+		Kind: strings.TrimSpace(event.GetKind()),
 	}
-	previews := make([]*EventPreview, 0, min(limit, len(events)))
-	for _, event := range events {
-		if len(previews) >= limit {
-			break
-		}
-		if event == nil {
-			continue
-		}
-		previews = append(previews, &EventPreview{
-			ID:   strings.TrimSpace(event.GetId()),
-			Kind: strings.TrimSpace(event.GetKind()),
-		})
-	}
-	return previews
 }
 
 func countPreviews(counts map[string]uint32) []*CountPreview {
@@ -523,11 +506,4 @@ func durationMillis(start time.Time) int64 {
 		return 0
 	}
 	return time.Since(start).Milliseconds()
-}
-
-func min(left int, right int) int {
-	if left < right {
-		return left
-	}
-	return right
 }
