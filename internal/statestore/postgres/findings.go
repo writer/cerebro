@@ -163,8 +163,12 @@ RETURNING
 	return stored.record()
 }
 
-// ListFindings loads persisted findings for one runtime.
+// ListFindings loads persisted findings for one tenant/runtime scope.
 func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequest) (_ []*ports.FindingRecord, err error) {
+	tenantID := strings.TrimSpace(request.TenantID)
+	if tenantID == "" {
+		return nil, errors.New("finding tenant id is required")
+	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
 		return nil, errors.New("finding runtime id is required")
@@ -180,10 +184,10 @@ SELECT
   id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
   resource_urns_json::text, event_ids_json::text, attributes_json::text, first_observed_at, last_observed_at
 FROM findings
-WHERE runtime_id = $1
-ORDER BY last_observed_at DESC, id`, runtimeID)
+WHERE tenant_id = $1 AND runtime_id = $2
+ORDER BY last_observed_at DESC, id`, tenantID, runtimeID)
 	if err != nil {
-		return nil, fmt.Errorf("query findings for runtime %q: %w", runtimeID, err)
+		return nil, fmt.Errorf("query findings for tenant %q runtime %q: %w", tenantID, runtimeID, err)
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && err == nil {

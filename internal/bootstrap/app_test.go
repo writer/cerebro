@@ -159,7 +159,7 @@ func (s *stubRuntimeStore) ListFindings(_ context.Context, request ports.ListFin
 	}
 	findings := []*ports.FindingRecord{}
 	for _, finding := range s.findings {
-		if finding == nil || finding.RuntimeID != request.RuntimeID {
+		if finding == nil || finding.TenantID != request.TenantID || finding.RuntimeID != request.RuntimeID {
 			continue
 		}
 		findings = append(findings, cloneFinding(finding))
@@ -912,6 +912,7 @@ func TestReportEndpoints(t *testing.T) {
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
 				ID:        "finding-1",
+				TenantID:  "writer",
 				RuntimeID: "writer-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:  "HIGH",
@@ -919,6 +920,7 @@ func TestReportEndpoints(t *testing.T) {
 			},
 			"finding-2": {
 				ID:        "finding-2",
+				TenantID:  "writer",
 				RuntimeID: "writer-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:  "HIGH",
@@ -952,7 +954,7 @@ func TestReportEndpoints(t *testing.T) {
 		t.Fatalf("/reports payload = %#v, want 1 entry", listPayload["reports"])
 	}
 
-	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?runtime_id=writer-okta-audit", nil)
+	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs?tenant_id=writer&runtime_id=writer-okta-audit", nil)
 	if err != nil {
 		t.Fatalf("new run report request: %v", err)
 	}
@@ -1023,6 +1025,7 @@ func TestReportEndpoints(t *testing.T) {
 	runReportResp, err := client.RunReport(context.Background(), connect.NewRequest(&cerebrov1.RunReportRequest{
 		ReportId: "finding-summary",
 		Parameters: map[string]string{
+			"tenant_id":  "writer",
 			"runtime_id": "writer-okta-audit",
 		},
 	}))

@@ -2,6 +2,8 @@ package reports
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -19,6 +21,7 @@ const (
 	findingSummaryReportID     = "finding-summary"
 	findingSummaryReportName   = "Finding Summary"
 	findingSummaryReportStatus = "completed"
+	reportParameterTenantID    = "tenant_id"
 	reportParameterRuntimeID   = "runtime_id"
 )
 
@@ -83,8 +86,12 @@ func (s *Service) Run(ctx context.Context, request *cerebrov1.RunReportRequest) 
 		return nil, err
 	}
 
+	runID, err := reportRunID(reportID, generatedAt)
+	if err != nil {
+		return nil, err
+	}
 	run := &cerebrov1.ReportRun{
-		Id:          reportRunID(reportID, generatedAt),
+		Id:          runID,
 		ReportId:    reportID,
 		Parameters:  parameters,
 		Status:      findingSummaryReportStatus,
@@ -120,13 +127,17 @@ func (s *Service) Get(ctx context.Context, request *cerebrov1.GetReportRunReques
 }
 
 func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]string) (*structpb.Struct, error) {
+	tenantID := strings.TrimSpace(parameters[reportParameterTenantID])
+	if tenantID == "" {
+		return nil, fmt.Errorf("report parameter %q is required", reportParameterTenantID)
+	}
 	runtimeID := strings.TrimSpace(parameters[reportParameterRuntimeID])
 	if runtimeID == "" {
 		return nil, fmt.Errorf("report parameter %q is required", reportParameterRuntimeID)
 	}
-	findings, err := s.findingStore.ListFindings(ctx, ports.ListFindingsRequest{RuntimeID: runtimeID})
+	findings, err := s.findingStore.ListFindings(ctx, ports.ListFindingsRequest{TenantID: tenantID, RuntimeID: runtimeID})
 	if err != nil {
-		return nil, fmt.Errorf("list findings for runtime %q: %w", runtimeID, err)
+		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", tenantID, runtimeID, err)
 	}
 	severityCounts := make(map[string]int, len(findings))
 	statusCounts := make(map[string]int, len(findings))
@@ -149,6 +160,7 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		}
 	}
 	result, err := structpb.NewStruct(map[string]any{
+		reportParameterTenantID:  tenantID,
 		reportParameterRuntimeID: runtimeID,
 		"total_findings":         len(findings),
 		"severity_counts":        countEntries(severityCounts, "severity"),
@@ -165,8 +177,13 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
 		Name:        findingSummaryReportName,
-		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, and rule.",
+		Description: "Materialize one tenant/runtime-scoped summary of persisted findings, grouped by severity, status, and rule.",
 		Parameters: []*cerebrov1.ReportParameter{
+			{
+				Id:          reportParameterTenantID,
+				Description: "Tenant identifier whose persisted findings should be summarized.",
+				Required:    true,
+			},
 			{
 				Id:          reportParameterRuntimeID,
 				Description: "Stored source runtime identifier whose persisted findings should be summarized.",
@@ -200,9 +217,13 @@ func normalizeParameters(parameters map[string]string) map[string]string {
 	return normalized
 }
 
-func reportRunID(reportID string, generatedAt time.Time) string {
+func reportRunID(reportID string, generatedAt time.Time) (string, error) {
 	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-")
-	return replacer.Replace(strings.TrimSpace(reportID)) + "-" + fmt.Sprintf("%d", generatedAt.UnixNano())
+	random := make([]byte, 8)
+	if _, err := rand.Read(random); err != nil {
+		return "", fmt.Errorf("generate report run id entropy: %w", err)
+	}
+	return replacer.Replace(strings.TrimSpace(reportID)) + "-" + fmt.Sprintf("%d", generatedAt.UnixNano()) + "-" + hex.EncodeToString(random), nil
 }
 
 func countEntries(counts map[string]int, keyName string) []any {

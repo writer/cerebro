@@ -25,6 +25,7 @@ type FindingRecord struct {
 
 // ListFindingsRequest scopes one finding query.
 type ListFindingsRequest struct {
+	TenantID  string
 	RuntimeID string
 }
 

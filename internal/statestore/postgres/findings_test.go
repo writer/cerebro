@@ -54,16 +54,23 @@ func TestUpsertFindingRejectsUnconfiguredStore(t *testing.T) {
 	}
 }
 
-func TestListFindingsRejectsMissingRuntimeID(t *testing.T) {
+func TestListFindingsRejectsMissingTenantID(t *testing.T) {
 	store := &Store{}
 	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{}); err == nil {
 		t.Fatal("ListFindings() error = nil, want non-nil")
 	}
 }
 
+func TestListFindingsRejectsMissingRuntimeID(t *testing.T) {
+	store := &Store{}
+	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{TenantID: "writer"}); err == nil {
+		t.Fatal("ListFindings() error = nil, want non-nil")
+	}
+}
+
 func TestListFindingsRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
-	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{RuntimeID: "writer-okta-audit"}); err == nil {
+	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{TenantID: "writer", RuntimeID: "writer-okta-audit"}); err == nil {
 		t.Fatal("ListFindings() error = nil, want non-nil")
 	}
 }

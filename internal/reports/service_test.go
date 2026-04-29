@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -52,6 +53,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 		findings: []*ports.FindingRecord{
 			{
 				ID:        "finding-1",
+				TenantID:  "writer",
 				RuntimeID: "writer-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:  "HIGH",
@@ -59,6 +61,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 			},
 			{
 				ID:        "finding-2",
+				TenantID:  "writer",
 				RuntimeID: "writer-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:  "HIGH",
@@ -72,6 +75,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
+			reportParameterTenantID:  "writer",
 			reportParameterRuntimeID: "writer-okta-audit",
 		},
 	})
@@ -87,10 +91,16 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	if response.GetRun().GetStatus() != findingSummaryReportStatus {
 		t.Fatalf("Run().Run.Status = %q, want %q", response.GetRun().GetStatus(), findingSummaryReportStatus)
 	}
+	if findingStore.request.TenantID != "writer" {
+		t.Fatalf("ListFindings().TenantID = %q, want writer", findingStore.request.TenantID)
+	}
 	if findingStore.request.RuntimeID != "writer-okta-audit" {
 		t.Fatalf("ListFindings().RuntimeID = %q, want writer-okta-audit", findingStore.request.RuntimeID)
 	}
 	result := response.GetRun().GetResult().AsMap()
+	if got := result[reportParameterTenantID]; got != "writer" {
+		t.Fatalf("Run().Run.Result[tenant_id] = %#v, want writer", got)
+	}
 	if got := result[reportParameterRuntimeID]; got != "writer-okta-audit" {
 		t.Fatalf("Run().Run.Result[runtime_id] = %#v, want writer-okta-audit", got)
 	}
@@ -120,6 +130,21 @@ func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	}
 	if response.GetReports()[0].GetId() != findingSummaryReportID {
 		t.Fatalf("List().Reports[0].ID = %q, want %q", response.GetReports()[0].GetId(), findingSummaryReportID)
+	}
+}
+
+func TestReportRunIDIncludesEntropy(t *testing.T) {
+	generatedAt := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	first, err := reportRunID(findingSummaryReportID, generatedAt)
+	if err != nil {
+		t.Fatalf("reportRunID(first) error = %v", err)
+	}
+	second, err := reportRunID(findingSummaryReportID, generatedAt)
+	if err != nil {
+		t.Fatalf("reportRunID(second) error = %v", err)
+	}
+	if first == second {
+		t.Fatalf("reportRunID() returned duplicate id %q", first)
 	}
 }
 
