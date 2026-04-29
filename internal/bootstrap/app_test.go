@@ -23,7 +23,10 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/workflowevents"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
@@ -52,6 +55,28 @@ func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/sources/okta/check?"+key+"=secret", nil)
 			if _, err := sourceConfigFromRequest(req); err == nil {
 				t.Fatalf("sourceConfigFromRequest() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+		code connect.Code
+	}{
+		{name: "report not found", err: reportConnectError(reports.ErrReportNotFound), code: connect.CodeNotFound},
+		{name: "report unavailable", err: reportConnectError(reports.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "report validation", err: reportConnectError(errors.New("bad request")), code: connect.CodeInvalidArgument},
+		{name: "source not found", err: sourceConnectError(sourceops.ErrSourceNotFound), code: connect.CodeNotFound},
+		{name: "runtime not found", err: sourceRuntimeConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
+		{name: "runtime unavailable", err: sourceRuntimeConnectError(sourceruntime.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "claim runtime not found", err: claimConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := connect.CodeOf(tt.err); got != tt.code {
+				t.Fatalf("connect.CodeOf() = %s, want %s", got, tt.code)
 			}
 		})
 	}

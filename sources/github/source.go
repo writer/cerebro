@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +27,7 @@ var catalogFS embed.FS
 const (
 	defaultPageSize     = 10
 	maxPageSize         = 100
+	sourceHTTPTimeout   = 30 * time.Second
 	defaultState        = "open"
 	defaultFamily       = familyPullRequest
 	defaultAuditInclude = "all"
@@ -35,7 +39,9 @@ const (
 
 // Source is the live GitHub source preview used by the builtin registry.
 type Source struct {
-	spec *cerebrov1.SourceSpec
+	spec                 *cerebrov1.SourceSpec
+	client               *http.Client
+	allowLoopbackBaseURL bool
 }
 
 type settings struct {
@@ -83,7 +89,7 @@ func (s *Source) Spec() *cerebrov1.SourceSpec {
 
 // Check validates that a GitHub owner or repository is reachable.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
-	client, settings, err := newClient(cfg, false)
+	client, settings, err := s.newClient(cfg, false)
 	if err != nil {
 		return err
 	}
@@ -103,7 +109,7 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 
 // Discover returns live GitHub URNs for the selected family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	client, settings, err := newClient(cfg, false)
+	client, settings, err := s.newClient(cfg, false)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +147,7 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 
 // Read pages through the configured live GitHub event family.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	client, settings, err := newClient(cfg, true)
+	client, settings, err := s.newClient(cfg, true)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
@@ -206,12 +212,19 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return spec, nil
 }
 
-func newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settings, error) {
-	settings, err := parseSettings(cfg, requireRepo)
+func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settings, error) {
+	settings, err := parseSettings(cfg, requireRepo, s != nil && s.allowLoopbackBaseURL)
 	if err != nil {
 		return nil, settings, err
 	}
-	client := gogithub.NewClient(nil)
+	httpClient := (*http.Client)(nil)
+	if s != nil {
+		httpClient = s.client
+	}
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: sourceHTTPTimeout}
+	}
+	client := gogithub.NewClient(httpClient)
 	if settings.token != "" {
 		client = client.WithAuthToken(settings.token)
 	}
@@ -225,7 +238,7 @@ func newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settin
 	return client, settings, nil
 }
 
-func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
+func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL bool) (settings, error) {
 	settings := settings{
 		family:       configValue(cfg, "family"),
 		owner:        configValue(cfg, "owner"),
@@ -237,6 +250,13 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
 		auditPhrase:  configValue(cfg, "phrase"),
 		auditOrder:   configValue(cfg, "order"),
 		perPage:      defaultPageSize,
+	}
+	if settings.baseURL != "" {
+		baseURL, err := normalizeBaseURL(settings.baseURL, allowLoopbackBaseURL)
+		if err != nil {
+			return settings, err
+		}
+		settings.baseURL = baseURL
 	}
 	if settings.owner == "" {
 		return settings, fmt.Errorf("github owner is required")
@@ -321,6 +341,40 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
 		}
 	}
 	return settings, nil
+}
+
+func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", fmt.Errorf("parse github base_url: %w", err)
+	}
+	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname())
+	if parsed.Scheme != "https" && !allowInsecureLoopback {
+		return "", fmt.Errorf("github base_url must use https")
+	}
+	if strings.TrimSpace(parsed.Hostname()) == "" {
+		return "", fmt.Errorf("github base_url must include a host")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("github base_url must not include user info, query, or fragment")
+	}
+	if (parsed.Path != "" && parsed.Path != "/") || parsed.RawPath != "" {
+		return "", fmt.Errorf("github base_url must be an origin URL")
+	}
+	if !allowLoopback && isLoopbackHost(parsed.Hostname()) {
+		return "", fmt.Errorf("github base_url must not target loopback hosts")
+	}
+	parsed.Path = ""
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func isLoopbackHost(host string) bool {
+	value := strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
+	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(value)
+	return ip != nil && ip.IsLoopback()
 }
 
 func getRepo(ctx context.Context, client *gogithub.Client, owner string, repo string) (*gogithub.Repository, error) {

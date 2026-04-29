@@ -129,6 +129,7 @@ func TestReadTrimsCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"owner":    "writer",
@@ -154,6 +155,7 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	checkCfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"owner":    "writer",
@@ -229,6 +231,7 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"family":   "audit",
@@ -320,6 +323,7 @@ func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"family":   "dependabot_alert",
@@ -376,6 +380,30 @@ func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	}
 	if len(second.Events) != 0 {
 		t.Fatalf("len(Read(dependabot_alert second).Events) = %d, want 0", len(second.Events))
+	}
+}
+
+func TestRejectsUnsafeBaseURL(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	for _, baseURL := range []string{
+		"http://github.example.com",
+		"https://user@github.example.com",
+		"https://github.example.com/path",
+		"https://github.example.com?token=leak",
+		"https://localhost",
+	} {
+		t.Run(baseURL, func(t *testing.T) {
+			err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"base_url": baseURL,
+				"owner":    "writer",
+			}))
+			if err == nil {
+				t.Fatal("Check() error = nil, want non-nil")
+			}
+		})
 	}
 }
 

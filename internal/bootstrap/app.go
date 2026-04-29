@@ -999,7 +999,7 @@ func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[c
 		reportStore(s.deps.StateStore),
 	).Run(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, reportConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -1011,7 +1011,7 @@ func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Reques
 		reportStore(s.deps.StateStore),
 	).Get(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, reportConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -1023,7 +1023,7 @@ func (s *bootstrapService) ListSources(_ context.Context, _ *connect.Request[cer
 func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request[cerebrov1.CheckSourceRequest]) (*connect.Response[cerebrov1.CheckSourceResponse], error) {
 	response, err := sourceops.New(s.sources).Check(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -1031,7 +1031,7 @@ func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request
 func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Request[cerebrov1.DiscoverSourceRequest]) (*connect.Response[cerebrov1.DiscoverSourceResponse], error) {
 	response, err := sourceops.New(s.sources).Discover(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -1039,7 +1039,7 @@ func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Requ
 func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[cerebrov1.ReadSourceRequest]) (*connect.Response[cerebrov1.ReadSourceResponse], error) {
 	response, err := sourceops.New(s.sources).Read(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -1052,7 +1052,7 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
 	).Put(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceRuntimeConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -1065,7 +1065,7 @@ func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Re
 		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
 	).Get(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceRuntimeConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -1078,7 +1078,7 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
 	).Sync(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceRuntimeConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -1095,7 +1095,7 @@ func (s *bootstrapService) WriteClaims(ctx context.Context, req *connect.Request
 		ReplaceExisting: req.Msg.GetReplaceExisting(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, claimConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.WriteClaimsResponse{
 		ClaimsWritten:          response.ClaimsWritten,
@@ -1124,7 +1124,7 @@ func (s *bootstrapService) ListClaims(ctx context.Context, req *connect.Request[
 		Limit:         req.Msg.GetLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, claimConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.ListClaimsResponse{
 		Claims: response.Claims,
@@ -1723,6 +1723,24 @@ func writeReportError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), statusCode)
 }
 
+func reportConnectError(err error) error {
+	switch {
+	case errors.Is(err, reports.ErrReportNotFound), errors.Is(err, ports.ErrReportRunNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, reports.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	default:
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+}
+
+func sourceConnectError(err error) error {
+	if errors.Is(err, sourceops.ErrSourceNotFound) {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
+	return connect.NewError(connect.CodeInvalidArgument, err)
+}
+
 func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusBadRequest
 	switch {
@@ -1734,6 +1752,17 @@ func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), statusCode)
 }
 
+func sourceRuntimeConnectError(err error) error {
+	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	default:
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+}
+
 func writeClaimError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusBadRequest
 	switch {
@@ -1743,6 +1772,17 @@ func writeClaimError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusServiceUnavailable
 	}
 	http.Error(w, err.Error(), statusCode)
+}
+
+func claimConnectError(err error) error {
+	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, claims.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	default:
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
 }
 
 func writeFindingError(w http.ResponseWriter, err error) {

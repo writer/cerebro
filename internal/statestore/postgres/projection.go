@@ -134,6 +134,46 @@ DO UPDATE SET
 	return nil
 }
 
+// DeleteProjectedLink removes one normalized link from the current-state store.
+func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return errors.New("projected link is required")
+	}
+	fromURN := strings.TrimSpace(link.FromURN)
+	if fromURN == "" {
+		return errors.New("projected link from urn is required")
+	}
+	toURN := strings.TrimSpace(link.ToURN)
+	if toURN == "" {
+		return errors.New("projected link to urn is required")
+	}
+	relation := strings.TrimSpace(link.Relation)
+	if relation == "" {
+		return errors.New("projected link relation is required")
+	}
+	tenantID := strings.TrimSpace(link.TenantID)
+	if tenantID == "" {
+		return errors.New("projected link tenant id is required")
+	}
+	sourceID := strings.TrimSpace(link.SourceID)
+	if sourceID == "" {
+		return errors.New("projected link source id is required")
+	}
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureProjectionTables(ctx); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `
+DELETE FROM entity_links
+WHERE from_urn = $1 AND relation = $2 AND to_urn = $3 AND tenant_id = $4 AND source_id = $5`,
+		fromURN, relation, toURN, tenantID, sourceID); err != nil {
+		return fmt.Errorf("delete projected link %q %q %q: %w", fromURN, relation, toURN, err)
+	}
+	return nil
+}
+
 func (s *Store) ensureProjectionTables(ctx context.Context) error {
 	for _, statement := range ensureProjectionStatements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {

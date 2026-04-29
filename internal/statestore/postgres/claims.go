@@ -332,7 +332,7 @@ func cloneClaimAttributes(attributes map[string]string) map[string]string {
 	return cloned
 }
 
-func claimMessageTime(value interface{ AsTime() time.Time }) time.Time {
+func claimMessageTime(value *timestamppb.Timestamp) time.Time {
 	if value == nil {
 		return time.Time{}
 	}

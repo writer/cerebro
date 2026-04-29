@@ -18,6 +18,12 @@ func TestUpsertClaimRejectsNilClaim(t *testing.T) {
 	}
 }
 
+func TestClaimMessageTimeAllowsNilTimestamp(t *testing.T) {
+	if got := claimMessageTime(nil); !got.IsZero() {
+		t.Fatalf("claimMessageTime(nil) = %v, want zero", got)
+	}
+}
+
 func TestUpsertClaimRejectsMissingPredicate(t *testing.T) {
 	store := &Store{}
 	_, err := store.UpsertClaim(context.Background(), &ports.ClaimRecord{

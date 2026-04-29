@@ -412,6 +412,51 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	return nil
 }
 
+// DeleteProjectedLink removes one normalized link from the graph store.
+func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return errors.New("projected link is required")
+	}
+	fromURN := strings.TrimSpace(link.FromURN)
+	if fromURN == "" {
+		return errors.New("projected link from urn is required")
+	}
+	toURN := strings.TrimSpace(link.ToURN)
+	if toURN == "" {
+		return errors.New("projected link to urn is required")
+	}
+	relation := strings.TrimSpace(link.Relation)
+	if relation == "" {
+		return errors.New("projected link relation is required")
+	}
+	tenantID := strings.TrimSpace(link.TenantID)
+	if tenantID == "" {
+		return errors.New("projected link tenant id is required")
+	}
+	sourceID := strings.TrimSpace(link.SourceID)
+	if sourceID == "" {
+		return errors.New("projected link source id is required")
+	}
+	if s == nil || s.db == nil {
+		return errors.New("kuzu is not configured")
+	}
+	if err := s.ensureProjectionSchema(ctx); err != nil {
+		return err
+	}
+	statement := fmt.Sprintf(
+		"MATCH (src:entity {urn: %s})-[r:relation {relation: %s, tenant_id: %s, source_id: %s}]->(dst:entity {urn: %s}) DELETE r",
+		cypherString(fromURN),
+		cypherString(relation),
+		cypherString(tenantID),
+		cypherString(sourceID),
+		cypherString(toURN),
+	)
+	if _, err := s.db.ExecContext(ctx, statement); err != nil {
+		return fmt.Errorf("delete projected link %q %q %q: %w", fromURN, relation, toURN, err)
+	}
+	return nil
+}
+
 func (s *Store) ensureProjectionSchema(ctx context.Context) error {
 	if s == nil || s.db == nil {
 		return errors.New("kuzu is not configured")

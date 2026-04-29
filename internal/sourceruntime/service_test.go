@@ -18,6 +18,7 @@ import (
 type runtimeStore struct {
 	runtimes map[string]*cerebrov1.SourceRuntime
 	err      error
+	putCount int
 }
 
 func (s *runtimeStore) Ping(context.Context) error {
@@ -31,6 +32,7 @@ func (s *runtimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.So
 	if s.runtimes == nil {
 		s.runtimes = make(map[string]*cerebrov1.SourceRuntime)
 	}
+	s.putCount++
 	s.runtimes[runtime.GetId()] = proto.Clone(runtime).(*cerebrov1.SourceRuntime)
 	return nil
 }
@@ -273,6 +275,9 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	if runtime.GetLastSyncedAt() == nil {
 		t.Fatal("stored last_synced_at = nil, want non-nil")
 	}
+	if store.putCount != 2 {
+		t.Fatalf("PutSourceRuntime calls = %d, want 2", store.putCount)
+	}
 }
 
 func TestSyncRuntimeContinuesPastEmptyPagesWithCursor(t *testing.T) {
@@ -307,6 +312,9 @@ func TestSyncRuntimeContinuesPastEmptyPagesWithCursor(t *testing.T) {
 	}
 	if len(log.events) != 1 {
 		t.Fatalf("len(appendLog.events) = %d, want 1", len(log.events))
+	}
+	if store.putCount != 2 {
+		t.Fatalf("PutSourceRuntime calls = %d, want 2", store.putCount)
 	}
 	if got := store.runtimes["writer-empty-page"].GetNextCursor(); got != nil {
 		t.Fatalf("stored next cursor = %#v, want nil", got)

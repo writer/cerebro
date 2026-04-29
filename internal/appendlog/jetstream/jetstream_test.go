@@ -34,6 +34,7 @@ type fakeReplayManager struct {
 	msgs        map[string]map[uint64]*natsjetstream.RawStreamMsg
 	err         error
 	streamCalls int
+	getMsgCalls int
 }
 
 func (f *fakeReplayManager) Streams(context.Context) ([]*natsjetstream.StreamInfo, error) {
@@ -45,14 +46,18 @@ func (f *fakeReplayManager) Stream(_ context.Context, stream string) (replayStre
 		return nil, f.err
 	}
 	f.streamCalls++
-	return &fakeReplayStream{msgs: f.msgs[stream]}, nil
+	return &fakeReplayStream{manager: f, msgs: f.msgs[stream]}, nil
 }
 
 type fakeReplayStream struct {
-	msgs map[uint64]*natsjetstream.RawStreamMsg
+	manager *fakeReplayManager
+	msgs    map[uint64]*natsjetstream.RawStreamMsg
 }
 
 func (f *fakeReplayStream) GetMsg(_ context.Context, seq uint64, _ ...natsjetstream.GetMsgOpt) (*natsjetstream.RawStreamMsg, error) {
+	if f.manager != nil {
+		f.manager.getMsgCalls++
+	}
 	raw := f.msgs[seq]
 	if raw == nil {
 		return nil, natsjetstream.ErrMsgNotFound
@@ -229,6 +234,41 @@ func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T)
 	}
 	if got := events[0].GetId(); got != "evt-1" {
 		t.Fatalf("replayed id = %q, want evt-1", got)
+	}
+}
+
+func TestReplayStopsAtScanLimit(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: maxReplayScan + 1},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	_, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
+	if err == nil {
+		t.Fatal("Replay() error = nil, want non-nil")
+	}
+	if replay.getMsgCalls != maxReplayScan {
+		t.Fatalf("getMsgCalls = %d, want %d", replay.getMsgCalls, maxReplayScan)
+	}
+}
+
+func TestSubjectMatchesRequiresTokenForFullWildcard(t *testing.T) {
+	if subjectMatches("events.>", "events") {
+		t.Fatal("subjectMatches(events.>, events) = true, want false")
+	}
+	if !subjectMatches("events.>", "events.github.audit") {
+		t.Fatal("subjectMatches(events.>, events.github.audit) = false, want true")
 	}
 }
 

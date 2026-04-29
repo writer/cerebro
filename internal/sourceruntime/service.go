@@ -135,14 +135,14 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				linksProjected += result.LinksProjected
 			}
 		}
+		runtime.LastSyncedAt = timestamppb.Now()
+		if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
+			return nil, err
+		}
 		if pull.NextCursor == nil {
 			break
 		}
 		cursor = cloneCursor(pull.NextCursor)
-	}
-	runtime.LastSyncedAt = timestamppb.Now()
-	if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
-		return nil, err
 	}
 	return &cerebrov1.SyncSourceRuntimeResponse{
 		Runtime:           redactRuntime(runtime),
