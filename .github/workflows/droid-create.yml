@@ -336,7 +336,7 @@ jobs:
           set -euo pipefail
           git config user.name "factory-droid[bot]"
           git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
-          git checkout -B "${{ steps.ctx.outputs.branch_name }}"
+          git checkout -B -- "${{ steps.ctx.outputs.branch_name }}"
 
       - name: Install Droid CLI
         shell: bash
