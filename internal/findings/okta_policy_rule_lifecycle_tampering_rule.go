@@ -66,7 +66,7 @@ func (*oktaPolicyRuleLifecycleTamperingRule) Evaluate(ctx context.Context, runti
 	if !matchesOktaPolicyRuleLifecycleTampering(event) {
 		return nil, nil
 	}
-	record, err := oktaPolicyRuleLifecycleTamperingFinding(ctx, event, runtime.GetId())
+	record, err := oktaPolicyRuleLifecycleTamperingFinding(ctx, event, runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -90,16 +90,22 @@ func matchesOktaPolicyRuleLifecycleTampering(event *cerebrov1.EventEnvelope) boo
 	return ok
 }
 
-func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebrov1.EventEnvelope, runtimeID string) (*ports.FindingRecord, error) {
+func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebrov1.EventEnvelope, runtime *cerebrov1.SourceRuntime) (*ports.FindingRecord, error) {
 	resourceURNs, actorURN, resourceURN, actorLabel, resourceLabel, err := projectedEntityContext(ctx, event)
 	if err != nil {
 		return nil, fmt.Errorf("project finding context for event %q: %w", event.GetId(), err)
 	}
+	tenantID := strings.TrimSpace(runtime.GetTenantId())
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(event.GetTenantId())
+	}
+	runtimeID := strings.TrimSpace(runtime.GetId())
+	eventID := strings.TrimSpace(event.GetId())
 	attributes := map[string]string{
-		"event_id":             strings.TrimSpace(event.GetId()),
+		"event_id":             eventID,
 		"event_type":           strings.TrimSpace(event.GetAttributes()["event_type"]),
 		"outcome_result":       strings.TrimSpace(event.GetAttributes()["outcome_result"]),
-		"source_runtime_id":    strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]),
+		"source_runtime_id":    runtimeID,
 		"primary_actor_urn":    actorURN,
 		"primary_resource_urn": resourceURN,
 	}
@@ -108,19 +114,24 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 	if timestamp := event.GetOccurredAt(); timestamp != nil {
 		observedAt = timestamp.AsTime().UTC()
 	}
-	fingerprint := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, event.GetId())
+	fingerprint := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, tenantID, runtimeID, eventID)
+	if eventID != "" {
+		legacy := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, eventID)
+		attributes["legacy_finding_id"] = legacy
+		attributes["legacy_fingerprint"] = legacy
+	}
 	return &ports.FindingRecord{
 		ID:              fingerprint,
 		Fingerprint:     fingerprint,
-		TenantID:        strings.TrimSpace(event.GetTenantId()),
-		RuntimeID:       strings.TrimSpace(runtimeID),
+		TenantID:        tenantID,
+		RuntimeID:       runtimeID,
 		RuleID:          oktaPolicyRuleLifecycleTamperingRuleID,
 		Title:           oktaPolicyRuleLifecycleTamperingTitle,
 		Severity:        oktaPolicyRuleLifecycleTamperingSeverity,
 		Status:          oktaPolicyRuleLifecycleTamperingStatus,
 		Summary:         findingSummary(event, actorLabel, resourceLabel),
 		ResourceURNs:    resourceURNs,
-		EventIDs:        []string{strings.TrimSpace(event.GetId())},
+		EventIDs:        []string{eventID},
 		Attributes:      attributes,
 		FirstObservedAt: observedAt,
 		LastObservedAt:  observedAt,
