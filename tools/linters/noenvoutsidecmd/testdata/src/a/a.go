@@ -1,6 +1,10 @@
 package a
 
-import "os"
+import (
+	"os"
+	. "os"
+	o "os"
+)
 
 func Bad() string {
 	return os.Getenv("HOME") // want `os.Getenv is forbidden outside cmd/ and config`
@@ -9,4 +13,12 @@ func Bad() string {
 func AlsoBad() (string, bool) {
 	value, ok := os.LookupEnv("HOME") // want `os.LookupEnv is forbidden outside cmd/ and config`
 	return value, ok
+}
+
+func AliasBad() string {
+	return o.Getenv("HOME") // want `os.Getenv is forbidden outside cmd/ and config`
+}
+
+func DotBad() (string, bool) {
+	return LookupEnv("HOME") // want `os.LookupEnv is forbidden outside cmd/ and config`
 }

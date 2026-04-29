@@ -3,6 +3,7 @@ package reports
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +35,15 @@ func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFin
 	s.request = request
 	findings := make([]*ports.FindingRecord, 0, len(s.findings))
 	for _, finding := range s.findings {
+		if finding == nil {
+			continue
+		}
+		if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
+			continue
+		}
+		if request.RuntimeID != "" && strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+			continue
+		}
 		findings = append(findings, cloneFinding(finding))
 	}
 	return findings, nil
@@ -144,6 +154,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 		findings: []*ports.FindingRecord{
 			{
 				ID:        "finding-1",
+				TenantID:  "writer",
 				RuntimeID: "writer-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				PolicyID:  "pol-1",
@@ -173,6 +184,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 			},
 			{
 				ID:        "finding-2",
+				TenantID:  "writer",
 				RuntimeID: "writer-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				PolicyID:  "pol-1",
@@ -225,6 +237,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
+			reportParameterTenantID:   "writer",
 			reportParameterRuntimeID:  "writer-okta-audit",
 			reportParameterGraphLimit: "2",
 		},
@@ -241,10 +254,16 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	if response.GetRun().GetStatus() != findingSummaryReportStatus {
 		t.Fatalf("Run().Run.Status = %q, want %q", response.GetRun().GetStatus(), findingSummaryReportStatus)
 	}
+	if findingStore.request.TenantID != "writer" {
+		t.Fatalf("ListFindings().TenantID = %q, want writer", findingStore.request.TenantID)
+	}
 	if findingStore.request.RuntimeID != "writer-okta-audit" {
 		t.Fatalf("ListFindings().RuntimeID = %q, want writer-okta-audit", findingStore.request.RuntimeID)
 	}
 	result := response.GetRun().GetResult().AsMap()
+	if got := result[reportParameterTenantID]; got != "writer" {
+		t.Fatalf("Run().Run.Result[tenant_id] = %#v, want writer", got)
+	}
 	if got := result[reportParameterRuntimeID]; got != "writer-okta-audit" {
 		t.Fatalf("Run().Run.Result[runtime_id] = %#v, want writer-okta-audit", got)
 	}
@@ -372,11 +391,27 @@ func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	}
 }
 
+func TestReportRunIDIncludesEntropy(t *testing.T) {
+	generatedAt := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	first, err := reportRunID(findingSummaryReportID, generatedAt)
+	if err != nil {
+		t.Fatalf("reportRunID(first) error = %v", err)
+	}
+	second, err := reportRunID(findingSummaryReportID, generatedAt)
+	if err != nil {
+		t.Fatalf("reportRunID(second) error = %v", err)
+	}
+	if first == second {
+		t.Fatalf("reportRunID() returned duplicate id %q", first)
+	}
+}
+
 func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *testing.T) {
 	findingStore := &stubFindingStore{
 		findings: []*ports.FindingRecord{
 			{
 				ID:        "finding-1",
+				TenantID:  "writer",
 				RuntimeID: "writer-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:  "HIGH",
@@ -389,6 +424,7 @@ func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *te
 	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
+			reportParameterTenantID:  "writer",
 			reportParameterRuntimeID: "writer-okta-audit",
 		},
 	})

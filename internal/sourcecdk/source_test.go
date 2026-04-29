@@ -78,3 +78,10 @@ func TestRegistryRejectsDuplicateIDs(t *testing.T) {
 		t.Fatal("NewRegistry() error = nil, want non-nil")
 	}
 }
+
+func TestRegistryRejectsNonCanonicalIDs(t *testing.T) {
+	_, err := NewRegistry(stubSource{spec: &cerebrov1.SourceSpec{Id: " github "}})
+	if err == nil {
+		t.Fatal("NewRegistry() error = nil, want non-nil")
+	}
+}

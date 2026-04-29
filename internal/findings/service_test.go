@@ -1121,6 +1121,7 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 		findings: map[string]*ports.FindingRecord{
 			"finding-1": {
 				ID:             "finding-1",
+				TenantID:       "writer",
 				RuntimeID:      "writer-okta-audit",
 				RuleID:         oktaPolicyRuleLifecycleTamperingRuleID,
 				Severity:       "HIGH",
@@ -1132,6 +1133,7 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 			},
 			"finding-2": {
 				ID:             "finding-2",
+				TenantID:       "writer",
 				RuntimeID:      "writer-okta-audit",
 				RuleID:         oktaPolicyRuleLifecycleTamperingRuleID,
 				Severity:       "MEDIUM",
@@ -1180,6 +1182,9 @@ func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
 	}
 	if got := store.request.RuntimeID; got != "writer-okta-audit" {
 		t.Fatalf("ListFindings().RuntimeID = %q, want writer-okta-audit", got)
+	}
+	if got := store.request.TenantID; got != "writer" {
+		t.Fatalf("ListFindings().TenantID = %q, want writer", got)
 	}
 	if got := store.request.RuleID; got != oktaPolicyRuleLifecycleTamperingRuleID {
 		t.Fatalf("ListFindings().RuleID = %q, want %q", got, oktaPolicyRuleLifecycleTamperingRuleID)
@@ -1963,6 +1968,9 @@ func cloneFindingEvidence(evidence *cerebrov1.FindingEvidence) *cerebrov1.Findin
 
 func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
 	if finding == nil {
+		return false
+	}
+	if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
 	if strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {

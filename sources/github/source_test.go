@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	gogithub "github.com/google/go-github/v66/github"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -104,6 +106,43 @@ func TestNewFixtureReplaysFixturePages(t *testing.T) {
 	}
 	if len(final.Events) != 0 {
 		t.Fatalf("len(final.Events) = %d, want 0", len(final.Events))
+	}
+}
+
+func TestReadRejectsNegativeCursor(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{"owner": "writer", "repo": "cerebro"})
+
+	if _, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "-1"}); err == nil {
+		t.Fatal("Read() error = nil, want non-nil")
+	}
+}
+
+func TestReadTrimsCursor(t *testing.T) {
+	server := httptest.NewServer(newGitHubAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"owner":    "writer",
+		"per_page": "1",
+		"repo":     "cerebro",
+		"state":    "all",
+	})
+
+	pull, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: " 1 "})
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
 	}
 }
 
@@ -264,6 +303,12 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	}
 	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "audit-doc-2" {
 		t.Fatalf("second.Checkpoint = %#v, want audit-doc-2", second.Checkpoint)
+	}
+}
+
+func TestNextAuditCursorIgnoresBefore(t *testing.T) {
+	if got := nextAuditCursor(&gogithub.Response{Before: "cursor-1"}); got != "" {
+		t.Fatalf("nextAuditCursor() = %q, want empty cursor", got)
 	}
 }
 
