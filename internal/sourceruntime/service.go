@@ -55,6 +55,9 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 	if runtime.GetId() == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
+	if reservedKey := reservedConfigKey(runtime.GetConfig()); reservedKey != "" {
+		return nil, fmt.Errorf("%w: source runtime config key %q is reserved", ErrInvalidRequest, reservedKey)
+	}
 	source, err := s.lookupSource(runtime.GetSourceId())
 	if err != nil {
 		return nil, err
@@ -248,6 +251,16 @@ func sameConfig(left map[string]string, right map[string]string) bool {
 		}
 	}
 	return true
+}
+
+func reservedConfigKey(config map[string]string) string {
+	for key := range config {
+		normalized := strings.ToLower(strings.TrimSpace(key))
+		if normalized == "base_url" || normalized == "cursor" {
+			return key
+		}
+	}
+	return ""
 }
 
 func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {

@@ -2,6 +2,7 @@ package kuzu
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -75,6 +76,28 @@ func TestUpsertProjectedEntityAndLink(t *testing.T) {
 	}
 	if label != "Alice Example" {
 		t.Fatalf("projected entity label = %q, want %q", label, "Alice Example")
+	}
+	enrichedUser := *user
+	enrichedUser.Attributes = map[string]string{"resource_type": "user"}
+	if err := store.UpsertProjectedEntity(ctx, &enrichedUser); err != nil {
+		t.Fatalf("UpsertProjectedEntity(enrichedUser) error = %v", err)
+	}
+	var attributesJSON string
+	if err := store.db.QueryRowContext(
+		ctx,
+		fmt.Sprintf("MATCH (e:entity {urn: %s}) RETURN e.attributes_json", cypherString(user.URN)),
+	).Scan(&attributesJSON); err != nil {
+		t.Fatalf("query projected entity attributes: %v", err)
+	}
+	attributes := map[string]string{}
+	if err := json.Unmarshal([]byte(attributesJSON), &attributes); err != nil {
+		t.Fatalf("unmarshal projected entity attributes: %v", err)
+	}
+	if got := attributes["login"]; got != "alice" {
+		t.Fatalf("projected entity login attribute = %q, want alice", got)
+	}
+	if got := attributes["resource_type"]; got != "user" {
+		t.Fatalf("projected entity resource_type attribute = %q, want user", got)
 	}
 
 	var linkCount int64

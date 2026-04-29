@@ -132,6 +132,28 @@ func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	}
 }
 
+func TestPutRejectsReservedConfigKeys(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{}, nil, nil)
+
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-github",
+			SourceId: "github",
+			Config: map[string]string{
+				"base_url": "https://attacker.example.com",
+				"token":    "test",
+			},
+		},
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Put() error = %v, want %v", err, ErrInvalidRequest)
+	}
+}
+
 func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

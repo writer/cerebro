@@ -105,7 +105,11 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if err := s.ensureProjectionSchema(ctx); err != nil {
 		return err
 	}
-	attributesJSON, err := graphAttributesJSON(entity.Attributes)
+	attributes, err := s.mergedEntityAttributes(ctx, urn, entity.Attributes)
+	if err != nil {
+		return err
+	}
+	attributesJSON, err := graphAttributesJSON(attributes)
 	if err != nil {
 		return fmt.Errorf("marshal projected entity attributes: %w", err)
 	}
@@ -126,6 +130,27 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 		return fmt.Errorf("upsert projected entity %q: %w", urn, err)
 	}
 	return nil
+}
+
+func (s *Store) mergedEntityAttributes(ctx context.Context, urn string, attributes map[string]string) (map[string]string, error) {
+	merged := make(map[string]string, len(attributes))
+	var raw string
+	err := s.db.QueryRowContext(ctx, fmt.Sprintf("MATCH (e:entity {urn: %s}) RETURN e.attributes_json", cypherString(urn))).Scan(&raw)
+	switch {
+	case err == nil:
+		if strings.TrimSpace(raw) != "" {
+			if err := json.Unmarshal([]byte(raw), &merged); err != nil {
+				return nil, fmt.Errorf("decode existing projected entity attributes %q: %w", urn, err)
+			}
+		}
+	case errors.Is(err, sql.ErrNoRows):
+	default:
+		return nil, fmt.Errorf("load projected entity attributes %q: %w", urn, err)
+	}
+	for key, value := range attributes {
+		merged[key] = value
+	}
+	return merged, nil
 }
 
 // UpsertProjectedLink upserts one normalized link in the graph store.
