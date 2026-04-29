@@ -281,7 +281,7 @@ if (typeof process !== "undefined" && process.env) {
 }
 
 function envBool(name: string, defaultValue: boolean): boolean {
-  const raw = process.env[name]?.trim().toLowerCase();
+  const raw = process.env[name]?.trim()?.toLowerCase();
   if (!raw) {
     return defaultValue;
   }
