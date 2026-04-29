@@ -37,11 +37,14 @@ const (
 	familyPullRequest   = "pull_request"
 )
 
+var errUnsafeBaseURLHost = errors.New("github base_url must not target loopback, private, or link-local hosts")
+
 // Source is the live GitHub source preview used by the builtin registry.
 type Source struct {
 	spec                 *cerebrov1.SourceSpec
 	client               *http.Client
 	allowLoopbackBaseURL bool
+	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
 
 type settings struct {
@@ -79,7 +82,10 @@ func New() (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Source{spec: spec}, nil
+	return &Source{
+		spec:          spec,
+		lookupIPAddrs: net.DefaultResolver.LookupIPAddr,
+	}, nil
 }
 
 // Spec returns static metadata for the GitHub source.
@@ -213,7 +219,12 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 }
 
 func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settings, error) {
-	settings, err := parseSettings(cfg, requireRepo, s != nil && s.allowLoopbackBaseURL)
+	allowLoopbackBaseURL := s != nil && s.allowLoopbackBaseURL
+	lookupIPAddrs := net.DefaultResolver.LookupIPAddr
+	if s != nil && s.lookupIPAddrs != nil {
+		lookupIPAddrs = s.lookupIPAddrs
+	}
+	settings, err := parseSettings(cfg, requireRepo, allowLoopbackBaseURL)
 	if err != nil {
 		return nil, settings, err
 	}
@@ -224,7 +235,7 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: sourceHTTPTimeout}
 	}
-	httpClient = sourceHTTPClientNoRedirect(httpClient)
+	httpClient = sourceHTTPClientNoRedirect(httpClient, allowLoopbackBaseURL, lookupIPAddrs)
 	client := gogithub.NewClient(httpClient)
 	if settings.token != "" {
 		client = client.WithAuthToken(settings.token)
@@ -239,18 +250,37 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 	return client, settings, nil
 }
 
-func sourceHTTPClientNoRedirect(client *http.Client) *http.Client {
+func sourceHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
 	if client == nil {
 		client = &http.Client{Timeout: sourceHTTPTimeout}
 	}
-	if client.CheckRedirect != nil {
-		return client
-	}
 	cloned := *client
-	cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-		return http.ErrUseLastResponse
+	if cloned.CheckRedirect == nil {
+		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
 	}
+	transport := cloned.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	cloned.Transport = safeSourceRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs}
 	return &cloned
+}
+
+type safeSourceRoundTripper struct {
+	base          http.RoundTripper
+	allowLoopback bool
+	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
+}
+
+func (rt safeSourceRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req != nil && req.URL != nil {
+		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
+			return nil, err
+		}
+	}
+	return rt.base.RoundTrip(req)
 }
 
 func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL bool) (settings, error) {
@@ -379,7 +409,7 @@ func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
 		return "", fmt.Errorf("github base_url must be an origin URL")
 	}
 	if isUnsafeHost(host) && (!allowLoopback || !isLoopbackHost(host)) {
-		return "", fmt.Errorf("github base_url must not target loopback, private, or link-local hosts")
+		return "", errUnsafeBaseURLHost
 	}
 	if path == "/api/v3" && isGitHubAPIHost(host) {
 		parsed.Path = "/api/v3"
@@ -406,12 +436,7 @@ func isUnsafeHost(host string) bool {
 	if ip == nil {
 		return false
 	}
-	return ip.IsLoopback() ||
-		ip.IsPrivate() ||
-		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified() ||
-		ip.IsMulticast()
+	return isUnsafeIP(ip)
 }
 
 func isLoopbackHost(host string) bool {
@@ -424,6 +449,47 @@ func isLoopbackHost(host string) bool {
 		ip = parseNumericIPv4Host(value)
 	}
 	return ip != nil && ip.IsLoopback()
+}
+
+func isUnsafeIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() ||
+		ip.IsMulticast()
+}
+
+func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) error {
+	normalized := normalizedIPHost(host)
+	if normalized == "" {
+		return nil
+	}
+	if isUnsafeHost(normalized) {
+		if allowLoopback && isLoopbackHost(normalized) {
+			return nil
+		}
+		return errUnsafeBaseURLHost
+	}
+	if lookupIPAddrs == nil {
+		lookupIPAddrs = net.DefaultResolver.LookupIPAddr
+	}
+	addrs, err := lookupIPAddrs(ctx, normalized)
+	if err != nil {
+		return nil
+	}
+	for _, addr := range addrs {
+		if isUnsafeIP(addr.IP) {
+			if allowLoopback && addr.IP != nil && addr.IP.IsLoopback() {
+				continue
+			}
+			return errUnsafeBaseURLHost
+		}
+	}
+	return nil
 }
 
 func normalizedIPHost(host string) string {

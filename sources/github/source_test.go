@@ -3,8 +3,12 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	gogithub "github.com/google/go-github/v66/github"
@@ -461,6 +465,69 @@ func TestCheckDoesNotFollowRedirects(t *testing.T) {
 	}
 }
 
+func TestSourceHTTPClientRejectsHostsResolvingToPrivateIPs(t *testing.T) {
+	called := false
+	client := sourceHTTPClientNoRedirect(&http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return nil, errors.New("unexpected round trip")
+		}),
+	}, false, func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("10.0.0.5")}}, nil
+	})
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://ghe.example.com/api/v3", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	response, err := client.Do(request)
+	if response != nil && response.Body != nil {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Fatalf("response.Body.Close() error = %v", closeErr)
+		}
+	}
+	if err == nil {
+		t.Fatal("Do() error = nil, want non-nil")
+	}
+	if !errors.Is(err, errUnsafeBaseURLHost) {
+		t.Fatalf("Do() error = %v, want %v", err, errUnsafeBaseURLHost)
+	}
+	if called {
+		t.Fatal("Do() reached wrapped transport for unsafe resolved host")
+	}
+}
+
+func TestSourceHTTPClientAllowsHostsResolvingToPublicIPs(t *testing.T) {
+	called := false
+	client := sourceHTTPClientNoRedirect(&http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return &http.Response{
+				StatusCode: http.StatusNoContent,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}, false, func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("140.82.113.5")}}, nil
+	})
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://ghe.example.com/api/v3", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	defer func() {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Fatalf("response.Body.Close() error = %v", closeErr)
+		}
+	}()
+	if !called {
+		t.Fatal("Do() did not reach wrapped transport for public resolved host")
+	}
+}
+
 func TestAcceptsEnterpriseAPIBaseURL(t *testing.T) {
 	for _, tt := range []struct {
 		baseURL string
@@ -484,6 +551,12 @@ func TestAcceptsEnterpriseAPIBaseURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
 }
 
 func newGitHubAPIHandler(t *testing.T) http.Handler {
