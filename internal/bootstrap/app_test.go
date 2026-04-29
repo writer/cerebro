@@ -1146,6 +1146,38 @@ func TestGraphIngestEndpoints(t *testing.T) {
 	if got := runRecord["checkpoint_id"]; got != "graph-okta" {
 		t.Fatalf("graph ingest checkpoint_id = %#v, want graph-okta", got)
 	}
+	overrideReq, err := http.NewRequest(
+		http.MethodPost,
+		server.URL+"/source-runtimes/writer-okta-users/graph-ingest-runs?page_limit=1&reset_checkpoint=true",
+		strings.NewReader(`{"checkpoint_id":"body-checkpoint"}`),
+	)
+	if err != nil {
+		t.Fatalf("new graph ingest override request: %v", err)
+	}
+	overrideResp, err := server.Client().Do(overrideReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/graph-ingest-runs override error = %v", err)
+	}
+	defer func() {
+		if closeErr := overrideResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close graph ingest override response body: %v", closeErr)
+		}
+	}()
+	var overridePayload map[string]any
+	if err := json.NewDecoder(overrideResp.Body).Decode(&overridePayload); err != nil {
+		t.Fatalf("decode graph ingest override response: %v", err)
+	}
+	overrideResult, ok := overridePayload["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("graph ingest override result = %#v, want object", overridePayload["result"])
+	}
+	overrideRun, ok := overrideResult["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("graph ingest override run = %#v, want object", overrideResult["run"])
+	}
+	if got := overrideRun["checkpoint_id"]; got != "body-checkpoint" {
+		t.Fatalf("graph ingest override checkpoint_id = %#v, want body-checkpoint", got)
+	}
 
 	getResp, err := server.Client().Get(server.URL + "/graph/ingest-runs/" + runID)
 	if err != nil {
