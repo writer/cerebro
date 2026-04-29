@@ -653,7 +653,11 @@ export function summarizeGraphLayering(layering: GraphLayering): GraphSummary {
     if (!root?.urn) {
       continue;
     }
-    roots.push(root);
+    roots.push({
+      urn: root.urn,
+      entity_type: root.entity_type || "unknown",
+      label: root.label || root.urn,
+    });
     neighborhoodSizes[root.urn] = {
       neighbors: entry.neighbors?.length ?? 0,
       relations: entry.relations?.length ?? 0,
