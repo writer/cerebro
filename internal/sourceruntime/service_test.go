@@ -188,6 +188,9 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	if len(log.events) != 2 {
 		t.Fatalf("len(appendLog.events) = %d, want 2", len(log.events))
 	}
+	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
+		t.Fatalf("appended event source_runtime_id = %q, want %q", got, "writer-github")
+	}
 	runtime := store.runtimes["writer-github"]
 	if runtime.GetCheckpoint().GetCursorOpaque() != "2" {
 		t.Fatalf("stored checkpoint cursor = %q, want %q", runtime.GetCheckpoint().GetCursorOpaque(), "2")
@@ -291,6 +294,9 @@ func TestSyncRuntimeProjectsWithRuntimeTenant(t *testing.T) {
 	}
 	if got := projector.events[0].GetTenantId(); got != "writer" {
 		t.Fatalf("projected event tenant_id = %q, want %q", got, "writer")
+	}
+	if got := projector.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-okta-users" {
+		t.Fatalf("projected event source_runtime_id = %q, want %q", got, "writer-okta-users")
 	}
 }
 
