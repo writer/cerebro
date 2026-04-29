@@ -227,6 +227,51 @@ func TestWriteClaimsRequiresAvailableDependencies(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsPreservesMissingTimestamps(t *testing.T) {
+	store := &stubClaimStore{}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {
+					Id:       "writer-jira",
+					SourceId: "sdk",
+					TenantId: "writer",
+				},
+			},
+		},
+		store,
+		nil,
+		nil,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+				Predicate:  "exists",
+				ClaimType:  claimTypeExistence,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	for _, claim := range store.claims {
+		if !claim.ObservedAt.IsZero() {
+			t.Fatalf("stored claim observed_at = %v, want zero", claim.ObservedAt)
+		}
+		if !claim.ValidFrom.IsZero() {
+			t.Fatalf("stored claim valid_from = %v, want zero", claim.ValidFrom)
+		}
+		if !claim.ValidTo.IsZero() {
+			t.Fatalf("stored claim valid_to = %v, want zero", claim.ValidTo)
+		}
+		return
+	}
+	t.Fatal("stored claims = empty, want one claim")
+}
+
 func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	store := &stubClaimStore{
 		claims: map[string]*ports.ClaimRecord{

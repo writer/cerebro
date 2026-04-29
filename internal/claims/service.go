@@ -458,7 +458,7 @@ func cloneEntityRef(ref *cerebrov1.EntityRef) *cerebrov1.EntityRef {
 	return proto.Clone(ref).(*cerebrov1.EntityRef)
 }
 
-func claimTime(value interface{ AsTime() time.Time }) time.Time {
+func claimTime(value *timestamppb.Timestamp) time.Time {
 	if value == nil {
 		return time.Time{}
 	}
