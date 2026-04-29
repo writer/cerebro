@@ -141,6 +141,14 @@ func TestProjectorBuildsTraversableLocalGraph(t *testing.T) {
 	if !containsPathPattern(patterns, "github.user", "authored", "github.pull_request", "belongs_to", "github.repo", 1) {
 		t.Fatalf("PathPatterns() missing authored pattern: %#v", patterns)
 	}
+
+	topology, err := store.Topology(context.Background())
+	if err != nil {
+		t.Fatalf("Topology() error = %v", err)
+	}
+	if topology.Isolated != 0 || topology.SourcesOnly != 1 || topology.SinksOnly != 2 || topology.Intermediates != 2 {
+		t.Fatalf("Topology() = %#v, want isolated=0 sources=1 sinks=2 intermediates=2", topology)
+	}
 }
 
 func TestProjectorKeepsLocalGraphIdentityLinksTenantScoped(t *testing.T) {
