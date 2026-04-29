@@ -134,12 +134,12 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 
 func (s *Store) mergedEntityAttributes(ctx context.Context, urn string, attributes map[string]string) (map[string]string, error) {
 	merged := make(map[string]string, len(attributes))
-	var raw string
+	var raw sql.NullString
 	err := s.db.QueryRowContext(ctx, fmt.Sprintf("MATCH (e:entity {urn: %s}) RETURN e.attributes_json", cypherString(urn))).Scan(&raw)
 	switch {
 	case err == nil:
-		if strings.TrimSpace(raw) != "" {
-			if err := json.Unmarshal([]byte(raw), &merged); err != nil {
+		if strings.TrimSpace(raw.String) != "" {
+			if err := json.Unmarshal([]byte(raw.String), &merged); err != nil {
 				return nil, fmt.Errorf("decode existing projected entity attributes %q: %w", urn, err)
 			}
 		}

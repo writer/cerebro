@@ -160,6 +160,17 @@ func TestUpsertProjectedLinkMergesMissingEndpoints(t *testing.T) {
 			t.Fatalf("endpoint %q count = %d, want 1", urn, nodeCount)
 		}
 	}
+	entity := &ports.ProjectedEntity{
+		URN:        link.FromURN,
+		TenantID:   "writer",
+		SourceID:   "github",
+		EntityType: "github.user",
+		Label:      "Alice",
+		Attributes: map[string]string{"login": "alice"},
+	}
+	if err := store.UpsertProjectedEntity(ctx, entity); err != nil {
+		t.Fatalf("UpsertProjectedEntity(endpoint after link) error = %v", err)
+	}
 }
 
 func TestUpsertProjectedEntityRejectsNilEntity(t *testing.T) {
