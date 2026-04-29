@@ -40,15 +40,27 @@ jobs:
           !contains(github.event.issue.body, '@droid add regression tests') &&
           !contains(github.event.issue.body, '@droid scaffold source') &&
           !contains(github.event.issue.title, '@droid implement') &&
-          !contains(github.event.issue.title, '@droid create')) ||
-        (github.event_name == 'pull_request' && (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')) &&
+          !contains(github.event.issue.title, '@droid create') &&
+          !contains(github.event.issue.title, '@droid fix review feedback') &&
+          !contains(github.event.issue.title, '@droid add regression tests') &&
+          !contains(github.event.issue.title, '@droid scaffold source')) ||
+        (github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')) &&
+          !contains(github.event.pull_request.body, '@droid implement') &&
+          !contains(github.event.pull_request.body, '@droid create') &&
           !contains(github.event.pull_request.body, '@droid fix this PR') &&
           !contains(github.event.pull_request.body, '@droid fix this pr') &&
           !contains(github.event.pull_request.body, '@droid fix review feedback') &&
           !contains(github.event.pull_request.body, '@droid add regression tests') &&
           !contains(github.event.pull_request.body, '@droid scaffold source') &&
+          !contains(github.event.pull_request.title, '@droid implement') &&
+          !contains(github.event.pull_request.title, '@droid create') &&
           !contains(github.event.pull_request.title, '@droid fix this PR') &&
-          !contains(github.event.pull_request.title, '@droid fix this pr'))
+          !contains(github.event.pull_request.title, '@droid fix this pr') &&
+          !contains(github.event.pull_request.title, '@droid fix review feedback') &&
+          !contains(github.event.pull_request.title, '@droid add regression tests') &&
+          !contains(github.event.pull_request.title, '@droid scaffold source'))
       )
     runs-on: ubuntu-latest
     permissions:
