@@ -176,7 +176,7 @@ Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-
 | `okta` | Okta audit, identity inventory, app, group, assignment, and admin role source | `okta.audit`, `okta.admin_role`, `okta.app_assignment`, `okta.application`, `okta.group`, `okta.group_membership`, `okta.user` |
 | `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; preview reads are empty |
 
-Source-specific configuration is passed as `key=value` pairs in CLI calls or query/header parameters in HTTP calls. Required keys vary by source and family.
+Source-specific configuration is passed as `key=value` pairs in CLI calls or query parameters in HTTP calls. Required keys vary by source and family.
 
 ---
 
