@@ -5,11 +5,47 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
+
+type rewriteTransport struct {
+	target *url.URL
+	base   http.RoundTripper
+}
+
+func (t rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	cloned := req.Clone(req.Context())
+	cloned.URL.Scheme = t.target.Scheme
+	cloned.URL.Host = t.target.Host
+	cloned.Host = t.target.Host
+	return t.base.RoundTrip(cloned)
+}
+
+func newTestSource(t *testing.T, handler http.Handler) (*Source, func()) {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		server.Close()
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	source, err := New()
+	if err != nil {
+		server.Close()
+		t.Fatalf("New() error = %v", err)
+	}
+	source.client = &http.Client{
+		Transport: rewriteTransport{
+			target: target,
+			base:   http.DefaultTransport,
+		},
+	}
+	return source, server.Close
+}
 
 func TestNewLoadsCatalog(t *testing.T) {
 	source, err := New()
@@ -57,6 +93,25 @@ func TestUserRejectsSince(t *testing.T) {
 	}), nil)
 	if err == nil {
 		t.Fatal("Read(user) error = nil, want non-nil")
+	}
+}
+
+func TestParseSettingsRejectsUnsafeBaseURL(t *testing.T) {
+	for name, baseURL := range map[string]string{
+		"http":       "http://writer.okta.com",
+		"other-host": "https://attacker.example.com",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+				"base_url": baseURL,
+				"domain":   "writer.okta.com",
+				"family":   "audit",
+				"token":    "test-token",
+			}))
+			if err == nil {
+				t.Fatalf("parseSettings() error = nil, want non-nil")
+			}
+		})
 	}
 }
 
@@ -121,15 +176,9 @@ func TestNewFixtureReplaysFixturePages(t *testing.T) {
 }
 
 func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
-	server := httptest.NewServer(newOktaAPIHandler(t))
-	defer server.Close()
-
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	source, cleanup := newTestSource(t, newOktaAPIHandler(t))
+	defer cleanup()
 	cfg := sourcecdk.NewConfig(map[string]string{
-		"base_url": server.URL,
 		"domain":   "writer.okta.com",
 		"family":   "audit",
 		"per_page": "1",
@@ -190,15 +239,9 @@ func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 }
 
 func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
-	server := httptest.NewServer(newOktaAPIHandler(t))
-	defer server.Close()
-
-	source, err := New()
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	source, cleanup := newTestSource(t, newOktaAPIHandler(t))
+	defer cleanup()
 	discoverCfg := sourcecdk.NewConfig(map[string]string{
-		"base_url": server.URL,
 		"domain":   "writer.okta.com",
 		"family":   "user",
 		"per_page": "2",
@@ -220,7 +263,6 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	}
 
 	readCfg := sourcecdk.NewConfig(map[string]string{
-		"base_url": server.URL,
 		"domain":   "writer.okta.com",
 		"family":   "user",
 		"per_page": "1",

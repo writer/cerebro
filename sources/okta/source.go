@@ -368,7 +368,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if settings.baseURL == "" {
 		settings.baseURL = "https://" + settings.domain
 	} else {
-		settings.baseURL, err = normalizeBaseURL(settings.baseURL)
+		settings.baseURL, err = normalizeBaseURL(settings.baseURL, settings.domain)
 		if err != nil {
 			return settings, err
 		}
@@ -426,13 +426,19 @@ func normalizeDomain(raw string) (string, error) {
 	return strings.ToLower(host), nil
 }
 
-func normalizeBaseURL(raw string) (string, error) {
+func normalizeBaseURL(raw string, domain string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return "", fmt.Errorf("parse okta base_url: %w", err)
 	}
-	if strings.TrimSpace(parsed.Scheme) == "" || strings.TrimSpace(parsed.Host) == "" {
-		return "", fmt.Errorf("okta base_url must include scheme and host")
+	if strings.ToLower(strings.TrimSpace(parsed.Scheme)) != "https" || strings.TrimSpace(parsed.Host) == "" {
+		return "", fmt.Errorf("okta base_url must use https and include a host")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("okta base_url must not include userinfo, query, or fragment")
+	}
+	if !strings.EqualFold(parsed.Hostname(), domain) || (parsed.Port() != "" && parsed.Port() != "443") {
+		return "", fmt.Errorf("okta base_url host must match okta domain")
 	}
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
