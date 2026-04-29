@@ -281,10 +281,7 @@ func auditScope(entry *gogithub.AuditEntry, raw map[string]any) string {
 	if strings.TrimSpace(rawString(raw, "repo")) != "" {
 		return "repository"
 	}
-	if strings.TrimSpace(entry.GetOrg()) != "" {
-		return "organization"
-	}
-	return "unknown"
+	return "organization"
 }
 
 func rawString(raw map[string]any, key string) string {
