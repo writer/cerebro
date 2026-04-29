@@ -122,12 +122,16 @@ type pinger interface {
 	Ping(context.Context) error
 }
 
+const healthPingTimeout = 500 * time.Millisecond
+
 func componentStatus(ctx context.Context, name string, dependency pinger) *cerebrov1.ComponentStatus {
 	status := &cerebrov1.ComponentStatus{Name: name, Status: "unconfigured"}
 	if dependency == nil {
 		return status
 	}
-	if err := dependency.Ping(ctx); err != nil {
+	pingCtx, cancel := context.WithTimeout(ctx, healthPingTimeout)
+	defer cancel()
+	if err := dependency.Ping(pingCtx); err != nil {
 		status.Status = "error"
 		status.Detail = "unhealthy"
 		return status

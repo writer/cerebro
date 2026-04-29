@@ -30,6 +30,13 @@ type stubStore struct {
 
 func (s stubStore) Ping(context.Context) error { return s.err }
 
+type blockingStore struct{}
+
+func (blockingStore) Ping(ctx context.Context) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
 func TestBootstrapEndpoints(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{})
 	server := httptest.NewServer(app.Handler())
@@ -70,6 +77,20 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}
 	if healthResp.Msg.Status != "ready" {
 		t.Fatalf("CheckHealth status = %q, want %q", healthResp.Msg.Status, "ready")
+	}
+}
+
+func TestComponentStatusTimesOutDependencyPing(t *testing.T) {
+	started := time.Now()
+	status := componentStatus(context.Background(), "state_store", blockingStore{})
+	if elapsed := time.Since(started); elapsed > healthPingTimeout+(250*time.Millisecond) {
+		t.Fatalf("componentStatus() elapsed = %v, want bounded timeout", elapsed)
+	}
+	if status.Status != "error" {
+		t.Fatalf("status = %q, want error", status.Status)
+	}
+	if status.Detail != "unhealthy" {
+		t.Fatalf("detail = %q, want unhealthy", status.Detail)
 	}
 }
 
