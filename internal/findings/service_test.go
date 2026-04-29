@@ -3,6 +3,8 @@ package findings
 import (
 	"context"
 	"errors"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +49,7 @@ func (s *stubReplayer) Replay(_ context.Context, request ports.ReplayRequest) ([
 
 type stubFindingStore struct {
 	findings map[string]*ports.FindingRecord
+	request  ports.ListFindingsRequest
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -64,12 +67,30 @@ func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.Findi
 }
 
 func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	s.request = request
 	findings := []*ports.FindingRecord{}
 	for _, finding := range s.findings {
-		if finding == nil || finding.RuntimeID != request.RuntimeID {
+		if !findingMatches(request, finding) {
 			continue
 		}
 		findings = append(findings, cloneFinding(finding))
+	}
+	sort.Slice(findings, func(i, j int) bool {
+		left := findings[i]
+		right := findings[j]
+		switch {
+		case left.LastObservedAt.Equal(right.LastObservedAt):
+			return left.ID < right.ID
+		case left.LastObservedAt.IsZero():
+			return false
+		case right.LastObservedAt.IsZero():
+			return true
+		default:
+			return left.LastObservedAt.After(right.LastObservedAt)
+		}
+	})
+	if request.Limit != 0 && len(findings) > int(request.Limit) {
+		findings = findings[:int(request.Limit)]
 	}
 	return findings, nil
 }
@@ -157,6 +178,208 @@ func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsSelectsRequestedRule(t *testing.T) {
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {
+					Id:       "writer-okta-audit",
+					SourceId: "okta",
+					TenantId: "writer",
+				},
+			},
+		},
+		replayer,
+		&stubFindingStore{},
+	)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID:  "writer-okta-audit",
+		RuleID:     oktaPolicyRuleLifecycleTamperingRuleID,
+		EventLimit: 10,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := result.Rule.GetId(); got != oktaPolicyRuleLifecycleTamperingRuleID {
+		t.Fatalf("EvaluateSourceRuntime().Rule.ID = %q, want %q", got, oktaPolicyRuleLifecycleTamperingRuleID)
+	}
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(EvaluateSourceRuntime().Findings) = %d, want 1", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeFindingsRejectsUnknownRule(t *testing.T) {
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {
+					Id:       "writer-okta-audit",
+					SourceId: "okta",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubReplayer{},
+		&stubFindingStore{},
+	)
+	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+		RuleID:    "rule-does-not-exist",
+	}); !errors.Is(err, ErrRuleNotFound) {
+		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuleNotFound)
+	}
+}
+
+func TestEvaluateSourceRuntimeFindingsRequiresRuleIDWhenMultipleRulesSupportRuntime(t *testing.T) {
+	registry, err := NewRegistry(
+		&stubRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		&stubRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {
+					Id:       "writer-okta-audit",
+					SourceId: "okta",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubReplayer{},
+		&stubFindingStore{},
+		registry,
+	)
+	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+	}); !errors.Is(err, ErrRuleSelectionRequired) {
+		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuleSelectionRequired)
+	}
+}
+
+func TestEvaluateSourceRuntimeFindingsRejectsUnsupportedRule(t *testing.T) {
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-github-audit": {
+					Id:       "writer-github-audit",
+					SourceId: "github",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubReplayer{},
+		&stubFindingStore{},
+	)
+	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-github-audit",
+		RuleID:    oktaPolicyRuleLifecycleTamperingRuleID,
+	}); !errors.Is(err, ErrRuleUnsupported) {
+		t.Fatalf("EvaluateSourceRuntime() error = %v, want %v", err, ErrRuleUnsupported)
+	}
+}
+
+func TestListFindingsReturnsFilteredPersistedFindings(t *testing.T) {
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			"finding-1": {
+				ID:             "finding-1",
+				RuntimeID:      "writer-okta-audit",
+				RuleID:         oktaPolicyRuleLifecycleTamperingRuleID,
+				Severity:       "HIGH",
+				Status:         "open",
+				ResourceURNs:   []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				EventIDs:       []string{"okta-audit-2"},
+				LastObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+			"finding-2": {
+				ID:             "finding-2",
+				RuntimeID:      "writer-okta-audit",
+				RuleID:         oktaPolicyRuleLifecycleTamperingRuleID,
+				Severity:       "MEDIUM",
+				Status:         "resolved",
+				ResourceURNs:   []string{"urn:cerebro:writer:okta_resource:policyrule:pol-2"},
+				EventIDs:       []string{"okta-audit-3"},
+				LastObservedAt: time.Date(2026, 4, 23, 11, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {
+					Id:       "writer-okta-audit",
+					SourceId: "okta",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubReplayer{},
+		store,
+	)
+
+	result, err := service.ListFindings(context.Background(), ListRequest{
+		RuntimeID:   "writer-okta-audit",
+		RuleID:      oktaPolicyRuleLifecycleTamperingRuleID,
+		Severity:    "HIGH",
+		Status:      "open",
+		ResourceURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		EventID:     "okta-audit-2",
+		Limit:       1,
+	})
+	if err != nil {
+		t.Fatalf("ListFindings() error = %v", err)
+	}
+	if got := len(result.Findings); got != 1 {
+		t.Fatalf("len(ListFindings().Findings) = %d, want 1", got)
+	}
+	if got := result.Findings[0].ID; got != "finding-1" {
+		t.Fatalf("ListFindings().Findings[0].ID = %q, want finding-1", got)
+	}
+	if got := store.request.RuntimeID; got != "writer-okta-audit" {
+		t.Fatalf("ListFindings().RuntimeID = %q, want writer-okta-audit", got)
+	}
+	if got := store.request.RuleID; got != oktaPolicyRuleLifecycleTamperingRuleID {
+		t.Fatalf("ListFindings().RuleID = %q, want %q", got, oktaPolicyRuleLifecycleTamperingRuleID)
+	}
+	if got := store.request.Severity; got != "HIGH" {
+		t.Fatalf("ListFindings().Severity = %q, want HIGH", got)
+	}
+	if got := store.request.Status; got != "open" {
+		t.Fatalf("ListFindings().Status = %q, want open", got)
+	}
+	if got := store.request.ResourceURN; got != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+		t.Fatalf("ListFindings().ResourceURN = %q, want policy rule urn", got)
+	}
+	if got := store.request.EventID; got != "okta-audit-2" {
+		t.Fatalf("ListFindings().EventID = %q, want okta-audit-2", got)
+	}
+	if got := store.request.Limit; got != 1 {
+		t.Fatalf("ListFindings().Limit = %d, want 1", got)
+	}
+}
+
+func TestListFindingsRequiresAvailableDependencies(t *testing.T) {
+	service := New(nil, nil, nil)
+	if _, err := service.ListFindings(context.Background(), ListRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("ListFindings() error = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+}
+
 func newAuditEvent(id string, eventType string, outcome string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         id,
@@ -208,4 +431,42 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
 	}
+}
+
+func findingMatches(request ports.ListFindingsRequest, finding *ports.FindingRecord) bool {
+	if finding == nil {
+		return false
+	}
+	if strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+		return false
+	}
+	if request.FindingID != "" && strings.TrimSpace(finding.ID) != strings.TrimSpace(request.FindingID) {
+		return false
+	}
+	if request.RuleID != "" && strings.TrimSpace(finding.RuleID) != strings.TrimSpace(request.RuleID) {
+		return false
+	}
+	if request.Severity != "" && strings.TrimSpace(finding.Severity) != strings.TrimSpace(request.Severity) {
+		return false
+	}
+	if request.Status != "" && strings.TrimSpace(finding.Status) != strings.TrimSpace(request.Status) {
+		return false
+	}
+	if request.ResourceURN != "" && !containsTrimmed(finding.ResourceURNs, request.ResourceURN) {
+		return false
+	}
+	if request.EventID != "" && !containsTrimmed(finding.EventIDs, request.EventID) {
+		return false
+	}
+	return true
+}
+
+func containsTrimmed(values []string, expected string) bool {
+	trimmedExpected := strings.TrimSpace(expected)
+	for _, value := range values {
+		if strings.TrimSpace(value) == trimmedExpected {
+			return true
+		}
+	}
+	return false
 }

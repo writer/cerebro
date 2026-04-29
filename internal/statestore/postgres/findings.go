@@ -31,6 +31,10 @@ var ensureFindingStatements = []string{
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_rule_idx ON findings (runtime_id, rule_id)`,
+	`CREATE INDEX IF NOT EXISTS findings_runtime_status_idx ON findings (runtime_id, status)`,
+	`CREATE INDEX IF NOT EXISTS findings_runtime_severity_idx ON findings (runtime_id, severity)`,
+	`CREATE INDEX IF NOT EXISTS findings_resource_urns_gin_idx ON findings USING GIN (resource_urns_json)`,
+	`CREATE INDEX IF NOT EXISTS findings_event_ids_gin_idx ON findings USING GIN (event_ids_json)`,
 }
 
 // UpsertFinding persists one normalized finding in the current-state store.
@@ -163,25 +167,19 @@ RETURNING
 
 // ListFindings loads persisted findings for one runtime.
 func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequest) (_ []*ports.FindingRecord, err error) {
-	runtimeID := strings.TrimSpace(request.RuntimeID)
-	if runtimeID == "" {
-		return nil, errors.New("finding runtime id is required")
-	}
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
 	}
 	if err := s.ensureFindingTables(ctx); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `
-SELECT
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, attributes_json::text, first_observed_at, last_observed_at
-FROM findings
-WHERE runtime_id = $1
-ORDER BY last_observed_at DESC, id`, runtimeID)
+	query, args, err := findingListQuery(request)
 	if err != nil {
-		return nil, fmt.Errorf("query findings for runtime %q: %w", runtimeID, err)
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query findings for runtime %q: %w", strings.TrimSpace(request.RuntimeID), err)
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && err == nil {
@@ -222,6 +220,37 @@ ORDER BY last_observed_at DESC, id`, runtimeID)
 	return findings, nil
 }
 
+func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) {
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return "", nil, errors.New("finding runtime id is required")
+	}
+	clauses := []string{"runtime_id = $1"}
+	args := []any{runtimeID}
+	addFindingFilter(&clauses, &args, "id", request.FindingID)
+	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
+	addFindingFilter(&clauses, &args, "severity", request.Severity)
+	addFindingFilter(&clauses, &args, "status", request.Status)
+	if err := addFindingArrayContainsFilter(&clauses, &args, "resource_urns_json", request.ResourceURN); err != nil {
+		return "", nil, err
+	}
+	if err := addFindingArrayContainsFilter(&clauses, &args, "event_ids_json", request.EventID); err != nil {
+		return "", nil, err
+	}
+	query := `
+SELECT
+  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  resource_urns_json::text, event_ids_json::text, attributes_json::text, first_observed_at, last_observed_at
+FROM findings
+WHERE ` + strings.Join(clauses, " AND ") + `
+ORDER BY last_observed_at DESC, id`
+	if request.Limit != 0 {
+		args = append(args, int64(request.Limit))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	return query, args, nil
+}
+
 func (s *Store) ensureFindingTables(ctx context.Context) error {
 	for _, statement := range ensureFindingStatements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
@@ -257,6 +286,29 @@ func findingAttributesJSON(attributes map[string]string) (string, error) {
 		return "", err
 	}
 	return string(payload), nil
+}
+
+func addFindingFilter(clauses *[]string, args *[]any, column string, value string) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return
+	}
+	*args = append(*args, trimmed)
+	*clauses = append(*clauses, fmt.Sprintf("%s = $%d", column, len(*args)))
+}
+
+func addFindingArrayContainsFilter(clauses *[]string, args *[]any, column string, value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	payload, err := findingStringsJSON([]string{trimmed})
+	if err != nil {
+		return fmt.Errorf("marshal %s filter: %w", column, err)
+	}
+	*args = append(*args, payload)
+	*clauses = append(*clauses, fmt.Sprintf("%s @> $%d::jsonb", column, len(*args)))
+	return nil
 }
 
 type findingRow struct {

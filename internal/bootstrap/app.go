@@ -72,6 +72,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/claims", app.handleListClaims)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/claims", app.handleWriteClaims)
+	mux.HandleFunc("GET /source-runtimes/{runtimeID}/findings", app.handleListFindings)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -327,6 +328,7 @@ func (a *App) handleWriteClaims(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.EvaluateSourceRuntimeFindingsRequest{}
+	request.RuleId = r.URL.Query().Get("rule_id")
 	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
 		body := []byte(`{"event_limit":` + eventLimit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
@@ -335,8 +337,10 @@ func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http
 		}
 	}
 	request.Id = r.PathValue("runtimeID")
+	request.RuleId = r.URL.Query().Get("rule_id")
 	response, err := a.findingService().EvaluateSourceRuntime(r.Context(), findings.EvaluateRequest{
 		RuntimeID:  request.GetId(),
+		RuleID:     request.GetRuleId(),
 		EventLimit: request.GetEventLimit(),
 	})
 	if err != nil {
@@ -344,6 +348,47 @@ func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, findingResponse(response))
+}
+
+func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.ListFindingsRequest{
+		RuntimeId:   r.PathValue("runtimeID"),
+		FindingId:   r.URL.Query().Get("finding_id"),
+		RuleId:      r.URL.Query().Get("rule_id"),
+		Severity:    r.URL.Query().Get("severity"),
+		Status:      r.URL.Query().Get("status"),
+		ResourceUrn: r.URL.Query().Get("resource_urn"),
+		EventId:     r.URL.Query().Get("event_id"),
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		body := []byte(`{"limit":` + limit + `}`)
+		if err := protojson.Unmarshal(body, request); err != nil {
+			writeFindingError(w, err)
+			return
+		}
+		request.RuntimeId = r.PathValue("runtimeID")
+		request.FindingId = r.URL.Query().Get("finding_id")
+		request.RuleId = r.URL.Query().Get("rule_id")
+		request.Severity = r.URL.Query().Get("severity")
+		request.Status = r.URL.Query().Get("status")
+		request.ResourceUrn = r.URL.Query().Get("resource_urn")
+		request.EventId = r.URL.Query().Get("event_id")
+	}
+	response, err := a.findingService().ListFindings(r.Context(), findings.ListRequest{
+		RuntimeID:   request.GetRuntimeId(),
+		FindingID:   request.GetFindingId(),
+		RuleID:      request.GetRuleId(),
+		Severity:    request.GetSeverity(),
+		Status:      request.GetStatus(),
+		ResourceURN: request.GetResourceUrn(),
+		EventID:     request.GetEventId(),
+		Limit:       request.GetLimit(),
+	})
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, listFindingsResponse(response))
 }
 
 func (s *bootstrapService) GetVersion(_ context.Context, _ *connect.Request[cerebrov1.GetVersionRequest]) (*connect.Response[cerebrov1.GetVersionResponse], error) {
@@ -507,6 +552,27 @@ func (s *bootstrapService) ListClaims(ctx context.Context, req *connect.Request[
 	}), nil
 }
 
+func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Request[cerebrov1.ListFindingsRequest]) (*connect.Response[cerebrov1.ListFindingsResponse], error) {
+	response, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+	).ListFindings(ctx, findings.ListRequest{
+		RuntimeID:   req.Msg.GetRuntimeId(),
+		FindingID:   req.Msg.GetFindingId(),
+		RuleID:      req.Msg.GetRuleId(),
+		Severity:    req.Msg.GetSeverity(),
+		Status:      req.Msg.GetStatus(),
+		ResourceURN: req.Msg.GetResourceUrn(),
+		EventID:     req.Msg.GetEventId(),
+		Limit:       req.Msg.GetLimit(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(listFindingsResponse(response)), nil
+}
+
 func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingsResponse], error) {
 	response, err := findings.New(
 		sourceRuntimeStore(s.deps.StateStore),
@@ -514,6 +580,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 		findingStore(s.deps.StateStore),
 	).EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
 		RuntimeID:  req.Msg.GetId(),
+		RuleID:     req.Msg.GetRuleId(),
 		EventLimit: req.Msg.GetEventLimit(),
 	})
 	if err != nil {
@@ -665,6 +732,8 @@ func writeFindingError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		statusCode = http.StatusNotFound
+	case errors.Is(err, findings.ErrRuleNotFound):
+		statusCode = http.StatusNotFound
 	case errors.Is(err, findings.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	}
@@ -775,12 +844,26 @@ func findingResponse(result *findings.EvaluateResult) *cerebrov1.EvaluateSourceR
 		Rule:             result.Rule,
 		EventsEvaluated:  result.EventsEvaluated,
 		FindingsUpserted: uint32(len(result.Findings)),
-		Findings:         make([]*cerebrov1.Finding, 0, len(result.Findings)),
-	}
-	for _, finding := range result.Findings {
-		response.Findings = append(response.Findings, findingMessage(finding))
+		Findings:         findingMessages(result.Findings),
 	}
 	return response
+}
+
+func listFindingsResponse(result *findings.ListResult) *cerebrov1.ListFindingsResponse {
+	if result == nil {
+		return &cerebrov1.ListFindingsResponse{}
+	}
+	return &cerebrov1.ListFindingsResponse{
+		Findings: findingMessages(result.Findings),
+	}
+}
+
+func findingMessages(findings []*ports.FindingRecord) []*cerebrov1.Finding {
+	messages := make([]*cerebrov1.Finding, 0, len(findings))
+	for _, finding := range findings {
+		messages = append(messages, findingMessage(finding))
+	}
+	return messages
 }
 
 func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
