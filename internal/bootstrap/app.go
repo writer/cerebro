@@ -8,6 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -15,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
 // Dependencies are the future store/log boundaries that will be wired into the rewrite.
@@ -26,26 +28,29 @@ type Dependencies struct {
 
 // App is the minimal Connect/bootstrap composition root for the rewrite skeleton.
 type App struct {
-	cfg    config.Config
-	deps   Dependencies
-	mux    *http.ServeMux
-	server *http.Server
+	cfg     config.Config
+	deps    Dependencies
+	sources *sourcecdk.Registry
+	mux     *http.ServeMux
+	server  *http.Server
 }
 
 type bootstrapService struct {
-	deps Dependencies
+	deps    Dependencies
+	sources *sourcecdk.Registry
 }
 
 // New constructs the minimal bootstrap app and registers the Connect handlers.
-func New(cfg config.Config, deps Dependencies) *App {
+func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
 	mux := http.NewServeMux()
-	service := &bootstrapService{deps: deps}
+	service := &bootstrapService{deps: deps, sources: sources}
 	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service)
 	mux.Handle(path, handler)
 
-	app := &App{cfg: cfg, deps: deps, mux: mux}
+	app := &App{cfg: cfg, deps: deps, sources: sources, mux: mux}
 	mux.HandleFunc("/health", app.handleHealth)
 	mux.HandleFunc("/healthz", app.handleHealth)
+	mux.HandleFunc("/sources", app.handleSources)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
@@ -74,14 +79,15 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
 	response := healthResponse(r.Context(), a.deps)
-	payload, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(response)
-	if err != nil {
-		http.Error(w, "failed to encode health", http.StatusInternalServerError)
-		return
+	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleSources(w http.ResponseWriter, r *http.Request) {
+	response := &cerebrov1.ListSourcesResponse{}
+	if a.sources != nil {
+		response.Sources = a.sources.List()
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(payload)
+	writeProtoJSON(w, http.StatusOK, response)
 }
 
 func (s *bootstrapService) GetVersion(_ context.Context, _ *connect.Request[cerebrov1.GetVersionRequest]) (*connect.Response[cerebrov1.GetVersionResponse], error) {
@@ -96,6 +102,14 @@ func (s *bootstrapService) GetVersion(_ context.Context, _ *connect.Request[cere
 
 func (s *bootstrapService) CheckHealth(ctx context.Context, _ *connect.Request[cerebrov1.CheckHealthRequest]) (*connect.Response[cerebrov1.CheckHealthResponse], error) {
 	return connect.NewResponse(healthResponse(ctx, s.deps)), nil
+}
+
+func (s *bootstrapService) ListSources(_ context.Context, _ *connect.Request[cerebrov1.ListSourcesRequest]) (*connect.Response[cerebrov1.ListSourcesResponse], error) {
+	response := &cerebrov1.ListSourcesResponse{}
+	if s.sources != nil {
+		response.Sources = s.sources.List()
+	}
+	return connect.NewResponse(response), nil
 }
 
 func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHealthResponse {
@@ -116,6 +130,17 @@ func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHeal
 		CheckedAt:  timestamppb.Now(),
 		Components: components,
 	}
+}
+
+func writeProtoJSON(w http.ResponseWriter, statusCode int, message proto.Message) {
+	payload, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(message)
+	if err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(payload)
 }
 
 type pinger interface {

@@ -39,12 +39,16 @@ const (
 	// BootstrapServiceCheckHealthProcedure is the fully-qualified name of the BootstrapService's
 	// CheckHealth RPC.
 	BootstrapServiceCheckHealthProcedure = "/cerebro.v1.BootstrapService/CheckHealth"
+	// BootstrapServiceListSourcesProcedure is the fully-qualified name of the BootstrapService's
+	// ListSources RPC.
+	BootstrapServiceListSourcesProcedure = "/cerebro.v1.BootstrapService/ListSources"
 )
 
 // BootstrapServiceClient is a client for the cerebro.v1.BootstrapService service.
 type BootstrapServiceClient interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
 	CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error)
+	ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error)
 }
 
 // NewBootstrapServiceClient constructs a client for the cerebro.v1.BootstrapService service. By
@@ -70,6 +74,12 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("CheckHealth")),
 			connect.WithClientOptions(opts...),
 		),
+		listSources: connect.NewClient[v1.ListSourcesRequest, v1.ListSourcesResponse](
+			httpClient,
+			baseURL+BootstrapServiceListSourcesProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListSources")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -77,6 +87,7 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 type bootstrapServiceClient struct {
 	getVersion  *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
 	checkHealth *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
+	listSources *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
 }
 
 // GetVersion calls cerebro.v1.BootstrapService.GetVersion.
@@ -89,10 +100,16 @@ func (c *bootstrapServiceClient) CheckHealth(ctx context.Context, req *connect.R
 	return c.checkHealth.CallUnary(ctx, req)
 }
 
+// ListSources calls cerebro.v1.BootstrapService.ListSources.
+func (c *bootstrapServiceClient) ListSources(ctx context.Context, req *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error) {
+	return c.listSources.CallUnary(ctx, req)
+}
+
 // BootstrapServiceHandler is an implementation of the cerebro.v1.BootstrapService service.
 type BootstrapServiceHandler interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
 	CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error)
+	ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error)
 }
 
 // NewBootstrapServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -114,12 +131,20 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("CheckHealth")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceListSourcesHandler := connect.NewUnaryHandler(
+		BootstrapServiceListSourcesProcedure,
+		svc.ListSources,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListSources")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/cerebro.v1.BootstrapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BootstrapServiceGetVersionProcedure:
 			bootstrapServiceGetVersionHandler.ServeHTTP(w, r)
 		case BootstrapServiceCheckHealthProcedure:
 			bootstrapServiceCheckHealthHandler.ServeHTTP(w, r)
+		case BootstrapServiceListSourcesProcedure:
+			bootstrapServiceListSourcesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -135,4 +160,8 @@ func (UnimplementedBootstrapServiceHandler) GetVersion(context.Context, *connect
 
 func (UnimplementedBootstrapServiceHandler) CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.CheckHealth is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListSources is not implemented"))
 }
