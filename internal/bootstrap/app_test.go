@@ -2318,11 +2318,11 @@ func TestWriteClaimsReplaceExistingReportsRetractedClaims(t *testing.T) {
 	if got := resp.Msg.GetClaimsWritten(); got != 1 {
 		t.Fatalf("replace claims_written = %d, want 1", got)
 	}
-	if got := resp.Msg.GetClaimsRetracted(); got != 1 {
-		t.Fatalf("replace claims_retracted = %d, want 1", got)
+	if got := resp.Msg.GetClaimsRetracted(); got != 2 {
+		t.Fatalf("replace claims_retracted = %d, want 2", got)
 	}
-	if len(runtimeStore.claims) != 2 {
-		t.Fatalf("len(runtimeStore.claims) = %d, want 2", len(runtimeStore.claims))
+	if len(runtimeStore.claims) != 3 {
+		t.Fatalf("len(runtimeStore.claims) = %d, want 3", len(runtimeStore.claims))
 	}
 	var retracted *ports.ClaimRecord
 	for _, claim := range runtimeStore.claims {

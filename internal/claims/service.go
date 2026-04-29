@@ -105,6 +105,10 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 		normalizedClaims = append(normalizedClaims, claim)
 	}
 	for _, claim := range normalizedClaims {
+		if _, err := s.store.UpsertClaim(ctx, claimRecord(runtime, claim)); err != nil {
+			return nil, fmt.Errorf("persist claim %q: %w", claim.GetId(), err)
+		}
+		result.ClaimsWritten++
 		if entity := projectedEntity(runtime, claim.GetSubjectRef(), claim.GetSubjectUrn()); entity != nil {
 			wrote, err := s.upsertEntity(ctx, entity, upsertedEntities)
 			if err != nil {
@@ -132,10 +136,6 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 				result.RelationLinksProjected++
 			}
 		}
-		if _, err := s.store.UpsertClaim(ctx, claimRecord(runtime, claim)); err != nil {
-			return nil, fmt.Errorf("persist claim %q: %w", claim.GetId(), err)
-		}
-		result.ClaimsWritten++
 	}
 	if request.ReplaceExisting {
 		retracted, err := s.retractMissingClaims(ctx, runtimeID, normalizedClaims)
@@ -381,7 +381,7 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 		return nil, fmt.Errorf("unsupported claim type %q", normalized.GetClaimType())
 	}
 	if normalized.GetId() == "" {
-		normalized.Id = hashClaimID(strings.TrimSpace(runtime.GetId()), normalized.GetClaimType(), normalized.GetSubjectUrn(), normalized.GetPredicate())
+		normalized.Id = hashClaimID(strings.TrimSpace(runtime.GetId()), normalized.GetClaimType(), normalized.GetSubjectUrn(), normalized.GetPredicate(), claimIdentityObject(normalized))
 	}
 	normalized.Attributes = trimAttributes(normalized.GetAttributes())
 	return normalized, nil
@@ -415,12 +415,24 @@ func inferClaimType(claim *cerebrov1.Claim) string {
 	}
 }
 
-func hashClaimID(runtimeID string, claimType string, subjectURN string, predicate string) string {
+func claimIdentityObject(claim *cerebrov1.Claim) string {
+	switch claim.GetClaimType() {
+	case claimTypeRelation:
+		return claim.GetObjectUrn()
+	case claimTypeAttribute, claimTypeClassification:
+		return claim.GetObjectValue()
+	default:
+		return ""
+	}
+}
+
+func hashClaimID(runtimeID string, claimType string, subjectURN string, predicate string, objectIdentity string) string {
 	sum := sha256.Sum256([]byte(strings.Join([]string{
 		strings.TrimSpace(runtimeID),
 		strings.TrimSpace(claimType),
 		strings.TrimSpace(subjectURN),
 		strings.TrimSpace(predicate),
+		strings.TrimSpace(objectIdentity),
 	}, "\x00")))
 	return "claim_" + hex.EncodeToString(sum[:])
 }
