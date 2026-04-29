@@ -73,6 +73,9 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 		return nil, err
 	}
 	if existing != nil {
+		if err := validateRuntimeTenantUnchanged(existing, runtime); err != nil {
+			return nil, err
+		}
 		runtime = mergeRuntime(existing, runtime)
 	}
 	if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
@@ -231,6 +234,15 @@ func mergeRuntime(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceR
 		incoming.LastSyncedAt = cloneTimestamp(existing.GetLastSyncedAt())
 	}
 	return incoming
+}
+
+func validateRuntimeTenantUnchanged(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) error {
+	existingTenantID := strings.TrimSpace(existing.GetTenantId())
+	incomingTenantID := strings.TrimSpace(incoming.GetTenantId())
+	if existingTenantID == "" || incomingTenantID == "" || existingTenantID == incomingTenantID {
+		return nil
+	}
+	return fmt.Errorf("%w: source runtime tenant_id cannot be changed", ErrInvalidRequest)
 }
 
 func clearRuntimeProgress(runtime *cerebrov1.SourceRuntime) {

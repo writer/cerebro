@@ -383,7 +383,7 @@ func TestSyncRuntimeContinuesPastEmptyPagesWithCursor(t *testing.T) {
 	}
 }
 
-func TestPutResetsProgressWhenTenantChanges(t *testing.T) {
+func TestPutRejectsTenantChanges(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
@@ -413,17 +413,14 @@ func TestPutResetsProgressWhenTenantChanges(t *testing.T) {
 			Config:   map[string]string{"token": "test"},
 		},
 	})
-	if err != nil {
-		t.Fatalf("Put() error = %v", err)
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Put() error = %v, want ErrInvalidRequest", err)
 	}
-	if got := resp.GetRuntime().GetCheckpoint(); got != nil {
-		t.Fatalf("Put().Runtime.Checkpoint = %#v, want nil", got)
+	if resp != nil {
+		t.Fatalf("Put() response = %#v, want nil", resp)
 	}
-	if got := resp.GetRuntime().GetNextCursor(); got != nil {
-		t.Fatalf("Put().Runtime.NextCursor = %#v, want nil", got)
-	}
-	if got := resp.GetRuntime().GetLastSyncedAt(); got != nil {
-		t.Fatalf("Put().Runtime.LastSyncedAt = %#v, want nil", got)
+	if got := store.runtimes["writer-github"].GetTenantId(); got != "writer" {
+		t.Fatalf("stored tenant = %q, want writer", got)
 	}
 }
 
