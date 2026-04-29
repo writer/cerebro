@@ -307,9 +307,6 @@ func auditScope(entry *gogithub.AuditEntry, raw map[string]any, settings setting
 	if strings.TrimSpace(entry.GetOrg()) != "" || strings.TrimSpace(settings.owner) != "" {
 		return "organization"
 	}
-	if strings.TrimSpace(entry.GetUser()) != "" {
-		return "user"
-	}
 	return "audit"
 }
 

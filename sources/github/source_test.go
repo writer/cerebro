@@ -321,6 +321,13 @@ func TestAuditScopeDefaultsToOrganization(t *testing.T) {
 	}
 }
 
+func TestAuditScopeKeepsOwnerBackedEntriesAtOrganizationScope(t *testing.T) {
+	entry := &gogithub.AuditEntry{User: gogithub.String("octocat")}
+	if got := auditScope(entry, map[string]any{}, settings{owner: "writer"}); got != "organization" {
+		t.Fatalf("auditScope() = %q, want organization", got)
+	}
+}
+
 func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	server := httptest.NewServer(newGitHubAPIHandler(t))
 	defer server.Close()
