@@ -307,7 +307,8 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			return nil, evaluationErr
 		}
 		state := &ruleEvaluationState{
-			rule: rule,
+			rule:          rule,
+			evidenceIndex: make(map[string]int),
 			result: &RuleEvaluationResult{
 				Rule: rule.Spec(),
 				Run:  run,
@@ -335,7 +336,6 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			if state.failed {
 				continue
 			}
-			state.eventsEvaluated++
 			emitted, err := state.rule.Evaluate(ctx, runtime, event)
 			if err != nil {
 				if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("evaluate finding rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
@@ -343,6 +343,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				}
 				continue
 			}
+			state.eventsEvaluated++
 			for _, record := range emitted {
 				if record == nil {
 					continue
@@ -369,6 +370,11 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					}
 					break
 				}
+				if idx, ok := state.evidenceIndex[persistedEvidence.GetId()]; ok {
+					state.result.Evidence[idx] = persistedEvidence
+					continue
+				}
+				state.evidenceIndex[persistedEvidence.GetId()] = len(state.result.Evidence)
 				state.result.Evidence = append(state.result.Evidence, persistedEvidence)
 			}
 		}
@@ -499,6 +505,7 @@ func (s *Service) GetEvidence(ctx context.Context, id string) (*cerebrov1.Findin
 type ruleEvaluationState struct {
 	rule            Rule
 	result          *RuleEvaluationResult
+	evidenceIndex   map[string]int
 	eventsEvaluated uint32
 	failed          bool
 }
