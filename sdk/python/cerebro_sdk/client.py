@@ -310,20 +310,14 @@ class IntegrationClient:
         return self.client.list_claims(self.runtime_id, filters)
 
     def graph_neighborhood(self, root: Any, limit: int = 0) -> Any:
-        if isinstance(root, dict):
-            root_urn = str(root["urn"]).strip()
-        else:
-            root_urn = str(root).strip()
+        root_urn = normalize_root_urn(root, "root")
         return self.client.get_entity_neighborhood(root_urn, limit)
 
     def graph_layering(self, roots: list[Any], limit: int = 0) -> Dict[str, Any]:
         layering: Dict[str, Any] = {}
         seen = set()
         for root in roots:
-            if isinstance(root, dict):
-                root_urn = str(root["urn"]).strip()
-            else:
-                root_urn = str(root).strip()
+            root_urn = normalize_root_urn(root, "root")
             if not root_urn or root_urn in seen:
                 continue
             seen.add(root_urn)
@@ -388,3 +382,16 @@ class IntegrationClient:
 
     def _build_urn(self, kind: str, external_id: str) -> str:
         return ":".join(["urn", "cerebro", self.tenant_id, "runtime", self.runtime_id, kind, external_id])
+
+
+def normalize_root_urn(root: Any, name: str) -> str:
+    if isinstance(root, dict):
+        value = root.get("urn")
+        if value is None:
+            raise ValueError(f"{name}['urn'] is required")
+    else:
+        value = root
+    root_urn = str(value).strip() if value is not None else ""
+    if not root_urn:
+        raise ValueError(f"{name} urn is required")
+    return root_urn
