@@ -103,13 +103,85 @@ func TestGraphKuzuCLIValidationFlow(t *testing.T) {
 	}
 }
 
+func TestGraphRuntimeIngestRecordsStatus(t *testing.T) {
+	ctx := context.Background()
+	store, err := graphstorekuzu.Open(configpkg.GraphStoreConfig{
+		Driver:   configpkg.GraphStoreDriverKuzu,
+		KuzuPath: filepath.Join(t.TempDir(), "graph"),
+	})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if closeErr := store.Close(); closeErr != nil {
+			t.Fatalf("Close() error = %v", closeErr)
+		}
+	})
+	source, err := validationFixtureSourceWithID("validation")
+	if err != nil {
+		t.Fatalf("validationFixtureSourceWithID() error = %v", err)
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	runtimeStore := &validationRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-validation": {
+			Id:       "writer-validation",
+			SourceId: "validation",
+			TenantId: "writer",
+			Config:   map[string]string{"family": "audit"},
+		},
+		"writer-validation-failing": {
+			Id:       "writer-validation-failing",
+			SourceId: "validation",
+			TenantId: "writer",
+			Config:   map[string]string{"family": "missing"},
+		},
+	}}
+	projector := sourceprojection.New(nil, store)
+	result, err := ingestRuntimeGraph(ctx, runtimeStore, sourceops.New(registry), projector, store, graphIngestRuntimeOptions{
+		RuntimeID:    "writer-validation",
+		PageLimit:    2,
+		CheckpointID: "runtime-validation",
+	})
+	if err != nil {
+		t.Fatalf("ingestRuntimeGraph() error = %v", err)
+	}
+	if len(result.Runs) != 1 || result.Runs[0].Run.Status != "completed" || result.Runs[0].Ingest.EventsRead != 2 {
+		t.Fatalf("ingestRuntimeGraph() = %#v, want one completed two-event run", result)
+	}
+	completed, err := store.ListIngestRuns(ctx, graphstorekuzu.IngestRunFilter{RuntimeID: "writer-validation", Status: "completed", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListIngestRuns(completed) error = %v", err)
+	}
+	if len(completed) != 1 || completed[0].CheckpointID != "runtime-validation" {
+		t.Fatalf("completed runs = %#v, want runtime-validation checkpoint", completed)
+	}
+
+	failedResult, err := ingestRuntimeGraph(ctx, runtimeStore, sourceops.New(registry), projector, store, graphIngestRuntimeOptions{
+		RuntimeID: "writer-validation-failing",
+		PageLimit: defaultGraphIngestPageLimit,
+	})
+	if err == nil {
+		t.Fatal("ingestRuntimeGraph(failing) error = nil, want non-nil")
+	}
+	if len(failedResult.Runs) != 1 || failedResult.Runs[0].Run.Status != "failed" || failedResult.Runs[0].Run.Error == "" {
+		t.Fatalf("failed ingest result = %#v, want failed run with error", failedResult)
+	}
+}
+
 func validationFixtureSource() (sourcecdk.Source, error) {
+	return validationFixtureSourceWithID("github")
+}
+
+func validationFixtureSourceWithID(sourceID string) (sourcecdk.Source, error) {
 	events := []*primitives.Event{
 		validationGitHubAuditEvent("github-audit-validation-1"),
 		validationGitHubAuditEvent("github-audit-validation-2"),
 	}
 	return sourcecdk.NewFixtureSource(sourcecdk.FixtureSourceOptions{
-		Spec:          &cerebrov1.SourceSpec{Id: "github", Name: "GitHub validation fixture"},
+		Spec:          &cerebrov1.SourceSpec{Id: sourceID, Name: "Graph validation fixture"},
 		DefaultFamily: "audit",
 		Families: []sourcecdk.FixtureFamily{{
 			Name:   "audit",
@@ -145,4 +217,25 @@ func neighborhoodHasEvidence(relations []*ports.NeighborhoodRelation, key string
 		}
 	}
 	return false
+}
+
+type validationRuntimeStore struct {
+	runtimes map[string]*cerebrov1.SourceRuntime
+}
+
+func (s *validationRuntimeStore) Ping(context.Context) error {
+	return nil
+}
+
+func (s *validationRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
+	s.runtimes[runtime.GetId()] = runtime
+	return nil
+}
+
+func (s *validationRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov1.SourceRuntime, error) {
+	runtime, ok := s.runtimes[id]
+	if !ok {
+		return nil, ports.ErrSourceRuntimeNotFound
+	}
+	return runtime, nil
 }

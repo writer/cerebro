@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,8 +27,11 @@ import (
 )
 
 const (
-	defaultGraphIngestPageLimit = 1
-	maxGraphIngestPageLimit     = 100
+	defaultGraphIngestPageLimit       = 1
+	maxGraphIngestPageLimit           = 100
+	maxGraphIngestRuntimeIterations   = 10000
+	defaultGraphIngestRunStatusLimit  = 25
+	maxGraphIngestRunStatusQueryLimit = 500
 )
 
 type graphCountsStore interface {
@@ -52,6 +57,12 @@ type graphIngestCheckpointStore interface {
 	PutIngestCheckpoint(context.Context, graphstore.IngestCheckpoint) error
 }
 
+type graphIngestRunStore interface {
+	PutIngestRun(context.Context, graphstore.IngestRun) error
+	GetIngestRun(context.Context, string) (graphstore.IngestRun, bool, error)
+	ListIngestRuns(context.Context, graphstore.IngestRunFilter) ([]graphstore.IngestRun, error)
+}
+
 type graphIngestOptions struct {
 	SourceID          string
 	SourceConfig      map[string]string
@@ -61,6 +72,16 @@ type graphIngestOptions struct {
 	CheckpointEnabled bool
 	CheckpointID      string
 	ResetCheckpoint   bool
+}
+
+type graphIngestRuntimeOptions struct {
+	RuntimeID       string
+	PageLimit       uint32
+	CheckpointID    string
+	ResetCheckpoint bool
+	Interval        time.Duration
+	Iterations      uint32
+	RunForever      bool
 }
 
 type graphIngestResult struct {
@@ -81,6 +102,25 @@ type graphIngestResult struct {
 	CheckpointPersisted    bool   `json:"checkpoint_persisted,omitempty"`
 	CheckpointComplete     bool   `json:"checkpoint_complete,omitempty"`
 	CheckpointAlreadyFresh bool   `json:"checkpoint_already_fresh,omitempty"`
+}
+
+type graphIngestRuntimeResult struct {
+	Run    graphstore.IngestRun `json:"run"`
+	Ingest *graphIngestResult   `json:"ingest,omitempty"`
+}
+
+type graphIngestRuntimeRunnerResult struct {
+	RuntimeID  string                      `json:"runtime_id"`
+	Iterations uint32                      `json:"iterations"`
+	RunForever bool                        `json:"run_forever,omitempty"`
+	Interval   string                      `json:"interval,omitempty"`
+	Runs       []*graphIngestRuntimeResult `json:"runs"`
+}
+
+type graphIngestRunsOptions struct {
+	RuntimeID string
+	Status    string
+	Limit     int
 }
 
 type graphPathsResult struct {
@@ -128,6 +168,39 @@ func runGraph(args []string) error {
 			return err
 		}
 		return printJSON(result)
+	case "ingest-runtime":
+		options, err := parseGraphIngestRuntimeArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		deps, closeDeps, err := openGraphDependencies(ctx)
+		if err != nil {
+			return err
+		}
+		defer logClose(closeDeps)
+		runtimeStore := sourceRuntimeStore(deps.StateStore)
+		if runtimeStore == nil {
+			return fmt.Errorf("source runtime store is required")
+		}
+		registry, err := sourceregistry.Builtin()
+		if err != nil {
+			return fmt.Errorf("open source registry: %w", err)
+		}
+		projector := sourceProjector(nil, deps.GraphStore)
+		if projector == nil {
+			return fmt.Errorf("projection graph store is required")
+		}
+		result, runErr := ingestRuntimeGraph(ctx, runtimeStore, sourceops.New(registry), projector, deps.GraphStore, options)
+		if err := printJSON(result); err != nil {
+			return err
+		}
+		return runErr
+	case "ingest-run":
+		return runGraphIngestRun(args[1:])
+	case "ingest-runs":
+		return runGraphIngestRuns(args[1:])
 	case "counts", "neighborhood", "paths", "integrity":
 		return runGraphInspect(args)
 	case "inspect":
@@ -181,11 +254,19 @@ func runGraph(args []string) error {
 }
 
 func graphUsage() string {
-	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|integrity|ingest|rebuild|inspect] ...", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|integrity|ingest|ingest-runtime|ingest-run|ingest-runs|rebuild|inspect] ...", os.Args[0])
 }
 
 func graphIngestUsage() string {
 	return fmt.Sprintf("usage: %s graph ingest <source-id> [tenant_id=<tenant-id>] [page_limit=N] [cursor=<cursor>] [checkpoint=true] [checkpoint_id=<id>] [reset_checkpoint=true] [key=value ...]", os.Args[0])
+}
+
+func graphIngestRuntimeUsage() string {
+	return fmt.Sprintf("usage: %s graph ingest-runtime <runtime-id> [page_limit=N] [checkpoint_id=<id>] [reset_checkpoint=true] [interval=30s] [iterations=N|forever]", os.Args[0])
+}
+
+func graphIngestRunUsage() string {
+	return fmt.Sprintf("usage: %s graph ingest-run <run-id>", os.Args[0])
 }
 
 func graphInspectUsage() string {
@@ -268,6 +349,56 @@ func runGraphInspect(args []string) error {
 	default:
 		return usageError(graphInspectUsage())
 	}
+}
+
+func runGraphIngestRun(args []string) error {
+	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
+		return usageError(graphIngestRunUsage())
+	}
+	ctx := context.Background()
+	deps, closeDeps, err := openGraphDependencies(ctx)
+	if err != nil {
+		return err
+	}
+	defer logClose(closeDeps)
+	store, ok := deps.GraphStore.(graphIngestRunStore)
+	if !ok {
+		return fmt.Errorf("graph store does not support ingest run status")
+	}
+	run, found, err := store.GetIngestRun(ctx, strings.TrimSpace(args[0]))
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("ingest run %q not found", strings.TrimSpace(args[0]))
+	}
+	return printJSON(run)
+}
+
+func runGraphIngestRuns(args []string) error {
+	options, err := parseGraphIngestRunsArgs(args)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	deps, closeDeps, err := openGraphDependencies(ctx)
+	if err != nil {
+		return err
+	}
+	defer logClose(closeDeps)
+	store, ok := deps.GraphStore.(graphIngestRunStore)
+	if !ok {
+		return fmt.Errorf("graph store does not support ingest run status")
+	}
+	runs, err := store.ListIngestRuns(ctx, graphstore.IngestRunFilter{
+		RuntimeID: options.RuntimeID,
+		Status:    options.Status,
+		Limit:     options.Limit,
+	})
+	if err != nil {
+		return err
+	}
+	return printJSON(runs)
 }
 
 func parseGraphNeighborhoodArgs(args []string) (string, int, error) {
@@ -394,6 +525,109 @@ func parseGraphIngestArgs(args []string) (graphIngestOptions, error) {
 	return options, nil
 }
 
+func parseGraphIngestRuntimeArgs(args []string) (graphIngestRuntimeOptions, error) {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		return graphIngestRuntimeOptions{}, usageError(graphIngestRuntimeUsage())
+	}
+	options := graphIngestRuntimeOptions{
+		RuntimeID:  strings.TrimSpace(args[0]),
+		PageLimit:  defaultGraphIngestPageLimit,
+		Iterations: 1,
+	}
+	for _, arg := range args[1:] {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return graphIngestRuntimeOptions{}, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+		}
+		switch strings.TrimSpace(key) {
+		case "page_limit":
+			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+			if err != nil {
+				return graphIngestRuntimeOptions{}, fmt.Errorf("parse page_limit: %w", err)
+			}
+			if parsed == 0 || parsed > maxGraphIngestPageLimit {
+				return graphIngestRuntimeOptions{}, fmt.Errorf("page_limit must be between 1 and %d", maxGraphIngestPageLimit)
+			}
+			options.PageLimit = uint32(parsed)
+		case "checkpoint_id":
+			options.CheckpointID = strings.TrimSpace(value)
+		case "reset_checkpoint":
+			parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+			if err != nil {
+				return graphIngestRuntimeOptions{}, fmt.Errorf("parse reset_checkpoint: %w", err)
+			}
+			options.ResetCheckpoint = parsed
+		case "interval":
+			parsed, err := time.ParseDuration(strings.TrimSpace(value))
+			if err != nil {
+				return graphIngestRuntimeOptions{}, fmt.Errorf("parse interval: %w", err)
+			}
+			if parsed <= 0 {
+				return graphIngestRuntimeOptions{}, fmt.Errorf("interval must be positive")
+			}
+			options.Interval = parsed
+		case "iterations":
+			normalized := strings.TrimSpace(value)
+			if normalized == "forever" {
+				options.Iterations = 0
+				options.RunForever = true
+				continue
+			}
+			parsed, err := strconv.ParseUint(normalized, 10, 32)
+			if err != nil {
+				return graphIngestRuntimeOptions{}, fmt.Errorf("parse iterations: %w", err)
+			}
+			if parsed == 0 {
+				options.Iterations = 0
+				options.RunForever = true
+				continue
+			}
+			if parsed > maxGraphIngestRuntimeIterations {
+				return graphIngestRuntimeOptions{}, fmt.Errorf("iterations must be between 1 and %d or forever", maxGraphIngestRuntimeIterations)
+			}
+			options.Iterations = uint32(parsed)
+			options.RunForever = false
+		default:
+			return graphIngestRuntimeOptions{}, usageError(fmt.Sprintf("unsupported graph ingest-runtime argument %q", key))
+		}
+	}
+	if (options.RunForever || options.Iterations > 1) && options.Interval <= 0 {
+		return graphIngestRuntimeOptions{}, fmt.Errorf("interval is required when iterations is greater than 1 or forever")
+	}
+	return options, nil
+}
+
+func parseGraphIngestRunsArgs(args []string) (graphIngestRunsOptions, error) {
+	options := graphIngestRunsOptions{Limit: defaultGraphIngestRunStatusLimit}
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return graphIngestRunsOptions{}, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+		}
+		switch strings.TrimSpace(key) {
+		case "runtime_id":
+			options.RuntimeID = strings.TrimSpace(value)
+		case "status":
+			options.Status = strings.TrimSpace(value)
+			if !validGraphIngestRunStatus(options.Status) {
+				return graphIngestRunsOptions{}, fmt.Errorf("unsupported ingest run status %q", options.Status)
+			}
+		case "limit":
+			parsed, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return graphIngestRunsOptions{}, fmt.Errorf("parse limit: %w", err)
+			}
+			if parsed < 1 || parsed > maxGraphIngestRunStatusQueryLimit {
+				return graphIngestRunsOptions{}, fmt.Errorf("limit must be between 1 and %d", maxGraphIngestRunStatusQueryLimit)
+			}
+			options.Limit = parsed
+		default:
+			return graphIngestRunsOptions{}, usageError(fmt.Sprintf("unsupported graph ingest-runs argument %q", key))
+		}
+	}
+	return options, nil
+}
+
 func ingestGraph(
 	ctx context.Context,
 	sourceService *sourceops.Service,
@@ -463,6 +697,126 @@ func ingestGraph(
 		result.GraphLinksAfter = counts.Relations
 	}
 	return result, nil
+}
+
+func ingestRuntimeGraph(
+	ctx context.Context,
+	runtimeStore ports.SourceRuntimeStore,
+	sourceService *sourceops.Service,
+	projector ports.SourceProjector,
+	graphStore ports.GraphStore,
+	options graphIngestRuntimeOptions,
+) (*graphIngestRuntimeRunnerResult, error) {
+	runStore, ok := graphStore.(graphIngestRunStore)
+	if !ok {
+		return nil, fmt.Errorf("graph store does not support ingest run status")
+	}
+	result := &graphIngestRuntimeRunnerResult{
+		RuntimeID:  strings.TrimSpace(options.RuntimeID),
+		Iterations: options.Iterations,
+		RunForever: options.RunForever,
+		Runs:       make([]*graphIngestRuntimeResult, 0, graphIngestRuntimeResultCapacity(options)),
+	}
+	if options.Interval > 0 {
+		result.Interval = options.Interval.String()
+	}
+	var (
+		ticker    *time.Ticker
+		joined    error
+		iteration uint32
+	)
+	if options.RunForever || options.Iterations > 1 {
+		ticker = time.NewTicker(options.Interval)
+		defer ticker.Stop()
+	}
+	for {
+		runResult, err := ingestRuntimeGraphOnce(ctx, runtimeStore, sourceService, projector, graphStore, runStore, options, iteration)
+		if runResult != nil {
+			result.Runs = append(result.Runs, runResult)
+		}
+		joined = errors.Join(joined, err)
+		iteration++
+		if !options.RunForever && iteration >= options.Iterations {
+			break
+		}
+		if ticker == nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			joined = errors.Join(joined, ctx.Err())
+			return result, joined
+		case <-ticker.C:
+		}
+	}
+	return result, joined
+}
+
+func ingestRuntimeGraphOnce(
+	ctx context.Context,
+	runtimeStore ports.SourceRuntimeStore,
+	sourceService *sourceops.Service,
+	projector ports.SourceProjector,
+	graphStore ports.GraphStore,
+	runStore graphIngestRunStore,
+	options graphIngestRuntimeOptions,
+	iteration uint32,
+) (*graphIngestRuntimeResult, error) {
+	startedAt := time.Now().UTC()
+	run := graphstore.IngestRun{
+		ID:        graphIngestRunID(options.RuntimeID, startedAt, iteration),
+		RuntimeID: strings.TrimSpace(options.RuntimeID),
+		Status:    graphstore.IngestRunStatusRunning,
+		Trigger:   graphIngestTrigger(options),
+		StartedAt: startedAt.Format(time.RFC3339Nano),
+	}
+	runResult := &graphIngestRuntimeResult{Run: run}
+	if err := runStore.PutIngestRun(ctx, run); err != nil {
+		return runResult, err
+	}
+	runtime, err := runtimeStore.GetSourceRuntime(ctx, run.RuntimeID)
+	if err != nil {
+		failed := finishGraphIngestRun(run, nil, graphstore.IngestRunStatusFailed, err)
+		runResult.Run = failed
+		return runResult, errors.Join(err, runStore.PutIngestRun(ctx, failed))
+	}
+	runtimeConfig, err := prepareSourceConfig(ctx, runtime.GetSourceId(), "read", runtime.GetConfig())
+	if err != nil {
+		run.SourceID = strings.TrimSpace(runtime.GetSourceId())
+		run.TenantID = strings.TrimSpace(runtime.GetTenantId())
+		failed := finishGraphIngestRun(run, nil, graphstore.IngestRunStatusFailed, err)
+		runResult.Run = failed
+		return runResult, errors.Join(err, runStore.PutIngestRun(ctx, failed))
+	}
+	ingestOptions := graphIngestOptions{
+		SourceID:          strings.TrimSpace(runtime.GetSourceId()),
+		SourceConfig:      runtimeConfig,
+		TenantID:          strings.TrimSpace(runtime.GetTenantId()),
+		PageLimit:         options.PageLimit,
+		CheckpointEnabled: true,
+		CheckpointID:      graphRuntimeCheckpointID(options, runtime, runtimeConfig),
+		ResetCheckpoint:   options.ResetCheckpoint,
+	}
+	run.SourceID = ingestOptions.SourceID
+	run.TenantID = ingestOptions.TenantID
+	run.CheckpointID = ingestOptions.CheckpointID
+	runResult.Run = run
+	if err := runStore.PutIngestRun(ctx, run); err != nil {
+		return runResult, err
+	}
+	ingestResult, err := ingestGraph(ctx, sourceService, projector, graphStore, ingestOptions)
+	runResult.Ingest = ingestResult
+	if err != nil {
+		failed := finishGraphIngestRun(run, ingestResult, graphstore.IngestRunStatusFailed, err)
+		runResult.Run = failed
+		return runResult, errors.Join(err, runStore.PutIngestRun(ctx, failed))
+	}
+	completed := finishGraphIngestRun(run, ingestResult, graphstore.IngestRunStatusCompleted, nil)
+	runResult.Run = completed
+	if err := runStore.PutIngestRun(ctx, completed); err != nil {
+		return runResult, err
+	}
+	return runResult, nil
 }
 
 func prepareGraphIngestCheckpoint(
@@ -554,6 +908,94 @@ func graphIngestCheckpointID(options graphIngestOptions) string {
 		hash = hash[:16]
 	}
 	return strings.TrimSpace(options.SourceID) + ":" + tenantID + ":" + hash
+}
+
+func graphRuntimeCheckpointID(options graphIngestRuntimeOptions, runtime *cerebrov1.SourceRuntime, config map[string]string) string {
+	if normalized := strings.TrimSpace(options.CheckpointID); normalized != "" {
+		return normalized
+	}
+	hash := graphIngestConfigHash(config)
+	if len(hash) > 16 {
+		hash = hash[:16]
+	}
+	return "runtime:" + sanitizeGraphIngestIDPart(runtime.GetId()) + ":" + hash
+}
+
+func graphIngestRunID(runtimeID string, startedAt time.Time, iteration uint32) string {
+	return fmt.Sprintf("graph-ingest:%s:%s:%d", sanitizeGraphIngestIDPart(runtimeID), startedAt.UTC().Format("20060102T150405.000000000Z"), iteration+1)
+}
+
+func sanitizeGraphIngestIDPart(value string) string {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return "unknown"
+	}
+	var builder strings.Builder
+	lastDash := false
+	for _, char := range normalized {
+		switch {
+		case char >= 'a' && char <= 'z', char >= 'A' && char <= 'Z', char >= '0' && char <= '9':
+			builder.WriteRune(char)
+			lastDash = false
+		default:
+			if !lastDash {
+				builder.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	sanitized := strings.Trim(builder.String(), "-")
+	if sanitized == "" {
+		return "unknown"
+	}
+	return sanitized
+}
+
+func graphIngestRuntimeResultCapacity(options graphIngestRuntimeOptions) int {
+	if options.RunForever {
+		return 1
+	}
+	if options.Iterations == 0 {
+		return 1
+	}
+	return int(options.Iterations)
+}
+
+func graphIngestTrigger(options graphIngestRuntimeOptions) string {
+	if options.RunForever || options.Iterations > 1 {
+		return "scheduled"
+	}
+	return "manual"
+}
+
+func finishGraphIngestRun(run graphstore.IngestRun, result *graphIngestResult, status string, runErr error) graphstore.IngestRun {
+	finished := run
+	finished.Status = status
+	finished.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if result != nil {
+		finished.CheckpointID = result.CheckpointID
+		finished.PagesRead = int64(result.PagesRead)
+		finished.EventsRead = int64(result.EventsRead)
+		finished.EntitiesProjected = int64(result.EntitiesProjected)
+		finished.LinksProjected = int64(result.LinksProjected)
+		finished.GraphNodesBefore = result.GraphNodesBefore
+		finished.GraphLinksBefore = result.GraphLinksBefore
+		finished.GraphNodesAfter = result.GraphNodesAfter
+		finished.GraphLinksAfter = result.GraphLinksAfter
+	}
+	if runErr != nil {
+		finished.Error = runErr.Error()
+	}
+	return finished
+}
+
+func validGraphIngestRunStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case graphstore.IngestRunStatusRunning, graphstore.IngestRunStatusCompleted, graphstore.IngestRunStatusFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 func graphIngestConfigHash(config map[string]string) string {

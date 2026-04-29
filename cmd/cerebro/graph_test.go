@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
@@ -54,6 +55,53 @@ func TestParseGraphIngestArgsRejectsInvalidPageLimit(t *testing.T) {
 	_, err := parseGraphIngestArgs([]string{"aws", "page_limit=0"})
 	if err == nil {
 		t.Fatal("parseGraphIngestArgs() error = nil, want non-nil")
+	}
+}
+
+func TestParseGraphIngestRuntimeArgs(t *testing.T) {
+	options, err := parseGraphIngestRuntimeArgs([]string{
+		"writer-github",
+		"page_limit=3",
+		"checkpoint_id=runtime-writer-github",
+		"reset_checkpoint=true",
+		"interval=30s",
+		"iterations=2",
+	})
+	if err != nil {
+		t.Fatalf("parseGraphIngestRuntimeArgs() error = %v", err)
+	}
+	if options.RuntimeID != "writer-github" {
+		t.Fatalf("RuntimeID = %q, want writer-github", options.RuntimeID)
+	}
+	if options.PageLimit != 3 {
+		t.Fatalf("PageLimit = %d, want 3", options.PageLimit)
+	}
+	if options.CheckpointID != "runtime-writer-github" || !options.ResetCheckpoint {
+		t.Fatalf("checkpoint options = id:%q reset:%t", options.CheckpointID, options.ResetCheckpoint)
+	}
+	if options.Interval != 30*time.Second || options.Iterations != 2 || options.RunForever {
+		t.Fatalf("schedule options = interval:%s iterations:%d forever:%t", options.Interval, options.Iterations, options.RunForever)
+	}
+}
+
+func TestParseGraphIngestRuntimeArgsRequiresIntervalForSchedule(t *testing.T) {
+	_, err := parseGraphIngestRuntimeArgs([]string{"writer-github", "iterations=2"})
+	if err == nil {
+		t.Fatal("parseGraphIngestRuntimeArgs() error = nil, want non-nil")
+	}
+}
+
+func TestParseGraphIngestRunsArgs(t *testing.T) {
+	options, err := parseGraphIngestRunsArgs([]string{
+		"runtime_id=writer-github",
+		"status=failed",
+		"limit=7",
+	})
+	if err != nil {
+		t.Fatalf("parseGraphIngestRunsArgs() error = %v", err)
+	}
+	if options.RuntimeID != "writer-github" || options.Status != "failed" || options.Limit != 7 {
+		t.Fatalf("options = %#v, want runtime/status/limit", options)
 	}
 }
 

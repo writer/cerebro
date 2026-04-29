@@ -24,6 +24,7 @@ type Store struct {
 	schemaMu              sync.Mutex
 	schemaReady           bool
 	checkpointSchemaReady bool
+	ingestRunSchemaReady  bool
 }
 
 type Counts = graphstore.Counts
@@ -32,6 +33,8 @@ type IntegrityCheck = graphstore.IntegrityCheck
 type PathPattern = graphstore.PathPattern
 type Topology = graphstore.Topology
 type IngestCheckpoint = graphstore.IngestCheckpoint
+type IngestRun = graphstore.IngestRun
+type IngestRunFilter = graphstore.IngestRunFilter
 
 // Open opens a Kuzu-backed graph projection store.
 func Open(cfg config.GraphStoreConfig) (*Store, error) {
