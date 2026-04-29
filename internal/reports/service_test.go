@@ -553,3 +553,27 @@ func cloneAttributes(values map[string]string) map[string]string {
 	}
 	return cloned
 }
+
+func TestNormalizeParametersDropsSensitiveKeys(t *testing.T) {
+	for _, key := range []string{
+		"token",
+		"GitHub_Token",
+		"PASSWORD",
+		"client_secret",
+		"api-key",
+		"private_key",
+		"x-api-key",
+		"authorization",
+	} {
+		got := normalizeParameters(map[string]string{
+			"tenant_id": "writer",
+			key:         "shh",
+		})
+		if _, ok := got[key]; ok {
+			t.Fatalf("normalizeParameters() retained sensitive key %q", key)
+		}
+		if got["tenant_id"] != "writer" {
+			t.Fatalf("normalizeParameters() dropped non-sensitive key when filtering %q", key)
+		}
+	}
+}

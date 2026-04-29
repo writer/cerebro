@@ -350,6 +350,36 @@ func reportDefinition(reportID string) (*cerebrov1.ReportDefinition, error) {
 	}
 }
 
+var sensitiveReportParameterTokens = []string{
+	"token",
+	"secret",
+	"password",
+	"passwd",
+	"credential",
+	"privatekey",
+	"apikey",
+	"accesskey",
+	"clientsecret",
+	"signingkey",
+	"session",
+	"cookie",
+	"authorization",
+	"xapikey",
+}
+
+func isSensitiveReportParameter(key string) bool {
+	lowered := strings.ToLower(key)
+	lowered = strings.ReplaceAll(lowered, "-", "")
+	lowered = strings.ReplaceAll(lowered, "_", "")
+	lowered = strings.ReplaceAll(lowered, " ", "")
+	for _, token := range sensitiveReportParameterTokens {
+		if strings.Contains(lowered, token) {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeParameters(parameters map[string]string) map[string]string {
 	if len(parameters) == 0 {
 		return map[string]string{}
@@ -358,6 +388,9 @@ func normalizeParameters(parameters map[string]string) map[string]string {
 	for key, value := range parameters {
 		trimmedKey := strings.TrimSpace(key)
 		if trimmedKey == "" {
+			continue
+		}
+		if isSensitiveReportParameter(trimmedKey) {
 			continue
 		}
 		normalized[trimmedKey] = strings.TrimSpace(value)
