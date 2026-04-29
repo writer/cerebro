@@ -411,6 +411,16 @@ def bool_value(value: Any) -> str:
 def default_bool(value: Any, default: bool) -> bool:
     if value is None:
         return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "":
+            return default
+        if normalized in {"1", "true", "t", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "f", "no", "n", "off"}:
+            return False
     return bool(value)
 
 
