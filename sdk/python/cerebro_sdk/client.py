@@ -36,15 +36,15 @@ class Client:
         return result
 
     def put_source_runtime(self, runtime_id: str, runtime: Dict[str, Any]) -> Any:
-        result, _ = self._request_json("PUT", f"/source-runtimes/{parse.quote(runtime_id)}", {"runtime": runtime})
+        result, _ = self._request_json("PUT", f"/source-runtimes/{parse.quote(runtime_id, safe='')}", {"runtime": runtime})
         return result
 
     def get_source_runtime(self, runtime_id: str) -> Any:
-        result, _ = self._request_json("GET", f"/source-runtimes/{parse.quote(runtime_id)}")
+        result, _ = self._request_json("GET", f"/source-runtimes/{parse.quote(runtime_id, safe='')}")
         return result
 
     def write_claims(self, runtime_id: str, claims: list[Dict[str, Any]]) -> Any:
-        result, _ = self._request_json("POST", f"/source-runtimes/{parse.quote(runtime_id)}/claims", {"claims": claims})
+        result, _ = self._request_json("POST", f"/source-runtimes/{parse.quote(runtime_id, safe='')}/claims", {"claims": claims})
         return result
 
     def integration(self, runtime_id: str, tenant_id: str, integration: str) -> "IntegrationClient":

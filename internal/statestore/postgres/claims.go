@@ -17,7 +17,7 @@ import (
 
 var ensureClaimStatements = []string{
 	`CREATE TABLE IF NOT EXISTS claims (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
   runtime_id TEXT NOT NULL,
   tenant_id TEXT NOT NULL,
   subject_urn TEXT NOT NULL,
@@ -33,7 +33,8 @@ var ensureClaimStatements = []string{
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   claim_json JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, runtime_id, id)
 )`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_subject_idx ON claims (runtime_id, subject_urn)`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_predicate_idx ON claims (runtime_id, predicate)`,
@@ -93,10 +94,8 @@ INSERT INTO claims (
   claim_type, status, source_event_id, observed_at, valid_from, valid_to, attributes_json, claim_json
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15::jsonb)
-ON CONFLICT (id)
+ON CONFLICT (tenant_id, runtime_id, id)
 DO UPDATE SET
-  runtime_id = EXCLUDED.runtime_id,
-  tenant_id = EXCLUDED.tenant_id,
   subject_urn = EXCLUDED.subject_urn,
   predicate = EXCLUDED.predicate,
   object_urn = EXCLUDED.object_urn,
