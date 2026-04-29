@@ -159,7 +159,7 @@ func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
 func (a *App) handlePutSourceRuntime(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.PutSourceRuntimeRequest{}
 	if err := readProtoJSON(r, request); err != nil {
-		writeSourceRuntimeError(w, err)
+		writeSourceRuntimeError(w, fmt.Errorf("%w: decode request body", sourceruntime.ErrInvalidRequest))
 		return
 	}
 	if request.Runtime == nil {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -540,6 +541,24 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
+
+	badPutReq, err := http.NewRequest(http.MethodPut, server.URL+"/source-runtimes/writer-okta-users", strings.NewReader("{"))
+	if err != nil {
+		t.Fatalf("new bad put request: %v", err)
+	}
+	badPutReq.Header.Set("Content-Type", "application/json")
+	badPutResp, err := server.Client().Do(badPutReq)
+	if err != nil {
+		t.Fatalf("PUT /source-runtimes/{id} malformed body error = %v", err)
+	}
+	defer func() {
+		if closeErr := badPutResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close bad put runtime response body: %v", closeErr)
+		}
+	}()
+	if badPutResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad put status = %d, want %d", badPutResp.StatusCode, http.StatusBadRequest)
+	}
 
 	putBody, err := protojson.Marshal(&cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
