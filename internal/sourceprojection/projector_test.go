@@ -136,6 +136,98 @@ func TestProjectSkipsPlaceholderPullRequestLinks(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubAuditWithoutOrgOrRepoSkipsPlaceholderEntities(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-1",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor":         "alice",
+			"resource_type": "repository_vulnerability_alert",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	emptyOrgURN := "urn:cerebro:writer:github_org"
+	emptyRepoURN := "urn:cerebro:writer:github_repo"
+	if _, ok := state.entities[emptyOrgURN]; ok {
+		t.Fatalf("empty org entity %q should not be projected", emptyOrgURN)
+	}
+	if _, ok := state.entities[emptyRepoURN]; ok {
+		t.Fatalf("empty repo entity %q should not be projected", emptyRepoURN)
+	}
+	for key := range state.links {
+		if strings.Contains(key, emptyOrgURN) || strings.Contains(key, emptyRepoURN) {
+			t.Fatalf("placeholder github link %q should not be projected", key)
+		}
+	}
+}
+
+func TestProjectOktaUserWithoutDomainDoesNotLinkPlaceholderOrg(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-user-1",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.user",
+		Attributes: map[string]string{
+			"email":   "alice@writer.com",
+			"login":   "alice@writer.com",
+			"status":  "ACTIVE",
+			"user_id": "00u1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	emptyOrgURN := "urn:cerebro:writer:okta_org"
+	if _, ok := state.entities[emptyOrgURN]; ok {
+		t.Fatalf("empty org entity %q should not be projected", emptyOrgURN)
+	}
+	for key := range state.links {
+		if strings.Contains(key, emptyOrgURN) {
+			t.Fatalf("placeholder okta user link %q should not be projected", key)
+		}
+	}
+}
+
+func TestProjectOktaAuditWithoutDomainDoesNotLinkPlaceholderOrg(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-audit-1",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			"actor_id":      "00u1",
+			"actor_type":    "user",
+			"resource_id":   "app1",
+			"resource_type": "app",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	emptyOrgURN := "urn:cerebro:writer:okta_org"
+	if _, ok := state.entities[emptyOrgURN]; ok {
+		t.Fatalf("empty org entity %q should not be projected", emptyOrgURN)
+	}
+	for key := range state.links {
+		if strings.Contains(key, emptyOrgURN) {
+			t.Fatalf("placeholder okta audit link %q should not be projected", key)
+		}
+	}
+}
+
 func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)

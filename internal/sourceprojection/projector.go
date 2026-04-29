@@ -188,8 +188,9 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
-	orgURN := projectionURN(tenantID, "github_org", org)
+	orgURN := ""
 	if org != "" {
+		orgURN = projectionURN(tenantID, "github_org", org)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        orgURN,
 			TenantID:   tenantID,
@@ -200,9 +201,11 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 		})
 	}
 
-	repoURN := projectionURN(tenantID, "github_repo", firstNonEmpty(repo, resourceID))
+	repoLabel := firstNonEmpty(repo, resourceID)
+	repoURN := ""
 	if repo != "" || (resourceID != "" && strings.Contains(resourceID, "/")) {
-		label := firstNonEmpty(repo, resourceID)
+		repoURN = projectionURN(tenantID, "github_repo", repoLabel)
+		label := repoLabel
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        repoURN,
 			TenantID:   tenantID,
@@ -296,8 +299,9 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
-	orgURN := projectionURN(tenantID, "okta_org", domain)
+	orgURN := ""
 	if domain != "" {
+		orgURN = projectionURN(tenantID, "okta_org", domain)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        orgURN,
 			TenantID:   tenantID,
@@ -352,8 +356,9 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
-	orgURN := projectionURN(tenantID, "okta_org", domain)
+	orgURN := ""
 	if domain != "" {
+		orgURN = projectionURN(tenantID, "okta_org", domain)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        orgURN,
 			TenantID:   tenantID,

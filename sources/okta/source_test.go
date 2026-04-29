@@ -3,6 +3,7 @@ package okta
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -254,6 +255,30 @@ func TestNewFixtureRejectsNegativeCursor(t *testing.T) {
 	_, err = source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "-1"})
 	if err == nil {
 		t.Fatal("Read() error = nil, want non-nil")
+	}
+}
+
+func TestGetJSONRejectsLargeResponse(t *testing.T) {
+	source, closeServer := newTestSource(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		payload := make([]byte, maxResponseBytes+1)
+		for i := range payload {
+			payload[i] = 'a'
+		}
+		_, _ = w.Write(payload)
+	}))
+	defer closeServer()
+
+	var raw []json.RawMessage
+	_, err := source.getJSON(context.Background(), settings{
+		baseURL: "https://writer.okta.com",
+		token:   "test-token",
+	}, "/api/v1/logs", nil, &raw)
+	if err == nil {
+		t.Fatal("getJSON() error = nil, want non-nil")
+	}
+	if !errors.Is(err, errResponseTooLarge) {
+		t.Fatalf("getJSON() error = %v, want response too large", err)
 	}
 }
 

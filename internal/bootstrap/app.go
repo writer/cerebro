@@ -49,6 +49,8 @@ type bootstrapService struct {
 	sources *sourcecdk.Registry
 }
 
+const maxProtoJSONBodyBytes = 1 << 20
+
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
 	mux := http.NewServeMux()
@@ -377,6 +379,10 @@ func sensitiveSourceConfigKey(key string) bool {
 }
 
 func sourceRuntimeConnectError(err error) error {
+	var connectErr *connect.Error
+	if errors.As(err, &connectErr) {
+		return err
+	}
 	switch {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
@@ -431,14 +437,20 @@ func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 }
 
 func readProtoJSON(r *http.Request, message proto.Message) error {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxProtoJSONBodyBytes+1))
 	if err != nil {
 		return err
+	}
+	if len(body) > maxProtoJSONBodyBytes {
+		return fmt.Errorf("%w: request body too large", sourceruntime.ErrInvalidRequest)
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil
 	}
-	return protojson.Unmarshal(body, message)
+	if err := protojson.Unmarshal(body, message); err != nil {
+		return fmt.Errorf("%w: decode request body: %w", sourceruntime.ErrInvalidRequest, err)
+	}
+	return nil
 }
 
 func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {

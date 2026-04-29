@@ -62,16 +62,34 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 	if err != nil {
 		return nil, err
 	}
-	if err := source.Check(ctx, sourcecdk.NewConfig(runtime.GetConfig())); err != nil {
-		return nil, fmt.Errorf("%w: source check failed: %w", ErrInvalidRequest, err)
-	}
 	existing, err := s.lookupRuntime(ctx, runtime.GetId())
 	switch {
 	case err == nil:
-		runtime = mergeRuntime(existing, runtime)
+		if runtime.Config == nil {
+			runtime.Config = map[string]string{}
+		}
+		for key, value := range existing.GetConfig() {
+			if !sensitiveConfigKey(key) {
+				continue
+			}
+			incoming, ok := runtime.Config[key]
+			if !ok || incoming == redactedValue {
+				runtime.Config[key] = value
+			}
+		}
+		runtime.Checkpoint = nil
+		runtime.NextCursor = nil
+		runtime.LastSyncedAt = nil
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		existing = nil
 	default:
 		return nil, err
+	}
+	if err := source.Check(ctx, sourcecdk.NewConfig(runtime.GetConfig())); err != nil {
+		return nil, fmt.Errorf("%w: source check failed: %w", ErrInvalidRequest, err)
+	}
+	if existing != nil {
+		runtime = mergeRuntime(existing, runtime)
 	}
 	if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
 		return nil, err
@@ -148,6 +166,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				entitiesProjected += result.EntitiesProjected
 				linksProjected += result.LinksProjected
 			}
+		}
+		if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
+			return nil, err
 		}
 		if pull.NextCursor == nil {
 			break

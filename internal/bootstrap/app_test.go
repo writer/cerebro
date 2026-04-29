@@ -560,6 +560,24 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 		t.Fatalf("bad put status = %d, want %d", badPutResp.StatusCode, http.StatusBadRequest)
 	}
 
+	largePutReq, err := http.NewRequest(http.MethodPut, server.URL+"/source-runtimes/writer-okta-users", bytes.NewReader(bytes.Repeat([]byte("a"), maxProtoJSONBodyBytes+1)))
+	if err != nil {
+		t.Fatalf("new large put request: %v", err)
+	}
+	largePutReq.Header.Set("Content-Type", "application/json")
+	largePutResp, err := server.Client().Do(largePutReq)
+	if err != nil {
+		t.Fatalf("PUT /source-runtimes/{id} large body error = %v", err)
+	}
+	defer func() {
+		if closeErr := largePutResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close large put runtime response body: %v", closeErr)
+		}
+	}()
+	if largePutResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("large put status = %d, want %d", largePutResp.StatusCode, http.StatusBadRequest)
+	}
+
 	putBody, err := protojson.Marshal(&cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
 			SourceId: "okta",
@@ -760,6 +778,15 @@ func TestSourceRuntimeRPCErrorCodes(t *testing.T) {
 	}
 	if got := connect.CodeOf(sourceRuntimeConnectError(context.DeadlineExceeded)); got != connect.CodeDeadlineExceeded {
 		t.Fatalf("sourceRuntimeConnectError(context.DeadlineExceeded) code = %v, want %v", got, connect.CodeDeadlineExceeded)
+	}
+	preserved := connect.NewError(connect.CodeFailedPrecondition, errors.New("already wrapped"))
+	got := sourceRuntimeConnectError(preserved)
+	var preservedErr *connect.Error
+	if !errors.As(got, &preservedErr) {
+		t.Fatalf("sourceRuntimeConnectError(connect error) = %T, want *connect.Error", got)
+	}
+	if preservedErr.Code() != preserved.Code() || preservedErr.Message() != preserved.Message() {
+		t.Fatalf("sourceRuntimeConnectError(connect error) = %v, want preserved connect error", got)
 	}
 	internalErr := sourceRuntimeConnectError(errors.New("dial tcp credential@db.internal:5432: i/o timeout"))
 	if got := connect.CodeOf(internalErr); got != connect.CodeInternal {

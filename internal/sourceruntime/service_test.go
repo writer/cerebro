@@ -47,8 +47,10 @@ func (s *runtimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov
 }
 
 type appendLog struct {
-	err    error
-	events []*cerebrov1.EventEnvelope
+	err        error
+	events     []*cerebrov1.EventEnvelope
+	calls      int
+	failOnCall int
 }
 
 func (l *appendLog) Ping(context.Context) error {
@@ -58,6 +60,10 @@ func (l *appendLog) Ping(context.Context) error {
 func (l *appendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
 	if l.err != nil {
 		return l.err
+	}
+	l.calls++
+	if l.failOnCall > 0 && l.calls == l.failOnCall {
+		return errors.New("append failed")
 	}
 	l.events = append(l.events, proto.Clone(event).(*cerebrov1.EventEnvelope))
 	return nil
@@ -210,6 +216,70 @@ func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 	}
 }
 
+func TestPutPreservesSensitiveConfigAndServerProgressOnUpdate(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	syncedAt := timestamppb.Now()
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-users": {
+				Id:       "writer-okta-users",
+				SourceId: "okta",
+				TenantId: "writer",
+				Config: map[string]string{
+					"domain": "writer.okta.com",
+					"family": "user",
+					"token":  "super-secret",
+				},
+				Checkpoint:   &cerebrov1.SourceCheckpoint{CursorOpaque: "1"},
+				NextCursor:   &cerebrov1.SourceCursor{Opaque: "1"},
+				LastSyncedAt: syncedAt,
+			},
+		},
+	}
+	service := New(registry, store, nil, nil)
+
+	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-okta-users",
+			SourceId: "okta",
+			Config: map[string]string{
+				"domain": "writer.okta.com",
+				"family": "user",
+			},
+			Checkpoint:   &cerebrov1.SourceCheckpoint{CursorOpaque: "999"},
+			NextCursor:   &cerebrov1.SourceCursor{Opaque: "999"},
+			LastSyncedAt: timestamppb.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if got := resp.GetRuntime().GetConfig()["token"]; got != redactedValue {
+		t.Fatalf("Put().Runtime.Config[token] = %q, want %q", got, redactedValue)
+	}
+	if got := resp.GetRuntime().GetCheckpoint().GetCursorOpaque(); got != "1" {
+		t.Fatalf("Put().Runtime.Checkpoint = %#v, want cursor 1", resp.GetRuntime().GetCheckpoint())
+	}
+	if got := resp.GetRuntime().GetNextCursor().GetOpaque(); got != "1" {
+		t.Fatalf("Put().Runtime.NextCursor = %#v, want cursor 1", resp.GetRuntime().GetNextCursor())
+	}
+	if got := store.runtimes["writer-okta-users"].GetConfig()["token"]; got != "super-secret" {
+		t.Fatalf("stored runtime token = %q, want super-secret", got)
+	}
+	if got := store.runtimes["writer-okta-users"].GetCheckpoint().GetCursorOpaque(); got != "1" {
+		t.Fatalf("stored checkpoint = %#v, want cursor 1", store.runtimes["writer-okta-users"].GetCheckpoint())
+	}
+	if got := store.runtimes["writer-okta-users"].GetNextCursor().GetOpaque(); got != "1" {
+		t.Fatalf("stored next cursor = %#v, want cursor 1", store.runtimes["writer-okta-users"].GetNextCursor())
+	}
+	if got := store.runtimes["writer-okta-users"].GetLastSyncedAt(); got == nil || !got.AsTime().Equal(syncedAt.AsTime()) {
+		t.Fatalf("stored last_synced_at = %#v, want existing timestamp", got)
+	}
+}
+
 func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -273,6 +343,63 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	runtime = store.runtimes["writer-github"]
 	if runtime.GetCheckpoint().GetCursorOpaque() != "2" {
 		t.Fatalf("stored checkpoint cursor after second sync = %q, want %q", runtime.GetCheckpoint().GetCursorOpaque(), "2")
+	}
+}
+
+func TestSyncRuntimePersistsProgressAfterEachPage(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				Config:   map[string]string{"token": "test"},
+			},
+		},
+	}
+	log := &appendLog{failOnCall: 2}
+	service := New(registry, store, log, nil)
+
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+		Id:        "writer-github",
+		PageLimit: 2,
+	}); err == nil {
+		t.Fatal("Sync() error = nil, want append failure")
+	}
+	if len(log.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(log.events))
+	}
+	runtime := store.runtimes["writer-github"]
+	if got := runtime.GetCheckpoint().GetCursorOpaque(); got != "1" {
+		t.Fatalf("stored checkpoint cursor = %q, want %q", got, "1")
+	}
+	if got := runtime.GetNextCursor().GetOpaque(); got != "1" {
+		t.Fatalf("stored next cursor = %#v, want cursor 1", runtime.GetNextCursor())
+	}
+	if got := runtime.GetLastSyncedAt(); got != nil {
+		t.Fatalf("stored last_synced_at = %#v, want nil", got)
+	}
+
+	log.failOnCall = 0
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+		Id:        "writer-github",
+		PageLimit: 2,
+	})
+	if err != nil {
+		t.Fatalf("Sync(retry) error = %v", err)
+	}
+	if resp.GetEventsAppended() != 1 {
+		t.Fatalf("Sync(retry).EventsAppended = %d, want 1", resp.GetEventsAppended())
+	}
+	if len(log.events) != 2 {
+		t.Fatalf("len(appendLog.events) after retry = %d, want 2", len(log.events))
+	}
+	runtime = store.runtimes["writer-github"]
+	if got := runtime.GetCheckpoint().GetCursorOpaque(); got != "2" {
+		t.Fatalf("stored checkpoint cursor after retry = %q, want %q", got, "2")
 	}
 }
 

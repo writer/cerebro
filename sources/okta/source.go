@@ -27,6 +27,7 @@ var catalogFS embed.FS
 const (
 	defaultPageSize   = 10
 	maxPageSize       = 200
+	maxResponseBytes  = 5 << 20
 	defaultFamily     = familyAudit
 	defaultAuditOrder = "ASCENDING"
 	defaultUserOrder  = "asc"
@@ -183,6 +184,8 @@ type responseError struct {
 	statusCode int
 	message    string
 }
+
+var errResponseTooLarge = errors.New("response too large")
 
 func (e *responseError) Error() string {
 	return e.message
@@ -595,9 +598,12 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 	}()
 	headers := resp.Header.Clone()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return headers, fmt.Errorf("read %s response: %w", requestPath, err)
+	}
+	if len(body) > maxResponseBytes {
+		return headers, fmt.Errorf("read %s response: %w", requestPath, errResponseTooLarge)
 	}
 	if resp.StatusCode >= http.StatusMultipleChoices {
 		return headers, decodeResponseError(resp.StatusCode, body)
