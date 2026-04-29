@@ -65,8 +65,13 @@ jobs:
               for comment in comments:
                   user = comment.get("user") or {}
                   login = (user.get("login") or "").lower()
+                  user_type = (user.get("type") or "").lower()
                   body = comment.get("body") or ""
-                  if "droid" in login and marker in body:
+                  if (
+                      login == "factory-droid[bot]"
+                      and user_type == "bot"
+                      and marker in body
+                  ):
                       request_json(
                           "PATCH",
                           f"/repos/{repository}/issues/comments/{comment['id']}",
