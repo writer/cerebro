@@ -1927,7 +1927,7 @@ func writeGraphQueryError(w http.ResponseWriter, err error) {
 	case errors.Is(err, graphquery.ErrInvalidRequest):
 		statusCode = http.StatusBadRequest
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
 }
 
 func writeGraphIngestError(w http.ResponseWriter, err error) {
@@ -1942,7 +1942,7 @@ func writeGraphIngestError(w http.ResponseWriter, err error) {
 	case errors.Is(err, graphingest.ErrInvalidRequest):
 		statusCode = http.StatusBadRequest
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
 }
 
 func writeWorkflowReplayError(w http.ResponseWriter, err error) {

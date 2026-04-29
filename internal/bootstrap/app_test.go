@@ -185,6 +185,30 @@ func TestWriteReportErrorDoesNotExposeInternalMessage(t *testing.T) {
 	}
 }
 
+func TestWriteGraphErrorsDoNotExposeInternalMessages(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		write func(http.ResponseWriter, error)
+	}{
+		{name: "query", write: writeGraphQueryError},
+		{name: "ingest", write: writeGraphIngestError},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			tt.write(recorder, errors.New("postgres password leaked"))
+			if recorder.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+			}
+			if strings.Contains(recorder.Body.String(), "postgres password leaked") {
+				t.Fatalf("response body exposed internal error: %q", recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), http.StatusText(http.StatusInternalServerError)) {
+				t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
+			}
+		})
+	}
+}
+
 func TestStoreBoundaryHelpersTreatTypedNilAsUnavailable(t *testing.T) {
 	var graph *stubGraphStore
 	if got := graphQueryStore(graph); got != nil {

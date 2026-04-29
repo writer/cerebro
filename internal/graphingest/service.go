@@ -562,6 +562,10 @@ func sensitiveConfigKey(key string) bool {
 			return true
 		}
 	}
+	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(normalized)
+	if strings.Contains(compact, "apikey") || strings.Contains(compact, "accesskey") || strings.Contains(compact, "privatekey") {
+		return true
+	}
 	return normalized == "key" || strings.HasSuffix(normalized, "_key")
 }
 
