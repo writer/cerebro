@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -187,11 +188,12 @@ func (a *App) handleGetSourceRuntime(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.SyncSourceRuntimeRequest{}
 	if pageLimit := r.URL.Query().Get("page_limit"); pageLimit != "" {
-		body := []byte(`{"page_limit":` + pageLimit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
-			writeSourceRuntimeError(w, err)
+		parsed, err := strconv.ParseUint(strings.TrimSpace(pageLimit), 10, 32)
+		if err != nil {
+			writeSourceRuntimeError(w, fmt.Errorf("%w: invalid page_limit", sourceruntime.ErrInvalidRequest))
 			return
 		}
+		request.PageLimit = uint32(parsed)
 	}
 	request.Id = r.PathValue("runtimeID")
 	response, err := a.runtimeService().Sync(r.Context(), request)

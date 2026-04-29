@@ -639,6 +639,23 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 		t.Fatalf("sync links_projected = %#v, want 2", got)
 	}
 
+	badSyncReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-users/sync?page_limit=not-a-number", nil)
+	if err != nil {
+		t.Fatalf("new bad sync request: %v", err)
+	}
+	badSyncResp, err := server.Client().Do(badSyncReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/sync bad page_limit error = %v", err)
+	}
+	defer func() {
+		if closeErr := badSyncResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close bad sync runtime response body: %v", closeErr)
+		}
+	}()
+	if badSyncResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad sync status = %d, want %d", badSyncResp.StatusCode, http.StatusBadRequest)
+	}
+
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
 	putRuntimeResp, err := client.PutSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
