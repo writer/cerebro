@@ -444,8 +444,15 @@ function optionalString(value: unknown): string | undefined {
   if (value === null || value === undefined) {
     return undefined;
   }
-  const normalized = String(value).trim();
-  return normalized || undefined;
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized || undefined;
+  }
+  if (typeof value === "number" || typeof value === "bigint") {
+    const normalized = String(value).trim();
+    return normalized || undefined;
+  }
+  return undefined;
 }
 
 function objectArray(value: unknown): Array<Record<string, unknown>> {
