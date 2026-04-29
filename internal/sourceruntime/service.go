@@ -239,7 +239,8 @@ func sameConfig(left map[string]string, right map[string]string) bool {
 		return false
 	}
 	for key, value := range left {
-		if right[key] != value {
+		other, ok := right[key]
+		if !ok || other != value {
 			return false
 		}
 	}

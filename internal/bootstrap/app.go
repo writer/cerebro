@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -303,7 +304,12 @@ func (a *App) handleRunReport(w http.ResponseWriter, r *http.Request) {
 	if request.Parameters == nil {
 		request.Parameters = map[string]string{}
 	}
-	for key, value := range sourceConfigFromQuery(r) {
+	config, err := sourceConfigFromRequest(r)
+	if err != nil {
+		writeReportError(w, err)
+		return
+	}
+	for key, value := range config {
 		request.Parameters[key] = value
 	}
 	response, err := a.reportService().Run(r.Context(), request)
@@ -326,9 +332,14 @@ func (a *App) handleGetReportRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleCheckSource(w http.ResponseWriter, r *http.Request) {
+	config, err := sourceConfigFromRequest(r)
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
 	response, err := a.sourceService().Check(r.Context(), &cerebrov1.CheckSourceRequest{
 		SourceId: r.PathValue("sourceID"),
-		Config:   sourceConfigFromQuery(r),
+		Config:   config,
 	})
 	if err != nil {
 		writeSourceError(w, err)
@@ -338,9 +349,14 @@ func (a *App) handleCheckSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleDiscoverSource(w http.ResponseWriter, r *http.Request) {
+	config, err := sourceConfigFromRequest(r)
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
 	response, err := a.sourceService().Discover(r.Context(), &cerebrov1.DiscoverSourceRequest{
 		SourceId: r.PathValue("sourceID"),
-		Config:   sourceConfigFromQuery(r),
+		Config:   config,
 	})
 	if err != nil {
 		writeSourceError(w, err)
@@ -350,9 +366,14 @@ func (a *App) handleDiscoverSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
+	config, err := sourceConfigFromRequest(r)
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
 	request := &cerebrov1.ReadSourceRequest{
 		SourceId: r.PathValue("sourceID"),
-		Config:   sourceConfigFromQuery(r),
+		Config:   config,
 	}
 	rawCursors := r.URL.Query()["cursor"]
 	if len(rawCursors) > 0 {
@@ -1474,15 +1495,35 @@ func (a *App) workflowReplayService() *workflowprojection.Replayer {
 	)
 }
 
-func sourceConfigFromQuery(r *http.Request) map[string]string {
+func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 	values := make(map[string]string)
 	for key, rawValues := range r.URL.Query() {
 		if key == "cursor" || len(rawValues) == 0 {
 			continue
 		}
+		if sensitiveSourceConfigKey(key) {
+			return nil, fmt.Errorf("source config key %q must not be supplied in query parameters", key)
+		}
 		values[key] = rawValues[len(rawValues)-1]
 	}
-	return values
+	if rawConfig := strings.TrimSpace(r.Header.Get("X-Cerebro-Source-Config")); rawConfig != "" {
+		headerValues := map[string]string{}
+		if err := json.Unmarshal([]byte(rawConfig), &headerValues); err != nil {
+			return nil, fmt.Errorf("decode source config header: %w", err)
+		}
+		for key, value := range headerValues {
+			trimmedKey := strings.TrimSpace(key)
+			if trimmedKey != "" {
+				values[trimmedKey] = value
+			}
+		}
+	}
+	return values, nil
+}
+
+func sensitiveSourceConfigKey(key string) bool {
+	value := strings.ToLower(strings.TrimSpace(key))
+	return strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password")
 }
 
 func writeSourceError(w http.ResponseWriter, err error) {
