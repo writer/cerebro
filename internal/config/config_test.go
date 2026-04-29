@@ -76,6 +76,8 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 func TestLoadInfersDriversFromURLs(t *testing.T) {
 	clearCerebroEnv(t)
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
+	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
+	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
 	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
 
@@ -108,6 +110,7 @@ func TestLoadRejectsUnknownAppendLogDriver(t *testing.T) {
 func TestLoadRejectsMissingJetStreamURL(t *testing.T) {
 	clearCerebroEnv(t)
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
+	t.Setenv("CEREBRO_JETSTREAM_URL", "")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
 	}
@@ -116,6 +119,7 @@ func TestLoadRejectsMissingJetStreamURL(t *testing.T) {
 func TestLoadRejectsMissingPostgresDSN(t *testing.T) {
 	clearCerebroEnv(t)
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
+	t.Setenv("CEREBRO_POSTGRES_DSN", "")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
 	}

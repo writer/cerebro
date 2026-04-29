@@ -31,11 +31,12 @@ type Log struct {
 
 // Open dials JetStream and returns an append-log implementation.
 func Open(cfg config.AppendLogConfig) (*Log, error) {
-	if strings.TrimSpace(cfg.JetStreamURL) == "" {
+	url := strings.TrimSpace(cfg.JetStreamURL)
+	if url == "" {
 		return nil, errors.New("jetstream url is required")
 	}
 	nc, err := nats.Connect(
-		cfg.JetStreamURL,
+		url,
 		nats.Name("cerebro"),
 		nats.Timeout(connectTimeout),
 		nats.RetryOnFailedConnect(false),
@@ -92,14 +93,18 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	if kind == "" {
 		return errors.New("event kind is required")
 	}
-	if strings.ContainsRune(kind, ' ') {
+	if strings.ContainsAny(kind, " \t\r\n") {
 		return fmt.Errorf("event kind %q is not a valid NATS subject token", kind)
 	}
 	payload, err := proto.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal event: %w", err)
 	}
-	msg := nats.NewMsg(l.subjectPrefix + "." + kind)
+	subject := l.subjectPrefix + "." + kind
+	if strings.HasPrefix(subject, ".") || strings.HasSuffix(subject, ".") || strings.Contains(subject, "..") || strings.ContainsAny(subject, " \t\r\n") {
+		return fmt.Errorf("publish subject %q is not a valid NATS subject", subject)
+	}
+	msg := nats.NewMsg(subject)
 	msg.Data = payload
 	if event.Id != "" {
 		msg.Header.Set(nats.MsgIdHdr, event.Id)
