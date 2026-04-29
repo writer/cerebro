@@ -22,6 +22,8 @@ const (
 	claimTypeRelation       = "relation"
 	claimTypeClassification = "classification"
 	claimStatusAsserted     = "asserted"
+	defaultClaimListLimit   = 100
+	maxClaimListLimit       = 1000
 )
 
 // ErrRuntimeUnavailable indicates that the runtime or claim store boundary is unavailable.
@@ -153,7 +155,7 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 		ObjectValue: strings.TrimSpace(request.ObjectValue),
 		ClaimType:   strings.TrimSpace(request.ClaimType),
 		Status:      strings.TrimSpace(request.Status),
-		Limit:       request.Limit,
+		Limit:       normalizeClaimListLimit(request.Limit),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list claims for runtime %q: %w", runtimeID, err)
@@ -166,6 +168,17 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 		response.Claims = append(response.Claims, protoClaim(record))
 	}
 	return response, nil
+}
+
+func normalizeClaimListLimit(limit uint32) uint32 {
+	switch {
+	case limit == 0:
+		return defaultClaimListLimit
+	case limit > maxClaimListLimit:
+		return maxClaimListLimit
+	default:
+		return limit
+	}
 }
 
 func (s *Service) upsertEntity(ctx context.Context, entity *ports.ProjectedEntity, seen map[string]struct{}) (bool, error) {

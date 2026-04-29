@@ -346,6 +346,40 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	}
 }
 
+func TestListClaimsAppliesDefaultLimit(t *testing.T) {
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-1": {
+				ID:        "claim-1",
+				RuntimeID: "writer-jira",
+				Status:    claimStatusAsserted,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-jira": {Id: "writer-jira"},
+		}},
+		store,
+		nil,
+		nil,
+	)
+
+	if _, err := service.ListClaims(context.Background(), ListRequest{RuntimeID: "writer-jira"}); err != nil {
+		t.Fatalf("ListClaims() error = %v", err)
+	}
+	if got := store.listRequest.Limit; got != defaultClaimListLimit {
+		t.Fatalf("ListClaims().Limit = %d, want default %d", got, defaultClaimListLimit)
+	}
+
+	if _, err := service.ListClaims(context.Background(), ListRequest{RuntimeID: "writer-jira", Limit: maxClaimListLimit + 1}); err != nil {
+		t.Fatalf("ListClaims(over max) error = %v", err)
+	}
+	if got := store.listRequest.Limit; got != maxClaimListLimit {
+		t.Fatalf("ListClaims(over max).Limit = %d, want max %d", got, maxClaimListLimit)
+	}
+}
+
 func TestListClaimsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil)
 	if _, err := service.ListClaims(context.Background(), ListRequest{RuntimeID: "writer-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {
