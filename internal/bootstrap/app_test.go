@@ -165,6 +165,50 @@ func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.Proj
 	return nil
 }
 
+func TestSourceConfigFromRequestDropsBaseURL(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources/github/read?owner=writer&base_url=http://127.0.0.1:1&cursor=2", nil)
+	req.Header.Set("Authorization", "Bearer test")
+	config, err := sourceConfigFromRequest(req)
+	if err != nil {
+		t.Fatalf("sourceConfigFromRequest() error = %v", err)
+	}
+	if _, ok := config["base_url"]; ok {
+		t.Fatalf("sourceConfigFromRequest() included base_url")
+	}
+	if _, ok := config["cursor"]; ok {
+		t.Fatalf("sourceConfigFromRequest() included cursor")
+	}
+	if got := config["token"]; got != "test" {
+		t.Fatalf("sourceConfigFromRequest()[token] = %q, want test", got)
+	}
+	if got := config["owner"]; got != "writer" {
+		t.Fatalf("sourceConfigFromRequest()[owner] = %q, want writer", got)
+	}
+	badReq := httptest.NewRequest(http.MethodGet, "/sources/github/read?token=test", nil)
+	if _, err := sourceConfigFromRequest(badReq); err == nil {
+		t.Fatal("sourceConfigFromRequest(token query) error = nil, want error")
+	}
+}
+
+func TestSourceConfigFromRequestDropsReservedHeaderKeys(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources/github/read?owner=writer", nil)
+	req.Header.Set("X-Cerebro-Source-Config", `{"base_url":"http://127.0.0.1:1","cursor":"2","family":"audit"}`)
+
+	config, err := sourceConfigFromRequest(req)
+	if err != nil {
+		t.Fatalf("sourceConfigFromRequest() error = %v", err)
+	}
+	if _, ok := config["base_url"]; ok {
+		t.Fatal("sourceConfigFromRequest() included header base_url")
+	}
+	if _, ok := config["cursor"]; ok {
+		t.Fatal("sourceConfigFromRequest() included header cursor")
+	}
+	if got := config["family"]; got != "audit" {
+		t.Fatalf("sourceConfigFromRequest()[family] = %q, want audit", got)
+	}
+}
+
 func TestBootstrapEndpoints(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

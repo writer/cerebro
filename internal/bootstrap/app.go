@@ -330,7 +330,7 @@ func (a *App) runtimeService() *sourceruntime.Service {
 func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 	values := make(map[string]string)
 	for key, rawValues := range r.URL.Query() {
-		if key == "cursor" || len(rawValues) == 0 {
+		if reservedSourceConfigKey(key) || len(rawValues) == 0 {
 			continue
 		}
 		if sensitiveSourceConfigKey(key) {
@@ -345,12 +345,28 @@ func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 		}
 		for key, value := range headerValues {
 			trimmedKey := strings.TrimSpace(key)
-			if trimmedKey != "" {
+			if trimmedKey != "" && !reservedSourceConfigKey(trimmedKey) {
 				values[trimmedKey] = value
 			}
 		}
 	}
+	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
+		values["token"] = token
+	}
 	return values, nil
+}
+
+func bearerToken(header string) string {
+	header = strings.TrimSpace(header)
+	if len(header) < len("Bearer ") || !strings.EqualFold(header[:len("Bearer ")], "Bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(header[len("Bearer "):])
+}
+
+func reservedSourceConfigKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	return normalized == "cursor" || normalized == "base_url"
 }
 
 func sensitiveSourceConfigKey(key string) bool {
