@@ -258,7 +258,7 @@ message ReadSourceRequest {
 
 // SourcePreviewEvent exposes a decoded payload view for preview consumers.
 message SourcePreviewEvent {
-  EventEnvelope event = 1;
+  string event_id = 1;
   google.protobuf.Value payload = 2;
   bool payload_decoded = 3;
 }

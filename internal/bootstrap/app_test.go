@@ -669,6 +669,10 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(previewEvents) != 1 {
 		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])
 	}
+	previewEvent, ok := previewEvents[0].(map[string]any)
+	if !ok || previewEvent["event_id"] != "github-audit-1" {
+		t.Fatalf("read preview_event = %#v, want event_id github-audit-1", previewEvents[0])
+	}
 	oktaCheckResp, err := server.Client().Get(server.URL + "/sources/okta/check?domain=writer.okta.com&family=user&token=test")
 	if err != nil {
 		t.Fatalf("GET /sources/okta/check error = %v", err)
