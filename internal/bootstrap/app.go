@@ -1675,14 +1675,14 @@ func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 			continue
 		}
 		if sensitiveSourceConfigKey(key) {
-			return nil, fmt.Errorf("source config key %q must not be supplied in query parameters", key)
+			return nil, fmt.Errorf("%w: source config key %q must not be supplied in query parameters", sourceops.ErrInvalidRequest, key)
 		}
 		values[key] = rawValues[len(rawValues)-1]
 	}
 	if rawConfig := strings.TrimSpace(r.Header.Get("X-Cerebro-Source-Config")); rawConfig != "" {
 		headerValues := map[string]string{}
 		if err := json.Unmarshal([]byte(rawConfig), &headerValues); err != nil {
-			return nil, fmt.Errorf("decode source config header: %w", err)
+			return nil, fmt.Errorf("%w: decode source config header: %w", sourceops.ErrInvalidRequest, err)
 		}
 		for key, value := range headerValues {
 			trimmedKey := strings.TrimSpace(key)
@@ -1710,11 +1710,14 @@ func sensitiveSourceConfigKey(key string) bool {
 }
 
 func writeSourceError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
-	if errors.Is(err, sourceops.ErrSourceNotFound) {
+	statusCode := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, sourceops.ErrSourceNotFound):
 		statusCode = http.StatusNotFound
+	case errors.Is(err, sourceops.ErrInvalidRequest):
+		statusCode = http.StatusBadRequest
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
 }
 
 func writeReportError(w http.ResponseWriter, err error) {
@@ -1755,12 +1758,14 @@ func sourceConnectError(err error) error {
 }
 
 func writeSourceRuntimeError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
+	statusCode := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
+	case errors.Is(err, sourceruntime.ErrInvalidRequest):
+		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
 }
@@ -1779,14 +1784,16 @@ func sourceRuntimeConnectError(err error) error {
 }
 
 func writeClaimError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
+	statusCode := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, claims.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
+	case errors.Is(err, claims.ErrInvalidRequest):
+		statusCode = http.StatusBadRequest
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
 }
 
 func claimConnectError(err error) error {
@@ -1888,7 +1895,7 @@ func workflowReplayConnectError(err error) error {
 }
 
 func writeFindingError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
+	statusCode := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		statusCode = http.StatusNotFound
@@ -1902,19 +1909,23 @@ func writeFindingError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, findings.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
+	case errors.Is(err, findings.ErrRuleSelectionRequired), errors.Is(err, findings.ErrRuleUnsupported):
+		statusCode = http.StatusBadRequest
+	case errors.Is(err, findings.ErrRuleUnavailable):
+		statusCode = http.StatusPreconditionFailed
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
 }
 
 func writeKnowledgeError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
+	statusCode := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, ports.ErrGraphEntityNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, knowledge.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
 }
 
 func writeGraphQueryError(w http.ResponseWriter, err error) {
@@ -1946,11 +1957,11 @@ func writeGraphIngestError(w http.ResponseWriter, err error) {
 }
 
 func writeWorkflowReplayError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
+	statusCode := http.StatusInternalServerError
 	if errors.Is(err, workflowprojection.ErrRuntimeUnavailable) {
 		statusCode = http.StatusServiceUnavailable
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
 }
 
 func timestampValue(value *timestamppb.Timestamp) time.Time {

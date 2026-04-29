@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -99,6 +100,159 @@ func TestUpsertProjectedEntityAndLink(t *testing.T) {
 	linkCount = queryGraphCount(t, store, "MATCH (:entity)-[r:relation]->(:entity) RETURN COUNT(r)")
 	if linkCount != 0 {
 		t.Fatalf("projected link count after delete = %d, want 0", linkCount)
+	}
+}
+
+func TestUpsertProjectedAttributesHandleNullJSON(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	user := &ports.ProjectedEntity{
+		URN:        "urn:cerebro:writer:github_user:alice",
+		TenantID:   "writer",
+		SourceID:   "github",
+		EntityType: "github.user",
+		Label:      "Alice",
+	}
+	repo := &ports.ProjectedEntity{
+		URN:        "urn:cerebro:writer:github_repo:writer/cerebro",
+		TenantID:   "writer",
+		SourceID:   "github",
+		EntityType: "github.repo",
+		Label:      "writer/cerebro",
+	}
+	if err := store.UpsertProjectedEntity(ctx, user); err != nil {
+		t.Fatalf("UpsertProjectedEntity(user) error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(
+		"MATCH (e:entity {urn: %s}) SET e.attributes_json = NULL",
+		cypherString(user.URN),
+	)); err != nil {
+		t.Fatalf("clear entity attributes_json: %v", err)
+	}
+	user.Attributes = map[string]string{"login": "alice"}
+	if err := store.UpsertProjectedEntity(ctx, user); err != nil {
+		t.Fatalf("UpsertProjectedEntity(null attributes) error = %v", err)
+	}
+	userAttributes := queryGraphAttributes(t, store, fmt.Sprintf("MATCH (e:entity {urn: %s}) RETURN e.attributes_json", cypherString(user.URN)))
+	if userAttributes["login"] != "alice" {
+		t.Fatalf("projected entity attributes = %#v, want login", userAttributes)
+	}
+
+	if err := store.UpsertProjectedEntity(ctx, repo); err != nil {
+		t.Fatalf("UpsertProjectedEntity(repo) error = %v", err)
+	}
+	link := &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "github",
+		FromURN:  user.URN,
+		ToURN:    repo.URN,
+		Relation: "belongs_to",
+	}
+	if err := store.UpsertProjectedLink(ctx, link); err != nil {
+		t.Fatalf("UpsertProjectedLink() error = %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(
+		"MATCH (:entity {urn: %s})-[r:relation {relation: %s}]->(:entity {urn: %s}) SET r.attributes_json = NULL",
+		cypherString(user.URN),
+		cypherString("belongs_to"),
+		cypherString(repo.URN),
+	)); err != nil {
+		t.Fatalf("clear link attributes_json: %v", err)
+	}
+	link.Attributes = map[string]string{"event_id": "evt-1"}
+	if err := store.UpsertProjectedLink(ctx, link); err != nil {
+		t.Fatalf("UpsertProjectedLink(null attributes) error = %v", err)
+	}
+	linkAttributes := queryGraphAttributes(t, store, fmt.Sprintf(
+		"MATCH (:entity {urn: %s})-[r:relation {relation: %s}]->(:entity {urn: %s}) RETURN r.attributes_json",
+		cypherString(user.URN),
+		cypherString("belongs_to"),
+		cypherString(repo.URN),
+	))
+	if linkAttributes["event_id"] != "evt-1" {
+		t.Fatalf("projected link attributes = %#v, want event_id", linkAttributes)
+	}
+}
+
+func TestUpsertProjectedAttributesMergeConcurrentUpdates(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	user := &ports.ProjectedEntity{
+		URN:        "urn:cerebro:writer:github_user:alice",
+		TenantID:   "writer",
+		SourceID:   "github",
+		EntityType: "github.user",
+		Label:      "Alice",
+	}
+	repo := &ports.ProjectedEntity{
+		URN:        "urn:cerebro:writer:github_repo:writer/cerebro",
+		TenantID:   "writer",
+		SourceID:   "github",
+		EntityType: "github.repo",
+		Label:      "writer/cerebro",
+	}
+	if err := store.UpsertProjectedEntity(ctx, user); err != nil {
+		t.Fatalf("UpsertProjectedEntity(user) error = %v", err)
+	}
+	if err := store.UpsertProjectedEntity(ctx, repo); err != nil {
+		t.Fatalf("UpsertProjectedEntity(repo) error = %v", err)
+	}
+	link := &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "github",
+		FromURN:  user.URN,
+		ToURN:    repo.URN,
+		Relation: "belongs_to",
+	}
+	if err := store.UpsertProjectedLink(ctx, link); err != nil {
+		t.Fatalf("UpsertProjectedLink() error = %v", err)
+	}
+
+	const updates = 8
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	errs := make(chan error, updates*2)
+	for idx := 0; idx < updates; idx++ {
+		idx := idx
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			updated := *user
+			updated.Attributes = map[string]string{fmt.Sprintf("entity_%d", idx): fmt.Sprintf("value_%d", idx)}
+			errs <- store.UpsertProjectedEntity(ctx, &updated)
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			updated := *link
+			updated.Attributes = map[string]string{fmt.Sprintf("link_%d", idx): fmt.Sprintf("value_%d", idx)}
+			errs <- store.UpsertProjectedLink(ctx, &updated)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent upsert error = %v", err)
+		}
+	}
+
+	userAttributes := queryGraphAttributes(t, store, fmt.Sprintf("MATCH (e:entity {urn: %s}) RETURN e.attributes_json", cypherString(user.URN)))
+	linkAttributes := queryGraphAttributes(t, store, fmt.Sprintf(
+		"MATCH (:entity {urn: %s})-[r:relation {relation: %s}]->(:entity {urn: %s}) RETURN r.attributes_json",
+		cypherString(user.URN),
+		cypherString("belongs_to"),
+		cypherString(repo.URN),
+	))
+	for idx := 0; idx < updates; idx++ {
+		if userAttributes[fmt.Sprintf("entity_%d", idx)] != fmt.Sprintf("value_%d", idx) {
+			t.Fatalf("projected entity attributes = %#v, missing entity_%d", userAttributes, idx)
+		}
+		if linkAttributes[fmt.Sprintf("link_%d", idx)] != fmt.Sprintf("value_%d", idx) {
+			t.Fatalf("projected link attributes = %#v, missing link_%d", linkAttributes, idx)
+		}
 	}
 }
 

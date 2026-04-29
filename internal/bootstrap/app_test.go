@@ -154,14 +154,41 @@ func TestConnectInternalErrorsHideDetails(t *testing.T) {
 func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeSourceRuntimeError(recorder, errors.New("postgres password leaked"))
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
 	}
 	if strings.Contains(recorder.Body.String(), "postgres password leaked") {
 		t.Fatalf("response body exposed internal error: %q", recorder.Body.String())
 	}
-	if !strings.Contains(recorder.Body.String(), http.StatusText(http.StatusBadRequest)) {
+	if !strings.Contains(recorder.Body.String(), http.StatusText(http.StatusInternalServerError)) {
 		t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
+	}
+}
+
+func TestWriteHTTPErrorHelpersDoNotExposeInternalMessages(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		write func(http.ResponseWriter, error)
+	}{
+		{name: "source", write: writeSourceError},
+		{name: "claim", write: writeClaimError},
+		{name: "finding", write: writeFindingError},
+		{name: "knowledge", write: writeKnowledgeError},
+		{name: "workflow replay", write: writeWorkflowReplayError},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			tt.write(recorder, errors.New("postgres password leaked"))
+			if recorder.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+			}
+			if strings.Contains(recorder.Body.String(), "postgres password leaked") {
+				t.Fatalf("response body exposed internal error: %q", recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), http.StatusText(http.StatusInternalServerError)) {
+				t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
+			}
+		})
 	}
 }
 

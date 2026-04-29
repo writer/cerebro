@@ -339,6 +339,8 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if err := s.ensureProjectionSchema(ctx); err != nil {
 		return err
 	}
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
 	attributes, err := s.mergedProjectedEntityAttributes(ctx, urn, entity.Attributes)
 	if err != nil {
 		return fmt.Errorf("load projected entity %q attributes: %w", urn, err)
@@ -397,6 +399,8 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if err := s.ensureProjectionSchema(ctx); err != nil {
 		return err
 	}
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
 	if err := s.ensureProjectedLinkEndpoints(ctx, fromURN, toURN); err != nil {
 		return err
 	}
@@ -563,7 +567,7 @@ func mergeGraphAttributes(existing map[string]string, incoming map[string]string
 }
 
 func (s *Store) mergedProjectedEntityAttributes(ctx context.Context, urn string, incoming map[string]string) (map[string]string, error) {
-	var raw string
+	var raw sql.NullString
 	err := s.db.QueryRowContext(ctx, fmt.Sprintf(
 		"MATCH (e:entity {urn: %s}) RETURN e.attributes_json",
 		cypherString(urn),
@@ -574,7 +578,7 @@ func (s *Store) mergedProjectedEntityAttributes(ctx context.Context, urn string,
 	if err != nil {
 		return nil, err
 	}
-	existing, err := graphAttributesFromJSON(raw)
+	existing, err := graphAttributesFromJSON(raw.String)
 	if err != nil {
 		return nil, err
 	}
@@ -582,7 +586,7 @@ func (s *Store) mergedProjectedEntityAttributes(ctx context.Context, urn string,
 }
 
 func (s *Store) mergedProjectedLinkAttributes(ctx context.Context, fromURN string, relation string, toURN string, incoming map[string]string) (map[string]string, error) {
-	var raw string
+	var raw sql.NullString
 	err := s.db.QueryRowContext(ctx, fmt.Sprintf(
 		"MATCH (src:entity {urn: %s})-[r:relation {relation: %s}]->(dst:entity {urn: %s}) RETURN r.attributes_json",
 		cypherString(fromURN),
@@ -595,7 +599,7 @@ func (s *Store) mergedProjectedLinkAttributes(ctx context.Context, fromURN strin
 	if err != nil {
 		return nil, err
 	}
-	existing, err := graphAttributesFromJSON(raw)
+	existing, err := graphAttributesFromJSON(raw.String)
 	if err != nil {
 		return nil, err
 	}

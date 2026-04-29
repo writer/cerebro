@@ -41,8 +41,6 @@ DECLARE
   pk_name TEXT;
   pk_cols TEXT[];
 BEGIN
-  LOCK TABLE claims IN ACCESS EXCLUSIVE MODE;
-
   SELECT c.conname, array_agg(a.attname ORDER BY k.ord)
   INTO pk_name, pk_cols
   FROM pg_constraint c
@@ -51,13 +49,25 @@ BEGIN
   WHERE c.conrelid = 'claims'::regclass AND c.contype = 'p'
   GROUP BY c.conname;
 
-  IF pk_name IS NULL THEN
-    ALTER TABLE claims ADD PRIMARY KEY (tenant_id, runtime_id, id);
-  ELSIF pk_cols = ARRAY['id']::TEXT[] THEN
-    EXECUTE format('ALTER TABLE claims DROP CONSTRAINT IF EXISTS %I', pk_name);
-    ALTER TABLE claims ADD PRIMARY KEY (tenant_id, runtime_id, id);
-  ELSIF pk_cols <> ARRAY['tenant_id', 'runtime_id', 'id']::TEXT[] THEN
-    RAISE EXCEPTION 'unexpected claims primary key columns: %', pk_cols;
+  IF pk_cols IS DISTINCT FROM ARRAY['tenant_id', 'runtime_id', 'id']::TEXT[] THEN
+    LOCK TABLE claims IN ACCESS EXCLUSIVE MODE;
+
+    SELECT c.conname, array_agg(a.attname ORDER BY k.ord)
+    INTO pk_name, pk_cols
+    FROM pg_constraint c
+    JOIN unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord) ON TRUE
+    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+    WHERE c.conrelid = 'claims'::regclass AND c.contype = 'p'
+    GROUP BY c.conname;
+
+    IF pk_name IS NULL THEN
+      ALTER TABLE claims ADD PRIMARY KEY (tenant_id, runtime_id, id);
+    ELSIF pk_cols = ARRAY['id']::TEXT[] THEN
+      EXECUTE format('ALTER TABLE claims DROP CONSTRAINT IF EXISTS %I', pk_name);
+      ALTER TABLE claims ADD PRIMARY KEY (tenant_id, runtime_id, id);
+    ELSIF pk_cols <> ARRAY['tenant_id', 'runtime_id', 'id']::TEXT[] THEN
+      RAISE EXCEPTION 'unexpected claims primary key columns: %', pk_cols;
+    END IF;
   END IF;
 END $$`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_subject_idx ON claims (runtime_id, subject_urn)`,
