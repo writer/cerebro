@@ -29,11 +29,27 @@ type Log struct {
 	subjectPrefix string
 }
 
+type invalidSubjectError struct {
+	label   string
+	subject string
+}
+
+func (e invalidSubjectError) Error() string {
+	return fmt.Sprintf("%s %q is not a valid NATS subject", e.label, e.subject)
+}
+
 // Open dials JetStream and returns an append-log implementation.
 func Open(cfg config.AppendLogConfig) (*Log, error) {
 	url := strings.TrimSpace(cfg.JetStreamURL)
 	if url == "" {
 		return nil, errors.New("jetstream url is required")
+	}
+	prefix := strings.TrimSpace(cfg.JetStreamSubjectPrefix)
+	if prefix == "" {
+		prefix = "events"
+	}
+	if !validPublishSubject(prefix) {
+		return nil, invalidSubjectError{label: "jetstream subject prefix", subject: prefix}
 	}
 	nc, err := nats.Connect(
 		url,
@@ -48,10 +64,6 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 	if err != nil {
 		nc.Close()
 		return nil, fmt.Errorf("new jetstream client: %w", err)
-	}
-	prefix := strings.TrimSpace(cfg.JetStreamSubjectPrefix)
-	if prefix == "" {
-		prefix = "events"
 	}
 	return &Log{
 		conn:          nc,
@@ -103,8 +115,8 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 		return fmt.Errorf("marshal event: %w", err)
 	}
 	subject := l.subjectPrefix + "." + kind
-	if strings.HasPrefix(subject, ".") || strings.HasSuffix(subject, ".") || strings.Contains(subject, "..") || strings.ContainsAny(subject, " \t\r\n") {
-		return fmt.Errorf("publish subject %q is not a valid NATS subject", subject)
+	if !validPublishSubject(subject) {
+		return invalidSubjectError{label: "publish subject", subject: subject}
 	}
 	msg := nats.NewMsg(subject)
 	msg.Data = payload
@@ -115,4 +127,12 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 		return fmt.Errorf("publish event: %w", err)
 	}
 	return nil
+}
+
+func validPublishSubject(subject string) bool {
+	return subject != "" &&
+		!strings.HasPrefix(subject, ".") &&
+		!strings.HasSuffix(subject, ".") &&
+		!strings.Contains(subject, "..") &&
+		!strings.ContainsAny(subject, " \t\r\n*>")
 }

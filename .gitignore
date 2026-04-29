@@ -1,12 +1,6 @@
 # Binaries
 bin/
-cerebro
-!cmd/cerebro/
-!cmd/cerebro/**
-!proto/cerebro/
-!proto/cerebro/**
-!gen/cerebro/
-!gen/cerebro/**
+/cerebro
 *.exe
 *.dll
 *.so

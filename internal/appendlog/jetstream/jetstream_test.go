@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
 )
 
 type fakePublisher struct {
@@ -100,6 +101,20 @@ func TestAppendRejectsInvalidPublishSubject(t *testing.T) {
 	}
 	if pub.published != nil {
 		t.Fatal("published message != nil, want nil")
+	}
+}
+
+func TestOpenRejectsInvalidSubjectPrefixBeforeConnect(t *testing.T) {
+	_, err := Open(config.AppendLogConfig{
+		JetStreamURL:           "nats://127.0.0.1:4222",
+		JetStreamSubjectPrefix: "events.",
+	})
+	if err == nil {
+		t.Fatal("Open() error = nil, want non-nil")
+	}
+	var subjectErr invalidSubjectError
+	if !errors.As(err, &subjectErr) {
+		t.Fatalf("Open() error = %v, want invalid subject error", err)
 	}
 }
 
