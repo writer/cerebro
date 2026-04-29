@@ -91,16 +91,16 @@ type RunResult struct {
 }
 
 type ListResult struct {
-	Runs        []graphstore.IngestRun
-	FailedCount uint32
+	Runs        []graphstore.IngestRun `json:"runs"`
+	FailedCount uint32                 `json:"failed_count"`
 }
 
 type HealthResult struct {
-	Status       string
-	CheckedAt    time.Time
-	FailedCount  uint32
-	RunningCount uint32
-	FailedRuns   []graphstore.IngestRun
+	Status       string                 `json:"status"`
+	CheckedAt    time.Time              `json:"checked_at"`
+	FailedCount  uint32                 `json:"failed_count"`
+	RunningCount uint32                 `json:"running_count"`
+	FailedRuns   []graphstore.IngestRun `json:"failed_runs"`
 }
 
 func New(registry *sourcecdk.Registry, runtimeStore ports.SourceRuntimeStore, projector ports.SourceProjector, graphStore ports.GraphStore) *Service {
@@ -235,12 +235,16 @@ func (s *Service) Health(ctx context.Context, limit uint32) (*HealthResult, erro
 	if err != nil {
 		return nil, err
 	}
-	failed, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{
+	allFailed, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{
 		Status: graphstore.IngestRunStatusFailed,
-		Limit:  normalizedLimit,
+		Limit:  MaxStatusLimit,
 	})
 	if err != nil {
 		return nil, err
+	}
+	failed := allFailed
+	if normalizedLimit > 0 && len(failed) > normalizedLimit {
+		failed = failed[:normalizedLimit]
 	}
 	running, err := runStore.ListIngestRuns(ctx, graphstore.IngestRunFilter{
 		Status: graphstore.IngestRunStatusRunning,
@@ -250,13 +254,13 @@ func (s *Service) Health(ctx context.Context, limit uint32) (*HealthResult, erro
 		return nil, err
 	}
 	status := "ready"
-	if len(failed) != 0 {
+	if len(allFailed) != 0 {
 		status = "degraded"
 	}
 	return &HealthResult{
 		Status:       status,
 		CheckedAt:    time.Now().UTC(),
-		FailedCount:  uint32(len(failed)),
+		FailedCount:  uint32(len(allFailed)),
 		RunningCount: uint32(len(running)),
 		FailedRuns:   failed,
 	}, nil
@@ -479,11 +483,17 @@ func runtimeCheckpointID(request RuntimeRequest, runtime *cerebrov1.SourceRuntim
 	if normalized := strings.TrimSpace(request.CheckpointID); normalized != "" {
 		return normalized
 	}
+	runtimeID := strings.TrimSpace(runtime.GetId())
+	if runtimeID == "" {
+		runtimeID = "unknown"
+	}
+	idSum := sha256.Sum256([]byte(runtimeID))
+	runtimePart := hex.EncodeToString(idSum[:8])
 	hash := configHash(config)
 	if len(hash) > 16 {
 		hash = hash[:16]
 	}
-	return "runtime:" + sanitizeIDPart(runtime.GetId()) + ":" + hash
+	return "runtime:" + runtimePart + ":" + hash
 }
 
 func ingestTrigger(trigger string) string {

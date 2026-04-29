@@ -363,7 +363,13 @@ func runGraphIngestRuns(args []string) error {
 	if err != nil {
 		return err
 	}
-	return printJSON(result)
+	return printJSON(struct {
+		Runs        []graphstore.IngestRun `json:"runs"`
+		FailedCount uint32                 `json:"failed_count"`
+	}{
+		Runs:        result.Runs,
+		FailedCount: result.FailedCount,
+	})
 }
 
 func parseGraphNeighborhoodArgs(args []string) (string, int, error) {
