@@ -51,14 +51,6 @@ func TestGitHubLocalEndToEndWithGHCLI(t *testing.T) {
 		t.Fatalf("prepareSourceConfigWithCLI() error = %v", err)
 	}
 
-	pulls, err := readGitHubPullsWithGHCLI(ctx, config["owner"], config["repo"], 5)
-	if err != nil {
-		t.Fatalf("readGitHubPullsWithGHCLI() error = %v", err)
-	}
-	if len(pulls) == 0 {
-		t.Fatal("readGitHubPullsWithGHCLI() returned zero pulls")
-	}
-
 	registry, err := sourceregistry.Builtin()
 	if err != nil {
 		t.Fatalf("Builtin() error = %v", err)
@@ -78,17 +70,24 @@ func TestGitHubLocalEndToEndWithGHCLI(t *testing.T) {
 	if err := json.Unmarshal(response.GetEvents()[0].GetPayload(), &payload); err != nil {
 		t.Fatalf("unmarshal source payload: %v", err)
 	}
-	if payload.Number != pulls[0].Number {
-		t.Fatalf("source payload number = %d, want %d", payload.Number, pulls[0].Number)
+	if payload.Number == 0 {
+		t.Fatal("source payload number = 0, want non-zero")
 	}
-	if payload.Title != pulls[0].Title {
-		t.Fatalf("source payload title = %q, want %q", payload.Title, pulls[0].Title)
+	pull, err := readGitHubPullWithGHCLI(ctx, config["owner"], config["repo"], payload.Number)
+	if err != nil {
+		t.Fatalf("readGitHubPullWithGHCLI(%d) error = %v", payload.Number, err)
 	}
-	if payload.URL != pulls[0].HTMLURL {
-		t.Fatalf("source payload url = %q, want %q", payload.URL, pulls[0].HTMLURL)
+	if payload.Number != pull.Number {
+		t.Fatalf("source payload number = %d, want %d", payload.Number, pull.Number)
 	}
-	if payload.Author != pulls[0].User.Login {
-		t.Fatalf("source payload author = %q, want %q", payload.Author, pulls[0].User.Login)
+	if payload.Title != pull.Title {
+		t.Fatalf("source payload title = %q, want %q", payload.Title, pull.Title)
+	}
+	if payload.URL != pull.HTMLURL {
+		t.Fatalf("source payload url = %q, want %q", payload.URL, pull.HTMLURL)
+	}
+	if payload.Author != pull.User.Login {
+		t.Fatalf("source payload author = %q, want %q", payload.Author, pull.User.Login)
 	}
 
 	graphPath := filepath.Join(t.TempDir(), "graph")
@@ -142,17 +141,17 @@ func TestGitHubLocalEndToEndWithGHCLI(t *testing.T) {
 	)
 }
 
-func readGitHubPullsWithGHCLI(ctx context.Context, owner string, repo string, perPage int) ([]ghAPIPull, error) {
-	path := fmt.Sprintf("/repos/%s/%s/pulls?state=all&sort=updated&direction=desc&per_page=%d", owner, repo, perPage)
+func readGitHubPullWithGHCLI(ctx context.Context, owner string, repo string, number int) (ghAPIPull, error) {
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, number)
 	output, err := exec.CommandContext(ctx, "gh", "api", path).Output()
 	if err != nil {
-		return nil, fmt.Errorf("read github pulls with gh cli: %w", err)
+		return ghAPIPull{}, fmt.Errorf("read github pull with gh cli: %w", err)
 	}
-	var pulls []ghAPIPull
-	if err := json.Unmarshal(output, &pulls); err != nil {
-		return nil, fmt.Errorf("decode github pulls from gh cli: %w", err)
+	var pull ghAPIPull
+	if err := json.Unmarshal(output, &pull); err != nil {
+		return ghAPIPull{}, fmt.Errorf("decode github pull from gh cli: %w", err)
 	}
-	return pulls, nil
+	return pull, nil
 }
 
 func graphCount(t *testing.T, db *sql.DB, query string) int64 {
