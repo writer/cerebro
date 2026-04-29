@@ -88,6 +88,18 @@ func TestUpsertProjectedEntityAndLink(t *testing.T) {
 	if linkCount != 1 {
 		t.Fatalf("projected link count = %d, want 1", linkCount)
 	}
+
+	if err := store.DeleteProjectedLink(ctx, &ports.ProjectedLink{
+		FromURN:  user.URN,
+		ToURN:    repo.URN,
+		Relation: "belongs_to",
+	}); err != nil {
+		t.Fatalf("DeleteProjectedLink() error = %v", err)
+	}
+	linkCount = queryGraphCount(t, store, "MATCH (:entity)-[r:relation]->(:entity) RETURN COUNT(r)")
+	if linkCount != 0 {
+		t.Fatalf("projected link count after delete = %d, want 0", linkCount)
+	}
 }
 
 func TestUpsertProjectedLinkRejectsMissingEndpoints(t *testing.T) {
