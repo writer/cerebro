@@ -194,6 +194,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 		Rule:    rule.Spec(),
 		Run:     run,
 	}
+	evidenceIndex := make(map[string]int)
 	var eventsEvaluated uint32
 	for _, event := range events {
 		emitted, err := rule.Evaluate(ctx, runtime, event)
@@ -222,6 +223,11 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evaluationErr := fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)
 				return nil, s.finishFailedRun(ctx, run, eventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
+			if idx, ok := evidenceIndex[evidence.GetId()]; ok {
+				result.Evidence[idx] = evidence
+				continue
+			}
+			evidenceIndex[evidence.GetId()] = len(result.Evidence)
 			result.Evidence = append(result.Evidence, evidence)
 		}
 	}

@@ -345,6 +345,71 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceByID(t *testing.T) {
+	registry, err := NewRegistry(&stubRule{
+		spec:               &cerebrov1.RuleSpec{Id: "rule-duplicate"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		evaluate: func(_ context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+			return []*ports.FindingRecord{
+				{
+					ID:              "finding-duplicate",
+					Fingerprint:     "fingerprint-duplicate",
+					RuntimeID:       runtime.GetId(),
+					TenantID:        runtime.GetTenantId(),
+					RuleID:          "rule-duplicate",
+					Title:           "Duplicate finding",
+					Severity:        "MEDIUM",
+					Status:          "open",
+					Summary:         "duplicate finding",
+					ResourceURNs:    []string{"urn:cerebro:writer:okta_resource:rule:pol-1"},
+					EventIDs:        []string{event.GetId()},
+					FirstObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+					LastObservedAt:  time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+				},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+		},
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(&stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {
+				Id:       "writer-okta-audit",
+				SourceId: "okta",
+				TenantId: "writer",
+			},
+		},
+	}, replayer, store, store, store, store, registry)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+		RuleID:    "rule-duplicate",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 2 {
+		t.Fatalf("len(Findings) = %d, want 2", got)
+	}
+	if got := len(result.Evidence); got != 1 {
+		t.Fatalf("len(Evidence) = %d, want 1", got)
+	}
+	if got := len(store.evidence); got != 1 {
+		t.Fatalf("len(store.evidence) = %d, want 1", got)
+	}
+	if got := result.Evidence[0].GetEventIds(); len(got) != 1 || got[0] != "okta-audit-2" {
+		t.Fatalf("Evidence[0].EventIds = %v, want [okta-audit-2]", got)
+	}
+}
+
 func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
 	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
