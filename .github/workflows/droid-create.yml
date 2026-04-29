@@ -42,11 +42,13 @@ jobs:
       (github.event_name == 'issue_comment' && (
         contains(github.event.comment.body, '@droid implement') ||
         contains(github.event.comment.body, '@droid create') ||
-        contains(github.event.comment.body, '@droid fix this PR') ||
-        contains(github.event.comment.body, '@droid fix this pr') ||
-        contains(github.event.comment.body, '@droid fix review feedback') ||
         contains(github.event.comment.body, '@droid add regression tests') ||
-        contains(github.event.comment.body, '@droid scaffold source')
+        contains(github.event.comment.body, '@droid scaffold source') ||
+        (github.event.issue.pull_request != null && (
+          contains(github.event.comment.body, '@droid fix this PR') ||
+          contains(github.event.comment.body, '@droid fix this pr') ||
+          contains(github.event.comment.body, '@droid fix review feedback')
+        ))
       )) ||
       (github.event_name == 'pull_request_review_comment' &&
         github.event.pull_request.head.repo.full_name == github.repository && (
@@ -75,12 +77,10 @@ jobs:
           ))) && (
           contains(github.event.issue.body, '@droid implement') ||
           contains(github.event.issue.body, '@droid create') ||
-          contains(github.event.issue.body, '@droid fix review feedback') ||
           contains(github.event.issue.body, '@droid add regression tests') ||
           contains(github.event.issue.body, '@droid scaffold source') ||
           contains(github.event.issue.title, '@droid implement') ||
           contains(github.event.issue.title, '@droid create') ||
-          contains(github.event.issue.title, '@droid fix review feedback') ||
           contains(github.event.issue.title, '@droid add regression tests') ||
           contains(github.event.issue.title, '@droid scaffold source')
         ))

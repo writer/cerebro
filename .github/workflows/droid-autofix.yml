@@ -47,6 +47,7 @@ jobs:
           python3 <<'PY'
           import json
           import os
+          import urllib.parse
           import urllib.request
 
           event_name = os.environ["GITHUB_EVENT_NAME"]
@@ -75,6 +76,17 @@ jobs:
               with urllib.request.urlopen(request, timeout=20) as response:
                   return json.load(response)
 
+          def latest_review_window(head_ref, head_sha):
+              branch = urllib.parse.quote(head_ref, safe="")
+              data = api_get(
+                  f"/repos/{repository}/actions/workflows/droid-review.yml/runs"
+                  f"?branch={branch}&event=pull_request&status=success&per_page=20"
+              )
+              for run in data.get("workflow_runs", []):
+                  if run.get("head_sha") == head_sha:
+                      return run.get("created_at") or "", run.get("updated_at") or ""
+              return "", ""
+
           if event_name == "workflow_dispatch":
               permission = api_get(f"/repos/{repository}/collaborators/{actor}/permission").get("permission")
               if permission not in {"admin", "maintain", "write"}:
@@ -101,6 +113,11 @@ jobs:
               elif "droid-no-autofix" in labels or "[skip-droid-autofix]" in (pr.get("title") or "").lower():
                   should_run = False
                   skip_reason = "Droid Auto Fix is disabled for this pull request"
+              elif event_name == "workflow_dispatch":
+                  review_since, review_until = latest_review_window(pr["head"]["ref"], pr["head"]["sha"])
+                  if not review_since:
+                      should_run = False
+                      skip_reason = "no completed Droid Auto Review found for the current pull request head"
 
           out_path = os.environ["GITHUB_OUTPUT"]
           with open(out_path, "a", encoding="utf-8") as out:
