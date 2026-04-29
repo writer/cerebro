@@ -197,6 +197,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	if err != nil {
 		return nil, err
 	}
+	normalizedLimit := normalizeEventLimit(request.EventLimit)
 	startedAt := time.Now().UTC()
 	run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), request.EventLimit, startedAt)
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
@@ -204,7 +205,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	}
 	events, err := s.replayer.Replay(ctx, ports.ReplayRequest{
 		RuntimeID: runtimeID,
-		Limit:     normalizeEventLimit(request.EventLimit),
+		Limit:     normalizedLimit,
 	})
 	if err != nil {
 		evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
@@ -267,6 +268,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	if err != nil {
 		return nil, err
 	}
+	normalizedLimit := normalizeEventLimit(request.EventLimit)
 	startedAt := time.Now().UTC()
 	states := make([]*ruleEvaluationState, 0, len(rules))
 	result := &EvaluateRulesResult{
@@ -274,9 +276,15 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		Evaluations: make([]*RuleEvaluationResult, 0, len(rules)),
 	}
 	for _, rule := range rules {
-		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), request.EventLimit, startedAt)
+		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
 		if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
-			return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+			evaluationErr := fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+			for _, state := range states {
+				if failErr := s.markRuleEvaluationFailed(ctx, state, evaluationErr); failErr != nil {
+					return nil, failErr
+				}
+			}
+			return nil, evaluationErr
 		}
 		state := &ruleEvaluationState{
 			rule: rule,
@@ -290,7 +298,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	}
 	events, err := s.replayer.Replay(ctx, ports.ReplayRequest{
 		RuntimeID: runtimeID,
-		Limit:     normalizeEventLimit(request.EventLimit),
+		Limit:     normalizedLimit,
 	})
 	if err != nil {
 		evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
