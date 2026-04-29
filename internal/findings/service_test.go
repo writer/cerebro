@@ -146,6 +146,24 @@ func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T
 	}
 }
 
+func TestOktaPolicyRuleLifecycleTamperingFindingIsRuntimeScoped(t *testing.T) {
+	event := newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")
+	first, err := oktaPolicyRuleLifecycleTamperingFinding(context.Background(), event, "runtime-a")
+	if err != nil {
+		t.Fatalf("oktaPolicyRuleLifecycleTamperingFinding(first) error = %v", err)
+	}
+	second, err := oktaPolicyRuleLifecycleTamperingFinding(context.Background(), event, "runtime-b")
+	if err != nil {
+		t.Fatalf("oktaPolicyRuleLifecycleTamperingFinding(second) error = %v", err)
+	}
+	if first.ID == second.ID {
+		t.Fatalf("finding IDs collided across runtimes: %q", first.ID)
+	}
+	if first.RuntimeID != "runtime-a" || second.RuntimeID != "runtime-b" {
+		t.Fatalf("RuntimeID = %q, %q; want runtime-a, runtime-b", first.RuntimeID, second.RuntimeID)
+	}
+}
+
 func newAuditEvent(id string, eventType string, outcome string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:         id,

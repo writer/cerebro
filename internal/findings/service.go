@@ -173,12 +173,14 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 	if timestamp := event.GetOccurredAt(); timestamp != nil {
 		observedAt = timestamp.AsTime().UTC()
 	}
-	fingerprint := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, event.GetId())
+	tenantID := strings.TrimSpace(event.GetTenantId())
+	normalizedRuntimeID := strings.TrimSpace(runtimeID)
+	fingerprint := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, tenantID, normalizedRuntimeID, event.GetId())
 	return &ports.FindingRecord{
 		ID:              fingerprint,
 		Fingerprint:     fingerprint,
-		TenantID:        strings.TrimSpace(event.GetTenantId()),
-		RuntimeID:       strings.TrimSpace(runtimeID),
+		TenantID:        tenantID,
+		RuntimeID:       normalizedRuntimeID,
 		RuleID:          oktaPolicyRuleLifecycleTamperingRuleID,
 		Title:           oktaPolicyRuleLifecycleTamperingTitle,
 		Severity:        oktaPolicyRuleLifecycleTamperingSeverity,
