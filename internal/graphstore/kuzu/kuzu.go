@@ -164,7 +164,7 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 		return fmt.Errorf("marshal projected link attributes: %w", err)
 	}
 	statement := fmt.Sprintf(
-		"MATCH (src:entity {urn: %s}), (dst:entity {urn: %s}) MERGE (src)-[r:relation {relation: %s}]->(dst) SET r.tenant_id = %s, r.source_id = %s, r.attributes_json = %s",
+		"MERGE (src:entity {urn: %s}) MERGE (dst:entity {urn: %s}) MERGE (src)-[r:relation {relation: %s}]->(dst) SET r.tenant_id = %s, r.source_id = %s, r.attributes_json = %s",
 		cypherString(fromURN),
 		cypherString(toURN),
 		cypherString(relation),

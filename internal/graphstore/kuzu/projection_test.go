@@ -89,6 +89,56 @@ func TestUpsertProjectedEntityAndLink(t *testing.T) {
 	}
 }
 
+func TestUpsertProjectedLinkMergesMissingEndpoints(t *testing.T) {
+	store, err := Open(config.GraphStoreConfig{
+		Driver:   config.GraphStoreDriverKuzu,
+		KuzuPath: filepath.Join(t.TempDir(), "graph"),
+	})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer func() {
+		if closeErr := store.Close(); closeErr != nil {
+			t.Fatalf("Close() error = %v", closeErr)
+		}
+	}()
+
+	ctx := context.Background()
+	link := &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "github",
+		FromURN:  "urn:cerebro:writer:github_user:alice",
+		ToURN:    "urn:cerebro:writer:github_repo:writer/cerebro",
+		Relation: "belongs_to",
+	}
+	if err := store.UpsertProjectedLink(ctx, link); err != nil {
+		t.Fatalf("UpsertProjectedLink() error = %v", err)
+	}
+	if err := store.UpsertProjectedLink(ctx, link); err != nil {
+		t.Fatalf("UpsertProjectedLink(idempotent) error = %v", err)
+	}
+
+	var linkCount int64
+	if err := store.db.QueryRowContext(ctx, "MATCH (:entity)-[r:relation]->(:entity) RETURN COUNT(r)").Scan(&linkCount); err != nil {
+		t.Fatalf("query projected link count: %v", err)
+	}
+	if linkCount != 1 {
+		t.Fatalf("projected link count = %d, want 1", linkCount)
+	}
+	for _, urn := range []string{link.FromURN, link.ToURN} {
+		var nodeCount int64
+		if err := store.db.QueryRowContext(
+			ctx,
+			fmt.Sprintf("MATCH (e:entity {urn: %s}) RETURN COUNT(e)", cypherString(urn)),
+		).Scan(&nodeCount); err != nil {
+			t.Fatalf("query endpoint %q: %v", urn, err)
+		}
+		if nodeCount != 1 {
+			t.Fatalf("endpoint %q count = %d, want 1", urn, nodeCount)
+		}
+	}
+}
+
 func TestUpsertProjectedEntityRejectsNilEntity(t *testing.T) {
 	store := &Store{}
 	if err := store.UpsertProjectedEntity(context.Background(), nil); err == nil {
