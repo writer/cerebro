@@ -36,4 +36,11 @@ func TestOktaPolicyRuleLifecycleTamperingFingerprintIsTenantRuntimeScoped(t *tes
 	if first.Fingerprint == second.Fingerprint {
 		t.Fatalf("fingerprint = %q for both runtimes, want runtime-scoped values", first.Fingerprint)
 	}
+	legacyID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, event.GetId())
+	if got := first.Attributes[findingAttributeLegacyID]; got != legacyID {
+		t.Fatalf("legacy finding id = %q, want %q", got, legacyID)
+	}
+	if got := first.Attributes[findingAttributeLegacyFingerprint]; got != legacyID {
+		t.Fatalf("legacy finding fingerprint = %q, want %q", got, legacyID)
+	}
 }

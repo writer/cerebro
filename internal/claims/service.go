@@ -133,6 +133,7 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 			if err := s.deleteLink(ctx, retracted); err != nil {
 				return nil, err
 			}
+			delete(upsertedLinks, projectedLinkKey(retracted))
 		}
 		if projected := projectedRelation(runtime, claim); projected != nil {
 			wrote, err := s.upsertLink(ctx, projected, upsertedLinks)

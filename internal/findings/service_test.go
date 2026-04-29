@@ -597,6 +597,78 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) {
+	eventID := "okta-audit-2"
+	legacyID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, eventID)
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newAuditEvent(eventID, "policy.rule.update", "SUCCESS"),
+		},
+	}
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			legacyID: {
+				ID:           legacyID,
+				Fingerprint:  legacyID,
+				TenantID:     "writer",
+				RuntimeID:    "writer-okta-audit",
+				RuleID:       oktaPolicyRuleLifecycleTamperingRuleID,
+				Title:        oktaPolicyRuleLifecycleTamperingTitle,
+				Severity:     "HIGH",
+				Status:       findingStatusSuppressed,
+				Summary:      "legacy finding",
+				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				EventIDs:     []string{eventID},
+				FindingWorkflow: ports.FindingWorkflow{
+					StatusReason:    "accepted risk",
+					StatusUpdatedAt: time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC),
+				},
+				FirstObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+				LastObservedAt:  time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	service := New(&stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {
+				Id:       "writer-okta-audit",
+				SourceId: "okta",
+				TenantId: "writer",
+			},
+		},
+	}, replayer, store, store, store, store)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+		RuleID:    oktaPolicyRuleLifecycleTamperingRuleID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("len(Findings) = %d, want 1", len(result.Findings))
+	}
+	finding := result.Findings[0]
+	if got := finding.ID; got != legacyID {
+		t.Fatalf("Finding.ID = %q, want legacy id %q", got, legacyID)
+	}
+	if got := finding.Fingerprint; got != legacyID {
+		t.Fatalf("Finding.Fingerprint = %q, want legacy fingerprint %q", got, legacyID)
+	}
+	if got := finding.Status; got != findingStatusSuppressed {
+		t.Fatalf("Finding.Status = %q, want suppressed", got)
+	}
+	if got := finding.StatusReason; got != "accepted risk" {
+		t.Fatalf("Finding.StatusReason = %q, want accepted risk", got)
+	}
+	if len(store.findings) != 1 {
+		t.Fatalf("len(store.findings) = %d, want 1", len(store.findings))
+	}
+	if got := result.Evidence[0].GetFindingId(); got != legacyID {
+		t.Fatalf("Evidence[0].FindingId = %q, want legacy id %q", got, legacyID)
+	}
+}
+
 func TestOktaPolicyRuleLifecycleTamperingRequiresSuccessfulOutcome(t *testing.T) {
 	missingOutcome := newAuditEvent("okta-audit-2", "policy.rule.update", "")
 	delete(missingOutcome.Attributes, "outcome_result")

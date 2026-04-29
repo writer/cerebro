@@ -21,6 +21,9 @@ const (
 	findingStatusOpen       = "open"
 	findingStatusResolved   = "resolved"
 	findingStatusSuppressed = "suppressed"
+
+	findingAttributeLegacyID          = "legacy_finding_id"
+	findingAttributeLegacyFingerprint = "legacy_fingerprint"
 )
 
 var (
@@ -261,6 +264,11 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			if record == nil {
 				continue
 			}
+			record, err = s.reconcileLegacyFindingIdentity(ctx, record)
+			if err != nil {
+				evaluationErr := fmt.Errorf("reconcile finding identity for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
+				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+			}
 			stored, err := s.store.UpsertFinding(ctx, record)
 			if err != nil {
 				evaluationErr := fmt.Errorf("persist finding for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
@@ -357,6 +365,13 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			for _, record := range emitted {
 				if record == nil {
 					continue
+				}
+				record, err = s.reconcileLegacyFindingIdentity(ctx, record)
+				if err != nil {
+					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("reconcile finding identity for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
+						return nil, failErr
+					}
+					break
 				}
 				stored, err := s.store.UpsertFinding(ctx, record)
 				if err != nil {
@@ -836,6 +851,68 @@ func findingIDs(findings []*ports.FindingRecord) []string {
 		}
 	}
 	return ids
+}
+
+func (s *Service) reconcileLegacyFindingIdentity(ctx context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
+	if s == nil || s.store == nil || finding == nil || finding.Attributes == nil {
+		return finding, nil
+	}
+	legacyID := strings.TrimSpace(finding.Attributes[findingAttributeLegacyID])
+	if legacyID == "" || legacyID == strings.TrimSpace(finding.ID) {
+		return finding, nil
+	}
+	legacy, err := s.store.GetFinding(ctx, legacyID)
+	if err != nil {
+		if errors.Is(err, ports.ErrFindingNotFound) {
+			return finding, nil
+		}
+		return nil, fmt.Errorf("load legacy finding %q: %w", legacyID, err)
+	}
+	if !matchesLegacyFindingIdentity(finding, legacy) {
+		return finding, nil
+	}
+	finding.ID = strings.TrimSpace(legacy.ID)
+	if legacyFingerprint := strings.TrimSpace(legacy.Fingerprint); legacyFingerprint != "" {
+		finding.Fingerprint = legacyFingerprint
+	}
+	return finding, nil
+}
+
+func matchesLegacyFindingIdentity(incoming *ports.FindingRecord, legacy *ports.FindingRecord) bool {
+	if incoming == nil || legacy == nil {
+		return false
+	}
+	if strings.TrimSpace(incoming.TenantID) != strings.TrimSpace(legacy.TenantID) {
+		return false
+	}
+	if strings.TrimSpace(incoming.RuntimeID) != strings.TrimSpace(legacy.RuntimeID) {
+		return false
+	}
+	if strings.TrimSpace(incoming.RuleID) != strings.TrimSpace(legacy.RuleID) {
+		return false
+	}
+	if len(legacy.EventIDs) == 0 {
+		return true
+	}
+	for _, eventID := range incoming.EventIDs {
+		if containsString(legacy.EventIDs, eventID) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(values []string, expected string) bool {
+	trimmedExpected := strings.TrimSpace(expected)
+	if trimmedExpected == "" {
+		return false
+	}
+	for _, value := range values {
+		if strings.TrimSpace(value) == trimmedExpected {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.FindingRecord, run *cerebrov1.FindingEvaluationRun) (*cerebrov1.FindingEvidence, error) {

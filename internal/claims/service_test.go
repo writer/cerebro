@@ -109,7 +109,9 @@ func (r *projectionRecorder) DeleteProjectedLink(_ context.Context, link *ports.
 	if r.deletedLinks == nil {
 		r.deletedLinks = make(map[string]*ports.ProjectedLink)
 	}
-	r.deletedLinks[link.FromURN+"|"+link.Relation+"|"+link.ToURN] = cloneProjectedLink(link)
+	key := link.FromURN + "|" + link.Relation + "|" + link.ToURN
+	r.deletedLinks[key] = cloneProjectedLink(link)
+	delete(r.links, key)
 	return nil
 }
 
@@ -392,6 +394,72 @@ func TestWriteClaimsRetractedRelationDeletesProjectedLink(t *testing.T) {
 	}
 	if _, ok := projection.deletedLinks[issueURN+"|assigned_to|"+assigneeURN]; !ok {
 		t.Fatal("deleted projected link missing for explicitly retracted relation")
+	}
+}
+
+func TestWriteClaimsReassertsRelationAfterSameBatchRetraction(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	projection := &projectionRecorder{}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {
+					Id:       "writer-jira",
+					SourceId: "sdk",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubClaimStore{},
+		projection,
+		projection,
+	)
+
+	result, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-1",
+			},
+			{
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusRetracted,
+				SourceEventId: "jira-event-2",
+			},
+			{
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-3",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if got := result.RelationLinksProjected; got != 2 {
+		t.Fatalf("WriteClaims().RelationLinksProjected = %d, want 2", got)
+	}
+	link := projection.links[issueURN+"|assigned_to|"+assigneeURN]
+	if link == nil {
+		t.Fatal("projected link missing after final asserted relation")
+	}
+	if got := link.Attributes["source_event_id"]; got != "jira-event-3" {
+		t.Fatalf("projected link source_event_id = %q, want jira-event-3", got)
+	}
+	if _, ok := projection.deletedLinks[issueURN+"|assigned_to|"+assigneeURN]; !ok {
+		t.Fatal("deleted projected link missing for middle retraction")
 	}
 }
 
