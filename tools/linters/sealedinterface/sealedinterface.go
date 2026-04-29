@@ -45,11 +45,9 @@ func run(pass *analysis.Pass) (any, error) {
 				if !ok {
 					continue
 				}
-				ifaceNode, ok := ts.Type.(*ast.InterfaceType)
-				if !ok || !hasSealedMarker(gen.Doc, ts.Doc) {
+				if _, ok := ts.Type.(*ast.InterfaceType); !ok || !hasSealedMarker(gen.Doc, ts.Doc) {
 					continue
 				}
-				_ = ifaceNode
 				obj, ok := pass.TypesInfo.Defs[ts.Name].(*types.TypeName)
 				if !ok || obj == nil {
 					continue
@@ -133,6 +131,32 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 
+	for _, file := range pass.Files {
+		if isTestFile(pass, file.Pos()) {
+			continue
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch node := n.(type) {
+			case *ast.ValueSpec:
+				if node.Type == nil {
+					return true
+				}
+				target := pass.TypesInfo.TypeOf(node.Type)
+				for _, value := range node.Values {
+					reportImportedImplementation(pass, sealed, sealedObjects, target, value)
+				}
+			case *ast.AssignStmt:
+				if len(node.Lhs) != len(node.Rhs) {
+					return true
+				}
+				for i := range node.Lhs {
+					reportImportedImplementation(pass, sealed, sealedObjects, pass.TypesInfo.TypeOf(node.Lhs[i]), node.Rhs[i])
+				}
+			}
+			return true
+		})
+	}
+
 	return nil, nil
 }
 
@@ -157,6 +181,58 @@ func namedInterface(t types.Type) *types.Interface {
 
 func implementsSealed(named *types.Named, iface *types.Interface) bool {
 	return types.Implements(named, iface) || types.Implements(types.NewPointer(named), iface)
+}
+
+func reportImportedImplementation(pass *analysis.Pass, sealed map[*types.TypeName]*types.Interface, sealedObjects []*types.TypeName, targetType types.Type, value ast.Expr) {
+	sealedObj, iface := sealedTarget(sealed, sealedObjects, targetType)
+	if sealedObj == nil || iface == nil {
+		return
+	}
+	named := assignedNamedType(pass.TypesInfo.TypeOf(value))
+	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
+		return
+	}
+	if named.Obj().Pkg().Path() == sealedObj.Pkg().Path() {
+		return
+	}
+	if pass.Pkg != nil && named.Obj().Pkg().Path() == pass.Pkg.Path() {
+		return
+	}
+	if !implementsSealed(named, iface) {
+		return
+	}
+	pass.Report(analysis.Diagnostic{
+		Pos:     value.Pos(),
+		End:     value.End(),
+		Message: "type " + named.Obj().Pkg().Name() + "." + named.Obj().Name() + " implements sealed interface " + sealedObj.Pkg().Name() + "." + sealedObj.Name() + " outside its home package; move the implementation beside the interface. (see PLAN.md §7 sin #8)",
+	})
+}
+
+func sealedTarget(sealed map[*types.TypeName]*types.Interface, sealedObjects []*types.TypeName, targetType types.Type) (*types.TypeName, *types.Interface) {
+	named, ok := types.Unalias(targetType).(*types.Named)
+	if !ok || named.Obj() == nil {
+		return nil, nil
+	}
+	targetName := qualifiedTypeName(named.Obj())
+	for _, sealedObj := range sealedObjects {
+		if qualifiedTypeName(sealedObj) != targetName {
+			continue
+		}
+		return sealedObj, sealed[sealedObj]
+	}
+	return nil, nil
+}
+
+func assignedNamedType(t types.Type) *types.Named {
+	switch current := types.Unalias(t).(type) {
+	case *types.Named:
+		return current
+	case *types.Pointer:
+		named, _ := types.Unalias(current.Elem()).(*types.Named)
+		return named
+	default:
+		return nil
+	}
 }
 
 func hasSealedMarker(groups ...*ast.CommentGroup) bool {

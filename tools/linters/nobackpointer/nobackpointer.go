@@ -61,11 +61,7 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 func backPointerTarget(pass *analysis.Pass, t types.Type) (string, bool) {
-	ptr, ok := t.(*types.Pointer)
-	if !ok {
-		return "", false
-	}
-	named, ok := ptr.Elem().(*types.Named)
+	named, ok := namedPointerTarget(t)
 	if !ok || named.Obj() == nil {
 		return "", false
 	}
@@ -78,6 +74,30 @@ func backPointerTarget(pass *analysis.Pass, t types.Type) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func namedPointerTarget(t types.Type) (*types.Named, bool) {
+	seen := map[types.Type]struct{}{}
+	for t != nil {
+		t = types.Unalias(t)
+		if _, ok := seen[t]; ok {
+			return nil, false
+		}
+		seen[t] = struct{}{}
+		switch current := t.(type) {
+		case *types.Pointer:
+			named, ok := types.Unalias(current.Elem()).(*types.Named)
+			if !ok {
+				return nil, false
+			}
+			return named, true
+		case *types.Named:
+			t = current.Underlying()
+		default:
+			return nil, false
+		}
+	}
+	return nil, false
 }
 
 func fieldLabel(field *ast.Field) string {

@@ -1,21 +1,28 @@
 package a
 
-import "log"
+import (
+	. "log"
+	l "log"
+)
 
 func Bad() {
 	panic("boom") // want `panic is forbidden outside tests, init, and panicsafe`
 }
 
 func BadLogPanic() {
-	log.Panic("boom") // want `panic is forbidden outside tests, init, and panicsafe`
+	l.Panic("boom") // want `panic is forbidden outside tests, init, and panicsafe`
 }
 
 func BadLogPanicf() {
-	log.Panicf("boom: %s", "x") // want `panic is forbidden outside tests, init, and panicsafe`
+	l.Panicf("boom: %s", "x") // want `panic is forbidden outside tests, init, and panicsafe`
 }
 
 func BadLogPanicln() {
-	log.Panicln("boom") // want `panic is forbidden outside tests, init, and panicsafe`
+	l.Panicln("boom") // want `panic is forbidden outside tests, init, and panicsafe`
+}
+
+func BadDotImportPanic() {
+	Panic("boom") // want `panic is forbidden outside tests, init, and panicsafe`
 }
 
 var _ = func() int {

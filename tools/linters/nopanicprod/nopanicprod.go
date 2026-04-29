@@ -60,7 +60,19 @@ func run(pass *analysis.Pass) (any, error) {
 func isPanicCall(pass *analysis.Pass, call *ast.CallExpr) bool {
 	switch fun := call.Fun.(type) {
 	case *ast.Ident:
-		return fun.Name == "panic"
+		if fun.Name == "panic" {
+			return true
+		}
+		fn, ok := pass.TypesInfo.Uses[fun].(*types.Func)
+		if !ok || fn.Pkg() == nil || fn.Pkg().Path() != "log" {
+			return false
+		}
+		switch fn.Name() {
+		case "Panic", "Panicf", "Panicln":
+			return true
+		default:
+			return false
+		}
 	case *ast.SelectorExpr:
 		switch fun.Sel.Name {
 		case "Panic", "Panicf", "Panicln":

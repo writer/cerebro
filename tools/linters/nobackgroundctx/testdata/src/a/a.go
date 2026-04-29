@@ -21,3 +21,13 @@ func AliasBad() context.Context {
 func DotBad() context.Context {
 	return TODO() // want `context.TODO is forbidden outside cmd/ and tests`
 }
+
+func FuncValueBad() context.Context {
+	background := context.Background
+	return background() // want `context.Background is forbidden outside cmd/ and tests`
+}
+
+func FuncValueAliasBad() context.Context {
+	todo := c.TODO
+	return todo() // want `context.TODO is forbidden outside cmd/ and tests`
+}

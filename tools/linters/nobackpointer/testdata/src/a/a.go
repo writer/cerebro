@@ -21,12 +21,30 @@ type GoodByValue struct {
 	app App
 }
 
+type AppRef *App
+
+type ServerRef *Server
+
+type ExternalAppRef *external.App
+
 type BadApp struct {
 	app *App // want `back-pointer to \*App`
 }
 
 type BadServer struct {
 	server *Server // want `back-pointer to \*Server`
+}
+
+type BadAppAlias struct {
+	app AppRef // want `back-pointer to \*App`
+}
+
+type BadServerAlias struct {
+	server ServerRef // want `back-pointer to \*Server`
+}
+
+type GoodExternalAlias struct {
+	app ExternalAppRef
 }
 
 //cerebro:lint:allow nobackpointer legacy shim https://example.com/issue/7

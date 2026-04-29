@@ -22,3 +22,13 @@ func AliasBad() string {
 func DotBad() (string, bool) {
 	return LookupEnv("HOME") // want `os.LookupEnv is forbidden outside cmd/ and config`
 }
+
+func FuncValueBad() string {
+	get := os.Getenv
+	return get("HOME") // want `os.Getenv is forbidden outside cmd/ and config`
+}
+
+func FuncValueAliasBad() (string, bool) {
+	lookup := o.LookupEnv
+	return lookup("HOME") // want `os.LookupEnv is forbidden outside cmd/ and config`
+}
