@@ -156,10 +156,19 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if result.GraphLinks != 5 {
 		t.Fatalf("GraphLinks = %d, want 5", result.GraphLinks)
 	}
-	if len(result.StageConfirmations) != 5 {
-		t.Fatalf("len(StageConfirmations) = %d, want 5", len(result.StageConfirmations))
+	if len(result.StageConfirmations) != 7 {
+		t.Fatalf("len(StageConfirmations) = %d, want 7", len(result.StageConfirmations))
 	}
-	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph")
+	assertStageNames(t, result.StageConfirmations, "resolve_runtime", "open_graph", "read_source", "project_graph", "count_graph", "verify_integrity", "verify_traversals")
+	if got := result.StageConfirmations[5].AssertionsPassed; got != 5 {
+		t.Fatalf("verify_integrity assertions_passed = %d, want 5", got)
+	}
+	if got := result.StageConfirmations[5].AssertionsFailed; got != 0 {
+		t.Fatalf("verify_integrity assertions_failed = %d, want 0", got)
+	}
+	if got := result.StageConfirmations[6].TraversalsVerified; got != 3 {
+		t.Fatalf("verify_traversals traversals_verified = %d, want 3", got)
+	}
 	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
 		t.Fatalf("event kind github.audit = %d, want 1", got)
 	}
@@ -177,6 +186,21 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 	if got := countValue(result.GraphRelationTypes, "authored"); got != 1 {
 		t.Fatalf("graph relation type authored = %d, want 1", got)
+	}
+	if len(result.GraphAssertions) != 5 {
+		t.Fatalf("len(GraphAssertions) = %d, want 5", len(result.GraphAssertions))
+	}
+	if !containsAssertion(result.GraphAssertions, "tenant_mismatched_relations", 0, 0, true) {
+		t.Fatalf("GraphAssertions missing tenant_mismatched_relations: %#v", result.GraphAssertions)
+	}
+	if !containsAssertion(result.GraphAssertions, "self_referential_relations", 0, 0, true) {
+		t.Fatalf("GraphAssertions missing self_referential_relations: %#v", result.GraphAssertions)
+	}
+	if len(result.GraphTraversals) != 3 {
+		t.Fatalf("len(GraphTraversals) = %d, want 3", len(result.GraphTraversals))
+	}
+	if !containsTraversalPath(result.GraphTraversals, "octocat -[authored]-> writer/cerebro#418 -[belongs_to]-> writer/cerebro") {
+		t.Fatalf("GraphTraversals missing authored path: %#v", result.GraphTraversals)
 	}
 	if len(result.Events) != 2 {
 		t.Fatalf("len(Events) = %d, want 2", len(result.Events))
@@ -251,6 +275,18 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	}
 	if got := countValue(result.GraphEntityTypes, "github.repo"); got != 1 {
 		t.Fatalf("graph entity type github.repo = %d, want 1", got)
+	}
+	if len(result.GraphTraversals) != 1 {
+		t.Fatalf("len(GraphTraversals) = %d, want 1", len(result.GraphTraversals))
+	}
+	if got := result.StageConfirmations[5].AssertionsPassed; got != 5 {
+		t.Fatalf("verify_integrity assertions_passed = %d, want 5", got)
+	}
+	if got := result.StageConfirmations[6].TraversalsVerified; got != 1 {
+		t.Fatalf("verify_traversals traversals_verified = %d, want 1", got)
+	}
+	if !containsTraversalPath(result.GraphTraversals, "octocat -[acted_on]-> writer/cerebro -[belongs_to]-> writer") {
+		t.Fatalf("GraphTraversals missing acted_on path: %#v", result.GraphTraversals)
 	}
 }
 
@@ -336,4 +372,25 @@ func assertStageNames(t *testing.T, stages []*StageConfirmation, want ...string)
 			t.Fatalf("stage %d status = %q, want %q", index, stage.Status, stageStatusSuccess)
 		}
 	}
+}
+
+func containsTraversalPath(traversals []*TraversalPreview, want string) bool {
+	for _, traversal := range traversals {
+		if traversal != nil && traversal.Path == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAssertion(assertions []*AssertionPreview, name string, actual int64, expected int64, passed bool) bool {
+	for _, assertion := range assertions {
+		if assertion == nil {
+			continue
+		}
+		if assertion.Name == name && assertion.Actual == actual && assertion.Expected == expected && assertion.Passed == passed {
+			return true
+		}
+	}
+	return false
 }
