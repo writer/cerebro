@@ -306,6 +306,12 @@ func TestSyncRuntimeRequiresDependencies(t *testing.T) {
 	}
 }
 
+func TestSameConfigComparesKeyPresence(t *testing.T) {
+	if sameConfig(map[string]string{"a": ""}, map[string]string{"b": ""}) {
+		t.Fatal("sameConfig() = true, want false for different key sets")
+	}
+}
+
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	github, err := githubsource.NewFixture()
 	if err != nil {

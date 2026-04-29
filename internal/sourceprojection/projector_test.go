@@ -3,6 +3,7 @@ package sourceprojection
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -81,6 +82,34 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 	}
 	if _, ok := state.links["urn:cerebro:writer:github_user:alice|"+relationHasIdentifier+"|"+identifierURN]; !ok {
 		t.Fatalf("state identifier link missing for %q", identifierURN)
+	}
+}
+
+func TestProjectGitHubPullRequestWithoutOwnerDoesNotLinkEmptyOrg(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-pr-447",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.pull_request",
+		Attributes: map[string]string{
+			"pull_number": "447",
+			"repository":  "writer/cerebro",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	emptyOrgURN := "urn:cerebro:writer:github_org:"
+	if _, ok := state.entities[emptyOrgURN]; ok {
+		t.Fatalf("empty org entity %q should not be projected", emptyOrgURN)
+	}
+	for key := range state.links {
+		if strings.Contains(key, emptyOrgURN) {
+			t.Fatalf("empty org link %q should not be projected", key)
+		}
 	}
 }
 

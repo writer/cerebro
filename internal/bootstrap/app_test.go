@@ -24,6 +24,22 @@ import (
 	oktasource "github.com/writer/cerebro/sources/okta"
 )
 
+func sourceGet(t *testing.T, server *httptest.Server, path string, config map[string]string) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(config) > 0 {
+		payload, err := json.Marshal(config)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("X-Cerebro-Source-Config", string(payload))
+	}
+	return server.Client().Do(req)
+}
+
 type stubAppendLog struct {
 	err error
 }
@@ -194,7 +210,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(entries) != 2 {
 		t.Fatalf("/sources entries = %#v, want 2 entries", sourcesPayload["sources"])
 	}
-	checkResp, err := server.Client().Get(server.URL + "/sources/github/check?token=test")
+	checkResp, err := sourceGet(t, server, "/sources/github/check", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/github/check error = %v", err)
 	}
@@ -210,7 +226,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if checkPayload["status"] != "ok" {
 		t.Fatalf("check status = %#v, want %q", checkPayload["status"], "ok")
 	}
-	discoverResp, err := server.Client().Get(server.URL + "/sources/github/discover?token=test")
+	discoverResp, err := sourceGet(t, server, "/sources/github/discover", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/github/discover error = %v", err)
 	}
@@ -226,7 +242,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if urns, ok := discoverPayload["urns"].([]any); !ok || len(urns) != 2 {
 		t.Fatalf("discover urns = %#v, want 2 entries", discoverPayload["urns"])
 	}
-	readResp, err := server.Client().Get(server.URL + "/sources/github/read?token=test")
+	readResp, err := sourceGet(t, server, "/sources/github/read", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/github/read error = %v", err)
 	}
@@ -246,7 +262,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(previewEvents) != 1 {
 		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])
 	}
-	oktaCheckResp, err := server.Client().Get(server.URL + "/sources/okta/check?domain=writer.okta.com&family=user&token=test")
+	oktaCheckResp, err := sourceGet(t, server, "/sources/okta/check?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/okta/check error = %v", err)
 	}
@@ -262,7 +278,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if oktaCheckPayload["status"] != "ok" {
 		t.Fatalf("okta check status = %#v, want %q", oktaCheckPayload["status"], "ok")
 	}
-	oktaDiscoverResp, err := server.Client().Get(server.URL + "/sources/okta/discover?domain=writer.okta.com&family=user&token=test")
+	oktaDiscoverResp, err := sourceGet(t, server, "/sources/okta/discover?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/okta/discover error = %v", err)
 	}
@@ -278,7 +294,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if urns, ok := oktaDiscoverPayload["urns"].([]any); !ok || len(urns) != 2 {
 		t.Fatalf("okta discover urns = %#v, want 2 entries", oktaDiscoverPayload["urns"])
 	}
-	oktaReadResp, err := server.Client().Get(server.URL + "/sources/okta/read?domain=writer.okta.com&family=user&token=test")
+	oktaReadResp, err := sourceGet(t, server, "/sources/okta/read?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/okta/read error = %v", err)
 	}
@@ -297,6 +313,18 @@ func TestBootstrapEndpoints(t *testing.T) {
 	oktaPreviewEvents, ok := oktaReadPayload["preview_events"].([]any)
 	if !ok || len(oktaPreviewEvents) != 1 {
 		t.Fatalf("okta read preview_events = %#v, want 1 entry", oktaReadPayload["preview_events"])
+	}
+	leakyQueryResp, err := server.Client().Get(server.URL + "/sources/github/check?token=secret")
+	if err != nil {
+		t.Fatalf("GET /sources/github/check leaky query error = %v", err)
+	}
+	defer func() {
+		if closeErr := leakyQueryResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close leaky query response body: %v", closeErr)
+		}
+	}()
+	if leakyQueryResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("leaky query status = %d, want %d", leakyQueryResp.StatusCode, http.StatusBadRequest)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)

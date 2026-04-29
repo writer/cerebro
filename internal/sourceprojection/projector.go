@@ -102,8 +102,9 @@ func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
-	orgURN := projectionURN(tenantID, "github_org", owner)
+	orgURN := ""
 	if owner != "" {
+		orgURN = projectionURN(tenantID, "github_org", owner)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        orgURN,
 			TenantID:   tenantID,
