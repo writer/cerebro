@@ -105,6 +105,8 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if err := s.ensureProjectionSchema(ctx); err != nil {
 		return err
 	}
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
 	attributes, err := s.mergedEntityAttributes(ctx, urn, entity.Attributes)
 	if err != nil {
 		return err

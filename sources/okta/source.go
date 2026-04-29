@@ -28,7 +28,7 @@ const (
 	defaultPageSize   = 10
 	maxPageSize       = 200
 	defaultFamily     = familyAudit
-	defaultAuditOrder = "DESCENDING"
+	defaultAuditOrder = "ASCENDING"
 	defaultUserOrder  = "asc"
 	familyAudit       = "audit"
 	familyUser        = "user"
@@ -494,8 +494,10 @@ func normalizeBaseURL(raw string, domain string) (string, error) {
 
 func normalizeAuditSortOrder(raw string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "", "desc", "descending":
+	case "":
 		return defaultAuditOrder, nil
+	case "desc", "descending":
+		return "DESCENDING", nil
 	case "asc", "ascending":
 		return "ASCENDING", nil
 	default:

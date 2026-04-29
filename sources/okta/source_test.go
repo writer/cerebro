@@ -57,6 +57,23 @@ func TestNewLoadsCatalog(t *testing.T) {
 	}
 }
 
+func TestNormalizeAuditSortOrderDefaultsAscending(t *testing.T) {
+	got, err := normalizeAuditSortOrder("")
+	if err != nil {
+		t.Fatalf("normalizeAuditSortOrder(default) error = %v", err)
+	}
+	if got != "ASCENDING" {
+		t.Fatalf("normalizeAuditSortOrder(default) = %q, want ASCENDING", got)
+	}
+	got, err = normalizeAuditSortOrder("desc")
+	if err != nil {
+		t.Fatalf("normalizeAuditSortOrder(desc) error = %v", err)
+	}
+	if got != "DESCENDING" {
+		t.Fatalf("normalizeAuditSortOrder(desc) = %q, want DESCENDING", got)
+	}
+}
+
 func TestCheckRequiresDomain(t *testing.T) {
 	source, err := New()
 	if err != nil {
