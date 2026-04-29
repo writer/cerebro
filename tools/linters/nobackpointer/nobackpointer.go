@@ -45,7 +45,7 @@ func run(pass *analysis.Pass) (any, error) {
 				continue
 			}
 			for _, field := range st.Fields.List {
-				target, ok := backPointerTarget(pass.TypesInfo.TypeOf(field.Type))
+				target, ok := backPointerTarget(pass, pass.TypesInfo.TypeOf(field.Type))
 				if !ok {
 					continue
 				}
@@ -60,13 +60,16 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-func backPointerTarget(t types.Type) (string, bool) {
+func backPointerTarget(pass *analysis.Pass, t types.Type) (string, bool) {
 	ptr, ok := t.(*types.Pointer)
 	if !ok {
 		return "", false
 	}
 	named, ok := ptr.Elem().(*types.Named)
 	if !ok || named.Obj() == nil {
+		return "", false
+	}
+	if named.Obj().Pkg() == nil || pass.Pkg == nil || named.Obj().Pkg().Path() != pass.Pkg.Path() {
 		return "", false
 	}
 	switch named.Obj().Name() {

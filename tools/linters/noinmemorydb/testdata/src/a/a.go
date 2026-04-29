@@ -25,3 +25,8 @@ func (opener) Open(driver string) {}
 func AlsoGood() {
 	opener{}.Open("sqlite")
 }
+
+func NameOnlyReceiverGood() {
+	sqliteConnection := opener{}
+	sqliteConnection.Open("postgres")
+}

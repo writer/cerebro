@@ -52,7 +52,7 @@ func run(pass *analysis.Pass) (any, error) {
 			return
 		}
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-			if ident, ok := sel.X.(*ast.Ident); ok && strings.HasPrefix(strings.ToLower(ident.Name), "sqlite") {
+			if isEmbeddedDBPackageSelector(pass, sel) {
 				report(pass, reported, call.Pos(), call.End())
 			}
 			if (sel.Sel.Name == "Open" || sel.Sel.Name == "OpenDB") && len(call.Args) > 0 && isDatabaseSQLSelector(pass, sel) && isSQLiteDriverLiteral(call.Args[0]) {
@@ -66,6 +66,15 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	})
 	return nil, nil
+}
+
+func isEmbeddedDBPackageSelector(pass *analysis.Pass, sel *ast.SelectorExpr) bool {
+	ident, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	pkgName, ok := pass.TypesInfo.Uses[ident].(*types.PkgName)
+	return ok && pkgName.Imported() != nil && embeddedDBImports[pkgName.Imported().Path()]
 }
 
 func isDatabaseSQLSelector(pass *analysis.Pass, sel *ast.SelectorExpr) bool {
