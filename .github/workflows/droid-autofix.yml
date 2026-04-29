@@ -225,7 +225,7 @@ jobs:
 
           def from_droid(row):
               login = ((row.get("user") or {}).get("login") or "").lower()
-              return login.startswith("factory-droid")
+              return login == "factory-droid[bot]"
 
           def in_scope(row):
               if not from_droid(row):
