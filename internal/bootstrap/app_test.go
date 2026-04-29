@@ -33,8 +33,13 @@ type stubStore struct {
 func (s stubStore) Ping(context.Context) error { return s.err }
 
 func TestSourceConfigFromQueryDropsBaseURL(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/sources/github/read?token=test&base_url=http://127.0.0.1:1&cursor=2", nil)
-	config := sourceConfigFromQuery(req)
+	req := httptest.NewRequest(http.MethodGet, "/sources/github/read?base_url=http://127.0.0.1:1&cursor=2", nil)
+	req.Header.Set("Authorization", "Bearer test")
+
+	config, err := sourceConfigFromQuery(req)
+	if err != nil {
+		t.Fatalf("sourceConfigFromQuery() error = %v", err)
+	}
 	if _, ok := config["base_url"]; ok {
 		t.Fatalf("sourceConfigFromQuery() included base_url")
 	}
@@ -253,6 +258,14 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}))
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("ReadSource(invalid cursor) code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
+	}
+
+	_, err = client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
+		SourceId: "github",
+		Config:   map[string]string{"token": "test", "base_url": "https://example.com/api/v3/"},
+	}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("CheckSource(base_url) code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ const (
 	defaultPageSize = 10
 	maxPageSize     = 100
 	defaultState    = "open"
+	defaultTimeout  = 15 * time.Second
 )
 
 // Source is the live GitHub source preview used by the builtin registry.
@@ -183,7 +185,7 @@ func newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settin
 	if err != nil {
 		return nil, settings, err
 	}
-	client := gogithub.NewClient(nil)
+	client := gogithub.NewClient(&http.Client{Timeout: defaultTimeout})
 	if settings.token != "" {
 		client = client.WithAuthToken(settings.token)
 	}

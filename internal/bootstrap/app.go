@@ -170,7 +170,14 @@ func (s *bootstrapService) ListSources(_ context.Context, _ *connect.Request[cer
 }
 
 func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request[cerebrov1.CheckSourceRequest]) (*connect.Response[cerebrov1.CheckSourceResponse], error) {
-	response, err := sourceops.New(s.sources).Check(ctx, req.Msg)
+	config, err := sanitizePreviewSourceConfig(req.Msg.Config)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	response, err := sourceops.New(s.sources).Check(ctx, &cerebrov1.CheckSourceRequest{
+		SourceId: req.Msg.SourceId,
+		Config:   config,
+	})
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -178,7 +185,14 @@ func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request
 }
 
 func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Request[cerebrov1.DiscoverSourceRequest]) (*connect.Response[cerebrov1.DiscoverSourceResponse], error) {
-	response, err := sourceops.New(s.sources).Discover(ctx, req.Msg)
+	config, err := sanitizePreviewSourceConfig(req.Msg.Config)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	response, err := sourceops.New(s.sources).Discover(ctx, &cerebrov1.DiscoverSourceRequest{
+		SourceId: req.Msg.SourceId,
+		Config:   config,
+	})
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -186,7 +200,15 @@ func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Requ
 }
 
 func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[cerebrov1.ReadSourceRequest]) (*connect.Response[cerebrov1.ReadSourceResponse], error) {
-	response, err := sourceops.New(s.sources).Read(ctx, req.Msg)
+	config, err := sanitizePreviewSourceConfig(req.Msg.Config)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	response, err := sourceops.New(s.sources).Read(ctx, &cerebrov1.ReadSourceRequest{
+		SourceId: req.Msg.SourceId,
+		Config:   config,
+		Cursor:   req.Msg.Cursor,
+	})
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -245,6 +267,20 @@ func sourceConfigFromQuery(r *http.Request) (map[string]string, error) {
 	return values, nil
 }
 
+func sanitizePreviewSourceConfig(values map[string]string) (map[string]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	sanitized := make(map[string]string, len(values))
+	for key, value := range values {
+		if blockedPreviewSourceConfigKey(key) {
+			return nil, fmt.Errorf("source config key %q is not allowed for preview requests", key)
+		}
+		sanitized[key] = value
+	}
+	return sanitized, nil
+}
+
 func bearerToken(header string) string {
 	header = strings.TrimSpace(header)
 	if len(header) < len("Bearer ") || !strings.EqualFold(header[:len("Bearer ")], "Bearer ") {
@@ -262,6 +298,10 @@ func sensitiveSourceConfigKey(key string) bool {
 		return true
 	}
 	return normalized == "key" || strings.HasSuffix(normalized, "_key")
+}
+
+func blockedPreviewSourceConfigKey(key string) bool {
+	return strings.EqualFold(strings.TrimSpace(key), "base_url")
 }
 
 func sourceConnectError(err error) error {
