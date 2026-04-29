@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +35,7 @@ func Open(cfg config.GraphStoreConfig) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 		return nil, fmt.Errorf("create kuzu parent directory: %w", err)
 	}
-	dsn := "kuzu://" + filepath.ToSlash(absPath)
+	dsn := kuzuDSN(absPath)
 	db, err := sql.Open(kuzudb.Name, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open kuzu: %w", err)
@@ -63,4 +64,11 @@ func (s *Store) Ping(ctx context.Context) error {
 		return fmt.Errorf("unexpected kuzu ping result %d", result)
 	}
 	return nil
+}
+
+func kuzuDSN(absPath string) string {
+	return (&url.URL{
+		Scheme: "kuzu",
+		Path:   filepath.ToSlash(absPath),
+	}).String()
 }
