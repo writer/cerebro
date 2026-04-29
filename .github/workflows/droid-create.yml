@@ -189,17 +189,33 @@ jobs:
               return [label.get("name", "") for label in entity.get("labels") or []]
 
           def detect_mode(labels, text):
-              label_set = {label.lower() for label in labels}
               lowered = (text or "").lower()
-              if "droid-fix" in label_set or "@droid fix this pr" in lowered or "@droid fix review feedback" in lowered:
+              if "@droid fix this pr" in lowered or "@droid fix review feedback" in lowered:
                   return "fix"
-              if "droid-test" in label_set or "@droid add regression tests" in lowered:
+              if "@droid add regression tests" in lowered:
                   return "tests"
-              if "droid-source" in label_set or "@droid scaffold source" in lowered:
+              if "@droid scaffold source" in lowered:
                   return "source"
-              if "droid-create" in label_set or "@droid implement" in lowered or "@droid create" in lowered:
+              if "@droid implement" in lowered or "@droid create" in lowered:
+                  return "implement"
+              label_set = {label.lower() for label in labels}
+              if "droid-fix" in label_set:
+                  return "fix"
+              if "droid-test" in label_set:
+                  return "tests"
+              if "droid-source" in label_set:
+                  return "source"
+              if "droid-create" in label_set:
                   return "implement"
               return ""
+
+          def detect_label_mode(label):
+              return {
+                  "droid-fix": "fix",
+                  "droid-test": "tests",
+                  "droid-source": "source",
+                  "droid-create": "implement",
+              }.get((label or "").lower(), "")
 
           def slugify(value):
               slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", (value or "").strip().lower()).strip("-")
@@ -283,6 +299,8 @@ jobs:
               entity_url = pr.get("html_url") or ""
               labels = labels or labels_from(pr)
 
+          if event_name in {"issues", "pull_request"} and event.get("action") == "labeled":
+              mode = mode or detect_label_mode((event.get("label") or {}).get("name", ""))
           mode = mode or detect_mode(labels, prompt)
           if not mode:
               raise RuntimeError("Could not infer Droid creation mode from trigger.")
