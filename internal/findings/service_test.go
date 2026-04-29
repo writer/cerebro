@@ -352,6 +352,33 @@ func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsStoresNormalizedEventLimit(t *testing.T) {
+	replayer := &stubReplayer{}
+	store := &stubFindingStore{}
+	service := New(&stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {
+				Id:       "writer-okta-audit",
+				SourceId: "okta",
+				TenantId: "writer",
+			},
+		},
+	}, replayer, store, store, store, store)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := replayer.request.Limit; got != defaultEventLimit {
+		t.Fatalf("Replay().Limit = %d, want %d", got, defaultEventLimit)
+	}
+	if got := result.Run.GetEventLimit(); got != defaultEventLimit {
+		t.Fatalf("Run.EventLimit = %d, want %d", got, defaultEventLimit)
+	}
+}
+
 func TestListRulesReturnsBuiltinCatalog(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
 	response := service.ListRules()
