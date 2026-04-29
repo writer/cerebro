@@ -3,6 +3,7 @@ package jetstream
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/nats-io/nats.go"
@@ -29,20 +30,30 @@ func (f *fakePublisher) PublishMsg(_ context.Context, msg *nats.Msg, _ ...natsje
 }
 
 type fakeReplayManager struct {
-	streams []*natsjetstream.StreamInfo
-	msgs    map[string]map[uint64]*natsjetstream.RawStreamMsg
-	err     error
+	streams     []*natsjetstream.StreamInfo
+	msgs        map[string]map[uint64]*natsjetstream.RawStreamMsg
+	err         error
+	streamCalls int
 }
 
 func (f *fakeReplayManager) Streams(context.Context) ([]*natsjetstream.StreamInfo, error) {
 	return f.streams, f.err
 }
 
-func (f *fakeReplayManager) GetMsg(_ context.Context, stream string, seq uint64) (*natsjetstream.RawStreamMsg, error) {
+func (f *fakeReplayManager) Stream(_ context.Context, stream string) (replayStream, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	raw := f.msgs[stream][seq]
+	f.streamCalls++
+	return &fakeReplayStream{msgs: f.msgs[stream]}, nil
+}
+
+type fakeReplayStream struct {
+	msgs map[uint64]*natsjetstream.RawStreamMsg
+}
+
+func (f *fakeReplayStream) GetMsg(_ context.Context, seq uint64, _ ...natsjetstream.GetMsgOpt) (*natsjetstream.RawStreamMsg, error) {
+	raw := f.msgs[seq]
 	if raw == nil {
 		return nil, natsjetstream.ErrMsgNotFound
 	}
@@ -128,6 +139,37 @@ func TestReplayFiltersEventsByRuntime(t *testing.T) {
 	}
 	if events[0].GetId() != "evt-1" || events[1].GetId() != "evt-3" {
 		t.Fatalf("replayed ids = [%q, %q], want [evt-1, evt-3]", events[0].GetId(), events[1].GetId())
+	}
+	if replay.streamCalls != 1 {
+		t.Fatalf("streamCalls = %d, want 1", replay.streamCalls)
+	}
+}
+
+func TestReplayAppliesDefaultLimit(t *testing.T) {
+	msgs := make(map[uint64]*natsjetstream.RawStreamMsg)
+	for seq := uint64(1); seq <= defaultReplayLimit+5; seq++ {
+		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEvent("evt-"+strconv.FormatUint(seq, 10), "github.audit", "writer-github"))
+	}
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: defaultReplayLimit + 5},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{"CEREBRO_EVENTS": msgs},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != defaultReplayLimit {
+		t.Fatalf("len(events) = %d, want %d", len(events), defaultReplayLimit)
 	}
 }
 
