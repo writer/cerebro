@@ -73,6 +73,9 @@ func TestCheckDiscoverAndRead(t *testing.T) {
 	if readResp.PreviewEvents[0].EventId != readResp.Events[0].Id {
 		t.Fatalf("Read().PreviewEvents[0].EventId = %q, want %q", readResp.PreviewEvents[0].EventId, readResp.Events[0].Id)
 	}
+	if readResp.PreviewEvents[0].GetEvent().GetId() != readResp.Events[0].Id {
+		t.Fatalf("Read().PreviewEvents[0].Event.Id = %q, want %q", readResp.PreviewEvents[0].GetEvent().GetId(), readResp.Events[0].Id)
+	}
 	if !readResp.PreviewEvents[0].PayloadDecoded {
 		t.Fatal("Read().PreviewEvents[0].PayloadDecoded = false, want true")
 	}
