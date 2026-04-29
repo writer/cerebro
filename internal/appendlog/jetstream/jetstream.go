@@ -20,6 +20,7 @@ const (
 	connectTimeout     = 5 * time.Second
 	defaultReplayLimit = 100
 	maxReplayLimit     = 1000
+	maxReplayScan      = 10000
 )
 
 type publisher interface {
@@ -172,7 +173,12 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
 		return events, nil
 	}
+	var scanned uint32
 	for seq := stream.State.FirstSeq; seq <= stream.State.LastSeq; seq++ {
+		if scanned >= maxReplayScan {
+			return nil, fmt.Errorf("replay scan exceeded %d messages while collecting %d events", maxReplayScan, limit)
+		}
+		scanned++
 		raw, err := streamRef.GetMsg(ctx, seq)
 		if err != nil {
 			if errors.Is(err, jetstream.ErrMsgNotFound) {
@@ -246,14 +252,17 @@ func subjectMatches(pattern string, subject string) bool {
 	patternTokens := strings.Split(strings.TrimSpace(pattern), ".")
 	subjectTokens := strings.Split(strings.TrimSpace(subject), ".")
 	for index, token := range patternTokens {
-		if token == ">" {
-			return true
-		}
-		if index >= len(subjectTokens) {
-			return false
-		}
-		if token != "*" && token != subjectTokens[index] {
-			return false
+		switch token {
+		case ">":
+			return index < len(subjectTokens)
+		case "*":
+			if index >= len(subjectTokens) {
+				return false
+			}
+		default:
+			if index >= len(subjectTokens) || token != subjectTokens[index] {
+				return false
+			}
 		}
 	}
 	return len(patternTokens) == len(subjectTokens)

@@ -180,6 +180,24 @@ func TestReplayRejectsMissingRuntimeID(t *testing.T) {
 	}
 }
 
+func TestSubjectMatchesRequiresRemainingTokensForWildcard(t *testing.T) {
+	tests := []struct {
+		pattern string
+		subject string
+		want    bool
+	}{
+		{pattern: "events.*.>", subject: "events.replay", want: false},
+		{pattern: "events.*.>", subject: "events.github.audit", want: true},
+		{pattern: "events.>", subject: "events", want: false},
+		{pattern: "events.>", subject: "events.github", want: true},
+	}
+	for _, tt := range tests {
+		if got := subjectMatches(tt.pattern, tt.subject); got != tt.want {
+			t.Fatalf("subjectMatches(%q, %q) = %v, want %v", tt.pattern, tt.subject, got, tt.want)
+		}
+	}
+}
+
 func replayEvent(id string, kind string, runtimeID string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:       id,
