@@ -129,8 +129,8 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	}
 	pulls, resp, err := client.PullRequests.List(ctx, settings.owner, settings.repo, &gogithub.PullRequestListOptions{
 		State:     settings.state,
-		Sort:      "updated",
-		Direction: "desc",
+		Sort:      "created",
+		Direction: "asc",
 		ListOptions: gogithub.ListOptions{
 			Page:    page,
 			PerPage: settings.perPage,
@@ -305,9 +305,9 @@ func pullRequestEvent(settings settings, pullRequest *gogithub.PullRequest) (*pr
 	if pullRequest == nil {
 		return nil, errors.New("pull request is required")
 	}
-	occurredAt := pullRequest.GetUpdatedAt().Time
+	occurredAt := pullRequest.GetCreatedAt().Time
 	if occurredAt.IsZero() {
-		occurredAt = pullRequest.GetCreatedAt().Time
+		occurredAt = pullRequest.GetUpdatedAt().Time
 	}
 	if occurredAt.IsZero() {
 		return nil, fmt.Errorf("github pull request %d missing timestamps", pullRequest.GetNumber())

@@ -247,33 +247,31 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		encode := func(v any, subject string) bool {
+			if err := json.NewEncoder(w).Encode(v); err != nil {
+				t.Errorf("%s: %v", subject, err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return false
+			}
+			return true
+		}
 		switch r.URL.Path {
 		case "/api/v3/orgs/writer/repos":
-			if err := json.NewEncoder(w).Encode([]map[string]any{repo}); err != nil {
-				t.Fatalf("encode repos response: %v", err)
-			}
+			encode([]map[string]any{repo}, "encode repos response")
 		case "/api/v3/repos/writer/cerebro":
-			if err := json.NewEncoder(w).Encode(repo); err != nil {
-				t.Fatalf("encode repo response: %v", err)
-			}
+			encode(repo, "encode repo response")
 		case "/api/v3/repos/writer/cerebro/pulls":
 			page := r.URL.Query().Get("page")
 			if page == "" || page == "1" {
 				w.Header().Set("Link", "</api/v3/repos/writer/cerebro/pulls?page=2>; rel=\"next\", </api/v3/repos/writer/cerebro/pulls?page=2>; rel=\"last\"")
-				if err := json.NewEncoder(w).Encode(pulls[:1]); err != nil {
-					t.Fatalf("encode pulls page 1: %v", err)
-				}
+				encode(pulls[:1], "encode pulls page 1")
 				return
 			}
 			if page == "2" {
-				if err := json.NewEncoder(w).Encode(pulls[1:2]); err != nil {
-					t.Fatalf("encode pulls page 2: %v", err)
-				}
+				encode(pulls[1:2], "encode pulls page 2")
 				return
 			}
-			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
-				t.Fatalf("encode empty pulls page: %v", err)
-			}
+			encode([]map[string]any{}, "encode empty pulls page")
 		default:
 			http.NotFound(w, r)
 		}
