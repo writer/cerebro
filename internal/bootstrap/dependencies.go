@@ -53,17 +53,31 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		deps.StateStore = stateStore
 		closers = append(closers, stateStore)
 	}
-	pingCtx, cancel := context.WithTimeout(ctx, dependencyPingTimeout)
-	defer cancel()
+	if err := pingDependencies(ctx, deps); err != nil {
+		return fail(err)
+	}
+	return deps, closeAll, nil
+}
+
+func pingDependencies(ctx context.Context, deps Dependencies) error {
 	if deps.AppendLog != nil {
-		if err := deps.AppendLog.Ping(pingCtx); err != nil {
-			return fail(fmt.Errorf("ping append log: %w", err))
+		if err := pingDependency(ctx, "append log", deps.AppendLog); err != nil {
+			return err
 		}
 	}
 	if deps.StateStore != nil {
-		if err := deps.StateStore.Ping(pingCtx); err != nil {
-			return fail(fmt.Errorf("ping state store: %w", err))
+		if err := pingDependency(ctx, "state store", deps.StateStore); err != nil {
+			return err
 		}
 	}
-	return deps, closeAll, nil
+	return nil
+}
+
+func pingDependency(ctx context.Context, name string, dependency pinger) error {
+	pingCtx, cancel := context.WithTimeout(ctx, dependencyPingTimeout)
+	defer cancel()
+	if err := dependency.Ping(pingCtx); err != nil {
+		return fmt.Errorf("ping %s: %w", name, err)
+	}
+	return nil
 }
