@@ -52,6 +52,11 @@ func run(pass *analysis.Pass) (any, error) {
 		if isTestFile(pass, call.Pos()) {
 			return
 		}
+		if ident, ok := call.Fun.(*ast.Ident); ok {
+			if (ident.Name == "Open" || ident.Name == "OpenDB") && len(call.Args) > 0 && isDatabaseSQLFunc(pass, ident) && isSQLiteDriverLiteral(pass, call.Args[0]) {
+				report(pass, reported, call.Args[0].Pos(), call.Args[0].End())
+			}
+		}
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
 			if isEmbeddedDBPackageSelector(pass, sel) {
 				report(pass, reported, call.Pos(), call.End())
@@ -85,6 +90,11 @@ func isDatabaseSQLSelector(pass *analysis.Pass, sel *ast.SelectorExpr) bool {
 	}
 	pkgName, ok := pass.TypesInfo.Uses[ident].(*types.PkgName)
 	return ok && pkgName.Imported() != nil && pkgName.Imported().Path() == "database/sql"
+}
+
+func isDatabaseSQLFunc(pass *analysis.Pass, ident *ast.Ident) bool {
+	fn, ok := pass.TypesInfo.Uses[ident].(*types.Func)
+	return ok && fn.Pkg() != nil && fn.Pkg().Path() == "database/sql"
 }
 
 func report(pass *analysis.Pass, reported map[token.Pos]struct{}, pos, end token.Pos) {
