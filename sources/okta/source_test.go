@@ -175,6 +175,23 @@ func TestNewFixtureReplaysFixturePages(t *testing.T) {
 	}
 }
 
+func TestNewFixtureRejectsNegativeCursor(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"domain": "writer.okta.com",
+		"family": "audit",
+		"token":  "test-token",
+	})
+
+	_, err = source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "-1"})
+	if err == nil {
+		t.Fatal("Read() error = nil, want non-nil")
+	}
+}
+
 func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 	source, cleanup := newTestSource(t, newOktaAPIHandler(t))
 	defer cleanup()

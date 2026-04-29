@@ -135,11 +135,17 @@ DO UPDATE SET
 }
 
 func (s *Store) ensureProjectionTables(ctx context.Context) error {
+	s.projectionTablesMu.Lock()
+	defer s.projectionTablesMu.Unlock()
+	if s.projectionTablesReady {
+		return nil
+	}
 	for _, statement := range ensureProjectionStatements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("ensure projection tables: %w", err)
 		}
 	}
+	s.projectionTablesReady = true
 	return nil
 }
 

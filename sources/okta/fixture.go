@@ -107,9 +107,12 @@ func (s *fixtureSource) Read(ctx context.Context, cfg sourcecdk.Config, cursor *
 	}
 	index := 0
 	if cursor != nil && strings.TrimSpace(cursor.Opaque) != "" {
-		parsed, err := strconv.Atoi(cursor.Opaque)
+		parsed, err := strconv.Atoi(strings.TrimSpace(cursor.Opaque))
 		if err != nil {
 			return sourcecdk.Pull{}, fmt.Errorf("parse cursor: %w", err)
+		}
+		if parsed < 0 {
+			return sourcecdk.Pull{}, fmt.Errorf("cursor index must be non-negative")
 		}
 		index = parsed
 	}
