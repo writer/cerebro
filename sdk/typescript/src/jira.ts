@@ -376,7 +376,7 @@ export async function onboardJiraWorkspacePosture(
     integration: "jira",
   });
   const runtimeConfig: Record<string, string> = {};
-  const workspaceKey = options.posture.workspaceKey.trim();
+  const workspaceKey = requireValue(options.posture.workspaceKey, "posture.workspaceKey");
   if (workspaceKey) {
     runtimeConfig.workspace = workspaceKey;
   }
@@ -396,7 +396,10 @@ export async function onboardJiraWorkspacePosture(
   };
 }
 
-function requireValue(value: string, name: string): string {
+function requireValue(value: unknown, name: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`${name} is required`);
+  }
   const normalized = value.trim();
   if (!normalized) {
     throw new Error(`${name} is required`);
