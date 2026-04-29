@@ -1106,6 +1106,19 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := runtimeStore.findingEvaluationRunListRequest.Status; got != "completed" {
 		t.Fatalf("runtimeStore.findingEvaluationRunListRequest.Status = %q, want completed", got)
 	}
+	_, err = client.GetFindingEvaluationRun(context.Background(), connect.NewRequest(&cerebrov1.GetFindingEvaluationRunRequest{
+		Id: "missing-run",
+	}))
+	if err == nil {
+		t.Fatal("GetFindingEvaluationRun() missing run error = nil, want non-nil")
+	}
+	var connectErr *connect.Error
+	if !errors.As(err, &connectErr) {
+		t.Fatalf("GetFindingEvaluationRun() missing run error = %T, want *connect.Error", err)
+	}
+	if got := connectErr.Code(); got != connect.CodeNotFound {
+		t.Fatalf("GetFindingEvaluationRun() missing run code = %v, want %v", got, connect.CodeNotFound)
+	}
 	if len(runtimeStore.findingEvaluationRuns) != 2 {
 		t.Fatalf("len(runtimeStore.findingEvaluationRuns) = %d, want 2", len(runtimeStore.findingEvaluationRuns))
 	}

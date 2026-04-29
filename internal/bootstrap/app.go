@@ -660,6 +660,9 @@ func (s *bootstrapService) GetFindingEvaluationRun(ctx context.Context, req *con
 		findingEvaluationRunStore(s.deps.StateStore),
 	).GetEvaluationRun(ctx, req.Msg.GetId())
 	if err != nil {
+		if errors.Is(err, ports.ErrFindingEvaluationRunNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
 		return nil, err
 	}
 	return connect.NewResponse(&cerebrov1.GetFindingEvaluationRunResponse{Run: run}), nil

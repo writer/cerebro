@@ -82,3 +82,15 @@ func TestFindingEvaluationRunListQueryIncludesOptionalFilters(t *testing.T) {
 		t.Fatalf("findingEvaluationRunListQuery().args[3] = %#v, want 25", got)
 	}
 }
+
+func TestFindingEvaluationRunTimeReturnsZeroForNilTimestamp(t *testing.T) {
+	if got := findingEvaluationRunTime((*timestamppb.Timestamp)(nil)); !got.IsZero() {
+		t.Fatalf("findingEvaluationRunTime(nil) = %v, want zero time", got)
+	}
+}
+
+func TestNullableTimeReturnsNilForNilFindingEvaluationRunTimestamp(t *testing.T) {
+	if got := nullableTime(findingEvaluationRunTime((*timestamppb.Timestamp)(nil))); got != nil {
+		t.Fatalf("nullableTime(findingEvaluationRunTime(nil)) = %#v, want nil", got)
+	}
+}
