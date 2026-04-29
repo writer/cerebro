@@ -198,6 +198,29 @@ func TestWriteHTTPErrorHelpersDoNotExposeInternalMessages(t *testing.T) {
 	}
 }
 
+func TestInvalidHTTPRequestErrorsReturnBadRequest(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		write func(http.ResponseWriter, error)
+	}{
+		{name: "source", write: writeSourceError},
+		{name: "report", write: writeReportError},
+		{name: "source runtime", write: writeSourceRuntimeError},
+		{name: "claim", write: writeClaimError},
+		{name: "finding", write: writeFindingError},
+		{name: "knowledge", write: writeKnowledgeError},
+		{name: "workflow replay", write: writeWorkflowReplayError},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			tt.write(recorder, invalidHTTPRequestError(errors.New("bad query param")))
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+			}
+		})
+	}
+}
+
 func TestWriteReportErrorDoesNotExposeInternalMessage(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeReportError(recorder, errors.New("postgres password leaked"))
@@ -1228,6 +1251,23 @@ func TestReadProtoJSONRejectsOversizedBody(t *testing.T) {
 	}
 	if !errors.Is(err, errProtoJSONBodyTooLarge) {
 		t.Fatalf("readProtoJSON() error = %v, want size error", err)
+	}
+	if !errors.Is(err, errInvalidHTTPRequest) {
+		t.Fatalf("readProtoJSON() error = %v, want invalid request error", err)
+	}
+}
+
+func TestReadProtoJSONClassifiesMalformedBodyAsInvalidRequest(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/reports/finding-summary/runs", strings.NewReader("{"))
+	err := readProtoJSON(req, &cerebrov1.RunReportRequest{})
+	if !errors.Is(err, errInvalidHTTPRequest) {
+		t.Fatalf("readProtoJSON() error = %v, want invalid request error", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	writeFindingError(recorder, err)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
 

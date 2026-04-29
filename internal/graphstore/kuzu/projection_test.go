@@ -5,7 +5,6 @@ package kuzu
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"sync"
@@ -256,17 +255,20 @@ func TestUpsertProjectedAttributesMergeConcurrentUpdates(t *testing.T) {
 	}
 }
 
-func TestUpsertProjectedLinkRejectsMissingEndpoints(t *testing.T) {
+func TestUpsertProjectedLinkIgnoresMissingEndpoints(t *testing.T) {
 	store := newTestStore(t)
-	err := store.UpsertProjectedLink(context.Background(), &ports.ProjectedLink{
+	if err := store.UpsertProjectedLink(context.Background(), &ports.ProjectedLink{
 		TenantID: "writer",
 		SourceID: "github",
 		FromURN:  "urn:cerebro:writer:github_user:alice",
 		ToURN:    "urn:cerebro:writer:github_repo:writer/cerebro",
 		Relation: "belongs_to",
-	})
-	if !errors.Is(err, ports.ErrGraphEntityNotFound) {
-		t.Fatalf("UpsertProjectedLink() error = %v, want %v", err, ports.ErrGraphEntityNotFound)
+	}); err != nil {
+		t.Fatalf("UpsertProjectedLink() error = %v, want nil", err)
+	}
+	linkCount := queryGraphCount(t, store, "MATCH (:entity)-[r:relation]->(:entity) RETURN COUNT(r)")
+	if linkCount != 0 {
+		t.Fatalf("projected link count = %d, want 0", linkCount)
 	}
 }
 

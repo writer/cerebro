@@ -401,9 +401,6 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	}
 	s.schemaMu.Lock()
 	defer s.schemaMu.Unlock()
-	if err := s.ensureProjectedLinkEndpoints(ctx, fromURN, toURN); err != nil {
-		return err
-	}
 	attributes, err := s.mergedProjectedLinkAttributes(ctx, fromURN, relation, toURN, link.Attributes)
 	if err != nil {
 		return fmt.Errorf("load projected link %q %q %q attributes: %w", fromURN, relation, toURN, err)
@@ -606,22 +603,6 @@ func (s *Store) mergedProjectedLinkAttributes(ctx context.Context, fromURN strin
 		return nil, err
 	}
 	return mergeGraphAttributes(existing, incoming), nil
-}
-
-func (s *Store) ensureProjectedLinkEndpoints(ctx context.Context, fromURN string, toURN string) error {
-	for _, urn := range []string{fromURN, toURN} {
-		var count int64
-		if err := s.db.QueryRowContext(ctx, fmt.Sprintf(
-			"MATCH (e:entity {urn: %s}) RETURN COUNT(e)",
-			cypherString(urn),
-		)).Scan(&count); err != nil {
-			return err
-		}
-		if count == 0 {
-			return fmt.Errorf("%w: %s", ports.ErrGraphEntityNotFound, urn)
-		}
-	}
-	return nil
 }
 
 func (s *Store) countQuery(ctx context.Context, query string) (int64, error) {

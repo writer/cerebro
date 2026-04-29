@@ -62,7 +62,10 @@ const (
 	healthCheckTimeout    = 2 * time.Second
 )
 
-var errProtoJSONBodyTooLarge = errors.New("request JSON body exceeds maximum size")
+var (
+	errInvalidHTTPRequest    = errors.New("invalid http request")
+	errProtoJSONBodyTooLarge = errors.New("request JSON body exceeds maximum size")
+)
 
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
@@ -689,7 +692,7 @@ func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
 	if pageLimit := r.URL.Query().Get("page_limit"); pageLimit != "" {
 		body := []byte(`{"page_limit":` + pageLimit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeSourceRuntimeError(w, err)
+			writeSourceRuntimeError(w, invalidHTTPRequestError(err))
 			return
 		}
 	}
@@ -717,7 +720,7 @@ func (a *App) handleListClaims(w http.ResponseWriter, r *http.Request) {
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeClaimError(w, err)
+			writeClaimError(w, invalidHTTPRequestError(err))
 			return
 		}
 		request.RuntimeId = r.PathValue("runtimeID")
@@ -781,7 +784,7 @@ func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http
 	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
 		body := []byte(`{"event_limit":` + eventLimit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeFindingError(w, err)
+			writeFindingError(w, invalidHTTPRequestError(err))
 			return
 		}
 	}
@@ -808,7 +811,7 @@ func (a *App) handleEvaluateSourceRuntimeFindingRules(w http.ResponseWriter, r *
 	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
 		body := []byte(`{"event_limit":` + eventLimit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeFindingError(w, err)
+			writeFindingError(w, invalidHTTPRequestError(err))
 			return
 		}
 	}
@@ -849,7 +852,7 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeFindingError(w, err)
+			writeFindingError(w, invalidHTTPRequestError(err))
 			return
 		}
 		request.RuntimeId = r.PathValue("runtimeID")
@@ -899,7 +902,7 @@ func (a *App) handleListFindingEvidence(w http.ResponseWriter, r *http.Request) 
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeFindingError(w, err)
+			writeFindingError(w, invalidHTTPRequestError(err))
 			return
 		}
 		request.RuntimeId = r.PathValue("runtimeID")
@@ -938,7 +941,7 @@ func (a *App) handleListFindingEvaluationRuns(w http.ResponseWriter, r *http.Req
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeFindingError(w, err)
+			writeFindingError(w, invalidHTTPRequestError(err))
 			return
 		}
 		request.RuntimeId = r.PathValue("runtimeID")
@@ -1714,7 +1717,7 @@ func writeSourceError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, sourceops.ErrSourceNotFound):
 		statusCode = http.StatusNotFound
-	case errors.Is(err, sourceops.ErrInvalidRequest):
+	case errors.Is(err, sourceops.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
@@ -1727,7 +1730,7 @@ func writeReportError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, reports.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, reports.ErrInvalidRequest):
+	case errors.Is(err, reports.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
@@ -1764,7 +1767,7 @@ func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, sourceruntime.ErrInvalidRequest):
+	case errors.Is(err, sourceruntime.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
@@ -1790,7 +1793,7 @@ func writeClaimError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, claims.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, claims.ErrInvalidRequest):
+	case errors.Is(err, claims.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
@@ -1913,6 +1916,8 @@ func writeFindingError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusBadRequest
 	case errors.Is(err, findings.ErrRuleUnavailable):
 		statusCode = http.StatusPreconditionFailed
+	case errors.Is(err, errInvalidHTTPRequest):
+		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
 }
@@ -1924,6 +1929,8 @@ func writeKnowledgeError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, knowledge.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
+	case errors.Is(err, errInvalidHTTPRequest):
+		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
 }
@@ -1958,8 +1965,11 @@ func writeGraphIngestError(w http.ResponseWriter, err error) {
 
 func writeWorkflowReplayError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusInternalServerError
-	if errors.Is(err, workflowprojection.ErrRuntimeUnavailable) {
+	switch {
+	case errors.Is(err, workflowprojection.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
+	case errors.Is(err, errInvalidHTTPRequest):
+		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
 }
@@ -1979,12 +1989,22 @@ func readProtoJSON(r *http.Request, message proto.Message) error {
 		return err
 	}
 	if len(body) > maxProtoJSONBodyBytes {
-		return fmt.Errorf("%w: %d bytes", errProtoJSONBodyTooLarge, maxProtoJSONBodyBytes)
+		return fmt.Errorf("%w: %w: %d bytes", errInvalidHTTPRequest, errProtoJSONBodyTooLarge, maxProtoJSONBodyBytes)
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil
 	}
-	return protojson.Unmarshal(body, message)
+	if err := protojson.Unmarshal(body, message); err != nil {
+		return invalidHTTPRequestError(err)
+	}
+	return nil
+}
+
+func invalidHTTPRequestError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %w", errInvalidHTTPRequest, err)
 }
 
 func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
@@ -2311,7 +2331,7 @@ func parseFindingStatus(raw string) (cerebrov1.FindingStatus, error) {
 	case "suppressed", "finding_status_suppressed":
 		return cerebrov1.FindingStatus_FINDING_STATUS_SUPPRESSED, nil
 	default:
-		return cerebrov1.FindingStatus_FINDING_STATUS_UNSPECIFIED, fmt.Errorf("unsupported finding status %q", raw)
+		return cerebrov1.FindingStatus_FINDING_STATUS_UNSPECIFIED, fmt.Errorf("%w: unsupported finding status %q", errInvalidHTTPRequest, raw)
 	}
 }
 
