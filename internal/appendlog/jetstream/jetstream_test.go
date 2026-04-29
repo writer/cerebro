@@ -98,6 +98,25 @@ func TestAppendRejectsMissingKind(t *testing.T) {
 	}
 }
 
+func TestAppendRejectsInvalidKindSubjects(t *testing.T) {
+	log := &Log{js: &fakePublisher{}, subjectPrefix: "events"}
+	for _, kind := range []string{
+		"entity update",
+		"entity\tupdate",
+		"entity..update",
+		".entity",
+		"entity.",
+		"entity.*",
+		"entity.>",
+	} {
+		t.Run(kind, func(t *testing.T) {
+			if err := log.Append(context.Background(), &cerebrov1.EventEnvelope{Kind: kind}); err == nil {
+				t.Fatal("Append() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
 func TestPingSurfacesPublisherError(t *testing.T) {
 	log := &Log{js: &fakePublisher{accountErr: errors.New("down")}, subjectPrefix: "events"}
 	if err := log.Ping(context.Background()); err == nil {

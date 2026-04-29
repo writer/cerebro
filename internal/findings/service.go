@@ -246,12 +246,12 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 		return nil, s.finishFailedRun(ctx, run, 0, nil, evaluationErr)
 	}
 	result := &EvaluateResult{
-		Runtime:         runtime,
-		Rule:            rule.Spec(),
-		EventsEvaluated: uint32(len(events)),
-		Run:             run,
+		Runtime: runtime,
+		Rule:    rule.Spec(),
+		Run:     run,
 	}
 	for _, event := range events {
+		result.EventsEvaluated++
 		emitted, err := rule.Evaluate(ctx, runtime, event)
 		if err != nil {
 			evaluationErr := fmt.Errorf("evaluate finding rule %q for event %q: %w", result.Rule.GetId(), event.GetId(), err)
@@ -756,7 +756,7 @@ func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32,
 		RuntimeId:  strings.TrimSpace(runtimeID),
 		RuleId:     strings.TrimSpace(ruleID),
 		Status:     "running",
-		EventLimit: eventLimit,
+		EventLimit: normalizeEventLimit(eventLimit),
 		StartedAt:  timestamppb.New(normalizedStartedAt),
 	}
 }
