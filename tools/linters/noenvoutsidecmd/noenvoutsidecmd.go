@@ -3,6 +3,7 @@ package noenvoutsidecmd
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 	"path/filepath"
 	"strings"
 
@@ -30,21 +31,36 @@ func run(pass *analysis.Pass) (any, error) {
 		if fileAllowed(pass, call.Pos()) {
 			return
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return
-		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok || pkg.Name != "os" {
-			return
-		}
-		switch sel.Sel.Name {
-		case "Getenv", "LookupEnv":
+		report := func(name string) {
 			pass.Report(analysis.Diagnostic{
 				Pos:     call.Pos(),
 				End:     call.End(),
-				Message: "os." + sel.Sel.Name + " is forbidden outside cmd/ and config; thread configuration through typed inputs instead. (see PLAN.md §7 sin #11)",
+				Message: "os." + name + " is forbidden outside cmd/ and config; thread configuration through typed inputs instead. (see PLAN.md §7 sin #11)",
 			})
+		}
+		switch fun := call.Fun.(type) {
+		case *ast.SelectorExpr:
+			pkgIdent, ok := fun.X.(*ast.Ident)
+			if !ok {
+				return
+			}
+			pkgName, ok := pass.TypesInfo.Uses[pkgIdent].(*types.PkgName)
+			if !ok || pkgName.Imported() == nil || pkgName.Imported().Path() != "os" {
+				return
+			}
+			switch fun.Sel.Name {
+			case "Getenv", "LookupEnv":
+				report(fun.Sel.Name)
+			}
+		case *ast.Ident:
+			fn, ok := pass.TypesInfo.Uses[fun].(*types.Func)
+			if !ok || fn.Pkg() == nil || fn.Pkg().Path() != "os" {
+				return
+			}
+			switch fn.Name() {
+			case "Getenv", "LookupEnv":
+				report(fn.Name())
+			}
 		}
 	})
 	return nil, nil
