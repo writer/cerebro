@@ -1,381 +1,282 @@
 # Cerebro
 
-**Operations Data Platform for Cloud, SaaS, and Business Signal Management**
+**Operations data platform for cloud, SaaS, identity, workflow, finding, and graph signals.**
 
-Cerebro is a unified operations platform that combines data ingestion from cloud providers and SaaS tools, policy evaluation, compliance reporting, AI-powered investigation, business signal analysis, and automated remediation workflows. It works across security, revenue operations, support, and any domain where you need to detect, triage, and act on operational signals.
+Cerebro is Writer's original operations platform repository. The current `main` branch is centered on a Go bootstrap service with Connect and JSON HTTP APIs, built-in source integrations, source runtime sync, finding and report workflows, append-log replay, and optional graph projection/query tooling.
 
-> **Origin:** This is Writer's original Cerebro repository. Cerebro began as a security-focused cloud posture management tool and now handles broader operational signals too — from cloud misconfigurations to stale deals, SLA breaches, payment failures, and business entity drift.
-
-[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ---
 
-## Features
+## Current capabilities
 
-### Core Platform
-- **Multi-Source Data Ingestion** — Ingest configurations and events from AWS, GCP, Azure, Kubernetes, and SaaS providers (Salesforce, HubSpot, Stripe, Zendesk, and more) via native scanners
-- **Policy Engine** — Cedar-style JSON policies for evaluation with custom condition support, applicable to any domain
-- **Parallel Scanning** — High-performance scanning with configurable worker pools
-- **Findings Lifecycle** — Generalized signal detection, filtering, suppression, and dashboard views
-- **Distributed Job Queue** — Postgres + NATS JetStream based job system for scalable distributed processing
-- **Scheduled Operations** — Automated scanning and digest notifications with configurable intervals
+- **Bootstrap API service** — `net/http` plus Connect RPC handlers for health, sources, runtimes, claims, findings, reports, workflow events, and graph queries.
+- **Source previews and runtime sync** — built-in sources can be checked, discovered, read, persisted as source runtimes, synced through an append log, and projected into state/graph stores when configured.
+- **Finding workflows** — built-in finding rules can evaluate source runtime events, persist evidence/evaluation runs, and drive finding lifecycle actions.
+- **Report runs** — report definitions can be listed and executed with durable run retrieval when a state store is configured.
+- **Workflow event replay** — knowledge decisions, actions, and outcomes can be written and replayed through append-log-backed projections.
+- **Graph operations** — Kuzu-backed graph counts, neighborhoods, path summaries, integrity checks, source ingest, runtime ingest, ingest run status, and dry-run rebuilds.
+- **Policy catalog** — JSON policy definitions under `policies/` for cloud, identity, GitHub, Kubernetes, SaaS, runtime, vulnerability, compliance, and business-operation checks.
 
-### Security
-- **Compliance Frameworks** — Pre-built mappings for SOC 2, CIS, PCI DSS, HIPAA, NIST 800-53
-- **Identity Governance** — Access reviews, stale access detection, and risk scoring
-- **Attack Path Analysis** — Graph-based visualization of potential attack paths
-
-### Business Operations
-- **Business Signal Graph** — Ingest events from Ensemble/NATS streams and map them into a business entity graph with computed policy fields
-- **Impact Path Analysis** — Churn, revenue, and incident scenario analysis with aggregate business metrics and chokepoints
-- **Business Cohort Analysis** — MinHash-based entity clustering with outlier scoring
-- **Composite Posture Scoring** — Per-entity risk scoring with trend/change detection across security and business domains
-- **Cross-System Toxic Combinations** — Detect compound risks spanning security and business systems (e.g., churn risk + elevated access)
-
-### AI & Integrations
-- **AI Agents** — LLM-powered investigation with Anthropic Claude and OpenAI GPT
-- **Deep Research Agent** — Code-to-cloud analysis bridging source code and live cloud inspection
-- **Remote Tool Proxy** — Ensemble NATS-based remote tool execution for distributed agent capabilities
-- **Integrations** — Jira, Linear, Slack, PagerDuty, and custom webhooks
-- **Entity Lineage** — End-to-end provenance tracking and drift detection across business entities
+Cerebro has historical and forward-looking docs in `docs/`. For current runtime behavior, treat `cmd/cerebro`, `internal/config`, `internal/bootstrap`, `proto/cerebro/v1/bootstrap.proto`, and the Makefile as the source of truth.
 
 ---
 
 ## Architecture
 
+```text
+CLI / JSON HTTP / Connect clients
+              |
+              v
+      Bootstrap service
+   (cmd/cerebro, internal/bootstrap)
+              |
+              +--> Source registry, preview, and runtime sync
+              +--> Claim, finding, report, workflow, and graph services
+              |
+              +--> Optional append log: NATS JetStream
+              +--> Optional state store: Postgres
+              +--> Optional graph store: Kuzu
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              CEREBRO PLATFORM                                │
-│                                                                              │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐  │
-│  │   CLI    │   │ REST API │   │ Webhooks │   │Scheduler │   │  Agents  │  │
-│  └────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘   └────┬─────┘  │
-│       └──────────────┴──────────────┴──────────────┴──────────────┘        │
-│                                     │                                       │
-│                       ┌─────────────▼─────────────┐                        │
-│                       │    Application Container   │                        │
-│                       │  Policy│Scanner│Findings  │                        │
-│                       │  Graph │Lineage│Remediate │                        │
-│                       └─────────────┬─────────────┘                        │
-│                                     │                                       │
-└─────────────────────────────────────┼───────────────────────────────────────┘
-                                      │
-        ┌─────────────────────────────┼─────────────────────────────┐
-        ▼                             ▼                             ▼
-  ┌───────────┐              ┌───────────────┐              ┌───────────┐
-  │ Snowflake │◀─────────────│  Native Sync │              │ External  │
-  │ (Storage) │              │ (Ingestion)  │              │   APIs    │
-  └───────────┘              └──────────────┘              └───────────┘
-        │                           │                             │
-  AWS/GCP/Azure              Cloud Providers             Jira/Slack/PD
-  Kubernetes                 SaaS (SF/HubSpot/           Anthropic/OpenAI
-  NATS/Ensemble              Stripe/Zendesk)             NATS Remote Tools
+
+External dependency drivers are opt-in. With no external drivers configured, the server can start and serve lightweight routes such as `/health`, `/healthz`, and `/sources`. Durable runtime, claim, finding, report, replay, and graph operations require their corresponding stores.
+
+---
+
+## Quick start
+
+### Prerequisites
+
+- Go 1.26+; this repo pins toolchain `go1.26.2`.
+- Optional: NATS JetStream for append-log-backed sync/replay.
+- Optional: Postgres for durable source runtime, claim, finding, evidence, evaluation, and report state.
+- Optional: Kuzu for graph projection/query operations.
+
+### Build and verify
+
+```bash
+git clone https://github.com/writer/cerebro.git
+cd cerebro
+
+make build
+make test
+make verify
+```
+
+### Run locally
+
+```bash
+make serve
+# or
+./bin/cerebro serve
+```
+
+By default, Cerebro listens on `:8080`.
+
+```bash
+curl -sS http://127.0.0.1:8080/health
+curl -sS http://127.0.0.1:8080/sources
 ```
 
 ---
 
-## Quick Start
+## Configuration
 
-### Prerequisites
+The bootstrap binary currently reads these environment variables:
 
-- Go 1.25+
-- Snowflake account (or use local SQLite mode)
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `CEREBRO_HTTP_ADDR` | HTTP listen address | `:8080` |
+| `CEREBRO_SHUTDOWN_TIMEOUT` | graceful shutdown timeout | `10s` |
+| `CEREBRO_APPEND_LOG_DRIVER` | append-log driver; supported value: `jetstream` | unset |
+| `CEREBRO_JETSTREAM_URL` | NATS URL for JetStream | unset |
+| `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | JetStream subject prefix | `events` |
+| `CEREBRO_STATE_STORE_DRIVER` | state-store driver; supported value: `postgres` | unset |
+| `CEREBRO_POSTGRES_DSN` | Postgres DSN | unset |
+| `CEREBRO_GRAPH_STORE_DRIVER` | graph-store driver; supported value: `kuzu` | unset |
+| `CEREBRO_KUZU_PATH` | Kuzu database path | unset |
 
-### Installation
+Driver selection is inferred when a driver-specific setting is present. For example, `CEREBRO_POSTGRES_DSN` selects the Postgres state store, and `CEREBRO_KUZU_PATH` selects the Kuzu graph store.
+
+Example durable local configuration:
 
 ```bash
-# Clone repository
-git clone https://github.com/writer/cerebro.git
-cd cerebro
-
-# Install dependencies
-make setup
-
-# Build
-make build
+export CEREBRO_APPEND_LOG_DRIVER=jetstream
+export CEREBRO_JETSTREAM_URL=nats://127.0.0.1:4222
+export CEREBRO_STATE_STORE_DRIVER=postgres
+export CEREBRO_POSTGRES_DSN='postgres://127.0.0.1:5432/cerebro?sslmode=disable'
+export CEREBRO_GRAPH_STORE_DRIVER=kuzu
+export CEREBRO_KUZU_PATH=.cerebro/kuzu
 ```
 
-### Configuration
+---
+
+## Dependencies by operation
+
+| Operation | Required backing dependencies |
+| --- | --- |
+| `serve`, `/health`, `/sources`, source `check/discover/read` | none beyond provider-specific source config/auth |
+| `source-runtime put/get` | Postgres state store |
+| `source-runtime sync` | Postgres state store + NATS JetStream append log |
+| Claim, finding, evidence, evaluation, and report run persistence | Postgres state store |
+| Workflow replay | NATS JetStream append log plus configured projection stores |
+| Graph query/ingest/rebuild operations | Kuzu graph store; runtime-backed graph operations also need Postgres and/or JetStream |
+
+---
+
+## CLI
+
+Build first with `make build`, then run `./bin/cerebro`.
 
 ```bash
-# Copy environment template
-cp .env.example .env
-
-# Required: Snowflake key-pair auth
-export SNOWFLAKE_ACCOUNT="myaccount.us-east-1"
-export SNOWFLAKE_USER="CEREBRO_APP"
-export SNOWFLAKE_PRIVATE_KEY="<paste-pem-private-key>"
-export SNOWFLAKE_WAREHOUSE="COMPUTE_WH"
-
-# Optional: AI agents
-export ANTHROPIC_API_KEY="sk-ant-..."
-
-# Optional: Notifications
-export SLACK_WEBHOOK_URL="https://hooks.slack.com/..."
-
-# Optional: Ticketing
-export JIRA_BASE_URL="https://company.atlassian.net"
-export JIRA_API_TOKEN="..."
-```
-
-### Local mode (no Snowflake)
-
-For local development, you can run Cerebro without Snowflake credentials:
-
-```bash
-unset SNOWFLAKE_PRIVATE_KEY SNOWFLAKE_ACCOUNT SNOWFLAKE_USER
-export CEREBRO_DB_PATH=.cerebro/cerebro.db
-make serve
-```
-
-In local mode, findings are persisted to SQLite. Snowflake-backed capabilities (data-lake queries, graph population) are reduced or unavailable.
-
-### Running
-
-```bash
-# Start API server
+# Server and version
 ./bin/cerebro serve
+./bin/cerebro version
 
-# Or with make
-make serve
+# Source catalog and previews
+./bin/cerebro source list
+./bin/cerebro source check github owner=writer repo=cerebro
+./bin/cerebro source discover github owner=writer repo=cerebro
+./bin/cerebro source read github owner=writer repo=cerebro per_page=1
 
-# Development mode
-make dev
+# Source runtimes require configured stores
+./bin/cerebro source-runtime put writer-github github tenant_id=writer owner=writer repo=cerebro
+./bin/cerebro source-runtime get writer-github
+./bin/cerebro source-runtime sync writer-github page_limit=1
+
+# Finding rule scaffolding
+./bin/cerebro finding-rule new identity-example source_id=okta event_kinds=okta.user name="Example identity rule" dry_run=true
+
+# Graph inspection and ingest require a configured graph store
+./bin/cerebro graph counts
+./bin/cerebro graph neighborhood <root-urn> limit=10
+./bin/cerebro graph paths limit=10
+./bin/cerebro graph integrity
+./bin/cerebro graph ingest github tenant_id=writer owner=writer repo=cerebro page_limit=1
+./bin/cerebro graph ingest-runtime writer-github page_limit=1
+./bin/cerebro graph ingest-run <run-id>
+./bin/cerebro graph ingest-runs runtime_id=writer-github
+./bin/cerebro graph rebuild writer-github dry_run=true mode=replay
 ```
+
+Top-level commands are `serve`, `version`, `source`, `source-runtime`, `finding-rule`, and `graph`.
+
+---
+
+## Built-in sources
+
+| Source ID | Description | Emitted kinds / families |
+| --- | --- | --- |
+| `aws` | AWS IAM inventory and CloudTrail source | `aws.access_key`, `aws.cloudtrail`, `aws.iam_*`, `aws.resource_exposure` |
+| `azure` | Azure Entra ID, RBAC, activity, and audit source | `azure.activity_log`, `azure.directory_audit`, `azure.user`, `azure.group`, `azure.*assignment`, `azure.resource_exposure` |
+| `gcp` | GCP IAM, Cloud Identity, service-account, and audit source | `gcp.audit`, `gcp.group`, `gcp.iam_role_assignment`, `gcp.service_account*`, `gcp.resource_exposure` |
+| `github` | GitHub audit, Dependabot, and pull request source | `github.audit`, `github.dependabot_alert`, `github.pull_request` |
+| `google_workspace` | Google Workspace Directory and Admin audit source | `google_workspace.audit`, `google_workspace.group`, `google_workspace.group_member`, `google_workspace.role_assignment`, `google_workspace.user` |
+| `okta` | Okta audit, identity inventory, app, group, assignment, and admin role source | `okta.audit`, `okta.admin_role`, `okta.app_assignment`, `okta.application`, `okta.group`, `okta.group_membership`, `okta.user` |
+| `sdk` | Generic SDK push source for onboarded applications | validates pushed integration config; preview reads are empty |
+
+Source-specific configuration is passed as `key=value` pairs in CLI calls or query parameters in HTTP calls. Required keys vary by source and family.
+
+---
+
+## HTTP and Connect API surface
+
+Connect RPC procedures are served under `/cerebro.v1.BootstrapService/{Method}`. The server also registers JSON HTTP routes:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /health`, `GET /healthz` | service and dependency health |
+| `GET /sources` | list registered sources |
+| `GET /sources/{sourceID}/check` | validate source configuration |
+| `GET /sources/{sourceID}/discover` | discover source collections |
+| `GET /sources/{sourceID}/read` | preview source events |
+| `PUT /source-runtimes/{runtimeID}` | create/update a source runtime |
+| `GET /source-runtimes/{runtimeID}` | load a source runtime |
+| `POST /source-runtimes/{runtimeID}/sync` | sync a source runtime |
+| `GET /source-runtimes/{runtimeID}/claims` | list runtime claims |
+| `POST /source-runtimes/{runtimeID}/claims` | write runtime claims |
+| `GET /source-runtimes/{runtimeID}/findings` | list runtime findings |
+| `GET /source-runtimes/{runtimeID}/finding-evidence` | list runtime finding evidence |
+| `GET /source-runtimes/{runtimeID}/finding-evaluation-runs` | list runtime finding evaluation runs |
+| `POST /source-runtimes/{runtimeID}/finding-rules/evaluate` | evaluate finding rules |
+| `POST /source-runtimes/{runtimeID}/findings/evaluate` | evaluate findings |
+| `GET /finding-rules` | list built-in finding rules |
+| `GET /findings/{findingID}` | get finding details |
+| `POST /findings/{findingID}/resolve` | resolve a finding |
+| `POST /findings/{findingID}/suppress` | suppress a finding |
+| `PUT /findings/{findingID}/assign` | assign a finding |
+| `PUT /findings/{findingID}/due` | set a finding due date |
+| `POST /findings/{findingID}/notes` | add a finding note |
+| `POST /findings/{findingID}/tickets` | link a ticket |
+| `GET /finding-evidence/{evidenceID}` | get finding evidence |
+| `GET /finding-evaluation-runs/{runID}` | get evaluation run details |
+| `GET /reports` | list report definitions |
+| `POST /reports/{reportID}/runs` | run a report |
+| `GET /report-runs/{runID}` | get a report run |
+| `POST /platform/knowledge/decisions` | write a knowledge decision |
+| `POST /platform/knowledge/actions` | write a workflow action |
+| `POST /graph/actuate/recommendation` | write an action through the graph actuation route |
+| `POST /graph/write/outcome` | write a workflow outcome |
+| `POST /platform/workflow/replay` | replay workflow events |
+| `GET /graph/neighborhood` | query graph neighborhood |
 
 ---
 
 ## Policies
 
-Policies are JSON files defining evaluation checks across any domain:
+Policy definitions live under `policies/` as JSON files. The catalog includes cloud posture, identity governance, GitHub, Kubernetes, M365, Okta, runtime, vulnerability, compliance, and business-operation checks.
 
-```json
-{
-    "id": "aws-s3-bucket-no-public-access",
-    "name": "S3 Bucket Public Access",
-    "description": "S3 buckets should not allow public access",
-    "effect": "forbid",
-    "conditions": ["block_public_acls != true"],
-    "severity": "critical",
-    "tags": ["cis-aws-2.1.5", "security", "s3"]
-}
-```
-
-```json
-{
-    "id": "hubspot-stale-deal",
-    "name": "Stale HubSpot Deal",
-    "description": "Open deals with no activity in 30+ days",
-    "effect": "forbid",
-    "conditions": ["days_since_last_activity > 30", "stage != closedwon"],
-    "severity": "high",
-    "tags": ["revops", "hubspot", "pipeline-hygiene"]
-}
-```
-
-### Policy Directory
-
-```
-policies/
-├── aws/           # AWS policies (S3, IAM, EC2, RDS)
-├── gcp/           # GCP policies (Storage, Compute, IAM)
-├── azure/         # Azure policies (Storage, VM)
-├── kubernetes/    # Kubernetes policies (Pods, RBAC)
-├── hubspot/       # HubSpot deal hygiene policies
-├── salesforce/    # Salesforce opportunity policies
-├── stripe/        # Stripe payment and billing policies
-├── zendesk/       # Zendesk SLA and resolution policies
-└── compliance/    # Cross-system compliance policies
-```
-
-See [Policy Documentation](docs/POLICIES.md) for writing custom policies.
-
----
-
-## CLI Commands
-
-```bash
-# Start API server
-cerebro serve
-
-# Start distributed job worker
-cerebro worker
-
-# Run code-to-cloud analysis
-cerebro agent run --repo-url https://github.com/org/repo
-cerebro agent run --resource arn:aws:s3:::my-bucket --aws-region us-east-1
-
-# Run distributed analysis (enqueue jobs to NATS JetStream)
-cerebro agent run --repo-url https://github.com/org/repo --distributed --wait
-
-# Sync data via native scanners
-cerebro sync
-cerebro sync --gcp --gcp-project my-project
-cerebro sync --azure
-
-# Policy management
-cerebro policy list
-cerebro policy validate
-cerebro policy test <policy-id> <asset.json>
-
-# Query Snowflake
-cerebro query "SELECT * FROM aws_s3_buckets LIMIT 10"
-cerebro query --format json "SELECT * FROM aws_iam_users"
-
-# Bootstrap database
-cerebro bootstrap
-```
-
----
-
-## API Overview
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /health` | Health check |
-| `GET /ready` | Readiness with dependency status |
-| `GET /metrics` | Prometheus metrics |
-| `GET /api/v1/tables` | List Snowflake tables |
-| `POST /api/v1/query` | Execute SQL query |
-| `GET /api/v1/policies` | List loaded policies |
-| `POST /api/v1/policies/evaluate` | Evaluate policy |
-| `GET /api/v1/findings` | List findings |
-| `POST /api/v1/findings/scan` | Trigger policy scan |
-| `GET /api/v1/compliance/frameworks` | List frameworks |
-| `GET /api/v1/compliance/frameworks/{id}/pre-audit` | Pre-audit check |
-| `POST /api/v1/agents/sessions` | Create agent session |
-| `POST /api/v1/agents/sessions/{id}/messages` | Send message to agent |
-| `GET /api/v1/identity/stale-access` | Detect stale access |
-| `POST /api/v1/attack-paths/analyze` | Analyze attack paths |
-| `GET /api/v1/entities/{id}/cohort` | Business entity cohort analysis |
-| `GET /api/v1/entities/{id}/outlier-score` | Entity outlier scoring |
-| `POST /api/v1/impact-analysis` | Business impact path analysis |
-| `POST /api/v1/webhooks` | Register webhook |
-
-See [API Reference](docs/API_REFERENCE.md) for complete documentation.
-
----
-
-## Distributed Job System
-
-Cerebro includes a distributed job queue for scalable analysis across large repositories and cloud environments.
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         DISTRIBUTED JOB SYSTEM                               │
-│                                                                              │
-│  ┌──────────────┐        ┌──────────────┐        ┌──────────────┐          │
-│  │  API/CLI     │───────▶│ NATS JetStream│◀──────│   Workers    │          │
-│  │ (Orchestrator)│       │    Queue      │       │  (N instances)│          │
-│  └──────────────┘        └──────────────┘        └──────┬───────┘          │
-│         │                       │                        │                   │
-│         │                       ▼                        │                   │
-│         │               ┌──────────────┐                │                   │
-│         └──────────────▶│  Postgres    │◀───────────────┘                   │
-│                         │  Job Store   │                                     │
-│                         └──────────────┘                                     │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-```bash
-# Set up infrastructure (via Pulumi)
-cd infra && pulumi up --stack prod
-
-# Run orchestrator to enqueue jobs
-cerebro agent run --repo-url https://github.com/org/repo --distributed
-
-# Run workers (scale horizontally)
-cerebro worker --concurrency 4
-```
+Useful directories include `policies/aws/`, `policies/azure/`, `policies/gcp/`, `policies/github/`, `policies/identity/`, `policies/kubernetes/`, `policies/okta/`, `policies/runtime/`, and `policies/vulnerability/`.
 
 ---
 
 ## Development
 
 ```bash
-# Run tests
-make test
-
-# Run with coverage
-go test -v -cover ./...
-
-# Lint
-make lint
-
-# Build Docker image
-make docker-build
+make build          # compile ./bin/cerebro
+make serve          # build and run the server
+make test           # go test ./...
+make lint           # golangci-lint over app packages
+make proto-lint     # buf lint
+make check          # build, tests, lint, proto lint, structural checks, arch tests
+make verify         # CI-parity local verification
+make clean          # remove bin/
 ```
 
-See [Development Guide](docs/DEVELOPMENT.md) for detailed instructions.
+Focused validation and utility targets include `make workflow-e2e-test`, `make workflow-replay-test`, `make finding-rule-test`, `make graph-rebuild-dryrun`, `make workflow-replay`, and `make workflow-neighborhood`.
 
 ---
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/ARCHITECTURE.md) | System architecture and design |
-| [API Reference](docs/API_REFERENCE.md) | Complete API documentation |
-| [Packages](docs/PACKAGES.md) | Internal package documentation |
-| [Configuration](docs/CONFIGURATION.md) | Environment variables and setup |
-| [Policies](docs/POLICIES.md) | Policy authoring guide |
-| [Development](docs/DEVELOPMENT.md) | Development guide |
+Some files in `docs/` describe broader or historical architecture and may be ahead of or behind the current bootstrap implementation. Useful entry points:
 
----
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `API_PORT` | Server port | `8080` |
-| `LOG_LEVEL` | Log verbosity | `info` |
-| `SNOWFLAKE_ACCOUNT` | Snowflake account identifier | - |
-| `SNOWFLAKE_USER` | Snowflake service user | - |
-| `SNOWFLAKE_PRIVATE_KEY` | Snowflake PEM private key | - |
-| `SNOWFLAKE_DATABASE` | Snowflake database | `CEREBRO` |
-| `SNOWFLAKE_SCHEMA` | Snowflake schema | `CEREBRO` |
-| `SNOWFLAKE_WAREHOUSE` | Snowflake warehouse | `COMPUTE_WH` |
-| `POLICIES_PATH` | Policy directory | `policies` |
-| `ANTHROPIC_API_KEY` | Claude API key | - |
-| `OPENAI_API_KEY` | OpenAI API key | - |
-| `API_AUTH_ENABLED` | Require API key auth | `false`* |
-| `API_KEYS` | Comma-separated API keys | - |
-| `RATE_LIMIT_ENABLED` | Enable API rate limiting | `false` |
-| `RATE_LIMIT_REQUESTS` | Requests per rate limit window | `1000` |
-| `RATE_LIMIT_WINDOW` | Rate limit duration window | `1h` |
-| `JIRA_BASE_URL` | Jira instance | - |
-| `SLACK_WEBHOOK_URL` | Slack webhook | - |
-| `SCAN_INTERVAL` | Scan frequency | - |
-| `SECURITY_DIGEST_INTERVAL` | Security digest frequency | - |
-| `JOB_DATABASE_URL` | Postgres DSN for distributed job state | - |
-| `JOB_NATS_STREAM` | JetStream stream for distributed jobs | `CEREBRO_JOBS` |
-| `JOB_NATS_SUBJECT` | NATS subject for distributed jobs | `cerebro.jobs` |
-| `JOB_NATS_CONSUMER` | JetStream consumer for workers | `job-worker` |
-| `JOB_WORKER_CONCURRENCY` | Concurrent jobs per worker | `4` |
-| `NATS_URLS` | Comma-separated NATS server URLs | `nats://127.0.0.1:4222` |
-
-`*` When `API_KEYS` is set, API auth auto-enables unless explicitly overridden.
-
-See [Configuration](docs/CONFIGURATION.md) for all options.
+| Document | Notes |
+| --- | --- |
+| [API contracts](docs/API_CONTRACTS_AUTOGEN.md) | generated API contract reference |
+| [CloudEvents](docs/CLOUDEVENTS_AUTOGEN.md) | generated event contract reference |
+| [Graph ontology](docs/GRAPH_ONTOLOGY_AUTOGEN.md) | generated graph ontology reference |
+| [Graph report contracts](docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md) | generated graph/report contract reference |
+| [Policies](docs/POLICIES.md) | policy catalog and authoring notes |
+| [Packages](docs/PACKAGES.md) | package overview; verify against current code before relying on details |
+| [Development](docs/DEVELOPMENT.md) | development notes; verify commands against the Makefile |
 
 ---
 
 ## Stack
 
 | Component | Technology |
-|-----------|------------|
-| Language | Go 1.25+ |
-| API Framework | Chi |
-| Database | Snowflake / SQLite (local) |
-| Graph Store | Neptune |
-| Job Runtime | Postgres + NATS JetStream |
-| Event Streaming | NATS JetStream |
-| Data Ingestion | Native scanners |
-| Policy Engine | Cedar-style JSON |
-| CLI | Cobra |
-| Metrics | Prometheus |
-| AI | Anthropic, OpenAI |
+| --- | --- |
+| Language | Go 1.26+ (`go1.26.2` toolchain) |
+| HTTP server | Go `net/http` `ServeMux` |
+| RPC | Connect |
+| CLI | Standard Go CLI under `cmd/cerebro` |
+| Append log | NATS JetStream |
+| State store | Postgres |
+| Graph store | Kuzu |
+| Source integrations | AWS, Azure, GCP, GitHub, Google Workspace, Okta, SDK |
+| Validation | `go test`, `golangci-lint`, Buf, custom structural linters, arch tests |
 
 ---
 
