@@ -76,9 +76,9 @@ def build_jira_workspace_claims(
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
     source_event_id = optional_string(posture.get("event_id"))
     shared_options: Dict[str, Any] = {"source_event_id": source_event_id} if source_event_id else {}
-    admins = list(posture.get("admins") or [])
-    projects = list(posture.get("projects") or [])
-    apps = list(posture.get("apps") or [])
+    admins = dict_items(posture.get("admins"))
+    projects = dict_items(posture.get("projects"))
+    apps = dict_items(posture.get("apps"))
 
     claims = [
         integration.exists(workspace_ref, **shared_options),
@@ -211,7 +211,7 @@ def load_jira_workspace_graph_layering(
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
     project_refs = []
     project_keys = []
-    for project in posture.get("projects") or []:
+    for project in dict_items(posture.get("projects")):
         project_key = require_value(project.get("key"), "projects[].key")
         project_name = optional_string(project.get("name")) or project_key
         project_refs.append(integration.ref("project", project_key, project_name))
@@ -293,7 +293,7 @@ def build_jira_posture_findings(
             )
         )
 
-    for project in posture.get("projects") or []:
+    for project in dict_items(posture.get("projects")):
         project_key = require_value(project.get("key"), "projects[].key")
         project_name = optional_string(project.get("name")) or project_key
         project_ref = integration.ref("project", project_key, project_name)
@@ -329,7 +329,7 @@ def build_jira_posture_findings(
                 )
             )
 
-    for app in posture.get("apps") or []:
+    for app in dict_items(posture.get("apps")):
         if default_bool(app.get("approved_by_security"), True):
             continue
         app_key = require_value(app.get("key"), "apps[].key")
@@ -422,6 +422,12 @@ def default_bool(value: Any, default: bool) -> bool:
         if normalized in {"0", "false", "f", "no", "n", "off"}:
             return False
     return bool(value)
+
+
+def dict_items(value: Any) -> list[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
 
 
 def optional_string(value: Any) -> Optional[str]:
