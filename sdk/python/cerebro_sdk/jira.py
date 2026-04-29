@@ -84,47 +84,47 @@ def build_jira_workspace_claims(
         integration.exists(workspace_ref, **shared_options),
         integration.attr(workspace_ref, "platform", "jira", **shared_options),
         integration.attr(workspace_ref, "vendor", "atlassian", **shared_options),
-        integration.attr(workspace_ref, "sso_enforced", bool_value(posture.get("sso_enforced", True)), **shared_options),
+        integration.attr(workspace_ref, "sso_enforced", bool_value(default_bool(posture.get("sso_enforced"), True)), **shared_options),
         integration.attr(
             workspace_ref,
             "mfa_required_for_admins",
-            bool_value(posture.get("mfa_required_for_admins", True)),
+            bool_value(default_bool(posture.get("mfa_required_for_admins"), True)),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "atlassian_guard_enabled",
-            bool_value(posture.get("atlassian_guard_enabled", True)),
+            bool_value(default_bool(posture.get("atlassian_guard_enabled"), True)),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "audit_log_export_enabled",
-            bool_value(posture.get("audit_log_export_enabled", True)),
+            bool_value(default_bool(posture.get("audit_log_export_enabled"), True)),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "api_token_expiration_enforced",
-            bool_value(posture.get("api_token_expiration_enforced", True)),
+            bool_value(default_bool(posture.get("api_token_expiration_enforced"), True)),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "public_signup_enabled",
-            bool_value(posture.get("public_signup_enabled", False)),
+            bool_value(default_bool(posture.get("public_signup_enabled"), False)),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "anonymous_access_enabled",
-            bool_value(posture.get("anonymous_access_enabled", False)),
+            bool_value(default_bool(posture.get("anonymous_access_enabled"), False)),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "approved_marketplace_apps_only",
-            bool_value(posture.get("approved_marketplace_apps_only", True)),
+            bool_value(default_bool(posture.get("approved_marketplace_apps_only"), True)),
             **shared_options,
         ),
         integration.attr(workspace_ref, "admin_count", str(len(admins)), **shared_options),
@@ -159,7 +159,7 @@ def build_jira_workspace_claims(
             integration.attr(
                 project_ref,
                 "issue_level_security_enabled",
-                bool_value(project.get("issue_level_security_enabled", True)),
+                bool_value(default_bool(project.get("issue_level_security_enabled"), True)),
                 **shared_options,
             )
         )
@@ -167,7 +167,7 @@ def build_jira_workspace_claims(
             integration.attr(
                 project_ref,
                 "anonymous_browse_enabled",
-                bool_value(project.get("anonymous_browse_enabled", False)),
+                bool_value(default_bool(project.get("anonymous_browse_enabled"), False)),
                 **shared_options,
             )
         )
@@ -175,7 +175,7 @@ def build_jira_workspace_claims(
             integration.attr(
                 project_ref,
                 "service_desk_public_portal_enabled",
-                bool_value(project.get("service_desk_public_portal_enabled", False)),
+                bool_value(default_bool(project.get("service_desk_public_portal_enabled"), False)),
                 **shared_options,
             )
         )
@@ -190,7 +190,7 @@ def build_jira_workspace_claims(
             integration.attr(
                 app_ref,
                 "approved_by_security",
-                bool_value(app.get("approved_by_security", True)),
+                bool_value(default_bool(app.get("approved_by_security"), True)),
                 **shared_options,
             )
         )
@@ -246,7 +246,7 @@ def build_jira_posture_findings(
     workspace_name = optional_string(posture.get("workspace_name")) or workspace_key
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
 
-    if posture.get("public_signup_enabled", False):
+    if default_bool(posture.get("public_signup_enabled"), False):
         findings.append(
             finding(
                 "jira_workspace_public_signup_enabled",
@@ -256,7 +256,7 @@ def build_jira_posture_findings(
                 [workspace_ref["urn"]],
             )
         )
-    if posture.get("anonymous_access_enabled", False):
+    if default_bool(posture.get("anonymous_access_enabled"), False):
         findings.append(
             finding(
                 "jira_workspace_anonymous_access_enabled",
@@ -266,7 +266,7 @@ def build_jira_posture_findings(
                 [workspace_ref["urn"]],
             )
         )
-    if not posture.get("approved_marketplace_apps_only", True):
+    if not default_bool(posture.get("approved_marketplace_apps_only"), True):
         findings.append(
             finding(
                 "jira_workspace_marketplace_policy_open",
@@ -298,7 +298,7 @@ def build_jira_posture_findings(
         project_name = optional_string(project.get("name")) or project_key
         project_ref = integration.ref("project", project_key, project_name)
         classification = optional_string(project.get("classification")) or "internal"
-        if classification == "restricted" and not project.get("issue_level_security_enabled", True):
+        if classification == "restricted" and not default_bool(project.get("issue_level_security_enabled"), True):
             findings.append(
                 finding(
                     f"jira_project_{project_key.lower()}_restricted_issue_security_disabled",
@@ -308,7 +308,7 @@ def build_jira_posture_findings(
                     [project_ref["urn"], workspace_ref["urn"]],
                 )
             )
-        if project.get("anonymous_browse_enabled", False):
+        if default_bool(project.get("anonymous_browse_enabled"), False):
             findings.append(
                 finding(
                     f"jira_project_{project_key.lower()}_anonymous_browse_enabled",
@@ -318,7 +318,7 @@ def build_jira_posture_findings(
                     [project_ref["urn"], workspace_ref["urn"]],
                 )
             )
-        if project.get("service_desk_public_portal_enabled", False):
+        if default_bool(project.get("service_desk_public_portal_enabled"), False):
             findings.append(
                 finding(
                     f"jira_project_{project_key.lower()}_public_portal_enabled",
@@ -330,7 +330,7 @@ def build_jira_posture_findings(
             )
 
     for app in posture.get("apps") or []:
-        if app.get("approved_by_security", True):
+        if default_bool(app.get("approved_by_security"), True):
             continue
         app_key = require_value(app.get("key"), "apps[].key")
         app_name = optional_string(app.get("name")) or app_key
@@ -406,6 +406,12 @@ def finding(
 
 def bool_value(value: Any) -> str:
     return "true" if bool(value) else "false"
+
+
+def default_bool(value: Any, default: bool) -> bool:
+    if value is None:
+        return default
+    return bool(value)
 
 
 def optional_string(value: Any) -> Optional[str]:
