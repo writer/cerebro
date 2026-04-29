@@ -79,3 +79,31 @@ func TestReadReplaysFixturePages(t *testing.T) {
 		t.Fatalf("len(final.Events) = %d, want 0", len(final.Events))
 	}
 }
+
+func TestReadRejectsNegativeCursor(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{"token": "test"})
+
+	if _, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "-1"}); err == nil {
+		t.Fatal("Read() error = nil, want non-nil")
+	}
+}
+
+func TestReadTrimsCursor(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{"token": "test"})
+
+	pull, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: " 1 "})
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+}

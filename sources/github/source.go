@@ -122,12 +122,18 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 		return sourcecdk.Pull{}, err
 	}
 	index := 0
-	if cursor != nil && strings.TrimSpace(cursor.Opaque) != "" {
-		parsed, err := strconv.Atoi(cursor.Opaque)
-		if err != nil {
-			return sourcecdk.Pull{}, fmt.Errorf("parse cursor: %w", err)
+	if cursor != nil {
+		opaque := strings.TrimSpace(cursor.Opaque)
+		if opaque != "" {
+			parsed, err := strconv.Atoi(opaque)
+			if err != nil {
+				return sourcecdk.Pull{}, fmt.Errorf("parse cursor: %w", err)
+			}
+			if parsed < 0 {
+				return sourcecdk.Pull{}, fmt.Errorf("cursor must be non-negative")
+			}
+			index = parsed
 		}
-		index = parsed
 	}
 	if index >= len(s.events) {
 		return sourcecdk.Pull{}, nil
