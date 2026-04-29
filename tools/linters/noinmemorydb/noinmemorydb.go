@@ -2,6 +2,7 @@ package noinmemorydb
 
 import (
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"go/types"
 	"strconv"
@@ -55,12 +56,12 @@ func run(pass *analysis.Pass) (any, error) {
 			if isEmbeddedDBPackageSelector(pass, sel) {
 				report(pass, reported, call.Pos(), call.End())
 			}
-			if (sel.Sel.Name == "Open" || sel.Sel.Name == "OpenDB") && len(call.Args) > 0 && isDatabaseSQLSelector(pass, sel) && isSQLiteDriverLiteral(call.Args[0]) {
+			if (sel.Sel.Name == "Open" || sel.Sel.Name == "OpenDB") && len(call.Args) > 0 && isDatabaseSQLSelector(pass, sel) && isSQLiteDriverLiteral(pass, call.Args[0]) {
 				report(pass, reported, call.Args[0].Pos(), call.Args[0].End())
 			}
 		}
 		for _, arg := range call.Args {
-			if isInMemoryLiteral(arg) {
+			if isInMemoryLiteral(pass, arg) {
 				report(pass, reported, arg.Pos(), arg.End())
 			}
 		}
@@ -98,8 +99,8 @@ func report(pass *analysis.Pass, reported map[token.Pos]struct{}, pos, end token
 	})
 }
 
-func isSQLiteDriverLiteral(expr ast.Expr) bool {
-	value, ok := stringLiteral(expr)
+func isSQLiteDriverLiteral(pass *analysis.Pass, expr ast.Expr) bool {
+	value, ok := stringValue(pass, expr)
 	if !ok {
 		return false
 	}
@@ -111,8 +112,8 @@ func isSQLiteDriverLiteral(expr ast.Expr) bool {
 	}
 }
 
-func isInMemoryLiteral(expr ast.Expr) bool {
-	value, ok := stringLiteral(expr)
+func isInMemoryLiteral(pass *analysis.Pass, expr ast.Expr) bool {
+	value, ok := stringValue(pass, expr)
 	if !ok {
 		return false
 	}
@@ -120,7 +121,12 @@ func isInMemoryLiteral(expr ast.Expr) bool {
 	return strings.Contains(value, ":memory:") || strings.Contains(value, "mode=memory")
 }
 
-func stringLiteral(expr ast.Expr) (string, bool) {
+func stringValue(pass *analysis.Pass, expr ast.Expr) (string, bool) {
+	if pass != nil && pass.TypesInfo != nil {
+		if value := pass.TypesInfo.Types[expr].Value; value != nil && value.Kind() == constant.String {
+			return constant.StringVal(value), true
+		}
+	}
 	lit, ok := expr.(*ast.BasicLit)
 	if !ok || lit.Kind != token.STRING {
 		return "", false

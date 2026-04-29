@@ -3,6 +3,7 @@ package nopanicprod
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -39,8 +40,7 @@ func run(pass *analysis.Pass) (any, error) {
 			if !ok {
 				return true
 			}
-			ident, ok := call.Fun.(*ast.Ident)
-			if !ok || ident.Name != "panic" {
+			if !isPanicCall(pass, call) {
 				return true
 			}
 			if enclosingIsPackageInit(stack) {
@@ -55,6 +55,23 @@ func run(pass *analysis.Pass) (any, error) {
 		})
 	}
 	return nil, nil
+}
+
+func isPanicCall(pass *analysis.Pass, call *ast.CallExpr) bool {
+	switch fun := call.Fun.(type) {
+	case *ast.Ident:
+		return fun.Name == "panic"
+	case *ast.SelectorExpr:
+		switch fun.Sel.Name {
+		case "Panic", "Panicf", "Panicln":
+		default:
+			return false
+		}
+		fn, ok := pass.TypesInfo.Uses[fun.Sel].(*types.Func)
+		return ok && fn.Pkg() != nil && fn.Pkg().Path() == "log"
+	default:
+		return false
+	}
 }
 
 func enclosingIsPackageInit(stack []ast.Node) bool {
