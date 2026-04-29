@@ -1361,6 +1361,31 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 }
 
+func TestGetFindingEvidenceConnectReturnsNotFoundForMissingEvidence(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  &recordingAppendLog{},
+		StateStore: &stubRuntimeStore{},
+		GraphStore: &stubGraphStore{},
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	_, err = client.GetFindingEvidence(context.Background(), connect.NewRequest(&cerebrov1.GetFindingEvidenceRequest{
+		Id: "missing-evidence",
+	}))
+	if err == nil {
+		t.Fatal("GetFindingEvidence() error = nil, want not found")
+	}
+	if got := connect.CodeOf(err); got != connect.CodeNotFound {
+		t.Fatalf("connect.CodeOf(GetFindingEvidence()) = %v, want %v", got, connect.CodeNotFound)
+	}
+}
+
 func TestClaimEndpoints(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

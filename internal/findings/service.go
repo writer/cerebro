@@ -2,6 +2,8 @@ package findings
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -735,7 +737,15 @@ func uniqueSortedStrings(values []string) []string {
 }
 
 func findingEvidenceID(runtimeID string, findingID string, runID string) string {
+	normalizedRuntimeID := strings.TrimSpace(runtimeID)
+	normalizedFindingID := strings.TrimSpace(findingID)
+	normalizedRunID := strings.TrimSpace(runID)
 	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
-	prefix := replacer.Replace(strings.TrimSpace(runtimeID) + "-" + strings.TrimSpace(findingID) + "-" + strings.TrimSpace(runID))
-	return "finding-evidence-" + prefix
+	prefix := replacer.Replace(normalizedRuntimeID + "-" + normalizedFindingID + "-" + normalizedRunID)
+	sum := sha256.Sum256([]byte(strings.Join([]string{
+		normalizedRuntimeID,
+		normalizedFindingID,
+		normalizedRunID,
+	}, "\x00")))
+	return "finding-evidence-" + prefix + "-" + hex.EncodeToString(sum[:])
 }

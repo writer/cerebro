@@ -797,6 +797,9 @@ func (s *bootstrapService) GetFindingEvidence(ctx context.Context, req *connect.
 		claimStore(s.deps.StateStore),
 	).GetEvidence(ctx, req.Msg.GetId())
 	if err != nil {
+		if errors.Is(err, ports.ErrFindingEvidenceNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, err)
+		}
 		return nil, err
 	}
 	return connect.NewResponse(&cerebrov1.GetFindingEvidenceResponse{Evidence: evidence}), nil
