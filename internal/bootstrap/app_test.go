@@ -658,6 +658,9 @@ func TestFindingEndpoints(t *testing.T) {
 				Id:       "writer-okta-audit",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config: map[string]string{
+					"token": "super-secret",
+				},
 			},
 		},
 	}
@@ -691,6 +694,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := evaluatePayload["findings_upserted"]; got != float64(1) {
 		t.Fatalf("evaluate findings findings_upserted = %#v, want 1", got)
+	}
+	if _, ok := evaluatePayload["runtime"]; ok {
+		t.Fatalf("evaluate findings runtime = %#v, want omitted", evaluatePayload["runtime"])
 	}
 	findingsPayload, ok := evaluatePayload["findings"].([]any)
 	if !ok || len(findingsPayload) != 1 {
@@ -726,6 +732,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := evaluateFindingsResp.Msg.GetRule().GetId(); got != "identity-okta-policy-rule-lifecycle-tampering" {
 		t.Fatalf("EvaluateSourceRuntimeFindings rule id = %q, want identity-okta-policy-rule-lifecycle-tampering", got)
+	}
+	if evaluateFindingsResp.Msg.GetRuntime() != nil {
+		t.Fatalf("EvaluateSourceRuntimeFindings runtime = %#v, want nil", evaluateFindingsResp.Msg.GetRuntime())
 	}
 	if len(runtimeStore.findings) != 1 {
 		t.Fatalf("len(runtimeStore.findings) = %d, want 1", len(runtimeStore.findings))

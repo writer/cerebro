@@ -465,7 +465,6 @@ func findingResponse(result *findings.EvaluateResult) *cerebrov1.EvaluateSourceR
 		return &cerebrov1.EvaluateSourceRuntimeFindingsResponse{}
 	}
 	response := &cerebrov1.EvaluateSourceRuntimeFindingsResponse{
-		Runtime:          result.Runtime,
 		Rule:             result.Rule,
 		EventsEvaluated:  result.EventsEvaluated,
 		FindingsUpserted: uint32(len(result.Findings)),
