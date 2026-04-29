@@ -107,6 +107,43 @@ func TestNewFixtureReplaysFixturePages(t *testing.T) {
 	}
 }
 
+func TestReadRejectsNegativeCursor(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{"owner": "writer", "repo": "cerebro"})
+
+	if _, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "-1"}); err == nil {
+		t.Fatal("Read() error = nil, want non-nil")
+	}
+}
+
+func TestReadTrimsCursor(t *testing.T) {
+	server := httptest.NewServer(newGitHubAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"owner":    "writer",
+		"per_page": "1",
+		"repo":     "cerebro",
+		"state":    "all",
+	})
+
+	pull, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: " 1 "})
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
+	}
+}
+
 func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	server := httptest.NewServer(newGitHubAPIHandler(t))
 	defer server.Close()

@@ -86,9 +86,13 @@ func NewRegistry(sources ...Source) (*Registry, error) {
 		if spec == nil {
 			return nil, fmt.Errorf("source spec is required")
 		}
-		id := strings.TrimSpace(spec.Id)
+		rawID := spec.Id
+		id := strings.TrimSpace(rawID)
 		if id == "" {
 			return nil, fmt.Errorf("source id is required")
+		}
+		if id != rawID {
+			return nil, fmt.Errorf("source id %q must not have leading/trailing whitespace", rawID)
 		}
 		if _, exists := indexed[id]; exists {
 			return nil, fmt.Errorf("duplicate source id %q", id)
