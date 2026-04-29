@@ -1159,6 +1159,26 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := missingRuleResp.StatusCode; got != http.StatusNotFound {
 		t.Fatalf("unknown rule status = %d, want %d", got, http.StatusNotFound)
 	}
+	batchMissingRuleReq, err := http.NewRequest(
+		http.MethodPost,
+		server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2",
+		strings.NewReader(`{"rule_ids":["does-not-exist"]}`),
+	)
+	if err != nil {
+		t.Fatalf("new batch unknown rule request: %v", err)
+	}
+	batchMissingRuleResp, err := server.Client().Do(batchMissingRuleReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/finding-rules/evaluate unknown rule error = %v", err)
+	}
+	defer func() {
+		if closeErr := batchMissingRuleResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close batch unknown rule response body: %v", closeErr)
+		}
+	}()
+	if got := batchMissingRuleResp.StatusCode; got != http.StatusNotFound {
+		t.Fatalf("batch unknown rule status = %d, want %d", got, http.StatusNotFound)
+	}
 	batchEvaluateReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2", nil)
 	if err != nil {
 		t.Fatalf("new batch evaluate request: %v", err)

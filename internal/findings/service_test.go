@@ -53,6 +53,9 @@ type stubFindingStore struct {
 	claims           map[string]*ports.ClaimRecord
 	claimListRequest ports.ListClaimsRequest
 	runs             map[string]*cerebrov1.FindingEvaluationRun
+	putRunCalls      int
+	putRunErr        error
+	putRunErrOnCall  int
 	runList          ports.ListFindingEvaluationRunsRequest
 	evidence         map[string]*cerebrov1.FindingEvidence
 	evidenceList     ports.ListFindingEvidenceRequest
@@ -145,6 +148,10 @@ func (s *stubFindingStore) ListClaims(_ context.Context, request ports.ListClaim
 func (s *stubFindingStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
 	if run == nil {
 		return errors.New("finding evaluation run is required")
+	}
+	s.putRunCalls++
+	if s.putRunErr != nil && s.putRunCalls == s.putRunErrOnCall {
+		return s.putRunErr
 	}
 	if s.runs == nil {
 		s.runs = make(map[string]*cerebrov1.FindingEvaluationRun)
@@ -398,6 +405,33 @@ func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsStoresNormalizedEventLimit(t *testing.T) {
+	replayer := &stubReplayer{}
+	store := &stubFindingStore{}
+	service := New(&stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {
+				Id:       "writer-okta-audit",
+				SourceId: "okta",
+				TenantId: "writer",
+			},
+		},
+	}, replayer, store, store, store, store)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := replayer.request.Limit; got != defaultEventLimit {
+		t.Fatalf("Replay().Limit = %d, want %d", got, defaultEventLimit)
+	}
+	if got := result.Run.GetEventLimit(); got != defaultEventLimit {
+		t.Fatalf("Run.EventLimit = %d, want %d", got, defaultEventLimit)
+	}
+}
+
 func TestListRulesReturnsBuiltinCatalog(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
 	response := service.ListRules()
@@ -647,6 +681,64 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 	if got := len(store.evidence); got != 2 {
 		t.Fatalf("len(store.evidence) = %d, want 2", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesMarksStartedRunsFailedWhenLaterRunPersistFails(t *testing.T) {
+	persistErr := errors.New("persist run failed")
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{
+		putRunErr:       persistErr,
+		putRunErrOnCall: 2,
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {
+					Id:       "writer-okta-audit",
+					SourceId: "okta",
+					TenantId: "writer",
+				},
+			},
+		},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	if _, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{
+		RuntimeID: "writer-okta-audit",
+	}); !errors.Is(err, persistErr) {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v, want %v", err, persistErr)
+	}
+	if len(store.runs) != 1 {
+		t.Fatalf("len(store.runs) = %d, want 1", len(store.runs))
+	}
+	for _, run := range store.runs {
+		if got := run.GetStatus(); got != "failed" {
+			t.Fatalf("Run.Status = %q, want failed", got)
+		}
+		if run.GetFinishedAt() == nil {
+			t.Fatal("Run.FinishedAt = nil, want timestamp")
+		}
+		if run.GetError() == "" {
+			t.Fatal("Run.Error = empty, want failure detail")
+		}
 	}
 }
 

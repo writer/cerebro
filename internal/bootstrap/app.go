@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"connectrpc.com/connect"
@@ -389,11 +390,12 @@ func (a *App) handleEvaluateSourceRuntimeFindingRules(w http.ResponseWriter, r *
 		return
 	}
 	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
-		body := []byte(`{"event_limit":` + eventLimit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
+		parsedLimit, err := strconv.ParseUint(eventLimit, 10, 32)
+		if err != nil {
 			writeFindingError(w, err)
 			return
 		}
+		request.EventLimit = uint32(parsedLimit)
 	}
 	request.Id = r.PathValue("runtimeID")
 	if ruleIDs := r.URL.Query()["rule_id"]; len(ruleIDs) != 0 {

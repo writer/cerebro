@@ -199,7 +199,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	}
 	normalizedLimit := normalizeEventLimit(request.EventLimit)
 	startedAt := time.Now().UTC()
-	run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), request.EventLimit, startedAt)
+	run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
