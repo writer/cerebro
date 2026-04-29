@@ -153,6 +153,10 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if events, ok := readPayload["events"].([]any); !ok || len(events) != 1 {
 		t.Fatalf("read events = %#v, want 1 entry", readPayload["events"])
 	}
+	previewEvents, ok := readPayload["preview_events"].([]any)
+	if !ok || len(previewEvents) != 1 {
+		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])
+	}
 	repeatedCursorResp, err := authedGet("/sources/github/read?cursor=0&cursor=1")
 	if err != nil {
 		t.Fatalf("GET /sources/github/read repeated cursor error = %v", err)
@@ -186,6 +190,10 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}()
 	if secretQueryResp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("secret query status = %d, want %d", secretQueryResp.StatusCode, http.StatusBadRequest)
+	}
+	previewEvent, ok := previewEvents[0].(map[string]any)
+	if !ok || previewEvent["event_id"] != "github-audit-1" {
+		t.Fatalf("read preview_event = %#v, want event_id github-audit-1", previewEvents[0])
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
