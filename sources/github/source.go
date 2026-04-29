@@ -316,6 +316,10 @@ func pullRequestEvent(settings settings, pullRequest *gogithub.PullRequest) (*pr
 	if createdAt.IsZero() {
 		createdAt = occurredAt
 	}
+	updatedAt := pullRequest.GetUpdatedAt().Time
+	if updatedAt.IsZero() {
+		updatedAt = occurredAt
+	}
 	payloadBytes, err := json.Marshal(pullRequestPayload{
 		Number:     pullRequest.GetNumber(),
 		Repository: settings.owner + "/" + settings.repo,
@@ -327,7 +331,7 @@ func pullRequestEvent(settings settings, pullRequest *gogithub.PullRequest) (*pr
 		Head:       branchLabel(pullRequest.Head),
 		Base:       branchLabel(pullRequest.Base),
 		CreatedAt:  createdAt,
-		UpdatedAt:  occurredAt,
+		UpdatedAt:  updatedAt,
 		ClosedAt:   timestamp(pullRequest.ClosedAt),
 		MergedAt:   timestamp(pullRequest.MergedAt),
 	})

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -171,6 +172,13 @@ func TestCheckDiscoverAndReadLiveGitHubPreview(t *testing.T) {
 	}
 	if first.Checkpoint == nil || first.Checkpoint.CursorOpaque != "2" {
 		t.Fatalf("first.Checkpoint = %#v, want cursor 2", first.Checkpoint)
+	}
+	var payload pullRequestPayload
+	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("json.Unmarshal(first payload) error = %v", err)
+	}
+	if got := payload.UpdatedAt.Format(time.RFC3339); got != "2026-04-23T02:00:00Z" {
+		t.Fatalf("payload.updated_at = %q, want 2026-04-23T02:00:00Z", got)
 	}
 
 	second, err := source.Read(context.Background(), readCfg, first.NextCursor)
