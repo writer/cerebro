@@ -558,8 +558,8 @@ func normalizeDomain(raw string, allowLoopback bool) (string, error) {
 		return "", fmt.Errorf("okta domain must be a valid host")
 	}
 	host = strings.TrimRight(strings.ToLower(host), ".")
-	if !allowLoopback && isLoopbackHost(host) {
-		return "", fmt.Errorf("okta domain must not target loopback hosts")
+	if isUnsafeHost(host) && (!allowLoopback || !isLoopbackHost(host)) {
+		return "", fmt.Errorf("okta domain must not target loopback, private, or link-local hosts")
 	}
 	return host, nil
 }
@@ -588,6 +588,9 @@ func normalizeBaseURL(raw string, domain string, allowLoopback bool) (string, er
 		return "", fmt.Errorf("okta base_url must not include a custom port")
 	}
 	allowLoopbackHost := allowLoopback && isLoopbackHost(host)
+	if isUnsafeHost(host) && !allowLoopbackHost {
+		return "", fmt.Errorf("okta base_url must not target loopback, private, or link-local hosts")
+	}
 	if host != strings.ToLower(strings.TrimSpace(domain)) && !allowLoopbackHost {
 		return "", fmt.Errorf("okta base_url host must match okta domain")
 	}
@@ -595,20 +598,45 @@ func normalizeBaseURL(raw string, domain string, allowLoopback bool) (string, er
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-func isLoopbackHost(host string) bool {
-	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
-	value = strings.Trim(value, "[]")
+func isUnsafeHost(host string) bool {
+	value := normalizedIPHost(host)
 	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
 		return true
 	}
-	if address, _, ok := strings.Cut(value, "%"); ok {
-		value = address
+	ip := net.ParseIP(value)
+	if ip == nil {
+		ip = parseNumericIPv4Host(value)
+	}
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() ||
+		ip.IsMulticast()
+}
+
+func isLoopbackHost(host string) bool {
+	value := normalizedIPHost(host)
+	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
 	}
 	ip := net.ParseIP(value)
 	if ip == nil {
 		ip = parseNumericIPv4Host(value)
 	}
 	return ip != nil && ip.IsLoopback()
+}
+
+func normalizedIPHost(host string) string {
+	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
+	value = strings.Trim(value, "[]")
+	if address, _, ok := strings.Cut(value, "%"); ok {
+		value = address
+	}
+	return value
 }
 
 func parseNumericIPv4Host(host string) net.IP {

@@ -348,11 +348,12 @@ func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse github base_url: %w", err)
 	}
-	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname())
+	host := parsed.Hostname()
+	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && isLoopbackHost(host)
 	if parsed.Scheme != "https" && !allowInsecureLoopback {
 		return "", fmt.Errorf("github base_url must use https")
 	}
-	if strings.TrimSpace(parsed.Hostname()) == "" {
+	if strings.TrimSpace(host) == "" {
 		return "", fmt.Errorf("github base_url must include a host")
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
@@ -362,27 +363,52 @@ func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
 	if (path != "" && path != "/api/v3") || parsed.RawPath != "" {
 		return "", fmt.Errorf("github base_url must be an origin URL")
 	}
-	if !allowLoopback && isLoopbackHost(parsed.Hostname()) {
-		return "", fmt.Errorf("github base_url must not target loopback hosts")
+	if isUnsafeHost(host) && (!allowLoopback || !isLoopbackHost(host)) {
+		return "", fmt.Errorf("github base_url must not target loopback, private, or link-local hosts")
 	}
 	parsed.Path = ""
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
-func isLoopbackHost(host string) bool {
-	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
-	value = strings.Trim(value, "[]")
+func isUnsafeHost(host string) bool {
+	value := normalizedIPHost(host)
 	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
 		return true
 	}
-	if address, _, ok := strings.Cut(value, "%"); ok {
-		value = address
+	ip := net.ParseIP(value)
+	if ip == nil {
+		ip = parseNumericIPv4Host(value)
+	}
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() ||
+		ip.IsMulticast()
+}
+
+func isLoopbackHost(host string) bool {
+	value := normalizedIPHost(host)
+	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
 	}
 	ip := net.ParseIP(value)
 	if ip == nil {
 		ip = parseNumericIPv4Host(value)
 	}
 	return ip != nil && ip.IsLoopback()
+}
+
+func normalizedIPHost(host string) string {
+	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
+	value = strings.Trim(value, "[]")
+	if address, _, ok := strings.Cut(value, "%"); ok {
+		value = address
+	}
+	return value
 }
 
 func parseNumericIPv4Host(host string) net.IP {

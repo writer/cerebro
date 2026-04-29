@@ -49,6 +49,7 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 	runtime.Id = strings.TrimSpace(runtime.GetId())
 	runtime.SourceId = strings.TrimSpace(runtime.GetSourceId())
 	runtime.TenantId = strings.TrimSpace(runtime.GetTenantId())
+	clearRuntimeProgress(runtime)
 	if runtime.GetId() == "" {
 		return nil, fmt.Errorf("source runtime id is required")
 	}
@@ -222,17 +223,20 @@ func mergeRuntime(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceR
 		existing.GetTenantId() != incoming.GetTenantId() ||
 		!sameConfig(existing.GetConfig(), incoming.GetConfig())
 	if !resetProgress {
-		if incoming.GetCheckpoint() == nil {
-			incoming.Checkpoint = cloneCheckpoint(existing.GetCheckpoint())
-		}
-		if incoming.GetNextCursor() == nil {
-			incoming.NextCursor = cloneCursor(existing.GetNextCursor())
-		}
-		if incoming.GetLastSyncedAt() == nil {
-			incoming.LastSyncedAt = cloneTimestamp(existing.GetLastSyncedAt())
-		}
+		incoming.Checkpoint = cloneCheckpoint(existing.GetCheckpoint())
+		incoming.NextCursor = cloneCursor(existing.GetNextCursor())
+		incoming.LastSyncedAt = cloneTimestamp(existing.GetLastSyncedAt())
 	}
 	return incoming
+}
+
+func clearRuntimeProgress(runtime *cerebrov1.SourceRuntime) {
+	if runtime == nil {
+		return
+	}
+	runtime.Checkpoint = nil
+	runtime.NextCursor = nil
+	runtime.LastSyncedAt = nil
 }
 
 func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {

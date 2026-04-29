@@ -315,6 +315,12 @@ func TestNextAuditCursorIgnoresBefore(t *testing.T) {
 	}
 }
 
+func TestAuditScopeDefaultsToOrganization(t *testing.T) {
+	if got := auditScope(&gogithub.AuditEntry{}, map[string]any{}, settings{owner: "writer"}); got != "organization" {
+		t.Fatalf("auditScope() = %q, want organization", got)
+	}
+}
+
 func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	server := httptest.NewServer(newGitHubAPIHandler(t))
 	defer server.Close()
@@ -398,6 +404,12 @@ func TestRejectsUnsafeBaseURL(t *testing.T) {
 		"https://localhost.",
 		"https://[::1%25lo0]",
 		"https://127.1",
+		"https://10.0.0.1",
+		"https://172.16.0.1",
+		"https://192.168.1.10",
+		"https://169.254.169.254",
+		"https://[fe80::1]",
+		"https://0.0.0.0",
 		"https://2130706433",
 		"https://0177.0.0.1",
 		"https://0x7f000001",

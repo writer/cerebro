@@ -5,6 +5,7 @@ package kuzu
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -38,6 +39,7 @@ func TestUpsertProjectedEntityAndLink(t *testing.T) {
 	}
 	updatedUser := *user
 	updatedUser.Label = "Alice Example"
+	updatedUser.Attributes = map[string]string{"email": "alice@example.com"}
 	if err := store.UpsertProjectedEntity(ctx, &updatedUser); err != nil {
 		t.Fatalf("UpsertProjectedEntity(updatedUser) error = %v", err)
 	}
@@ -55,6 +57,11 @@ func TestUpsertProjectedEntityAndLink(t *testing.T) {
 	if err := store.UpsertProjectedLink(ctx, link); err != nil {
 		t.Fatalf("UpsertProjectedLink() error = %v", err)
 	}
+	updatedLink := *link
+	updatedLink.Attributes = map[string]string{"source": "audit"}
+	if err := store.UpsertProjectedLink(ctx, &updatedLink); err != nil {
+		t.Fatalf("UpsertProjectedLink(updated) error = %v", err)
+	}
 	if err := store.UpsertProjectedLink(ctx, link); err != nil {
 		t.Fatalf("UpsertProjectedLink(idempotent) error = %v", err)
 	}
@@ -63,10 +70,37 @@ func TestUpsertProjectedEntityAndLink(t *testing.T) {
 	if label != "Alice Example" {
 		t.Fatalf("projected entity label = %q, want %q", label, "Alice Example")
 	}
+	userAttributes := queryGraphAttributes(t, store, fmt.Sprintf("MATCH (e:entity {urn: %s}) RETURN e.attributes_json", cypherString(user.URN)))
+	if userAttributes["login"] != "alice" || userAttributes["email"] != "alice@example.com" {
+		t.Fatalf("projected entity attributes = %#v, want merged login and email", userAttributes)
+	}
+	linkAttributes := queryGraphAttributes(t, store, fmt.Sprintf(
+		"MATCH (:entity {urn: %s})-[r:relation {relation: %s}]->(:entity {urn: %s}) RETURN r.attributes_json",
+		cypherString(user.URN),
+		cypherString("belongs_to"),
+		cypherString(repo.URN),
+	))
+	if linkAttributes["event_id"] != "evt-1" || linkAttributes["source"] != "audit" {
+		t.Fatalf("projected link attributes = %#v, want merged event_id and source", linkAttributes)
+	}
 
 	linkCount := queryGraphCount(t, store, "MATCH (:entity)-[r:relation]->(:entity) RETURN COUNT(r)")
 	if linkCount != 1 {
 		t.Fatalf("projected link count = %d, want 1", linkCount)
+	}
+}
+
+func TestUpsertProjectedLinkRejectsMissingEndpoints(t *testing.T) {
+	store := newTestStore(t)
+	err := store.UpsertProjectedLink(context.Background(), &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "github",
+		FromURN:  "urn:cerebro:writer:github_user:alice",
+		ToURN:    "urn:cerebro:writer:github_repo:writer/cerebro",
+		Relation: "belongs_to",
+	})
+	if !errors.Is(err, ports.ErrGraphEntityNotFound) {
+		t.Fatalf("UpsertProjectedLink() error = %v, want %v", err, ports.ErrGraphEntityNotFound)
 	}
 }
 
@@ -357,6 +391,16 @@ func queryGraphString(t *testing.T, store *Store, query string) string {
 		t.Fatalf("QueryRowContext(%q) error = %v", query, err)
 	}
 	return value
+}
+
+func queryGraphAttributes(t *testing.T, store *Store, query string) map[string]string {
+	t.Helper()
+	raw := queryGraphString(t, store, query)
+	attributes := map[string]string{}
+	if err := json.Unmarshal([]byte(raw), &attributes); err != nil {
+		t.Fatalf("json.Unmarshal(%q) error = %v", raw, err)
+	}
+	return attributes
 }
 
 func mustJSON(t *testing.T, value any) []byte {

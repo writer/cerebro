@@ -253,13 +253,14 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 		Rule:    rule.Spec(),
 		Run:     run,
 	}
+	evidenceIDs := map[string]struct{}{}
 	for _, event := range events {
-		result.EventsEvaluated++
 		emitted, err := rule.Evaluate(ctx, runtime, event)
 		if err != nil {
 			evaluationErr := fmt.Errorf("evaluate finding rule %q for event %q: %w", result.Rule.GetId(), event.GetId(), err)
 			return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
 		}
+		result.EventsEvaluated++
 		for _, record := range emitted {
 			if record == nil {
 				continue
@@ -280,11 +281,14 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evaluationErr := fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
-			if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
-				evaluationErr := fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)
-				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+			if _, seen := evidenceIDs[evidence.GetId()]; !seen {
+				if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
+					evaluationErr := fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)
+					return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+				}
+				evidenceIDs[evidence.GetId()] = struct{}{}
+				result.Evidence = append(result.Evidence, evidence)
 			}
-			result.Evidence = append(result.Evidence, evidence)
 			if err := s.projectFindingAnchor(ctx, stored); err != nil {
 				evaluationErr := fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
@@ -326,7 +330,8 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 		}
 		state := &ruleEvaluationState{
-			rule: rule,
+			rule:        rule,
+			evidenceIDs: map[string]struct{}{},
 			result: &RuleEvaluationResult{
 				Rule: rule.Spec(),
 				Run:  run,
@@ -354,7 +359,6 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			if state.failed {
 				continue
 			}
-			state.eventsEvaluated++
 			emitted, err := state.rule.Evaluate(ctx, runtime, event)
 			if err != nil {
 				if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("evaluate finding rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
@@ -362,6 +366,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				}
 				continue
 			}
+			state.eventsEvaluated++
 			for _, record := range emitted {
 				if record == nil {
 					continue
@@ -388,13 +393,16 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					}
 					break
 				}
-				if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
-					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)); failErr != nil {
-						return nil, failErr
+				if _, seen := state.evidenceIDs[evidence.GetId()]; !seen {
+					if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
+						if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)); failErr != nil {
+							return nil, failErr
+						}
+						break
 					}
-					break
+					state.evidenceIDs[evidence.GetId()] = struct{}{}
+					state.result.Evidence = append(state.result.Evidence, evidence)
 				}
-				state.result.Evidence = append(state.result.Evidence, evidence)
 				if err := s.projectFindingAnchor(ctx, stored); err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)); failErr != nil {
 						return nil, failErr
@@ -670,6 +678,7 @@ type ruleEvaluationState struct {
 	rule            Rule
 	result          *RuleEvaluationResult
 	eventsEvaluated uint32
+	evidenceIDs     map[string]struct{}
 	failed          bool
 }
 

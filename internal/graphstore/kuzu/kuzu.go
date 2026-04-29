@@ -339,7 +339,11 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if err := s.ensureProjectionSchema(ctx); err != nil {
 		return err
 	}
-	attributesJSON, err := graphAttributesJSON(entity.Attributes)
+	attributes, err := s.mergedProjectedEntityAttributes(ctx, urn, entity.Attributes)
+	if err != nil {
+		return fmt.Errorf("load projected entity %q attributes: %w", urn, err)
+	}
+	attributesJSON, err := graphAttributesJSON(attributes)
 	if err != nil {
 		return fmt.Errorf("marshal projected entity attributes: %w", err)
 	}
@@ -393,7 +397,14 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if err := s.ensureProjectionSchema(ctx); err != nil {
 		return err
 	}
-	attributesJSON, err := graphAttributesJSON(link.Attributes)
+	if err := s.ensureProjectedLinkEndpoints(ctx, fromURN, toURN); err != nil {
+		return err
+	}
+	attributes, err := s.mergedProjectedLinkAttributes(ctx, fromURN, relation, toURN, link.Attributes)
+	if err != nil {
+		return fmt.Errorf("load projected link %q %q %q attributes: %w", fromURN, relation, toURN, err)
+	}
+	attributesJSON, err := graphAttributesJSON(attributes)
 	if err != nil {
 		return fmt.Errorf("marshal projected link attributes: %w", err)
 	}
@@ -534,6 +545,87 @@ func graphAttributesJSON(attributes map[string]string) (string, error) {
 		return "", err
 	}
 	return string(payload), nil
+}
+
+func graphAttributesFromJSON(raw string) (map[string]string, error) {
+	attributes := map[string]string{}
+	if strings.TrimSpace(raw) == "" {
+		return attributes, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &attributes); err != nil {
+		return nil, err
+	}
+	return attributes, nil
+}
+
+func mergeGraphAttributes(existing map[string]string, incoming map[string]string) map[string]string {
+	if len(existing) == 0 && len(incoming) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(existing)+len(incoming))
+	for key, value := range existing {
+		merged[key] = value
+	}
+	for key, value := range incoming {
+		merged[key] = value
+	}
+	return merged
+}
+
+func (s *Store) mergedProjectedEntityAttributes(ctx context.Context, urn string, incoming map[string]string) (map[string]string, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, fmt.Sprintf(
+		"MATCH (e:entity {urn: %s}) RETURN e.attributes_json",
+		cypherString(urn),
+	)).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return mergeGraphAttributes(nil, incoming), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	existing, err := graphAttributesFromJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+	return mergeGraphAttributes(existing, incoming), nil
+}
+
+func (s *Store) mergedProjectedLinkAttributes(ctx context.Context, fromURN string, relation string, toURN string, incoming map[string]string) (map[string]string, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, fmt.Sprintf(
+		"MATCH (src:entity {urn: %s})-[r:relation {relation: %s}]->(dst:entity {urn: %s}) RETURN r.attributes_json",
+		cypherString(fromURN),
+		cypherString(relation),
+		cypherString(toURN),
+	)).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return mergeGraphAttributes(nil, incoming), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	existing, err := graphAttributesFromJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+	return mergeGraphAttributes(existing, incoming), nil
+}
+
+func (s *Store) ensureProjectedLinkEndpoints(ctx context.Context, fromURN string, toURN string) error {
+	for _, urn := range []string{fromURN, toURN} {
+		var count int64
+		if err := s.db.QueryRowContext(ctx, fmt.Sprintf(
+			"MATCH (e:entity {urn: %s}) RETURN COUNT(e)",
+			cypherString(urn),
+		)).Scan(&count); err != nil {
+			return err
+		}
+		if count == 0 {
+			return fmt.Errorf("%w: %s", ports.ErrGraphEntityNotFound, urn)
+		}
+	}
+	return nil
 }
 
 func (s *Store) countQuery(ctx context.Context, query string) (int64, error) {

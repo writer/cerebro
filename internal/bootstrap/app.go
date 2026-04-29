@@ -541,7 +541,7 @@ func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeGraphQueryError(w, err)
+			writeGraphQueryError(w, fmt.Errorf("%w: %w", graphquery.ErrInvalidRequest, err))
 			return
 		}
 	}
@@ -560,14 +560,14 @@ func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request
 func (a *App) handleRunGraphIngestRuntime(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.RunGraphIngestRuntimeRequest{}
 	if err := readProtoJSON(r, request); err != nil {
-		writeGraphIngestError(w, err)
+		writeGraphIngestError(w, fmt.Errorf("%w: %w", graphingest.ErrInvalidRequest, err))
 		return
 	}
 	if pageLimit := r.URL.Query().Get("page_limit"); pageLimit != "" {
 		overrides := &cerebrov1.RunGraphIngestRuntimeRequest{}
 		body := []byte(`{"page_limit":` + pageLimit + `}`)
 		if err := protojson.Unmarshal(body, overrides); err != nil {
-			writeGraphIngestError(w, err)
+			writeGraphIngestError(w, fmt.Errorf("%w: %w", graphingest.ErrInvalidRequest, err))
 			return
 		}
 		request.PageLimit = overrides.GetPageLimit()
@@ -576,7 +576,7 @@ func (a *App) handleRunGraphIngestRuntime(w http.ResponseWriter, r *http.Request
 		overrides := &cerebrov1.RunGraphIngestRuntimeRequest{}
 		body := []byte(`{"reset_checkpoint":` + resetCheckpoint + `}`)
 		if err := protojson.Unmarshal(body, overrides); err != nil {
-			writeGraphIngestError(w, err)
+			writeGraphIngestError(w, fmt.Errorf("%w: %w", graphingest.ErrInvalidRequest, err))
 			return
 		}
 		request.ResetCheckpoint = overrides.GetResetCheckpoint()
@@ -620,7 +620,7 @@ func (a *App) handleListGraphIngestRuns(w http.ResponseWriter, r *http.Request) 
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeGraphIngestError(w, err)
+			writeGraphIngestError(w, fmt.Errorf("%w: %w", graphingest.ErrInvalidRequest, err))
 			return
 		}
 		request.RuntimeId = r.URL.Query().Get("runtime_id")
@@ -643,7 +643,7 @@ func (a *App) handleCheckGraphIngestHealth(w http.ResponseWriter, r *http.Reques
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
 		if err := protojson.Unmarshal(body, request); err != nil {
-			writeGraphIngestError(w, err)
+			writeGraphIngestError(w, fmt.Errorf("%w: %w", graphingest.ErrInvalidRequest, err))
 			return
 		}
 	}
@@ -1724,6 +1724,8 @@ func writeReportError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, reports.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
+	case errors.Is(err, reports.ErrInvalidRequest):
+		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, err.Error(), statusCode)
 }
@@ -1734,6 +1736,8 @@ func reportConnectError(err error) error {
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, reports.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, reports.ErrInvalidRequest):
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	default:
 		return defaultConnectError(err)
 	}
@@ -1841,6 +1845,8 @@ func graphQueryConnectError(err error) error {
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, graphquery.ErrInvalidRequest):
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	default:
 		return defaultConnectError(err)
 	}
@@ -1854,6 +1860,8 @@ func graphIngestConnectError(err error) error {
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, graphingest.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, graphingest.ErrInvalidRequest):
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	default:
 		return defaultConnectError(err)
 	}
@@ -1897,18 +1905,20 @@ func writeKnowledgeError(w http.ResponseWriter, err error) {
 }
 
 func writeGraphQueryError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
+	statusCode := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, ports.ErrGraphEntityNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
+	case errors.Is(err, graphquery.ErrInvalidRequest):
+		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, err.Error(), statusCode)
 }
 
 func writeGraphIngestError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
+	statusCode := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, graphingest.ErrRunNotFound):
 		statusCode = http.StatusNotFound
@@ -1916,6 +1926,8 @@ func writeGraphIngestError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, graphingest.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
+	case errors.Is(err, graphingest.ErrInvalidRequest):
+		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, err.Error(), statusCode)
 }
@@ -2058,7 +2070,7 @@ func findingResponse(result *findings.EvaluateResult) *cerebrov1.EvaluateSourceR
 		return &cerebrov1.EvaluateSourceRuntimeFindingsResponse{}
 	}
 	response := &cerebrov1.EvaluateSourceRuntimeFindingsResponse{
-		Runtime:          result.Runtime,
+		Runtime:          redactSourceRuntime(result.Runtime),
 		Rule:             result.Rule,
 		EventsEvaluated:  result.EventsEvaluated,
 		FindingsUpserted: uint32(len(result.Findings)),
@@ -2078,10 +2090,27 @@ func findingRulesResponse(result *findings.EvaluateRulesResult) *cerebrov1.Evalu
 		evaluations = append(evaluations, findingRuleEvaluationMessage(evaluation))
 	}
 	return &cerebrov1.EvaluateSourceRuntimeFindingRulesResponse{
-		Runtime:         result.Runtime,
+		Runtime:         redactSourceRuntime(result.Runtime),
 		EventsEvaluated: result.EventsEvaluated,
 		Evaluations:     evaluations,
 	}
+}
+
+func redactSourceRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
+	if runtime == nil {
+		return nil
+	}
+	redacted := proto.Clone(runtime).(*cerebrov1.SourceRuntime)
+	config := make(map[string]string, len(redacted.GetConfig()))
+	for key, value := range redacted.GetConfig() {
+		if sensitiveSourceConfigKey(key) {
+			config[key] = "[redacted]"
+			continue
+		}
+		config[key] = value
+	}
+	redacted.Config = config
+	return redacted
 }
 
 func findingRuleEvaluationMessage(result *findings.RuleEvaluationResult) *cerebrov1.FindingRuleEvaluation {

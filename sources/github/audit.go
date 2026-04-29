@@ -143,7 +143,7 @@ func auditEvent(settings settings, entry *gogithub.AuditEntry) (*primitives.Even
 		Repo:                     rawString(raw, "repo"),
 		ResourceID:               auditResourceID(entry, raw, settings),
 		ResourceType:             auditResourceType(entry),
-		Scope:                    auditScope(entry, raw),
+		Scope:                    auditScope(entry, raw, settings),
 		User:                     entry.GetUser(),
 		UserID:                   entry.GetUserID(),
 		Visibility:               rawString(raw, "visibility"),
@@ -240,7 +240,7 @@ func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings se
 		"org":            valueOrDefault(entry.GetOrg(), settings.owner),
 		"resource_id":    auditResourceID(entry, raw, settings),
 		"resource_type":  auditResourceType(entry),
-		"scope":          auditScope(entry, raw),
+		"scope":          auditScope(entry, raw, settings),
 	}
 	addAttribute(attributes, "actor", entry.GetActor())
 	addAttribute(attributes, "actor_is_agent", boolString(raw, "actor_is_agent"))
@@ -300,14 +300,17 @@ func auditResourceID(entry *gogithub.AuditEntry, raw map[string]any, settings se
 	return settings.owner
 }
 
-func auditScope(entry *gogithub.AuditEntry, raw map[string]any) string {
+func auditScope(entry *gogithub.AuditEntry, raw map[string]any, settings settings) string {
 	if strings.TrimSpace(rawString(raw, "repo")) != "" {
 		return "repository"
 	}
-	if strings.TrimSpace(entry.GetOrg()) != "" {
+	if strings.TrimSpace(entry.GetOrg()) != "" || strings.TrimSpace(settings.owner) != "" {
 		return "organization"
 	}
-	return "unknown"
+	if strings.TrimSpace(entry.GetUser()) != "" {
+		return "user"
+	}
+	return "audit"
 }
 
 func rawString(raw map[string]any, key string) string {

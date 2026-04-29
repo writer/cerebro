@@ -42,6 +42,9 @@ var (
 
 	// ErrReportNotFound indicates that a requested built-in report definition does not exist.
 	ErrReportNotFound = errors.New("report definition not found")
+
+	// ErrInvalidRequest indicates that a report request failed validation.
+	ErrInvalidRequest = errors.New("invalid report request")
 )
 
 // Service exposes the first durable report-run foundation.
@@ -75,11 +78,11 @@ func (s *Service) Run(ctx context.Context, request *cerebrov1.RunReportRequest) 
 		return nil, ErrRuntimeUnavailable
 	}
 	if request == nil {
-		return nil, errors.New("report request is required")
+		return nil, fmt.Errorf("%w: report request is required", ErrInvalidRequest)
 	}
 	reportID := strings.TrimSpace(request.GetReportId())
 	if reportID == "" {
-		return nil, errors.New("report id is required")
+		return nil, fmt.Errorf("%w: report id is required", ErrInvalidRequest)
 	}
 	definition, err := reportDefinition(reportID)
 	if err != nil {
@@ -126,11 +129,11 @@ func (s *Service) Get(ctx context.Context, request *cerebrov1.GetReportRunReques
 		return nil, ErrRuntimeUnavailable
 	}
 	if request == nil {
-		return nil, errors.New("get report run request is required")
+		return nil, fmt.Errorf("%w: get report run request is required", ErrInvalidRequest)
 	}
 	reportRunID := strings.TrimSpace(request.GetId())
 	if reportRunID == "" {
-		return nil, errors.New("report run id is required")
+		return nil, fmt.Errorf("%w: report run id is required", ErrInvalidRequest)
 	}
 	run, err := s.reportStore.GetReportRun(ctx, reportRunID)
 	if err != nil {
@@ -142,11 +145,11 @@ func (s *Service) Get(ctx context.Context, request *cerebrov1.GetReportRunReques
 func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]string) (*structpb.Struct, error) {
 	tenantID := strings.TrimSpace(parameters[reportParameterTenantID])
 	if tenantID == "" {
-		return nil, fmt.Errorf("report parameter %q is required", reportParameterTenantID)
+		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterTenantID)
 	}
 	runtimeID := strings.TrimSpace(parameters[reportParameterRuntimeID])
 	if runtimeID == "" {
-		return nil, fmt.Errorf("report parameter %q is required", reportParameterRuntimeID)
+		return nil, fmt.Errorf("%w: report parameter %q is required", ErrInvalidRequest, reportParameterRuntimeID)
 	}
 	resourceLimit, err := normalizePositiveLimit(parameters[reportParameterResourceLimit], defaultResourceEvidenceLimit, maxResourceEvidenceLimit, reportParameterResourceLimit)
 	if err != nil {
@@ -542,11 +545,11 @@ func normalizePositiveLimit(raw string, defaultValue int, maxValue int, paramete
 	}
 	parsed, err := strconv.Atoi(trimmed)
 	if err != nil {
-		return 0, fmt.Errorf("report parameter %q must be a positive integer: %w", parameterID, err)
+		return 0, fmt.Errorf("%w: report parameter %q must be a positive integer: %w", ErrInvalidRequest, parameterID, err)
 	}
 	switch {
 	case parsed <= 0:
-		return 0, fmt.Errorf("report parameter %q must be greater than zero", parameterID)
+		return 0, fmt.Errorf("%w: report parameter %q must be greater than zero", ErrInvalidRequest, parameterID)
 	case parsed > maxValue:
 		return maxValue, nil
 	default:

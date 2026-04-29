@@ -73,6 +73,7 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 	}{
 		{name: "report not found", err: reportConnectError(reports.ErrReportNotFound), code: connect.CodeNotFound},
 		{name: "report unavailable", err: reportConnectError(reports.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "report invalid", err: reportConnectError(reports.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "report unknown", err: reportConnectError(errors.New("storage failed")), code: connect.CodeInternal},
 		{name: "report canceled", err: reportConnectError(context.Canceled), code: connect.CodeCanceled},
 		{name: "report deadline", err: reportConnectError(context.DeadlineExceeded), code: connect.CodeDeadlineExceeded},
@@ -94,9 +95,11 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 		{name: "workflow replay unknown", err: workflowReplayConnectError(errors.New("replay failed")), code: connect.CodeInternal},
 		{name: "graph query entity not found", err: graphQueryConnectError(ports.ErrGraphEntityNotFound), code: connect.CodeNotFound},
 		{name: "graph query unavailable", err: graphQueryConnectError(graphquery.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "graph query invalid", err: graphQueryConnectError(graphquery.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "graph ingest run not found", err: graphIngestConnectError(graphingest.ErrRunNotFound), code: connect.CodeNotFound},
 		{name: "graph ingest source not found", err: graphIngestConnectError(sourceops.ErrSourceNotFound), code: connect.CodeNotFound},
 		{name: "graph ingest unavailable", err: graphIngestConnectError(graphingest.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "graph ingest invalid", err: graphIngestConnectError(graphingest.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "graph ingest unknown", err: graphIngestConnectError(errors.New("graph ingest failed")), code: connect.CodeInternal},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1534,6 +1537,7 @@ func TestFindingEndpoints(t *testing.T) {
 				Id:       "writer-okta-audit",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"token": "super-secret"},
 			},
 		},
 		claims: map[string]*ports.ClaimRecord{
@@ -1582,6 +1586,17 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := evaluatePayload["findings_upserted"]; got != float64(1) {
 		t.Fatalf("evaluate findings findings_upserted = %#v, want 1", got)
+	}
+	evaluateRuntime, ok := evaluatePayload["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("evaluate runtime payload = %#v, want object", evaluatePayload["runtime"])
+	}
+	evaluateConfig, ok := evaluateRuntime["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("evaluate runtime config = %#v, want object", evaluateRuntime["config"])
+	}
+	if got := evaluateConfig["token"]; got != "[redacted]" {
+		t.Fatalf("evaluate runtime config token = %#v, want [redacted]", got)
 	}
 	findingsPayload, ok := evaluatePayload["findings"].([]any)
 	if !ok || len(findingsPayload) != 1 {
@@ -1790,6 +1805,17 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := batchEvaluatePayload["events_evaluated"]; got != float64(2) {
 		t.Fatalf("batch evaluate events_evaluated = %#v, want 2", got)
 	}
+	batchRuntime, ok := batchEvaluatePayload["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("batch runtime payload = %#v, want object", batchEvaluatePayload["runtime"])
+	}
+	batchConfig, ok := batchRuntime["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("batch runtime config = %#v, want object", batchRuntime["config"])
+	}
+	if got := batchConfig["token"]; got != "[redacted]" {
+		t.Fatalf("batch runtime config token = %#v, want [redacted]", got)
+	}
 	batchEvaluations, ok := batchEvaluatePayload["evaluations"].([]any)
 	if !ok || len(batchEvaluations) == 0 {
 		t.Fatalf("batch evaluate payload = %#v, want evaluations", batchEvaluatePayload["evaluations"])
@@ -1825,6 +1851,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := evaluateFindingsResp.Msg.GetEventsEvaluated(); got != 2 {
 		t.Fatalf("EvaluateSourceRuntimeFindings events_evaluated = %d, want 2", got)
+	}
+	if got := evaluateFindingsResp.Msg.GetRuntime().GetConfig()["token"]; got != "[redacted]" {
+		t.Fatalf("EvaluateSourceRuntimeFindings runtime token = %q, want [redacted]", got)
 	}
 	if got := evaluateFindingsResp.Msg.GetFindingsUpserted(); got != 1 {
 		t.Fatalf("EvaluateSourceRuntimeFindings findings_upserted = %d, want 1", got)
@@ -1908,6 +1937,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := evaluateFindingRulesResp.Msg.GetEventsEvaluated(); got != 2 {
 		t.Fatalf("EvaluateSourceRuntimeFindingRules events_evaluated = %d, want 2", got)
+	}
+	if got := evaluateFindingRulesResp.Msg.GetRuntime().GetConfig()["token"]; got != "[redacted]" {
+		t.Fatalf("EvaluateSourceRuntimeFindingRules runtime token = %q, want [redacted]", got)
 	}
 	var lifecycleEvaluation *cerebrov1.FindingRuleEvaluation
 	for _, evaluation := range evaluateFindingRulesResp.Msg.GetEvaluations() {

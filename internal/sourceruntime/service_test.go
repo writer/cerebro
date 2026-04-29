@@ -202,6 +202,52 @@ func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 	}
 }
 
+func TestPutIgnoresClientSuppliedProgress(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	syncedAt := timestamppb.Now()
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:           "writer-github",
+				SourceId:     "github",
+				TenantId:     "writer",
+				Config:       map[string]string{"token": "test"},
+				Checkpoint:   &cerebrov1.SourceCheckpoint{CursorOpaque: "stored"},
+				NextCursor:   &cerebrov1.SourceCursor{Opaque: "stored"},
+				LastSyncedAt: syncedAt,
+			},
+		},
+	}
+	service := New(registry, store, nil, nil)
+
+	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:           "writer-github",
+			SourceId:     "github",
+			TenantId:     "writer",
+			Config:       map[string]string{"token": "test"},
+			Checkpoint:   &cerebrov1.SourceCheckpoint{CursorOpaque: "client"},
+			NextCursor:   &cerebrov1.SourceCursor{Opaque: "client"},
+			LastSyncedAt: timestamppb.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if got := resp.GetRuntime().GetCheckpoint().GetCursorOpaque(); got != "stored" {
+		t.Fatalf("Put().Runtime.Checkpoint = %q, want stored", got)
+	}
+	if got := store.runtimes["writer-github"].GetNextCursor().GetOpaque(); got != "stored" {
+		t.Fatalf("stored next cursor = %q, want stored", got)
+	}
+	if got := store.runtimes["writer-github"].GetLastSyncedAt().AsTime(); !got.Equal(syncedAt.AsTime()) {
+		t.Fatalf("stored last synced at = %v, want %v", got, syncedAt.AsTime())
+	}
+}
+
 func TestPutRestoresRedactedSensitiveConfigBeforeMerge(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {

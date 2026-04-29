@@ -387,6 +387,13 @@ func TestGetReportRunRequiresAvailableStore(t *testing.T) {
 	}
 }
 
+func TestRunReportValidationErrorsAreInvalidRequest(t *testing.T) {
+	service := New(&stubFindingStore{}, nil, &stubReportStore{})
+	if _, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Run() error = %v, want %v", err, ErrInvalidRequest)
+	}
+}
+
 func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	response := New(nil, nil, nil).List()
 	if len(response.GetReports()) != 1 {

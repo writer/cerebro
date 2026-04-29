@@ -81,59 +81,59 @@ export interface OnboardJiraWorkspacePostureResult {
 
 export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture: JiraWorkspacePosture): Claim[] {
   const workspaceKey = requireValue(posture.workspaceKey, "posture.workspaceKey");
-  const workspaceName = posture.workspaceName?.trim() || workspaceKey;
+  const workspaceName = optionalString(posture.workspaceName) || workspaceKey;
   const workspaceRef = integration.ref("workspace", workspaceKey, workspaceName);
-  const sourceEventId = posture.eventId?.trim();
+  const sourceEventId = optionalString(posture.eventId);
   const sharedOptions = sourceEventId ? { source_event_id: sourceEventId } : {};
-  const admins = posture.admins ?? [];
-  const projects = posture.projects ?? [];
-  const apps = posture.apps ?? [];
+  const admins = objectArray(posture.admins);
+  const projects = objectArray(posture.projects);
+  const apps = objectArray(posture.apps);
 
   const claims: Claim[] = [
     integration.exists(workspaceRef, sharedOptions),
     integration.attr(workspaceRef, "platform", "jira", sharedOptions),
     integration.attr(workspaceRef, "vendor", "atlassian", sharedOptions),
-    integration.attr(workspaceRef, "sso_enforced", boolValue(posture.ssoEnforced ?? true), sharedOptions),
+    integration.attr(workspaceRef, "sso_enforced", boolValue(posture.ssoEnforced, true), sharedOptions),
     integration.attr(
       workspaceRef,
       "mfa_required_for_admins",
-      boolValue(posture.mfaRequiredForAdmins ?? true),
+      boolValue(posture.mfaRequiredForAdmins, true),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "atlassian_guard_enabled",
-      boolValue(posture.atlassianGuardEnabled ?? true),
+      boolValue(posture.atlassianGuardEnabled, true),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "audit_log_export_enabled",
-      boolValue(posture.auditLogExportEnabled ?? true),
+      boolValue(posture.auditLogExportEnabled, true),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "api_token_expiration_enforced",
-      boolValue(posture.apiTokenExpirationEnforced ?? true),
+      boolValue(posture.apiTokenExpirationEnforced, true),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "public_signup_enabled",
-      boolValue(posture.publicSignupEnabled ?? false),
+      boolValue(posture.publicSignupEnabled, false),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "anonymous_access_enabled",
-      boolValue(posture.anonymousAccessEnabled ?? false),
+      boolValue(posture.anonymousAccessEnabled, false),
       sharedOptions,
     ),
     integration.attr(
       workspaceRef,
       "approved_marketplace_apps_only",
-      boolValue(posture.approvedMarketplaceAppsOnly ?? true),
+      boolValue(posture.approvedMarketplaceAppsOnly, true),
       sharedOptions,
     ),
     integration.attr(workspaceRef, "admin_count", String(admins.length), sharedOptions),
@@ -143,25 +143,25 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
 
   for (const admin of admins) {
     const email = requireValue(admin.email, "posture.admins[].email");
-    const adminRef = integration.ref("user", email, admin.displayName?.trim() || email);
+    const adminRef = integration.ref("user", email, optionalString(admin.displayName) || email);
     claims.push(integration.exists(adminRef, sharedOptions));
     claims.push(integration.rel(adminRef, "administers", workspaceRef, sharedOptions));
-    claims.push(integration.attr(adminRef, "role", admin.role?.trim() || "site_admin", sharedOptions));
+    claims.push(integration.attr(adminRef, "role", optionalString(admin.role) || "site_admin", sharedOptions));
   }
 
   for (const project of projects) {
     const key = requireValue(project.key, "posture.projects[].key");
-    const projectRef = integration.ref("project", key, project.name?.trim() || key);
+    const projectRef = integration.ref("project", key, optionalString(project.name) || key);
     claims.push(integration.exists(projectRef, sharedOptions));
     claims.push(integration.rel(projectRef, "belongs_to", workspaceRef, sharedOptions));
     claims.push(
-      integration.attr(projectRef, "classification", project.classification?.trim() || "internal", sharedOptions),
+      integration.attr(projectRef, "classification", optionalString(project.classification) || "internal", sharedOptions),
     );
     claims.push(
       integration.attr(
         projectRef,
         "issue_level_security_enabled",
-        boolValue(project.issueLevelSecurityEnabled ?? true),
+        boolValue(project.issueLevelSecurityEnabled, true),
         sharedOptions,
       ),
     );
@@ -169,7 +169,7 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
       integration.attr(
         projectRef,
         "anonymous_browse_enabled",
-        boolValue(project.anonymousBrowseEnabled ?? false),
+        boolValue(project.anonymousBrowseEnabled, false),
         sharedOptions,
       ),
     );
@@ -177,7 +177,7 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
       integration.attr(
         projectRef,
         "service_desk_public_portal_enabled",
-        boolValue(project.serviceDeskPublicPortalEnabled ?? false),
+        boolValue(project.serviceDeskPublicPortalEnabled, false),
         sharedOptions,
       ),
     );
@@ -185,18 +185,18 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
 
   for (const app of apps) {
     const key = requireValue(app.key, "posture.apps[].key");
-    const appRef = integration.ref("app", key, app.name?.trim() || key);
+    const appRef = integration.ref("app", key, optionalString(app.name) || key);
     claims.push(integration.exists(appRef, sharedOptions));
     claims.push(integration.rel(appRef, "installed_on", workspaceRef, sharedOptions));
     claims.push(
       integration.attr(
         appRef,
         "approved_by_security",
-        boolValue(app.approvedBySecurity ?? true),
+        boolValue(app.approvedBySecurity, true),
         sharedOptions,
       ),
     );
-    const scopes = (app.scopes ?? []).map((scope) => scope.trim()).filter(Boolean);
+    const scopes = stringArray(app.scopes);
     if (scopes.length > 0) {
       claims.push(integration.attr(appRef, "scopes", scopes.join(","), sharedOptions));
     }
@@ -210,10 +210,10 @@ export async function loadJiraWorkspaceGraphLayering(
   posture: JiraWorkspacePosture,
 ): Promise<JiraWorkspaceGraphLayering> {
   const workspaceKey = requireValue(posture.workspaceKey, "posture.workspaceKey");
-  const workspaceRef = integration.ref("workspace", workspaceKey, posture.workspaceName?.trim() || workspaceKey);
-  const projectEntries = (posture.projects ?? []).map((project) => {
+  const workspaceRef = integration.ref("workspace", workspaceKey, optionalString(posture.workspaceName) || workspaceKey);
+  const projectEntries = objectArray(posture.projects).map((project) => {
     const projectKey = requireValue(project.key, "posture.projects[].key");
-    const projectRef = integration.ref("project", projectKey, project.name?.trim() || projectKey);
+    const projectRef = integration.ref("project", projectKey, optionalString(project.name) || projectKey);
     return [projectKey, projectRef] as const;
   });
   const workspaceLayering = await integration.graphLayering([workspaceRef], 50);
@@ -250,10 +250,10 @@ export function buildJiraPostureFindings(
 ): JiraPostureFinding[] {
   const findings: JiraPostureFinding[] = [];
   const workspaceKey = requireValue(posture.workspaceKey, "posture.workspaceKey");
-  const workspaceName = posture.workspaceName?.trim() || workspaceKey;
+  const workspaceName = optionalString(posture.workspaceName) || workspaceKey;
   const workspaceRef = integration.ref("workspace", workspaceKey, workspaceName);
 
-  if (posture.publicSignupEnabled ?? false) {
+  if (boolValue(posture.publicSignupEnabled, false) === "true") {
     findings.push(
       finding(
         "jira_workspace_public_signup_enabled",
@@ -264,7 +264,7 @@ export function buildJiraPostureFindings(
       ),
     );
   }
-  if (posture.anonymousAccessEnabled ?? false) {
+  if (boolValue(posture.anonymousAccessEnabled, false) === "true") {
     findings.push(
       finding(
         "jira_workspace_anonymous_access_enabled",
@@ -275,7 +275,7 @@ export function buildJiraPostureFindings(
       ),
     );
   }
-  if (!(posture.approvedMarketplaceAppsOnly ?? true)) {
+  if (boolValue(posture.approvedMarketplaceAppsOnly, true) === "false") {
     findings.push(
       finding(
         "jira_workspace_marketplace_policy_open",
@@ -302,12 +302,12 @@ export function buildJiraPostureFindings(
     );
   }
 
-  for (const project of posture.projects ?? []) {
+  for (const project of objectArray(posture.projects)) {
     const projectKey = requireValue(project.key, "posture.projects[].key");
-    const projectName = project.name?.trim() || projectKey;
+    const projectName = optionalString(project.name) || projectKey;
     const projectRef = integration.ref("project", projectKey, projectName);
-    const classification = project.classification?.trim() || "internal";
-    if (classification === "restricted" && !(project.issueLevelSecurityEnabled ?? true)) {
+    const classification = optionalString(project.classification) || "internal";
+    if (classification === "restricted" && boolValue(project.issueLevelSecurityEnabled, true) === "false") {
       findings.push(
         finding(
           `jira_project_${projectKey.toLowerCase()}_restricted_issue_security_disabled`,
@@ -318,7 +318,7 @@ export function buildJiraPostureFindings(
         ),
       );
     }
-    if (project.anonymousBrowseEnabled ?? false) {
+    if (boolValue(project.anonymousBrowseEnabled, false) === "true") {
       findings.push(
         finding(
           `jira_project_${projectKey.toLowerCase()}_anonymous_browse_enabled`,
@@ -329,7 +329,7 @@ export function buildJiraPostureFindings(
         ),
       );
     }
-    if (project.serviceDeskPublicPortalEnabled ?? false) {
+    if (boolValue(project.serviceDeskPublicPortalEnabled, false) === "true") {
       findings.push(
         finding(
           `jira_project_${projectKey.toLowerCase()}_public_portal_enabled`,
@@ -342,12 +342,12 @@ export function buildJiraPostureFindings(
     }
   }
 
-  for (const app of posture.apps ?? []) {
-    if (app.approvedBySecurity ?? true) {
+  for (const app of objectArray(posture.apps)) {
+    if (boolValue(app.approvedBySecurity, true) === "true") {
       continue;
     }
     const appKey = requireValue(app.key, "posture.apps[].key");
-    const appName = app.name?.trim() || appKey;
+    const appName = optionalString(app.name) || appKey;
     const appRef = integration.ref("app", appKey, appName);
     findings.push(
       finding(
@@ -368,16 +368,16 @@ export async function onboardJiraWorkspacePosture(
 ): Promise<OnboardJiraWorkspacePostureResult> {
   const client = new Client({
     baseUrl: options.baseUrl,
-    apiKey: options.apiKey?.trim() || undefined,
+    apiKey: optionalString(options.apiKey),
   });
   const integration = client.integration({
-    runtimeId: options.runtimeId.trim(),
-    tenantId: options.tenantId.trim(),
+    runtimeId: requireValue(options.runtimeId, "options.runtimeId"),
+    tenantId: requireValue(options.tenantId, "options.tenantId"),
     integration: "jira",
   });
   const runtimeConfig: Record<string, string> = {};
-  const workspaceKey = options.posture.workspaceKey.trim();
-  const sourceEventId = options.posture.eventId?.trim();
+  const workspaceKey = optionalString(options.posture.workspaceKey);
+  const sourceEventId = optionalString(options.posture.eventId);
   if (workspaceKey) {
     runtimeConfig.workspace = workspaceKey;
   }
@@ -401,8 +401,8 @@ export async function onboardJiraWorkspacePosture(
   };
 }
 
-function requireValue(value: string, name: string): string {
-  const normalized = value.trim();
+function requireValue(value: unknown, name: string): string {
+  const normalized = optionalString(value);
   if (!normalized) {
     throw new Error(`${name} is required`);
   }
@@ -427,8 +427,42 @@ function finding(
   };
 }
 
-function boolValue(value: boolean): string {
+function boolValue(value: unknown, defaultValue: boolean): string {
+  if (value === null || value === undefined) {
+    return defaultValue ? "true" : "false";
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "y", "on"].includes(normalized)) {
+      return "true";
+    }
+    if (["false", "0", "no", "n", "off", ""].includes(normalized)) {
+      return "false";
+    }
+  }
   return value ? "true" : "false";
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  const normalized = String(value).trim();
+  return normalized || undefined;
+}
+
+function objectArray(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item));
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => optionalString(item)).filter((item): item is string => Boolean(item));
 }
 
 function asNumberRecord(value: unknown): Record<string, number> {

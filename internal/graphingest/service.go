@@ -30,6 +30,7 @@ const (
 var (
 	ErrRuntimeUnavailable = errors.New("graph ingest runtime is unavailable")
 	ErrRunNotFound        = errors.New("graph ingest run not found")
+	ErrInvalidRequest     = errors.New("invalid graph ingest request")
 )
 
 type CountsStore interface {
@@ -130,7 +131,7 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (*RunR
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, fmt.Errorf("runtime_id is required")
+		return nil, fmt.Errorf("%w: runtime_id is required", ErrInvalidRequest)
 	}
 	pageLimit, err := normalizePageLimit(request.PageLimit)
 	if err != nil {
@@ -406,7 +407,7 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 		return DefaultPageLimit, nil
 	}
 	if pageLimit > MaxPageLimit {
-		return 0, fmt.Errorf("page_limit must be between 1 and %d", MaxPageLimit)
+		return 0, fmt.Errorf("%w: page_limit must be between 1 and %d", ErrInvalidRequest, MaxPageLimit)
 	}
 	return pageLimit, nil
 }
@@ -420,7 +421,7 @@ func normalizeFilter(filter graphstore.IngestRunFilter) (graphstore.IngestRunFil
 	filter.RuntimeID = strings.TrimSpace(filter.RuntimeID)
 	filter.Status = strings.TrimSpace(filter.Status)
 	if filter.Status != "" && !validRunStatus(filter.Status) {
-		return graphstore.IngestRunFilter{}, fmt.Errorf("unsupported ingest run status %q", filter.Status)
+		return graphstore.IngestRunFilter{}, fmt.Errorf("%w: unsupported ingest run status %q", ErrInvalidRequest, filter.Status)
 	}
 	return filter, nil
 }
@@ -430,7 +431,7 @@ func normalizeStatusLimit(limit uint32) (int, error) {
 		return DefaultStatusLimit, nil
 	}
 	if limit > MaxStatusLimit {
-		return 0, fmt.Errorf("limit must be between 1 and %d", MaxStatusLimit)
+		return 0, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidRequest, MaxStatusLimit)
 	}
 	return int(limit), nil
 }

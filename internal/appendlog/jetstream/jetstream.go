@@ -138,7 +138,9 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 	if err != nil {
 		return err
 	}
-	payload, err := proto.Marshal(event)
+	envelope := proto.Clone(event).(*cerebrov1.EventEnvelope)
+	envelope.Kind = kind
+	payload, err := proto.Marshal(envelope)
 	if err != nil {
 		return fmt.Errorf("marshal event: %w", err)
 	}
