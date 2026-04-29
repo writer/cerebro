@@ -539,12 +539,15 @@ func configHash(config map[string]string) string {
 
 func sensitiveConfigKey(key string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(key))
-	for _, marker := range []string{"token", "secret", "password", "access_key", "session"} {
+	if normalized == "" {
+		return false
+	}
+	for _, marker := range []string{"token", "secret", "password", "session"} {
 		if strings.Contains(normalized, marker) {
 			return true
 		}
 	}
-	return false
+	return normalized == "key" || strings.HasSuffix(normalized, "_key")
 }
 
 func ingestEvent(event *cerebrov1.EventEnvelope, tenantID string) *cerebrov1.EventEnvelope {

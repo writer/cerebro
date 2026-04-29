@@ -529,18 +529,22 @@ func (a *App) handleRunGraphIngestRuntime(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if pageLimit := r.URL.Query().Get("page_limit"); pageLimit != "" {
+		overrides := &cerebrov1.RunGraphIngestRuntimeRequest{}
 		body := []byte(`{"page_limit":` + pageLimit + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
+		if err := protojson.Unmarshal(body, overrides); err != nil {
 			writeGraphIngestError(w, err)
 			return
 		}
+		request.PageLimit = overrides.GetPageLimit()
 	}
 	if resetCheckpoint := r.URL.Query().Get("reset_checkpoint"); resetCheckpoint != "" {
+		overrides := &cerebrov1.RunGraphIngestRuntimeRequest{}
 		body := []byte(`{"reset_checkpoint":` + resetCheckpoint + `}`)
-		if err := protojson.Unmarshal(body, request); err != nil {
+		if err := protojson.Unmarshal(body, overrides); err != nil {
 			writeGraphIngestError(w, err)
 			return
 		}
+		request.ResetCheckpoint = overrides.GetResetCheckpoint()
 	}
 	if checkpointID := r.URL.Query().Get("checkpoint_id"); checkpointID != "" {
 		request.CheckpointId = checkpointID
