@@ -51,6 +51,17 @@ type EventPreview struct {
 	Kind string `json:"kind"`
 }
 
+// ReadPagePreview captures one source page consumed during the rebuild.
+type ReadPagePreview struct {
+	Page             uint32 `json:"page"`
+	Events           uint32 `json:"events"`
+	CheckpointCursor string `json:"checkpoint_cursor,omitempty"`
+	NextCursor       string `json:"next_cursor,omitempty"`
+	Watermark        string `json:"watermark,omitempty"`
+	FirstEventID     string `json:"first_event_id,omitempty"`
+	LastEventID      string `json:"last_event_id,omitempty"`
+}
+
 // EntityPreview captures one projected entity written to the local graph.
 type EntityPreview struct {
 	URN        string `json:"urn"`
@@ -137,6 +148,7 @@ type Result struct {
 	GraphNodes         int64                 `json:"graph_nodes"`
 	GraphLinks         int64                 `json:"graph_links"`
 	StageConfirmations []*StageConfirmation  `json:"stage_confirmations,omitempty"`
+	ReadPages          []*ReadPagePreview    `json:"read_pages,omitempty"`
 	EventKinds         []*CountPreview       `json:"event_kinds,omitempty"`
 	GraphEntityTypes   []*CountPreview       `json:"graph_entity_types,omitempty"`
 	GraphRelationTypes []*CountPreview       `json:"graph_relation_types,omitempty"`
@@ -242,6 +254,7 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	}
 	result.PagesRead = readSummary.PagesRead
 	result.EventsRead = readSummary.EventsRead
+	result.ReadPages = readSummary.Pages
 	result.EventKinds = countPreviews(readSummary.EventKinds)
 	result.Events = eventPreviews(readSummary.Events, previewLimit)
 	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
@@ -389,6 +402,7 @@ func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEn
 
 type readSummary struct {
 	Events     []*cerebrov1.EventEnvelope
+	Pages      []*ReadPagePreview
 	PagesRead  uint32
 	EventsRead uint32
 	EventKinds map[string]uint32
@@ -407,18 +421,30 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 		}
 		summary.PagesRead++
 		summary.EventsRead += uint32(len(pull.Events))
+		pageSummary := &ReadPagePreview{
+			Page:             page + 1,
+			Events:           uint32(len(pull.Events)),
+			CheckpointCursor: checkpointCursor(pull.Checkpoint),
+			NextCursor:       nextCursor(pull.NextCursor),
+			Watermark:        formatWatermark(pull.Checkpoint),
+		}
 		for _, event := range pull.Events {
 			materialized := materializeEvent(runtime, event)
 			if materialized == nil {
 				continue
 			}
 			summary.Events = append(summary.Events, materialized)
+			if pageSummary.FirstEventID == "" {
+				pageSummary.FirstEventID = strings.TrimSpace(materialized.GetId())
+			}
+			pageSummary.LastEventID = strings.TrimSpace(materialized.GetId())
 			kind := strings.TrimSpace(materialized.GetKind())
 			if kind == "" {
 				continue
 			}
 			summary.EventKinds[kind]++
 		}
+		summary.Pages = append(summary.Pages, pageSummary)
 		if pull.NextCursor == nil {
 			break
 		}
@@ -717,6 +743,27 @@ func durationMillis(start time.Time) int64 {
 		return 0
 	}
 	return time.Since(start).Milliseconds()
+}
+
+func formatWatermark(checkpoint *cerebrov1.SourceCheckpoint) string {
+	if checkpoint == nil || checkpoint.GetWatermark() == nil || checkpoint.GetWatermark().AsTime().IsZero() {
+		return ""
+	}
+	return checkpoint.GetWatermark().AsTime().UTC().Format(time.RFC3339Nano)
+}
+
+func checkpointCursor(checkpoint *cerebrov1.SourceCheckpoint) string {
+	if checkpoint == nil {
+		return ""
+	}
+	return strings.TrimSpace(checkpoint.GetCursorOpaque())
+}
+
+func nextCursor(cursor *cerebrov1.SourceCursor) string {
+	if cursor == nil {
+		return ""
+	}
+	return strings.TrimSpace(cursor.GetOpaque())
 }
 
 func min(left int, right int) int {

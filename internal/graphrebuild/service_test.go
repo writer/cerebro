@@ -169,6 +169,11 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if got := result.StageConfirmations[8].TraversalsVerified; got != 3 {
 		t.Fatalf("verify_traversals traversals_verified = %d, want 3", got)
 	}
+	if len(result.ReadPages) != 2 {
+		t.Fatalf("len(ReadPages) = %d, want 2", len(result.ReadPages))
+	}
+	assertReadPage(t, result.ReadPages[0], 1, 1, "1", "1", "github-audit-1", "github-audit-1")
+	assertReadPage(t, result.ReadPages[1], 2, 1, "2", "", "github-pr-1", "github-pr-1")
 	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
 		t.Fatalf("event kind github.audit = %d, want 1", got)
 	}
@@ -312,6 +317,10 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if got := result.StageConfirmations[8].TraversalsVerified; got != 1 {
 		t.Fatalf("verify_traversals traversals_verified = %d, want 1", got)
 	}
+	if len(result.ReadPages) != 1 {
+		t.Fatalf("len(ReadPages) = %d, want 1", len(result.ReadPages))
+	}
+	assertReadPage(t, result.ReadPages[0], 1, 1, "1", "1", "github-audit-1", "github-audit-1")
 	if len(result.GraphPathPatterns) != 1 {
 		t.Fatalf("len(GraphPathPatterns) = %d, want 1", len(result.GraphPathPatterns))
 	}
@@ -422,4 +431,32 @@ func containsTopologyPreview(topology []*TopologyPreview, name string, count int
 		}
 	}
 	return false
+}
+
+func assertReadPage(t *testing.T, page *ReadPagePreview, wantPage uint32, wantEvents uint32, wantCheckpoint string, wantNext string, wantFirstEventID string, wantLastEventID string) {
+	t.Helper()
+	if page == nil {
+		t.Fatal("read page = nil")
+	}
+	if page.Page != wantPage {
+		t.Fatalf("page.Page = %d, want %d", page.Page, wantPage)
+	}
+	if page.Events != wantEvents {
+		t.Fatalf("page.Events = %d, want %d", page.Events, wantEvents)
+	}
+	if page.CheckpointCursor != wantCheckpoint {
+		t.Fatalf("page.CheckpointCursor = %q, want %q", page.CheckpointCursor, wantCheckpoint)
+	}
+	if page.NextCursor != wantNext {
+		t.Fatalf("page.NextCursor = %q, want %q", page.NextCursor, wantNext)
+	}
+	if page.FirstEventID != wantFirstEventID {
+		t.Fatalf("page.FirstEventID = %q, want %q", page.FirstEventID, wantFirstEventID)
+	}
+	if page.LastEventID != wantLastEventID {
+		t.Fatalf("page.LastEventID = %q, want %q", page.LastEventID, wantLastEventID)
+	}
+	if page.Watermark == "" {
+		t.Fatal("page.Watermark = empty, want non-empty")
+	}
 }
