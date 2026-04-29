@@ -3,7 +3,9 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -91,9 +93,14 @@ func (a *App) handleSources(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleCheckSource(w http.ResponseWriter, r *http.Request) {
+	config, err := sourceConfigFromQuery(r)
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
 	response, err := a.sourceService().Check(r.Context(), &cerebrov1.CheckSourceRequest{
 		SourceId: r.PathValue("sourceID"),
-		Config:   sourceConfigFromQuery(r),
+		Config:   config,
 	})
 	if err != nil {
 		writeSourceError(w, err)
@@ -103,9 +110,14 @@ func (a *App) handleCheckSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleDiscoverSource(w http.ResponseWriter, r *http.Request) {
+	config, err := sourceConfigFromQuery(r)
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
 	response, err := a.sourceService().Discover(r.Context(), &cerebrov1.DiscoverSourceRequest{
 		SourceId: r.PathValue("sourceID"),
-		Config:   sourceConfigFromQuery(r),
+		Config:   config,
 	})
 	if err != nil {
 		writeSourceError(w, err)
@@ -115,9 +127,14 @@ func (a *App) handleDiscoverSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
+	config, err := sourceConfigFromQuery(r)
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
 	request := &cerebrov1.ReadSourceRequest{
 		SourceId: r.PathValue("sourceID"),
-		Config:   sourceConfigFromQuery(r),
+		Config:   config,
 	}
 	rawCursors := r.URL.Query()["cursor"]
 	if len(rawCursors) > 0 {
@@ -155,7 +172,7 @@ func (s *bootstrapService) ListSources(_ context.Context, _ *connect.Request[cer
 func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request[cerebrov1.CheckSourceRequest]) (*connect.Response[cerebrov1.CheckSourceResponse], error) {
 	response, err := sourceops.New(s.sources).Check(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -163,7 +180,7 @@ func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request
 func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Request[cerebrov1.DiscoverSourceRequest]) (*connect.Response[cerebrov1.DiscoverSourceResponse], error) {
 	response, err := sourceops.New(s.sources).Discover(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -171,7 +188,7 @@ func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Requ
 func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[cerebrov1.ReadSourceRequest]) (*connect.Response[cerebrov1.ReadSourceResponse], error) {
 	response, err := sourceops.New(s.sources).Read(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -211,15 +228,47 @@ func (a *App) sourceService() *sourceops.Service {
 	return sourceops.New(a.sources)
 }
 
-func sourceConfigFromQuery(r *http.Request) map[string]string {
+func sourceConfigFromQuery(r *http.Request) (map[string]string, error) {
 	values := make(map[string]string)
 	for key, rawValues := range r.URL.Query() {
 		if key == "cursor" || len(rawValues) == 0 {
 			continue
 		}
+		if sensitiveSourceConfigKey(key) {
+			return nil, fmt.Errorf("source config key %q must not be passed as a query parameter", key)
+		}
 		values[key] = rawValues[len(rawValues)-1]
 	}
-	return values
+	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
+		values["token"] = token
+	}
+	return values, nil
+}
+
+func bearerToken(header string) string {
+	header = strings.TrimSpace(header)
+	if len(header) < len("Bearer ") || !strings.EqualFold(header[:len("Bearer ")], "Bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(header[len("Bearer "):])
+}
+
+func sensitiveSourceConfigKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	if normalized == "" {
+		return false
+	}
+	if strings.Contains(normalized, "token") || strings.Contains(normalized, "secret") || strings.Contains(normalized, "password") || strings.Contains(normalized, "session") {
+		return true
+	}
+	return normalized == "key" || strings.HasSuffix(normalized, "_key")
+}
+
+func sourceConnectError(err error) error {
+	if errors.Is(err, sourceops.ErrSourceNotFound) {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
+	return err
 }
 
 func writeSourceError(w http.ResponseWriter, err error) {

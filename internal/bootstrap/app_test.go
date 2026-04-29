@@ -39,6 +39,14 @@ func TestBootstrapEndpoints(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
+	authedGet := func(path string) (*http.Response, error) {
+		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer test")
+		return server.Client().Do(req)
+	}
 
 	resp, err := server.Client().Get(server.URL + "/health")
 	if err != nil {
@@ -76,7 +84,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(entries) != 1 {
 		t.Fatalf("/sources entries = %#v, want single entry", sourcesPayload["sources"])
 	}
-	checkResp, err := server.Client().Get(server.URL + "/sources/github/check?token=test")
+	checkResp, err := authedGet("/sources/github/check")
 	if err != nil {
 		t.Fatalf("GET /sources/github/check error = %v", err)
 	}
@@ -92,7 +100,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if checkPayload["status"] != "ok" {
 		t.Fatalf("check status = %#v, want %q", checkPayload["status"], "ok")
 	}
-	discoverResp, err := server.Client().Get(server.URL + "/sources/github/discover?token=test")
+	discoverResp, err := authedGet("/sources/github/discover")
 	if err != nil {
 		t.Fatalf("GET /sources/github/discover error = %v", err)
 	}
@@ -108,7 +116,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if urns, ok := discoverPayload["urns"].([]any); !ok || len(urns) != 2 {
 		t.Fatalf("discover urns = %#v, want 2 entries", discoverPayload["urns"])
 	}
-	readResp, err := server.Client().Get(server.URL + "/sources/github/read?token=test")
+	readResp, err := authedGet("/sources/github/read")
 	if err != nil {
 		t.Fatalf("GET /sources/github/read error = %v", err)
 	}
@@ -124,7 +132,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if events, ok := readPayload["events"].([]any); !ok || len(events) != 1 {
 		t.Fatalf("read events = %#v, want 1 entry", readPayload["events"])
 	}
-	repeatedCursorResp, err := server.Client().Get(server.URL + "/sources/github/read?token=test&cursor=0&cursor=1")
+	repeatedCursorResp, err := authedGet("/sources/github/read?cursor=0&cursor=1")
 	if err != nil {
 		t.Fatalf("GET /sources/github/read repeated cursor error = %v", err)
 	}
@@ -144,6 +152,19 @@ func TestBootstrapEndpoints(t *testing.T) {
 	repeatedCursorEvent, ok := repeatedCursorEvents[0].(map[string]any)
 	if !ok || repeatedCursorEvent["id"] != "github-pr-1" {
 		t.Fatalf("repeated cursor event = %#v, want github-pr-1", repeatedCursorEvents[0])
+	}
+
+	secretQueryResp, err := server.Client().Get(server.URL + "/sources/github/check?token=test")
+	if err != nil {
+		t.Fatalf("GET /sources/github/check secret query error = %v", err)
+	}
+	defer func() {
+		if closeErr := secretQueryResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close secret query response body: %v", closeErr)
+		}
+	}()
+	if secretQueryResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("secret query status = %d, want %d", secretQueryResp.StatusCode, http.StatusBadRequest)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
