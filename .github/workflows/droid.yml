@@ -37,10 +37,15 @@ jobs:
         (github.event_name == 'issues' && (contains(github.event.issue.body, '@droid') || contains(github.event.issue.title, '@droid')) &&
           !contains(github.event.issue.body, '@droid implement') &&
           !contains(github.event.issue.body, '@droid create') &&
+          !contains(github.event.issue.body, '@droid fix this PR') &&
+          !contains(github.event.issue.body, '@droid fix this pr') &&
+          !contains(github.event.issue.body, '@droid fix review feedback') &&
           !contains(github.event.issue.body, '@droid add regression tests') &&
           !contains(github.event.issue.body, '@droid scaffold source') &&
           !contains(github.event.issue.title, '@droid implement') &&
           !contains(github.event.issue.title, '@droid create') &&
+          !contains(github.event.issue.title, '@droid fix this PR') &&
+          !contains(github.event.issue.title, '@droid fix this pr') &&
           !contains(github.event.issue.title, '@droid fix review feedback') &&
           !contains(github.event.issue.title, '@droid add regression tests') &&
           !contains(github.event.issue.title, '@droid scaffold source')) ||
