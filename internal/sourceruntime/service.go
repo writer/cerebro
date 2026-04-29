@@ -24,6 +24,9 @@ const (
 // ErrRuntimeUnavailable indicates that the runtime dependencies are not configured.
 var ErrRuntimeUnavailable = errors.New("source runtime is unavailable")
 
+// ErrInvalidRequest indicates that a source runtime request is malformed.
+var ErrInvalidRequest = errors.New("invalid source runtime request")
+
 // Service persists and executes source runtimes against the append log.
 type Service struct {
 	registry  *sourcecdk.Registry
@@ -43,21 +46,21 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 		return nil, ErrRuntimeUnavailable
 	}
 	if req == nil || req.GetRuntime() == nil {
-		return nil, fmt.Errorf("source runtime is required")
+		return nil, fmt.Errorf("%w: source runtime is required", ErrInvalidRequest)
 	}
 	runtime := cloneRuntime(req.GetRuntime())
 	runtime.Id = strings.TrimSpace(runtime.GetId())
 	runtime.SourceId = strings.TrimSpace(runtime.GetSourceId())
 	runtime.TenantId = strings.TrimSpace(runtime.GetTenantId())
 	if runtime.GetId() == "" {
-		return nil, fmt.Errorf("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	source, err := s.lookupSource(runtime.GetSourceId())
 	if err != nil {
 		return nil, err
 	}
 	if err := source.Check(ctx, sourcecdk.NewConfig(runtime.GetConfig())); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: source check failed: %w", ErrInvalidRequest, err)
 	}
 	existing, err := s.lookupRuntime(ctx, runtime.GetId())
 	switch {
@@ -75,6 +78,9 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 
 // Get returns one stored source runtime definition.
 func (s *Service) Get(ctx context.Context, req *cerebrov1.GetSourceRuntimeRequest) (*cerebrov1.GetSourceRuntimeResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
+	}
 	runtime, err := s.lookupRuntime(ctx, req.GetId())
 	if err != nil {
 		return nil, err
@@ -87,6 +93,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	if s == nil || s.store == nil || s.appendLog == nil {
 		return nil, ErrRuntimeUnavailable
 	}
+	if req == nil {
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
+	}
 	runtime, err := s.lookupRuntime(ctx, req.GetId())
 	if err != nil {
 		return nil, err
@@ -97,7 +106,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}
 	pageLimit, err := normalizePageLimit(req.GetPageLimit())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	cursor := cloneCursor(runtime.GetNextCursor())
 	var (
@@ -156,7 +165,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
 	id := strings.TrimSpace(sourceID)
 	if id == "" {
-		return nil, fmt.Errorf("source id is required")
+		return nil, fmt.Errorf("%w: source id is required", ErrInvalidRequest)
 	}
 	if s == nil || s.registry == nil {
 		return nil, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, id)
@@ -171,7 +180,7 @@ func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
 func (s *Service) lookupRuntime(ctx context.Context, runtimeID string) (*cerebrov1.SourceRuntime, error) {
 	id := strings.TrimSpace(runtimeID)
 	if id == "" {
-		return nil, fmt.Errorf("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	if s == nil || s.store == nil {
 		return nil, ErrRuntimeUnavailable

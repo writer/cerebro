@@ -306,6 +306,24 @@ func TestSyncRuntimeRequiresDependencies(t *testing.T) {
 	}
 }
 
+func TestGetRejectsNilRequest(t *testing.T) {
+	service := New(nil, &runtimeStore{}, nil, nil)
+	if _, err := service.Get(context.Background(), nil); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Get() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestSyncRejectsNilRequest(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{}, &appendLog{}, nil)
+	if _, err := service.Sync(context.Background(), nil); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Sync() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
 func TestSameConfigComparesKeyPresence(t *testing.T) {
 	if sameConfig(map[string]string{"a": ""}, map[string]string{"b": ""}) {
 		t.Fatal("sameConfig() = true, want false for different key sets")

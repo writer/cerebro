@@ -650,6 +650,32 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 }
 
+func TestSourceRuntimeRPCErrorCodes(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := &bootstrapService{
+		sources: registry,
+		deps: Dependencies{
+			StateStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{}},
+			AppendLog:  &recordingAppendLog{},
+		},
+	}
+
+	if _, err := service.GetSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{Id: "missing"})); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("GetSourceRuntime() code = %v, want %v", connect.CodeOf(err), connect.CodeNotFound)
+	}
+	if _, err := service.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("SyncSourceRuntime() empty request code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
+	}
+
+	unavailable := &bootstrapService{sources: registry}
+	if _, err := unavailable.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{Id: "runtime"})); connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("SyncSourceRuntime() unavailable code = %v, want %v", connect.CodeOf(err), connect.CodeUnavailable)
+	}
+}
+
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {

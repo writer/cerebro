@@ -252,7 +252,7 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
 	).Put(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceRuntimeConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -265,7 +265,7 @@ func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Re
 		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
 	).Get(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceRuntimeConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -278,7 +278,7 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
 	).Sync(ctx, req.Msg)
 	if err != nil {
-		return nil, err
+		return nil, sourceRuntimeConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -356,6 +356,19 @@ func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 func sensitiveSourceConfigKey(key string) bool {
 	value := strings.ToLower(strings.TrimSpace(key))
 	return strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password")
+}
+
+func sourceRuntimeConnectError(err error) error {
+	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, sourceruntime.ErrInvalidRequest):
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	default:
+		return connect.NewError(connect.CodeInternal, err)
+	}
 }
 
 func writeSourceError(w http.ResponseWriter, err error) {
