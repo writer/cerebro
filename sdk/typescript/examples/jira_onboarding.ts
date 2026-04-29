@@ -9,9 +9,9 @@ export interface JiraIssuePayload {
   workspace?: string;
   eventId?: string;
   projectKey?: string;
-  key: string;
-  summary: string;
-  status: string;
+  key?: string | null;
+  summary?: string | null;
+  status?: string | null;
   priority?: string;
   assigneeEmail?: string;
   reporterEmail?: string;
@@ -141,7 +141,10 @@ if (typeof process !== "undefined" && process.env) {
   }
 }
 
-function requireValue(value: string, name: string): string {
+function requireValue(value: string | undefined | null, name: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`${name} is required`);
+  }
   const normalized = value.trim();
   if (!normalized) {
     throw new Error(`${name} is required`);
