@@ -48,13 +48,15 @@ jobs:
         contains(github.event.comment.body, '@droid add regression tests') ||
         contains(github.event.comment.body, '@droid scaffold source')
       )) ||
-      (github.event_name == 'pull_request_review_comment' && (
+      (github.event_name == 'pull_request_review_comment' &&
+        github.event.pull_request.head.repo.full_name == github.repository && (
         contains(github.event.comment.body, '@droid fix this PR') ||
         contains(github.event.comment.body, '@droid fix this pr') ||
         contains(github.event.comment.body, '@droid fix review feedback') ||
         contains(github.event.comment.body, '@droid add regression tests')
       )) ||
-      (github.event_name == 'pull_request_review' && (
+      (github.event_name == 'pull_request_review' &&
+        github.event.pull_request.head.repo.full_name == github.repository && (
         contains(github.event.review.body, '@droid fix this PR') ||
         contains(github.event.review.body, '@droid fix this pr') ||
         contains(github.event.review.body, '@droid fix review feedback') ||
@@ -75,7 +77,8 @@ jobs:
         contains(github.event.issue.title, '@droid add regression tests') ||
         contains(github.event.issue.title, '@droid scaffold source')
       )) ||
-      (github.event_name == 'pull_request' && (
+      (github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository && (
         contains(github.event.pull_request.labels.*.name, 'droid-fix') ||
         contains(github.event.pull_request.labels.*.name, 'droid-test') ||
         contains(github.event.pull_request.labels.*.name, 'droid-source') ||
@@ -324,16 +327,18 @@ jobs:
               emit_line("branch_name", branch_name)
               emit_line("create_pr", create_pr)
               emit_line("safe_to_push", str(safe_to_push).lower())
+              emit_line("should_run", str(safe_to_push).lower())
               emit_line("default_branch", default_branch)
               emit("entity_title", entity_title)
               emit("prompt", prompt)
 
           if not safe_to_push:
-              print("Pull request head is from a fork; refusing write-capable Droid Create run.", file=sys.stderr)
-              sys.exit(1)
+              print("Pull request head is from a fork; skipping write-capable Droid Create run.")
+              sys.exit(0)
           PY
 
       - name: Checkout target branch
+        if: steps.ctx.outputs.should_run == 'true'
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
@@ -342,6 +347,7 @@ jobs:
           ref: ${{ steps.ctx.outputs.checkout_ref }}
 
       - name: Prepare working branch
+        if: steps.ctx.outputs.should_run == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -350,6 +356,7 @@ jobs:
           git checkout -B -- "${{ steps.ctx.outputs.branch_name }}"
 
       - name: Install Droid CLI
+        if: steps.ctx.outputs.should_run == 'true'
         shell: bash
         env:
           DROID_INSTALL_SHA256: 37f115fe2ff358ef8e2d8926bd3e69c27186f81c74868deee1bbd62f9f58f10d
@@ -363,6 +370,7 @@ jobs:
           "${HOME}/.local/bin/droid" --version
 
       - name: Prepare Droid prompt
+        if: steps.ctx.outputs.should_run == 'true'
         id: prepare
         shell: bash
         env:
@@ -416,6 +424,7 @@ jobs:
           PY
 
       - name: Run Droid Create
+        if: steps.ctx.outputs.should_run == 'true'
         shell: bash
         env:
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
@@ -423,9 +432,10 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          droid exec --auto medium --output-format text -f "${{ steps.prepare.outputs.prompt_path }}"
+          droid exec --auto medium --model gpt-5.4 --reasoning-effort high --output-format text -f "${{ steps.prepare.outputs.prompt_path }}"
 
       - name: Run validators
+        if: steps.ctx.outputs.should_run == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -437,6 +447,7 @@ jobs:
           make verify
 
       - name: Commit and publish Droid changes
+        if: steps.ctx.outputs.should_run == 'true'
         id: publish
         shell: bash
         env:
@@ -491,6 +502,7 @@ jobs:
         shell: bash
         env:
           CREATE_PR: ${{ steps.ctx.outputs.create_pr }}
+          SHOULD_RUN: ${{ steps.ctx.outputs.should_run || 'false' }}
           ENTITY_NUMBER: ${{ steps.ctx.outputs.entity_number }}
           PUBLISHED: ${{ steps.publish.outputs.published || 'false' }}
           PR_URL: ${{ steps.publish.outputs.pr_url || '' }}
@@ -498,7 +510,9 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          if [ "${JOB_STATUS}" != "success" ]; then
+          if [ "${SHOULD_RUN}" != "true" ]; then
+            message="Droid Create skipped because the target branch is not writable by this repository workflow."
+          elif [ "${JOB_STATUS}" != "success" ]; then
             message="Droid Create failed before publishing changes. See ${RUN_URL}."
           elif [ "${PUBLISHED}" != "true" ]; then
             message="Droid Create completed without publishing changes."

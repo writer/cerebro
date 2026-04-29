@@ -1,0 +1,337 @@
+name: Droid Auto Fix
+
+on:
+  workflow_run:
+    workflows: ["Droid Auto Review"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to fix
+        required: true
+        type: string
+      prompt:
+        description: Optional extra instructions
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.pr || github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  droid-autofix:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'pull_request' &&
+        github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      DISPATCH_PR: ${{ inputs.pr || '' }}
+      DISPATCH_PROMPT: ${{ inputs.prompt || '' }}
+    steps:
+      - name: Resolve PR context
+        id: ctx
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          event_name = os.environ["GITHUB_EVENT_NAME"]
+          event_path = os.environ["GITHUB_EVENT_PATH"]
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          actor = os.environ["GITHUB_ACTOR"]
+          should_run = True
+          skip_reason = ""
+          pr_number = os.environ.get("DISPATCH_PR", "").strip()
+          review_since = ""
+
+          with open(event_path, "r", encoding="utf-8") as handle:
+              event = json.load(handle)
+
+          def api_get(path):
+              request = urllib.request.Request(
+                  f"https://api.github.com/{path.lstrip('/')}",
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.load(response)
+
+          if event_name == "workflow_dispatch":
+              permission = api_get(f"/repos/{repository}/collaborators/{actor}/permission").get("permission")
+              if permission not in {"admin", "maintain", "write"}:
+                  should_run = False
+                  skip_reason = f"actor {actor} lacks write permission"
+          else:
+              run = event["workflow_run"]
+              review_since = run.get("created_at") or ""
+              pull_requests = run.get("pull_requests") or []
+              if not pull_requests:
+                  should_run = False
+                  skip_reason = "workflow run is not associated with a pull request"
+              else:
+                  pr_number = str(pull_requests[0]["number"])
+
+          pr = None
+          if should_run:
+              pr = api_get(f"/repos/{repository}/pulls/{pr_number}")
+              labels = {label.get("name", "").lower() for label in pr.get("labels") or []}
+              if pr["head"]["repo"]["full_name"] != repository:
+                  should_run = False
+                  skip_reason = "pull request is from a fork"
+              elif "droid-no-autofix" in labels or "[skip-droid-autofix]" in (pr.get("title") or "").lower():
+                  should_run = False
+                  skip_reason = "Droid Auto Fix is disabled for this pull request"
+
+          out_path = os.environ["GITHUB_OUTPUT"]
+          with open(out_path, "a", encoding="utf-8") as out:
+              def emit(key, value):
+                  print(f"{key}={value}", file=out)
+
+              emit("should_run", str(should_run).lower())
+              emit("skip_reason", skip_reason)
+              emit("pr_number", pr_number)
+              emit("review_since", review_since)
+              if pr:
+                  emit("head_ref", pr["head"]["ref"])
+                  emit("base_ref", pr["base"]["ref"])
+                  emit("head_sha", pr["head"]["sha"])
+                  emit("pr_url", pr.get("html_url") or "")
+                  emit("title", (pr.get("title") or "").replace("\n", " "))
+          PY
+
+      - name: Checkout PR branch
+        if: steps.ctx.outputs.should_run == 'true'
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+          ref: ${{ steps.ctx.outputs.head_ref }}
+
+      - name: Prepare working branch
+        if: steps.ctx.outputs.should_run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "factory-droid[bot]"
+          git config user.email "138933559+factory-droid[bot]@users.noreply.github.com"
+          git checkout -B -- "${{ steps.ctx.outputs.head_ref }}"
+
+      - name: Install Droid CLI
+        if: steps.ctx.outputs.should_run == 'true'
+        shell: bash
+        env:
+          DROID_INSTALL_SHA256: 37f115fe2ff358ef8e2d8926bd3e69c27186f81c74868deee1bbd62f9f58f10d
+        run: |
+          set -euo pipefail
+          installer="${RUNNER_TEMP}/droid-install.sh"
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli -o "${installer}"
+          printf '%s  %s\n' "${DROID_INSTALL_SHA256}" "${installer}" | shasum -a 256 -c -
+          sh "${installer}"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          "${HOME}/.local/bin/droid" --version
+
+      - name: Collect Droid review findings
+        if: steps.ctx.outputs.should_run == 'true'
+        id: findings
+        shell: bash
+        env:
+          PR_NUMBER: ${{ steps.ctx.outputs.pr_number }}
+          REVIEW_SINCE: ${{ steps.ctx.outputs.review_since }}
+          EXTRA_PROMPT: ${{ inputs.prompt || '' }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          review_since = os.environ.get("REVIEW_SINCE") or ""
+          extra_prompt = os.environ.get("EXTRA_PROMPT") or ""
+          owner, repo = repository.split("/", 1)
+
+          def parse_time(value):
+              if not value:
+                  return None
+              return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+          since = parse_time(review_since)
+
+          def api_list(path):
+              rows = []
+              page = 1
+              while True:
+                  sep = "&" if "?" in path else "?"
+                  url = f"https://api.github.com/{path.lstrip('/')}{sep}per_page=100&page={page}"
+                  request = urllib.request.Request(
+                      url,
+                      headers={
+                          "Authorization": f"Bearer {token}",
+                          "Accept": "application/vnd.github+json",
+                          "X-GitHub-Api-Version": "2022-11-28",
+                      },
+                  )
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      chunk = json.load(response)
+                  rows.extend(chunk)
+                  if len(chunk) < 100:
+                      return rows
+                  page += 1
+
+          def from_droid(row):
+              login = ((row.get("user") or {}).get("login") or "").lower()
+              return login.startswith("factory-droid")
+
+          def in_scope(row):
+              if not from_droid(row):
+                  return False
+              if since is None:
+                  return True
+              created = parse_time(row.get("created_at") or "")
+              return created is not None and created >= since
+
+          review_comments = [row for row in api_list(f"/repos/{owner}/{repo}/pulls/{pr_number}/comments") if in_scope(row)]
+          issue_comments = [row for row in api_list(f"/repos/{owner}/{repo}/issues/{pr_number}/comments") if in_scope(row)]
+
+          findings_path = os.path.join(os.environ["RUNNER_TEMP"], "droid-review-findings.md")
+          prompt_path = os.path.join(os.environ["RUNNER_TEMP"], "droid-autofix-prompt.md")
+
+          with open(findings_path, "w", encoding="utf-8") as handle:
+              handle.write(f"# Droid review findings for PR #{pr_number}\n\n")
+              if extra_prompt:
+                  handle.write("## Extra instructions\n\n")
+                  handle.write(extra_prompt)
+                  handle.write("\n\n")
+              if issue_comments:
+                  handle.write("## Droid summary comments\n\n")
+                  for row in issue_comments:
+                      handle.write(f"- {row.get('html_url')}\n\n{row.get('body') or ''}\n\n")
+              if review_comments:
+                  handle.write("## Droid inline review comments\n\n")
+                  for row in review_comments:
+                      handle.write(f"### {row.get('path')}:{row.get('line') or row.get('original_line') or ''}\n\n")
+                      handle.write(f"URL: {row.get('html_url')}\n\n")
+                      handle.write(row.get("body") or "")
+                      handle.write("\n\n")
+
+          has_findings = bool(review_comments) or any("[P" in (row.get("body") or "") for row in issue_comments)
+          with open(prompt_path, "w", encoding="utf-8") as handle:
+              handle.write("\n".join([
+                  "You are running in GitHub Actions for writer/cerebro.",
+                  f"Fix all actionable Droid review findings for PR #{pr_number} in one batch.",
+                  "",
+                  "Inputs:",
+                  f"- Findings file: {findings_path}",
+                  "",
+                  "Instructions:",
+                  "- Read AGENTS.md and relevant .factory/skills first.",
+                  "- Address every high-confidence actionable finding in the findings file.",
+                  "- Treat duplicate/stale comments as already handled only when the current code clearly proves that.",
+                  "- Keep the patch minimal and focused.",
+                  "- Add or update regression tests for bug/security fixes where feasible.",
+                  "- Run focused tests where useful; this workflow runs make verify after your edits.",
+                  "- Do not commit, push, create PRs, resolve comments, or edit GitHub metadata.",
+                  "",
+              ]))
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              print(f"findings_path={findings_path}", file=out)
+              print(f"prompt_path={prompt_path}", file=out)
+              print(f"has_findings={str(has_findings).lower()}", file=out)
+          PY
+
+      - name: Run Droid Auto Fix
+        if: steps.ctx.outputs.should_run == 'true' && steps.findings.outputs.has_findings == 'true'
+        shell: bash
+        env:
+          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          droid exec --auto medium --model gpt-5.4 --reasoning-effort high --output-format text -f "${{ steps.findings.outputs.prompt_path }}"
+
+      - name: Run validators
+        if: steps.ctx.outputs.should_run == 'true' && steps.findings.outputs.has_findings == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Droid Auto Fix made no changes."
+            exit 0
+          fi
+          make lint-bootstrap
+          make verify
+
+      - name: Commit and push fixes
+        if: steps.ctx.outputs.should_run == 'true' && steps.findings.outputs.has_findings == 'true'
+        id: publish
+        shell: bash
+        env:
+          PR_NUMBER: ${{ steps.ctx.outputs.pr_number }}
+          HEAD_REF: ${{ steps.ctx.outputs.head_ref }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "published=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          git status --short
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: address Droid review findings" -m "Applied Droid Auto Fix for PR #${PR_NUMBER}."
+          git push origin "HEAD:${HEAD_REF}"
+          echo "published=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Report result
+        if: always()
+        shell: bash
+        env:
+          SHOULD_RUN: ${{ steps.ctx.outputs.should_run || 'false' }}
+          SKIP_REASON: ${{ steps.ctx.outputs.skip_reason || '' }}
+          PR_NUMBER: ${{ steps.ctx.outputs.pr_number || '' }}
+          HAS_FINDINGS: ${{ steps.findings.outputs.has_findings || 'false' }}
+          PUBLISHED: ${{ steps.publish.outputs.published || 'false' }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "${SHOULD_RUN}" != "true" ]; then
+            message="Droid Auto Fix skipped: ${SKIP_REASON:-not applicable}."
+          elif [ "${JOB_STATUS}" != "success" ]; then
+            message="Droid Auto Fix failed. See ${RUN_URL}."
+          elif [ "${HAS_FINDINGS}" != "true" ]; then
+            message="Droid Auto Fix found no new Droid review findings to address."
+          elif [ "${PUBLISHED}" = "true" ]; then
+            message="Droid Auto Fix pushed a commit addressing Droid review findings."
+          else
+            message="Droid Auto Fix completed without publishing changes."
+          fi
+
+          if [ -n "${PR_NUMBER}" ]; then
+            gh issue comment "${PR_NUMBER}" --body "${message}" || true
+          else
+            echo "${message}"
+          fi

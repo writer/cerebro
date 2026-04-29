@@ -29,3 +29,6 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
+          review_model: gpt-5.4
+          security_model: gpt-5.4
+          reasoning_effort: high
