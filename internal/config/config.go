@@ -9,11 +9,32 @@ import (
 
 const defaultHTTPAddr = ":8080"
 const defaultShutdownTimeout = 10 * time.Second
+const defaultJetStreamSubjectPrefix = "events"
+
+const (
+	AppendLogDriverJetStream = "jetstream"
+	StateStoreDriverPostgres = "postgres"
+)
 
 // Config is the minimal bootstrap configuration for the rewrite skeleton.
 type Config struct {
 	HTTPAddr        string
 	ShutdownTimeout time.Duration
+	AppendLog       AppendLogConfig
+	StateStore      StateStoreConfig
+}
+
+// AppendLogConfig selects and configures the append-log driver.
+type AppendLogConfig struct {
+	Driver                 string
+	JetStreamURL           string
+	JetStreamSubjectPrefix string
+}
+
+// StateStoreConfig selects and configures the current-state store driver.
+type StateStoreConfig struct {
+	Driver      string
+	PostgresDSN string
 }
 
 // Load reads and validates process configuration.
@@ -21,6 +42,15 @@ func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:        strings.TrimSpace(os.Getenv("CEREBRO_HTTP_ADDR")),
 		ShutdownTimeout: defaultShutdownTimeout,
+		AppendLog: AppendLogConfig{
+			Driver:                 strings.TrimSpace(os.Getenv("CEREBRO_APPEND_LOG_DRIVER")),
+			JetStreamURL:           strings.TrimSpace(os.Getenv("CEREBRO_JETSTREAM_URL")),
+			JetStreamSubjectPrefix: strings.TrimSpace(os.Getenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX")),
+		},
+		StateStore: StateStoreConfig{
+			Driver:      strings.TrimSpace(os.Getenv("CEREBRO_STATE_STORE_DRIVER")),
+			PostgresDSN: strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN")),
+		},
 	}
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = defaultHTTPAddr
@@ -34,6 +64,33 @@ func Load() (Config, error) {
 	}
 	if cfg.ShutdownTimeout <= 0 {
 		return Config{}, fmt.Errorf("CEREBRO_SHUTDOWN_TIMEOUT must be greater than zero")
+	}
+	if cfg.AppendLog.Driver == "" && cfg.AppendLog.JetStreamURL != "" {
+		cfg.AppendLog.Driver = AppendLogDriverJetStream
+	}
+	switch cfg.AppendLog.Driver {
+	case "":
+	case AppendLogDriverJetStream:
+		if cfg.AppendLog.JetStreamURL == "" {
+			return Config{}, fmt.Errorf("CEREBRO_JETSTREAM_URL is required when CEREBRO_APPEND_LOG_DRIVER=%q", AppendLogDriverJetStream)
+		}
+		if cfg.AppendLog.JetStreamSubjectPrefix == "" {
+			cfg.AppendLog.JetStreamSubjectPrefix = defaultJetStreamSubjectPrefix
+		}
+	default:
+		return Config{}, fmt.Errorf("unsupported CEREBRO_APPEND_LOG_DRIVER %q", cfg.AppendLog.Driver)
+	}
+	if cfg.StateStore.Driver == "" && cfg.StateStore.PostgresDSN != "" {
+		cfg.StateStore.Driver = StateStoreDriverPostgres
+	}
+	switch cfg.StateStore.Driver {
+	case "":
+	case StateStoreDriverPostgres:
+		if cfg.StateStore.PostgresDSN == "" {
+			return Config{}, fmt.Errorf("CEREBRO_POSTGRES_DSN is required when CEREBRO_STATE_STORE_DRIVER=%q", StateStoreDriverPostgres)
+		}
+	default:
+		return Config{}, fmt.Errorf("unsupported CEREBRO_STATE_STORE_DRIVER %q", cfg.StateStore.Driver)
 	}
 	return cfg, nil
 }
