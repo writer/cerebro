@@ -78,8 +78,9 @@ func (s *stubClaimStore) ListClaims(_ context.Context, request ports.ListClaimsR
 }
 
 type projectionRecorder struct {
-	entities map[string]*ports.ProjectedEntity
-	links    map[string]*ports.ProjectedLink
+	entities     map[string]*ports.ProjectedEntity
+	links        map[string]*ports.ProjectedLink
+	deletedLinks map[string]*ports.ProjectedLink
 }
 
 func (r *projectionRecorder) Ping(context.Context) error { return nil }
@@ -97,6 +98,14 @@ func (r *projectionRecorder) UpsertProjectedLink(_ context.Context, link *ports.
 		r.links = make(map[string]*ports.ProjectedLink)
 	}
 	r.links[link.FromURN+"|"+link.Relation+"|"+link.ToURN] = cloneProjectedLink(link)
+	return nil
+}
+
+func (r *projectionRecorder) DeleteProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if r.deletedLinks == nil {
+		r.deletedLinks = make(map[string]*ports.ProjectedLink)
+	}
+	r.deletedLinks[link.FromURN+"|"+link.Relation+"|"+link.ToURN] = cloneProjectedLink(link)
 	return nil
 }
 
@@ -251,6 +260,7 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 			},
 		},
 	}
+	projection := &projectionRecorder{}
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
@@ -262,8 +272,8 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 			},
 		},
 		store,
-		nil,
-		nil,
+		projection,
+		projection,
 	)
 
 	result, err := service.WriteClaims(context.Background(), WriteRequest{
@@ -311,6 +321,9 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	}
 	if !retracted.ValidTo.Equal(observedAt) {
 		t.Fatalf("retracted claim valid_to = %v, want %v", retracted.ValidTo, observedAt)
+	}
+	if _, ok := projection.deletedLinks[issueURN+"|assigned_to|"+assigneeURN]; !ok {
+		t.Fatalf("deleted projected link missing for retracted relation")
 	}
 }
 

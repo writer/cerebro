@@ -138,7 +138,7 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 		result.ClaimsWritten++
 	}
 	if request.ReplaceExisting {
-		retracted, err := s.retractMissingClaims(ctx, runtimeID, normalizedClaims)
+		retracted, err := s.retractMissingClaims(ctx, runtime, normalizedClaims)
 		if err != nil {
 			return nil, err
 		}
@@ -184,7 +184,8 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 	return response, nil
 }
 
-func (s *Service) retractMissingClaims(ctx context.Context, runtimeID string, claims []*cerebrov1.Claim) (uint32, error) {
+func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.SourceRuntime, claims []*cerebrov1.Claim) (uint32, error) {
+	runtimeID := strings.TrimSpace(runtime.GetId())
 	incomingIDs := make(map[string]struct{}, len(claims))
 	for _, claim := range claims {
 		if claim == nil {
@@ -211,12 +212,32 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtimeID string, cl
 		if _, ok := incomingIDs[strings.TrimSpace(existingClaim.ID)]; ok {
 			continue
 		}
+		if err := s.deleteLink(ctx, projectedRelation(runtime, protoClaim(existingClaim))); err != nil {
+			return retracted, err
+		}
 		if _, err := s.store.UpsertClaim(ctx, retractedClaim(existingClaim, retractAt, snapshotEventID)); err != nil {
 			return retracted, fmt.Errorf("retract claim %q: %w", existingClaim.ID, err)
 		}
 		retracted++
 	}
 	return retracted, nil
+}
+
+func (s *Service) deleteLink(ctx context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	if deleter, ok := s.state.(ports.ProjectionLinkDeleter); ok {
+		if err := deleter.DeleteProjectedLink(ctx, link); err != nil {
+			return fmt.Errorf("delete projected link %q: %w", projectedLinkKey(link), err)
+		}
+	}
+	if deleter, ok := s.graph.(ports.ProjectionLinkDeleter); ok {
+		if err := deleter.DeleteProjectedLink(ctx, link); err != nil {
+			return fmt.Errorf("delete graph link %q: %w", projectedLinkKey(link), err)
+		}
+	}
+	return nil
 }
 
 func snapshotObservedAt(claims []*cerebrov1.Claim) time.Time {
@@ -311,7 +332,7 @@ func (s *Service) upsertLink(ctx context.Context, link *ports.ProjectedLink, see
 	if link == nil {
 		return false, nil
 	}
-	key := link.FromURN + "|" + link.Relation + "|" + link.ToURN
+	key := projectedLinkKey(link)
 	if _, ok := seen[key]; ok {
 		return false, nil
 	}
@@ -330,6 +351,13 @@ func (s *Service) upsertLink(ctx context.Context, link *ports.ProjectedLink, see
 	}
 	seen[key] = struct{}{}
 	return true, nil
+}
+
+func projectedLinkKey(link *ports.ProjectedLink) string {
+	if link == nil {
+		return ""
+	}
+	return link.FromURN + "|" + link.Relation + "|" + link.ToURN
 }
 
 func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*cerebrov1.Claim, error) {
