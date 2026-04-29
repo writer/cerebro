@@ -114,6 +114,42 @@ func TestPrepareSourceConfigWithCLIAuditHydratesOwnerAndToken(t *testing.T) {
 	}
 }
 
+func TestPrepareSourceConfigWithCLIRejectsOwnerMismatch(t *testing.T) {
+	cli := &fakeGitHubLocalCLI{
+		repo: githubLocalRepo{
+			Name: "cerebro",
+			Owner: githubLocalRepoOwner{
+				Login: "writer",
+			},
+		},
+	}
+
+	_, err := prepareSourceConfigWithCLI(context.Background(), githubSourceID, "read", map[string]string{
+		"owner": "other",
+	}, cli)
+	if err == nil {
+		t.Fatal("prepareSourceConfigWithCLI() error = nil, want non-nil")
+	}
+}
+
+func TestPrepareSourceConfigWithCLIRejectsRepoMismatch(t *testing.T) {
+	cli := &fakeGitHubLocalCLI{
+		repo: githubLocalRepo{
+			Name: "cerebro",
+			Owner: githubLocalRepoOwner{
+				Login: "writer",
+			},
+		},
+	}
+
+	_, err := prepareSourceConfigWithCLI(context.Background(), githubSourceID, "read", map[string]string{
+		"repo": "other",
+	}, cli)
+	if err == nil {
+		t.Fatal("prepareSourceConfigWithCLI() error = nil, want non-nil")
+	}
+}
+
 func TestPrepareSourceRuntimeWithCLIHydratesGitHubRuntime(t *testing.T) {
 	cli := &fakeGitHubLocalCLI{
 		token: "gh-token",
