@@ -193,7 +193,11 @@ func (s *stubFindingStore) PutFindingEvidence(_ context.Context, evidence *cereb
 	if s.evidence == nil {
 		s.evidence = make(map[string]*cerebrov1.FindingEvidence)
 	}
-	s.evidence[evidence.GetId()] = cloneFindingEvidence(evidence)
+	clone := cloneFindingEvidence(evidence)
+	if existing, ok := s.evidence[evidence.GetId()]; ok && existing.GetCreatedAt() != nil {
+		clone.CreatedAt = proto.Clone(existing.GetCreatedAt()).(*timestamppb.Timestamp)
+	}
+	s.evidence[evidence.GetId()] = clone
 	return nil
 }
 
@@ -407,6 +411,13 @@ func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidenceByID(t *testing.T) {
 	}
 	if got := result.Evidence[0].GetEventIds(); len(got) != 1 || got[0] != "okta-audit-2" {
 		t.Fatalf("Evidence[0].EventIds = %v, want [okta-audit-2]", got)
+	}
+	stored := store.evidence[result.Evidence[0].GetId()]
+	if stored == nil {
+		t.Fatalf("stored evidence %q = nil", result.Evidence[0].GetId())
+	}
+	if !proto.Equal(result.Evidence[0].GetCreatedAt(), stored.GetCreatedAt()) {
+		t.Fatalf("Evidence[0].CreatedAt = %v, want persisted %v", result.Evidence[0].GetCreatedAt(), stored.GetCreatedAt())
 	}
 }
 

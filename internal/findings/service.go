@@ -219,22 +219,34 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evaluationErr := fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)
 				return nil, s.finishFailedRun(ctx, run, eventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
-			if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
+			persistedEvidence, err := s.persistFindingEvidence(ctx, evidence)
+			if err != nil {
 				evaluationErr := fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)
 				return nil, s.finishFailedRun(ctx, run, eventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
-			if idx, ok := evidenceIndex[evidence.GetId()]; ok {
-				result.Evidence[idx] = evidence
+			if idx, ok := evidenceIndex[persistedEvidence.GetId()]; ok {
+				result.Evidence[idx] = persistedEvidence
 				continue
 			}
-			evidenceIndex[evidence.GetId()] = len(result.Evidence)
-			result.Evidence = append(result.Evidence, evidence)
+			evidenceIndex[persistedEvidence.GetId()] = len(result.Evidence)
+			result.Evidence = append(result.Evidence, persistedEvidence)
 		}
 	}
 	if err := s.finishCompletedRun(ctx, run, eventsEvaluated, findingIDs(result.Findings)); err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+func (s *Service) persistFindingEvidence(ctx context.Context, evidence *cerebrov1.FindingEvidence) (*cerebrov1.FindingEvidence, error) {
+	if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
+		return nil, err
+	}
+	persisted, err := s.evidenceStore.GetFindingEvidence(ctx, evidence.GetId())
+	if err != nil {
+		return nil, err
+	}
+	return persisted, nil
 }
 
 // ListFindings loads persisted findings for one runtime.
