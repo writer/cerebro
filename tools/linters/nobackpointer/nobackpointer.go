@@ -69,13 +69,7 @@ func backPointerTarget(pass *analysis.Pass, t types.Type) (string, bool) {
 	if !ok || named.Obj() == nil {
 		return "", false
 	}
-	if named.Obj().Pkg() == nil {
-		return "", false
-	}
-	path := named.Obj().Pkg().Path()
-	if pass != nil && path == pass.Pkg.Path() {
-		// Back-pointers to the current package's App/Server types are still back-pointers.
-	} else if path != "github.com/writer/cerebro" && !strings.HasPrefix(path, "github.com/writer/cerebro/") {
+	if named.Obj().Pkg() == nil || pass.Pkg == nil || named.Obj().Pkg().Path() != pass.Pkg.Path() {
 		return "", false
 	}
 	switch named.Obj().Name() {

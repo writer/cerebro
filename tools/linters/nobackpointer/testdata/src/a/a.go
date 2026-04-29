@@ -1,5 +1,7 @@
 package a
 
+import "external"
+
 type App struct{}
 
 type Server struct{}
@@ -8,6 +10,11 @@ type Client struct{}
 
 type Good struct {
 	client *Client
+}
+
+type GoodExternal struct {
+	app    *external.App
+	server *external.Server
 }
 
 type GoodByValue struct {
