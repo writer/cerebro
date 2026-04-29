@@ -45,6 +45,17 @@ func sourceGet(t *testing.T, server *httptest.Server, path string, config map[st
 	return server.Client().Do(req)
 }
 
+func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
+	for _, key := range []string{"token", "api_key", "private_key", "key"} {
+		t.Run(key, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/sources/okta/check?"+key+"=secret", nil)
+			if _, err := sourceConfigFromRequest(req); err == nil {
+				t.Fatalf("sourceConfigFromRequest() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
 type stubAppendLog struct {
 	err error
 }

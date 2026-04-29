@@ -1523,7 +1523,13 @@ func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 
 func sensitiveSourceConfigKey(key string) bool {
 	value := strings.ToLower(strings.TrimSpace(key))
-	return strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password")
+	if value == "" {
+		return false
+	}
+	if strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password") {
+		return true
+	}
+	return value == "key" || strings.HasSuffix(value, "_key")
 }
 
 func writeSourceError(w http.ResponseWriter, err error) {
