@@ -151,16 +151,16 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 		return nil, s.finishFailedRun(ctx, run, 0, nil, evaluationErr)
 	}
 	result := &EvaluateResult{
-		Runtime:         runtime,
-		Rule:            rule.Spec(),
-		EventsEvaluated: uint32(len(events)),
-		Run:             run,
+		Runtime: runtime,
+		Rule:    rule.Spec(),
+		Run:     run,
 	}
+	var eventsEvaluated uint32
 	for _, event := range events {
 		emitted, err := rule.Evaluate(ctx, runtime, event)
 		if err != nil {
 			evaluationErr := fmt.Errorf("evaluate finding rule %q for event %q: %w", result.Rule.GetId(), event.GetId(), err)
-			return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+			return nil, s.finishFailedRun(ctx, run, eventsEvaluated, findingIDs(result.Findings), evaluationErr)
 		}
 		for _, record := range emitted {
 			if record == nil {
@@ -169,12 +169,14 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			stored, err := s.store.UpsertFinding(ctx, record)
 			if err != nil {
 				evaluationErr := fmt.Errorf("persist finding for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
-				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+				return nil, s.finishFailedRun(ctx, run, eventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
 			result.Findings = append(result.Findings, stored)
 		}
+		eventsEvaluated++
+		result.EventsEvaluated = eventsEvaluated
 	}
-	if err := s.finishCompletedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings)); err != nil {
+	if err := s.finishCompletedRun(ctx, run, eventsEvaluated, findingIDs(result.Findings)); err != nil {
 		return nil, err
 	}
 	return result, nil
