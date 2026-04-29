@@ -30,6 +30,24 @@ func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFin
 	return findings, nil
 }
 
+type stubGraphStore struct {
+	rootURN       string
+	limit         int
+	neighborhoods map[string]*ports.EntityNeighborhood
+}
+
+func (s *stubGraphStore) Ping(context.Context) error { return nil }
+
+func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
+	s.rootURN = rootURN
+	s.limit = limit
+	neighborhood, ok := s.neighborhoods[rootURN]
+	if !ok {
+		return nil, ports.ErrGraphEntityNotFound
+	}
+	return cloneNeighborhood(neighborhood), nil
+}
+
 type stubReportStore struct {
 	run *cerebrov1.ReportRun
 }
@@ -52,31 +70,65 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	findingStore := &stubFindingStore{
 		findings: []*ports.FindingRecord{
 			{
-				ID:        "finding-1",
-				TenantID:  "writer",
-				RuntimeID: "writer-okta-audit",
-				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
-				Severity:  "HIGH",
-				Status:    "open",
+				ID:           "finding-1",
+				TenantID:     "writer",
+				RuntimeID:    "writer-okta-audit",
+				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
+				Severity:     "HIGH",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				Attributes: map[string]string{
+					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				},
 			},
 			{
-				ID:        "finding-2",
-				TenantID:  "writer",
-				RuntimeID: "writer-okta-audit",
-				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
-				Severity:  "HIGH",
-				Status:    "resolved",
+				ID:           "finding-2",
+				TenantID:     "writer",
+				RuntimeID:    "writer-okta-audit",
+				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
+				Severity:     "HIGH",
+				Status:       "resolved",
+				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				Attributes: map[string]string{
+					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				},
+			},
+		},
+	}
+	graphStore := &stubGraphStore{
+		neighborhoods: map[string]*ports.EntityNeighborhood{
+			"urn:cerebro:writer:okta_resource:policyrule:pol-1": {
+				Root: &ports.NeighborhoodNode{
+					URN:        "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+					EntityType: "okta.resource",
+					Label:      "Require MFA",
+				},
+				Neighbors: []*ports.NeighborhoodNode{
+					{
+						URN:        "urn:cerebro:writer:okta_user:00u2",
+						EntityType: "okta.user",
+						Label:      "admin@writer.com",
+					},
+				},
+				Relations: []*ports.NeighborhoodRelation{
+					{
+						FromURN:  "urn:cerebro:writer:okta_user:00u2",
+						Relation: "acted_on",
+						ToURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+					},
+				},
 			},
 		},
 	}
 	reportStore := &stubReportStore{}
-	service := New(findingStore, reportStore)
+	service := New(findingStore, graphStore, reportStore)
 
 	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
-			reportParameterTenantID:  "writer",
-			reportParameterRuntimeID: "writer-okta-audit",
+			reportParameterTenantID:   "writer",
+			reportParameterRuntimeID:  "writer-okta-audit",
+			reportParameterGraphLimit: "2",
 		},
 	})
 	if err != nil {
@@ -111,20 +163,95 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	if !ok || len(severityCounts) != 1 {
 		t.Fatalf("Run().Run.Result[severity_counts] = %#v, want 1 entry", result["severity_counts"])
 	}
+	resourceCounts, ok := result["resource_counts"].([]any)
+	if !ok || len(resourceCounts) != 1 {
+		t.Fatalf("Run().Run.Result[resource_counts] = %#v, want 1 entry", result["resource_counts"])
+	}
+	graphEvidence, ok := result["graph_evidence"].([]any)
+	if !ok || len(graphEvidence) != 1 {
+		t.Fatalf("Run().Run.Result[graph_evidence] = %#v, want 1 entry", result["graph_evidence"])
+	}
+	graphEvidenceEntry, ok := graphEvidence[0].(map[string]any)
+	if !ok {
+		t.Fatalf("graph evidence entry = %#v, want object", graphEvidence[0])
+	}
+	if got := graphEvidenceEntry["status"]; got != graphEvidenceEntryStatusIncluded {
+		t.Fatalf("graph evidence status = %#v, want %q", got, graphEvidenceEntryStatusIncluded)
+	}
+	if graphStore.rootURN != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+		t.Fatalf("GetEntityNeighborhood().rootURN = %q, want policy rule urn", graphStore.rootURN)
+	}
+	if graphStore.limit != 2 {
+		t.Fatalf("GetEntityNeighborhood().limit = %d, want 2", graphStore.limit)
+	}
 	if reportStore.run == nil {
 		t.Fatal("PutReportRun() not called")
 	}
 }
 
+func TestRunFindingSummaryReportPersistsNormalizedLimitParameters(t *testing.T) {
+	findingStore := &stubFindingStore{
+		findings: []*ports.FindingRecord{
+			{
+				ID:           "finding-1",
+				TenantID:     "writer",
+				RuntimeID:    "writer-okta-audit",
+				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
+				Severity:     "HIGH",
+				Status:       "open",
+				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				Attributes: map[string]string{
+					"primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				},
+			},
+		},
+	}
+	graphStore := &stubGraphStore{
+		neighborhoods: map[string]*ports.EntityNeighborhood{
+			"urn:cerebro:writer:okta_resource:policyrule:pol-1": {},
+		},
+	}
+	reportStore := &stubReportStore{}
+	service := New(findingStore, graphStore, reportStore)
+
+	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: findingSummaryReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:      "writer",
+			reportParameterRuntimeID:     "writer-okta-audit",
+			reportParameterResourceLimit: "999",
+			reportParameterGraphLimit:    "999",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if got := response.GetRun().GetParameters()[reportParameterResourceLimit]; got != "10" {
+		t.Fatalf("Run().Run.Parameters[resource_limit] = %q, want 10", got)
+	}
+	if got := response.GetRun().GetParameters()[reportParameterGraphLimit]; got != "10" {
+		t.Fatalf("Run().Run.Parameters[graph_limit] = %q, want 10", got)
+	}
+	if got := reportStore.run.GetParameters()[reportParameterResourceLimit]; got != "10" {
+		t.Fatalf("stored Run.Parameters[resource_limit] = %q, want 10", got)
+	}
+	if got := reportStore.run.GetParameters()[reportParameterGraphLimit]; got != "10" {
+		t.Fatalf("stored Run.Parameters[graph_limit] = %q, want 10", got)
+	}
+	if graphStore.limit != 10 {
+		t.Fatalf("GetEntityNeighborhood().limit = %d, want 10", graphStore.limit)
+	}
+}
+
 func TestGetReportRunRequiresAvailableStore(t *testing.T) {
-	service := New(nil, nil)
+	service := New(nil, nil, nil)
 	if _, err := service.Get(context.Background(), &cerebrov1.GetReportRunRequest{Id: "report-run-1"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("Get() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
 
 func TestRunFindingSummaryReportWrapsValidationErrors(t *testing.T) {
-	service := New(&stubFindingStore{}, &stubReportStore{})
+	service := New(&stubFindingStore{}, nil, &stubReportStore{})
 	_, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
@@ -137,12 +264,42 @@ func TestRunFindingSummaryReportWrapsValidationErrors(t *testing.T) {
 }
 
 func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
-	response := New(nil, nil).List()
+	response := New(nil, nil, nil).List()
 	if len(response.GetReports()) != 1 {
 		t.Fatalf("len(List().Reports) = %d, want 1", len(response.GetReports()))
 	}
 	if response.GetReports()[0].GetId() != findingSummaryReportID {
 		t.Fatalf("List().Reports[0].ID = %q, want %q", response.GetReports()[0].GetId(), findingSummaryReportID)
+	}
+}
+
+func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *testing.T) {
+	findingStore := &stubFindingStore{
+		findings: []*ports.FindingRecord{
+			{
+				ID:        "finding-1",
+				TenantID:  "writer",
+				RuntimeID: "writer-okta-audit",
+				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
+				Severity:  "HIGH",
+				Status:    "open",
+			},
+		},
+	}
+	service := New(findingStore, nil, &stubReportStore{})
+
+	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
+		ReportId: findingSummaryReportID,
+		Parameters: map[string]string{
+			reportParameterTenantID:  "writer",
+			reportParameterRuntimeID: "writer-okta-audit",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if got := response.GetRun().GetResult().AsMap()["graph_evidence_status"]; got != graphEvidenceStatusUnconfigured {
+		t.Fatalf("graph_evidence_status = %#v, want %q", got, graphEvidenceStatusUnconfigured)
 	}
 }
 
@@ -198,6 +355,46 @@ func cloneReportRun(run *cerebrov1.ReportRun) *cerebrov1.ReportRun {
 		cloned.Result = run.GetResult()
 	}
 	return cloned
+}
+
+func cloneNeighborhood(neighborhood *ports.EntityNeighborhood) *ports.EntityNeighborhood {
+	if neighborhood == nil {
+		return nil
+	}
+	cloned := &ports.EntityNeighborhood{
+		Root:      cloneNeighborhoodNode(neighborhood.Root),
+		Neighbors: make([]*ports.NeighborhoodNode, 0, len(neighborhood.Neighbors)),
+		Relations: make([]*ports.NeighborhoodRelation, 0, len(neighborhood.Relations)),
+	}
+	for _, neighbor := range neighborhood.Neighbors {
+		cloned.Neighbors = append(cloned.Neighbors, cloneNeighborhoodNode(neighbor))
+	}
+	for _, relation := range neighborhood.Relations {
+		cloned.Relations = append(cloned.Relations, cloneNeighborhoodRelation(relation))
+	}
+	return cloned
+}
+
+func cloneNeighborhoodNode(node *ports.NeighborhoodNode) *ports.NeighborhoodNode {
+	if node == nil {
+		return nil
+	}
+	return &ports.NeighborhoodNode{
+		URN:        node.URN,
+		EntityType: node.EntityType,
+		Label:      node.Label,
+	}
+}
+
+func cloneNeighborhoodRelation(relation *ports.NeighborhoodRelation) *ports.NeighborhoodRelation {
+	if relation == nil {
+		return nil
+	}
+	return &ports.NeighborhoodRelation{
+		FromURN:  relation.FromURN,
+		Relation: relation.Relation,
+		ToURN:    relation.ToURN,
+	}
 }
 
 func cloneAttributes(values map[string]string) map[string]string {
