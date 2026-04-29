@@ -2031,7 +2031,7 @@ func isNilInterface(value any) bool {
 
 func reportStore(store ports.StateStore) ports.ReportStore {
 	reportStore, ok := store.(ports.ReportStore)
-	if !ok {
+	if !ok || isNilInterface(reportStore) {
 		return nil
 	}
 	return reportStore
@@ -2039,7 +2039,7 @@ func reportStore(store ports.StateStore) ports.ReportStore {
 
 func eventReplayer(appendLog ports.AppendLog) ports.EventReplayer {
 	replayer, ok := appendLog.(ports.EventReplayer)
-	if !ok {
+	if !ok || isNilInterface(replayer) {
 		return nil
 	}
 	return replayer

@@ -133,6 +133,13 @@ func TestStoreBoundaryHelpersTreatTypedNilAsUnavailable(t *testing.T) {
 	if got := sourceRuntimeStore(state); got != nil {
 		t.Fatalf("sourceRuntimeStore(typed nil) = %#v, want nil", got)
 	}
+	if got := reportStore(state); got != nil {
+		t.Fatalf("reportStore(typed nil) = %#v, want nil", got)
+	}
+	var log *recordingAppendLog
+	if got := eventReplayer(log); got != nil {
+		t.Fatalf("eventReplayer(typed nil) = %#v, want nil", got)
+	}
 }
 
 type stubAppendLog struct {

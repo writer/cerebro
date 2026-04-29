@@ -78,12 +78,13 @@ func (s *testSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebro
 		}
 		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
 	}
+	checkpoint := &cerebrov1.SourceCheckpoint{CursorOpaque: strconv.Itoa(index + 1)}
+	if len(events) != 0 {
+		checkpoint.Watermark = events[len(events)-1].GetOccurredAt()
+	}
 	pull := sourcecdk.Pull{
-		Events: events,
-		Checkpoint: &cerebrov1.SourceCheckpoint{
-			Watermark:    events[len(events)-1].GetOccurredAt(),
-			CursorOpaque: strconv.Itoa(index + 1),
-		},
+		Events:     events,
+		Checkpoint: checkpoint,
 	}
 	if index+1 < len(s.pages) {
 		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: strconv.Itoa(index + 1)}
@@ -323,6 +324,63 @@ func TestRebuildDryRunProjectsEventsBeyondPreviewLimit(t *testing.T) {
 	}
 	if result.GraphNodes < 6 {
 		t.Fatalf("GraphNodes = %d, want graph to include events beyond preview limit", result.GraphNodes)
+	}
+}
+
+func TestRebuildDryRunContinuesAfterEmptyPageWithCursor(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(&testSource{
+		spec: &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"},
+		pages: [][]*cerebrov1.EventEnvelope{
+			{},
+			{
+				testEvent("github-audit-1", "github.audit", map[string]string{
+					"org":           "writer",
+					"repo":          "writer/cerebro",
+					"resource_id":   "writer/cerebro",
+					"resource_type": "repository",
+					"actor":         "octocat",
+					"action":        "repo.create",
+				}),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer-dogfood", Config: map[string]string{"token": "fixture-token"}},
+		},
+	}, nil)
+
+	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github", PageLimit: 2, PreviewLimit: 10})
+	if err != nil {
+		t.Fatalf("RebuildDryRun() error = %v", err)
+	}
+	if result.PagesRead != 2 {
+		t.Fatalf("PagesRead = %d, want 2", result.PagesRead)
+	}
+	if result.EventsRead != 1 {
+		t.Fatalf("EventsRead = %d, want 1", result.EventsRead)
+	}
+	if len(result.ReadPages) != 2 {
+		t.Fatalf("len(ReadPages) = %d, want 2", len(result.ReadPages))
+	}
+	if got := result.ReadPages[0].Page; got != 1 {
+		t.Fatalf("ReadPages[0].Page = %d, want 1", got)
+	}
+	if got := result.ReadPages[0].Events; got != 0 {
+		t.Fatalf("ReadPages[0].Events = %d, want 0", got)
+	}
+	if got := result.ReadPages[0].CheckpointCursor; got != "1" {
+		t.Fatalf("ReadPages[0].CheckpointCursor = %q, want 1", got)
+	}
+	if got := result.ReadPages[0].NextCursor; got != "1" {
+		t.Fatalf("ReadPages[0].NextCursor = %q, want 1", got)
+	}
+	assertReadPage(t, result.ReadPages[1], 2, 1, "2", "", "github-audit-1", "github-audit-1")
+	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
+		t.Fatalf("event kind github.audit = %d, want 1", got)
 	}
 }
 

@@ -522,9 +522,6 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 		if err != nil {
 			return nil, fmt.Errorf("read source page %d: %w", page+1, err)
 		}
-		if len(pull.Events) == 0 {
-			break
-		}
 		summary.PagesRead++
 		summary.EventsRead += uint32(len(pull.Events))
 		pageSummary := &ReadPagePreview{
@@ -533,6 +530,14 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 			CheckpointCursor: checkpointCursor(pull.Checkpoint),
 			NextCursor:       nextCursor(pull.NextCursor),
 			Watermark:        formatWatermark(pull.Checkpoint),
+		}
+		if len(pull.Events) == 0 {
+			summary.Pages = append(summary.Pages, pageSummary)
+			if pull.NextCursor == nil {
+				break
+			}
+			cursor = proto.Clone(pull.NextCursor).(*cerebrov1.SourceCursor)
+			continue
 		}
 		for idx, event := range pull.Events {
 			materialized := materializeEvent(runtime, event)
