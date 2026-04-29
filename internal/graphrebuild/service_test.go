@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -44,6 +45,7 @@ func (s *runtimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov
 type testSource struct {
 	spec  *cerebrov1.SourceSpec
 	pages [][]*cerebrov1.EventEnvelope
+	delay time.Duration
 }
 
 func (s *testSource) Spec() *cerebrov1.SourceSpec {
@@ -59,6 +61,9 @@ func (s *testSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.UR
 }
 
 func (s *testSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	if s.delay > 0 {
+		time.Sleep(s.delay)
+	}
 	index := 0
 	if cursor != nil && cursor.GetOpaque() != "" {
 		parsed, err := strconv.Atoi(cursor.GetOpaque())
@@ -381,6 +386,41 @@ func TestRebuildDryRunContinuesAfterEmptyPageWithCursor(t *testing.T) {
 	assertReadPage(t, result.ReadPages[1], 2, 1, "2", "", "github-audit-1", "github-audit-1")
 	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
 		t.Fatalf("event kind github.audit = %d, want 1", got)
+	}
+}
+
+func TestRebuildDryRunDoesNotChargeReadTimeToProjectStage(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(&testSource{
+		spec:  &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"},
+		pages: [][]*cerebrov1.EventEnvelope{{}},
+		delay: 25 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer-dogfood", Config: map[string]string{"token": "fixture-token"}},
+		},
+	}, nil)
+
+	result, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github", PageLimit: 1, PreviewLimit: 10})
+	if err != nil {
+		t.Fatalf("RebuildDryRun() error = %v", err)
+	}
+	readStage := stageByName(result.StageConfirmations, "read_source")
+	if readStage == nil {
+		t.Fatalf("read_source stage missing: %#v", result.StageConfirmations)
+	}
+	if readStage.DurationMillis == 0 {
+		t.Fatal("read_source duration = 0, want delayed read time")
+	}
+	projectStage := stageByName(result.StageConfirmations, "project_graph")
+	if projectStage == nil {
+		t.Fatalf("project_graph stage missing: %#v", result.StageConfirmations)
+	}
+	if projectStage.DurationMillis != 0 {
+		t.Fatalf("project_graph duration = %d, want 0 with no projected events", projectStage.DurationMillis)
 	}
 }
 
@@ -754,6 +794,15 @@ func assertStageNames(t *testing.T, stages []*StageConfirmation, want ...string)
 			t.Fatalf("stage %d status = %q, want %q", index, stage.Status, stageStatusSuccess)
 		}
 	}
+}
+
+func stageByName(stages []*StageConfirmation, name string) *StageConfirmation {
+	for _, stage := range stages {
+		if stage != nil && stage.Name == name {
+			return stage
+		}
+	}
+	return nil
 }
 
 func containsTraversalPath(traversals []*TraversalPreview, want string) bool {

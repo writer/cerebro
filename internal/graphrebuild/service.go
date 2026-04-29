@@ -269,7 +269,6 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	})
 
 	previewLimit := normalizePreviewLimit(req.PreviewLimit)
-	projectStart := time.Now()
 	projector := newEventProjector(graph, previewLimit)
 	var eventSummary *readSummary
 	switch mode {
@@ -283,12 +282,13 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		if err != nil {
 			return nil, err
 		}
+		readDuration := time.Since(readStart) - projector.Duration()
 		result.PagesRead = eventSummary.PagesRead
 		result.ReadPages = eventSummary.Pages
 		result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
 			Name:           "read_source",
 			Status:         stageStatusSuccess,
-			DurationMillis: durationMillis(readStart),
+			DurationMillis: elapsedMillis(readDuration),
 			PagesRead:      eventSummary.PagesRead,
 			EventsRead:     eventSummary.EventsRead,
 		})
@@ -298,10 +298,11 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		if err != nil {
 			return nil, err
 		}
+		replayDuration := time.Since(replayStart) - projector.Duration()
 		result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
 			Name:           "replay_log",
 			Status:         stageStatusSuccess,
-			DurationMillis: durationMillis(replayStart),
+			DurationMillis: elapsedMillis(replayDuration),
 			EventsRead:     eventSummary.EventsRead,
 		})
 	}
@@ -320,7 +321,7 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
 		Name:              "project_graph",
 		Status:            stageStatusSuccess,
-		DurationMillis:    durationMillis(projectStart),
+		DurationMillis:    projector.DurationMillis(),
 		EntitiesProjected: projectSummary.EntitiesProjected,
 		LinksProjected:    projectSummary.LinksProjected,
 	})
@@ -586,6 +587,7 @@ type eventProjector struct {
 	projector    *sourceprojection.Service
 	previewLimit int
 	summary      *projectSummary
+	duration     time.Duration
 }
 
 func newEventProjector(graph graphStore, previewLimit int) *eventProjector {
@@ -603,6 +605,10 @@ func (p *eventProjector) Project(ctx context.Context, event *cerebrov1.EventEnve
 	if p == nil || p.projector == nil || event == nil {
 		return nil
 	}
+	projectStart := time.Now()
+	defer func() {
+		p.duration += time.Since(projectStart)
+	}()
 	projected, err := p.projector.Project(ctx, event)
 	if err != nil {
 		return fmt.Errorf("project event %q: %w", event.GetId(), err)
@@ -624,6 +630,17 @@ func (p *eventProjector) Project(ctx context.Context, event *cerebrov1.EventEnve
 		})
 	}
 	return nil
+}
+
+func (p *eventProjector) Duration() time.Duration {
+	if p == nil {
+		return 0
+	}
+	return p.duration
+}
+
+func (p *eventProjector) DurationMillis() int64 {
+	return elapsedMillis(p.Duration())
 }
 
 func (p *eventProjector) Summary() *projectSummary {
@@ -899,6 +916,13 @@ func durationMillis(start time.Time) int64 {
 		return 0
 	}
 	return time.Since(start).Milliseconds()
+}
+
+func elapsedMillis(duration time.Duration) int64 {
+	if duration <= 0 {
+		return 0
+	}
+	return duration.Milliseconds()
 }
 
 func formatWatermark(checkpoint *cerebrov1.SourceCheckpoint) string {
