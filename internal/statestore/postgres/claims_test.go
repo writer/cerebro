@@ -77,7 +77,9 @@ func TestClaimSchemaScopesPrimaryKeyByTenantAndRuntime(t *testing.T) {
 		t.Fatalf("claims schema primary key does not include tenant/runtime/id:\n%s", create)
 	}
 	migration := ensureClaimStatements[1]
-	if !strings.Contains(migration, "ARRAY['id']") || !strings.Contains(migration, "DROP CONSTRAINT") {
+	if !strings.Contains(migration, "LOCK TABLE claims IN ACCESS EXCLUSIVE MODE") ||
+		!strings.Contains(migration, "ARRAY['id']") ||
+		!strings.Contains(migration, "DROP CONSTRAINT IF EXISTS") {
 		t.Fatalf("claims schema migration does not replace legacy id-only primary key:\n%s", migration)
 	}
 }

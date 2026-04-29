@@ -51,3 +51,13 @@ func TestProjectionUpsertsMergeAttributes(t *testing.T) {
 		t.Fatalf("link upsert does not merge attributes:\n%s", linkSQL)
 	}
 }
+
+func TestProjectedLinkDeleteUsesPrimaryKey(t *testing.T) {
+	linkSQL := projectedLinkDeleteSQL()
+	if !strings.Contains(linkSQL, "WHERE from_urn = $1 AND relation = $2 AND to_urn = $3") {
+		t.Fatalf("link delete does not use entity_links primary key:\n%s", linkSQL)
+	}
+	if strings.Contains(linkSQL, "tenant_id") || strings.Contains(linkSQL, "source_id") {
+		t.Fatalf("link delete includes non-primary-key filters:\n%s", linkSQL)
+	}
+}

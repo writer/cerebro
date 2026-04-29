@@ -1821,6 +1821,11 @@ func findingConnectError(err error) error {
 		errors.Is(err, ports.ErrFindingEvaluationRunNotFound),
 		errors.Is(err, ports.ErrFindingEvidenceNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, findings.ErrRuleSelectionRequired),
+		errors.Is(err, findings.ErrRuleUnsupported):
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	case errors.Is(err, findings.ErrRuleUnavailable):
+		return connect.NewError(connect.CodeFailedPrecondition, err)
 	case errors.Is(err, findings.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:

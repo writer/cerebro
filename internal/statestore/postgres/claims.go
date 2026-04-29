@@ -41,6 +41,8 @@ DECLARE
   pk_name TEXT;
   pk_cols TEXT[];
 BEGIN
+  LOCK TABLE claims IN ACCESS EXCLUSIVE MODE;
+
   SELECT c.conname, array_agg(a.attname ORDER BY k.ord)
   INTO pk_name, pk_cols
   FROM pg_constraint c
@@ -52,7 +54,7 @@ BEGIN
   IF pk_name IS NULL THEN
     ALTER TABLE claims ADD PRIMARY KEY (tenant_id, runtime_id, id);
   ELSIF pk_cols = ARRAY['id']::TEXT[] THEN
-    EXECUTE format('ALTER TABLE claims DROP CONSTRAINT %I', pk_name);
+    EXECUTE format('ALTER TABLE claims DROP CONSTRAINT IF EXISTS %I', pk_name);
     ALTER TABLE claims ADD PRIMARY KEY (tenant_id, runtime_id, id);
   ELSIF pk_cols <> ARRAY['tenant_id', 'runtime_id', 'id']::TEXT[] THEN
     RAISE EXCEPTION 'unexpected claims primary key columns: %', pk_cols;
