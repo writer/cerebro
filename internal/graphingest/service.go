@@ -193,7 +193,11 @@ func (s *Service) GetRun(ctx context.Context, id string) (graphstore.IngestRun, 
 	if err != nil {
 		return graphstore.IngestRun{}, err
 	}
-	run, found, err := runStore.GetIngestRun(ctx, strings.TrimSpace(id))
+	runID := strings.TrimSpace(id)
+	if runID == "" {
+		return graphstore.IngestRun{}, fmt.Errorf("%w: run id is required", ErrInvalidRequest)
+	}
+	run, found, err := runStore.GetIngestRun(ctx, runID)
 	if err != nil {
 		return graphstore.IngestRun{}, err
 	}

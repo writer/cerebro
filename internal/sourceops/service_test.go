@@ -192,6 +192,14 @@ func TestUnknownSource(t *testing.T) {
 	}
 }
 
+func TestEmptySourceIDIsInvalidRequest(t *testing.T) {
+	service := New(nil)
+	_, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Check() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {

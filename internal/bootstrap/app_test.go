@@ -20,6 +20,7 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
+	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphingest"
@@ -78,11 +79,14 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 		{name: "report canceled", err: reportConnectError(context.Canceled), code: connect.CodeCanceled},
 		{name: "report deadline", err: reportConnectError(context.DeadlineExceeded), code: connect.CodeDeadlineExceeded},
 		{name: "source not found", err: sourceConnectError(sourceops.ErrSourceNotFound), code: connect.CodeNotFound},
+		{name: "source invalid", err: sourceConnectError(sourceops.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "source unknown", err: sourceConnectError(errors.New("transport failed")), code: connect.CodeInternal},
 		{name: "runtime not found", err: sourceRuntimeConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
 		{name: "runtime unavailable", err: sourceRuntimeConnectError(sourceruntime.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "runtime invalid", err: sourceRuntimeConnectError(sourceruntime.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "runtime unknown", err: sourceRuntimeConnectError(errors.New("persist failed")), code: connect.CodeInternal},
 		{name: "claim runtime not found", err: claimConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
+		{name: "claim invalid", err: claimConnectError(claims.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "claim unknown", err: claimConnectError(errors.New("persist failed")), code: connect.CodeInternal},
 		{name: "finding not found", err: findingConnectError(ports.ErrFindingNotFound), code: connect.CodeNotFound},
 		{name: "finding rule not found", err: findingConnectError(findings.ErrRuleNotFound), code: connect.CodeNotFound},

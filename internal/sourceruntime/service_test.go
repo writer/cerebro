@@ -492,6 +492,41 @@ func TestSyncRuntimeRequiresDependencies(t *testing.T) {
 	}
 }
 
+func TestValidationErrorsAreInvalidRequests(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "test"}},
+		},
+	}, &appendLog{}, nil)
+	for _, tt := range []struct {
+		name string
+		err  error
+	}{
+		{name: "put nil runtime", err: func() error {
+			_, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{})
+			return err
+		}()},
+		{name: "get empty id", err: func() error {
+			_, err := service.Get(context.Background(), &cerebrov1.GetSourceRuntimeRequest{})
+			return err
+		}()},
+		{name: "sync page limit", err: func() error {
+			_, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-github", PageLimit: maxPageLimit + 1})
+			return err
+		}()},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if !errors.Is(tt.err, ErrInvalidRequest) {
+				t.Fatalf("error = %v, want ErrInvalidRequest", tt.err)
+			}
+		})
+	}
+}
+
 func TestSameConfigComparesKeyPresence(t *testing.T) {
 	if sameConfig(map[string]string{"a": ""}, map[string]string{"b": ""}) {
 		t.Fatal("sameConfig() = true, want false for different key sets")

@@ -1744,10 +1744,14 @@ func reportConnectError(err error) error {
 }
 
 func sourceConnectError(err error) error {
-	if errors.Is(err, sourceops.ErrSourceNotFound) {
+	switch {
+	case errors.Is(err, sourceops.ErrSourceNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, sourceops.ErrInvalidRequest):
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	default:
+		return defaultConnectError(err)
 	}
-	return defaultConnectError(err)
 }
 
 func writeSourceRuntimeError(w http.ResponseWriter, err error) {
@@ -1767,6 +1771,8 @@ func sourceRuntimeConnectError(err error) error {
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, sourceruntime.ErrInvalidRequest):
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	default:
 		return defaultConnectError(err)
 	}
@@ -1789,6 +1795,8 @@ func claimConnectError(err error) error {
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, claims.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, claims.ErrInvalidRequest):
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	default:
 		return defaultConnectError(err)
 	}

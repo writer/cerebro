@@ -21,8 +21,11 @@ const (
 	redactedValue    = "[redacted]"
 )
 
-// ErrRuntimeUnavailable indicates that the runtime dependencies are not configured.
-var ErrRuntimeUnavailable = errors.New("source runtime is unavailable")
+var (
+	// ErrRuntimeUnavailable indicates that the runtime dependencies are not configured.
+	ErrRuntimeUnavailable = errors.New("source runtime is unavailable")
+	ErrInvalidRequest     = errors.New("invalid source runtime request")
+)
 
 // Service persists and executes source runtimes against the append log.
 type Service struct {
@@ -43,7 +46,7 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 		return nil, ErrRuntimeUnavailable
 	}
 	if req == nil || req.GetRuntime() == nil {
-		return nil, fmt.Errorf("source runtime is required")
+		return nil, fmt.Errorf("%w: source runtime is required", ErrInvalidRequest)
 	}
 	runtime := cloneRuntime(req.GetRuntime())
 	runtime.Id = strings.TrimSpace(runtime.GetId())
@@ -51,7 +54,7 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 	runtime.TenantId = strings.TrimSpace(runtime.GetTenantId())
 	clearRuntimeProgress(runtime)
 	if runtime.GetId() == "" {
-		return nil, fmt.Errorf("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	source, err := s.lookupSource(runtime.GetSourceId())
 	if err != nil {
@@ -158,7 +161,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
 	id := strings.TrimSpace(sourceID)
 	if id == "" {
-		return nil, fmt.Errorf("source id is required")
+		return nil, fmt.Errorf("%w: source id is required", ErrInvalidRequest)
 	}
 	if s == nil || s.registry == nil {
 		return nil, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, id)
@@ -173,7 +176,7 @@ func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
 func (s *Service) lookupRuntime(ctx context.Context, runtimeID string) (*cerebrov1.SourceRuntime, error) {
 	id := strings.TrimSpace(runtimeID)
 	if id == "" {
-		return nil, fmt.Errorf("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	if s == nil || s.store == nil {
 		return nil, ErrRuntimeUnavailable
@@ -190,7 +193,7 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 		return defaultPageLimit, nil
 	}
 	if pageLimit > maxPageLimit {
-		return 0, fmt.Errorf("page_limit must be between 1 and %d", maxPageLimit)
+		return 0, fmt.Errorf("%w: page_limit must be between 1 and %d", ErrInvalidRequest, maxPageLimit)
 	}
 	return pageLimit, nil
 }

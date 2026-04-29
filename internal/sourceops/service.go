@@ -13,7 +13,10 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-var ErrSourceNotFound = errors.New("source not found")
+var (
+	ErrSourceNotFound = errors.New("source not found")
+	ErrInvalidRequest = errors.New("invalid source request")
+)
 
 // Service exposes typed source preview operations over a registry.
 type Service struct {
@@ -96,7 +99,7 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*
 func (s *Service) lookup(sourceID string) (sourcecdk.Source, error) {
 	id := strings.TrimSpace(sourceID)
 	if id == "" {
-		return nil, fmt.Errorf("source id is required")
+		return nil, fmt.Errorf("%w: source id is required", ErrInvalidRequest)
 	}
 	if s == nil || s.registry == nil {
 		return nil, fmt.Errorf("%w: %s", ErrSourceNotFound, id)

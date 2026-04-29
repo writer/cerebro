@@ -3,6 +3,7 @@ package graphingest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -95,6 +96,13 @@ func TestHealthFailedCountDoesNotDependOnPagingLimit(t *testing.T) {
 	}
 	if result.Status != "degraded" {
 		t.Fatalf("Health().Status = %q, want degraded", result.Status)
+	}
+}
+
+func TestGetRunRejectsEmptyID(t *testing.T) {
+	_, err := New(nil, nil, nil, &stubRunStore{}).GetRun(context.Background(), " ")
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("GetRun() error = %v, want ErrInvalidRequest", err)
 	}
 }
 

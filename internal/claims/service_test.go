@@ -470,6 +470,34 @@ func TestWriteClaimsRequiresAvailableDependencies(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			},
+		},
+		&stubClaimStore{},
+		nil,
+		nil,
+	)
+	for _, tt := range []struct {
+		name string
+		req  WriteRequest
+	}{
+		{name: "missing runtime id", req: WriteRequest{}},
+		{name: "nil claim", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{nil}}},
+		{name: "missing subject", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{Predicate: "status"}}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := service.WriteClaims(context.Background(), tt.req)
+			if !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("WriteClaims() error = %v, want ErrInvalidRequest", err)
+			}
+		})
+	}
+}
+
 func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	store := &stubClaimStore{
 		claims: map[string]*ports.ClaimRecord{
@@ -584,6 +612,13 @@ func TestListClaimsRequiresAvailableDependencies(t *testing.T) {
 	}
 }
 
+func TestListClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
+	service := New(&stubRuntimeStore{}, &stubClaimStore{}, nil, nil)
+	if _, err := service.ListClaims(context.Background(), ListRequest{}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("ListClaims() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
 func TestWriteClaimsRejectsRelationWithoutObjectURN(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
@@ -609,8 +644,8 @@ func TestWriteClaimsRejectsRelationWithoutObjectURN(t *testing.T) {
 			},
 		},
 	})
-	if err == nil {
-		t.Fatal("WriteClaims() error = nil, want non-nil")
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("WriteClaims() error = %v, want ErrInvalidRequest", err)
 	}
 }
 

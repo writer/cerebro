@@ -27,8 +27,11 @@ const (
 	maxListLimit            = 1000
 )
 
-// ErrRuntimeUnavailable indicates that the runtime or claim store boundary is unavailable.
-var ErrRuntimeUnavailable = errors.New("claim runtime is unavailable")
+var (
+	// ErrRuntimeUnavailable indicates that the runtime or claim store boundary is unavailable.
+	ErrRuntimeUnavailable = errors.New("claim runtime is unavailable")
+	ErrInvalidRequest     = errors.New("invalid claim request")
+)
 
 // Service reads and writes runtime-scoped claims into the state store and optional projections.
 type Service struct {
@@ -89,7 +92,7 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
@@ -162,7 +165,7 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
 		return nil, err
@@ -381,10 +384,10 @@ func projectedLinkKey(link *ports.ProjectedLink) string {
 
 func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*cerebrov1.Claim, error) {
 	if claim == nil {
-		return nil, errors.New("claim is required")
+		return nil, fmt.Errorf("%w: claim is required", ErrInvalidRequest)
 	}
 	if runtime == nil {
-		return nil, errors.New("source runtime is required")
+		return nil, fmt.Errorf("%w: source runtime is required", ErrInvalidRequest)
 	}
 	normalized := proto.Clone(claim).(*cerebrov1.Claim)
 	normalized.SubjectUrn = strings.TrimSpace(normalized.GetSubjectUrn())
@@ -403,10 +406,10 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 		normalized.ObjectUrn = strings.TrimSpace(normalized.GetObjectRef().GetUrn())
 	}
 	if normalized.GetSubjectUrn() == "" {
-		return nil, errors.New("claim subject urn is required")
+		return nil, fmt.Errorf("%w: claim subject urn is required", ErrInvalidRequest)
 	}
 	if normalized.GetPredicate() == "" {
-		return nil, errors.New("claim predicate is required")
+		return nil, fmt.Errorf("%w: claim predicate is required", ErrInvalidRequest)
 	}
 	if normalized.GetClaimType() == "" {
 		normalized.ClaimType = inferClaimType(normalized)
@@ -418,14 +421,14 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 	case claimTypeExistence:
 	case claimTypeAttribute, claimTypeClassification:
 		if normalized.GetObjectValue() == "" {
-			return nil, fmt.Errorf("claim object value is required when claim_type=%q", normalized.GetClaimType())
+			return nil, fmt.Errorf("%w: claim object value is required when claim_type=%q", ErrInvalidRequest, normalized.GetClaimType())
 		}
 	case claimTypeRelation:
 		if normalized.GetObjectUrn() == "" {
-			return nil, fmt.Errorf("claim object urn is required when claim_type=%q", normalized.GetClaimType())
+			return nil, fmt.Errorf("%w: claim object urn is required when claim_type=%q", ErrInvalidRequest, normalized.GetClaimType())
 		}
 	default:
-		return nil, fmt.Errorf("unsupported claim type %q", normalized.GetClaimType())
+		return nil, fmt.Errorf("%w: unsupported claim type %q", ErrInvalidRequest, normalized.GetClaimType())
 	}
 	if normalized.GetId() == "" {
 		normalized.Id = hashClaimID(strings.TrimSpace(runtime.GetId()), normalized.GetClaimType(), normalized.GetSubjectUrn(), normalized.GetPredicate(), claimIdentityObject(normalized))
