@@ -172,13 +172,51 @@ func parseSourceCommandArgs(args []string) (string, map[string]string, *cerebrov
 		if !ok {
 			return "", nil, nil, fmt.Errorf("invalid source argument %q; want key=value", arg)
 		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return "", nil, nil, fmt.Errorf("invalid source argument %q; key is required", arg)
+		}
 		if key == "cursor" {
 			cursor = &cerebrov1.SourceCursor{Opaque: value}
 			continue
 		}
-		config[key] = value
+		parsed, err := parseSourceConfigValue(key, value)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		config[key] = parsed
 	}
 	return args[0], config, cursor, nil
+}
+
+func parseSourceConfigValue(key string, value string) (string, error) {
+	const envPrefix = "env:"
+	if strings.HasPrefix(value, envPrefix) {
+		name := strings.TrimSpace(strings.TrimPrefix(value, envPrefix))
+		if name == "" {
+			return "", fmt.Errorf("source config key %q env var name is required", key)
+		}
+		envValue, ok := os.LookupEnv(name)
+		if !ok {
+			return "", fmt.Errorf("source config key %q env var %q is not set", key, name)
+		}
+		return envValue, nil
+	}
+	if sensitiveSourceConfigKey(key) {
+		return "", fmt.Errorf("source config key %q must be supplied as %s=env:VAR", key, key)
+	}
+	return value, nil
+}
+
+func sensitiveSourceConfigKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	if normalized == "" {
+		return false
+	}
+	if strings.Contains(normalized, "token") || strings.Contains(normalized, "secret") || strings.Contains(normalized, "password") || strings.Contains(normalized, "session") {
+		return true
+	}
+	return normalized == "key" || strings.HasSuffix(normalized, "_key")
 }
 
 func printProto(message proto.Message) error {

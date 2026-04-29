@@ -220,6 +220,11 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if len(readSourceResp.Msg.Events) != 1 {
 		t.Fatalf("len(ReadSource.Events) = %d, want 1", len(readSourceResp.Msg.Events))
 	}
+
+	_, err = client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("CheckSource(empty) code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
+	}
 }
 
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
