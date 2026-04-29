@@ -335,9 +335,26 @@ func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *conne
 		Limit:   req.Msg.GetLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, graphQueryConnectError(err)
 	}
 	return connect.NewResponse(graphNeighborhoodResponse(response)), nil
+}
+
+func graphQueryConnectError(err error) error {
+	switch {
+	case errors.Is(err, ports.ErrGraphEntityNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, graphquery.ErrInvalidArgument):
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, context.Canceled):
+		return connect.NewError(connect.CodeCanceled, err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
+	default:
+		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
+	}
 }
 
 func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHealthResponse {
@@ -467,7 +484,7 @@ func readProtoJSON(r *http.Request, message proto.Message) error {
 
 func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 	runtimeStore, ok := store.(ports.SourceRuntimeStore)
-	if !ok {
+	if !ok || isNilInterface(runtimeStore) {
 		return nil
 	}
 	return runtimeStore
@@ -475,7 +492,7 @@ func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 
 func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateStore {
 	projectionStore, ok := store.(ports.ProjectionStateStore)
-	if !ok {
+	if !ok || isNilInterface(projectionStore) {
 		return nil
 	}
 	return projectionStore
@@ -483,7 +500,7 @@ func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateSto
 
 func sourceProjectionGraphStore(store ports.GraphStore) ports.ProjectionGraphStore {
 	projectionStore, ok := store.(ports.ProjectionGraphStore)
-	if !ok {
+	if !ok || isNilInterface(projectionStore) {
 		return nil
 	}
 	return projectionStore
@@ -521,7 +538,7 @@ func isNilInterface(value any) bool {
 
 func findingStore(store ports.StateStore) ports.FindingStore {
 	findingStore, ok := store.(ports.FindingStore)
-	if !ok {
+	if !ok || isNilInterface(findingStore) {
 		return nil
 	}
 	return findingStore
@@ -529,7 +546,7 @@ func findingStore(store ports.StateStore) ports.FindingStore {
 
 func eventReplayer(appendLog ports.AppendLog) ports.EventReplayer {
 	replayer, ok := appendLog.(ports.EventReplayer)
-	if !ok {
+	if !ok || isNilInterface(replayer) {
 		return nil
 	}
 	return replayer

@@ -92,8 +92,8 @@ func (s *Store) collectNeighborhoodRows(ctx context.Context, query string, remai
 		}
 	}()
 	for rows.Next() {
-		var neighbor ports.NeighborhoodNode
-		var relation ports.NeighborhoodRelation
+		neighbor := &ports.NeighborhoodNode{}
+		relation := &ports.NeighborhoodRelation{}
 		if err := rows.Scan(
 			&neighbor.URN,
 			&neighbor.EntityType,
@@ -104,8 +104,8 @@ func (s *Store) collectNeighborhoodRows(ctx context.Context, query string, remai
 		); err != nil {
 			return remaining, fmt.Errorf("scan graph neighborhood row: %w", err)
 		}
-		neighbors[neighbor.URN] = &neighbor
-		relations[relation.FromURN+"|"+relation.Relation+"|"+relation.ToURN] = &relation
+		neighbors[neighbor.URN] = neighbor
+		relations[relation.FromURN+"|"+relation.Relation+"|"+relation.ToURN] = relation
 		remaining--
 		if remaining == 0 {
 			break
