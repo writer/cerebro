@@ -359,13 +359,11 @@ def onboard_jira_workspace_posture(
     api_key: Optional[str] = None,
 ) -> OnboardJiraWorkspacePostureResult:
     posture = object_value(posture)
+    workspace_key = require_value(posture.get("workspace_key"), "workspace_key")
+    source_event_id = optional_string(posture.get("event_id"))
     client = Client(base_url=base_url, api_key=api_key or None)
     integration = client.integration(runtime_id=runtime_id, tenant_id=tenant_id, integration="jira")
-    runtime_config: Dict[str, str] = {}
-    workspace_key = optional_string(posture.get("workspace_key"))
-    source_event_id = optional_string(posture.get("event_id"))
-    if workspace_key:
-        runtime_config["workspace"] = workspace_key
+    runtime_config: Dict[str, str] = {"workspace": workspace_key}
     integration.ensure_runtime(runtime_config)
     claims = build_jira_workspace_claims(integration, posture)
     write_result = integration.write_claims(claims, {"replace_existing": True})

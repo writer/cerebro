@@ -366,6 +366,8 @@ export function buildJiraPostureFindings(
 export async function onboardJiraWorkspacePosture(
   options: OnboardJiraWorkspacePostureOptions,
 ): Promise<OnboardJiraWorkspacePostureResult> {
+  const workspaceKey = requireValue(options.posture.workspaceKey, "posture.workspaceKey");
+  const sourceEventId = optionalString(options.posture.eventId);
   const client = new Client({
     baseUrl: options.baseUrl,
     apiKey: optionalString(options.apiKey),
@@ -375,12 +377,7 @@ export async function onboardJiraWorkspacePosture(
     tenantId: requireValue(options.tenantId, "options.tenantId"),
     integration: "jira",
   });
-  const runtimeConfig: Record<string, string> = {};
-  const workspaceKey = optionalString(options.posture.workspaceKey);
-  const sourceEventId = optionalString(options.posture.eventId);
-  if (workspaceKey) {
-    runtimeConfig.workspace = workspaceKey;
-  }
+  const runtimeConfig: Record<string, string> = { workspace: workspaceKey };
   await integration.ensureRuntime(runtimeConfig);
   const claims = buildJiraWorkspaceClaims(integration, options.posture);
   const writeResult = await integration.writeClaims(claims, { replace_existing: true });
