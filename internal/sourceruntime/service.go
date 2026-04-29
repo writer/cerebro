@@ -275,7 +275,7 @@ func sensitiveConfigKey(key string) bool {
 	if strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password") {
 		return true
 	}
-	return value == "key" || strings.HasSuffix(value, "_key")
+	return value == "key" || strings.HasSuffix(value, "_key") || strings.HasSuffix(value, "key")
 }
 
 func cloneRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {

@@ -90,9 +90,11 @@ func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 			Id:       "writer-okta-users",
 			SourceId: "okta",
 			Config: map[string]string{
-				"domain": "writer.okta.com",
-				"family": "user",
-				"token":  "super-secret",
+				"apiKey":     "api-key-value",
+				"domain":     "writer.okta.com",
+				"family":     "user",
+				"privateKey": "private-key-value",
+				"token":      "super-secret",
 			},
 		},
 	})
@@ -102,6 +104,12 @@ func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	if got := putResp.GetRuntime().GetConfig()["token"]; got != redactedValue {
 		t.Fatalf("Put().Runtime.Config[token] = %q, want %q", got, redactedValue)
 	}
+	if got := putResp.GetRuntime().GetConfig()["apiKey"]; got != redactedValue {
+		t.Fatalf("Put().Runtime.Config[apiKey] = %q, want %q", got, redactedValue)
+	}
+	if got := putResp.GetRuntime().GetConfig()["privateKey"]; got != redactedValue {
+		t.Fatalf("Put().Runtime.Config[privateKey] = %q, want %q", got, redactedValue)
+	}
 
 	getResp, err := service.Get(context.Background(), &cerebrov1.GetSourceRuntimeRequest{Id: "writer-okta-users"})
 	if err != nil {
@@ -110,8 +118,17 @@ func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	if got := getResp.GetRuntime().GetConfig()["token"]; got != redactedValue {
 		t.Fatalf("Get().Runtime.Config[token] = %q, want %q", got, redactedValue)
 	}
+	if got := getResp.GetRuntime().GetConfig()["apiKey"]; got != redactedValue {
+		t.Fatalf("Get().Runtime.Config[apiKey] = %q, want %q", got, redactedValue)
+	}
+	if got := getResp.GetRuntime().GetConfig()["privateKey"]; got != redactedValue {
+		t.Fatalf("Get().Runtime.Config[privateKey] = %q, want %q", got, redactedValue)
+	}
 	if got := store.runtimes["writer-okta-users"].GetConfig()["token"]; got != "super-secret" {
 		t.Fatalf("stored runtime token = %q, want %q", got, "super-secret")
+	}
+	if got := store.runtimes["writer-okta-users"].GetConfig()["apiKey"]; got != "api-key-value" {
+		t.Fatalf("stored runtime apiKey = %q, want api-key-value", got)
 	}
 }
 
