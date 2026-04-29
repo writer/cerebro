@@ -130,8 +130,9 @@ func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 		}
 	}
 
-	prURN := projectionURN(tenantID, "github_pull_request", repository+"#"+pullNumber)
+	prURN := ""
 	if repository != "" && pullNumber != "" {
+		prURN = projectionURN(tenantID, "github_pull_request", repository+"#"+pullNumber)
 		label := firstNonEmpty(stringValue(payload, "title"), repository+"#"+pullNumber)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        prURN,

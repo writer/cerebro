@@ -113,6 +113,29 @@ func TestProjectGitHubPullRequestWithoutOwnerDoesNotLinkEmptyOrg(t *testing.T) {
 	}
 }
 
+func TestProjectSkipsPlaceholderPullRequestLinks(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-pr-missing-repo",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.pull_request",
+		Attributes: map[string]string{
+			"author": "alice",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	for key := range state.links {
+		if strings.Contains(key, "github_pull_request") {
+			t.Fatalf("placeholder pull request link %q should not be projected", key)
+		}
+	}
+}
+
 func TestProjectReusesCrossSourceIdentifierWithinTenant(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
