@@ -1,24 +1,46 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
-	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceruntime"
 	githubsource "github.com/writer/cerebro/sources/github"
+	oktasource "github.com/writer/cerebro/sources/okta"
 )
+
+func sourceGet(t *testing.T, server *httptest.Server, path string, config map[string]string) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(config) > 0 {
+		payload, err := json.Marshal(config)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("X-Cerebro-Source-Config", string(payload))
+	}
+	return server.Client().Do(req)
+}
 
 type stubAppendLog struct {
 	err error
@@ -33,22 +55,159 @@ type stubStore struct {
 
 func (s stubStore) Ping(context.Context) error { return s.err }
 
-func TestSourceConfigFromQueryDropsBaseURL(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/sources/github/read?base_url=http://127.0.0.1:1&cursor=2", nil)
-	req.Header.Set("Authorization", "Bearer test")
+type recordingAppendLog struct {
+	err    error
+	events []*cerebrov1.EventEnvelope
+}
 
-	config, err := sourceConfigFromQuery(req)
+func (s *recordingAppendLog) Ping(context.Context) error { return s.err }
+
+func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.events = append(s.events, proto.Clone(event).(*cerebrov1.EventEnvelope))
+	return nil
+}
+
+type stubRuntimeStore struct {
+	err      error
+	runtimes map[string]*cerebrov1.SourceRuntime
+	entities map[string]*ports.ProjectedEntity
+	links    map[string]*ports.ProjectedLink
+}
+
+func (s *stubRuntimeStore) Ping(context.Context) error { return s.err }
+
+func (s *stubRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.runtimes == nil {
+		s.runtimes = make(map[string]*cerebrov1.SourceRuntime)
+	}
+	s.runtimes[runtime.GetId()] = proto.Clone(runtime).(*cerebrov1.SourceRuntime)
+	return nil
+}
+
+func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov1.SourceRuntime, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	runtime, ok := s.runtimes[id]
+	if !ok {
+		return nil, ports.ErrSourceRuntimeNotFound
+	}
+	return proto.Clone(runtime).(*cerebrov1.SourceRuntime), nil
+}
+
+func (s *stubRuntimeStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if s.err != nil {
+		return s.err
+	}
+	if entity == nil {
+		return nil
+	}
+	if s.entities == nil {
+		s.entities = make(map[string]*ports.ProjectedEntity)
+	}
+	s.entities[entity.URN] = cloneProjectedEntity(entity)
+	return nil
+}
+
+func (s *stubRuntimeStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if s.err != nil {
+		return s.err
+	}
+	if link == nil {
+		return nil
+	}
+	if s.links == nil {
+		s.links = make(map[string]*ports.ProjectedLink)
+	}
+	s.links[projectedLinkKey(link)] = cloneProjectedLink(link)
+	return nil
+}
+
+type stubGraphStore struct {
+	err      error
+	entities map[string]*ports.ProjectedEntity
+	links    map[string]*ports.ProjectedLink
+}
+
+func (s *stubGraphStore) Ping(context.Context) error {
+	return s.err
+}
+
+func (s *stubGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
+	if s.err != nil {
+		return s.err
+	}
+	if entity == nil {
+		return nil
+	}
+	if s.entities == nil {
+		s.entities = make(map[string]*ports.ProjectedEntity)
+	}
+	s.entities[entity.URN] = cloneProjectedEntity(entity)
+	return nil
+}
+
+func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if s.err != nil {
+		return s.err
+	}
+	if link == nil {
+		return nil
+	}
+	if s.links == nil {
+		s.links = make(map[string]*ports.ProjectedLink)
+	}
+	s.links[projectedLinkKey(link)] = cloneProjectedLink(link)
+	return nil
+}
+
+func TestSourceConfigFromRequestDropsBaseURL(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources/github/read?owner=writer&base_url=http://127.0.0.1:1&cursor=2", nil)
+	req.Header.Set("Authorization", "Bearer test")
+	config, err := sourceConfigFromRequest(req)
 	if err != nil {
-		t.Fatalf("sourceConfigFromQuery() error = %v", err)
+		t.Fatalf("sourceConfigFromRequest() error = %v", err)
 	}
 	if _, ok := config["base_url"]; ok {
-		t.Fatalf("sourceConfigFromQuery() included base_url")
+		t.Fatalf("sourceConfigFromRequest() included base_url")
 	}
 	if _, ok := config["cursor"]; ok {
-		t.Fatalf("sourceConfigFromQuery() included cursor")
+		t.Fatalf("sourceConfigFromRequest() included cursor")
 	}
 	if got := config["token"]; got != "test" {
-		t.Fatalf("sourceConfigFromQuery()[token] = %q, want test", got)
+		t.Fatalf("sourceConfigFromRequest()[token] = %q, want test", got)
+	}
+	if got := config["owner"]; got != "writer" {
+		t.Fatalf("sourceConfigFromRequest()[owner] = %q, want writer", got)
+	}
+	badReq := httptest.NewRequest(http.MethodGet, "/sources/github/read?token=test", nil)
+	if _, err := sourceConfigFromRequest(badReq); err == nil {
+		t.Fatal("sourceConfigFromRequest(token query) error = nil, want error")
+	}
+}
+
+func TestSourceConfigFromRequestDropsReservedHeaderKeys(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources/github/read?owner=writer", nil)
+	req.Header.Set("X-Cerebro-Source-Config", `{"base_url":"http://127.0.0.1:1","cursor":"2","family":"audit"}`)
+
+	config, err := sourceConfigFromRequest(req)
+	if err != nil {
+		t.Fatalf("sourceConfigFromRequest() error = %v", err)
+	}
+	if _, ok := config["base_url"]; ok {
+		t.Fatal("sourceConfigFromRequest() included header base_url")
+	}
+	if _, ok := config["cursor"]; ok {
+		t.Fatal("sourceConfigFromRequest() included header cursor")
+	}
+	if got := config["family"]; got != "audit" {
+		t.Fatalf("sourceConfigFromRequest()[family] = %q, want audit", got)
 	}
 }
 
@@ -60,14 +219,6 @@ func TestBootstrapEndpoints(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
 	server := httptest.NewServer(app.Handler())
 	defer server.Close()
-	authedGet := func(path string) (*http.Response, error) {
-		req, err := http.NewRequest(http.MethodGet, server.URL+path, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Authorization", "Bearer test")
-		return server.Client().Do(req)
-	}
 
 	resp, err := server.Client().Get(server.URL + "/health")
 	if err != nil {
@@ -102,10 +253,10 @@ func TestBootstrapEndpoints(t *testing.T) {
 		t.Fatalf("decode /sources response: %v", err)
 	}
 	entries, ok := sourcesPayload["sources"].([]any)
-	if !ok || len(entries) != 1 {
-		t.Fatalf("/sources entries = %#v, want single entry", sourcesPayload["sources"])
+	if !ok || len(entries) != 2 {
+		t.Fatalf("/sources entries = %#v, want 2 entries", sourcesPayload["sources"])
 	}
-	checkResp, err := authedGet("/sources/github/check")
+	checkResp, err := sourceGet(t, server, "/sources/github/check", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/github/check error = %v", err)
 	}
@@ -121,7 +272,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if checkPayload["status"] != "ok" {
 		t.Fatalf("check status = %#v, want %q", checkPayload["status"], "ok")
 	}
-	discoverResp, err := authedGet("/sources/github/discover")
+	discoverResp, err := sourceGet(t, server, "/sources/github/discover", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/github/discover error = %v", err)
 	}
@@ -137,7 +288,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if urns, ok := discoverPayload["urns"].([]any); !ok || len(urns) != 2 {
 		t.Fatalf("discover urns = %#v, want 2 entries", discoverPayload["urns"])
 	}
-	readResp, err := authedGet("/sources/github/read")
+	readResp, err := sourceGet(t, server, "/sources/github/read", map[string]string{"token": "test"})
 	if err != nil {
 		t.Fatalf("GET /sources/github/read error = %v", err)
 	}
@@ -157,43 +308,69 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if !ok || len(previewEvents) != 1 {
 		t.Fatalf("read preview_events = %#v, want 1 entry", readPayload["preview_events"])
 	}
-	repeatedCursorResp, err := authedGet("/sources/github/read?cursor=0&cursor=1")
+	oktaCheckResp, err := sourceGet(t, server, "/sources/okta/check?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
-		t.Fatalf("GET /sources/github/read repeated cursor error = %v", err)
+		t.Fatalf("GET /sources/okta/check error = %v", err)
 	}
 	defer func() {
-		if closeErr := repeatedCursorResp.Body.Close(); closeErr != nil {
-			t.Fatalf("close repeated cursor response body: %v", closeErr)
+		if closeErr := oktaCheckResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/okta/check response body: %v", closeErr)
 		}
 	}()
-	var repeatedCursorPayload map[string]any
-	if err := json.NewDecoder(repeatedCursorResp.Body).Decode(&repeatedCursorPayload); err != nil {
-		t.Fatalf("decode repeated cursor response: %v", err)
+	var oktaCheckPayload map[string]any
+	if err := json.NewDecoder(oktaCheckResp.Body).Decode(&oktaCheckPayload); err != nil {
+		t.Fatalf("decode /sources/okta/check response: %v", err)
 	}
-	repeatedCursorEvents, ok := repeatedCursorPayload["events"].([]any)
-	if !ok || len(repeatedCursorEvents) != 1 {
-		t.Fatalf("repeated cursor events = %#v, want 1 entry", repeatedCursorPayload["events"])
+	if oktaCheckPayload["status"] != "ok" {
+		t.Fatalf("okta check status = %#v, want %q", oktaCheckPayload["status"], "ok")
 	}
-	repeatedCursorEvent, ok := repeatedCursorEvents[0].(map[string]any)
-	if !ok || repeatedCursorEvent["id"] != "github-pr-1" {
-		t.Fatalf("repeated cursor event = %#v, want github-pr-1", repeatedCursorEvents[0])
-	}
-
-	secretQueryResp, err := server.Client().Get(server.URL + "/sources/github/check?token=test")
+	oktaDiscoverResp, err := sourceGet(t, server, "/sources/okta/discover?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
 	if err != nil {
-		t.Fatalf("GET /sources/github/check secret query error = %v", err)
+		t.Fatalf("GET /sources/okta/discover error = %v", err)
 	}
 	defer func() {
-		if closeErr := secretQueryResp.Body.Close(); closeErr != nil {
-			t.Fatalf("close secret query response body: %v", closeErr)
+		if closeErr := oktaDiscoverResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/okta/discover response body: %v", closeErr)
 		}
 	}()
-	if secretQueryResp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("secret query status = %d, want %d", secretQueryResp.StatusCode, http.StatusBadRequest)
+	var oktaDiscoverPayload map[string]any
+	if err := json.NewDecoder(oktaDiscoverResp.Body).Decode(&oktaDiscoverPayload); err != nil {
+		t.Fatalf("decode /sources/okta/discover response: %v", err)
 	}
-	previewEvent, ok := previewEvents[0].(map[string]any)
-	if !ok || previewEvent["event_id"] != "github-audit-1" {
-		t.Fatalf("read preview_event = %#v, want event_id github-audit-1", previewEvents[0])
+	if urns, ok := oktaDiscoverPayload["urns"].([]any); !ok || len(urns) != 2 {
+		t.Fatalf("okta discover urns = %#v, want 2 entries", oktaDiscoverPayload["urns"])
+	}
+	oktaReadResp, err := sourceGet(t, server, "/sources/okta/read?domain=writer.okta.com&family=user", map[string]string{"token": "test"})
+	if err != nil {
+		t.Fatalf("GET /sources/okta/read error = %v", err)
+	}
+	defer func() {
+		if closeErr := oktaReadResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close /sources/okta/read response body: %v", closeErr)
+		}
+	}()
+	var oktaReadPayload map[string]any
+	if err := json.NewDecoder(oktaReadResp.Body).Decode(&oktaReadPayload); err != nil {
+		t.Fatalf("decode /sources/okta/read response: %v", err)
+	}
+	if events, ok := oktaReadPayload["events"].([]any); !ok || len(events) != 1 {
+		t.Fatalf("okta read events = %#v, want 1 entry", oktaReadPayload["events"])
+	}
+	oktaPreviewEvents, ok := oktaReadPayload["preview_events"].([]any)
+	if !ok || len(oktaPreviewEvents) != 1 {
+		t.Fatalf("okta read preview_events = %#v, want 1 entry", oktaReadPayload["preview_events"])
+	}
+	leakyQueryResp, err := server.Client().Get(server.URL + "/sources/github/check?token=secret")
+	if err != nil {
+		t.Fatalf("GET /sources/github/check leaky query error = %v", err)
+	}
+	defer func() {
+		if closeErr := leakyQueryResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close leaky query response body: %v", closeErr)
+		}
+	}()
+	if leakyQueryResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("leaky query status = %d, want %d", leakyQueryResp.StatusCode, http.StatusBadRequest)
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
@@ -216,8 +393,8 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSources() error = %v", err)
 	}
-	if len(listResp.Msg.Sources) != 1 {
-		t.Fatalf("len(ListSources.Sources) = %d, want 1", len(listResp.Msg.Sources))
+	if len(listResp.Msg.Sources) != 2 {
+		t.Fatalf("len(ListSources.Sources) = %d, want 2", len(listResp.Msg.Sources))
 	}
 	checkSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
 		SourceId: "github",
@@ -249,10 +426,11 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if len(readSourceResp.Msg.Events) != 1 {
 		t.Fatalf("len(ReadSource.Events) = %d, want 1", len(readSourceResp.Msg.Events))
 	}
-
-	_, err = client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{}))
-	if connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Fatalf("CheckSource(empty) code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
+	if len(readSourceResp.Msg.PreviewEvents) != 1 {
+		t.Fatalf("len(ReadSource.PreviewEvents) = %d, want 1", len(readSourceResp.Msg.PreviewEvents))
+	}
+	if !readSourceResp.Msg.PreviewEvents[0].PayloadDecoded {
+		t.Fatal("ReadSource.PreviewEvents[0].PayloadDecoded = false, want true")
 	}
 
 	_, err = client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{SourceId: "github"}))
@@ -275,6 +453,54 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}))
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("CheckSource(base_url) code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
+	}
+	oktaCheckSourceResp, err := client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
+		SourceId: "okta",
+		Config: map[string]string{
+			"domain": "writer.okta.com",
+			"family": "user",
+			"token":  "test",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("CheckSource(okta) error = %v", err)
+	}
+	if oktaCheckSourceResp.Msg.Status != "ok" {
+		t.Fatalf("CheckSource(okta) status = %q, want %q", oktaCheckSourceResp.Msg.Status, "ok")
+	}
+	oktaDiscoverSourceResp, err := client.DiscoverSource(context.Background(), connect.NewRequest(&cerebrov1.DiscoverSourceRequest{
+		SourceId: "okta",
+		Config: map[string]string{
+			"domain": "writer.okta.com",
+			"family": "user",
+			"token":  "test",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("DiscoverSource(okta) error = %v", err)
+	}
+	if len(oktaDiscoverSourceResp.Msg.Urns) != 2 {
+		t.Fatalf("len(DiscoverSource(okta).Urns) = %d, want 2", len(oktaDiscoverSourceResp.Msg.Urns))
+	}
+	oktaReadSourceResp, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
+		SourceId: "okta",
+		Config: map[string]string{
+			"domain": "writer.okta.com",
+			"family": "user",
+			"token":  "test",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("ReadSource(okta) error = %v", err)
+	}
+	if len(oktaReadSourceResp.Msg.Events) != 1 {
+		t.Fatalf("len(ReadSource(okta).Events) = %d, want 1", len(oktaReadSourceResp.Msg.Events))
+	}
+	if len(oktaReadSourceResp.Msg.PreviewEvents) != 1 {
+		t.Fatalf("len(ReadSource(okta).PreviewEvents) = %d, want 1", len(oktaReadSourceResp.Msg.PreviewEvents))
+	}
+	if !oktaReadSourceResp.Msg.PreviewEvents[0].PayloadDecoded {
+		t.Fatal("ReadSource(okta).PreviewEvents[0].PayloadDecoded = false, want true")
 	}
 }
 
@@ -300,48 +526,353 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	}
 }
 
+func TestSourceRuntimeEndpoints(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	appendLog := &recordingAppendLog{}
+	runtimeStore := &stubRuntimeStore{}
+	graphStore := &stubGraphStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  appendLog,
+		StateStore: runtimeStore,
+		GraphStore: graphStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	badPutReq, err := http.NewRequest(http.MethodPut, server.URL+"/source-runtimes/writer-okta-users", strings.NewReader("{"))
+	if err != nil {
+		t.Fatalf("new bad put request: %v", err)
+	}
+	badPutReq.Header.Set("Content-Type", "application/json")
+	badPutResp, err := server.Client().Do(badPutReq)
+	if err != nil {
+		t.Fatalf("PUT /source-runtimes/{id} malformed body error = %v", err)
+	}
+	defer func() {
+		if closeErr := badPutResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close bad put runtime response body: %v", closeErr)
+		}
+	}()
+	if badPutResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad put status = %d, want %d", badPutResp.StatusCode, http.StatusBadRequest)
+	}
+
+	largePutReq, err := http.NewRequest(http.MethodPut, server.URL+"/source-runtimes/writer-okta-users", bytes.NewReader(bytes.Repeat([]byte("a"), maxProtoJSONBodyBytes+1)))
+	if err != nil {
+		t.Fatalf("new large put request: %v", err)
+	}
+	largePutReq.Header.Set("Content-Type", "application/json")
+	largePutResp, err := server.Client().Do(largePutReq)
+	if err != nil {
+		t.Fatalf("PUT /source-runtimes/{id} large body error = %v", err)
+	}
+	defer func() {
+		if closeErr := largePutResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close large put runtime response body: %v", closeErr)
+		}
+	}()
+	if largePutResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("large put status = %d, want %d", largePutResp.StatusCode, http.StatusBadRequest)
+	}
+
+	putBody, err := protojson.Marshal(&cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			SourceId: "okta",
+			TenantId: "writer",
+			Config: map[string]string{
+				"domain": "writer.okta.com",
+				"family": "user",
+				"token":  "test",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal put runtime body: %v", err)
+	}
+	putReq, err := http.NewRequest(http.MethodPut, server.URL+"/source-runtimes/writer-okta-users", bytes.NewReader(putBody))
+	if err != nil {
+		t.Fatalf("new put request: %v", err)
+	}
+	putReq.Header.Set("Content-Type", "application/json")
+	putResp, err := server.Client().Do(putReq)
+	if err != nil {
+		t.Fatalf("PUT /source-runtimes/{id} error = %v", err)
+	}
+	defer func() {
+		if closeErr := putResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close put runtime response body: %v", closeErr)
+		}
+	}()
+	var putPayload map[string]any
+	if err := json.NewDecoder(putResp.Body).Decode(&putPayload); err != nil {
+		t.Fatalf("decode put runtime response: %v", err)
+	}
+	runtimePayload, ok := putPayload["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("put runtime payload = %#v, want object", putPayload["runtime"])
+	}
+	configPayload, ok := runtimePayload["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("put runtime config = %#v, want object", runtimePayload["config"])
+	}
+	if got := configPayload["token"]; got != "[redacted]" {
+		t.Fatalf("put runtime token = %#v, want [redacted]", got)
+	}
+	if got := runtimePayload["tenant_id"]; got != "writer" {
+		t.Fatalf("put runtime tenant_id = %#v, want writer", got)
+	}
+
+	getResp, err := server.Client().Get(server.URL + "/source-runtimes/writer-okta-users")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes/{id} error = %v", err)
+	}
+	defer func() {
+		if closeErr := getResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close get runtime response body: %v", closeErr)
+		}
+	}()
+	var getPayload map[string]any
+	if err := json.NewDecoder(getResp.Body).Decode(&getPayload); err != nil {
+		t.Fatalf("decode get runtime response: %v", err)
+	}
+	getRuntimePayload, ok := getPayload["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("get runtime payload = %#v, want object", getPayload["runtime"])
+	}
+	if got := getRuntimePayload["source_id"]; got != "okta" {
+		t.Fatalf("get runtime source_id = %#v, want okta", got)
+	}
+	if got := getRuntimePayload["tenant_id"]; got != "writer" {
+		t.Fatalf("get runtime tenant_id = %#v, want writer", got)
+	}
+
+	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-users/sync?page_limit=1", nil)
+	if err != nil {
+		t.Fatalf("new sync request: %v", err)
+	}
+	syncResp, err := server.Client().Do(syncReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/sync error = %v", err)
+	}
+	defer func() {
+		if closeErr := syncResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close sync runtime response body: %v", closeErr)
+		}
+	}()
+	var syncPayload map[string]any
+	if err := json.NewDecoder(syncResp.Body).Decode(&syncPayload); err != nil {
+		t.Fatalf("decode sync runtime response: %v", err)
+	}
+	if got := syncPayload["events_appended"]; got != float64(1) {
+		t.Fatalf("sync events_appended = %#v, want 1", got)
+	}
+	if got := syncPayload["entities_projected"]; got != float64(3) {
+		t.Fatalf("sync entities_projected = %#v, want 3", got)
+	}
+	if got := syncPayload["links_projected"]; got != float64(2) {
+		t.Fatalf("sync links_projected = %#v, want 2", got)
+	}
+
+	badSyncReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-users/sync?page_limit=not-a-number", nil)
+	if err != nil {
+		t.Fatalf("new bad sync request: %v", err)
+	}
+	badSyncResp, err := server.Client().Do(badSyncReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/sync bad page_limit error = %v", err)
+	}
+	defer func() {
+		if closeErr := badSyncResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close bad sync runtime response body: %v", closeErr)
+		}
+	}()
+	if badSyncResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad sync status = %d, want %d", badSyncResp.StatusCode, http.StatusBadRequest)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	putRuntimeResp, err := client.PutSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-github",
+			SourceId: "github",
+			TenantId: "writer",
+			Config:   map[string]string{"token": "test"},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("PutSourceRuntime() error = %v", err)
+	}
+	if got := putRuntimeResp.Msg.GetRuntime().GetConfig()["token"]; got != "[redacted]" {
+		t.Fatalf("PutSourceRuntime token = %q, want [redacted]", got)
+	}
+	if got := putRuntimeResp.Msg.GetRuntime().GetTenantId(); got != "writer" {
+		t.Fatalf("PutSourceRuntime tenant_id = %q, want writer", got)
+	}
+
+	getRuntimeResp, err := client.GetSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{
+		Id: "writer-okta-users",
+	}))
+	if err != nil {
+		t.Fatalf("GetSourceRuntime() error = %v", err)
+	}
+	if got := getRuntimeResp.Msg.GetRuntime().GetSourceId(); got != "okta" {
+		t.Fatalf("GetSourceRuntime source_id = %q, want okta", got)
+	}
+	if got := getRuntimeResp.Msg.GetRuntime().GetTenantId(); got != "writer" {
+		t.Fatalf("GetSourceRuntime tenant_id = %q, want writer", got)
+	}
+
+	syncRuntimeResp, err := client.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{
+		Id:        "writer-okta-users",
+		PageLimit: 1,
+	}))
+	if err != nil {
+		t.Fatalf("SyncSourceRuntime() error = %v", err)
+	}
+	if syncRuntimeResp.Msg.GetEventsAppended() != 1 {
+		t.Fatalf("SyncSourceRuntime events_appended = %d, want 1", syncRuntimeResp.Msg.GetEventsAppended())
+	}
+	if syncRuntimeResp.Msg.GetEntitiesProjected() != 3 {
+		t.Fatalf("SyncSourceRuntime entities_projected = %d, want 3", syncRuntimeResp.Msg.GetEntitiesProjected())
+	}
+	if syncRuntimeResp.Msg.GetLinksProjected() != 2 {
+		t.Fatalf("SyncSourceRuntime links_projected = %d, want 2", syncRuntimeResp.Msg.GetLinksProjected())
+	}
+	if len(appendLog.events) != 2 {
+		t.Fatalf("len(appendLog.events) = %d, want 2", len(appendLog.events))
+	}
+	if len(runtimeStore.entities) == 0 || len(graphStore.entities) == 0 {
+		t.Fatalf("projected entities = state:%d graph:%d, want non-zero", len(runtimeStore.entities), len(graphStore.entities))
+	}
+}
+
+func TestSourceRuntimeRPCErrorCodes(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := &bootstrapService{
+		sources: registry,
+		deps: Dependencies{
+			StateStore: &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{}},
+			AppendLog:  &recordingAppendLog{},
+		},
+	}
+
+	if _, err := service.GetSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{Id: "missing"})); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("GetSourceRuntime() code = %v, want %v", connect.CodeOf(err), connect.CodeNotFound)
+	}
+	if _, err := service.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("SyncSourceRuntime() empty request code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
+	}
+
+	unavailable := &bootstrapService{sources: registry}
+	if _, err := unavailable.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{Id: "runtime"})); connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("SyncSourceRuntime() unavailable code = %v, want %v", connect.CodeOf(err), connect.CodeUnavailable)
+	}
+	if got := connect.CodeOf(sourceRuntimeConnectError(context.Canceled)); got != connect.CodeCanceled {
+		t.Fatalf("sourceRuntimeConnectError(context.Canceled) code = %v, want %v", got, connect.CodeCanceled)
+	}
+	if got := connect.CodeOf(sourceRuntimeConnectError(context.DeadlineExceeded)); got != connect.CodeDeadlineExceeded {
+		t.Fatalf("sourceRuntimeConnectError(context.DeadlineExceeded) code = %v, want %v", got, connect.CodeDeadlineExceeded)
+	}
+	preserved := connect.NewError(connect.CodeFailedPrecondition, errors.New("already wrapped"))
+	got := sourceRuntimeConnectError(preserved)
+	var preservedErr *connect.Error
+	if !errors.As(got, &preservedErr) {
+		t.Fatalf("sourceRuntimeConnectError(connect error) = %T, want *connect.Error", got)
+	}
+	if preservedErr.Code() != preserved.Code() || preservedErr.Message() != preserved.Message() {
+		t.Fatalf("sourceRuntimeConnectError(connect error) = %v, want preserved connect error", got)
+	}
+	internalErr := sourceRuntimeConnectError(errors.New("dial tcp credential@db.internal:5432: i/o timeout"))
+	if got := connect.CodeOf(internalErr); got != connect.CodeInternal {
+		t.Fatalf("sourceRuntimeConnectError(internal) code = %v, want %v", got, connect.CodeInternal)
+	}
+	var connectErr *connect.Error
+	if !errors.As(internalErr, &connectErr) {
+		t.Fatalf("sourceRuntimeConnectError(internal) = %T, want *connect.Error", internalErr)
+	}
+	if strings.Contains(connectErr.Message(), "credential") || strings.Contains(connectErr.Message(), "db.internal") {
+		t.Fatalf("sourceRuntimeConnectError(internal) exposed details: %q", connectErr.Message())
+	}
+	if !strings.Contains(connectErr.Message(), "internal error") {
+		t.Fatalf("sourceRuntimeConnectError(internal) message = %q, want generic internal error", connectErr.Message())
+	}
+}
+
+func TestWriteSourceRuntimeErrorHidesInternalDetails(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeSourceRuntimeError(recorder, errors.New("dial tcp credential@db.internal:5432: i/o timeout"))
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+	if got := recorder.Body.String(); got != http.StatusText(http.StatusInternalServerError)+"\n" {
+		t.Fatalf("body = %q, want generic status text", got)
+	}
+	if bytes.Contains(recorder.Body.Bytes(), []byte("credential")) || bytes.Contains(recorder.Body.Bytes(), []byte("db.internal")) {
+		t.Fatalf("body exposed internal error details: %q", recorder.Body.String())
+	}
+
+	invalid := httptest.NewRecorder()
+	writeSourceRuntimeError(invalid, sourceruntime.ErrInvalidRequest)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid request status = %d, want %d", invalid.Code, http.StatusBadRequest)
+	}
+}
+
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {
 		return nil, err
 	}
-	return sourcecdk.NewRegistry(source)
+	okta, err := oktasource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
+	return sourcecdk.NewRegistry(source, okta)
 }
 
-func TestSourceConnectErrorMapping(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	deadlineCtx, deadlineCancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
-	defer deadlineCancel()
-	cases := []struct {
-		name string
-		err  error
-		want connect.Code
-	}{
-		{"invalid_id", sourceops.ErrInvalidSourceID, connect.CodeInvalidArgument},
-		{"not_found", sourceops.ErrSourceNotFound, connect.CodeNotFound},
-		{"invalid_config", sourceops.ErrInvalidSourceConfig, connect.CodeInvalidArgument},
-		{"wrapped_invalid_config", errors.Join(sourceops.ErrInvalidSourceConfig, errors.New("repository is required")), connect.CodeInvalidArgument},
-		{"canceled", ctx.Err(), connect.CodeCanceled},
-		{"deadline", deadlineCtx.Err(), connect.CodeDeadlineExceeded},
-		{"opaque", errors.New("internal token leak boom"), connect.CodeInternal},
+func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {
+	if entity == nil {
+		return nil
 	}
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := sourceConnectError(tc.err)
-			var connectErr *connect.Error
-			if !errors.As(got, &connectErr) {
-				t.Fatalf("sourceConnectError(%v) = %v, want connect.Error", tc.err, got)
-			}
-			if connectErr.Code() != tc.want {
-				t.Fatalf("code = %v, want %v", connectErr.Code(), tc.want)
-			}
-			if tc.name == "opaque" && connectErr.Message() != "internal error" {
-				t.Fatalf("message = %q, want %q", connectErr.Message(), "internal error")
-			}
-		})
+	attributes := make(map[string]string, len(entity.Attributes))
+	for key, value := range entity.Attributes {
+		attributes[key] = value
 	}
+	return &ports.ProjectedEntity{
+		URN:        entity.URN,
+		TenantID:   entity.TenantID,
+		SourceID:   entity.SourceID,
+		EntityType: entity.EntityType,
+		Label:      entity.Label,
+		Attributes: attributes,
+	}
+}
+
+func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
+	if link == nil {
+		return nil
+	}
+	attributes := make(map[string]string, len(link.Attributes))
+	for key, value := range link.Attributes {
+		attributes[key] = value
+	}
+	return &ports.ProjectedLink{
+		TenantID:   link.TenantID,
+		SourceID:   link.SourceID,
+		FromURN:    link.FromURN,
+		ToURN:      link.ToURN,
+		Relation:   link.Relation,
+		Attributes: attributes,
+	}
+}
+
+func projectedLinkKey(link *ports.ProjectedLink) string {
+	return link.FromURN + "|" + link.Relation + "|" + link.ToURN
 }

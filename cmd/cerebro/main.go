@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -17,8 +18,11 @@ import (
 	"github.com/writer/cerebro/internal/bootstrap"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
+	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
 type usageError string
@@ -49,11 +53,13 @@ func run(args []string) error {
 		return serve()
 	case "source":
 		return runSource(args[1:])
+	case "source-runtime":
+		return runSourceRuntime(args[1:])
 	case "version":
 		fmt.Printf("%s %s\n", buildinfo.ServiceName, buildinfo.Version)
 		return nil
 	}
-	return usageError(fmt.Sprintf("usage: %s [serve|version|source]", os.Args[0]))
+	return usageError(fmt.Sprintf("usage: %s [serve|version|source|source-runtime]", os.Args[0]))
 }
 
 func serve() error {
@@ -161,6 +167,72 @@ func runSource(args []string) error {
 	}
 }
 
+func runSourceRuntime(args []string) error {
+	if len(args) == 0 {
+		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|sync] ...", os.Args[0]))
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	deps, closeDeps, err := bootstrap.OpenDependencies(context.Background(), cfg)
+	if err != nil {
+		return fmt.Errorf("open dependencies: %w", err)
+	}
+	defer func() {
+		if err := closeDeps(); err != nil {
+			log.Printf("close dependencies: %v", err)
+		}
+	}()
+	registry, err := sourceregistry.Builtin()
+	if err != nil {
+		return fmt.Errorf("open source registry: %w", err)
+	}
+	service := sourceruntime.New(
+		registry,
+		sourceRuntimeStore(deps.StateStore),
+		deps.AppendLog,
+		sourceProjector(deps.StateStore, deps.GraphStore),
+	)
+
+	switch args[0] {
+	case "put":
+		runtime, err := parseSourceRuntimePutArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		response, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: runtime})
+		if err != nil {
+			return err
+		}
+		return printProto(response)
+	case "get":
+		if len(args) < 2 || strings.TrimSpace(args[1]) == "" {
+			return usageError(fmt.Sprintf("usage: %s source-runtime get <runtime-id>", os.Args[0]))
+		}
+		response, err := service.Get(context.Background(), &cerebrov1.GetSourceRuntimeRequest{Id: strings.TrimSpace(args[1])})
+		if err != nil {
+			return err
+		}
+		return printProto(response)
+	case "sync":
+		runtimeID, pageLimit, err := parseSourceRuntimeSyncArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		response, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+			Id:        runtimeID,
+			PageLimit: pageLimit,
+		})
+		if err != nil {
+			return err
+		}
+		return printProto(response)
+	default:
+		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|sync] ...", os.Args[0]))
+	}
+}
+
 func parseSourceCommandArgs(args []string) (string, map[string]string, *cerebrov1.SourceCursor, error) {
 	if len(args) == 0 {
 		return "", nil, nil, usageError(fmt.Sprintf("usage: %s source <command> <source-id> [key=value ...]", os.Args[0]))
@@ -217,6 +289,88 @@ func sensitiveSourceConfigKey(key string) bool {
 		return true
 	}
 	return normalized == "key" || strings.HasSuffix(normalized, "_key")
+}
+
+func parseSourceRuntimePutArgs(args []string) (*cerebrov1.SourceRuntime, error) {
+	if len(args) < 2 {
+		return nil, usageError(fmt.Sprintf("usage: %s source-runtime put <runtime-id> <source-id> [tenant_id=<tenant-id>] [key=value ...]", os.Args[0]))
+	}
+	runtime := &cerebrov1.SourceRuntime{
+		Id:       strings.TrimSpace(args[0]),
+		SourceId: strings.TrimSpace(args[1]),
+		Config:   make(map[string]string),
+	}
+	if runtime.GetId() == "" || runtime.GetSourceId() == "" {
+		return nil, usageError(fmt.Sprintf("usage: %s source-runtime put <runtime-id> <source-id> [tenant_id=<tenant-id>] [key=value ...]", os.Args[0]))
+	}
+	for _, arg := range args[2:] {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return nil, fmt.Errorf("invalid source runtime argument %q; want key=value", arg)
+		}
+		if key == "tenant_id" {
+			runtime.TenantId = strings.TrimSpace(value)
+			continue
+		}
+		runtime.Config[key] = value
+	}
+	return runtime, nil
+}
+
+func parseSourceRuntimeSyncArgs(args []string) (string, uint32, error) {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		return "", 0, usageError(fmt.Sprintf("usage: %s source-runtime sync <runtime-id> [page_limit=N]", os.Args[0]))
+	}
+	runtimeID := strings.TrimSpace(args[0])
+	var pageLimit uint32
+	for _, arg := range args[1:] {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return "", 0, fmt.Errorf("invalid source runtime argument %q; want key=value", arg)
+		}
+		if key != "page_limit" {
+			return "", 0, fmt.Errorf("unsupported source runtime argument %q", key)
+		}
+		parsed, err := strconv.ParseUint(value, 10, 32)
+		if err != nil {
+			return "", 0, fmt.Errorf("parse page_limit: %w", err)
+		}
+		pageLimit = uint32(parsed)
+	}
+	return runtimeID, pageLimit, nil
+}
+
+func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
+	runtimeStore, ok := store.(ports.SourceRuntimeStore)
+	if !ok {
+		return nil
+	}
+	return runtimeStore
+}
+
+func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateStore {
+	projectionStore, ok := store.(ports.ProjectionStateStore)
+	if !ok {
+		return nil
+	}
+	return projectionStore
+}
+
+func sourceProjectionGraphStore(store ports.GraphStore) ports.ProjectionGraphStore {
+	projectionStore, ok := store.(ports.ProjectionGraphStore)
+	if !ok {
+		return nil
+	}
+	return projectionStore
+}
+
+func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) ports.SourceProjector {
+	state := sourceProjectionStateStore(stateStore)
+	graph := sourceProjectionGraphStore(graphStore)
+	if state == nil && graph == nil {
+		return nil
+	}
+	return sourceprojection.New(state, graph)
 }
 
 func printProto(message proto.Message) error {

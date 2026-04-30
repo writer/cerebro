@@ -1,0 +1,6 @@
+id: okta
+name: Okta
+description: Okta audit log and user inventory source.
+emitted_kinds:
+  - okta.audit
+  - okta.user
