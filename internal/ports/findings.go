@@ -23,8 +23,15 @@ type FindingRecord struct {
 	LastObservedAt  time.Time
 }
 
+// ListFindingsRequest scopes one finding query.
+type ListFindingsRequest struct {
+	TenantID  string
+	RuntimeID string
+}
+
 // FindingStore persists normalized findings in the state store.
 type FindingStore interface {
 	StateStore
 	UpsertFinding(context.Context, *FindingRecord) (*FindingRecord, error)
+	ListFindings(context.Context, ListFindingsRequest) ([]*FindingRecord, error)
 }
