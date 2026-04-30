@@ -1,8 +1,16 @@
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Any, Dict
 
-from cerebro_sdk import Client, IntegrationClient
+# Make the example runnable directly from a repo checkout without an extra `pip install -e .`
+# step by adding the parent `sdk/python` directory to sys.path before importing cerebro_sdk.
+_SDK_PYTHON_ROOT = Path(__file__).resolve().parent.parent
+if str(_SDK_PYTHON_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SDK_PYTHON_ROOT))
+
+from cerebro_sdk import Client, IntegrationClient  # noqa: E402
 
 
 def build_issue_claims(integration: IntegrationClient, issue: Dict[str, Any]) -> list[Dict[str, Any]]:
