@@ -186,6 +186,8 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if err := s.ensureProjectionSchema(ctx); err != nil {
 		return err
 	}
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
 	merged, err := s.mergedRelationAttributes(ctx, fromURN, toURN, relation, link.Attributes)
 	if err != nil {
 		return err
