@@ -70,23 +70,6 @@ jobs:
       id-token: write
       actions: read
     steps:
-      - name: Verify trusted actor
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          permission="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${GITHUB_ACTOR}/permission" --jq '.permission' 2>/dev/null || true)"
-          case "${permission}" in
-            admin|maintain|write)
-              echo "Actor ${GITHUB_ACTOR} has ${permission} permission."
-              ;;
-            *)
-              echo "::error::Actor ${GITHUB_ACTOR} must have write, maintain, or admin permission to run Droid."
-              exit 1
-              ;;
-          esac
-
       - name: Verify trusted target
         id: target
         shell: bash
@@ -121,6 +104,24 @@ jobs:
           if not should_run:
               print("Skipping Droid for fork pull request conversation.")
           PY
+
+      - name: Verify trusted actor
+        if: steps.target.outputs.should_run == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          permission="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${GITHUB_ACTOR}/permission" --jq '.permission' 2>/dev/null || true)"
+          case "${permission}" in
+            admin|maintain|write)
+              echo "Actor ${GITHUB_ACTOR} has ${permission} permission."
+              ;;
+            *)
+              echo "::error::Actor ${GITHUB_ACTOR} must have write, maintain, or admin permission to run Droid."
+              exit 1
+              ;;
+          esac
 
       - name: Checkout repository
         if: steps.target.outputs.should_run == 'true'
