@@ -66,6 +66,17 @@ func TestUpsertProjectedEntityAndLink(t *testing.T) {
 	if linkCount != 1 {
 		t.Fatalf("projected link count = %d, want 1", linkCount)
 	}
+
+	deleteLink := *link
+	deleteLink.TenantID = "updated-tenant"
+	deleteLink.SourceID = "updated-source"
+	if err := store.DeleteProjectedLink(ctx, &deleteLink); err != nil {
+		t.Fatalf("DeleteProjectedLink(changed tenant/source) error = %v", err)
+	}
+	linkCount = queryGraphCount(t, store, "MATCH (:entity)-[r:relation]->(:entity) RETURN COUNT(r)")
+	if linkCount != 0 {
+		t.Fatalf("projected link count after delete = %d, want 0", linkCount)
+	}
 }
 
 func TestProjectorBuildsTraversableLocalGraph(t *testing.T) {

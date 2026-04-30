@@ -43,8 +43,18 @@ class Client:
         result, _ = self._request_json("GET", f"/source-runtimes/{parse.quote(runtime_id)}")
         return result
 
-    def write_claims(self, runtime_id: str, claims: list[Dict[str, Any]]) -> Any:
-        result, _ = self._request_json("POST", f"/source-runtimes/{parse.quote(runtime_id)}/claims", {"claims": claims})
+    def write_claims(
+        self,
+        runtime_id: str,
+        claims: list[Dict[str, Any]],
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        payload: Dict[str, Any] = {"claims": claims}
+        if options:
+            if "claims" in options:
+                raise ValueError("options must not include 'claims'")
+            payload.update(options)
+        result, _ = self._request_json("POST", f"/source-runtimes/{parse.quote(runtime_id)}/claims", payload)
         return result
 
     def list_claims(self, runtime_id: str, filters: Optional[Dict[str, Any]] = None) -> Any:
@@ -303,8 +313,8 @@ class IntegrationClient:
         }
         return self.client.put_source_runtime(self.runtime_id, runtime)
 
-    def write_claims(self, claims: list[Dict[str, Any]]) -> Any:
-        return self.client.write_claims(self.runtime_id, claims)
+    def write_claims(self, claims: list[Dict[str, Any]], options: Optional[Dict[str, Any]] = None) -> Any:
+        return self.client.write_claims(self.runtime_id, claims, options)
 
     def list_claims(self, filters: Optional[Dict[str, Any]] = None) -> Any:
         return self.client.list_claims(self.runtime_id, filters)

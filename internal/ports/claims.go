@@ -29,15 +29,16 @@ type ClaimRecord struct {
 
 // ListClaimsRequest scopes one claim query.
 type ListClaimsRequest struct {
-	RuntimeID   string
-	ClaimID     string
-	SubjectURN  string
-	Predicate   string
-	ObjectURN   string
-	ObjectValue string
-	ClaimType   string
-	Status      string
-	Limit       uint32
+	RuntimeID     string
+	ClaimID       string
+	SubjectURN    string
+	Predicate     string
+	ObjectURN     string
+	ObjectValue   string
+	ClaimType     string
+	Status        string
+	SourceEventID string
+	Limit         uint32
 }
 
 // ClaimStore persists normalized claims in the state store.

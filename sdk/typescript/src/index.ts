@@ -86,6 +86,10 @@ export interface ClaimOptions {
   claim_type?: string;
 }
 
+export interface WriteClaimsOptions {
+  replace_existing?: boolean;
+}
+
 export interface ListClaimsOptions {
   claim_id?: string;
   subject_urn?: string;
@@ -94,6 +98,7 @@ export interface ListClaimsOptions {
   object_value?: string;
   claim_type?: string;
   status?: string;
+  source_event_id?: string;
   limit?: number;
 }
 
@@ -187,8 +192,11 @@ export class Client {
     return this.requestJson<Record<string, unknown>>("GET", `/source-runtimes/${encodeURIComponent(runtimeId)}`);
   }
 
-  async writeClaims(runtimeId: string, claims: Claim[]): Promise<Record<string, unknown>> {
-    return this.requestJson<Record<string, unknown>>("POST", `/source-runtimes/${encodeURIComponent(runtimeId)}/claims`, { claims });
+  async writeClaims(runtimeId: string, claims: Claim[], options: WriteClaimsOptions = {}): Promise<Record<string, unknown>> {
+    return this.requestJson<Record<string, unknown>>("POST", `/source-runtimes/${encodeURIComponent(runtimeId)}/claims`, {
+      ...options,
+      claims,
+    });
   }
 
   async listClaims(runtimeId: string, options: ListClaimsOptions = {}): Promise<Record<string, unknown>> {
@@ -518,8 +526,8 @@ export class IntegrationClient {
     });
   }
 
-  async writeClaims(claims: Claim[]): Promise<Record<string, unknown>> {
-    return this.client.writeClaims(this.runtimeId, claims);
+  async writeClaims(claims: Claim[], options: WriteClaimsOptions = {}): Promise<Record<string, unknown>> {
+    return this.client.writeClaims(this.runtimeId, claims, options);
   }
 
   async listClaims(options: ListClaimsOptions = {}): Promise<Record<string, unknown>> {
