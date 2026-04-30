@@ -20,6 +20,7 @@ service BootstrapService {
   rpc PutSourceRuntime(PutSourceRuntimeRequest) returns (PutSourceRuntimeResponse);
   rpc GetSourceRuntime(GetSourceRuntimeRequest) returns (GetSourceRuntimeResponse);
   rpc SyncSourceRuntime(SyncSourceRuntimeRequest) returns (SyncSourceRuntimeResponse);
+  rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
 }
 
 // GetVersionRequest requests static build metadata from the running service.
@@ -151,4 +152,37 @@ message SyncSourceRuntimeResponse {
   uint32 events_appended = 4;
   uint32 entities_projected = 5;
   uint32 links_projected = 6;
+}
+
+// Finding is the normalized persisted finding view for the first runtime evaluator slice.
+message Finding {
+  string id = 1;
+  string fingerprint = 2;
+  string tenant_id = 3;
+  string runtime_id = 4;
+  string rule_id = 5;
+  string title = 6;
+  string severity = 7;
+  string status = 8;
+  string summary = 9;
+  repeated string resource_urns = 10;
+  repeated string event_ids = 11;
+  map<string, string> attributes = 12;
+  google.protobuf.Timestamp first_observed_at = 13;
+  google.protobuf.Timestamp last_observed_at = 14;
+}
+
+// EvaluateSourceRuntimeFindingsRequest replays one stored runtime through the first built-in finding evaluator.
+message EvaluateSourceRuntimeFindingsRequest {
+  string id = 1;
+  uint32 event_limit = 2;
+}
+
+// EvaluateSourceRuntimeFindingsResponse returns the evaluated runtime, fixed rule spec, and persisted findings.
+message EvaluateSourceRuntimeFindingsResponse {
+  SourceRuntime runtime = 1;
+  RuleSpec rule = 2;
+  uint32 events_evaluated = 3;
+  uint32 findings_upserted = 4;
+  repeated Finding findings = 5;
 }

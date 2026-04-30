@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -62,6 +63,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
+	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
@@ -184,6 +186,27 @@ func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, response)
 }
 
+func (a *App) handleEvaluateSourceRuntimeFindings(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.EvaluateSourceRuntimeFindingsRequest{}
+	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
+		body := []byte(`{"event_limit":` + eventLimit + `}`)
+		if err := protojson.Unmarshal(body, request); err != nil {
+			writeFindingError(w, err)
+			return
+		}
+	}
+	request.Id = r.PathValue("runtimeID")
+	response, err := a.findingService().EvaluateSourceRuntime(r.Context(), findings.EvaluateRequest{
+		RuntimeID:  request.GetId(),
+		EventLimit: request.GetEventLimit(),
+	})
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, findingResponse(response))
+}
+
 func (s *bootstrapService) GetVersion(_ context.Context, _ *connect.Request[cerebrov1.GetVersionRequest]) (*connect.Response[cerebrov1.GetVersionResponse], error) {
 	return connect.NewResponse(&cerebrov1.GetVersionResponse{
 		ServiceName: buildinfo.ServiceName,
@@ -265,6 +288,21 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 	return connect.NewResponse(response), nil
 }
 
+func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingsResponse], error) {
+	response, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+	).EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
+		RuntimeID:  req.Msg.GetId(),
+		EventLimit: req.Msg.GetEventLimit(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(findingResponse(response)), nil
+}
+
 func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHealthResponse {
 	components := []*cerebrov1.ComponentStatus{
 		componentStatus(ctx, "append_log", deps.AppendLog),
@@ -309,6 +347,14 @@ func (a *App) runtimeService() *sourceruntime.Service {
 	)
 }
 
+func (a *App) findingService() *findings.Service {
+	return findings.New(
+		sourceRuntimeStore(a.deps.StateStore),
+		eventReplayer(a.deps.AppendLog),
+		findingStore(a.deps.StateStore),
+	)
+}
+
 func sourceConfigFromQuery(r *http.Request) map[string]string {
 	values := make(map[string]string)
 	for key, rawValues := range r.URL.Query() {
@@ -339,10 +385,25 @@ func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), statusCode)
 }
 
+func writeFindingError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusBadRequest
+	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		statusCode = http.StatusNotFound
+	case errors.Is(err, findings.ErrRuntimeUnavailable):
+		statusCode = http.StatusServiceUnavailable
+	}
+	http.Error(w, err.Error(), statusCode)
+}
+
 func readProtoJSON(r *http.Request, message proto.Message) error {
-	body, err := io.ReadAll(r.Body)
+	const maxBodyBytes int64 = 1 << 20
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
 	if err != nil {
 		return err
+	}
+	if int64(len(body)) > maxBodyBytes {
+		return errors.New("request body too large")
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil
@@ -381,6 +442,68 @@ func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) p
 		return nil
 	}
 	return sourceprojection.New(state, graph)
+}
+
+func findingStore(store ports.StateStore) ports.FindingStore {
+	findingStore, ok := store.(ports.FindingStore)
+	if !ok {
+		return nil
+	}
+	return findingStore
+}
+
+func eventReplayer(appendLog ports.AppendLog) ports.EventReplayer {
+	replayer, ok := appendLog.(ports.EventReplayer)
+	if !ok {
+		return nil
+	}
+	return replayer
+}
+
+func findingResponse(result *findings.EvaluateResult) *cerebrov1.EvaluateSourceRuntimeFindingsResponse {
+	if result == nil {
+		return &cerebrov1.EvaluateSourceRuntimeFindingsResponse{}
+	}
+	response := &cerebrov1.EvaluateSourceRuntimeFindingsResponse{
+		Rule:             result.Rule,
+		EventsEvaluated:  result.EventsEvaluated,
+		FindingsUpserted: uint32(len(result.Findings)),
+		Findings:         make([]*cerebrov1.Finding, 0, len(result.Findings)),
+	}
+	for _, finding := range result.Findings {
+		response.Findings = append(response.Findings, findingMessage(finding))
+	}
+	return response
+}
+
+func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
+	if finding == nil {
+		return nil
+	}
+	message := &cerebrov1.Finding{
+		Id:           finding.ID,
+		Fingerprint:  finding.Fingerprint,
+		TenantId:     finding.TenantID,
+		RuntimeId:    finding.RuntimeID,
+		RuleId:       finding.RuleID,
+		Title:        finding.Title,
+		Severity:     finding.Severity,
+		Status:       finding.Status,
+		Summary:      finding.Summary,
+		ResourceUrns: append([]string(nil), finding.ResourceURNs...),
+		EventIds:     append([]string(nil), finding.EventIDs...),
+		Attributes:   make(map[string]string, len(finding.Attributes)),
+	}
+	for key, value := range finding.Attributes {
+		message.Attributes[key] = value
+	}
+	if !finding.FirstObservedAt.IsZero() {
+		message.FirstObservedAt = timestamppb.New(finding.FirstObservedAt)
+	}
+	if !finding.LastObservedAt.IsZero() {
+		message.LastObservedAt = timestamppb.New(finding.LastObservedAt)
+	}
+	return message
 }
 
 type pinger interface {
