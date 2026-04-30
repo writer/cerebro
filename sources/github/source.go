@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +20,8 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
+
+var errUnsafeBaseURLHost = errors.New("github base_url must not target loopback, private, or link-local hosts")
 
 //go:embed catalog.yaml
 var catalogFS embed.FS
@@ -31,7 +35,8 @@ const (
 
 // Source is the live GitHub source preview used by the builtin registry.
 type Source struct {
-	spec *cerebrov1.SourceSpec
+	spec                 *cerebrov1.SourceSpec
+	allowLoopbackBaseURL bool
 }
 
 type settings struct {
@@ -75,7 +80,7 @@ func (s *Source) Spec() *cerebrov1.SourceSpec {
 
 // Check validates that a GitHub owner or repository is reachable.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
-	client, settings, err := newClient(cfg, false)
+	client, settings, err := s.newClient(ctx, cfg, false)
 	if err != nil {
 		return err
 	}
@@ -89,7 +94,7 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 
 // Discover returns live GitHub repository URNs.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	client, settings, err := newClient(cfg, false)
+	client, settings, err := s.newClient(ctx, cfg, false)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +126,7 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 
 // Read pages through live GitHub pull requests for a configured repository.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	client, settings, err := newClient(cfg, true)
+	client, settings, err := s.newClient(ctx, cfg, true)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
@@ -180,7 +185,7 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return spec, nil
 }
 
-func newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settings, error) {
+func (s *Source) newClient(ctx context.Context, cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settings, error) {
 	settings, err := parseSettings(cfg, requireRepo)
 	if err != nil {
 		return nil, settings, err
@@ -190,6 +195,10 @@ func newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settin
 		client = client.WithAuthToken(settings.token)
 	}
 	if settings.baseURL != "" {
+		allowLoopback := s != nil && s.allowLoopbackBaseURL
+		if err := validateBaseURL(ctx, settings.baseURL, allowLoopback); err != nil {
+			return nil, settings, fmt.Errorf("parse github base_url: %w", err)
+		}
 		enterpriseClient, err := client.WithEnterpriseURLs(settings.baseURL, settings.baseURL)
 		if err != nil {
 			return nil, settings, fmt.Errorf("parse github base_url: %w", err)
@@ -197,6 +206,61 @@ func newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settin
 		client = enterpriseClient
 	}
 	return client, settings, nil
+}
+
+// validateBaseURL rejects base URLs whose host targets loopback, private RFC1918, or link-local
+// addresses, or that resolve through DNS to such addresses. This prevents an SSRF where a caller
+// supplies a base_url pointing at internal infrastructure reachable from the cerebro process.
+//
+// When allowLoopback is true (intended for `httptest.Server` based tests only) loopback addresses
+// are permitted. Private/link-local addresses remain rejected regardless.
+func validateBaseURL(ctx context.Context, raw string, allowLoopback bool) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return err
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("github base_url scheme must be http or https")
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("github base_url host is required")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if isUnsafeIP(ip, allowLoopback) {
+			return errUnsafeBaseURLHost
+		}
+		return nil
+	}
+	resolveCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(resolveCtx, host)
+	if err != nil {
+		// Fail closed: if we cannot verify the host is safe, do not allow it.
+		return fmt.Errorf("resolve github base_url host %q: %w", host, err)
+	}
+	for _, addr := range addrs {
+		if isUnsafeIP(addr.IP, allowLoopback) {
+			return errUnsafeBaseURLHost
+		}
+	}
+	return nil
+}
+
+func isUnsafeIP(ip net.IP, allowLoopback bool) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsUnspecified() {
+		return true
+	}
+	if ip.IsLoopback() {
+		return !allowLoopback
+	}
+	if ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsInterfaceLocalMulticast() {
+		return true
+	}
+	return false
 }
 
 func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
