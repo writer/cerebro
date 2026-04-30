@@ -395,6 +395,14 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 	if normalized.GetSubjectUrn() == "" {
 		return nil, fmt.Errorf("%w: claim subject urn is required", ErrInvalidRequest)
 	}
+	if err := validateRuntimeURN(runtime, normalized.GetSubjectUrn(), "subject"); err != nil {
+		return nil, err
+	}
+	if normalized.GetObjectUrn() != "" {
+		if err := validateRuntimeURN(runtime, normalized.GetObjectUrn(), "object"); err != nil {
+			return nil, err
+		}
+	}
 	if normalized.GetPredicate() == "" {
 		return nil, fmt.Errorf("%w: claim predicate is required", ErrInvalidRequest)
 	}
@@ -413,12 +421,6 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 	case claimTypeRelation:
 		if normalized.GetObjectUrn() == "" {
 			return nil, fmt.Errorf("%w: claim object urn is required when claim_type=%q", ErrInvalidRequest, normalized.GetClaimType())
-		}
-		if err := validateRuntimeURN(runtime, normalized.GetSubjectUrn(), "subject"); err != nil {
-			return nil, err
-		}
-		if err := validateRuntimeURN(runtime, normalized.GetObjectUrn(), "object"); err != nil {
-			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("%w: unsupported claim type %q", ErrInvalidRequest, normalized.GetClaimType())

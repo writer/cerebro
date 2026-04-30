@@ -49,7 +49,6 @@ jobs:
           !contains(github.event.review.body || '', '@droid scaffold source')) ||
         (github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
-          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) &&
           (contains(github.event.pull_request.body || '', '@droid') || contains(github.event.pull_request.title || '', '@droid')) &&
           !contains(github.event.pull_request.body || '', '@droid implement') &&
           !contains(github.event.pull_request.body || '', '@droid create') &&

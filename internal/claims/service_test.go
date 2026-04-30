@@ -446,6 +446,72 @@ func TestWriteClaimsRejectsCrossTenantRetractedRelation(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsRejectsCrossTenantNonRelationEntityRefs(t *testing.T) {
+	writerURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	otherURN := "urn:cerebro:other:runtime:other-jira:ticket:ENG-123"
+	for _, tt := range []struct {
+		name  string
+		claim *cerebrov1.Claim
+	}{
+		{
+			name: "foreign subject urn",
+			claim: &cerebrov1.Claim{
+				SubjectUrn:  otherURN,
+				Predicate:   "status",
+				ObjectValue: "open",
+				ClaimType:   claimTypeAttribute,
+			},
+		},
+		{
+			name: "foreign subject ref",
+			claim: &cerebrov1.Claim{
+				SubjectRef:  &cerebrov1.EntityRef{Urn: otherURN, EntityType: "ticket"},
+				Predicate:   "status",
+				ObjectValue: "open",
+				ClaimType:   claimTypeAttribute,
+			},
+		},
+		{
+			name: "foreign object ref",
+			claim: &cerebrov1.Claim{
+				SubjectUrn:  writerURN,
+				Predicate:   "classification",
+				ObjectRef:   &cerebrov1.EntityRef{Urn: otherURN, EntityType: "group"},
+				ObjectValue: "restricted",
+				ClaimType:   claimTypeClassification,
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			projection := &projectionRecorder{}
+			service := New(
+				&stubRuntimeStore{
+					runtimes: map[string]*cerebrov1.SourceRuntime{
+						"writer-jira": {
+							Id:       "writer-jira",
+							TenantId: "writer",
+							SourceId: "jira",
+						},
+					},
+				},
+				&stubClaimStore{},
+				projection,
+				nil,
+			)
+			_, err := service.WriteClaims(context.Background(), WriteRequest{
+				RuntimeID: "writer-jira",
+				Claims:    []*cerebrov1.Claim{tt.claim},
+			})
+			if !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("WriteClaims() error = %v, want ErrInvalidRequest", err)
+			}
+			if len(projection.entities) != 0 {
+				t.Fatalf("projected entities = %#v, want none", projection.entities)
+			}
+		})
+	}
+}
+
 func TestWriteClaimsReassertsRelationAfterSameBatchRetraction(t *testing.T) {
 	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
 	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
