@@ -1,8 +1,6 @@
 # Binaries
 bin/
-cerebro
-!cmd/cerebro/
-!cmd/cerebro/**
+/cerebro
 *.exe
 *.dll
 *.so
