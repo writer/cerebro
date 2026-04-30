@@ -109,9 +109,8 @@ INSERT INTO findings (
   resource_urns_json, event_ids_json, attributes_json, first_observed_at, last_observed_at
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, $14)
-ON CONFLICT (id)
+ON CONFLICT (fingerprint)
 DO UPDATE SET
-  fingerprint = EXCLUDED.fingerprint,
   tenant_id = EXCLUDED.tenant_id,
   runtime_id = EXCLUDED.runtime_id,
   rule_id = EXCLUDED.rule_id,
