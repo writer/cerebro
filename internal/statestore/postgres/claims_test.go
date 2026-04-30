@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,12 @@ func TestUpsertClaimRejectsNilClaim(t *testing.T) {
 	store := &Store{}
 	if _, err := store.UpsertClaim(context.Background(), nil); err == nil {
 		t.Fatal("UpsertClaim() error = nil, want non-nil")
+	}
+}
+
+func TestClaimMessageTimeAllowsNilTimestamp(t *testing.T) {
+	if got := claimMessageTime(nil); !got.IsZero() {
+		t.Fatalf("claimMessageTime(nil) = %v, want zero", got)
 	}
 }
 
@@ -61,6 +68,20 @@ func TestListClaimsRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
 	if _, err := store.ListClaims(context.Background(), ports.ListClaimsRequest{RuntimeID: "writer-jira"}); err == nil {
 		t.Fatal("ListClaims() error = nil, want non-nil")
+	}
+}
+
+func TestClaimSchemaScopesPrimaryKeyByTenantAndRuntime(t *testing.T) {
+	create := ensureClaimStatements[0]
+	if !strings.Contains(create, "PRIMARY KEY (tenant_id, runtime_id, id)") {
+		t.Fatalf("claims schema primary key does not include tenant/runtime/id:\n%s", create)
+	}
+	migration := ensureClaimStatements[1]
+	if !strings.Contains(migration, "LOCK TABLE claims IN ACCESS EXCLUSIVE MODE") ||
+		!strings.Contains(migration, "IF pk_cols IS DISTINCT FROM ARRAY['tenant_id', 'runtime_id', 'id']::TEXT[] THEN") ||
+		!strings.Contains(migration, "ARRAY['id']") ||
+		!strings.Contains(migration, "DROP CONSTRAINT IF EXISTS") {
+		t.Fatalf("claims schema migration does not conditionally replace legacy id-only primary key:\n%s", migration)
 	}
 }
 

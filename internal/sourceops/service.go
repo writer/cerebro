@@ -13,7 +13,10 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
 
-var ErrSourceNotFound = errors.New("source not found")
+var (
+	ErrSourceNotFound = errors.New("source not found")
+	ErrInvalidRequest = errors.New("invalid source request")
+)
 
 // Service exposes typed source preview operations over a registry.
 type Service struct {
@@ -42,7 +45,7 @@ func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) 
 		return nil, err
 	}
 	if err := source.Check(ctx, sourcecdk.NewConfig(req.GetConfig())); err != nil {
-		return nil, err
+		return nil, sourceOperationError(err)
 	}
 	return &cerebrov1.CheckSourceResponse{
 		Source: source.Spec(),
@@ -58,7 +61,7 @@ func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceReq
 	}
 	urns, err := source.Discover(ctx, sourcecdk.NewConfig(req.GetConfig()))
 	if err != nil {
-		return nil, err
+		return nil, sourceOperationError(err)
 	}
 	values := make([]string, 0, len(urns))
 	for _, urn := range urns {
@@ -78,7 +81,7 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*
 	}
 	pull, err := source.Read(ctx, sourcecdk.NewConfig(req.GetConfig()), req.GetCursor())
 	if err != nil {
-		return nil, err
+		return nil, sourceOperationError(err)
 	}
 	previews, err := previewEvents(pull.Events)
 	if err != nil {
@@ -93,10 +96,17 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*
 	}, nil
 }
 
+func sourceOperationError(err error) error {
+	if errors.Is(err, sourcecdk.ErrInvalidConfig) {
+		return fmt.Errorf("%w: %w", ErrInvalidRequest, err)
+	}
+	return err
+}
+
 func (s *Service) lookup(sourceID string) (sourcecdk.Source, error) {
 	id := strings.TrimSpace(sourceID)
 	if id == "" {
-		return nil, fmt.Errorf("source id is required")
+		return nil, fmt.Errorf("%w: source id is required", ErrInvalidRequest)
 	}
 	if s == nil || s.registry == nil {
 		return nil, fmt.Errorf("%w: %s", ErrSourceNotFound, id)
@@ -111,7 +121,10 @@ func (s *Service) lookup(sourceID string) (sourcecdk.Source, error) {
 func previewEvents(events []*cerebrov1.EventEnvelope) ([]*cerebrov1.SourcePreviewEvent, error) {
 	previews := make([]*cerebrov1.SourcePreviewEvent, 0, len(events))
 	for _, event := range events {
-		preview := &cerebrov1.SourcePreviewEvent{Event: event, EventId: event.GetId()}
+		preview := &cerebrov1.SourcePreviewEvent{
+			EventId: event.GetId(),
+			Event:   event,
+		}
 		if len(event.GetPayload()) == 0 {
 			previews = append(previews, preview)
 			continue

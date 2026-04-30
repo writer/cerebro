@@ -11,6 +11,9 @@ var _ = func() int {
 
 func init() {
 	panic("allowed during init")
+	func() {
+		panic("nested init panic can escape") // want `panic is forbidden outside tests, init, and panicsafe`
+	}()
 }
 
 type T struct{}

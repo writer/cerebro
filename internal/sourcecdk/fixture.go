@@ -90,7 +90,7 @@ func (s *fixtureSource) Spec() *cerebrov1.SourceSpec {
 func (s *fixtureSource) Check(ctx context.Context, cfg Config) error {
 	if s.check != nil {
 		if err := s.check(ctx, cfg); err != nil {
-			return err
+			return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 		}
 	}
 	_, err := s.family(cfg)
@@ -157,7 +157,7 @@ func (s *fixtureSource) family(cfg Config) (FixtureFamily, error) {
 	}
 	family, ok := s.families[name]
 	if !ok {
-		return FixtureFamily{}, fmt.Errorf("unsupported fixture family %q", name)
+		return FixtureFamily{}, fmt.Errorf("%w: unsupported fixture family %q", ErrInvalidConfig, name)
 	}
 	return family, nil
 }

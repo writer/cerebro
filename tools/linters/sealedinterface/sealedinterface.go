@@ -45,11 +45,9 @@ func run(pass *analysis.Pass) (any, error) {
 				if !ok {
 					continue
 				}
-				ifaceNode, ok := ts.Type.(*ast.InterfaceType)
-				if !ok || !hasSealedMarker(gen.Doc, ts.Doc) {
+				if _, ok := ts.Type.(*ast.InterfaceType); !ok || !hasSealedMarker(gen.Doc, ts.Doc) {
 					continue
 				}
-				_ = ifaceNode
 				obj, ok := pass.TypesInfo.Defs[ts.Name].(*types.TypeName)
 				if !ok || obj == nil {
 					continue

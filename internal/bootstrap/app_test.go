@@ -20,11 +20,20 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
+	"github.com/writer/cerebro/internal/claims"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphingest"
+	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceruntime"
 	"github.com/writer/cerebro/internal/workflowevents"
+	"github.com/writer/cerebro/internal/workflowprojection"
 	githubsource "github.com/writer/cerebro/sources/github"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
@@ -47,13 +56,258 @@ func sourceGet(t *testing.T, server *httptest.Server, path string, config map[st
 }
 
 func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
-	for _, key := range []string{"token", "api_key", "private_key", "key"} {
+	for _, key := range []string{"token", "api_key", "apiKey", "private_key", "privateKey", "key"} {
 		t.Run(key, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/sources/okta/check?"+key+"=secret", nil)
-			if _, err := sourceConfigFromRequest(req); err == nil {
-				t.Fatalf("sourceConfigFromRequest() error = nil, want non-nil")
+			if _, err := sourceConfigFromRequest(req); !errors.Is(err, sourceops.ErrInvalidRequest) {
+				t.Fatalf("sourceConfigFromRequest() error = %v, want ErrInvalidRequest", err)
 			}
 		})
+	}
+}
+
+func TestSourceConfigFromRequestAllowsNonSecretKeyQueryFields(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources/aws/check?access_key_id=access-key-id&lookup_key=inventory&group_key=eng", nil)
+	config, err := sourceConfigFromRequest(req)
+	if err != nil {
+		t.Fatalf("sourceConfigFromRequest() error = %v", err)
+	}
+	for _, key := range []string{"access_key_id", "lookup_key", "group_key"} {
+		if got := config[key]; got == "" {
+			t.Fatalf("config[%q] = %q, want value", key, got)
+		}
+	}
+}
+
+func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+		code connect.Code
+	}{
+		{name: "report not found", err: reportConnectError(reports.ErrReportNotFound), code: connect.CodeNotFound},
+		{name: "report unavailable", err: reportConnectError(reports.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "report invalid", err: reportConnectError(reports.ErrInvalidRequest), code: connect.CodeInvalidArgument},
+		{name: "report unknown", err: reportConnectError(errors.New("storage failed")), code: connect.CodeInternal},
+		{name: "report canceled", err: reportConnectError(context.Canceled), code: connect.CodeCanceled},
+		{name: "report deadline", err: reportConnectError(context.DeadlineExceeded), code: connect.CodeDeadlineExceeded},
+		{name: "source not found", err: sourceConnectError(sourceops.ErrSourceNotFound), code: connect.CodeNotFound},
+		{name: "source invalid", err: sourceConnectError(sourceops.ErrInvalidRequest), code: connect.CodeInvalidArgument},
+		{name: "source unknown", err: sourceConnectError(errors.New("transport failed")), code: connect.CodeInternal},
+		{name: "runtime not found", err: sourceRuntimeConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
+		{name: "runtime unavailable", err: sourceRuntimeConnectError(sourceruntime.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "runtime invalid", err: sourceRuntimeConnectError(sourceruntime.ErrInvalidRequest), code: connect.CodeInvalidArgument},
+		{name: "runtime unknown", err: sourceRuntimeConnectError(errors.New("persist failed")), code: connect.CodeInternal},
+		{name: "claim runtime not found", err: claimConnectError(ports.ErrSourceRuntimeNotFound), code: connect.CodeNotFound},
+		{name: "claim invalid", err: claimConnectError(claims.ErrInvalidRequest), code: connect.CodeInvalidArgument},
+		{name: "claim unknown", err: claimConnectError(errors.New("persist failed")), code: connect.CodeInternal},
+		{name: "finding not found", err: findingConnectError(ports.ErrFindingNotFound), code: connect.CodeNotFound},
+		{name: "finding rule not found", err: findingConnectError(findings.ErrRuleNotFound), code: connect.CodeNotFound},
+		{name: "finding rule selection required", err: findingConnectError(findings.ErrRuleSelectionRequired), code: connect.CodeInvalidArgument},
+		{name: "finding rule unsupported", err: findingConnectError(findings.ErrRuleUnsupported), code: connect.CodeInvalidArgument},
+		{name: "finding invalid", err: findingConnectError(findings.ErrInvalidRequest), code: connect.CodeInvalidArgument},
+		{name: "finding rule unavailable", err: findingConnectError(findings.ErrRuleUnavailable), code: connect.CodeFailedPrecondition},
+		{name: "finding unavailable", err: findingConnectError(findings.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "finding unknown", err: findingConnectError(errors.New("finding store failed")), code: connect.CodeInternal},
+		{name: "knowledge entity not found", err: knowledgeConnectError(ports.ErrGraphEntityNotFound), code: connect.CodeNotFound},
+		{name: "knowledge invalid", err: knowledgeConnectError(knowledge.ErrInvalidRequest), code: connect.CodeInvalidArgument},
+		{name: "knowledge unavailable", err: knowledgeConnectError(knowledge.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "knowledge unknown", err: knowledgeConnectError(errors.New("knowledge store failed")), code: connect.CodeInternal},
+		{name: "workflow replay unavailable", err: workflowReplayConnectError(workflowprojection.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "workflow replay unknown", err: workflowReplayConnectError(errors.New("replay failed")), code: connect.CodeInternal},
+		{name: "graph query entity not found", err: graphQueryConnectError(ports.ErrGraphEntityNotFound), code: connect.CodeNotFound},
+		{name: "graph query unavailable", err: graphQueryConnectError(graphquery.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "graph query invalid", err: graphQueryConnectError(graphquery.ErrInvalidRequest), code: connect.CodeInvalidArgument},
+		{name: "graph ingest run not found", err: graphIngestConnectError(graphingest.ErrRunNotFound), code: connect.CodeNotFound},
+		{name: "graph ingest source not found", err: graphIngestConnectError(sourceops.ErrSourceNotFound), code: connect.CodeNotFound},
+		{name: "graph ingest unavailable", err: graphIngestConnectError(graphingest.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
+		{name: "graph ingest invalid", err: graphIngestConnectError(graphingest.ErrInvalidRequest), code: connect.CodeInvalidArgument},
+		{name: "graph ingest unknown", err: graphIngestConnectError(errors.New("graph ingest failed")), code: connect.CodeInternal},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := connect.CodeOf(tt.err); got != tt.code {
+				t.Fatalf("connect.CodeOf() = %s, want %s", got, tt.code)
+			}
+		})
+	}
+}
+
+func TestConnectInternalErrorsHideDetails(t *testing.T) {
+	internalErr := errors.New("postgres password leaked")
+	for _, tt := range []struct {
+		name string
+		err  error
+	}{
+		{name: "report", err: reportConnectError(internalErr)},
+		{name: "source", err: sourceConnectError(internalErr)},
+		{name: "runtime", err: sourceRuntimeConnectError(internalErr)},
+		{name: "claim", err: claimConnectError(internalErr)},
+		{name: "finding", err: findingConnectError(internalErr)},
+		{name: "knowledge", err: knowledgeConnectError(internalErr)},
+		{name: "workflow replay", err: workflowReplayConnectError(internalErr)},
+		{name: "graph query", err: graphQueryConnectError(internalErr)},
+		{name: "graph ingest", err: graphIngestConnectError(internalErr)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := connect.CodeOf(tt.err); got != connect.CodeInternal {
+				t.Fatalf("connect.CodeOf() = %s, want %s", got, connect.CodeInternal)
+			}
+			var connectErr *connect.Error
+			if !errors.As(tt.err, &connectErr) {
+				t.Fatalf("error = %T, want *connect.Error", tt.err)
+			}
+			if strings.Contains(connectErr.Message(), "postgres password leaked") {
+				t.Fatalf("connect error exposed internal detail: %q", connectErr.Message())
+			}
+			if !strings.Contains(connectErr.Message(), "internal error") {
+				t.Fatalf("connect error = %q, want generic internal error", connectErr.Message())
+			}
+		})
+	}
+}
+
+func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeSourceRuntimeError(recorder, errors.New("postgres password leaked"))
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+	if strings.Contains(recorder.Body.String(), "postgres password leaked") {
+		t.Fatalf("response body exposed internal error: %q", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), http.StatusText(http.StatusInternalServerError)) {
+		t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
+	}
+
+	invalid := httptest.NewRecorder()
+	writeSourceRuntimeError(invalid, sourceruntime.ErrInvalidRequest)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid runtime status = %d, want %d", invalid.Code, http.StatusBadRequest)
+	}
+}
+
+func TestWriteKnowledgeErrorMapsInvalidRequestToBadRequest(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeKnowledgeError(recorder, knowledge.ErrInvalidRequest)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
+func TestWriteHTTPErrorHelpersDoNotExposeInternalMessages(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		write func(http.ResponseWriter, error)
+	}{
+		{name: "source", write: writeSourceError},
+		{name: "claim", write: writeClaimError},
+		{name: "finding", write: writeFindingError},
+		{name: "knowledge", write: writeKnowledgeError},
+		{name: "workflow replay", write: writeWorkflowReplayError},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			tt.write(recorder, errors.New("postgres password leaked"))
+			if recorder.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+			}
+			if strings.Contains(recorder.Body.String(), "postgres password leaked") {
+				t.Fatalf("response body exposed internal error: %q", recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), http.StatusText(http.StatusInternalServerError)) {
+				t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestInvalidHTTPRequestErrorsReturnBadRequest(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		write func(http.ResponseWriter, error)
+	}{
+		{name: "source", write: writeSourceError},
+		{name: "report", write: writeReportError},
+		{name: "source runtime", write: writeSourceRuntimeError},
+		{name: "claim", write: writeClaimError},
+		{name: "finding", write: writeFindingError},
+		{name: "knowledge", write: writeKnowledgeError},
+		{name: "workflow replay", write: writeWorkflowReplayError},
+		{name: "graph query", write: writeGraphQueryError},
+		{name: "graph ingest", write: writeGraphIngestError},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			tt.write(recorder, invalidHTTPRequestError(errors.New("bad query param")))
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+			}
+		})
+	}
+}
+
+func TestWriteReportErrorDoesNotExposeInternalMessage(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeReportError(recorder, errors.New("postgres password leaked"))
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+	if strings.Contains(recorder.Body.String(), "postgres password leaked") {
+		t.Fatalf("response body exposed internal error: %q", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), http.StatusText(http.StatusInternalServerError)) {
+		t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
+	}
+
+	invalid := httptest.NewRecorder()
+	writeReportError(invalid, reports.ErrInvalidRequest)
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid report status = %d, want %d", invalid.Code, http.StatusBadRequest)
+	}
+}
+
+func TestWriteGraphErrorsDoNotExposeInternalMessages(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		write func(http.ResponseWriter, error)
+	}{
+		{name: "query", write: writeGraphQueryError},
+		{name: "ingest", write: writeGraphIngestError},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			tt.write(recorder, errors.New("postgres password leaked"))
+			if recorder.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+			}
+			if strings.Contains(recorder.Body.String(), "postgres password leaked") {
+				t.Fatalf("response body exposed internal error: %q", recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), http.StatusText(http.StatusInternalServerError)) {
+				t.Fatalf("response body = %q, want generic status text", recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestStoreBoundaryHelpersTreatTypedNilAsUnavailable(t *testing.T) {
+	var graph *stubGraphStore
+	if got := graphQueryStore(graph); got != nil {
+		t.Fatalf("graphQueryStore(typed nil) = %#v, want nil", got)
+	}
+	if got := sourceProjectionGraphStore(graph); got != nil {
+		t.Fatalf("sourceProjectionGraphStore(typed nil) = %#v, want nil", got)
+	}
+	var state *stubRuntimeStore
+	if got := sourceRuntimeStore(state); got != nil {
+		t.Fatalf("sourceRuntimeStore(typed nil) = %#v, want nil", got)
+	}
+	if got := reportStore(state); got != nil {
+		t.Fatalf("reportStore(typed nil) = %#v, want nil", got)
+	}
+	var log *recordingAppendLog
+	if got := eventReplayer(log); got != nil {
+		t.Fatalf("eventReplayer(typed nil) = %#v, want nil", got)
 	}
 }
 
@@ -80,6 +334,12 @@ func (s *deadlineAwareStore) Ping(ctx context.Context) error {
 	}
 	s.sawDeadline = true
 	return nil
+}
+
+type typedNilPinger struct{}
+
+func (s *typedNilPinger) Ping(context.Context) error {
+	return errors.New("typed nil pinger was called")
 }
 
 type recordingAppendLog struct {
@@ -997,6 +1257,17 @@ func TestBootstrapHealthPingsUseTimeoutContext(t *testing.T) {
 	}
 }
 
+func TestBootstrapHealthTreatsTypedNilPingerAsUnconfigured(t *testing.T) {
+	var stateStore *typedNilPinger
+	response := healthResponse(context.Background(), Dependencies{StateStore: stateStore})
+	if response.GetStatus() != "ready" {
+		t.Fatalf("health status = %q, want ready", response.GetStatus())
+	}
+	if got := response.GetComponents()[1].GetStatus(); got != "unconfigured" {
+		t.Fatalf("state_store status = %q, want unconfigured", got)
+	}
+}
+
 func TestReadProtoJSONRejectsOversizedBody(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/reports/finding-summary/runs", strings.NewReader(strings.Repeat("x", maxProtoJSONBodyBytes+1)))
 	err := readProtoJSON(req, &cerebrov1.RunReportRequest{})
@@ -1005,6 +1276,23 @@ func TestReadProtoJSONRejectsOversizedBody(t *testing.T) {
 	}
 	if !errors.Is(err, errProtoJSONBodyTooLarge) {
 		t.Fatalf("readProtoJSON() error = %v, want size error", err)
+	}
+	if !errors.Is(err, errInvalidHTTPRequest) {
+		t.Fatalf("readProtoJSON() error = %v, want invalid request error", err)
+	}
+}
+
+func TestReadProtoJSONClassifiesMalformedBodyAsInvalidRequest(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/reports/finding-summary/runs", strings.NewReader("{"))
+	err := readProtoJSON(req, &cerebrov1.RunReportRequest{})
+	if !errors.Is(err, errInvalidHTTPRequest) {
+		t.Fatalf("readProtoJSON() error = %v, want invalid request error", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	writeFindingError(recorder, err)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
 
@@ -1415,6 +1703,7 @@ func TestFindingEndpoints(t *testing.T) {
 				Id:       "writer-okta-audit",
 				SourceId: "okta",
 				TenantId: "writer",
+				Config:   map[string]string{"token": "super-secret"},
 			},
 		},
 		claims: map[string]*ports.ClaimRecord{
@@ -1463,6 +1752,17 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := evaluatePayload["findings_upserted"]; got != float64(1) {
 		t.Fatalf("evaluate findings findings_upserted = %#v, want 1", got)
+	}
+	evaluateRuntime, ok := evaluatePayload["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("evaluate runtime payload = %#v, want object", evaluatePayload["runtime"])
+	}
+	evaluateConfig, ok := evaluateRuntime["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("evaluate runtime config = %#v, want object", evaluateRuntime["config"])
+	}
+	if got := evaluateConfig["token"]; got != "[redacted]" {
+		t.Fatalf("evaluate runtime config token = %#v, want [redacted]", got)
 	}
 	findingsPayload, ok := evaluatePayload["findings"].([]any)
 	if !ok || len(findingsPayload) != 1 {
@@ -1671,6 +1971,17 @@ func TestFindingEndpoints(t *testing.T) {
 	if got := batchEvaluatePayload["events_evaluated"]; got != float64(2) {
 		t.Fatalf("batch evaluate events_evaluated = %#v, want 2", got)
 	}
+	batchRuntime, ok := batchEvaluatePayload["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("batch runtime payload = %#v, want object", batchEvaluatePayload["runtime"])
+	}
+	batchConfig, ok := batchRuntime["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("batch runtime config = %#v, want object", batchRuntime["config"])
+	}
+	if got := batchConfig["token"]; got != "[redacted]" {
+		t.Fatalf("batch runtime config token = %#v, want [redacted]", got)
+	}
 	batchEvaluations, ok := batchEvaluatePayload["evaluations"].([]any)
 	if !ok || len(batchEvaluations) == 0 {
 		t.Fatalf("batch evaluate payload = %#v, want evaluations", batchEvaluatePayload["evaluations"])
@@ -1706,6 +2017,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := evaluateFindingsResp.Msg.GetEventsEvaluated(); got != 2 {
 		t.Fatalf("EvaluateSourceRuntimeFindings events_evaluated = %d, want 2", got)
+	}
+	if got := evaluateFindingsResp.Msg.GetRuntime().GetConfig()["token"]; got != "[redacted]" {
+		t.Fatalf("EvaluateSourceRuntimeFindings runtime token = %q, want [redacted]", got)
 	}
 	if got := evaluateFindingsResp.Msg.GetFindingsUpserted(); got != 1 {
 		t.Fatalf("EvaluateSourceRuntimeFindings findings_upserted = %d, want 1", got)
@@ -1789,6 +2103,9 @@ func TestFindingEndpoints(t *testing.T) {
 	}
 	if got := evaluateFindingRulesResp.Msg.GetEventsEvaluated(); got != 2 {
 		t.Fatalf("EvaluateSourceRuntimeFindingRules events_evaluated = %d, want 2", got)
+	}
+	if got := evaluateFindingRulesResp.Msg.GetRuntime().GetConfig()["token"]; got != "[redacted]" {
+		t.Fatalf("EvaluateSourceRuntimeFindingRules runtime token = %q, want [redacted]", got)
 	}
 	var lifecycleEvaluation *cerebrov1.FindingRuleEvaluation
 	for _, evaluation := range evaluateFindingRulesResp.Msg.GetEvaluations() {

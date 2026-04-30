@@ -25,8 +25,11 @@ const (
 	claimStatusRetracted    = "retracted"
 )
 
-// ErrRuntimeUnavailable indicates that the runtime or claim store boundary is unavailable.
-var ErrRuntimeUnavailable = errors.New("claim runtime is unavailable")
+var (
+	// ErrRuntimeUnavailable indicates that the runtime or claim store boundary is unavailable.
+	ErrRuntimeUnavailable = errors.New("claim runtime is unavailable")
+	ErrInvalidRequest     = errors.New("invalid claim request")
+)
 
 // Service reads and writes runtime-scoped claims into the state store and optional projections.
 type Service struct {
@@ -87,7 +90,7 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
@@ -127,6 +130,12 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 				result.EntitiesUpserted++
 			}
 		}
+		if retracted := retractedRelation(runtime, claim); retracted != nil {
+			if err := s.deleteLink(ctx, retracted); err != nil {
+				return nil, err
+			}
+			delete(upsertedLinks, projectedLinkKey(retracted))
+		}
 		if projected := projectedRelation(runtime, claim); projected != nil {
 			wrote, err := s.upsertLink(ctx, projected, upsertedLinks)
 			if err != nil {
@@ -138,7 +147,7 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 		}
 	}
 	if request.ReplaceExisting {
-		retracted, err := s.retractMissingClaims(ctx, runtimeID, normalizedClaims)
+		retracted, err := s.retractMissingClaims(ctx, runtime, normalizedClaims)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +163,7 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
 		return nil, err
@@ -184,7 +193,8 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 	return response, nil
 }
 
-func (s *Service) retractMissingClaims(ctx context.Context, runtimeID string, claims []*cerebrov1.Claim) (uint32, error) {
+func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.SourceRuntime, claims []*cerebrov1.Claim) (uint32, error) {
+	runtimeID := strings.TrimSpace(runtime.GetId())
 	incomingIDs := make(map[string]struct{}, len(claims))
 	for _, claim := range claims {
 		if claim == nil {
@@ -211,12 +221,32 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtimeID string, cl
 		if _, ok := incomingIDs[strings.TrimSpace(existingClaim.ID)]; ok {
 			continue
 		}
+		if err := s.deleteLink(ctx, projectedRelation(runtime, protoClaim(existingClaim))); err != nil {
+			return retracted, err
+		}
 		if _, err := s.store.UpsertClaim(ctx, retractedClaim(existingClaim, retractAt, snapshotEventID)); err != nil {
 			return retracted, fmt.Errorf("retract claim %q: %w", existingClaim.ID, err)
 		}
 		retracted++
 	}
 	return retracted, nil
+}
+
+func (s *Service) deleteLink(ctx context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	if deleter, ok := s.state.(ports.ProjectionLinkDeleter); ok {
+		if err := deleter.DeleteProjectedLink(ctx, link); err != nil {
+			return fmt.Errorf("delete projected link %q: %w", projectedLinkKey(link), err)
+		}
+	}
+	if deleter, ok := s.graph.(ports.ProjectionLinkDeleter); ok {
+		if err := deleter.DeleteProjectedLink(ctx, link); err != nil {
+			return fmt.Errorf("delete graph link %q: %w", projectedLinkKey(link), err)
+		}
+	}
+	return nil
 }
 
 func snapshotObservedAt(claims []*cerebrov1.Claim) time.Time {
@@ -311,7 +341,7 @@ func (s *Service) upsertLink(ctx context.Context, link *ports.ProjectedLink, see
 	if link == nil {
 		return false, nil
 	}
-	key := link.FromURN + "|" + link.Relation + "|" + link.ToURN
+	key := projectedLinkKey(link)
 	if _, ok := seen[key]; ok {
 		return false, nil
 	}
@@ -332,12 +362,19 @@ func (s *Service) upsertLink(ctx context.Context, link *ports.ProjectedLink, see
 	return true, nil
 }
 
+func projectedLinkKey(link *ports.ProjectedLink) string {
+	if link == nil {
+		return ""
+	}
+	return link.FromURN + "|" + link.Relation + "|" + link.ToURN
+}
+
 func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*cerebrov1.Claim, error) {
 	if claim == nil {
-		return nil, errors.New("claim is required")
+		return nil, fmt.Errorf("%w: claim is required", ErrInvalidRequest)
 	}
 	if runtime == nil {
-		return nil, errors.New("source runtime is required")
+		return nil, fmt.Errorf("%w: source runtime is required", ErrInvalidRequest)
 	}
 	normalized := proto.Clone(claim).(*cerebrov1.Claim)
 	normalized.SubjectUrn = strings.TrimSpace(normalized.GetSubjectUrn())
@@ -356,10 +393,18 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 		normalized.ObjectUrn = strings.TrimSpace(normalized.GetObjectRef().GetUrn())
 	}
 	if normalized.GetSubjectUrn() == "" {
-		return nil, errors.New("claim subject urn is required")
+		return nil, fmt.Errorf("%w: claim subject urn is required", ErrInvalidRequest)
+	}
+	if err := validateRuntimeURN(runtime, normalized.GetSubjectUrn(), "subject"); err != nil {
+		return nil, err
+	}
+	if normalized.GetObjectUrn() != "" {
+		if err := validateRuntimeURN(runtime, normalized.GetObjectUrn(), "object"); err != nil {
+			return nil, err
+		}
 	}
 	if normalized.GetPredicate() == "" {
-		return nil, errors.New("claim predicate is required")
+		return nil, fmt.Errorf("%w: claim predicate is required", ErrInvalidRequest)
 	}
 	if normalized.GetClaimType() == "" {
 		normalized.ClaimType = inferClaimType(normalized)
@@ -371,20 +416,32 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 	case claimTypeExistence:
 	case claimTypeAttribute, claimTypeClassification:
 		if normalized.GetObjectValue() == "" {
-			return nil, fmt.Errorf("claim object value is required when claim_type=%q", normalized.GetClaimType())
+			return nil, fmt.Errorf("%w: claim object value is required when claim_type=%q", ErrInvalidRequest, normalized.GetClaimType())
 		}
 	case claimTypeRelation:
 		if normalized.GetObjectUrn() == "" {
-			return nil, fmt.Errorf("claim object urn is required when claim_type=%q", normalized.GetClaimType())
+			return nil, fmt.Errorf("%w: claim object urn is required when claim_type=%q", ErrInvalidRequest, normalized.GetClaimType())
 		}
 	default:
-		return nil, fmt.Errorf("unsupported claim type %q", normalized.GetClaimType())
+		return nil, fmt.Errorf("%w: unsupported claim type %q", ErrInvalidRequest, normalized.GetClaimType())
 	}
 	if normalized.GetId() == "" {
 		normalized.Id = hashClaimID(strings.TrimSpace(runtime.GetId()), normalized.GetClaimType(), normalized.GetSubjectUrn(), normalized.GetPredicate(), claimIdentityObject(normalized))
 	}
 	normalized.Attributes = trimAttributes(normalized.GetAttributes())
 	return normalized, nil
+}
+
+func validateRuntimeURN(runtime *cerebrov1.SourceRuntime, urn string, field string) error {
+	tenantID := strings.TrimSpace(runtime.GetTenantId())
+	if tenantID == "" {
+		return nil
+	}
+	normalizedURN := strings.TrimSpace(urn)
+	if strings.HasPrefix(normalizedURN, "urn:cerebro:"+tenantID+":") {
+		return nil
+	}
+	return fmt.Errorf("%w: claim %s urn must belong to tenant %q", ErrInvalidRequest, field, tenantID)
 }
 
 func normalizeEntityRef(ref *cerebrov1.EntityRef, fallbackURN string) *cerebrov1.EntityRef {
@@ -478,13 +535,24 @@ func projectedEntity(runtime *cerebrov1.SourceRuntime, ref *cerebrov1.EntityRef,
 }
 
 func projectedRelation(runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim) *ports.ProjectedLink {
+	if !strings.EqualFold(strings.TrimSpace(claim.GetStatus()), claimStatusAsserted) {
+		return nil
+	}
+	return relationLink(runtime, claim)
+}
+
+func retractedRelation(runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim) *ports.ProjectedLink {
+	if !strings.EqualFold(strings.TrimSpace(claim.GetStatus()), claimStatusRetracted) {
+		return nil
+	}
+	return relationLink(runtime, claim)
+}
+
+func relationLink(runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim) *ports.ProjectedLink {
 	if runtime == nil || claim == nil {
 		return nil
 	}
 	if !strings.EqualFold(strings.TrimSpace(claim.GetClaimType()), claimTypeRelation) {
-		return nil
-	}
-	if !strings.EqualFold(strings.TrimSpace(claim.GetStatus()), claimStatusAsserted) {
 		return nil
 	}
 	fromURN := strings.TrimSpace(claim.GetSubjectUrn())
@@ -573,7 +641,7 @@ func cloneEntityRef(ref *cerebrov1.EntityRef) *cerebrov1.EntityRef {
 	return proto.Clone(ref).(*cerebrov1.EntityRef)
 }
 
-func claimTime(value interface{ AsTime() time.Time }) time.Time {
+func claimTime(value *timestamppb.Timestamp) time.Time {
 	if value == nil {
 		return time.Time{}
 	}

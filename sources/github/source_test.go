@@ -3,8 +3,12 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	gogithub "github.com/google/go-github/v66/github"
@@ -129,6 +133,7 @@ func TestReadTrimsCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"owner":    "writer",
@@ -154,6 +159,7 @@ func TestCheckDiscoverAndReadLiveGitHubPullRequestPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	checkCfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"owner":    "writer",
@@ -229,6 +235,7 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"family":   "audit",
@@ -312,6 +319,19 @@ func TestNextAuditCursorIgnoresBefore(t *testing.T) {
 	}
 }
 
+func TestAuditScopeDefaultsToOrganization(t *testing.T) {
+	if got := auditScope(&gogithub.AuditEntry{}, map[string]any{}, settings{owner: "writer"}); got != "organization" {
+		t.Fatalf("auditScope() = %q, want organization", got)
+	}
+}
+
+func TestAuditScopeKeepsOwnerBackedEntriesAtOrganizationScope(t *testing.T) {
+	entry := &gogithub.AuditEntry{User: gogithub.String("octocat")}
+	if got := auditScope(entry, map[string]any{}, settings{owner: "writer"}); got != "organization" {
+		t.Fatalf("auditScope() = %q, want organization", got)
+	}
+}
+
 func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	server := httptest.NewServer(newGitHubAPIHandler(t))
 	defer server.Close()
@@ -320,6 +340,7 @@ func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"family":   "dependabot_alert",
@@ -377,6 +398,193 @@ func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	if len(second.Events) != 0 {
 		t.Fatalf("len(Read(dependabot_alert second).Events) = %d, want 0", len(second.Events))
 	}
+}
+
+func TestRejectsUnsafeBaseURL(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	for _, baseURL := range []string{
+		"http://github.example.com",
+		"https://user@github.example.com",
+		"https://github.example.com/path",
+		"https://github.example.com?token=leak",
+		"https://github.example.com?",
+		"https://localhost",
+		"https://localhost.",
+		"https://[::1%25lo0]",
+		"https://127.1",
+		"https://10.0.0.1",
+		"https://172.16.0.1",
+		"https://192.168.1.10",
+		"https://169.254.169.254",
+		"https://[fe80::1]",
+		"https://0.0.0.0",
+		"https://2130706433",
+		"https://0177.0.0.1",
+		"https://0x7f000001",
+	} {
+		t.Run(baseURL, func(t *testing.T) {
+			err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"base_url": baseURL,
+				"owner":    "writer",
+			}))
+			if err == nil {
+				t.Fatal("Check() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestCheckDoesNotFollowRedirects(t *testing.T) {
+	redirectHit := false
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		redirectHit = true
+	}))
+	defer redirectTarget.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirectTarget.URL, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	source.allowLoopbackBaseURL = true
+	err = source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
+		"base_url": redirector.URL,
+		"owner":    "writer",
+	}))
+	if err == nil {
+		t.Fatal("Check() error = nil, want non-nil redirect response")
+	}
+	if redirectHit {
+		t.Fatal("Check() followed redirect target")
+	}
+}
+
+func TestSourceHTTPClientRejectsHostsResolvingToPrivateIPs(t *testing.T) {
+	called := false
+	client := sourceHTTPClientNoRedirect(&http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return nil, errors.New("unexpected round trip")
+		}),
+	}, false, func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("10.0.0.5")}}, nil
+	})
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://ghe.example.com/api/v3", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	response, err := client.Do(request)
+	if response != nil && response.Body != nil {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Fatalf("response.Body.Close() error = %v", closeErr)
+		}
+	}
+	if err == nil {
+		t.Fatal("Do() error = nil, want non-nil")
+	}
+	if !errors.Is(err, errUnsafeBaseURLHost) {
+		t.Fatalf("Do() error = %v, want %v", err, errUnsafeBaseURLHost)
+	}
+	if called {
+		t.Fatal("Do() reached wrapped transport for unsafe resolved host")
+	}
+}
+
+func TestSourceHTTPClientFailsClosedWhenHostResolutionFails(t *testing.T) {
+	called := false
+	client := sourceHTTPClientNoRedirect(&http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return nil, errors.New("unexpected round trip")
+		}),
+	}, false, func(context.Context, string) ([]net.IPAddr, error) {
+		return nil, errors.New("dns unavailable")
+	})
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://ghe.example.com/api/v3", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	response, err := client.Do(request)
+	if response != nil && response.Body != nil {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Fatalf("response.Body.Close() error = %v", closeErr)
+		}
+	}
+	if err == nil {
+		t.Fatal("Do() error = nil, want non-nil")
+	}
+	if called {
+		t.Fatal("Do() reached wrapped transport after DNS failure")
+	}
+}
+
+func TestSourceHTTPClientAllowsHostsResolvingToPublicIPs(t *testing.T) {
+	called := false
+	client := sourceHTTPClientNoRedirect(&http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return &http.Response{
+				StatusCode: http.StatusNoContent,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}, false, func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("140.82.113.5")}}, nil
+	})
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://ghe.example.com/api/v3", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	defer func() {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Fatalf("response.Body.Close() error = %v", closeErr)
+		}
+	}()
+	if !called {
+		t.Fatal("Do() did not reach wrapped transport for public resolved host")
+	}
+}
+
+func TestAcceptsEnterpriseAPIBaseURL(t *testing.T) {
+	for _, tt := range []struct {
+		baseURL string
+		want    string
+	}{
+		{baseURL: "https://ghe.example.com/api/v3", want: "https://ghe.example.com"},
+		{baseURL: "https://ghe.example.com/api/v3/", want: "https://ghe.example.com"},
+		{baseURL: "https://api.ghe.example.com/api/v3", want: "https://api.ghe.example.com/api/v3"},
+		{baseURL: "https://ghe.api.example.com/api/v3/", want: "https://ghe.api.example.com/api/v3"},
+	} {
+		t.Run(tt.baseURL, func(t *testing.T) {
+			settings, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+				"base_url": tt.baseURL,
+				"owner":    "writer",
+			}), false, false)
+			if err != nil {
+				t.Fatalf("parseSettings() error = %v", err)
+			}
+			if settings.baseURL != tt.want {
+				t.Fatalf("baseURL = %q, want %q", settings.baseURL, tt.want)
+			}
+		})
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
 }
 
 func newGitHubAPIHandler(t *testing.T) http.Handler {

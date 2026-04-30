@@ -21,11 +21,17 @@ const (
 	findingStatusOpen       = "open"
 	findingStatusResolved   = "resolved"
 	findingStatusSuppressed = "suppressed"
+
+	findingAttributeLegacyID          = "legacy_finding_id"
+	findingAttributeLegacyFingerprint = "legacy_fingerprint"
 )
 
 var (
 	// ErrRuntimeUnavailable indicates that the runtime, replay, or finding store boundary is unavailable.
 	ErrRuntimeUnavailable = errors.New("finding runtime is unavailable")
+
+	// ErrInvalidRequest indicates that a finding request failed validation.
+	ErrInvalidRequest = errors.New("invalid finding request")
 
 	// ErrRuleNotFound indicates that one requested finding rule is not registered.
 	ErrRuleNotFound = errors.New("finding rule not found")
@@ -222,7 +228,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
@@ -250,16 +256,22 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 		Rule:    rule.Spec(),
 		Run:     run,
 	}
+	evidenceIDs := map[string]struct{}{}
 	for _, event := range events {
-		result.EventsEvaluated++
 		emitted, err := rule.Evaluate(ctx, runtime, event)
 		if err != nil {
 			evaluationErr := fmt.Errorf("evaluate finding rule %q for event %q: %w", result.Rule.GetId(), event.GetId(), err)
 			return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
 		}
+		result.EventsEvaluated++
 		for _, record := range emitted {
 			if record == nil {
 				continue
+			}
+			record, err = s.reconcileLegacyFindingIdentity(ctx, record)
+			if err != nil {
+				evaluationErr := fmt.Errorf("reconcile finding identity for rule %q event %q: %w", result.Rule.GetId(), event.GetId(), err)
+				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
 			stored, err := s.store.UpsertFinding(ctx, record)
 			if err != nil {
@@ -272,11 +284,14 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				evaluationErr := fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
-			if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
-				evaluationErr := fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)
-				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+			if _, seen := evidenceIDs[evidence.GetId()]; !seen {
+				if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
+					evaluationErr := fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)
+					return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+				}
+				evidenceIDs[evidence.GetId()] = struct{}{}
+				result.Evidence = append(result.Evidence, evidence)
 			}
-			result.Evidence = append(result.Evidence, evidence)
 			if err := s.projectFindingAnchor(ctx, stored); err != nil {
 				evaluationErr := fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
@@ -296,7 +311,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
@@ -318,7 +333,8 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 		}
 		state := &ruleEvaluationState{
-			rule: rule,
+			rule:        rule,
+			evidenceIDs: map[string]struct{}{},
 			result: &RuleEvaluationResult{
 				Rule: rule.Spec(),
 				Run:  run,
@@ -346,7 +362,6 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			if state.failed {
 				continue
 			}
-			state.eventsEvaluated++
 			emitted, err := state.rule.Evaluate(ctx, runtime, event)
 			if err != nil {
 				if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("evaluate finding rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
@@ -354,9 +369,17 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				}
 				continue
 			}
+			state.eventsEvaluated++
 			for _, record := range emitted {
 				if record == nil {
 					continue
+				}
+				record, err = s.reconcileLegacyFindingIdentity(ctx, record)
+				if err != nil {
+					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("reconcile finding identity for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
+						return nil, failErr
+					}
+					break
 				}
 				stored, err := s.store.UpsertFinding(ctx, record)
 				if err != nil {
@@ -373,13 +396,16 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					}
 					break
 				}
-				if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
-					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)); failErr != nil {
-						return nil, failErr
+				if _, seen := state.evidenceIDs[evidence.GetId()]; !seen {
+					if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
+						if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)); failErr != nil {
+							return nil, failErr
+						}
+						break
 					}
-					break
+					state.evidenceIDs[evidence.GetId()] = struct{}{}
+					state.result.Evidence = append(state.result.Evidence, evidence)
 				}
-				state.result.Evidence = append(state.result.Evidence, evidence)
 				if err := s.projectFindingAnchor(ctx, stored); err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)); failErr != nil {
 						return nil, failErr
@@ -407,7 +433,7 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
@@ -438,7 +464,7 @@ func (s *Service) GetFinding(ctx context.Context, id string) (*ports.FindingReco
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	finding, err := s.store.GetFinding(ctx, findingID)
 	if err != nil {
@@ -464,7 +490,7 @@ func (s *Service) AssignFinding(ctx context.Context, id string, assignee string)
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	finding, err := s.store.UpdateFindingAssignee(ctx, ports.FindingAssigneeUpdate{
 		FindingID: findingID,
@@ -483,11 +509,11 @@ func (s *Service) SetFindingDueDate(ctx context.Context, id string, dueAt time.T
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	normalizedDueAt := dueAt.UTC()
 	if normalizedDueAt.IsZero() {
-		return nil, errors.New("finding due date is required")
+		return nil, fmt.Errorf("%w: finding due date is required", ErrInvalidRequest)
 	}
 	finding, err := s.store.UpdateFindingDueDate(ctx, ports.FindingDueDateUpdate{
 		FindingID: findingID,
@@ -506,11 +532,11 @@ func (s *Service) AddFindingNote(ctx context.Context, id string, note string) (*
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	body := strings.TrimSpace(note)
 	if body == "" {
-		return nil, errors.New("finding note is required")
+		return nil, fmt.Errorf("%w: finding note is required", ErrInvalidRequest)
 	}
 	createdAt := time.Now().UTC()
 	noteRecord := ports.FindingNote{
@@ -538,14 +564,14 @@ func (s *Service) LinkFindingTicket(ctx context.Context, id string, ticketURL st
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	normalizedURL := strings.TrimSpace(ticketURL)
 	if normalizedURL == "" {
-		return nil, errors.New("finding ticket url is required")
+		return nil, fmt.Errorf("%w: finding ticket url is required", ErrInvalidRequest)
 	}
 	if _, err := url.ParseRequestURI(normalizedURL); err != nil {
-		return nil, fmt.Errorf("finding ticket url is invalid: %w", err)
+		return nil, fmt.Errorf("%w: finding ticket url is invalid: %w", ErrInvalidRequest, err)
 	}
 	linkedAt := time.Now().UTC()
 	ticket := ports.FindingTicket{
@@ -574,7 +600,7 @@ func (s *Service) ListEvaluationRuns(ctx context.Context, request ListEvaluation
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
 		return nil, err
@@ -598,7 +624,7 @@ func (s *Service) GetEvaluationRun(ctx context.Context, id string) (*cerebrov1.F
 	}
 	trimmedID := strings.TrimSpace(id)
 	if trimmedID == "" {
-		return nil, errors.New("finding evaluation run id is required")
+		return nil, fmt.Errorf("%w: finding evaluation run id is required", ErrInvalidRequest)
 	}
 	run, err := s.runStore.GetFindingEvaluationRun(ctx, trimmedID)
 	if err != nil {
@@ -614,7 +640,7 @@ func (s *Service) ListEvidence(ctx context.Context, request ListEvidenceRequest)
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
 	if runtimeID == "" {
-		return nil, errors.New("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
 		return nil, err
@@ -642,7 +668,7 @@ func (s *Service) GetEvidence(ctx context.Context, id string) (*cerebrov1.Findin
 	}
 	trimmedID := strings.TrimSpace(id)
 	if trimmedID == "" {
-		return nil, errors.New("finding evidence id is required")
+		return nil, fmt.Errorf("%w: finding evidence id is required", ErrInvalidRequest)
 	}
 	evidence, err := s.evidenceStore.GetFindingEvidence(ctx, trimmedID)
 	if err != nil {
@@ -655,6 +681,7 @@ type ruleEvaluationState struct {
 	rule            Rule
 	result          *RuleEvaluationResult
 	eventsEvaluated uint32
+	evidenceIDs     map[string]struct{}
 	failed          bool
 }
 
@@ -732,7 +759,7 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 	}
 	findingID := strings.TrimSpace(id)
 	if findingID == "" {
-		return nil, errors.New("finding id is required")
+		return nil, fmt.Errorf("%w: finding id is required", ErrInvalidRequest)
 	}
 	finding, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
 		FindingID: findingID,
@@ -838,6 +865,68 @@ func findingIDs(findings []*ports.FindingRecord) []string {
 	return ids
 }
 
+func (s *Service) reconcileLegacyFindingIdentity(ctx context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
+	if s == nil || s.store == nil || finding == nil || finding.Attributes == nil {
+		return finding, nil
+	}
+	legacyID := strings.TrimSpace(finding.Attributes[findingAttributeLegacyID])
+	if legacyID == "" || legacyID == strings.TrimSpace(finding.ID) {
+		return finding, nil
+	}
+	legacy, err := s.store.GetFinding(ctx, legacyID)
+	if err != nil {
+		if errors.Is(err, ports.ErrFindingNotFound) {
+			return finding, nil
+		}
+		return nil, fmt.Errorf("load legacy finding %q: %w", legacyID, err)
+	}
+	if !matchesLegacyFindingIdentity(finding, legacy) {
+		return finding, nil
+	}
+	finding.ID = strings.TrimSpace(legacy.ID)
+	if legacyFingerprint := strings.TrimSpace(legacy.Fingerprint); legacyFingerprint != "" {
+		finding.Fingerprint = legacyFingerprint
+	}
+	return finding, nil
+}
+
+func matchesLegacyFindingIdentity(incoming *ports.FindingRecord, legacy *ports.FindingRecord) bool {
+	if incoming == nil || legacy == nil {
+		return false
+	}
+	if strings.TrimSpace(incoming.TenantID) != strings.TrimSpace(legacy.TenantID) {
+		return false
+	}
+	if strings.TrimSpace(incoming.RuntimeID) != strings.TrimSpace(legacy.RuntimeID) {
+		return false
+	}
+	if strings.TrimSpace(incoming.RuleID) != strings.TrimSpace(legacy.RuleID) {
+		return false
+	}
+	if len(legacy.EventIDs) == 0 {
+		return true
+	}
+	for _, eventID := range incoming.EventIDs {
+		if containsString(legacy.EventIDs, eventID) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(values []string, expected string) bool {
+	trimmedExpected := strings.TrimSpace(expected)
+	if trimmedExpected == "" {
+		return false
+	}
+	for _, value := range values {
+		if strings.TrimSpace(value) == trimmedExpected {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.FindingRecord, run *cerebrov1.FindingEvaluationRun) (*cerebrov1.FindingEvidence, error) {
 	if finding == nil {
 		return nil, errors.New("finding is required")
@@ -853,7 +942,7 @@ func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.Findi
 	eventIDs := uniqueSortedStrings(finding.EventIDs)
 	createdAt := time.Now().UTC()
 	return &cerebrov1.FindingEvidence{
-		Id:            findingEvidenceID(finding.RuntimeID, finding.ID, run.GetId()),
+		Id:            findingEvidenceID(finding.RuntimeID, finding.ID, run.GetId(), eventIDs),
 		RuntimeId:     strings.TrimSpace(finding.RuntimeID),
 		RuleId:        strings.TrimSpace(finding.RuleID),
 		FindingId:     strings.TrimSpace(finding.ID),
@@ -910,8 +999,10 @@ func uniqueSortedStrings(values []string) []string {
 	return unique
 }
 
-func findingEvidenceID(runtimeID string, findingID string, runID string) string {
+func findingEvidenceID(runtimeID string, findingID string, runID string, eventIDs []string) string {
 	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
-	prefix := replacer.Replace(strings.TrimSpace(runtimeID) + "-" + strings.TrimSpace(findingID) + "-" + strings.TrimSpace(runID))
+	parts := []string{strings.TrimSpace(runtimeID), strings.TrimSpace(findingID), strings.TrimSpace(runID)}
+	parts = append(parts, uniqueSortedStrings(eventIDs)...)
+	prefix := replacer.Replace(strings.Join(parts, "-"))
 	return "finding-evidence-" + prefix
 }

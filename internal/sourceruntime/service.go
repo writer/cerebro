@@ -21,8 +21,11 @@ const (
 	redactedValue    = "[redacted]"
 )
 
-// ErrRuntimeUnavailable indicates that the runtime dependencies are not configured.
-var ErrRuntimeUnavailable = errors.New("source runtime is unavailable")
+var (
+	// ErrRuntimeUnavailable indicates that the runtime dependencies are not configured.
+	ErrRuntimeUnavailable = errors.New("source runtime is unavailable")
+	ErrInvalidRequest     = errors.New("invalid source runtime request")
+)
 
 // Service persists and executes source runtimes against the append log.
 type Service struct {
@@ -43,14 +46,14 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 		return nil, ErrRuntimeUnavailable
 	}
 	if req == nil || req.GetRuntime() == nil {
-		return nil, fmt.Errorf("source runtime is required")
+		return nil, fmt.Errorf("%w: source runtime is required", ErrInvalidRequest)
 	}
 	runtime := cloneRuntime(req.GetRuntime())
 	runtime.Id = strings.TrimSpace(runtime.GetId())
 	runtime.SourceId = strings.TrimSpace(runtime.GetSourceId())
 	runtime.TenantId = strings.TrimSpace(runtime.GetTenantId())
 	if runtime.GetId() == "" {
-		return nil, fmt.Errorf("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	source, err := s.lookupSource(runtime.GetSourceId())
 	if err != nil {
@@ -66,9 +69,15 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 		return nil, err
 	}
 	if err := source.Check(ctx, sourcecdk.NewConfig(runtime.GetConfig())); err != nil {
+		if errors.Is(err, sourcecdk.ErrInvalidConfig) {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
+		}
 		return nil, err
 	}
 	if existing != nil {
+		if err := validateRuntimeTenantUnchanged(existing, runtime); err != nil {
+			return nil, err
+		}
 		runtime = mergeRuntime(existing, runtime)
 	}
 	if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
@@ -135,14 +144,14 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 				linksProjected += result.LinksProjected
 			}
 		}
+		runtime.LastSyncedAt = timestamppb.Now()
+		if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
+			return nil, err
+		}
 		if pull.NextCursor == nil {
 			break
 		}
 		cursor = cloneCursor(pull.NextCursor)
-	}
-	runtime.LastSyncedAt = timestamppb.Now()
-	if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
-		return nil, err
 	}
 	return &cerebrov1.SyncSourceRuntimeResponse{
 		Runtime:           redactRuntime(runtime),
@@ -157,7 +166,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
 	id := strings.TrimSpace(sourceID)
 	if id == "" {
-		return nil, fmt.Errorf("source id is required")
+		return nil, fmt.Errorf("%w: source id is required", ErrInvalidRequest)
 	}
 	if s == nil || s.registry == nil {
 		return nil, fmt.Errorf("%w: %s", sourceops.ErrSourceNotFound, id)
@@ -172,7 +181,7 @@ func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
 func (s *Service) lookupRuntime(ctx context.Context, runtimeID string) (*cerebrov1.SourceRuntime, error) {
 	id := strings.TrimSpace(runtimeID)
 	if id == "" {
-		return nil, fmt.Errorf("source runtime id is required")
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
 	if s == nil || s.store == nil {
 		return nil, ErrRuntimeUnavailable
@@ -189,7 +198,7 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 		return defaultPageLimit, nil
 	}
 	if pageLimit > maxPageLimit {
-		return 0, fmt.Errorf("page_limit must be between 1 and %d", maxPageLimit)
+		return 0, fmt.Errorf("%w: page_limit must be between 1 and %d", ErrInvalidRequest, maxPageLimit)
 	}
 	return pageLimit, nil
 }
@@ -222,17 +231,20 @@ func mergeRuntime(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceR
 		existing.GetTenantId() != incoming.GetTenantId() ||
 		!sameConfig(existing.GetConfig(), incoming.GetConfig())
 	if !resetProgress {
-		if incoming.GetCheckpoint() == nil {
-			incoming.Checkpoint = cloneCheckpoint(existing.GetCheckpoint())
-		}
-		if incoming.GetNextCursor() == nil {
-			incoming.NextCursor = cloneCursor(existing.GetNextCursor())
-		}
-		if incoming.GetLastSyncedAt() == nil {
-			incoming.LastSyncedAt = cloneTimestamp(existing.GetLastSyncedAt())
-		}
+		incoming.Checkpoint = cloneCheckpoint(existing.GetCheckpoint())
+		incoming.NextCursor = cloneCursor(existing.GetNextCursor())
+		incoming.LastSyncedAt = cloneTimestamp(existing.GetLastSyncedAt())
 	}
 	return incoming
+}
+
+func validateRuntimeTenantUnchanged(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) error {
+	existingTenantID := strings.TrimSpace(existing.GetTenantId())
+	incomingTenantID := strings.TrimSpace(incoming.GetTenantId())
+	if existingTenantID == "" || incomingTenantID == "" || existingTenantID == incomingTenantID {
+		return nil
+	}
+	return fmt.Errorf("%w: source runtime tenant_id cannot be changed", ErrInvalidRequest)
 }
 
 func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) *cerebrov1.EventEnvelope {
@@ -291,6 +303,10 @@ func sensitiveConfigKey(key string) bool {
 		return false
 	}
 	if strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password") {
+		return true
+	}
+	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
+	if strings.Contains(compact, "apikey") || strings.Contains(compact, "accesskey") || strings.Contains(compact, "privatekey") {
 		return true
 	}
 	return value == "key" || strings.HasSuffix(value, "_key")

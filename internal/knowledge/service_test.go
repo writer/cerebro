@@ -367,3 +367,49 @@ func TestWriteDecisionRequiresAvailableGraph(t *testing.T) {
 		t.Fatalf("WriteDecision() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
+
+func TestKnowledgeValidationErrorsAreInvalidRequests(t *testing.T) {
+	targetURN := "urn:cerebro:writer:okta_resource:policyrule:pol-1"
+	store := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			targetURN: {
+				URN:        targetURN,
+				TenantID:   "writer",
+				SourceID:   "okta",
+				EntityType: "okta.resource",
+				Label:      "Require MFA",
+			},
+		},
+	}
+	service := New(store, store)
+	for _, tt := range []struct {
+		name string
+		run  func() error
+	}{
+		{name: "decision type", run: func() error {
+			_, err := service.WriteDecision(context.Background(), DecisionWriteRequest{TargetIDs: []string{targetURN}})
+			return err
+		}},
+		{name: "action title", run: func() error {
+			_, err := service.WriteAction(context.Background(), ActionWriteRequest{TargetIDs: []string{targetURN}})
+			return err
+		}},
+		{name: "outcome verdict", run: func() error {
+			decision, err := service.WriteDecision(context.Background(), DecisionWriteRequest{DecisionType: "finding-triage", TargetIDs: []string{targetURN}})
+			if err != nil {
+				return err
+			}
+			_, err = service.WriteOutcome(context.Background(), OutcomeWriteRequest{
+				DecisionID:  decision.DecisionID,
+				OutcomeType: "finding-resolution",
+			})
+			return err
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.run(); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("error = %v, want %v", err, ErrInvalidRequest)
+			}
+		})
+	}
+}
