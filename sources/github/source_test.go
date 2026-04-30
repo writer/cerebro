@@ -308,8 +308,11 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if second.NextCursor != nil {
 		t.Fatalf("second.NextCursor = %#v, want nil", second.NextCursor)
 	}
-	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "audit-doc-2" {
-		t.Fatalf("second.Checkpoint = %#v, want audit-doc-2", second.Checkpoint)
+	if second.Checkpoint == nil {
+		t.Fatalf("second.Checkpoint = nil, want non-nil with empty CursorOpaque")
+	}
+	if second.Checkpoint.CursorOpaque != "" {
+		t.Fatalf("second.Checkpoint.CursorOpaque = %q, want empty cursor on terminal audit page", second.Checkpoint.CursorOpaque)
 	}
 }
 
