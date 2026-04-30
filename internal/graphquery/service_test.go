@@ -54,3 +54,24 @@ func TestGetEntityNeighborhoodRequiresAvailableStore(t *testing.T) {
 		t.Fatalf("GetEntityNeighborhood() error = %v, want %v", err, ErrRuntimeUnavailable)
 	}
 }
+
+func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
+	store := &stubStore{}
+	service := New(store)
+	cases := []string{
+		"user:123",
+		"urn:other:writer:user:alice",
+		"urn:cerebro:writer:user",
+		"urn:cerebro::user:alice",
+		"   ",
+	}
+	for _, raw := range cases {
+		_, err := service.GetEntityNeighborhood(context.Background(), NeighborhoodRequest{RootURN: raw})
+		if !errors.Is(err, ErrInvalidRequest) {
+			t.Fatalf("GetEntityNeighborhood(%q) error = %v, want %v", raw, err, ErrInvalidRequest)
+		}
+	}
+	if store.rootURN != "" {
+		t.Fatalf("store should never see malformed urns; got %q", store.rootURN)
+	}
+}

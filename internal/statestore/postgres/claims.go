@@ -191,6 +191,7 @@ func (s *Store) ListClaims(ctx context.Context, request ports.ListClaimsRequest)
 		args = append(args, trimmed)
 		clauses = append(clauses, fmt.Sprintf("%s = $%d", column, len(args)))
 	}
+	addFilter("tenant_id", request.TenantID)
 	addFilter("id", request.ClaimID)
 	addFilter("subject_urn", request.SubjectURN)
 	addFilter("predicate", request.Predicate)

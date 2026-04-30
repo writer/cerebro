@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -394,6 +396,55 @@ func TestWriteClaimsRetractedRelationDeletesProjectedLink(t *testing.T) {
 	}
 	if _, ok := projection.deletedLinks[issueURN+"|assigned_to|"+assigneeURN]; !ok {
 		t.Fatal("deleted projected link missing for explicitly retracted relation")
+	}
+}
+
+func TestWriteClaimsRefutedAndSupersededRelationsDeleteProjectedLink(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	for _, status := range []string{claimStatusRefuted, claimStatusSuperseded} {
+		t.Run(status, func(t *testing.T) {
+			projection := &projectionRecorder{}
+			service := New(
+				&stubRuntimeStore{
+					runtimes: map[string]*cerebrov1.SourceRuntime{
+						"writer-jira": {
+							Id:       "writer-jira",
+							SourceId: "sdk",
+							TenantId: "writer",
+						},
+					},
+				},
+				&stubClaimStore{},
+				projection,
+				projection,
+			)
+			result, err := service.WriteClaims(context.Background(), WriteRequest{
+				RuntimeID: "writer-jira",
+				Claims: []*cerebrov1.Claim{
+					{
+						SubjectUrn:    issueURN,
+						Predicate:     "assigned_to",
+						ObjectUrn:     assigneeURN,
+						ClaimType:     claimTypeRelation,
+						Status:        status,
+						SourceEventId: "jira-event-" + status,
+					},
+				},
+			})
+			if err != nil {
+				t.Fatalf("WriteClaims() error = %v", err)
+			}
+			if got := result.RelationLinksProjected; got != 0 {
+				t.Fatalf("WriteClaims().RelationLinksProjected = %d, want 0", got)
+			}
+			if _, ok := projection.links[issueURN+"|assigned_to|"+assigneeURN]; ok {
+				t.Fatalf("projected link was upserted for %q relation", status)
+			}
+			if _, ok := projection.deletedLinks[issueURN+"|assigned_to|"+assigneeURN]; !ok {
+				t.Fatalf("deleted projected link missing for %q relation", status)
+			}
+		})
 	}
 }
 
@@ -951,4 +1002,85 @@ func timeFromProto(value *timestamppb.Timestamp) time.Time {
 		return time.Time{}
 	}
 	return value.AsTime().UTC()
+}
+
+func TestWriteClaimsSerializesPerRuntime(t *testing.T) {
+	const goroutines = 4
+	const calls = 6
+	var (
+		concurrent  int32
+		maxObserved int32
+	)
+	store := &concurrencyClaimStore{
+		concurrent:  &concurrent,
+		maxObserved: &maxObserved,
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			},
+		},
+		store,
+		nil,
+		nil,
+	)
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < calls; i++ {
+				_, err := service.WriteClaims(context.Background(), WriteRequest{
+					RuntimeID: "writer-jira",
+					Claims: []*cerebrov1.Claim{{
+						SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-1",
+						Predicate:   "status",
+						ObjectValue: "open",
+						ClaimType:   claimTypeAttribute,
+					}},
+				})
+				if err != nil {
+					t.Errorf("WriteClaims() error = %v", err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	if got := atomic.LoadInt32(&maxObserved); got != 1 {
+		t.Fatalf("max concurrent claim writers = %d, want 1 per runtime", got)
+	}
+}
+
+type concurrencyClaimStore struct {
+	concurrent  *int32
+	maxObserved *int32
+	mu          sync.Mutex
+	claims      map[string]*ports.ClaimRecord
+}
+
+func (c *concurrencyClaimStore) Ping(context.Context) error { return nil }
+
+func (c *concurrencyClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
+	current := atomic.AddInt32(c.concurrent, 1)
+	defer atomic.AddInt32(c.concurrent, -1)
+	for {
+		prev := atomic.LoadInt32(c.maxObserved)
+		if current <= prev || atomic.CompareAndSwapInt32(c.maxObserved, prev, current) {
+			break
+		}
+	}
+	time.Sleep(2 * time.Millisecond)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.claims == nil {
+		c.claims = make(map[string]*ports.ClaimRecord)
+	}
+	c.claims[claim.ID] = cloneClaimRecord(claim)
+	return cloneClaimRecord(claim), nil
+}
+
+func (c *concurrencyClaimStore) ListClaims(context.Context, ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
+	return nil, nil
 }

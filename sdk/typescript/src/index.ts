@@ -544,7 +544,10 @@ export class IntegrationClient {
     const seen = new Set<string>();
     for (const root of roots) {
       const rootUrn = typeof root === "string" ? root.trim() : root.urn.trim();
-      if (!rootUrn || seen.has(rootUrn)) {
+      if (!rootUrn) {
+        throw new Error("graphLayering: root urn must be a non-empty string");
+      }
+      if (seen.has(rootUrn)) {
         continue;
       }
       seen.add(rootUrn);

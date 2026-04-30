@@ -962,6 +962,7 @@ func (s *Service) claimIDsForFinding(ctx context.Context, finding *ports.Finding
 	for _, eventID := range uniqueSortedStrings(finding.EventIDs) {
 		claims, err := s.claimStore.ListClaims(ctx, ports.ListClaimsRequest{
 			RuntimeID:     strings.TrimSpace(finding.RuntimeID),
+			TenantID:      strings.TrimSpace(finding.TenantID),
 			SourceEventID: eventID,
 			Limit:         defaultEvidenceClaimCap,
 		})
