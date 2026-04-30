@@ -85,3 +85,39 @@ func TestRegistryForRuntimeFiltersSupportedRules(t *testing.T) {
 		t.Fatalf("ForRuntime()[0].Spec().Id = %q, want rule-a", got)
 	}
 }
+
+func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
+	packs := builtinRulePacks()
+	if got := len(packs); got != 5 {
+		t.Fatalf("len(builtinRulePacks()) = %d, want 5", got)
+	}
+	rules := flattenRulePacks(packs)
+	if got := len(rules); got < 10 {
+		t.Fatalf("len(flattenRulePacks()) = %d, want at least 10", got)
+	}
+	registry, err := NewRegistry(rules...)
+	if err != nil {
+		t.Fatalf("NewRegistry(flattenRulePacks()) error = %v", err)
+	}
+	if _, ok := registry.Get(githubDependabotOpenAlertRuleID); !ok {
+		t.Fatalf("registry missing %q", githubDependabotOpenAlertRuleID)
+	}
+	if _, ok := registry.Get(githubSecretScanningDisabledRuleID); !ok {
+		t.Fatalf("registry missing %q", githubSecretScanningDisabledRuleID)
+	}
+	if _, ok := registry.Get(oktaPolicyRuleLifecycleTamperingRuleID); !ok {
+		t.Fatalf("registry missing %q", oktaPolicyRuleLifecycleTamperingRuleID)
+	}
+	if _, ok := registry.Get(identityAdminPrivilegeGrantedRuleID); !ok {
+		t.Fatalf("registry missing %q", identityAdminPrivilegeGrantedRuleID)
+	}
+	if _, ok := registry.Get(cloudPublicResourceExposureRuleID); !ok {
+		t.Fatalf("registry missing %q", cloudPublicResourceExposureRuleID)
+	}
+	if _, ok := registry.Get(runtimeActiveThreatEvidenceRuleID); !ok {
+		t.Fatalf("registry missing %q", runtimeActiveThreatEvidenceRuleID)
+	}
+	if _, ok := registry.Get(dataSensitiveAssetRiskRuleID); !ok {
+		t.Fatalf("registry missing %q", dataSensitiveAssetRiskRuleID)
+	}
+}

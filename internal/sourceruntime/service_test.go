@@ -77,6 +77,35 @@ func (p *projector) Project(_ context.Context, event *cerebrov1.EventEnvelope) (
 	return p.result, nil
 }
 
+type emptyPageSource struct{}
+
+func (emptyPageSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "empty_page"}
+}
+
+func (emptyPageSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (emptyPageSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (emptyPageSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	if cursor.GetOpaque() == "" {
+		return sourcecdk.Pull{NextCursor: &cerebrov1.SourceCursor{Opaque: "second"}}, nil
+	}
+	return sourcecdk.Pull{
+		Events: []*cerebrov1.EventEnvelope{{
+			Id:       "event-after-empty-page",
+			TenantId: "writer",
+			SourceId: "empty_page",
+			Kind:     "empty_page.event",
+		}},
+		Checkpoint: &cerebrov1.SourceCheckpoint{CursorOpaque: "second"},
+	}, nil
+}
+
 func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -155,6 +184,49 @@ func TestPutPreservesProgressWhenConfigIsUnchanged(t *testing.T) {
 	}
 }
 
+func TestPutRestoresRedactedSensitiveConfigBeforeMerge(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				TenantId: "writer",
+				Config:   map[string]string{"token": "preserved-value"},
+				Checkpoint: &cerebrov1.SourceCheckpoint{
+					CursorOpaque: "1",
+				},
+				NextCursor:   &cerebrov1.SourceCursor{Opaque: "1"},
+				LastSyncedAt: timestamppb.Now(),
+			},
+		},
+	}
+	service := New(registry, store, nil, nil)
+
+	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-github",
+			SourceId: "github",
+			Config:   map[string]string{"token": redactedValue},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if got := store.runtimes["writer-github"].GetConfig()["token"]; got != "preserved-value" {
+		t.Fatalf("stored token = %q, want preserved secret", got)
+	}
+	if got := resp.GetRuntime().GetConfig()["token"]; got != redactedValue {
+		t.Fatalf("response token = %q, want redacted", got)
+	}
+	if got := store.runtimes["writer-github"].GetNextCursor().GetOpaque(); got != "1" {
+		t.Fatalf("stored next cursor = %q, want preserved cursor", got)
+	}
+}
+
 func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -200,6 +272,44 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	}
 	if runtime.GetLastSyncedAt() == nil {
 		t.Fatal("stored last_synced_at = nil, want non-nil")
+	}
+}
+
+func TestSyncRuntimeContinuesPastEmptyPagesWithCursor(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(emptyPageSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-empty-page": {
+				Id:       "writer-empty-page",
+				SourceId: "empty_page",
+				TenantId: "writer",
+			},
+		},
+	}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+		Id:        "writer-empty-page",
+		PageLimit: 2,
+	})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if resp.GetPagesRead() != 2 {
+		t.Fatalf("Sync().PagesRead = %d, want 2", resp.GetPagesRead())
+	}
+	if resp.GetEventsAppended() != 1 {
+		t.Fatalf("Sync().EventsAppended = %d, want 1", resp.GetEventsAppended())
+	}
+	if len(log.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(log.events))
+	}
+	if got := store.runtimes["writer-empty-page"].GetNextCursor(); got != nil {
+		t.Fatalf("stored next cursor = %#v, want nil", got)
 	}
 }
 
@@ -309,6 +419,12 @@ func TestSyncRuntimeRequiresDependencies(t *testing.T) {
 	_, err = service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-github"})
 	if !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("Sync() error = %v, want ErrRuntimeUnavailable", err)
+	}
+}
+
+func TestSameConfigComparesKeyPresence(t *testing.T) {
+	if sameConfig(map[string]string{"a": ""}, map[string]string{"b": ""}) {
+		t.Fatal("sameConfig() = true, want false for different key sets")
 	}
 }
 

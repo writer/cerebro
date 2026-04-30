@@ -1,8 +1,11 @@
+//go:build cgo
+
 package kuzu
 
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -43,7 +46,7 @@ func (s *Store) GetEntityNeighborhood(ctx context.Context, rootURN string, limit
 	relations := make(map[string]*ports.NeighborhoodRelation)
 	remaining, err := s.collectNeighborhoodRows(ctx, fmt.Sprintf(
 		"MATCH (root:entity {urn: %s})-[r:relation]->(neighbor:entity) "+
-			"RETURN neighbor.urn AS neighbor_urn, neighbor.entity_type AS neighbor_type, neighbor.label AS neighbor_label, root.urn AS from_urn, r.relation AS relation_type, neighbor.urn AS to_urn "+
+			"RETURN neighbor.urn AS neighbor_urn, neighbor.entity_type AS neighbor_type, neighbor.label AS neighbor_label, root.urn AS from_urn, r.relation AS relation_type, neighbor.urn AS to_urn, r.attributes_json AS attributes_json "+
 			"ORDER BY neighbor.urn, r.relation LIMIT %d",
 		cypherString(normalizedRootURN),
 		limit,
@@ -54,7 +57,7 @@ func (s *Store) GetEntityNeighborhood(ctx context.Context, rootURN string, limit
 	if remaining > 0 {
 		if _, err := s.collectNeighborhoodRows(ctx, fmt.Sprintf(
 			"MATCH (neighbor:entity)-[r:relation]->(root:entity {urn: %s}) "+
-				"RETURN neighbor.urn AS neighbor_urn, neighbor.entity_type AS neighbor_type, neighbor.label AS neighbor_label, neighbor.urn AS from_urn, r.relation AS relation_type, root.urn AS to_urn "+
+				"RETURN neighbor.urn AS neighbor_urn, neighbor.entity_type AS neighbor_type, neighbor.label AS neighbor_label, neighbor.urn AS from_urn, r.relation AS relation_type, root.urn AS to_urn, r.attributes_json AS attributes_json "+
 				"ORDER BY neighbor.urn, r.relation LIMIT %d",
 			cypherString(normalizedRootURN),
 			remaining,
@@ -94,6 +97,7 @@ func (s *Store) collectNeighborhoodRows(ctx context.Context, query string, remai
 	for rows.Next() {
 		var neighbor ports.NeighborhoodNode
 		var relation ports.NeighborhoodRelation
+		var attributesJSON string
 		if err := rows.Scan(
 			&neighbor.URN,
 			&neighbor.EntityType,
@@ -101,9 +105,15 @@ func (s *Store) collectNeighborhoodRows(ctx context.Context, query string, remai
 			&relation.FromURN,
 			&relation.Relation,
 			&relation.ToURN,
+			&attributesJSON,
 		); err != nil {
 			return remaining, fmt.Errorf("scan graph neighborhood row: %w", err)
 		}
+		attributes, err := decodeGraphAttributes(attributesJSON)
+		if err != nil {
+			return remaining, fmt.Errorf("decode graph neighborhood relation attributes: %w", err)
+		}
+		relation.Attributes = attributes
 		neighbors[neighbor.URN] = &neighbor
 		relations[relation.FromURN+"|"+relation.Relation+"|"+relation.ToURN] = &relation
 		remaining--
@@ -115,6 +125,18 @@ func (s *Store) collectNeighborhoodRows(ctx context.Context, query string, remai
 		return remaining, fmt.Errorf("iterate graph neighborhood rows: %w", err)
 	}
 	return remaining, nil
+}
+
+func decodeGraphAttributes(payload string) (map[string]string, error) {
+	trimmed := strings.TrimSpace(payload)
+	if trimmed == "" || trimmed == "{}" {
+		return nil, nil
+	}
+	attributes := map[string]string{}
+	if err := json.Unmarshal([]byte(trimmed), &attributes); err != nil {
+		return nil, err
+	}
+	return attributes, nil
 }
 
 func neighborhoodNodes(values map[string]*ports.NeighborhoodNode) []*ports.NeighborhoodNode {

@@ -1,8 +1,12 @@
+//go:build cgo
+
 package graphrebuild
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 
 	"google.golang.org/protobuf/proto"
@@ -68,6 +72,10 @@ func (s *testSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebro
 	}
 	events := make([]*cerebrov1.EventEnvelope, 0, len(s.pages[index]))
 	for _, event := range s.pages[index] {
+		if event == nil {
+			events = append(events, nil)
+			continue
+		}
 		events = append(events, proto.Clone(event).(*cerebrov1.EventEnvelope))
 	}
 	pull := sourcecdk.Pull{
@@ -161,17 +169,17 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if result.EventsRead != 2 {
 		t.Fatalf("EventsRead = %d, want 2", result.EventsRead)
 	}
-	if result.EntitiesProjected != 9 {
-		t.Fatalf("EntitiesProjected = %d, want 9", result.EntitiesProjected)
+	if result.EntitiesProjected != 11 {
+		t.Fatalf("EntitiesProjected = %d, want 11", result.EntitiesProjected)
 	}
-	if result.LinksProjected != 7 {
-		t.Fatalf("LinksProjected = %d, want 7", result.LinksProjected)
+	if result.LinksProjected != 11 {
+		t.Fatalf("LinksProjected = %d, want 11", result.LinksProjected)
 	}
-	if result.GraphNodes != 5 {
-		t.Fatalf("GraphNodes = %d, want 5", result.GraphNodes)
+	if result.GraphNodes != 6 {
+		t.Fatalf("GraphNodes = %d, want 6", result.GraphNodes)
 	}
-	if result.GraphLinks != 5 {
-		t.Fatalf("GraphLinks = %d, want 5", result.GraphLinks)
+	if result.GraphLinks != 7 {
+		t.Fatalf("GraphLinks = %d, want 7", result.GraphLinks)
 	}
 	if len(result.StageConfirmations) != 9 {
 		t.Fatalf("len(StageConfirmations) = %d, want 9", len(result.StageConfirmations))
@@ -183,14 +191,14 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if got := result.StageConfirmations[5].AssertionsFailed; got != 0 {
 		t.Fatalf("verify_integrity assertions_failed = %d, want 0", got)
 	}
-	if got := result.StageConfirmations[6].PatternsVerified; got != 3 {
-		t.Fatalf("verify_path_patterns patterns_verified = %d, want 3", got)
+	if got := result.StageConfirmations[6].PatternsVerified; got != 4 {
+		t.Fatalf("verify_path_patterns patterns_verified = %d, want 4", got)
 	}
 	if got := result.StageConfirmations[7].TopologyBuckets; got != 4 {
 		t.Fatalf("verify_topology topology_buckets = %d, want 4", got)
 	}
-	if got := result.StageConfirmations[8].TraversalsVerified; got != 3 {
-		t.Fatalf("verify_traversals traversals_verified = %d, want 3", got)
+	if got := result.StageConfirmations[8].TraversalsVerified; got != 4 {
+		t.Fatalf("verify_traversals traversals_verified = %d, want 4", got)
 	}
 	if len(result.ReadPages) != 2 {
 		t.Fatalf("len(ReadPages) = %d, want 2", len(result.ReadPages))
@@ -200,8 +208,8 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if len(result.EventProjections) != 2 {
 		t.Fatalf("len(EventProjections) = %d, want 2", len(result.EventProjections))
 	}
-	assertEventProjection(t, result.EventProjections[0], "github-audit-1", "github.audit", 4, 3, 4, 3)
-	assertEventProjection(t, result.EventProjections[1], "github-pr-1", "github.pull_request", 5, 4, 5, 5)
+	assertEventProjection(t, result.EventProjections[0], "github-audit-1", "github.audit", 5, 5, 5, 5)
+	assertEventProjection(t, result.EventProjections[1], "github-pr-1", "github.pull_request", 6, 6, 6, 7)
 	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
 		t.Fatalf("event kind github.audit = %d, want 1", got)
 	}
@@ -229,8 +237,8 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if !containsAssertion(result.GraphAssertions, "self_referential_relations", 0, 0, true) {
 		t.Fatalf("GraphAssertions missing self_referential_relations: %#v", result.GraphAssertions)
 	}
-	if len(result.GraphPathPatterns) != 3 {
-		t.Fatalf("len(GraphPathPatterns) = %d, want 3", len(result.GraphPathPatterns))
+	if len(result.GraphPathPatterns) != 4 {
+		t.Fatalf("len(GraphPathPatterns) = %d, want 4", len(result.GraphPathPatterns))
 	}
 	if !containsPathPatternPreview(result.GraphPathPatterns, "github.user -[authored]-> github.pull_request -[belongs_to]-> github.repo", 1) {
 		t.Fatalf("GraphPathPatterns missing authored pattern: %#v", result.GraphPathPatterns)
@@ -247,11 +255,11 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	if !containsTopologyPreview(result.GraphTopology, "sinks_only", 2) {
 		t.Fatalf("GraphTopology missing sinks_only bucket: %#v", result.GraphTopology)
 	}
-	if !containsTopologyPreview(result.GraphTopology, "intermediates", 2) {
+	if !containsTopologyPreview(result.GraphTopology, "intermediates", 3) {
 		t.Fatalf("GraphTopology missing intermediates bucket: %#v", result.GraphTopology)
 	}
-	if len(result.GraphTraversals) != 3 {
-		t.Fatalf("len(GraphTraversals) = %d, want 3", len(result.GraphTraversals))
+	if len(result.GraphTraversals) != 4 {
+		t.Fatalf("len(GraphTraversals) = %d, want 4", len(result.GraphTraversals))
 	}
 	if !containsTraversalPath(result.GraphTraversals, "octocat -[authored]-> writer/cerebro#418 -[belongs_to]-> writer/cerebro") {
 		t.Fatalf("GraphTraversals missing authored path: %#v", result.GraphTraversals)
@@ -267,6 +275,103 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 	if !containsLink(result.PreviewLinks, "urn:cerebro:writer-dogfood:github_user:octocat", "authored", "urn:cerebro:writer-dogfood:github_pull_request:writer/cerebro#418") {
 		t.Fatalf("PreviewLinks missing authored relation: %#v", result.PreviewLinks)
+	}
+}
+
+func TestRebuildDryRunProjectsDependabotAlertGraph(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(&testSource{
+		spec: &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"},
+		pages: [][]*cerebrov1.EventEnvelope{
+			{
+				testEvent("github-dependabot-alert-1", "github.dependabot_alert", map[string]string{
+					"advisory_ghsa_id": "GHSA-1234-5678-90ab",
+					"alert_number":     "5",
+					"ecosystem":        "gomod",
+					"html_url":         "https://github.com/writer/cerebro/security/dependabot/5",
+					"owner":            "writer",
+					"package":          "golang.org/x/net",
+					"repository":       "writer/cerebro",
+					"severity":         "HIGH",
+					"state":            "open",
+				}),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				TenantId: "writer-dogfood",
+				Config:   map[string]string{"token": "fixture-token"},
+			},
+		},
+	}, nil)
+
+	result, err := service.RebuildDryRun(context.Background(), Request{
+		RuntimeID:    "writer-github",
+		PreviewLimit: 10,
+	})
+	if err != nil {
+		t.Fatalf("RebuildDryRun() error = %v", err)
+	}
+	if result.EventsRead != 1 {
+		t.Fatalf("EventsRead = %d, want 1", result.EventsRead)
+	}
+	if result.EntitiesProjected != 5 {
+		t.Fatalf("EntitiesProjected = %d, want 5", result.EntitiesProjected)
+	}
+	if result.LinksProjected != 4 {
+		t.Fatalf("LinksProjected = %d, want 4", result.LinksProjected)
+	}
+	if result.GraphNodes != 5 {
+		t.Fatalf("GraphNodes = %d, want 5", result.GraphNodes)
+	}
+	if result.GraphLinks != 4 {
+		t.Fatalf("GraphLinks = %d, want 4", result.GraphLinks)
+	}
+	if len(result.EventProjections) != 1 {
+		t.Fatalf("len(EventProjections) = %d, want 1", len(result.EventProjections))
+	}
+	assertEventProjection(t, result.EventProjections[0], "github-dependabot-alert-1", "github.dependabot_alert", 5, 4, 5, 4)
+	if got := countValue(result.GraphEntityTypes, "github.dependabot_alert"); got != 1 {
+		t.Fatalf("graph entity type github.dependabot_alert = %d, want 1", got)
+	}
+	if got := countValue(result.GraphEntityTypes, "github.security_advisory"); got != 1 {
+		t.Fatalf("graph entity type github.security_advisory = %d, want 1", got)
+	}
+	if got := countValue(result.GraphEntityTypes, "package"); got != 1 {
+		t.Fatalf("graph entity type package = %d, want 1", got)
+	}
+	if got := countValue(result.GraphRelationTypes, "belongs_to"); got != 2 {
+		t.Fatalf("graph relation type belongs_to = %d, want 2", got)
+	}
+	if got := countValue(result.GraphRelationTypes, "affected_by"); got != 1 {
+		t.Fatalf("graph relation type affected_by = %d, want 1", got)
+	}
+	if got := countValue(result.GraphRelationTypes, "affects"); got != 1 {
+		t.Fatalf("graph relation type affects = %d, want 1", got)
+	}
+	alertURN := "urn:cerebro:writer-dogfood:github_dependabot_alert:writer/cerebro:5"
+	advisoryURN := "urn:cerebro:writer-dogfood:github_advisory:GHSA-1234-5678-90ab"
+	packageURN := "urn:cerebro:writer-dogfood:package:gomod:golang.org/x/net"
+	if !containsEntityURN(result.PreviewEntities, alertURN) {
+		t.Fatalf("PreviewEntities missing Dependabot alert: %#v", result.PreviewEntities)
+	}
+	if !containsEntityURN(result.PreviewEntities, advisoryURN) {
+		t.Fatalf("PreviewEntities missing advisory: %#v", result.PreviewEntities)
+	}
+	if !containsEntityURN(result.PreviewEntities, packageURN) {
+		t.Fatalf("PreviewEntities missing package: %#v", result.PreviewEntities)
+	}
+	if !containsLink(result.PreviewLinks, alertURN, "affected_by", advisoryURN) {
+		t.Fatalf("PreviewLinks missing advisory relation: %#v", result.PreviewLinks)
+	}
+	if !containsLink(result.PreviewLinks, alertURN, "affects", packageURN) {
+		t.Fatalf("PreviewLinks missing package relation: %#v", result.PreviewLinks)
 	}
 }
 
@@ -318,11 +423,11 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if result.EventsRead != 1 {
 		t.Fatalf("EventsRead = %d, want 1", result.EventsRead)
 	}
-	if result.GraphNodes != 4 {
-		t.Fatalf("GraphNodes = %d, want 4", result.GraphNodes)
+	if result.GraphNodes != 5 {
+		t.Fatalf("GraphNodes = %d, want 5", result.GraphNodes)
 	}
-	if result.GraphLinks != 3 {
-		t.Fatalf("GraphLinks = %d, want 3", result.GraphLinks)
+	if result.GraphLinks != 5 {
+		t.Fatalf("GraphLinks = %d, want 5", result.GraphLinks)
 	}
 	if got := countValue(result.EventKinds, "github.audit"); got != 1 {
 		t.Fatalf("event kind github.audit = %d, want 1", got)
@@ -330,20 +435,20 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if got := countValue(result.GraphEntityTypes, "github.repo"); got != 1 {
 		t.Fatalf("graph entity type github.repo = %d, want 1", got)
 	}
-	if len(result.GraphTraversals) != 1 {
-		t.Fatalf("len(GraphTraversals) = %d, want 1", len(result.GraphTraversals))
+	if len(result.GraphTraversals) != 2 {
+		t.Fatalf("len(GraphTraversals) = %d, want 2", len(result.GraphTraversals))
 	}
 	if got := result.StageConfirmations[5].AssertionsPassed; got != 5 {
 		t.Fatalf("verify_integrity assertions_passed = %d, want 5", got)
 	}
-	if got := result.StageConfirmations[6].PatternsVerified; got != 1 {
-		t.Fatalf("verify_path_patterns patterns_verified = %d, want 1", got)
+	if got := result.StageConfirmations[6].PatternsVerified; got != 2 {
+		t.Fatalf("verify_path_patterns patterns_verified = %d, want 2", got)
 	}
 	if got := result.StageConfirmations[7].TopologyBuckets; got != 4 {
 		t.Fatalf("verify_topology topology_buckets = %d, want 4", got)
 	}
-	if got := result.StageConfirmations[8].TraversalsVerified; got != 1 {
-		t.Fatalf("verify_traversals traversals_verified = %d, want 1", got)
+	if got := result.StageConfirmations[8].TraversalsVerified; got != 2 {
+		t.Fatalf("verify_traversals traversals_verified = %d, want 2", got)
 	}
 	if len(result.ReadPages) != 1 {
 		t.Fatalf("len(ReadPages) = %d, want 1", len(result.ReadPages))
@@ -352,14 +457,14 @@ func TestRebuildDryRunDefaultsToSinglePage(t *testing.T) {
 	if len(result.EventProjections) != 1 {
 		t.Fatalf("len(EventProjections) = %d, want 1", len(result.EventProjections))
 	}
-	assertEventProjection(t, result.EventProjections[0], "github-audit-1", "github.audit", 4, 3, 4, 3)
-	if len(result.GraphPathPatterns) != 1 {
-		t.Fatalf("len(GraphPathPatterns) = %d, want 1", len(result.GraphPathPatterns))
+	assertEventProjection(t, result.EventProjections[0], "github-audit-1", "github.audit", 5, 5, 5, 5)
+	if len(result.GraphPathPatterns) != 2 {
+		t.Fatalf("len(GraphPathPatterns) = %d, want 2", len(result.GraphPathPatterns))
 	}
 	if !containsPathPatternPreview(result.GraphPathPatterns, "github.user -[acted_on]-> github.repo -[belongs_to]-> github.org", 1) {
 		t.Fatalf("GraphPathPatterns missing acted_on pattern: %#v", result.GraphPathPatterns)
 	}
-	if !containsTopologyPreview(result.GraphTopology, "isolated", 0) || !containsTopologyPreview(result.GraphTopology, "sources_only", 1) || !containsTopologyPreview(result.GraphTopology, "sinks_only", 2) || !containsTopologyPreview(result.GraphTopology, "intermediates", 1) {
+	if !containsTopologyPreview(result.GraphTopology, "isolated", 0) || !containsTopologyPreview(result.GraphTopology, "sources_only", 1) || !containsTopologyPreview(result.GraphTopology, "sinks_only", 2) || !containsTopologyPreview(result.GraphTopology, "intermediates", 2) {
 		t.Fatalf("GraphTopology unexpected values: %#v", result.GraphTopology)
 	}
 	if !containsTraversalPath(result.GraphTraversals, "octocat -[acted_on]-> writer/cerebro -[belongs_to]-> writer") {
@@ -441,14 +546,39 @@ func TestRebuildDryRunReplaysRuntimeIntoTemporaryGraph(t *testing.T) {
 	if got := result.StageConfirmations[2].EventsRead; got != 2 {
 		t.Fatalf("replay_log events_read = %d, want 2", got)
 	}
-	if result.GraphNodes != 5 {
-		t.Fatalf("GraphNodes = %d, want 5", result.GraphNodes)
+	if result.GraphNodes != 6 {
+		t.Fatalf("GraphNodes = %d, want 6", result.GraphNodes)
 	}
-	if result.GraphLinks != 5 {
-		t.Fatalf("GraphLinks = %d, want 5", result.GraphLinks)
+	if result.GraphLinks != 7 {
+		t.Fatalf("GraphLinks = %d, want 7", result.GraphLinks)
 	}
 	if !containsTraversalPath(result.GraphTraversals, "octocat -[authored]-> writer/cerebro#418 -[belongs_to]-> writer/cerebro") {
 		t.Fatalf("GraphTraversals missing authored path: %#v", result.GraphTraversals)
+	}
+}
+
+func TestRebuildDryRunRejectsNilEventWithPageContext(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(&testSource{
+		spec:  &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"},
+		pages: [][]*cerebrov1.EventEnvelope{{nil}},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-github": {
+				Id:       "writer-github",
+				SourceId: "github",
+				TenantId: "writer-dogfood",
+				Config:   map[string]string{"token": "fixture-token"},
+			},
+		},
+	}, nil)
+
+	_, err = service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github"})
+	if err == nil || !strings.Contains(fmt.Sprint(err), "read source page 1: nil event at index 0") {
+		t.Fatalf("RebuildDryRun() error = %v, want nil event page context", err)
 	}
 }
 

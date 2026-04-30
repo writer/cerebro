@@ -1,0 +1,1 @@
+[{"id":"azure-group-group-1","tenant_id":"tenant-1","source_id":"azure","kind":"azure.group","occurred_at":"2026-04-23T00:00:00Z","schema_ref":"azure/group/v1","payload":{"tenant_id":"tenant-1"},"attributes":{"domain":"tenant-1","family":"group","group_email":"security@writer.com","group_id":"group-1","group_name":"Security","mail_enabled":"true","security_enabled":"true"}}]

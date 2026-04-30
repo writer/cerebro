@@ -3,5 +3,6 @@ name: GitHub
 description: GitHub audit, pull request, and secret scanning source.
 emitted_kinds:
   - github.audit
+  - github.dependabot_alert
   - github.pull_request
   - github.secret_scanning

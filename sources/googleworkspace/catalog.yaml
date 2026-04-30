@@ -1,0 +1,9 @@
+id: google_workspace
+name: Google Workspace
+description: Google Workspace Directory and Admin audit source.
+emitted_kinds:
+  - google_workspace.audit
+  - google_workspace.group
+  - google_workspace.group_member
+  - google_workspace.role_assignment
+  - google_workspace.user

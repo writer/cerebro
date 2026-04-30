@@ -1,6 +1,17 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
+
+func TestRunRejectsUnsupportedCommand(t *testing.T) {
+	err := run([]string{"unsupported"})
+	var usage usageError
+	if !errors.As(err, &usage) {
+		t.Fatalf("run(unsupported) error = %v, want usageError", err)
+	}
+}
 
 func TestParseSourceRuntimePutArgsSeparatesTenantID(t *testing.T) {
 	runtime, err := parseSourceRuntimePutArgs([]string{

@@ -30,13 +30,19 @@ const (
 	defaultAuditOrder = "DESCENDING"
 	defaultUserOrder  = "asc"
 	familyAudit       = "audit"
+	familyApplication = "application"
+	familyAppAssign   = "app_assignment"
+	familyAdminRole   = "admin_role"
+	familyGroup       = "group"
+	familyGroupMember = "group_membership"
 	familyUser        = "user"
 )
 
 // Source is the live Okta source preview used by the builtin registry.
 type Source struct {
-	spec   *cerebrov1.SourceSpec
-	client *http.Client
+	spec     *cerebrov1.SourceSpec
+	client   *http.Client
+	families *sourcecdk.FamilyEngine[settings]
 }
 
 type settings struct {
@@ -51,6 +57,10 @@ type settings struct {
 	sortOrder string
 	since     string
 	until     string
+	groupID   string
+	appID     string
+	userID    string
+	userEmail string
 	perPage   int
 }
 
@@ -81,6 +91,49 @@ type userRecord struct {
 	Type            map[string]any `json:"type"`
 	Profile         map[string]any `json:"profile"`
 	raw             json.RawMessage
+}
+
+type groupRecord struct {
+	ID                    string         `json:"id"`
+	Created               *time.Time     `json:"created"`
+	LastUpdated           *time.Time     `json:"lastUpdated"`
+	LastMembershipUpdated *time.Time     `json:"lastMembershipUpdated"`
+	Type                  string         `json:"type"`
+	Profile               map[string]any `json:"profile"`
+	raw                   json.RawMessage
+}
+
+type appRecord struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Label       string     `json:"label"`
+	Status      string     `json:"status"`
+	SignOnMode  string     `json:"signOnMode"`
+	Created     *time.Time `json:"created"`
+	LastUpdated *time.Time `json:"lastUpdated"`
+	raw         json.RawMessage
+}
+
+type appAssignmentRecord struct {
+	ID          string         `json:"id"`
+	Status      string         `json:"status"`
+	Scope       string         `json:"scope"`
+	Created     *time.Time     `json:"created"`
+	LastUpdated *time.Time     `json:"lastUpdated"`
+	Credentials map[string]any `json:"credentials"`
+	Profile     map[string]any `json:"profile"`
+	raw         json.RawMessage
+}
+
+type adminRoleRecord struct {
+	ID             string     `json:"id"`
+	Label          string     `json:"label"`
+	Type           string     `json:"type"`
+	AssignmentType string     `json:"assignmentType"`
+	Status         string     `json:"status"`
+	Created        *time.Time `json:"created"`
+	LastUpdated    *time.Time `json:"lastUpdated"`
+	raw            json.RawMessage
 }
 
 type auditPayload struct {
@@ -186,12 +239,17 @@ func New() (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Source{
+	source := &Source{
 		spec: spec,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-	}, nil
+	}
+	source.families, err = source.newFamilyEngine()
+	if err != nil {
+		return nil, err
+	}
+	return source, nil
 }
 
 // Spec returns static metadata for the Okta source.
@@ -201,125 +259,170 @@ func (s *Source) Spec() *cerebrov1.SourceSpec {
 
 // Check validates that the configured Okta family is reachable.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
-	settings, err := parseSettings(cfg)
-	if err != nil {
-		return err
-	}
-	switch settings.family {
-	case familyAudit:
-		_, _, err = s.listAudit(ctx, settings, "", 1)
-		if err != nil {
-			return wrapLookupError(fmt.Sprintf("okta audit log for %s", settings.domain), err)
-		}
-	case familyUser:
-		_, _, err = s.listUsers(ctx, settings, "", 1)
-		if err != nil {
-			return wrapLookupError(fmt.Sprintf("okta users for %s", settings.domain), err)
-		}
-	}
-	return nil
+	return s.families.Check(ctx, cfg)
 }
 
 // Discover returns live Okta URNs for the selected family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	settings, err := parseSettings(cfg)
-	if err != nil {
-		return nil, err
-	}
-	switch settings.family {
-	case familyAudit:
-		if err := s.Check(ctx, cfg); err != nil {
-			return nil, err
-		}
-		urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:org:%s", settings.domain, settings.domain))
-		if err != nil {
-			return nil, err
-		}
-		return []sourcecdk.URN{urn}, nil
-	case familyUser:
-		users, _, err := s.listUsers(ctx, settings, "", settings.perPage)
-		if err != nil {
-			return nil, wrapLookupError(fmt.Sprintf("okta users for %s", settings.domain), err)
-		}
-		urns := make([]sourcecdk.URN, 0, len(users))
-		for _, user := range users {
-			urn, err := userURN(settings.domain, user.ID)
-			if err != nil {
-				return nil, err
-			}
-			urns = append(urns, urn)
-		}
-		return urns, nil
-	default:
-		return nil, fmt.Errorf("unsupported okta family %q", settings.family)
-	}
+	return s.families.Discover(ctx, cfg)
 }
 
 // Read pages through the configured live Okta event family.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	settings, err := parseSettings(cfg)
+	return s.families.Read(ctx, cfg, cursor)
+}
+
+type oktaListFunc[T any] func(context.Context, settings, string, int) ([]T, string, error)
+
+type oktaFamilyOptions[T any] struct {
+	Name           string
+	Label          string
+	List           oktaListFunc[T]
+	Event          func(settings, T) (*primitives.Event, error)
+	URN            func(settings, T) (string, error)
+	Discover       func(context.Context, settings) ([]sourcecdk.URN, error)
+	CursorFallback func(T) string
+}
+
+func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
+	auditList := s.listAudit
+	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string {
+		return settings.family
+	},
+		oktaFamily(oktaFamilyOptions[auditRecord]{
+			Name:  familyAudit,
+			Label: "okta audit log",
+			List:  auditList,
+			Event: auditEvent,
+			Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
+				if err := oktaCheck(ctx, settings, auditList, "okta audit log"); err != nil {
+					return nil, err
+				}
+				urn, err := sourcecdk.ParseURN(fmt.Sprintf("urn:cerebro:%s:org:%s", settings.domain, settings.domain))
+				if err != nil {
+					return nil, err
+				}
+				return []sourcecdk.URN{urn}, nil
+			},
+			CursorFallback: func(entry auditRecord) string { return entry.UUID },
+		}),
+		oktaFamily(oktaFamilyOptions[adminRoleRecord]{
+			Name:  familyAdminRole,
+			Label: "okta admin roles",
+			List:  s.listAdminRoles,
+			Event: adminRoleEvent,
+			URN: func(settings settings, role adminRoleRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:admin_role:%s:%s", settings.domain, settings.userID, firstNonEmpty(role.ID, role.Type, role.Label)), nil
+			},
+		}),
+		oktaFamily(oktaFamilyOptions[appAssignmentRecord]{
+			Name:  familyAppAssign,
+			Label: "okta app assignments",
+			List:  s.listAppAssignments,
+			Event: appAssignmentEvent,
+			URN: func(settings settings, assignment appAssignmentRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:app_assignment:%s:%s", settings.domain, settings.appID, firstNonEmpty(assignment.ID, assignmentEmail(assignment))), nil
+			},
+		}),
+		oktaFamily(oktaFamilyOptions[appRecord]{
+			Name:  familyApplication,
+			Label: "okta applications",
+			List:  s.listApplications,
+			Event: applicationEvent,
+			URN: func(settings settings, app appRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:application:%s", settings.domain, app.ID), nil
+			},
+		}),
+		oktaFamily(oktaFamilyOptions[groupRecord]{
+			Name:  familyGroup,
+			Label: "okta groups",
+			List:  s.listGroups,
+			Event: groupEvent,
+			URN: func(settings settings, group groupRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:group:%s", settings.domain, group.ID), nil
+			},
+		}),
+		oktaFamily(oktaFamilyOptions[userRecord]{
+			Name:  familyGroupMember,
+			Label: "okta group memberships",
+			List:  s.listGroupMembers,
+			Event: groupMembershipEvent,
+			URN: func(settings settings, member userRecord) (string, error) {
+				return fmt.Sprintf("urn:cerebro:%s:group_membership:%s:%s", settings.domain, settings.groupID, member.ID), nil
+			},
+		}),
+		oktaFamily(oktaFamilyOptions[userRecord]{
+			Name:  familyUser,
+			Label: "okta users",
+			List:  s.listUsers,
+			Event: userEvent,
+			URN: func(settings settings, user userRecord) (string, error) {
+				urn, err := userURN(settings.domain, user.ID)
+				if err != nil {
+					return "", err
+				}
+				return urn.String(), nil
+			},
+			CursorFallback: func(user userRecord) string { return user.ID },
+		}),
+	)
+}
+
+func oktaFamily[T any](options oktaFamilyOptions[T]) sourcecdk.Family[settings] {
+	return sourcecdk.Family[settings]{
+		Name: options.Name,
+		Check: func(ctx context.Context, settings settings) error {
+			return oktaCheck(ctx, settings, options.List, options.Label)
+		},
+		Discover: func(ctx context.Context, settings settings) ([]sourcecdk.URN, error) {
+			if options.Discover != nil {
+				return options.Discover(ctx, settings)
+			}
+			records, _, err := options.List(ctx, settings, "", settings.perPage)
+			if err != nil {
+				return nil, wrapLookupError(oktaLabel(options.Label, settings), err)
+			}
+			return oktaURNsFor(settings, records, options.URN)
+		},
+		Read: func(ctx context.Context, settings settings, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+			records, next, err := options.List(ctx, settings, strings.TrimSpace(cursor.GetOpaque()), settings.perPage)
+			if err != nil {
+				return sourcecdk.Pull{}, wrapLookupError(oktaLabel(options.Label, settings), err)
+			}
+			build := func(record T) (*primitives.Event, error) {
+				return options.Event(settings, record)
+			}
+			return oktaPullFromRecordsWithCursor(records, next, build, options.CursorFallback)
+		},
+	}
+}
+
+func oktaCheck[T any](ctx context.Context, settings settings, list oktaListFunc[T], label string) error {
+	_, _, err := list(ctx, settings, "", 1)
 	if err != nil {
-		return sourcecdk.Pull{}, err
+		return wrapLookupError(oktaLabel(label, settings), err)
 	}
-	after := strings.TrimSpace(cursor.GetOpaque())
-	switch settings.family {
-	case familyAudit:
-		entries, next, err := s.listAudit(ctx, settings, after, settings.perPage)
+	return nil
+}
+
+func oktaLabel(label string, settings settings) string {
+	return fmt.Sprintf("%s for %s", label, settings.domain)
+}
+
+func oktaURNsFor[T any](settings settings, records []T, render func(settings, T) (string, error)) ([]sourcecdk.URN, error) {
+	urns := make([]sourcecdk.URN, 0, len(records))
+	for _, record := range records {
+		rawURN, err := render(settings, record)
 		if err != nil {
-			return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("okta audit log for %s", settings.domain), err)
+			return nil, err
 		}
-		if len(entries) == 0 {
-			return sourcecdk.Pull{}, nil
-		}
-		events := make([]*primitives.Event, 0, len(entries))
-		for _, entry := range entries {
-			event, err := auditEvent(settings, entry)
-			if err != nil {
-				return sourcecdk.Pull{}, err
-			}
-			events = append(events, event)
-		}
-		pull := sourcecdk.Pull{
-			Events: events,
-			Checkpoint: &cerebrov1.SourceCheckpoint{
-				Watermark:    events[len(events)-1].OccurredAt,
-				CursorOpaque: checkpointCursor(next, entries[len(entries)-1].UUID, events[len(events)-1].OccurredAt.AsTime()),
-			},
-		}
-		if next != "" {
-			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
-		}
-		return pull, nil
-	case familyUser:
-		users, next, err := s.listUsers(ctx, settings, after, settings.perPage)
+		urn, err := sourcecdk.ParseURN(rawURN)
 		if err != nil {
-			return sourcecdk.Pull{}, wrapLookupError(fmt.Sprintf("okta users for %s", settings.domain), err)
+			return nil, err
 		}
-		if len(users) == 0 {
-			return sourcecdk.Pull{}, nil
-		}
-		events := make([]*primitives.Event, 0, len(users))
-		for _, user := range users {
-			event, err := userEvent(settings, user)
-			if err != nil {
-				return sourcecdk.Pull{}, err
-			}
-			events = append(events, event)
-		}
-		pull := sourcecdk.Pull{
-			Events: events,
-			Checkpoint: &cerebrov1.SourceCheckpoint{
-				Watermark:    events[len(events)-1].OccurredAt,
-				CursorOpaque: checkpointCursor(next, users[len(users)-1].ID, events[len(events)-1].OccurredAt.AsTime()),
-			},
-		}
-		if next != "" {
-			pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
-		}
-		return pull, nil
-	default:
-		return sourcecdk.Pull{}, fmt.Errorf("unsupported okta family %q", settings.family)
+		urns = append(urns, urn)
 	}
+	return urns, nil
 }
 
 func loadSpec() (*cerebrov1.SourceSpec, error) {
@@ -347,15 +450,19 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		sortOrder: configValue(cfg, "sort_order"),
 		since:     configValue(cfg, "since"),
 		until:     configValue(cfg, "until"),
+		groupID:   configValue(cfg, "group_id"),
+		appID:     configValue(cfg, "app_id"),
+		userID:    configValue(cfg, "user_id"),
+		userEmail: configValue(cfg, "user_email"),
 		perPage:   defaultPageSize,
 	}
 	if settings.family == "" {
 		settings.family = defaultFamily
 	}
 	switch settings.family {
-	case familyAudit, familyUser:
+	case familyAdminRole, familyAppAssign, familyApplication, familyAudit, familyGroup, familyGroupMember, familyUser:
 	default:
-		return settings, fmt.Errorf("okta family must be one of %s or %s", familyAudit, familyUser)
+		return settings, fmt.Errorf("okta family must be one of admin_role, app_assignment, application, audit, group, group_membership, or user")
 	}
 	if settings.domain == "" {
 		return settings, fmt.Errorf("okta domain is required")
@@ -394,6 +501,22 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 		settings.sortOrder, err = normalizeAuditSortOrder(settings.sortOrder)
 		if err != nil {
 			return settings, err
+		}
+	case familyAdminRole:
+		if settings.userID == "" {
+			return settings, fmt.Errorf("okta user_id is required when family=%q", familyAdminRole)
+		}
+	case familyAppAssign:
+		if settings.appID == "" {
+			return settings, fmt.Errorf("okta app_id is required when family=%q", familyAppAssign)
+		}
+	case familyApplication, familyGroup:
+		if settings.since != "" || settings.until != "" {
+			return settings, fmt.Errorf("okta since and until are only supported when family=%q", familyAudit)
+		}
+	case familyGroupMember:
+		if settings.groupID == "" {
+			return settings, fmt.Errorf("okta group_id is required when family=%q", familyGroupMember)
 		}
 	case familyUser:
 		if settings.since != "" || settings.until != "" {
@@ -469,21 +592,9 @@ func (s *Source) listAudit(ctx context.Context, settings settings, after string,
 	addQuery(query, "until", settings.until)
 	addQuery(query, "sortOrder", settings.sortOrder)
 
-	var rawRecords []json.RawMessage
-	headers, err := s.getJSON(ctx, settings, "/api/v1/logs", query, &rawRecords)
-	if err != nil {
-		return nil, "", err
-	}
-	records := make([]auditRecord, 0, len(rawRecords))
-	for _, rawRecord := range rawRecords {
-		var record auditRecord
-		if err := json.Unmarshal(rawRecord, &record); err != nil {
-			return nil, "", fmt.Errorf("decode okta audit event: %w", err)
-		}
-		record.raw = append(json.RawMessage(nil), rawRecord...)
-		records = append(records, record)
-	}
-	return records, nextAfter(headers), nil
+	return listJSONRecords(ctx, s, settings, "/api/v1/logs", query, "okta audit event", func(record *auditRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
 }
 
 func (s *Source) listUsers(ctx context.Context, settings settings, after string, limit int) ([]userRecord, string, error) {
@@ -496,18 +607,82 @@ func (s *Source) listUsers(ctx context.Context, settings settings, after string,
 	addQuery(query, "sortBy", settings.sortBy)
 	addQuery(query, "sortOrder", settings.sortOrder)
 
+	return listJSONRecords(ctx, s, settings, "/api/v1/users", query, "okta user", func(record *userRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+}
+
+func (s *Source) listGroups(ctx context.Context, settings settings, after string, limit int) ([]groupRecord, string, error) {
+	query := url.Values{}
+	query.Set("limit", strconv.Itoa(limit))
+	addQuery(query, "after", after)
+	addQuery(query, "q", settings.q)
+	addQuery(query, "search", settings.search)
+	addQuery(query, "sortBy", settings.sortBy)
+	addQuery(query, "sortOrder", settings.sortOrder)
+
+	return listJSONRecords(ctx, s, settings, "/api/v1/groups", query, "okta group", func(record *groupRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+}
+
+func (s *Source) listGroupMembers(ctx context.Context, settings settings, after string, limit int) ([]userRecord, string, error) {
+	query := url.Values{}
+	query.Set("limit", strconv.Itoa(limit))
+	addQuery(query, "after", after)
+
+	return listJSONRecords(ctx, s, settings, "/api/v1/groups/"+url.PathEscape(settings.groupID)+"/users", query, "okta group member", func(record *userRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+}
+
+func (s *Source) listApplications(ctx context.Context, settings settings, after string, limit int) ([]appRecord, string, error) {
+	query := url.Values{}
+	query.Set("limit", strconv.Itoa(limit))
+	addQuery(query, "after", after)
+	addQuery(query, "q", settings.q)
+	addQuery(query, "filter", settings.filter)
+
+	return listJSONRecords(ctx, s, settings, "/api/v1/apps", query, "okta application", func(record *appRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+}
+
+func (s *Source) listAppAssignments(ctx context.Context, settings settings, after string, limit int) ([]appAssignmentRecord, string, error) {
+	query := url.Values{}
+	query.Set("limit", strconv.Itoa(limit))
+	addQuery(query, "after", after)
+
+	return listJSONRecords(ctx, s, settings, "/api/v1/apps/"+url.PathEscape(settings.appID)+"/users", query, "okta app assignment", func(record *appAssignmentRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+}
+
+func (s *Source) listAdminRoles(ctx context.Context, settings settings, after string, limit int) ([]adminRoleRecord, string, error) {
+	query := url.Values{}
+	query.Set("limit", strconv.Itoa(limit))
+	addQuery(query, "after", after)
+
+	return listJSONRecords(ctx, s, settings, "/api/v1/users/"+url.PathEscape(settings.userID)+"/roles", query, "okta admin role", func(record *adminRoleRecord, raw json.RawMessage) {
+		record.raw = append(json.RawMessage(nil), raw...)
+	})
+}
+
+func listJSONRecords[T any](ctx context.Context, source *Source, settings settings, requestPath string, query url.Values, label string, setRaw func(*T, json.RawMessage)) ([]T, string, error) {
 	var rawRecords []json.RawMessage
-	headers, err := s.getJSON(ctx, settings, "/api/v1/users", query, &rawRecords)
+	headers, err := source.getJSON(ctx, settings, requestPath, query, &rawRecords)
 	if err != nil {
 		return nil, "", err
 	}
-	records := make([]userRecord, 0, len(rawRecords))
+	records := make([]T, 0, len(rawRecords))
 	for _, rawRecord := range rawRecords {
-		var record userRecord
+		var record T
 		if err := json.Unmarshal(rawRecord, &record); err != nil {
-			return nil, "", fmt.Errorf("decode okta user: %w", err)
+			return nil, "", fmt.Errorf("decode %s: %w", label, err)
 		}
-		record.raw = append(json.RawMessage(nil), rawRecord...)
+		if setRaw != nil {
+			setRaw(&record, rawRecord)
+		}
 		records = append(records, record)
 	}
 	return records, nextAfter(headers), nil
@@ -659,6 +834,188 @@ func userEvent(settings settings, record userRecord) (*primitives.Event, error) 
 	}, nil
 }
 
+func groupEvent(settings settings, record groupRecord) (*primitives.Event, error) {
+	occurredAt := firstRecordTime(record.LastUpdated, record.Created, record.LastMembershipUpdated)
+	raw, err := decodeRawPayload(record.raw, "okta group")
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"id":      record.ID,
+		"domain":  settings.domain,
+		"type":    record.Type,
+		"profile": record.Profile,
+		"raw":     raw,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal okta group payload: %w", err)
+	}
+	return &primitives.Event{
+		Id:         fmt.Sprintf("okta-group-%s-%d", record.ID, occurredAt.UnixMilli()),
+		TenantId:   settings.domain,
+		SourceId:   "okta",
+		Kind:       "okta.group",
+		OccurredAt: timestamppb.New(occurredAt),
+		SchemaRef:  "okta/group/v1",
+		Payload:    payload,
+		Attributes: groupAttributes(settings, record),
+	}, nil
+}
+
+func groupMembershipEvent(settings settings, record userRecord) (*primitives.Event, error) {
+	occurredAt := userOccurredAt(record)
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	raw, err := decodeRawPayload(record.raw, "okta group membership")
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"domain":   settings.domain,
+		"group_id": settings.groupID,
+		"user_id":  record.ID,
+		"profile":  record.Profile,
+		"raw":      raw,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal okta group membership payload: %w", err)
+	}
+	return &primitives.Event{
+		Id:         fmt.Sprintf("okta-group-membership-%s-%s-%d", settings.groupID, record.ID, occurredAt.UnixMilli()),
+		TenantId:   settings.domain,
+		SourceId:   "okta",
+		Kind:       "okta.group_membership",
+		OccurredAt: timestamppb.New(occurredAt),
+		SchemaRef:  "okta/group_membership/v1",
+		Payload:    payload,
+		Attributes: groupMembershipAttributes(settings, record),
+	}, nil
+}
+
+func applicationEvent(settings settings, record appRecord) (*primitives.Event, error) {
+	occurredAt := firstRecordTime(record.LastUpdated, record.Created)
+	raw, err := decodeRawPayload(record.raw, "okta application")
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"id":           record.ID,
+		"domain":       settings.domain,
+		"name":         record.Name,
+		"label":        record.Label,
+		"status":       record.Status,
+		"sign_on_mode": record.SignOnMode,
+		"raw":          raw,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal okta application payload: %w", err)
+	}
+	return &primitives.Event{
+		Id:         fmt.Sprintf("okta-application-%s-%d", record.ID, occurredAt.UnixMilli()),
+		TenantId:   settings.domain,
+		SourceId:   "okta",
+		Kind:       "okta.application",
+		OccurredAt: timestamppb.New(occurredAt),
+		SchemaRef:  "okta/application/v1",
+		Payload:    payload,
+		Attributes: applicationAttributes(settings, record),
+	}, nil
+}
+
+func appAssignmentEvent(settings settings, record appAssignmentRecord) (*primitives.Event, error) {
+	occurredAt := firstRecordTime(record.LastUpdated, record.Created)
+	raw, err := decodeRawPayload(record.raw, "okta app assignment")
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"domain":      settings.domain,
+		"app_id":      settings.appID,
+		"subject_id":  record.ID,
+		"status":      record.Status,
+		"scope":       record.Scope,
+		"credentials": record.Credentials,
+		"profile":     record.Profile,
+		"raw":         raw,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal okta app assignment payload: %w", err)
+	}
+	return &primitives.Event{
+		Id:         fmt.Sprintf("okta-app-assignment-%s-%s-%d", settings.appID, record.ID, occurredAt.UnixMilli()),
+		TenantId:   settings.domain,
+		SourceId:   "okta",
+		Kind:       "okta.app_assignment",
+		OccurredAt: timestamppb.New(occurredAt),
+		SchemaRef:  "okta/app_assignment/v1",
+		Payload:    payload,
+		Attributes: appAssignmentAttributes(settings, record),
+	}, nil
+}
+
+func adminRoleEvent(settings settings, record adminRoleRecord) (*primitives.Event, error) {
+	occurredAt := firstRecordTime(record.LastUpdated, record.Created)
+	raw, err := decodeRawPayload(record.raw, "okta admin role")
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(map[string]any{
+		"domain":     settings.domain,
+		"user_id":    settings.userID,
+		"user_email": settings.userEmail,
+		"id":         record.ID,
+		"label":      record.Label,
+		"type":       record.Type,
+		"status":     record.Status,
+		"assignment": record.AssignmentType,
+		"raw":        raw,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal okta admin role payload: %w", err)
+	}
+	roleID := firstNonEmpty(record.ID, record.Type, record.Label)
+	return &primitives.Event{
+		Id:         fmt.Sprintf("okta-admin-role-%s-%s-%d", settings.userID, roleID, occurredAt.UnixMilli()),
+		TenantId:   settings.domain,
+		SourceId:   "okta",
+		Kind:       "okta.admin_role",
+		OccurredAt: timestamppb.New(occurredAt),
+		SchemaRef:  "okta/admin_role/v1",
+		Payload:    payload,
+		Attributes: adminRoleAttributes(settings, record),
+	}, nil
+}
+
+func oktaPullFromRecordsWithCursor[T any](records []T, next string, build func(T) (*primitives.Event, error), cursorFallback func(T) string) (sourcecdk.Pull, error) {
+	if len(records) == 0 {
+		return sourcecdk.Pull{}, nil
+	}
+	events := make([]*primitives.Event, 0, len(records))
+	for _, record := range records {
+		event, err := build(record)
+		if err != nil {
+			return sourcecdk.Pull{}, err
+		}
+		events = append(events, event)
+	}
+	fallback := events[len(events)-1].GetId()
+	if cursorFallback != nil {
+		fallback = cursorFallback(records[len(records)-1])
+	}
+	pull := sourcecdk.Pull{
+		Events: events,
+		Checkpoint: &cerebrov1.SourceCheckpoint{
+			Watermark:    events[len(events)-1].OccurredAt,
+			CursorOpaque: checkpointCursor(next, fallback, events[len(events)-1].OccurredAt.AsTime()),
+		},
+	}
+	if next != "" {
+		pull.NextCursor = &cerebrov1.SourceCursor{Opaque: next}
+	}
+	return pull, nil
+}
+
 func auditAttributes(settings settings, record auditRecord, actor identityPayload, resourceID string, resourceType string) map[string]string {
 	attributes := map[string]string{
 		"domain":        settings.domain,
@@ -692,6 +1049,100 @@ func userAttributes(settings settings, record userRecord) map[string]string {
 	addAttribute(attributes, "type_id", stringMap(record.Type, "id"))
 	addAttribute(attributes, "type_name", stringMap(record.Type, "name"))
 	addAttribute(attributes, "user_type", stringMap(record.Profile, "userType"))
+	return attributes
+}
+
+func groupAttributes(settings settings, record groupRecord) map[string]string {
+	attributes := map[string]string{
+		"domain":   settings.domain,
+		"family":   familyGroup,
+		"group_id": record.ID,
+	}
+	addAttribute(attributes, "group_name", stringMap(record.Profile, "name"))
+	addAttribute(attributes, "name", stringMap(record.Profile, "name"))
+	addAttribute(attributes, "description", stringMap(record.Profile, "description"))
+	addAttribute(attributes, "group_email", firstNonEmpty(stringMap(record.Profile, "email"), stringMap(record.Profile, "login")))
+	addAttribute(attributes, "email", firstNonEmpty(stringMap(record.Profile, "email"), stringMap(record.Profile, "login")))
+	addAttribute(attributes, "type", record.Type)
+	return attributes
+}
+
+func groupMembershipAttributes(settings settings, record userRecord) map[string]string {
+	memberEmail := firstNonEmpty(stringMap(record.Profile, "email"), stringMap(record.Profile, "login"))
+	attributes := map[string]string{
+		"domain":         settings.domain,
+		"family":         familyGroupMember,
+		"group_id":       settings.groupID,
+		"member_id":      record.ID,
+		"member_user_id": record.ID,
+		"member_type":    "user",
+		"user_id":        record.ID,
+	}
+	addAttribute(attributes, "member_email", memberEmail)
+	addAttribute(attributes, "email", memberEmail)
+	addAttribute(attributes, "member_name", firstNonEmpty(stringMap(record.Profile, "displayName"), strings.TrimSpace(strings.Join([]string{stringMap(record.Profile, "firstName"), stringMap(record.Profile, "lastName")}, " "))))
+	addAttribute(attributes, "member_status", record.Status)
+	if strings.Contains(settings.groupID, "@") {
+		addAttribute(attributes, "group_email", settings.groupID)
+	}
+	return attributes
+}
+
+func applicationAttributes(settings settings, record appRecord) map[string]string {
+	mode := strings.ToLower(record.Name + " " + record.SignOnMode)
+	attributes := map[string]string{
+		"domain":   settings.domain,
+		"family":   familyApplication,
+		"app_id":   record.ID,
+		"status":   record.Status,
+		"app_name": firstNonEmpty(record.Label, record.Name),
+	}
+	addAttribute(attributes, "app_label", record.Label)
+	addAttribute(attributes, "name", record.Name)
+	addAttribute(attributes, "sign_on_mode", record.SignOnMode)
+	addAttribute(attributes, "oauth2", boolString(strings.Contains(mode, "oidc") || strings.Contains(mode, "oauth")))
+	addAttribute(attributes, "saml", boolString(strings.Contains(mode, "saml")))
+	return attributes
+}
+
+func appAssignmentAttributes(settings settings, record appAssignmentRecord) map[string]string {
+	subjectEmail := assignmentEmail(record)
+	attributes := map[string]string{
+		"domain":         settings.domain,
+		"family":         familyAppAssign,
+		"app_id":         settings.appID,
+		"subject_id":     record.ID,
+		"subject_type":   "user",
+		"principal_type": "user",
+		"status":         record.Status,
+	}
+	addAttribute(attributes, "subject_email", subjectEmail)
+	addAttribute(attributes, "email", subjectEmail)
+	addAttribute(attributes, "subject_name", firstNonEmpty(stringMap(record.Profile, "displayName"), stringMap(record.Profile, "name"), subjectEmail))
+	addAttribute(attributes, "scope", record.Scope)
+	return attributes
+}
+
+func adminRoleAttributes(settings settings, record adminRoleRecord) map[string]string {
+	roleID := firstNonEmpty(record.ID, record.Type, record.Label)
+	attributes := map[string]string{
+		"domain":           settings.domain,
+		"family":           familyAdminRole,
+		"role_id":          roleID,
+		"role_name":        firstNonEmpty(record.Label, record.Type, roleID),
+		"role_type":        record.Type,
+		"subject_id":       settings.userID,
+		"subject_type":     "user",
+		"event_type":       "admin.role.assignment",
+		"action":           "admin.role.assignment",
+		"is_admin":         "true",
+		"actor_privileged": "true",
+	}
+	addAttribute(attributes, "assigned_to", settings.userID)
+	addAttribute(attributes, "subject_email", settings.userEmail)
+	addAttribute(attributes, "email", settings.userEmail)
+	addAttribute(attributes, "status", record.Status)
+	addAttribute(attributes, "assignment_type", record.AssignmentType)
 	return attributes
 }
 
@@ -828,6 +1279,24 @@ func userOccurredAt(record userRecord) time.Time {
 	return time.Time{}
 }
 
+func firstRecordTime(values ...*time.Time) time.Time {
+	for _, value := range values {
+		if value != nil && !value.IsZero() {
+			return value.UTC()
+		}
+	}
+	return time.Now().UTC()
+}
+
+func assignmentEmail(record appAssignmentRecord) string {
+	return firstNonEmpty(
+		stringMap(record.Profile, "email"),
+		stringMap(record.Profile, "login"),
+		stringMap(record.Profile, "userName"),
+		stringMap(record.Credentials, "userName"),
+	)
+}
+
 func decodeRawPayload(raw json.RawMessage, label string) (map[string]any, error) {
 	var decoded map[string]any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
@@ -953,6 +1422,13 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func boolString(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
 }
 
 func configValue(cfg sourcecdk.Config, key string) string {

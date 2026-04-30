@@ -2,6 +2,8 @@ package reports
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
@@ -20,6 +22,7 @@ const (
 	findingSummaryReportID           = "finding-summary"
 	findingSummaryReportName         = "Finding Summary"
 	findingSummaryReportStatus       = "completed"
+	reportParameterTenantID          = "tenant_id"
 	reportParameterRuntimeID         = "runtime_id"
 	reportParameterResourceLimit     = "resource_limit"
 	reportParameterGraphLimit        = "graph_limit"
@@ -96,8 +99,12 @@ func (s *Service) Run(ctx context.Context, request *cerebrov1.RunReportRequest) 
 		return nil, err
 	}
 
+	runID, err := reportRunID(reportID, generatedAt)
+	if err != nil {
+		return nil, err
+	}
 	run := &cerebrov1.ReportRun{
-		Id:          reportRunID(reportID, generatedAt),
+		Id:          runID,
 		ReportId:    reportID,
 		Parameters:  parameters,
 		Status:      findingSummaryReportStatus,
@@ -133,6 +140,10 @@ func (s *Service) Get(ctx context.Context, request *cerebrov1.GetReportRunReques
 }
 
 func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]string) (*structpb.Struct, error) {
+	tenantID := strings.TrimSpace(parameters[reportParameterTenantID])
+	if tenantID == "" {
+		return nil, fmt.Errorf("report parameter %q is required", reportParameterTenantID)
+	}
 	runtimeID := strings.TrimSpace(parameters[reportParameterRuntimeID])
 	if runtimeID == "" {
 		return nil, fmt.Errorf("report parameter %q is required", reportParameterRuntimeID)
@@ -145,14 +156,25 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 	if err != nil {
 		return nil, err
 	}
-	findings, err := s.findingStore.ListFindings(ctx, ports.ListFindingsRequest{RuntimeID: runtimeID})
+	parameters[reportParameterResourceLimit] = strconv.Itoa(resourceLimit)
+	parameters[reportParameterGraphLimit] = strconv.Itoa(graphLimit)
+	findings, err := s.findingStore.ListFindings(ctx, ports.ListFindingsRequest{TenantID: tenantID, RuntimeID: runtimeID})
 	if err != nil {
-		return nil, fmt.Errorf("list findings for runtime %q: %w", runtimeID, err)
+		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", tenantID, runtimeID, err)
 	}
 	severityCounts := make(map[string]int, len(findings))
 	statusCounts := make(map[string]int, len(findings))
+	dueStatusCounts := make(map[string]int, len(findings))
 	ruleCounts := make(map[string]int, len(findings))
+	policyCounts := make(map[string]int, len(findings))
+	checkCounts := make(map[string]*checkCountEntry, len(findings))
+	controlCounts := make(map[string]*controlCountEntry, len(findings))
 	resourceCounts := make(map[string]int, len(findings))
+	noteCount := 0
+	notedFindingCount := 0
+	ticketCount := 0
+	ticketedFindingCount := 0
+	now := time.Now().UTC()
 	for _, finding := range findings {
 		if finding == nil {
 			continue
@@ -165,12 +187,57 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		if status != "" {
 			statusCounts[status]++
 		}
+		dueStatusCounts[dueStatusBucket(finding, now)]++
 		ruleID := strings.TrimSpace(finding.RuleID)
 		if ruleID != "" {
 			ruleCounts[ruleID]++
 		}
+		policyID := strings.TrimSpace(finding.PolicyID)
+		if policyID != "" {
+			policyCounts[policyID]++
+		}
+		checkID := strings.TrimSpace(finding.CheckID)
+		if checkID != "" {
+			entry, ok := checkCounts[checkID]
+			if !ok {
+				entry = &checkCountEntry{
+					CheckID:   checkID,
+					CheckName: strings.TrimSpace(finding.CheckName),
+				}
+				checkCounts[checkID] = entry
+			}
+			entry.Count++
+		}
+		seenControlRefs := make(map[string]struct{}, len(finding.ControlRefs))
+		for _, controlRef := range finding.ControlRefs {
+			normalized, key := normalizeControlRef(controlRef)
+			if key == "" {
+				continue
+			}
+			if _, seen := seenControlRefs[key]; seen {
+				continue
+			}
+			seenControlRefs[key] = struct{}{}
+			entry, ok := controlCounts[key]
+			if !ok {
+				entry = &controlCountEntry{
+					FrameworkName: normalized.FrameworkName,
+					ControlID:     normalized.ControlID,
+				}
+				controlCounts[key] = entry
+			}
+			entry.Count++
+		}
 		if resourceURN := primaryResourceURN(finding); resourceURN != "" {
 			resourceCounts[resourceURN]++
+		}
+		if len(finding.Notes) != 0 {
+			notedFindingCount++
+			noteCount += len(finding.Notes)
+		}
+		if len(finding.Tickets) != 0 {
+			ticketedFindingCount++
+			ticketCount += len(finding.Tickets)
 		}
 	}
 	graphEvidenceStatus := graphEvidenceStatusUnconfigured
@@ -183,11 +250,20 @@ func (s *Service) runFindingSummary(ctx context.Context, parameters map[string]s
 		}
 	}
 	result, err := structpb.NewStruct(map[string]any{
+		reportParameterTenantID:  tenantID,
 		reportParameterRuntimeID: runtimeID,
 		"total_findings":         len(findings),
 		"severity_counts":        countEntries(severityCounts, "severity"),
 		"status_counts":          countEntries(statusCounts, "status"),
+		"due_status_counts":      countEntries(dueStatusCounts, "due_status"),
 		"rule_counts":            countEntries(ruleCounts, "rule_id"),
+		"policy_counts":          countEntries(policyCounts, "policy_id"),
+		"check_counts":           checkCountEntries(checkCounts),
+		"control_counts":         controlCountEntries(controlCounts),
+		"noted_finding_count":    notedFindingCount,
+		"note_count":             noteCount,
+		"ticketed_finding_count": ticketedFindingCount,
+		"ticket_count":           ticketCount,
 		"resource_counts":        countEntries(resourceCounts, "resource_urn"),
 		"graph_evidence_status":  graphEvidenceStatus,
 		"graph_evidence":         graphEvidence,
@@ -236,8 +312,13 @@ func findingSummaryDefinition() *cerebrov1.ReportDefinition {
 	return &cerebrov1.ReportDefinition{
 		Id:          findingSummaryReportID,
 		Name:        findingSummaryReportName,
-		Description: "Materialize one runtime-scoped summary of persisted findings, grouped by severity, status, and rule, with bounded graph evidence for top resources when the graph is configured.",
+		Description: "Materialize one tenant/runtime-scoped summary of persisted findings, grouped by severity, status, due-date posture, rule, policy, check, and control, with note and ticket activity plus bounded graph evidence for top resources when the graph is configured.",
 		Parameters: []*cerebrov1.ReportParameter{
+			{
+				Id:          reportParameterTenantID,
+				Description: "Tenant identifier whose persisted findings should be summarized.",
+				Required:    true,
+			},
 			{
 				Id:          reportParameterRuntimeID,
 				Description: "Stored source runtime identifier whose persisted findings should be summarized.",
@@ -281,14 +362,30 @@ func normalizeParameters(parameters map[string]string) map[string]string {
 	return normalized
 }
 
-func reportRunID(reportID string, generatedAt time.Time) string {
+func reportRunID(reportID string, generatedAt time.Time) (string, error) {
 	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-")
-	return replacer.Replace(strings.TrimSpace(reportID)) + "-" + fmt.Sprintf("%d", generatedAt.UnixNano())
+	random := make([]byte, 8)
+	if _, err := rand.Read(random); err != nil {
+		return "", fmt.Errorf("generate report run id entropy: %w", err)
+	}
+	return replacer.Replace(strings.TrimSpace(reportID)) + "-" + fmt.Sprintf("%d", generatedAt.UnixNano()) + "-" + hex.EncodeToString(random), nil
 }
 
 type countEntry struct {
 	Key   string
 	Count int
+}
+
+type checkCountEntry struct {
+	CheckID   string
+	CheckName string
+	Count     int
+}
+
+type controlCountEntry struct {
+	FrameworkName string
+	ControlID     string
+	Count         int
 }
 
 func countEntries(counts map[string]int, keyName string) []any {
@@ -301,6 +398,42 @@ func countEntries(counts map[string]int, keyName string) []any {
 		})
 	}
 	return values
+}
+
+func checkCountEntries(counts map[string]*checkCountEntry) []any {
+	entries := sortedCheckCountEntries(counts)
+	values := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		values = append(values, map[string]any{
+			"check_id":   entry.CheckID,
+			"check_name": entry.CheckName,
+			"count":      entry.Count,
+		})
+	}
+	return values
+}
+
+func controlCountEntries(counts map[string]*controlCountEntry) []any {
+	entries := sortedControlCountEntries(counts)
+	values := make([]any, 0, len(entries))
+	for _, entry := range entries {
+		values = append(values, map[string]any{
+			"framework_name": entry.FrameworkName,
+			"control_id":     entry.ControlID,
+			"count":          entry.Count,
+		})
+	}
+	return values
+}
+
+func dueStatusBucket(finding *ports.FindingRecord, now time.Time) string {
+	if finding == nil || finding.DueAt.IsZero() {
+		return "unscheduled"
+	}
+	if strings.TrimSpace(finding.Status) == "open" && finding.DueAt.UTC().Before(now) {
+		return "overdue"
+	}
+	return "scheduled"
 }
 
 func sortedCountEntries(counts map[string]int) []countEntry {
@@ -323,6 +456,65 @@ func sortedCountEntries(counts map[string]int) []countEntry {
 		}
 	})
 	return entries
+}
+
+func sortedCheckCountEntries(counts map[string]*checkCountEntry) []*checkCountEntry {
+	entries := make([]*checkCountEntry, 0, len(counts))
+	for _, entry := range counts {
+		entries = append(entries, entry)
+	}
+	slices.SortFunc(entries, func(left *checkCountEntry, right *checkCountEntry) int {
+		switch {
+		case left.Count > right.Count:
+			return -1
+		case left.Count < right.Count:
+			return 1
+		case left.CheckID < right.CheckID:
+			return -1
+		case left.CheckID > right.CheckID:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return entries
+}
+
+func sortedControlCountEntries(counts map[string]*controlCountEntry) []*controlCountEntry {
+	entries := make([]*controlCountEntry, 0, len(counts))
+	for _, entry := range counts {
+		entries = append(entries, entry)
+	}
+	slices.SortFunc(entries, func(left *controlCountEntry, right *controlCountEntry) int {
+		switch {
+		case left.Count > right.Count:
+			return -1
+		case left.Count < right.Count:
+			return 1
+		case left.FrameworkName < right.FrameworkName:
+			return -1
+		case left.FrameworkName > right.FrameworkName:
+			return 1
+		case left.ControlID < right.ControlID:
+			return -1
+		case left.ControlID > right.ControlID:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return entries
+}
+
+func normalizeControlRef(value ports.FindingControlRef) (ports.FindingControlRef, string) {
+	normalized := ports.FindingControlRef{
+		FrameworkName: strings.TrimSpace(value.FrameworkName),
+		ControlID:     strings.TrimSpace(value.ControlID),
+	}
+	if normalized.FrameworkName == "" || normalized.ControlID == "" {
+		return ports.FindingControlRef{}, ""
+	}
+	return normalized, normalized.FrameworkName + "|" + normalized.ControlID
 }
 
 func primaryResourceURN(finding *ports.FindingRecord) string {
@@ -387,11 +579,15 @@ func graphRelationsPayload(relations []*ports.NeighborhoodRelation) []any {
 		if relation == nil {
 			continue
 		}
-		payload = append(payload, map[string]any{
+		relationPayload := map[string]any{
 			"from_urn": relation.FromURN,
 			"relation": relation.Relation,
 			"to_urn":   relation.ToURN,
-		})
+		}
+		if len(relation.Attributes) > 0 {
+			relationPayload["attributes"] = relation.Attributes
+		}
+		payload = append(payload, relationPayload)
 	}
 	return payload
 }

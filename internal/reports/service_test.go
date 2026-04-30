@@ -3,7 +3,9 @@ package reports
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -20,13 +22,93 @@ func (s *stubFindingStore) UpsertFinding(context.Context, *ports.FindingRecord) 
 	return nil, nil
 }
 
+func (s *stubFindingStore) GetFinding(_ context.Context, id string) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding != nil && finding.ID == id {
+			return cloneFinding(finding), nil
+		}
+	}
+	return nil, ports.ErrFindingNotFound
+}
+
 func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
 	s.request = request
 	findings := make([]*ports.FindingRecord, 0, len(s.findings))
 	for _, finding := range s.findings {
+		if finding == nil {
+			continue
+		}
+		if request.TenantID != "" && strings.TrimSpace(finding.TenantID) != strings.TrimSpace(request.TenantID) {
+			continue
+		}
+		if request.RuntimeID != "" && strings.TrimSpace(finding.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+			continue
+		}
 		findings = append(findings, cloneFinding(finding))
 	}
 	return findings, nil
+}
+
+func (s *stubFindingStore) UpdateFindingStatus(_ context.Context, request ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding == nil || finding.ID != request.FindingID {
+			continue
+		}
+		cloned := cloneFinding(finding)
+		cloned.Status = request.Status
+		cloned.StatusReason = request.Reason
+		cloned.StatusUpdatedAt = request.UpdatedAt
+		return cloned, nil
+	}
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *stubFindingStore) UpdateFindingAssignee(_ context.Context, request ports.FindingAssigneeUpdate) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding == nil || finding.ID != request.FindingID {
+			continue
+		}
+		cloned := cloneFinding(finding)
+		cloned.Assignee = request.Assignee
+		return cloned, nil
+	}
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *stubFindingStore) UpdateFindingDueDate(_ context.Context, request ports.FindingDueDateUpdate) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding == nil || finding.ID != request.FindingID {
+			continue
+		}
+		cloned := cloneFinding(finding)
+		cloned.DueAt = request.DueAt
+		return cloned, nil
+	}
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *stubFindingStore) AddFindingNote(_ context.Context, request ports.FindingNoteCreate) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding == nil || finding.ID != request.FindingID {
+			continue
+		}
+		cloned := cloneFinding(finding)
+		cloned.Notes = append(cloned.Notes, request.Note)
+		return cloned, nil
+	}
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *stubFindingStore) LinkFindingTicket(_ context.Context, request ports.FindingTicketLink) (*ports.FindingRecord, error) {
+	for _, finding := range s.findings {
+		if finding == nil || finding.ID != request.FindingID {
+			continue
+		}
+		cloned := cloneFinding(finding)
+		cloned.Tickets = append(cloned.Tickets, request.Ticket)
+		return cloned, nil
+	}
+	return nil, ports.ErrFindingNotFound
 }
 
 type stubGraphStore struct {
@@ -66,12 +148,33 @@ func (s *stubReportStore) GetReportRun(_ context.Context, id string) (*cerebrov1
 }
 
 func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
+	overdueDueAt := time.Now().UTC().Add(-2 * time.Hour)
+	scheduledDueAt := time.Now().UTC().Add(24 * time.Hour)
 	findingStore := &stubFindingStore{
 		findings: []*ports.FindingRecord{
 			{
-				ID:           "finding-1",
-				RuntimeID:    "writer-okta-audit",
-				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
+				ID:        "finding-1",
+				TenantID:  "writer",
+				RuntimeID: "writer-okta-audit",
+				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
+				PolicyID:  "pol-1",
+				CheckID:   "identity-okta-policy-rule-lifecycle-tampering-30d",
+				CheckName: "Okta Policy Rule Lifecycle Tampering (30 days)",
+				ControlRefs: []ports.FindingControlRef{
+					{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+					{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+					{FrameworkName: "ISO 27001:2022", ControlID: "A.8.9"},
+				},
+				FindingWorkflow: ports.FindingWorkflow{
+					Notes: []ports.FindingNote{
+						{ID: "note-1", Body: "Escalate to identity engineering.", CreatedAt: time.Now().UTC().Add(-time.Hour)},
+						{ID: "note-2", Body: "Awaiting owner confirmation.", CreatedAt: time.Now().UTC()},
+					},
+					Tickets: []ports.FindingTicket{
+						{URL: "https://jira.writer.com/browse/ENG-123", Name: "ENG-123", ExternalID: "ENG-123", LinkedAt: time.Now().UTC().Add(-30 * time.Minute)},
+					},
+					DueAt: overdueDueAt,
+				},
 				Severity:     "HIGH",
 				Status:       "open",
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
@@ -80,9 +183,20 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 				},
 			},
 			{
-				ID:           "finding-2",
-				RuntimeID:    "writer-okta-audit",
-				RuleID:       "identity-okta-policy-rule-lifecycle-tampering",
+				ID:        "finding-2",
+				TenantID:  "writer",
+				RuntimeID: "writer-okta-audit",
+				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
+				PolicyID:  "pol-1",
+				CheckID:   "identity-okta-policy-rule-lifecycle-tampering-30d",
+				CheckName: "Okta Policy Rule Lifecycle Tampering (30 days)",
+				ControlRefs: []ports.FindingControlRef{
+					{FrameworkName: "SOC 2", ControlID: "CC6.2"},
+					{FrameworkName: "ISO 27001:2022", ControlID: "A.8.9"},
+				},
+				FindingWorkflow: ports.FindingWorkflow{
+					DueAt: scheduledDueAt,
+				},
 				Severity:     "HIGH",
 				Status:       "resolved",
 				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
@@ -123,6 +237,7 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
+			reportParameterTenantID:   "writer",
 			reportParameterRuntimeID:  "writer-okta-audit",
 			reportParameterGraphLimit: "2",
 		},
@@ -139,10 +254,16 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	if response.GetRun().GetStatus() != findingSummaryReportStatus {
 		t.Fatalf("Run().Run.Status = %q, want %q", response.GetRun().GetStatus(), findingSummaryReportStatus)
 	}
+	if findingStore.request.TenantID != "writer" {
+		t.Fatalf("ListFindings().TenantID = %q, want writer", findingStore.request.TenantID)
+	}
 	if findingStore.request.RuntimeID != "writer-okta-audit" {
 		t.Fatalf("ListFindings().RuntimeID = %q, want writer-okta-audit", findingStore.request.RuntimeID)
 	}
 	result := response.GetRun().GetResult().AsMap()
+	if got := result[reportParameterTenantID]; got != "writer" {
+		t.Fatalf("Run().Run.Result[tenant_id] = %#v, want writer", got)
+	}
 	if got := result[reportParameterRuntimeID]; got != "writer-okta-audit" {
 		t.Fatalf("Run().Run.Result[runtime_id] = %#v, want writer-okta-audit", got)
 	}
@@ -152,6 +273,80 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	severityCounts, ok := result["severity_counts"].([]any)
 	if !ok || len(severityCounts) != 1 {
 		t.Fatalf("Run().Run.Result[severity_counts] = %#v, want 1 entry", result["severity_counts"])
+	}
+	dueStatusCounts, ok := result["due_status_counts"].([]any)
+	if !ok || len(dueStatusCounts) != 2 {
+		t.Fatalf("Run().Run.Result[due_status_counts] = %#v, want 2 entries", result["due_status_counts"])
+	}
+	seenDueStatuses := map[string]bool{}
+	for _, rawEntry := range dueStatusCounts {
+		entry, ok := rawEntry.(map[string]any)
+		if !ok {
+			t.Fatalf("due status count entry = %#v, want object", rawEntry)
+		}
+		status, ok := entry["due_status"].(string)
+		if !ok || status == "" {
+			t.Fatalf("due status bucket = %#v, want non-empty string", entry["due_status"])
+		}
+		seenDueStatuses[status] = true
+		if got := entry["count"]; got != float64(1) {
+			t.Fatalf("due status count = %#v, want 1", got)
+		}
+	}
+	if !seenDueStatuses["overdue"] || !seenDueStatuses["scheduled"] {
+		t.Fatalf("due status buckets = %#v, want overdue and scheduled", seenDueStatuses)
+	}
+	if got := result["note_count"]; got != float64(2) {
+		t.Fatalf("Run().Run.Result[note_count] = %#v, want 2", got)
+	}
+	if got := result["noted_finding_count"]; got != float64(1) {
+		t.Fatalf("Run().Run.Result[noted_finding_count] = %#v, want 1", got)
+	}
+	if got := result["ticket_count"]; got != float64(1) {
+		t.Fatalf("Run().Run.Result[ticket_count] = %#v, want 1", got)
+	}
+	if got := result["ticketed_finding_count"]; got != float64(1) {
+		t.Fatalf("Run().Run.Result[ticketed_finding_count] = %#v, want 1", got)
+	}
+	policyCounts, ok := result["policy_counts"].([]any)
+	if !ok || len(policyCounts) != 1 {
+		t.Fatalf("Run().Run.Result[policy_counts] = %#v, want 1 entry", result["policy_counts"])
+	}
+	checkCounts, ok := result["check_counts"].([]any)
+	if !ok || len(checkCounts) != 1 {
+		t.Fatalf("Run().Run.Result[check_counts] = %#v, want 1 entry", result["check_counts"])
+	}
+	checkEntry, ok := checkCounts[0].(map[string]any)
+	if !ok {
+		t.Fatalf("check count entry = %#v, want object", checkCounts[0])
+	}
+	if got := checkEntry["check_id"]; got != "identity-okta-policy-rule-lifecycle-tampering-30d" {
+		t.Fatalf("check count check_id = %#v, want identity-okta-policy-rule-lifecycle-tampering-30d", got)
+	}
+	if got := checkEntry["check_name"]; got != "Okta Policy Rule Lifecycle Tampering (30 days)" {
+		t.Fatalf("check count check_name = %#v, want check name", got)
+	}
+	if got := checkEntry["count"]; got != float64(2) {
+		t.Fatalf("check count count = %#v, want 2", got)
+	}
+	controlCounts, ok := result["control_counts"].([]any)
+	if !ok || len(controlCounts) != 2 {
+		t.Fatalf("Run().Run.Result[control_counts] = %#v, want 2 entries", result["control_counts"])
+	}
+	for _, rawEntry := range controlCounts {
+		entry, ok := rawEntry.(map[string]any)
+		if !ok {
+			t.Fatalf("control count entry = %#v, want object", rawEntry)
+		}
+		if got := entry["framework_name"]; got == "" {
+			t.Fatalf("control count framework_name = %#v, want non-empty", got)
+		}
+		if got := entry["control_id"]; got == "" {
+			t.Fatalf("control count control_id = %#v, want non-empty", got)
+		}
+		if got := entry["count"]; got != float64(2) {
+			t.Fatalf("control count = %#v, want 2", got)
+		}
 	}
 	resourceCounts, ok := result["resource_counts"].([]any)
 	if !ok || len(resourceCounts) != 1 {
@@ -177,6 +372,12 @@ func TestRunFindingSummaryReportPersistsCompletedRun(t *testing.T) {
 	if reportStore.run == nil {
 		t.Fatal("PutReportRun() not called")
 	}
+	if got := reportStore.run.GetParameters()[reportParameterResourceLimit]; got != "3" {
+		t.Fatalf("stored resource_limit = %q, want default 3", got)
+	}
+	if got := reportStore.run.GetParameters()[reportParameterGraphLimit]; got != "2" {
+		t.Fatalf("stored graph_limit = %q, want 2", got)
+	}
 }
 
 func TestGetReportRunRequiresAvailableStore(t *testing.T) {
@@ -196,11 +397,27 @@ func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	}
 }
 
+func TestReportRunIDIncludesEntropy(t *testing.T) {
+	generatedAt := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	first, err := reportRunID(findingSummaryReportID, generatedAt)
+	if err != nil {
+		t.Fatalf("reportRunID(first) error = %v", err)
+	}
+	second, err := reportRunID(findingSummaryReportID, generatedAt)
+	if err != nil {
+		t.Fatalf("reportRunID(second) error = %v", err)
+	}
+	if first == second {
+		t.Fatalf("reportRunID() returned duplicate id %q", first)
+	}
+}
+
 func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *testing.T) {
 	findingStore := &stubFindingStore{
 		findings: []*ports.FindingRecord{
 			{
 				ID:        "finding-1",
+				TenantID:  "writer",
 				RuntimeID: "writer-okta-audit",
 				RuleID:    "identity-okta-policy-rule-lifecycle-tampering",
 				Severity:  "HIGH",
@@ -213,6 +430,7 @@ func TestRunFindingSummaryReportWithoutGraphStoreMarksEvidenceUnconfigured(t *te
 	response, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{
 		ReportId: findingSummaryReportID,
 		Parameters: map[string]string{
+			reportParameterTenantID:  "writer",
 			reportParameterRuntimeID: "writer-okta-audit",
 		},
 	})
@@ -229,17 +447,31 @@ func cloneFinding(finding *ports.FindingRecord) *ports.FindingRecord {
 		return nil
 	}
 	return &ports.FindingRecord{
-		ID:              finding.ID,
-		Fingerprint:     finding.Fingerprint,
-		TenantID:        finding.TenantID,
-		RuntimeID:       finding.RuntimeID,
-		RuleID:          finding.RuleID,
-		Title:           finding.Title,
-		Severity:        finding.Severity,
-		Status:          finding.Status,
-		Summary:         finding.Summary,
-		ResourceURNs:    append([]string(nil), finding.ResourceURNs...),
-		EventIDs:        append([]string(nil), finding.EventIDs...),
+		ID:                finding.ID,
+		Fingerprint:       finding.Fingerprint,
+		TenantID:          finding.TenantID,
+		RuntimeID:         finding.RuntimeID,
+		RuleID:            finding.RuleID,
+		Title:             finding.Title,
+		Severity:          finding.Severity,
+		Status:            finding.Status,
+		Summary:           finding.Summary,
+		ResourceURNs:      append([]string(nil), finding.ResourceURNs...),
+		EventIDs:          append([]string(nil), finding.EventIDs...),
+		ObservedPolicyIDs: append([]string(nil), finding.ObservedPolicyIDs...),
+		PolicyID:          finding.PolicyID,
+		PolicyName:        finding.PolicyName,
+		CheckID:           finding.CheckID,
+		CheckName:         finding.CheckName,
+		ControlRefs:       append([]ports.FindingControlRef(nil), finding.ControlRefs...),
+		FindingWorkflow: ports.FindingWorkflow{
+			Notes:           append([]ports.FindingNote(nil), finding.Notes...),
+			Tickets:         append([]ports.FindingTicket(nil), finding.Tickets...),
+			Assignee:        finding.Assignee,
+			DueAt:           finding.DueAt,
+			StatusReason:    finding.StatusReason,
+			StatusUpdatedAt: finding.StatusUpdatedAt,
+		},
 		Attributes:      cloneAttributes(finding.Attributes),
 		FirstObservedAt: finding.FirstObservedAt,
 		LastObservedAt:  finding.LastObservedAt,
@@ -297,9 +529,10 @@ func cloneNeighborhoodRelation(relation *ports.NeighborhoodRelation) *ports.Neig
 		return nil
 	}
 	return &ports.NeighborhoodRelation{
-		FromURN:  relation.FromURN,
-		Relation: relation.Relation,
-		ToURN:    relation.ToURN,
+		FromURN:    relation.FromURN,
+		Relation:   relation.Relation,
+		ToURN:      relation.ToURN,
+		Attributes: cloneAttributes(relation.Attributes),
 	}
 }
 

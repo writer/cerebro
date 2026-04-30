@@ -1,0 +1,71 @@
+{
+  "rule_id": "github-code-security-controls-disabled",
+  "runtime": {
+    "id": "writer-github-audit",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-audit-code-security-disabled",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer/cerebro",
+        "resource_type": "dependabot_alerts",
+        "source_runtime_id": "writer-github-audit",
+        "action": "dependabot_alerts.disable",
+        "repo": "writer/cerebro"
+      }
+    },
+    {
+      "id": "github-audit-code-security-enabled",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer/cerebro",
+        "resource_type": "dependabot_alerts",
+        "source_runtime_id": "writer-github-audit",
+        "action": "dependabot_alerts.enable",
+        "repo": "writer/cerebro"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-code-security-controls-disabled",
+      "severity": "CRITICAL",
+      "status": "open",
+      "summary": "admin disabled GitHub code security control dependabot_alerts.disable for writer/cerebro",
+      "event_ids": [
+        "github-audit-code-security-disabled"
+      ],
+      "attributes": {
+        "action": "dependabot_alerts.disable",
+        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "repo": "writer/cerebro",
+        "rule_tags": "github,advanced-security,dependabot,defense-evasion,supply-chain,attack.t1562"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-audit-code-security-enabled",
+      "reason": "negative fixture should not match"
+    }
+  ]
+}

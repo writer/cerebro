@@ -3,6 +3,7 @@ package jetstream
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/nats-io/nats.go"
@@ -29,20 +30,30 @@ func (f *fakePublisher) PublishMsg(_ context.Context, msg *nats.Msg, _ ...natsje
 }
 
 type fakeReplayManager struct {
-	streams []*natsjetstream.StreamInfo
-	msgs    map[string]map[uint64]*natsjetstream.RawStreamMsg
-	err     error
+	streams     []*natsjetstream.StreamInfo
+	msgs        map[string]map[uint64]*natsjetstream.RawStreamMsg
+	err         error
+	streamCalls int
 }
 
 func (f *fakeReplayManager) Streams(context.Context) ([]*natsjetstream.StreamInfo, error) {
 	return f.streams, f.err
 }
 
-func (f *fakeReplayManager) GetMsg(_ context.Context, stream string, seq uint64) (*natsjetstream.RawStreamMsg, error) {
+func (f *fakeReplayManager) Stream(_ context.Context, stream string) (replayStream, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	raw := f.msgs[stream][seq]
+	f.streamCalls++
+	return &fakeReplayStream{msgs: f.msgs[stream]}, nil
+}
+
+type fakeReplayStream struct {
+	msgs map[uint64]*natsjetstream.RawStreamMsg
+}
+
+func (f *fakeReplayStream) GetMsg(_ context.Context, seq uint64, _ ...natsjetstream.GetMsgOpt) (*natsjetstream.RawStreamMsg, error) {
+	raw := f.msgs[seq]
 	if raw == nil {
 		return nil, natsjetstream.ErrMsgNotFound
 	}
@@ -84,6 +95,25 @@ func TestAppendRejectsMissingKind(t *testing.T) {
 	log := &Log{js: &fakePublisher{}, subjectPrefix: "events"}
 	if err := log.Append(context.Background(), &cerebrov1.EventEnvelope{}); err == nil {
 		t.Fatal("Append() error = nil, want non-nil")
+	}
+}
+
+func TestAppendRejectsInvalidKindSubjects(t *testing.T) {
+	log := &Log{js: &fakePublisher{}, subjectPrefix: "events"}
+	for _, kind := range []string{
+		"entity update",
+		"entity\tupdate",
+		"entity..update",
+		".entity",
+		"entity.",
+		"entity.*",
+		"entity.>",
+	} {
+		t.Run(kind, func(t *testing.T) {
+			if err := log.Append(context.Background(), &cerebrov1.EventEnvelope{Kind: kind}); err == nil {
+				t.Fatal("Append() error = nil, want non-nil")
+			}
+		})
 	}
 }
 
@@ -129,12 +159,95 @@ func TestReplayFiltersEventsByRuntime(t *testing.T) {
 	if events[0].GetId() != "evt-1" || events[1].GetId() != "evt-3" {
 		t.Fatalf("replayed ids = [%q, %q], want [evt-1, evt-3]", events[0].GetId(), events[1].GetId())
 	}
+	if replay.streamCalls != 1 {
+		t.Fatalf("streamCalls = %d, want 1", replay.streamCalls)
+	}
 }
 
-func TestReplayRejectsMissingRuntimeID(t *testing.T) {
+func TestReplayAppliesDefaultLimit(t *testing.T) {
+	msgs := make(map[uint64]*natsjetstream.RawStreamMsg)
+	for seq := uint64(1); seq <= defaultReplayLimit+5; seq++ {
+		msgs[seq] = rawReplayMsg(t, "events.github.audit", replayEvent("evt-"+strconv.FormatUint(seq, 10), "github.audit", "writer-github"))
+	}
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: defaultReplayLimit + 5},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{"CEREBRO_EVENTS": msgs},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != defaultReplayLimit {
+		t.Fatalf("len(events) = %d, want %d", len(events), defaultReplayLimit)
+	}
+}
+
+func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 4},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.workflow.v1.knowledge.decision_recorded", workflowReplayEvent("evt-1", "workflow.v1.knowledge.decision_recorded", "writer", "knowledge_decision")),
+				2: rawReplayMsg(t, "events.workflow.v1.knowledge.action_recorded", workflowReplayEvent("evt-2", "workflow.v1.knowledge.action_recorded", "writer", "knowledge_action")),
+				3: rawReplayMsg(t, "events.workflow.v1.knowledge.decision_recorded", workflowReplayEvent("evt-3", "workflow.v1.knowledge.decision_recorded", "other", "knowledge_decision")),
+				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{
+		KindPrefix: "workflow.v1.",
+		TenantID:   "writer",
+		AttributeEquals: map[string]string{
+			"workflow_kind": "knowledge_decision",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+	if got := events[0].GetId(); got != "evt-1" {
+		t.Fatalf("replayed id = %q, want evt-1", got)
+	}
+}
+
+func TestReplayRejectsMissingFilter(t *testing.T) {
 	log := &Log{replay: &fakeReplayManager{}, subjectPrefix: "events"}
 	if _, err := log.Replay(context.Background(), ports.ReplayRequest{}); err == nil {
 		t.Fatal("Replay() error = nil, want non-nil")
+	}
+}
+
+func workflowReplayEvent(id string, kind string, tenantID string, workflowKind string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:       id,
+		TenantId: tenantID,
+		Kind:     kind,
+		SourceId: "platform.knowledge",
+		Attributes: map[string]string{
+			"workflow_kind": workflowKind,
+		},
 	}
 }
 

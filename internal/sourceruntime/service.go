@@ -56,16 +56,20 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 	if err != nil {
 		return nil, err
 	}
-	if err := source.Check(ctx, sourcecdk.NewConfig(runtime.GetConfig())); err != nil {
-		return nil, err
-	}
 	existing, err := s.lookupRuntime(ctx, runtime.GetId())
 	switch {
 	case err == nil:
-		runtime = mergeRuntime(existing, runtime)
+		restoreRedactedConfig(existing, runtime)
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		existing = nil
 	default:
 		return nil, err
+	}
+	if err := source.Check(ctx, sourcecdk.NewConfig(runtime.GetConfig())); err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		runtime = mergeRuntime(existing, runtime)
 	}
 	if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
 		return nil, err
@@ -115,9 +119,6 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 			runtime.Checkpoint = cloneCheckpoint(pull.Checkpoint)
 		}
 		runtime.NextCursor = cloneCursor(pull.NextCursor)
-		if len(pull.Events) == 0 {
-			break
-		}
 		pagesRead++
 		for _, event := range pull.Events {
 			syncedEvent := materializeEvent(runtime, event)
@@ -193,6 +194,23 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 	return pageLimit, nil
 }
 
+func restoreRedactedConfig(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) {
+	if existing == nil || incoming == nil || len(incoming.GetConfig()) == 0 {
+		return
+	}
+	if strings.TrimSpace(existing.GetSourceId()) != strings.TrimSpace(incoming.GetSourceId()) {
+		return
+	}
+	for key, value := range incoming.GetConfig() {
+		if strings.TrimSpace(value) != redactedValue || !sensitiveConfigKey(key) {
+			continue
+		}
+		if preserved, ok := existing.GetConfig()[key]; ok {
+			incoming.Config[key] = preserved
+		}
+	}
+}
+
 func mergeRuntime(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
 	if existing == nil {
 		return incoming
@@ -242,7 +260,8 @@ func sameConfig(left map[string]string, right map[string]string) bool {
 		return false
 	}
 	for key, value := range left {
-		if right[key] != value {
+		other, ok := right[key]
+		if !ok || other != value {
 			return false
 		}
 	}

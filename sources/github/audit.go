@@ -206,8 +206,6 @@ func nextAuditCursor(resp *gogithub.Response) string {
 		return strings.TrimSpace(resp.After)
 	case strings.TrimSpace(resp.Cursor) != "":
 		return strings.TrimSpace(resp.Cursor)
-	case strings.TrimSpace(resp.Before) != "":
-		return strings.TrimSpace(resp.Before)
 	case strings.TrimSpace(resp.NextPageToken) != "":
 		return strings.TrimSpace(resp.NextPageToken)
 	case resp.NextPage > 0:
@@ -247,11 +245,34 @@ func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings se
 	addAttribute(attributes, "actor", entry.GetActor())
 	addAttribute(attributes, "actor_is_agent", boolString(raw, "actor_is_agent"))
 	addAttribute(attributes, "actor_is_bot", boolString(raw, "actor_is_bot"))
+	addAttribute(attributes, "external_identity_nameid", entry.GetExternalIdentityNameID())
+	addAttribute(attributes, "external_identity_username", entry.GetExternalIdentityUsername())
 	addAttribute(attributes, "programmatic_access_type", rawString(raw, "programmatic_access_type"))
 	addAttribute(attributes, "repo", rawString(raw, "repo"))
 	addAttribute(attributes, "user", entry.GetUser())
 	addAttribute(attributes, "visibility", rawString(raw, "visibility"))
+	for _, key := range auditAdditionalAttributeKeys {
+		addAttribute(attributes, key, rawScalarString(raw, key))
+	}
 	return attributes
+}
+
+var auditAdditionalAttributeKeys = []string{
+	"branch",
+	"hook_id",
+	"integration",
+	"name",
+	"number",
+	"permission",
+	"previous_visibility",
+	"repository_public",
+	"ruleset_enforcement",
+	"ruleset_id",
+	"ruleset_name",
+	"runner_group_name",
+	"runner_name",
+	"transport_protocol_name",
+	"user_agent",
 }
 
 func auditResourceType(entry *gogithub.AuditEntry) string {
@@ -299,6 +320,27 @@ func rawString(raw map[string]any, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(stringValue)
+}
+
+func rawScalarString(raw map[string]any, key string) string {
+	value, ok := raw[key]
+	if !ok {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case bool:
+		return strconv.FormatBool(typed)
+	case float64:
+		return strconv.FormatInt(int64(typed), 10)
+	case int:
+		return strconv.Itoa(typed)
+	case int64:
+		return strconv.FormatInt(typed, 10)
+	default:
+		return ""
+	}
 }
 
 func rawBool(raw map[string]any, key string) bool {

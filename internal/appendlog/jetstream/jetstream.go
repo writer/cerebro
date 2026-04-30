@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -16,7 +17,11 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-const connectTimeout = 5 * time.Second
+const (
+	connectTimeout     = 5 * time.Second
+	defaultReplayLimit = 100
+	maxReplayLimit     = 1000
+)
 
 type publisher interface {
 	AccountInfo(context.Context) (*jetstream.AccountInfo, error)
@@ -25,7 +30,11 @@ type publisher interface {
 
 type replayManager interface {
 	Streams(context.Context) ([]*jetstream.StreamInfo, error)
-	GetMsg(context.Context, string, uint64) (*jetstream.RawStreamMsg, error)
+	Stream(context.Context, string) (replayStream, error)
+}
+
+type replayStream interface {
+	GetMsg(context.Context, uint64, ...jetstream.GetMsgOpt) (*jetstream.RawStreamMsg, error)
 }
 
 type jetStreamReplayManager struct {
@@ -44,12 +53,12 @@ func (m *jetStreamReplayManager) Streams(ctx context.Context) ([]*jetstream.Stre
 	return streams, nil
 }
 
-func (m *jetStreamReplayManager) GetMsg(ctx context.Context, stream string, seq uint64) (*jetstream.RawStreamMsg, error) {
+func (m *jetStreamReplayManager) Stream(ctx context.Context, stream string) (replayStream, error) {
 	streamRef, err := m.js.Stream(ctx, stream)
 	if err != nil {
 		return nil, err
 	}
-	return streamRef.GetMsg(ctx, seq)
+	return streamRef, nil
 }
 
 // Log is the JetStream-backed append-log implementation.
@@ -121,11 +130,8 @@ func (l *Log) Append(ctx context.Context, event *cerebrov1.EventEnvelope) error 
 		return errors.New("event is required")
 	}
 	kind := strings.TrimSpace(event.Kind)
-	if kind == "" {
-		return errors.New("event kind is required")
-	}
-	if strings.ContainsRune(kind, ' ') {
-		return fmt.Errorf("event kind %q is not a valid NATS subject token", kind)
+	if err := validateEventKind(kind); err != nil {
+		return err
 	}
 	payload, err := proto.Marshal(event)
 	if err != nil {
@@ -147,20 +153,25 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	if l == nil || l.replay == nil {
 		return nil, errors.New("jetstream is not configured")
 	}
-	runtimeID := strings.TrimSpace(req.RuntimeID)
-	if runtimeID == "" {
-		return nil, errors.New("runtime id is required")
+	request := normalizeReplayRequest(req)
+	if request.RuntimeID == "" && request.KindPrefix == "" && request.TenantID == "" && len(request.AttributeEquals) == 0 {
+		return nil, errors.New("at least one replay filter is required")
 	}
 	stream, err := l.replayStream(ctx)
 	if err != nil {
 		return nil, err
 	}
-	events := make([]*cerebrov1.EventEnvelope, 0)
+	limit := normalizeReplayLimit(request.Limit)
+	streamRef, err := l.replay.Stream(ctx, stream.Config.Name)
+	if err != nil {
+		return nil, fmt.Errorf("open replay stream %q: %w", stream.Config.Name, err)
+	}
+	events := make([]*cerebrov1.EventEnvelope, 0, limit)
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
 		return events, nil
 	}
 	for seq := stream.State.FirstSeq; seq <= stream.State.LastSeq; seq++ {
-		raw, err := l.replay.GetMsg(ctx, stream.Config.Name, seq)
+		raw, err := streamRef.GetMsg(ctx, seq)
 		if err != nil {
 			if errors.Is(err, jetstream.ErrMsgNotFound) {
 				continue
@@ -174,15 +185,82 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 		if err := proto.Unmarshal(raw.Data, event); err != nil {
 			return nil, fmt.Errorf("decode replay message %s:%d: %w", stream.Config.Name, seq, err)
 		}
-		if strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]) != runtimeID {
+		if !matchesReplayRequest(event, request) {
 			continue
 		}
 		events = append(events, event)
-		if req.Limit > 0 && uint32(len(events)) >= req.Limit {
+		if uint32(len(events)) >= limit {
 			break
 		}
 	}
 	return events, nil
+}
+
+func validateEventKind(kind string) error {
+	if kind == "" {
+		return errors.New("event kind is required")
+	}
+	for _, token := range strings.Split(kind, ".") {
+		if token == "" {
+			return fmt.Errorf("event kind %q is not a valid NATS subject", kind)
+		}
+		for _, r := range token {
+			if unicode.IsSpace(r) || unicode.IsControl(r) || r == '*' || r == '>' {
+				return fmt.Errorf("event kind %q is not a valid NATS subject", kind)
+			}
+		}
+	}
+	return nil
+}
+
+func normalizeReplayLimit(limit uint32) uint32 {
+	if limit == 0 {
+		return defaultReplayLimit
+	}
+	if limit > maxReplayLimit {
+		return maxReplayLimit
+	}
+	return limit
+}
+
+func normalizeReplayRequest(req ports.ReplayRequest) ports.ReplayRequest {
+	normalized := ports.ReplayRequest{
+		RuntimeID:       strings.TrimSpace(req.RuntimeID),
+		KindPrefix:      strings.TrimSpace(req.KindPrefix),
+		TenantID:        strings.TrimSpace(req.TenantID),
+		AttributeEquals: make(map[string]string, len(req.AttributeEquals)),
+		Limit:           req.Limit,
+	}
+	for key, value := range req.AttributeEquals {
+		trimmedKey := strings.TrimSpace(key)
+		trimmedValue := strings.TrimSpace(value)
+		if trimmedKey == "" {
+			continue
+		}
+		normalized.AttributeEquals[trimmedKey] = trimmedValue
+	}
+	return normalized
+}
+
+func matchesReplayRequest(event *cerebrov1.EventEnvelope, req ports.ReplayRequest) bool {
+	if event == nil {
+		return false
+	}
+	if req.RuntimeID != "" && strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]) != req.RuntimeID {
+		return false
+	}
+	if req.KindPrefix != "" && !strings.HasPrefix(strings.TrimSpace(event.GetKind()), req.KindPrefix) {
+		return false
+	}
+	if req.TenantID != "" && strings.TrimSpace(event.GetTenantId()) != req.TenantID {
+		return false
+	}
+	for key, value := range req.AttributeEquals {
+		if strings.TrimSpace(event.GetAttributes()[key]) != value {
+			return false
+		}
+	}
+	return true
 }
 
 func (l *Log) replayStream(ctx context.Context) (*jetstream.StreamInfo, error) {

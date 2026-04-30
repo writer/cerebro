@@ -120,6 +120,52 @@ func TestNewFixtureReplaysFixturePages(t *testing.T) {
 	}
 }
 
+func TestNewFixtureReplaysOktaIdentityFamilies(t *testing.T) {
+	source, err := NewFixture()
+	if err != nil {
+		t.Fatalf("NewFixture() error = %v", err)
+	}
+	for _, tt := range []struct {
+		family string
+		config map[string]string
+		kind   string
+	}{
+		{family: "admin_role", config: map[string]string{"user_id": "00u1", "user_email": "admin@writer.com"}, kind: "okta.admin_role"},
+		{family: "app_assignment", config: map[string]string{"app_id": "app-prod"}, kind: "okta.app_assignment"},
+		{family: "application", kind: "okta.application"},
+		{family: "group", kind: "okta.group"},
+		{family: "group_membership", config: map[string]string{"group_id": "grp-security"}, kind: "okta.group_membership"},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			config := map[string]string{
+				"domain": "writer.okta.com",
+				"family": tt.family,
+				"token":  "test-token",
+			}
+			for key, value := range tt.config {
+				config[key] = value
+			}
+			urns, err := source.Discover(context.Background(), sourcecdk.NewConfig(config))
+			if err != nil {
+				t.Fatalf("Discover(%s) error = %v", tt.family, err)
+			}
+			if len(urns) != 1 {
+				t.Fatalf("len(Discover(%s)) = %d, want 1", tt.family, len(urns))
+			}
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
+			}
+		})
+	}
+}
+
 func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 	server := httptest.NewServer(newOktaAPIHandler(t))
 	defer server.Close()
@@ -266,6 +312,86 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	}
 }
 
+func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
+	server := httptest.NewServer(newOktaAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	for _, tt := range []struct {
+		family string
+		config map[string]string
+		kind   string
+		attr   string
+		want   string
+	}{
+		{
+			family: "group",
+			kind:   "okta.group",
+			attr:   "group_id",
+			want:   "grp-security",
+		},
+		{
+			family: "group_membership",
+			config: map[string]string{"group_id": "grp-security"},
+			kind:   "okta.group_membership",
+			attr:   "member_email",
+			want:   "admin@writer.com",
+		},
+		{
+			family: "application",
+			kind:   "okta.application",
+			attr:   "app_id",
+			want:   "app-prod",
+		},
+		{
+			family: "app_assignment",
+			config: map[string]string{"app_id": "app-prod"},
+			kind:   "okta.app_assignment",
+			attr:   "subject_email",
+			want:   "admin@writer.com",
+		},
+		{
+			family: "admin_role",
+			config: map[string]string{"user_id": "00u1", "user_email": "admin@writer.com"},
+			kind:   "okta.admin_role",
+			attr:   "role_id",
+			want:   "super_admin",
+		},
+	} {
+		t.Run(tt.family, func(t *testing.T) {
+			config := map[string]string{
+				"base_url": server.URL,
+				"domain":   "writer.okta.com",
+				"family":   tt.family,
+				"per_page": "1",
+				"token":    "test-token",
+			}
+			for key, value := range tt.config {
+				config[key] = value
+			}
+			if err := source.Check(context.Background(), sourcecdk.NewConfig(config)); err != nil {
+				t.Fatalf("Check(%s) error = %v", tt.family, err)
+			}
+			pull, err := source.Read(context.Background(), sourcecdk.NewConfig(config), nil)
+			if err != nil {
+				t.Fatalf("Read(%s) error = %v", tt.family, err)
+			}
+			if len(pull.Events) != 1 {
+				t.Fatalf("len(Read(%s).Events) = %d, want 1", tt.family, len(pull.Events))
+			}
+			if got := pull.Events[0].Kind; got != tt.kind {
+				t.Fatalf("Read(%s).Events[0].Kind = %q, want %q", tt.family, got, tt.kind)
+			}
+			if got := pull.Events[0].Attributes[tt.attr]; got != tt.want {
+				t.Fatalf("Read(%s).Events[0].Attributes[%q] = %q, want %q", tt.family, tt.attr, got, tt.want)
+			}
+		})
+	}
+}
+
 func newOktaAPIHandler(t *testing.T) http.Handler {
 	t.Helper()
 
@@ -371,6 +497,53 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			},
 		},
 	}
+	groupRecords := []map[string]any{
+		{
+			"id":                    "grp-security",
+			"type":                  "OKTA_GROUP",
+			"created":               "2026-04-20T00:00:00Z",
+			"lastUpdated":           "2026-04-23T00:00:00Z",
+			"lastMembershipUpdated": "2026-04-23T01:00:00Z",
+			"profile": map[string]any{
+				"name":        "Security",
+				"description": "Security team",
+			},
+		},
+	}
+	appRecords := []map[string]any{
+		{
+			"id":          "app-prod",
+			"name":        "oidc_client",
+			"label":       "Production Console",
+			"status":      "ACTIVE",
+			"signOnMode":  "OPENID_CONNECT",
+			"created":     "2026-04-20T00:00:00Z",
+			"lastUpdated": "2026-04-23T00:00:00Z",
+		},
+	}
+	appAssignmentRecords := []map[string]any{
+		{
+			"id":          "00u1",
+			"status":      "ACTIVE",
+			"created":     "2026-04-20T00:00:00Z",
+			"lastUpdated": "2026-04-23T00:00:00Z",
+			"profile": map[string]any{
+				"email": "admin@writer.com",
+				"login": "admin@writer.com",
+			},
+		},
+	}
+	roleRecords := []map[string]any{
+		{
+			"id":             "super_admin",
+			"label":          "Super Administrator",
+			"type":           "SUPER_ADMIN",
+			"assignmentType": "USER",
+			"status":         "ACTIVE",
+			"created":        "2026-04-20T00:00:00Z",
+			"lastUpdated":    "2026-04-23T00:00:00Z",
+		},
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -424,6 +597,26 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 			}
 			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
 				t.Fatalf("encode empty users page: %v", err)
+			}
+		case "/api/v1/groups":
+			if err := json.NewEncoder(w).Encode(groupRecords); err != nil {
+				t.Fatalf("encode groups: %v", err)
+			}
+		case "/api/v1/groups/grp-security/users":
+			if err := json.NewEncoder(w).Encode(userRecords[1:2]); err != nil {
+				t.Fatalf("encode group members: %v", err)
+			}
+		case "/api/v1/apps":
+			if err := json.NewEncoder(w).Encode(appRecords); err != nil {
+				t.Fatalf("encode apps: %v", err)
+			}
+		case "/api/v1/apps/app-prod/users":
+			if err := json.NewEncoder(w).Encode(appAssignmentRecords); err != nil {
+				t.Fatalf("encode app assignments: %v", err)
+			}
+		case "/api/v1/users/00u1/roles":
+			if err := json.NewEncoder(w).Encode(roleRecords); err != nil {
+				t.Fatalf("encode admin roles: %v", err)
 			}
 		default:
 			http.NotFound(w, r)

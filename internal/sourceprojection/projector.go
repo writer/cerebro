@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -11,23 +12,51 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
+var emailIdentifierPattern = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}`)
+
 const (
-	relationActedOn       = "acted_on"
-	relationAuthored      = "authored"
-	relationBelongsTo     = "belongs_to"
-	relationHasIdentifier = "has_identifier"
-	relationTargeted      = "targeted"
+	relationActedOn            = "acted_on"
+	relationAffectedBy         = "affected_by"
+	relationAffects            = "affects"
+	relationAuthored           = "authored"
+	relationBelongsTo          = "belongs_to"
+	relationCanPerform         = "can_perform"
+	relationHasIdentifier      = "has_identifier"
+	relationAssignedTo         = "assigned_to"
+	relationCanAssume          = "can_assume"
+	relationCanAdmin           = "can_admin"
+	relationCanImpersonate     = "can_impersonate"
+	relationCanReach           = "can_reach"
+	relationHasClassification  = "has_classification"
+	relationHasEvidence        = "has_evidence"
+	relationMemberOf           = "member_of"
+	relationObservedOn         = "observed_on"
+	relationOwnedBy            = "owned_by"
+	relationRepresentsIdentity = "represents_identity"
+	relationRunsAs             = "runs_as"
+	relationSupports           = "supports"
+	relationTaggedAs           = "tagged_as"
+	relationTargeted           = "targeted"
 )
 
 // Service materializes synced source events into current-state and graph stores.
 type Service struct {
-	state ports.ProjectionStateStore
-	graph ports.ProjectionGraphStore
+	state    ports.ProjectionStateStore
+	graph    ports.ProjectionGraphStore
+	registry *Registry
 }
 
 // New constructs a source projector.
 func New(state ports.ProjectionStateStore, graph ports.ProjectionGraphStore) *Service {
-	return &Service{state: state, graph: graph}
+	return NewWithRegistry(state, graph, BuiltinRegistry())
+}
+
+// NewWithRegistry constructs a source projector with an explicit event projector registry.
+func NewWithRegistry(state ports.ProjectionStateStore, graph ports.ProjectionGraphStore, registry *Registry) *Service {
+	if registry == nil {
+		registry = BuiltinRegistry()
+	}
+	return &Service{state: state, graph: graph, registry: registry}
 }
 
 // Project applies one source event to the configured state and graph stores.
@@ -38,7 +67,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	if s == nil || (s.state == nil && s.graph == nil) {
 		return ports.ProjectionResult{}, nil
 	}
-	entities, links, err := projectionsForEvent(event)
+	entities, links, err := s.registry.Project(event)
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
@@ -72,21 +101,6 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	}, nil
 }
 
-func projectionsForEvent(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
-	switch strings.TrimSpace(event.GetKind()) {
-	case "github.pull_request":
-		return githubPullRequestProjections(event)
-	case "github.audit":
-		return githubAuditProjections(event)
-	case "okta.user":
-		return oktaUserProjections(event)
-	case "okta.audit":
-		return oktaAuditProjections(event)
-	default:
-		return nil, nil, nil
-	}
-}
-
 func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
 	tenantID, err := tenantID(event)
 	if err != nil {
@@ -102,8 +116,9 @@ func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
 
-	orgURN := projectionURN(tenantID, "github_org", owner)
+	orgURN := ""
 	if owner != "" {
+		orgURN = projectionURN(tenantID, "github_org", owner)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        orgURN,
 			TenantID:   tenantID,
@@ -163,7 +178,7 @@ func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 		if prURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), authorURN, prURN, relationAuthored, map[string]string{"event_id": event.GetId()}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), authorURN, author)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), authorURN, author)
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -181,6 +196,8 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 	resourceID := strings.TrimSpace(attributes["resource_id"])
 	resourceType := strings.TrimSpace(attributes["resource_type"])
 	actor := strings.TrimSpace(attributes["actor"])
+	actorExternalNameID := strings.TrimSpace(attributes["external_identity_nameid"])
+	actorExternalUsername := strings.TrimSpace(attributes["external_identity_username"])
 	targetUser := strings.TrimSpace(attributes["user"])
 
 	entities := map[string]*ports.ProjectedEntity{}
@@ -249,7 +266,11 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			SourceID:   event.GetSourceId(),
 			EntityType: "github.user",
 			Label:      actor,
-			Attributes: map[string]string{"login": actor},
+			Attributes: map[string]string{
+				"external_identity_nameid":   actorExternalNameID,
+				"external_identity_username": actorExternalUsername,
+				"login":                      actor,
+			},
 		})
 		if resourceURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, map[string]string{
@@ -257,7 +278,13 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 				"event_id": event.GetId(),
 			}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), actorURN, actor)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actor)
+		if !sameIdentifier(actor, actorExternalNameID) {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalNameID)
+		}
+		if !sameIdentifier(actor, actorExternalUsername) && !sameIdentifier(actorExternalNameID, actorExternalUsername) {
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalUsername)
+		}
 	}
 
 	targetURN := githubUserURN(tenantID, targetUser)
@@ -273,7 +300,117 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 		if resourceURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, resourceURN, relationTargeted, map[string]string{"event_id": event.GetId()}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), targetURN, targetUser)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), targetURN, targetUser)
+	}
+
+	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
+	return projectedEntities, projectedLinks, nil
+}
+
+func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
+	tenantID, err := tenantID(event)
+	if err != nil {
+		return nil, nil, err
+	}
+	attributes := event.GetAttributes()
+	repository := strings.TrimSpace(attributes["repository"])
+	owner := strings.TrimSpace(attributes["owner"])
+	alertNumber := strings.TrimSpace(attributes["alert_number"])
+	packageName := strings.TrimSpace(attributes["package"])
+	ecosystem := strings.TrimSpace(attributes["ecosystem"])
+	advisoryID := firstNonEmpty(attributes["advisory_ghsa_id"], attributes["advisory_cve_id"])
+
+	entities := map[string]*ports.ProjectedEntity{}
+	links := map[string]*ports.ProjectedLink{}
+
+	orgURN := projectionURN(tenantID, "github_org", owner)
+	if owner != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        orgURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.org",
+			Label:      owner,
+			Attributes: map[string]string{"org": owner},
+		})
+	}
+
+	repoURN := projectionURN(tenantID, "github_repo", repository)
+	if repository != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        repoURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.repo",
+			Label:      repository,
+			Attributes: map[string]string{"repository": repository},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), repoURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	alertURN := projectionURN(tenantID, "github_dependabot_alert", repository, alertNumber)
+	if repository != "" && alertNumber != "" {
+		label := firstNonEmpty(attributes["advisory_ghsa_id"], attributes["advisory_cve_id"], repository+"#"+alertNumber)
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        alertURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.dependabot_alert",
+			Label:      label,
+			Attributes: map[string]string{
+				"alert_number":       alertNumber,
+				"ecosystem":          ecosystem,
+				"html_url":           strings.TrimSpace(attributes["html_url"]),
+				"package":            packageName,
+				"repository":         repository,
+				"severity":           strings.TrimSpace(attributes["severity"]),
+				"state":              strings.TrimSpace(attributes["state"]),
+				"vulnerability_id":   advisoryID,
+				"vulnerability_type": "dependabot",
+			},
+		})
+		if repoURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, repoURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	advisoryURN := projectionURN(tenantID, "github_advisory", advisoryID)
+	if advisoryID != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        advisoryURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "github.security_advisory",
+			Label:      advisoryID,
+			Attributes: map[string]string{
+				"cve_id":   strings.TrimSpace(attributes["advisory_cve_id"]),
+				"ghsa_id":  strings.TrimSpace(attributes["advisory_ghsa_id"]),
+				"severity": strings.TrimSpace(attributes["advisory_severity"]),
+			},
+		})
+		if alertURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, advisoryURN, relationAffectedBy, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	packageURN := projectionURN(tenantID, "package", ecosystem, packageName)
+	if packageName != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        packageURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "package",
+			Label:      firstNonEmpty(ecosystem+"/"+packageName, packageName),
+			Attributes: map[string]string{
+				"ecosystem": ecosystem,
+				"name":      packageName,
+			},
+		})
+		if alertURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, packageURN, relationAffects, map[string]string{"event_id": event.GetId()}))
+		}
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -323,9 +460,9 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), userURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), userURN, email)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email)
 		if !sameIdentifier(email, login) {
-			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), userURN, login)
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, login)
 		}
 	}
 
@@ -407,7 +544,7 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 				"event_type": strings.TrimSpace(attributes["event_type"]),
 			}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), actorURN, actorAlternateID)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorAlternateID)
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -449,10 +586,23 @@ func addLink(links map[string]*ports.ProjectedLink, link *ports.ProjectedLink) {
 	links[key] = link
 }
 
-func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, fromURN string, value string) {
+func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, eventID string, fromURN string, value string) {
 	identifierURN, identifierType, label := identifierURN(tenantID, value)
 	if identifierURN == "" {
 		return
+	}
+	evidenceAttributes := identifierEvidenceAttributes(value, identifierType, label, eventID)
+	canonicalIdentityURN, canonicalIdentityType := canonicalIdentityURN(tenantID, value)
+	if canonicalIdentityURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        canonicalIdentityURN,
+			TenantID:   tenantID,
+			SourceID:   sourceID,
+			EntityType: canonicalIdentityType,
+			Label:      label,
+			Attributes: map[string]string{"value": label},
+		})
+		addLink(links, projectedLink(tenantID, sourceID, fromURN, canonicalIdentityURN, relationRepresentsIdentity, evidenceAttributes))
 	}
 	addEntity(entities, &ports.ProjectedEntity{
 		URN:        identifierURN,
@@ -462,7 +612,36 @@ func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[str
 		Label:      label,
 		Attributes: map[string]string{"value": label},
 	})
-	addLink(links, projectedLink(tenantID, sourceID, fromURN, identifierURN, relationHasIdentifier, nil))
+	addLink(links, projectedLink(tenantID, sourceID, fromURN, identifierURN, relationHasIdentifier, evidenceAttributes))
+	if canonicalIdentityURN != "" {
+		addLink(links, projectedLink(tenantID, sourceID, canonicalIdentityURN, identifierURN, relationHasIdentifier, evidenceAttributes))
+	}
+}
+
+func identifierEvidenceAttributes(rawValue string, identifierType string, normalizedValue string, eventID string) map[string]string {
+	matchType := "login"
+	confidence := "0.60"
+	value := strings.TrimSpace(rawValue)
+	if identifierType == "identifier.email" {
+		if strings.EqualFold(normalizeIdentifier(value), normalizedValue) {
+			matchType = "exact_email"
+			confidence = "0.95"
+		} else {
+			matchType = "extracted_email"
+			confidence = "0.85"
+		}
+	}
+	attributes := map[string]string{
+		"confidence":       confidence,
+		"evidence_type":    "shared_identifier",
+		"identifier_type":  strings.TrimPrefix(identifierType, "identifier."),
+		"identifier_value": normalizedValue,
+		"match_type":       matchType,
+	}
+	if normalizedEventID := strings.TrimSpace(eventID); normalizedEventID != "" {
+		attributes["source_event_id"] = normalizedEventID
+	}
+	return attributes
 }
 
 func projectedLink(tenantID string, sourceID string, fromURN string, toURN string, relation string, attributes map[string]string) *ports.ProjectedLink {
@@ -556,16 +735,29 @@ func identifierURN(tenantID string, raw string) (string, string, string) {
 	if value == "" {
 		return "", "", ""
 	}
-	if looksLikeEmail(value) {
-		normalized := normalizeIdentifier(value)
+	if email := extractEmailIdentifier(value); email != "" {
+		normalized := normalizeIdentifier(email)
 		return projectionURN(tenantID, "identifier", "email", normalized), "identifier.email", normalized
 	}
 	normalized := normalizeIdentifier(value)
 	return projectionURN(tenantID, "identifier", "login", normalized), "identifier.login", normalized
 }
 
-func looksLikeEmail(value string) bool {
-	return strings.Contains(strings.TrimSpace(value), "@")
+func canonicalIdentityURN(tenantID string, raw string) (string, string) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", ""
+	}
+	if email := extractEmailIdentifier(value); email != "" {
+		normalized := normalizeIdentifier(email)
+		return projectionURN(tenantID, "identity", "email", normalized), "identity.email"
+	}
+	normalized := normalizeIdentifier(value)
+	return projectionURN(tenantID, "identity", "login", normalized), "identity.login"
+}
+
+func extractEmailIdentifier(value string) string {
+	return strings.TrimSpace(emailIdentifierPattern.FindString(strings.TrimSpace(value)))
 }
 
 func sameIdentifier(left string, right string) bool {

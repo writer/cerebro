@@ -7,12 +7,40 @@ func TestBuiltin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Builtin() error = %v", err)
 	}
+	aws, ok := registry.Get("aws")
+	if !ok {
+		t.Fatal("Get(aws) = false, want true")
+	}
+	if aws.Spec().Name != "AWS" {
+		t.Fatalf("aws Spec().Name = %q, want %q", aws.Spec().Name, "AWS")
+	}
+	azure, ok := registry.Get("azure")
+	if !ok {
+		t.Fatal("Get(azure) = false, want true")
+	}
+	if azure.Spec().Name != "Azure" {
+		t.Fatalf("azure Spec().Name = %q, want %q", azure.Spec().Name, "Azure")
+	}
+	gcp, ok := registry.Get("gcp")
+	if !ok {
+		t.Fatal("Get(gcp) = false, want true")
+	}
+	if gcp.Spec().Name != "GCP" {
+		t.Fatalf("gcp Spec().Name = %q, want %q", gcp.Spec().Name, "GCP")
+	}
 	github, ok := registry.Get("github")
 	if !ok {
 		t.Fatal("Get(github) = false, want true")
 	}
 	if github.Spec().Name != "GitHub" {
 		t.Fatalf("github Spec().Name = %q, want %q", github.Spec().Name, "GitHub")
+	}
+	googleWorkspace, ok := registry.Get("google_workspace")
+	if !ok {
+		t.Fatal("Get(google_workspace) = false, want true")
+	}
+	if googleWorkspace.Spec().Name != "Google Workspace" {
+		t.Fatalf("google_workspace Spec().Name = %q, want %q", googleWorkspace.Spec().Name, "Google Workspace")
 	}
 	okta, ok := registry.Get("okta")
 	if !ok {

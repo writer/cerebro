@@ -4,22 +4,21 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
-	"github.com/writer/cerebro/internal/sourceprojection"
 )
 
 const (
-	oktaPolicyRuleLifecycleTamperingRuleID   = "identity-okta-policy-rule-lifecycle-tampering"
-	oktaPolicyRuleLifecycleTamperingTitle    = "Okta Policy Rule Lifecycle Tampering"
-	oktaPolicyRuleLifecycleTamperingSeverity = "HIGH"
-	oktaPolicyRuleLifecycleTamperingStatus   = "open"
+	oktaPolicyRuleLifecycleTamperingRuleID    = "identity-okta-policy-rule-lifecycle-tampering"
+	oktaPolicyRuleLifecycleTamperingTitle     = "Okta Policy Rule Lifecycle Tampering"
+	oktaPolicyRuleLifecycleTamperingSeverity  = "HIGH"
+	oktaPolicyRuleLifecycleTamperingStatus    = "open"
+	oktaPolicyRuleLifecycleTamperingCheckID   = "identity-okta-policy-rule-lifecycle-tampering-30d"
+	oktaPolicyRuleLifecycleTamperingCheckName = "Okta Policy Rule Lifecycle Tampering (30 days)"
 )
 
 var (
@@ -33,75 +32,88 @@ var (
 		"allow":   {},
 		"allowed": {},
 	}
+	oktaPolicyRuleLifecycleTamperingControlRefs = []ports.FindingControlRef{
+		{
+			FrameworkName: "SOC 2",
+			ControlID:     "CC6.2",
+		},
+		{
+			FrameworkName: "ISO 27001:2022",
+			ControlID:     "A.8.9",
+		},
+	}
 )
 
-type oktaPolicyRuleLifecycleTamperingRule struct{}
+var oktaPolicyRuleLifecycleTamperingDefinition = RuleDefinition{
+	ID:                 oktaPolicyRuleLifecycleTamperingRuleID,
+	Name:               oktaPolicyRuleLifecycleTamperingTitle,
+	Description:        "Detect successful Okta policy rule update, deactivate, or delete events replayed from one source runtime.",
+	SourceID:           "okta",
+	EventKinds:         []string{"okta.audit"},
+	OutputKind:         "finding.okta_policy_rule_lifecycle_tampering",
+	Severity:           oktaPolicyRuleLifecycleTamperingSeverity,
+	Status:             oktaPolicyRuleLifecycleTamperingStatus,
+	Maturity:           "test",
+	Tags:               []string{"okta", "identity", "policy", "defense-evasion", "attack.t1562"},
+	References:         []string{"https://help.okta.com/en-us/content/topics/reports/reports_syslog.htm"},
+	FalsePositives:     []string{"Authorized identity platform administration during approved change windows."},
+	Runbook:            "Review actor, target policy rule, administrative change ticket, and adjacent identity events before reverting or escalating.",
+	RequiredAttributes: []string{"event_type", "resource_id"},
+	FingerprintFields:  []string{"event_id"},
+	ControlRefs:        oktaPolicyRuleLifecycleTamperingControlRefs,
+}
+
+var oktaAuditKindMatcher = eventKindMatcher(oktaPolicyRuleLifecycleTamperingDefinition.EventKinds...)
 
 func newOktaPolicyRuleLifecycleTamperingRule() Rule {
-	return &oktaPolicyRuleLifecycleTamperingRule{}
-}
-
-func (*oktaPolicyRuleLifecycleTamperingRule) Spec() *cerebrov1.RuleSpec {
-	return &cerebrov1.RuleSpec{
-		Id:          oktaPolicyRuleLifecycleTamperingRuleID,
-		Name:        oktaPolicyRuleLifecycleTamperingTitle,
-		Description: "Detect successful Okta policy rule update, deactivate, or delete events replayed from one source runtime.",
-		InputStreamIds: []string{
-			"source-runtime-replay",
+	return newEventRule(eventRuleConfig{
+		definition: oktaPolicyRuleLifecycleTamperingDefinition,
+		match:      matchesOktaPolicyRuleLifecycleTampering,
+		build: func(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+			return oktaPolicyRuleLifecycleTamperingFinding(ctx, event, runtime.GetId())
 		},
-		OutputKinds: []string{
-			"finding.okta_policy_rule_lifecycle_tampering",
-		},
-	}
-}
-
-func (*oktaPolicyRuleLifecycleTamperingRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
-	return runtime != nil && strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), "okta")
-}
-
-func (*oktaPolicyRuleLifecycleTamperingRule) Evaluate(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
-	if runtime == nil {
-		return nil, errors.New("source runtime is required")
-	}
-	if !matchesOktaPolicyRuleLifecycleTampering(event) {
-		return nil, nil
-	}
-	record, err := oktaPolicyRuleLifecycleTamperingFinding(ctx, event, runtime.GetId())
-	if err != nil {
-		return nil, err
-	}
-	return []*ports.FindingRecord{record}, nil
+	})
 }
 
 func matchesOktaPolicyRuleLifecycleTampering(event *cerebrov1.EventEnvelope) bool {
-	if event == nil || !strings.EqualFold(strings.TrimSpace(event.GetKind()), "okta.audit") {
+	if !oktaAuditKindMatcher(event) || !hasRequiredAttributes(event, "event_type") {
 		return false
 	}
-	attributes := event.GetAttributes()
+	attributes := eventAttributes(event)
 	eventType := strings.ToLower(strings.TrimSpace(attributes["event_type"]))
 	if _, ok := oktaPolicyRuleLifecycleTamperingEventTypes[eventType]; !ok {
 		return false
 	}
 	outcome := strings.ToLower(strings.TrimSpace(attributes["outcome_result"]))
-	if outcome == "" {
-		outcome = "success"
-	}
 	_, ok := oktaPolicyRuleLifecycleTamperingOutcomes[outcome]
 	return ok
 }
 
 func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebrov1.EventEnvelope, runtimeID string) (*ports.FindingRecord, error) {
-	resourceURNs, actorURN, resourceURN, actorLabel, resourceLabel, err := projectedEntityContext(ctx, event)
+	projectedContext, err := buildFindingProjectionContext(ctx, event, findingProjectionContextOptions{
+		PrimaryRelations:  []string{"acted_on"},
+		ActorFallbacks:    []string{event.GetAttributes()["actor_alternate_id"], event.GetAttributes()["actor_display_name"], event.GetAttributes()["actor_id"]},
+		ResourceFallbacks: []string{event.GetAttributes()["resource_id"], event.GetAttributes()["resource_type"]},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("project finding context for event %q: %w", event.GetId(), err)
+	}
+	policyID := strings.TrimSpace(event.GetAttributes()["resource_id"])
+	policyName := firstNonEmpty(projectedContext.ResourceLabel, policyID)
+	observedPolicyIDs := []string{}
+	if policyID != "" {
+		observedPolicyIDs = append(observedPolicyIDs, policyID)
 	}
 	attributes := map[string]string{
 		"event_id":             strings.TrimSpace(event.GetId()),
 		"event_type":           strings.TrimSpace(event.GetAttributes()["event_type"]),
 		"outcome_result":       strings.TrimSpace(event.GetAttributes()["outcome_result"]),
 		"source_runtime_id":    strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID]),
-		"primary_actor_urn":    actorURN,
-		"primary_resource_urn": resourceURN,
+		"primary_actor_urn":    projectedContext.PrimaryActorURN,
+		"primary_resource_urn": projectedContext.PrimaryResourceURN,
+	}
+	for key, value := range oktaPolicyRuleLifecycleTamperingDefinition.AttributeMap() {
+		attributes["rule_"+key] = value
 	}
 	trimEmptyAttributes(attributes)
 	observedAt := time.Time{}
@@ -110,65 +122,27 @@ func oktaPolicyRuleLifecycleTamperingFinding(ctx context.Context, event *cerebro
 	}
 	fingerprint := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, event.GetId())
 	return &ports.FindingRecord{
-		ID:              fingerprint,
-		Fingerprint:     fingerprint,
-		TenantID:        strings.TrimSpace(event.GetTenantId()),
-		RuntimeID:       strings.TrimSpace(runtimeID),
-		RuleID:          oktaPolicyRuleLifecycleTamperingRuleID,
-		Title:           oktaPolicyRuleLifecycleTamperingTitle,
-		Severity:        oktaPolicyRuleLifecycleTamperingSeverity,
-		Status:          oktaPolicyRuleLifecycleTamperingStatus,
-		Summary:         findingSummary(event, actorLabel, resourceLabel),
-		ResourceURNs:    resourceURNs,
-		EventIDs:        []string{strings.TrimSpace(event.GetId())},
-		Attributes:      attributes,
-		FirstObservedAt: observedAt,
-		LastObservedAt:  observedAt,
+		ID:                fingerprint,
+		Fingerprint:       fingerprint,
+		TenantID:          strings.TrimSpace(event.GetTenantId()),
+		RuntimeID:         strings.TrimSpace(runtimeID),
+		RuleID:            oktaPolicyRuleLifecycleTamperingRuleID,
+		Title:             oktaPolicyRuleLifecycleTamperingTitle,
+		Severity:          oktaPolicyRuleLifecycleTamperingSeverity,
+		Status:            oktaPolicyRuleLifecycleTamperingStatus,
+		Summary:           findingSummary(event, projectedContext.ActorLabel, projectedContext.ResourceLabel),
+		ResourceURNs:      projectedContext.ResourceURNs,
+		EventIDs:          []string{strings.TrimSpace(event.GetId())},
+		ObservedPolicyIDs: observedPolicyIDs,
+		PolicyID:          policyID,
+		PolicyName:        policyName,
+		CheckID:           oktaPolicyRuleLifecycleTamperingCheckID,
+		CheckName:         oktaPolicyRuleLifecycleTamperingCheckName,
+		ControlRefs:       cloneFindingControlRefs(oktaPolicyRuleLifecycleTamperingDefinition.ControlRefs),
+		Attributes:        attributes,
+		FirstObservedAt:   observedAt,
+		LastObservedAt:    observedAt,
 	}, nil
-}
-
-func projectedEntityContext(ctx context.Context, event *cerebrov1.EventEnvelope) ([]string, string, string, string, string, error) {
-	recorder := &projectionRecorder{
-		entities: make(map[string]*ports.ProjectedEntity),
-		links:    make(map[string]*ports.ProjectedLink),
-	}
-	if ctx == nil {
-		return nil, "", "", "", "", errors.New("context is required")
-	}
-	if _, err := sourceprojection.New(nil, recorder).Project(ctx, event); err != nil {
-		return nil, "", "", "", "", err
-	}
-	resourceURNs := make([]string, 0, len(recorder.entities))
-	seenURNs := make(map[string]struct{}, len(recorder.entities))
-	var actorURN string
-	var resourceURN string
-	for _, link := range recorder.links {
-		if !strings.EqualFold(strings.TrimSpace(link.Relation), "acted_on") {
-			continue
-		}
-		if actorURN == "" {
-			actorURN = strings.TrimSpace(link.FromURN)
-		}
-		if resourceURN == "" {
-			resourceURN = strings.TrimSpace(link.ToURN)
-		}
-		if candidate := strings.TrimSpace(link.FromURN); candidate != "" {
-			if _, ok := seenURNs[candidate]; !ok {
-				seenURNs[candidate] = struct{}{}
-				resourceURNs = append(resourceURNs, candidate)
-			}
-		}
-		if candidate := strings.TrimSpace(link.ToURN); candidate != "" {
-			if _, ok := seenURNs[candidate]; !ok {
-				seenURNs[candidate] = struct{}{}
-				resourceURNs = append(resourceURNs, candidate)
-			}
-		}
-	}
-	slices.Sort(resourceURNs)
-	actorLabel := entityLabel(recorder.entities[actorURN], event.GetAttributes()["actor_alternate_id"], event.GetAttributes()["actor_display_name"], event.GetAttributes()["actor_id"])
-	resourceLabel := entityLabel(recorder.entities[resourceURN], event.GetAttributes()["resource_id"], event.GetAttributes()["resource_type"])
-	return resourceURNs, actorURN, resourceURN, actorLabel, resourceLabel, nil
 }
 
 func entityLabel(entity *ports.ProjectedEntity, fallbacks ...string) string {
@@ -207,6 +181,25 @@ func trimEmptyAttributes(attributes map[string]string) {
 	}
 }
 
+func cloneFindingControlRefs(values []ports.FindingControlRef) []ports.FindingControlRef {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make([]ports.FindingControlRef, 0, len(values))
+	for _, value := range values {
+		frameworkName := strings.TrimSpace(value.FrameworkName)
+		controlID := strings.TrimSpace(value.ControlID)
+		if frameworkName == "" || controlID == "" {
+			continue
+		}
+		cloned = append(cloned, ports.FindingControlRef{
+			FrameworkName: frameworkName,
+			ControlID:     controlID,
+		})
+	}
+	return cloned
+}
+
 func hashFindingFingerprint(parts ...string) string {
 	hash := sha256.New()
 	for _, part := range parts {
@@ -214,66 +207,4 @@ func hashFindingFingerprint(parts ...string) string {
 		_, _ = hash.Write([]byte{0})
 	}
 	return hex.EncodeToString(hash.Sum(nil))
-}
-
-type projectionRecorder struct {
-	entities map[string]*ports.ProjectedEntity
-	links    map[string]*ports.ProjectedLink
-}
-
-func (r *projectionRecorder) Ping(context.Context) error {
-	return nil
-}
-
-func (r *projectionRecorder) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
-	if entity == nil {
-		return nil
-	}
-	r.entities[entity.URN] = cloneEntity(entity)
-	return nil
-}
-
-func (r *projectionRecorder) UpsertProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
-	if link == nil {
-		return nil
-	}
-	key := strings.TrimSpace(link.FromURN) + "|" + strings.TrimSpace(link.Relation) + "|" + strings.TrimSpace(link.ToURN)
-	r.links[key] = cloneLink(link)
-	return nil
-}
-
-func cloneEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {
-	if entity == nil {
-		return nil
-	}
-	attributes := make(map[string]string, len(entity.Attributes))
-	for key, value := range entity.Attributes {
-		attributes[key] = value
-	}
-	return &ports.ProjectedEntity{
-		URN:        entity.URN,
-		TenantID:   entity.TenantID,
-		SourceID:   entity.SourceID,
-		EntityType: entity.EntityType,
-		Label:      entity.Label,
-		Attributes: attributes,
-	}
-}
-
-func cloneLink(link *ports.ProjectedLink) *ports.ProjectedLink {
-	if link == nil {
-		return nil
-	}
-	attributes := make(map[string]string, len(link.Attributes))
-	for key, value := range link.Attributes {
-		attributes[key] = value
-	}
-	return &ports.ProjectedLink{
-		TenantID:   link.TenantID,
-		SourceID:   link.SourceID,
-		FromURN:    link.FromURN,
-		ToURN:      link.ToURN,
-		Relation:   link.Relation,
-		Attributes: attributes,
-	}
 }

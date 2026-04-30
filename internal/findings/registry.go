@@ -55,11 +55,11 @@ func NewRegistry(rules ...Rule) (*Registry, error) {
 // Keeping the built-in catalog in one place makes the current platform surface discoverable
 // to clients and gives future rule packages one consistent registration seam.
 func Builtin() *Registry {
-	return &Registry{
-		rules: map[string]Rule{
-			oktaPolicyRuleLifecycleTamperingRuleID: newOktaPolicyRuleLifecycleTamperingRule(),
-		},
+	registry, err := NewRegistry(flattenRulePacks(builtinRulePacks())...)
+	if err != nil {
+		return &Registry{rules: map[string]Rule{}}
 	}
+	return registry
 }
 
 // Get returns a registered finding rule by ID.
