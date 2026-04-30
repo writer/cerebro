@@ -170,6 +170,7 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 		return nil, errors.New("source runtime is required")
 	}
 	normalized := proto.Clone(claim).(*cerebrov1.Claim)
+	normalized.Id = strings.TrimSpace(normalized.GetId())
 	normalized.SubjectUrn = strings.TrimSpace(normalized.GetSubjectUrn())
 	normalized.Predicate = strings.TrimSpace(normalized.GetPredicate())
 	normalized.ObjectUrn = strings.TrimSpace(normalized.GetObjectUrn())

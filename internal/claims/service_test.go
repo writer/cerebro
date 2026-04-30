@@ -313,6 +313,23 @@ func TestNormalizeClaimIDIncludesObjectIdentity(t *testing.T) {
 	}
 }
 
+func TestNormalizeClaimGeneratesIDForWhitespaceID(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-jira"}
+	claim, err := normalizeClaim(&cerebrov1.Claim{
+		Id:          " \t ",
+		SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+		Predicate:   "status",
+		ObjectValue: "open",
+		ClaimType:   claimTypeAttribute,
+	}, runtime)
+	if err != nil {
+		t.Fatalf("normalizeClaim() error = %v", err)
+	}
+	if claim.GetId() == "" {
+		t.Fatal("normalized claim id = empty, want generated id")
+	}
+}
+
 func cloneClaimRecord(claim *ports.ClaimRecord) *ports.ClaimRecord {
 	if claim == nil {
 		return nil
