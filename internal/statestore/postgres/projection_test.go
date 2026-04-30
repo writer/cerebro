@@ -101,6 +101,28 @@ func TestUpsertProjectedEntityMergesAttributesOnConflict(t *testing.T) {
 	}
 }
 
+func TestUpsertProjectedLinkMergesAttributesOnConflict(t *testing.T) {
+	recorder := &projectionSQLRecorder{}
+	store := newProjectionTestStore(t, recorder)
+
+	link := &ports.ProjectedLink{
+		TenantID:   "writer",
+		SourceID:   "github",
+		FromURN:    "urn:cerebro:writer:github_user:alice",
+		Relation:   "member_of",
+		ToURN:      "urn:cerebro:writer:github_org:writer",
+		Attributes: map[string]string{"role": "maintainer"},
+	}
+	if err := store.UpsertProjectedLink(context.Background(), link); err != nil {
+		t.Fatalf("UpsertProjectedLink() error = %v", err)
+	}
+
+	query := recorder.lastUpsert()
+	if !strings.Contains(query, "attributes_json = entity_links.attributes_json || EXCLUDED.attributes_json") {
+		t.Fatalf("link upsert query does not merge attributes_json: %s", query)
+	}
+}
+
 func TestUpsertProjectedRetriesEnsureAfterFailure(t *testing.T) {
 	recorder := &projectionSQLRecorder{failNextDDL: true}
 	store := newProjectionTestStore(t, recorder)

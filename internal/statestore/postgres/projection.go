@@ -127,7 +127,7 @@ ON CONFLICT (from_urn, relation, to_urn)
 DO UPDATE SET
   tenant_id = EXCLUDED.tenant_id,
   source_id = EXCLUDED.source_id,
-  attributes_json = EXCLUDED.attributes_json,
+  attributes_json = entity_links.attributes_json || EXCLUDED.attributes_json,
   updated_at = NOW()`, fromURN, relation, toURN, tenantID, sourceID, attributesJSON); err != nil {
 		return fmt.Errorf("upsert projected link %q %q %q: %w", fromURN, relation, toURN, err)
 	}
