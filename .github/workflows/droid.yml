@@ -36,3 +36,7 @@ jobs:
         uses: Factory-AI/droid-action@8ea31f351ee6636ebef918ccb64682f477af7184 # main
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          # Pin tag-triggered review/security runs (@droid review / @droid security) to the
+          # gpt-5.4 generation; the action's default `review_depth: deep` resolves to gpt-5.2.
+          review_model: gpt-5.4
+          security_model: gpt-5.4
