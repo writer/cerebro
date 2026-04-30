@@ -27,10 +27,15 @@ var errUnsafeBaseURLHost = errors.New("github base_url must not target loopback,
 var catalogFS embed.FS
 
 const (
-	defaultPageSize = 10
-	maxPageSize     = 100
-	defaultState    = "open"
-	defaultTimeout  = 15 * time.Second
+	defaultPageSize     = 10
+	maxPageSize         = 100
+	defaultState        = "open"
+	defaultTimeout      = 15 * time.Second
+	defaultFamily       = familyPullRequest
+	defaultAuditInclude = "all"
+	defaultAuditOrder   = "desc"
+	familyAudit         = "audit"
+	familyPullRequest   = "pull_request"
 )
 
 // Source is the live GitHub source preview used by the builtin registry.
@@ -41,12 +46,16 @@ type Source struct {
 }
 
 type settings struct {
-	owner   string
-	repo    string
-	token   string
-	baseURL string
-	state   string
-	perPage int
+	family       string
+	owner        string
+	repo         string
+	token        string
+	baseURL      string
+	state        string
+	auditInclude string
+	auditPhrase  string
+	auditOrder   string
+	perPage      int
 }
 
 type pullRequestPayload struct {
@@ -85,6 +94,9 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if err != nil {
 		return err
 	}
+	if settings.family == familyAudit {
+		return s.checkAudit(ctx, client, settings)
+	}
 	if settings.repo != "" {
 		_, err := getRepo(ctx, client, settings.owner, settings.repo)
 		return err
@@ -93,11 +105,14 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	return err
 }
 
-// Discover returns live GitHub repository URNs.
+// Discover returns live GitHub URNs for the selected family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
 	client, settings, err := s.newClient(ctx, cfg, false)
 	if err != nil {
 		return nil, err
+	}
+	if settings.family == familyAudit {
+		return s.discoverAudit(ctx, client, settings)
 	}
 	if settings.repo != "" {
 		repo, err := getRepo(ctx, client, settings.owner, settings.repo)
@@ -125,11 +140,14 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	return urns, nil
 }
 
-// Read pages through live GitHub pull requests for a configured repository.
+// Read pages through the configured live GitHub event family.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	client, settings, err := s.newClient(ctx, cfg, true)
 	if err != nil {
 		return sourcecdk.Pull{}, err
+	}
+	if settings.family == familyAudit {
+		return s.readAudit(ctx, client, settings, cursor)
 	}
 	page, err := readPage(cursor)
 	if err != nil {
@@ -315,18 +333,27 @@ func isUnsafeIP(ip net.IP, allowLoopback bool) bool {
 
 func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
 	settings := settings{
-		owner:   configValue(cfg, "owner"),
-		repo:    configValue(cfg, "repo"),
-		token:   configValue(cfg, "token"),
-		baseURL: configValue(cfg, "base_url"),
-		state:   configValue(cfg, "state"),
-		perPage: defaultPageSize,
+		family:       configValue(cfg, "family"),
+		owner:        configValue(cfg, "owner"),
+		repo:         configValue(cfg, "repo"),
+		token:        configValue(cfg, "token"),
+		baseURL:      configValue(cfg, "base_url"),
+		state:        configValue(cfg, "state"),
+		auditInclude: configValue(cfg, "include"),
+		auditPhrase:  configValue(cfg, "phrase"),
+		auditOrder:   configValue(cfg, "order"),
+		perPage:      defaultPageSize,
 	}
 	if settings.owner == "" {
 		return settings, fmt.Errorf("github owner is required")
 	}
-	if requireRepo && settings.repo == "" {
-		return settings, fmt.Errorf("github repo is required")
+	if settings.family == "" {
+		settings.family = defaultFamily
+	}
+	switch settings.family {
+	case familyAudit, familyPullRequest:
+	default:
+		return settings, fmt.Errorf("github family must be one of %s or %s", familyPullRequest, familyAudit)
 	}
 	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
 		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
@@ -338,13 +365,48 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
 		}
 		settings.perPage = perPage
 	}
-	if settings.state == "" {
-		settings.state = defaultState
-	}
-	switch settings.state {
-	case "all", "closed", "open":
-	default:
-		return settings, fmt.Errorf("github state must be one of open, closed, or all")
+	switch settings.family {
+	case familyPullRequest:
+		if requireRepo && settings.repo == "" {
+			return settings, fmt.Errorf("github repo is required")
+		}
+		if settings.state == "" {
+			settings.state = defaultState
+		}
+		switch settings.state {
+		case "all", "closed", "open":
+		default:
+			return settings, fmt.Errorf("github state must be one of open, closed, or all")
+		}
+		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
+			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
+		}
+	case familyAudit:
+		if settings.token == "" {
+			return settings, fmt.Errorf("github token is required when family=%q", familyAudit)
+		}
+		if settings.repo != "" {
+			return settings, fmt.Errorf("github repo is not supported when family=%q", familyAudit)
+		}
+		if settings.state != "" {
+			return settings, fmt.Errorf("github state is only supported when family=%q", familyPullRequest)
+		}
+		if settings.auditInclude == "" {
+			settings.auditInclude = defaultAuditInclude
+		}
+		switch settings.auditInclude {
+		case "all", "git", "web":
+		default:
+			return settings, fmt.Errorf("github include must be one of all, git, or web")
+		}
+		if settings.auditOrder == "" {
+			settings.auditOrder = defaultAuditOrder
+		}
+		switch settings.auditOrder {
+		case "asc", "desc":
+		default:
+			return settings, fmt.Errorf("github order must be one of asc or desc")
+		}
 	}
 	return settings, nil
 }
