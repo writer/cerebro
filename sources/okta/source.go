@@ -47,6 +47,7 @@ type Source struct {
 	client               *http.Client
 	families             *sourcecdk.FamilyEngine[settings]
 	allowLoopbackBaseURL bool
+	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
 
 type settings struct {
@@ -244,8 +245,8 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	source := &Source{
-		spec:   spec,
-		client: oktaHTTPClientNoRedirect(nil),
+		spec:          spec,
+		lookupIPAddrs: net.DefaultResolver.LookupIPAddr,
 	}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -617,6 +618,13 @@ func isUnsafeHost(host string) bool {
 	if ip == nil {
 		return false
 	}
+	return isUnsafeIP(ip)
+}
+
+func isUnsafeIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
 	return ip.IsLoopback() ||
 		ip.IsPrivate() ||
 		ip.IsLinkLocalUnicast() ||
@@ -830,9 +838,9 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 
 	client := s.client
 	if client == nil {
-		client = oktaHTTPClientNoRedirect(nil)
+		client = oktaHTTPClientNoRedirect(nil, s != nil && s.allowLoopbackBaseURL, oktaLookupIPAddrs(s))
 	} else {
-		client = oktaHTTPClientNoRedirect(client)
+		client = oktaHTTPClientNoRedirect(client, s != nil && s.allowLoopbackBaseURL, oktaLookupIPAddrs(s))
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -859,18 +867,73 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 	return headers, nil
 }
 
-func oktaHTTPClientNoRedirect(client *http.Client) *http.Client {
+func oktaHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
 	if client == nil {
 		client = &http.Client{Timeout: oktaHTTPTimeout}
 	}
-	if client.CheckRedirect != nil {
-		return client
-	}
 	cloned := *client
-	cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-		return http.ErrUseLastResponse
+	if cloned.CheckRedirect == nil {
+		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
 	}
+	transport := cloned.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	cloned.Transport = safeOktaRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs}
 	return &cloned
+}
+
+func oktaLookupIPAddrs(source *Source) func(context.Context, string) ([]net.IPAddr, error) {
+	if source != nil && source.lookupIPAddrs != nil {
+		return source.lookupIPAddrs
+	}
+	return net.DefaultResolver.LookupIPAddr
+}
+
+type safeOktaRoundTripper struct {
+	base          http.RoundTripper
+	allowLoopback bool
+	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
+}
+
+func (rt safeOktaRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req != nil && req.URL != nil {
+		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
+			return nil, err
+		}
+	}
+	return rt.base.RoundTrip(req)
+}
+
+func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) error {
+	normalized := normalizedIPHost(host)
+	if normalized == "" {
+		return nil
+	}
+	if isUnsafeHost(normalized) {
+		if allowLoopback && isLoopbackHost(normalized) {
+			return nil
+		}
+		return fmt.Errorf("okta base_url must not target loopback, private, or link-local hosts")
+	}
+	if lookupIPAddrs == nil {
+		lookupIPAddrs = net.DefaultResolver.LookupIPAddr
+	}
+	addrs, err := lookupIPAddrs(ctx, normalized)
+	if err != nil {
+		return fmt.Errorf("resolve okta base_url host %q: %w", normalized, err)
+	}
+	for _, addr := range addrs {
+		if isUnsafeIP(addr.IP) {
+			if allowLoopback && addr.IP != nil && addr.IP.IsLoopback() {
+				continue
+			}
+			return fmt.Errorf("okta base_url must not target loopback, private, or link-local hosts")
+		}
+	}
+	return nil
 }
 
 func readLimitedBody(body io.Reader) ([]byte, error) {

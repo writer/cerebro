@@ -3,6 +3,8 @@ package okta
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +13,12 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
 
 func TestNewLoadsCatalog(t *testing.T) {
 	source, err := New()
@@ -482,6 +490,7 @@ func TestGetJSONRejectsOversizedResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	var target []map[string]any
 	_, err = source.getJSON(context.Background(), settings{
 		baseURL: server.URL,
@@ -507,6 +516,7 @@ func TestGetJSONDoesNotFollowRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	var target []map[string]any
 	_, err = source.getJSON(context.Background(), settings{
 		baseURL: redirector.URL,
@@ -517,6 +527,58 @@ func TestGetJSONDoesNotFollowRedirects(t *testing.T) {
 	}
 	if redirectHit {
 		t.Fatal("getJSON() followed redirect target")
+	}
+}
+
+func TestOktaHTTPClientRejectsHostsResolvingToPrivateIPs(t *testing.T) {
+	called := false
+	client := oktaHTTPClientNoRedirect(&http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return nil, errors.New("unexpected round trip")
+		}),
+	}, false, func(context.Context, string) ([]net.IPAddr, error) {
+		return []net.IPAddr{{IP: net.ParseIP("169.254.169.254")}}, nil
+	})
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://okta.attacker.example/api/v1/logs", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	resp, err := client.Do(req)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("Do() error = nil, want non-nil")
+	}
+	if called {
+		t.Fatal("Do() reached wrapped transport for unsafe resolved host")
+	}
+}
+
+func TestOktaHTTPClientFailsClosedWhenHostResolutionFails(t *testing.T) {
+	called := false
+	client := oktaHTTPClientNoRedirect(&http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return nil, errors.New("unexpected round trip")
+		}),
+	}, false, func(context.Context, string) ([]net.IPAddr, error) {
+		return nil, errors.New("dns failed")
+	})
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://okta.attacker.example/api/v1/logs", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	resp, err := client.Do(req)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("Do() error = nil, want non-nil")
+	}
+	if called {
+		t.Fatal("Do() reached wrapped transport after DNS failure")
 	}
 }
 
