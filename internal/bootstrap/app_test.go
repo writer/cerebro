@@ -464,6 +464,30 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}
 }
 
+func TestBootstrapHealthHandlesTypedNilDependencies(t *testing.T) {
+	var typedNilStateStore *stubRuntimeStore
+	var typedNilGraphStore *stubGraphStore
+	var typedNilAppendLog *recordingAppendLog
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  typedNilAppendLog,
+		StateStore: typedNilStateStore,
+		GraphStore: typedNilGraphStore,
+	}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	healthResp, err := client.CheckHealth(context.Background(), connect.NewRequest(&cerebrov1.CheckHealthRequest{}))
+	if err != nil {
+		t.Fatalf("CheckHealth() error = %v", err)
+	}
+	for _, component := range healthResp.Msg.Components {
+		if got := component.Status; got != "unconfigured" {
+			t.Fatalf("CheckHealth component %q status = %q, want %q", component.Name, got, "unconfigured")
+		}
+	}
+}
+
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
 		AppendLog:  stubAppendLog{},
