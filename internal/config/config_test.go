@@ -6,13 +6,7 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
-	t.Setenv("CEREBRO_HTTP_ADDR", "")
-	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
-	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
-	t.Setenv("CEREBRO_JETSTREAM_URL", "")
-	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
-	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
-	t.Setenv("CEREBRO_POSTGRES_DSN", "")
+	clearCerebroEnv(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -30,9 +24,13 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.StateStore.Driver != "" {
 		t.Fatalf("StateStore.Driver = %q, want empty", cfg.StateStore.Driver)
 	}
+	if cfg.GraphStore.Driver != "" {
+		t.Fatalf("GraphStore.Driver = %q, want empty", cfg.GraphStore.Driver)
+	}
 }
 
 func TestLoadFromEnv(t *testing.T) {
+	clearCerebroEnv(t)
 	t.Setenv("CEREBRO_HTTP_ADDR", "127.0.0.1:9000")
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "3s")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
@@ -40,6 +38,8 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
 	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverKuzu)
+	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
 
 	cfg, err := Load()
 	if err != nil {
@@ -60,9 +60,13 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.StateStore.Driver != StateStoreDriverPostgres {
 		t.Fatalf("StateStore.Driver = %q, want %q", cfg.StateStore.Driver, StateStoreDriverPostgres)
 	}
+	if cfg.GraphStore.Driver != GraphStoreDriverKuzu {
+		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverKuzu)
+	}
 }
 
 func TestLoadRejectsInvalidDuration(t *testing.T) {
+	clearCerebroEnv(t)
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "not-a-duration")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
@@ -70,12 +74,12 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 }
 
 func TestLoadInfersDriversFromURLs(t *testing.T) {
-	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
-	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
+	clearCerebroEnv(t)
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
+	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
 
 	cfg, err := Load()
 	if err != nil {
@@ -90,9 +94,13 @@ func TestLoadInfersDriversFromURLs(t *testing.T) {
 	if cfg.StateStore.Driver != StateStoreDriverPostgres {
 		t.Fatalf("StateStore.Driver = %q, want %q", cfg.StateStore.Driver, StateStoreDriverPostgres)
 	}
+	if cfg.GraphStore.Driver != GraphStoreDriverKuzu {
+		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverKuzu)
+	}
 }
 
 func TestLoadRejectsUnknownAppendLogDriver(t *testing.T) {
+	clearCerebroEnv(t)
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "unknown")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
@@ -100,6 +108,7 @@ func TestLoadRejectsUnknownAppendLogDriver(t *testing.T) {
 }
 
 func TestLoadRejectsMissingJetStreamURL(t *testing.T) {
+	clearCerebroEnv(t)
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", AppendLogDriverJetStream)
 	t.Setenv("CEREBRO_JETSTREAM_URL", "")
 	if _, err := Load(); err == nil {
@@ -108,9 +117,35 @@ func TestLoadRejectsMissingJetStreamURL(t *testing.T) {
 }
 
 func TestLoadRejectsMissingPostgresDSN(t *testing.T) {
+	clearCerebroEnv(t)
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
 	t.Setenv("CEREBRO_POSTGRES_DSN", "")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsMissingKuzuPath(t *testing.T) {
+	clearCerebroEnv(t)
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverKuzu)
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func clearCerebroEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"CEREBRO_HTTP_ADDR",
+		"CEREBRO_SHUTDOWN_TIMEOUT",
+		"CEREBRO_APPEND_LOG_DRIVER",
+		"CEREBRO_JETSTREAM_URL",
+		"CEREBRO_JETSTREAM_SUBJECT_PREFIX",
+		"CEREBRO_STATE_STORE_DRIVER",
+		"CEREBRO_POSTGRES_DSN",
+		"CEREBRO_GRAPH_STORE_DRIVER",
+		"CEREBRO_KUZU_PATH",
+	} {
+		t.Setenv(key, "")
 	}
 }

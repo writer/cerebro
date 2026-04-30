@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package cerebro.v1;
+
+option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
+
+import "google/protobuf/timestamp.proto";
+
+// SourceSpec describes a source integration in the Source CDK.
+message SourceSpec {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string emitted_kinds = 4;
+}
+
+// SourceCursor is an opaque continuation token returned by a source.
+message SourceCursor {
+  string opaque = 1;
+}
+
+// SourceCheckpoint records the latest durable watermark emitted by a source.
+message SourceCheckpoint {
+  google.protobuf.Timestamp watermark = 1;
+  string cursor_opaque = 2;
+}

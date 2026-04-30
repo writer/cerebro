@@ -3,12 +3,18 @@
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 BUF := GOTOOLCHAIN=go1.26.2 go run github.com/bufbuild/buf/cmd/buf@latest
-APP_PACKAGES := ./cmd/... ./internal/...
+APP_PACKAGES := ./cmd/... ./internal/... ./sources/...
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint
 
 build:
 	go build -o bin/cerebro ./cmd/cerebro
+
+# Portable CGO build: stages libkuzu next to bin/cerebro and uses an $ORIGIN-relative rpath so
+# the resulting binary does not depend on the GOPATH module-cache layout of the build host.
+# See scripts/build_with_kuzu.sh and the Kuzu rpath note in docs/operations/kuzu.md.
+build-portable:
+	./scripts/build_with_kuzu.sh
 
 serve: build
 	./bin/cerebro serve
