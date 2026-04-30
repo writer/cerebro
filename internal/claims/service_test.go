@@ -327,6 +327,92 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsRetractsStaleProjectedLinkWhenRelationObjectChanges(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	originalAssignee := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	newAssignee := "urn:cerebro:writer:runtime:writer-jira:user:acct:99"
+	observedAt := time.Date(2026, 4, 25, 12, 0, 0, 0, time.UTC)
+	assigneeID := hashClaimID("writer-jira", claimTypeRelation, issueURN, "assigned_to")
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			assigneeID: {
+				ID:            assigneeID,
+				RuntimeID:     "writer-jira",
+				TenantID:      "writer",
+				SubjectURN:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectURN:     originalAssignee,
+				ObjectRef:     &cerebrov1.EntityRef{Urn: originalAssignee, EntityType: "user", Label: "Alice"},
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventID: "jira-event-1",
+				ObservedAt:    observedAt.Add(-time.Hour),
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			issueURN + "|assigned_to|" + originalAssignee: {
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    originalAssignee,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	result, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				SubjectRef: &cerebrov1.EntityRef{
+					Urn:        issueURN,
+					EntityType: "ticket",
+					Label:      "ENG-123",
+				},
+				Predicate:     "assigned_to",
+				ObjectRef:     &cerebrov1.EntityRef{Urn: newAssignee, EntityType: "user", Label: "Bob"},
+				ObjectUrn:     newAssignee,
+				ClaimType:     claimTypeRelation,
+				ObservedAt:    timestamppb.New(observedAt),
+				SourceEventId: "jira-event-2",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if got := result.RelationLinksProjected; got != 1 {
+		t.Fatalf("WriteClaims().RelationLinksProjected = %d, want 1", got)
+	}
+	staleKey := issueURN + "|assigned_to|" + originalAssignee
+	if _, ok := projection.deletedLinks[staleKey]; !ok {
+		t.Fatalf("expected stale projected link %q to be deleted, got %v", staleKey, keysOf(projection.deletedLinks))
+	}
+	freshKey := issueURN + "|assigned_to|" + newAssignee
+	if _, ok := projection.links[freshKey]; !ok {
+		t.Fatalf("expected fresh projected link %q to be present, got %v", freshKey, keysOf(projection.links))
+	}
+}
+
+func keysOf[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func TestWriteClaimsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil)
 	if _, err := service.WriteClaims(context.Background(), WriteRequest{RuntimeID: "writer-jira"}); !errors.Is(err, ErrRuntimeUnavailable) {

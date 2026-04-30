@@ -124,6 +124,9 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 			}
 		}
 		if projected := projectedRelation(runtime, claim); projected != nil {
+			if err := s.retractStalePriorLink(ctx, runtime, claim, projected); err != nil {
+				return nil, err
+			}
 			wrote, err := s.upsertLink(ctx, projected, upsertedLinks)
 			if err != nil {
 				return nil, err
@@ -131,6 +134,11 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 			if wrote {
 				result.RelationLinksProjected++
 			}
+		} else if err := s.retractStalePriorLink(ctx, runtime, claim, nil); err != nil {
+			// Claim previously projected a relation but the new claim no longer does (e.g. predicate
+			// changed from "belongs_to" to "labeled" with the same claim id). Make sure the old edge
+			// is removed.
+			return nil, err
 		}
 		if _, err := s.store.UpsertClaim(ctx, claimRecord(runtime, claim)); err != nil {
 			return nil, fmt.Errorf("persist claim %q: %w", claim.GetId(), err)
@@ -235,6 +243,44 @@ func (s *Service) deleteLink(ctx context.Context, link *ports.ProjectedLink) err
 	if deleter, ok := s.graph.(ports.ProjectionLinkDeleter); ok {
 		if err := deleter.DeleteProjectedLink(ctx, link); err != nil {
 			return fmt.Errorf("delete graph link %q: %w", projectedLinkKey(link), err)
+		}
+	}
+	return nil
+}
+
+// retractStalePriorLink deletes the projected link emitted by a previous version of the same
+// claim_id when the new claim's projection differs (for example because the relation's object_urn
+// changed). The new (possibly nil) projection is supplied so we only retract links that are
+// actually stale -- if the new projection matches the previous one, upsertLink is a no-op.
+func (s *Service) retractStalePriorLink(ctx context.Context, runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim, next *ports.ProjectedLink) error {
+	if claim == nil {
+		return nil
+	}
+	claimID := strings.TrimSpace(claim.GetId())
+	if claimID == "" {
+		return nil
+	}
+	existing, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
+		RuntimeID: strings.TrimSpace(runtime.GetId()),
+		ClaimID:   claimID,
+		Status:    claimStatusAsserted,
+	})
+	if err != nil {
+		return fmt.Errorf("load existing claim %q: %w", claimID, err)
+	}
+	for _, prior := range existing {
+		if prior == nil {
+			continue
+		}
+		stale := projectedRelation(runtime, protoClaim(prior))
+		if stale == nil {
+			continue
+		}
+		if next != nil && projectedLinkKey(stale) == projectedLinkKey(next) {
+			continue
+		}
+		if err := s.deleteLink(ctx, stale); err != nil {
+			return err
 		}
 	}
 	return nil
