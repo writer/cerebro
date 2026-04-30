@@ -3,6 +3,8 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -130,6 +132,7 @@ func TestCheckDiscoverAndReadLiveGitHubPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	checkCfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"owner":    "writer",
@@ -284,4 +287,117 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			http.NotFound(w, r)
 		}
 	})
+}
+
+func TestValidateBaseURLRejectsUnsafeHosts(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		base string
+	}{
+		{"loopback_v4", "http://127.0.0.1/"},
+		{"loopback_v6", "http://[::1]/"},
+		{"localhost", "http://localhost/"},
+		{"private_10", "http://10.0.0.1/"},
+		{"private_172", "http://172.16.5.5/"},
+		{"private_192", "http://192.168.1.1/"},
+		{"link_local_v4", "http://169.254.169.254/"},
+		{"link_local_v6", "http://[fe80::1]/"},
+		{"unspecified", "http://0.0.0.0/"},
+	}
+	ctx := context.Background()
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if err := validateBaseURL(ctx, tc.base, false); err == nil {
+				t.Fatalf("validateBaseURL(%q, false) = nil, want unsafe-host error", tc.base)
+			}
+		})
+	}
+}
+
+func TestValidateBaseURLRequiresHTTP(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cases := []string{"file:///etc/passwd", "ssh://github.example.com/", "javascript:alert(1)"}
+	for _, raw := range cases {
+		raw := raw
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+			if err := validateBaseURL(ctx, raw, false); err == nil {
+				t.Fatalf("validateBaseURL(%q) = nil, want scheme error", raw)
+			}
+		})
+	}
+}
+
+func TestValidateBaseURLAcceptsPublicHosts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, host := range []string{"https://api.github.com/", "https://1.1.1.1/api/v3/"} {
+		host := host
+		t.Run(host, func(t *testing.T) {
+			t.Parallel()
+			if err := validateBaseURL(ctx, host, false); err != nil {
+				t.Fatalf("validateBaseURL(%q) = %v, want nil", host, err)
+			}
+		})
+	}
+}
+
+func TestValidateBaseURLLoopbackOptIn(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	if err := validateBaseURL(ctx, "http://127.0.0.1/", true); err != nil {
+		t.Fatalf("validateBaseURL(127.0.0.1, allow=true) = %v, want nil", err)
+	}
+	if err := validateBaseURL(ctx, "http://10.0.0.1/", true); err == nil {
+		t.Fatalf("validateBaseURL(10.0.0.1, allow=true) = nil, want still rejected")
+	}
+}
+
+func TestSafeDialContextRejectsDNSRebindingToPrivateIP(t *testing.T) {
+	t.Parallel()
+	_, err := safeDialContext(
+		context.Background(),
+		"tcp",
+		"ghe.example.com:443",
+		false,
+		func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("10.0.0.5")}}, nil
+		},
+		func(context.Context, string, string) (net.Conn, error) {
+			t.Fatal("dial called for unsafe resolved host")
+			return nil, errors.New("unexpected dial")
+		},
+	)
+	if !errors.Is(err, errUnsafeBaseURLHost) {
+		t.Fatalf("safeDialContext() error = %v, want %v", err, errUnsafeBaseURLHost)
+	}
+}
+
+func TestSafeDialContextPinsResolvedPublicIP(t *testing.T) {
+	t.Parallel()
+	var dialAddress string
+	errStopDial := errors.New("stop after address capture")
+	_, err := safeDialContext(
+		context.Background(),
+		"tcp",
+		"ghe.example.com:443",
+		false,
+		func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("140.82.113.5")}}, nil
+		},
+		func(_ context.Context, _ string, address string) (net.Conn, error) {
+			dialAddress = address
+			return nil, errStopDial
+		},
+	)
+	if !errors.Is(err, errStopDial) {
+		t.Fatalf("safeDialContext() error = %v, want address-capture sentinel", err)
+	}
+	if dialAddress != "140.82.113.5:443" {
+		t.Fatalf("dial address = %q, want pinned public IP", dialAddress)
+	}
 }
