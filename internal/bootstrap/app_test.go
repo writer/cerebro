@@ -56,13 +56,27 @@ func sourceGet(t *testing.T, server *httptest.Server, path string, config map[st
 }
 
 func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
-	for _, key := range []string{"token", "api_key", "apiKey", "access_key_id", "private_key", "privateKey", "signing_key", "key"} {
+	for _, key := range []string{"token", "api_key", "apiKey", "secret_access_key", "private_key", "privateKey", "signing_key", "key"} {
 		t.Run(key, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/sources/okta/check?"+key+"=secret", nil)
 			if _, err := sourceConfigFromRequest(req); !errors.Is(err, sourceops.ErrInvalidRequest) {
 				t.Fatalf("sourceConfigFromRequest() error = %v, want ErrInvalidRequest", err)
 			}
 		})
+	}
+}
+
+func TestSourceConfigFromRequestAllowsAWSAccessKeyIDQueryField(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources/aws/check?account_id=123456789012&access_key_id=AKIAEXAMPLE", nil)
+	config, err := sourceConfigFromRequest(req)
+	if err != nil {
+		t.Fatalf("sourceConfigFromRequest() error = %v", err)
+	}
+	if got := config["account_id"]; got != "123456789012" {
+		t.Fatalf("config[account_id] = %q, want 123456789012", got)
+	}
+	if got := config["access_key_id"]; got != "AKIAEXAMPLE" {
+		t.Fatalf("config[access_key_id] = %q, want AKIAEXAMPLE", got)
 	}
 }
 

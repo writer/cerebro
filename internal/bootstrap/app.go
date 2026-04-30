@@ -1681,7 +1681,7 @@ func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 		if key == "cursor" || len(rawValues) == 0 {
 			continue
 		}
-		if sensitiveSourceConfigKey(key) {
+		if headerOnlySourceConfigKey(key) {
 			return nil, fmt.Errorf("%w: source config key %q must not be supplied in query parameters", sourceops.ErrInvalidRequest, key)
 		}
 		values[key] = rawValues[len(rawValues)-1]
@@ -1699,6 +1699,18 @@ func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 		}
 	}
 	return values, nil
+}
+
+func headerOnlySourceConfigKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	if normalized == "" {
+		return false
+	}
+	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(normalized)
+	if compact == "accesskeyid" {
+		return false
+	}
+	return sensitiveSourceConfigKey(normalized)
 }
 
 func sensitiveSourceConfigKey(key string) bool {
