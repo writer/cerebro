@@ -16,51 +16,55 @@ jobs:
       (
         (github.event_name == 'issue_comment' &&
           github.event.issue.pull_request != null &&
-          contains(github.event.comment.body, '@droid') &&
-          !contains(github.event.comment.body, '@droid implement') &&
-          !contains(github.event.comment.body, '@droid create') &&
-          !contains(github.event.comment.body, '@droid fix this PR') &&
-          !contains(github.event.comment.body, '@droid fix this pr') &&
-          !contains(github.event.comment.body, '@droid fix review feedback') &&
-          !contains(github.event.comment.body, '@droid add regression tests') &&
-          !contains(github.event.comment.body, '@droid scaffold source')) ||
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+          contains(github.event.comment.body || '', '@droid') &&
+          !contains(github.event.comment.body || '', '@droid implement') &&
+          !contains(github.event.comment.body || '', '@droid create') &&
+          !contains(github.event.comment.body || '', '@droid fix this PR') &&
+          !contains(github.event.comment.body || '', '@droid fix this pr') &&
+          !contains(github.event.comment.body || '', '@droid fix review feedback') &&
+          !contains(github.event.comment.body || '', '@droid add regression tests') &&
+          !contains(github.event.comment.body || '', '@droid scaffold source')) ||
         (github.event_name == 'pull_request_review_comment' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
-          contains(github.event.comment.body, '@droid') &&
-          !contains(github.event.comment.body, '@droid implement') &&
-          !contains(github.event.comment.body, '@droid create') &&
-          !contains(github.event.comment.body, '@droid fix this PR') &&
-          !contains(github.event.comment.body, '@droid fix this pr') &&
-          !contains(github.event.comment.body, '@droid fix review feedback') &&
-          !contains(github.event.comment.body, '@droid add regression tests') &&
-          !contains(github.event.comment.body, '@droid scaffold source')) ||
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+          contains(github.event.comment.body || '', '@droid') &&
+          !contains(github.event.comment.body || '', '@droid implement') &&
+          !contains(github.event.comment.body || '', '@droid create') &&
+          !contains(github.event.comment.body || '', '@droid fix this PR') &&
+          !contains(github.event.comment.body || '', '@droid fix this pr') &&
+          !contains(github.event.comment.body || '', '@droid fix review feedback') &&
+          !contains(github.event.comment.body || '', '@droid add regression tests') &&
+          !contains(github.event.comment.body || '', '@droid scaffold source')) ||
         (github.event_name == 'pull_request_review' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
-          contains(github.event.review.body, '@droid') &&
-          !contains(github.event.review.body, '@droid implement') &&
-          !contains(github.event.review.body, '@droid create') &&
-          !contains(github.event.review.body, '@droid fix this PR') &&
-          !contains(github.event.review.body, '@droid fix this pr') &&
-          !contains(github.event.review.body, '@droid fix review feedback') &&
-          !contains(github.event.review.body, '@droid add regression tests') &&
-          !contains(github.event.review.body, '@droid scaffold source')) ||
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association) &&
+          contains(github.event.review.body || '', '@droid') &&
+          !contains(github.event.review.body || '', '@droid implement') &&
+          !contains(github.event.review.body || '', '@droid create') &&
+          !contains(github.event.review.body || '', '@droid fix this PR') &&
+          !contains(github.event.review.body || '', '@droid fix this pr') &&
+          !contains(github.event.review.body || '', '@droid fix review feedback') &&
+          !contains(github.event.review.body || '', '@droid add regression tests') &&
+          !contains(github.event.review.body || '', '@droid scaffold source')) ||
         (github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
-          (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')) &&
-          !contains(github.event.pull_request.body, '@droid implement') &&
-          !contains(github.event.pull_request.body, '@droid create') &&
-          !contains(github.event.pull_request.body, '@droid fix this PR') &&
-          !contains(github.event.pull_request.body, '@droid fix this pr') &&
-          !contains(github.event.pull_request.body, '@droid fix review feedback') &&
-          !contains(github.event.pull_request.body, '@droid add regression tests') &&
-          !contains(github.event.pull_request.body, '@droid scaffold source') &&
-          !contains(github.event.pull_request.title, '@droid implement') &&
-          !contains(github.event.pull_request.title, '@droid create') &&
-          !contains(github.event.pull_request.title, '@droid fix this PR') &&
-          !contains(github.event.pull_request.title, '@droid fix this pr') &&
-          !contains(github.event.pull_request.title, '@droid fix review feedback') &&
-          !contains(github.event.pull_request.title, '@droid add regression tests') &&
-          !contains(github.event.pull_request.title, '@droid scaffold source'))
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) &&
+          (contains(github.event.pull_request.body || '', '@droid') || contains(github.event.pull_request.title || '', '@droid')) &&
+          !contains(github.event.pull_request.body || '', '@droid implement') &&
+          !contains(github.event.pull_request.body || '', '@droid create') &&
+          !contains(github.event.pull_request.body || '', '@droid fix this PR') &&
+          !contains(github.event.pull_request.body || '', '@droid fix this pr') &&
+          !contains(github.event.pull_request.body || '', '@droid fix review feedback') &&
+          !contains(github.event.pull_request.body || '', '@droid add regression tests') &&
+          !contains(github.event.pull_request.body || '', '@droid scaffold source') &&
+          !contains(github.event.pull_request.title || '', '@droid implement') &&
+          !contains(github.event.pull_request.title || '', '@droid create') &&
+          !contains(github.event.pull_request.title || '', '@droid fix this PR') &&
+          !contains(github.event.pull_request.title || '', '@droid fix this pr') &&
+          !contains(github.event.pull_request.title || '', '@droid fix review feedback') &&
+          !contains(github.event.pull_request.title || '', '@droid add regression tests') &&
+          !contains(github.event.pull_request.title || '', '@droid scaffold source'))
       )
     runs-on: ubuntu-latest
     permissions:
