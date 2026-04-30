@@ -215,21 +215,12 @@ func nextAuditCursor(resp *gogithub.Response) string {
 	}
 }
 
-func checkpointAuditCursor(entries []*gogithub.AuditEntry, cursor string) string {
-	if cursor != "" {
-		return cursor
-	}
-	if len(entries) == 0 {
-		return ""
-	}
-	if documentID := strings.TrimSpace(entries[len(entries)-1].GetDocumentID()); documentID != "" {
-		return documentID
-	}
-	occurredAt := auditOccurredAt(entries[len(entries)-1])
-	if occurredAt.IsZero() {
-		return ""
-	}
-	return occurredAt.Format(time.RFC3339Nano)
+func checkpointAuditCursor(_ []*gogithub.AuditEntry, cursor string) string {
+	// Only persist genuine GitHub pagination cursors; document IDs and
+	// occurrence timestamps are not valid `After` tokens for the audit log
+	// API, so a caller that resumes from a stored opaque must never receive
+	// one of those terminal-page fallbacks.
+	return strings.TrimSpace(cursor)
 }
 
 func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings settings) map[string]string {
