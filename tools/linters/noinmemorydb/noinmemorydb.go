@@ -46,6 +46,10 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 
+	// Pre-pass: collect variables that alias database/sql.Open / OpenDB so later calls through
+	// the alias (e.g. `open := sql.Open; open("sqlite", ...)`) still trip the analyzer.
+	sqlAliases := collectSQLOpenAliases(pass)
+
 	ins := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	ins.Preorder([]ast.Node{(*ast.CallExpr)(nil)}, func(n ast.Node) {
 		call := n.(*ast.CallExpr)
@@ -55,6 +59,11 @@ func run(pass *analysis.Pass) (any, error) {
 		if ident, ok := call.Fun.(*ast.Ident); ok {
 			if (ident.Name == "Open" || ident.Name == "OpenDB") && len(call.Args) > 0 && isDatabaseSQLFunc(pass, ident) && isSQLiteDriverLiteral(pass, call.Args[0]) {
 				report(pass, reported, call.Args[0].Pos(), call.Args[0].End())
+			}
+			if obj, ok := pass.TypesInfo.Uses[ident].(*types.Var); ok {
+				if _, aliased := sqlAliases[obj]; aliased && len(call.Args) > 0 && isSQLiteDriverLiteral(pass, call.Args[0]) {
+					report(pass, reported, call.Args[0].Pos(), call.Args[0].End())
+				}
 			}
 		}
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
@@ -72,6 +81,66 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	})
 	return nil, nil
+}
+
+// collectSQLOpenAliases scans the pass for variable declarations and short var assignments whose
+// right-hand side is `database/sql.Open` or `database/sql.OpenDB`, returning the set of variable
+// objects that alias those functions. This lets the analyzer detect indirect calls through the
+// alias (e.g. `open := sql.Open; open("sqlite", ...)`).
+func collectSQLOpenAliases(pass *analysis.Pass) map[types.Object]struct{} {
+	aliases := map[types.Object]struct{}{}
+	addIfSQLOpen := func(lhs ast.Expr, rhs ast.Expr) {
+		if !isSQLOpenReference(pass, rhs) {
+			return
+		}
+		ident, ok := lhs.(*ast.Ident)
+		if !ok {
+			return
+		}
+		obj := pass.TypesInfo.Defs[ident]
+		if obj == nil {
+			obj = pass.TypesInfo.Uses[ident]
+		}
+		if obj == nil {
+			return
+		}
+		aliases[obj] = struct{}{}
+	}
+	for _, file := range pass.Files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch decl := n.(type) {
+			case *ast.AssignStmt:
+				if len(decl.Lhs) != len(decl.Rhs) {
+					return true
+				}
+				for i := range decl.Rhs {
+					addIfSQLOpen(decl.Lhs[i], decl.Rhs[i])
+				}
+			case *ast.ValueSpec:
+				if len(decl.Names) != len(decl.Values) {
+					return true
+				}
+				for i := range decl.Values {
+					addIfSQLOpen(decl.Names[i], decl.Values[i])
+				}
+			}
+			return true
+		})
+	}
+	return aliases
+}
+
+func isSQLOpenReference(pass *analysis.Pass, expr ast.Expr) bool {
+	switch v := expr.(type) {
+	case *ast.SelectorExpr:
+		return (v.Sel.Name == "Open" || v.Sel.Name == "OpenDB") && isDatabaseSQLSelector(pass, v)
+	case *ast.Ident:
+		if v.Name != "Open" && v.Name != "OpenDB" {
+			return false
+		}
+		return isDatabaseSQLFunc(pass, v)
+	}
+	return false
 }
 
 func isEmbeddedDBPackageSelector(pass *analysis.Pass, sel *ast.SelectorExpr) bool {

@@ -42,3 +42,14 @@ type T struct{}
 func (T) init() {
 	panic("method init is not package init") // want `panic is forbidden outside tests, init, and panicsafe`
 }
+
+func BadAliasLogPanicf() {
+	p := l.Panicf
+	p("boom: %s", "x") // want `panic is forbidden outside tests, init, and panicsafe`
+}
+
+var pkgPanic = l.Panic
+
+func BadPackageAliasLogPanic() {
+	pkgPanic("boom") // want `panic is forbidden outside tests, init, and panicsafe`
+}

@@ -188,6 +188,10 @@ func reportImportedImplementation(pass *analysis.Pass, sealed map[*types.TypeNam
 	if sealedObj == nil || iface == nil {
 		return
 	}
+	// Peel explicit interface conversions like `sealedpkg.Runner(externalbad.Bad{})` so we
+	// inspect the underlying expression's concrete type rather than the interface alias the
+	// conversion produces.
+	value = unwrapInterfaceConversion(pass, value)
 	named := assignedNamedType(pass.TypesInfo.TypeOf(value))
 	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
 		return
@@ -221,6 +225,31 @@ func sealedTarget(sealed map[*types.TypeName]*types.Interface, sealedObjects []*
 		return sealedObj, sealed[sealedObj]
 	}
 	return nil, nil
+}
+
+// unwrapInterfaceConversion peels explicit interface type conversions of the form `T(x)`
+// where T resolves to an interface type. It returns the inner expression so callers can
+// reason about the concrete operand instead of the interface the conversion produces.
+func unwrapInterfaceConversion(pass *analysis.Pass, expr ast.Expr) ast.Expr {
+	for {
+		call, ok := expr.(*ast.CallExpr)
+		if !ok || len(call.Args) != 1 {
+			return expr
+		}
+		// Only treat the call as a conversion when the callee resolves to a type (rather than a
+		// function value) and that type is an interface.
+		funType := pass.TypesInfo.TypeOf(call.Fun)
+		if funType == nil {
+			return expr
+		}
+		if _, isFunc := funType.Underlying().(*types.Signature); isFunc {
+			return expr
+		}
+		if _, isInterface := funType.Underlying().(*types.Interface); !isInterface {
+			return expr
+		}
+		expr = call.Args[0]
+	}
 }
 
 func assignedNamedType(t types.Type) *types.Named {

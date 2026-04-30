@@ -23,6 +23,7 @@ func run(pass *analysis.Pass) (any, error) {
 	if packageAllowed(pass.Pkg.Path()) {
 		return nil, nil
 	}
+	panicAliases := collectPanicAliases(pass)
 	for _, file := range pass.Files {
 		if isTestFile(pass, file.Pos()) {
 			continue
@@ -40,7 +41,7 @@ func run(pass *analysis.Pass) (any, error) {
 			if !ok {
 				return true
 			}
-			if !isPanicCall(pass, call) {
+			if !isPanicCall(pass, call) && !isPanicAliasCall(pass, call, panicAliases) {
 				return true
 			}
 			if enclosingIsPackageInit(stack) {
@@ -55,6 +56,87 @@ func run(pass *analysis.Pass) (any, error) {
 		})
 	}
 	return nil, nil
+}
+
+// collectPanicAliases returns variables in this package that alias `log.Panic`/`log.Panicf`/`log.Panicln`
+// or any logger method named `Panic`/`Panicf`/`Panicln`. This catches indirect calls such as
+// `p := log.Panicf; p("...")` that would otherwise slip past the analyzer.
+func collectPanicAliases(pass *analysis.Pass) map[types.Object]struct{} {
+	aliases := map[types.Object]struct{}{}
+	addAlias := func(lhs ast.Expr, rhs ast.Expr) {
+		if !isPanicReference(pass, rhs) {
+			return
+		}
+		ident, ok := lhs.(*ast.Ident)
+		if !ok {
+			return
+		}
+		obj := pass.TypesInfo.Defs[ident]
+		if obj == nil {
+			obj = pass.TypesInfo.Uses[ident]
+		}
+		if obj == nil {
+			return
+		}
+		aliases[obj] = struct{}{}
+	}
+	for _, file := range pass.Files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch decl := n.(type) {
+			case *ast.AssignStmt:
+				if len(decl.Lhs) != len(decl.Rhs) {
+					return true
+				}
+				for i := range decl.Rhs {
+					addAlias(decl.Lhs[i], decl.Rhs[i])
+				}
+			case *ast.ValueSpec:
+				if len(decl.Names) != len(decl.Values) {
+					return true
+				}
+				for i := range decl.Values {
+					addAlias(decl.Names[i], decl.Values[i])
+				}
+			}
+			return true
+		})
+	}
+	return aliases
+}
+
+func isPanicReference(pass *analysis.Pass, expr ast.Expr) bool {
+	switch v := expr.(type) {
+	case *ast.SelectorExpr:
+		switch v.Sel.Name {
+		case "Panic", "Panicf", "Panicln":
+		default:
+			return false
+		}
+		fn, ok := pass.TypesInfo.Uses[v.Sel].(*types.Func)
+		return ok && fn.Pkg() != nil && fn.Pkg().Path() == "log"
+	case *ast.Ident:
+		switch v.Name {
+		case "Panic", "Panicf", "Panicln":
+		default:
+			return false
+		}
+		fn, ok := pass.TypesInfo.Uses[v].(*types.Func)
+		return ok && fn.Pkg() != nil && fn.Pkg().Path() == "log"
+	}
+	return false
+}
+
+func isPanicAliasCall(pass *analysis.Pass, call *ast.CallExpr, aliases map[types.Object]struct{}) bool {
+	ident, ok := call.Fun.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	obj := pass.TypesInfo.Uses[ident]
+	if obj == nil {
+		return false
+	}
+	_, ok = aliases[obj]
+	return ok
 }
 
 func isPanicCall(pass *analysis.Pass, call *ast.CallExpr) bool {

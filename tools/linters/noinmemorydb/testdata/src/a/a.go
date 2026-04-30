@@ -53,3 +53,14 @@ func NameOnlyReceiverGood() {
 	sqliteConnection := opener{}
 	sqliteConnection.Open("postgres")
 }
+
+func AliasBad() {
+	open := sql.Open
+	_, _ = open("sqlite", "postgres://db") // want `embedded or in-memory database usage is forbidden`
+}
+
+var pkgOpen = sql.Open
+
+func PackageAliasBad() {
+	_, _ = pkgOpen("sqlite3", "postgres://db") // want `embedded or in-memory database usage is forbidden`
+}
