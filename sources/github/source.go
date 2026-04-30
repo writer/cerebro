@@ -479,7 +479,7 @@ func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bo
 	}
 	addrs, err := lookupIPAddrs(ctx, normalized)
 	if err != nil {
-		return nil
+		return fmt.Errorf("resolve github base_url host %q: %w", normalized, err)
 	}
 	for _, addr := range addrs {
 		if isUnsafeIP(addr.IP) {

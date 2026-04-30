@@ -496,6 +496,34 @@ func TestSourceHTTPClientRejectsHostsResolvingToPrivateIPs(t *testing.T) {
 	}
 }
 
+func TestSourceHTTPClientFailsClosedWhenHostResolutionFails(t *testing.T) {
+	called := false
+	client := sourceHTTPClientNoRedirect(&http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			called = true
+			return nil, errors.New("unexpected round trip")
+		}),
+	}, false, func(context.Context, string) ([]net.IPAddr, error) {
+		return nil, errors.New("dns unavailable")
+	})
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://ghe.example.com/api/v3", nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext() error = %v", err)
+	}
+	response, err := client.Do(request)
+	if response != nil && response.Body != nil {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Fatalf("response.Body.Close() error = %v", closeErr)
+		}
+	}
+	if err == nil {
+		t.Fatal("Do() error = nil, want non-nil")
+	}
+	if called {
+		t.Fatal("Do() reached wrapped transport after DNS failure")
+	}
+}
+
 func TestSourceHTTPClientAllowsHostsResolvingToPublicIPs(t *testing.T) {
 	called := false
 	client := sourceHTTPClientNoRedirect(&http.Client{
