@@ -100,6 +100,16 @@ func TestParseSourceCommandArgsResolvesEnvReferences(t *testing.T) {
 	}
 }
 
+func TestParseSourceCommandArgsPreservesEnvPrefixForNonSensitiveValues(t *testing.T) {
+	_, config, _, err := parseSourceCommandArgs([]string{"github", "phrase=env:prod"})
+	if err != nil {
+		t.Fatalf("parseSourceCommandArgs() error = %v", err)
+	}
+	if got := config["phrase"]; got != "env:prod" {
+		t.Fatalf("config[phrase] = %q, want literal env:prod", got)
+	}
+}
+
 func TestParseSourceCommandArgsRejectsUnsetSensitiveEnvReference(t *testing.T) {
 	_, _, _, err := parseSourceCommandArgs([]string{"github", "token=env:CEREBRO_MISSING_TOKEN"})
 	if err == nil {
