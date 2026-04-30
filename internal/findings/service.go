@@ -598,8 +598,15 @@ func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32,
 var findingEvaluationRunIDReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
 
 func findingEvaluationRunID(runtimeID string, ruleID string, startedAt time.Time) string {
-	prefix := findingEvaluationRunIDReplacer.Replace(strings.TrimSpace(runtimeID) + "-" + strings.TrimSpace(ruleID))
-	return "finding-evaluation-run-" + prefix + "-" + fmt.Sprintf("%d", startedAt.UnixNano()) + "-" + randomFindingRunSuffix()
+	rawRuntime := strings.TrimSpace(runtimeID)
+	rawRule := strings.TrimSpace(ruleID)
+	prefix := findingEvaluationRunIDReplacer.Replace(rawRuntime + "-" + rawRule)
+	// hash the raw (un-normalized) ids so rule ids that differ only by normalized characters
+	// (e.g. "rule_a" vs "rule-a") still produce distinct run ids even when the random suffix
+	// falls back to its deterministic value.
+	digest := sha256.Sum256([]byte(rawRuntime + "\x00" + rawRule))
+	hashSuffix := hex.EncodeToString(digest[:4])
+	return "finding-evaluation-run-" + prefix + "-" + hashSuffix + "-" + fmt.Sprintf("%d", startedAt.UnixNano()) + "-" + randomFindingRunSuffix()
 }
 
 // randomFindingRunSuffix returns a short random hex token to disambiguate runs that share the

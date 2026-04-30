@@ -1707,3 +1707,24 @@ func TestFindingEvaluationRunIDIsUniqueAcrossSameNanosecond(t *testing.T) {
 		seen[id] = struct{}{}
 	}
 }
+
+func TestFindingEvaluationRunIDDistinguishesNormalizedRuleIDs(t *testing.T) {
+	t.Parallel()
+	startedAt := time.Date(2026, 4, 24, 12, 0, 0, 123, time.UTC)
+	idA := findingEvaluationRunID("writer-okta", "rule_a", startedAt)
+	idB := findingEvaluationRunID("writer-okta", "rule-a", startedAt)
+	if idA == idB {
+		t.Fatalf("expected distinct run ids for rule_a vs rule-a, got %q == %q", idA, idB)
+	}
+	// Ensure the hash component (immediately after the normalized prefix) differs even when the
+	// random suffix coincidentally matches.
+	prefixLen := len("finding-evaluation-run-writer-okta-rule-a-")
+	if len(idA) < prefixLen+8 || len(idB) < prefixLen+8 {
+		t.Fatalf("run ids unexpectedly short: %q %q", idA, idB)
+	}
+	hashA := idA[prefixLen : prefixLen+8]
+	hashB := idB[prefixLen : prefixLen+8]
+	if hashA == hashB {
+		t.Fatalf("hash suffixes should differ for distinct raw rule ids, got %q == %q", hashA, hashB)
+	}
+}
