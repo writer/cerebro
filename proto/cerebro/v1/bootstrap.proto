@@ -25,6 +25,7 @@ service BootstrapService {
   rpc SyncSourceRuntime(SyncSourceRuntimeRequest) returns (SyncSourceRuntimeResponse);
   rpc WriteClaims(WriteClaimsRequest) returns (WriteClaimsResponse);
   rpc ListClaims(ListClaimsRequest) returns (ListClaimsResponse);
+  rpc ListFindings(ListFindingsRequest) returns (ListFindingsResponse);
   rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
   rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
 }
@@ -249,6 +250,18 @@ message ListClaimsResponse {
   repeated Claim claims = 1;
 }
 
+// ListFindingsRequest queries persisted findings for one stored runtime.
+message ListFindingsRequest {
+  string runtime_id = 1;
+  string finding_id = 2;
+  string rule_id = 3;
+  string severity = 4;
+  string status = 5;
+  string resource_urn = 6;
+  string event_id = 7;
+  uint32 limit = 8;
+}
+
 // Finding is the normalized persisted finding view for the first runtime evaluator slice.
 message Finding {
   string id = 1;
@@ -267,13 +280,19 @@ message Finding {
   google.protobuf.Timestamp last_observed_at = 14;
 }
 
-// EvaluateSourceRuntimeFindingsRequest replays one stored runtime through the first built-in finding evaluator.
+// ListFindingsResponse returns the matched persisted findings.
+message ListFindingsResponse {
+  repeated Finding findings = 1;
+}
+
+// EvaluateSourceRuntimeFindingsRequest replays one stored runtime through one registered finding rule.
 message EvaluateSourceRuntimeFindingsRequest {
   string id = 1;
   uint32 event_limit = 2;
+  string rule_id = 3;
 }
 
-// EvaluateSourceRuntimeFindingsResponse returns the evaluated runtime, fixed rule spec, and persisted findings.
+// EvaluateSourceRuntimeFindingsResponse returns the evaluated runtime, selected rule spec, and persisted findings.
 message EvaluateSourceRuntimeFindingsResponse {
   SourceRuntime runtime = 1;
   RuleSpec rule = 2;
