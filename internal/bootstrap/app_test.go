@@ -16,6 +16,7 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceops"
 	githubsource "github.com/writer/cerebro/sources/github"
 )
 
@@ -297,4 +298,42 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 		return nil, err
 	}
 	return sourcecdk.NewRegistry(source)
+}
+
+func TestSourceConnectErrorMapping(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	deadlineCtx, deadlineCancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer deadlineCancel()
+	cases := []struct {
+		name string
+		err  error
+		want connect.Code
+	}{
+		{"invalid_id", sourceops.ErrInvalidSourceID, connect.CodeInvalidArgument},
+		{"not_found", sourceops.ErrSourceNotFound, connect.CodeNotFound},
+		{"invalid_config", sourceops.ErrInvalidSourceConfig, connect.CodeInvalidArgument},
+		{"wrapped_invalid_config", errors.Join(sourceops.ErrInvalidSourceConfig, errors.New("repository is required")), connect.CodeInvalidArgument},
+		{"canceled", ctx.Err(), connect.CodeCanceled},
+		{"deadline", deadlineCtx.Err(), connect.CodeDeadlineExceeded},
+		{"opaque", errors.New("internal token leak boom"), connect.CodeInternal},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := sourceConnectError(tc.err)
+			var connectErr *connect.Error
+			if !errors.As(got, &connectErr) {
+				t.Fatalf("sourceConnectError(%v) = %v, want connect.Error", tc.err, got)
+			}
+			if connectErr.Code() != tc.want {
+				t.Fatalf("code = %v, want %v", connectErr.Code(), tc.want)
+			}
+			if tc.name == "opaque" && connectErr.Message() != "internal error" {
+				t.Fatalf("message = %q, want %q", connectErr.Message(), "internal error")
+			}
+		})
+	}
 }

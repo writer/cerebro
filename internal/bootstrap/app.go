@@ -305,13 +305,19 @@ func blockedPreviewSourceConfigKey(key string) bool {
 }
 
 func sourceConnectError(err error) error {
-	if errors.Is(err, sourceops.ErrInvalidSourceID) || errors.Is(err, sourceops.ErrInvalidSourceConfig) {
+	switch {
+	case errors.Is(err, sourceops.ErrInvalidSourceID),
+		errors.Is(err, sourceops.ErrInvalidSourceConfig):
 		return connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	if errors.Is(err, sourceops.ErrSourceNotFound) {
+	case errors.Is(err, sourceops.ErrSourceNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, context.Canceled):
+		return connect.NewError(connect.CodeCanceled, err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
+	default:
+		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
 	}
-	return err
 }
 
 func writeSourceError(w http.ResponseWriter, err error) {
