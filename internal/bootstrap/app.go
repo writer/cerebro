@@ -3,7 +3,9 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -17,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceops"
 )
 
 // Dependencies are the future store/log boundaries that will be wired into the rewrite.
@@ -51,6 +54,9 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("/health", app.handleHealth)
 	mux.HandleFunc("/healthz", app.handleHealth)
 	mux.HandleFunc("/sources", app.handleSources)
+	mux.HandleFunc("GET /sources/{sourceID}/check", app.handleCheckSource)
+	mux.HandleFunc("GET /sources/{sourceID}/discover", app.handleDiscoverSource)
+	mux.HandleFunc("GET /sources/{sourceID}/read", app.handleReadSource)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
@@ -83,9 +89,64 @@ func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleSources(w http.ResponseWriter, r *http.Request) {
-	response := &cerebrov1.ListSourcesResponse{}
-	if a.sources != nil {
-		response.Sources = a.sources.List()
+	writeProtoJSON(w, http.StatusOK, a.sourceService().List())
+}
+
+func (a *App) handleCheckSource(w http.ResponseWriter, r *http.Request) {
+	config, err := sourceConfigFromQuery(r)
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
+	response, err := a.sourceService().Check(r.Context(), &cerebrov1.CheckSourceRequest{
+		SourceId: r.PathValue("sourceID"),
+		Config:   config,
+	})
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleDiscoverSource(w http.ResponseWriter, r *http.Request) {
+	config, err := sourceConfigFromQuery(r)
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
+	response, err := a.sourceService().Discover(r.Context(), &cerebrov1.DiscoverSourceRequest{
+		SourceId: r.PathValue("sourceID"),
+		Config:   config,
+	})
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
+	config, err := sourceConfigFromQuery(r)
+	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
+	request := &cerebrov1.ReadSourceRequest{
+		SourceId: r.PathValue("sourceID"),
+		Config:   config,
+	}
+	rawCursors := r.URL.Query()["cursor"]
+	if len(rawCursors) > 0 {
+		cursor := rawCursors[len(rawCursors)-1]
+		if cursor != "" {
+			request.Cursor = &cerebrov1.SourceCursor{Opaque: cursor}
+		}
+	}
+	response, err := a.sourceService().Read(r.Context(), request)
+	if err != nil {
+		writeSourceError(w, err)
+		return
 	}
 	writeProtoJSON(w, http.StatusOK, response)
 }
@@ -105,9 +166,29 @@ func (s *bootstrapService) CheckHealth(ctx context.Context, _ *connect.Request[c
 }
 
 func (s *bootstrapService) ListSources(_ context.Context, _ *connect.Request[cerebrov1.ListSourcesRequest]) (*connect.Response[cerebrov1.ListSourcesResponse], error) {
-	response := &cerebrov1.ListSourcesResponse{}
-	if s.sources != nil {
-		response.Sources = s.sources.List()
+	return connect.NewResponse(sourceops.New(s.sources).List()), nil
+}
+
+func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request[cerebrov1.CheckSourceRequest]) (*connect.Response[cerebrov1.CheckSourceResponse], error) {
+	response, err := sourceops.New(s.sources).Check(ctx, req.Msg)
+	if err != nil {
+		return nil, sourceConnectError(err)
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Request[cerebrov1.DiscoverSourceRequest]) (*connect.Response[cerebrov1.DiscoverSourceResponse], error) {
+	response, err := sourceops.New(s.sources).Discover(ctx, req.Msg)
+	if err != nil {
+		return nil, sourceConnectError(err)
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[cerebrov1.ReadSourceRequest]) (*connect.Response[cerebrov1.ReadSourceResponse], error) {
+	response, err := sourceops.New(s.sources).Read(ctx, req.Msg)
+	if err != nil {
+		return nil, sourceConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -141,6 +222,64 @@ func writeProtoJSON(w http.ResponseWriter, statusCode int, message proto.Message
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_, _ = w.Write(payload)
+}
+
+func (a *App) sourceService() *sourceops.Service {
+	return sourceops.New(a.sources)
+}
+
+func sourceConfigFromQuery(r *http.Request) (map[string]string, error) {
+	values := make(map[string]string)
+	for key, rawValues := range r.URL.Query() {
+		if key == "cursor" || len(rawValues) == 0 {
+			continue
+		}
+		if sensitiveSourceConfigKey(key) {
+			return nil, fmt.Errorf("source config key %q must not be passed as a query parameter", key)
+		}
+		values[key] = rawValues[len(rawValues)-1]
+	}
+	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
+		values["token"] = token
+	}
+	return values, nil
+}
+
+func bearerToken(header string) string {
+	header = strings.TrimSpace(header)
+	if len(header) < len("Bearer ") || !strings.EqualFold(header[:len("Bearer ")], "Bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(header[len("Bearer "):])
+}
+
+func sensitiveSourceConfigKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	if normalized == "" {
+		return false
+	}
+	if strings.Contains(normalized, "token") || strings.Contains(normalized, "secret") || strings.Contains(normalized, "password") || strings.Contains(normalized, "session") {
+		return true
+	}
+	return normalized == "key" || strings.HasSuffix(normalized, "_key")
+}
+
+func sourceConnectError(err error) error {
+	if errors.Is(err, sourceops.ErrInvalidSourceID) || errors.Is(err, sourceops.ErrInvalidSourceConfig) {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if errors.Is(err, sourceops.ErrSourceNotFound) {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
+	return err
+}
+
+func writeSourceError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusBadRequest
+	if errors.Is(err, sourceops.ErrSourceNotFound) {
+		statusCode = http.StatusNotFound
+	}
+	http.Error(w, err.Error(), statusCode)
 }
 
 type pinger interface {

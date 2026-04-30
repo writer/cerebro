@@ -377,12 +377,354 @@ func (x *ListSourcesResponse) GetSources() []*SourceSpec {
 	return nil
 }
 
+// CheckSourceRequest validates source configuration for a named source.
+type CheckSourceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	Config        map[string]string      `protobuf:"bytes,2,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckSourceRequest) Reset() {
+	*x = CheckSourceRequest{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckSourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckSourceRequest) ProtoMessage() {}
+
+func (x *CheckSourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckSourceRequest.ProtoReflect.Descriptor instead.
+func (*CheckSourceRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *CheckSourceRequest) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *CheckSourceRequest) GetConfig() map[string]string {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+// CheckSourceResponse returns the validated source metadata.
+type CheckSourceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        *SourceSpec            `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckSourceResponse) Reset() {
+	*x = CheckSourceResponse{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckSourceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckSourceResponse) ProtoMessage() {}
+
+func (x *CheckSourceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckSourceResponse.ProtoReflect.Descriptor instead.
+func (*CheckSourceResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *CheckSourceResponse) GetSource() *SourceSpec {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+func (x *CheckSourceResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+// DiscoverSourceRequest requests the current URNs for a named source.
+type DiscoverSourceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	Config        map[string]string      `protobuf:"bytes,2,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiscoverSourceRequest) Reset() {
+	*x = DiscoverSourceRequest{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiscoverSourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiscoverSourceRequest) ProtoMessage() {}
+
+func (x *DiscoverSourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiscoverSourceRequest.ProtoReflect.Descriptor instead.
+func (*DiscoverSourceRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *DiscoverSourceRequest) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *DiscoverSourceRequest) GetConfig() map[string]string {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+// DiscoverSourceResponse returns the discovered URNs for a source.
+type DiscoverSourceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        *SourceSpec            `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Urns          []string               `protobuf:"bytes,2,rep,name=urns,proto3" json:"urns,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiscoverSourceResponse) Reset() {
+	*x = DiscoverSourceResponse{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiscoverSourceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiscoverSourceResponse) ProtoMessage() {}
+
+func (x *DiscoverSourceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiscoverSourceResponse.ProtoReflect.Descriptor instead.
+func (*DiscoverSourceResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *DiscoverSourceResponse) GetSource() *SourceSpec {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+func (x *DiscoverSourceResponse) GetUrns() []string {
+	if x != nil {
+		return x.Urns
+	}
+	return nil
+}
+
+// ReadSourceRequest requests one page of source events.
+type ReadSourceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SourceId      string                 `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	Config        map[string]string      `protobuf:"bytes,2,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Cursor        *SourceCursor          `protobuf:"bytes,3,opt,name=cursor,proto3" json:"cursor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadSourceRequest) Reset() {
+	*x = ReadSourceRequest{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadSourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadSourceRequest) ProtoMessage() {}
+
+func (x *ReadSourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadSourceRequest.ProtoReflect.Descriptor instead.
+func (*ReadSourceRequest) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ReadSourceRequest) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *ReadSourceRequest) GetConfig() map[string]string {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
+func (x *ReadSourceRequest) GetCursor() *SourceCursor {
+	if x != nil {
+		return x.Cursor
+	}
+	return nil
+}
+
+// ReadSourceResponse returns one page of source events plus replay cursors.
+type ReadSourceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Source        *SourceSpec            `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Events        []*EventEnvelope       `protobuf:"bytes,2,rep,name=events,proto3" json:"events,omitempty"`
+	Checkpoint    *SourceCheckpoint      `protobuf:"bytes,3,opt,name=checkpoint,proto3" json:"checkpoint,omitempty"`
+	NextCursor    *SourceCursor          `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadSourceResponse) Reset() {
+	*x = ReadSourceResponse{}
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadSourceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadSourceResponse) ProtoMessage() {}
+
+func (x *ReadSourceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cerebro_v1_bootstrap_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadSourceResponse.ProtoReflect.Descriptor instead.
+func (*ReadSourceResponse) Descriptor() ([]byte, []int) {
+	return file_cerebro_v1_bootstrap_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ReadSourceResponse) GetSource() *SourceSpec {
+	if x != nil {
+		return x.Source
+	}
+	return nil
+}
+
+func (x *ReadSourceResponse) GetEvents() []*EventEnvelope {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
+func (x *ReadSourceResponse) GetCheckpoint() *SourceCheckpoint {
+	if x != nil {
+		return x.Checkpoint
+	}
+	return nil
+}
+
+func (x *ReadSourceResponse) GetNextCursor() *SourceCursor {
+	if x != nil {
+		return x.NextCursor
+	}
+	return nil
+}
+
 var File_cerebro_v1_bootstrap_proto protoreflect.FileDescriptor
 
 const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"\n" +
 	"\x1acerebro/v1/bootstrap.proto\x12\n" +
-	"cerebro.v1\x1a\x17cerebro/v1/source.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x13\n" +
+	"cerebro.v1\x1a\x1bcerebro/v1/primitives.proto\x1a\x17cerebro/v1/source.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x13\n" +
 	"\x11GetVersionRequest\"\xa9\x01\n" +
 	"\x12GetVersionResponse\x12!\n" +
 	"\fservice_name\x18\x01 \x01(\tR\vserviceName\x12\x18\n" +
@@ -406,12 +748,49 @@ const file_cerebro_v1_bootstrap_proto_rawDesc = "" +
 	"components\"\x14\n" +
 	"\x12ListSourcesRequest\"G\n" +
 	"\x13ListSourcesResponse\x120\n" +
-	"\asources\x18\x01 \x03(\v2\x16.cerebro.v1.SourceSpecR\asources2\xff\x01\n" +
+	"\asources\x18\x01 \x03(\v2\x16.cerebro.v1.SourceSpecR\asources\"\xb0\x01\n" +
+	"\x12CheckSourceRequest\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12B\n" +
+	"\x06config\x18\x02 \x03(\v2*.cerebro.v1.CheckSourceRequest.ConfigEntryR\x06config\x1a9\n" +
+	"\vConfigEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"]\n" +
+	"\x13CheckSourceResponse\x12.\n" +
+	"\x06source\x18\x01 \x01(\v2\x16.cerebro.v1.SourceSpecR\x06source\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"\xb6\x01\n" +
+	"\x15DiscoverSourceRequest\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12E\n" +
+	"\x06config\x18\x02 \x03(\v2-.cerebro.v1.DiscoverSourceRequest.ConfigEntryR\x06config\x1a9\n" +
+	"\vConfigEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\\\n" +
+	"\x16DiscoverSourceResponse\x12.\n" +
+	"\x06source\x18\x01 \x01(\v2\x16.cerebro.v1.SourceSpecR\x06source\x12\x12\n" +
+	"\x04urns\x18\x02 \x03(\tR\x04urns\"\xe0\x01\n" +
+	"\x11ReadSourceRequest\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12A\n" +
+	"\x06config\x18\x02 \x03(\v2).cerebro.v1.ReadSourceRequest.ConfigEntryR\x06config\x120\n" +
+	"\x06cursor\x18\x03 \x01(\v2\x18.cerebro.v1.SourceCursorR\x06cursor\x1a9\n" +
+	"\vConfigEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf0\x01\n" +
+	"\x12ReadSourceResponse\x12.\n" +
+	"\x06source\x18\x01 \x01(\v2\x16.cerebro.v1.SourceSpecR\x06source\x121\n" +
+	"\x06events\x18\x02 \x03(\v2\x19.cerebro.v1.EventEnvelopeR\x06events\x12<\n" +
+	"\n" +
+	"checkpoint\x18\x03 \x01(\v2\x1c.cerebro.v1.SourceCheckpointR\n" +
+	"checkpoint\x129\n" +
+	"\vnext_cursor\x18\x04 \x01(\v2\x18.cerebro.v1.SourceCursorR\n" +
+	"nextCursor2\xf5\x03\n" +
 	"\x10BootstrapService\x12K\n" +
 	"\n" +
 	"GetVersion\x12\x1d.cerebro.v1.GetVersionRequest\x1a\x1e.cerebro.v1.GetVersionResponse\x12N\n" +
 	"\vCheckHealth\x12\x1e.cerebro.v1.CheckHealthRequest\x1a\x1f.cerebro.v1.CheckHealthResponse\x12N\n" +
-	"\vListSources\x12\x1e.cerebro.v1.ListSourcesRequest\x1a\x1f.cerebro.v1.ListSourcesResponseB4Z2github.com/writer/cerebro/gen/cerebro/v1;cerebrov1b\x06proto3"
+	"\vListSources\x12\x1e.cerebro.v1.ListSourcesRequest\x1a\x1f.cerebro.v1.ListSourcesResponse\x12N\n" +
+	"\vCheckSource\x12\x1e.cerebro.v1.CheckSourceRequest\x1a\x1f.cerebro.v1.CheckSourceResponse\x12W\n" +
+	"\x0eDiscoverSource\x12!.cerebro.v1.DiscoverSourceRequest\x1a\".cerebro.v1.DiscoverSourceResponse\x12K\n" +
+	"\n" +
+	"ReadSource\x12\x1d.cerebro.v1.ReadSourceRequest\x1a\x1e.cerebro.v1.ReadSourceResponseB4Z2github.com/writer/cerebro/gen/cerebro/v1;cerebrov1b\x06proto3"
 
 var (
 	file_cerebro_v1_bootstrap_proto_rawDescOnce sync.Once
@@ -425,33 +804,61 @@ func file_cerebro_v1_bootstrap_proto_rawDescGZIP() []byte {
 	return file_cerebro_v1_bootstrap_proto_rawDescData
 }
 
-var file_cerebro_v1_bootstrap_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_cerebro_v1_bootstrap_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_cerebro_v1_bootstrap_proto_goTypes = []any{
-	(*GetVersionRequest)(nil),     // 0: cerebro.v1.GetVersionRequest
-	(*GetVersionResponse)(nil),    // 1: cerebro.v1.GetVersionResponse
-	(*CheckHealthRequest)(nil),    // 2: cerebro.v1.CheckHealthRequest
-	(*ComponentStatus)(nil),       // 3: cerebro.v1.ComponentStatus
-	(*CheckHealthResponse)(nil),   // 4: cerebro.v1.CheckHealthResponse
-	(*ListSourcesRequest)(nil),    // 5: cerebro.v1.ListSourcesRequest
-	(*ListSourcesResponse)(nil),   // 6: cerebro.v1.ListSourcesResponse
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
-	(*SourceSpec)(nil),            // 8: cerebro.v1.SourceSpec
+	(*GetVersionRequest)(nil),      // 0: cerebro.v1.GetVersionRequest
+	(*GetVersionResponse)(nil),     // 1: cerebro.v1.GetVersionResponse
+	(*CheckHealthRequest)(nil),     // 2: cerebro.v1.CheckHealthRequest
+	(*ComponentStatus)(nil),        // 3: cerebro.v1.ComponentStatus
+	(*CheckHealthResponse)(nil),    // 4: cerebro.v1.CheckHealthResponse
+	(*ListSourcesRequest)(nil),     // 5: cerebro.v1.ListSourcesRequest
+	(*ListSourcesResponse)(nil),    // 6: cerebro.v1.ListSourcesResponse
+	(*CheckSourceRequest)(nil),     // 7: cerebro.v1.CheckSourceRequest
+	(*CheckSourceResponse)(nil),    // 8: cerebro.v1.CheckSourceResponse
+	(*DiscoverSourceRequest)(nil),  // 9: cerebro.v1.DiscoverSourceRequest
+	(*DiscoverSourceResponse)(nil), // 10: cerebro.v1.DiscoverSourceResponse
+	(*ReadSourceRequest)(nil),      // 11: cerebro.v1.ReadSourceRequest
+	(*ReadSourceResponse)(nil),     // 12: cerebro.v1.ReadSourceResponse
+	nil,                            // 13: cerebro.v1.CheckSourceRequest.ConfigEntry
+	nil,                            // 14: cerebro.v1.DiscoverSourceRequest.ConfigEntry
+	nil,                            // 15: cerebro.v1.ReadSourceRequest.ConfigEntry
+	(*timestamppb.Timestamp)(nil),  // 16: google.protobuf.Timestamp
+	(*SourceSpec)(nil),             // 17: cerebro.v1.SourceSpec
+	(*SourceCursor)(nil),           // 18: cerebro.v1.SourceCursor
+	(*EventEnvelope)(nil),          // 19: cerebro.v1.EventEnvelope
+	(*SourceCheckpoint)(nil),       // 20: cerebro.v1.SourceCheckpoint
 }
 var file_cerebro_v1_bootstrap_proto_depIdxs = []int32{
-	7, // 0: cerebro.v1.CheckHealthResponse.checked_at:type_name -> google.protobuf.Timestamp
-	3, // 1: cerebro.v1.CheckHealthResponse.components:type_name -> cerebro.v1.ComponentStatus
-	8, // 2: cerebro.v1.ListSourcesResponse.sources:type_name -> cerebro.v1.SourceSpec
-	0, // 3: cerebro.v1.BootstrapService.GetVersion:input_type -> cerebro.v1.GetVersionRequest
-	2, // 4: cerebro.v1.BootstrapService.CheckHealth:input_type -> cerebro.v1.CheckHealthRequest
-	5, // 5: cerebro.v1.BootstrapService.ListSources:input_type -> cerebro.v1.ListSourcesRequest
-	1, // 6: cerebro.v1.BootstrapService.GetVersion:output_type -> cerebro.v1.GetVersionResponse
-	4, // 7: cerebro.v1.BootstrapService.CheckHealth:output_type -> cerebro.v1.CheckHealthResponse
-	6, // 8: cerebro.v1.BootstrapService.ListSources:output_type -> cerebro.v1.ListSourcesResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	16, // 0: cerebro.v1.CheckHealthResponse.checked_at:type_name -> google.protobuf.Timestamp
+	3,  // 1: cerebro.v1.CheckHealthResponse.components:type_name -> cerebro.v1.ComponentStatus
+	17, // 2: cerebro.v1.ListSourcesResponse.sources:type_name -> cerebro.v1.SourceSpec
+	13, // 3: cerebro.v1.CheckSourceRequest.config:type_name -> cerebro.v1.CheckSourceRequest.ConfigEntry
+	17, // 4: cerebro.v1.CheckSourceResponse.source:type_name -> cerebro.v1.SourceSpec
+	14, // 5: cerebro.v1.DiscoverSourceRequest.config:type_name -> cerebro.v1.DiscoverSourceRequest.ConfigEntry
+	17, // 6: cerebro.v1.DiscoverSourceResponse.source:type_name -> cerebro.v1.SourceSpec
+	15, // 7: cerebro.v1.ReadSourceRequest.config:type_name -> cerebro.v1.ReadSourceRequest.ConfigEntry
+	18, // 8: cerebro.v1.ReadSourceRequest.cursor:type_name -> cerebro.v1.SourceCursor
+	17, // 9: cerebro.v1.ReadSourceResponse.source:type_name -> cerebro.v1.SourceSpec
+	19, // 10: cerebro.v1.ReadSourceResponse.events:type_name -> cerebro.v1.EventEnvelope
+	20, // 11: cerebro.v1.ReadSourceResponse.checkpoint:type_name -> cerebro.v1.SourceCheckpoint
+	18, // 12: cerebro.v1.ReadSourceResponse.next_cursor:type_name -> cerebro.v1.SourceCursor
+	0,  // 13: cerebro.v1.BootstrapService.GetVersion:input_type -> cerebro.v1.GetVersionRequest
+	2,  // 14: cerebro.v1.BootstrapService.CheckHealth:input_type -> cerebro.v1.CheckHealthRequest
+	5,  // 15: cerebro.v1.BootstrapService.ListSources:input_type -> cerebro.v1.ListSourcesRequest
+	7,  // 16: cerebro.v1.BootstrapService.CheckSource:input_type -> cerebro.v1.CheckSourceRequest
+	9,  // 17: cerebro.v1.BootstrapService.DiscoverSource:input_type -> cerebro.v1.DiscoverSourceRequest
+	11, // 18: cerebro.v1.BootstrapService.ReadSource:input_type -> cerebro.v1.ReadSourceRequest
+	1,  // 19: cerebro.v1.BootstrapService.GetVersion:output_type -> cerebro.v1.GetVersionResponse
+	4,  // 20: cerebro.v1.BootstrapService.CheckHealth:output_type -> cerebro.v1.CheckHealthResponse
+	6,  // 21: cerebro.v1.BootstrapService.ListSources:output_type -> cerebro.v1.ListSourcesResponse
+	8,  // 22: cerebro.v1.BootstrapService.CheckSource:output_type -> cerebro.v1.CheckSourceResponse
+	10, // 23: cerebro.v1.BootstrapService.DiscoverSource:output_type -> cerebro.v1.DiscoverSourceResponse
+	12, // 24: cerebro.v1.BootstrapService.ReadSource:output_type -> cerebro.v1.ReadSourceResponse
+	19, // [19:25] is the sub-list for method output_type
+	13, // [13:19] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_cerebro_v1_bootstrap_proto_init() }
@@ -459,6 +866,7 @@ func file_cerebro_v1_bootstrap_proto_init() {
 	if File_cerebro_v1_bootstrap_proto != nil {
 		return
 	}
+	file_cerebro_v1_primitives_proto_init()
 	file_cerebro_v1_source_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -466,7 +874,7 @@ func file_cerebro_v1_bootstrap_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cerebro_v1_bootstrap_proto_rawDesc), len(file_cerebro_v1_bootstrap_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

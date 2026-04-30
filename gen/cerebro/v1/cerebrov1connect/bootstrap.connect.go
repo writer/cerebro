@@ -42,6 +42,15 @@ const (
 	// BootstrapServiceListSourcesProcedure is the fully-qualified name of the BootstrapService's
 	// ListSources RPC.
 	BootstrapServiceListSourcesProcedure = "/cerebro.v1.BootstrapService/ListSources"
+	// BootstrapServiceCheckSourceProcedure is the fully-qualified name of the BootstrapService's
+	// CheckSource RPC.
+	BootstrapServiceCheckSourceProcedure = "/cerebro.v1.BootstrapService/CheckSource"
+	// BootstrapServiceDiscoverSourceProcedure is the fully-qualified name of the BootstrapService's
+	// DiscoverSource RPC.
+	BootstrapServiceDiscoverSourceProcedure = "/cerebro.v1.BootstrapService/DiscoverSource"
+	// BootstrapServiceReadSourceProcedure is the fully-qualified name of the BootstrapService's
+	// ReadSource RPC.
+	BootstrapServiceReadSourceProcedure = "/cerebro.v1.BootstrapService/ReadSource"
 )
 
 // BootstrapServiceClient is a client for the cerebro.v1.BootstrapService service.
@@ -49,6 +58,9 @@ type BootstrapServiceClient interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
 	CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error)
 	ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error)
+	CheckSource(context.Context, *connect.Request[v1.CheckSourceRequest]) (*connect.Response[v1.CheckSourceResponse], error)
+	DiscoverSource(context.Context, *connect.Request[v1.DiscoverSourceRequest]) (*connect.Response[v1.DiscoverSourceResponse], error)
+	ReadSource(context.Context, *connect.Request[v1.ReadSourceRequest]) (*connect.Response[v1.ReadSourceResponse], error)
 }
 
 // NewBootstrapServiceClient constructs a client for the cerebro.v1.BootstrapService service. By
@@ -80,14 +92,35 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("ListSources")),
 			connect.WithClientOptions(opts...),
 		),
+		checkSource: connect.NewClient[v1.CheckSourceRequest, v1.CheckSourceResponse](
+			httpClient,
+			baseURL+BootstrapServiceCheckSourceProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("CheckSource")),
+			connect.WithClientOptions(opts...),
+		),
+		discoverSource: connect.NewClient[v1.DiscoverSourceRequest, v1.DiscoverSourceResponse](
+			httpClient,
+			baseURL+BootstrapServiceDiscoverSourceProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("DiscoverSource")),
+			connect.WithClientOptions(opts...),
+		),
+		readSource: connect.NewClient[v1.ReadSourceRequest, v1.ReadSourceResponse](
+			httpClient,
+			baseURL+BootstrapServiceReadSourceProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ReadSource")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // bootstrapServiceClient implements BootstrapServiceClient.
 type bootstrapServiceClient struct {
-	getVersion  *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
-	checkHealth *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
-	listSources *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
+	getVersion     *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
+	checkHealth    *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
+	listSources    *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
+	checkSource    *connect.Client[v1.CheckSourceRequest, v1.CheckSourceResponse]
+	discoverSource *connect.Client[v1.DiscoverSourceRequest, v1.DiscoverSourceResponse]
+	readSource     *connect.Client[v1.ReadSourceRequest, v1.ReadSourceResponse]
 }
 
 // GetVersion calls cerebro.v1.BootstrapService.GetVersion.
@@ -105,11 +138,29 @@ func (c *bootstrapServiceClient) ListSources(ctx context.Context, req *connect.R
 	return c.listSources.CallUnary(ctx, req)
 }
 
+// CheckSource calls cerebro.v1.BootstrapService.CheckSource.
+func (c *bootstrapServiceClient) CheckSource(ctx context.Context, req *connect.Request[v1.CheckSourceRequest]) (*connect.Response[v1.CheckSourceResponse], error) {
+	return c.checkSource.CallUnary(ctx, req)
+}
+
+// DiscoverSource calls cerebro.v1.BootstrapService.DiscoverSource.
+func (c *bootstrapServiceClient) DiscoverSource(ctx context.Context, req *connect.Request[v1.DiscoverSourceRequest]) (*connect.Response[v1.DiscoverSourceResponse], error) {
+	return c.discoverSource.CallUnary(ctx, req)
+}
+
+// ReadSource calls cerebro.v1.BootstrapService.ReadSource.
+func (c *bootstrapServiceClient) ReadSource(ctx context.Context, req *connect.Request[v1.ReadSourceRequest]) (*connect.Response[v1.ReadSourceResponse], error) {
+	return c.readSource.CallUnary(ctx, req)
+}
+
 // BootstrapServiceHandler is an implementation of the cerebro.v1.BootstrapService service.
 type BootstrapServiceHandler interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
 	CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error)
 	ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error)
+	CheckSource(context.Context, *connect.Request[v1.CheckSourceRequest]) (*connect.Response[v1.CheckSourceResponse], error)
+	DiscoverSource(context.Context, *connect.Request[v1.DiscoverSourceRequest]) (*connect.Response[v1.DiscoverSourceResponse], error)
+	ReadSource(context.Context, *connect.Request[v1.ReadSourceRequest]) (*connect.Response[v1.ReadSourceResponse], error)
 }
 
 // NewBootstrapServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -137,6 +188,24 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("ListSources")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceCheckSourceHandler := connect.NewUnaryHandler(
+		BootstrapServiceCheckSourceProcedure,
+		svc.CheckSource,
+		connect.WithSchema(bootstrapServiceMethods.ByName("CheckSource")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceDiscoverSourceHandler := connect.NewUnaryHandler(
+		BootstrapServiceDiscoverSourceProcedure,
+		svc.DiscoverSource,
+		connect.WithSchema(bootstrapServiceMethods.ByName("DiscoverSource")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceReadSourceHandler := connect.NewUnaryHandler(
+		BootstrapServiceReadSourceProcedure,
+		svc.ReadSource,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ReadSource")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/cerebro.v1.BootstrapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BootstrapServiceGetVersionProcedure:
@@ -145,6 +214,12 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceCheckHealthHandler.ServeHTTP(w, r)
 		case BootstrapServiceListSourcesProcedure:
 			bootstrapServiceListSourcesHandler.ServeHTTP(w, r)
+		case BootstrapServiceCheckSourceProcedure:
+			bootstrapServiceCheckSourceHandler.ServeHTTP(w, r)
+		case BootstrapServiceDiscoverSourceProcedure:
+			bootstrapServiceDiscoverSourceHandler.ServeHTTP(w, r)
+		case BootstrapServiceReadSourceProcedure:
+			bootstrapServiceReadSourceHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -164,4 +239,16 @@ func (UnimplementedBootstrapServiceHandler) CheckHealth(context.Context, *connec
 
 func (UnimplementedBootstrapServiceHandler) ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListSources is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) CheckSource(context.Context, *connect.Request[v1.CheckSourceRequest]) (*connect.Response[v1.CheckSourceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.CheckSource is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) DiscoverSource(context.Context, *connect.Request[v1.DiscoverSourceRequest]) (*connect.Response[v1.DiscoverSourceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.DiscoverSource is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ReadSource(context.Context, *connect.Request[v1.ReadSourceRequest]) (*connect.Response[v1.ReadSourceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ReadSource is not implemented"))
 }
