@@ -47,7 +47,25 @@ func (s *Service) GetEntityNeighborhood(ctx context.Context, request Neighborhoo
 	if rootURN == "" {
 		return nil, fmt.Errorf("%w: root urn is required", ErrInvalidRequest)
 	}
+	if err := validateCerebroURN(rootURN); err != nil {
+		return nil, err
+	}
 	return s.store.GetEntityNeighborhood(ctx, rootURN, normalizeNeighborhoodLimit(request.Limit))
+}
+
+// validateCerebroURN rejects malformed root URN inputs so the API can surface
+// 400 InvalidArgument instead of 404 NotFound for caller mistakes.
+func validateCerebroURN(urn string) error {
+	parts := strings.Split(urn, ":")
+	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
+		return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", ErrInvalidRequest)
+	}
+	for i := 2; i < 5; i++ {
+		if strings.TrimSpace(parts[i]) == "" {
+			return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", ErrInvalidRequest)
+		}
+	}
+	return nil
 }
 
 func normalizeNeighborhoodLimit(limit uint32) int {

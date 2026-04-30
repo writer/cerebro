@@ -30,6 +30,7 @@ type ClaimRecord struct {
 // ListClaimsRequest scopes one claim query.
 type ListClaimsRequest struct {
 	RuntimeID     string
+	TenantID      string
 	ClaimID       string
 	SubjectURN    string
 	Predicate     string

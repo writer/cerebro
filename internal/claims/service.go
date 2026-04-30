@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -23,6 +24,8 @@ const (
 	claimTypeClassification = "classification"
 	claimStatusAsserted     = "asserted"
 	claimStatusRetracted    = "retracted"
+	claimStatusRefuted      = "refuted"
+	claimStatusSuperseded   = "superseded"
 )
 
 var (
@@ -37,6 +40,14 @@ type Service struct {
 	store        ports.ClaimStore
 	state        ports.ProjectionStateStore
 	graph        ports.ProjectionGraphStore
+
+	// runtimeWriteLocks serializes WriteClaims requests per runtime so that a
+	// replace_existing snapshot cannot interleave with another write batch for
+	// the same runtime and retract its freshly asserted rows. This protects
+	// in-process concurrency only; cross-process callers should rely on a
+	// shared advisory lock when one is available.
+	runtimeWriteLocksGuard sync.Mutex
+	runtimeWriteLocks      map[string]*sync.Mutex
 }
 
 // WriteRequest scopes one runtime-scoped claim batch.
@@ -76,11 +87,29 @@ type ListResult struct {
 // New constructs a claim write service.
 func New(runtimeStore ports.SourceRuntimeStore, store ports.ClaimStore, state ports.ProjectionStateStore, graph ports.ProjectionGraphStore) *Service {
 	return &Service{
-		runtimeStore: runtimeStore,
-		store:        store,
-		state:        state,
-		graph:        graph,
+		runtimeStore:      runtimeStore,
+		store:             store,
+		state:             state,
+		graph:             graph,
+		runtimeWriteLocks: make(map[string]*sync.Mutex),
 	}
+}
+
+// runtimeWriteLock returns a per-runtime mutex used to serialize concurrent
+// WriteClaims executions for the same runtime so the per-claim upserts and the
+// final retractMissingClaims pass cannot interleave for two snapshots.
+func (s *Service) runtimeWriteLock(runtimeID string) *sync.Mutex {
+	s.runtimeWriteLocksGuard.Lock()
+	defer s.runtimeWriteLocksGuard.Unlock()
+	if s.runtimeWriteLocks == nil {
+		s.runtimeWriteLocks = make(map[string]*sync.Mutex)
+	}
+	lock, ok := s.runtimeWriteLocks[runtimeID]
+	if !ok {
+		lock = &sync.Mutex{}
+		s.runtimeWriteLocks[runtimeID] = lock
+	}
+	return lock
 }
 
 // WriteClaims persists one runtime-scoped claim batch.
@@ -92,6 +121,9 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
+	lock := s.runtimeWriteLock(runtimeID)
+	lock.Lock()
+	defer lock.Unlock()
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
 		return nil, err
@@ -165,11 +197,13 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
-	if _, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID); err != nil {
+	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
+	if err != nil {
 		return nil, err
 	}
 	records, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
 		RuntimeID:     runtimeID,
+		TenantID:      strings.TrimSpace(runtime.GetTenantId()),
 		ClaimID:       strings.TrimSpace(request.ClaimID),
 		SubjectURN:    strings.TrimSpace(request.SubjectURN),
 		Predicate:     strings.TrimSpace(request.Predicate),
@@ -206,6 +240,7 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.S
 	}
 	existing, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
 		RuntimeID: runtimeID,
+		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
 		Status:    claimStatusAsserted,
 	})
 	if err != nil {
@@ -542,7 +577,9 @@ func projectedRelation(runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim)
 }
 
 func retractedRelation(runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim) *ports.ProjectedLink {
-	if !strings.EqualFold(strings.TrimSpace(claim.GetStatus()), claimStatusRetracted) {
+	switch strings.ToLower(strings.TrimSpace(claim.GetStatus())) {
+	case claimStatusRetracted, claimStatusRefuted, claimStatusSuperseded:
+	default:
 		return nil
 	}
 	return relationLink(runtime, claim)
