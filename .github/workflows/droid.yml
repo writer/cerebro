@@ -37,6 +37,9 @@ jobs:
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           # Pin tag-triggered review/security runs (@droid review / @droid security) to the
-          # gpt-5.4 generation; the action's default `review_depth: deep` resolves to gpt-5.2.
+          # gpt-5.4 generation with high reasoning effort. The action's default
+          # `review_depth: deep` resolves to gpt-5.2, and setting `review_model` explicitly
+          # bypasses the depth preset, so we also re-assert reasoning_effort=high.
           review_model: gpt-5.4
           security_model: gpt-5.4
+          reasoning_effort: high
