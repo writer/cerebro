@@ -39,6 +39,8 @@ var ensureClaimStatements = []string{
 	`CREATE INDEX IF NOT EXISTS claims_runtime_subject_idx ON claims (runtime_id, subject_urn)`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_predicate_idx ON claims (runtime_id, predicate)`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_object_idx ON claims (runtime_id, object_urn)`,
+	`CREATE INDEX IF NOT EXISTS claims_runtime_type_status_idx ON claims (runtime_id, claim_type, status)`,
+	`CREATE INDEX IF NOT EXISTS claims_runtime_object_value_idx ON claims (runtime_id, object_value)`,
 }
 
 // UpsertClaim persists one normalized claim in the current-state store.
@@ -130,6 +132,75 @@ DO UPDATE SET
 	return cloneClaimRecord(claim), nil
 }
 
+// ListClaims loads persisted claims for one runtime.
+func (s *Store) ListClaims(ctx context.Context, request ports.ListClaimsRequest) (_ []*ports.ClaimRecord, err error) {
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return nil, errors.New("claim runtime id is required")
+	}
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureClaimTables(ctx); err != nil {
+		return nil, err
+	}
+	clauses := []string{"runtime_id = $1"}
+	args := []any{runtimeID}
+	addFilter := func(column string, value string) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return
+		}
+		args = append(args, trimmed)
+		clauses = append(clauses, fmt.Sprintf("%s = $%d", column, len(args)))
+	}
+	addFilter("id", request.ClaimID)
+	addFilter("subject_urn", request.SubjectURN)
+	addFilter("predicate", request.Predicate)
+	addFilter("object_urn", request.ObjectURN)
+	addFilter("object_value", request.ObjectValue)
+	addFilter("claim_type", request.ClaimType)
+	addFilter("status", request.Status)
+
+	query := `
+SELECT runtime_id, tenant_id, claim_json::text
+FROM claims
+WHERE ` + strings.Join(clauses, " AND ") + `
+ORDER BY observed_at DESC NULLS LAST, updated_at DESC, id`
+	if request.Limit != 0 {
+		args = append(args, int64(request.Limit))
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query claims for runtime %q: %w", runtimeID, err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close claims rows: %w", closeErr)
+		}
+	}()
+
+	claims := []*ports.ClaimRecord{}
+	for rows.Next() {
+		var storedRuntimeID string
+		var tenantID string
+		var claimJSON string
+		if err := rows.Scan(&storedRuntimeID, &tenantID, &claimJSON); err != nil {
+			return nil, fmt.Errorf("scan claim row: %w", err)
+		}
+		record, err := claimRecordFromJSON(storedRuntimeID, tenantID, claimJSON)
+		if err != nil {
+			return nil, err
+		}
+		claims = append(claims, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate claims rows: %w", err)
+	}
+	return claims, nil
+}
+
 func (s *Store) ensureClaimTables(ctx context.Context) error {
 	for _, statement := range ensureClaimStatements {
 		if _, err := s.db.ExecContext(ctx, statement); err != nil {
@@ -217,6 +288,52 @@ func cloneClaimEntityRef(ref *cerebrov1.EntityRef) *cerebrov1.EntityRef {
 		EntityType: ref.GetEntityType(),
 		Label:      ref.GetLabel(),
 	}
+}
+
+func claimRecordFromJSON(runtimeID string, tenantID string, payload string) (*ports.ClaimRecord, error) {
+	if strings.TrimSpace(payload) == "" {
+		return nil, errors.New("claim json is required")
+	}
+	claim := &cerebrov1.Claim{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal([]byte(payload), claim); err != nil {
+		return nil, fmt.Errorf("unmarshal claim json: %w", err)
+	}
+	return &ports.ClaimRecord{
+		ID:            strings.TrimSpace(claim.GetId()),
+		RuntimeID:     strings.TrimSpace(runtimeID),
+		TenantID:      strings.TrimSpace(tenantID),
+		SubjectURN:    strings.TrimSpace(claim.GetSubjectUrn()),
+		SubjectRef:    cloneClaimEntityRef(claim.GetSubjectRef()),
+		Predicate:     strings.TrimSpace(claim.GetPredicate()),
+		ObjectURN:     strings.TrimSpace(claim.GetObjectUrn()),
+		ObjectRef:     cloneClaimEntityRef(claim.GetObjectRef()),
+		ObjectValue:   strings.TrimSpace(claim.GetObjectValue()),
+		ClaimType:     strings.TrimSpace(claim.GetClaimType()),
+		Status:        strings.TrimSpace(claim.GetStatus()),
+		SourceEventID: strings.TrimSpace(claim.GetSourceEventId()),
+		ObservedAt:    claimMessageTime(claim.GetObservedAt()),
+		ValidFrom:     claimMessageTime(claim.GetValidFrom()),
+		ValidTo:       claimMessageTime(claim.GetValidTo()),
+		Attributes:    cloneClaimAttributes(claim.GetAttributes()),
+	}, nil
+}
+
+func cloneClaimAttributes(attributes map[string]string) map[string]string {
+	if len(attributes) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(attributes))
+	for key, value := range attributes {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func claimMessageTime(value *timestamppb.Timestamp) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return value.AsTime().UTC()
 }
 
 func nullableTime(value time.Time) any {
