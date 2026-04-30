@@ -35,6 +35,21 @@ class Client:
         result, _ = self._request_json("GET", "/.well-known/oauth-protected-resource")
         return result
 
+    def put_source_runtime(self, runtime_id: str, runtime: Dict[str, Any]) -> Any:
+        result, _ = self._request_json("PUT", f"/source-runtimes/{parse.quote(runtime_id, safe='')}", {"runtime": runtime})
+        return result
+
+    def get_source_runtime(self, runtime_id: str) -> Any:
+        result, _ = self._request_json("GET", f"/source-runtimes/{parse.quote(runtime_id, safe='')}")
+        return result
+
+    def write_claims(self, runtime_id: str, claims: list[Dict[str, Any]]) -> Any:
+        result, _ = self._request_json("POST", f"/source-runtimes/{parse.quote(runtime_id, safe='')}/claims", {"claims": claims})
+        return result
+
+    def integration(self, runtime_id: str, tenant_id: str, integration: str) -> "IntegrationClient":
+        return IntegrationClient(self, runtime_id=runtime_id, tenant_id=tenant_id, integration=integration)
+
     def list_managed_credentials(self) -> Any:
         result, _ = self._request_json("GET", "/api/v1/admin/agent-sdk/credentials")
         return result
@@ -244,3 +259,81 @@ class Client:
                 raise APIError(exc.code, decoded.get("error", payload), decoded.get("code", "")) from exc
             except json.JSONDecodeError:
                 raise APIError(exc.code, payload or exc.reason, "") from exc
+
+
+@dataclass
+class IntegrationClient:
+    client: Client
+    runtime_id: str
+    tenant_id: str
+    integration: str
+
+    def ensure_runtime(self, config: Optional[Dict[str, str]] = None) -> Any:
+        if config is None:
+            config = {}
+        merged = {
+            **config,
+            "integration": self.integration,
+        }
+        runtime = {
+            "source_id": "sdk",
+            "tenant_id": self.tenant_id,
+            "config": merged,
+        }
+        return self.client.put_source_runtime(self.runtime_id, runtime)
+
+    def write_claims(self, claims: list[Dict[str, Any]]) -> Any:
+        return self.client.write_claims(self.runtime_id, claims)
+
+    def ref(self, kind: str, external_id: str, label: str = "") -> Dict[str, str]:
+        normalized_kind = kind.strip()
+        normalized_external_id = external_id.strip()
+        if not normalized_kind:
+            raise ValueError("kind is required")
+        if not normalized_external_id:
+            raise ValueError("external_id is required")
+        return {
+            "urn": self._build_urn(normalized_kind, normalized_external_id),
+            "entity_type": normalized_kind,
+            "label": label.strip() or normalized_external_id,
+        }
+
+    def exists(self, subject: Dict[str, str], **options: Any) -> Dict[str, Any]:
+        return self._build_claim(subject, "exists", claim_type=options.pop("claim_type", "existence"), **options)
+
+    def attr(self, subject: Dict[str, str], predicate: str, value: str, **options: Any) -> Dict[str, Any]:
+        return self._build_claim(
+            subject,
+            predicate,
+            claim_type=options.pop("claim_type", "attribute"),
+            object_value=value.strip(),
+            **options,
+        )
+
+    def rel(self, subject: Dict[str, str], predicate: str, obj: Dict[str, str], **options: Any) -> Dict[str, Any]:
+        return self._build_claim(
+            subject,
+            predicate,
+            claim_type=options.pop("claim_type", "relation"),
+            object_ref=obj,
+            object_urn=obj["urn"],
+            **options,
+        )
+
+    def _build_claim(self, subject: Dict[str, str], predicate: str, **options: Any) -> Dict[str, Any]:
+        subject_urn = subject["urn"].strip()
+        normalized_predicate = predicate.strip()
+        if not subject_urn:
+            raise ValueError("subject['urn'] is required")
+        if not normalized_predicate:
+            raise ValueError("predicate is required")
+        claim = {
+            "subject_urn": subject_urn,
+            "subject_ref": subject,
+            "predicate": normalized_predicate,
+        }
+        claim.update({key: value for key, value in options.items() if value not in (None, "")})
+        return claim
+
+    def _build_urn(self, kind: str, external_id: str) -> str:
+        return ":".join(["urn", "cerebro", self.tenant_id, "runtime", self.runtime_id, kind, external_id])
