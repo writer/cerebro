@@ -428,6 +428,9 @@ function boolValue(value: unknown, defaultValue: boolean): string {
   if (value === null || value === undefined) {
     return defaultValue ? "true" : "false";
   }
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     if (["true", "1", "yes", "y", "on"].includes(normalized)) {
@@ -438,7 +441,7 @@ function boolValue(value: unknown, defaultValue: boolean): string {
     }
     throw new Error(`invalid boolean string: ${value}`);
   }
-  return value ? "true" : "false";
+  throw new Error(`invalid boolean value: ${String(value)}`);
 }
 
 function optionalString(value: unknown): string | undefined {

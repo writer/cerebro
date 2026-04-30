@@ -413,6 +413,8 @@ def finding(
 def bool_value(value: Any, default: bool = False) -> str:
     if value is None:
         return "true" if default else "false"
+    if isinstance(value, bool):
+        return "true" if value else "false"
     if isinstance(value, str):
         normalized = value.strip().lower()
         if normalized in ("true", "1", "yes", "y", "on"):
@@ -420,7 +422,7 @@ def bool_value(value: Any, default: bool = False) -> str:
         if normalized in ("false", "0", "no", "n", "off", ""):
             return "false"
         raise ValueError(f"invalid boolean string: {value!r}")
-    return "true" if bool(value) else "false"
+    raise ValueError(f"invalid boolean value: {value!r}")
 
 
 def object_list(value: Any, name: str) -> list[Dict[str, Any]]:

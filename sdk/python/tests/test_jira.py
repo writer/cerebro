@@ -57,6 +57,13 @@ class JiraPostureTests(unittest.TestCase):
                 {"workspace_key": "writer", "public_signup_enabled": "falsee"},
             )
 
+    def test_build_jira_workspace_claims_rejects_non_boolean_flag_values(self) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid boolean value"):
+            build_jira_workspace_claims(
+                self.integration,
+                {"workspace_key": "writer", "public_signup_enabled": {"bad": 1}},
+            )
+
     def test_onboard_jira_workspace_posture_validates_before_runtime_upsert(self) -> None:
         class FakeIntegration:
             ensure_calls = 0
