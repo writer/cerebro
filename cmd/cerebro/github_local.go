@@ -96,15 +96,25 @@ func prepareSourceRuntimeWithCLI(ctx context.Context, runtime *cerebrov1.SourceR
 	if cli == nil {
 		return nil, fmt.Errorf("github local cli is required")
 	}
+	// gh CLI auth tokens must never land in a persisted SourceRuntime config: they would be
+	// written into the state store, possibly checkpointed, and shared across processes that have a
+	// different (or no) gh session. Hydrate only the owner/repo identity here and let the token
+	// flow per-call through prepareSourceConfigWithCLI for live read/discover/check requests.
+	originalConfig := cloned.GetConfig()
 	config, err := hydrateGitHubLocalConfig(
 		ctx,
-		cloned.GetConfig(),
+		originalConfig,
 		cli,
-		githubRuntimeRequiresRepo(cloned.GetConfig()),
-		githubRequiresToken(cloned.GetConfig()),
+		githubRuntimeRequiresRepo(originalConfig),
+		false,
 	)
 	if err != nil {
 		return nil, err
+	}
+	// Preserve a caller-supplied token (an explicit, persisted PAT) but never persist a token we
+	// just hydrated from the local gh CLI session.
+	if _, ok := originalConfig["token"]; !ok {
+		delete(config, "token")
 	}
 	cloned.Config = config
 	return cloned, nil

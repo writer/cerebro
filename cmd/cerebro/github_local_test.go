@@ -175,8 +175,32 @@ func TestPrepareSourceRuntimeWithCLIHydratesGitHubRuntime(t *testing.T) {
 	if got := runtime.GetConfig()["repo"]; got != "cerebro" {
 		t.Fatalf("runtime.Config[repo] = %q, want %q", got, "cerebro")
 	}
-	if got := runtime.GetConfig()["token"]; got != "gh-token" {
-		t.Fatalf("runtime.Config[token] = %q, want %q", got, "gh-token")
+	// gh CLI auth tokens must never land in the persisted SourceRuntime config: they expose the
+	// developer's personal credential to anyone with state-store access and are short-lived.
+	if got, ok := runtime.GetConfig()["token"]; ok {
+		t.Fatalf("runtime.Config[token] = %q, want absent", got)
+	}
+}
+
+func TestPrepareSourceRuntimeWithCLIPreservesCallerToken(t *testing.T) {
+	// Caller passes their own PAT explicitly; that's an opt-in persistent token and must round-trip.
+	cli := &fakeGitHubLocalCLI{
+		token: "gh-token",
+		repo: githubLocalRepo{
+			Name:  "cerebro",
+			Owner: githubLocalRepoOwner{Login: "writer"},
+		},
+	}
+	runtime, err := prepareSourceRuntimeWithCLI(context.Background(), &cerebrov1.SourceRuntime{
+		Id:       "writer-github",
+		SourceId: githubSourceID,
+		Config:   map[string]string{"state": "all", "token": "ghp_callerprovided"},
+	}, cli)
+	if err != nil {
+		t.Fatalf("prepareSourceRuntimeWithCLI() error = %v", err)
+	}
+	if got := runtime.GetConfig()["token"]; got != "ghp_callerprovided" {
+		t.Fatalf("runtime.Config[token] = %q, want caller-supplied PAT preserved", got)
 	}
 }
 
