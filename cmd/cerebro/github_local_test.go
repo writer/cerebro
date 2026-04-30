@@ -204,6 +204,27 @@ func TestPrepareSourceRuntimeWithCLIPreservesCallerToken(t *testing.T) {
 	}
 }
 
+func TestPrepareSourceRuntimeWithCLIDropsWhitespaceCallerToken(t *testing.T) {
+	cli := &fakeGitHubLocalCLI{
+		token: "gh-token",
+		repo: githubLocalRepo{
+			Name:  "cerebro",
+			Owner: githubLocalRepoOwner{Login: "writer"},
+		},
+	}
+	runtime, err := prepareSourceRuntimeWithCLI(context.Background(), &cerebrov1.SourceRuntime{
+		Id:       "writer-github",
+		SourceId: githubSourceID,
+		Config:   map[string]string{"state": "all", "token": " \t "},
+	}, cli)
+	if err != nil {
+		t.Fatalf("prepareSourceRuntimeWithCLI() error = %v", err)
+	}
+	if got, ok := runtime.GetConfig()["token"]; ok {
+		t.Fatalf("runtime.Config[token] = %q, want absent", got)
+	}
+}
+
 func TestPrepareSourceConfigWithCLIReturnsGHError(t *testing.T) {
 	cli := &fakeGitHubLocalCLI{
 		tokenErr: errors.New("gh unavailable"),

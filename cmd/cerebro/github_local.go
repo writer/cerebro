@@ -113,7 +113,7 @@ func prepareSourceRuntimeWithCLI(ctx context.Context, runtime *cerebrov1.SourceR
 	}
 	// Preserve a caller-supplied token (an explicit, persisted PAT) but never persist a token we
 	// just hydrated from the local gh CLI session.
-	if _, ok := originalConfig["token"]; !ok {
+	if strings.TrimSpace(originalConfig["token"]) == "" {
 		delete(config, "token")
 	}
 	cloned.Config = config
