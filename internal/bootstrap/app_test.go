@@ -1204,3 +1204,48 @@ func findingTestEvent(id string, eventType string, outcome string) *cerebrov1.Ev
 func projectedLinkKey(link *ports.ProjectedLink) string {
 	return link.FromURN + "|" + link.Relation + "|" + link.ToURN
 }
+
+// nilFindingStateStore is a concrete *struct that satisfies ports.FindingStore via pointer
+// receivers, so a typed-nil pointer value implements the interface without panicking on a
+// plain `if x == nil` check. The findingStore/reportStore/eventReplayer guards must catch this.
+type nilFindingStateStore struct{}
+
+func (*nilFindingStateStore) Ping(context.Context) error { return nil }
+func (*nilFindingStateStore) UpsertFinding(context.Context, *ports.FindingRecord) (*ports.FindingRecord, error) {
+	return nil, nil
+}
+func (*nilFindingStateStore) ListFindings(context.Context, ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	return nil, nil
+}
+
+type nilReportStateStore struct{}
+
+func (*nilReportStateStore) Ping(context.Context) error                               { return nil }
+func (*nilReportStateStore) PutReportRun(context.Context, *cerebrov1.ReportRun) error { return nil }
+func (*nilReportStateStore) GetReportRun(context.Context, string) (*cerebrov1.ReportRun, error) {
+	return nil, nil
+}
+
+type nilEventReplayer struct{}
+
+func (*nilEventReplayer) Ping(context.Context) error                             { return nil }
+func (*nilEventReplayer) Append(context.Context, *cerebrov1.EventEnvelope) error { return nil }
+func (*nilEventReplayer) Replay(context.Context, ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
+	return nil, nil
+}
+
+func TestStoreCastsHandleTypedNilInterface(t *testing.T) {
+	t.Parallel()
+	var fs *nilFindingStateStore
+	var rs *nilReportStateStore
+	var er *nilEventReplayer
+	if got := findingStore(fs); got != nil {
+		t.Fatalf("findingStore(typed-nil) = %v, want nil", got)
+	}
+	if got := reportStore(rs); got != nil {
+		t.Fatalf("reportStore(typed-nil) = %v, want nil", got)
+	}
+	if got := eventReplayer(er); got != nil {
+		t.Fatalf("eventReplayer(typed-nil) = %v, want nil", got)
+	}
+}

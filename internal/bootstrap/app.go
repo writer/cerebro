@@ -567,7 +567,7 @@ func readProtoJSON(r *http.Request, message proto.Message) error {
 
 func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 	runtimeStore, ok := store.(ports.SourceRuntimeStore)
-	if !ok {
+	if !ok || isNilInterface(runtimeStore) {
 		return nil
 	}
 	return runtimeStore
@@ -575,7 +575,7 @@ func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 
 func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateStore {
 	projectionStore, ok := store.(ports.ProjectionStateStore)
-	if !ok {
+	if !ok || isNilInterface(projectionStore) {
 		return nil
 	}
 	return projectionStore
@@ -583,7 +583,7 @@ func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateSto
 
 func sourceProjectionGraphStore(store ports.GraphStore) ports.ProjectionGraphStore {
 	projectionStore, ok := store.(ports.ProjectionGraphStore)
-	if !ok {
+	if !ok || isNilInterface(projectionStore) {
 		return nil
 	}
 	return projectionStore
@@ -621,7 +621,7 @@ func isNilInterface(value any) bool {
 
 func findingStore(store ports.StateStore) ports.FindingStore {
 	findingStore, ok := store.(ports.FindingStore)
-	if !ok {
+	if !ok || isNilInterface(findingStore) {
 		return nil
 	}
 	return findingStore
@@ -629,7 +629,7 @@ func findingStore(store ports.StateStore) ports.FindingStore {
 
 func reportStore(store ports.StateStore) ports.ReportStore {
 	reportStore, ok := store.(ports.ReportStore)
-	if !ok {
+	if !ok || isNilInterface(reportStore) {
 		return nil
 	}
 	return reportStore
@@ -637,7 +637,7 @@ func reportStore(store ports.StateStore) ports.ReportStore {
 
 func eventReplayer(appendLog ports.AppendLog) ports.EventReplayer {
 	replayer, ok := appendLog.(ports.EventReplayer)
-	if !ok {
+	if !ok || isNilInterface(replayer) {
 		return nil
 	}
 	return replayer
