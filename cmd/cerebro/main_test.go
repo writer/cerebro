@@ -101,6 +101,7 @@ func TestParseSourceCommandArgsResolvesEnvReferences(t *testing.T) {
 }
 
 func TestParseSourceCommandArgsPreservesEnvPrefixForNonSensitiveValues(t *testing.T) {
+	t.Setenv("prod", "from-env")
 	_, config, _, err := parseSourceCommandArgs([]string{"github", "phrase=env:prod"})
 	if err != nil {
 		t.Fatalf("parseSourceCommandArgs() error = %v", err)
