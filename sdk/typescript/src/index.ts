@@ -524,7 +524,7 @@ export class IntegrationClient {
   }
 
   async graphLayering(roots: Array<EntityRef | string>, limit = 0): Promise<GraphLayering> {
-    const layering: GraphLayering = {};
+    const layering = Object.create(null) as GraphLayering;
     const seen = new Set<string>();
     for (const root of roots) {
       const rootUrn = typeof root === "string" ? root.trim() : root.urn.trim();
