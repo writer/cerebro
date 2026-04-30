@@ -5,7 +5,7 @@ import {
   type GraphNeighborhoodError,
   type GraphSummary,
   type IntegrationClient,
-} from "./index.ts";
+} from "./index";
 
 export interface JiraAdminPosture {
   email: string;

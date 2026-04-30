@@ -22,7 +22,8 @@ test("buildJiraWorkspaceClaims rejects object-coerced identifiers", async () => 
 test("jira subpath imports the exported source entrypoint", async () => {
   const source = await readFile(path.join(srcDir, "jira.ts"), "utf8");
   assert.doesNotMatch(source, /from "\.\/index\.js"/);
-  assert.match(source, /from "\.\/index\.ts"/);
+  assert.doesNotMatch(source, /from "\.\/index\.ts"/);
+  assert.match(source, /from "\.\/index"/);
 });
 
 test("admin sprawl findings account for posture admins", async () => {

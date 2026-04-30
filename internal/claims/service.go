@@ -33,26 +33,49 @@ var (
 	ErrRuntimeUnavailable = errors.New("claim runtime is unavailable")
 	ErrInvalidRequest     = errors.New("invalid claim request")
 
-	sharedRuntimeWriteLocks = &runtimeLockSet{locks: make(map[string]*sync.Mutex)}
+	sharedRuntimeWriteLocks = newRuntimeLockSet()
 )
 
 type runtimeLockSet struct {
 	guard sync.Mutex
-	locks map[string]*sync.Mutex
+	locks map[string]*runtimeLockEntry
 }
 
-func (s *runtimeLockSet) lock(runtimeID string) *sync.Mutex {
+type runtimeLockEntry struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func newRuntimeLockSet() *runtimeLockSet {
+	return &runtimeLockSet{locks: make(map[string]*runtimeLockEntry)}
+}
+
+func (s *runtimeLockSet) acquire(runtimeID string) *runtimeLockEntry {
 	s.guard.Lock()
 	defer s.guard.Unlock()
 	if s.locks == nil {
-		s.locks = make(map[string]*sync.Mutex)
+		s.locks = make(map[string]*runtimeLockEntry)
 	}
 	lock, ok := s.locks[runtimeID]
 	if !ok {
-		lock = &sync.Mutex{}
+		lock = &runtimeLockEntry{}
 		s.locks[runtimeID] = lock
 	}
+	lock.refs++
 	return lock
+}
+
+func (s *runtimeLockSet) release(runtimeID string, entry *runtimeLockEntry) {
+	s.guard.Lock()
+	defer s.guard.Unlock()
+	current, ok := s.locks[runtimeID]
+	if !ok || current != entry {
+		return
+	}
+	current.refs--
+	if current.refs <= 0 {
+		delete(s.locks, runtimeID)
+	}
 }
 
 // Service reads and writes runtime-scoped claims into the state store and optional projections.
@@ -109,8 +132,13 @@ func New(runtimeStore ports.SourceRuntimeStore, store ports.ClaimStore, state po
 
 // runtimeWriteLock serializes concurrent in-process WriteClaims executions for
 // the same runtime, including services constructed independently per request.
-func (s *Service) runtimeWriteLock(runtimeID string) *sync.Mutex {
-	return sharedRuntimeWriteLocks.lock(runtimeID)
+func (s *Service) runtimeWriteLock(runtimeID string) func() {
+	lock := sharedRuntimeWriteLocks.acquire(runtimeID)
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		sharedRuntimeWriteLocks.release(runtimeID, lock)
+	}
 }
 
 // WriteClaims persists one runtime-scoped claim batch.
@@ -122,13 +150,16 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
-	lock := s.runtimeWriteLock(runtimeID)
-	lock.Lock()
-	defer lock.Unlock()
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
 		return nil, err
 	}
+	lockRuntimeID := strings.TrimSpace(runtime.GetId())
+	if lockRuntimeID == "" {
+		lockRuntimeID = runtimeID
+	}
+	unlock := s.runtimeWriteLock(lockRuntimeID)
+	defer unlock()
 	result := &WriteResult{}
 	upsertedEntities := make(map[string]struct{})
 	upsertedLinks := make(map[string]struct{})
@@ -434,10 +465,16 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 	if err := validateRuntimeURN(runtime, normalized.GetSubjectUrn(), "subject"); err != nil {
 		return nil, err
 	}
+	if err := validateEntityRef(runtime, normalized.GetSubjectRef(), "subject ref"); err != nil {
+		return nil, err
+	}
 	if normalized.GetObjectUrn() != "" {
 		if err := validateRuntimeURN(runtime, normalized.GetObjectUrn(), "object"); err != nil {
 			return nil, err
 		}
+	}
+	if err := validateEntityRef(runtime, normalized.GetObjectRef(), "object ref"); err != nil {
+		return nil, err
 	}
 	if normalized.GetPredicate() == "" {
 		return nil, fmt.Errorf("%w: claim predicate is required", ErrInvalidRequest)
@@ -486,6 +523,17 @@ func validateRuntimeURN(runtime *cerebrov1.SourceRuntime, urn string, field stri
 		return fmt.Errorf("%w: claim %s urn must belong to runtime %q", ErrInvalidRequest, field, runtimeID)
 	}
 	return nil
+}
+
+func validateEntityRef(runtime *cerebrov1.SourceRuntime, ref *cerebrov1.EntityRef, field string) error {
+	if ref == nil {
+		return nil
+	}
+	urn := strings.TrimSpace(ref.GetUrn())
+	if urn == "" {
+		return nil
+	}
+	return validateRuntimeURN(runtime, urn, field)
 }
 
 func normalizeEntityRef(ref *cerebrov1.EntityRef, fallbackURN string) *cerebrov1.EntityRef {

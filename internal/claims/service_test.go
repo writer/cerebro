@@ -685,6 +685,79 @@ func TestWriteClaimsRejectsCrossTenantNonRelationEntityRefs(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsRejectsCrossTenantExplicitRefURNs(t *testing.T) {
+	writerIssueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	writerUserURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	otherIssueURN := "urn:cerebro:other:runtime:other-jira:ticket:ENG-123"
+	otherUserURN := "urn:cerebro:other:runtime:other-jira:user:acct:42"
+	for _, tt := range []struct {
+		name  string
+		claim *cerebrov1.Claim
+	}{
+		{
+			name: "foreign subject ref conflicts with local subject urn",
+			claim: &cerebrov1.Claim{
+				SubjectUrn: writerIssueURN,
+				SubjectRef: &cerebrov1.EntityRef{
+					Urn:        otherIssueURN,
+					EntityType: "ticket",
+				},
+				Predicate:   "status",
+				ObjectValue: "open",
+				ClaimType:   claimTypeAttribute,
+			},
+		},
+		{
+			name: "foreign object ref conflicts with local object urn",
+			claim: &cerebrov1.Claim{
+				SubjectUrn: writerIssueURN,
+				Predicate:  "assigned_to",
+				ObjectUrn:  writerUserURN,
+				ObjectRef: &cerebrov1.EntityRef{
+					Urn:        otherUserURN,
+					EntityType: "user",
+				},
+				ClaimType: claimTypeRelation,
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			projection := &projectionRecorder{}
+			store := &stubClaimStore{}
+			service := New(
+				&stubRuntimeStore{
+					runtimes: map[string]*cerebrov1.SourceRuntime{
+						"writer-jira": {
+							Id:       "writer-jira",
+							TenantId: "writer",
+							SourceId: "jira",
+						},
+					},
+				},
+				store,
+				projection,
+				projection,
+			)
+			_, err := service.WriteClaims(context.Background(), WriteRequest{
+				RuntimeID: "writer-jira",
+				Claims:    []*cerebrov1.Claim{tt.claim},
+			})
+			if !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("WriteClaims() error = %v, want ErrInvalidRequest", err)
+			}
+			if len(store.claims) != 0 {
+				t.Fatalf("persisted claims = %#v, want none", store.claims)
+			}
+			if len(projection.entities) != 0 {
+				t.Fatalf("projected entities = %#v, want none", projection.entities)
+			}
+			if len(projection.links) != 0 {
+				t.Fatalf("projected links = %#v, want none", projection.links)
+			}
+		})
+	}
+}
+
 func TestWriteClaimsReassertsRelationAfterSameBatchRetraction(t *testing.T) {
 	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
 	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
@@ -1136,6 +1209,34 @@ func timeFromProto(value *timestamppb.Timestamp) time.Time {
 		return time.Time{}
 	}
 	return value.AsTime().UTC()
+}
+
+func TestWriteClaimsMissingRuntimeDoesNotRetainRuntimeLock(t *testing.T) {
+	previous := sharedRuntimeWriteLocks
+	sharedRuntimeWriteLocks = newRuntimeLockSet()
+	defer func() {
+		sharedRuntimeWriteLocks = previous
+	}()
+
+	service := New(&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{}}, &stubClaimStore{}, nil, nil)
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "missing-runtime",
+		Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:runtime:missing-runtime:ticket:ENG-1",
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}},
+	})
+	if !errors.Is(err, ports.ErrSourceRuntimeNotFound) {
+		t.Fatalf("WriteClaims() error = %v, want %v", err, ports.ErrSourceRuntimeNotFound)
+	}
+
+	sharedRuntimeWriteLocks.guard.Lock()
+	defer sharedRuntimeWriteLocks.guard.Unlock()
+	if got := len(sharedRuntimeWriteLocks.locks); got != 0 {
+		t.Fatalf("runtime locks retained = %d, want 0", got)
+	}
 }
 
 func TestWriteClaimsSerializesPerRuntime(t *testing.T) {

@@ -66,6 +66,8 @@ func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 		"urn:cerebro: writer:user:alice",
 		"urn:cerebro:writer: user:alice",
 		"urn:cerebro:writer:user: alice",
+		"urn:cerebro:writer:okta_resource:policyrule: pol-1",
+		"urn:cerebro:writer:runtime:writer-jira:ticket: ENG-123",
 		"   ",
 	}
 	for _, raw := range cases {
@@ -76,5 +78,31 @@ func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 	}
 	if store.rootURN != "" {
 		t.Fatalf("store should never see malformed urns; got %q", store.rootURN)
+	}
+}
+
+func TestGetEntityNeighborhoodAcceptsColonDelimitedRootURN(t *testing.T) {
+	store := &stubStore{
+		neighborhood: &ports.EntityNeighborhood{
+			Root: &ports.NeighborhoodNode{
+				URN:        "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				EntityType: "okta_resource",
+				Label:      "pol-1",
+			},
+		},
+	}
+	service := New(store)
+
+	result, err := service.GetEntityNeighborhood(context.Background(), NeighborhoodRequest{
+		RootURN: "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+	})
+	if err != nil {
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
+	}
+	if result.Root == nil || result.Root.URN != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+		t.Fatalf("Root = %#v, want colon-delimited okta_resource root", result.Root)
+	}
+	if store.rootURN != "urn:cerebro:writer:okta_resource:policyrule:pol-1" {
+		t.Fatalf("store root urn = %q, want colon-delimited urn", store.rootURN)
 	}
 }
