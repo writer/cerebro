@@ -668,7 +668,10 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 	run.Error = strings.TrimSpace(evaluationErr.Error())
 	run.FinishedAt = timestamppb.New(time.Now().UTC())
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
-		return fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+		return errors.Join(
+			evaluationErr,
+			fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err),
+		)
 	}
 	return nil
 }
