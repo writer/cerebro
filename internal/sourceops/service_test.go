@@ -65,6 +65,15 @@ func TestCheckDiscoverAndRead(t *testing.T) {
 	if readResp.NextCursor == nil {
 		t.Fatal("Read().NextCursor = nil, want non-nil")
 	}
+	if len(readResp.PreviewEvents) != 1 {
+		t.Fatalf("len(Read().PreviewEvents) = %d, want 1", len(readResp.PreviewEvents))
+	}
+	if readResp.PreviewEvents[0].EventId != readResp.Events[0].Id {
+		t.Fatalf("Read().PreviewEvents[0].EventId = %q, want %q", readResp.PreviewEvents[0].EventId, readResp.Events[0].Id)
+	}
+	if !readResp.PreviewEvents[0].PayloadDecoded {
+		t.Fatal("Read().PreviewEvents[0].PayloadDecoded = false, want true")
+	}
 }
 
 func TestUnknownSource(t *testing.T) {

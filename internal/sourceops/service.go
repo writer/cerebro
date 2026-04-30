@@ -2,12 +2,14 @@ package sourceops
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var (
@@ -81,11 +83,16 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidSourceConfig, err)
 	}
+	previews, err := previewEvents(pull.Events)
+	if err != nil {
+		return nil, err
+	}
 	return &cerebrov1.ReadSourceResponse{
-		Source:     source.Spec(),
-		Events:     pull.Events,
-		Checkpoint: pull.Checkpoint,
-		NextCursor: pull.NextCursor,
+		Source:        source.Spec(),
+		Events:        pull.Events,
+		Checkpoint:    pull.Checkpoint,
+		NextCursor:    pull.NextCursor,
+		PreviewEvents: previews,
 	}, nil
 }
 
@@ -102,4 +109,28 @@ func (s *Service) lookup(sourceID string) (sourcecdk.Source, error) {
 		return nil, fmt.Errorf("%w: %s", ErrSourceNotFound, id)
 	}
 	return source, nil
+}
+
+func previewEvents(events []*cerebrov1.EventEnvelope) ([]*cerebrov1.SourcePreviewEvent, error) {
+	previews := make([]*cerebrov1.SourcePreviewEvent, 0, len(events))
+	for _, event := range events {
+		preview := &cerebrov1.SourcePreviewEvent{EventId: event.GetId()}
+		if len(event.GetPayload()) == 0 {
+			previews = append(previews, preview)
+			continue
+		}
+		var payload any
+		if err := json.Unmarshal(event.GetPayload(), &payload); err != nil {
+			previews = append(previews, preview)
+			continue
+		}
+		value, err := structpb.NewValue(payload)
+		if err != nil {
+			return nil, fmt.Errorf("build preview payload for event %q: %w", event.GetId(), err)
+		}
+		preview.Payload = value
+		preview.PayloadDecoded = true
+		previews = append(previews, preview)
+	}
+	return previews, nil
 }
