@@ -110,6 +110,17 @@ func TestParseSourceCommandArgsPreservesEnvPrefixForNonSensitiveValues(t *testin
 	}
 }
 
+func TestParseSourceCommandArgsResolvesEnvReferencesForNonSensitiveValues(t *testing.T) {
+	t.Setenv("CEREBRO_TEST_OKTA_DOMAIN", "writer.okta.com")
+	_, config, _, err := parseSourceCommandArgs([]string{"okta", "domain=env:CEREBRO_TEST_OKTA_DOMAIN"})
+	if err != nil {
+		t.Fatalf("parseSourceCommandArgs() error = %v", err)
+	}
+	if got := config["domain"]; got != "writer.okta.com" {
+		t.Fatalf("config[domain] = %q, want %q", got, "writer.okta.com")
+	}
+}
+
 func TestParseSourceCommandArgsRejectsUnsetSensitiveEnvReference(t *testing.T) {
 	_, _, _, err := parseSourceCommandArgs([]string{"github", "token=env:CEREBRO_MISSING_TOKEN"})
 	if err == nil {
