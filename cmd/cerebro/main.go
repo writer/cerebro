@@ -345,7 +345,6 @@ func sensitiveCLIConfigKey(key string) bool {
 	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
 	return compact == "key" ||
 		strings.Contains(compact, "apikey") ||
-		strings.Contains(compact, "accesskey") ||
 		strings.Contains(compact, "privatekey")
 }
 

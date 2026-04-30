@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -255,6 +256,40 @@ func TestPutSourceReachabilityErrorsAreNotInvalidRequests(t *testing.T) {
 	})
 	if !errors.Is(err, upstreamErr) || errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("Put() error = %v, want upstream error without ErrInvalidRequest", err)
+	}
+}
+
+func TestPutPreservesSuppliedProgressForNewRuntime(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	store := &runtimeStore{}
+	service := New(registry, store, nil, nil)
+	syncedAt := timestamppb.New(time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC))
+
+	resp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:           "writer-github",
+			SourceId:     "github",
+			TenantId:     "writer",
+			Config:       map[string]string{"token": "test"},
+			Checkpoint:   &cerebrov1.SourceCheckpoint{CursorOpaque: "restored"},
+			NextCursor:   &cerebrov1.SourceCursor{Opaque: "next"},
+			LastSyncedAt: syncedAt,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if got := resp.GetRuntime().GetCheckpoint().GetCursorOpaque(); got != "restored" {
+		t.Fatalf("Put().Runtime.Checkpoint = %q, want restored", got)
+	}
+	if got := store.runtimes["writer-github"].GetNextCursor().GetOpaque(); got != "next" {
+		t.Fatalf("stored next cursor = %q, want next", got)
+	}
+	if got := store.runtimes["writer-github"].GetLastSyncedAt().AsTime(); !got.Equal(syncedAt.AsTime()) {
+		t.Fatalf("stored last_synced_at = %s, want %s", got, syncedAt.AsTime())
 	}
 }
 

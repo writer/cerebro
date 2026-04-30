@@ -1,5 +1,7 @@
 import unittest
+from unittest.mock import patch
 
+import cerebro_sdk.jira as jira
 from cerebro_sdk.client import Client
 from cerebro_sdk.jira import build_jira_workspace_claims
 
@@ -54,6 +56,36 @@ class JiraPostureTests(unittest.TestCase):
                 self.integration,
                 {"workspace_key": "writer", "public_signup_enabled": "falsee"},
             )
+
+    def test_onboard_jira_workspace_posture_validates_before_runtime_upsert(self) -> None:
+        class FakeIntegration:
+            ensure_calls = 0
+
+            def ref(self, kind, key, label=None):
+                return {"urn": f"urn:cerebro:writer:jira:{kind}:{key}", "label": label or key}
+
+            def ensure_runtime(self, config=None):
+                self.ensure_calls += 1
+
+        fake_integration = FakeIntegration()
+
+        class FakeClient:
+            def __init__(self, base_url, api_key=None):
+                pass
+
+            def integration(self, runtime_id, tenant_id, integration):
+                return fake_integration
+
+        with patch.object(jira, "Client", FakeClient):
+            with self.assertRaisesRegex(ValueError, r"projects\[0\] must be an object"):
+                jira.onboard_jira_workspace_posture(
+                    "https://cerebro.example.com",
+                    "writer",
+                    "writer-jira",
+                    {"workspace_key": "writer", "projects": ["SEC"]},
+                )
+
+        self.assertEqual(fake_integration.ensure_calls, 0)
 
 
 if __name__ == "__main__":

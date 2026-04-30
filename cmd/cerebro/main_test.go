@@ -45,7 +45,6 @@ func TestParseSourceCommandArgsRejectsLiteralSensitiveValues(t *testing.T) {
 		"clientSecret=test-secret",
 		"apiKey=test-key",
 		"privateKey=test-key",
-		"access_key_id=test-key-id",
 	} {
 		t.Run(arg, func(t *testing.T) {
 			_, _, _, err := parseSourceCommandArgs([]string{"github", arg})
@@ -56,6 +55,23 @@ func TestParseSourceCommandArgsRejectsLiteralSensitiveValues(t *testing.T) {
 				t.Fatalf("parseSourceCommandArgs() error leaked literal value: %v", err)
 			}
 		})
+	}
+}
+
+func TestParseSourceArgsAllowNonSecretAccessKeyID(t *testing.T) {
+	_, config, _, err := parseSourceCommandArgs([]string{"aws", "access_key_id=access-key-id"})
+	if err != nil {
+		t.Fatalf("parseSourceCommandArgs() error = %v", err)
+	}
+	if got := config["access_key_id"]; got != "access-key-id" {
+		t.Fatalf("config[access_key_id] = %q, want access-key-id", got)
+	}
+	runtime, err := parseSourceRuntimePutArgs([]string{"writer-aws", "aws", "access_key_id=access-key-id"})
+	if err != nil {
+		t.Fatalf("parseSourceRuntimePutArgs() error = %v", err)
+	}
+	if got := runtime.GetConfig()["access_key_id"]; got != "access-key-id" {
+		t.Fatalf("runtime config[access_key_id] = %q, want access-key-id", got)
 	}
 }
 

@@ -377,9 +377,9 @@ export async function onboardJiraWorkspacePosture(
     tenantId: requireValue(options.tenantId, "options.tenantId"),
     integration: "jira",
   });
+  const claims = buildJiraWorkspaceClaims(integration, options.posture);
   const runtimeConfig: Record<string, string> = { workspace: workspaceKey };
   await integration.ensureRuntime(runtimeConfig);
-  const claims = buildJiraWorkspaceClaims(integration, options.posture);
   const writeResult = await integration.writeClaims(claims, { replace_existing: true });
   const persisted = await integration.listClaims({
     limit: 100,

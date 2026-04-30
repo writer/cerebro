@@ -627,14 +627,14 @@ func TestListClaimsReturnsFilteredProtoClaims(t *testing.T) {
 	}
 }
 
-func TestListClaimsAppliesDefaultAndMaximumLimits(t *testing.T) {
+func TestListClaimsPreservesUnboundedAndExplicitLimits(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
 		limit uint32
 		want  uint32
 	}{
-		{name: "default", limit: 0, want: defaultListLimit},
-		{name: "clamp", limit: maxListLimit + 1, want: maxListLimit},
+		{name: "unbounded", limit: 0, want: 0},
+		{name: "large explicit", limit: 5000, want: 5000},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			store := &stubClaimStore{claims: map[string]*ports.ClaimRecord{}}

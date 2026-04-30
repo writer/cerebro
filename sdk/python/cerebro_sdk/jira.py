@@ -363,9 +363,9 @@ def onboard_jira_workspace_posture(
     source_event_id = optional_string(posture.get("event_id"))
     client = Client(base_url=base_url, api_key=api_key or None)
     integration = client.integration(runtime_id=runtime_id, tenant_id=tenant_id, integration="jira")
+    claims = build_jira_workspace_claims(integration, posture)
     runtime_config: Dict[str, str] = {"workspace": workspace_key}
     integration.ensure_runtime(runtime_config)
-    claims = build_jira_workspace_claims(integration, posture)
     write_result = integration.write_claims(claims, {"replace_existing": True})
     filters: Dict[str, Any] = {"limit": 100, "status": "asserted"}
     if source_event_id:

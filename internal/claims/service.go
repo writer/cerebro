@@ -23,8 +23,6 @@ const (
 	claimTypeClassification = "classification"
 	claimStatusAsserted     = "asserted"
 	claimStatusRetracted    = "retracted"
-	defaultListLimit        = 100
-	maxListLimit            = 1000
 )
 
 var (
@@ -180,7 +178,7 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 		ClaimType:     strings.TrimSpace(request.ClaimType),
 		Status:        strings.TrimSpace(request.Status),
 		SourceEventID: strings.TrimSpace(request.SourceEventID),
-		Limit:         normalizeListLimit(request.Limit),
+		Limit:         request.Limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list claims for runtime %q: %w", runtimeID, err)
@@ -193,17 +191,6 @@ func (s *Service) ListClaims(ctx context.Context, request ListRequest) (*ListRes
 		response.Claims = append(response.Claims, protoClaim(record))
 	}
 	return response, nil
-}
-
-func normalizeListLimit(limit uint32) uint32 {
-	switch {
-	case limit == 0:
-		return defaultListLimit
-	case limit > maxListLimit:
-		return maxListLimit
-	default:
-		return limit
-	}
 }
 
 func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.SourceRuntime, claims []*cerebrov1.Claim) (uint32, error) {
