@@ -69,6 +69,8 @@ type stubFindingStore struct {
 	runList          ports.ListFindingEvaluationRunsRequest
 	evidence         map[string]*cerebrov1.FindingEvidence
 	evidenceList     ports.ListFindingEvidenceRequest
+	runPutCalls      int
+	runPutErrOnCall  int
 }
 
 func (s *stubFindingStore) Ping(context.Context) error { return nil }
@@ -301,6 +303,10 @@ func (s *stubFindingStore) ListClaims(_ context.Context, request ports.ListClaim
 func (s *stubFindingStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
 	if run == nil {
 		return errors.New("finding evaluation run is required")
+	}
+	s.runPutCalls++
+	if s.runPutErrOnCall > 0 && s.runPutCalls == s.runPutErrOnCall {
+		return errors.New("persist run failed")
 	}
 	if s.runs == nil {
 		s.runs = make(map[string]*cerebrov1.FindingEvaluationRun)
@@ -1176,6 +1182,52 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 	if got := len(store.evidence); got != 2 {
 		t.Fatalf("len(store.evidence) = %d, want 2", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesMarksPersistedRunsFailedWhenLaterRunPersistenceFails(t *testing.T) {
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b", Name: "Rule B"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{runPutErrOnCall: 2}
+	service := NewWithRegistry(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			},
+		},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	if err == nil {
+		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want non-nil")
+	}
+	if got := len(store.runs); got != 1 {
+		t.Fatalf("len(store.runs) = %d, want 1", got)
+	}
+	for _, run := range store.runs {
+		if got := run.GetStatus(); got != "failed" {
+			t.Fatalf("Run.Status = %q, want failed", got)
+		}
+		if run.GetFinishedAt() == nil {
+			t.Fatal("Run.FinishedAt = nil, want populated")
+		}
 	}
 }
 

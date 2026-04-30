@@ -809,11 +809,15 @@ func (a *App) handleEvaluateSourceRuntimeFindingRules(w http.ResponseWriter, r *
 		return
 	}
 	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
+		// Unmarshal the override into a separate message so we do not reset
+		// rule_ids (or any future field) provided in the request body.
+		overrides := &cerebrov1.EvaluateSourceRuntimeFindingRulesRequest{}
 		body := []byte(`{"event_limit":` + eventLimit + `}`)
-		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+		if err := unmarshalHTTPProtoJSON(body, overrides); err != nil {
 			writeFindingError(w, err)
 			return
 		}
+		request.EventLimit = overrides.GetEventLimit()
 	}
 	request.Id = r.PathValue("runtimeID")
 	if ruleIDs := r.URL.Query()["rule_id"]; len(ruleIDs) != 0 {
@@ -1706,10 +1710,10 @@ func sensitiveSourceConfigKey(key string) bool {
 		return true
 	}
 	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
-	if strings.Contains(compact, "apikey") || strings.Contains(compact, "privatekey") {
+	if strings.Contains(compact, "apikey") || strings.Contains(compact, "accesskey") || strings.Contains(compact, "privatekey") {
 		return true
 	}
-	return value == "key"
+	return value == "key" || strings.HasSuffix(value, "_key")
 }
 
 func writeSourceError(w http.ResponseWriter, err error) {

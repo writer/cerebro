@@ -3,7 +3,7 @@
 GO_BIN ?= $(shell go env GOPATH)/bin
 GOLANGCI_LINT := $(GO_BIN)/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.11.4
-BUF := GOTOOLCHAIN=go1.26.2 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
+BUF := GOFLAGS= GOTOOLCHAIN=go1.26.2 go run github.com/bufbuild/buf/cmd/buf@v1.59.0
 APP_PACKAGES := ./api/... ./cmd/... ./internal/... ./sources/...
 LINTER_MODULE := ./tools/linters
 LINTER_BIN := $(GO_BIN)/cerebrolint
@@ -82,7 +82,7 @@ lint: lint-bootstrap
 	$(GOLANGCI_LINT) run --timeout 5m $(APP_PACKAGES)
 
 lint-bootstrap:
-	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOTOOLCHAIN=go1.26.2 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
+	@if [ ! -x "$(GOLANGCI_LINT)" ]; then 		GOFLAGS= GOTOOLCHAIN=go1.26.2 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); 	fi
 
 proto-lint:
 	$(BUF) lint

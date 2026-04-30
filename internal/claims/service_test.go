@@ -1015,21 +1015,20 @@ func TestWriteClaimsSerializesPerRuntime(t *testing.T) {
 		concurrent:  &concurrent,
 		maxObserved: &maxObserved,
 	}
-	service := New(
-		&stubRuntimeStore{
-			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
-			},
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
 		},
-		store,
-		nil,
-		nil,
-	)
+	}
 	var wg sync.WaitGroup
 	for g := 0; g < goroutines; g++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// Build a fresh Service per goroutine so the test enforces that the
+			// serialization lock is shared across Service instances (matching the
+			// production wiring where every request creates a new claims.Service).
+			service := New(runtimeStore, store, nil, nil)
 			for i := 0; i < calls; i++ {
 				_, err := service.WriteClaims(context.Background(), WriteRequest{
 					RuntimeID: "writer-jira",

@@ -64,6 +64,9 @@ func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 		"urn:cerebro:writer:user",
 		"urn:cerebro::user:alice",
 		"   ",
+		"urn:cerebro: writer:user:alice",
+		"urn:cerebro:writer: user:alice",
+		"urn:cerebro:writer:user: alice",
 	}
 	for _, raw := range cases {
 		_, err := service.GetEntityNeighborhood(context.Background(), NeighborhoodRequest{RootURN: raw})

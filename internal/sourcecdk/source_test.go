@@ -98,3 +98,22 @@ func TestRegistryRejectsNonCanonicalIDs(t *testing.T) {
 		t.Fatal("NewRegistry() error = nil, want non-nil")
 	}
 }
+
+type typedNilSource struct{}
+
+func (*typedNilSource) Spec() *cerebrov1.SourceSpec { panic("Spec called for typed-nil source") }
+
+func (*typedNilSource) Check(context.Context, Config) error { return nil }
+
+func (*typedNilSource) Discover(context.Context, Config) ([]URN, error) { return nil, nil }
+
+func (*typedNilSource) Read(context.Context, Config, *cerebrov1.SourceCursor) (Pull, error) {
+	return Pull{}, nil
+}
+
+func TestRegistryRejectsTypedNilSources(t *testing.T) {
+	var source *typedNilSource
+	if _, err := NewRegistry(source); err == nil {
+		t.Fatal("NewRegistry() error = nil, want non-nil")
+	}
+}

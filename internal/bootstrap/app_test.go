@@ -56,7 +56,7 @@ func sourceGet(t *testing.T, server *httptest.Server, path string, config map[st
 }
 
 func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
-	for _, key := range []string{"token", "api_key", "apiKey", "private_key", "privateKey", "key"} {
+	for _, key := range []string{"token", "api_key", "apiKey", "access_key_id", "private_key", "privateKey", "signing_key", "key"} {
 		t.Run(key, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/sources/okta/check?"+key+"=secret", nil)
 			if _, err := sourceConfigFromRequest(req); !errors.Is(err, sourceops.ErrInvalidRequest) {
@@ -67,12 +67,12 @@ func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
 }
 
 func TestSourceConfigFromRequestAllowsNonSecretKeyQueryFields(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/sources/aws/check?access_key_id=access-key-id&lookup_key=inventory&group_key=eng", nil)
+	req := httptest.NewRequest(http.MethodGet, "/sources/aws/check?region=us-east-1&lookup=inventory&group=eng", nil)
 	config, err := sourceConfigFromRequest(req)
 	if err != nil {
 		t.Fatalf("sourceConfigFromRequest() error = %v", err)
 	}
-	for _, key := range []string{"access_key_id", "lookup_key", "group_key"} {
+	for _, key := range []string{"region", "lookup", "group"} {
 		if got := config[key]; got == "" {
 			t.Fatalf("config[%q] = %q, want value", key, got)
 		}
@@ -2004,6 +2004,35 @@ func TestFindingEndpoints(t *testing.T) {
 	batchEvidence, ok := batchEvaluation["evidence"].([]any)
 	if !ok || len(batchEvidence) != 1 {
 		t.Fatalf("batch evaluation evidence = %#v, want 1 entry", batchEvaluation["evidence"])
+	}
+
+	batchBody, err := protojson.Marshal(&cerebrov1.EvaluateSourceRuntimeFindingRulesRequest{
+		RuleIds: []string{"identity-okta-policy-rule-lifecycle-tampering"},
+	})
+	if err != nil {
+		t.Fatalf("marshal batch evaluate body: %v", err)
+	}
+	batchBodyReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-audit/finding-rules/evaluate?event_limit=2", bytes.NewReader(batchBody))
+	if err != nil {
+		t.Fatalf("new body batch evaluate request: %v", err)
+	}
+	batchBodyReq.Header.Set("Content-Type", "application/json")
+	batchBodyResp, err := server.Client().Do(batchBodyReq)
+	if err != nil {
+		t.Fatalf("POST /source-runtimes/{id}/finding-rules/evaluate body error = %v", err)
+	}
+	defer func() {
+		if closeErr := batchBodyResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close body batch evaluate response body: %v", closeErr)
+		}
+	}()
+	var batchBodyPayload map[string]any
+	if err := json.NewDecoder(batchBodyResp.Body).Decode(&batchBodyPayload); err != nil {
+		t.Fatalf("decode body batch evaluate response: %v", err)
+	}
+	batchBodyEvaluations, ok := batchBodyPayload["evaluations"].([]any)
+	if !ok || len(batchBodyEvaluations) != 1 {
+		t.Fatalf("body batch evaluations = %#v, want exactly one selected rule", batchBodyPayload["evaluations"])
 	}
 
 	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)

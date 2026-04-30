@@ -72,22 +72,29 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 	default:
 		return fail(fmt.Errorf("unsupported graph store driver %q", cfg.GraphStore.Driver))
 	}
-	pingCtx, cancel := context.WithTimeout(ctx, dependencyPingTimeout)
-	defer cancel()
-	if deps.AppendLog != nil {
-		if err := deps.AppendLog.Ping(pingCtx); err != nil {
-			return fail(fmt.Errorf("ping append log: %w", err))
-		}
+	if err := pingDependency(ctx, "append log", deps.AppendLog); err != nil {
+		return fail(err)
 	}
-	if deps.StateStore != nil {
-		if err := deps.StateStore.Ping(pingCtx); err != nil {
-			return fail(fmt.Errorf("ping state store: %w", err))
-		}
+	if err := pingDependency(ctx, "state store", deps.StateStore); err != nil {
+		return fail(err)
 	}
-	if deps.GraphStore != nil {
-		if err := deps.GraphStore.Ping(pingCtx); err != nil {
-			return fail(fmt.Errorf("ping graph store: %w", err))
-		}
+	if err := pingDependency(ctx, "graph store", deps.GraphStore); err != nil {
+		return fail(err)
 	}
 	return deps, closeAll, nil
+}
+
+// pingDependency runs Ping with its own dependencyPingTimeout-bounded context so
+// the second/third dependency check still gets the full configured budget even
+// if an earlier ping consumed most of the original deadline.
+func pingDependency(ctx context.Context, label string, dep interface{ Ping(context.Context) error }) error {
+	if dep == nil {
+		return nil
+	}
+	pingCtx, cancel := context.WithTimeout(ctx, dependencyPingTimeout)
+	defer cancel()
+	if err := dep.Ping(pingCtx); err != nil {
+		return fmt.Errorf("ping %s: %w", label, err)
+	}
+	return nil
 }
