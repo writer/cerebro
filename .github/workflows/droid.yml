@@ -19,9 +19,11 @@ jobs:
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
         contains(github.event.comment.body || '', '@droid')) ||
       (github.event_name == 'pull_request_review_comment' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
         contains(github.event.comment.body || '', '@droid')) ||
       (github.event_name == 'pull_request_review' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association) &&
         contains(github.event.review.body || '', '@droid')) ||
       (github.event_name == 'issues' &&

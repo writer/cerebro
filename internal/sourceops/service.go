@@ -121,7 +121,10 @@ func (s *Service) lookup(sourceID string) (sourcecdk.Source, error) {
 func previewEvents(events []*cerebrov1.EventEnvelope) ([]*cerebrov1.SourcePreviewEvent, error) {
 	previews := make([]*cerebrov1.SourcePreviewEvent, 0, len(events))
 	for _, event := range events {
-		preview := &cerebrov1.SourcePreviewEvent{EventId: event.GetId()}
+		preview := &cerebrov1.SourcePreviewEvent{
+			EventId: event.GetId(),
+			Event:   event,
+		}
 		if len(event.GetPayload()) == 0 {
 			previews = append(previews, preview)
 			continue
