@@ -627,7 +627,7 @@ func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Reques
 		Limit:       req.Msg.GetLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, findingsConnectError(err)
 	}
 	return connect.NewResponse(listFindingsResponse(response)), nil
 }
@@ -645,7 +645,7 @@ func (s *bootstrapService) ListFindingEvaluationRuns(ctx context.Context, req *c
 		Limit:     req.Msg.GetLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, findingsConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.ListFindingEvaluationRunsResponse{
 		Runs: response.Runs,
@@ -660,10 +660,7 @@ func (s *bootstrapService) GetFindingEvaluationRun(ctx context.Context, req *con
 		findingEvaluationRunStore(s.deps.StateStore),
 	).GetEvaluationRun(ctx, req.Msg.GetId())
 	if err != nil {
-		if errors.Is(err, ports.ErrFindingEvaluationRunNotFound) {
-			return nil, connect.NewError(connect.CodeNotFound, err)
-		}
-		return nil, err
+		return nil, findingsConnectError(err)
 	}
 	return connect.NewResponse(&cerebrov1.GetFindingEvaluationRunResponse{Run: run}), nil
 }
@@ -680,7 +677,7 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 		EventLimit: req.Msg.GetEventLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, findingsConnectError(err)
 	}
 	return connect.NewResponse(findingResponse(response)), nil
 }
@@ -837,6 +834,26 @@ func writeFindingError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusServiceUnavailable
 	}
 	http.Error(w, err.Error(), statusCode)
+}
+
+func findingsConnectError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
+		errors.Is(err, findings.ErrRuleNotFound),
+		errors.Is(err, ports.ErrFindingEvaluationRunNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, findings.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, context.Canceled):
+		return connect.NewError(connect.CodeCanceled, err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
+	default:
+		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
+	}
 }
 
 func writeGraphQueryError(w http.ResponseWriter, err error) {
