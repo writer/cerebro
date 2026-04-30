@@ -2458,3 +2458,34 @@ func cloneEntityRef(ref *cerebrov1.EntityRef) *cerebrov1.EntityRef {
 	}
 	return proto.Clone(ref).(*cerebrov1.EntityRef)
 }
+
+func TestFindingEvaluationRunIDIsUniqueAcrossSameNanosecond(t *testing.T) {
+	t.Parallel()
+	startedAt := time.Unix(0, 1700000000000000000).UTC()
+	first := findingEvaluationRunID("writer-jira", "rule-a", startedAt)
+	second := findingEvaluationRunID("writer-jira", "rule-a", startedAt)
+	if first == second {
+		t.Fatalf("findingEvaluationRunID() = %q, want unique random suffix between calls", first)
+	}
+	collidingFirst := findingEvaluationRunID("writer-jira", "rule_a", startedAt)
+	collidingNormalized := findingEvaluationRunID("writer-jira", "rule-a", startedAt)
+	if strings.HasPrefix(collidingFirst, "finding-evaluation-run-writer-jira-rule-a-") &&
+		strings.HasPrefix(collidingNormalized, "finding-evaluation-run-writer-jira-rule-a-") {
+		// Strip the random suffix and ensure the deterministic hash differs so callers
+		// distinguishing by raw rule id do not collide on normalization alone.
+		firstHash := strings.Split(collidingFirst, "-")[7]
+		secondHash := strings.Split(collidingNormalized, "-")[7]
+		if firstHash == secondHash {
+			t.Fatalf("findingEvaluationRunID() hash suffix collides for normalized rule ids: %s vs %s", collidingFirst, collidingNormalized)
+		}
+	}
+}
+
+func TestFindingEvidenceIDDistinguishesNormalizationCollisions(t *testing.T) {
+	t.Parallel()
+	first := findingEvidenceID("rt:a", "finding_x", "run-1", []string{"event-1"})
+	second := findingEvidenceID("rt-a", "finding-x", "run-1", []string{"event-1"})
+	if first == second {
+		t.Fatalf("findingEvidenceID() = %q, want distinct ids for raw inputs that normalize alike", first)
+	}
+}
