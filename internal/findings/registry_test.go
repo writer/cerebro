@@ -11,6 +11,7 @@ import (
 type stubRule struct {
 	spec               *cerebrov1.RuleSpec
 	supportedSourceIDs map[string]struct{}
+	evaluate           func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error)
 }
 
 func (r *stubRule) Spec() *cerebrov1.RuleSpec {
@@ -28,7 +29,10 @@ func (r *stubRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
 	return ok
 }
 
-func (r *stubRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+func (r *stubRule) Evaluate(ctx context.Context, runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	if r != nil && r.evaluate != nil {
+		return r.evaluate(ctx, runtime, event)
+	}
 	return nil, nil
 }
 

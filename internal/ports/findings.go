@@ -41,12 +41,27 @@ type ListFindingsRequest struct {
 // ErrFindingEvaluationRunNotFound indicates that a persisted finding evaluation run does not exist.
 var ErrFindingEvaluationRunNotFound = errors.New("finding evaluation run not found")
 
+// ErrFindingEvidenceNotFound indicates that persisted finding evidence does not exist.
+var ErrFindingEvidenceNotFound = errors.New("finding evidence not found")
+
 // ListFindingEvaluationRunsRequest scopes one finding evaluation run query.
 type ListFindingEvaluationRunsRequest struct {
 	RuntimeID string
 	RuleID    string
 	Status    string
 	Limit     uint32
+}
+
+// ListFindingEvidenceRequest scopes one finding evidence query.
+type ListFindingEvidenceRequest struct {
+	RuntimeID    string
+	FindingID    string
+	RunID        string
+	RuleID       string
+	ClaimID      string
+	EventID      string
+	GraphRootURN string
+	Limit        uint32
 }
 
 // FindingStore persists normalized findings in the state store.
@@ -62,4 +77,12 @@ type FindingEvaluationRunStore interface {
 	PutFindingEvaluationRun(context.Context, *cerebrov1.FindingEvaluationRun) error
 	GetFindingEvaluationRun(context.Context, string) (*cerebrov1.FindingEvaluationRun, error)
 	ListFindingEvaluationRuns(context.Context, ListFindingEvaluationRunsRequest) ([]*cerebrov1.FindingEvaluationRun, error)
+}
+
+// FindingEvidenceStore persists durable links between findings, runs, and their supporting evidence references.
+type FindingEvidenceStore interface {
+	StateStore
+	PutFindingEvidence(context.Context, *cerebrov1.FindingEvidence) error
+	GetFindingEvidence(context.Context, string) (*cerebrov1.FindingEvidence, error)
+	ListFindingEvidence(context.Context, ListFindingEvidenceRequest) ([]*cerebrov1.FindingEvidence, error)
 }
