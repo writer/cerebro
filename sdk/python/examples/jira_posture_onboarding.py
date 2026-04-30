@@ -291,11 +291,17 @@ def summarize_graph_layering(graph_layering: Dict[str, Any]) -> Dict[str, Any]:
                 "label": optional_string(root.get("label")) or root_key,
             }
         )
+        neighbors = entry.get("neighbors")
+        if not isinstance(neighbors, list):
+            neighbors = []
+        relations = entry.get("relations")
+        if not isinstance(relations, list):
+            relations = []
         neighborhood_sizes[root_key] = {
-            "neighbors": len(entry.get("neighbors", [])),
-            "relations": len(entry.get("relations", [])),
+            "neighbors": len(neighbors),
+            "relations": len(relations),
         }
-        for node in [root] + list(entry.get("neighbors", [])):
+        for node in [root] + neighbors:
             if not isinstance(node, dict):
                 continue
             node_urn = optional_string(node.get("urn"))
@@ -304,7 +310,7 @@ def summarize_graph_layering(graph_layering: Dict[str, Any]) -> Dict[str, Any]:
                 continue
             seen_nodes.add(node_urn)
             node_counts[entity_type] = node_counts.get(entity_type, 0) + 1
-        for relation in entry.get("relations", []):
+        for relation in relations:
             if not isinstance(relation, dict):
                 continue
             from_urn = optional_string(relation.get("from_urn"))
