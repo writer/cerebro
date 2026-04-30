@@ -75,6 +75,24 @@ func TestUnknownSource(t *testing.T) {
 	}
 }
 
+func TestSourceValidationErrorsAreInvalidConfig(t *testing.T) {
+	registry, err := newGitHubRegistry()
+	if err != nil {
+		t.Fatalf("newGitHubRegistry() error = %v", err)
+	}
+	service := New(registry)
+	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "github"}); !errors.Is(err, ErrInvalidSourceConfig) {
+		t.Fatalf("Check() error = %v, want ErrInvalidSourceConfig", err)
+	}
+	if _, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{
+		SourceId: "github",
+		Config:   map[string]string{"token": "test"},
+		Cursor:   &cerebrov1.SourceCursor{Opaque: "-1"},
+	}); !errors.Is(err, ErrInvalidSourceConfig) {
+		t.Fatalf("Read() error = %v, want ErrInvalidSourceConfig", err)
+	}
+}
+
 func newGitHubRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.New()
 	if err != nil {

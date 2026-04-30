@@ -225,6 +225,20 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("CheckSource(empty) code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
 	}
+
+	_, err = client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{SourceId: "github"}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("CheckSource(missing token) code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
+	}
+
+	_, err = client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
+		SourceId: "github",
+		Config:   map[string]string{"token": "test"},
+		Cursor:   &cerebrov1.SourceCursor{Opaque: "-1"},
+	}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("ReadSource(invalid cursor) code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
+	}
 }
 
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {

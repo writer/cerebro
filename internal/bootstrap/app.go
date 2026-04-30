@@ -265,7 +265,7 @@ func sensitiveSourceConfigKey(key string) bool {
 }
 
 func sourceConnectError(err error) error {
-	if errors.Is(err, sourceops.ErrInvalidSourceID) {
+	if errors.Is(err, sourceops.ErrInvalidSourceID) || errors.Is(err, sourceops.ErrInvalidSourceConfig) {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if errors.Is(err, sourceops.ErrSourceNotFound) {
