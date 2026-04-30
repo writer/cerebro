@@ -33,6 +33,8 @@ type graphStore interface {
 	Close() error
 	Counts(context.Context) (graphstorekuzu.Counts, error)
 	IntegrityChecks(context.Context) ([]graphstorekuzu.IntegrityCheck, error)
+	PathPatterns(context.Context, int) ([]graphstorekuzu.PathPattern, error)
+	Topology(context.Context) (graphstorekuzu.Topology, error)
 	SampleTraversals(context.Context, int) ([]graphstorekuzu.Traversal, error)
 }
 
@@ -47,6 +49,17 @@ type Request struct {
 type EventPreview struct {
 	ID   string `json:"id"`
 	Kind string `json:"kind"`
+}
+
+// ReadPagePreview captures one source page consumed during the rebuild.
+type ReadPagePreview struct {
+	Page             uint32 `json:"page"`
+	Events           uint32 `json:"events"`
+	CheckpointCursor string `json:"checkpoint_cursor,omitempty"`
+	NextCursor       string `json:"next_cursor,omitempty"`
+	Watermark        string `json:"watermark,omitempty"`
+	FirstEventID     string `json:"first_event_id,omitempty"`
+	LastEventID      string `json:"last_event_id,omitempty"`
 }
 
 // EntityPreview captures one projected entity written to the local graph.
@@ -80,6 +93,8 @@ type StageConfirmation struct {
 	LinksProjected     uint32 `json:"links_projected,omitempty"`
 	AssertionsPassed   uint32 `json:"assertions_passed,omitempty"`
 	AssertionsFailed   uint32 `json:"assertions_failed,omitempty"`
+	PatternsVerified   uint32 `json:"patterns_verified,omitempty"`
+	TopologyBuckets    uint32 `json:"topology_buckets,omitempty"`
 	TraversalsVerified uint32 `json:"traversals_verified,omitempty"`
 	GraphNodes         int64  `json:"graph_nodes,omitempty"`
 	GraphLinks         int64  `json:"graph_links,omitempty"`
@@ -103,27 +118,47 @@ type AssertionPreview struct {
 	Passed   bool   `json:"passed"`
 }
 
+// PathPatternPreview captures one grouped two-hop graph pattern from the local graph.
+type PathPatternPreview struct {
+	Pattern        string `json:"pattern"`
+	FromType       string `json:"from_type"`
+	FirstRelation  string `json:"first_relation"`
+	ViaType        string `json:"via_type"`
+	SecondRelation string `json:"second_relation"`
+	ToType         string `json:"to_type"`
+	Count          int64  `json:"count"`
+}
+
+// TopologyPreview captures one connectivity bucket in the local graph.
+type TopologyPreview struct {
+	Name  string `json:"name"`
+	Count int64  `json:"count"`
+}
+
 // Result summarizes a dry-run rebuild execution.
 type Result struct {
-	RuntimeID          string               `json:"runtime_id"`
-	SourceID           string               `json:"source_id"`
-	TenantID           string               `json:"tenant_id,omitempty"`
-	DryRun             bool                 `json:"dry_run"`
-	PagesRead          uint32               `json:"pages_read"`
-	EventsRead         uint32               `json:"events_read"`
-	EntitiesProjected  uint32               `json:"entities_projected"`
-	LinksProjected     uint32               `json:"links_projected"`
-	GraphNodes         int64                `json:"graph_nodes"`
-	GraphLinks         int64                `json:"graph_links"`
-	StageConfirmations []*StageConfirmation `json:"stage_confirmations,omitempty"`
-	EventKinds         []*CountPreview      `json:"event_kinds,omitempty"`
-	GraphEntityTypes   []*CountPreview      `json:"graph_entity_types,omitempty"`
-	GraphRelationTypes []*CountPreview      `json:"graph_relation_types,omitempty"`
-	GraphAssertions    []*AssertionPreview  `json:"graph_assertions,omitempty"`
-	GraphTraversals    []*TraversalPreview  `json:"graph_traversals,omitempty"`
-	Events             []*EventPreview      `json:"events,omitempty"`
-	PreviewEntities    []*EntityPreview     `json:"preview_entities,omitempty"`
-	PreviewLinks       []*LinkPreview       `json:"preview_links,omitempty"`
+	RuntimeID          string                `json:"runtime_id"`
+	SourceID           string                `json:"source_id"`
+	TenantID           string                `json:"tenant_id,omitempty"`
+	DryRun             bool                  `json:"dry_run"`
+	PagesRead          uint32                `json:"pages_read"`
+	EventsRead         uint32                `json:"events_read"`
+	EntitiesProjected  uint32                `json:"entities_projected"`
+	LinksProjected     uint32                `json:"links_projected"`
+	GraphNodes         int64                 `json:"graph_nodes"`
+	GraphLinks         int64                 `json:"graph_links"`
+	StageConfirmations []*StageConfirmation  `json:"stage_confirmations,omitempty"`
+	ReadPages          []*ReadPagePreview    `json:"read_pages,omitempty"`
+	EventKinds         []*CountPreview       `json:"event_kinds,omitempty"`
+	GraphEntityTypes   []*CountPreview       `json:"graph_entity_types,omitempty"`
+	GraphRelationTypes []*CountPreview       `json:"graph_relation_types,omitempty"`
+	GraphAssertions    []*AssertionPreview   `json:"graph_assertions,omitempty"`
+	GraphPathPatterns  []*PathPatternPreview `json:"graph_path_patterns,omitempty"`
+	GraphTopology      []*TopologyPreview    `json:"graph_topology,omitempty"`
+	GraphTraversals    []*TraversalPreview   `json:"graph_traversals,omitempty"`
+	Events             []*EventPreview       `json:"events,omitempty"`
+	PreviewEntities    []*EntityPreview      `json:"preview_entities,omitempty"`
+	PreviewLinks       []*LinkPreview        `json:"preview_links,omitempty"`
 }
 
 // Service rebuilds a local graph from stored source runtimes.
@@ -219,6 +254,7 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	}
 	result.PagesRead = readSummary.PagesRead
 	result.EventsRead = readSummary.EventsRead
+	result.ReadPages = readSummary.Pages
 	result.EventKinds = countPreviews(readSummary.EventKinds)
 	result.Events = eventPreviews(readSummary.Events, previewLimit)
 	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
@@ -276,6 +312,32 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 		DurationMillis:   durationMillis(integrityStart),
 		AssertionsPassed: assertionsPassed,
 		AssertionsFailed: assertionsFailed,
+	})
+
+	patternStart := time.Now()
+	patterns, err := graph.PathPatterns(ctx, previewLimit)
+	if err != nil {
+		return nil, err
+	}
+	result.GraphPathPatterns = pathPatternPreviews(patterns)
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:             "verify_path_patterns",
+		Status:           stageStatusSuccess,
+		DurationMillis:   durationMillis(patternStart),
+		PatternsVerified: uint32(len(result.GraphPathPatterns)),
+	})
+
+	topologyStart := time.Now()
+	topology, err := graph.Topology(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result.GraphTopology = topologyPreviews(topology)
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:            "verify_topology",
+		Status:          stageStatusSuccess,
+		DurationMillis:  durationMillis(topologyStart),
+		TopologyBuckets: uint32(len(result.GraphTopology)),
 	})
 
 	traversalStart := time.Now()
@@ -340,6 +402,7 @@ func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEn
 
 type readSummary struct {
 	Events     []*cerebrov1.EventEnvelope
+	Pages      []*ReadPagePreview
 	PagesRead  uint32
 	EventsRead uint32
 	EventKinds map[string]uint32
@@ -358,18 +421,30 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 		}
 		summary.PagesRead++
 		summary.EventsRead += uint32(len(pull.Events))
+		pageSummary := &ReadPagePreview{
+			Page:             page + 1,
+			Events:           uint32(len(pull.Events)),
+			CheckpointCursor: checkpointCursor(pull.Checkpoint),
+			NextCursor:       nextCursor(pull.NextCursor),
+			Watermark:        formatWatermark(pull.Checkpoint),
+		}
 		for _, event := range pull.Events {
 			materialized := materializeEvent(runtime, event)
 			if materialized == nil {
 				continue
 			}
 			summary.Events = append(summary.Events, materialized)
+			if pageSummary.FirstEventID == "" {
+				pageSummary.FirstEventID = strings.TrimSpace(materialized.GetId())
+			}
+			pageSummary.LastEventID = strings.TrimSpace(materialized.GetId())
 			kind := strings.TrimSpace(materialized.GetKind())
 			if kind == "" {
 				continue
 			}
 			summary.EventKinds[kind]++
 		}
+		summary.Pages = append(summary.Pages, pageSummary)
 		if pull.NextCursor == nil {
 			break
 		}
@@ -600,6 +675,40 @@ func assertionCounts(assertions []*AssertionPreview) (uint32, uint32) {
 	return passed, failed
 }
 
+func pathPatternPreviews(patterns []graphstorekuzu.PathPattern) []*PathPatternPreview {
+	previews := make([]*PathPatternPreview, 0, len(patterns))
+	for _, pattern := range patterns {
+		previews = append(previews, &PathPatternPreview{
+			Pattern:        pathPatternLabel(pattern),
+			FromType:       pattern.FromType,
+			FirstRelation:  pattern.FirstRelation,
+			ViaType:        pattern.ViaType,
+			SecondRelation: pattern.SecondRelation,
+			ToType:         pattern.ToType,
+			Count:          pattern.Count,
+		})
+	}
+	return previews
+}
+
+func pathPatternLabel(pattern graphstorekuzu.PathPattern) string {
+	return strings.TrimSpace(pattern.FromType) +
+		" -[" + strings.TrimSpace(pattern.FirstRelation) + "]-> " +
+		strings.TrimSpace(pattern.ViaType) +
+		" -[" + strings.TrimSpace(pattern.SecondRelation) + "]-> " +
+		strings.TrimSpace(pattern.ToType)
+}
+
+func topologyPreviews(topology graphstorekuzu.Topology) []*TopologyPreview {
+	previews := []*TopologyPreview{
+		{Name: "isolated", Count: topology.Isolated},
+		{Name: "sources_only", Count: topology.SourcesOnly},
+		{Name: "sinks_only", Count: topology.SinksOnly},
+		{Name: "intermediates", Count: topology.Intermediates},
+	}
+	return previews
+}
+
 func traversalPreviews(traversals []graphstorekuzu.Traversal) []*TraversalPreview {
 	previews := make([]*TraversalPreview, 0, len(traversals))
 	for _, traversal := range traversals {
@@ -634,6 +743,27 @@ func durationMillis(start time.Time) int64 {
 		return 0
 	}
 	return time.Since(start).Milliseconds()
+}
+
+func formatWatermark(checkpoint *cerebrov1.SourceCheckpoint) string {
+	if checkpoint == nil || checkpoint.GetWatermark() == nil || checkpoint.GetWatermark().AsTime().IsZero() {
+		return ""
+	}
+	return checkpoint.GetWatermark().AsTime().UTC().Format(time.RFC3339Nano)
+}
+
+func checkpointCursor(checkpoint *cerebrov1.SourceCheckpoint) string {
+	if checkpoint == nil {
+		return ""
+	}
+	return strings.TrimSpace(checkpoint.GetCursorOpaque())
+}
+
+func nextCursor(cursor *cerebrov1.SourceCursor) string {
+	if cursor == nil {
+		return ""
+	}
+	return strings.TrimSpace(cursor.GetOpaque())
 }
 
 func min(left int, right int) int {

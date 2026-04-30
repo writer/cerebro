@@ -50,6 +50,24 @@ type IntegrityCheck struct {
 	Passed   bool
 }
 
+// PathPattern captures one grouped two-hop graph pattern.
+type PathPattern struct {
+	FromType       string
+	FirstRelation  string
+	ViaType        string
+	SecondRelation string
+	ToType         string
+	Count          int64
+}
+
+// Topology summarizes node connectivity classes in the local graph.
+type Topology struct {
+	Isolated      int64
+	SourcesOnly   int64
+	SinksOnly     int64
+	Intermediates int64
+}
+
 // Open opens a Kuzu-backed graph projection store.
 func Open(cfg config.GraphStoreConfig) (*Store, error) {
 	rawPath := strings.TrimSpace(cfg.KuzuPath)
@@ -170,6 +188,109 @@ func (s *Store) SampleTraversals(ctx context.Context, limit int) (_ []Traversal,
 		return nil, fmt.Errorf("iterate graph traversals: %w", err)
 	}
 	return traversals, nil
+}
+
+// PathPatterns returns bounded grouped two-hop path patterns from the local graph.
+func (s *Store) PathPatterns(ctx context.Context, limit int) (_ []PathPattern, err error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("kuzu is not configured")
+	}
+	if limit <= 0 {
+		return nil, nil
+	}
+	tables, err := s.graphTables(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !tables["entity"] || !tables["relation"] {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(
+		"MATCH (src:entity)-[left:relation]->(mid:entity)-[right:relation]->(dst:entity) "+
+			"RETURN src.entity_type, left.relation, mid.entity_type, right.relation, dst.entity_type, COUNT(*) "+
+			"ORDER BY COUNT(*) DESC, src.entity_type, left.relation, mid.entity_type, right.relation, dst.entity_type LIMIT %d",
+		limit,
+	))
+	if err != nil {
+		return nil, fmt.Errorf("query graph path patterns: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close graph path patterns: %w", closeErr)
+		}
+	}()
+
+	patterns := make([]PathPattern, 0, limit)
+	for rows.Next() {
+		var pattern PathPattern
+		if err := rows.Scan(
+			&pattern.FromType,
+			&pattern.FirstRelation,
+			&pattern.ViaType,
+			&pattern.SecondRelation,
+			&pattern.ToType,
+			&pattern.Count,
+		); err != nil {
+			return nil, fmt.Errorf("scan graph path pattern: %w", err)
+		}
+		patterns = append(patterns, pattern)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate graph path patterns: %w", err)
+	}
+	return patterns, nil
+}
+
+// Topology returns connectivity-class counts for nodes in the local graph.
+func (s *Store) Topology(ctx context.Context) (Topology, error) {
+	if s == nil || s.db == nil {
+		return Topology{}, errors.New("kuzu is not configured")
+	}
+	tables, err := s.graphTables(ctx)
+	if err != nil {
+		return Topology{}, err
+	}
+	if !tables["entity"] {
+		return Topology{}, nil
+	}
+	urns, err := s.entityURNs(ctx)
+	if err != nil {
+		return Topology{}, err
+	}
+	edges, err := s.graphEdges(ctx, tables["relation"])
+	if err != nil {
+		return Topology{}, err
+	}
+	inDegree := make(map[string]int64, len(urns))
+	outDegree := make(map[string]int64, len(urns))
+	for _, urn := range urns {
+		inDegree[urn] = 0
+		outDegree[urn] = 0
+	}
+	for _, edge := range edges {
+		if strings.TrimSpace(edge.FromURN) != "" {
+			outDegree[edge.FromURN]++
+		}
+		if strings.TrimSpace(edge.ToURN) != "" {
+			inDegree[edge.ToURN]++
+		}
+	}
+	var topology Topology
+	for _, urn := range urns {
+		incoming := inDegree[urn]
+		outgoing := outDegree[urn]
+		switch {
+		case incoming == 0 && outgoing == 0:
+			topology.Isolated++
+		case incoming == 0:
+			topology.SourcesOnly++
+		case outgoing == 0:
+			topology.SinksOnly++
+		default:
+			topology.Intermediates++
+		}
+	}
+	return topology, nil
 }
 
 // IntegrityChecks returns a fixed set of local graph invariant checks.
@@ -406,6 +527,62 @@ func (s *Store) countQuery(ctx context.Context, query string) (int64, error) {
 		return 0, fmt.Errorf("count query: %w", err)
 	}
 	return count, nil
+}
+
+type graphEdge struct {
+	FromURN string
+	ToURN   string
+}
+
+func (s *Store) entityURNs(ctx context.Context) (_ []string, err error) {
+	rows, err := s.db.QueryContext(ctx, "MATCH (e:entity) RETURN e.urn ORDER BY e.urn")
+	if err != nil {
+		return nil, fmt.Errorf("query entity urns: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close entity urns: %w", closeErr)
+		}
+	}()
+	var urns []string
+	for rows.Next() {
+		var urn string
+		if err := rows.Scan(&urn); err != nil {
+			return nil, fmt.Errorf("scan entity urn: %w", err)
+		}
+		urns = append(urns, urn)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate entity urns: %w", err)
+	}
+	return urns, nil
+}
+
+func (s *Store) graphEdges(ctx context.Context, relationsReady bool) (_ []graphEdge, err error) {
+	if !relationsReady {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, "MATCH (src:entity)-[r:relation]->(dst:entity) RETURN src.urn, dst.urn")
+	if err != nil {
+		return nil, fmt.Errorf("query graph edges: %w", err)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("close graph edges: %w", closeErr)
+		}
+	}()
+	var edges []graphEdge
+	for rows.Next() {
+		var edge graphEdge
+		if err := rows.Scan(&edge.FromURN, &edge.ToURN); err != nil {
+			return nil, fmt.Errorf("scan graph edge: %w", err)
+		}
+		edges = append(edges, edge)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate graph edges: %w", err)
+	}
+	return edges, nil
 }
 
 func stringColumn(value any) string {

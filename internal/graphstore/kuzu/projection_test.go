@@ -133,6 +133,22 @@ func TestProjectorBuildsTraversableLocalGraph(t *testing.T) {
 	if failedIntegrityChecks(checks) != 0 {
 		t.Fatalf("IntegrityChecks() failed = %d, want 0: %#v", failedIntegrityChecks(checks), checks)
 	}
+
+	patterns, err := store.PathPatterns(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("PathPatterns() error = %v", err)
+	}
+	if !containsPathPattern(patterns, "github.user", "authored", "github.pull_request", "belongs_to", "github.repo", 1) {
+		t.Fatalf("PathPatterns() missing authored pattern: %#v", patterns)
+	}
+
+	topology, err := store.Topology(context.Background())
+	if err != nil {
+		t.Fatalf("Topology() error = %v", err)
+	}
+	if topology.Isolated != 0 || topology.SourcesOnly != 1 || topology.SinksOnly != 2 || topology.Intermediates != 2 {
+		t.Fatalf("Topology() = %#v, want isolated=0 sources=1 sinks=2 intermediates=2", topology)
+	}
 }
 
 func TestProjectorKeepsLocalGraphIdentityLinksTenantScoped(t *testing.T) {
@@ -369,6 +385,20 @@ func integrityCheckActual(checks []IntegrityCheck, name string) int64 {
 		}
 	}
 	return -1
+}
+
+func containsPathPattern(patterns []PathPattern, fromType string, firstRelation string, viaType string, secondRelation string, toType string, count int64) bool {
+	for _, pattern := range patterns {
+		if pattern.FromType == fromType &&
+			pattern.FirstRelation == firstRelation &&
+			pattern.ViaType == viaType &&
+			pattern.SecondRelation == secondRelation &&
+			pattern.ToType == toType &&
+			pattern.Count == count {
+			return true
+		}
+	}
+	return false
 }
 
 func integrityCheckPassed(checks []IntegrityCheck, name string) bool {
