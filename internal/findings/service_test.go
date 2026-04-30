@@ -1694,3 +1694,16 @@ func cloneEntityRef(ref *cerebrov1.EntityRef) *cerebrov1.EntityRef {
 	}
 	return proto.Clone(ref).(*cerebrov1.EntityRef)
 }
+
+func TestFindingEvaluationRunIDIsUniqueAcrossSameNanosecond(t *testing.T) {
+	t.Parallel()
+	startedAt := time.Date(2026, 4, 24, 12, 0, 0, 123, time.UTC)
+	seen := make(map[string]struct{}, 32)
+	for i := 0; i < 32; i++ {
+		id := findingEvaluationRunID("writer-okta-audit", "okta_policy_rule_lifecycle_tampering", startedAt)
+		if _, dup := seen[id]; dup {
+			t.Fatalf("duplicate finding evaluation run id at iteration %d: %q", i, id)
+		}
+		seen[id] = struct{}{}
+	}
+}

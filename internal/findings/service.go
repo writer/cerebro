@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -592,10 +593,24 @@ func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32,
 	}
 }
 
+// findingEvaluationRunIDReplacer normalizes characters that would otherwise leak into the
+// composite run id and conflict with downstream identifier conventions.
+var findingEvaluationRunIDReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
+
 func findingEvaluationRunID(runtimeID string, ruleID string, startedAt time.Time) string {
-	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
-	prefix := replacer.Replace(strings.TrimSpace(runtimeID) + "-" + strings.TrimSpace(ruleID))
-	return "finding-evaluation-run-" + prefix + "-" + fmt.Sprintf("%d", startedAt.UnixNano())
+	prefix := findingEvaluationRunIDReplacer.Replace(strings.TrimSpace(runtimeID) + "-" + strings.TrimSpace(ruleID))
+	return "finding-evaluation-run-" + prefix + "-" + fmt.Sprintf("%d", startedAt.UnixNano()) + "-" + randomFindingRunSuffix()
+}
+
+// randomFindingRunSuffix returns a short random hex token to disambiguate runs that share the
+// same (runtimeID, ruleID, startedAt) -- e.g. multiple multi-rule evaluations dispatched in the
+// same nanosecond. Falls back to "0" only when the entropy source is unavailable.
+func randomFindingRunSuffix() string {
+	var buf [4]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "0"
+	}
+	return hex.EncodeToString(buf[:])
 }
 
 func (s *Service) finishCompletedRun(ctx context.Context, run *cerebrov1.FindingEvaluationRun, eventsEvaluated uint32, findingIDs []string) error {

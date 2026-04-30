@@ -21,6 +21,7 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
@@ -2232,4 +2233,43 @@ func cloneEntityRef(ref *cerebrov1.EntityRef) *cerebrov1.EntityRef {
 		return nil
 	}
 	return proto.Clone(ref).(*cerebrov1.EntityRef)
+}
+
+func TestFindingsConnectErrorMapping(t *testing.T) {
+	t.Parallel()
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	deadlineCtx, deadlineCancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer deadlineCancel()
+	cases := []struct {
+		name string
+		err  error
+		want connect.Code
+	}{
+		{"runtime_not_found", ports.ErrSourceRuntimeNotFound, connect.CodeNotFound},
+		{"rule_not_found", findings.ErrRuleNotFound, connect.CodeNotFound},
+		{"run_not_found", ports.ErrFindingEvaluationRunNotFound, connect.CodeNotFound},
+		{"evidence_not_found", ports.ErrFindingEvidenceNotFound, connect.CodeNotFound},
+		{"runtime_unavailable", findings.ErrRuntimeUnavailable, connect.CodeUnavailable},
+		{"canceled", canceledCtx.Err(), connect.CodeCanceled},
+		{"deadline", deadlineCtx.Err(), connect.CodeDeadlineExceeded},
+		{"opaque", errors.New("internal token leak"), connect.CodeInternal},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := findingsConnectError(tc.err)
+			var connectErr *connect.Error
+			if !errors.As(got, &connectErr) {
+				t.Fatalf("findingsConnectError(%v) = %v, want connect.Error", tc.err, got)
+			}
+			if connectErr.Code() != tc.want {
+				t.Fatalf("code = %v, want %v", connectErr.Code(), tc.want)
+			}
+			if tc.name == "opaque" && connectErr.Message() != "internal error" {
+				t.Fatalf("message = %q, want %q", connectErr.Message(), "internal error")
+			}
+		})
+	}
 }
