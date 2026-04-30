@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -24,12 +25,15 @@ const (
 	maxPageLimit        = 100
 	defaultPreviewLimit = 5
 	maxPreviewLimit     = 20
+	stageStatusSuccess  = "success"
 )
 
 type graphStore interface {
 	ports.ProjectionGraphStore
 	Close() error
 	Counts(context.Context) (graphstorekuzu.Counts, error)
+	IntegrityChecks(context.Context) ([]graphstorekuzu.IntegrityCheck, error)
+	SampleTraversals(context.Context, int) ([]graphstorekuzu.Traversal, error)
 }
 
 // Request configures one local graph rebuild dry-run.
@@ -59,21 +63,67 @@ type LinkPreview struct {
 	ToURN    string `json:"to_urn"`
 }
 
+// CountPreview captures one grouped count in the rebuild output.
+type CountPreview struct {
+	Name  string `json:"name"`
+	Count uint32 `json:"count"`
+}
+
+// StageConfirmation captures local confirmation for one rebuild stage.
+type StageConfirmation struct {
+	Name               string `json:"name"`
+	Status             string `json:"status"`
+	DurationMillis     int64  `json:"duration_ms"`
+	PagesRead          uint32 `json:"pages_read,omitempty"`
+	EventsRead         uint32 `json:"events_read,omitempty"`
+	EntitiesProjected  uint32 `json:"entities_projected,omitempty"`
+	LinksProjected     uint32 `json:"links_projected,omitempty"`
+	AssertionsPassed   uint32 `json:"assertions_passed,omitempty"`
+	AssertionsFailed   uint32 `json:"assertions_failed,omitempty"`
+	TraversalsVerified uint32 `json:"traversals_verified,omitempty"`
+	GraphNodes         int64  `json:"graph_nodes,omitempty"`
+	GraphLinks         int64  `json:"graph_links,omitempty"`
+}
+
+// TraversalPreview captures one sampled two-hop path returned from the local graph.
+type TraversalPreview struct {
+	Path           string `json:"path"`
+	FromURN        string `json:"from_urn"`
+	FirstRelation  string `json:"first_relation"`
+	ViaURN         string `json:"via_urn"`
+	SecondRelation string `json:"second_relation"`
+	ToURN          string `json:"to_urn"`
+}
+
+// AssertionPreview captures one local graph integrity assertion.
+type AssertionPreview struct {
+	Name     string `json:"name"`
+	Actual   int64  `json:"actual"`
+	Expected int64  `json:"expected"`
+	Passed   bool   `json:"passed"`
+}
+
 // Result summarizes a dry-run rebuild execution.
 type Result struct {
-	RuntimeID         string           `json:"runtime_id"`
-	SourceID          string           `json:"source_id"`
-	TenantID          string           `json:"tenant_id,omitempty"`
-	DryRun            bool             `json:"dry_run"`
-	PagesRead         uint32           `json:"pages_read"`
-	EventsRead        uint32           `json:"events_read"`
-	EntitiesProjected uint32           `json:"entities_projected"`
-	LinksProjected    uint32           `json:"links_projected"`
-	GraphNodes        int64            `json:"graph_nodes"`
-	GraphLinks        int64            `json:"graph_links"`
-	Events            []*EventPreview  `json:"events,omitempty"`
-	PreviewEntities   []*EntityPreview `json:"preview_entities,omitempty"`
-	PreviewLinks      []*LinkPreview   `json:"preview_links,omitempty"`
+	RuntimeID          string               `json:"runtime_id"`
+	SourceID           string               `json:"source_id"`
+	TenantID           string               `json:"tenant_id,omitempty"`
+	DryRun             bool                 `json:"dry_run"`
+	PagesRead          uint32               `json:"pages_read"`
+	EventsRead         uint32               `json:"events_read"`
+	EntitiesProjected  uint32               `json:"entities_projected"`
+	LinksProjected     uint32               `json:"links_projected"`
+	GraphNodes         int64                `json:"graph_nodes"`
+	GraphLinks         int64                `json:"graph_links"`
+	StageConfirmations []*StageConfirmation `json:"stage_confirmations,omitempty"`
+	EventKinds         []*CountPreview      `json:"event_kinds,omitempty"`
+	GraphEntityTypes   []*CountPreview      `json:"graph_entity_types,omitempty"`
+	GraphRelationTypes []*CountPreview      `json:"graph_relation_types,omitempty"`
+	GraphAssertions    []*AssertionPreview  `json:"graph_assertions,omitempty"`
+	GraphTraversals    []*TraversalPreview  `json:"graph_traversals,omitempty"`
+	Events             []*EventPreview      `json:"events,omitempty"`
+	PreviewEntities    []*EntityPreview     `json:"preview_entities,omitempty"`
+	PreviewLinks       []*LinkPreview       `json:"preview_links,omitempty"`
 }
 
 // Service rebuilds a local graph from stored source runtimes.
@@ -112,6 +162,7 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	if runtimeID == "" {
 		return nil, fmt.Errorf("runtime id is required")
 	}
+	resolveStart := time.Now()
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
 		return nil, err
@@ -120,6 +171,19 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	if err != nil {
 		return nil, err
 	}
+	result := &Result{
+		RuntimeID: runtime.GetId(),
+		SourceID:  runtime.GetSourceId(),
+		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
+		DryRun:    true,
+	}
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:           "resolve_runtime",
+		Status:         stageStatusSuccess,
+		DurationMillis: durationMillis(resolveStart),
+	})
+
+	openStart := time.Now()
 	tempDir, err := s.makeTempDir()
 	if err != nil {
 		return nil, fmt.Errorf("create temp graph directory: %w", err)
@@ -141,56 +205,85 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	if err := graph.Ping(ctx); err != nil {
 		return nil, err
 	}
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:           "open_graph",
+		Status:         stageStatusSuccess,
+		DurationMillis: durationMillis(openStart),
+	})
 
-	previewer := newPreviewGraphStore(graph, normalizePreviewLimit(req.PreviewLimit))
-	projector := sourceprojection.New(nil, previewer)
-	pageLimit := normalizePageLimit(req.PageLimit)
-
-	result := &Result{
-		RuntimeID: runtime.GetId(),
-		SourceID:  runtime.GetSourceId(),
-		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
-		DryRun:    true,
+	previewLimit := normalizePreviewLimit(req.PreviewLimit)
+	readSummary, projectSummary, err := s.processEvents(ctx, source, runtime, graph, normalizePageLimit(req.PageLimit), previewLimit)
+	if err != nil {
+		return nil, err
 	}
-	var cursor *cerebrov1.SourceCursor
-	for page := uint32(0); page < pageLimit; page++ {
-		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtime.GetConfig()), cursor)
-		if err != nil {
-			return nil, fmt.Errorf("read source page %d: %w", page+1, err)
-		}
-		if len(pull.Events) == 0 {
-			break
-		}
-		result.PagesRead++
-		result.EventsRead += uint32(len(pull.Events))
-		for idx, event := range pull.Events {
-			materialized := materializeEvent(runtime, event)
-			if materialized == nil {
-				return nil, fmt.Errorf("read source page %d: nil event at index %d", page+1, idx)
-			}
-			previewer.addEvent(materialized)
-			projected, err := projector.Project(ctx, materialized)
-			if err != nil {
-				return nil, fmt.Errorf("project event %q: %w", materialized.GetId(), err)
-			}
-			result.EntitiesProjected += projected.EntitiesProjected
-			result.LinksProjected += projected.LinksProjected
-		}
-		if pull.NextCursor == nil {
-			break
-		}
-		cursor = proto.Clone(pull.NextCursor).(*cerebrov1.SourceCursor)
-	}
+	result.PagesRead = readSummary.PagesRead
+	result.EventsRead = readSummary.EventsRead
+	result.EventKinds = countPreviews(readSummary.EventKinds)
+	result.Events = readSummary.EventPreviews
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:           "read_source",
+		Status:         stageStatusSuccess,
+		DurationMillis: readSummary.DurationMillis,
+		PagesRead:      readSummary.PagesRead,
+		EventsRead:     readSummary.EventsRead,
+	})
 
+	result.EntitiesProjected = projectSummary.EntitiesProjected
+	result.LinksProjected = projectSummary.LinksProjected
+	result.GraphEntityTypes = projectSummary.GraphEntityTypes
+	result.GraphRelationTypes = projectSummary.GraphRelationTypes
+	result.PreviewEntities = projectSummary.PreviewEntities
+	result.PreviewLinks = projectSummary.PreviewLinks
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:              "project_graph",
+		Status:            stageStatusSuccess,
+		DurationMillis:    projectSummary.DurationMillis,
+		EntitiesProjected: projectSummary.EntitiesProjected,
+		LinksProjected:    projectSummary.LinksProjected,
+	})
+
+	countStart := time.Now()
 	counts, err := graph.Counts(ctx)
 	if err != nil {
 		return nil, err
 	}
 	result.GraphNodes = counts.Nodes
 	result.GraphLinks = counts.Relations
-	result.Events = previewer.events()
-	result.PreviewEntities = previewer.entities()
-	result.PreviewLinks = previewer.links()
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:           "count_graph",
+		Status:         stageStatusSuccess,
+		DurationMillis: durationMillis(countStart),
+		GraphNodes:     counts.Nodes,
+		GraphLinks:     counts.Relations,
+	})
+
+	integrityStart := time.Now()
+	checks, err := graph.IntegrityChecks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result.GraphAssertions = assertionPreviews(checks)
+	assertionsPassed, assertionsFailed := assertionCounts(result.GraphAssertions)
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:             "verify_integrity",
+		Status:           stageStatusSuccess,
+		DurationMillis:   durationMillis(integrityStart),
+		AssertionsPassed: assertionsPassed,
+		AssertionsFailed: assertionsFailed,
+	})
+
+	traversalStart := time.Now()
+	traversals, err := graph.SampleTraversals(ctx, previewLimit)
+	if err != nil {
+		return nil, err
+	}
+	result.GraphTraversals = traversalPreviews(traversals)
+	result.StageConfirmations = append(result.StageConfirmations, &StageConfirmation{
+		Name:               "verify_traversals",
+		Status:             stageStatusSuccess,
+		DurationMillis:     durationMillis(traversalStart),
+		TraversalsVerified: uint32(len(result.GraphTraversals)),
+	})
 	return result, nil
 }
 
@@ -239,20 +332,97 @@ func materializeEvent(runtime *cerebrov1.SourceRuntime, event *cerebrov1.EventEn
 	return materialized
 }
 
+type readSummary struct {
+	EventPreviews  []*EventPreview
+	PagesRead      uint32
+	EventsRead     uint32
+	EventKinds     map[string]uint32
+	DurationMillis int64
+}
+
+func (s *Service) processEvents(ctx context.Context, source sourcecdk.Source, runtime *cerebrov1.SourceRuntime, graph graphStore, pageLimit uint32, previewLimit int) (*readSummary, *projectSummary, error) {
+	readSummary := &readSummary{EventKinds: make(map[string]uint32)}
+	previewer := newPreviewGraphStore(graph, previewLimit)
+	projector := sourceprojection.New(nil, previewer)
+	projectSummary := &projectSummary{}
+	var cursor *cerebrov1.SourceCursor
+	for page := uint32(0); page < pageLimit; page++ {
+		readStart := time.Now()
+		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtime.GetConfig()), cursor)
+		readSummary.DurationMillis += durationMillis(readStart)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read source page %d: %w", page+1, err)
+		}
+		if len(pull.Events) == 0 {
+			break
+		}
+		readSummary.PagesRead++
+		readSummary.EventsRead += uint32(len(pull.Events))
+		for idx, event := range pull.Events {
+			materialized := materializeEvent(runtime, event)
+			if materialized == nil {
+				return nil, nil, fmt.Errorf("read source page %d: nil event at index %d", page+1, idx)
+			}
+			if len(readSummary.EventPreviews) < previewLimit {
+				readSummary.EventPreviews = append(readSummary.EventPreviews, eventPreview(materialized))
+			}
+			kind := strings.TrimSpace(materialized.GetKind())
+			if kind != "" {
+				readSummary.EventKinds[kind]++
+			}
+
+			projectStart := time.Now()
+			projected, err := projector.Project(ctx, materialized)
+			projectSummary.DurationMillis += durationMillis(projectStart)
+			if err != nil {
+				return nil, nil, fmt.Errorf("project event %q: %w", materialized.GetId(), err)
+			}
+			projectSummary.EntitiesProjected += projected.EntitiesProjected
+			projectSummary.LinksProjected += projected.LinksProjected
+		}
+		if pull.NextCursor == nil {
+			break
+		}
+		cursor = proto.Clone(pull.NextCursor).(*cerebrov1.SourceCursor)
+	}
+	projectSummary.GraphEntityTypes = previewer.entityTypes()
+	projectSummary.GraphRelationTypes = previewer.relationTypes()
+	projectSummary.PreviewEntities = previewer.entities()
+	projectSummary.PreviewLinks = previewer.links()
+	return readSummary, projectSummary, nil
+}
+
+type projectSummary struct {
+	EntitiesProjected  uint32
+	LinksProjected     uint32
+	DurationMillis     int64
+	GraphEntityTypes   []*CountPreview
+	GraphRelationTypes []*CountPreview
+	PreviewEntities    []*EntityPreview
+	PreviewLinks       []*LinkPreview
+}
+
 type previewGraphStore struct {
-	store      graphStore
-	limit      int
-	eventItems []*EventPreview
-	entitiesBy map[string]*EntityPreview
-	linksBy    map[string]*LinkPreview
+	store            graphStore
+	limit            int
+	entitiesBy       map[string]*EntityPreview
+	linksBy          map[string]*LinkPreview
+	seenEntities     map[string]struct{}
+	seenLinks        map[string]struct{}
+	entityTypeCounts map[string]uint32
+	relationCounts   map[string]uint32
 }
 
 func newPreviewGraphStore(store graphStore, limit int) *previewGraphStore {
 	return &previewGraphStore{
-		store:      store,
-		limit:      limit,
-		entitiesBy: make(map[string]*EntityPreview),
-		linksBy:    make(map[string]*LinkPreview),
+		store:            store,
+		limit:            limit,
+		entitiesBy:       make(map[string]*EntityPreview),
+		linksBy:          make(map[string]*LinkPreview),
+		seenEntities:     make(map[string]struct{}),
+		seenLinks:        make(map[string]struct{}),
+		entityTypeCounts: make(map[string]uint32),
+		relationCounts:   make(map[string]uint32),
 	}
 }
 
@@ -264,11 +434,21 @@ func (s *previewGraphStore) UpsertProjectedEntity(ctx context.Context, entity *p
 	if err := s.store.UpsertProjectedEntity(ctx, entity); err != nil {
 		return err
 	}
-	if entity == nil || len(s.entitiesBy) >= s.limit {
+	if entity == nil {
 		return nil
 	}
 	urn := strings.TrimSpace(entity.URN)
 	if urn == "" {
+		return nil
+	}
+	if _, exists := s.seenEntities[urn]; !exists {
+		s.seenEntities[urn] = struct{}{}
+		entityType := strings.TrimSpace(entity.EntityType)
+		if entityType != "" {
+			s.entityTypeCounts[entityType]++
+		}
+	}
+	if len(s.entitiesBy) >= s.limit {
 		return nil
 	}
 	if _, exists := s.entitiesBy[urn]; exists {
@@ -286,7 +466,7 @@ func (s *previewGraphStore) UpsertProjectedLink(ctx context.Context, link *ports
 	if err := s.store.UpsertProjectedLink(ctx, link); err != nil {
 		return err
 	}
-	if link == nil || len(s.linksBy) >= s.limit {
+	if link == nil {
 		return nil
 	}
 	key := strings.Join([]string{
@@ -295,6 +475,16 @@ func (s *previewGraphStore) UpsertProjectedLink(ctx context.Context, link *ports
 		strings.TrimSpace(link.ToURN),
 	}, "|")
 	if key == "||" {
+		return nil
+	}
+	if _, exists := s.seenLinks[key]; !exists {
+		s.seenLinks[key] = struct{}{}
+		relation := strings.TrimSpace(link.Relation)
+		if relation != "" {
+			s.relationCounts[relation]++
+		}
+	}
+	if len(s.linksBy) >= s.limit {
 		return nil
 	}
 	if _, exists := s.linksBy[key]; exists {
@@ -306,27 +496,6 @@ func (s *previewGraphStore) UpsertProjectedLink(ctx context.Context, link *ports
 		ToURN:    strings.TrimSpace(link.ToURN),
 	}
 	return nil
-}
-
-func (s *previewGraphStore) addEvent(event *cerebrov1.EventEnvelope) {
-	if event == nil || len(s.eventItems) >= s.limit {
-		return
-	}
-	s.eventItems = append(s.eventItems, &EventPreview{
-		ID:   strings.TrimSpace(event.GetId()),
-		Kind: strings.TrimSpace(event.GetKind()),
-	})
-}
-
-func (s *previewGraphStore) events() []*EventPreview {
-	events := append([]*EventPreview(nil), s.eventItems...)
-	sort.Slice(events, func(i, j int) bool {
-		if events[i].ID == events[j].ID {
-			return events[i].Kind < events[j].Kind
-		}
-		return events[i].ID < events[j].ID
-	})
-	return events
 }
 
 func (s *previewGraphStore) entities() []*EntityPreview {
@@ -351,4 +520,101 @@ func (s *previewGraphStore) links() []*LinkPreview {
 		return left < right
 	})
 	return links
+}
+
+func (s *previewGraphStore) entityTypes() []*CountPreview {
+	return countPreviews(s.entityTypeCounts)
+}
+
+func (s *previewGraphStore) relationTypes() []*CountPreview {
+	return countPreviews(s.relationCounts)
+}
+
+func eventPreview(event *cerebrov1.EventEnvelope) *EventPreview {
+	return &EventPreview{
+		ID:   strings.TrimSpace(event.GetId()),
+		Kind: strings.TrimSpace(event.GetKind()),
+	}
+}
+
+func countPreviews(counts map[string]uint32) []*CountPreview {
+	previews := make([]*CountPreview, 0, len(counts))
+	for name, count := range counts {
+		if strings.TrimSpace(name) == "" || count == 0 {
+			continue
+		}
+		previews = append(previews, &CountPreview{Name: name, Count: count})
+	}
+	sort.Slice(previews, func(i, j int) bool {
+		if previews[i].Count == previews[j].Count {
+			return previews[i].Name < previews[j].Name
+		}
+		return previews[i].Count > previews[j].Count
+	})
+	return previews
+}
+
+func assertionPreviews(checks []graphstorekuzu.IntegrityCheck) []*AssertionPreview {
+	previews := make([]*AssertionPreview, 0, len(checks))
+	for _, check := range checks {
+		previews = append(previews, &AssertionPreview{
+			Name:     check.Name,
+			Actual:   check.Actual,
+			Expected: check.Expected,
+			Passed:   check.Passed,
+		})
+	}
+	return previews
+}
+
+func assertionCounts(assertions []*AssertionPreview) (uint32, uint32) {
+	var passed uint32
+	var failed uint32
+	for _, assertion := range assertions {
+		if assertion == nil {
+			continue
+		}
+		if assertion.Passed {
+			passed++
+			continue
+		}
+		failed++
+	}
+	return passed, failed
+}
+
+func traversalPreviews(traversals []graphstorekuzu.Traversal) []*TraversalPreview {
+	previews := make([]*TraversalPreview, 0, len(traversals))
+	for _, traversal := range traversals {
+		previews = append(previews, &TraversalPreview{
+			Path:           traversalPath(traversal),
+			FromURN:        traversal.FromURN,
+			FirstRelation:  traversal.FirstRelation,
+			ViaURN:         traversal.ViaURN,
+			SecondRelation: traversal.SecondRelation,
+			ToURN:          traversal.ToURN,
+		})
+	}
+	return previews
+}
+
+func traversalPath(traversal graphstorekuzu.Traversal) string {
+	from := firstNonEmptyLabel(traversal.FromLabel, traversal.FromURN)
+	via := firstNonEmptyLabel(traversal.ViaLabel, traversal.ViaURN)
+	to := firstNonEmptyLabel(traversal.ToLabel, traversal.ToURN)
+	return from + " -[" + traversal.FirstRelation + "]-> " + via + " -[" + traversal.SecondRelation + "]-> " + to
+}
+
+func firstNonEmptyLabel(label string, fallback string) string {
+	if strings.TrimSpace(label) != "" {
+		return strings.TrimSpace(label)
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func durationMillis(start time.Time) int64 {
+	if start.IsZero() {
+		return 0
+	}
+	return time.Since(start).Milliseconds()
 }
