@@ -10,6 +10,12 @@ LINTER_BIN := $(GO_BIN)/cerebrolint
 build:
 	go build -o bin/cerebro ./cmd/cerebro
 
+# Portable CGO build: stages libkuzu next to bin/cerebro and uses an $ORIGIN-relative rpath so
+# the resulting binary does not depend on the GOPATH module-cache layout of the build host.
+# See scripts/build_with_kuzu.sh and the Kuzu rpath note in docs/operations/kuzu.md.
+build-portable:
+	./scripts/build_with_kuzu.sh
+
 serve: build
 	./bin/cerebro serve
 
