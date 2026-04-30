@@ -23,6 +23,25 @@ curl http://localhost:8080/ready
 curl http://localhost:8080/metrics
 ```
 
+### Bootstrap Findings Platform
+```bash
+# List registered finding rules
+curl http://localhost:8080/finding-rules
+
+# Evaluate one runtime through one explicit finding rule
+curl -X POST \
+  "http://localhost:8080/source-runtimes/writer-okta-audit/findings/evaluate?rule_id=identity-okta-policy-rule-lifecycle-tampering&event_limit=100"
+
+# Inspect persisted finding evaluation runs
+curl \
+  "http://localhost:8080/source-runtimes/writer-okta-audit/finding-evaluation-runs?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=completed&limit=20"
+curl http://localhost:8080/finding-evaluation-runs/<run-id>
+
+# Read persisted findings for one runtime
+curl \
+  "http://localhost:8080/source-runtimes/writer-okta-audit/findings?rule_id=identity-okta-policy-rule-lifecycle-tampering&status=open"
+```
+
 ### Query
 ```bash
 # List tables

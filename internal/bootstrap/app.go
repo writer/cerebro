@@ -60,8 +60,10 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("/health", app.handleHealth)
 	mux.HandleFunc("/healthz", app.handleHealth)
 	mux.HandleFunc("GET /reports", app.handleListReportDefinitions)
+	mux.HandleFunc("GET /finding-rules", app.handleListFindingRules)
 	mux.HandleFunc("POST /reports/{reportID}/runs", app.handleRunReport)
 	mux.HandleFunc("GET /report-runs/{runID}", app.handleGetReportRun)
+	mux.HandleFunc("GET /finding-evaluation-runs/{runID}", app.handleGetFindingEvaluationRun)
 	mux.HandleFunc("/sources", app.handleSources)
 	mux.HandleFunc("GET /sources/{sourceID}/check", app.handleCheckSource)
 	mux.HandleFunc("GET /sources/{sourceID}/discover", app.handleDiscoverSource)
@@ -73,6 +75,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/claims", app.handleListClaims)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/claims", app.handleWriteClaims)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/findings", app.handleListFindings)
+	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-evaluation-runs", app.handleListFindingEvaluationRuns)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -111,6 +114,21 @@ func (a *App) handleSources(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleListReportDefinitions(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, a.reportService().List())
+}
+
+func (a *App) handleListFindingRules(w http.ResponseWriter, r *http.Request) {
+	writeProtoJSON(w, http.StatusOK, a.findingService().ListRules())
+}
+
+func (a *App) handleGetFindingEvaluationRun(w http.ResponseWriter, r *http.Request) {
+	response, err := a.findingService().GetEvaluationRun(r.Context(), r.PathValue("runID"))
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.GetFindingEvaluationRunResponse{
+		Run: response,
+	})
 }
 
 func (a *App) handleRunReport(w http.ResponseWriter, r *http.Request) {
@@ -391,6 +409,37 @@ func (a *App) handleListFindings(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, listFindingsResponse(response))
 }
 
+func (a *App) handleListFindingEvaluationRuns(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.ListFindingEvaluationRunsRequest{
+		RuntimeId: r.PathValue("runtimeID"),
+		RuleId:    r.URL.Query().Get("rule_id"),
+		Status:    r.URL.Query().Get("status"),
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		body := []byte(`{"limit":` + limit + `}`)
+		if err := protojson.Unmarshal(body, request); err != nil {
+			writeFindingError(w, err)
+			return
+		}
+		request.RuntimeId = r.PathValue("runtimeID")
+		request.RuleId = r.URL.Query().Get("rule_id")
+		request.Status = r.URL.Query().Get("status")
+	}
+	response, err := a.findingService().ListEvaluationRuns(r.Context(), findings.ListEvaluationRunsRequest{
+		RuntimeID: request.GetRuntimeId(),
+		RuleID:    request.GetRuleId(),
+		Status:    request.GetStatus(),
+		Limit:     request.GetLimit(),
+	})
+	if err != nil {
+		writeFindingError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, &cerebrov1.ListFindingEvaluationRunsResponse{
+		Runs: response.Runs,
+	})
+}
+
 func (s *bootstrapService) GetVersion(_ context.Context, _ *connect.Request[cerebrov1.GetVersionRequest]) (*connect.Response[cerebrov1.GetVersionResponse], error) {
 	return connect.NewResponse(&cerebrov1.GetVersionResponse{
 		ServiceName: buildinfo.ServiceName,
@@ -411,6 +460,15 @@ func (s *bootstrapService) ListReportDefinitions(_ context.Context, _ *connect.R
 		graphQueryStore(s.deps.GraphStore),
 		reportStore(s.deps.StateStore),
 	).List()), nil
+}
+
+func (s *bootstrapService) ListFindingRules(_ context.Context, _ *connect.Request[cerebrov1.ListFindingRulesRequest]) (*connect.Response[cerebrov1.ListFindingRulesResponse], error) {
+	return connect.NewResponse(findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+	).ListRules()), nil
 }
 
 func (s *bootstrapService) RunReport(ctx context.Context, req *connect.Request[cerebrov1.RunReportRequest]) (*connect.Response[cerebrov1.RunReportResponse], error) {
@@ -557,6 +615,7 @@ func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Reques
 		sourceRuntimeStore(s.deps.StateStore),
 		eventReplayer(s.deps.AppendLog),
 		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
 	).ListFindings(ctx, findings.ListRequest{
 		RuntimeID:   req.Msg.GetRuntimeId(),
 		FindingID:   req.Msg.GetFindingId(),
@@ -568,9 +627,42 @@ func (s *bootstrapService) ListFindings(ctx context.Context, req *connect.Reques
 		Limit:       req.Msg.GetLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, findingsConnectError(err)
 	}
 	return connect.NewResponse(listFindingsResponse(response)), nil
+}
+
+func (s *bootstrapService) ListFindingEvaluationRuns(ctx context.Context, req *connect.Request[cerebrov1.ListFindingEvaluationRunsRequest]) (*connect.Response[cerebrov1.ListFindingEvaluationRunsResponse], error) {
+	response, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+	).ListEvaluationRuns(ctx, findings.ListEvaluationRunsRequest{
+		RuntimeID: req.Msg.GetRuntimeId(),
+		RuleID:    req.Msg.GetRuleId(),
+		Status:    req.Msg.GetStatus(),
+		Limit:     req.Msg.GetLimit(),
+	})
+	if err != nil {
+		return nil, findingsConnectError(err)
+	}
+	return connect.NewResponse(&cerebrov1.ListFindingEvaluationRunsResponse{
+		Runs: response.Runs,
+	}), nil
+}
+
+func (s *bootstrapService) GetFindingEvaluationRun(ctx context.Context, req *connect.Request[cerebrov1.GetFindingEvaluationRunRequest]) (*connect.Response[cerebrov1.GetFindingEvaluationRunResponse], error) {
+	run, err := findings.New(
+		sourceRuntimeStore(s.deps.StateStore),
+		eventReplayer(s.deps.AppendLog),
+		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
+	).GetEvaluationRun(ctx, req.Msg.GetId())
+	if err != nil {
+		return nil, findingsConnectError(err)
+	}
+	return connect.NewResponse(&cerebrov1.GetFindingEvaluationRunResponse{Run: run}), nil
 }
 
 func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, req *connect.Request[cerebrov1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[cerebrov1.EvaluateSourceRuntimeFindingsResponse], error) {
@@ -578,13 +670,14 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 		sourceRuntimeStore(s.deps.StateStore),
 		eventReplayer(s.deps.AppendLog),
 		findingStore(s.deps.StateStore),
+		findingEvaluationRunStore(s.deps.StateStore),
 	).EvaluateSourceRuntime(ctx, findings.EvaluateRequest{
 		RuntimeID:  req.Msg.GetId(),
 		RuleID:     req.Msg.GetRuleId(),
 		EventLimit: req.Msg.GetEventLimit(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, findingsConnectError(err)
 	}
 	return connect.NewResponse(findingResponse(response)), nil
 }
@@ -668,6 +761,7 @@ func (a *App) findingService() *findings.Service {
 		sourceRuntimeStore(a.deps.StateStore),
 		eventReplayer(a.deps.AppendLog),
 		findingStore(a.deps.StateStore),
+		findingEvaluationRunStore(a.deps.StateStore),
 	)
 }
 
@@ -734,10 +828,32 @@ func writeFindingError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, findings.ErrRuleNotFound):
 		statusCode = http.StatusNotFound
+	case errors.Is(err, ports.ErrFindingEvaluationRunNotFound):
+		statusCode = http.StatusNotFound
 	case errors.Is(err, findings.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	}
 	http.Error(w, err.Error(), statusCode)
+}
+
+func findingsConnectError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound),
+		errors.Is(err, findings.ErrRuleNotFound),
+		errors.Is(err, ports.ErrFindingEvaluationRunNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, findings.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, context.Canceled):
+		return connect.NewError(connect.CodeCanceled, err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
+	default:
+		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
+	}
 }
 
 func writeGraphQueryError(w http.ResponseWriter, err error) {
@@ -811,6 +927,14 @@ func findingStore(store ports.StateStore) ports.FindingStore {
 	return findingStore
 }
 
+func findingEvaluationRunStore(store ports.StateStore) ports.FindingEvaluationRunStore {
+	runStore, ok := store.(ports.FindingEvaluationRunStore)
+	if !ok {
+		return nil
+	}
+	return runStore
+}
+
 func claimStore(store ports.StateStore) ports.ClaimStore {
 	claimStore, ok := store.(ports.ClaimStore)
 	if !ok {
@@ -845,6 +969,7 @@ func findingResponse(result *findings.EvaluateResult) *cerebrov1.EvaluateSourceR
 		EventsEvaluated:  result.EventsEvaluated,
 		FindingsUpserted: uint32(len(result.Findings)),
 		Findings:         findingMessages(result.Findings),
+		Run:              result.Run,
 	}
 	return response
 }

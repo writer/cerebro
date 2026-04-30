@@ -2,7 +2,10 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"time"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
 
 // FindingRecord is the normalized persisted finding shape.
@@ -35,9 +38,28 @@ type ListFindingsRequest struct {
 	Limit       uint32
 }
 
+// ErrFindingEvaluationRunNotFound indicates that a persisted finding evaluation run does not exist.
+var ErrFindingEvaluationRunNotFound = errors.New("finding evaluation run not found")
+
+// ListFindingEvaluationRunsRequest scopes one finding evaluation run query.
+type ListFindingEvaluationRunsRequest struct {
+	RuntimeID string
+	RuleID    string
+	Status    string
+	Limit     uint32
+}
+
 // FindingStore persists normalized findings in the state store.
 type FindingStore interface {
 	StateStore
 	UpsertFinding(context.Context, *FindingRecord) (*FindingRecord, error)
 	ListFindings(context.Context, ListFindingsRequest) ([]*FindingRecord, error)
+}
+
+// FindingEvaluationRunStore persists durable finding evaluation runs in the state store.
+type FindingEvaluationRunStore interface {
+	StateStore
+	PutFindingEvaluationRun(context.Context, *cerebrov1.FindingEvaluationRun) error
+	GetFindingEvaluationRun(context.Context, string) (*cerebrov1.FindingEvaluationRun, error)
+	ListFindingEvaluationRuns(context.Context, ListFindingEvaluationRunsRequest) ([]*cerebrov1.FindingEvaluationRun, error)
 }

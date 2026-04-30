@@ -12,6 +12,10 @@ import (
 )
 
 // Rule evaluates replayed runtime events and emits persisted findings.
+//
+// The interface deliberately keeps source-specific detection logic out of Service so new
+// platform findings can be added by registration instead of by adding more hardcoded branches
+// to the replay path.
 type Rule interface {
 	primitives.Rule
 	SupportsRuntime(*cerebrov1.SourceRuntime) bool
@@ -47,6 +51,9 @@ func NewRegistry(rules ...Rule) (*Registry, error) {
 }
 
 // Builtin returns the in-process finding rule registry for the rewrite skeleton.
+//
+// Keeping the built-in catalog in one place makes the current platform surface discoverable
+// to clients and gives future rule packages one consistent registration seam.
 func Builtin() *Registry {
 	return &Registry{
 		rules: map[string]Rule{
