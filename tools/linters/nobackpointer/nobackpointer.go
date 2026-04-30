@@ -61,11 +61,45 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 func backPointerTarget(pass *analysis.Pass, t types.Type) (string, bool) {
-	ptr, ok := t.(*types.Pointer)
-	if !ok {
+	return backPointerTargetIn(pass, t, map[types.Type]struct{}{})
+}
+
+func backPointerTargetIn(pass *analysis.Pass, t types.Type, seen map[types.Type]struct{}) (string, bool) {
+	if t == nil {
 		return "", false
 	}
-	named, ok := ptr.Elem().(*types.Named)
+	t = types.Unalias(t)
+	if _, ok := seen[t]; ok {
+		return "", false
+	}
+	seen[t] = struct{}{}
+	switch tt := t.(type) {
+	case *types.Pointer:
+		if target, ok := namedBackPointerTarget(pass, tt.Elem()); ok {
+			return target, true
+		}
+		return backPointerTargetIn(pass, tt.Elem(), seen)
+	case *types.Named:
+		return backPointerTargetIn(pass, tt.Underlying(), seen)
+	case *types.Slice:
+		return backPointerTargetIn(pass, tt.Elem(), seen)
+	case *types.Array:
+		return backPointerTargetIn(pass, tt.Elem(), seen)
+	case *types.Map:
+		if target, ok := backPointerTargetIn(pass, tt.Key(), seen); ok {
+			return target, true
+		}
+		return backPointerTargetIn(pass, tt.Elem(), seen)
+	case *types.Chan:
+		return backPointerTargetIn(pass, tt.Elem(), seen)
+	default:
+		return "", false
+	}
+}
+
+func namedBackPointerTarget(pass *analysis.Pass, t types.Type) (string, bool) {
+	t = types.Unalias(t)
+	named, ok := t.(*types.Named)
 	if !ok || named.Obj() == nil {
 		return "", false
 	}

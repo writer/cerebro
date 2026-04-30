@@ -2,6 +2,7 @@ package noinmemorydb
 
 import (
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"go/types"
 	"strconv"
@@ -52,17 +53,31 @@ func run(pass *analysis.Pass) (any, error) {
 			return
 		}
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-			if (sel.Sel.Name == "Open" || sel.Sel.Name == "OpenDB") && len(call.Args) > 0 && isDatabaseSQLSelector(pass, sel) && isSQLiteDriverLiteral(call.Args[0]) {
+			if (sel.Sel.Name == "Open" || sel.Sel.Name == "OpenDB") && len(call.Args) > 0 && isDatabaseSQLSelector(pass, sel) && isSQLiteDriverLiteral(pass, call.Args[0]) {
 				report(pass, reported, call.Args[0].Pos(), call.Args[0].End())
 			}
 		}
+		if !isDatabaseSQLOpenCall(pass, call) {
+			return
+		}
 		for _, arg := range call.Args {
-			if isInMemoryLiteral(arg) {
+			if isInMemoryLiteral(pass, arg) {
 				report(pass, reported, arg.Pos(), arg.End())
 			}
 		}
 	})
 	return nil, nil
+}
+
+func isDatabaseSQLOpenCall(pass *analysis.Pass, call *ast.CallExpr) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	if sel.Sel.Name != "Open" && sel.Sel.Name != "OpenDB" {
+		return false
+	}
+	return isDatabaseSQLSelector(pass, sel)
 }
 
 func isDatabaseSQLSelector(pass *analysis.Pass, sel *ast.SelectorExpr) bool {
@@ -86,8 +101,8 @@ func report(pass *analysis.Pass, reported map[token.Pos]struct{}, pos, end token
 	})
 }
 
-func isSQLiteDriverLiteral(expr ast.Expr) bool {
-	value, ok := stringLiteral(expr)
+func isSQLiteDriverLiteral(pass *analysis.Pass, expr ast.Expr) bool {
+	value, ok := stringValue(pass, expr)
 	if !ok {
 		return false
 	}
@@ -99,8 +114,8 @@ func isSQLiteDriverLiteral(expr ast.Expr) bool {
 	}
 }
 
-func isInMemoryLiteral(expr ast.Expr) bool {
-	value, ok := stringLiteral(expr)
+func isInMemoryLiteral(pass *analysis.Pass, expr ast.Expr) bool {
+	value, ok := stringValue(pass, expr)
 	if !ok {
 		return false
 	}
@@ -108,16 +123,20 @@ func isInMemoryLiteral(expr ast.Expr) bool {
 	return strings.Contains(value, ":memory:") || strings.Contains(value, "mode=memory")
 }
 
-func stringLiteral(expr ast.Expr) (string, bool) {
-	lit, ok := expr.(*ast.BasicLit)
-	if !ok || lit.Kind != token.STRING {
-		return "", false
+func stringValue(pass *analysis.Pass, expr ast.Expr) (string, bool) {
+	if lit, ok := expr.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+		value, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			return "", false
+		}
+		return value, true
 	}
-	value, err := strconv.Unquote(lit.Value)
-	if err != nil {
-		return "", false
+	if pass != nil {
+		if tv, ok := pass.TypesInfo.Types[expr]; ok && tv.Value != nil && tv.Value.Kind() == constant.String {
+			return constant.StringVal(tv.Value), true
+		}
 	}
-	return value, true
+	return "", false
 }
 
 func isTestFile(pass *analysis.Pass, pos token.Pos) bool {

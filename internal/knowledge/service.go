@@ -29,8 +29,12 @@ const (
 	defaultPlatformTenant   = "platform"
 )
 
-// ErrRuntimeUnavailable indicates that the graph read/write boundaries are unavailable.
-var ErrRuntimeUnavailable = errors.New("knowledge runtime is unavailable")
+var (
+	// ErrRuntimeUnavailable indicates that the graph read/write boundaries are unavailable.
+	ErrRuntimeUnavailable = errors.New("knowledge runtime is unavailable")
+	// ErrInvalidRequest indicates that a knowledge write request failed validation.
+	ErrInvalidRequest = errors.New("invalid knowledge request")
+)
 
 // Service records workflow primitives onto the graph-backed platform layer.
 type Service struct {
@@ -135,11 +139,11 @@ func (s *Service) WriteDecision(ctx context.Context, request DecisionWriteReques
 	}
 	decisionType := strings.TrimSpace(request.DecisionType)
 	if decisionType == "" {
-		return nil, errors.New("decision type is required")
+		return nil, fmt.Errorf("%w: decision type is required", ErrInvalidRequest)
 	}
 	targetIDs := normalizeIDs(request.TargetIDs)
 	if len(targetIDs) == 0 {
-		return nil, errors.New("decision target ids are required")
+		return nil, fmt.Errorf("%w: decision target ids are required", ErrInvalidRequest)
 	}
 	tenantID := inferTenantID(request.Metadata, targetIDs...)
 	sourceSystem := firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem)
@@ -196,11 +200,11 @@ func (s *Service) WriteAction(ctx context.Context, request ActionWriteRequest) (
 	}
 	title := strings.TrimSpace(request.Title)
 	if title == "" {
-		return nil, errors.New("action title is required")
+		return nil, fmt.Errorf("%w: action title is required", ErrInvalidRequest)
 	}
 	targetIDs := normalizeIDs(request.TargetIDs)
 	if len(targetIDs) == 0 {
-		return nil, errors.New("action target ids are required")
+		return nil, fmt.Errorf("%w: action target ids are required", ErrInvalidRequest)
 	}
 	tenantID := inferTenantID(request.Metadata, append(targetIDs, request.DecisionID)...)
 	sourceSystem := firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem)
@@ -267,18 +271,18 @@ func (s *Service) WriteOutcome(ctx context.Context, request OutcomeWriteRequest)
 	}
 	outcomeType := strings.TrimSpace(request.OutcomeType)
 	if outcomeType == "" {
-		return nil, errors.New("outcome type is required")
+		return nil, fmt.Errorf("%w: outcome type is required", ErrInvalidRequest)
 	}
 	verdict := strings.TrimSpace(request.Verdict)
 	if verdict == "" {
-		return nil, errors.New("outcome verdict is required")
+		return nil, fmt.Errorf("%w: outcome verdict is required", ErrInvalidRequest)
 	}
 	targetIDs := normalizeIDs(request.TargetIDs)
 	tenantID := inferTenantID(request.Metadata, append(targetIDs, request.DecisionID)...)
 	sourceSystem := firstNonEmpty(strings.TrimSpace(request.SourceSystem), defaultSourceSystem)
 	decisionID := workflowevents.CanonicalWorkflowID(tenantID, decisionEntityType, request.DecisionID, decisionEntityType, targetIDs, request.ValidFrom)
 	if strings.TrimSpace(request.DecisionID) == "" {
-		return nil, errors.New("outcome decision id is required")
+		return nil, fmt.Errorf("%w: outcome decision id is required", ErrInvalidRequest)
 	}
 	if err := s.requireEntity(ctx, decisionID); err != nil {
 		return nil, err
@@ -333,7 +337,7 @@ func (s *Service) requireEntity(ctx context.Context, id string) error {
 	}
 	entityID := strings.TrimSpace(id)
 	if entityID == "" {
-		return errors.New("graph entity id is required")
+		return fmt.Errorf("%w: graph entity id is required", ErrInvalidRequest)
 	}
 	if _, err := s.query.GetEntityNeighborhood(ctx, entityID, defaultGraphLookupLimit); err != nil {
 		if errors.Is(err, ports.ErrGraphEntityNotFound) {

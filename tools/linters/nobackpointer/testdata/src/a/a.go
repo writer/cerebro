@@ -6,6 +6,10 @@ type Server struct{}
 
 type Client struct{}
 
+type AppAlias = *App
+
+type ServerList []*Server
+
 type Good struct {
 	client *Client
 }
@@ -20,6 +24,18 @@ type BadApp struct {
 
 type BadServer struct {
 	server *Server // want `back-pointer to \*Server`
+}
+
+type BadAlias struct {
+	app AppAlias // want `back-pointer to \*App`
+}
+
+type BadSlice struct {
+	servers ServerList // want `back-pointer to \*Server`
+}
+
+type BadMap struct {
+	apps map[string]*App // want `back-pointer to \*App`
 }
 
 //cerebro:lint:allow nobackpointer legacy shim https://example.com/issue/7

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -14,7 +15,13 @@ import (
 
 // Store is the Postgres-backed current-state store implementation.
 type Store struct {
-	db *sql.DB
+	db                        *sql.DB
+	schemaMu                  sync.Mutex
+	claimTablesReady          bool
+	projectionTablesReady     bool
+	sourceRuntimeTableReady   bool
+	findingEvidenceReady      bool
+	findingEvaluationRunReady bool
 }
 
 // Open opens a Postgres-backed current-state store.
@@ -45,5 +52,20 @@ func (s *Store) Ping(ctx context.Context) error {
 	if err := s.db.PingContext(ctx); err != nil {
 		return fmt.Errorf("ping postgres: %w", err)
 	}
+	return nil
+}
+
+func (s *Store) ensureStatements(ctx context.Context, ready *bool, label string, statements []string) error {
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	if *ready {
+		return nil
+	}
+	for _, statement := range statements {
+		if _, err := s.db.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("ensure %s tables: %w", label, err)
+		}
+	}
+	*ready = true
 	return nil
 }

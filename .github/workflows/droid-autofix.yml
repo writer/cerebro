@@ -171,7 +171,7 @@ jobs:
         if: steps.ctx.outputs.should_run == 'true'
         shell: bash
         env:
-          DROID_INSTALL_SHA256: 37f115fe2ff358ef8e2d8926bd3e69c27186f81c74868deee1bbd62f9f58f10d
+          DROID_INSTALL_SHA256: 3d06193b2e693b7787d4b02c8b578c8aa13ed8891248da22371a633b9a0b393b
         run: |
           set -euo pipefail
           installer="${RUNNER_TEMP}/droid-install.sh"

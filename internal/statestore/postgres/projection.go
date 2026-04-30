@@ -34,6 +34,38 @@ var ensureProjectionStatements = []string{
 	`CREATE INDEX IF NOT EXISTS entity_links_tenant_relation_idx ON entity_links (tenant_id, relation)`,
 }
 
+func projectedEntityUpsertSQL() string {
+	return `
+INSERT INTO entities (urn, tenant_id, source_id, entity_type, label, attributes_json)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+ON CONFLICT (urn)
+DO UPDATE SET
+  tenant_id = EXCLUDED.tenant_id,
+  source_id = EXCLUDED.source_id,
+  entity_type = EXCLUDED.entity_type,
+  label = EXCLUDED.label,
+  attributes_json = entities.attributes_json || EXCLUDED.attributes_json,
+  updated_at = NOW()`
+}
+
+func projectedLinkUpsertSQL() string {
+	return `
+INSERT INTO entity_links (from_urn, relation, to_urn, tenant_id, source_id, attributes_json)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+ON CONFLICT (from_urn, relation, to_urn)
+DO UPDATE SET
+  tenant_id = EXCLUDED.tenant_id,
+  source_id = EXCLUDED.source_id,
+  attributes_json = entity_links.attributes_json || EXCLUDED.attributes_json,
+  updated_at = NOW()`
+}
+
+func projectedLinkDeleteSQL() string {
+	return `
+DELETE FROM entity_links
+WHERE from_urn = $1 AND relation = $2 AND to_urn = $3`
+}
+
 // UpsertProjectedEntity persists one normalized entity in the current-state store.
 func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.ProjectedEntity) error {
 	if entity == nil {
@@ -69,17 +101,7 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if label == "" {
 		label = urn
 	}
-	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO entities (urn, tenant_id, source_id, entity_type, label, attributes_json)
-VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-ON CONFLICT (urn)
-DO UPDATE SET
-  tenant_id = EXCLUDED.tenant_id,
-  source_id = EXCLUDED.source_id,
-  entity_type = EXCLUDED.entity_type,
-  label = EXCLUDED.label,
-  attributes_json = EXCLUDED.attributes_json,
-  updated_at = NOW()`, urn, tenantID, sourceID, entityType, label, attributesJSON); err != nil {
+	if _, err := s.db.ExecContext(ctx, projectedEntityUpsertSQL(), urn, tenantID, sourceID, entityType, label, attributesJSON); err != nil {
 		return fmt.Errorf("upsert projected entity %q: %w", urn, err)
 	}
 	return nil
@@ -120,27 +142,43 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if err != nil {
 		return fmt.Errorf("marshal projected link attributes: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO entity_links (from_urn, relation, to_urn, tenant_id, source_id, attributes_json)
-VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-ON CONFLICT (from_urn, relation, to_urn)
-DO UPDATE SET
-  tenant_id = EXCLUDED.tenant_id,
-  source_id = EXCLUDED.source_id,
-  attributes_json = EXCLUDED.attributes_json,
-  updated_at = NOW()`, fromURN, relation, toURN, tenantID, sourceID, attributesJSON); err != nil {
+	if _, err := s.db.ExecContext(ctx, projectedLinkUpsertSQL(), fromURN, relation, toURN, tenantID, sourceID, attributesJSON); err != nil {
 		return fmt.Errorf("upsert projected link %q %q %q: %w", fromURN, relation, toURN, err)
 	}
 	return nil
 }
 
-func (s *Store) ensureProjectionTables(ctx context.Context) error {
-	for _, statement := range ensureProjectionStatements {
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("ensure projection tables: %w", err)
-		}
+// DeleteProjectedLink removes one normalized link from the current-state store.
+func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return errors.New("projected link is required")
+	}
+	fromURN := strings.TrimSpace(link.FromURN)
+	if fromURN == "" {
+		return errors.New("projected link from urn is required")
+	}
+	toURN := strings.TrimSpace(link.ToURN)
+	if toURN == "" {
+		return errors.New("projected link to urn is required")
+	}
+	relation := strings.TrimSpace(link.Relation)
+	if relation == "" {
+		return errors.New("projected link relation is required")
+	}
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureProjectionTables(ctx); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, projectedLinkDeleteSQL(), fromURN, relation, toURN); err != nil {
+		return fmt.Errorf("delete projected link %q %q %q: %w", fromURN, relation, toURN, err)
 	}
 	return nil
+}
+
+func (s *Store) ensureProjectionTables(ctx context.Context) error {
+	return s.ensureStatements(ctx, &s.projectionTablesReady, "projection", ensureProjectionStatements)
 }
 
 func projectionAttributesJSON(attributes map[string]string) (string, error) {

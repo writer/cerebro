@@ -270,7 +270,11 @@ func parseSourceCommandArgs(args []string) (string, map[string]string, *cerebrov
 			cursor = &cerebrov1.SourceCursor{Opaque: value}
 			continue
 		}
-		config[key] = value
+		resolved, err := sourceConfigValueFromArg(key, value)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		config[key] = resolved
 	}
 	return args[0], config, cursor, nil
 }
@@ -296,9 +300,52 @@ func parseSourceRuntimePutArgs(args []string) (*cerebrov1.SourceRuntime, error) 
 			runtime.TenantId = strings.TrimSpace(value)
 			continue
 		}
-		runtime.Config[key] = value
+		resolved, err := sourceConfigValueFromArg(key, value)
+		if err != nil {
+			return nil, err
+		}
+		runtime.Config[key] = resolved
 	}
 	return runtime, nil
+}
+
+func sourceConfigValueFromArg(key string, value string) (string, error) {
+	if strings.HasPrefix(value, "env:") {
+		return sourceConfigValueFromEnv(key, value)
+	}
+	if sensitiveCLIConfigKey(key) && strings.TrimSpace(value) != "" {
+		return "", fmt.Errorf("source config %q is sensitive; pass env:VAR instead of a literal value", strings.TrimSpace(key))
+	}
+	return value, nil
+}
+
+func sourceConfigValueFromEnv(key string, value string) (string, error) {
+	envName := strings.TrimSpace(strings.TrimPrefix(value, "env:"))
+	if envName == "" {
+		return "", fmt.Errorf("source config %q env reference is missing a variable name", strings.TrimSpace(key))
+	}
+	resolved, ok := os.LookupEnv(envName)
+	if !ok {
+		return "", fmt.Errorf("source config %q references unset environment variable %q", strings.TrimSpace(key), envName)
+	}
+	if sensitiveCLIConfigKey(key) && strings.TrimSpace(resolved) == "" {
+		return "", fmt.Errorf("source config %q references empty environment variable %q", strings.TrimSpace(key), envName)
+	}
+	return resolved, nil
+}
+
+func sensitiveCLIConfigKey(key string) bool {
+	value := strings.ToLower(strings.TrimSpace(key))
+	if value == "" {
+		return false
+	}
+	if strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password") {
+		return true
+	}
+	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
+	return compact == "key" ||
+		strings.Contains(compact, "apikey") ||
+		strings.Contains(compact, "privatekey")
 }
 
 func parseSourceRuntimeSyncArgs(args []string) (string, uint32, error) {

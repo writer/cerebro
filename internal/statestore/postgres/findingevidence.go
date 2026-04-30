@@ -36,6 +36,29 @@ var ensureFindingEvidenceStatements = []string{
 	`CREATE INDEX IF NOT EXISTS finding_evidence_graph_root_urns_gin_idx ON finding_evidence USING GIN (graph_root_urns_json)`,
 }
 
+func findingEvidenceUpsertSQL() string {
+	return `
+INSERT INTO finding_evidence (
+  id, runtime_id, rule_id, finding_id, run_id, claim_ids_json, event_ids_json, graph_root_urns_json, created_at, finding_evidence_json
+)
+VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10::jsonb)
+ON CONFLICT (id)
+DO UPDATE SET
+  runtime_id = EXCLUDED.runtime_id,
+  rule_id = EXCLUDED.rule_id,
+  finding_id = EXCLUDED.finding_id,
+  run_id = EXCLUDED.run_id,
+  claim_ids_json = EXCLUDED.claim_ids_json,
+  event_ids_json = EXCLUDED.event_ids_json,
+  graph_root_urns_json = EXCLUDED.graph_root_urns_json,
+  finding_evidence_json = CASE
+    WHEN finding_evidence.finding_evidence_json ? 'created_at'
+      THEN jsonb_set(EXCLUDED.finding_evidence_json, '{created_at}', finding_evidence.finding_evidence_json->'created_at', true)
+    ELSE EXCLUDED.finding_evidence_json
+  END,
+  updated_at = NOW()`
+}
+
 // PutFindingEvidence upserts one durable finding evidence record.
 func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.FindingEvidence) error {
 	if evidence == nil {
@@ -87,23 +110,7 @@ func (s *Store) PutFindingEvidence(ctx context.Context, evidence *cerebrov1.Find
 	if err != nil {
 		return fmt.Errorf("marshal finding evidence: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
-INSERT INTO finding_evidence (
-  id, runtime_id, rule_id, finding_id, run_id, claim_ids_json, event_ids_json, graph_root_urns_json, created_at, finding_evidence_json
-)
-VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10::jsonb)
-ON CONFLICT (id)
-DO UPDATE SET
-  runtime_id = EXCLUDED.runtime_id,
-  rule_id = EXCLUDED.rule_id,
-  finding_id = EXCLUDED.finding_id,
-  run_id = EXCLUDED.run_id,
-  claim_ids_json = EXCLUDED.claim_ids_json,
-  event_ids_json = EXCLUDED.event_ids_json,
-  graph_root_urns_json = EXCLUDED.graph_root_urns_json,
-  created_at = EXCLUDED.created_at,
-  finding_evidence_json = EXCLUDED.finding_evidence_json,
-  updated_at = NOW()`,
+	if _, err := s.db.ExecContext(ctx, findingEvidenceUpsertSQL(),
 		id,
 		runtimeID,
 		ruleID,
@@ -186,17 +193,8 @@ func (s *Store) ListFindingEvidence(ctx context.Context, request ports.ListFindi
 	return evidence, nil
 }
 
-func ensureFindingEvidenceTable(ctx context.Context, db *sql.DB) error {
-	for _, statement := range ensureFindingEvidenceStatements {
-		if _, err := db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("ensure finding evidence tables: %w", err)
-		}
-	}
-	return nil
-}
-
 func (s *Store) ensureFindingEvidenceTables(ctx context.Context) error {
-	return ensureFindingEvidenceTable(ctx, s.db)
+	return s.ensureStatements(ctx, &s.findingEvidenceReady, "finding evidence", ensureFindingEvidenceStatements)
 }
 
 func findingEvidenceListQuery(request ports.ListFindingEvidenceRequest) (string, []any, error) {

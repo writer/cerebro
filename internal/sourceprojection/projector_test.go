@@ -113,6 +113,30 @@ func TestProjectGitHubPullRequestWithoutOwnerDoesNotLinkEmptyOrg(t *testing.T) {
 	}
 }
 
+func TestProjectGitHubPullRequestWithoutRepositoryDoesNotLinkPlaceholderPR(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-pr-447",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.pull_request",
+		Attributes: map[string]string{
+			"author":      "alice",
+			"pull_number": "447",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	for key := range state.links {
+		if strings.Contains(key, "github_pull_request:#447") {
+			t.Fatalf("placeholder pull request link %q should not be projected", key)
+		}
+	}
+}
+
 func TestProjectGitHubDependabotAlert(t *testing.T) {
 	state := &projectionRecorder{}
 	graph := &projectionRecorder{}
@@ -283,6 +307,12 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 			}
 			if _, ok := graph.entities[tt.resource]; !ok {
 				t.Fatalf("graph resource %q missing", tt.resource)
+			}
+			if strings.Contains(tt.resource, "github_repo") {
+				attrs := graph.entities[tt.resource].Attributes
+				if attrs["repository"] != "writer/cerebro" || attrs["resource_type"] != tt.attrs["resource_type"] {
+					t.Fatalf("repo attributes = %#v, want repository and resource_type", attrs)
+				}
 			}
 			if _, ok := graph.links[actorURN+"|"+relationActedOn+"|"+tt.resource]; !ok {
 				t.Fatalf("graph acted_on link missing for %s -> %s: %#v", actorURN, tt.resource, graph.links)

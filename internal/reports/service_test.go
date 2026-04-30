@@ -387,6 +387,13 @@ func TestGetReportRunRequiresAvailableStore(t *testing.T) {
 	}
 }
 
+func TestRunReportValidationErrorsAreInvalidRequest(t *testing.T) {
+	service := New(&stubFindingStore{}, nil, &stubReportStore{})
+	if _, err := service.Run(context.Background(), &cerebrov1.RunReportRequest{}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Run() error = %v, want %v", err, ErrInvalidRequest)
+	}
+}
+
 func TestListReportDefinitionsIncludesFindingSummary(t *testing.T) {
 	response := New(nil, nil, nil).List()
 	if len(response.GetReports()) != 1 {
@@ -545,4 +552,28 @@ func cloneAttributes(values map[string]string) map[string]string {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func TestNormalizeParametersDropsSensitiveKeys(t *testing.T) {
+	for _, key := range []string{
+		"token",
+		"GitHub_Token",
+		"PASSWORD",
+		"client_secret",
+		"api-key",
+		"private_key",
+		"x-api-key",
+		"authorization",
+	} {
+		got := normalizeParameters(map[string]string{
+			"tenant_id": "writer",
+			key:         "shh",
+		})
+		if _, ok := got[key]; ok {
+			t.Fatalf("normalizeParameters() retained sensitive key %q", key)
+		}
+		if got["tenant_id"] != "writer" {
+			t.Fatalf("normalizeParameters() dropped non-sensitive key when filtering %q", key)
+		}
+	}
 }

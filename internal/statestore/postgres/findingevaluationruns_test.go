@@ -46,6 +46,12 @@ func TestListFindingEvaluationRunsRejectsUnconfiguredStore(t *testing.T) {
 	}
 }
 
+func TestFindingEvaluationRunTimeTreatsNilAsZero(t *testing.T) {
+	if got := findingEvaluationRunTime(nil); !got.IsZero() {
+		t.Fatalf("findingEvaluationRunTime(nil) = %v, want zero", got)
+	}
+}
+
 func TestFindingEvaluationRunListQueryIncludesOptionalFilters(t *testing.T) {
 	query, args, err := findingEvaluationRunListQuery(ports.ListFindingEvaluationRunsRequest{
 		RuntimeID: "writer-okta-audit",

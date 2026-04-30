@@ -13,13 +13,12 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-const ensureSourceRuntimeTableSQL = `
-CREATE TABLE IF NOT EXISTS source_runtimes (
+var ensureSourceRuntimeStatements = []string{`CREATE TABLE IF NOT EXISTS source_runtimes (
   id TEXT PRIMARY KEY,
   runtime_json JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)`
+)`}
 
 // PutSourceRuntime upserts one source runtime definition.
 func (s *Store) PutSourceRuntime(ctx context.Context, runtime *cerebrov1.SourceRuntime) error {
@@ -80,8 +79,5 @@ func (s *Store) GetSourceRuntime(ctx context.Context, runtimeID string) (*cerebr
 }
 
 func (s *Store) ensureSourceRuntimeTable(ctx context.Context) error {
-	if _, err := s.db.ExecContext(ctx, ensureSourceRuntimeTableSQL); err != nil {
-		return fmt.Errorf("ensure source runtime table: %w", err)
-	}
-	return nil
+	return s.ensureStatements(ctx, &s.sourceRuntimeTableReady, "source runtime", ensureSourceRuntimeStatements)
 }
