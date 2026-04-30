@@ -34,8 +34,21 @@ func TestParseURN(t *testing.T) {
 }
 
 func TestParseURNRejectsInvalidValue(t *testing.T) {
-	if _, err := ParseURN("user:123"); err == nil {
-		t.Fatal("ParseURN() error = nil, want non-nil")
+	for _, raw := range []string{
+		"user:123",
+		"urn:cerebro:",
+		"urn:cerebro:tenant",
+		"urn:cerebro:tenant:user",
+		"urn:cerebro::user:123",
+		"urn:cerebro:tenant::123",
+		"urn:cerebro:tenant:user:",
+		"urn:cerebro: tenant:user:123",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			if _, err := ParseURN(raw); err == nil {
+				t.Fatal("ParseURN() error = nil, want non-nil")
+			}
+		})
 	}
 }
 
@@ -74,6 +87,13 @@ func TestRegistryRejectsDuplicateIDs(t *testing.T) {
 		stubSource{spec: &cerebrov1.SourceSpec{Id: "github"}},
 		stubSource{spec: &cerebrov1.SourceSpec{Id: "github"}},
 	)
+	if err == nil {
+		t.Fatal("NewRegistry() error = nil, want non-nil")
+	}
+}
+
+func TestRegistryRejectsNonCanonicalIDs(t *testing.T) {
+	_, err := NewRegistry(stubSource{spec: &cerebrov1.SourceSpec{Id: " github "}})
 	if err == nil {
 		t.Fatal("NewRegistry() error = nil, want non-nil")
 	}

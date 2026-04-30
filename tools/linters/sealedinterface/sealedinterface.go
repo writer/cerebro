@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"sort"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -25,11 +26,6 @@ var Analyzer = &analysis.Analyzer{
 	Doc:       doc,
 	FactTypes: []analysis.Fact{new(sealedFact)},
 	Run:       run,
-}
-
-type sealedInterface struct {
-	obj   *types.TypeName
-	iface *types.Interface
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -83,6 +79,16 @@ func run(pass *analysis.Pass) (any, error) {
 		sealed[obj] = iface
 	}
 
+	sealedObjects := make([]*types.TypeName, 0, len(sealed))
+	for obj := range sealed {
+		sealedObjects = append(sealedObjects, obj)
+	}
+	sort.Slice(sealedObjects, func(i int, j int) bool {
+		left := qualifiedTypeName(sealedObjects[i])
+		right := qualifiedTypeName(sealedObjects[j])
+		return left < right
+	})
+
 	for _, file := range pass.Files {
 		if isTestFile(pass, file.Pos()) {
 			continue
@@ -108,10 +114,11 @@ func run(pass *analysis.Pass) (any, error) {
 				if !ok {
 					continue
 				}
-				for sealedObj, iface := range sealed {
+				for _, sealedObj := range sealedObjects {
 					if sealedObj == nil || sealedObj.Pkg() == nil || sealedObj.Pkg().Path() == pass.Pkg.Path() {
 						continue
 					}
+					iface := sealed[sealedObj]
 					if !implementsSealed(named, iface) {
 						continue
 					}
@@ -127,6 +134,13 @@ func run(pass *analysis.Pass) (any, error) {
 	}
 
 	return nil, nil
+}
+
+func qualifiedTypeName(obj *types.TypeName) string {
+	if obj == nil || obj.Pkg() == nil {
+		return ""
+	}
+	return obj.Pkg().Path() + "." + obj.Name()
 }
 
 func namedInterface(t types.Type) *types.Interface {

@@ -1,0 +1,1 @@
+[{"id":"aws-iam-user-AIDAADMIN","tenant_id":"123456789012","source_id":"aws","kind":"aws.iam_user","occurred_at":"2026-04-23T00:00:00Z","schema_ref":"aws/iam_user/v1","payload":{"account_id":"123456789012"},"attributes":{"domain":"123456789012","email":"admin@writer.com","family":"iam_user","is_admin":"true","login":"admin@writer.com","user_id":"AIDAADMIN"}}]

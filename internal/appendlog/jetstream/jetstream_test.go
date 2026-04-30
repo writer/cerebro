@@ -98,6 +98,25 @@ func TestAppendRejectsMissingKind(t *testing.T) {
 	}
 }
 
+func TestAppendRejectsInvalidKindSubjects(t *testing.T) {
+	log := &Log{js: &fakePublisher{}, subjectPrefix: "events"}
+	for _, kind := range []string{
+		"entity update",
+		"entity\tupdate",
+		"entity..update",
+		".entity",
+		"entity.",
+		"entity.*",
+		"entity.>",
+	} {
+		t.Run(kind, func(t *testing.T) {
+			if err := log.Append(context.Background(), &cerebrov1.EventEnvelope{Kind: kind}); err == nil {
+				t.Fatal("Append() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
 func TestPingSurfacesPublisherError(t *testing.T) {
 	log := &Log{js: &fakePublisher{accountErr: errors.New("down")}, subjectPrefix: "events"}
 	if err := log.Ping(context.Background()); err == nil {
@@ -173,7 +192,47 @@ func TestReplayAppliesDefaultLimit(t *testing.T) {
 	}
 }
 
-func TestReplayRejectsMissingRuntimeID(t *testing.T) {
+func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 4},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.workflow.v1.knowledge.decision_recorded", workflowReplayEvent("evt-1", "workflow.v1.knowledge.decision_recorded", "writer", "knowledge_decision")),
+				2: rawReplayMsg(t, "events.workflow.v1.knowledge.action_recorded", workflowReplayEvent("evt-2", "workflow.v1.knowledge.action_recorded", "writer", "knowledge_action")),
+				3: rawReplayMsg(t, "events.workflow.v1.knowledge.decision_recorded", workflowReplayEvent("evt-3", "workflow.v1.knowledge.decision_recorded", "other", "knowledge_decision")),
+				4: rawReplayMsg(t, "events.github.audit", replayEvent("evt-4", "github.audit", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{
+		KindPrefix: "workflow.v1.",
+		TenantID:   "writer",
+		AttributeEquals: map[string]string{
+			"workflow_kind": "knowledge_decision",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+	if got := events[0].GetId(); got != "evt-1" {
+		t.Fatalf("replayed id = %q, want evt-1", got)
+	}
+}
+
+func TestReplayRejectsMissingFilter(t *testing.T) {
 	log := &Log{replay: &fakeReplayManager{}, subjectPrefix: "events"}
 	if _, err := log.Replay(context.Background(), ports.ReplayRequest{}); err == nil {
 		t.Fatal("Replay() error = nil, want non-nil")
@@ -222,6 +281,18 @@ func TestSubjectMatchesRequiresRemainingTokensForWildcard(t *testing.T) {
 		if got := subjectMatches(tt.pattern, tt.subject); got != tt.want {
 			t.Fatalf("subjectMatches(%q, %q) = %v, want %v", tt.pattern, tt.subject, got, tt.want)
 		}
+	}
+}
+
+func workflowReplayEvent(id string, kind string, tenantID string, workflowKind string) *cerebrov1.EventEnvelope {
+	return &cerebrov1.EventEnvelope{
+		Id:       id,
+		TenantId: tenantID,
+		Kind:     kind,
+		SourceId: "platform.knowledge",
+		Attributes: map[string]string{
+			"workflow_kind": workflowKind,
+		},
 	}
 }
 

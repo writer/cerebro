@@ -1,3 +1,5 @@
+//go:build cgo
+
 package kuzu
 
 import (
@@ -146,8 +148,8 @@ func TestProjectorBuildsTraversableLocalGraph(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Topology() error = %v", err)
 	}
-	if topology.Isolated != 0 || topology.SourcesOnly != 1 || topology.SinksOnly != 2 || topology.Intermediates != 2 {
-		t.Fatalf("Topology() = %#v, want isolated=0 sources=1 sinks=2 intermediates=2", topology)
+	if topology.Isolated != 0 || topology.SourcesOnly != 1 || topology.SinksOnly != 2 || topology.Intermediates != 3 {
+		t.Fatalf("Topology() = %#v, want isolated=0 sources=1 sinks=2 intermediates=3", topology)
 	}
 }
 
@@ -206,6 +208,17 @@ func TestProjectorKeepsLocalGraphIdentityLinksTenantScoped(t *testing.T) {
 		t.Fatalf("shared identifier path count = %d, want 1", sharedIdentifierPathCount)
 	}
 
+	sharedIdentityPathCount := queryGraphCount(t, store, fmt.Sprintf(
+		"MATCH (github_user:entity {urn: %s})-[github_identity:relation]->(identity:entity {urn: %s})<-[okta_identity:relation]-(okta_user:entity {urn: %s}) "+
+			"WHERE github_identity.relation = 'represents_identity' AND okta_identity.relation = 'represents_identity' RETURN COUNT(identity)",
+		cypherString("urn:cerebro:writer:github_user:alice@writer.com"),
+		cypherString("urn:cerebro:writer:identity:email:alice@writer.com"),
+		cypherString("urn:cerebro:writer:okta_user:00u1"),
+	))
+	if sharedIdentityPathCount != 1 {
+		t.Fatalf("shared identity path count = %d, want 1", sharedIdentityPathCount)
+	}
+
 	identifierCount := queryGraphCount(t, store,
 		"MATCH (identifier:entity) WHERE identifier.entity_type = 'identifier.email' AND identifier.label = 'alice@writer.com' RETURN COUNT(identifier)",
 	)
@@ -245,6 +258,39 @@ func TestIntegrityChecksDetectTenantMismatch(t *testing.T) {
 	}
 	if actual := integrityCheckActual(checks, "tenant_mismatched_relations"); actual != 2 {
 		t.Fatalf("tenant_mismatched_relations = %d, want 2", actual)
+	}
+}
+
+func TestIntegrityChecksRunEntityOnlyChecksWithoutRelationTable(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	if _, err := store.db.ExecContext(ctx, "CREATE NODE TABLE entity(urn STRING, tenant_id STRING, source_id STRING, entity_type STRING, label STRING, attributes_json STRING, PRIMARY KEY (urn))"); err != nil {
+		t.Fatalf("create entity table: %v", err)
+	}
+	if _, err := store.db.ExecContext(ctx, fmt.Sprintf(
+		"CREATE (:entity {urn: %s, tenant_id: %s, source_id: %s, entity_type: %s, label: %s, attributes_json: %s})",
+		cypherString("urn:cerebro:writer:github_repo:writer/cerebro"),
+		cypherString("writer"),
+		cypherString("github"),
+		cypherString("github.repo"),
+		cypherString(""),
+		cypherString("{}"),
+	)); err != nil {
+		t.Fatalf("insert entity: %v", err)
+	}
+
+	checks, err := store.IntegrityChecks(ctx)
+	if err != nil {
+		t.Fatalf("IntegrityChecks() error = %v", err)
+	}
+	if actual := integrityCheckActual(checks, "blank_entity_labels"); actual != 1 {
+		t.Fatalf("blank_entity_labels = %d, want 1", actual)
+	}
+	if passed := integrityCheckPassed(checks, "blank_entity_labels"); passed {
+		t.Fatal("blank_entity_labels passed = true, want false")
+	}
+	if passed := integrityCheckPassed(checks, "blank_relation_types"); !passed {
+		t.Fatal("blank_relation_types passed = false, want true when relation table is absent")
 	}
 }
 
@@ -352,6 +398,15 @@ func integrityCheckActual(checks []IntegrityCheck, name string) int64 {
 		}
 	}
 	return -1
+}
+
+func integrityCheckPassed(checks []IntegrityCheck, name string) bool {
+	for _, check := range checks {
+		if check.Name == name {
+			return check.Passed
+		}
+	}
+	return false
 }
 
 func containsPathPattern(patterns []PathPattern, fromType string, firstRelation string, viaType string, secondRelation string, toType string, count int64) bool {

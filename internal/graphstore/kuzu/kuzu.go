@@ -1,3 +1,5 @@
+//go:build cgo
+
 package kuzu
 
 import (
@@ -14,59 +16,27 @@ import (
 	kuzudb "github.com/kuzudb/go-kuzu"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 )
 
 // Store is the Kuzu-backed graph projection store implementation.
 type Store struct {
-	db          *sql.DB
-	schemaMu    sync.Mutex
-	schemaReady bool
+	db                    *sql.DB
+	schemaMu              sync.Mutex
+	schemaReady           bool
+	checkpointSchemaReady bool
+	ingestRunSchemaReady  bool
 }
 
-// Counts summarizes the entity and relationship totals in the graph.
-type Counts struct {
-	Nodes     int64
-	Relations int64
-}
-
-// Traversal captures one sampled two-hop path from the local graph.
-type Traversal struct {
-	FromURN        string
-	FromLabel      string
-	FirstRelation  string
-	ViaURN         string
-	ViaLabel       string
-	SecondRelation string
-	ToURN          string
-	ToLabel        string
-}
-
-// IntegrityCheck captures one local graph invariant check result.
-type IntegrityCheck struct {
-	Name     string
-	Actual   int64
-	Expected int64
-	Passed   bool
-}
-
-// PathPattern captures one grouped two-hop graph pattern.
-type PathPattern struct {
-	FromType       string
-	FirstRelation  string
-	ViaType        string
-	SecondRelation string
-	ToType         string
-	Count          int64
-}
-
-// Topology summarizes node connectivity classes in the local graph.
-type Topology struct {
-	Isolated      int64
-	SourcesOnly   int64
-	SinksOnly     int64
-	Intermediates int64
-}
+type Counts = graphstore.Counts
+type Traversal = graphstore.Traversal
+type IntegrityCheck = graphstore.IntegrityCheck
+type PathPattern = graphstore.PathPattern
+type Topology = graphstore.Topology
+type IngestCheckpoint = graphstore.IngestCheckpoint
+type IngestRun = graphstore.IngestRun
+type IngestRunFilter = graphstore.IngestRunFilter
 
 // Open opens a Kuzu-backed graph projection store.
 func Open(cfg config.GraphStoreConfig) (*Store, error) {
@@ -309,26 +279,35 @@ func (s *Store) IntegrityChecks(ctx context.Context) ([]IntegrityCheck, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !tables["entity"] || !tables["relation"] {
-		for index := range checks {
+	hasEntity := tables["entity"]
+	hasRelation := tables["relation"]
+	run := func(index int, enabled bool, query string) error {
+		if !enabled {
 			checks[index].Passed = true
+			return nil
 		}
-		return checks, nil
-	}
-	queries := []string{
-		"MATCH (src:entity)-[r:relation]->(dst:entity) WHERE src.tenant_id <> dst.tenant_id OR src.tenant_id <> r.tenant_id OR dst.tenant_id <> r.tenant_id RETURN COUNT(r)",
-		"MATCH (e:entity) WHERE e.label = '' RETURN COUNT(e)",
-		"MATCH (e:entity) WHERE e.entity_type = '' RETURN COUNT(e)",
-		"MATCH (src:entity)-[r:relation]->(dst:entity) WHERE r.relation = '' RETURN COUNT(r)",
-		"MATCH (src:entity)-[r:relation]->(dst:entity) WHERE src.urn = dst.urn RETURN COUNT(r)",
-	}
-	for index, query := range queries {
 		actual, err := s.countQuery(ctx, query)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		checks[index].Actual = actual
 		checks[index].Passed = actual == checks[index].Expected
+		return nil
+	}
+	if err := run(0, hasEntity && hasRelation, "MATCH (src:entity)-[r:relation]->(dst:entity) WHERE src.tenant_id <> dst.tenant_id OR src.tenant_id <> r.tenant_id OR dst.tenant_id <> r.tenant_id RETURN COUNT(r)"); err != nil {
+		return nil, err
+	}
+	if err := run(1, hasEntity, "MATCH (e:entity) WHERE e.label = '' RETURN COUNT(e)"); err != nil {
+		return nil, err
+	}
+	if err := run(2, hasEntity, "MATCH (e:entity) WHERE e.entity_type = '' RETURN COUNT(e)"); err != nil {
+		return nil, err
+	}
+	if err := run(3, hasEntity && hasRelation, "MATCH (src:entity)-[r:relation]->(dst:entity) WHERE r.relation = '' RETURN COUNT(r)"); err != nil {
+		return nil, err
+	}
+	if err := run(4, hasEntity && hasRelation, "MATCH (src:entity)-[r:relation]->(dst:entity) WHERE src.urn = dst.urn RETURN COUNT(r)"); err != nil {
+		return nil, err
 	}
 	return checks, nil
 }

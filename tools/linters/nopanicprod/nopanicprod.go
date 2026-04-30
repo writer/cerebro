@@ -43,7 +43,7 @@ func run(pass *analysis.Pass) (any, error) {
 			if !ok || ident.Name != "panic" {
 				return true
 			}
-			if enclosingFuncName(stack) == "init" {
+			if enclosingIsPackageInit(stack) {
 				return true
 			}
 			pass.Report(analysis.Diagnostic{
@@ -57,14 +57,14 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-func enclosingFuncName(stack []ast.Node) string {
+func enclosingIsPackageInit(stack []ast.Node) bool {
 	for i := len(stack) - 1; i >= 0; i-- {
 		decl, ok := stack[i].(*ast.FuncDecl)
 		if ok && decl.Name != nil {
-			return decl.Name.Name
+			return decl.Recv == nil && decl.Name.Name == "init"
 		}
 	}
-	return ""
+	return false
 }
 
 func packageAllowed(path string) bool {

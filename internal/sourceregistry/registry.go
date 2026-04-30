@@ -4,8 +4,13 @@ import (
 	"fmt"
 
 	"github.com/writer/cerebro/internal/sourcecdk"
+	awssource "github.com/writer/cerebro/sources/aws"
+	azuresource "github.com/writer/cerebro/sources/azure"
+	gcpsource "github.com/writer/cerebro/sources/gcp"
 	githubsource "github.com/writer/cerebro/sources/github"
+	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	oktasource "github.com/writer/cerebro/sources/okta"
+	sdksource "github.com/writer/cerebro/sources/sdk"
 )
 
 type builtinSourceLoader struct {
@@ -15,15 +20,45 @@ type builtinSourceLoader struct {
 
 var builtinSourceLoaders = []builtinSourceLoader{
 	{
+		name: "aws",
+		load: func() (sourcecdk.Source, error) {
+			return awssource.New()
+		},
+	},
+	{
+		name: "azure",
+		load: func() (sourcecdk.Source, error) {
+			return azuresource.New()
+		},
+	},
+	{
+		name: "gcp",
+		load: func() (sourcecdk.Source, error) {
+			return gcpsource.New()
+		},
+	},
+	{
 		name: "github",
 		load: func() (sourcecdk.Source, error) {
 			return githubsource.New()
 		},
 	},
 	{
+		name: "google_workspace",
+		load: func() (sourcecdk.Source, error) {
+			return googleworkspacesource.New()
+		},
+	},
+	{
 		name: "okta",
 		load: func() (sourcecdk.Source, error) {
 			return oktasource.New()
+		},
+	},
+	{
+		name: "sdk",
+		load: func() (sourcecdk.Source, error) {
+			return sdksource.New()
 		},
 	},
 }

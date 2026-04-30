@@ -17,3 +17,14 @@ func AlsoBad() {
 func Good() {
 	_, _ = sql.Open("postgres", "postgres://db")
 }
+
+type opener struct{}
+
+func (opener) Open(driver string) {}
+
+var sqliteConnector opener
+
+func AlsoGood() {
+	opener{}.Open("sqlite")
+	sqliteConnector.Open("sqlite")
+}

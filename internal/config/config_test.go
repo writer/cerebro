@@ -124,7 +124,16 @@ func TestLoadRejectsMissingPostgresDSN(t *testing.T) {
 }
 
 func TestLoadRejectsMissingKuzuPath(t *testing.T) {
+	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverKuzu)
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsUnsupportedGraphStoreDriver(t *testing.T) {
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "alternate")
+	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
 	}

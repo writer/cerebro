@@ -29,6 +29,7 @@ const (
 	defaultAuditInclude = "all"
 	defaultAuditOrder   = "desc"
 	familyAudit         = "audit"
+	familyDependabot    = "dependabot_alert"
 	familyPullRequest   = "pull_request"
 )
 
@@ -89,6 +90,9 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 	if settings.family == familyAudit {
 		return s.checkAudit(ctx, client, settings)
 	}
+	if settings.family == familyDependabot {
+		return s.checkDependabotAlerts(ctx, client, settings)
+	}
 	if settings.repo != "" {
 		_, err := getRepo(ctx, client, settings.owner, settings.repo)
 		return err
@@ -105,6 +109,9 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 	}
 	if settings.family == familyAudit {
 		return s.discoverAudit(ctx, client, settings)
+	}
+	if settings.family == familyDependabot {
+		return s.discoverDependabotAlerts(ctx, client, settings)
 	}
 	if settings.repo != "" {
 		repo, err := getRepo(ctx, client, settings.owner, settings.repo)
@@ -140,6 +147,9 @@ func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebro
 	}
 	if settings.family == familyAudit {
 		return s.readAudit(ctx, client, settings, cursor)
+	}
+	if settings.family == familyDependabot {
+		return s.readDependabotAlerts(ctx, client, settings, cursor)
 	}
 	page, err := readPage(cursor)
 	if err != nil {
@@ -235,9 +245,9 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
 		settings.family = defaultFamily
 	}
 	switch settings.family {
-	case familyAudit, familyPullRequest:
+	case familyAudit, familyDependabot, familyPullRequest:
 	default:
-		return settings, fmt.Errorf("github family must be one of %s or %s", familyPullRequest, familyAudit)
+		return settings, fmt.Errorf("github family must be one of %s, %s, or %s", familyPullRequest, familyAudit, familyDependabot)
 	}
 	if rawPerPage, ok := cfg.Lookup("per_page"); ok && strings.TrimSpace(rawPerPage) != "" {
 		perPage, err := strconv.Atoi(strings.TrimSpace(rawPerPage))
@@ -261,6 +271,24 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
 		case "all", "closed", "open":
 		default:
 			return settings, fmt.Errorf("github state must be one of open, closed, or all")
+		}
+		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
+			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)
+		}
+	case familyDependabot:
+		if settings.token == "" {
+			return settings, fmt.Errorf("github token is required when family=%q", familyDependabot)
+		}
+		if settings.repo == "" {
+			return settings, fmt.Errorf("github repo is required when family=%q", familyDependabot)
+		}
+		if settings.state == "" {
+			settings.state = defaultState
+		}
+		switch settings.state {
+		case "auto_dismissed", "dismissed", "fixed", "open":
+		default:
+			return settings, fmt.Errorf("github state must be one of auto_dismissed, dismissed, fixed, or open when family=%q", familyDependabot)
 		}
 		if settings.auditInclude != "" || settings.auditOrder != "" || settings.auditPhrase != "" {
 			return settings, fmt.Errorf("github include, order, and phrase are only supported when family=%q", familyAudit)

@@ -1,0 +1,74 @@
+{
+  "rule_id": "github-dependabot-open-alert",
+  "runtime": {
+    "id": "writer-github",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-dependabot-alert-7",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.dependabot_alert",
+      "occurred_at": "2026-04-24T12:00:00Z",
+      "schema_ref": "github/dependabot_alert/v1",
+      "attributes": {
+        "advisory_cve_id": "CVE-2026-0001",
+        "advisory_ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+        "advisory_severity": "high",
+        "alert_number": "7",
+        "ecosystem": "go",
+        "family": "dependabot_alert",
+        "first_patched_version": "0.31.0",
+        "html_url": "https://github.com/writer/cerebro/security/dependabot/7",
+        "owner": "writer",
+        "package": "golang.org/x/crypto",
+        "repo": "cerebro",
+        "repository": "writer/cerebro",
+        "severity": "high",
+        "state": "open",
+        "vulnerability_severity": "high",
+        "vulnerable_version_range": "< 0.31.0",
+        "source_runtime_id": "writer-github"
+      }
+    },
+    {
+      "id": "github-dependabot-alert-8",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.dependabot_alert",
+      "occurred_at": "2026-04-24T12:00:00Z",
+      "schema_ref": "github/dependabot_alert/v1",
+      "attributes": {
+        "alert_number": "8",
+        "owner": "writer",
+        "repository": "writer/cerebro",
+        "state": "fixed",
+        "source_runtime_id": "writer-github"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-dependabot-open-alert",
+      "severity": "HIGH",
+      "status": "open",
+      "policy_id": "GHSA-xxxx-yyyy-zzzz",
+      "event_ids": ["github-dependabot-alert-7"],
+      "attributes": {
+        "alert_number": "7",
+        "primary_resource_urn": "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7",
+        "repository": "writer/cerebro",
+        "rule_required_attributes": "repository,alert_number,state",
+        "rule_tags": "github,dependabot,vulnerability,supply-chain,attack.initial-access"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-dependabot-alert-8",
+      "reason": "fixed alerts are not open findings"
+    }
+  ]
+}

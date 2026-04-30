@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	gogithub "github.com/google/go-github/v66/github"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
 )
@@ -104,6 +106,43 @@ func TestNewFixtureReplaysFixturePages(t *testing.T) {
 	}
 	if len(final.Events) != 0 {
 		t.Fatalf("len(final.Events) = %d, want 0", len(final.Events))
+	}
+}
+
+func TestReadRejectsNegativeCursor(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{"owner": "writer", "repo": "cerebro"})
+
+	if _, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: "-1"}); err == nil {
+		t.Fatal("Read() error = nil, want non-nil")
+	}
+}
+
+func TestReadTrimsCursor(t *testing.T) {
+	server := httptest.NewServer(newGitHubAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"owner":    "writer",
+		"per_page": "1",
+		"repo":     "cerebro",
+		"state":    "all",
+	})
+
+	pull, err := source.Read(context.Background(), cfg, &cerebrov1.SourceCursor{Opaque: " 1 "})
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if len(pull.Events) != 1 {
+		t.Fatalf("len(Events) = %d, want 1", len(pull.Events))
 	}
 }
 
@@ -225,6 +264,15 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	if got := first.Events[0].Kind; got != "github.audit" {
 		t.Fatalf("first.Events[0].Kind = %q, want github.audit", got)
 	}
+	if got := first.Events[0].Attributes["permission"]; got != "admin" {
+		t.Fatalf("first.Events[0].Attributes[permission] = %q, want admin", got)
+	}
+	if got := first.Events[0].Attributes["previous_visibility"]; got != "private" {
+		t.Fatalf("first.Events[0].Attributes[previous_visibility] = %q, want private", got)
+	}
+	if got := first.Events[0].Attributes["external_identity_nameid"]; got != "dependabot@writer.com" {
+		t.Fatalf("first.Events[0].Attributes[external_identity_nameid] = %q, want dependabot@writer.com", got)
+	}
 	var payload map[string]any
 	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
 		t.Fatalf("unmarshal audit payload: %v", err)
@@ -255,6 +303,79 @@ func TestCheckDiscoverAndReadLiveGitHubAuditPreview(t *testing.T) {
 	}
 	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "audit-doc-2" {
 		t.Fatalf("second.Checkpoint = %#v, want audit-doc-2", second.Checkpoint)
+	}
+}
+
+func TestNextAuditCursorIgnoresBefore(t *testing.T) {
+	if got := nextAuditCursor(&gogithub.Response{Before: "cursor-1"}); got != "" {
+		t.Fatalf("nextAuditCursor() = %q, want empty cursor", got)
+	}
+}
+
+func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
+	server := httptest.NewServer(newGitHubAPIHandler(t))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	cfg := sourcecdk.NewConfig(map[string]string{
+		"base_url": server.URL,
+		"family":   "dependabot_alert",
+		"owner":    "writer",
+		"per_page": "1",
+		"repo":     "cerebro",
+		"token":    "test-token",
+	})
+	if err := source.Check(context.Background(), cfg); err != nil {
+		t.Fatalf("Check(dependabot_alert) error = %v", err)
+	}
+
+	discover, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover(dependabot_alert) error = %v", err)
+	}
+	if len(discover) != 1 {
+		t.Fatalf("len(Discover(dependabot_alert)) = %d, want 1", len(discover))
+	}
+	if discover[0] != "urn:cerebro:writer:repo:writer/cerebro" {
+		t.Fatalf("Discover(dependabot_alert)[0] = %q, want repo urn", discover[0])
+	}
+
+	first, err := source.Read(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Read(dependabot_alert first) error = %v", err)
+	}
+	if len(first.Events) != 1 {
+		t.Fatalf("len(Read(dependabot_alert first).Events) = %d, want 1", len(first.Events))
+	}
+	if first.NextCursor == nil || first.NextCursor.Opaque != "cursor-2" {
+		t.Fatalf("first.NextCursor = %#v, want cursor-2", first.NextCursor)
+	}
+	if got := first.Events[0].Kind; got != "github.dependabot_alert" {
+		t.Fatalf("first.Events[0].Kind = %q, want github.dependabot_alert", got)
+	}
+	if got := first.Events[0].Attributes["severity"]; got != "high" {
+		t.Fatalf("first.Events[0].Attributes[severity] = %q, want high", got)
+	}
+	if got := first.Events[0].Attributes["package"]; got != "golang.org/x/crypto" {
+		t.Fatalf("first.Events[0].Attributes[package] = %q, want golang.org/x/crypto", got)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(first.Events[0].Payload, &payload); err != nil {
+		t.Fatalf("unmarshal dependabot payload: %v", err)
+	}
+	if got := payload["ghsa_id"]; got != "GHSA-xxxx-yyyy-zzzz" {
+		t.Fatalf("dependabot payload ghsa_id = %#v, want GHSA", got)
+	}
+
+	second, err := source.Read(context.Background(), cfg, first.NextCursor)
+	if err != nil {
+		t.Fatalf("Read(dependabot_alert second) error = %v", err)
+	}
+	if len(second.Events) != 0 {
+		t.Fatalf("len(Read(dependabot_alert second).Events) = %d, want 0", len(second.Events))
 	}
 }
 
@@ -317,9 +438,12 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			"business":                    "writer",
 			"business_id":                 10550,
 			"created_at":                  1776916397852,
+			"external_identity_nameid":    "dependabot@writer.com",
 			"operation_type":              "create",
 			"org":                         "writer",
 			"org_id":                      1,
+			"permission":                  "admin",
+			"previous_visibility":         "private",
 			"programmatic_access_type":    "GitHub App server-to-server token",
 			"public_repo":                 false,
 			"repo":                        "writer/cerebro",
@@ -344,6 +468,41 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			"actor_is_bot":   false,
 			"request_id":     "audit-2",
 			"visibility":     "internal",
+		},
+	}
+	dependabotAlerts := []map[string]any{
+		{
+			"number":     7,
+			"state":      "open",
+			"url":        "https://api.github.com/repos/writer/cerebro/dependabot/alerts/7",
+			"html_url":   "https://github.com/writer/cerebro/security/dependabot/7",
+			"created_at": "2026-04-23T00:00:00Z",
+			"updated_at": "2026-04-24T00:00:00Z",
+			"dependency": map[string]any{
+				"package": map[string]any{
+					"ecosystem": "go",
+					"name":      "golang.org/x/crypto",
+				},
+				"manifest_path": "go.mod",
+				"scope":         "runtime",
+			},
+			"security_advisory": map[string]any{
+				"ghsa_id":  "GHSA-xxxx-yyyy-zzzz",
+				"cve_id":   "CVE-2026-0001",
+				"summary":  "High severity issue in golang.org/x/crypto",
+				"severity": "high",
+			},
+			"security_vulnerability": map[string]any{
+				"package": map[string]any{
+					"ecosystem": "go",
+					"name":      "golang.org/x/crypto",
+				},
+				"severity":                 "high",
+				"vulnerable_version_range": "< 0.31.0",
+				"first_patched_version": map[string]any{
+					"identifier": "0.31.0",
+				},
+			},
 		},
 	}
 
@@ -393,6 +552,18 @@ func newGitHubAPIHandler(t *testing.T) http.Handler {
 			}
 			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
 				t.Fatalf("encode empty audit page: %v", err)
+			}
+		case "/api/v3/repos/writer/cerebro/dependabot/alerts":
+			after := r.URL.Query().Get("after")
+			if after == "" {
+				w.Header().Set("Link", "</api/v3/repos/writer/cerebro/dependabot/alerts?after=cursor-2&before=>; rel=\"next\"")
+				if err := json.NewEncoder(w).Encode(dependabotAlerts); err != nil {
+					t.Fatalf("encode dependabot alerts page 1: %v", err)
+				}
+				return
+			}
+			if err := json.NewEncoder(w).Encode([]map[string]any{}); err != nil {
+				t.Fatalf("encode empty dependabot alerts page: %v", err)
 			}
 		default:
 			http.NotFound(w, r)

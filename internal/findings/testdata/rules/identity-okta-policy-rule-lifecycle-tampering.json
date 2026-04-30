@@ -1,0 +1,71 @@
+{
+  "rule_id": "identity-okta-policy-rule-lifecycle-tampering",
+  "runtime": {
+    "id": "writer-okta-audit",
+    "source_id": "okta",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "okta-audit-1",
+      "tenant_id": "writer",
+      "source_id": "okta",
+      "kind": "okta.audit",
+      "occurred_at": "2026-04-23T12:00:00Z",
+      "schema_ref": "okta/audit/v1",
+      "attributes": {
+        "domain": "writer.okta.com",
+        "event_type": "user.session.start",
+        "actor_id": "00u2",
+        "actor_type": "User",
+        "actor_alternate_id": "admin@writer.com",
+        "actor_display_name": "Admin Example",
+        "outcome_result": "SUCCESS",
+        "source_runtime_id": "writer-okta-audit"
+      }
+    },
+    {
+      "id": "okta-audit-2",
+      "tenant_id": "writer",
+      "source_id": "okta",
+      "kind": "okta.audit",
+      "occurred_at": "2026-04-23T12:00:00Z",
+      "schema_ref": "okta/audit/v1",
+      "attributes": {
+        "domain": "writer.okta.com",
+        "event_type": "policy.rule.update",
+        "resource_id": "pol-1",
+        "resource_type": "PolicyRule",
+        "actor_id": "00u2",
+        "actor_type": "User",
+        "actor_alternate_id": "admin@writer.com",
+        "actor_display_name": "Admin Example",
+        "outcome_result": "SUCCESS",
+        "source_runtime_id": "writer-okta-audit"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "identity-okta-policy-rule-lifecycle-tampering",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "admin@writer.com performed policy.rule.update on pol-1",
+      "policy_id": "pol-1",
+      "event_ids": ["okta-audit-2"],
+      "attributes": {
+        "event_type": "policy.rule.update",
+        "primary_actor_urn": "urn:cerebro:writer:okta_user:00u2",
+        "primary_resource_urn": "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+        "rule_required_attributes": "event_type,resource_id",
+        "rule_tags": "okta,identity,policy,defense-evasion,attack.t1562"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "okta-audit-1",
+      "reason": "session start is not a policy rule lifecycle change"
+    }
+  ]
+}

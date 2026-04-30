@@ -39,6 +39,18 @@ const (
 	// BootstrapServiceCheckHealthProcedure is the fully-qualified name of the BootstrapService's
 	// CheckHealth RPC.
 	BootstrapServiceCheckHealthProcedure = "/cerebro.v1.BootstrapService/CheckHealth"
+	// BootstrapServiceListReportDefinitionsProcedure is the fully-qualified name of the
+	// BootstrapService's ListReportDefinitions RPC.
+	BootstrapServiceListReportDefinitionsProcedure = "/cerebro.v1.BootstrapService/ListReportDefinitions"
+	// BootstrapServiceListFindingRulesProcedure is the fully-qualified name of the BootstrapService's
+	// ListFindingRules RPC.
+	BootstrapServiceListFindingRulesProcedure = "/cerebro.v1.BootstrapService/ListFindingRules"
+	// BootstrapServiceRunReportProcedure is the fully-qualified name of the BootstrapService's
+	// RunReport RPC.
+	BootstrapServiceRunReportProcedure = "/cerebro.v1.BootstrapService/RunReport"
+	// BootstrapServiceGetReportRunProcedure is the fully-qualified name of the BootstrapService's
+	// GetReportRun RPC.
+	BootstrapServiceGetReportRunProcedure = "/cerebro.v1.BootstrapService/GetReportRun"
 	// BootstrapServiceListSourcesProcedure is the fully-qualified name of the BootstrapService's
 	// ListSources RPC.
 	BootstrapServiceListSourcesProcedure = "/cerebro.v1.BootstrapService/ListSources"
@@ -60,12 +72,91 @@ const (
 	// BootstrapServiceSyncSourceRuntimeProcedure is the fully-qualified name of the BootstrapService's
 	// SyncSourceRuntime RPC.
 	BootstrapServiceSyncSourceRuntimeProcedure = "/cerebro.v1.BootstrapService/SyncSourceRuntime"
+	// BootstrapServiceWriteClaimsProcedure is the fully-qualified name of the BootstrapService's
+	// WriteClaims RPC.
+	BootstrapServiceWriteClaimsProcedure = "/cerebro.v1.BootstrapService/WriteClaims"
+	// BootstrapServiceListClaimsProcedure is the fully-qualified name of the BootstrapService's
+	// ListClaims RPC.
+	BootstrapServiceListClaimsProcedure = "/cerebro.v1.BootstrapService/ListClaims"
+	// BootstrapServiceListFindingsProcedure is the fully-qualified name of the BootstrapService's
+	// ListFindings RPC.
+	BootstrapServiceListFindingsProcedure = "/cerebro.v1.BootstrapService/ListFindings"
+	// BootstrapServiceGetFindingProcedure is the fully-qualified name of the BootstrapService's
+	// GetFinding RPC.
+	BootstrapServiceGetFindingProcedure = "/cerebro.v1.BootstrapService/GetFinding"
+	// BootstrapServiceResolveFindingProcedure is the fully-qualified name of the BootstrapService's
+	// ResolveFinding RPC.
+	BootstrapServiceResolveFindingProcedure = "/cerebro.v1.BootstrapService/ResolveFinding"
+	// BootstrapServiceSuppressFindingProcedure is the fully-qualified name of the BootstrapService's
+	// SuppressFinding RPC.
+	BootstrapServiceSuppressFindingProcedure = "/cerebro.v1.BootstrapService/SuppressFinding"
+	// BootstrapServiceAssignFindingProcedure is the fully-qualified name of the BootstrapService's
+	// AssignFinding RPC.
+	BootstrapServiceAssignFindingProcedure = "/cerebro.v1.BootstrapService/AssignFinding"
+	// BootstrapServiceSetFindingDueDateProcedure is the fully-qualified name of the BootstrapService's
+	// SetFindingDueDate RPC.
+	BootstrapServiceSetFindingDueDateProcedure = "/cerebro.v1.BootstrapService/SetFindingDueDate"
+	// BootstrapServiceAddFindingNoteProcedure is the fully-qualified name of the BootstrapService's
+	// AddFindingNote RPC.
+	BootstrapServiceAddFindingNoteProcedure = "/cerebro.v1.BootstrapService/AddFindingNote"
+	// BootstrapServiceLinkFindingTicketProcedure is the fully-qualified name of the BootstrapService's
+	// LinkFindingTicket RPC.
+	BootstrapServiceLinkFindingTicketProcedure = "/cerebro.v1.BootstrapService/LinkFindingTicket"
+	// BootstrapServiceListFindingEvaluationRunsProcedure is the fully-qualified name of the
+	// BootstrapService's ListFindingEvaluationRuns RPC.
+	BootstrapServiceListFindingEvaluationRunsProcedure = "/cerebro.v1.BootstrapService/ListFindingEvaluationRuns"
+	// BootstrapServiceGetFindingEvaluationRunProcedure is the fully-qualified name of the
+	// BootstrapService's GetFindingEvaluationRun RPC.
+	BootstrapServiceGetFindingEvaluationRunProcedure = "/cerebro.v1.BootstrapService/GetFindingEvaluationRun"
+	// BootstrapServiceListFindingEvidenceProcedure is the fully-qualified name of the
+	// BootstrapService's ListFindingEvidence RPC.
+	BootstrapServiceListFindingEvidenceProcedure = "/cerebro.v1.BootstrapService/ListFindingEvidence"
+	// BootstrapServiceGetFindingEvidenceProcedure is the fully-qualified name of the BootstrapService's
+	// GetFindingEvidence RPC.
+	BootstrapServiceGetFindingEvidenceProcedure = "/cerebro.v1.BootstrapService/GetFindingEvidence"
+	// BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure is the fully-qualified name of the
+	// BootstrapService's EvaluateSourceRuntimeFindingRules RPC.
+	BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure = "/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindingRules"
+	// BootstrapServiceEvaluateSourceRuntimeFindingsProcedure is the fully-qualified name of the
+	// BootstrapService's EvaluateSourceRuntimeFindings RPC.
+	BootstrapServiceEvaluateSourceRuntimeFindingsProcedure = "/cerebro.v1.BootstrapService/EvaluateSourceRuntimeFindings"
+	// BootstrapServiceWriteDecisionProcedure is the fully-qualified name of the BootstrapService's
+	// WriteDecision RPC.
+	BootstrapServiceWriteDecisionProcedure = "/cerebro.v1.BootstrapService/WriteDecision"
+	// BootstrapServiceWriteActionProcedure is the fully-qualified name of the BootstrapService's
+	// WriteAction RPC.
+	BootstrapServiceWriteActionProcedure = "/cerebro.v1.BootstrapService/WriteAction"
+	// BootstrapServiceWriteOutcomeProcedure is the fully-qualified name of the BootstrapService's
+	// WriteOutcome RPC.
+	BootstrapServiceWriteOutcomeProcedure = "/cerebro.v1.BootstrapService/WriteOutcome"
+	// BootstrapServiceReplayWorkflowEventsProcedure is the fully-qualified name of the
+	// BootstrapService's ReplayWorkflowEvents RPC.
+	BootstrapServiceReplayWorkflowEventsProcedure = "/cerebro.v1.BootstrapService/ReplayWorkflowEvents"
+	// BootstrapServiceGetEntityNeighborhoodProcedure is the fully-qualified name of the
+	// BootstrapService's GetEntityNeighborhood RPC.
+	BootstrapServiceGetEntityNeighborhoodProcedure = "/cerebro.v1.BootstrapService/GetEntityNeighborhood"
+	// BootstrapServiceRunGraphIngestRuntimeProcedure is the fully-qualified name of the
+	// BootstrapService's RunGraphIngestRuntime RPC.
+	BootstrapServiceRunGraphIngestRuntimeProcedure = "/cerebro.v1.BootstrapService/RunGraphIngestRuntime"
+	// BootstrapServiceGetGraphIngestRunProcedure is the fully-qualified name of the BootstrapService's
+	// GetGraphIngestRun RPC.
+	BootstrapServiceGetGraphIngestRunProcedure = "/cerebro.v1.BootstrapService/GetGraphIngestRun"
+	// BootstrapServiceListGraphIngestRunsProcedure is the fully-qualified name of the
+	// BootstrapService's ListGraphIngestRuns RPC.
+	BootstrapServiceListGraphIngestRunsProcedure = "/cerebro.v1.BootstrapService/ListGraphIngestRuns"
+	// BootstrapServiceCheckGraphIngestHealthProcedure is the fully-qualified name of the
+	// BootstrapService's CheckGraphIngestHealth RPC.
+	BootstrapServiceCheckGraphIngestHealthProcedure = "/cerebro.v1.BootstrapService/CheckGraphIngestHealth"
 )
 
 // BootstrapServiceClient is a client for the cerebro.v1.BootstrapService service.
 type BootstrapServiceClient interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
 	CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error)
+	ListReportDefinitions(context.Context, *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error)
+	ListFindingRules(context.Context, *connect.Request[v1.ListFindingRulesRequest]) (*connect.Response[v1.ListFindingRulesResponse], error)
+	RunReport(context.Context, *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error)
+	GetReportRun(context.Context, *connect.Request[v1.GetReportRunRequest]) (*connect.Response[v1.GetReportRunResponse], error)
 	ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error)
 	CheckSource(context.Context, *connect.Request[v1.CheckSourceRequest]) (*connect.Response[v1.CheckSourceResponse], error)
 	DiscoverSource(context.Context, *connect.Request[v1.DiscoverSourceRequest]) (*connect.Response[v1.DiscoverSourceResponse], error)
@@ -73,6 +164,31 @@ type BootstrapServiceClient interface {
 	PutSourceRuntime(context.Context, *connect.Request[v1.PutSourceRuntimeRequest]) (*connect.Response[v1.PutSourceRuntimeResponse], error)
 	GetSourceRuntime(context.Context, *connect.Request[v1.GetSourceRuntimeRequest]) (*connect.Response[v1.GetSourceRuntimeResponse], error)
 	SyncSourceRuntime(context.Context, *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error)
+	WriteClaims(context.Context, *connect.Request[v1.WriteClaimsRequest]) (*connect.Response[v1.WriteClaimsResponse], error)
+	ListClaims(context.Context, *connect.Request[v1.ListClaimsRequest]) (*connect.Response[v1.ListClaimsResponse], error)
+	ListFindings(context.Context, *connect.Request[v1.ListFindingsRequest]) (*connect.Response[v1.ListFindingsResponse], error)
+	GetFinding(context.Context, *connect.Request[v1.GetFindingRequest]) (*connect.Response[v1.GetFindingResponse], error)
+	ResolveFinding(context.Context, *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error)
+	SuppressFinding(context.Context, *connect.Request[v1.SuppressFindingRequest]) (*connect.Response[v1.SuppressFindingResponse], error)
+	AssignFinding(context.Context, *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error)
+	SetFindingDueDate(context.Context, *connect.Request[v1.SetFindingDueDateRequest]) (*connect.Response[v1.SetFindingDueDateResponse], error)
+	AddFindingNote(context.Context, *connect.Request[v1.AddFindingNoteRequest]) (*connect.Response[v1.AddFindingNoteResponse], error)
+	LinkFindingTicket(context.Context, *connect.Request[v1.LinkFindingTicketRequest]) (*connect.Response[v1.LinkFindingTicketResponse], error)
+	ListFindingEvaluationRuns(context.Context, *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error)
+	GetFindingEvaluationRun(context.Context, *connect.Request[v1.GetFindingEvaluationRunRequest]) (*connect.Response[v1.GetFindingEvaluationRunResponse], error)
+	ListFindingEvidence(context.Context, *connect.Request[v1.ListFindingEvidenceRequest]) (*connect.Response[v1.ListFindingEvidenceResponse], error)
+	GetFindingEvidence(context.Context, *connect.Request[v1.GetFindingEvidenceRequest]) (*connect.Response[v1.GetFindingEvidenceResponse], error)
+	EvaluateSourceRuntimeFindingRules(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingRulesResponse], error)
+	EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error)
+	WriteDecision(context.Context, *connect.Request[v1.WriteDecisionRequest]) (*connect.Response[v1.WriteDecisionResponse], error)
+	WriteAction(context.Context, *connect.Request[v1.WriteActionRequest]) (*connect.Response[v1.WriteActionResponse], error)
+	WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error)
+	ReplayWorkflowEvents(context.Context, *connect.Request[v1.ReplayWorkflowEventsRequest]) (*connect.Response[v1.ReplayWorkflowEventsResponse], error)
+	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
+	RunGraphIngestRuntime(context.Context, *connect.Request[v1.RunGraphIngestRuntimeRequest]) (*connect.Response[v1.RunGraphIngestRuntimeResponse], error)
+	GetGraphIngestRun(context.Context, *connect.Request[v1.GetGraphIngestRunRequest]) (*connect.Response[v1.GetGraphIngestRunResponse], error)
+	ListGraphIngestRuns(context.Context, *connect.Request[v1.ListGraphIngestRunsRequest]) (*connect.Response[v1.ListGraphIngestRunsResponse], error)
+	CheckGraphIngestHealth(context.Context, *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error)
 }
 
 // NewBootstrapServiceClient constructs a client for the cerebro.v1.BootstrapService service. By
@@ -96,6 +212,30 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			httpClient,
 			baseURL+BootstrapServiceCheckHealthProcedure,
 			connect.WithSchema(bootstrapServiceMethods.ByName("CheckHealth")),
+			connect.WithClientOptions(opts...),
+		),
+		listReportDefinitions: connect.NewClient[v1.ListReportDefinitionsRequest, v1.ListReportDefinitionsResponse](
+			httpClient,
+			baseURL+BootstrapServiceListReportDefinitionsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListReportDefinitions")),
+			connect.WithClientOptions(opts...),
+		),
+		listFindingRules: connect.NewClient[v1.ListFindingRulesRequest, v1.ListFindingRulesResponse](
+			httpClient,
+			baseURL+BootstrapServiceListFindingRulesProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListFindingRules")),
+			connect.WithClientOptions(opts...),
+		),
+		runReport: connect.NewClient[v1.RunReportRequest, v1.RunReportResponse](
+			httpClient,
+			baseURL+BootstrapServiceRunReportProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("RunReport")),
+			connect.WithClientOptions(opts...),
+		),
+		getReportRun: connect.NewClient[v1.GetReportRunRequest, v1.GetReportRunResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetReportRunProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetReportRun")),
 			connect.WithClientOptions(opts...),
 		),
 		listSources: connect.NewClient[v1.ListSourcesRequest, v1.ListSourcesResponse](
@@ -140,20 +280,199 @@ func NewBootstrapServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(bootstrapServiceMethods.ByName("SyncSourceRuntime")),
 			connect.WithClientOptions(opts...),
 		),
+		writeClaims: connect.NewClient[v1.WriteClaimsRequest, v1.WriteClaimsResponse](
+			httpClient,
+			baseURL+BootstrapServiceWriteClaimsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("WriteClaims")),
+			connect.WithClientOptions(opts...),
+		),
+		listClaims: connect.NewClient[v1.ListClaimsRequest, v1.ListClaimsResponse](
+			httpClient,
+			baseURL+BootstrapServiceListClaimsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListClaims")),
+			connect.WithClientOptions(opts...),
+		),
+		listFindings: connect.NewClient[v1.ListFindingsRequest, v1.ListFindingsResponse](
+			httpClient,
+			baseURL+BootstrapServiceListFindingsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListFindings")),
+			connect.WithClientOptions(opts...),
+		),
+		getFinding: connect.NewClient[v1.GetFindingRequest, v1.GetFindingResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetFindingProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetFinding")),
+			connect.WithClientOptions(opts...),
+		),
+		resolveFinding: connect.NewClient[v1.ResolveFindingRequest, v1.ResolveFindingResponse](
+			httpClient,
+			baseURL+BootstrapServiceResolveFindingProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ResolveFinding")),
+			connect.WithClientOptions(opts...),
+		),
+		suppressFinding: connect.NewClient[v1.SuppressFindingRequest, v1.SuppressFindingResponse](
+			httpClient,
+			baseURL+BootstrapServiceSuppressFindingProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("SuppressFinding")),
+			connect.WithClientOptions(opts...),
+		),
+		assignFinding: connect.NewClient[v1.AssignFindingRequest, v1.AssignFindingResponse](
+			httpClient,
+			baseURL+BootstrapServiceAssignFindingProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("AssignFinding")),
+			connect.WithClientOptions(opts...),
+		),
+		setFindingDueDate: connect.NewClient[v1.SetFindingDueDateRequest, v1.SetFindingDueDateResponse](
+			httpClient,
+			baseURL+BootstrapServiceSetFindingDueDateProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("SetFindingDueDate")),
+			connect.WithClientOptions(opts...),
+		),
+		addFindingNote: connect.NewClient[v1.AddFindingNoteRequest, v1.AddFindingNoteResponse](
+			httpClient,
+			baseURL+BootstrapServiceAddFindingNoteProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("AddFindingNote")),
+			connect.WithClientOptions(opts...),
+		),
+		linkFindingTicket: connect.NewClient[v1.LinkFindingTicketRequest, v1.LinkFindingTicketResponse](
+			httpClient,
+			baseURL+BootstrapServiceLinkFindingTicketProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("LinkFindingTicket")),
+			connect.WithClientOptions(opts...),
+		),
+		listFindingEvaluationRuns: connect.NewClient[v1.ListFindingEvaluationRunsRequest, v1.ListFindingEvaluationRunsResponse](
+			httpClient,
+			baseURL+BootstrapServiceListFindingEvaluationRunsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListFindingEvaluationRuns")),
+			connect.WithClientOptions(opts...),
+		),
+		getFindingEvaluationRun: connect.NewClient[v1.GetFindingEvaluationRunRequest, v1.GetFindingEvaluationRunResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetFindingEvaluationRunProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetFindingEvaluationRun")),
+			connect.WithClientOptions(opts...),
+		),
+		listFindingEvidence: connect.NewClient[v1.ListFindingEvidenceRequest, v1.ListFindingEvidenceResponse](
+			httpClient,
+			baseURL+BootstrapServiceListFindingEvidenceProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListFindingEvidence")),
+			connect.WithClientOptions(opts...),
+		),
+		getFindingEvidence: connect.NewClient[v1.GetFindingEvidenceRequest, v1.GetFindingEvidenceResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetFindingEvidenceProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetFindingEvidence")),
+			connect.WithClientOptions(opts...),
+		),
+		evaluateSourceRuntimeFindingRules: connect.NewClient[v1.EvaluateSourceRuntimeFindingRulesRequest, v1.EvaluateSourceRuntimeFindingRulesResponse](
+			httpClient,
+			baseURL+BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("EvaluateSourceRuntimeFindingRules")),
+			connect.WithClientOptions(opts...),
+		),
+		evaluateSourceRuntimeFindings: connect.NewClient[v1.EvaluateSourceRuntimeFindingsRequest, v1.EvaluateSourceRuntimeFindingsResponse](
+			httpClient,
+			baseURL+BootstrapServiceEvaluateSourceRuntimeFindingsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("EvaluateSourceRuntimeFindings")),
+			connect.WithClientOptions(opts...),
+		),
+		writeDecision: connect.NewClient[v1.WriteDecisionRequest, v1.WriteDecisionResponse](
+			httpClient,
+			baseURL+BootstrapServiceWriteDecisionProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("WriteDecision")),
+			connect.WithClientOptions(opts...),
+		),
+		writeAction: connect.NewClient[v1.WriteActionRequest, v1.WriteActionResponse](
+			httpClient,
+			baseURL+BootstrapServiceWriteActionProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("WriteAction")),
+			connect.WithClientOptions(opts...),
+		),
+		writeOutcome: connect.NewClient[v1.WriteOutcomeRequest, v1.WriteOutcomeResponse](
+			httpClient,
+			baseURL+BootstrapServiceWriteOutcomeProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("WriteOutcome")),
+			connect.WithClientOptions(opts...),
+		),
+		replayWorkflowEvents: connect.NewClient[v1.ReplayWorkflowEventsRequest, v1.ReplayWorkflowEventsResponse](
+			httpClient,
+			baseURL+BootstrapServiceReplayWorkflowEventsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ReplayWorkflowEvents")),
+			connect.WithClientOptions(opts...),
+		),
+		getEntityNeighborhood: connect.NewClient[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetEntityNeighborhoodProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetEntityNeighborhood")),
+			connect.WithClientOptions(opts...),
+		),
+		runGraphIngestRuntime: connect.NewClient[v1.RunGraphIngestRuntimeRequest, v1.RunGraphIngestRuntimeResponse](
+			httpClient,
+			baseURL+BootstrapServiceRunGraphIngestRuntimeProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("RunGraphIngestRuntime")),
+			connect.WithClientOptions(opts...),
+		),
+		getGraphIngestRun: connect.NewClient[v1.GetGraphIngestRunRequest, v1.GetGraphIngestRunResponse](
+			httpClient,
+			baseURL+BootstrapServiceGetGraphIngestRunProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("GetGraphIngestRun")),
+			connect.WithClientOptions(opts...),
+		),
+		listGraphIngestRuns: connect.NewClient[v1.ListGraphIngestRunsRequest, v1.ListGraphIngestRunsResponse](
+			httpClient,
+			baseURL+BootstrapServiceListGraphIngestRunsProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("ListGraphIngestRuns")),
+			connect.WithClientOptions(opts...),
+		),
+		checkGraphIngestHealth: connect.NewClient[v1.CheckGraphIngestHealthRequest, v1.CheckGraphIngestHealthResponse](
+			httpClient,
+			baseURL+BootstrapServiceCheckGraphIngestHealthProcedure,
+			connect.WithSchema(bootstrapServiceMethods.ByName("CheckGraphIngestHealth")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // bootstrapServiceClient implements BootstrapServiceClient.
 type bootstrapServiceClient struct {
-	getVersion        *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
-	checkHealth       *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
-	listSources       *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
-	checkSource       *connect.Client[v1.CheckSourceRequest, v1.CheckSourceResponse]
-	discoverSource    *connect.Client[v1.DiscoverSourceRequest, v1.DiscoverSourceResponse]
-	readSource        *connect.Client[v1.ReadSourceRequest, v1.ReadSourceResponse]
-	putSourceRuntime  *connect.Client[v1.PutSourceRuntimeRequest, v1.PutSourceRuntimeResponse]
-	getSourceRuntime  *connect.Client[v1.GetSourceRuntimeRequest, v1.GetSourceRuntimeResponse]
-	syncSourceRuntime *connect.Client[v1.SyncSourceRuntimeRequest, v1.SyncSourceRuntimeResponse]
+	getVersion                        *connect.Client[v1.GetVersionRequest, v1.GetVersionResponse]
+	checkHealth                       *connect.Client[v1.CheckHealthRequest, v1.CheckHealthResponse]
+	listReportDefinitions             *connect.Client[v1.ListReportDefinitionsRequest, v1.ListReportDefinitionsResponse]
+	listFindingRules                  *connect.Client[v1.ListFindingRulesRequest, v1.ListFindingRulesResponse]
+	runReport                         *connect.Client[v1.RunReportRequest, v1.RunReportResponse]
+	getReportRun                      *connect.Client[v1.GetReportRunRequest, v1.GetReportRunResponse]
+	listSources                       *connect.Client[v1.ListSourcesRequest, v1.ListSourcesResponse]
+	checkSource                       *connect.Client[v1.CheckSourceRequest, v1.CheckSourceResponse]
+	discoverSource                    *connect.Client[v1.DiscoverSourceRequest, v1.DiscoverSourceResponse]
+	readSource                        *connect.Client[v1.ReadSourceRequest, v1.ReadSourceResponse]
+	putSourceRuntime                  *connect.Client[v1.PutSourceRuntimeRequest, v1.PutSourceRuntimeResponse]
+	getSourceRuntime                  *connect.Client[v1.GetSourceRuntimeRequest, v1.GetSourceRuntimeResponse]
+	syncSourceRuntime                 *connect.Client[v1.SyncSourceRuntimeRequest, v1.SyncSourceRuntimeResponse]
+	writeClaims                       *connect.Client[v1.WriteClaimsRequest, v1.WriteClaimsResponse]
+	listClaims                        *connect.Client[v1.ListClaimsRequest, v1.ListClaimsResponse]
+	listFindings                      *connect.Client[v1.ListFindingsRequest, v1.ListFindingsResponse]
+	getFinding                        *connect.Client[v1.GetFindingRequest, v1.GetFindingResponse]
+	resolveFinding                    *connect.Client[v1.ResolveFindingRequest, v1.ResolveFindingResponse]
+	suppressFinding                   *connect.Client[v1.SuppressFindingRequest, v1.SuppressFindingResponse]
+	assignFinding                     *connect.Client[v1.AssignFindingRequest, v1.AssignFindingResponse]
+	setFindingDueDate                 *connect.Client[v1.SetFindingDueDateRequest, v1.SetFindingDueDateResponse]
+	addFindingNote                    *connect.Client[v1.AddFindingNoteRequest, v1.AddFindingNoteResponse]
+	linkFindingTicket                 *connect.Client[v1.LinkFindingTicketRequest, v1.LinkFindingTicketResponse]
+	listFindingEvaluationRuns         *connect.Client[v1.ListFindingEvaluationRunsRequest, v1.ListFindingEvaluationRunsResponse]
+	getFindingEvaluationRun           *connect.Client[v1.GetFindingEvaluationRunRequest, v1.GetFindingEvaluationRunResponse]
+	listFindingEvidence               *connect.Client[v1.ListFindingEvidenceRequest, v1.ListFindingEvidenceResponse]
+	getFindingEvidence                *connect.Client[v1.GetFindingEvidenceRequest, v1.GetFindingEvidenceResponse]
+	evaluateSourceRuntimeFindingRules *connect.Client[v1.EvaluateSourceRuntimeFindingRulesRequest, v1.EvaluateSourceRuntimeFindingRulesResponse]
+	evaluateSourceRuntimeFindings     *connect.Client[v1.EvaluateSourceRuntimeFindingsRequest, v1.EvaluateSourceRuntimeFindingsResponse]
+	writeDecision                     *connect.Client[v1.WriteDecisionRequest, v1.WriteDecisionResponse]
+	writeAction                       *connect.Client[v1.WriteActionRequest, v1.WriteActionResponse]
+	writeOutcome                      *connect.Client[v1.WriteOutcomeRequest, v1.WriteOutcomeResponse]
+	replayWorkflowEvents              *connect.Client[v1.ReplayWorkflowEventsRequest, v1.ReplayWorkflowEventsResponse]
+	getEntityNeighborhood             *connect.Client[v1.GetEntityNeighborhoodRequest, v1.GetEntityNeighborhoodResponse]
+	runGraphIngestRuntime             *connect.Client[v1.RunGraphIngestRuntimeRequest, v1.RunGraphIngestRuntimeResponse]
+	getGraphIngestRun                 *connect.Client[v1.GetGraphIngestRunRequest, v1.GetGraphIngestRunResponse]
+	listGraphIngestRuns               *connect.Client[v1.ListGraphIngestRunsRequest, v1.ListGraphIngestRunsResponse]
+	checkGraphIngestHealth            *connect.Client[v1.CheckGraphIngestHealthRequest, v1.CheckGraphIngestHealthResponse]
 }
 
 // GetVersion calls cerebro.v1.BootstrapService.GetVersion.
@@ -164,6 +483,26 @@ func (c *bootstrapServiceClient) GetVersion(ctx context.Context, req *connect.Re
 // CheckHealth calls cerebro.v1.BootstrapService.CheckHealth.
 func (c *bootstrapServiceClient) CheckHealth(ctx context.Context, req *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error) {
 	return c.checkHealth.CallUnary(ctx, req)
+}
+
+// ListReportDefinitions calls cerebro.v1.BootstrapService.ListReportDefinitions.
+func (c *bootstrapServiceClient) ListReportDefinitions(ctx context.Context, req *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error) {
+	return c.listReportDefinitions.CallUnary(ctx, req)
+}
+
+// ListFindingRules calls cerebro.v1.BootstrapService.ListFindingRules.
+func (c *bootstrapServiceClient) ListFindingRules(ctx context.Context, req *connect.Request[v1.ListFindingRulesRequest]) (*connect.Response[v1.ListFindingRulesResponse], error) {
+	return c.listFindingRules.CallUnary(ctx, req)
+}
+
+// RunReport calls cerebro.v1.BootstrapService.RunReport.
+func (c *bootstrapServiceClient) RunReport(ctx context.Context, req *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error) {
+	return c.runReport.CallUnary(ctx, req)
+}
+
+// GetReportRun calls cerebro.v1.BootstrapService.GetReportRun.
+func (c *bootstrapServiceClient) GetReportRun(ctx context.Context, req *connect.Request[v1.GetReportRunRequest]) (*connect.Response[v1.GetReportRunResponse], error) {
+	return c.getReportRun.CallUnary(ctx, req)
 }
 
 // ListSources calls cerebro.v1.BootstrapService.ListSources.
@@ -201,10 +540,140 @@ func (c *bootstrapServiceClient) SyncSourceRuntime(ctx context.Context, req *con
 	return c.syncSourceRuntime.CallUnary(ctx, req)
 }
 
+// WriteClaims calls cerebro.v1.BootstrapService.WriteClaims.
+func (c *bootstrapServiceClient) WriteClaims(ctx context.Context, req *connect.Request[v1.WriteClaimsRequest]) (*connect.Response[v1.WriteClaimsResponse], error) {
+	return c.writeClaims.CallUnary(ctx, req)
+}
+
+// ListClaims calls cerebro.v1.BootstrapService.ListClaims.
+func (c *bootstrapServiceClient) ListClaims(ctx context.Context, req *connect.Request[v1.ListClaimsRequest]) (*connect.Response[v1.ListClaimsResponse], error) {
+	return c.listClaims.CallUnary(ctx, req)
+}
+
+// ListFindings calls cerebro.v1.BootstrapService.ListFindings.
+func (c *bootstrapServiceClient) ListFindings(ctx context.Context, req *connect.Request[v1.ListFindingsRequest]) (*connect.Response[v1.ListFindingsResponse], error) {
+	return c.listFindings.CallUnary(ctx, req)
+}
+
+// GetFinding calls cerebro.v1.BootstrapService.GetFinding.
+func (c *bootstrapServiceClient) GetFinding(ctx context.Context, req *connect.Request[v1.GetFindingRequest]) (*connect.Response[v1.GetFindingResponse], error) {
+	return c.getFinding.CallUnary(ctx, req)
+}
+
+// ResolveFinding calls cerebro.v1.BootstrapService.ResolveFinding.
+func (c *bootstrapServiceClient) ResolveFinding(ctx context.Context, req *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error) {
+	return c.resolveFinding.CallUnary(ctx, req)
+}
+
+// SuppressFinding calls cerebro.v1.BootstrapService.SuppressFinding.
+func (c *bootstrapServiceClient) SuppressFinding(ctx context.Context, req *connect.Request[v1.SuppressFindingRequest]) (*connect.Response[v1.SuppressFindingResponse], error) {
+	return c.suppressFinding.CallUnary(ctx, req)
+}
+
+// AssignFinding calls cerebro.v1.BootstrapService.AssignFinding.
+func (c *bootstrapServiceClient) AssignFinding(ctx context.Context, req *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error) {
+	return c.assignFinding.CallUnary(ctx, req)
+}
+
+// SetFindingDueDate calls cerebro.v1.BootstrapService.SetFindingDueDate.
+func (c *bootstrapServiceClient) SetFindingDueDate(ctx context.Context, req *connect.Request[v1.SetFindingDueDateRequest]) (*connect.Response[v1.SetFindingDueDateResponse], error) {
+	return c.setFindingDueDate.CallUnary(ctx, req)
+}
+
+// AddFindingNote calls cerebro.v1.BootstrapService.AddFindingNote.
+func (c *bootstrapServiceClient) AddFindingNote(ctx context.Context, req *connect.Request[v1.AddFindingNoteRequest]) (*connect.Response[v1.AddFindingNoteResponse], error) {
+	return c.addFindingNote.CallUnary(ctx, req)
+}
+
+// LinkFindingTicket calls cerebro.v1.BootstrapService.LinkFindingTicket.
+func (c *bootstrapServiceClient) LinkFindingTicket(ctx context.Context, req *connect.Request[v1.LinkFindingTicketRequest]) (*connect.Response[v1.LinkFindingTicketResponse], error) {
+	return c.linkFindingTicket.CallUnary(ctx, req)
+}
+
+// ListFindingEvaluationRuns calls cerebro.v1.BootstrapService.ListFindingEvaluationRuns.
+func (c *bootstrapServiceClient) ListFindingEvaluationRuns(ctx context.Context, req *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error) {
+	return c.listFindingEvaluationRuns.CallUnary(ctx, req)
+}
+
+// GetFindingEvaluationRun calls cerebro.v1.BootstrapService.GetFindingEvaluationRun.
+func (c *bootstrapServiceClient) GetFindingEvaluationRun(ctx context.Context, req *connect.Request[v1.GetFindingEvaluationRunRequest]) (*connect.Response[v1.GetFindingEvaluationRunResponse], error) {
+	return c.getFindingEvaluationRun.CallUnary(ctx, req)
+}
+
+// ListFindingEvidence calls cerebro.v1.BootstrapService.ListFindingEvidence.
+func (c *bootstrapServiceClient) ListFindingEvidence(ctx context.Context, req *connect.Request[v1.ListFindingEvidenceRequest]) (*connect.Response[v1.ListFindingEvidenceResponse], error) {
+	return c.listFindingEvidence.CallUnary(ctx, req)
+}
+
+// GetFindingEvidence calls cerebro.v1.BootstrapService.GetFindingEvidence.
+func (c *bootstrapServiceClient) GetFindingEvidence(ctx context.Context, req *connect.Request[v1.GetFindingEvidenceRequest]) (*connect.Response[v1.GetFindingEvidenceResponse], error) {
+	return c.getFindingEvidence.CallUnary(ctx, req)
+}
+
+// EvaluateSourceRuntimeFindingRules calls
+// cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules.
+func (c *bootstrapServiceClient) EvaluateSourceRuntimeFindingRules(ctx context.Context, req *connect.Request[v1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingRulesResponse], error) {
+	return c.evaluateSourceRuntimeFindingRules.CallUnary(ctx, req)
+}
+
+// EvaluateSourceRuntimeFindings calls cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings.
+func (c *bootstrapServiceClient) EvaluateSourceRuntimeFindings(ctx context.Context, req *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error) {
+	return c.evaluateSourceRuntimeFindings.CallUnary(ctx, req)
+}
+
+// WriteDecision calls cerebro.v1.BootstrapService.WriteDecision.
+func (c *bootstrapServiceClient) WriteDecision(ctx context.Context, req *connect.Request[v1.WriteDecisionRequest]) (*connect.Response[v1.WriteDecisionResponse], error) {
+	return c.writeDecision.CallUnary(ctx, req)
+}
+
+// WriteAction calls cerebro.v1.BootstrapService.WriteAction.
+func (c *bootstrapServiceClient) WriteAction(ctx context.Context, req *connect.Request[v1.WriteActionRequest]) (*connect.Response[v1.WriteActionResponse], error) {
+	return c.writeAction.CallUnary(ctx, req)
+}
+
+// WriteOutcome calls cerebro.v1.BootstrapService.WriteOutcome.
+func (c *bootstrapServiceClient) WriteOutcome(ctx context.Context, req *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error) {
+	return c.writeOutcome.CallUnary(ctx, req)
+}
+
+// ReplayWorkflowEvents calls cerebro.v1.BootstrapService.ReplayWorkflowEvents.
+func (c *bootstrapServiceClient) ReplayWorkflowEvents(ctx context.Context, req *connect.Request[v1.ReplayWorkflowEventsRequest]) (*connect.Response[v1.ReplayWorkflowEventsResponse], error) {
+	return c.replayWorkflowEvents.CallUnary(ctx, req)
+}
+
+// GetEntityNeighborhood calls cerebro.v1.BootstrapService.GetEntityNeighborhood.
+func (c *bootstrapServiceClient) GetEntityNeighborhood(ctx context.Context, req *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error) {
+	return c.getEntityNeighborhood.CallUnary(ctx, req)
+}
+
+// RunGraphIngestRuntime calls cerebro.v1.BootstrapService.RunGraphIngestRuntime.
+func (c *bootstrapServiceClient) RunGraphIngestRuntime(ctx context.Context, req *connect.Request[v1.RunGraphIngestRuntimeRequest]) (*connect.Response[v1.RunGraphIngestRuntimeResponse], error) {
+	return c.runGraphIngestRuntime.CallUnary(ctx, req)
+}
+
+// GetGraphIngestRun calls cerebro.v1.BootstrapService.GetGraphIngestRun.
+func (c *bootstrapServiceClient) GetGraphIngestRun(ctx context.Context, req *connect.Request[v1.GetGraphIngestRunRequest]) (*connect.Response[v1.GetGraphIngestRunResponse], error) {
+	return c.getGraphIngestRun.CallUnary(ctx, req)
+}
+
+// ListGraphIngestRuns calls cerebro.v1.BootstrapService.ListGraphIngestRuns.
+func (c *bootstrapServiceClient) ListGraphIngestRuns(ctx context.Context, req *connect.Request[v1.ListGraphIngestRunsRequest]) (*connect.Response[v1.ListGraphIngestRunsResponse], error) {
+	return c.listGraphIngestRuns.CallUnary(ctx, req)
+}
+
+// CheckGraphIngestHealth calls cerebro.v1.BootstrapService.CheckGraphIngestHealth.
+func (c *bootstrapServiceClient) CheckGraphIngestHealth(ctx context.Context, req *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error) {
+	return c.checkGraphIngestHealth.CallUnary(ctx, req)
+}
+
 // BootstrapServiceHandler is an implementation of the cerebro.v1.BootstrapService service.
 type BootstrapServiceHandler interface {
 	GetVersion(context.Context, *connect.Request[v1.GetVersionRequest]) (*connect.Response[v1.GetVersionResponse], error)
 	CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error)
+	ListReportDefinitions(context.Context, *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error)
+	ListFindingRules(context.Context, *connect.Request[v1.ListFindingRulesRequest]) (*connect.Response[v1.ListFindingRulesResponse], error)
+	RunReport(context.Context, *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error)
+	GetReportRun(context.Context, *connect.Request[v1.GetReportRunRequest]) (*connect.Response[v1.GetReportRunResponse], error)
 	ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error)
 	CheckSource(context.Context, *connect.Request[v1.CheckSourceRequest]) (*connect.Response[v1.CheckSourceResponse], error)
 	DiscoverSource(context.Context, *connect.Request[v1.DiscoverSourceRequest]) (*connect.Response[v1.DiscoverSourceResponse], error)
@@ -212,6 +681,31 @@ type BootstrapServiceHandler interface {
 	PutSourceRuntime(context.Context, *connect.Request[v1.PutSourceRuntimeRequest]) (*connect.Response[v1.PutSourceRuntimeResponse], error)
 	GetSourceRuntime(context.Context, *connect.Request[v1.GetSourceRuntimeRequest]) (*connect.Response[v1.GetSourceRuntimeResponse], error)
 	SyncSourceRuntime(context.Context, *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error)
+	WriteClaims(context.Context, *connect.Request[v1.WriteClaimsRequest]) (*connect.Response[v1.WriteClaimsResponse], error)
+	ListClaims(context.Context, *connect.Request[v1.ListClaimsRequest]) (*connect.Response[v1.ListClaimsResponse], error)
+	ListFindings(context.Context, *connect.Request[v1.ListFindingsRequest]) (*connect.Response[v1.ListFindingsResponse], error)
+	GetFinding(context.Context, *connect.Request[v1.GetFindingRequest]) (*connect.Response[v1.GetFindingResponse], error)
+	ResolveFinding(context.Context, *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error)
+	SuppressFinding(context.Context, *connect.Request[v1.SuppressFindingRequest]) (*connect.Response[v1.SuppressFindingResponse], error)
+	AssignFinding(context.Context, *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error)
+	SetFindingDueDate(context.Context, *connect.Request[v1.SetFindingDueDateRequest]) (*connect.Response[v1.SetFindingDueDateResponse], error)
+	AddFindingNote(context.Context, *connect.Request[v1.AddFindingNoteRequest]) (*connect.Response[v1.AddFindingNoteResponse], error)
+	LinkFindingTicket(context.Context, *connect.Request[v1.LinkFindingTicketRequest]) (*connect.Response[v1.LinkFindingTicketResponse], error)
+	ListFindingEvaluationRuns(context.Context, *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error)
+	GetFindingEvaluationRun(context.Context, *connect.Request[v1.GetFindingEvaluationRunRequest]) (*connect.Response[v1.GetFindingEvaluationRunResponse], error)
+	ListFindingEvidence(context.Context, *connect.Request[v1.ListFindingEvidenceRequest]) (*connect.Response[v1.ListFindingEvidenceResponse], error)
+	GetFindingEvidence(context.Context, *connect.Request[v1.GetFindingEvidenceRequest]) (*connect.Response[v1.GetFindingEvidenceResponse], error)
+	EvaluateSourceRuntimeFindingRules(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingRulesResponse], error)
+	EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error)
+	WriteDecision(context.Context, *connect.Request[v1.WriteDecisionRequest]) (*connect.Response[v1.WriteDecisionResponse], error)
+	WriteAction(context.Context, *connect.Request[v1.WriteActionRequest]) (*connect.Response[v1.WriteActionResponse], error)
+	WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error)
+	ReplayWorkflowEvents(context.Context, *connect.Request[v1.ReplayWorkflowEventsRequest]) (*connect.Response[v1.ReplayWorkflowEventsResponse], error)
+	GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error)
+	RunGraphIngestRuntime(context.Context, *connect.Request[v1.RunGraphIngestRuntimeRequest]) (*connect.Response[v1.RunGraphIngestRuntimeResponse], error)
+	GetGraphIngestRun(context.Context, *connect.Request[v1.GetGraphIngestRunRequest]) (*connect.Response[v1.GetGraphIngestRunResponse], error)
+	ListGraphIngestRuns(context.Context, *connect.Request[v1.ListGraphIngestRunsRequest]) (*connect.Response[v1.ListGraphIngestRunsResponse], error)
+	CheckGraphIngestHealth(context.Context, *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error)
 }
 
 // NewBootstrapServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -231,6 +725,30 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		BootstrapServiceCheckHealthProcedure,
 		svc.CheckHealth,
 		connect.WithSchema(bootstrapServiceMethods.ByName("CheckHealth")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceListReportDefinitionsHandler := connect.NewUnaryHandler(
+		BootstrapServiceListReportDefinitionsProcedure,
+		svc.ListReportDefinitions,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListReportDefinitions")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceListFindingRulesHandler := connect.NewUnaryHandler(
+		BootstrapServiceListFindingRulesProcedure,
+		svc.ListFindingRules,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListFindingRules")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceRunReportHandler := connect.NewUnaryHandler(
+		BootstrapServiceRunReportProcedure,
+		svc.RunReport,
+		connect.WithSchema(bootstrapServiceMethods.ByName("RunReport")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceGetReportRunHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetReportRunProcedure,
+		svc.GetReportRun,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetReportRun")),
 		connect.WithHandlerOptions(opts...),
 	)
 	bootstrapServiceListSourcesHandler := connect.NewUnaryHandler(
@@ -275,12 +793,170 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 		connect.WithSchema(bootstrapServiceMethods.ByName("SyncSourceRuntime")),
 		connect.WithHandlerOptions(opts...),
 	)
+	bootstrapServiceWriteClaimsHandler := connect.NewUnaryHandler(
+		BootstrapServiceWriteClaimsProcedure,
+		svc.WriteClaims,
+		connect.WithSchema(bootstrapServiceMethods.ByName("WriteClaims")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceListClaimsHandler := connect.NewUnaryHandler(
+		BootstrapServiceListClaimsProcedure,
+		svc.ListClaims,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListClaims")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceListFindingsHandler := connect.NewUnaryHandler(
+		BootstrapServiceListFindingsProcedure,
+		svc.ListFindings,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListFindings")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceGetFindingHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetFindingProcedure,
+		svc.GetFinding,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetFinding")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceResolveFindingHandler := connect.NewUnaryHandler(
+		BootstrapServiceResolveFindingProcedure,
+		svc.ResolveFinding,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ResolveFinding")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceSuppressFindingHandler := connect.NewUnaryHandler(
+		BootstrapServiceSuppressFindingProcedure,
+		svc.SuppressFinding,
+		connect.WithSchema(bootstrapServiceMethods.ByName("SuppressFinding")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceAssignFindingHandler := connect.NewUnaryHandler(
+		BootstrapServiceAssignFindingProcedure,
+		svc.AssignFinding,
+		connect.WithSchema(bootstrapServiceMethods.ByName("AssignFinding")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceSetFindingDueDateHandler := connect.NewUnaryHandler(
+		BootstrapServiceSetFindingDueDateProcedure,
+		svc.SetFindingDueDate,
+		connect.WithSchema(bootstrapServiceMethods.ByName("SetFindingDueDate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceAddFindingNoteHandler := connect.NewUnaryHandler(
+		BootstrapServiceAddFindingNoteProcedure,
+		svc.AddFindingNote,
+		connect.WithSchema(bootstrapServiceMethods.ByName("AddFindingNote")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceLinkFindingTicketHandler := connect.NewUnaryHandler(
+		BootstrapServiceLinkFindingTicketProcedure,
+		svc.LinkFindingTicket,
+		connect.WithSchema(bootstrapServiceMethods.ByName("LinkFindingTicket")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceListFindingEvaluationRunsHandler := connect.NewUnaryHandler(
+		BootstrapServiceListFindingEvaluationRunsProcedure,
+		svc.ListFindingEvaluationRuns,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListFindingEvaluationRuns")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceGetFindingEvaluationRunHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetFindingEvaluationRunProcedure,
+		svc.GetFindingEvaluationRun,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetFindingEvaluationRun")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceListFindingEvidenceHandler := connect.NewUnaryHandler(
+		BootstrapServiceListFindingEvidenceProcedure,
+		svc.ListFindingEvidence,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListFindingEvidence")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceGetFindingEvidenceHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetFindingEvidenceProcedure,
+		svc.GetFindingEvidence,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetFindingEvidence")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceEvaluateSourceRuntimeFindingRulesHandler := connect.NewUnaryHandler(
+		BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure,
+		svc.EvaluateSourceRuntimeFindingRules,
+		connect.WithSchema(bootstrapServiceMethods.ByName("EvaluateSourceRuntimeFindingRules")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceEvaluateSourceRuntimeFindingsHandler := connect.NewUnaryHandler(
+		BootstrapServiceEvaluateSourceRuntimeFindingsProcedure,
+		svc.EvaluateSourceRuntimeFindings,
+		connect.WithSchema(bootstrapServiceMethods.ByName("EvaluateSourceRuntimeFindings")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceWriteDecisionHandler := connect.NewUnaryHandler(
+		BootstrapServiceWriteDecisionProcedure,
+		svc.WriteDecision,
+		connect.WithSchema(bootstrapServiceMethods.ByName("WriteDecision")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceWriteActionHandler := connect.NewUnaryHandler(
+		BootstrapServiceWriteActionProcedure,
+		svc.WriteAction,
+		connect.WithSchema(bootstrapServiceMethods.ByName("WriteAction")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceWriteOutcomeHandler := connect.NewUnaryHandler(
+		BootstrapServiceWriteOutcomeProcedure,
+		svc.WriteOutcome,
+		connect.WithSchema(bootstrapServiceMethods.ByName("WriteOutcome")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceReplayWorkflowEventsHandler := connect.NewUnaryHandler(
+		BootstrapServiceReplayWorkflowEventsProcedure,
+		svc.ReplayWorkflowEvents,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ReplayWorkflowEvents")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceGetEntityNeighborhoodHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetEntityNeighborhoodProcedure,
+		svc.GetEntityNeighborhood,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetEntityNeighborhood")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceRunGraphIngestRuntimeHandler := connect.NewUnaryHandler(
+		BootstrapServiceRunGraphIngestRuntimeProcedure,
+		svc.RunGraphIngestRuntime,
+		connect.WithSchema(bootstrapServiceMethods.ByName("RunGraphIngestRuntime")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceGetGraphIngestRunHandler := connect.NewUnaryHandler(
+		BootstrapServiceGetGraphIngestRunProcedure,
+		svc.GetGraphIngestRun,
+		connect.WithSchema(bootstrapServiceMethods.ByName("GetGraphIngestRun")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceListGraphIngestRunsHandler := connect.NewUnaryHandler(
+		BootstrapServiceListGraphIngestRunsProcedure,
+		svc.ListGraphIngestRuns,
+		connect.WithSchema(bootstrapServiceMethods.ByName("ListGraphIngestRuns")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bootstrapServiceCheckGraphIngestHealthHandler := connect.NewUnaryHandler(
+		BootstrapServiceCheckGraphIngestHealthProcedure,
+		svc.CheckGraphIngestHealth,
+		connect.WithSchema(bootstrapServiceMethods.ByName("CheckGraphIngestHealth")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/cerebro.v1.BootstrapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BootstrapServiceGetVersionProcedure:
 			bootstrapServiceGetVersionHandler.ServeHTTP(w, r)
 		case BootstrapServiceCheckHealthProcedure:
 			bootstrapServiceCheckHealthHandler.ServeHTTP(w, r)
+		case BootstrapServiceListReportDefinitionsProcedure:
+			bootstrapServiceListReportDefinitionsHandler.ServeHTTP(w, r)
+		case BootstrapServiceListFindingRulesProcedure:
+			bootstrapServiceListFindingRulesHandler.ServeHTTP(w, r)
+		case BootstrapServiceRunReportProcedure:
+			bootstrapServiceRunReportHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetReportRunProcedure:
+			bootstrapServiceGetReportRunHandler.ServeHTTP(w, r)
 		case BootstrapServiceListSourcesProcedure:
 			bootstrapServiceListSourcesHandler.ServeHTTP(w, r)
 		case BootstrapServiceCheckSourceProcedure:
@@ -295,6 +971,56 @@ func NewBootstrapServiceHandler(svc BootstrapServiceHandler, opts ...connect.Han
 			bootstrapServiceGetSourceRuntimeHandler.ServeHTTP(w, r)
 		case BootstrapServiceSyncSourceRuntimeProcedure:
 			bootstrapServiceSyncSourceRuntimeHandler.ServeHTTP(w, r)
+		case BootstrapServiceWriteClaimsProcedure:
+			bootstrapServiceWriteClaimsHandler.ServeHTTP(w, r)
+		case BootstrapServiceListClaimsProcedure:
+			bootstrapServiceListClaimsHandler.ServeHTTP(w, r)
+		case BootstrapServiceListFindingsProcedure:
+			bootstrapServiceListFindingsHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetFindingProcedure:
+			bootstrapServiceGetFindingHandler.ServeHTTP(w, r)
+		case BootstrapServiceResolveFindingProcedure:
+			bootstrapServiceResolveFindingHandler.ServeHTTP(w, r)
+		case BootstrapServiceSuppressFindingProcedure:
+			bootstrapServiceSuppressFindingHandler.ServeHTTP(w, r)
+		case BootstrapServiceAssignFindingProcedure:
+			bootstrapServiceAssignFindingHandler.ServeHTTP(w, r)
+		case BootstrapServiceSetFindingDueDateProcedure:
+			bootstrapServiceSetFindingDueDateHandler.ServeHTTP(w, r)
+		case BootstrapServiceAddFindingNoteProcedure:
+			bootstrapServiceAddFindingNoteHandler.ServeHTTP(w, r)
+		case BootstrapServiceLinkFindingTicketProcedure:
+			bootstrapServiceLinkFindingTicketHandler.ServeHTTP(w, r)
+		case BootstrapServiceListFindingEvaluationRunsProcedure:
+			bootstrapServiceListFindingEvaluationRunsHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetFindingEvaluationRunProcedure:
+			bootstrapServiceGetFindingEvaluationRunHandler.ServeHTTP(w, r)
+		case BootstrapServiceListFindingEvidenceProcedure:
+			bootstrapServiceListFindingEvidenceHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetFindingEvidenceProcedure:
+			bootstrapServiceGetFindingEvidenceHandler.ServeHTTP(w, r)
+		case BootstrapServiceEvaluateSourceRuntimeFindingRulesProcedure:
+			bootstrapServiceEvaluateSourceRuntimeFindingRulesHandler.ServeHTTP(w, r)
+		case BootstrapServiceEvaluateSourceRuntimeFindingsProcedure:
+			bootstrapServiceEvaluateSourceRuntimeFindingsHandler.ServeHTTP(w, r)
+		case BootstrapServiceWriteDecisionProcedure:
+			bootstrapServiceWriteDecisionHandler.ServeHTTP(w, r)
+		case BootstrapServiceWriteActionProcedure:
+			bootstrapServiceWriteActionHandler.ServeHTTP(w, r)
+		case BootstrapServiceWriteOutcomeProcedure:
+			bootstrapServiceWriteOutcomeHandler.ServeHTTP(w, r)
+		case BootstrapServiceReplayWorkflowEventsProcedure:
+			bootstrapServiceReplayWorkflowEventsHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetEntityNeighborhoodProcedure:
+			bootstrapServiceGetEntityNeighborhoodHandler.ServeHTTP(w, r)
+		case BootstrapServiceRunGraphIngestRuntimeProcedure:
+			bootstrapServiceRunGraphIngestRuntimeHandler.ServeHTTP(w, r)
+		case BootstrapServiceGetGraphIngestRunProcedure:
+			bootstrapServiceGetGraphIngestRunHandler.ServeHTTP(w, r)
+		case BootstrapServiceListGraphIngestRunsProcedure:
+			bootstrapServiceListGraphIngestRunsHandler.ServeHTTP(w, r)
+		case BootstrapServiceCheckGraphIngestHealthProcedure:
+			bootstrapServiceCheckGraphIngestHealthHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -310,6 +1036,22 @@ func (UnimplementedBootstrapServiceHandler) GetVersion(context.Context, *connect
 
 func (UnimplementedBootstrapServiceHandler) CheckHealth(context.Context, *connect.Request[v1.CheckHealthRequest]) (*connect.Response[v1.CheckHealthResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.CheckHealth is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListReportDefinitions(context.Context, *connect.Request[v1.ListReportDefinitionsRequest]) (*connect.Response[v1.ListReportDefinitionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListReportDefinitions is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListFindingRules(context.Context, *connect.Request[v1.ListFindingRulesRequest]) (*connect.Response[v1.ListFindingRulesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListFindingRules is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) RunReport(context.Context, *connect.Request[v1.RunReportRequest]) (*connect.Response[v1.RunReportResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.RunReport is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetReportRun(context.Context, *connect.Request[v1.GetReportRunRequest]) (*connect.Response[v1.GetReportRunResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetReportRun is not implemented"))
 }
 
 func (UnimplementedBootstrapServiceHandler) ListSources(context.Context, *connect.Request[v1.ListSourcesRequest]) (*connect.Response[v1.ListSourcesResponse], error) {
@@ -338,4 +1080,104 @@ func (UnimplementedBootstrapServiceHandler) GetSourceRuntime(context.Context, *c
 
 func (UnimplementedBootstrapServiceHandler) SyncSourceRuntime(context.Context, *connect.Request[v1.SyncSourceRuntimeRequest]) (*connect.Response[v1.SyncSourceRuntimeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.SyncSourceRuntime is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) WriteClaims(context.Context, *connect.Request[v1.WriteClaimsRequest]) (*connect.Response[v1.WriteClaimsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.WriteClaims is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListClaims(context.Context, *connect.Request[v1.ListClaimsRequest]) (*connect.Response[v1.ListClaimsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListClaims is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListFindings(context.Context, *connect.Request[v1.ListFindingsRequest]) (*connect.Response[v1.ListFindingsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListFindings is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetFinding(context.Context, *connect.Request[v1.GetFindingRequest]) (*connect.Response[v1.GetFindingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetFinding is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ResolveFinding(context.Context, *connect.Request[v1.ResolveFindingRequest]) (*connect.Response[v1.ResolveFindingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ResolveFinding is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) SuppressFinding(context.Context, *connect.Request[v1.SuppressFindingRequest]) (*connect.Response[v1.SuppressFindingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.SuppressFinding is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) AssignFinding(context.Context, *connect.Request[v1.AssignFindingRequest]) (*connect.Response[v1.AssignFindingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.AssignFinding is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) SetFindingDueDate(context.Context, *connect.Request[v1.SetFindingDueDateRequest]) (*connect.Response[v1.SetFindingDueDateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.SetFindingDueDate is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) AddFindingNote(context.Context, *connect.Request[v1.AddFindingNoteRequest]) (*connect.Response[v1.AddFindingNoteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.AddFindingNote is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) LinkFindingTicket(context.Context, *connect.Request[v1.LinkFindingTicketRequest]) (*connect.Response[v1.LinkFindingTicketResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.LinkFindingTicket is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListFindingEvaluationRuns(context.Context, *connect.Request[v1.ListFindingEvaluationRunsRequest]) (*connect.Response[v1.ListFindingEvaluationRunsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListFindingEvaluationRuns is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetFindingEvaluationRun(context.Context, *connect.Request[v1.GetFindingEvaluationRunRequest]) (*connect.Response[v1.GetFindingEvaluationRunResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetFindingEvaluationRun is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListFindingEvidence(context.Context, *connect.Request[v1.ListFindingEvidenceRequest]) (*connect.Response[v1.ListFindingEvidenceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListFindingEvidence is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetFindingEvidence(context.Context, *connect.Request[v1.GetFindingEvidenceRequest]) (*connect.Response[v1.GetFindingEvidenceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetFindingEvidence is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) EvaluateSourceRuntimeFindingRules(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingRulesRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingRulesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindingRules is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) EvaluateSourceRuntimeFindings(context.Context, *connect.Request[v1.EvaluateSourceRuntimeFindingsRequest]) (*connect.Response[v1.EvaluateSourceRuntimeFindingsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.EvaluateSourceRuntimeFindings is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) WriteDecision(context.Context, *connect.Request[v1.WriteDecisionRequest]) (*connect.Response[v1.WriteDecisionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.WriteDecision is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) WriteAction(context.Context, *connect.Request[v1.WriteActionRequest]) (*connect.Response[v1.WriteActionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.WriteAction is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) WriteOutcome(context.Context, *connect.Request[v1.WriteOutcomeRequest]) (*connect.Response[v1.WriteOutcomeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.WriteOutcome is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ReplayWorkflowEvents(context.Context, *connect.Request[v1.ReplayWorkflowEventsRequest]) (*connect.Response[v1.ReplayWorkflowEventsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ReplayWorkflowEvents is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetEntityNeighborhood(context.Context, *connect.Request[v1.GetEntityNeighborhoodRequest]) (*connect.Response[v1.GetEntityNeighborhoodResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetEntityNeighborhood is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) RunGraphIngestRuntime(context.Context, *connect.Request[v1.RunGraphIngestRuntimeRequest]) (*connect.Response[v1.RunGraphIngestRuntimeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.RunGraphIngestRuntime is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) GetGraphIngestRun(context.Context, *connect.Request[v1.GetGraphIngestRunRequest]) (*connect.Response[v1.GetGraphIngestRunResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.GetGraphIngestRun is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) ListGraphIngestRuns(context.Context, *connect.Request[v1.ListGraphIngestRunsRequest]) (*connect.Response[v1.ListGraphIngestRunsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.ListGraphIngestRuns is not implemented"))
+}
+
+func (UnimplementedBootstrapServiceHandler) CheckGraphIngestHealth(context.Context, *connect.Request[v1.CheckGraphIngestHealthRequest]) (*connect.Response[v1.CheckGraphIngestHealthResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("cerebro.v1.BootstrapService.CheckGraphIngestHealth is not implemented"))
 }

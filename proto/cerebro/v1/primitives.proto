@@ -18,6 +18,31 @@ message EventEnvelope {
   map<string, string> attributes = 8;
 }
 
+// EntityRef is a lightweight entity seed used by claim writers.
+message EntityRef {
+  string urn = 1;
+  string entity_type = 2;
+  string label = 3;
+}
+
+// Claim is a generic source-attributed assertion over one subject.
+message Claim {
+  string id = 1;
+  string subject_urn = 2;
+  EntityRef subject_ref = 3;
+  string predicate = 4;
+  string object_urn = 5;
+  EntityRef object_ref = 6;
+  string object_value = 7;
+  string claim_type = 8;
+  string status = 9;
+  string source_event_id = 10;
+  google.protobuf.Timestamp observed_at = 11;
+  google.protobuf.Timestamp valid_from = 12;
+  google.protobuf.Timestamp valid_to = 13;
+  map<string, string> attributes = 14;
+}
+
 // StreamSpec describes a durable append-only stream of events.
 message StreamSpec {
   string id = 1;

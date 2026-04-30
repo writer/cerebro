@@ -22,6 +22,15 @@ func ParseURN(raw string) (URN, error) {
 	if !strings.HasPrefix(value, "urn:cerebro:") {
 		return "", fmt.Errorf("invalid cerebro urn %q", value)
 	}
+	parts := strings.Split(value, ":")
+	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
+		return "", fmt.Errorf("invalid cerebro urn %q", value)
+	}
+	for _, part := range parts[2:] {
+		if strings.TrimSpace(part) == "" || strings.TrimSpace(part) != part {
+			return "", fmt.Errorf("invalid cerebro urn %q", value)
+		}
+	}
 	return URN(value), nil
 }
 
@@ -86,9 +95,13 @@ func NewRegistry(sources ...Source) (*Registry, error) {
 		if spec == nil {
 			return nil, fmt.Errorf("source spec is required")
 		}
-		id := strings.TrimSpace(spec.Id)
+		rawID := spec.Id
+		id := strings.TrimSpace(rawID)
 		if id == "" {
 			return nil, fmt.Errorf("source id is required")
+		}
+		if id != rawID {
+			return nil, fmt.Errorf("source id %q must not have leading/trailing whitespace", rawID)
 		}
 		if _, exists := indexed[id]; exists {
 			return nil, fmt.Errorf("duplicate source id %q", id)

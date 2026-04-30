@@ -1,0 +1,74 @@
+{
+  "rule_id": "github-protected-branch-policy-override",
+  "runtime": {
+    "id": "writer-github-audit",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-audit-branch-policy-override",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer/cerebro",
+        "resource_type": "protected_branch",
+        "source_runtime_id": "writer-github-audit",
+        "action": "protected_branch.policy_override",
+        "branch": "main",
+        "repo": "writer/cerebro"
+      }
+    },
+    {
+      "id": "github-audit-branch-update-name",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T01:00:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "modify",
+        "org": "writer",
+        "resource_id": "writer/cerebro",
+        "resource_type": "protected_branch",
+        "source_runtime_id": "writer-github-audit",
+        "action": "protected_branch.update_name",
+        "branch": "main",
+        "repo": "writer/cerebro"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-protected-branch-policy-override",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "admin overrode GitHub branch policy main for writer/cerebro",
+      "event_ids": [
+        "github-audit-branch-policy-override"
+      ],
+      "attributes": {
+        "action": "protected_branch.policy_override",
+        "branch": "main",
+        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "repo": "writer/cerebro",
+        "rule_tags": "github,branch-protection,policy-override,supply-chain,impact,attack.t1195"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-audit-branch-update-name",
+      "reason": "negative fixture should not match"
+    }
+  ]
+}
