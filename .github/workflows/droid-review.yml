@@ -29,3 +29,10 @@ jobs:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
           automatic_review: true
           automatic_security_review: true
+          # Pin the review and security review models to the gpt-5.4 generation so PR scans
+          # benefit from the newer reasoning capabilities; previously the action defaulted to
+          # the gpt-5.2 generation (`review_depth: deep`). Setting `review_model` explicitly
+          # bypasses the depth preset, so re-assert reasoning_effort=high to match `deep`.
+          review_model: gpt-5.4
+          security_model: gpt-5.4
+          reasoning_effort: high
