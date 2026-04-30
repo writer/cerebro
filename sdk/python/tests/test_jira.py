@@ -94,6 +94,25 @@ class JiraPostureTests(unittest.TestCase):
 
         self.assertEqual(fake_integration.ensure_calls, 0)
 
+    def test_build_jira_posture_findings_uses_posture_admin_count(self) -> None:
+        findings = jira.build_jira_posture_findings(
+            self.integration,
+            {
+                "workspace_key": "writer",
+                "admins": [
+                    {"email": "admin1@writer.com"},
+                    {"email": "admin2@writer.com"},
+                    {"email": "admin3@writer.com"},
+                    {"email": "admin4@writer.com"},
+                    {"email": "admin5@writer.com"},
+                    {"email": "admin6@writer.com"},
+                ],
+            },
+            {"relation_counts_by_type": {}},
+        )
+
+        self.assertTrue(any(finding["id"] == "jira_workspace_admin_sprawl" for finding in findings))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -117,6 +117,57 @@ func (r *projectionRecorder) DeleteProjectedLink(_ context.Context, link *ports.
 	return nil
 }
 
+type blockingClaimStore struct {
+	mu             sync.Mutex
+	claims         map[string]*ports.ClaimRecord
+	listEntered    chan struct{}
+	allowList      chan struct{}
+	secondUpserted chan struct{}
+	listOnce       sync.Once
+	secondOnce     sync.Once
+}
+
+func newBlockingClaimStore() *blockingClaimStore {
+	return &blockingClaimStore{
+		claims:         make(map[string]*ports.ClaimRecord),
+		listEntered:    make(chan struct{}),
+		allowList:      make(chan struct{}),
+		secondUpserted: make(chan struct{}),
+	}
+}
+
+func (s *blockingClaimStore) Ping(context.Context) error { return nil }
+
+func (s *blockingClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
+	if claim.SourceEventID == "second" {
+		s.secondOnce.Do(func() { close(s.secondUpserted) })
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.claims[claim.ID] = cloneClaimRecord(claim)
+	return cloneClaimRecord(claim), nil
+}
+
+func (s *blockingClaimStore) ListClaims(_ context.Context, request ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
+	block := false
+	s.listOnce.Do(func() {
+		block = true
+		close(s.listEntered)
+	})
+	if block {
+		<-s.allowList
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	claims := make([]*ports.ClaimRecord, 0, len(s.claims))
+	for _, claim := range s.claims {
+		if claimMatches(request, claim) {
+			claims = append(claims, cloneClaimRecord(claim))
+		}
+	}
+	return claims, nil
+}
+
 func TestClaimRecordAllowsNilTimestamps(t *testing.T) {
 	record := claimRecord(&cerebrov1.SourceRuntime{
 		Id:       "writer-jira",
@@ -350,6 +401,77 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	}
 	if _, ok := projection.deletedLinks[issueURN+"|assigned_to|"+assigneeURN]; !ok {
 		t.Fatalf("deleted projected link missing for retracted relation")
+	}
+}
+
+func TestWriteClaimsReplaceExistingSerializesAcrossServiceInstances(t *testing.T) {
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+		},
+	}
+	store := newBlockingClaimStore()
+	firstService := New(runtimeStore, store, nil, nil)
+	secondService := New(runtimeStore, store, nil, nil)
+	ctx := context.Background()
+	firstDone := make(chan error, 1)
+	secondDone := make(chan error, 1)
+
+	go func() {
+		_, err := firstService.WriteClaims(ctx, WriteRequest{
+			RuntimeID:       "writer-jira",
+			ReplaceExisting: true,
+			Claims: []*cerebrov1.Claim{{
+				SubjectUrn:    "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-1",
+				Predicate:     "status",
+				ObjectValue:   "open",
+				ClaimType:     claimTypeAttribute,
+				SourceEventId: "first",
+			}},
+		})
+		firstDone <- err
+	}()
+
+	select {
+	case <-store.listEntered:
+	case err := <-firstDone:
+		t.Fatalf("first WriteClaims() completed before replace_existing list: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("first WriteClaims() did not reach replace_existing list")
+	}
+
+	go func() {
+		_, err := secondService.WriteClaims(ctx, WriteRequest{
+			RuntimeID:       "writer-jira",
+			ReplaceExisting: true,
+			Claims: []*cerebrov1.Claim{{
+				SubjectUrn:    "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-2",
+				Predicate:     "status",
+				ObjectValue:   "open",
+				ClaimType:     claimTypeAttribute,
+				SourceEventId: "second",
+			}},
+		})
+		secondDone <- err
+	}()
+
+	select {
+	case <-store.secondUpserted:
+		t.Fatal("second service upserted while first replace_existing write was still retracting")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(store.allowList)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first WriteClaims() error = %v", err)
+	}
+	select {
+	case <-store.secondUpserted:
+	case <-time.After(time.Second):
+		t.Fatal("second WriteClaims() did not upsert after first write completed")
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second WriteClaims() error = %v", err)
 	}
 }
 
@@ -654,6 +776,18 @@ func TestWriteClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
 		{name: "missing runtime id", req: WriteRequest{}},
 		{name: "nil claim", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{nil}}},
 		{name: "missing subject", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{Predicate: "status"}}}},
+		{name: "cross runtime subject", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:runtime:other-jira:ticket:ENG-123",
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}}}},
+		{name: "cross runtime object", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+			Predicate:  "assigned_to",
+			ObjectUrn:  "urn:cerebro:writer:runtime:other-jira:user:acct:42",
+			ClaimType:  claimTypeRelation,
+		}}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := service.WriteClaims(context.Background(), tt.req)

@@ -5,7 +5,7 @@ import {
   type GraphNeighborhoodError,
   type GraphSummary,
   type IntegrationClient,
-} from "./index.js";
+} from "./index.ts";
 
 export interface JiraAdminPosture {
   email: string;
@@ -288,7 +288,8 @@ export function buildJiraPostureFindings(
   }
 
   const relationCounts = asNumberRecord(graphSummary["relation_counts_by_type"]);
-  const adminCount = relationCounts.administers ?? 0;
+  const postureAdminCount = objectArray(posture.admins, "posture.admins").length;
+  const adminCount = Math.max(relationCounts.administers ?? 0, postureAdminCount);
   if (adminCount > 5) {
     findings.push(
       finding(

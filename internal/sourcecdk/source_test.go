@@ -23,6 +23,22 @@ func (s stubSource) Read(context.Context, Config, *cerebrov1.SourceCursor) (Pull
 	return Pull{}, nil
 }
 
+type pointerSource struct {
+	spec *cerebrov1.SourceSpec
+}
+
+func (s *pointerSource) Spec() *cerebrov1.SourceSpec { return s.spec }
+
+func (s *pointerSource) Check(context.Context, Config) error { return nil }
+
+func (s *pointerSource) Discover(context.Context, Config) ([]URN, error) {
+	return []URN{"urn:cerebro:tenant:user:123"}, nil
+}
+
+func (s *pointerSource) Read(context.Context, Config, *cerebrov1.SourceCursor) (Pull, error) {
+	return Pull{}, nil
+}
+
 func TestParseURN(t *testing.T) {
 	urn, err := ParseURN("urn:cerebro:tenant:user:123")
 	if err != nil {
@@ -95,6 +111,18 @@ func TestRegistryRejectsDuplicateIDs(t *testing.T) {
 func TestRegistryRejectsNonCanonicalIDs(t *testing.T) {
 	_, err := NewRegistry(stubSource{spec: &cerebrov1.SourceSpec{Id: " github "}})
 	if err == nil {
+		t.Fatal("NewRegistry() error = nil, want non-nil")
+	}
+}
+
+func TestRegistryRejectsTypedNilSource(t *testing.T) {
+	var source *pointerSource
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("NewRegistry() panicked for typed-nil source: %v", recovered)
+		}
+	}()
+	if _, err := NewRegistry(source); err == nil {
 		t.Fatal("NewRegistry() error = nil, want non-nil")
 	}
 }

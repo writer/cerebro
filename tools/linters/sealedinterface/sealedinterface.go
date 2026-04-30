@@ -91,6 +91,7 @@ func run(pass *analysis.Pass) (any, error) {
 		if isTestFile(pass, file.Pos()) {
 			continue
 		}
+		reported := map[token.Pos]struct{}{}
 		for _, decl := range file.Decls {
 			gen, ok := decl.(*ast.GenDecl)
 			if !ok {
@@ -129,9 +130,158 @@ func run(pass *analysis.Pass) (any, error) {
 				}
 			}
 		}
+
+		for _, decl := range file.Decls {
+			switch node := decl.(type) {
+			case *ast.FuncDecl:
+				if node.Body == nil {
+					continue
+				}
+				sig, ok := pass.TypesInfo.Defs[node.Name].Type().(*types.Signature)
+				if !ok {
+					continue
+				}
+				inspectFlow(pass, node.Body, sig.Results(), sealedObjects, sealed, reported)
+			case *ast.GenDecl:
+				for _, spec := range node.Specs {
+					valueSpec, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					var expected types.Type
+					if valueSpec.Type != nil {
+						expected = pass.TypesInfo.TypeOf(valueSpec.Type)
+					}
+					for _, value := range valueSpec.Values {
+						reportImportedSealedValue(pass, value, expected, sealedObjects, sealed, reported)
+						inspectExpressionCalls(pass, value, sealedObjects, sealed, reported)
+					}
+				}
+			}
+		}
 	}
 
 	return nil, nil
+}
+
+func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.FuncLit:
+			return false
+		case *ast.ReturnStmt:
+			for index, result := range node.Results {
+				if results == nil || index >= results.Len() {
+					break
+				}
+				reportImportedSealedValue(pass, result, results.At(index).Type(), sealedObjects, sealed, reported)
+			}
+		case *ast.AssignStmt:
+			for index, rhs := range node.Rhs {
+				if index >= len(node.Lhs) {
+					break
+				}
+				reportImportedSealedValue(pass, rhs, pass.TypesInfo.TypeOf(node.Lhs[index]), sealedObjects, sealed, reported)
+			}
+		case *ast.CallExpr:
+			inspectCall(pass, node, sealedObjects, sealed, reported)
+		}
+		return true
+	})
+}
+
+func inspectExpressionCalls(pass *analysis.Pass, expr ast.Expr, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	ast.Inspect(expr, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		inspectCall(pass, call, sealedObjects, sealed, reported)
+		return true
+	})
+}
+
+func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	if target := sealedObjectForType(pass.TypesInfo.TypeOf(call.Fun), sealedObjects); target != nil && len(call.Args) == 1 {
+		reportImportedSealedValue(pass, call.Args[0], target.Type(), sealedObjects, sealed, reported)
+		return
+	}
+	sig, ok := pass.TypesInfo.TypeOf(call.Fun).(*types.Signature)
+	if !ok {
+		return
+	}
+	params := sig.Params()
+	for index, arg := range call.Args {
+		if params == nil || params.Len() == 0 {
+			break
+		}
+		paramIndex := index
+		if sig.Variadic() && index >= params.Len()-1 {
+			paramIndex = params.Len() - 1
+		}
+		if paramIndex >= params.Len() {
+			break
+		}
+		reportImportedSealedValue(pass, arg, params.At(paramIndex).Type(), sealedObjects, sealed, reported)
+	}
+}
+
+func reportImportedSealedValue(pass *analysis.Pass, expr ast.Expr, expected types.Type, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	sealedObj := sealedObjectForType(expected, sealedObjects)
+	if sealedObj == nil {
+		return
+	}
+	named := namedImplementation(pass.TypesInfo.TypeOf(expr))
+	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
+		return
+	}
+	if named.Obj().Pkg().Path() == pass.Pkg.Path() || named.Obj().Pkg().Path() == sealedObj.Pkg().Path() {
+		return
+	}
+	if !implementsSealed(named, sealed[sealedObj]) {
+		return
+	}
+	if _, ok := reported[expr.Pos()]; ok {
+		return
+	}
+	reported[expr.Pos()] = struct{}{}
+	pass.Report(analysis.Diagnostic{
+		Pos:     expr.Pos(),
+		End:     expr.End(),
+		Message: qualifiedImportedName(named) + " crosses sealed interface " + sealedObj.Pkg().Name() + "." + sealedObj.Name() + " outside its home package; move the implementation beside the interface. (see PLAN.md §7 sin #8)",
+	})
+}
+
+func sealedObjectForType(t types.Type, sealedObjects []*types.TypeName) *types.TypeName {
+	named, ok := t.(*types.Named)
+	if !ok || named.Obj() == nil {
+		return nil
+	}
+	for _, sealedObj := range sealedObjects {
+		if sealedObj == named.Obj() {
+			return sealedObj
+		}
+	}
+	return nil
+}
+
+func namedImplementation(t types.Type) *types.Named {
+	if named, ok := t.(*types.Named); ok {
+		return named
+	}
+	if ptr, ok := t.(*types.Pointer); ok {
+		if named, ok := ptr.Elem().(*types.Named); ok {
+			return named
+		}
+	}
+	return nil
+}
+
+func qualifiedImportedName(named *types.Named) string {
+	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
+		return ""
+	}
+	return named.Obj().Pkg().Name() + "." + named.Obj().Name()
 }
 
 func qualifiedTypeName(obj *types.TypeName) string {

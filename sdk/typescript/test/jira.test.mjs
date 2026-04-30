@@ -18,3 +18,15 @@ test("buildJiraWorkspaceClaims rejects object-coerced identifiers", async () => 
   assert.ok(source.indexOf("const claims = buildJiraWorkspaceClaims") < source.indexOf("await integration.ensureRuntime"));
   assert.match(source, /function optionalString\(value: unknown\): string \| undefined \{[\s\S]*?if \(typeof value === "string"\)[\s\S]*?if \(typeof value === "number" \|\| typeof value === "bigint"\)[\s\S]*?return undefined;/);
 });
+
+test("jira subpath imports the exported source entrypoint", async () => {
+  const source = await readFile(path.join(srcDir, "jira.ts"), "utf8");
+  assert.doesNotMatch(source, /from "\.\/index\.js"/);
+  assert.match(source, /from "\.\/index\.ts"/);
+});
+
+test("admin sprawl findings account for posture admins", async () => {
+  const source = await readFile(path.join(srcDir, "jira.ts"), "utf8");
+  assert.match(source, /const postureAdminCount = objectArray\(posture\.admins, "posture\.admins"\)\.length;/);
+  assert.match(source, /const adminCount = Math\.max\(relationCounts\.administers \?\? 0, postureAdminCount\);/);
+});

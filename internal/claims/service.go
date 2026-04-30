@@ -32,7 +32,28 @@ var (
 	// ErrRuntimeUnavailable indicates that the runtime or claim store boundary is unavailable.
 	ErrRuntimeUnavailable = errors.New("claim runtime is unavailable")
 	ErrInvalidRequest     = errors.New("invalid claim request")
+
+	sharedRuntimeWriteLocks = &runtimeLockSet{locks: make(map[string]*sync.Mutex)}
 )
+
+type runtimeLockSet struct {
+	guard sync.Mutex
+	locks map[string]*sync.Mutex
+}
+
+func (s *runtimeLockSet) lock(runtimeID string) *sync.Mutex {
+	s.guard.Lock()
+	defer s.guard.Unlock()
+	if s.locks == nil {
+		s.locks = make(map[string]*sync.Mutex)
+	}
+	lock, ok := s.locks[runtimeID]
+	if !ok {
+		lock = &sync.Mutex{}
+		s.locks[runtimeID] = lock
+	}
+	return lock
+}
 
 // Service reads and writes runtime-scoped claims into the state store and optional projections.
 type Service struct {
@@ -40,14 +61,6 @@ type Service struct {
 	store        ports.ClaimStore
 	state        ports.ProjectionStateStore
 	graph        ports.ProjectionGraphStore
-
-	// runtimeWriteLocks serializes WriteClaims requests per runtime so that a
-	// replace_existing snapshot cannot interleave with another write batch for
-	// the same runtime and retract its freshly asserted rows. This protects
-	// in-process concurrency only; cross-process callers should rely on a
-	// shared advisory lock when one is available.
-	runtimeWriteLocksGuard sync.Mutex
-	runtimeWriteLocks      map[string]*sync.Mutex
 }
 
 // WriteRequest scopes one runtime-scoped claim batch.
@@ -87,29 +100,17 @@ type ListResult struct {
 // New constructs a claim write service.
 func New(runtimeStore ports.SourceRuntimeStore, store ports.ClaimStore, state ports.ProjectionStateStore, graph ports.ProjectionGraphStore) *Service {
 	return &Service{
-		runtimeStore:      runtimeStore,
-		store:             store,
-		state:             state,
-		graph:             graph,
-		runtimeWriteLocks: make(map[string]*sync.Mutex),
+		runtimeStore: runtimeStore,
+		store:        store,
+		state:        state,
+		graph:        graph,
 	}
 }
 
-// runtimeWriteLock returns a per-runtime mutex used to serialize concurrent
-// WriteClaims executions for the same runtime so the per-claim upserts and the
-// final retractMissingClaims pass cannot interleave for two snapshots.
+// runtimeWriteLock serializes concurrent in-process WriteClaims executions for
+// the same runtime, including services constructed independently per request.
 func (s *Service) runtimeWriteLock(runtimeID string) *sync.Mutex {
-	s.runtimeWriteLocksGuard.Lock()
-	defer s.runtimeWriteLocksGuard.Unlock()
-	if s.runtimeWriteLocks == nil {
-		s.runtimeWriteLocks = make(map[string]*sync.Mutex)
-	}
-	lock, ok := s.runtimeWriteLocks[runtimeID]
-	if !ok {
-		lock = &sync.Mutex{}
-		s.runtimeWriteLocks[runtimeID] = lock
-	}
-	return lock
+	return sharedRuntimeWriteLocks.lock(runtimeID)
 }
 
 // WriteClaims persists one runtime-scoped claim batch.
@@ -473,10 +474,18 @@ func validateRuntimeURN(runtime *cerebrov1.SourceRuntime, urn string, field stri
 		return nil
 	}
 	normalizedURN := strings.TrimSpace(urn)
-	if strings.HasPrefix(normalizedURN, "urn:cerebro:"+tenantID+":") {
+	if !strings.HasPrefix(normalizedURN, "urn:cerebro:"+tenantID+":") {
+		return fmt.Errorf("%w: claim %s urn must belong to tenant %q", ErrInvalidRequest, field, tenantID)
+	}
+	runtimeID := strings.TrimSpace(runtime.GetId())
+	if runtimeID == "" {
 		return nil
 	}
-	return fmt.Errorf("%w: claim %s urn must belong to tenant %q", ErrInvalidRequest, field, tenantID)
+	parts := strings.Split(normalizedURN, ":")
+	if len(parts) > 4 && parts[3] == "runtime" && parts[4] != runtimeID {
+		return fmt.Errorf("%w: claim %s urn must belong to runtime %q", ErrInvalidRequest, field, runtimeID)
+	}
+	return nil
 }
 
 func normalizeEntityRef(ref *cerebrov1.EntityRef, fallbackURN string) *cerebrov1.EntityRef {

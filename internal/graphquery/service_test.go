@@ -63,6 +63,9 @@ func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 		"urn:other:writer:user:alice",
 		"urn:cerebro:writer:user",
 		"urn:cerebro::user:alice",
+		"urn:cerebro: writer:user:alice",
+		"urn:cerebro:writer: user:alice",
+		"urn:cerebro:writer:user: alice",
 		"   ",
 	}
 	for _, raw := range cases {
