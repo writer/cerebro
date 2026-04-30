@@ -65,7 +65,7 @@ func TestConfigHashIgnoresSensitiveKeyValues(t *testing.T) {
 }
 
 func TestConfigHashIncludesNonSecretSelectorKeys(t *testing.T) {
-	for _, key := range []string{"region", "lookup", "group"} {
+	for _, key := range []string{"region", "lookup_key", "group_key"} {
 		left := configHash(map[string]string{key: "first", "domain": "writer.example.com"})
 		right := configHash(map[string]string{key: "second", "domain": "writer.example.com"})
 		if left == right {

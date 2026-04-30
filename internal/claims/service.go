@@ -119,13 +119,13 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 	if runtimeID == "" {
 		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
 	}
-	lock := runtimeWriteLockFor(runtimeID)
-	lock.Lock()
-	defer lock.Unlock()
 	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
 	if err != nil {
 		return nil, err
 	}
+	lock := runtimeWriteLockFor(runtimeID)
+	lock.Lock()
+	defer lock.Unlock()
 	result := &WriteResult{}
 	upsertedEntities := make(map[string]struct{})
 	upsertedLinks := make(map[string]struct{})

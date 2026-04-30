@@ -563,10 +563,13 @@ func sensitiveConfigKey(key string) bool {
 		}
 	}
 	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(normalized)
-	if strings.Contains(compact, "apikey") || strings.Contains(compact, "accesskey") || strings.Contains(compact, "privatekey") {
+	if strings.Contains(compact, "apikey") ||
+		strings.Contains(compact, "accesskey") ||
+		strings.Contains(compact, "privatekey") ||
+		strings.Contains(compact, "signingkey") {
 		return true
 	}
-	return normalized == "key" || strings.HasSuffix(normalized, "_key")
+	return normalized == "key"
 }
 
 func ingestEvent(event *cerebrov1.EventEnvelope, tenantID string) *cerebrov1.EventEnvelope {

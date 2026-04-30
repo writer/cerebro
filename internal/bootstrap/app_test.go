@@ -67,12 +67,12 @@ func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
 }
 
 func TestSourceConfigFromRequestAllowsNonSecretKeyQueryFields(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/sources/aws/check?region=us-east-1&lookup=inventory&group=eng", nil)
+	req := httptest.NewRequest(http.MethodGet, "/sources/aws/check?region=us-east-1&lookup_key=inventory&group_key=security@example.com", nil)
 	config, err := sourceConfigFromRequest(req)
 	if err != nil {
 		t.Fatalf("sourceConfigFromRequest() error = %v", err)
 	}
-	for _, key := range []string{"region", "lookup", "group"} {
+	for _, key := range []string{"region", "lookup_key", "group_key"} {
 		if got := config[key]; got == "" {
 			t.Fatalf("config[%q] = %q, want value", key, got)
 		}

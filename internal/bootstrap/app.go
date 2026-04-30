@@ -1710,10 +1710,13 @@ func sensitiveSourceConfigKey(key string) bool {
 		return true
 	}
 	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
-	if strings.Contains(compact, "apikey") || strings.Contains(compact, "accesskey") || strings.Contains(compact, "privatekey") {
+	if strings.Contains(compact, "apikey") ||
+		strings.Contains(compact, "accesskey") ||
+		strings.Contains(compact, "privatekey") ||
+		strings.Contains(compact, "signingkey") {
 		return true
 	}
-	return value == "key" || strings.HasSuffix(value, "_key")
+	return value == "key"
 }
 
 func writeSourceError(w http.ResponseWriter, err error) {
