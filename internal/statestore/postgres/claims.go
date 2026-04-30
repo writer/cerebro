@@ -295,7 +295,7 @@ func claimRecordFromJSON(runtimeID string, tenantID string, payload string) (*po
 		return nil, errors.New("claim json is required")
 	}
 	claim := &cerebrov1.Claim{}
-	if err := protojson.Unmarshal([]byte(payload), claim); err != nil {
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal([]byte(payload), claim); err != nil {
 		return nil, fmt.Errorf("unmarshal claim json: %w", err)
 	}
 	return &ports.ClaimRecord{

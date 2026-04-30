@@ -104,6 +104,13 @@ func TestClaimRecordFromJSONPreservesMissingTimestamps(t *testing.T) {
 	}
 }
 
+func TestClaimRecordFromJSONDiscardsUnknownFields(t *testing.T) {
+	payload := `{"id":"claim_1","subject_urn":"urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123","predicate":"status","object_value":"in_progress","claim_type":"attribute","status":"asserted","future_field":"ignored"}`
+	if _, err := claimRecordFromJSON("writer-jira", "writer", payload); err != nil {
+		t.Fatalf("claimRecordFromJSON() error = %v, want nil", err)
+	}
+}
+
 func TestClaimJSONIncludesTimestampsForRoundTrip(t *testing.T) {
 	payload, err := claimJSON(&ports.ClaimRecord{
 		ID:          "claim_1",
