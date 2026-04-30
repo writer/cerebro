@@ -2,6 +2,9 @@ package findings
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -239,13 +242,14 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 		return nil, err
 	}
 	startedAt := time.Now().UTC()
-	run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), request.EventLimit, startedAt)
+	normalizedLimit := normalizeEventLimit(request.EventLimit)
+	run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
 	events, err := s.replayer.Replay(ctx, ports.ReplayRequest{
 		RuntimeID: runtimeID,
-		Limit:     normalizeEventLimit(request.EventLimit),
+		Limit:     normalizedLimit,
 	})
 	if err != nil {
 		evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
@@ -327,8 +331,9 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		Runtime:     runtime,
 		Evaluations: make([]*RuleEvaluationResult, 0, len(rules)),
 	}
+	normalizedLimit := normalizeEventLimit(request.EventLimit)
 	for _, rule := range rules {
-		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), request.EventLimit, startedAt)
+		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
 		if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 			return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 		}
@@ -345,7 +350,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	}
 	events, err := s.replayer.Replay(ctx, ports.ReplayRequest{
 		RuntimeID: runtimeID,
-		Limit:     normalizeEventLimit(request.EventLimit),
+		Limit:     normalizedLimit,
 	})
 	if err != nil {
 		evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
@@ -788,10 +793,23 @@ func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32,
 	}
 }
 
+var findingEvaluationRunIDReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
+
 func findingEvaluationRunID(runtimeID string, ruleID string, startedAt time.Time) string {
-	replacer := strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
-	prefix := replacer.Replace(strings.TrimSpace(runtimeID) + "-" + strings.TrimSpace(ruleID))
-	return "finding-evaluation-run-" + prefix + "-" + fmt.Sprintf("%d", startedAt.UnixNano())
+	rawRuntime := strings.TrimSpace(runtimeID)
+	rawRule := strings.TrimSpace(ruleID)
+	prefix := findingEvaluationRunIDReplacer.Replace(rawRuntime + "-" + rawRule)
+	digest := sha256.Sum256([]byte(rawRuntime + "\x00" + rawRule))
+	hashSuffix := hex.EncodeToString(digest[:4])
+	return "finding-evaluation-run-" + prefix + "-" + hashSuffix + "-" + fmt.Sprintf("%d", startedAt.UnixNano()) + "-" + randomFindingRunSuffix()
+}
+
+func randomFindingRunSuffix() string {
+	var buf [4]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "0000"
+	}
+	return hex.EncodeToString(buf[:])
 }
 
 func findingNoteID(findingID string, createdAt time.Time) string {
@@ -1005,5 +1023,6 @@ func findingEvidenceID(runtimeID string, findingID string, runID string, eventID
 	parts := []string{strings.TrimSpace(runtimeID), strings.TrimSpace(findingID), strings.TrimSpace(runID)}
 	parts = append(parts, uniqueSortedStrings(eventIDs)...)
 	prefix := replacer.Replace(strings.Join(parts, "-"))
-	return "finding-evidence-" + prefix
+	digest := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return "finding-evidence-" + prefix + "-" + hex.EncodeToString(digest[:8])
 }
