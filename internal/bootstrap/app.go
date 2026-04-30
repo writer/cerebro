@@ -1,10 +1,14 @@
 package bootstrap
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +24,8 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/sourceprojection"
+	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
 // Dependencies are the future store/log boundaries that will be wired into the rewrite.
@@ -43,6 +49,8 @@ type bootstrapService struct {
 	sources *sourcecdk.Registry
 }
 
+const maxProtoJSONBodyBytes = 1 << 20
+
 // New constructs the minimal bootstrap app and registers the Connect handlers.
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
 	mux := http.NewServeMux()
@@ -57,6 +65,9 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /sources/{sourceID}/check", app.handleCheckSource)
 	mux.HandleFunc("GET /sources/{sourceID}/discover", app.handleDiscoverSource)
 	mux.HandleFunc("GET /sources/{sourceID}/read", app.handleReadSource)
+	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
+	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
+	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           mux,
@@ -93,7 +104,7 @@ func (a *App) handleSources(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleCheckSource(w http.ResponseWriter, r *http.Request) {
-	config, err := sourceConfigFromQuery(r)
+	config, err := sourceConfigFromRequest(r)
 	if err != nil {
 		writeSourceError(w, err)
 		return
@@ -110,7 +121,7 @@ func (a *App) handleCheckSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleDiscoverSource(w http.ResponseWriter, r *http.Request) {
-	config, err := sourceConfigFromQuery(r)
+	config, err := sourceConfigFromRequest(r)
 	if err != nil {
 		writeSourceError(w, err)
 		return
@@ -127,7 +138,7 @@ func (a *App) handleDiscoverSource(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
-	config, err := sourceConfigFromQuery(r)
+	config, err := sourceConfigFromRequest(r)
 	if err != nil {
 		writeSourceError(w, err)
 		return
@@ -136,16 +147,60 @@ func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
 		SourceId: r.PathValue("sourceID"),
 		Config:   config,
 	}
-	rawCursors := r.URL.Query()["cursor"]
-	if len(rawCursors) > 0 {
-		cursor := rawCursors[len(rawCursors)-1]
-		if cursor != "" {
-			request.Cursor = &cerebrov1.SourceCursor{Opaque: cursor}
-		}
+	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
+		request.Cursor = &cerebrov1.SourceCursor{Opaque: cursor}
 	}
 	response, err := a.sourceService().Read(r.Context(), request)
 	if err != nil {
 		writeSourceError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handlePutSourceRuntime(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.PutSourceRuntimeRequest{}
+	if err := readProtoJSON(r, request); err != nil {
+		writeSourceRuntimeError(w, fmt.Errorf("%w: decode request body", sourceruntime.ErrInvalidRequest))
+		return
+	}
+	if request.Runtime == nil {
+		request.Runtime = &cerebrov1.SourceRuntime{}
+	}
+	request.Runtime.Id = r.PathValue("runtimeID")
+	response, err := a.runtimeService().Put(r.Context(), request)
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleGetSourceRuntime(w http.ResponseWriter, r *http.Request) {
+	response, err := a.runtimeService().Get(r.Context(), &cerebrov1.GetSourceRuntimeRequest{
+		Id: r.PathValue("runtimeID"),
+	})
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.SyncSourceRuntimeRequest{}
+	if pageLimit := r.URL.Query().Get("page_limit"); pageLimit != "" {
+		parsed, err := strconv.ParseUint(strings.TrimSpace(pageLimit), 10, 32)
+		if err != nil {
+			writeSourceRuntimeError(w, fmt.Errorf("%w: invalid page_limit", sourceruntime.ErrInvalidRequest))
+			return
+		}
+		request.PageLimit = uint32(parsed)
+	}
+	request.Id = r.PathValue("runtimeID")
+	response, err := a.runtimeService().Sync(r.Context(), request)
+	if err != nil {
+		writeSourceRuntimeError(w, err)
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, response)
@@ -170,14 +225,7 @@ func (s *bootstrapService) ListSources(_ context.Context, _ *connect.Request[cer
 }
 
 func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request[cerebrov1.CheckSourceRequest]) (*connect.Response[cerebrov1.CheckSourceResponse], error) {
-	config, err := sanitizePreviewSourceConfig(req.Msg.Config)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	response, err := sourceops.New(s.sources).Check(ctx, &cerebrov1.CheckSourceRequest{
-		SourceId: req.Msg.SourceId,
-		Config:   config,
-	})
+	response, err := sourceops.New(s.sources).Check(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -185,14 +233,7 @@ func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request
 }
 
 func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Request[cerebrov1.DiscoverSourceRequest]) (*connect.Response[cerebrov1.DiscoverSourceResponse], error) {
-	config, err := sanitizePreviewSourceConfig(req.Msg.Config)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	response, err := sourceops.New(s.sources).Discover(ctx, &cerebrov1.DiscoverSourceRequest{
-		SourceId: req.Msg.SourceId,
-		Config:   config,
-	})
+	response, err := sourceops.New(s.sources).Discover(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -200,17 +241,48 @@ func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Requ
 }
 
 func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[cerebrov1.ReadSourceRequest]) (*connect.Response[cerebrov1.ReadSourceResponse], error) {
-	config, err := sanitizePreviewSourceConfig(req.Msg.Config)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	response, err := sourceops.New(s.sources).Read(ctx, &cerebrov1.ReadSourceRequest{
-		SourceId: req.Msg.SourceId,
-		Config:   config,
-		Cursor:   req.Msg.Cursor,
-	})
+	response, err := sourceops.New(s.sources).Read(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.PutSourceRuntimeRequest]) (*connect.Response[cerebrov1.PutSourceRuntimeResponse], error) {
+	response, err := sourceruntime.New(
+		s.sources,
+		sourceRuntimeStore(s.deps.StateStore),
+		s.deps.AppendLog,
+		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
+	).Put(ctx, req.Msg)
+	if err != nil {
+		return nil, sourceRuntimeConnectError(err)
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.GetSourceRuntimeRequest]) (*connect.Response[cerebrov1.GetSourceRuntimeResponse], error) {
+	response, err := sourceruntime.New(
+		s.sources,
+		sourceRuntimeStore(s.deps.StateStore),
+		s.deps.AppendLog,
+		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
+	).Get(ctx, req.Msg)
+	if err != nil {
+		return nil, sourceRuntimeConnectError(err)
+	}
+	return connect.NewResponse(response), nil
+}
+
+func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.SyncSourceRuntimeRequest]) (*connect.Response[cerebrov1.SyncSourceRuntimeResponse], error) {
+	response, err := sourceruntime.New(
+		s.sources,
+		sourceRuntimeStore(s.deps.StateStore),
+		s.deps.AppendLog,
+		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
+	).Sync(ctx, req.Msg)
+	if err != nil {
+		return nil, sourceRuntimeConnectError(err)
 	}
 	return connect.NewResponse(response), nil
 }
@@ -250,35 +322,42 @@ func (a *App) sourceService() *sourceops.Service {
 	return sourceops.New(a.sources)
 }
 
-func sourceConfigFromQuery(r *http.Request) (map[string]string, error) {
+func (a *App) runtimeService() *sourceruntime.Service {
+	return sourceruntime.New(
+		a.sources,
+		sourceRuntimeStore(a.deps.StateStore),
+		a.deps.AppendLog,
+		sourceProjector(a.deps.StateStore, a.deps.GraphStore),
+	)
+}
+
+func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 	values := make(map[string]string)
 	for key, rawValues := range r.URL.Query() {
-		if key == "cursor" || key == "base_url" || len(rawValues) == 0 {
+		if reservedSourceConfigKey(key) || len(rawValues) == 0 {
 			continue
 		}
 		if sensitiveSourceConfigKey(key) {
-			return nil, fmt.Errorf("source config key %q must not be passed as a query parameter", key)
+			return nil, fmt.Errorf("source config key %q must not be supplied in query parameters", key)
 		}
 		values[key] = rawValues[len(rawValues)-1]
+	}
+	if rawConfig := strings.TrimSpace(r.Header.Get("X-Cerebro-Source-Config")); rawConfig != "" {
+		headerValues := map[string]string{}
+		if err := json.Unmarshal([]byte(rawConfig), &headerValues); err != nil {
+			return nil, fmt.Errorf("decode source config header: %w", err)
+		}
+		for key, value := range headerValues {
+			trimmedKey := strings.TrimSpace(key)
+			if trimmedKey != "" && !reservedSourceConfigKey(trimmedKey) {
+				values[trimmedKey] = value
+			}
+		}
 	}
 	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
 		values["token"] = token
 	}
 	return values, nil
-}
-
-func sanitizePreviewSourceConfig(values map[string]string) (map[string]string, error) {
-	if len(values) == 0 {
-		return nil, nil
-	}
-	sanitized := make(map[string]string, len(values))
-	for key, value := range values {
-		if blockedPreviewSourceConfigKey(key) {
-			return nil, fmt.Errorf("source config key %q is not allowed for preview requests", key)
-		}
-		sanitized[key] = value
-	}
-	return sanitized, nil
 }
 
 func bearerToken(header string) string {
@@ -289,19 +368,43 @@ func bearerToken(header string) string {
 	return strings.TrimSpace(header[len("Bearer "):])
 }
 
-func sensitiveSourceConfigKey(key string) bool {
+func reservedSourceConfigKey(key string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(key))
-	if normalized == "" {
-		return false
-	}
-	if strings.Contains(normalized, "token") || strings.Contains(normalized, "secret") || strings.Contains(normalized, "password") || strings.Contains(normalized, "session") {
-		return true
-	}
-	return normalized == "key" || strings.HasSuffix(normalized, "_key")
+	return normalized == "cursor" || normalized == "base_url"
 }
 
-func blockedPreviewSourceConfigKey(key string) bool {
-	return strings.EqualFold(strings.TrimSpace(key), "base_url")
+func sensitiveSourceConfigKey(key string) bool {
+	value := strings.ToLower(strings.TrimSpace(key))
+	return strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password")
+}
+
+func sourceRuntimeConnectError(err error) error {
+	var connectErr *connect.Error
+	if errors.As(err, &connectErr) {
+		return err
+	}
+	switch {
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, sourceruntime.ErrInvalidRequest):
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	case errors.Is(err, context.Canceled):
+		return connect.NewError(connect.CodeCanceled, err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
+	default:
+		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
+	}
+}
+
+func writeSourceError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusBadRequest
+	if errors.Is(err, sourceops.ErrSourceNotFound) {
+		statusCode = http.StatusNotFound
+	}
+	http.Error(w, err.Error(), statusCode)
 }
 
 func sourceConnectError(err error) error {
@@ -320,12 +423,67 @@ func sourceConnectError(err error) error {
 	}
 }
 
-func writeSourceError(w http.ResponseWriter, err error) {
-	statusCode := http.StatusBadRequest
-	if errors.Is(err, sourceops.ErrSourceNotFound) {
+func writeSourceRuntimeError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, sourceruntime.ErrInvalidRequest):
+		statusCode = http.StatusBadRequest
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
 		statusCode = http.StatusNotFound
+	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
+		statusCode = http.StatusServiceUnavailable
 	}
-	http.Error(w, err.Error(), statusCode)
+	http.Error(w, http.StatusText(statusCode), statusCode)
+}
+
+func readProtoJSON(r *http.Request, message proto.Message) error {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxProtoJSONBodyBytes+1))
+	if err != nil {
+		return err
+	}
+	if len(body) > maxProtoJSONBodyBytes {
+		return fmt.Errorf("%w: request body too large", sourceruntime.ErrInvalidRequest)
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil
+	}
+	if err := protojson.Unmarshal(body, message); err != nil {
+		return fmt.Errorf("%w: decode request body: %w", sourceruntime.ErrInvalidRequest, err)
+	}
+	return nil
+}
+
+func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
+	runtimeStore, ok := store.(ports.SourceRuntimeStore)
+	if !ok {
+		return nil
+	}
+	return runtimeStore
+}
+
+func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateStore {
+	projectionStore, ok := store.(ports.ProjectionStateStore)
+	if !ok {
+		return nil
+	}
+	return projectionStore
+}
+
+func sourceProjectionGraphStore(store ports.GraphStore) ports.ProjectionGraphStore {
+	projectionStore, ok := store.(ports.ProjectionGraphStore)
+	if !ok {
+		return nil
+	}
+	return projectionStore
+}
+
+func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) ports.SourceProjector {
+	state := sourceProjectionStateStore(stateStore)
+	graph := sourceProjectionGraphStore(graphStore)
+	if state == nil && graph == nil {
+		return nil
+	}
+	return sourceprojection.New(state, graph)
 }
 
 type pinger interface {

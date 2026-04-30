@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -14,7 +15,10 @@ import (
 
 // Store is the Postgres-backed current-state store implementation.
 type Store struct {
-	db *sql.DB
+	db                    *sql.DB
+	schemaMu              sync.Mutex
+	projectionTablesReady bool
+	sourceRuntimeReady    bool
 }
 
 // Open opens a Postgres-backed current-state store.
