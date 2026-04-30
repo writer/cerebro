@@ -444,8 +444,8 @@ export class IntegrationClient {
       source_id: "sdk",
       tenant_id: this.tenantId,
       config: {
-        integration: this.integrationName,
         ...config,
+        integration: this.integrationName,
       },
     });
   }

@@ -697,7 +697,7 @@ func findingStore(store ports.StateStore) ports.FindingStore {
 
 func claimStore(store ports.StateStore) ports.ClaimStore {
 	claimStore, ok := store.(ports.ClaimStore)
-	if !ok {
+	if !ok || isNilInterface(claimStore) {
 		return nil
 	}
 	return claimStore

@@ -271,13 +271,14 @@ class IntegrationClient:
     def ensure_runtime(self, config: Optional[Dict[str, str]] = None) -> Any:
         if config is None:
             config = {}
+        merged = {
+            **config,
+            "integration": self.integration,
+        }
         runtime = {
             "source_id": "sdk",
             "tenant_id": self.tenant_id,
-            "config": {
-                "integration": self.integration,
-                **config,
-            },
+            "config": merged,
         }
         return self.client.put_source_runtime(self.runtime_id, runtime)
 
