@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"reflect"
 	"time"
 
 	"connectrpc.com/connect"
@@ -18,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -60,6 +62,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /sources/{sourceID}/check", app.handleCheckSource)
 	mux.HandleFunc("GET /sources/{sourceID}/discover", app.handleDiscoverSource)
 	mux.HandleFunc("GET /sources/{sourceID}/read", app.handleReadSource)
+	mux.HandleFunc("GET /graph/neighborhood", app.handleGetEntityNeighborhood)
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
@@ -137,6 +140,27 @@ func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request) {
+	request := &cerebrov1.GetEntityNeighborhoodRequest{}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		body := []byte(`{"limit":` + limit + `}`)
+		if err := protojson.Unmarshal(body, request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	request.RootUrn = r.URL.Query().Get("root_urn")
+	response, err := a.graphQueryService().GetEntityNeighborhood(r.Context(), graphquery.NeighborhoodRequest{
+		RootURN: request.GetRootUrn(),
+		Limit:   request.GetLimit(),
+	})
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	writeProtoJSON(w, http.StatusOK, graphNeighborhoodResponse(response))
 }
 
 func (a *App) handlePutSourceRuntime(w http.ResponseWriter, r *http.Request) {
@@ -303,6 +327,36 @@ func (s *bootstrapService) EvaluateSourceRuntimeFindings(ctx context.Context, re
 	return connect.NewResponse(findingResponse(response)), nil
 }
 
+func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *connect.Request[cerebrov1.GetEntityNeighborhoodRequest]) (*connect.Response[cerebrov1.GetEntityNeighborhoodResponse], error) {
+	response, err := graphquery.New(
+		graphQueryStore(s.deps.GraphStore),
+	).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
+		RootURN: req.Msg.GetRootUrn(),
+		Limit:   req.Msg.GetLimit(),
+	})
+	if err != nil {
+		return nil, graphQueryConnectError(err)
+	}
+	return connect.NewResponse(graphNeighborhoodResponse(response)), nil
+}
+
+func graphQueryConnectError(err error) error {
+	switch {
+	case errors.Is(err, ports.ErrGraphEntityNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, graphquery.ErrInvalidArgument):
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
+		return connect.NewError(connect.CodeUnavailable, err)
+	case errors.Is(err, context.Canceled):
+		return connect.NewError(connect.CodeCanceled, err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
+	default:
+		return connect.NewError(connect.CodeInternal, errors.New("internal error"))
+	}
+}
+
 func healthResponse(ctx context.Context, deps Dependencies) *cerebrov1.CheckHealthResponse {
 	components := []*cerebrov1.ComponentStatus{
 		componentStatus(ctx, "append_log", deps.AppendLog),
@@ -355,6 +409,10 @@ func (a *App) findingService() *findings.Service {
 	)
 }
 
+func (a *App) graphQueryService() *graphquery.Service {
+	return graphquery.New(graphQueryStore(a.deps.GraphStore))
+}
+
 func sourceConfigFromQuery(r *http.Request) map[string]string {
 	values := make(map[string]string)
 	for key, rawValues := range r.URL.Query() {
@@ -396,6 +454,19 @@ func writeFindingError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), statusCode)
 }
 
+func writeGraphQueryError(w http.ResponseWriter, err error) {
+	statusCode := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, graphquery.ErrInvalidArgument):
+		statusCode = http.StatusBadRequest
+	case errors.Is(err, ports.ErrGraphEntityNotFound):
+		statusCode = http.StatusNotFound
+	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
+		statusCode = http.StatusServiceUnavailable
+	}
+	http.Error(w, err.Error(), statusCode)
+}
+
 func readProtoJSON(r *http.Request, message proto.Message) error {
 	const maxBodyBytes int64 = 1 << 20
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
@@ -413,7 +484,7 @@ func readProtoJSON(r *http.Request, message proto.Message) error {
 
 func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 	runtimeStore, ok := store.(ports.SourceRuntimeStore)
-	if !ok {
+	if !ok || isNilInterface(runtimeStore) {
 		return nil
 	}
 	return runtimeStore
@@ -421,7 +492,7 @@ func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {
 
 func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateStore {
 	projectionStore, ok := store.(ports.ProjectionStateStore)
-	if !ok {
+	if !ok || isNilInterface(projectionStore) {
 		return nil
 	}
 	return projectionStore
@@ -429,7 +500,7 @@ func sourceProjectionStateStore(store ports.StateStore) ports.ProjectionStateSto
 
 func sourceProjectionGraphStore(store ports.GraphStore) ports.ProjectionGraphStore {
 	projectionStore, ok := store.(ports.ProjectionGraphStore)
-	if !ok {
+	if !ok || isNilInterface(projectionStore) {
 		return nil
 	}
 	return projectionStore
@@ -444,9 +515,30 @@ func sourceProjector(stateStore ports.StateStore, graphStore ports.GraphStore) p
 	return sourceprojection.New(state, graph)
 }
 
+func graphQueryStore(store ports.GraphStore) ports.GraphQueryStore {
+	queryStore, ok := store.(ports.GraphQueryStore)
+	if !ok || isNilInterface(queryStore) {
+		return nil
+	}
+	return queryStore
+}
+
+func isNilInterface(value any) bool {
+	if value == nil {
+		return true
+	}
+	reflected := reflect.ValueOf(value)
+	switch reflected.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return reflected.IsNil()
+	default:
+		return false
+	}
+}
+
 func findingStore(store ports.StateStore) ports.FindingStore {
 	findingStore, ok := store.(ports.FindingStore)
-	if !ok {
+	if !ok || isNilInterface(findingStore) {
 		return nil
 	}
 	return findingStore
@@ -454,7 +546,7 @@ func findingStore(store ports.StateStore) ports.FindingStore {
 
 func eventReplayer(appendLog ports.AppendLog) ports.EventReplayer {
 	replayer, ok := appendLog.(ports.EventReplayer)
-	if !ok {
+	if !ok || isNilInterface(replayer) {
 		return nil
 	}
 	return replayer
@@ -506,13 +598,53 @@ func findingMessage(finding *ports.FindingRecord) *cerebrov1.Finding {
 	return message
 }
 
+func graphNeighborhoodResponse(neighborhood *ports.EntityNeighborhood) *cerebrov1.GetEntityNeighborhoodResponse {
+	if neighborhood == nil {
+		return &cerebrov1.GetEntityNeighborhoodResponse{}
+	}
+	response := &cerebrov1.GetEntityNeighborhoodResponse{
+		Root:      graphEntityMessage(neighborhood.Root),
+		Neighbors: make([]*cerebrov1.GraphEntity, 0, len(neighborhood.Neighbors)),
+		Relations: make([]*cerebrov1.GraphRelation, 0, len(neighborhood.Relations)),
+	}
+	for _, neighbor := range neighborhood.Neighbors {
+		response.Neighbors = append(response.Neighbors, graphEntityMessage(neighbor))
+	}
+	for _, relation := range neighborhood.Relations {
+		response.Relations = append(response.Relations, graphRelationMessage(relation))
+	}
+	return response
+}
+
+func graphEntityMessage(node *ports.NeighborhoodNode) *cerebrov1.GraphEntity {
+	if node == nil {
+		return nil
+	}
+	return &cerebrov1.GraphEntity{
+		Urn:        node.URN,
+		EntityType: node.EntityType,
+		Label:      node.Label,
+	}
+}
+
+func graphRelationMessage(relation *ports.NeighborhoodRelation) *cerebrov1.GraphRelation {
+	if relation == nil {
+		return nil
+	}
+	return &cerebrov1.GraphRelation{
+		FromUrn:  relation.FromURN,
+		Relation: relation.Relation,
+		ToUrn:    relation.ToURN,
+	}
+}
+
 type pinger interface {
 	Ping(context.Context) error
 }
 
 func componentStatus(ctx context.Context, name string, dependency pinger) *cerebrov1.ComponentStatus {
 	status := &cerebrov1.ComponentStatus{Name: name, Status: "unconfigured"}
-	if dependency == nil {
+	if dependency == nil || isNilInterface(dependency) {
 		return status
 	}
 	if err := dependency.Ping(ctx); err != nil {
