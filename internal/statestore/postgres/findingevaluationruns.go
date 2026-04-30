@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -159,17 +160,8 @@ func (s *Store) ListFindingEvaluationRuns(ctx context.Context, request ports.Lis
 	return runs, nil
 }
 
-func ensureFindingEvaluationRunTable(ctx context.Context, db *sql.DB) error {
-	for _, statement := range ensureFindingEvaluationRunStatements {
-		if _, err := db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("ensure finding evaluation run tables: %w", err)
-		}
-	}
-	return nil
-}
-
 func (s *Store) ensureFindingEvaluationRunTables(ctx context.Context) error {
-	return ensureFindingEvaluationRunTable(ctx, s.db)
+	return s.ensureStatements(ctx, &s.findingEvaluationRunReady, "finding evaluation run", ensureFindingEvaluationRunStatements)
 }
 
 func findingEvaluationRunListQuery(request ports.ListFindingEvaluationRunsRequest) (string, []any, error) {
@@ -202,7 +194,7 @@ func addFindingEvaluationRunFilter(clauses *[]string, args *[]any, column string
 	*clauses = append(*clauses, fmt.Sprintf("%s = $%d", column, len(*args)))
 }
 
-func findingEvaluationRunTime(value interface{ AsTime() time.Time }) time.Time {
+func findingEvaluationRunTime(value *timestamppb.Timestamp) time.Time {
 	if value == nil {
 		return time.Time{}
 	}

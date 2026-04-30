@@ -24,7 +24,7 @@ class Client:
         return payload
 
     def call_tool(self, tool_id: str, args: Any) -> Any:
-        payload, _ = self._request_json("POST", f"/api/v1/agent-sdk/tools/{parse.quote(tool_id)}:call", args)
+        payload, _ = self._request_json("POST", f"/api/v1/agent-sdk/tools/{parse.quote(tool_id, safe='')}:call", args)
         return payload
 
     def run_report(self, payload: Dict[str, Any]) -> Any:
@@ -36,11 +36,11 @@ class Client:
         return result
 
     def put_source_runtime(self, runtime_id: str, runtime: Dict[str, Any]) -> Any:
-        result, _ = self._request_json("PUT", f"/source-runtimes/{parse.quote(runtime_id)}", {"runtime": runtime})
+        result, _ = self._request_json("PUT", f"/source-runtimes/{parse.quote(runtime_id, safe='')}", {"runtime": runtime})
         return result
 
     def get_source_runtime(self, runtime_id: str) -> Any:
-        result, _ = self._request_json("GET", f"/source-runtimes/{parse.quote(runtime_id)}")
+        result, _ = self._request_json("GET", f"/source-runtimes/{parse.quote(runtime_id, safe='')}")
         return result
 
     def write_claims(
@@ -49,10 +49,9 @@ class Client:
         claims: list[Dict[str, Any]],
         options: Optional[Dict[str, Any]] = None,
     ) -> Any:
-        payload: Dict[str, Any] = {"claims": claims}
-        if options:
-            payload.update(options)
-        result, _ = self._request_json("POST", f"/source-runtimes/{parse.quote(runtime_id)}/claims", payload)
+        payload: Dict[str, Any] = dict(options or {})
+        payload["claims"] = claims
+        result, _ = self._request_json("POST", f"/source-runtimes/{parse.quote(runtime_id, safe='')}/claims", payload)
         return result
 
     def list_claims(self, runtime_id: str, filters: Optional[Dict[str, Any]] = None) -> Any:
@@ -61,7 +60,7 @@ class Client:
             if value in (None, ""):
                 continue
             query[key] = str(value)
-        path = f"/source-runtimes/{parse.quote(runtime_id)}/claims"
+        path = f"/source-runtimes/{parse.quote(runtime_id, safe='')}/claims"
         if query:
             path = f"{path}?{parse.urlencode(query)}"
         result, _ = self._request_json("GET", path)
@@ -85,7 +84,7 @@ class Client:
         return result
 
     def get_managed_credential(self, credential_id: str) -> Any:
-        result, _ = self._request_json("GET", f"/api/v1/admin/agent-sdk/credentials/{parse.quote(credential_id)}")
+        result, _ = self._request_json("GET", f"/api/v1/admin/agent-sdk/credentials/{parse.quote(credential_id, safe='')}")
         return result
 
     def create_managed_credential(self, payload: Dict[str, Any]) -> Any:
@@ -93,11 +92,11 @@ class Client:
         return result
 
     def rotate_managed_credential(self, credential_id: str, payload: Optional[Dict[str, Any]] = None) -> Any:
-        result, _ = self._request_json("POST", f"/api/v1/admin/agent-sdk/credentials/{parse.quote(credential_id)}:rotate", payload or {})
+        result, _ = self._request_json("POST", f"/api/v1/admin/agent-sdk/credentials/{parse.quote(credential_id, safe='')}:rotate", payload or {})
         return result
 
     def revoke_managed_credential(self, credential_id: str, payload: Optional[Dict[str, Any]] = None) -> Any:
-        result, _ = self._request_json("POST", f"/api/v1/admin/agent-sdk/credentials/{parse.quote(credential_id)}:revoke", payload or {})
+        result, _ = self._request_json("POST", f"/api/v1/admin/agent-sdk/credentials/{parse.quote(credential_id, safe='')}:revoke", payload or {})
         return result
 
     def mcp(self, payload: Dict[str, Any], session_id: str = "") -> Tuple[Any, str]:

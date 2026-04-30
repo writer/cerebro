@@ -71,60 +71,61 @@ def build_jira_workspace_claims(
     integration: IntegrationClient,
     posture: JiraWorkspacePosture,
 ) -> list[Dict[str, Any]]:
+    posture = object_value(posture)
     workspace_key = require_value(posture.get("workspace_key"), "workspace_key")
     workspace_name = optional_string(posture.get("workspace_name")) or workspace_key
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
     source_event_id = optional_string(posture.get("event_id"))
     shared_options: Dict[str, Any] = {"source_event_id": source_event_id} if source_event_id else {}
-    admins = list(posture.get("admins", []))
-    projects = list(posture.get("projects", []))
-    apps = list(posture.get("apps", []))
+    admins = object_list(posture.get("admins"))
+    projects = object_list(posture.get("projects"))
+    apps = object_list(posture.get("apps"))
 
     claims = [
         integration.exists(workspace_ref, **shared_options),
         integration.attr(workspace_ref, "platform", "jira", **shared_options),
         integration.attr(workspace_ref, "vendor", "atlassian", **shared_options),
-        integration.attr(workspace_ref, "sso_enforced", bool_value(posture.get("sso_enforced", True)), **shared_options),
+        integration.attr(workspace_ref, "sso_enforced", bool_value(posture.get("sso_enforced"), True), **shared_options),
         integration.attr(
             workspace_ref,
             "mfa_required_for_admins",
-            bool_value(posture.get("mfa_required_for_admins", True)),
+            bool_value(posture.get("mfa_required_for_admins"), True),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "atlassian_guard_enabled",
-            bool_value(posture.get("atlassian_guard_enabled", True)),
+            bool_value(posture.get("atlassian_guard_enabled"), True),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "audit_log_export_enabled",
-            bool_value(posture.get("audit_log_export_enabled", True)),
+            bool_value(posture.get("audit_log_export_enabled"), True),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "api_token_expiration_enforced",
-            bool_value(posture.get("api_token_expiration_enforced", True)),
+            bool_value(posture.get("api_token_expiration_enforced"), True),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "public_signup_enabled",
-            bool_value(posture.get("public_signup_enabled", False)),
+            bool_value(posture.get("public_signup_enabled"), False),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "anonymous_access_enabled",
-            bool_value(posture.get("anonymous_access_enabled", False)),
+            bool_value(posture.get("anonymous_access_enabled"), False),
             **shared_options,
         ),
         integration.attr(
             workspace_ref,
             "approved_marketplace_apps_only",
-            bool_value(posture.get("approved_marketplace_apps_only", True)),
+            bool_value(posture.get("approved_marketplace_apps_only"), True),
             **shared_options,
         ),
         integration.attr(workspace_ref, "admin_count", str(len(admins)), **shared_options),
@@ -159,7 +160,7 @@ def build_jira_workspace_claims(
             integration.attr(
                 project_ref,
                 "issue_level_security_enabled",
-                bool_value(project.get("issue_level_security_enabled", True)),
+                bool_value(project.get("issue_level_security_enabled"), True),
                 **shared_options,
             )
         )
@@ -167,7 +168,7 @@ def build_jira_workspace_claims(
             integration.attr(
                 project_ref,
                 "anonymous_browse_enabled",
-                bool_value(project.get("anonymous_browse_enabled", False)),
+                bool_value(project.get("anonymous_browse_enabled"), False),
                 **shared_options,
             )
         )
@@ -175,7 +176,7 @@ def build_jira_workspace_claims(
             integration.attr(
                 project_ref,
                 "service_desk_public_portal_enabled",
-                bool_value(project.get("service_desk_public_portal_enabled", False)),
+                bool_value(project.get("service_desk_public_portal_enabled"), False),
                 **shared_options,
             )
         )
@@ -190,11 +191,11 @@ def build_jira_workspace_claims(
             integration.attr(
                 app_ref,
                 "approved_by_security",
-                bool_value(app.get("approved_by_security", True)),
+                bool_value(app.get("approved_by_security"), True),
                 **shared_options,
             )
         )
-        scopes = [optional_string(scope) for scope in app.get("scopes", [])]
+        scopes = [optional_string(scope) for scope in list_value(app.get("scopes"))]
         normalized_scopes = [scope for scope in scopes if scope]
         if normalized_scopes:
             claims.append(integration.attr(app_ref, "scopes", ",".join(normalized_scopes), **shared_options))
@@ -206,12 +207,13 @@ def load_jira_workspace_graph_layering(
     integration: IntegrationClient,
     posture: JiraWorkspacePosture,
 ) -> JiraWorkspaceGraphLayering:
+    posture = object_value(posture)
     workspace_key = require_value(posture.get("workspace_key"), "workspace_key")
     workspace_name = optional_string(posture.get("workspace_name")) or workspace_key
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
     project_refs = []
     project_keys = []
-    for project in posture.get("projects", []):
+    for project in object_list(posture.get("projects")):
         project_key = require_value(project.get("key"), "projects[].key")
         project_name = optional_string(project.get("name")) or project_key
         project_refs.append(integration.ref("project", project_key, project_name))
@@ -241,12 +243,13 @@ def build_jira_posture_findings(
     posture: JiraWorkspacePosture,
     graph_summary: Dict[str, Any],
 ) -> list[JiraPostureFinding]:
+    posture = object_value(posture)
     findings: list[JiraPostureFinding] = []
     workspace_key = require_value(posture.get("workspace_key"), "workspace_key")
     workspace_name = optional_string(posture.get("workspace_name")) or workspace_key
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
 
-    if posture.get("public_signup_enabled", False):
+    if bool_value(posture.get("public_signup_enabled"), False) == "true":
         findings.append(
             finding(
                 "jira_workspace_public_signup_enabled",
@@ -256,7 +259,7 @@ def build_jira_posture_findings(
                 [workspace_ref["urn"]],
             )
         )
-    if posture.get("anonymous_access_enabled", False):
+    if bool_value(posture.get("anonymous_access_enabled"), False) == "true":
         findings.append(
             finding(
                 "jira_workspace_anonymous_access_enabled",
@@ -266,7 +269,7 @@ def build_jira_posture_findings(
                 [workspace_ref["urn"]],
             )
         )
-    if not posture.get("approved_marketplace_apps_only", True):
+    if bool_value(posture.get("approved_marketplace_apps_only"), True) == "false":
         findings.append(
             finding(
                 "jira_workspace_marketplace_policy_open",
@@ -293,12 +296,12 @@ def build_jira_posture_findings(
             )
         )
 
-    for project in posture.get("projects", []):
+    for project in object_list(posture.get("projects")):
         project_key = require_value(project.get("key"), "projects[].key")
         project_name = optional_string(project.get("name")) or project_key
         project_ref = integration.ref("project", project_key, project_name)
         classification = optional_string(project.get("classification")) or "internal"
-        if classification == "restricted" and not project.get("issue_level_security_enabled", True):
+        if classification == "restricted" and bool_value(project.get("issue_level_security_enabled"), True) == "false":
             findings.append(
                 finding(
                     f"jira_project_{project_key.lower()}_restricted_issue_security_disabled",
@@ -308,7 +311,7 @@ def build_jira_posture_findings(
                     [project_ref["urn"], workspace_ref["urn"]],
                 )
             )
-        if project.get("anonymous_browse_enabled", False):
+        if bool_value(project.get("anonymous_browse_enabled"), False) == "true":
             findings.append(
                 finding(
                     f"jira_project_{project_key.lower()}_anonymous_browse_enabled",
@@ -318,7 +321,7 @@ def build_jira_posture_findings(
                     [project_ref["urn"], workspace_ref["urn"]],
                 )
             )
-        if project.get("service_desk_public_portal_enabled", False):
+        if bool_value(project.get("service_desk_public_portal_enabled"), False) == "true":
             findings.append(
                 finding(
                     f"jira_project_{project_key.lower()}_public_portal_enabled",
@@ -329,8 +332,8 @@ def build_jira_posture_findings(
                 )
             )
 
-    for app in posture.get("apps", []):
-        if app.get("approved_by_security", True):
+    for app in object_list(posture.get("apps")):
+        if bool_value(app.get("approved_by_security"), True) == "true":
             continue
         app_key = require_value(app.get("key"), "apps[].key")
         app_name = optional_string(app.get("name")) or app_key
@@ -355,13 +358,12 @@ def onboard_jira_workspace_posture(
     posture: JiraWorkspacePosture,
     api_key: Optional[str] = None,
 ) -> OnboardJiraWorkspacePostureResult:
+    posture = object_value(posture)
+    workspace_key = require_value(posture.get("workspace_key"), "workspace_key")
+    source_event_id = optional_string(posture.get("event_id"))
     client = Client(base_url=base_url, api_key=api_key or None)
     integration = client.integration(runtime_id=runtime_id, tenant_id=tenant_id, integration="jira")
-    runtime_config: Dict[str, str] = {}
-    workspace_key = optional_string(posture.get("workspace_key"))
-    source_event_id = optional_string(posture.get("event_id"))
-    if workspace_key:
-        runtime_config["workspace"] = workspace_key
+    runtime_config: Dict[str, str] = {"workspace": workspace_key}
     integration.ensure_runtime(runtime_config)
     claims = build_jira_workspace_claims(integration, posture)
     write_result = integration.write_claims(claims, {"replace_existing": True})
@@ -408,15 +410,48 @@ def finding(
     return payload
 
 
-def bool_value(value: Any) -> str:
+def bool_value(value: Any, default: bool = False) -> str:
+    if value is None:
+        return "true" if default else "false"
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ("true", "1", "yes", "y", "on"):
+            return "true"
+        if normalized in ("false", "0", "no", "n", "off", ""):
+            return "false"
     return "true" if bool(value) else "false"
+
+
+def object_list(value: Any) -> list[Dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def object_value(value: Any) -> Dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def list_value(value: Any) -> list[Any]:
+    if not isinstance(value, list):
+        return []
+    return value
 
 
 def optional_string(value: Any) -> Optional[str]:
     if value is None:
         return None
-    normalized = str(value).strip()
-    return normalized or None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+    if isinstance(value, (int, float)):
+        normalized = str(value).strip()
+        return normalized or None
+    return None
 
 
 def require_value(value: Any, name: str) -> str:

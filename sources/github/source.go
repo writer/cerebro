@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +27,7 @@ var catalogFS embed.FS
 const (
 	defaultPageSize     = 10
 	maxPageSize         = 100
+	sourceHTTPTimeout   = 30 * time.Second
 	defaultState        = "open"
 	defaultFamily       = familyPullRequest
 	defaultAuditInclude = "all"
@@ -33,9 +37,14 @@ const (
 	familyPullRequest   = "pull_request"
 )
 
+var errUnsafeBaseURLHost = errors.New("github base_url must not target loopback, private, or link-local hosts")
+
 // Source is the live GitHub source preview used by the builtin registry.
 type Source struct {
-	spec *cerebrov1.SourceSpec
+	spec                 *cerebrov1.SourceSpec
+	client               *http.Client
+	allowLoopbackBaseURL bool
+	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
 
 type settings struct {
@@ -73,7 +82,10 @@ func New() (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Source{spec: spec}, nil
+	return &Source{
+		spec:          spec,
+		lookupIPAddrs: net.DefaultResolver.LookupIPAddr,
+	}, nil
 }
 
 // Spec returns static metadata for the GitHub source.
@@ -83,7 +95,7 @@ func (s *Source) Spec() *cerebrov1.SourceSpec {
 
 // Check validates that a GitHub owner or repository is reachable.
 func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
-	client, settings, err := newClient(cfg, false)
+	client, settings, err := s.newClient(cfg, false)
 	if err != nil {
 		return err
 	}
@@ -103,7 +115,7 @@ func (s *Source) Check(ctx context.Context, cfg sourcecdk.Config) error {
 
 // Discover returns live GitHub URNs for the selected family.
 func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecdk.URN, error) {
-	client, settings, err := newClient(cfg, false)
+	client, settings, err := s.newClient(cfg, false)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +153,7 @@ func (s *Source) Discover(ctx context.Context, cfg sourcecdk.Config) ([]sourcecd
 
 // Read pages through the configured live GitHub event family.
 func (s *Source) Read(ctx context.Context, cfg sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	client, settings, err := newClient(cfg, true)
+	client, settings, err := s.newClient(cfg, true)
 	if err != nil {
 		return sourcecdk.Pull{}, err
 	}
@@ -206,26 +218,77 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return spec, nil
 }
 
-func newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settings, error) {
-	settings, err := parseSettings(cfg, requireRepo)
+func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Client, settings, error) {
+	allowLoopbackBaseURL := s != nil && s.allowLoopbackBaseURL
+	lookupIPAddrs := net.DefaultResolver.LookupIPAddr
+	if s != nil && s.lookupIPAddrs != nil {
+		lookupIPAddrs = s.lookupIPAddrs
+	}
+	settings, err := parseSettings(cfg, requireRepo, allowLoopbackBaseURL)
 	if err != nil {
 		return nil, settings, err
 	}
-	client := gogithub.NewClient(nil)
+	httpClient := (*http.Client)(nil)
+	if s != nil {
+		httpClient = s.client
+	}
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: sourceHTTPTimeout}
+	}
+	httpClient = sourceHTTPClientNoRedirect(httpClient, allowLoopbackBaseURL, lookupIPAddrs)
+	client := gogithub.NewClient(httpClient)
 	if settings.token != "" {
 		client = client.WithAuthToken(settings.token)
 	}
 	if settings.baseURL != "" {
 		enterpriseClient, err := client.WithEnterpriseURLs(settings.baseURL, settings.baseURL)
 		if err != nil {
-			return nil, settings, fmt.Errorf("parse github base_url: %w", err)
+			return nil, settings, fmt.Errorf("%w: parse github base_url: %w", sourcecdk.ErrInvalidConfig, err)
 		}
 		client = enterpriseClient
 	}
 	return client, settings, nil
 }
 
-func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
+func sourceHTTPClientNoRedirect(client *http.Client, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
+	if client == nil {
+		client = &http.Client{Timeout: sourceHTTPTimeout}
+	}
+	cloned := *client
+	if cloned.CheckRedirect == nil {
+		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	transport := cloned.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	cloned.Transport = safeSourceRoundTripper{base: transport, allowLoopback: allowLoopback, lookupIPAddrs: lookupIPAddrs}
+	return &cloned
+}
+
+type safeSourceRoundTripper struct {
+	base          http.RoundTripper
+	allowLoopback bool
+	lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)
+}
+
+func (rt safeSourceRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req != nil && req.URL != nil {
+		if err := rejectResolvedUnsafeHost(req.Context(), req.URL.Hostname(), rt.allowLoopback, rt.lookupIPAddrs); err != nil {
+			return nil, err
+		}
+	}
+	return rt.base.RoundTrip(req)
+}
+
+func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL bool) (_ settings, err error) {
+	defer func() {
+		if err != nil && !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+			err = fmt.Errorf("%w: %w", sourcecdk.ErrInvalidConfig, err)
+		}
+	}()
 	settings := settings{
 		family:       configValue(cfg, "family"),
 		owner:        configValue(cfg, "owner"),
@@ -237,6 +300,13 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
 		auditPhrase:  configValue(cfg, "phrase"),
 		auditOrder:   configValue(cfg, "order"),
 		perPage:      defaultPageSize,
+	}
+	if settings.baseURL != "" {
+		baseURL, err := normalizeBaseURL(settings.baseURL, allowLoopbackBaseURL)
+		if err != nil {
+			return settings, err
+		}
+		settings.baseURL = baseURL
 	}
 	if settings.owner == "" {
 		return settings, fmt.Errorf("github owner is required")
@@ -323,6 +393,161 @@ func parseSettings(cfg sourcecdk.Config, requireRepo bool) (settings, error) {
 	return settings, nil
 }
 
+func normalizeBaseURL(raw string, allowLoopback bool) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", fmt.Errorf("parse github base_url: %w", err)
+	}
+	host := parsed.Hostname()
+	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && isLoopbackHost(host)
+	if parsed.Scheme != "https" && !allowInsecureLoopback {
+		return "", fmt.Errorf("github base_url must use https")
+	}
+	if strings.TrimSpace(host) == "" {
+		return "", fmt.Errorf("github base_url must include a host")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", fmt.Errorf("github base_url must not include user info, query, or fragment")
+	}
+	path := strings.TrimRight(parsed.EscapedPath(), "/")
+	if (path != "" && path != "/api/v3") || parsed.RawPath != "" {
+		return "", fmt.Errorf("github base_url must be an origin URL")
+	}
+	if isUnsafeHost(host) && (!allowLoopback || !isLoopbackHost(host)) {
+		return "", errUnsafeBaseURLHost
+	}
+	if path == "/api/v3" && isGitHubAPIHost(host) {
+		parsed.Path = "/api/v3"
+	} else {
+		parsed.Path = ""
+	}
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func isGitHubAPIHost(host string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(host))
+	return strings.HasPrefix(normalized, "api.") || strings.Contains(normalized, ".api.")
+}
+
+func isUnsafeHost(host string) bool {
+	value := normalizedIPHost(host)
+	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(value)
+	if ip == nil {
+		ip = parseNumericIPv4Host(value)
+	}
+	if ip == nil {
+		return false
+	}
+	return isUnsafeIP(ip)
+}
+
+func isLoopbackHost(host string) bool {
+	value := normalizedIPHost(host)
+	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(value)
+	if ip == nil {
+		ip = parseNumericIPv4Host(value)
+	}
+	return ip != nil && ip.IsLoopback()
+}
+
+func isUnsafeIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() ||
+		ip.IsMulticast()
+}
+
+func rejectResolvedUnsafeHost(ctx context.Context, host string, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) error {
+	normalized := normalizedIPHost(host)
+	if normalized == "" {
+		return nil
+	}
+	if isUnsafeHost(normalized) {
+		if allowLoopback && isLoopbackHost(normalized) {
+			return nil
+		}
+		return errUnsafeBaseURLHost
+	}
+	if lookupIPAddrs == nil {
+		lookupIPAddrs = net.DefaultResolver.LookupIPAddr
+	}
+	addrs, err := lookupIPAddrs(ctx, normalized)
+	if err != nil {
+		return fmt.Errorf("resolve github base_url host %q: %w", normalized, err)
+	}
+	for _, addr := range addrs {
+		if isUnsafeIP(addr.IP) {
+			if allowLoopback && addr.IP != nil && addr.IP.IsLoopback() {
+				continue
+			}
+			return errUnsafeBaseURLHost
+		}
+	}
+	return nil
+}
+
+func normalizedIPHost(host string) string {
+	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
+	value = strings.Trim(value, "[]")
+	if address, _, ok := strings.Cut(value, "%"); ok {
+		value = address
+	}
+	return value
+}
+
+func parseNumericIPv4Host(host string) net.IP {
+	if strings.Contains(host, ":") {
+		return nil
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) == 0 || len(parts) > 4 {
+		return nil
+	}
+	values := make([]uint64, len(parts))
+	for i, part := range parts {
+		if part == "" {
+			return nil
+		}
+		value, err := strconv.ParseUint(part, 0, 32)
+		if err != nil {
+			return nil
+		}
+		values[i] = value
+	}
+	var ipv4 uint32
+	switch len(values) {
+	case 1:
+		ipv4 = uint32(values[0])
+	case 2:
+		if values[0] > 0xff || values[1] > 0xffffff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1])
+	case 3:
+		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2])
+	case 4:
+		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xff || values[3] > 0xff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2]<<8 | values[3])
+	}
+	return net.IPv4(byte(ipv4>>24), byte(ipv4>>16), byte(ipv4>>8), byte(ipv4))
+}
+
 func getRepo(ctx context.Context, client *gogithub.Client, owner string, repo string) (*gogithub.Repository, error) {
 	repository, _, err := client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
@@ -383,10 +608,10 @@ func readPage(cursor *cerebrov1.SourceCursor) (int, error) {
 	}
 	page, err := strconv.Atoi(strings.TrimSpace(cursor.Opaque))
 	if err != nil {
-		return 0, fmt.Errorf("parse cursor: %w", err)
+		return 0, fmt.Errorf("%w: parse cursor: %w", sourcecdk.ErrInvalidConfig, err)
 	}
 	if page < 1 {
-		return 0, fmt.Errorf("cursor page must be greater than zero")
+		return 0, fmt.Errorf("%w: cursor page must be greater than zero", sourcecdk.ErrInvalidConfig)
 	}
 	return page, nil
 }

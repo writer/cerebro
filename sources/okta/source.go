@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -26,6 +27,8 @@ var catalogFS embed.FS
 const (
 	defaultPageSize   = 10
 	maxPageSize       = 200
+	oktaHTTPTimeout   = 30 * time.Second
+	maxOktaBodyBytes  = 4 << 20
 	defaultFamily     = familyAudit
 	defaultAuditOrder = "DESCENDING"
 	defaultUserOrder  = "asc"
@@ -40,9 +43,10 @@ const (
 
 // Source is the live Okta source preview used by the builtin registry.
 type Source struct {
-	spec     *cerebrov1.SourceSpec
-	client   *http.Client
-	families *sourcecdk.FamilyEngine[settings]
+	spec                 *cerebrov1.SourceSpec
+	client               *http.Client
+	families             *sourcecdk.FamilyEngine[settings]
+	allowLoopbackBaseURL bool
 }
 
 type settings struct {
@@ -240,10 +244,8 @@ func New() (*Source, error) {
 		return nil, err
 	}
 	source := &Source{
-		spec: spec,
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		spec:   spec,
+		client: oktaHTTPClientNoRedirect(nil),
 	}
 	source.families, err = source.newFamilyEngine()
 	if err != nil {
@@ -286,7 +288,7 @@ type oktaFamilyOptions[T any] struct {
 
 func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 	auditList := s.listAudit
-	return sourcecdk.NewFamilyEngine(parseSettings, func(settings settings) string {
+	return sourcecdk.NewFamilyEngine(s.parseSettings, func(settings settings) string {
 		return settings.family
 	},
 		oktaFamily(oktaFamilyOptions[auditRecord]{
@@ -437,7 +439,11 @@ func loadSpec() (*cerebrov1.SourceSpec, error) {
 	return spec, nil
 }
 
-func parseSettings(cfg sourcecdk.Config) (settings, error) {
+func (s *Source) parseSettings(cfg sourcecdk.Config) (settings, error) {
+	return parseSettings(cfg, s != nil && s.allowLoopbackBaseURL)
+}
+
+func parseSettings(cfg sourcecdk.Config, allowLoopbackBaseURL bool) (settings, error) {
 	settings := settings{
 		family:    configValue(cfg, "family"),
 		domain:    configValue(cfg, "domain"),
@@ -467,15 +473,18 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	if settings.domain == "" {
 		return settings, fmt.Errorf("okta domain is required")
 	}
-	domain, err := normalizeDomain(settings.domain)
+	domain, err := normalizeDomain(settings.domain, allowLoopbackBaseURL)
 	if err != nil {
 		return settings, err
 	}
 	settings.domain = domain
 	if settings.baseURL == "" {
-		settings.baseURL = "https://" + settings.domain
+		settings.baseURL, err = normalizeBaseURL("https://"+settings.domain, settings.domain, allowLoopbackBaseURL)
+		if err != nil {
+			return settings, err
+		}
 	} else {
-		settings.baseURL, err = normalizeBaseURL(settings.baseURL)
+		settings.baseURL, err = normalizeBaseURL(settings.baseURL, settings.domain, allowLoopbackBaseURL)
 		if err != nil {
 			return settings, err
 		}
@@ -530,7 +539,7 @@ func parseSettings(cfg sourcecdk.Config) (settings, error) {
 	return settings, nil
 }
 
-func normalizeDomain(raw string) (string, error) {
+func normalizeDomain(raw string, allowLoopback bool) (string, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
 		return "", fmt.Errorf("okta domain is required")
@@ -542,22 +551,141 @@ func normalizeDomain(raw string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse okta domain: %w", err)
 	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", fmt.Errorf("okta domain must not include user info, query, or fragment")
+	}
+	if strings.TrimSpace(parsed.Port()) != "" {
+		return "", fmt.Errorf("okta domain must not include a port")
+	}
+	if (parsed.Path != "" && parsed.Path != "/") || parsed.RawPath != "" {
+		return "", fmt.Errorf("okta domain must be a host")
+	}
 	host := strings.TrimSpace(parsed.Hostname())
 	if host == "" {
 		return "", fmt.Errorf("okta domain must be a valid host")
 	}
-	return strings.ToLower(host), nil
+	host = strings.TrimRight(strings.ToLower(host), ".")
+	if isUnsafeHost(host) && (!allowLoopback || !isLoopbackHost(host)) {
+		return "", fmt.Errorf("okta domain must not target loopback, private, or link-local hosts")
+	}
+	return host, nil
 }
 
-func normalizeBaseURL(raw string) (string, error) {
+func normalizeBaseURL(raw string, domain string, allowLoopback bool) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return "", fmt.Errorf("parse okta base_url: %w", err)
 	}
-	if strings.TrimSpace(parsed.Scheme) == "" || strings.TrimSpace(parsed.Host) == "" {
-		return "", fmt.Errorf("okta base_url must include scheme and host")
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	allowInsecureLoopback := allowLoopback && parsed.Scheme == "http" && isLoopbackHost(host)
+	if parsed.Scheme != "https" && !allowInsecureLoopback {
+		return "", fmt.Errorf("okta base_url must use https")
 	}
+	if host == "" {
+		return "", fmt.Errorf("okta base_url must include a host")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", fmt.Errorf("okta base_url must not include user info, query, or fragment")
+	}
+	if (parsed.Path != "" && parsed.Path != "/") || parsed.RawPath != "" {
+		return "", fmt.Errorf("okta base_url must be an origin URL")
+	}
+	allowCustomLoopbackPort := allowLoopback && isLoopbackHost(host)
+	if strings.TrimSpace(parsed.Port()) != "" && parsed.Port() != "443" && !allowCustomLoopbackPort {
+		return "", fmt.Errorf("okta base_url must not include a custom port")
+	}
+	allowLoopbackHost := allowLoopback && isLoopbackHost(host)
+	if isUnsafeHost(host) && !allowLoopbackHost {
+		return "", fmt.Errorf("okta base_url must not target loopback, private, or link-local hosts")
+	}
+	if host != strings.ToLower(strings.TrimSpace(domain)) && !allowLoopbackHost {
+		return "", fmt.Errorf("okta base_url host must match okta domain")
+	}
+	parsed.Path = ""
 	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func isUnsafeHost(host string) bool {
+	value := normalizedIPHost(host)
+	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(value)
+	if ip == nil {
+		ip = parseNumericIPv4Host(value)
+	}
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsUnspecified() ||
+		ip.IsMulticast()
+}
+
+func isLoopbackHost(host string) bool {
+	value := normalizedIPHost(host)
+	if value == "" || value == "localhost" || strings.HasSuffix(value, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(value)
+	if ip == nil {
+		ip = parseNumericIPv4Host(value)
+	}
+	return ip != nil && ip.IsLoopback()
+}
+
+func normalizedIPHost(host string) string {
+	value := strings.TrimRight(strings.ToLower(strings.TrimSpace(host)), ".")
+	value = strings.Trim(value, "[]")
+	if address, _, ok := strings.Cut(value, "%"); ok {
+		value = address
+	}
+	return value
+}
+
+func parseNumericIPv4Host(host string) net.IP {
+	if strings.Contains(host, ":") {
+		return nil
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) == 0 || len(parts) > 4 {
+		return nil
+	}
+	values := make([]uint64, len(parts))
+	for i, part := range parts {
+		if part == "" {
+			return nil
+		}
+		value, err := strconv.ParseUint(part, 0, 32)
+		if err != nil {
+			return nil
+		}
+		values[i] = value
+	}
+	var ipv4 uint32
+	switch len(values) {
+	case 1:
+		ipv4 = uint32(values[0])
+	case 2:
+		if values[0] > 0xff || values[1] > 0xffffff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1])
+	case 3:
+		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2])
+	case 4:
+		if values[0] > 0xff || values[1] > 0xff || values[2] > 0xff || values[3] > 0xff {
+			return nil
+		}
+		ipv4 = uint32(values[0]<<24 | values[1]<<16 | values[2]<<8 | values[3])
+	}
+	return net.IPv4(byte(ipv4>>24), byte(ipv4>>16), byte(ipv4>>8), byte(ipv4))
 }
 
 func normalizeAuditSortOrder(raw string) (string, error) {
@@ -702,7 +830,9 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 
 	client := s.client
 	if client == nil {
-		client = http.DefaultClient
+		client = oktaHTTPClientNoRedirect(nil)
+	} else {
+		client = oktaHTTPClientNoRedirect(client)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -713,7 +843,7 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 	}()
 	headers := resp.Header.Clone()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readLimitedBody(resp.Body)
 	if err != nil {
 		return headers, fmt.Errorf("read %s response: %w", requestPath, err)
 	}
@@ -727,6 +857,32 @@ func (s *Source) getJSON(ctx context.Context, settings settings, requestPath str
 		return headers, fmt.Errorf("decode %s response: %w", requestPath, err)
 	}
 	return headers, nil
+}
+
+func oktaHTTPClientNoRedirect(client *http.Client) *http.Client {
+	if client == nil {
+		client = &http.Client{Timeout: oktaHTTPTimeout}
+	}
+	if client.CheckRedirect != nil {
+		return client
+	}
+	cloned := *client
+	cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return &cloned
+}
+
+func readLimitedBody(body io.Reader) ([]byte, error) {
+	limited := io.LimitReader(body, maxOktaBodyBytes+1)
+	payload, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, err
+	}
+	if len(payload) > maxOktaBodyBytes {
+		return nil, fmt.Errorf("okta response body exceeds %d bytes", maxOktaBodyBytes)
+	}
+	return payload, nil
 }
 
 func decodeResponseError(statusCode int, body []byte) error {

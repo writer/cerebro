@@ -57,6 +57,10 @@ func (s *Store) UpsertProjectedLink(context.Context, *ports.ProjectedLink) error
 	return errCGORequired
 }
 
+func (s *Store) DeleteProjectedLink(context.Context, *ports.ProjectedLink) error {
+	return errCGORequired
+}
+
 func (s *Store) GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error) {
 	return nil, errCGORequired
 }

@@ -339,7 +339,13 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if err := s.ensureProjectionSchema(ctx); err != nil {
 		return err
 	}
-	attributesJSON, err := graphAttributesJSON(entity.Attributes)
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	attributes, err := s.mergedProjectedEntityAttributes(ctx, urn, entity.Attributes)
+	if err != nil {
+		return fmt.Errorf("load projected entity %q attributes: %w", urn, err)
+	}
+	attributesJSON, err := graphAttributesJSON(attributes)
 	if err != nil {
 		return fmt.Errorf("marshal projected entity attributes: %w", err)
 	}
@@ -393,7 +399,13 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if err := s.ensureProjectionSchema(ctx); err != nil {
 		return err
 	}
-	attributesJSON, err := graphAttributesJSON(link.Attributes)
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	attributes, err := s.mergedProjectedLinkAttributes(ctx, fromURN, relation, toURN, link.Attributes)
+	if err != nil {
+		return fmt.Errorf("load projected link %q %q %q attributes: %w", fromURN, relation, toURN, err)
+	}
+	attributesJSON, err := graphAttributesJSON(attributes)
 	if err != nil {
 		return fmt.Errorf("marshal projected link attributes: %w", err)
 	}
@@ -408,6 +420,43 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	)
 	if _, err := s.db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf("upsert projected link %q %q %q: %w", fromURN, relation, toURN, err)
+	}
+	return nil
+}
+
+// DeleteProjectedLink removes one normalized link from the graph store.
+func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return errors.New("projected link is required")
+	}
+	fromURN := strings.TrimSpace(link.FromURN)
+	if fromURN == "" {
+		return errors.New("projected link from urn is required")
+	}
+	toURN := strings.TrimSpace(link.ToURN)
+	if toURN == "" {
+		return errors.New("projected link to urn is required")
+	}
+	relation := strings.TrimSpace(link.Relation)
+	if relation == "" {
+		return errors.New("projected link relation is required")
+	}
+	if s == nil || s.db == nil {
+		return errors.New("kuzu is not configured")
+	}
+	if err := s.ensureProjectionSchema(ctx); err != nil {
+		return err
+	}
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	statement := fmt.Sprintf(
+		"MATCH (src:entity {urn: %s})-[r:relation {relation: %s}]->(dst:entity {urn: %s}) DELETE r",
+		cypherString(fromURN),
+		cypherString(relation),
+		cypherString(toURN),
+	)
+	if _, err := s.db.ExecContext(ctx, statement); err != nil {
+		return fmt.Errorf("delete projected link %q %q %q: %w", fromURN, relation, toURN, err)
 	}
 	return nil
 }
@@ -489,6 +538,71 @@ func graphAttributesJSON(attributes map[string]string) (string, error) {
 		return "", err
 	}
 	return string(payload), nil
+}
+
+func graphAttributesFromJSON(raw string) (map[string]string, error) {
+	attributes := map[string]string{}
+	if strings.TrimSpace(raw) == "" {
+		return attributes, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &attributes); err != nil {
+		return nil, err
+	}
+	return attributes, nil
+}
+
+func mergeGraphAttributes(existing map[string]string, incoming map[string]string) map[string]string {
+	if len(existing) == 0 && len(incoming) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(existing)+len(incoming))
+	for key, value := range existing {
+		merged[key] = value
+	}
+	for key, value := range incoming {
+		merged[key] = value
+	}
+	return merged
+}
+
+func (s *Store) mergedProjectedEntityAttributes(ctx context.Context, urn string, incoming map[string]string) (map[string]string, error) {
+	var raw sql.NullString
+	err := s.db.QueryRowContext(ctx, fmt.Sprintf(
+		"MATCH (e:entity {urn: %s}) RETURN e.attributes_json",
+		cypherString(urn),
+	)).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return mergeGraphAttributes(nil, incoming), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	existing, err := graphAttributesFromJSON(raw.String)
+	if err != nil {
+		return nil, err
+	}
+	return mergeGraphAttributes(existing, incoming), nil
+}
+
+func (s *Store) mergedProjectedLinkAttributes(ctx context.Context, fromURN string, relation string, toURN string, incoming map[string]string) (map[string]string, error) {
+	var raw sql.NullString
+	err := s.db.QueryRowContext(ctx, fmt.Sprintf(
+		"MATCH (src:entity {urn: %s})-[r:relation {relation: %s}]->(dst:entity {urn: %s}) RETURN r.attributes_json",
+		cypherString(fromURN),
+		cypherString(relation),
+		cypherString(toURN),
+	)).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return mergeGraphAttributes(nil, incoming), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	existing, err := graphAttributesFromJSON(raw.String)
+	if err != nil {
+		return nil, err
+	}
+	return mergeGraphAttributes(existing, incoming), nil
 }
 
 func (s *Store) countQuery(ctx context.Context, query string) (int64, error) {

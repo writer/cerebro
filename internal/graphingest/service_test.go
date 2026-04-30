@@ -3,6 +3,7 @@ package graphingest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -40,7 +41,7 @@ func (s *stubRunStore) ListIngestRuns(_ context.Context, filter graphstore.Inges
 }
 
 func TestSensitiveConfigKeyTreatsKeySuffixesAsSensitive(t *testing.T) {
-	for _, key := range []string{"key", "api_key", "private_key"} {
+	for _, key := range []string{"key", "api_key", "apiKey", "accessKeyId", "private_key", "privateKey"} {
 		if !sensitiveConfigKey(key) {
 			t.Fatalf("sensitiveConfigKey(%q) = false, want true", key)
 		}
@@ -49,15 +50,17 @@ func TestSensitiveConfigKeyTreatsKeySuffixesAsSensitive(t *testing.T) {
 
 func TestConfigHashIgnoresSensitiveKeyValues(t *testing.T) {
 	left := configHash(map[string]string{
-		"api_key": "first",
-		"domain":  "writer.okta.com",
+		"apiKey":      "first",
+		"accessKeyId": "first",
+		"domain":      "writer.okta.com",
 	})
 	right := configHash(map[string]string{
-		"api_key": "second",
-		"domain":  "writer.okta.com",
+		"apiKey":      "second",
+		"accessKeyId": "second",
+		"domain":      "writer.okta.com",
 	})
 	if left != right {
-		t.Fatalf("configHash() differed when only api_key changed")
+		t.Fatalf("configHash() differed when only sensitive keys changed")
 	}
 }
 
@@ -95,6 +98,13 @@ func TestHealthFailedCountDoesNotDependOnPagingLimit(t *testing.T) {
 	}
 	if result.Status != "degraded" {
 		t.Fatalf("Health().Status = %q, want degraded", result.Status)
+	}
+}
+
+func TestGetRunRejectsEmptyID(t *testing.T) {
+	_, err := New(nil, nil, nil, &stubRunStore{}).GetRun(context.Background(), " ")
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("GetRun() error = %v, want ErrInvalidRequest", err)
 	}
 }
 

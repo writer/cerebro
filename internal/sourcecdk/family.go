@@ -106,12 +106,12 @@ func (e *FamilyEngine[S]) resolve(cfg Config) (Family[S], S, error) {
 	}
 	settings, err := e.parse(cfg)
 	if err != nil {
-		return Family[S]{}, zero, err
+		return Family[S]{}, zero, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}
 	name := strings.TrimSpace(e.family(settings))
 	family, ok := e.families[name]
 	if !ok {
-		return Family[S]{}, zero, fmt.Errorf("unsupported family %q", name)
+		return Family[S]{}, zero, fmt.Errorf("%w: unsupported family %q", ErrInvalidConfig, name)
 	}
 	return family, settings, nil
 }

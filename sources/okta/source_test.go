@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -174,6 +175,7 @@ func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	cfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"domain":   "writer.okta.com",
@@ -243,6 +245,7 @@ func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	discoverCfg := sourcecdk.NewConfig(map[string]string{
 		"base_url": server.URL,
 		"domain":   "writer.okta.com",
@@ -320,6 +323,7 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	source.allowLoopbackBaseURL = true
 	for _, tt := range []struct {
 		family string
 		config map[string]string
@@ -389,6 +393,130 @@ func TestReadLiveOktaIdentityJoinFamilies(t *testing.T) {
 				t.Fatalf("Read(%s).Events[0].Attributes[%q] = %q, want %q", tt.family, tt.attr, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRejectsUnsafeBaseURL(t *testing.T) {
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	for _, baseURL := range []string{
+		"http://writer.okta.com",
+		"https://evil.okta.com",
+		"https://writer.okta.com:8443",
+		"https://writer.okta.com/path",
+		"https://user@writer.okta.com",
+		"https://writer.okta.com?",
+		"https://localhost.",
+		"https://127.1",
+		"https://10.0.0.1",
+		"https://172.16.0.1",
+		"https://192.168.1.10",
+		"https://169.254.169.254",
+		"https://[fe80::1]",
+		"https://0.0.0.0",
+		"https://2130706433",
+		"https://0177.0.0.1",
+		"https://0x7f000001",
+	} {
+		t.Run(baseURL, func(t *testing.T) {
+			err := source.Check(context.Background(), sourcecdk.NewConfig(map[string]string{
+				"base_url": baseURL,
+				"domain":   "writer.okta.com",
+				"family":   "audit",
+				"token":    "test-token",
+			}))
+			if err == nil {
+				t.Fatal("Check() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestRejectsUnsafeDomain(t *testing.T) {
+	for _, domain := range []string{
+		"localhost",
+		"localhost.",
+		"127.0.0.1",
+		"127.0.0.1.",
+		"127.1",
+		"10.0.0.1",
+		"172.16.0.1",
+		"192.168.1.10",
+		"169.254.169.254",
+		"0.0.0.0",
+		"2130706433",
+		"0177.0.0.1",
+		"0x7f000001",
+		"[::1]",
+		"[::1%25lo0]",
+		"[fe80::1]",
+		"writer.okta.com@evil.com",
+		"writer.okta.com/path",
+		"writer.okta.com?x=1",
+		"writer.okta.com#fragment",
+		"writer.okta.com:8443",
+	} {
+		t.Run(domain, func(t *testing.T) {
+			_, err := parseSettings(sourcecdk.NewConfig(map[string]string{
+				"domain": domain,
+				"family": "audit",
+				"token":  "test-token",
+			}), false)
+			if err == nil {
+				t.Fatal("parseSettings() error = nil, want non-nil")
+			}
+		})
+	}
+}
+
+func TestGetJSONRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[" + strings.Repeat(" ", maxOktaBodyBytes) + "]"))
+	}))
+	defer server.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	var target []map[string]any
+	_, err = source.getJSON(context.Background(), settings{
+		baseURL: server.URL,
+		token:   "test-token",
+	}, "/api/v1/logs", nil, &target)
+	if err == nil {
+		t.Fatal("getJSON() error = nil, want non-nil")
+	}
+}
+
+func TestGetJSONDoesNotFollowRedirects(t *testing.T) {
+	redirectHit := false
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		redirectHit = true
+	}))
+	defer redirectTarget.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirectTarget.URL, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	source, err := New()
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	var target []map[string]any
+	_, err = source.getJSON(context.Background(), settings{
+		baseURL: redirector.URL,
+		token:   "test-token",
+	}, "/api/v1/logs", nil, &target)
+	if err == nil {
+		t.Fatal("getJSON() error = nil, want non-nil redirect response")
+	}
+	if redirectHit {
+		t.Fatal("getJSON() followed redirect target")
 	}
 }
 

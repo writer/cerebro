@@ -39,12 +39,12 @@ func NewFixture() (sourcecdk.Source, error) {
 }
 
 func checkFixtureConfig(_ context.Context, cfg sourcecdk.Config) error {
-	_, err := parseSettings(cfg)
+	_, err := parseSettings(cfg, false)
 	return err
 }
 
 func resolveFixtureFamily(cfg sourcecdk.Config) (string, error) {
-	settings, err := parseSettings(cfg)
+	settings, err := parseSettings(cfg, false)
 	if err != nil {
 		return "", fmt.Errorf("parse okta fixture settings: %w", err)
 	}

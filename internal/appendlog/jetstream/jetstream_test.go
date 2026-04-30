@@ -34,6 +34,7 @@ type fakeReplayManager struct {
 	msgs        map[string]map[uint64]*natsjetstream.RawStreamMsg
 	err         error
 	streamCalls int
+	getMsgCalls int
 }
 
 func (f *fakeReplayManager) Streams(context.Context) ([]*natsjetstream.StreamInfo, error) {
@@ -45,14 +46,18 @@ func (f *fakeReplayManager) Stream(_ context.Context, stream string) (replayStre
 		return nil, f.err
 	}
 	f.streamCalls++
-	return &fakeReplayStream{msgs: f.msgs[stream]}, nil
+	return &fakeReplayStream{manager: f, msgs: f.msgs[stream]}, nil
 }
 
 type fakeReplayStream struct {
-	msgs map[uint64]*natsjetstream.RawStreamMsg
+	manager *fakeReplayManager
+	msgs    map[uint64]*natsjetstream.RawStreamMsg
 }
 
 func (f *fakeReplayStream) GetMsg(_ context.Context, seq uint64, _ ...natsjetstream.GetMsgOpt) (*natsjetstream.RawStreamMsg, error) {
+	if f.manager != nil {
+		f.manager.getMsgCalls++
+	}
 	raw := f.msgs[seq]
 	if raw == nil {
 		return nil, natsjetstream.ErrMsgNotFound
@@ -98,6 +103,25 @@ func TestAppendRejectsMissingKind(t *testing.T) {
 	}
 }
 
+func TestAppendPublishesTrimmedEnvelopeKind(t *testing.T) {
+	pub := &fakePublisher{}
+	log := &Log{js: pub, subjectPrefix: "events"}
+
+	if err := log.Append(context.Background(), &cerebrov1.EventEnvelope{Id: "evt-1", Kind: " entity.upsert "}); err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	if pub.published.Subject != "events.entity.upsert" {
+		t.Fatalf("subject = %q, want events.entity.upsert", pub.published.Subject)
+	}
+	var decoded cerebrov1.EventEnvelope
+	if err := proto.Unmarshal(pub.published.Data, &decoded); err != nil {
+		t.Fatalf("proto.Unmarshal() error = %v", err)
+	}
+	if got := decoded.GetKind(); got != "entity.upsert" {
+		t.Fatalf("decoded kind = %q, want entity.upsert", got)
+	}
+}
+
 func TestAppendRejectsInvalidKindSubjects(t *testing.T) {
 	log := &Log{js: &fakePublisher{}, subjectPrefix: "events"}
 	for _, kind := range []string{
@@ -114,6 +138,26 @@ func TestAppendRejectsInvalidKindSubjects(t *testing.T) {
 				t.Fatal("Append() error = nil, want non-nil")
 			}
 		})
+	}
+}
+
+func TestAppendRejectsInvalidSubjectPrefix(t *testing.T) {
+	log := &Log{js: &fakePublisher{}, subjectPrefix: "events.*"}
+	if err := log.Append(context.Background(), &cerebrov1.EventEnvelope{Kind: "entity.update"}); err == nil {
+		t.Fatal("Append() error = nil, want non-nil")
+	}
+}
+
+func TestEventSubjectDefaultsAndValidatesPrefix(t *testing.T) {
+	subject, err := eventSubject("", "entity.update")
+	if err != nil {
+		t.Fatalf("eventSubject() error = %v", err)
+	}
+	if subject != "events.entity.update" {
+		t.Fatalf("eventSubject() = %q, want events.entity.update", subject)
+	}
+	if _, err := eventSubject("events.", "entity.update"); err == nil {
+		t.Fatal("eventSubject(invalid prefix) error = nil, want non-nil")
 	}
 }
 
@@ -229,6 +273,96 @@ func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T)
 	}
 	if got := events[0].GetId(); got != "evt-1" {
 		t.Fatalf("replayed id = %q, want evt-1", got)
+	}
+}
+
+func TestReplayScansSparseStreamsUntilLimitMatches(t *testing.T) {
+	const matchingSeq = uint64(10005)
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.>"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: matchingSeq},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				matchingSeq: rawReplayMsg(t, "events.github.audit", replayEvent("evt-sparse", "github.audit", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 1 || events[0].GetId() != "evt-sparse" {
+		t.Fatalf("replayed events = %#v, want evt-sparse", events)
+	}
+	if replay.getMsgCalls != int(matchingSeq) {
+		t.Fatalf("getMsgCalls = %d, want %d", replay.getMsgCalls, matchingSeq)
+	}
+}
+
+func TestSubjectMatchesRequiresTokenForFullWildcard(t *testing.T) {
+	if subjectMatches("events.>", "events") {
+		t.Fatal("subjectMatches(events.>, events) = true, want false")
+	}
+	if !subjectMatches("events.>", "events.github.audit") {
+		t.Fatal("subjectMatches(events.>, events.github.audit) = false, want true")
+	}
+}
+
+func TestReplayStreamMatchesMultiTokenSubjectPatterns(t *testing.T) {
+	replay := &fakeReplayManager{
+		streams: []*natsjetstream.StreamInfo{
+			{
+				Config: natsjetstream.StreamConfig{
+					Name:     "CEREBRO_EVENTS",
+					Subjects: []string{"events.*.*"},
+				},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: 1},
+			},
+		},
+		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
+			"CEREBRO_EVENTS": {
+				1: rawReplayMsg(t, "events.github.audit", replayEvent("evt-1", "github.audit", "writer-github")),
+			},
+		},
+	}
+	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
+
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+}
+
+func TestSubjectPatternOverlapsPrefix(t *testing.T) {
+	for _, tt := range []struct {
+		pattern string
+		prefix  string
+		want    bool
+	}{
+		{pattern: "events.>", prefix: "events", want: true},
+		{pattern: "events.*", prefix: "events", want: true},
+		{pattern: "events.*.*", prefix: "events", want: true},
+		{pattern: "events.github.>", prefix: "events", want: true},
+		{pattern: "events", prefix: "events", want: false},
+		{pattern: "other.>", prefix: "events", want: false},
+	} {
+		t.Run(tt.pattern, func(t *testing.T) {
+			if got := subjectPatternOverlapsPrefix(tt.pattern, tt.prefix); got != tt.want {
+				t.Fatalf("subjectPatternOverlapsPrefix(%q, %q) = %v, want %v", tt.pattern, tt.prefix, got, tt.want)
+			}
+		})
 	}
 }
 

@@ -73,8 +73,8 @@ func TestCheckDiscoverAndRead(t *testing.T) {
 	if readResp.PreviewEvents[0].EventId != readResp.Events[0].Id {
 		t.Fatalf("Read().PreviewEvents[0].EventId = %q, want %q", readResp.PreviewEvents[0].EventId, readResp.Events[0].Id)
 	}
-	if readResp.PreviewEvents[0].GetEvent().GetId() != readResp.Events[0].Id {
-		t.Fatalf("Read().PreviewEvents[0].Event.Id = %q, want %q", readResp.PreviewEvents[0].GetEvent().GetId(), readResp.Events[0].Id)
+	if readResp.PreviewEvents[0].GetEvent().GetId() != readResp.Events[0].GetId() {
+		t.Fatalf("Read().PreviewEvents[0].Event.Id = %q, want %q", readResp.PreviewEvents[0].GetEvent().GetId(), readResp.Events[0].GetId())
 	}
 	if !readResp.PreviewEvents[0].PayloadDecoded {
 		t.Fatal("Read().PreviewEvents[0].PayloadDecoded = false, want true")
@@ -190,6 +190,69 @@ func TestUnknownSource(t *testing.T) {
 	if !errors.Is(err, ErrSourceNotFound) {
 		t.Fatalf("Check() error = %v, want ErrSourceNotFound", err)
 	}
+}
+
+func TestEmptySourceIDIsInvalidRequest(t *testing.T) {
+	service := New(nil)
+	_, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Check() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestSourceValidationErrorsAreInvalidRequests(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	service := New(registry)
+	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "github"}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Check() error = %v, want ErrInvalidRequest", err)
+	}
+	if _, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "github"}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Discover() error = %v, want ErrInvalidRequest", err)
+	}
+	if _, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "github"}); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Read() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestSourceOperationErrorsAreNotInvalidRequests(t *testing.T) {
+	upstreamErr := errors.New("upstream timeout")
+	registry, err := sourcecdk.NewRegistry(&errorSource{err: upstreamErr})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry)
+	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "failing"}); !errors.Is(err, upstreamErr) || errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Check() error = %v, want upstream error without ErrInvalidRequest", err)
+	}
+	if _, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "failing"}); !errors.Is(err, upstreamErr) || errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Discover() error = %v, want upstream error without ErrInvalidRequest", err)
+	}
+	if _, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "failing"}); !errors.Is(err, upstreamErr) || errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Read() error = %v, want upstream error without ErrInvalidRequest", err)
+	}
+}
+
+type errorSource struct {
+	err error
+}
+
+func (s *errorSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "failing", Name: "Failing"}
+}
+
+func (s *errorSource) Check(context.Context, sourcecdk.Config) error {
+	return s.err
+}
+
+func (s *errorSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, s.err
+}
+
+func (s *errorSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{}, s.err
 }
 
 func newFixtureRegistry() (*sourcecdk.Registry, error) {

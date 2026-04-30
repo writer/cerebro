@@ -597,6 +597,78 @@ func TestEvaluateSourceRuntimeFindingsReplaysOktaPolicyRuleLifecycleTampering(t 
 	}
 }
 
+func TestEvaluateSourceRuntimeFindingsReusesLegacyOktaTamperingID(t *testing.T) {
+	eventID := "okta-audit-2"
+	legacyID := hashFindingFingerprint(oktaPolicyRuleLifecycleTamperingRuleID, eventID)
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newAuditEvent(eventID, "policy.rule.update", "SUCCESS"),
+		},
+	}
+	store := &stubFindingStore{
+		findings: map[string]*ports.FindingRecord{
+			legacyID: {
+				ID:           legacyID,
+				Fingerprint:  legacyID,
+				TenantID:     "writer",
+				RuntimeID:    "writer-okta-audit",
+				RuleID:       oktaPolicyRuleLifecycleTamperingRuleID,
+				Title:        oktaPolicyRuleLifecycleTamperingTitle,
+				Severity:     "HIGH",
+				Status:       findingStatusSuppressed,
+				Summary:      "legacy finding",
+				ResourceURNs: []string{"urn:cerebro:writer:okta_resource:policyrule:pol-1"},
+				EventIDs:     []string{eventID},
+				FindingWorkflow: ports.FindingWorkflow{
+					StatusReason:    "accepted risk",
+					StatusUpdatedAt: time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC),
+				},
+				FirstObservedAt: time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+				LastObservedAt:  time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	service := New(&stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {
+				Id:       "writer-okta-audit",
+				SourceId: "okta",
+				TenantId: "writer",
+			},
+		},
+	}, replayer, store, store, store, store)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+		RuleID:    oktaPolicyRuleLifecycleTamperingRuleID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if len(result.Findings) != 1 {
+		t.Fatalf("len(Findings) = %d, want 1", len(result.Findings))
+	}
+	finding := result.Findings[0]
+	if got := finding.ID; got != legacyID {
+		t.Fatalf("Finding.ID = %q, want legacy id %q", got, legacyID)
+	}
+	if got := finding.Fingerprint; got != legacyID {
+		t.Fatalf("Finding.Fingerprint = %q, want legacy fingerprint %q", got, legacyID)
+	}
+	if got := finding.Status; got != findingStatusSuppressed {
+		t.Fatalf("Finding.Status = %q, want suppressed", got)
+	}
+	if got := finding.StatusReason; got != "accepted risk" {
+		t.Fatalf("Finding.StatusReason = %q, want accepted risk", got)
+	}
+	if len(store.findings) != 1 {
+		t.Fatalf("len(store.findings) = %d, want 1", len(store.findings))
+	}
+	if got := result.Evidence[0].GetFindingId(); got != legacyID {
+		t.Fatalf("Evidence[0].FindingId = %q, want legacy id %q", got, legacyID)
+	}
+}
+
 func TestOktaPolicyRuleLifecycleTamperingRequiresSuccessfulOutcome(t *testing.T) {
 	missingOutcome := newAuditEvent("okta-audit-2", "policy.rule.update", "")
 	delete(missingOutcome.Attributes, "outcome_result")
@@ -797,9 +869,51 @@ func TestEvaluateSourceRuntimeFindingsPersistsNormalizedFailedRun(t *testing.T) 
 		if got := run.GetEventLimit(); got != maxEventLimit {
 			t.Fatalf("Run.EventLimit = %d, want %d", got, maxEventLimit)
 		}
-		if got := run.GetEventsEvaluated(); got != 1 {
-			t.Fatalf("Run.EventsEvaluated = %d, want 1", got)
+		if got := run.GetEventsEvaluated(); got != 0 {
+			t.Fatalf("Run.EventsEvaluated = %d, want 0", got)
 		}
+	}
+}
+
+func TestEvaluateSourceRuntimeFindingsDeduplicatesEvidencePerRun(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "okta-audit-2",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+		},
+	}
+	store := &stubFindingStore{}
+	service := NewWithRegistry(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			},
+		},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit", RuleID: "rule-a"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Evidence); got != 1 {
+		t.Fatalf("len(Evidence) = %d, want 1", got)
+	}
+	if got := len(store.evidence); got != 1 {
+		t.Fatalf("len(store.evidence) = %d, want 1", got)
 	}
 }
 
@@ -1065,6 +1179,79 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 }
 
+func TestEvaluateSourceRuntimeRulesDeduplicatesEvidencePerRun(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "okta-audit-2",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	replayer := &stubReplayer{
+		events: []*cerebrov1.EventEnvelope{
+			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+			newAuditEvent("okta-audit-2", "policy.rule.update", "SUCCESS"),
+		},
+	}
+	store := &stubFindingStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-1": {
+				ID:            "claim-1",
+				RuntimeID:     "writer-okta-audit",
+				TenantID:      "writer",
+				SubjectURN:    "urn:cerebro:writer:okta_resource:policyrule:pol-1",
+				Predicate:     "status",
+				ObjectValue:   "updated",
+				ClaimType:     "attribute",
+				Status:        "asserted",
+				SourceEventID: "okta-audit-2",
+				ObservedAt:    time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+			},
+		},
+		replayer,
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	result, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v", err)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", got)
+	}
+	if got := len(result.Evaluations[0].Evidence); got != 1 {
+		t.Fatalf("len(Evaluation.Evidence) = %d, want 1", got)
+	}
+	if got := len(store.evidence); got != 1 {
+		t.Fatalf("len(store.evidence) = %d, want 1", got)
+	}
+}
+
+func TestFindingEvidenceIDIncludesEventIDs(t *testing.T) {
+	first := findingEvidenceID("runtime", "finding", "run", []string{"event-1"})
+	second := findingEvidenceID("runtime", "finding", "run", []string{"event-2"})
+	if first == second {
+		t.Fatalf("findingEvidenceID() = %q for distinct events, want unique IDs", first)
+	}
+	reordered := findingEvidenceID("runtime", "finding", "run", []string{"event-2", "event-1"})
+	sorted := findingEvidenceID("runtime", "finding", "run", []string{"event-1", "event-2"})
+	if reordered != sorted {
+		t.Fatalf("findingEvidenceID() depends on event order: %q != %q", reordered, sorted)
+	}
+}
+
 func TestEvaluateSourceRuntimeRulesSelectsExplicitRules(t *testing.T) {
 	registry, err := NewRegistry(
 		&emittingRule{
@@ -1318,6 +1505,78 @@ func TestListFindingsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
 	if _, err := service.ListFindings(context.Background(), ListRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
 		t.Fatalf("ListFindings() error = %v, want %v", err, ErrRuntimeUnavailable)
+	}
+}
+
+func TestFindingValidationErrorsAreInvalidRequests(t *testing.T) {
+	store := &stubFindingStore{}
+	service := New(&stubRuntimeStore{}, &stubReplayer{}, store, store, store, store)
+	for _, tt := range []struct {
+		name string
+		call func() error
+	}{
+		{name: "evaluate missing runtime", call: func() error {
+			_, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{})
+			return err
+		}},
+		{name: "evaluate rules missing runtime", call: func() error {
+			_, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{})
+			return err
+		}},
+		{name: "list findings missing runtime", call: func() error {
+			_, err := service.ListFindings(context.Background(), ListRequest{})
+			return err
+		}},
+		{name: "get finding missing id", call: func() error {
+			_, err := service.GetFinding(context.Background(), "")
+			return err
+		}},
+		{name: "resolve missing id", call: func() error {
+			_, err := service.ResolveFinding(context.Background(), "", "")
+			return err
+		}},
+		{name: "assign missing id", call: func() error {
+			_, err := service.AssignFinding(context.Background(), "", "alice")
+			return err
+		}},
+		{name: "due date missing", call: func() error {
+			_, err := service.SetFindingDueDate(context.Background(), "finding-1", time.Time{})
+			return err
+		}},
+		{name: "note missing", call: func() error {
+			_, err := service.AddFindingNote(context.Background(), "finding-1", "")
+			return err
+		}},
+		{name: "ticket url missing", call: func() error {
+			_, err := service.LinkFindingTicket(context.Background(), "finding-1", "", "", "")
+			return err
+		}},
+		{name: "ticket url invalid", call: func() error {
+			_, err := service.LinkFindingTicket(context.Background(), "finding-1", "://bad", "", "")
+			return err
+		}},
+		{name: "list runs missing runtime", call: func() error {
+			_, err := service.ListEvaluationRuns(context.Background(), ListEvaluationRunsRequest{})
+			return err
+		}},
+		{name: "get run missing id", call: func() error {
+			_, err := service.GetEvaluationRun(context.Background(), "")
+			return err
+		}},
+		{name: "list evidence missing runtime", call: func() error {
+			_, err := service.ListEvidence(context.Background(), ListEvidenceRequest{})
+			return err
+		}},
+		{name: "get evidence missing id", call: func() error {
+			_, err := service.GetEvidence(context.Background(), "")
+			return err
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.call(); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("error = %v, want ErrInvalidRequest", err)
+			}
+		})
 	}
 }
 

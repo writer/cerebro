@@ -144,8 +144,9 @@ func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 		}
 	}
 
-	prURN := projectionURN(tenantID, "github_pull_request", repository+"#"+pullNumber)
+	prURN := ""
 	if repository != "" && pullNumber != "" {
+		prURN = projectionURN(tenantID, "github_pull_request", repository+"#"+pullNumber)
 		label := firstNonEmpty(stringValue(payload, "title"), repository+"#"+pullNumber)
 		addEntity(entities, &ports.ProjectedEntity{
 			URN:        prURN,
@@ -573,6 +574,29 @@ func tenantID(event *cerebrov1.EventEnvelope) (string, error) {
 
 func addEntity(entities map[string]*ports.ProjectedEntity, entity *ports.ProjectedEntity) {
 	if entity == nil || strings.TrimSpace(entity.URN) == "" {
+		return
+	}
+	if existing := entities[entity.URN]; existing != nil {
+		if strings.TrimSpace(entity.TenantID) != "" {
+			existing.TenantID = entity.TenantID
+		}
+		if strings.TrimSpace(entity.SourceID) != "" {
+			existing.SourceID = entity.SourceID
+		}
+		if strings.TrimSpace(entity.EntityType) != "" {
+			existing.EntityType = entity.EntityType
+		}
+		if strings.TrimSpace(entity.Label) != "" {
+			existing.Label = entity.Label
+		}
+		if len(entity.Attributes) != 0 {
+			if existing.Attributes == nil {
+				existing.Attributes = map[string]string{}
+			}
+			for key, value := range entity.Attributes {
+				existing.Attributes[key] = value
+			}
+		}
 		return
 	}
 	entities[entity.URN] = entity

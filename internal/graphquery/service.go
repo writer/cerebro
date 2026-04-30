@@ -3,6 +3,7 @@ package graphquery
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/writer/cerebro/internal/ports"
@@ -13,8 +14,13 @@ const (
 	maxNeighborhoodLimit     = 50
 )
 
-// ErrRuntimeUnavailable indicates that the graph query boundary is unavailable.
-var ErrRuntimeUnavailable = errors.New("graph query runtime is unavailable")
+var (
+	// ErrRuntimeUnavailable indicates that the graph query boundary is unavailable.
+	ErrRuntimeUnavailable = errors.New("graph query runtime is unavailable")
+
+	// ErrInvalidRequest indicates that a graph query request failed validation.
+	ErrInvalidRequest = errors.New("invalid graph query request")
+)
 
 // Service exposes the first bounded graph neighborhood query.
 type Service struct {
@@ -39,7 +45,7 @@ func (s *Service) GetEntityNeighborhood(ctx context.Context, request Neighborhoo
 	}
 	rootURN := strings.TrimSpace(request.RootURN)
 	if rootURN == "" {
-		return nil, errors.New("root urn is required")
+		return nil, fmt.Errorf("%w: root urn is required", ErrInvalidRequest)
 	}
 	return s.store.GetEntityNeighborhood(ctx, rootURN, normalizeNeighborhoodLimit(request.Limit))
 }
