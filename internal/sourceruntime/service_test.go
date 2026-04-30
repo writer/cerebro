@@ -108,6 +108,26 @@ func (emptyPageSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cereb
 	}, nil
 }
 
+type failingSource struct {
+	err error
+}
+
+func (s failingSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "failing"}
+}
+
+func (s failingSource) Check(context.Context, sourcecdk.Config) error {
+	return s.err
+}
+
+func (s failingSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, s.err
+}
+
+func (s failingSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{}, s.err
+}
+
 func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -217,6 +237,24 @@ func TestPutSourceConfigValidationErrorsAreInvalidRequests(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("Put() error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestPutSourceReachabilityErrorsAreNotInvalidRequests(t *testing.T) {
+	upstreamErr := errors.New("upstream timeout")
+	registry, err := sourcecdk.NewRegistry(failingSource{err: upstreamErr})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry, &runtimeStore{}, nil, nil)
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-failing",
+			SourceId: "failing",
+		},
+	})
+	if !errors.Is(err, upstreamErr) || errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Put() error = %v, want upstream error without ErrInvalidRequest", err)
 	}
 }
 

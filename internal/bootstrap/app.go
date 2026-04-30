@@ -1706,10 +1706,10 @@ func sensitiveSourceConfigKey(key string) bool {
 		return true
 	}
 	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
-	if strings.Contains(compact, "apikey") || strings.Contains(compact, "accesskey") || strings.Contains(compact, "privatekey") {
+	if strings.Contains(compact, "apikey") || strings.Contains(compact, "privatekey") {
 		return true
 	}
-	return value == "key" || strings.HasSuffix(value, "_key")
+	return value == "key"
 }
 
 func writeSourceError(w http.ResponseWriter, err error) {
@@ -1856,6 +1856,8 @@ func knowledgeConnectError(err error) error {
 	switch {
 	case errors.Is(err, ports.ErrGraphEntityNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, knowledge.ErrInvalidRequest):
+		return connect.NewError(connect.CodeInvalidArgument, err)
 	case errors.Is(err, knowledge.ErrRuntimeUnavailable):
 		return connect.NewError(connect.CodeUnavailable, err)
 	default:
@@ -1928,6 +1930,8 @@ func writeKnowledgeError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ports.ErrGraphEntityNotFound):
 		statusCode = http.StatusNotFound
+	case errors.Is(err, knowledge.ErrInvalidRequest):
+		statusCode = http.StatusBadRequest
 	case errors.Is(err, knowledge.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	case errors.Is(err, errInvalidHTTPRequest):

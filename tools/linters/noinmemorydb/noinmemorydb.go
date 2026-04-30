@@ -57,6 +57,9 @@ func run(pass *analysis.Pass) (any, error) {
 				report(pass, reported, call.Args[0].Pos(), call.Args[0].End())
 			}
 		}
+		if !isDatabaseSQLOpenCall(pass, call) {
+			return
+		}
 		for _, arg := range call.Args {
 			if isInMemoryLiteral(pass, arg) {
 				report(pass, reported, arg.Pos(), arg.End())
@@ -64,6 +67,17 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	})
 	return nil, nil
+}
+
+func isDatabaseSQLOpenCall(pass *analysis.Pass, call *ast.CallExpr) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	if sel.Sel.Name != "Open" && sel.Sel.Name != "OpenDB" {
+		return false
+	}
+	return isDatabaseSQLSelector(pass, sel)
 }
 
 func isDatabaseSQLSelector(pass *analysis.Pass, sel *ast.SelectorExpr) bool {

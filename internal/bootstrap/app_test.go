@@ -56,13 +56,26 @@ func sourceGet(t *testing.T, server *httptest.Server, path string, config map[st
 }
 
 func TestSourceConfigFromRequestRejectsSensitiveQueryKeys(t *testing.T) {
-	for _, key := range []string{"token", "api_key", "apiKey", "accessKeyId", "private_key", "privateKey", "key"} {
+	for _, key := range []string{"token", "api_key", "apiKey", "private_key", "privateKey", "key"} {
 		t.Run(key, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/sources/okta/check?"+key+"=secret", nil)
 			if _, err := sourceConfigFromRequest(req); !errors.Is(err, sourceops.ErrInvalidRequest) {
 				t.Fatalf("sourceConfigFromRequest() error = %v, want ErrInvalidRequest", err)
 			}
 		})
+	}
+}
+
+func TestSourceConfigFromRequestAllowsNonSecretKeyQueryFields(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources/aws/check?access_key_id=access-key-id&lookup_key=inventory&group_key=eng", nil)
+	config, err := sourceConfigFromRequest(req)
+	if err != nil {
+		t.Fatalf("sourceConfigFromRequest() error = %v", err)
+	}
+	for _, key := range []string{"access_key_id", "lookup_key", "group_key"} {
+		if got := config[key]; got == "" {
+			t.Fatalf("config[%q] = %q, want value", key, got)
+		}
 	}
 }
 
@@ -97,6 +110,7 @@ func TestConnectErrorHelpersUseSpecificCodes(t *testing.T) {
 		{name: "finding unavailable", err: findingConnectError(findings.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
 		{name: "finding unknown", err: findingConnectError(errors.New("finding store failed")), code: connect.CodeInternal},
 		{name: "knowledge entity not found", err: knowledgeConnectError(ports.ErrGraphEntityNotFound), code: connect.CodeNotFound},
+		{name: "knowledge invalid", err: knowledgeConnectError(knowledge.ErrInvalidRequest), code: connect.CodeInvalidArgument},
 		{name: "knowledge unavailable", err: knowledgeConnectError(knowledge.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
 		{name: "knowledge unknown", err: knowledgeConnectError(errors.New("knowledge store failed")), code: connect.CodeInternal},
 		{name: "workflow replay unavailable", err: workflowReplayConnectError(workflowprojection.ErrRuntimeUnavailable), code: connect.CodeUnavailable},
@@ -169,6 +183,14 @@ func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	writeSourceRuntimeError(invalid, sourceruntime.ErrInvalidRequest)
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid runtime status = %d, want %d", invalid.Code, http.StatusBadRequest)
+	}
+}
+
+func TestWriteKnowledgeErrorMapsInvalidRequestToBadRequest(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeKnowledgeError(recorder, knowledge.ErrInvalidRequest)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
 }
 

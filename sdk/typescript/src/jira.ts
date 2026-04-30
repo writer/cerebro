@@ -85,9 +85,9 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
   const workspaceRef = integration.ref("workspace", workspaceKey, workspaceName);
   const sourceEventId = optionalString(posture.eventId);
   const sharedOptions = sourceEventId ? { source_event_id: sourceEventId } : {};
-  const admins = objectArray(posture.admins);
-  const projects = objectArray(posture.projects);
-  const apps = objectArray(posture.apps);
+  const admins = objectArray(posture.admins, "posture.admins");
+  const projects = objectArray(posture.projects, "posture.projects");
+  const apps = objectArray(posture.apps, "posture.apps");
 
   const claims: Claim[] = [
     integration.exists(workspaceRef, sharedOptions),
@@ -211,7 +211,7 @@ export async function loadJiraWorkspaceGraphLayering(
 ): Promise<JiraWorkspaceGraphLayering> {
   const workspaceKey = requireValue(posture.workspaceKey, "posture.workspaceKey");
   const workspaceRef = integration.ref("workspace", workspaceKey, optionalString(posture.workspaceName) || workspaceKey);
-  const projectEntries = objectArray(posture.projects).map((project) => {
+  const projectEntries = objectArray(posture.projects, "posture.projects").map((project) => {
     const projectKey = requireValue(project.key, "posture.projects[].key");
     const projectRef = integration.ref("project", projectKey, optionalString(project.name) || projectKey);
     return [projectKey, projectRef] as const;
@@ -302,7 +302,7 @@ export function buildJiraPostureFindings(
     );
   }
 
-  for (const project of objectArray(posture.projects)) {
+  for (const project of objectArray(posture.projects, "posture.projects")) {
     const projectKey = requireValue(project.key, "posture.projects[].key");
     const projectName = optionalString(project.name) || projectKey;
     const projectRef = integration.ref("project", projectKey, projectName);
@@ -342,7 +342,7 @@ export function buildJiraPostureFindings(
     }
   }
 
-  for (const app of objectArray(posture.apps)) {
+  for (const app of objectArray(posture.apps, "posture.apps")) {
     if (boolValue(app.approvedBySecurity, true) === "true") {
       continue;
     }
@@ -436,6 +436,7 @@ function boolValue(value: unknown, defaultValue: boolean): string {
     if (["false", "0", "no", "n", "off", ""].includes(normalized)) {
       return "false";
     }
+    throw new Error(`invalid boolean string: ${value}`);
   }
   return value ? "true" : "false";
 }
@@ -455,11 +456,16 @@ function optionalString(value: unknown): string | undefined {
   return undefined;
 }
 
-function objectArray(value: unknown): Array<Record<string, unknown>> {
+function objectArray(value: unknown, name: string): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item));
+  return value.map((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`${name}[${index}] must be an object`);
+    }
+    return item as Record<string, unknown>;
+  });
 }
 
 function stringArray(value: unknown): string[] {

@@ -2,6 +2,7 @@ package a
 
 import (
 	"database/sql"
+	"fmt"
 
 	_ "modernc.org/sqlite" // want `embedded or in-memory database usage is forbidden`
 )
@@ -24,6 +25,7 @@ func ConstantBad() {
 
 func Good() {
 	_, _ = sql.Open("postgres", "postgres://db")
+	fmt.Println(":memory:")
 }
 
 type opener struct{}

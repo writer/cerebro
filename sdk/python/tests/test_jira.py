@@ -38,6 +38,23 @@ class JiraPostureTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "workspace_key is required"):
             build_jira_workspace_claims(self.integration, {"workspace_key": True})
 
+    def test_build_jira_workspace_claims_rejects_malformed_array_entries(self) -> None:
+        with self.assertRaisesRegex(ValueError, r"admins\[0\] must be an object"):
+            build_jira_workspace_claims(self.integration, {"workspace_key": "writer", "admins": ["alice@writer.com"]})
+
+        with self.assertRaisesRegex(ValueError, r"projects\[1\] must be an object"):
+            build_jira_workspace_claims(
+                self.integration,
+                {"workspace_key": "writer", "projects": [{"key": "ENG"}, "SEC"]},
+            )
+
+    def test_build_jira_workspace_claims_rejects_unknown_boolean_strings(self) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid boolean string"):
+            build_jira_workspace_claims(
+                self.integration,
+                {"workspace_key": "writer", "public_signup_enabled": "falsee"},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

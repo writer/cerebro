@@ -77,9 +77,9 @@ def build_jira_workspace_claims(
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
     source_event_id = optional_string(posture.get("event_id"))
     shared_options: Dict[str, Any] = {"source_event_id": source_event_id} if source_event_id else {}
-    admins = object_list(posture.get("admins"))
-    projects = object_list(posture.get("projects"))
-    apps = object_list(posture.get("apps"))
+    admins = object_list(posture.get("admins"), "admins")
+    projects = object_list(posture.get("projects"), "projects")
+    apps = object_list(posture.get("apps"), "apps")
 
     claims = [
         integration.exists(workspace_ref, **shared_options),
@@ -213,7 +213,7 @@ def load_jira_workspace_graph_layering(
     workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
     project_refs = []
     project_keys = []
-    for project in object_list(posture.get("projects")):
+    for project in object_list(posture.get("projects"), "projects"):
         project_key = require_value(project.get("key"), "projects[].key")
         project_name = optional_string(project.get("name")) or project_key
         project_refs.append(integration.ref("project", project_key, project_name))
@@ -296,7 +296,7 @@ def build_jira_posture_findings(
             )
         )
 
-    for project in object_list(posture.get("projects")):
+    for project in object_list(posture.get("projects"), "projects"):
         project_key = require_value(project.get("key"), "projects[].key")
         project_name = optional_string(project.get("name")) or project_key
         project_ref = integration.ref("project", project_key, project_name)
@@ -332,7 +332,7 @@ def build_jira_posture_findings(
                 )
             )
 
-    for app in object_list(posture.get("apps")):
+    for app in object_list(posture.get("apps"), "apps"):
         if bool_value(app.get("approved_by_security"), True) == "true":
             continue
         app_key = require_value(app.get("key"), "apps[].key")
@@ -419,13 +419,19 @@ def bool_value(value: Any, default: bool = False) -> str:
             return "true"
         if normalized in ("false", "0", "no", "n", "off", ""):
             return "false"
+        raise ValueError(f"invalid boolean string: {value!r}")
     return "true" if bool(value) else "false"
 
 
-def object_list(value: Any) -> list[Dict[str, Any]]:
+def object_list(value: Any, name: str) -> list[Dict[str, Any]]:
     if not isinstance(value, list):
         return []
-    return [item for item in value if isinstance(item, dict)]
+    result: list[Dict[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"{name}[{index}] must be an object")
+        result.append(item)
+    return result
 
 
 def object_value(value: Any) -> Dict[str, Any]:
