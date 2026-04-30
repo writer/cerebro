@@ -205,6 +205,11 @@ export async function onboardWorkspacePosture(options: OnboardWorkspacePostureOp
     persisted_claims: Array.isArray(persisted["claims"]) ? persisted["claims"] : [],
     graph_layering: graphLayering,
     graph_summary: graphLayering["summary"] ?? {},
+    posture_findings: buildPostureFindings(
+      integration,
+      options.posture,
+      graphLayering["summary"] as Record<string, unknown>,
+    ),
   };
 }
 
@@ -333,10 +338,161 @@ async function loadGraphLayering(
   };
 }
 
+export function buildPostureFindings(
+  integration: IntegrationClient,
+  posture: JiraWorkspacePosture,
+  graphSummary: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const findings: Array<Record<string, unknown>> = [];
+  const workspaceKey = requireValue(posture.workspaceKey, "posture.workspaceKey");
+  const workspaceName = posture.workspaceName?.trim() || workspaceKey;
+  const workspaceRef = integration.ref("workspace", workspaceKey, workspaceName);
+
+  if (posture.publicSignupEnabled ?? false) {
+    findings.push(
+      finding(
+        "jira_workspace_public_signup_enabled",
+        "HIGH",
+        "Jira workspace allows self-service signup",
+        `${workspaceName} allows self-service signup, which increases exposure to unmanaged identities.`,
+        [workspaceRef.urn],
+      ),
+    );
+  }
+  if (posture.anonymousAccessEnabled ?? false) {
+    findings.push(
+      finding(
+        "jira_workspace_anonymous_access_enabled",
+        "HIGH",
+        "Jira workspace permits anonymous access",
+        `${workspaceName} exposes content to unauthenticated users.`,
+        [workspaceRef.urn],
+      ),
+    );
+  }
+  if (!(posture.approvedMarketplaceAppsOnly ?? true)) {
+    findings.push(
+      finding(
+        "jira_workspace_marketplace_policy_open",
+        "MEDIUM",
+        "Jira workspace does not restrict marketplace apps",
+        `${workspaceName} allows marketplace apps outside the approved set.`,
+        [workspaceRef.urn],
+      ),
+    );
+  }
+
+  const relationCounts = asNumberRecord(graphSummary["relation_counts_by_type"]);
+  const adminCount = relationCounts.administers ?? 0;
+  if (adminCount > 5) {
+    findings.push(
+      finding(
+        "jira_workspace_admin_sprawl",
+        "MEDIUM",
+        "Jira workspace has elevated admin sprawl",
+        `${workspaceName} has ${adminCount} admin relationships in the graph neighborhood.`,
+        [workspaceRef.urn],
+        { admin_count: String(adminCount) },
+      ),
+    );
+  }
+
+  for (const project of posture.projects ?? []) {
+    const projectKey = requireValue(project.key, "posture.projects[].key");
+    const projectName = project.name?.trim() || projectKey;
+    const projectRef = integration.ref("project", projectKey, projectName);
+    const classification = project.classification?.trim() || "internal";
+    if (classification === "restricted" && !(project.issueLevelSecurityEnabled ?? true)) {
+      findings.push(
+        finding(
+          `jira_project_${projectKey.toLowerCase()}_restricted_issue_security_disabled`,
+          "HIGH",
+          "Restricted Jira project lacks issue-level security",
+          `${projectName} is marked restricted but issue-level security is disabled.`,
+          [projectRef.urn, workspaceRef.urn],
+        ),
+      );
+    }
+    if (project.anonymousBrowseEnabled ?? false) {
+      findings.push(
+        finding(
+          `jira_project_${projectKey.toLowerCase()}_anonymous_browse_enabled`,
+          "HIGH",
+          "Jira project allows anonymous browsing",
+          `${projectName} allows anonymous issue browsing.`,
+          [projectRef.urn, workspaceRef.urn],
+        ),
+      );
+    }
+    if (project.serviceDeskPublicPortalEnabled ?? false) {
+      findings.push(
+        finding(
+          `jira_project_${projectKey.toLowerCase()}_public_portal_enabled`,
+          classification === "restricted" ? "HIGH" : "MEDIUM",
+          "Jira project exposes a public service desk portal",
+          `${projectName} exposes a public portal for ${classification} data.`,
+          [projectRef.urn, workspaceRef.urn],
+        ),
+      );
+    }
+  }
+
+  for (const app of posture.apps ?? []) {
+    if (app.approvedBySecurity ?? true) {
+      continue;
+    }
+    const appKey = requireValue(app.key, "posture.apps[].key");
+    const appName = app.name?.trim() || appKey;
+    const appRef = integration.ref("app", appKey, appName);
+    findings.push(
+      finding(
+        `jira_app_${appKey.toLowerCase()}_unapproved`,
+        "MEDIUM",
+        "Unapproved Jira marketplace app is installed",
+        `${appName} is installed on ${workspaceName} without security approval.`,
+        [appRef.urn, workspaceRef.urn],
+      ),
+    );
+  }
+
+  return findings;
+}
+
 function requireValue(value: string, name: string): string {
   const normalized = value.trim();
   if (!normalized) {
     throw new Error(`${name} is required`);
   }
   return normalized;
+}
+
+function finding(
+  id: string,
+  severity: string,
+  title: string,
+  summary: string,
+  resourceUrns: string[],
+  attributes?: Record<string, string>,
+): Record<string, unknown> {
+  return {
+    id,
+    severity,
+    title,
+    summary,
+    resource_urns: resourceUrns,
+    ...(attributes ? { attributes } : {}),
+  };
+}
+
+function asNumberRecord(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const result: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw === "number") {
+      result[key] = raw;
+    }
+  }
+  return result;
 }
