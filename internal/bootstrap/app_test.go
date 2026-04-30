@@ -15,7 +15,9 @@ import (
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
 	"github.com/writer/cerebro/internal/config"
-	"github.com/writer/cerebro/internal/sourceregistry"
+	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceops"
+	githubsource "github.com/writer/cerebro/sources/github"
 )
 
 type stubAppendLog struct {
@@ -31,10 +33,29 @@ type stubStore struct {
 
 func (s stubStore) Ping(context.Context) error { return s.err }
 
-func TestBootstrapEndpoints(t *testing.T) {
-	registry, err := sourceregistry.Builtin()
+func TestSourceConfigFromQueryDropsBaseURL(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/sources/github/read?base_url=http://127.0.0.1:1&cursor=2", nil)
+	req.Header.Set("Authorization", "Bearer test")
+
+	config, err := sourceConfigFromQuery(req)
 	if err != nil {
-		t.Fatalf("Builtin() error = %v", err)
+		t.Fatalf("sourceConfigFromQuery() error = %v", err)
+	}
+	if _, ok := config["base_url"]; ok {
+		t.Fatalf("sourceConfigFromQuery() included base_url")
+	}
+	if _, ok := config["cursor"]; ok {
+		t.Fatalf("sourceConfigFromQuery() included cursor")
+	}
+	if got := config["token"]; got != "test" {
+		t.Fatalf("sourceConfigFromQuery()[token] = %q, want test", got)
+	}
+}
+
+func TestBootstrapEndpoints(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
 	server := httptest.NewServer(app.Handler())
@@ -239,6 +260,14 @@ func TestBootstrapEndpoints(t *testing.T) {
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("ReadSource(invalid cursor) code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
 	}
+
+	_, err = client.CheckSource(context.Background(), connect.NewRequest(&cerebrov1.CheckSourceRequest{
+		SourceId: "github",
+		Config:   map[string]string{"token": "test", "base_url": "https://example.com/api/v3/"},
+	}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("CheckSource(base_url) code = %v, want %v", connect.CodeOf(err), connect.CodeInvalidArgument)
+	}
 }
 
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
@@ -260,5 +289,51 @@ func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	}
 	if got := healthResp.Msg.Components[1].Status; got != "error" {
 		t.Fatalf("state_store status = %q, want %q", got, "error")
+	}
+}
+
+func newFixtureRegistry() (*sourcecdk.Registry, error) {
+	source, err := githubsource.NewFixture()
+	if err != nil {
+		return nil, err
+	}
+	return sourcecdk.NewRegistry(source)
+}
+
+func TestSourceConnectErrorMapping(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	deadlineCtx, deadlineCancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer deadlineCancel()
+	cases := []struct {
+		name string
+		err  error
+		want connect.Code
+	}{
+		{"invalid_id", sourceops.ErrInvalidSourceID, connect.CodeInvalidArgument},
+		{"not_found", sourceops.ErrSourceNotFound, connect.CodeNotFound},
+		{"invalid_config", sourceops.ErrInvalidSourceConfig, connect.CodeInvalidArgument},
+		{"wrapped_invalid_config", errors.Join(sourceops.ErrInvalidSourceConfig, errors.New("repository is required")), connect.CodeInvalidArgument},
+		{"canceled", ctx.Err(), connect.CodeCanceled},
+		{"deadline", deadlineCtx.Err(), connect.CodeDeadlineExceeded},
+		{"opaque", errors.New("internal token leak boom"), connect.CodeInternal},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := sourceConnectError(tc.err)
+			var connectErr *connect.Error
+			if !errors.As(got, &connectErr) {
+				t.Fatalf("sourceConnectError(%v) = %v, want connect.Error", tc.err, got)
+			}
+			if connectErr.Code() != tc.want {
+				t.Fatalf("code = %v, want %v", connectErr.Code(), tc.want)
+			}
+			if tc.name == "opaque" && connectErr.Message() != "internal error" {
+				t.Fatalf("message = %q, want %q", connectErr.Message(), "internal error")
+			}
+		})
 	}
 }
