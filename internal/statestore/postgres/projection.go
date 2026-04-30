@@ -151,14 +151,6 @@ func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if relation == "" {
 		return errors.New("projected link relation is required")
 	}
-	tenantID := strings.TrimSpace(link.TenantID)
-	if tenantID == "" {
-		return errors.New("projected link tenant id is required")
-	}
-	sourceID := strings.TrimSpace(link.SourceID)
-	if sourceID == "" {
-		return errors.New("projected link source id is required")
-	}
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
 	}
@@ -167,8 +159,8 @@ func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	}
 	if _, err := s.db.ExecContext(ctx, `
 DELETE FROM entity_links
-WHERE from_urn = $1 AND relation = $2 AND to_urn = $3 AND tenant_id = $4 AND source_id = $5`,
-		fromURN, relation, toURN, tenantID, sourceID); err != nil {
+WHERE from_urn = $1 AND relation = $2 AND to_urn = $3`,
+		fromURN, relation, toURN); err != nil {
 		return fmt.Errorf("delete projected link %q %q %q: %w", fromURN, relation, toURN, err)
 	}
 	return nil
