@@ -14,6 +14,7 @@ const defaultJetStreamSubjectPrefix = "events"
 const (
 	AppendLogDriverJetStream = "jetstream"
 	StateStoreDriverPostgres = "postgres"
+	GraphStoreDriverKuzu     = "kuzu"
 )
 
 // Config is the minimal bootstrap configuration for the rewrite skeleton.
@@ -22,6 +23,7 @@ type Config struct {
 	ShutdownTimeout time.Duration
 	AppendLog       AppendLogConfig
 	StateStore      StateStoreConfig
+	GraphStore      GraphStoreConfig
 }
 
 // AppendLogConfig selects and configures the append-log driver.
@@ -37,6 +39,12 @@ type StateStoreConfig struct {
 	PostgresDSN string
 }
 
+// GraphStoreConfig selects and configures the graph projection store driver.
+type GraphStoreConfig struct {
+	Driver   string
+	KuzuPath string
+}
+
 // Load reads and validates process configuration.
 func Load() (Config, error) {
 	cfg := Config{
@@ -50,6 +58,10 @@ func Load() (Config, error) {
 		StateStore: StateStoreConfig{
 			Driver:      strings.TrimSpace(os.Getenv("CEREBRO_STATE_STORE_DRIVER")),
 			PostgresDSN: strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN")),
+		},
+		GraphStore: GraphStoreConfig{
+			Driver:   strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_STORE_DRIVER")),
+			KuzuPath: strings.TrimSpace(os.Getenv("CEREBRO_KUZU_PATH")),
 		},
 	}
 	if cfg.HTTPAddr == "" {
@@ -91,6 +103,18 @@ func Load() (Config, error) {
 		}
 	default:
 		return Config{}, fmt.Errorf("unsupported CEREBRO_STATE_STORE_DRIVER %q", cfg.StateStore.Driver)
+	}
+	if cfg.GraphStore.Driver == "" && cfg.GraphStore.KuzuPath != "" {
+		cfg.GraphStore.Driver = GraphStoreDriverKuzu
+	}
+	switch cfg.GraphStore.Driver {
+	case "":
+	case GraphStoreDriverKuzu:
+		if cfg.GraphStore.KuzuPath == "" {
+			return Config{}, fmt.Errorf("CEREBRO_KUZU_PATH is required when CEREBRO_GRAPH_STORE_DRIVER=%q", GraphStoreDriverKuzu)
+		}
+	default:
+		return Config{}, fmt.Errorf("unsupported CEREBRO_GRAPH_STORE_DRIVER %q", cfg.GraphStore.Driver)
 	}
 	return cfg, nil
 }
