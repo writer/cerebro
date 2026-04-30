@@ -1,0 +1,70 @@
+{
+  "rule_id": "github-self-hosted-runner-change",
+  "runtime": {
+    "id": "writer-github-audit",
+    "source_id": "github",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "github-audit-runner-registered",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T00:05:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "action": "repo.register_self_hosted_runner",
+        "actor": "admin",
+        "family": "audit",
+        "operation_type": "create",
+        "org": "writer",
+        "repo": "writer/cerebro",
+        "resource_id": "writer/cerebro",
+        "resource_type": "repo",
+        "runner_group_name": "Default",
+        "source_runtime_id": "writer-github-audit"
+      }
+    },
+    {
+      "id": "github-audit-runner-label-updated",
+      "tenant_id": "writer",
+      "source_id": "github",
+      "kind": "github.audit",
+      "occurred_at": "2026-04-27T00:05:00Z",
+      "schema_ref": "github/audit/v1",
+      "attributes": {
+        "action": "repo.runner_label_updated",
+        "actor": "admin",
+        "family": "audit",
+        "org": "writer",
+        "repo": "writer/cerebro",
+        "resource_id": "writer/cerebro",
+        "resource_type": "repo",
+        "source_runtime_id": "writer-github-audit"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "github-self-hosted-runner-change",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "admin changed self-hosted runner configuration for writer/cerebro",
+      "event_ids": ["github-audit-runner-registered"],
+      "attributes": {
+        "action": "repo.register_self_hosted_runner",
+        "primary_actor_urn": "urn:cerebro:writer:github_user:admin",
+        "primary_resource_urn": "urn:cerebro:writer:github_repo:writer/cerebro",
+        "repo": "writer/cerebro",
+        "rule_tags": "github,actions,self-hosted-runner,supply-chain,attack.t1195"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "github-audit-runner-label-updated",
+      "reason": "runner label update is not a registered SOTA runner control-plane change"
+    }
+  ]
+}

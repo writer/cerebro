@@ -1,0 +1,99 @@
+name: Droid Auto Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  droid-review:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Supersede previous Droid security summary
+        if: github.event.action == 'synchronize'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          marker = "## Security Review Summary"
+          replacement = "## Superseded Security Review Summary"
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+
+          def request_json(method, path, payload=None):
+              data = None if payload is None else json.dumps(payload).encode("utf-8")
+              request = urllib.request.Request(
+                  f"https://api.github.com/{path.lstrip('/')}",
+                  data=data,
+                  method=method,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.load(response)
+
+          page = 1
+          while True:
+              comments = request_json(
+                  "GET",
+                  f"/repos/{repository}/issues/{pr_number}/comments?per_page=100&page={page}",
+              )
+              if not comments:
+                  break
+              for comment in comments:
+                  user = comment.get("user") or {}
+                  login = (user.get("login") or "").lower()
+                  user_type = (user.get("type") or "").lower()
+                  body = comment.get("body") or ""
+                  if (
+                      login == "factory-droid[bot]"
+                      and user_type == "bot"
+                      and marker in body
+                  ):
+                      request_json(
+                          "PATCH",
+                          f"/repos/{repository}/issues/comments/{comment['id']}",
+                          {"body": body.replace(marker, replacement, 1)},
+                      )
+              page += 1
+          PY
+
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 1
+      - name: Run Droid Auto Review
+        uses: Factory-AI/droid-action@8ea31f351ee6636ebef918ccb64682f477af7184 # main
+        with:
+          factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+          automatic_review: true
+          automatic_security_review: true
+          # Pin the review and security review models to the gpt-5.4 generation so PR scans
+          # benefit from the newer reasoning capabilities; previously the action defaulted to
+          # the gpt-5.2 generation (`review_depth: deep`). Setting `review_model` explicitly
+          # bypasses the depth preset, so re-assert reasoning_effort=high to match `deep`.
+          review_model: gpt-5.4
+          security_model: gpt-5.4
+          reasoning_effort: high

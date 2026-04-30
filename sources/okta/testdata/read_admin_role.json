@@ -1,0 +1,30 @@
+[
+  {
+    "id": "okta-admin-role-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.admin_role",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/admin_role/v1",
+    "payload": {
+      "domain": "writer.okta.com",
+      "id": "super_admin",
+      "label": "Super Administrator",
+      "user_id": "00u1"
+    },
+    "attributes": {
+      "action": "admin.role.assignment",
+      "domain": "writer.okta.com",
+      "email": "admin@writer.com",
+      "event_type": "admin.role.assignment",
+      "family": "admin_role",
+      "is_admin": "true",
+      "role_id": "super_admin",
+      "role_name": "Super Administrator",
+      "role_type": "SUPER_ADMIN",
+      "subject_email": "admin@writer.com",
+      "subject_id": "00u1",
+      "subject_type": "user"
+    }
+  }
+]

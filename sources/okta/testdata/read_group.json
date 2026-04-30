@@ -1,0 +1,25 @@
+[
+  {
+    "id": "okta-group-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.group",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/group/v1",
+    "payload": {
+      "id": "grp-security",
+      "domain": "writer.okta.com",
+      "profile": {
+        "name": "Security",
+        "description": "Security team"
+      }
+    },
+    "attributes": {
+      "domain": "writer.okta.com",
+      "family": "group",
+      "group_id": "grp-security",
+      "group_name": "Security",
+      "name": "Security"
+    }
+  }
+]

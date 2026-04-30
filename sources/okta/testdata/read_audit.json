@@ -1,0 +1,58 @@
+[
+  {
+    "id": "okta-audit-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.audit",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/audit/v1",
+    "payload": {
+      "uuid": "evt-1",
+      "domain": "writer.okta.com",
+      "published": "2026-04-23T01:00:00Z",
+      "event_type": "user.session.start",
+      "severity": "INFO",
+      "resource_id": "00u1",
+      "resource_type": "User",
+      "raw": {
+        "uuid": "evt-1",
+        "eventType": "user.session.start"
+      }
+    },
+    "attributes": {
+      "domain": "writer.okta.com",
+      "event_type": "user.session.start",
+      "family": "audit",
+      "resource_id": "00u1",
+      "resource_type": "User"
+    }
+  },
+  {
+    "id": "okta-audit-fixture-2",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.audit",
+    "occurred_at": "2026-04-23T00:00:00Z",
+    "schema_ref": "okta/audit/v1",
+    "payload": {
+      "uuid": "evt-2",
+      "domain": "writer.okta.com",
+      "published": "2026-04-23T00:00:00Z",
+      "event_type": "policy.rule.update",
+      "severity": "WARN",
+      "resource_id": "pol-1",
+      "resource_type": "PolicyRule",
+      "raw": {
+        "uuid": "evt-2",
+        "eventType": "policy.rule.update"
+      }
+    },
+    "attributes": {
+      "domain": "writer.okta.com",
+      "event_type": "policy.rule.update",
+      "family": "audit",
+      "resource_id": "pol-1",
+      "resource_type": "PolicyRule"
+    }
+  }
+]

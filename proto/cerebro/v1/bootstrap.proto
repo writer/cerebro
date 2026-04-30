@@ -4,12 +4,51 @@ package cerebro.v1;
 
 option go_package = "github.com/writer/cerebro/gen/cerebro/v1;cerebrov1";
 
+import "cerebro/v1/primitives.proto";
+import "cerebro/v1/source.proto";
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
 // BootstrapService is the minimal control-plane surface for the rewrite skeleton.
 service BootstrapService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
   rpc CheckHealth(CheckHealthRequest) returns (CheckHealthResponse);
+  rpc ListReportDefinitions(ListReportDefinitionsRequest) returns (ListReportDefinitionsResponse);
+  rpc ListFindingRules(ListFindingRulesRequest) returns (ListFindingRulesResponse);
+  rpc RunReport(RunReportRequest) returns (RunReportResponse);
+  rpc GetReportRun(GetReportRunRequest) returns (GetReportRunResponse);
+  rpc ListSources(ListSourcesRequest) returns (ListSourcesResponse);
+  rpc CheckSource(CheckSourceRequest) returns (CheckSourceResponse);
+  rpc DiscoverSource(DiscoverSourceRequest) returns (DiscoverSourceResponse);
+  rpc ReadSource(ReadSourceRequest) returns (ReadSourceResponse);
+  rpc PutSourceRuntime(PutSourceRuntimeRequest) returns (PutSourceRuntimeResponse);
+  rpc GetSourceRuntime(GetSourceRuntimeRequest) returns (GetSourceRuntimeResponse);
+  rpc SyncSourceRuntime(SyncSourceRuntimeRequest) returns (SyncSourceRuntimeResponse);
+  rpc WriteClaims(WriteClaimsRequest) returns (WriteClaimsResponse);
+  rpc ListClaims(ListClaimsRequest) returns (ListClaimsResponse);
+  rpc ListFindings(ListFindingsRequest) returns (ListFindingsResponse);
+  rpc GetFinding(GetFindingRequest) returns (GetFindingResponse);
+  rpc ResolveFinding(ResolveFindingRequest) returns (ResolveFindingResponse);
+  rpc SuppressFinding(SuppressFindingRequest) returns (SuppressFindingResponse);
+  rpc AssignFinding(AssignFindingRequest) returns (AssignFindingResponse);
+  rpc SetFindingDueDate(SetFindingDueDateRequest) returns (SetFindingDueDateResponse);
+  rpc AddFindingNote(AddFindingNoteRequest) returns (AddFindingNoteResponse);
+  rpc LinkFindingTicket(LinkFindingTicketRequest) returns (LinkFindingTicketResponse);
+  rpc ListFindingEvaluationRuns(ListFindingEvaluationRunsRequest) returns (ListFindingEvaluationRunsResponse);
+  rpc GetFindingEvaluationRun(GetFindingEvaluationRunRequest) returns (GetFindingEvaluationRunResponse);
+  rpc ListFindingEvidence(ListFindingEvidenceRequest) returns (ListFindingEvidenceResponse);
+  rpc GetFindingEvidence(GetFindingEvidenceRequest) returns (GetFindingEvidenceResponse);
+  rpc EvaluateSourceRuntimeFindingRules(EvaluateSourceRuntimeFindingRulesRequest) returns (EvaluateSourceRuntimeFindingRulesResponse);
+  rpc EvaluateSourceRuntimeFindings(EvaluateSourceRuntimeFindingsRequest) returns (EvaluateSourceRuntimeFindingsResponse);
+  rpc WriteDecision(WriteDecisionRequest) returns (WriteDecisionResponse);
+  rpc WriteAction(WriteActionRequest) returns (WriteActionResponse);
+  rpc WriteOutcome(WriteOutcomeRequest) returns (WriteOutcomeResponse);
+  rpc ReplayWorkflowEvents(ReplayWorkflowEventsRequest) returns (ReplayWorkflowEventsResponse);
+  rpc GetEntityNeighborhood(GetEntityNeighborhoodRequest) returns (GetEntityNeighborhoodResponse);
+  rpc RunGraphIngestRuntime(RunGraphIngestRuntimeRequest) returns (RunGraphIngestRuntimeResponse);
+  rpc GetGraphIngestRun(GetGraphIngestRunRequest) returns (GetGraphIngestRunResponse);
+  rpc ListGraphIngestRuns(ListGraphIngestRunsRequest) returns (ListGraphIngestRunsResponse);
+  rpc CheckGraphIngestHealth(CheckGraphIngestHealthRequest) returns (CheckGraphIngestHealthResponse);
 }
 
 // GetVersionRequest requests static build metadata from the running service.
@@ -39,4 +78,693 @@ message CheckHealthResponse {
   string status = 1;
   google.protobuf.Timestamp checked_at = 2;
   repeated ComponentStatus components = 3;
+}
+
+// ReportParameter describes one supported report input parameter.
+message ReportParameter {
+  string id = 1;
+  string description = 2;
+  bool required = 3;
+}
+
+// ReportDefinition exposes one built-in durable report contract.
+message ReportDefinition {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated ReportParameter parameters = 4;
+}
+
+// ReportRun is the durable result envelope for one built-in report execution.
+message ReportRun {
+  string id = 1;
+  string report_id = 2;
+  map<string, string> parameters = 3;
+  string status = 4;
+  google.protobuf.Timestamp generated_at = 5;
+  google.protobuf.Struct result = 6;
+}
+
+// ListReportDefinitionsRequest requests the built-in report catalog.
+message ListReportDefinitionsRequest {}
+
+// ListReportDefinitionsResponse returns the built-in report catalog.
+message ListReportDefinitionsResponse {
+  repeated ReportDefinition reports = 1;
+}
+
+// ListFindingRulesRequest requests the registered finding rule catalog.
+message ListFindingRulesRequest {}
+
+// ListFindingRulesResponse returns the discoverable finding rule catalog for explicit rule selection.
+message ListFindingRulesResponse {
+  repeated RuleSpec rules = 1;
+}
+
+// FindingEvaluationRun is the durable audit envelope for one rule evaluation over one source runtime.
+message FindingEvaluationRun {
+  string id = 1;
+  string runtime_id = 2;
+  string rule_id = 3;
+  string status = 4;
+  uint32 event_limit = 5;
+  uint32 events_evaluated = 6;
+  uint32 findings_upserted = 7;
+  repeated string finding_ids = 8;
+  google.protobuf.Timestamp started_at = 9;
+  google.protobuf.Timestamp finished_at = 10;
+  string error = 11;
+}
+
+// ListFindingEvaluationRunsRequest requests persisted finding evaluation runs for one stored runtime.
+message ListFindingEvaluationRunsRequest {
+  string runtime_id = 1;
+  string rule_id = 2;
+  string status = 3;
+  uint32 limit = 4;
+}
+
+// ListFindingEvaluationRunsResponse returns the matched persisted finding evaluation runs.
+message ListFindingEvaluationRunsResponse {
+  repeated FindingEvaluationRun runs = 1;
+}
+
+// GetFindingEvaluationRunRequest looks up one persisted finding evaluation run.
+message GetFindingEvaluationRunRequest {
+  string id = 1;
+}
+
+// GetFindingEvaluationRunResponse returns one persisted finding evaluation run.
+message GetFindingEvaluationRunResponse {
+  FindingEvaluationRun run = 1;
+}
+
+// FindingEvidence links one persisted finding and one evaluation run to its supporting claims, events, and graph roots.
+message FindingEvidence {
+  string id = 1;
+  string runtime_id = 2;
+  string rule_id = 3;
+  string finding_id = 4;
+  string run_id = 5;
+  repeated string claim_ids = 6;
+  repeated string event_ids = 7;
+  repeated string graph_root_urns = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+// ListFindingEvidenceRequest queries persisted finding evidence for one stored runtime.
+message ListFindingEvidenceRequest {
+  string runtime_id = 1;
+  string finding_id = 2;
+  string run_id = 3;
+  string rule_id = 4;
+  string claim_id = 5;
+  string event_id = 6;
+  string graph_root_urn = 7;
+  uint32 limit = 8;
+}
+
+// ListFindingEvidenceResponse returns the matched persisted finding evidence records.
+message ListFindingEvidenceResponse {
+  repeated FindingEvidence evidence = 1;
+}
+
+// GetFindingEvidenceRequest looks up one persisted finding evidence record.
+message GetFindingEvidenceRequest {
+  string id = 1;
+}
+
+// GetFindingEvidenceResponse returns one persisted finding evidence record.
+message GetFindingEvidenceResponse {
+  FindingEvidence evidence = 1;
+}
+
+// RunReportRequest requests one durable report run.
+message RunReportRequest {
+  string report_id = 1;
+  map<string, string> parameters = 2;
+}
+
+// RunReportResponse returns the resolved definition plus the persisted run.
+message RunReportResponse {
+  ReportDefinition report = 1;
+  ReportRun run = 2;
+}
+
+// GetReportRunRequest looks up one persisted report run.
+message GetReportRunRequest {
+  string id = 1;
+}
+
+// GetReportRunResponse returns one persisted report run.
+message GetReportRunResponse {
+  ReportRun run = 1;
+}
+
+// ListSourcesRequest requests the currently registered source catalog.
+message ListSourcesRequest {}
+
+// ListSourcesResponse returns the registered in-process source specs.
+message ListSourcesResponse {
+  repeated SourceSpec sources = 1;
+}
+
+// CheckSourceRequest validates source configuration for a named source.
+message CheckSourceRequest {
+  string source_id = 1;
+  map<string, string> config = 2;
+}
+
+// CheckSourceResponse returns the validated source metadata.
+message CheckSourceResponse {
+  SourceSpec source = 1;
+  string status = 2;
+}
+
+// DiscoverSourceRequest requests the current URNs for a named source.
+message DiscoverSourceRequest {
+  string source_id = 1;
+  map<string, string> config = 2;
+}
+
+// DiscoverSourceResponse returns the discovered URNs for a source.
+message DiscoverSourceResponse {
+  SourceSpec source = 1;
+  repeated string urns = 2;
+}
+
+// ReadSourceRequest requests one page of source events.
+message ReadSourceRequest {
+  string source_id = 1;
+  map<string, string> config = 2;
+  SourceCursor cursor = 3;
+}
+
+// SourcePreviewEvent exposes a decoded payload view for preview consumers.
+message SourcePreviewEvent {
+  EventEnvelope event = 1;
+  google.protobuf.Value payload = 2;
+  bool payload_decoded = 3;
+  string event_id = 4;
+}
+
+// ReadSourceResponse returns one page of source events plus replay cursors.
+message ReadSourceResponse {
+  SourceSpec source = 1;
+  repeated EventEnvelope events = 2;
+  SourceCheckpoint checkpoint = 3;
+  SourceCursor next_cursor = 4;
+  repeated SourcePreviewEvent preview_events = 5;
+}
+
+// SourceRuntime stores source configuration plus the latest durable sync progress.
+message SourceRuntime {
+  string id = 1;
+  string source_id = 2;
+  string tenant_id = 3;
+  map<string, string> config = 4;
+  SourceCheckpoint checkpoint = 5;
+  SourceCursor next_cursor = 6;
+  google.protobuf.Timestamp last_synced_at = 7;
+}
+
+// PutSourceRuntimeRequest stores or updates one source runtime definition.
+message PutSourceRuntimeRequest {
+  SourceRuntime runtime = 1;
+}
+
+// PutSourceRuntimeResponse returns the stored runtime view.
+message PutSourceRuntimeResponse {
+  SourceRuntime runtime = 1;
+}
+
+// GetSourceRuntimeRequest looks up one stored source runtime definition.
+message GetSourceRuntimeRequest {
+  string id = 1;
+}
+
+// GetSourceRuntimeResponse returns the stored runtime view.
+message GetSourceRuntimeResponse {
+  SourceRuntime runtime = 1;
+}
+
+// SyncSourceRuntimeRequest advances one stored source runtime.
+message SyncSourceRuntimeRequest {
+  string id = 1;
+  uint32 page_limit = 2;
+}
+
+// SyncSourceRuntimeResponse returns the updated runtime and sync totals.
+message SyncSourceRuntimeResponse {
+  SourceRuntime runtime = 1;
+  SourceSpec source = 2;
+  uint32 pages_read = 3;
+  uint32 events_appended = 4;
+  uint32 entities_projected = 5;
+  uint32 links_projected = 6;
+}
+
+// WriteClaimsRequest persists one batch of runtime-scoped claims.
+message WriteClaimsRequest {
+  string runtime_id = 1;
+  repeated Claim claims = 2;
+  bool replace_existing = 3;
+}
+
+// WriteClaimsResponse reports the persisted and projected batch totals.
+message WriteClaimsResponse {
+  uint32 claims_written = 1;
+  uint32 entities_upserted = 2;
+  uint32 relation_links_projected = 3;
+  uint32 claims_retracted = 4;
+}
+
+// ListClaimsRequest queries persisted claims for one stored runtime.
+message ListClaimsRequest {
+  string runtime_id = 1;
+  string claim_id = 2;
+  string subject_urn = 3;
+  string predicate = 4;
+  string object_urn = 5;
+  string object_value = 6;
+  string claim_type = 7;
+  string status = 8;
+  uint32 limit = 9;
+  string source_event_id = 10;
+}
+
+// ListClaimsResponse returns the matched persisted claims.
+message ListClaimsResponse {
+  repeated Claim claims = 1;
+}
+
+// ListFindingsRequest queries persisted findings for one stored runtime.
+message ListFindingsRequest {
+  string runtime_id = 1;
+  string finding_id = 2;
+  string rule_id = 3;
+  string severity = 4;
+  FindingStatus status = 5;
+  string resource_urn = 6;
+  string event_id = 7;
+  uint32 limit = 8;
+  string policy_id = 9;
+}
+
+enum FindingStatus {
+  FINDING_STATUS_UNSPECIFIED = 0;
+  FINDING_STATUS_OPEN = 1;
+  FINDING_STATUS_RESOLVED = 2;
+  FINDING_STATUS_SUPPRESSED = 3;
+}
+
+// FindingControlRef maps one finding to one compliance framework control.
+message FindingControlRef {
+  string framework_name = 1;
+  string control_id = 2;
+}
+
+// FindingNote captures one analyst note attached to one finding.
+message FindingNote {
+  string id = 1;
+  string body = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+// FindingTicket captures one external ticket reference attached to one finding.
+message FindingTicket {
+  string url = 1;
+  string name = 2;
+  string external_id = 3;
+  google.protobuf.Timestamp linked_at = 4;
+}
+
+// Finding is the normalized persisted finding view for the first runtime evaluator slice.
+message Finding {
+  string id = 1;
+  string fingerprint = 2;
+  string tenant_id = 3;
+  string runtime_id = 4;
+  string rule_id = 5;
+  string title = 6;
+  string severity = 7;
+  FindingStatus status = 8;
+  string summary = 9;
+  repeated string resource_urns = 10;
+  repeated string event_ids = 11;
+  map<string, string> attributes = 12;
+  google.protobuf.Timestamp first_observed_at = 13;
+  google.protobuf.Timestamp last_observed_at = 14;
+  string assignee = 15;
+  string status_reason = 16;
+  google.protobuf.Timestamp status_updated_at = 17;
+  repeated string observed_policy_ids = 18;
+  string policy_id = 19;
+  string policy_name = 20;
+  string check_id = 21;
+  string check_name = 22;
+  repeated FindingControlRef control_refs = 23;
+  google.protobuf.Timestamp due_at = 24;
+  repeated FindingNote notes = 25;
+  repeated FindingTicket tickets = 26;
+}
+
+// GetFindingRequest loads one persisted finding by its durable identifier.
+message GetFindingRequest {
+  string id = 1;
+}
+
+// GetFindingResponse returns one persisted finding view.
+message GetFindingResponse {
+  Finding finding = 1;
+}
+
+// ResolveFindingRequest marks one persisted finding as resolved.
+message ResolveFindingRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+// ResolveFindingResponse returns the updated resolved finding.
+message ResolveFindingResponse {
+  Finding finding = 1;
+}
+
+// SuppressFindingRequest marks one persisted finding as suppressed.
+message SuppressFindingRequest {
+  string id = 1;
+  string reason = 2;
+}
+
+// SuppressFindingResponse returns the updated suppressed finding.
+message SuppressFindingResponse {
+  Finding finding = 1;
+}
+
+// AssignFindingRequest updates or clears one persisted finding assignee.
+message AssignFindingRequest {
+  string id = 1;
+  string assignee = 2;
+}
+
+// AssignFindingResponse returns the updated assigned finding.
+message AssignFindingResponse {
+  Finding finding = 1;
+}
+
+// SetFindingDueDateRequest updates one persisted finding due date.
+message SetFindingDueDateRequest {
+  string id = 1;
+  google.protobuf.Timestamp due_at = 2;
+}
+
+// SetFindingDueDateResponse returns the updated finding with due date metadata.
+message SetFindingDueDateResponse {
+  Finding finding = 1;
+}
+
+// AddFindingNoteRequest appends one note to one persisted finding.
+message AddFindingNoteRequest {
+  string id = 1;
+  string note = 2;
+}
+
+// AddFindingNoteResponse returns the updated finding with appended notes.
+message AddFindingNoteResponse {
+  Finding finding = 1;
+}
+
+// LinkFindingTicketRequest appends one ticket link to one persisted finding.
+message LinkFindingTicketRequest {
+  string id = 1;
+  string url = 2;
+  string name = 3;
+  string external_id = 4;
+}
+
+// LinkFindingTicketResponse returns the updated finding with linked tickets.
+message LinkFindingTicketResponse {
+  Finding finding = 1;
+}
+
+// ListFindingsResponse returns the matched persisted findings.
+message ListFindingsResponse {
+  repeated Finding findings = 1;
+}
+
+// EvaluateSourceRuntimeFindingsRequest replays one stored runtime through one registered finding rule.
+message EvaluateSourceRuntimeFindingsRequest {
+  string id = 1;
+  uint32 event_limit = 2;
+  string rule_id = 3;
+}
+
+// EvaluateSourceRuntimeFindingRulesRequest replays one stored runtime through one or more registered finding rules.
+message EvaluateSourceRuntimeFindingRulesRequest {
+  string id = 1;
+  repeated string rule_ids = 2;
+  uint32 event_limit = 3;
+}
+
+// FindingRuleEvaluation returns the persisted outputs for one rule within a multi-rule evaluation pass.
+message FindingRuleEvaluation {
+  RuleSpec rule = 1;
+  repeated Finding findings = 2;
+  FindingEvaluationRun run = 3;
+  repeated FindingEvidence evidence = 4;
+}
+
+// EvaluateSourceRuntimeFindingRulesResponse returns one replay pass over a runtime with one result per evaluated rule.
+message EvaluateSourceRuntimeFindingRulesResponse {
+  SourceRuntime runtime = 1;
+  uint32 events_evaluated = 2;
+  repeated FindingRuleEvaluation evaluations = 3;
+}
+
+// EvaluateSourceRuntimeFindingsResponse returns the evaluated runtime, selected rule spec, and persisted findings.
+message EvaluateSourceRuntimeFindingsResponse {
+  SourceRuntime runtime = 1;
+  RuleSpec rule = 2;
+  uint32 events_evaluated = 3;
+  uint32 findings_upserted = 4;
+  repeated Finding findings = 5;
+  FindingEvaluationRun run = 6;
+  repeated FindingEvidence evidence = 7;
+}
+
+// WriteDecisionRequest records one platform decision and its linked targets.
+message WriteDecisionRequest {
+  string id = 1;
+  string decision_type = 2;
+  string status = 3;
+  string made_by = 4;
+  string rationale = 5;
+  repeated string target_ids = 6;
+  repeated string evidence_ids = 7;
+  repeated string action_ids = 8;
+  string source_system = 9;
+  string source_event_id = 10;
+  google.protobuf.Timestamp observed_at = 11;
+  google.protobuf.Timestamp valid_from = 12;
+  google.protobuf.Timestamp valid_to = 13;
+  double confidence = 14;
+  google.protobuf.Struct metadata = 15;
+}
+
+// WriteDecisionResponse returns the recorded decision identifier and target count.
+message WriteDecisionResponse {
+  string decision_id = 1;
+  uint32 target_count = 2;
+}
+
+// WriteActionRequest records one action tied to recommendation context and optional decision state.
+message WriteActionRequest {
+  string id = 1;
+  string recommendation_id = 2;
+  string insight_type = 3;
+  string title = 4;
+  string summary = 5;
+  string decision_id = 6;
+  repeated string target_ids = 7;
+  string source_system = 8;
+  string source_event_id = 9;
+  google.protobuf.Timestamp observed_at = 10;
+  google.protobuf.Timestamp valid_from = 11;
+  google.protobuf.Timestamp valid_to = 12;
+  double confidence = 13;
+  bool auto_generated = 14;
+  google.protobuf.Struct metadata = 15;
+}
+
+// WriteActionResponse returns the recorded action identifier, optional decision, and target count.
+message WriteActionResponse {
+  string action_id = 1;
+  string decision_id = 2;
+  uint32 target_count = 3;
+}
+
+// WriteOutcomeRequest records one outcome tied back to one decision and optional targets.
+message WriteOutcomeRequest {
+  string id = 1;
+  string decision_id = 2;
+  string outcome_type = 3;
+  string verdict = 4;
+  double impact_score = 5;
+  repeated string target_ids = 6;
+  string source_system = 7;
+  string source_event_id = 8;
+  google.protobuf.Timestamp observed_at = 9;
+  google.protobuf.Timestamp valid_from = 10;
+  google.protobuf.Timestamp valid_to = 11;
+  double confidence = 12;
+  google.protobuf.Struct metadata = 13;
+}
+
+// WriteOutcomeResponse returns the recorded outcome identifier, decision, and target count.
+message WriteOutcomeResponse {
+  string outcome_id = 1;
+  string decision_id = 2;
+  uint32 target_count = 3;
+}
+
+// ReplayWorkflowEventsRequest replays durable workflow events into graph projections.
+message ReplayWorkflowEventsRequest {
+  string kind_prefix = 1;
+  string tenant_id = 2;
+  map<string, string> attribute_equals = 3;
+  uint32 limit = 4;
+}
+
+// ReplayWorkflowEventsResponse returns graph projection counts from one replay pass.
+message ReplayWorkflowEventsResponse {
+  uint32 events_read = 1;
+  uint32 events_projected = 2;
+  uint32 entities_projected = 3;
+  uint32 links_projected = 4;
+}
+
+// GraphEntity is the normalized graph node view exposed by the first query surface.
+message GraphEntity {
+  string urn = 1;
+  string entity_type = 2;
+  string label = 3;
+}
+
+// GraphRelation is the normalized graph edge view exposed by the first query surface.
+message GraphRelation {
+  string from_urn = 1;
+  string relation = 2;
+  string to_urn = 3;
+}
+
+// GetEntityNeighborhoodRequest requests one bounded graph neighborhood around a root URN.
+message GetEntityNeighborhoodRequest {
+  string root_urn = 1;
+  uint32 limit = 2;
+}
+
+// GetEntityNeighborhoodResponse returns the bounded neighbors and relations around one root URN.
+message GetEntityNeighborhoodResponse {
+  GraphEntity root = 1;
+  repeated GraphEntity neighbors = 2;
+  repeated GraphRelation relations = 3;
+}
+
+// GraphIngestRun is the durable status record for one graph ingest attempt.
+message GraphIngestRun {
+  string id = 1;
+  string runtime_id = 2;
+  string source_id = 3;
+  string tenant_id = 4;
+  string checkpoint_id = 5;
+  string status = 6;
+  string trigger = 7;
+  int64 pages_read = 8;
+  int64 events_read = 9;
+  int64 entities_projected = 10;
+  int64 links_projected = 11;
+  int64 graph_nodes_before = 12;
+  int64 graph_links_before = 13;
+  int64 graph_nodes_after = 14;
+  int64 graph_links_after = 15;
+  string started_at = 16;
+  string finished_at = 17;
+  string error = 18;
+}
+
+// GraphIngestResult summarizes one runtime ingest pass.
+message GraphIngestResult {
+  string source_id = 1;
+  string tenant_id = 2;
+  uint32 pages_read = 3;
+  uint32 events_read = 4;
+  uint32 entities_projected = 5;
+  uint32 links_projected = 6;
+  int64 graph_nodes_before = 7;
+  int64 graph_links_before = 8;
+  int64 graph_nodes_after = 9;
+  int64 graph_links_after = 10;
+  string next_cursor = 11;
+  string checkpoint_id = 12;
+  string checkpoint_cursor = 13;
+  bool checkpoint_resumed = 14;
+  bool checkpoint_persisted = 15;
+  bool checkpoint_complete = 16;
+  bool checkpoint_already_fresh = 17;
+}
+
+// GraphIngestRunResult returns the durable run record and ingest summary for one pass.
+message GraphIngestRunResult {
+  GraphIngestRun run = 1;
+  GraphIngestResult ingest = 2;
+}
+
+// RunGraphIngestRuntimeRequest starts one checkpointed graph ingest pass for a source runtime.
+message RunGraphIngestRuntimeRequest {
+  string runtime_id = 1;
+  uint32 page_limit = 2;
+  string checkpoint_id = 3;
+  bool reset_checkpoint = 4;
+}
+
+// RunGraphIngestRuntimeResponse returns the persisted run and ingest summary.
+message RunGraphIngestRuntimeResponse {
+  GraphIngestRunResult result = 1;
+}
+
+// GetGraphIngestRunRequest looks up one persisted graph ingest run.
+message GetGraphIngestRunRequest {
+  string id = 1;
+}
+
+// GetGraphIngestRunResponse returns one persisted graph ingest run.
+message GetGraphIngestRunResponse {
+  GraphIngestRun run = 1;
+}
+
+// ListGraphIngestRunsRequest queries persisted graph ingest runs.
+message ListGraphIngestRunsRequest {
+  string runtime_id = 1;
+  string status = 2;
+  uint32 limit = 3;
+}
+
+// ListGraphIngestRunsResponse returns persisted graph ingest runs plus failure visibility.
+message ListGraphIngestRunsResponse {
+  repeated GraphIngestRun runs = 1;
+  uint32 failed_count = 2;
+}
+
+// CheckGraphIngestHealthRequest checks recent graph ingest run health.
+message CheckGraphIngestHealthRequest {
+  uint32 limit = 1;
+}
+
+// CheckGraphIngestHealthResponse exposes failed/running graph ingest counts for alerting.
+message CheckGraphIngestHealthResponse {
+  string status = 1;
+  google.protobuf.Timestamp checked_at = 2;
+  uint32 failed_count = 3;
+  uint32 running_count = 4;
+  repeated GraphIngestRun failed_runs = 5;
 }

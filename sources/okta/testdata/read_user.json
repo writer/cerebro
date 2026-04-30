@@ -1,0 +1,60 @@
+[
+  {
+    "id": "okta-user-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.user",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/user/v1",
+    "payload": {
+      "id": "00u1",
+      "domain": "writer.okta.com",
+      "status": "ACTIVE",
+      "profile": {
+        "login": "alice@writer.com",
+        "email": "alice@writer.com",
+        "display_name": "Alice Example"
+      },
+      "raw": {
+        "id": "00u1",
+        "status": "ACTIVE"
+      }
+    },
+    "attributes": {
+      "domain": "writer.okta.com",
+      "family": "user",
+      "login": "alice@writer.com",
+      "status": "ACTIVE",
+      "user_id": "00u1"
+    }
+  },
+  {
+    "id": "okta-user-fixture-2",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.user",
+    "occurred_at": "2026-04-23T00:30:00Z",
+    "schema_ref": "okta/user/v1",
+    "payload": {
+      "id": "00u2",
+      "domain": "writer.okta.com",
+      "status": "SUSPENDED",
+      "profile": {
+        "login": "admin@writer.com",
+        "email": "admin@writer.com",
+        "display_name": "Admin Example"
+      },
+      "raw": {
+        "id": "00u2",
+        "status": "SUSPENDED"
+      }
+    },
+    "attributes": {
+      "domain": "writer.okta.com",
+      "family": "user",
+      "login": "admin@writer.com",
+      "status": "SUSPENDED",
+      "user_id": "00u2"
+    }
+  }
+]

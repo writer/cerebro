@@ -394,3 +394,138 @@ The six analyzers in PR 1 address the top six by blast-radius on the current cod
 | 6 | `nountypedboundary` | 63 exported signatures            |
 
 Every one of those violations is a ticking correctness bug waiting to bite in production.
+
+---
+
+## Appendix C — Workflow graph durability plan
+
+> Status: IN PROGRESS
+> Branch: `feat/cerebro-next-workflow-durability-20260427`
+> Owner: Platform
+> Last updated: 2026-04-27
+
+Recent finding workflow work added notes, ticket links, decision writes, action writes, outcome writes, and lifecycle bridges into the graph. That proved the workflow vocabulary, but it also introduced a dangerous gap: several workflow mutations can now write directly to Kuzu, or mutate Postgres and then project to Kuzu as a side effect. The graph should remain a rebuildable projection, not an unreplayable second source of truth.
+
+### C.1 Problem statement
+
+The workflow layer currently has five concrete risks:
+
+1. **Graph-only durability risk** — `internal/knowledge.Service` creates decision/action/outcome graph nodes directly. If Kuzu is rebuilt from the append log, those workflow nodes disappear.
+2. **Partial-failure risk** — finding notes/tickets persist to Postgres and then project to graph; graph failure can leave durable state without graph state.
+3. **Silent drift risk** — finding resolve/suppress bridges intentionally ignore graph projection errors so callers cannot tell whether lifecycle workflow artifacts were materialized.
+4. **Contract drift risk** — route names and event names are split across `/platform/knowledge/*`, `/graph/write/*`, and `/graph/actuate/*` without one canonical workflow event contract.
+5. **Read-loop gap** — writes exist before a typed timeline/read model, so product clients cannot reliably answer "what happened to this finding?"
+
+### C.2 Target architecture
+
+Workflow writes should follow the same model as source-runtime sync:
+
+```
+request
+  -> validate and normalize
+  -> append workflow EventEnvelope to JetStream
+  -> project the same event into Kuzu immediately
+  -> replay the same event later to rebuild Kuzu
+```
+
+Postgres remains the current-state store for findings; Kuzu remains a graph projection; JetStream is the durable workflow event stream. Direct graph writes are allowed only inside workflow projectors that can be run both inline and during replay.
+
+### C.3 Event contract
+
+Workflow events use `cerebro.v1.EventEnvelope` with JSON payloads and stable event IDs.
+
+| Event kind | Trigger | Durable payload |
+|---|---|---|
+| `workflow.v1.knowledge.decision_recorded` | `WriteDecision` | decision ID/type/status, target IDs, evidence IDs, action IDs, temporal metadata, freeform metadata |
+| `workflow.v1.knowledge.action_recorded` | `WriteAction` | action ID/type/title, recommendation context, decision ID, target IDs, temporal metadata |
+| `workflow.v1.knowledge.outcome_recorded` | `WriteOutcome` | outcome ID/type/verdict, decision ID, target IDs, impact/confidence, temporal metadata |
+| `workflow.v1.finding.note_added` | `AddFindingNote` | finding snapshot keys, note ID/body/created-at, primary resource URN |
+| `workflow.v1.finding.ticket_linked` | `LinkFindingTicket` | finding snapshot keys, ticket URL/name/external ID/linked-at, primary resource URN |
+| `workflow.v1.finding.status_changed` | resolve/suppress | finding snapshot keys, new status, generated decision/outcome IDs |
+
+Required event attributes:
+
+- `tenant_id`
+- `source_system`
+- `workflow_kind`
+- entity-specific IDs such as `decision_id`, `action_id`, `outcome_id`, or `finding_id`
+
+### C.4 Implementation phases
+
+#### Phase 1 — Durable knowledge workflow events
+
+Goal: make decision/action/outcome graph writes replayable without changing external API behavior.
+
+1. Add `internal/workflowevents` with:
+   - event kind constants
+   - typed decision/action/outcome payload structs
+   - deterministic event ID helpers
+   - JSON payload encode/decode helpers
+2. Add `internal/workflowprojection` with:
+   - a projector that converts workflow events into `ports.ProjectedEntity` and `ports.ProjectedLink`
+   - idempotent projection for decision/action/outcome events
+3. Extend `knowledge.Service` so it can receive an optional `ports.AppendLog`.
+4. For `WriteDecision`, `WriteAction`, and `WriteOutcome`:
+   - build the workflow event before graph projection
+   - append the event when an append log is configured
+   - project from the event, not from duplicate handwritten graph code
+5. Wire the bootstrap app and Connect service constructors to pass `deps.AppendLog`.
+6. Add tests proving:
+   - append failure prevents graph writes
+   - graph failure leaves an appended event available for replay
+   - replaying the same workflow event is idempotent
+
+#### Phase 2 — Replay support beyond runtime-scoped events
+
+Goal: replay workflow events independently of source runtime IDs.
+
+1. Extend `ports.ReplayRequest` with optional fields:
+   - `KindPrefix`
+   - `TenantID`
+   - `AttributeEquals`
+2. Update JetStream replay filtering to support runtime replay and workflow replay.
+3. Add a workflow replay service that replays `workflow.v1.*` events and projects them through `internal/workflowprojection`.
+4. Add focused JetStream replay tests for kind-prefix and tenant filtering.
+
+#### Phase 3 — Finding workflow events
+
+Goal: make finding notes, tickets, and lifecycle decisions replayable.
+
+1. Emit workflow events for note/ticket/status changes with enough finding snapshot metadata to rebuild graph annotations.
+2. Project those events through `internal/workflowprojection`.
+3. Replace direct note/ticket/status graph helper calls with event projection.
+4. Stop swallowing status bridge projection errors; either return them or record durable failed-projection metadata.
+5. Add tests for persisted finding state plus durable workflow event emission.
+
+#### Phase 4 — Transactional outbox
+
+Goal: make Postgres finding state changes and workflow event creation atomic.
+
+1. Add a small Postgres workflow outbox table for finding mutations.
+2. Write finding state and outbox records in the same transaction.
+3. Add a dispatcher that appends outbox records to JetStream and marks them delivered.
+4. Add reconciliation/dead-letter paths for failed dispatch.
+
+#### Phase 5 — Typed workflow reads and timeline
+
+Goal: expose the product loop that the write primitives enable.
+
+1. Add typed read models for decisions, actions, and outcomes.
+2. Add a finding timeline API that merges notes, tickets, status, evidence, decisions, actions, and outcomes.
+3. Add report metrics for stale actions, unresolved decisions, and outcome effectiveness.
+
+### C.5 Execution rules for this branch
+
+This branch will execute Phase 1 only. It should not attempt a transactional outbox or public read API yet. The branch is complete when:
+
+- knowledge workflow writes append durable workflow events when `AppendLog` is configured
+- the same events can be projected by a reusable workflow projector
+- existing decision/action/outcome HTTP and Connect behavior is preserved
+- focused tests and `make verify` pass
+
+### C.6 Follow-up branch order
+
+1. `feat/workflow-replay-filters` — Phase 2.
+2. `feat/finding-workflow-events` — Phase 3.
+3. `feat/finding-workflow-outbox` — Phase 4.
+4. `feat/workflow-timeline-reads` — Phase 5.

@@ -1,0 +1,25 @@
+[
+  {
+    "id": "okta-app-assignment-fixture-1",
+    "tenant_id": "writer.okta.com",
+    "source_id": "okta",
+    "kind": "okta.app_assignment",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "okta/app_assignment/v1",
+    "payload": {
+      "app_id": "app-prod",
+      "domain": "writer.okta.com",
+      "subject_id": "00u1"
+    },
+    "attributes": {
+      "app_id": "app-prod",
+      "domain": "writer.okta.com",
+      "email": "admin@writer.com",
+      "family": "app_assignment",
+      "principal_type": "user",
+      "subject_email": "admin@writer.com",
+      "subject_id": "00u1",
+      "subject_type": "user"
+    }
+  }
+]
