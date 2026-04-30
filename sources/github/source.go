@@ -37,6 +37,7 @@ const (
 type Source struct {
 	spec                 *cerebrov1.SourceSpec
 	allowLoopbackBaseURL bool
+	lookupIPAddrs        func(context.Context, string) ([]net.IPAddr, error)
 }
 
 type settings struct {
@@ -190,13 +191,17 @@ func (s *Source) newClient(ctx context.Context, cfg sourcecdk.Config, requireRep
 	if err != nil {
 		return nil, settings, err
 	}
-	client := gogithub.NewClient(&http.Client{Timeout: defaultTimeout})
+	allowLoopback := s != nil && s.allowLoopbackBaseURL
+	lookupIPAddrs := net.DefaultResolver.LookupIPAddr
+	if s != nil && s.lookupIPAddrs != nil {
+		lookupIPAddrs = s.lookupIPAddrs
+	}
+	client := gogithub.NewClient(sourceHTTPClient(allowLoopback, lookupIPAddrs))
 	if settings.token != "" {
 		client = client.WithAuthToken(settings.token)
 	}
 	if settings.baseURL != "" {
-		allowLoopback := s != nil && s.allowLoopbackBaseURL
-		if err := validateBaseURL(ctx, settings.baseURL, allowLoopback); err != nil {
+		if err := validateBaseURL(ctx, settings.baseURL, allowLoopback, lookupIPAddrs); err != nil {
 			return nil, settings, fmt.Errorf("parse github base_url: %w", err)
 		}
 		enterpriseClient, err := client.WithEnterpriseURLs(settings.baseURL, settings.baseURL)
@@ -208,13 +213,54 @@ func (s *Source) newClient(ctx context.Context, cfg sourcecdk.Config, requireRep
 	return client, settings, nil
 }
 
+func sourceHTTPClient(allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error)) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	dialer := &net.Dialer{Timeout: defaultTimeout}
+	transport.DialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
+		return safeDialContext(ctx, network, address, allowLoopback, lookupIPAddrs, dialer.DialContext)
+	}
+	return &http.Client{Timeout: defaultTimeout, Transport: transport}
+}
+
+type dialContextFunc func(context.Context, string, string) (net.Conn, error)
+
+func safeDialContext(ctx context.Context, network string, address string, allowLoopback bool, lookupIPAddrs func(context.Context, string) ([]net.IPAddr, error), dial dialContextFunc) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	normalized := strings.Trim(host, "[]")
+	if ip := net.ParseIP(normalized); ip != nil {
+		if isUnsafeIP(ip, allowLoopback) {
+			return nil, errUnsafeBaseURLHost
+		}
+		return dial(ctx, network, address)
+	}
+	if lookupIPAddrs == nil {
+		lookupIPAddrs = net.DefaultResolver.LookupIPAddr
+	}
+	addrs, err := lookupIPAddrs(ctx, normalized)
+	if err != nil {
+		return nil, fmt.Errorf("resolve github base_url host %q: %w", normalized, err)
+	}
+	for _, addr := range addrs {
+		if isUnsafeIP(addr.IP, allowLoopback) {
+			return nil, errUnsafeBaseURLHost
+		}
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("resolve github base_url host %q: no addresses", normalized)
+	}
+	return dial(ctx, network, net.JoinHostPort(addrs[0].IP.String(), port))
+}
+
 // validateBaseURL rejects base URLs whose host targets loopback, private RFC1918, or link-local
 // addresses, or that resolve through DNS to such addresses. This prevents an SSRF where a caller
 // supplies a base_url pointing at internal infrastructure reachable from the cerebro process.
 //
 // When allowLoopback is true (intended for `httptest.Server` based tests only) loopback addresses
 // are permitted. Private/link-local addresses remain rejected regardless.
-func validateBaseURL(ctx context.Context, raw string, allowLoopback bool) error {
+func validateBaseURL(ctx context.Context, raw string, allowLoopback bool, customLookup ...func(context.Context, string) ([]net.IPAddr, error)) error {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return err
@@ -234,7 +280,11 @@ func validateBaseURL(ctx context.Context, raw string, allowLoopback bool) error 
 	}
 	resolveCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	addrs, err := net.DefaultResolver.LookupIPAddr(resolveCtx, host)
+	lookupIPAddrs := net.DefaultResolver.LookupIPAddr
+	if len(customLookup) > 0 && customLookup[0] != nil {
+		lookupIPAddrs = customLookup[0]
+	}
+	addrs, err := lookupIPAddrs(resolveCtx, host)
 	if err != nil {
 		// Fail closed: if we cannot verify the host is safe, do not allow it.
 		return fmt.Errorf("resolve github base_url host %q: %w", host, err)

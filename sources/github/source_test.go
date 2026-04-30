@@ -3,6 +3,8 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -352,5 +354,50 @@ func TestValidateBaseURLLoopbackOptIn(t *testing.T) {
 	}
 	if err := validateBaseURL(ctx, "http://10.0.0.1/", true); err == nil {
 		t.Fatalf("validateBaseURL(10.0.0.1, allow=true) = nil, want still rejected")
+	}
+}
+
+func TestSafeDialContextRejectsDNSRebindingToPrivateIP(t *testing.T) {
+	t.Parallel()
+	_, err := safeDialContext(
+		context.Background(),
+		"tcp",
+		"ghe.example.com:443",
+		false,
+		func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("10.0.0.5")}}, nil
+		},
+		func(context.Context, string, string) (net.Conn, error) {
+			t.Fatal("dial called for unsafe resolved host")
+			return nil, errors.New("unexpected dial")
+		},
+	)
+	if !errors.Is(err, errUnsafeBaseURLHost) {
+		t.Fatalf("safeDialContext() error = %v, want %v", err, errUnsafeBaseURLHost)
+	}
+}
+
+func TestSafeDialContextPinsResolvedPublicIP(t *testing.T) {
+	t.Parallel()
+	var dialAddress string
+	errStopDial := errors.New("stop after address capture")
+	_, err := safeDialContext(
+		context.Background(),
+		"tcp",
+		"ghe.example.com:443",
+		false,
+		func(context.Context, string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP("140.82.113.5")}}, nil
+		},
+		func(_ context.Context, _ string, address string) (net.Conn, error) {
+			dialAddress = address
+			return nil, errStopDial
+		},
+	)
+	if !errors.Is(err, errStopDial) {
+		t.Fatalf("safeDialContext() error = %v, want address-capture sentinel", err)
+	}
+	if dialAddress != "140.82.113.5:443" {
+		t.Fatalf("dial address = %q, want pinned public IP", dialAddress)
 	}
 }
