@@ -2,6 +2,7 @@ package kuzu
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -190,5 +191,61 @@ func TestUpsertProjectedLinkRejectsMissingFromURN(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("UpsertProjectedLink() error = nil, want non-nil")
+	}
+}
+
+func TestUpsertProjectedLinkPreservesAttributesOnRepeatedUpserts(t *testing.T) {
+	store, err := Open(config.GraphStoreConfig{
+		Driver:   config.GraphStoreDriverKuzu,
+		KuzuPath: filepath.Join(t.TempDir(), "graph"),
+	})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer func() {
+		if closeErr := store.Close(); closeErr != nil {
+			t.Fatalf("Close() error = %v", closeErr)
+		}
+	}()
+
+	ctx := context.Background()
+	first := &ports.ProjectedLink{
+		TenantID:   "writer",
+		SourceID:   "github",
+		FromURN:    "urn:cerebro:writer:github_user:alice",
+		ToURN:      "urn:cerebro:writer:github_repo:writer/cerebro",
+		Relation:   "belongs_to",
+		Attributes: map[string]string{"role": "admin"},
+	}
+	second := &ports.ProjectedLink{
+		TenantID:   "writer",
+		SourceID:   "github",
+		FromURN:    first.FromURN,
+		ToURN:      first.ToURN,
+		Relation:   first.Relation,
+		Attributes: map[string]string{"team": "platform"},
+	}
+	if err := store.UpsertProjectedLink(ctx, first); err != nil {
+		t.Fatalf("UpsertProjectedLink(first) error = %v", err)
+	}
+	if err := store.UpsertProjectedLink(ctx, second); err != nil {
+		t.Fatalf("UpsertProjectedLink(second) error = %v", err)
+	}
+	var raw sql.NullString
+	if err := store.db.QueryRowContext(ctx, fmt.Sprintf(
+		"MATCH (src:entity {urn: %s})-[r:relation {relation: %s}]->(dst:entity {urn: %s}) RETURN r.attributes_json",
+		cypherString(first.FromURN), cypherString(first.Relation), cypherString(first.ToURN),
+	)).Scan(&raw); err != nil {
+		t.Fatalf("query projected link attributes: %v", err)
+	}
+	got := map[string]string{}
+	if err := json.Unmarshal([]byte(raw.String), &got); err != nil {
+		t.Fatalf("decode attributes_json: %v", err)
+	}
+	if got["role"] != "admin" {
+		t.Fatalf("attributes role = %q, want admin (lost on repeated upsert)", got["role"])
+	}
+	if got["team"] != "platform" {
+		t.Fatalf("attributes team = %q, want platform", got["team"])
 	}
 }

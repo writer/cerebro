@@ -492,6 +492,13 @@ func normalizeBaseURL(raw string, domain string) (string, error) {
 	if !strings.EqualFold(parsed.Hostname(), domain) || (parsed.Port() != "" && parsed.Port() != "443") {
 		return "", fmt.Errorf("okta base_url host must match okta domain")
 	}
+	// Reject non-root paths so a caller cannot pivot the okta client onto an attacker-controlled
+	// sub-path (e.g. https://writer.okta.com/evil/) which would leak the bearer token to a path
+	// the okta domain does not actually serve.
+	trimmedPath := strings.Trim(parsed.Path, "/")
+	if trimmedPath != "" {
+		return "", fmt.Errorf("okta base_url must point at the root path")
+	}
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 

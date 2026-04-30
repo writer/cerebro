@@ -579,3 +579,34 @@ func newOktaAPIHandler(t *testing.T) http.Handler {
 		}
 	})
 }
+
+func TestNormalizeBaseURLRejectsNonRootPaths(t *testing.T) {
+	t.Parallel()
+	cases := []string{
+		"https://writer.okta.com/evil",
+		"https://writer.okta.com/api/v1",
+		"https://writer.okta.com/?q=1",
+	}
+	for _, raw := range cases {
+		raw := raw
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+			if _, err := normalizeBaseURL(raw, "writer.okta.com"); err == nil {
+				t.Fatalf("normalizeBaseURL(%q) = nil, want error", raw)
+			}
+		})
+	}
+}
+
+func TestNormalizeBaseURLAllowsRoot(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{"https://writer.okta.com", "https://writer.okta.com/", "https://writer.okta.com:443"} {
+		raw := raw
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+			if _, err := normalizeBaseURL(raw, "writer.okta.com"); err != nil {
+				t.Fatalf("normalizeBaseURL(%q) = %v, want nil", raw, err)
+			}
+		})
+	}
+}
