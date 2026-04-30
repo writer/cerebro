@@ -363,7 +363,7 @@ func subjectMatches(pattern string, subject string) bool {
 	subjectTokens := strings.Split(strings.TrimSpace(subject), ".")
 	for index, token := range patternTokens {
 		if token == ">" {
-			return index < len(subjectTokens)
+			return index == len(patternTokens)-1 && index < len(subjectTokens)
 		}
 		if index >= len(subjectTokens) {
 			return false

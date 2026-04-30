@@ -373,6 +373,51 @@ func TestReplayRejectsMissingFilter(t *testing.T) {
 	}
 }
 
+func TestReplayStreamMatchesMultiTokenWildcardSubjects(t *testing.T) {
+	log := &Log{
+		replay: &fakeReplayManager{
+			streams: []*natsjetstream.StreamInfo{
+				{
+					Config: natsjetstream.StreamConfig{
+						Name:     "CEREBRO_EVENTS",
+						Subjects: []string{"events.*.>"},
+					},
+				},
+			},
+		},
+		subjectPrefix: "events",
+	}
+
+	stream, err := log.replayStream(context.Background())
+	if err != nil {
+		t.Fatalf("replayStream() error = %v", err)
+	}
+	if stream == nil {
+		t.Fatal("replayStream() = nil, want non-nil")
+	}
+	if got := stream.Config.Name; got != "CEREBRO_EVENTS" {
+		t.Fatalf("replayStream().Config.Name = %q, want CEREBRO_EVENTS", got)
+	}
+}
+
+func TestSubjectMatchesRequiresRemainingTokensForWildcard(t *testing.T) {
+	tests := []struct {
+		pattern string
+		subject string
+		want    bool
+	}{
+		{pattern: "events.*.>", subject: "events.replay", want: false},
+		{pattern: "events.*.>", subject: "events.github.audit", want: true},
+		{pattern: "events.>", subject: "events", want: false},
+		{pattern: "events.>", subject: "events.github", want: true},
+	}
+	for _, tt := range tests {
+		if got := subjectMatches(tt.pattern, tt.subject); got != tt.want {
+			t.Fatalf("subjectMatches(%q, %q) = %v, want %v", tt.pattern, tt.subject, got, tt.want)
+		}
+	}
+}
+
 func workflowReplayEvent(id string, kind string, tenantID string, workflowKind string) *cerebrov1.EventEnvelope {
 	return &cerebrov1.EventEnvelope{
 		Id:       id,
