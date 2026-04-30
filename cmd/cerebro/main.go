@@ -113,6 +113,7 @@ func runSource(args []string) error {
 	if len(args) == 0 {
 		return usageError(fmt.Sprintf("usage: %s source [list|check|discover|read] ...", os.Args[0]))
 	}
+	ctx := context.Background()
 	registry, err := sourceregistry.Builtin()
 	if err != nil {
 		return fmt.Errorf("open source registry: %w", err)
@@ -127,7 +128,11 @@ func runSource(args []string) error {
 		if err != nil {
 			return err
 		}
-		response, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{
+		config, err = prepareSourceConfig(ctx, sourceID, "check", config)
+		if err != nil {
+			return err
+		}
+		response, err := service.Check(ctx, &cerebrov1.CheckSourceRequest{
 			SourceId: sourceID,
 			Config:   config,
 		})
@@ -140,7 +145,11 @@ func runSource(args []string) error {
 		if err != nil {
 			return err
 		}
-		response, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{
+		config, err = prepareSourceConfig(ctx, sourceID, "discover", config)
+		if err != nil {
+			return err
+		}
+		response, err := service.Discover(ctx, &cerebrov1.DiscoverSourceRequest{
 			SourceId: sourceID,
 			Config:   config,
 		})
@@ -153,7 +162,11 @@ func runSource(args []string) error {
 		if err != nil {
 			return err
 		}
-		response, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{
+		config, err = prepareSourceConfig(ctx, sourceID, "read", config)
+		if err != nil {
+			return err
+		}
+		response, err := service.Read(ctx, &cerebrov1.ReadSourceRequest{
 			SourceId: sourceID,
 			Config:   config,
 			Cursor:   cursor,
@@ -175,7 +188,8 @@ func runSourceRuntime(args []string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	deps, closeDeps, err := bootstrap.OpenDependencies(context.Background(), cfg)
+	ctx := context.Background()
+	deps, closeDeps, err := bootstrap.OpenDependencies(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("open dependencies: %w", err)
 	}
@@ -201,7 +215,11 @@ func runSourceRuntime(args []string) error {
 		if err != nil {
 			return err
 		}
-		response, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{Runtime: runtime})
+		runtime, err = prepareSourceRuntime(ctx, runtime)
+		if err != nil {
+			return err
+		}
+		response, err := service.Put(ctx, &cerebrov1.PutSourceRuntimeRequest{Runtime: runtime})
 		if err != nil {
 			return err
 		}
@@ -210,7 +228,7 @@ func runSourceRuntime(args []string) error {
 		if len(args) < 2 || strings.TrimSpace(args[1]) == "" {
 			return usageError(fmt.Sprintf("usage: %s source-runtime get <runtime-id>", os.Args[0]))
 		}
-		response, err := service.Get(context.Background(), &cerebrov1.GetSourceRuntimeRequest{Id: strings.TrimSpace(args[1])})
+		response, err := service.Get(ctx, &cerebrov1.GetSourceRuntimeRequest{Id: strings.TrimSpace(args[1])})
 		if err != nil {
 			return err
 		}
@@ -220,7 +238,7 @@ func runSourceRuntime(args []string) error {
 		if err != nil {
 			return err
 		}
-		response, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{
+		response, err := service.Sync(ctx, &cerebrov1.SyncSourceRuntimeRequest{
 			Id:        runtimeID,
 			PageLimit: pageLimit,
 		})
