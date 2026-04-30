@@ -197,11 +197,13 @@ export async function onboardWorkspacePosture(options: OnboardWorkspacePostureOp
   const claims = buildWorkspaceClaims(integration, options.posture);
   const writeResult = await integration.writeClaims(claims);
   const persisted = await integration.listClaims({ limit: 100 });
+  const graphLayering = await loadGraphLayering(integration, options.posture);
   return {
     workspace_urn: claims[0]?.subject_urn ?? "",
     write_result: writeResult,
     submitted_claims: claims,
     persisted_claims: Array.isArray(persisted["claims"]) ? persisted["claims"] : [],
+    graph_layering: graphLayering,
   };
 }
 
@@ -290,6 +292,39 @@ function envBool(name: string, defaultValue: boolean): boolean {
 
 function boolValue(value: boolean): string {
   return value ? "true" : "false";
+}
+
+async function loadGraphLayering(
+  integration: IntegrationClient,
+  posture: JiraWorkspacePosture,
+): Promise<Record<string, unknown>> {
+  const workspaceKey = requireValue(posture.workspaceKey, "posture.workspaceKey");
+  const workspaceRef = integration.ref("workspace", workspaceKey, posture.workspaceName?.trim() || workspaceKey);
+  const projectEntries = (posture.projects ?? []).map((project) => {
+    const projectKey = requireValue(project.key, "posture.projects[].key");
+    const projectRef = integration.ref("project", projectKey, project.name?.trim() || projectKey);
+    return [projectKey, projectRef] as const;
+  });
+  const workspaceLayering = await integration.graphLayering([workspaceRef], 50);
+  const projectLayering = await integration.graphLayering(
+    projectEntries.map(([, projectRef]) => projectRef),
+    12,
+  );
+  return {
+    workspace: workspaceLayering[workspaceRef.urn] ?? {
+      root_urn: workspaceRef.urn,
+      error: "missing graph response",
+    },
+    projects: Object.fromEntries(
+      projectEntries.map(([projectKey, projectRef]) => [
+        projectKey,
+        projectLayering[projectRef.urn] ?? {
+          root_urn: projectRef.urn,
+          error: "missing graph response",
+        },
+      ]),
+    ),
+  };
 }
 
 function requireValue(value: string, name: string): string {

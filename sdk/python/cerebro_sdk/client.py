@@ -59,6 +59,16 @@ class Client:
         result, _ = self._request_json("GET", path)
         return result
 
+    def get_entity_neighborhood(self, root_urn: str, limit: int = 0) -> Any:
+        normalized_root_urn = root_urn.strip()
+        if not normalized_root_urn:
+            raise ValueError("root_urn is required")
+        query = {"root_urn": normalized_root_urn}
+        if limit > 0:
+            query["limit"] = str(limit)
+        result, _ = self._request_json("GET", f"/graph/neighborhood?{parse.urlencode(query)}")
+        return result
+
     def integration(self, runtime_id: str, tenant_id: str, integration: str) -> "IntegrationClient":
         return IntegrationClient(self, runtime_id=runtime_id, tenant_id=tenant_id, integration=integration)
 
@@ -299,6 +309,27 @@ class IntegrationClient:
     def list_claims(self, filters: Optional[Dict[str, Any]] = None) -> Any:
         return self.client.list_claims(self.runtime_id, filters)
 
+    def graph_neighborhood(self, root: Any, limit: int = 0) -> Any:
+        root_urn = normalize_root_urn(root, "root")
+        return self.client.get_entity_neighborhood(root_urn, limit)
+
+    def graph_layering(self, roots: list[Any], limit: int = 0) -> Dict[str, Any]:
+        layering: Dict[str, Any] = {}
+        seen = set()
+        for root in roots:
+            root_urn = normalize_root_urn(root, "root")
+            if root_urn in seen:
+                continue
+            seen.add(root_urn)
+            try:
+                layering[root_urn] = self.graph_neighborhood(root_urn, limit)
+            except APIError as err:
+                layering[root_urn] = {
+                    "root_urn": root_urn,
+                    "error": str(err),
+                }
+        return layering
+
     def ref(self, kind: str, external_id: str, label: str = "") -> Dict[str, str]:
         normalized_kind = kind.strip()
         normalized_external_id = external_id.strip()
@@ -351,3 +382,16 @@ class IntegrationClient:
 
     def _build_urn(self, kind: str, external_id: str) -> str:
         return ":".join(["urn", "cerebro", self.tenant_id, "runtime", self.runtime_id, kind, external_id])
+
+
+def normalize_root_urn(root: Any, name: str) -> str:
+    if isinstance(root, dict):
+        value = root.get("urn")
+        if value is None:
+            raise ValueError(f"{name}['urn'] is required")
+    else:
+        value = root
+    root_urn = str(value).strip() if value is not None else ""
+    if not root_urn:
+        raise ValueError(f"{name} urn is required")
+    return root_urn

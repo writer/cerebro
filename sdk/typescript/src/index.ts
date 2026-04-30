@@ -97,6 +97,31 @@ export interface ListClaimsOptions {
   limit?: number;
 }
 
+export interface GraphEntity {
+  urn: string;
+  entity_type: string;
+  label?: string;
+}
+
+export interface GraphRelation {
+  from_urn: string;
+  relation: string;
+  to_urn: string;
+}
+
+export interface GraphNeighborhood {
+  root?: GraphEntity;
+  neighbors?: GraphEntity[];
+  relations?: GraphRelation[];
+}
+
+export interface GraphNeighborhoodError {
+  root_urn: string;
+  error: string;
+}
+
+export type GraphLayering = Record<string, GraphNeighborhood | GraphNeighborhoodError>;
+
 export interface IntegrationOptions {
   runtimeId: string;
   tenantId: string;
@@ -168,6 +193,18 @@ export class Client {
     }
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return this.requestJson<Record<string, unknown>>("GET", `/source-runtimes/${encodeURIComponent(runtimeId)}/claims${suffix}`);
+  }
+
+  async getEntityNeighborhood(rootUrn: string, limit = 0): Promise<GraphNeighborhood> {
+    const normalizedRootUrn = rootUrn.trim();
+    if (!normalizedRootUrn) {
+      throw new Error("rootUrn is required");
+    }
+    const query = new URLSearchParams({ root_urn: normalizedRootUrn });
+    if (limit > 0) {
+      query.set("limit", String(limit));
+    }
+    return this.requestJson<GraphNeighborhood>("GET", `/graph/neighborhood?${query.toString()}`);
   }
 
   integration(options: IntegrationOptions): IntegrationClient {
@@ -479,6 +516,36 @@ export class IntegrationClient {
 
   async listClaims(options: ListClaimsOptions = {}): Promise<Record<string, unknown>> {
     return this.client.listClaims(this.runtimeId, options);
+  }
+
+  async graphNeighborhood(root: EntityRef | string, limit = 0): Promise<GraphNeighborhood> {
+    const rootUrn = typeof root === "string" ? root.trim() : root.urn.trim();
+    return this.client.getEntityNeighborhood(rootUrn, limit);
+  }
+
+  async graphLayering(roots: Array<EntityRef | string>, limit = 0): Promise<GraphLayering> {
+    const layering = Object.create(null) as GraphLayering;
+    const seen = new Set<string>();
+    for (const root of roots) {
+      const rootUrn = typeof root === "string" ? root.trim() : root.urn.trim();
+      if (!rootUrn || seen.has(rootUrn)) {
+        continue;
+      }
+      seen.add(rootUrn);
+      try {
+        layering[rootUrn] = await this.graphNeighborhood(rootUrn, limit);
+      } catch (error) {
+        if (error instanceof APIError) {
+          layering[rootUrn] = {
+            root_urn: rootUrn,
+            error: error.message,
+          };
+          continue;
+        }
+        throw error;
+      }
+    }
+    return layering;
   }
 
   ref(kind: string, externalId: string, label = ""): EntityRef {

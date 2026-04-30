@@ -154,11 +154,13 @@ def onboard_workspace_posture(
     claims = build_workspace_claims(integration, posture)
     write_result = integration.write_claims(claims)
     persisted = integration.list_claims({"limit": 100})
+    graph_layering = load_graph_layering(integration, posture)
     return {
         "workspace_urn": claims[0]["subject_urn"],
         "write_result": write_result,
         "submitted_claims": claims,
         "persisted_claims": persisted.get("claims", []),
+        "graph_layering": graph_layering,
     }
 
 
@@ -236,6 +238,28 @@ def env_bool(name: str, default: bool) -> bool:
 
 def bool_value(value: Any) -> str:
     return "true" if bool(value) else "false"
+
+
+def load_graph_layering(integration: IntegrationClient, posture: Dict[str, Any]) -> Dict[str, Any]:
+    workspace_key = require_value(posture.get("workspace_key"), "workspace_key")
+    workspace_name = optional_string(posture.get("workspace_name")) or workspace_key
+    workspace_ref = integration.ref("workspace", workspace_key, workspace_name)
+    project_refs = []
+    project_keys = []
+    for project in posture.get("projects", []):
+        project_key = require_value(project.get("key"), "projects[].key")
+        project_name = optional_string(project.get("name")) or project_key
+        project_refs.append(integration.ref("project", project_key, project_name))
+        project_keys.append(project_key)
+    workspace_graph = integration.graph_layering([workspace_ref], limit=50)
+    project_layering = integration.graph_layering(project_refs, limit=12)
+    project_graphs = {}
+    for project_key, project_ref in zip(project_keys, project_refs):
+        project_graphs[project_key] = project_layering.get(project_ref["urn"], {"root_urn": project_ref["urn"], "error": "missing graph response"})
+    return {
+        "workspace": workspace_graph.get(workspace_ref["urn"], {"root_urn": workspace_ref["urn"], "error": "missing graph response"}),
+        "projects": project_graphs,
+    }
 
 
 def optional_string(value: Any) -> Optional[str]:
