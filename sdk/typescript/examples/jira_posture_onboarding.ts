@@ -204,7 +204,7 @@ export async function onboardWorkspacePosture(options: OnboardWorkspacePostureOp
     submitted_claims: claims,
     persisted_claims: Array.isArray(persisted["claims"]) ? persisted["claims"] : [],
     graph_layering: graphLayering,
-    graph_summary: summarizeGraphLayering(graphLayering),
+    graph_summary: graphLayering["summary"] ?? {},
   };
 }
 
@@ -311,6 +311,10 @@ async function loadGraphLayering(
     projectEntries.map(([, projectRef]) => projectRef),
     12,
   );
+  const combinedLayering = {
+    ...workspaceLayering,
+    ...projectLayering,
+  };
   return {
     workspace: workspaceLayering[workspaceRef.urn] ?? {
       root_urn: workspaceRef.urn,
@@ -325,75 +329,7 @@ async function loadGraphLayering(
         },
       ]),
     ),
-  };
-}
-
-export function summarizeGraphLayering(graphLayering: Record<string, unknown>): Record<string, unknown> {
-  const roots: Array<Record<string, string>> = [];
-  const nodeCounts = new Map<string, number>();
-  const relationCounts = new Map<string, number>();
-  const neighborhoodSizes: Record<string, { neighbors: number; relations: number }> = {};
-  const errors: Record<string, string> = {};
-  const seenNodes = new Set<string>();
-  const seenRelations = new Set<string>();
-  const workspace = asRecord(graphLayering["workspace"]);
-  const projects = asRecord(graphLayering["projects"]);
-  const entries = [workspace, ...Object.values(projects).map(asRecord)];
-
-  for (const entry of entries) {
-    const error = optionalRecordValue(entry, "error");
-    const rootUrn = optionalRecordValue(entry, "root_urn");
-    if (error && rootUrn) {
-      errors[rootUrn] = error;
-      continue;
-    }
-    const root = asRecord(entry["root"]);
-    const rootKey = optionalRecordValue(root, "urn");
-    if (!rootKey) {
-      continue;
-    }
-    roots.push({
-      urn: rootKey,
-      entity_type: optionalRecordValue(root, "entity_type") || "unknown",
-      label: optionalRecordValue(root, "label") || rootKey,
-    });
-    const neighbors = asRecordArray(entry["neighbors"]);
-    const relations = asRecordArray(entry["relations"]);
-    neighborhoodSizes[rootKey] = {
-      neighbors: neighbors.length,
-      relations: relations.length,
-    };
-    for (const node of [root, ...neighbors]) {
-      const nodeUrn = optionalRecordValue(node, "urn");
-      const entityType = optionalRecordValue(node, "entity_type") || "unknown";
-      if (!nodeUrn || seenNodes.has(nodeUrn)) {
-        continue;
-      }
-      seenNodes.add(nodeUrn);
-      nodeCounts.set(entityType, (nodeCounts.get(entityType) ?? 0) + 1);
-    }
-    for (const relation of relations) {
-      const fromUrn = optionalRecordValue(relation, "from_urn");
-      const name = optionalRecordValue(relation, "relation");
-      const toUrn = optionalRecordValue(relation, "to_urn");
-      if (!fromUrn || !name || !toUrn) {
-        continue;
-      }
-      const relationKey = `${fromUrn}\u0000${name}\u0000${toUrn}`;
-      if (seenRelations.has(relationKey)) {
-        continue;
-      }
-      seenRelations.add(relationKey);
-      relationCounts.set(name, (relationCounts.get(name) ?? 0) + 1);
-    }
-  }
-
-  return {
-    roots,
-    node_counts_by_type: Object.fromEntries(nodeCounts),
-    relation_counts_by_type: Object.fromEntries(relationCounts),
-    neighborhood_sizes: neighborhoodSizes,
-    errors,
+    summary: integration.graphSummary(combinedLayering),
   };
 }
 
@@ -403,23 +339,4 @@ function requireValue(value: string, name: string): string {
     throw new Error(`${name} is required`);
   }
   return normalized;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
-  }
-  return value as Record<string, unknown>;
-}
-
-function asRecordArray(value: unknown): Array<Record<string, unknown>> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.map(asRecord);
-}
-
-function optionalRecordValue(record: Record<string, unknown>, key: string): string {
-  const value = record[key];
-  return typeof value === "string" ? value : "";
 }

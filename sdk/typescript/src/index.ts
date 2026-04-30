@@ -122,6 +122,14 @@ export interface GraphNeighborhoodError {
 
 export type GraphLayering = Record<string, GraphNeighborhood | GraphNeighborhoodError>;
 
+export interface GraphSummary {
+  roots: GraphEntity[];
+  node_counts_by_type: Record<string, number>;
+  relation_counts_by_type: Record<string, number>;
+  neighborhood_sizes: Record<string, { neighbors: number; relations: number }>;
+  errors: Record<string, string>;
+}
+
 export interface IntegrationOptions {
   runtimeId: string;
   tenantId: string;
@@ -548,6 +556,10 @@ export class IntegrationClient {
     return layering;
   }
 
+  graphSummary(layering: GraphLayering): GraphSummary {
+    return summarizeGraphLayering(layering);
+  }
+
   ref(kind: string, externalId: string, label = ""): EntityRef {
     const normalizedKind = kind.trim();
     const normalizedExternalId = externalId.trim();
@@ -621,4 +633,61 @@ export class IntegrationClient {
   private buildURN(kind: string, externalId: string): string {
     return ["urn", "cerebro", this.tenantId, "runtime", this.runtimeId, kind, externalId].join(":");
   }
+}
+
+export function summarizeGraphLayering(layering: GraphLayering): GraphSummary {
+  const roots: GraphEntity[] = [];
+  const nodeCounts = new Map<string, number>();
+  const relationCounts = new Map<string, number>();
+  const neighborhoodSizes: Record<string, { neighbors: number; relations: number }> = {};
+  const errors: Record<string, string> = {};
+  const seenNodes = new Set<string>();
+  const seenRelations = new Set<string>();
+
+  for (const [rootUrn, entry] of Object.entries(layering)) {
+    if ("error" in entry) {
+      errors[entry.root_urn || rootUrn] = entry.error;
+      continue;
+    }
+    const root = entry.root;
+    if (!root?.urn) {
+      continue;
+    }
+    roots.push({
+      urn: root.urn,
+      entity_type: root.entity_type || "unknown",
+      label: root.label || root.urn,
+    });
+    neighborhoodSizes[root.urn] = {
+      neighbors: entry.neighbors?.length ?? 0,
+      relations: entry.relations?.length ?? 0,
+    };
+    for (const node of [root, ...(entry.neighbors ?? [])]) {
+      if (!node?.urn || seenNodes.has(node.urn)) {
+        continue;
+      }
+      seenNodes.add(node.urn);
+      const entityType = node.entity_type || "unknown";
+      nodeCounts.set(entityType, (nodeCounts.get(entityType) ?? 0) + 1);
+    }
+    for (const relation of entry.relations ?? []) {
+      if (!relation?.from_urn || !relation?.relation || !relation?.to_urn) {
+        continue;
+      }
+      const key = `${relation.from_urn}\u0000${relation.relation}\u0000${relation.to_urn}`;
+      if (seenRelations.has(key)) {
+        continue;
+      }
+      seenRelations.add(key);
+      relationCounts.set(relation.relation, (relationCounts.get(relation.relation) ?? 0) + 1);
+    }
+  }
+
+  return {
+    roots,
+    node_counts_by_type: Object.fromEntries(nodeCounts),
+    relation_counts_by_type: Object.fromEntries(relationCounts),
+    neighborhood_sizes: neighborhoodSizes,
+    errors,
+  };
 }
