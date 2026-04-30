@@ -2,6 +2,7 @@ package sourcecdk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,6 +10,8 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/primitives"
 )
+
+var ErrInvalidConfig = errors.New("invalid source config")
 
 // URN identifies an entity surfaced by a source.
 type URN string

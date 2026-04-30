@@ -20,7 +20,6 @@ import (
 const (
 	connectTimeout     = 5 * time.Second
 	defaultReplayLimit = 100
-	maxReplayScan      = 10000
 	maxReplayLimit     = 1000
 )
 
@@ -181,12 +180,7 @@ func (l *Log) Replay(ctx context.Context, req ports.ReplayRequest) ([]*cerebrov1
 	if stream.State.LastSeq == 0 || stream.State.LastSeq < stream.State.FirstSeq {
 		return events, nil
 	}
-	scanned := 0
 	for seq := stream.State.FirstSeq; seq <= stream.State.LastSeq; seq++ {
-		if scanned >= maxReplayScan {
-			return nil, fmt.Errorf("replay scan limit exceeded after %d messages", maxReplayScan)
-		}
-		scanned++
 		raw, err := streamRef.GetMsg(ctx, seq)
 		if err != nil {
 			if errors.Is(err, jetstream.ErrMsgNotFound) {

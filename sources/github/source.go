@@ -243,7 +243,7 @@ func (s *Source) newClient(cfg sourcecdk.Config, requireRepo bool) (*gogithub.Cl
 	if settings.baseURL != "" {
 		enterpriseClient, err := client.WithEnterpriseURLs(settings.baseURL, settings.baseURL)
 		if err != nil {
-			return nil, settings, fmt.Errorf("parse github base_url: %w", err)
+			return nil, settings, fmt.Errorf("%w: parse github base_url: %w", sourcecdk.ErrInvalidConfig, err)
 		}
 		client = enterpriseClient
 	}
@@ -283,7 +283,12 @@ func (rt safeSourceRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 	return rt.base.RoundTrip(req)
 }
 
-func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL bool) (settings, error) {
+func parseSettings(cfg sourcecdk.Config, requireRepo bool, allowLoopbackBaseURL bool) (_ settings, err error) {
+	defer func() {
+		if err != nil && !errors.Is(err, sourcecdk.ErrInvalidConfig) {
+			err = fmt.Errorf("%w: %w", sourcecdk.ErrInvalidConfig, err)
+		}
+	}()
 	settings := settings{
 		family:       configValue(cfg, "family"),
 		owner:        configValue(cfg, "owner"),
@@ -603,10 +608,10 @@ func readPage(cursor *cerebrov1.SourceCursor) (int, error) {
 	}
 	page, err := strconv.Atoi(strings.TrimSpace(cursor.Opaque))
 	if err != nil {
-		return 0, fmt.Errorf("parse cursor: %w", err)
+		return 0, fmt.Errorf("%w: parse cursor: %w", sourcecdk.ErrInvalidConfig, err)
 	}
 	if page < 1 {
-		return 0, fmt.Errorf("cursor page must be greater than zero")
+		return 0, fmt.Errorf("%w: cursor page must be greater than zero", sourcecdk.ErrInvalidConfig)
 	}
 	return page, nil
 }

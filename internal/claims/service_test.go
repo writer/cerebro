@@ -397,6 +397,55 @@ func TestWriteClaimsRetractedRelationDeletesProjectedLink(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsRejectsCrossTenantRetractedRelation(t *testing.T) {
+	issueURN := "urn:cerebro:other:runtime:other-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:other:runtime:other-jira:user:acct:42"
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			issueURN + "|assigned_to|" + assigneeURN: {
+				TenantID: "other",
+				SourceID: "jira",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {
+					Id:       "writer-jira",
+					TenantId: "writer",
+					SourceId: "jira",
+				},
+			},
+		},
+		&stubClaimStore{},
+		projection,
+		nil,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				SubjectUrn: issueURN,
+				Predicate:  "assigned_to",
+				ObjectUrn:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusRetracted,
+			},
+		},
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("WriteClaims() error = %v, want ErrInvalidRequest", err)
+	}
+	if _, ok := projection.links[issueURN+"|assigned_to|"+assigneeURN]; !ok {
+		t.Fatal("cross-tenant retraction deleted projected link")
+	}
+}
+
 func TestWriteClaimsReassertsRelationAfterSameBatchRetraction(t *testing.T) {
 	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
 	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"

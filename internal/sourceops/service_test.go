@@ -217,6 +217,44 @@ func TestSourceValidationErrorsAreInvalidRequests(t *testing.T) {
 	}
 }
 
+func TestSourceOperationErrorsAreNotInvalidRequests(t *testing.T) {
+	upstreamErr := errors.New("upstream timeout")
+	registry, err := sourcecdk.NewRegistry(&errorSource{err: upstreamErr})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := New(registry)
+	if _, err := service.Check(context.Background(), &cerebrov1.CheckSourceRequest{SourceId: "failing"}); !errors.Is(err, upstreamErr) || errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Check() error = %v, want upstream error without ErrInvalidRequest", err)
+	}
+	if _, err := service.Discover(context.Background(), &cerebrov1.DiscoverSourceRequest{SourceId: "failing"}); !errors.Is(err, upstreamErr) || errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Discover() error = %v, want upstream error without ErrInvalidRequest", err)
+	}
+	if _, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{SourceId: "failing"}); !errors.Is(err, upstreamErr) || errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("Read() error = %v, want upstream error without ErrInvalidRequest", err)
+	}
+}
+
+type errorSource struct {
+	err error
+}
+
+func (s *errorSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "failing", Name: "Failing"}
+}
+
+func (s *errorSource) Check(context.Context, sourcecdk.Config) error {
+	return s.err
+}
+
+func (s *errorSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, s.err
+}
+
+func (s *errorSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{}, s.err
+}
+
 func newFixtureRegistry() (*sourcecdk.Registry, error) {
 	source, err := githubsource.NewFixture()
 	if err != nil {

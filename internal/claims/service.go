@@ -427,6 +427,12 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 		if normalized.GetObjectUrn() == "" {
 			return nil, fmt.Errorf("%w: claim object urn is required when claim_type=%q", ErrInvalidRequest, normalized.GetClaimType())
 		}
+		if err := validateRuntimeURN(runtime, normalized.GetSubjectUrn(), "subject"); err != nil {
+			return nil, err
+		}
+		if err := validateRuntimeURN(runtime, normalized.GetObjectUrn(), "object"); err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("%w: unsupported claim type %q", ErrInvalidRequest, normalized.GetClaimType())
 	}
@@ -435,6 +441,18 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 	}
 	normalized.Attributes = trimAttributes(normalized.GetAttributes())
 	return normalized, nil
+}
+
+func validateRuntimeURN(runtime *cerebrov1.SourceRuntime, urn string, field string) error {
+	tenantID := strings.TrimSpace(runtime.GetTenantId())
+	if tenantID == "" {
+		return nil
+	}
+	normalizedURN := strings.TrimSpace(urn)
+	if strings.HasPrefix(normalizedURN, "urn:cerebro:"+tenantID+":") {
+		return nil
+	}
+	return fmt.Errorf("%w: claim %s urn must belong to tenant %q", ErrInvalidRequest, field, tenantID)
 }
 
 func normalizeEntityRef(ref *cerebrov1.EntityRef, fallbackURN string) *cerebrov1.EntityRef {

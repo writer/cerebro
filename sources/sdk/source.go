@@ -39,7 +39,7 @@ func (s *Source) Spec() *cerebrov1.SourceSpec {
 // Check validates that the SDK runtime declares an integration name.
 func (s *Source) Check(_ context.Context, cfg sourcecdk.Config) error {
 	if integration, ok := cfg.Lookup("integration"); !ok || strings.TrimSpace(integration) == "" {
-		return fmt.Errorf("sdk integration is required")
+		return fmt.Errorf("%w: sdk integration is required", sourcecdk.ErrInvalidConfig)
 	}
 	return nil
 }

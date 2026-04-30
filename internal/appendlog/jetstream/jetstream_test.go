@@ -276,7 +276,8 @@ func TestReplayFiltersWorkflowEventsByKindPrefixTenantAndAttribute(t *testing.T)
 	}
 }
 
-func TestReplayStopsAtScanLimit(t *testing.T) {
+func TestReplayScansSparseStreamsUntilLimitMatches(t *testing.T) {
+	const matchingSeq = uint64(10005)
 	replay := &fakeReplayManager{
 		streams: []*natsjetstream.StreamInfo{
 			{
@@ -284,21 +285,26 @@ func TestReplayStopsAtScanLimit(t *testing.T) {
 					Name:     "CEREBRO_EVENTS",
 					Subjects: []string{"events.>"},
 				},
-				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: maxReplayScan + 1},
+				State: natsjetstream.StreamState{FirstSeq: 1, LastSeq: matchingSeq},
 			},
 		},
 		msgs: map[string]map[uint64]*natsjetstream.RawStreamMsg{
-			"CEREBRO_EVENTS": {},
+			"CEREBRO_EVENTS": {
+				matchingSeq: rawReplayMsg(t, "events.github.audit", replayEvent("evt-sparse", "github.audit", "writer-github")),
+			},
 		},
 	}
 	log := &Log{js: &fakePublisher{}, replay: replay, subjectPrefix: "events"}
 
-	_, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
-	if err == nil {
-		t.Fatal("Replay() error = nil, want non-nil")
+	events, err := log.Replay(context.Background(), ports.ReplayRequest{RuntimeID: "writer-github"})
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
 	}
-	if replay.getMsgCalls != maxReplayScan {
-		t.Fatalf("getMsgCalls = %d, want %d", replay.getMsgCalls, maxReplayScan)
+	if len(events) != 1 || events[0].GetId() != "evt-sparse" {
+		t.Fatalf("replayed events = %#v, want evt-sparse", events)
+	}
+	if replay.getMsgCalls != int(matchingSeq) {
+		t.Fatalf("getMsgCalls = %d, want %d", replay.getMsgCalls, matchingSeq)
 	}
 }
 
