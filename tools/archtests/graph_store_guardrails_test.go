@@ -19,12 +19,10 @@ var forbiddenGraphBackendMarkers = []string{
 	"janusgraph",
 	"memgraph",
 	"nebula",
-	"neo4j",
 }
 
 var forbiddenGraphBackendEnvMarkers = []string{
 	"CEREBRO_GRAPH_BACKEND",
-	"CEREBRO_NEO4J_",
 	"CEREBRO_DGRAPH_",
 	"CEREBRO_ARANGO_",
 	"CEREBRO_GREMLIN_",
@@ -32,7 +30,7 @@ var forbiddenGraphBackendEnvMarkers = []string{
 	"CEREBRO_NEBULA_",
 }
 
-func TestGraphStoreImplementationIsKuzuOnly(t *testing.T) {
+func TestGraphStoreImplementationsAreApproved(t *testing.T) {
 	root := repoRoot(t)
 	graphStoreDir := filepath.Join(root, "internal", "graphstore")
 	entries, err := os.ReadDir(graphStoreDir)
@@ -43,13 +41,15 @@ func TestGraphStoreImplementationIsKuzuOnly(t *testing.T) {
 		if !entry.IsDir() {
 			continue
 		}
-		if entry.Name() != "kuzu" {
-			t.Fatalf("unexpected graph store implementation package %q; Kuzu is the only supported graph backend", entry.Name())
+		switch entry.Name() {
+		case "kuzu", "neo4j":
+		default:
+			t.Fatalf("unexpected graph store implementation package %q; only Kuzu and Neo4j are approved graph backends", entry.Name())
 		}
 	}
 }
 
-func TestGraphStoreImportsUseKuzuImplementationOnly(t *testing.T) {
+func TestGraphStoreImportsUseApprovedImplementationsOnly(t *testing.T) {
 	root := repoRoot(t)
 	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -73,7 +73,8 @@ func TestGraphStoreImportsUseKuzuImplementationOnly(t *testing.T) {
 		for _, importSpec := range file.Imports {
 			importPath := strings.Trim(importSpec.Path.Value, `"`)
 			if strings.HasPrefix(importPath, "github.com/writer/cerebro/internal/graphstore/") &&
-				importPath != "github.com/writer/cerebro/internal/graphstore/kuzu" {
+				importPath != "github.com/writer/cerebro/internal/graphstore/kuzu" &&
+				importPath != "github.com/writer/cerebro/internal/graphstore/neo4j" {
 				t.Fatalf("%s imports unsupported graph store implementation %q", shortPath(root, path), importPath)
 			}
 		}
@@ -83,7 +84,7 @@ func TestGraphStoreImportsUseKuzuImplementationOnly(t *testing.T) {
 	}
 }
 
-func TestGraphStoreDependenciesAreKuzuOnly(t *testing.T) {
+func TestGraphStoreDependenciesUseApprovedBackendsOnly(t *testing.T) {
 	root := repoRoot(t)
 	for _, name := range []string{"go.mod", "go.sum"} {
 		body, err := os.ReadFile(filepath.Join(root, name))
@@ -99,7 +100,7 @@ func TestGraphStoreDependenciesAreKuzuOnly(t *testing.T) {
 	}
 }
 
-func TestGraphStoreProductionEnvVarsAreKuzuOnly(t *testing.T) {
+func TestGraphStoreProductionEnvVarsUseApprovedBackendsOnly(t *testing.T) {
 	root := repoRoot(t)
 	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -131,7 +132,7 @@ func TestGraphStoreProductionEnvVarsAreKuzuOnly(t *testing.T) {
 	}
 }
 
-func TestGraphStoreDriverConstantsAreKuzuOnly(t *testing.T) {
+func TestGraphStoreDriverConstantsAreApproved(t *testing.T) {
 	root := repoRoot(t)
 	path := filepath.Join(root, "internal", "config", "config.go")
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ParseComments)
@@ -151,12 +152,13 @@ func TestGraphStoreDriverConstantsAreKuzuOnly(t *testing.T) {
 		}
 		return true
 	})
-	if strings.Join(graphDrivers, ",") != "GraphStoreDriverKuzu" {
-		t.Fatalf("graph store drivers = %v, want only GraphStoreDriverKuzu", graphDrivers)
+	want := []string{"GraphStoreDriverKuzu", "GraphStoreDriverNeo4j"}
+	if strings.Join(graphDrivers, ",") != strings.Join(want, ",") {
+		t.Fatalf("graph store drivers = %v, want %v", graphDrivers, want)
 	}
 }
 
-func TestGraphStoreConfigExposesOnlyKuzuFields(t *testing.T) {
+func TestGraphStoreConfigExposesApprovedFields(t *testing.T) {
 	root := repoRoot(t)
 	path := filepath.Join(root, "internal", "config", "config.go")
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ParseComments)
@@ -180,7 +182,7 @@ func TestGraphStoreConfigExposesOnlyKuzuFields(t *testing.T) {
 		}
 		return false
 	})
-	want := []string{"Driver", "KuzuPath"}
+	want := []string{"Driver", "KuzuPath", "Neo4jURI", "Neo4jUsername", "Neo4jPassword", "Neo4jDatabase"}
 	if strings.Join(fields, ",") != strings.Join(want, ",") {
 		t.Fatalf("GraphStoreConfig fields = %v, want exactly %v", fields, want)
 	}
