@@ -21,9 +21,9 @@ test("buildJiraWorkspaceClaims rejects object-coerced identifiers", async () => 
 
 test("jira subpath imports the exported source entrypoint", async () => {
   const source = await readFile(path.join(srcDir, "jira.ts"), "utf8");
-  assert.doesNotMatch(source, /from "\.\/index\.js"/);
   assert.doesNotMatch(source, /from "\.\/index\.ts"/);
-  assert.match(source, /from "\.\/index"/);
+  assert.doesNotMatch(source, /from "\.\/index"/);
+  assert.match(source, /from "\.\/index\.js"/);
 
   const example = await readFile(path.resolve(here, "../examples/jira_posture_onboarding.ts"), "utf8");
   assert.doesNotMatch(example, /from "\.\.\/src\/jira\.js"/);
