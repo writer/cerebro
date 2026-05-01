@@ -304,6 +304,7 @@ func inspectCompositeLiteral(pass *analysis.Pass, lit *ast.CompositeLit, sealedO
 	case *types.Map:
 		for _, elt := range lit.Elts {
 			if kv, ok := elt.(*ast.KeyValueExpr); ok {
+				reportImportedSealedValue(pass, kv.Key, typ.Key(), sealedObjects, sealed, reported)
 				reportImportedSealedValue(pass, kv.Value, typ.Elem(), sealedObjects, sealed, reported)
 			}
 		}

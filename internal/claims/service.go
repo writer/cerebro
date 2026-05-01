@@ -370,6 +370,7 @@ func (s *Service) hasOtherAssertedRelation(ctx context.Context, runtime *cerebro
 	if link == nil {
 		return false, nil
 	}
+	runtimeID := strings.TrimSpace(runtime.GetId())
 	claims, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
 		TenantID:   strings.TrimSpace(runtime.GetTenantId()),
 		SubjectURN: strings.TrimSpace(link.FromURN),
@@ -385,9 +386,10 @@ func (s *Service) hasOtherAssertedRelation(ctx context.Context, runtime *cerebro
 		if claim == nil {
 			continue
 		}
-		if strings.TrimSpace(claim.ID) != claimID {
-			return true, nil
+		if strings.TrimSpace(claim.ID) == claimID && strings.TrimSpace(claim.RuntimeID) == runtimeID {
+			continue
 		}
+		return true, nil
 	}
 	return false, nil
 }

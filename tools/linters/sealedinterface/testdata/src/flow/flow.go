@@ -70,6 +70,10 @@ var structLiteralBad = holder{
 	Runner: externalbad.Bad{}, // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+var mapKeyLiteralBad = map[sealedpkg.Runner]string{
+	externalbad.Bad{}: "bad", // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func PassBad(fn func(sealedpkg.Runner)) {
 	fn(externalbad.Bad{}) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }

@@ -26,9 +26,9 @@ test("jira subpath imports the exported source entrypoint", async () => {
   assert.match(source, /from "\.\/index\.js"/);
 
   const example = await readFile(path.resolve(here, "../examples/jira_posture_onboarding.ts"), "utf8");
-  assert.doesNotMatch(example, /from "\.\.\/src\/jira\.js"/);
   assert.doesNotMatch(example, /from "\.\.\/src\/jira\.ts"/);
-  assert.match(example, /from "\.\.\/src\/jira"/);
+  assert.doesNotMatch(example, /from "\.\.\/src\/jira"/);
+  assert.match(example, /from "\.\.\/src\/jira\.js"/);
 
   const bridge = await readFile(path.join(srcDir, "index.js"), "utf8");
   assert.doesNotMatch(bridge, /\.ts"/);

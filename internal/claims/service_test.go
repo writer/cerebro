@@ -619,7 +619,7 @@ func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjected
 				Status:     claimStatusAsserted,
 			},
 			"claim-github": {
-				ID:         "claim-github",
+				ID:         "claim-jira",
 				RuntimeID:  "writer-github",
 				TenantID:   "writer",
 				SubjectURN: issueURN,
