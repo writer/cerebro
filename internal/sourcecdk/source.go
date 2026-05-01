@@ -30,8 +30,11 @@ func ParseURN(raw string) (URN, error) {
 	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
 		return "", fmt.Errorf("invalid cerebro urn %q", value)
 	}
-	for _, part := range parts[2:] {
-		if strings.TrimSpace(part) == "" || strings.TrimSpace(part) != part {
+	if parts[len(parts)-1] == "" {
+		return "", fmt.Errorf("invalid cerebro urn %q", value)
+	}
+	for i, part := range parts[2:] {
+		if strings.TrimSpace(part) != part || (i < 3 && part == "") {
 			return "", fmt.Errorf("invalid cerebro urn %q", value)
 		}
 	}

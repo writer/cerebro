@@ -33,6 +33,17 @@ func TestParseURN(t *testing.T) {
 	}
 }
 
+func TestParseURNAllowsColonDelimitedIDs(t *testing.T) {
+	raw := "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole"
+	urn, err := ParseURN(raw)
+	if err != nil {
+		t.Fatalf("ParseURN() error = %v", err)
+	}
+	if urn.String() != raw {
+		t.Fatalf("URN = %q, want %q", urn.String(), raw)
+	}
+}
+
 func TestParseURNRejectsInvalidValue(t *testing.T) {
 	for _, raw := range []string{
 		"user:123",
