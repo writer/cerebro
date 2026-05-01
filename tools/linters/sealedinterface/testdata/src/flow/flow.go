@@ -44,6 +44,10 @@ func AppendNamedSliceBad() {
 	_ = rs
 }
 
+func SendChannelBad(ch chan sealedpkg.Runner) {
+	ch <- externalbad.Bad{} // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func acceptVariadic(...sealedpkg.Runner) {}
 
 func PassVariadicBad() {

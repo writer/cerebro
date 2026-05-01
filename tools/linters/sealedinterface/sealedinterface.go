@@ -214,6 +214,10 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 			inspectCall(pass, node, sealedObjects, sealed, reported)
 		case *ast.CompositeLit:
 			inspectCompositeLiteral(pass, node, sealedObjects, sealed, reported)
+		case *ast.SendStmt:
+			if ch, ok := underlying(pass.TypesInfo.TypeOf(node.Chan)).(*types.Chan); ok {
+				reportImportedSealedValue(pass, node.Value, ch.Elem(), sealedObjects, sealed, reported)
+			}
 		}
 		return true
 	})

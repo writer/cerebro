@@ -299,12 +299,12 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.S
 			continue
 		}
 		link := projectedRelation(runtime, protoClaim(existingClaim))
+		if _, err := s.store.UpsertClaim(ctx, retractedClaim(existingClaim, retractAt, snapshotEventID)); err != nil {
+			return retracted, fmt.Errorf("retract claim %q: %w", existingClaim.ID, err)
+		}
 		_, err := s.deleteRelationIfUnsupported(ctx, runtime, protoClaim(existingClaim), link)
 		if err != nil {
 			return retracted, err
-		}
-		if _, err := s.store.UpsertClaim(ctx, retractedClaim(existingClaim, retractAt, snapshotEventID)); err != nil {
-			return retracted, fmt.Errorf("retract claim %q: %w", existingClaim.ID, err)
 		}
 		retracted++
 	}
