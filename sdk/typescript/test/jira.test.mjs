@@ -33,6 +33,6 @@ test("jira subpath imports the exported source entrypoint", async () => {
 
 test("admin sprawl findings account for posture admins", async () => {
   const source = await readFile(path.join(srcDir, "jira.ts"), "utf8");
-  assert.match(source, /const postureAdminCount = objectArray\(posture\.admins, "posture\.admins"\)\.length;/);
+  assert.match(source, /const postureAdminCount = objectArray\(posture\.admins, "posture\.admins"\)[\s\S]*requireValue\(admin\.email, "posture\.admins\[\]\.email"\)/);
   assert.match(source, /const adminCount = Math\.max\(relationCounts\.administers \?\? 0, postureAdminCount\);/);
 });

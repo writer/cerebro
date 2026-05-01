@@ -861,6 +861,24 @@ func TestWriteClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
 			ObjectUrn:  "urn:cerebro:writer:runtime:other-jira:user:acct:42",
 			ClaimType:  claimTypeRelation,
 		}}}},
+		{name: "malformed subject urn", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:",
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}}}},
+		{name: "trailing empty subject urn segment", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:",
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}}}},
+		{name: "whitespace padded object urn segment", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+			Predicate:  "assigned_to",
+			ObjectUrn:  "urn:cerebro:writer:runtime:writer-jira:user: acct:42",
+			ClaimType:  claimTypeRelation,
+		}}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := service.WriteClaims(context.Background(), tt.req)

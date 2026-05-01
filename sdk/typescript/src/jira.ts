@@ -288,7 +288,9 @@ export function buildJiraPostureFindings(
   }
 
   const relationCounts = asNumberRecord(graphSummary["relation_counts_by_type"]);
-  const postureAdminCount = objectArray(posture.admins, "posture.admins").length;
+  const postureAdminCount = objectArray(posture.admins, "posture.admins").filter((admin) =>
+    Boolean(requireValue(admin.email, "posture.admins[].email")),
+  ).length;
   const adminCount = Math.max(relationCounts.administers ?? 0, postureAdminCount);
   if (adminCount > 5) {
     findings.push(

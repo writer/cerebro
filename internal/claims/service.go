@@ -511,6 +511,15 @@ func validateRuntimeURN(runtime *cerebrov1.SourceRuntime, urn string, field stri
 		return nil
 	}
 	normalizedURN := strings.TrimSpace(urn)
+	parts := strings.Split(normalizedURN, ":")
+	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" || parts[len(parts)-1] == "" {
+		return fmt.Errorf("%w: claim %s urn is malformed", ErrInvalidRequest, field)
+	}
+	for i, part := range parts[2:] {
+		if strings.TrimSpace(part) != part || (i < 3 && part == "") {
+			return fmt.Errorf("%w: claim %s urn is malformed", ErrInvalidRequest, field)
+		}
+	}
 	if !strings.HasPrefix(normalizedURN, "urn:cerebro:"+tenantID+":") {
 		return fmt.Errorf("%w: claim %s urn must belong to tenant %q", ErrInvalidRequest, field, tenantID)
 	}
@@ -518,7 +527,6 @@ func validateRuntimeURN(runtime *cerebrov1.SourceRuntime, urn string, field stri
 	if runtimeID == "" {
 		return nil
 	}
-	parts := strings.Split(normalizedURN, ":")
 	if len(parts) > 4 && parts[3] == "runtime" && parts[4] != runtimeID {
 		return fmt.Errorf("%w: claim %s urn must belong to runtime %q", ErrInvalidRequest, field, runtimeID)
 	}
