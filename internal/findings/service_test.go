@@ -67,6 +67,9 @@ type stubFindingStore struct {
 	claimListRequest ports.ListClaimsRequest
 	runs             map[string]*cerebrov1.FindingEvaluationRun
 	runList          ports.ListFindingEvaluationRunsRequest
+	runPutCount      int
+	failRunPutOn     int
+	failRunPutErr    error
 	evidence         map[string]*cerebrov1.FindingEvidence
 	evidenceList     ports.ListFindingEvidenceRequest
 }
@@ -301,6 +304,13 @@ func (s *stubFindingStore) ListClaims(_ context.Context, request ports.ListClaim
 func (s *stubFindingStore) PutFindingEvaluationRun(_ context.Context, run *cerebrov1.FindingEvaluationRun) error {
 	if run == nil {
 		return errors.New("finding evaluation run is required")
+	}
+	s.runPutCount++
+	if s.failRunPutOn != 0 && s.runPutCount == s.failRunPutOn {
+		if s.failRunPutErr != nil {
+			return s.failRunPutErr
+		}
+		return errors.New("put finding evaluation run failed")
 	}
 	if s.runs == nil {
 		s.runs = make(map[string]*cerebrov1.FindingEvaluationRun)
@@ -1176,6 +1186,55 @@ func TestEvaluateSourceRuntimeRulesReplaysOnceAcrossMultipleRules(t *testing.T) 
 	}
 	if got := len(store.evidence); got != 2 {
 		t.Fatalf("len(store.evidence) = %d, want 2", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesMarksStartedRunsFailedWhenLaterRunStartFails(t *testing.T) {
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			triggerEventID:     "okta-audit-1",
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b", Name: "Rule B"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			triggerEventID:     "okta-audit-1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{
+		failRunPutOn:  2,
+		failRunPutErr: errors.New("run store unavailable"),
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	if err == nil {
+		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want non-nil")
+	}
+	if got := len(store.runs); got != 1 {
+		t.Fatalf("len(store.runs) = %d, want 1 started run", got)
+	}
+	for _, run := range store.runs {
+		if got := run.GetStatus(); got != "failed" {
+			t.Fatalf("started run status = %q, want failed", got)
+		}
+		if got := run.GetError(); !strings.Contains(got, "run store unavailable") {
+			t.Fatalf("started run error = %q, want run store unavailable", got)
+		}
 	}
 }
 

@@ -1,7 +1,7 @@
 import {
   type JiraWorkspacePosture,
   onboardJiraWorkspacePosture,
-} from "../src/jira.js";
+} from "../src/jira";
 
 declare const process: {
   env: Record<string, string | undefined>;

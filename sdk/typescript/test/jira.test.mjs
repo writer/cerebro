@@ -24,6 +24,11 @@ test("jira subpath imports the exported source entrypoint", async () => {
   assert.doesNotMatch(source, /from "\.\/index\.js"/);
   assert.doesNotMatch(source, /from "\.\/index\.ts"/);
   assert.match(source, /from "\.\/index"/);
+
+  const example = await readFile(path.resolve(here, "../examples/jira_posture_onboarding.ts"), "utf8");
+  assert.doesNotMatch(example, /from "\.\.\/src\/jira\.js"/);
+  assert.doesNotMatch(example, /from "\.\.\/src\/jira\.ts"/);
+  assert.match(example, /from "\.\.\/src\/jira"/);
 });
 
 test("admin sprawl findings account for posture admins", async () => {
