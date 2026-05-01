@@ -80,7 +80,19 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 }
 
+func clearDependencyEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("CEREBRO_HTTP_ADDR", "")
+	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
+	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
+	t.Setenv("CEREBRO_JETSTREAM_URL", "")
+	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
+	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
+	t.Setenv("CEREBRO_POSTGRES_DSN", "")
+}
+
 func TestLoadFromNeo4jEnv(t *testing.T) {
+	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "neo4j+s://example.databases.neo4j.io")
@@ -110,6 +122,7 @@ func TestLoadFromNeo4jEnv(t *testing.T) {
 }
 
 func TestLoadInfersNeo4jDriverFromURI(t *testing.T) {
+	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
@@ -126,6 +139,7 @@ func TestLoadInfersNeo4jDriverFromURI(t *testing.T) {
 }
 
 func TestLoadRejectsMissingNeo4jURI(t *testing.T) {
+	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
 	t.Setenv("CEREBRO_NEO4J_URI", "")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
@@ -136,6 +150,7 @@ func TestLoadRejectsMissingNeo4jURI(t *testing.T) {
 }
 
 func TestLoadRejectsMissingNeo4jUsername(t *testing.T) {
+	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
 	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
@@ -146,6 +161,7 @@ func TestLoadRejectsMissingNeo4jUsername(t *testing.T) {
 }
 
 func TestLoadRejectsMissingNeo4jPassword(t *testing.T) {
+	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
 	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")

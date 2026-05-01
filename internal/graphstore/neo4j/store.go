@@ -125,6 +125,7 @@ func (s *Store) SampleTraversals(ctx context.Context, limit int) (_ []Traversal,
 RETURN src.urn, src.label, left.relation, mid.urn, mid.label, right.relation, dst.urn, dst.label
 ORDER BY src.urn, left.relation, mid.urn, right.relation, dst.urn LIMIT %d`, limit)
 	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		traversals = traversals[:0]
 		result, err := tx.Run(ctx, query, nil)
 		if err != nil {
 			return nil, err
@@ -162,6 +163,7 @@ func (s *Store) PathPatterns(ctx context.Context, limit int) (_ []PathPattern, e
 RETURN src.entity_type, left.relation, mid.entity_type, right.relation, dst.entity_type, count(*)
 ORDER BY count(*) DESC, src.entity_type, left.relation, mid.entity_type, right.relation, dst.entity_type LIMIT %d`, limit)
 	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		patterns = patterns[:0]
 		result, err := tx.Run(ctx, query, nil)
 		if err != nil {
 			return nil, err
@@ -392,6 +394,10 @@ func (s *Store) GetEntityNeighborhood(ctx context.Context, rootURN string, limit
 		Relations: []*ports.NeighborhoodRelation{},
 	}
 	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		neighborhood = &ports.EntityNeighborhood{
+			Neighbors: []*ports.NeighborhoodNode{},
+			Relations: []*ports.NeighborhoodRelation{},
+		}
 		root, err := lookupNeighborhoodNode(ctx, tx, normalizedRootURN)
 		if err != nil {
 			return nil, err
@@ -438,6 +444,8 @@ func (s *Store) GetIngestCheckpoint(ctx context.Context, id string) (IngestCheck
 	var checkpoint IngestCheckpoint
 	var found bool
 	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		checkpoint = IngestCheckpoint{}
+		found = false
 		result, err := tx.Run(ctx, `MATCH (c:IngestCheckpoint {id: $id})
 RETURN c.id, c.source_id, coalesce(c.tenant_id, ''), coalesce(c.config_hash, ''), coalesce(c.cursor_opaque, ''),
        coalesce(c.checkpoint_opaque, ''), coalesce(c.completed, false), coalesce(c.pages_read, 0), coalesce(c.events_read, 0), coalesce(c.updated_at, '')`, map[string]any{"id": normalizedID})
@@ -589,6 +597,8 @@ func (s *Store) GetIngestRun(ctx context.Context, id string) (IngestRun, bool, e
 	var run IngestRun
 	var found bool
 	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		run = IngestRun{}
+		found = false
 		result, err := tx.Run(ctx, ingestRunReturnQuery("MATCH (r:IngestRun {id: $id})"), map[string]any{"id": normalizedID})
 		if err != nil {
 			return nil, err
@@ -641,6 +651,7 @@ func (s *Store) ListIngestRuns(ctx context.Context, filter IngestRunFilter) (_ [
 	query := ingestRunReturnQuery(prefix) + fmt.Sprintf(" ORDER BY coalesce(r.started_at, '') DESC, r.id DESC LIMIT %d", limit)
 	var runs []IngestRun
 	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		runs = runs[:0]
 		result, err := tx.Run(ctx, query, params)
 		if err != nil {
 			return nil, err
