@@ -269,7 +269,13 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types
 		if paramIndex >= params.Len() {
 			break
 		}
-		reportImportedSealedValue(pass, arg, params.At(paramIndex).Type(), sealedObjects, sealed, reported)
+		expected := params.At(paramIndex).Type()
+		if sig.Variadic() && index >= params.Len()-1 && call.Ellipsis == token.NoPos {
+			if slice, ok := expected.(*types.Slice); ok {
+				expected = slice.Elem()
+			}
+		}
+		reportImportedSealedValue(pass, arg, expected, sealedObjects, sealed, reported)
 	}
 }
 

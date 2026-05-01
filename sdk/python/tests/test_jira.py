@@ -122,6 +122,67 @@ class JiraPostureTests(unittest.TestCase):
 
         self.assertFalse(any(finding["id"] == "jira_workspace_admin_sprawl" for finding in findings))
 
+    def test_onboard_jira_workspace_posture_lists_all_submitted_claims(self) -> None:
+        class FakeIntegration:
+            claims = []
+            list_filters = {}
+
+            def ref(self, kind, key, label=None):
+                return {"urn": f"urn:cerebro:writer:runtime:writer-jira:{kind}:{key}", "entity_type": kind, "label": label or key}
+
+            def exists(self, subject, **options):
+                return {"subject_urn": subject["urn"], "subject_ref": subject, "predicate": "exists", "claim_type": "existence", **options}
+
+            def attr(self, subject, predicate, value, **options):
+                return {"subject_urn": subject["urn"], "subject_ref": subject, "predicate": predicate, "object_value": value, "claim_type": "attribute", **options}
+
+            def rel(self, subject, predicate, obj, **options):
+                return {
+                    "subject_urn": subject["urn"],
+                    "subject_ref": subject,
+                    "predicate": predicate,
+                    "object_urn": obj["urn"],
+                    "object_ref": obj,
+                    "claim_type": "relation",
+                    **options,
+                }
+
+            def ensure_runtime(self, config=None):
+                pass
+
+            def write_claims(self, claims, options=None):
+                self.claims = claims
+                return {}
+
+            def list_claims(self, filters=None):
+                self.list_filters = filters or {}
+                return {"claims": self.claims}
+
+            def graph_layering(self, roots, limit=0):
+                return {}
+
+            def graph_summary(self, layering):
+                return {"roots": [], "node_counts_by_type": {}, "relation_counts_by_type": {}, "neighborhood_sizes": {}, "errors": {}}
+
+        fake_integration = FakeIntegration()
+
+        class FakeClient:
+            def __init__(self, base_url, api_key=None):
+                pass
+
+            def integration(self, runtime_id, tenant_id, integration):
+                return fake_integration
+
+        posture = {
+            "workspace_key": "writer",
+            "admins": [{"email": f"admin{index}@writer.com"} for index in range(34)],
+        }
+        with patch.object(jira, "Client", FakeClient):
+            result = jira.onboard_jira_workspace_posture("https://cerebro.example.com", "writer", "writer-jira", posture)
+
+        self.assertGreater(len(result["submitted_claims"]), 100)
+        self.assertEqual(fake_integration.list_filters.get("limit"), len(result["submitted_claims"]))
+
 
 if __name__ == "__main__":
     unittest.main()

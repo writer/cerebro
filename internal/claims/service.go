@@ -624,7 +624,23 @@ func validateEntityRef(runtime *cerebrov1.SourceRuntime, fieldURN string, ref *c
 	if normalizedFieldURN := strings.TrimSpace(fieldURN); normalizedFieldURN != "" && normalizedFieldURN != urn {
 		return fmt.Errorf("%w: claim %s ref urn must match claim %s urn", ErrInvalidRequest, field, field)
 	}
+	if refType := strings.TrimSpace(ref.GetEntityType()); refType != "" {
+		if urnType := entityTypeFromURN(urn); urnType != "" && urnType != refType {
+			return fmt.Errorf("%w: claim %s ref entity_type must match urn type %q", ErrInvalidRequest, field, urnType)
+		}
+	}
 	return nil
+}
+
+func entityTypeFromURN(urn string) string {
+	parts := strings.Split(strings.TrimSpace(urn), ":")
+	if len(parts) > 5 && parts[3] == "runtime" {
+		return strings.TrimSpace(parts[5])
+	}
+	if len(parts) > 3 {
+		return strings.TrimSpace(parts[3])
+	}
+	return ""
 }
 
 func normalizeEntityRef(ref *cerebrov1.EntityRef, fallbackURN string) *cerebrov1.EntityRef {

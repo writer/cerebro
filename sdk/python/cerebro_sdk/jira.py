@@ -370,7 +370,7 @@ def onboard_jira_workspace_posture(
     runtime_config: Dict[str, str] = {"workspace": workspace_key}
     integration.ensure_runtime(runtime_config)
     write_result = integration.write_claims(claims, {"replace_existing": True})
-    filters: Dict[str, Any] = {"limit": 100, "status": "asserted"}
+    filters: Dict[str, Any] = {"limit": len(claims), "status": "asserted"}
     if source_event_id:
         filters["source_event_id"] = source_event_id
     persisted = integration.list_claims(filters)

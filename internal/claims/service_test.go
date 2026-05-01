@@ -954,6 +954,19 @@ func TestWriteClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
 			ObjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:writer:runtime:writer-jira::acct:42", EntityType: "user"},
 			ClaimType:  claimTypeRelation,
 		}}}},
+		{name: "subject ref type conflicts with urn", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+			SubjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123", EntityType: "user"},
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}}}},
+		{name: "object ref type conflicts with urn", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+			Predicate:  "assigned_to",
+			ObjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:writer:runtime:writer-jira:user:acct:42", EntityType: "group"},
+			ClaimType:  claimTypeRelation,
+		}}}},
 		{name: "whitespace padded object urn segment", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
 			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
 			Predicate:  "assigned_to",

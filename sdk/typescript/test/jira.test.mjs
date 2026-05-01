@@ -44,3 +44,9 @@ test("admin sprawl findings account for posture admins", async () => {
   assert.match(source, /const postureAdminCount = objectArray\(posture\.admins, "posture\.admins"\)[\s\S]*requireValue\(admin\.email, "posture\.admins\[\]\.email"\)/);
   assert.match(source, /const adminCount = Math\.max\(relationCounts\.administers \?\? 0, postureAdminCount\);/);
 });
+
+test("onboarding lists all submitted claims", async () => {
+  const source = await readFile(path.join(srcDir, "jira.ts"), "utf8");
+  assert.doesNotMatch(source, /limit:\s*100/);
+  assert.match(source, /limit:\s*claims\.length/);
+});

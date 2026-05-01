@@ -385,7 +385,7 @@ export async function onboardJiraWorkspacePosture(
   await integration.ensureRuntime(runtimeConfig);
   const writeResult = await integration.writeClaims(claims, { replace_existing: true });
   const persisted = await integration.listClaims({
-    limit: 100,
+    limit: claims.length,
     status: "asserted",
     ...(sourceEventId ? { source_event_id: sourceEventId } : {}),
   });
