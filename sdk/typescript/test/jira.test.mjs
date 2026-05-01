@@ -37,6 +37,10 @@ test("jira subpath imports the exported source entrypoint", async () => {
 test("source bridge is importable at runtime", async () => {
   const mod = await import(path.join(srcDir, "index.js"));
   assert.equal(typeof mod.Client, "function");
+
+  const pkg = JSON.parse(await readFile(path.resolve(here, "../package.json"), "utf8"));
+  assert.equal(pkg.main, "./src/index.js");
+  assert.equal(pkg.exports["."], "./src/index.js");
 });
 
 test("admin sprawl findings account for posture admins", async () => {

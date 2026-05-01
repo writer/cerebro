@@ -122,6 +122,15 @@ class JiraPostureTests(unittest.TestCase):
 
         self.assertFalse(any(finding["id"] == "jira_workspace_admin_sprawl" for finding in findings))
 
+    def test_build_jira_posture_findings_deduplicates_admin_emails_for_sprawl(self) -> None:
+        findings = jira.build_jira_posture_findings(
+            self.integration,
+            {"workspace_key": "writer", "admins": [{"email": "ADMIN@writer.com"}, {"email": "admin@writer.com"}] * 3},
+            {"relation_counts_by_type": {}},
+        )
+
+        self.assertFalse(any(finding["id"] == "jira_workspace_admin_sprawl" for finding in findings))
+
     def test_onboard_jira_workspace_posture_lists_all_submitted_claims(self) -> None:
         class FakeIntegration:
             claims = []

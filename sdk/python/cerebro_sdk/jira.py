@@ -283,9 +283,12 @@ def build_jira_posture_findings(
     relation_counts = graph_summary.get("relation_counts_by_type", {})
     if not isinstance(relation_counts, dict):
         relation_counts = {}
-    posture_admin_count = sum(
-        1 for admin in object_list(posture.get("admins"), "admins") if optional_string(admin.get("email"))
-    )
+    posture_admin_emails = {
+        email.casefold()
+        for admin in object_list(posture.get("admins"), "admins")
+        if (email := optional_string(admin.get("email")))
+    }
+    posture_admin_count = len(posture_admin_emails)
     admin_count = max(int(relation_counts.get("administers", 0)), posture_admin_count)
     if admin_count > 5:
         findings.append(

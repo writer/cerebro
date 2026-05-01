@@ -9,6 +9,12 @@ func ReturnBad() sealedpkg.Runner {
 	return externalbad.Bad{} // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+type RunnerAlias = sealedpkg.Runner
+
+func ReturnAliasBad() RunnerAlias {
+	return externalbad.Bad{} // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func makeBad() (externalbad.Bad, error) {
 	return externalbad.Bad{}, nil
 }
@@ -19,6 +25,15 @@ func makeTwoBad() (externalbad.Bad, externalbad.Bad) {
 
 func ReturnTupleBad() (sealedpkg.Runner, error) {
 	return makeBad() // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func ReturnTypeAssertBad() sealedpkg.Runner {
+	var value any = externalbad.Bad{}
+	return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func ReturnDirectTypeAssertBad() sealedpkg.Runner {
+	return any(externalbad.Bad{}).(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
 func AssignTupleBad() {

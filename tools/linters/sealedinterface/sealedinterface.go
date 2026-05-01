@@ -148,7 +148,7 @@ func run(pass *analysis.Pass) (any, error) {
 					if !ok {
 						continue
 					}
-					inspectValueSpec(pass, valueSpec, sealedObjects, sealed, reported)
+					inspectValueSpec(pass, valueSpec, nil, sealedObjects, sealed, reported)
 				}
 			}
 		}
@@ -158,6 +158,7 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	facts := newFlowFacts()
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.FuncLit:
@@ -180,14 +181,14 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 				if !ok {
 					continue
 				}
-				inspectValueSpec(pass, valueSpec, sealedObjects, sealed, reported)
+				inspectValueSpec(pass, valueSpec, facts, sealedObjects, sealed, reported)
 			}
 			return false
 		case *ast.ReturnStmt:
 			if len(node.Results) == 1 {
 				if tuple, ok := pass.TypesInfo.TypeOf(node.Results[0]).(*types.Tuple); ok {
 					for index := 0; results != nil && index < results.Len() && index < tuple.Len(); index++ {
-						reportImportedSealedValueAt(pass, node.Results[0], results.At(index).Type(), index, sealedObjects, sealed, reported)
+						reportImportedSealedValueWithFactsAt(pass, node.Results[0], results.At(index).Type(), index, facts, sealedObjects, sealed, reported)
 					}
 					break
 				}
@@ -196,7 +197,7 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 				if results == nil || index >= results.Len() {
 					break
 				}
-				reportImportedSealedValue(pass, result, results.At(index).Type(), sealedObjects, sealed, reported)
+				reportImportedSealedValueWithFacts(pass, result, results.At(index).Type(), facts, sealedObjects, sealed, reported)
 			}
 		case *ast.AssignStmt:
 			if len(node.Rhs) == 1 {
@@ -205,7 +206,8 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 						if index >= tuple.Len() {
 							break
 						}
-						reportImportedSealedValueAt(pass, node.Rhs[0], pass.TypesInfo.TypeOf(lhs), index, sealedObjects, sealed, reported)
+						reportImportedSealedValueWithFactsAt(pass, node.Rhs[0], pass.TypesInfo.TypeOf(lhs), index, facts, sealedObjects, sealed, reported)
+						facts.record(pass, lhs, node.Rhs[0], index)
 					}
 					break
 				}
@@ -214,42 +216,133 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 				if index >= len(node.Lhs) {
 					break
 				}
-				reportImportedSealedValue(pass, rhs, pass.TypesInfo.TypeOf(node.Lhs[index]), sealedObjects, sealed, reported)
+				reportImportedSealedValueWithFacts(pass, rhs, pass.TypesInfo.TypeOf(node.Lhs[index]), facts, sealedObjects, sealed, reported)
+				facts.record(pass, node.Lhs[index], rhs, -1)
 			}
 		case *ast.CallExpr:
-			inspectCall(pass, node, sealedObjects, sealed, reported)
+			inspectCall(pass, node, facts, sealedObjects, sealed, reported)
 		case *ast.CompositeLit:
-			inspectCompositeLiteral(pass, node, sealedObjects, sealed, reported)
+			inspectCompositeLiteral(pass, node, facts, sealedObjects, sealed, reported)
 		case *ast.SendStmt:
 			if ch, ok := underlying(pass.TypesInfo.TypeOf(node.Chan)).(*types.Chan); ok {
-				reportImportedSealedValue(pass, node.Value, ch.Elem(), sealedObjects, sealed, reported)
+				reportImportedSealedValueWithFacts(pass, node.Value, ch.Elem(), facts, sealedObjects, sealed, reported)
 			}
 		}
 		return true
 	})
 }
 
-func inspectValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+type flowFacts struct {
+	concrete map[*types.Var]types.Type
+}
+
+func newFlowFacts() *flowFacts {
+	return &flowFacts{concrete: map[*types.Var]types.Type{}}
+}
+
+func (f *flowFacts) recordName(pass *analysis.Pass, name *ast.Ident, rhs ast.Expr, tupleIndex int) {
+	if f == nil || name == nil || name.Name == "_" {
+		return
+	}
+	obj, ok := pass.TypesInfo.Defs[name].(*types.Var)
+	if !ok || obj == nil {
+		obj, ok = pass.TypesInfo.Uses[name].(*types.Var)
+	}
+	if !ok || obj == nil {
+		return
+	}
+	f.recordObject(pass, obj, rhs, tupleIndex)
+}
+
+func (f *flowFacts) record(pass *analysis.Pass, lhs ast.Expr, rhs ast.Expr, tupleIndex int) {
+	if f == nil {
+		return
+	}
+	ident, ok := lhs.(*ast.Ident)
+	if !ok {
+		return
+	}
+	f.recordName(pass, ident, rhs, tupleIndex)
+}
+
+func (f *flowFacts) recordObject(pass *analysis.Pass, obj *types.Var, rhs ast.Expr, tupleIndex int) {
+	actual := pass.TypesInfo.TypeOf(rhs)
+	if tuple, ok := actual.(*types.Tuple); ok {
+		if tupleIndex < 0 || tupleIndex >= tuple.Len() {
+			delete(f.concrete, obj)
+			return
+		}
+		actual = tuple.At(tupleIndex).Type()
+	}
+	if namedImplementation(actual) == nil {
+		delete(f.concrete, obj)
+		return
+	}
+	f.concrete[obj] = actual
+}
+
+func (f *flowFacts) assertedConcrete(pass *analysis.Pass, expr ast.Expr) (types.Type, bool) {
+	if f == nil {
+		return nil, false
+	}
+	assertion, ok := expr.(*ast.TypeAssertExpr)
+	if !ok {
+		return nil, false
+	}
+	return f.concreteForExpr(pass, assertion.X)
+}
+
+func (f *flowFacts) concreteForExpr(pass *analysis.Pass, expr ast.Expr) (types.Type, bool) {
+	if ident, ok := expr.(*ast.Ident); ok {
+		obj, ok := pass.TypesInfo.Uses[ident].(*types.Var)
+		if !ok || obj == nil {
+			return nil, false
+		}
+		actual, ok := f.concrete[obj]
+		return actual, ok
+	}
+	if call, ok := expr.(*ast.CallExpr); ok && len(call.Args) == 1 {
+		if _, ok := pass.TypesInfo.TypeOf(call.Fun).(*types.Signature); !ok {
+			actual := pass.TypesInfo.TypeOf(call.Args[0])
+			if namedImplementation(actual) != nil {
+				return actual, true
+			}
+		}
+	}
+	actual := pass.TypesInfo.TypeOf(expr)
+	if namedImplementation(actual) == nil {
+		return nil, false
+	}
+	return actual, true
+}
+
+func inspectValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
 	var expected types.Type
 	if valueSpec.Type != nil {
 		expected = pass.TypesInfo.TypeOf(valueSpec.Type)
 	}
 	if len(valueSpec.Values) == 1 && len(valueSpec.Names) > 1 {
 		if _, ok := pass.TypesInfo.TypeOf(valueSpec.Values[0]).(*types.Tuple); ok {
-			for index := range valueSpec.Names {
-				reportImportedSealedValueAt(pass, valueSpec.Values[0], expected, index, sealedObjects, sealed, reported)
+			for index, name := range valueSpec.Names {
+				reportImportedSealedValueWithFactsAt(pass, valueSpec.Values[0], expected, index, facts, sealedObjects, sealed, reported)
+				if facts != nil {
+					facts.recordName(pass, name, valueSpec.Values[0], index)
+				}
 			}
-			inspectExpressionCalls(pass, valueSpec.Values[0], sealedObjects, sealed, reported)
+			inspectExpressionCalls(pass, valueSpec.Values[0], facts, sealedObjects, sealed, reported)
 			return
 		}
 	}
-	for _, value := range valueSpec.Values {
-		reportImportedSealedValue(pass, value, expected, sealedObjects, sealed, reported)
-		inspectExpressionCalls(pass, value, sealedObjects, sealed, reported)
+	for index, value := range valueSpec.Values {
+		reportImportedSealedValueWithFacts(pass, value, expected, facts, sealedObjects, sealed, reported)
+		if facts != nil && index < len(valueSpec.Names) {
+			facts.recordName(pass, valueSpec.Names[index], value, -1)
+		}
+		inspectExpressionCalls(pass, value, facts, sealedObjects, sealed, reported)
 	}
 }
 
-func inspectExpressionCalls(pass *analysis.Pass, expr ast.Expr, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+func inspectExpressionCalls(pass *analysis.Pass, expr ast.Expr, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
 	ast.Inspect(expr, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.FuncLit:
@@ -263,17 +356,17 @@ func inspectExpressionCalls(pass *analysis.Pass, expr ast.Expr, sealedObjects []
 			inspectFlow(pass, node.Body, sig.Results(), sealedObjects, sealed, reported)
 			return false
 		case *ast.CallExpr:
-			inspectCall(pass, node, sealedObjects, sealed, reported)
+			inspectCall(pass, node, facts, sealedObjects, sealed, reported)
 		case *ast.CompositeLit:
-			inspectCompositeLiteral(pass, node, sealedObjects, sealed, reported)
+			inspectCompositeLiteral(pass, node, facts, sealedObjects, sealed, reported)
 		}
 		return true
 	})
 }
 
-func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+func inspectCall(pass *analysis.Pass, call *ast.CallExpr, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
 	if target := sealedObjectForType(pass.TypesInfo.TypeOf(call.Fun), sealedObjects); target != nil && len(call.Args) == 1 {
-		reportImportedSealedValue(pass, call.Args[0], target.Type(), sealedObjects, sealed, reported)
+		reportImportedSealedValueWithFacts(pass, call.Args[0], target.Type(), facts, sealedObjects, sealed, reported)
 		return
 	}
 	if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == "append" && len(call.Args) > 1 {
@@ -282,7 +375,7 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types
 		}
 		if slice, ok := underlying(pass.TypesInfo.TypeOf(call.Args[0])).(*types.Slice); ok {
 			for _, arg := range call.Args[1:] {
-				reportImportedSealedValue(pass, arg, slice.Elem(), sealedObjects, sealed, reported)
+				reportImportedSealedValueWithFacts(pass, arg, slice.Elem(), facts, sealedObjects, sealed, reported)
 			}
 		}
 		return
@@ -308,7 +401,7 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types
 						expected = slice.Elem()
 					}
 				}
-				reportImportedSealedValueAt(pass, call.Args[0], expected, index, sealedObjects, sealed, reported)
+				reportImportedSealedValueWithFactsAt(pass, call.Args[0], expected, index, facts, sealedObjects, sealed, reported)
 			}
 			return
 		}
@@ -330,43 +423,44 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types
 				expected = slice.Elem()
 			}
 		}
-		reportImportedSealedValue(pass, arg, expected, sealedObjects, sealed, reported)
+		reportImportedSealedValueWithFacts(pass, arg, expected, facts, sealedObjects, sealed, reported)
 	}
 }
 
-func inspectCompositeLiteral(pass *analysis.Pass, lit *ast.CompositeLit, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+func inspectCompositeLiteral(pass *analysis.Pass, lit *ast.CompositeLit, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
 	switch typ := underlying(pass.TypesInfo.TypeOf(lit)).(type) {
 	case *types.Slice:
 		for _, elt := range lit.Elts {
-			reportImportedSealedValue(pass, compositeLiteralValue(elt), typ.Elem(), sealedObjects, sealed, reported)
+			reportImportedSealedValueWithFacts(pass, compositeLiteralValue(elt), typ.Elem(), facts, sealedObjects, sealed, reported)
 		}
 	case *types.Array:
 		for _, elt := range lit.Elts {
-			reportImportedSealedValue(pass, compositeLiteralValue(elt), typ.Elem(), sealedObjects, sealed, reported)
+			reportImportedSealedValueWithFacts(pass, compositeLiteralValue(elt), typ.Elem(), facts, sealedObjects, sealed, reported)
 		}
 	case *types.Map:
 		for _, elt := range lit.Elts {
 			if kv, ok := elt.(*ast.KeyValueExpr); ok {
-				reportImportedSealedValue(pass, kv.Key, typ.Key(), sealedObjects, sealed, reported)
-				reportImportedSealedValue(pass, kv.Value, typ.Elem(), sealedObjects, sealed, reported)
+				reportImportedSealedValueWithFacts(pass, kv.Key, typ.Key(), facts, sealedObjects, sealed, reported)
+				reportImportedSealedValueWithFacts(pass, kv.Value, typ.Elem(), facts, sealedObjects, sealed, reported)
 			}
 		}
 	case *types.Struct:
 		for index, elt := range lit.Elts {
 			if kv, ok := elt.(*ast.KeyValueExpr); ok {
 				if field := structFieldForKey(typ, kv.Key); field != nil {
-					reportImportedSealedValue(pass, kv.Value, field.Type(), sealedObjects, sealed, reported)
+					reportImportedSealedValueWithFacts(pass, kv.Value, field.Type(), facts, sealedObjects, sealed, reported)
 				}
 				continue
 			}
 			if index < typ.NumFields() {
-				reportImportedSealedValue(pass, elt, typ.Field(index).Type(), sealedObjects, sealed, reported)
+				reportImportedSealedValueWithFacts(pass, elt, typ.Field(index).Type(), facts, sealedObjects, sealed, reported)
 			}
 		}
 	}
 }
 
 func underlying(t types.Type) types.Type {
+	t = unalias(t)
 	if named, ok := t.(*types.Named); ok {
 		return named.Underlying()
 	}
@@ -398,17 +492,33 @@ func reportImportedSealedValue(pass *analysis.Pass, expr ast.Expr, expected type
 	reportImportedSealedValueAt(pass, expr, expected, -1, sealedObjects, sealed, reported)
 }
 
-func reportImportedSealedValueAt(pass *analysis.Pass, expr ast.Expr, expected types.Type, tupleIndex int, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
-	sealedObj := sealedObjectForType(expected, sealedObjects)
-	if sealedObj == nil {
+func reportImportedSealedValueWithFacts(pass *analysis.Pass, expr ast.Expr, expected types.Type, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	reportImportedSealedValueWithFactsAt(pass, expr, expected, -1, facts, sealedObjects, sealed, reported)
+}
+
+func reportImportedSealedValueWithFactsAt(pass *analysis.Pass, expr ast.Expr, expected types.Type, tupleIndex int, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	if actual, ok := facts.assertedConcrete(pass, expr); ok {
+		reportImportedSealedActual(pass, expr, actual, expected, sealedObjects, sealed, reported)
 		return
 	}
+	reportImportedSealedValueAt(pass, expr, expected, tupleIndex, sealedObjects, sealed, reported)
+}
+
+func reportImportedSealedValueAt(pass *analysis.Pass, expr ast.Expr, expected types.Type, tupleIndex int, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
 	actual := pass.TypesInfo.TypeOf(expr)
 	if tuple, ok := actual.(*types.Tuple); ok {
 		if tupleIndex < 0 || tupleIndex >= tuple.Len() {
 			return
 		}
 		actual = tuple.At(tupleIndex).Type()
+	}
+	reportImportedSealedActual(pass, expr, actual, expected, sealedObjects, sealed, reported)
+}
+
+func reportImportedSealedActual(pass *analysis.Pass, expr ast.Expr, actual types.Type, expected types.Type, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	sealedObj := sealedObjectForType(expected, sealedObjects)
+	if sealedObj == nil {
+		return
 	}
 	named := namedImplementation(actual)
 	if named == nil || named.Obj() == nil || named.Obj().Pkg() == nil {
@@ -432,6 +542,7 @@ func reportImportedSealedValueAt(pass *analysis.Pass, expr ast.Expr, expected ty
 }
 
 func sealedObjectForType(t types.Type, sealedObjects []*types.TypeName) *types.TypeName {
+	t = unalias(t)
 	named, ok := t.(*types.Named)
 	if !ok || named.Obj() == nil {
 		return nil
@@ -445,15 +556,23 @@ func sealedObjectForType(t types.Type, sealedObjects []*types.TypeName) *types.T
 }
 
 func namedImplementation(t types.Type) *types.Named {
+	t = unalias(t)
 	if named, ok := t.(*types.Named); ok {
 		return named
 	}
 	if ptr, ok := t.(*types.Pointer); ok {
-		if named, ok := ptr.Elem().(*types.Named); ok {
+		if named, ok := unalias(ptr.Elem()).(*types.Named); ok {
 			return named
 		}
 	}
 	return nil
+}
+
+func unalias(t types.Type) types.Type {
+	if t == nil {
+		return nil
+	}
+	return types.Unalias(t)
 }
 
 func qualifiedImportedName(named *types.Named) string {
@@ -471,6 +590,7 @@ func qualifiedTypeName(obj *types.TypeName) string {
 }
 
 func namedInterface(t types.Type) *types.Interface {
+	t = unalias(t)
 	named, ok := t.(*types.Named)
 	if !ok {
 		return nil
