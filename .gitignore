@@ -1,6 +1,6 @@
 # Binaries
 bin/
-cerebro
+/cerebro
 !cmd/cerebro/
 !cmd/cerebro/**
 !proto/cerebro/

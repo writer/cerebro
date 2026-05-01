@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -91,7 +92,7 @@ type Registry struct {
 func NewRegistry(sources ...Source) (*Registry, error) {
 	indexed := make(map[string]Source, len(sources))
 	for _, source := range sources {
-		if source == nil {
+		if isNilSource(source) {
 			return nil, fmt.Errorf("source is required")
 		}
 		spec := source.Spec()
@@ -112,6 +113,19 @@ func NewRegistry(sources ...Source) (*Registry, error) {
 		indexed[id] = source
 	}
 	return &Registry{sources: indexed}, nil
+}
+
+func isNilSource(source Source) bool {
+	if source == nil {
+		return true
+	}
+	value := reflect.ValueOf(source)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 // Get returns a registered source by ID.

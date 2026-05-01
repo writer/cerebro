@@ -335,7 +335,15 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	for _, rule := range rules {
 		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
 		if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
-			return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+			persistErr := fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+			// Mark every previously persisted run failed so the durable run history
+			// does not leave them stuck in `running` when later persistence fails.
+			for _, prior := range states {
+				if failErr := s.markRuleEvaluationFailed(ctx, prior, persistErr); failErr != nil {
+					return nil, failErr
+				}
+			}
+			return nil, persistErr
 		}
 		state := &ruleEvaluationState{
 			rule:        rule,
