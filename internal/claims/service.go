@@ -199,10 +199,13 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 			}
 		}
 		if retracted := retractedRelation(runtime, claim); retracted != nil {
-			if err := s.deleteLink(ctx, retracted); err != nil {
+			deleted, err := s.deleteRelationIfUnsupported(ctx, runtime, claim, retracted)
+			if err != nil {
 				return nil, err
 			}
-			delete(upsertedLinks, projectedLinkKey(retracted))
+			if deleted {
+				delete(upsertedLinks, projectedLinkKey(retracted))
+			}
 		}
 		if projected := projectedRelation(runtime, claim); projected != nil {
 			wrote, err := s.upsertLink(ctx, projected, upsertedLinks)
@@ -295,7 +298,9 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.S
 		if _, ok := incomingIDs[strings.TrimSpace(existingClaim.ID)]; ok {
 			continue
 		}
-		if err := s.deleteLink(ctx, projectedRelation(runtime, protoClaim(existingClaim))); err != nil {
+		link := projectedRelation(runtime, protoClaim(existingClaim))
+		_, err := s.deleteRelationIfUnsupported(ctx, runtime, protoClaim(existingClaim), link)
+		if err != nil {
 			return retracted, err
 		}
 		if _, err := s.store.UpsertClaim(ctx, retractedClaim(existingClaim, retractAt, snapshotEventID)); err != nil {
@@ -304,6 +309,23 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.S
 		retracted++
 	}
 	return retracted, nil
+}
+
+func (s *Service) deleteRelationIfUnsupported(ctx context.Context, runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim, link *ports.ProjectedLink) (bool, error) {
+	if link == nil {
+		return false, nil
+	}
+	supported, err := s.hasOtherAssertedRelation(ctx, runtime, strings.TrimSpace(claim.GetId()), link)
+	if err != nil {
+		return false, err
+	}
+	if supported {
+		return false, nil
+	}
+	if err := s.deleteLink(ctx, link); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Service) existingAssertedRelation(ctx context.Context, runtime *cerebrov1.SourceRuntime, claimID string) (*ports.ProjectedLink, error) {

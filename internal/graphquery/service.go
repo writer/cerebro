@@ -64,6 +64,9 @@ func validateCerebroURN(urn string) error {
 	if parts[len(parts)-1] == "" {
 		return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", ErrInvalidRequest)
 	}
+	if len(parts) > 3 && parts[3] == "runtime" && (len(parts) < 7 || parts[5] == "") {
+		return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:runtime:<runtime_id>:<entity_type>:<id>", ErrInvalidRequest)
+	}
 	for i, part := range parts[2:] {
 		if strings.TrimSpace(part) != part || (i < 3 && part == "") {
 			return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", ErrInvalidRequest)

@@ -212,6 +212,8 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 			}
 		case *ast.CallExpr:
 			inspectCall(pass, node, sealedObjects, sealed, reported)
+		case *ast.CompositeLit:
+			inspectCompositeLiteral(pass, node, sealedObjects, sealed, reported)
 		}
 		return true
 	})
@@ -232,6 +234,8 @@ func inspectExpressionCalls(pass *analysis.Pass, expr ast.Expr, sealedObjects []
 			return false
 		case *ast.CallExpr:
 			inspectCall(pass, node, sealedObjects, sealed, reported)
+		case *ast.CompositeLit:
+			inspectCompositeLiteral(pass, node, sealedObjects, sealed, reported)
 		}
 		return true
 	})
@@ -277,6 +281,32 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types
 		}
 		reportImportedSealedValue(pass, arg, expected, sealedObjects, sealed, reported)
 	}
+}
+
+func inspectCompositeLiteral(pass *analysis.Pass, lit *ast.CompositeLit, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	switch typ := pass.TypesInfo.TypeOf(lit).(type) {
+	case *types.Slice:
+		for _, elt := range lit.Elts {
+			reportImportedSealedValue(pass, compositeLiteralValue(elt), typ.Elem(), sealedObjects, sealed, reported)
+		}
+	case *types.Array:
+		for _, elt := range lit.Elts {
+			reportImportedSealedValue(pass, compositeLiteralValue(elt), typ.Elem(), sealedObjects, sealed, reported)
+		}
+	case *types.Map:
+		for _, elt := range lit.Elts {
+			if kv, ok := elt.(*ast.KeyValueExpr); ok {
+				reportImportedSealedValue(pass, kv.Value, typ.Elem(), sealedObjects, sealed, reported)
+			}
+		}
+	}
+}
+
+func compositeLiteralValue(expr ast.Expr) ast.Expr {
+	if kv, ok := expr.(*ast.KeyValueExpr); ok {
+		return kv.Value
+	}
+	return expr
 }
 
 func reportImportedSealedValue(pass *analysis.Pass, expr ast.Expr, expected types.Type, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {

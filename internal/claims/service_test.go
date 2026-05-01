@@ -521,6 +521,78 @@ func TestWriteClaimsRetractedRelationDeletesProjectedLink(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsRetractingOneOfMultipleSupportingClaimsKeepsProjectedLink(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-a": {
+				ID:         "claim-a",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+			"claim-b": {
+				ID:         "claim-b",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "sdk",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{{
+			Id:         "claim-a",
+			SubjectUrn: issueURN,
+			Predicate:  "assigned_to",
+			ObjectUrn:  assigneeURN,
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusRetracted,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[linkKey]; !ok {
+		t.Fatal("projected link was deleted even though claim-b still asserts it")
+	}
+	if _, ok := projection.deletedLinks[linkKey]; ok {
+		t.Fatal("projected link deletion recorded even though another claim still asserts it")
+	}
+}
+
 func TestWriteClaimsRefutedAndSupersededRelationsDeleteProjectedLink(t *testing.T) {
 	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
 	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"

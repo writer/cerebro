@@ -36,6 +36,12 @@ func PassVariadicBad() {
 	acceptVariadic(externalbad.Bad{}) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func CompositeLiteralBad() []sealedpkg.Runner {
+	return []sealedpkg.Runner{
+		externalbad.Bad{}, // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+	}
+}
+
 func PassBad(fn func(sealedpkg.Runner)) {
 	fn(externalbad.Bad{}) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }

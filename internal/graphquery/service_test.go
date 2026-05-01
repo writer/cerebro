@@ -81,6 +81,7 @@ func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 		"urn:cerebro:writer:user: alice",
 		"urn:cerebro:writer:okta_resource:policyrule: pol-1",
 		"urn:cerebro:writer:runtime:writer-jira:ticket: ENG-123",
+		"urn:cerebro:writer:runtime:writer-jira::ENG-123",
 		"urn:cerebro:writer:user:alice:",
 		"urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123:",
 		"   ",
