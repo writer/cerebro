@@ -89,6 +89,12 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "")
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
+	t.Setenv("CEREBRO_KUZU_PATH", "")
+	t.Setenv("CEREBRO_NEO4J_URI", "")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
+	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
 }
 
 func TestLoadFromNeo4jEnv(t *testing.T) {
@@ -191,6 +197,7 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 }
 
 func TestLoadInfersDriversFromURLs(t *testing.T) {
+	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")
