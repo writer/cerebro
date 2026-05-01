@@ -16,8 +16,10 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 )
 
-const defaultDatabase = "neo4j"
 const defaultIngestRunListLimit = 25
+const maxAttributeMergeRetries = 5
+
+var errConcurrentAttributeMerge = errors.New("concurrent attribute merge")
 
 // Store is a Neo4j/Aura-backed graph projection store implementation.
 type Store struct {
@@ -51,9 +53,6 @@ func Open(cfg config.GraphStoreConfig) (*Store, error) {
 		return nil, errors.New("neo4j password is required")
 	}
 	database := strings.TrimSpace(cfg.Neo4jDatabase)
-	if database == "" {
-		database = defaultDatabase
-	}
 	driver, err := neo4jdriver.NewDriverWithContext(uri, neo4jdriver.BasicAuth(username, cfg.Neo4jPassword, ""))
 	if err != nil {
 		return nil, fmt.Errorf("open neo4j: %w", err)
@@ -284,33 +283,44 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
-		attributes, err := s.mergedEntityAttributes(ctx, tx, urn, entity.Attributes)
-		if err != nil {
-			return nil, fmt.Errorf("load projected entity %q attributes: %w", urn, err)
-		}
-		attributesJSON, err := graphAttributesJSON(attributes)
-		if err != nil {
-			return nil, fmt.Errorf("marshal projected entity attributes: %w", err)
-		}
-		return consume(ctx, tx, `MERGE (e:Entity {urn: $urn})
-SET e.tenant_id = $tenant_id,
-    e.source_id = $source_id,
-    e.entity_type = $entity_type,
-    e.label = $label,
-    e.attributes_json = $attributes_json`, map[string]any{
-			"urn":             urn,
-			"tenant_id":       tenantID,
-			"source_id":       sourceID,
-			"entity_type":     entityType,
-			"label":           label,
-			"attributes_json": attributesJSON,
-		})
-	})
-	if err != nil {
-		return fmt.Errorf("upsert projected entity %q: %w", urn, err)
+	params := map[string]any{
+		"urn":         urn,
+		"tenant_id":   tenantID,
+		"source_id":   sourceID,
+		"entity_type": entityType,
+		"label":       label,
 	}
-	return nil
+	for attempt := 0; attempt < maxAttributeMergeRetries; attempt++ {
+		_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+			attributesJSON, version, err := mergeEntityAndLoadAttributes(ctx, tx, params)
+			if err != nil {
+				return nil, fmt.Errorf("load projected entity %q attributes: %w", urn, err)
+			}
+			existing, err := graphAttributesFromJSON(attributesJSON)
+			if err != nil {
+				return nil, fmt.Errorf("decode projected entity attributes: %w", err)
+			}
+			mergedJSON, err := graphAttributesJSON(mergeGraphAttributes(existing, entity.Attributes))
+			if err != nil {
+				return nil, fmt.Errorf("marshal projected entity attributes: %w", err)
+			}
+			updated, err := updateEntityAttributes(ctx, tx, urn, version, mergedJSON)
+			if err != nil {
+				return nil, err
+			}
+			if !updated {
+				return nil, errConcurrentAttributeMerge
+			}
+			return nil, nil
+		})
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, errConcurrentAttributeMerge) {
+			return fmt.Errorf("upsert projected entity %q: %w", urn, err)
+		}
+	}
+	return fmt.Errorf("upsert projected entity %q: %w", urn, errConcurrentAttributeMerge)
 }
 
 // UpsertProjectedLink upserts one normalized link in the graph store.
@@ -327,32 +337,47 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err = s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
-		attributes, err := s.mergedLinkAttributes(ctx, tx, fromURN, relation, toURN, link.Attributes)
-		if err != nil {
-			return nil, fmt.Errorf("load projected link %q %q %q attributes: %w", fromURN, relation, toURN, err)
-		}
-		attributesJSON, err := graphAttributesJSON(attributes)
-		if err != nil {
-			return nil, fmt.Errorf("marshal projected link attributes: %w", err)
-		}
-		return consume(ctx, tx, `MATCH (src:Entity {urn: $from_urn}), (dst:Entity {urn: $to_urn})
-MERGE (src)-[r:RELATION {relation: $relation}]->(dst)
-SET r.tenant_id = $tenant_id,
-    r.source_id = $source_id,
-    r.attributes_json = $attributes_json`, map[string]any{
-			"from_urn":        fromURN,
-			"to_urn":          toURN,
-			"relation":        relation,
-			"tenant_id":       tenantID,
-			"source_id":       sourceID,
-			"attributes_json": attributesJSON,
-		})
-	})
-	if err != nil {
-		return fmt.Errorf("upsert projected link %q %q %q: %w", fromURN, relation, toURN, err)
+	params := map[string]any{
+		"from_urn":  fromURN,
+		"to_urn":    toURN,
+		"relation":  relation,
+		"tenant_id": tenantID,
+		"source_id": sourceID,
 	}
-	return nil
+	for attempt := 0; attempt < maxAttributeMergeRetries; attempt++ {
+		_, err = s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+			attributesJSON, version, found, err := mergeLinkAndLoadAttributes(ctx, tx, params)
+			if err != nil {
+				return nil, fmt.Errorf("load projected link %q %q %q attributes: %w", fromURN, relation, toURN, err)
+			}
+			if !found {
+				return nil, nil
+			}
+			existing, err := graphAttributesFromJSON(attributesJSON)
+			if err != nil {
+				return nil, fmt.Errorf("decode projected link attributes: %w", err)
+			}
+			mergedJSON, err := graphAttributesJSON(mergeGraphAttributes(existing, link.Attributes))
+			if err != nil {
+				return nil, fmt.Errorf("marshal projected link attributes: %w", err)
+			}
+			updated, err := updateLinkAttributes(ctx, tx, fromURN, relation, toURN, version, mergedJSON)
+			if err != nil {
+				return nil, err
+			}
+			if !updated {
+				return nil, errConcurrentAttributeMerge
+			}
+			return nil, nil
+		})
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, errConcurrentAttributeMerge) {
+			return fmt.Errorf("upsert projected link %q %q %q: %w", fromURN, relation, toURN, err)
+		}
+	}
+	return fmt.Errorf("upsert projected link %q %q %q: %w", fromURN, relation, toURN, errConcurrentAttributeMerge)
 }
 
 // DeleteProjectedLink removes one normalized link from the graph store.
@@ -787,50 +812,78 @@ func validateProjectedLinkIdentity(link *ports.ProjectedLink) (fromURN string, t
 	return fromURN, toURN, relation, strings.TrimSpace(link.TenantID), strings.TrimSpace(link.SourceID), nil
 }
 
-func (s *Store) mergedEntityAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, urn string, incoming map[string]string) (map[string]string, error) {
-	value, found, err := queryOptionalValue(ctx, tx, "MATCH (e:Entity {urn: $urn}) RETURN coalesce(e.attributes_json, '{}')", map[string]any{"urn": urn})
+func mergeEntityAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any) (string, int64, error) {
+	result, err := tx.Run(ctx, `MERGE (e:Entity {urn: $urn})
+ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
+SET e.tenant_id = $tenant_id,
+    e.source_id = $source_id,
+    e.entity_type = $entity_type,
+    e.label = $label
+RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0)`, params)
 	if err != nil {
-		return nil, err
-	}
-	if !found {
-		return mergeGraphAttributes(nil, incoming), nil
-	}
-	existing, err := graphAttributesFromJSON(stringValue(value))
-	if err != nil {
-		return nil, err
-	}
-	return mergeGraphAttributes(existing, incoming), nil
-}
-
-func (s *Store) mergedLinkAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, fromURN string, relation string, toURN string, incoming map[string]string) (map[string]string, error) {
-	value, found, err := queryOptionalValue(ctx, tx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn})
-RETURN coalesce(r.attributes_json, '{}')`, map[string]any{"from_urn": fromURN, "relation": relation, "to_urn": toURN})
-	if err != nil {
-		return nil, err
-	}
-	if !found {
-		return mergeGraphAttributes(nil, incoming), nil
-	}
-	existing, err := graphAttributesFromJSON(stringValue(value))
-	if err != nil {
-		return nil, err
-	}
-	return mergeGraphAttributes(existing, incoming), nil
-}
-
-func queryOptionalValue(ctx context.Context, tx neo4jdriver.ManagedTransaction, query string, params map[string]any) (any, bool, error) {
-	result, err := tx.Run(ctx, query, params)
-	if err != nil {
-		return nil, false, err
+		return "", 0, err
 	}
 	if !result.Next(ctx) {
-		return nil, false, result.Err()
+		if err := result.Err(); err != nil {
+			return "", 0, err
+		}
+		return "", 0, errors.New("entity merge returned no rows")
 	}
 	values := result.Record().Values
-	if len(values) == 0 {
-		return nil, false, errors.New("query returned no values")
+	return stringValue(values[0]), toInt64(values[1]), result.Err()
+}
+
+func updateEntityAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, urn string, version int64, attributesJSON string) (bool, error) {
+	updated, err := countQuery(ctx, tx, `MATCH (e:Entity {urn: $urn})
+WHERE coalesce(e.attributes_version, 0) = $attributes_version
+SET e.attributes_json = $attributes_json,
+    e.attributes_version = $next_attributes_version
+RETURN count(e)`, map[string]any{
+		"urn":                     urn,
+		"attributes_version":      version,
+		"next_attributes_version": version + 1,
+		"attributes_json":         attributesJSON,
+	})
+	if err != nil {
+		return false, err
 	}
-	return values[0], true, result.Err()
+	return updated == 1, nil
+}
+
+func mergeLinkAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any) (string, int64, bool, error) {
+	result, err := tx.Run(ctx, `MATCH (src:Entity {urn: $from_urn}), (dst:Entity {urn: $to_urn})
+MERGE (src)-[r:RELATION {relation: $relation}]->(dst)
+ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0
+SET r.tenant_id = $tenant_id,
+    r.source_id = $source_id
+RETURN coalesce(r.attributes_json, '{}'), coalesce(r.attributes_version, 0)`, params)
+	if err != nil {
+		return "", 0, false, err
+	}
+	if !result.Next(ctx) {
+		return "", 0, false, result.Err()
+	}
+	values := result.Record().Values
+	return stringValue(values[0]), toInt64(values[1]), true, result.Err()
+}
+
+func updateLinkAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, fromURN string, relation string, toURN string, version int64, attributesJSON string) (bool, error) {
+	updated, err := countQuery(ctx, tx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn})
+WHERE coalesce(r.attributes_version, 0) = $attributes_version
+SET r.attributes_json = $attributes_json,
+    r.attributes_version = $next_attributes_version
+RETURN count(r)`, map[string]any{
+		"from_urn":                fromURN,
+		"relation":                relation,
+		"to_urn":                  toURN,
+		"attributes_version":      version,
+		"next_attributes_version": version + 1,
+		"attributes_json":         attributesJSON,
+	})
+	if err != nil {
+		return false, err
+	}
+	return updated == 1, nil
 }
 
 func lookupNeighborhoodNode(ctx context.Context, tx neo4jdriver.ManagedTransaction, rootURN string) (*ports.NeighborhoodNode, error) {

@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
+	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphstore"
+
 	"github.com/writer/cerebro/internal/ports"
 )
 
@@ -79,11 +81,21 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 		EntityType: "github_repository",
 		Label:      "writer/cerebro",
 	}
+	issue := &ports.ProjectedEntity{
+		URN:        "urn:cerebro:writer:github_issue:writer/cerebro#1",
+		TenantID:   "writer",
+		SourceID:   "github",
+		EntityType: "github_issue",
+		Label:      "writer/cerebro#1",
+	}
 	if err := store.UpsertProjectedEntity(ctx, user); err != nil {
 		t.Fatalf("UpsertProjectedEntity(user) error = %v", err)
 	}
 	if err := store.UpsertProjectedEntity(ctx, repo); err != nil {
 		t.Fatalf("UpsertProjectedEntity(repo) error = %v", err)
+	}
+	if err := store.UpsertProjectedEntity(ctx, issue); err != nil {
+		t.Fatalf("UpsertProjectedEntity(issue) error = %v", err)
 	}
 	if err := store.UpsertProjectedLink(ctx, &ports.ProjectedLink{
 		TenantID: "writer", SourceID: "github", FromURN: user.URN, Relation: "maintains", ToURN: repo.URN,
@@ -91,13 +103,44 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpsertProjectedLink() error = %v", err)
 	}
+	secondStore := waitForStore(t, ctx, config.GraphStoreConfig{
+		Neo4jURI:      fmt.Sprintf("bolt://127.0.0.1:%d", port),
+		Neo4jUsername: "neo4j",
+		Neo4jPassword: password,
+	})
+	defer func() { _ = secondStore.CloseContext(context.Background()) }()
+	updates := make(chan error, 2)
+	updatedUser := *user
+	updatedUser.Attributes = map[string]string{"team": "security"}
+	go func() { updates <- store.UpsertProjectedEntity(ctx, &updatedUser) }()
+	updatedUserAgain := *user
+	updatedUserAgain.Attributes = map[string]string{"email": "alice@example.com"}
+	go func() { updates <- secondStore.UpsertProjectedEntity(ctx, &updatedUserAgain) }()
+	for range 2 {
+		if err := <-updates; err != nil {
+			t.Fatalf("concurrent UpsertProjectedEntity() error = %v", err)
+		}
+	}
+	userAttributes := projectedEntityAttributes(t, ctx, store, user.URN)
+	for key, want := range map[string]string{"login": "alice", "team": "security", "email": "alice@example.com"} {
+		if userAttributes[key] != want {
+			t.Fatalf("projected user attributes[%q] = %q, want %q in %#v", key, userAttributes[key], want, userAttributes)
+		}
+	}
+
+	issueLink := &ports.ProjectedLink{
+		TenantID: "writer", SourceID: "github", FromURN: repo.URN, Relation: "tracks", ToURN: issue.URN,
+	}
+	if err := store.UpsertProjectedLink(ctx, issueLink); err != nil {
+		t.Fatalf("UpsertProjectedLink(issue) error = %v", err)
+	}
 
 	counts, err := store.Counts(ctx)
 	if err != nil {
 		t.Fatalf("Counts() error = %v", err)
 	}
-	if counts.Nodes != 2 || counts.Relations != 1 {
-		t.Fatalf("Counts() = %#v, want 2 nodes and 1 relation", counts)
+	if counts.Nodes != 3 || counts.Relations != 2 {
+		t.Fatalf("Counts() = %#v, want 3 nodes and 2 relations", counts)
 	}
 	neighborhood, err := store.GetEntityNeighborhood(ctx, user.URN, 5)
 	if err != nil {
@@ -110,8 +153,22 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PathPatterns() error = %v", err)
 	}
-	if len(patterns) != 0 {
-		t.Fatalf("PathPatterns() = %#v, want no two-hop patterns", patterns)
+	if len(patterns) != 1 || patterns[0].FirstRelation != "maintains" || patterns[0].SecondRelation != "tracks" {
+		t.Fatalf("PathPatterns() = %#v, want authored two-hop pattern", patterns)
+	}
+	traversals, err := store.SampleTraversals(ctx, 5)
+	if err != nil {
+		t.Fatalf("SampleTraversals() error = %v", err)
+	}
+	if len(traversals) != 1 || traversals[0].FirstRelation != "maintains" || traversals[0].SecondRelation != "tracks" {
+		t.Fatalf("SampleTraversals() = %#v, want authored two-hop traversal", traversals)
+	}
+	topology, err := store.Topology(ctx)
+	if err != nil {
+		t.Fatalf("Topology() error = %v", err)
+	}
+	if topology.SourcesOnly != 1 || topology.Intermediates != 1 || topology.SinksOnly != 1 {
+		t.Fatalf("Topology() = %#v, want one source-only, one intermediate, and one sink-only", topology)
 	}
 	checks, err := store.IntegrityChecks(ctx)
 	if err != nil {
@@ -139,6 +196,31 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	if err != nil || len(runs) != 1 || runs[0].ID != run.ID {
 		t.Fatalf("ListIngestRuns() = %#v, %v", runs, err)
 	}
+	if err := store.DeleteProjectedLink(ctx, issueLink); err != nil {
+		t.Fatalf("DeleteProjectedLink() error = %v", err)
+	}
+	counts, err = store.Counts(ctx)
+	if err != nil {
+		t.Fatalf("Counts(after delete) error = %v", err)
+	}
+	if counts.Relations != 1 {
+		t.Fatalf("Counts(after delete) = %#v, want 1 relation", counts)
+	}
+}
+
+func projectedEntityAttributes(t *testing.T, ctx context.Context, store *Store, urn string) map[string]string {
+	t.Helper()
+	value, err := store.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		return queryOneValue(ctx, tx, "MATCH (e:Entity {urn: $urn}) RETURN e.attributes_json", map[string]any{"urn": urn})
+	})
+	if err != nil {
+		t.Fatalf("query projected entity attributes: %v", err)
+	}
+	attributes, err := graphAttributesFromJSON(stringValue(value))
+	if err != nil {
+		t.Fatalf("decode projected entity attributes: %v", err)
+	}
+	return attributes
 }
 
 func freePort(t *testing.T) int {
