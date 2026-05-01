@@ -13,6 +13,10 @@ func makeBad() (externalbad.Bad, error) {
 	return externalbad.Bad{}, nil
 }
 
+func makeTwoBad() (externalbad.Bad, externalbad.Bad) {
+	return externalbad.Bad{}, externalbad.Bad{}
+}
+
 func ReturnTupleBad() (sealedpkg.Runner, error) {
 	return makeBad() // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
@@ -57,6 +61,10 @@ func acceptVariadic(...sealedpkg.Runner) {}
 
 func PassVariadicBad() {
 	acceptVariadic(externalbad.Bad{}) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func PassVariadicTupleBad() {
+	acceptVariadic(makeTwoBad()) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
 func CompositeLiteralBad() []sealedpkg.Runner {

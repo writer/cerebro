@@ -294,8 +294,21 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types
 	params := sig.Params()
 	if len(call.Args) == 1 {
 		if tuple, ok := pass.TypesInfo.TypeOf(call.Args[0]).(*types.Tuple); ok {
-			for index := 0; params != nil && index < params.Len() && index < tuple.Len(); index++ {
-				reportImportedSealedValueAt(pass, call.Args[0], params.At(index).Type(), index, sealedObjects, sealed, reported)
+			for index := 0; params != nil && index < tuple.Len(); index++ {
+				paramIndex := index
+				if sig.Variadic() && index >= params.Len()-1 {
+					paramIndex = params.Len() - 1
+				}
+				if paramIndex < 0 || paramIndex >= params.Len() {
+					break
+				}
+				expected := params.At(paramIndex).Type()
+				if sig.Variadic() && index >= params.Len()-1 {
+					if slice, ok := expected.(*types.Slice); ok {
+						expected = slice.Elem()
+					}
+				}
+				reportImportedSealedValueAt(pass, call.Args[0], expected, index, sealedObjects, sealed, reported)
 			}
 			return
 		}
