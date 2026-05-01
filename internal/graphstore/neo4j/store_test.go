@@ -131,8 +131,23 @@ func TestNeo4jDockerProjectionAndQueries(t *testing.T) {
 	issueLink := &ports.ProjectedLink{
 		TenantID: "writer", SourceID: "github", FromURN: repo.URN, Relation: "tracks", ToURN: issue.URN,
 	}
-	if err := store.UpsertProjectedLink(ctx, issueLink); err != nil {
-		t.Fatalf("UpsertProjectedLink(issue) error = %v", err)
+	linkUpdates := make(chan error, 2)
+	issueLinkWithPriority := *issueLink
+	issueLinkWithPriority.Attributes = map[string]string{"priority": "high"}
+	go func() { linkUpdates <- store.UpsertProjectedLink(ctx, &issueLinkWithPriority) }()
+	issueLinkWithState := *issueLink
+	issueLinkWithState.Attributes = map[string]string{"state": "open"}
+	go func() { linkUpdates <- secondStore.UpsertProjectedLink(ctx, &issueLinkWithState) }()
+	for range 2 {
+		if err := <-linkUpdates; err != nil {
+			t.Fatalf("concurrent UpsertProjectedLink() error = %v", err)
+		}
+	}
+	issueLinkAttributes := projectedLinkAttributes(t, ctx, store, issueLink)
+	for key, want := range map[string]string{"priority": "high", "state": "open"} {
+		if issueLinkAttributes[key] != want {
+			t.Fatalf("projected issue link attributes[%q] = %q, want %q in %#v", key, issueLinkAttributes[key], want, issueLinkAttributes)
+		}
 	}
 
 	counts, err := store.Counts(ctx)
@@ -219,6 +234,41 @@ func projectedEntityAttributes(t *testing.T, ctx context.Context, store *Store, 
 	attributes, err := graphAttributesFromJSON(stringValue(value))
 	if err != nil {
 		t.Fatalf("decode projected entity attributes: %v", err)
+	}
+	return attributes
+}
+
+func projectedLinkAttributes(t *testing.T, ctx context.Context, store *Store, link *ports.ProjectedLink) map[string]string {
+	t.Helper()
+	values, err := store.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		result, err := tx.Run(ctx, `MATCH (:Entity {urn: $from_urn})-[r:RELATION {relation: $relation}]->(:Entity {urn: $to_urn})
+RETURN count(r), collect(r.attributes_json)`, map[string]any{
+			"from_urn": link.FromURN,
+			"relation": link.Relation,
+			"to_urn":   link.ToURN,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !result.Next(ctx) {
+			return nil, result.Err()
+		}
+		return result.Record().Values, result.Err()
+	})
+	if err != nil {
+		t.Fatalf("query projected link attributes: %v", err)
+	}
+	recordValues, ok := values.([]any)
+	if !ok || len(recordValues) != 2 || toInt64(recordValues[0]) != 1 {
+		t.Fatalf("projected link query returned %#v, want one relation", values)
+	}
+	rawValues, ok := recordValues[1].([]any)
+	if !ok || len(rawValues) != 1 {
+		t.Fatalf("projected link attributes returned %#v", recordValues[1])
+	}
+	attributes, err := graphAttributesFromJSON(stringValue(rawValues[0]))
+	if err != nil {
+		t.Fatalf("decode projected link attributes: %v", err)
 	}
 	return attributes
 }

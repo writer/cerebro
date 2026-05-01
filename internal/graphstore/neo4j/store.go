@@ -852,6 +852,7 @@ RETURN count(e)`, map[string]any{
 
 func mergeLinkAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any) (string, int64, bool, error) {
 	result, err := tx.Run(ctx, `MATCH (src:Entity {urn: $from_urn}), (dst:Entity {urn: $to_urn})
+SET src.relation_lock = coalesce(src.relation_lock, 0) + 1
 MERGE (src)-[r:RELATION {relation: $relation}]->(dst)
 ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0
 SET r.tenant_id = $tenant_id,
