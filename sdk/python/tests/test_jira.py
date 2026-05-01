@@ -113,6 +113,15 @@ class JiraPostureTests(unittest.TestCase):
 
         self.assertTrue(any(finding["id"] == "jira_workspace_admin_sprawl" for finding in findings))
 
+    def test_build_jira_posture_findings_ignores_admins_without_email_for_sprawl(self) -> None:
+        findings = jira.build_jira_posture_findings(
+            self.integration,
+            {"workspace_key": "writer", "admins": [{}, {}, {}, {}, {}, {}]},
+            {"relation_counts_by_type": {}},
+        )
+
+        self.assertFalse(any(finding["id"] == "jira_workspace_admin_sprawl" for finding in findings))
+
 
 if __name__ == "__main__":
     unittest.main()

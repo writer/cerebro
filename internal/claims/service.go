@@ -599,8 +599,13 @@ func validateRuntimeURN(runtime *cerebrov1.SourceRuntime, urn string, field stri
 	if runtimeID == "" {
 		return nil
 	}
-	if len(parts) > 4 && parts[3] == "runtime" && parts[4] != runtimeID {
-		return fmt.Errorf("%w: claim %s urn must belong to runtime %q", ErrInvalidRequest, field, runtimeID)
+	if len(parts) > 4 && parts[3] == "runtime" {
+		if len(parts) < 7 || parts[5] == "" {
+			return fmt.Errorf("%w: claim %s urn is malformed", ErrInvalidRequest, field)
+		}
+		if parts[4] != runtimeID {
+			return fmt.Errorf("%w: claim %s urn must belong to runtime %q", ErrInvalidRequest, field, runtimeID)
+		}
 	}
 	return nil
 }

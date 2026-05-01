@@ -29,6 +29,9 @@ test("jira subpath imports the exported source entrypoint", async () => {
   assert.doesNotMatch(example, /from "\.\.\/src\/jira\.js"/);
   assert.doesNotMatch(example, /from "\.\.\/src\/jira\.ts"/);
   assert.match(example, /from "\.\.\/src\/jira"/);
+
+  const bridge = await readFile(path.join(srcDir, "index.js"), "utf8");
+  assert.doesNotMatch(bridge, /\.ts"/);
 });
 
 test("jira subpath is importable at runtime", async () => {
