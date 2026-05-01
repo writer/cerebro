@@ -138,6 +138,18 @@ func TestLoadInfersNeo4jDriverFromURI(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsConflictingGraphStoreInference(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
+	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
+	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
 func TestLoadRejectsMissingNeo4jURI(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)

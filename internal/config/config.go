@@ -114,10 +114,14 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("unsupported CEREBRO_STATE_STORE_DRIVER %q", cfg.StateStore.Driver)
 	}
 	if cfg.GraphStore.Driver == "" {
+		hasKuzuPath := cfg.GraphStore.KuzuPath != ""
+		hasNeo4jURI := cfg.GraphStore.Neo4jURI != ""
 		switch {
-		case cfg.GraphStore.KuzuPath != "":
+		case hasKuzuPath && hasNeo4jURI:
+			return Config{}, fmt.Errorf("CEREBRO_GRAPH_STORE_DRIVER is required when both CEREBRO_KUZU_PATH and CEREBRO_NEO4J_URI are set")
+		case hasKuzuPath:
 			cfg.GraphStore.Driver = GraphStoreDriverKuzu
-		case cfg.GraphStore.Neo4jURI != "":
+		case hasNeo4jURI:
 			cfg.GraphStore.Driver = GraphStoreDriverNeo4j
 		}
 	}
