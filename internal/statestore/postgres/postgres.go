@@ -26,10 +26,11 @@ type Store struct {
 
 // Open opens a Postgres-backed current-state store.
 func Open(cfg config.StateStoreConfig) (*Store, error) {
-	if strings.TrimSpace(cfg.PostgresDSN) == "" {
+	dsn := strings.TrimSpace(cfg.PostgresDSN)
+	if dsn == "" {
 		return nil, errors.New("postgres dsn is required")
 	}
-	db, err := sql.Open("pgx", cfg.PostgresDSN)
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}

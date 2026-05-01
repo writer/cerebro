@@ -809,11 +809,15 @@ func (a *App) handleEvaluateSourceRuntimeFindingRules(w http.ResponseWriter, r *
 		return
 	}
 	if eventLimit := r.URL.Query().Get("event_limit"); eventLimit != "" {
+		// Unmarshal the override into a separate message so we do not reset
+		// rule_ids (or any future field) provided in the request body.
+		overrides := &cerebrov1.EvaluateSourceRuntimeFindingRulesRequest{}
 		body := []byte(`{"event_limit":` + eventLimit + `}`)
-		if err := unmarshalHTTPProtoJSON(body, request); err != nil {
+		if err := unmarshalHTTPProtoJSON(body, overrides); err != nil {
 			writeFindingError(w, err)
 			return
 		}
+		request.EventLimit = overrides.GetEventLimit()
 	}
 	request.Id = r.PathValue("runtimeID")
 	if ruleIDs := r.URL.Query()["rule_id"]; len(ruleIDs) != 0 {
@@ -1677,7 +1681,7 @@ func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 		if key == "cursor" || len(rawValues) == 0 {
 			continue
 		}
-		if sensitiveSourceConfigKey(key) {
+		if headerOnlySourceConfigKey(key) {
 			return nil, fmt.Errorf("%w: source config key %q must not be supplied in query parameters", sourceops.ErrInvalidRequest, key)
 		}
 		values[key] = rawValues[len(rawValues)-1]
@@ -1697,6 +1701,18 @@ func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
 	return values, nil
 }
 
+func headerOnlySourceConfigKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	if normalized == "" {
+		return false
+	}
+	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(normalized)
+	if compact == "accesskeyid" {
+		return false
+	}
+	return sensitiveSourceConfigKey(normalized)
+}
+
 func sensitiveSourceConfigKey(key string) bool {
 	value := strings.ToLower(strings.TrimSpace(key))
 	if value == "" {
@@ -1706,7 +1722,10 @@ func sensitiveSourceConfigKey(key string) bool {
 		return true
 	}
 	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
-	if strings.Contains(compact, "apikey") || strings.Contains(compact, "privatekey") {
+	if strings.Contains(compact, "apikey") ||
+		strings.Contains(compact, "accesskey") ||
+		strings.Contains(compact, "privatekey") ||
+		strings.Contains(compact, "signingkey") {
 		return true
 	}
 	return value == "key"

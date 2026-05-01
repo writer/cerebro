@@ -55,6 +55,19 @@ func TestGetEntityNeighborhoodRequiresAvailableStore(t *testing.T) {
 	}
 }
 
+func TestGetEntityNeighborhoodAllowsColonDelimitedRootIDs(t *testing.T) {
+	const arnRoot = "urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole"
+	store := &stubStore{neighborhood: &ports.EntityNeighborhood{Root: &ports.NeighborhoodNode{URN: arnRoot}}}
+	service := New(store)
+
+	if _, err := service.GetEntityNeighborhood(context.Background(), NeighborhoodRequest{RootURN: arnRoot}); err != nil {
+		t.Fatalf("GetEntityNeighborhood() error = %v", err)
+	}
+	if store.rootURN != arnRoot {
+		t.Fatalf("store root urn = %q, want %q", store.rootURN, arnRoot)
+	}
+}
+
 func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 	store := &stubStore{}
 	service := New(store)
@@ -69,6 +82,9 @@ func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 		"urn:cerebro:writer:okta_resource:policyrule: pol-1",
 		"urn:cerebro:writer:runtime:writer-jira:ticket: ENG-123",
 		"   ",
+		"urn:cerebro: writer:user:alice",
+		"urn:cerebro:writer: user:alice",
+		"urn:cerebro:writer:user: alice",
 	}
 	for _, raw := range cases {
 		_, err := service.GetEntityNeighborhood(context.Background(), NeighborhoodRequest{RootURN: raw})

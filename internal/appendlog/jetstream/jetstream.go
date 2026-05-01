@@ -71,7 +71,8 @@ type Log struct {
 
 // Open dials JetStream and returns an append-log implementation.
 func Open(cfg config.AppendLogConfig) (*Log, error) {
-	if strings.TrimSpace(cfg.JetStreamURL) == "" {
+	url := strings.TrimSpace(cfg.JetStreamURL)
+	if url == "" {
 		return nil, errors.New("jetstream url is required")
 	}
 	prefix, err := normalizeSubjectPrefix(cfg.JetStreamSubjectPrefix)
@@ -79,7 +80,7 @@ func Open(cfg config.AppendLogConfig) (*Log, error) {
 		return nil, err
 	}
 	nc, err := nats.Connect(
-		cfg.JetStreamURL,
+		url,
 		nats.Name("cerebro"),
 		nats.Timeout(connectTimeout),
 		nats.RetryOnFailedConnect(false),

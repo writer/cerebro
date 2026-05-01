@@ -1235,6 +1235,9 @@ func TestEvaluateSourceRuntimeRulesMarksStartedRunsFailedWhenLaterRunStartFails(
 		if got := run.GetError(); !strings.Contains(got, "run store unavailable") {
 			t.Fatalf("started run error = %q, want run store unavailable", got)
 		}
+		if run.GetFinishedAt() == nil {
+			t.Fatal("started run finished_at = nil, want populated")
+		}
 	}
 }
 

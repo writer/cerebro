@@ -41,7 +41,7 @@ func (s *stubRunStore) ListIngestRuns(_ context.Context, filter graphstore.Inges
 }
 
 func TestSensitiveConfigKeyTreatsSecretMarkersAsSensitive(t *testing.T) {
-	for _, key := range []string{"key", "api_key", "apiKey", "secret_access_key", "private_key", "privateKey"} {
+	for _, key := range []string{"key", "api_key", "apiKey", "access_key_id", "secret_access_key", "private_key", "privateKey", "signing_key"} {
 		if !sensitiveConfigKey(key) {
 			t.Fatalf("sensitiveConfigKey(%q) = false, want true", key)
 		}
@@ -65,7 +65,7 @@ func TestConfigHashIgnoresSensitiveKeyValues(t *testing.T) {
 }
 
 func TestConfigHashIncludesNonSecretSelectorKeys(t *testing.T) {
-	for _, key := range []string{"access_key_id", "lookup_key", "group_key"} {
+	for _, key := range []string{"region", "lookup_key", "group_key"} {
 		left := configHash(map[string]string{key: "first", "domain": "writer.example.com"})
 		right := configHash(map[string]string{key: "second", "domain": "writer.example.com"})
 		if left == right {
