@@ -148,6 +148,36 @@ func TestReadAWSRoleAndAccessKeyPreview(t *testing.T) {
 	}
 }
 
+func TestIAMRoleTrustEventTargetsSameRoleIdentifierAsIAMRoleEvent(t *testing.T) {
+	role := iamtypes.Role{
+		Arn:      awssdk.String("arn:aws:iam::123456789012:role/AdminRole"),
+		RoleId:   awssdk.String("AROADMIN"),
+		RoleName: awssdk.String("AdminRole"),
+	}
+	roleEvent, err := iamRoleEvent(settings{accountID: "123456789012"}, role)
+	if err != nil {
+		t.Fatalf("iamRoleEvent() error = %v", err)
+	}
+	trustEvent, err := iamRoleTrustEvent(settings{accountID: "123456789012"}, iamRoleTrust{
+		Role:      role,
+		Principal: "arn:aws:iam::999999999999:role/ExternalAdmin",
+		Statement: trustStatement{Action: "sts:AssumeRole"},
+	})
+	if err != nil {
+		t.Fatalf("iamRoleTrustEvent() error = %v", err)
+	}
+	roleID := roleEvent.Attributes["user_id"]
+	if got := trustEvent.Attributes["target_id"]; got != roleID {
+		t.Fatalf("trust target_id = %q, want role event user_id %q", got, roleID)
+	}
+	if got := trustEvent.Attributes["role_id"]; got != roleID {
+		t.Fatalf("trust role_id = %q, want role event user_id %q", got, roleID)
+	}
+	if got := trustEvent.Attributes["target_arn"]; got != "arn:aws:iam::123456789012:role/AdminRole" {
+		t.Fatalf("trust target_arn = %q, want role ARN preserved", got)
+	}
+}
+
 func TestReadAWSExposureAndTrustPreview(t *testing.T) {
 	trustPolicy := `{"Version":"2012-10-17","Statement":[{"Sid":"ExternalTrust","Effect":"Allow","Principal":{"AWS":"arn:aws:iam::999999999999:role/ExternalAdmin"},"Action":"sts:AssumeRole"}]}`
 	source := newTestSource(t, fakeAWS{

@@ -172,6 +172,10 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 		normalizedClaims = append(normalizedClaims, claim)
 	}
 	for _, claim := range normalizedClaims {
+		previousRelation, err := s.existingAssertedRelation(ctx, runtime, claim.GetId())
+		if err != nil {
+			return nil, err
+		}
 		if _, err := s.store.UpsertClaim(ctx, claimRecord(runtime, claim)); err != nil {
 			return nil, fmt.Errorf("persist claim %q: %w", claim.GetId(), err)
 		}
@@ -208,6 +212,9 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 			if wrote {
 				result.RelationLinksProjected++
 			}
+		}
+		if err := s.deleteStaleRelation(ctx, runtime, claim, previousRelation); err != nil {
+			return nil, err
 		}
 	}
 	if request.ReplaceExisting {
@@ -297,6 +304,71 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.S
 		retracted++
 	}
 	return retracted, nil
+}
+
+func (s *Service) existingAssertedRelation(ctx context.Context, runtime *cerebrov1.SourceRuntime, claimID string) (*ports.ProjectedLink, error) {
+	claimID = strings.TrimSpace(claimID)
+	if claimID == "" {
+		return nil, nil
+	}
+	existing, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
+		RuntimeID: strings.TrimSpace(runtime.GetId()),
+		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
+		ClaimID:   claimID,
+		Limit:     1,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("load existing claim %q: %w", claimID, err)
+	}
+	if len(existing) == 0 {
+		return nil, nil
+	}
+	return projectedRelation(runtime, protoClaim(existing[0])), nil
+}
+
+func (s *Service) deleteStaleRelation(ctx context.Context, runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim, previous *ports.ProjectedLink) error {
+	if previous == nil {
+		return nil
+	}
+	current := relationLink(runtime, claim)
+	if projectedLinkKey(previous) == projectedLinkKey(current) {
+		return nil
+	}
+	supported, err := s.hasOtherAssertedRelation(ctx, runtime, strings.TrimSpace(claim.GetId()), previous)
+	if err != nil {
+		return err
+	}
+	if supported {
+		return nil
+	}
+	return s.deleteLink(ctx, previous)
+}
+
+func (s *Service) hasOtherAssertedRelation(ctx context.Context, runtime *cerebrov1.SourceRuntime, claimID string, link *ports.ProjectedLink) (bool, error) {
+	if link == nil {
+		return false, nil
+	}
+	claims, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
+		RuntimeID:  strings.TrimSpace(runtime.GetId()),
+		TenantID:   strings.TrimSpace(runtime.GetTenantId()),
+		SubjectURN: strings.TrimSpace(link.FromURN),
+		Predicate:  strings.TrimSpace(link.Relation),
+		ObjectURN:  strings.TrimSpace(link.ToURN),
+		ClaimType:  claimTypeRelation,
+		Status:     claimStatusAsserted,
+	})
+	if err != nil {
+		return false, fmt.Errorf("list supporting claims for link %q: %w", projectedLinkKey(link), err)
+	}
+	for _, claim := range claims {
+		if claim == nil {
+			continue
+		}
+		if strings.TrimSpace(claim.ID) != claimID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Service) deleteLink(ctx context.Context, link *ports.ProjectedLink) error {

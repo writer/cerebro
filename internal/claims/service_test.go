@@ -570,6 +570,75 @@ func TestWriteClaimsRefutedAndSupersededRelationsDeleteProjectedLink(t *testing.
 	}
 }
 
+func TestWriteClaimsChangingExistingRelationDeletesOldProjectedLink(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	oldAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:old"
+	newAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:new"
+	oldKey := issueURN + "|assigned_to|" + oldAssigneeURN
+	newKey := issueURN + "|assigned_to|" + newAssigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-assignee": {
+				ID:         "claim-assignee",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				SubjectRef: &cerebrov1.EntityRef{Urn: issueURN, EntityType: "ticket", Label: "ENG-123"},
+				Predicate:  "assigned_to",
+				ObjectURN:  oldAssigneeURN,
+				ObjectRef:  &cerebrov1.EntityRef{Urn: oldAssigneeURN, EntityType: "user", Label: "Old Assignee"},
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			oldKey: {
+				TenantID: "writer",
+				SourceID: "sdk",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    oldAssigneeURN,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{{
+			Id:         "claim-assignee",
+			SubjectRef: &cerebrov1.EntityRef{Urn: issueURN, EntityType: "ticket", Label: "ENG-123"},
+			Predicate:  "assigned_to",
+			ObjectRef:  &cerebrov1.EntityRef{Urn: newAssigneeURN, EntityType: "user", Label: "New Assignee"},
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusAsserted,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[newKey]; !ok {
+		t.Fatal("new projected link missing")
+	}
+	if _, ok := projection.links[oldKey]; ok {
+		t.Fatal("old projected link remained after relation target changed")
+	}
+	if _, ok := projection.deletedLinks[oldKey]; !ok {
+		t.Fatal("old projected link was not deleted")
+	}
+}
+
 func TestWriteClaimsRejectsCrossTenantRetractedRelation(t *testing.T) {
 	issueURN := "urn:cerebro:other:runtime:other-jira:ticket:ENG-123"
 	assigneeURN := "urn:cerebro:other:runtime:other-jira:user:acct:42"
