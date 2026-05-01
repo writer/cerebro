@@ -34,14 +34,14 @@ test("jira subpath imports the exported source entrypoint", async () => {
   assert.doesNotMatch(bridge, /\.ts"/);
 });
 
-test("jira subpath is importable at runtime", async () => {
-  const mod = await import(path.join(srcDir, "jira.ts"));
-  assert.equal(typeof mod.buildJiraPostureFindings, "function");
+test("source bridge is importable at runtime", async () => {
+  const mod = await import(path.join(srcDir, "index.js"));
+  assert.equal(typeof mod.Client, "function");
 });
 
 test("admin sprawl findings account for posture admins", async () => {
   const source = await readFile(path.join(srcDir, "jira.ts"), "utf8");
-  assert.match(source, /const postureAdminCount = objectArray\(posture\.admins, "posture\.admins"\)[\s\S]*requireValue\(admin\.email, "posture\.admins\[\]\.email"\)/);
+  assert.match(source, /const postureAdminCount = objectArray\(posture\.admins, "posture\.admins"\)[\s\S]*optionalString\(admin\.email\)/);
   assert.match(source, /const adminCount = Math\.max\(relationCounts\.administers \?\? 0, postureAdminCount\);/);
 });
 

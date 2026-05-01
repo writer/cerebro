@@ -250,7 +250,7 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types
 		if _, ok := pass.TypesInfo.Uses[ident].(*types.Builtin); !ok {
 			return
 		}
-		if slice, ok := pass.TypesInfo.TypeOf(call.Args[0]).(*types.Slice); ok {
+		if slice, ok := underlying(pass.TypesInfo.TypeOf(call.Args[0])).(*types.Slice); ok {
 			for _, arg := range call.Args[1:] {
 				reportImportedSealedValue(pass, arg, slice.Elem(), sealedObjects, sealed, reported)
 			}
@@ -262,6 +262,14 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types
 		return
 	}
 	params := sig.Params()
+	if len(call.Args) == 1 {
+		if tuple, ok := pass.TypesInfo.TypeOf(call.Args[0]).(*types.Tuple); ok {
+			for index := 0; params != nil && index < params.Len() && index < tuple.Len(); index++ {
+				reportImportedSealedValueAt(pass, call.Args[0], params.At(index).Type(), index, sealedObjects, sealed, reported)
+			}
+			return
+		}
+	}
 	for index, arg := range call.Args {
 		if params == nil || params.Len() == 0 {
 			break
@@ -284,7 +292,7 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, sealedObjects []*types
 }
 
 func inspectCompositeLiteral(pass *analysis.Pass, lit *ast.CompositeLit, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
-	switch typ := pass.TypesInfo.TypeOf(lit).(type) {
+	switch typ := underlying(pass.TypesInfo.TypeOf(lit)).(type) {
 	case *types.Slice:
 		for _, elt := range lit.Elts {
 			reportImportedSealedValue(pass, compositeLiteralValue(elt), typ.Elem(), sealedObjects, sealed, reported)
@@ -299,7 +307,40 @@ func inspectCompositeLiteral(pass *analysis.Pass, lit *ast.CompositeLit, sealedO
 				reportImportedSealedValue(pass, kv.Value, typ.Elem(), sealedObjects, sealed, reported)
 			}
 		}
+	case *types.Struct:
+		for index, elt := range lit.Elts {
+			if kv, ok := elt.(*ast.KeyValueExpr); ok {
+				if field := structFieldForKey(typ, kv.Key); field != nil {
+					reportImportedSealedValue(pass, kv.Value, field.Type(), sealedObjects, sealed, reported)
+				}
+				continue
+			}
+			if index < typ.NumFields() {
+				reportImportedSealedValue(pass, elt, typ.Field(index).Type(), sealedObjects, sealed, reported)
+			}
+		}
 	}
+}
+
+func underlying(t types.Type) types.Type {
+	if named, ok := t.(*types.Named); ok {
+		return named.Underlying()
+	}
+	return t
+}
+
+func structFieldForKey(typ *types.Struct, key ast.Expr) *types.Var {
+	ident, ok := key.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	for i := 0; i < typ.NumFields(); i++ {
+		field := typ.Field(i)
+		if field.Name() == ident.Name {
+			return field
+		}
+	}
+	return nil
 }
 
 func compositeLiteralValue(expr ast.Expr) ast.Expr {

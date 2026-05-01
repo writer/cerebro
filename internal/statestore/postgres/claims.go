@@ -169,11 +169,12 @@ DO UPDATE SET
 	return cloneClaimRecord(claim), nil
 }
 
-// ListClaims loads persisted claims for one runtime.
+// ListClaims loads persisted claims matching the supplied scope.
 func (s *Store) ListClaims(ctx context.Context, request ports.ListClaimsRequest) (_ []*ports.ClaimRecord, err error) {
 	runtimeID := strings.TrimSpace(request.RuntimeID)
-	if runtimeID == "" {
-		return nil, errors.New("claim runtime id is required")
+	tenantID := strings.TrimSpace(request.TenantID)
+	if runtimeID == "" && tenantID == "" {
+		return nil, errors.New("claim runtime id or tenant id is required")
 	}
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
@@ -181,8 +182,8 @@ func (s *Store) ListClaims(ctx context.Context, request ports.ListClaimsRequest)
 	if err := s.ensureClaimTables(ctx); err != nil {
 		return nil, err
 	}
-	clauses := []string{"runtime_id = $1"}
-	args := []any{runtimeID}
+	clauses := []string{}
+	args := []any{}
 	addFilter := func(column string, value string) {
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
@@ -191,7 +192,8 @@ func (s *Store) ListClaims(ctx context.Context, request ports.ListClaimsRequest)
 		args = append(args, trimmed)
 		clauses = append(clauses, fmt.Sprintf("%s = $%d", column, len(args)))
 	}
-	addFilter("tenant_id", request.TenantID)
+	addFilter("runtime_id", runtimeID)
+	addFilter("tenant_id", tenantID)
 	addFilter("id", request.ClaimID)
 	addFilter("subject_urn", request.SubjectURN)
 	addFilter("predicate", request.Predicate)
@@ -212,7 +214,7 @@ ORDER BY observed_at DESC NULLS LAST, updated_at DESC, id`
 	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query claims for runtime %q: %w", runtimeID, err)
+		return nil, fmt.Errorf("query claims for scope %q/%q: %w", tenantID, runtimeID, err)
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && err == nil {

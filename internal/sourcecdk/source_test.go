@@ -52,6 +52,7 @@ func TestParseURNRejectsInvalidValue(t *testing.T) {
 		"urn:cerebro:tenant:user",
 		"urn:cerebro::user:123",
 		"urn:cerebro:tenant::123",
+		"urn:cerebro:tenant:runtime:runtime-id::entity-id",
 		"urn:cerebro:tenant:user:",
 		"urn:cerebro: tenant:user:123",
 	} {

@@ -57,7 +57,7 @@ func TestUpsertClaimRejectsUnconfiguredStore(t *testing.T) {
 	}
 }
 
-func TestListClaimsRejectsMissingRuntimeID(t *testing.T) {
+func TestListClaimsRejectsUnscopedRequest(t *testing.T) {
 	store := &Store{}
 	if _, err := store.ListClaims(context.Background(), ports.ListClaimsRequest{}); err == nil {
 		t.Fatal("ListClaims() error = nil, want non-nil")

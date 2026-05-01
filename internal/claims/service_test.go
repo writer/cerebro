@@ -36,9 +36,10 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 }
 
 type stubClaimStore struct {
-	claims      map[string]*ports.ClaimRecord
-	listRequest ports.ListClaimsRequest
-	err         error
+	claims       map[string]*ports.ClaimRecord
+	listRequest  ports.ListClaimsRequest
+	listRequests []ports.ListClaimsRequest
+	err          error
 }
 
 func (s *stubClaimStore) Ping(context.Context) error { return nil }
@@ -56,6 +57,7 @@ func (s *stubClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord
 
 func (s *stubClaimStore) ListClaims(_ context.Context, request ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
 	s.listRequest = request
+	s.listRequests = append(s.listRequests, request)
 	claims := make([]*ports.ClaimRecord, 0, len(s.claims))
 	for _, claim := range s.claims {
 		if !claimMatches(request, claim) {
@@ -380,10 +382,17 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	if got := result.ClaimsRetracted; got != 2 {
 		t.Fatalf("WriteClaims().ClaimsRetracted = %d, want 2", got)
 	}
-	if got := store.listRequest.RuntimeID; got != "writer-jira" {
+	var retractList ports.ListClaimsRequest
+	for _, request := range store.listRequests {
+		if request.RuntimeID == "writer-jira" && request.Status == claimStatusAsserted {
+			retractList = request
+			break
+		}
+	}
+	if got := retractList.RuntimeID; got != "writer-jira" {
 		t.Fatalf("retract list runtime_id = %q, want writer-jira", got)
 	}
-	if got := store.listRequest.Status; got != claimStatusAsserted {
+	if got := retractList.Status; got != claimStatusAsserted {
 		t.Fatalf("retract list status = %q, want %q", got, claimStatusAsserted)
 	}
 	retracted := store.claims[assigneeID]
@@ -590,6 +599,78 @@ func TestWriteClaimsRetractingOneOfMultipleSupportingClaimsKeepsProjectedLink(t 
 	}
 	if _, ok := projection.deletedLinks[linkKey]; ok {
 		t.Fatal("projected link deletion recorded even though another claim still asserts it")
+	}
+}
+
+func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjectedLink(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-jira": {
+				ID:         "claim-jira",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+			"claim-github": {
+				ID:         "claim-github",
+				RuntimeID:  "writer-github",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "sdk",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{{
+			Id:         "claim-jira",
+			SubjectUrn: issueURN,
+			Predicate:  "assigned_to",
+			ObjectUrn:  assigneeURN,
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusRetracted,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[linkKey]; !ok {
+		t.Fatal("projected link was deleted even though another runtime still asserts it")
+	}
+	if _, ok := projection.deletedLinks[linkKey]; ok {
+		t.Fatal("projected link deletion recorded even though another runtime still asserts it")
 	}
 }
 
@@ -1358,7 +1439,10 @@ func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) boo
 	if claim == nil {
 		return false
 	}
-	if strings.TrimSpace(claim.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+	if request.RuntimeID != "" && strings.TrimSpace(claim.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+		return false
+	}
+	if request.TenantID != "" && strings.TrimSpace(claim.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
 	if request.ClaimID != "" && strings.TrimSpace(claim.ID) != strings.TrimSpace(request.ClaimID) {

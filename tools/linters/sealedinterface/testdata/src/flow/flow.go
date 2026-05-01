@@ -24,10 +24,24 @@ func AssignTupleBad() {
 	_, _ = runner, err
 }
 
+func acceptTuple(sealedpkg.Runner, error) {}
+
+func PassTupleCallBad() {
+	acceptTuple(makeBad()) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func AppendBad() {
 	var runners []sealedpkg.Runner
 	runners = append(runners, externalbad.Bad{}) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 	_ = runners
+}
+
+type runners []sealedpkg.Runner
+
+func AppendNamedSliceBad() {
+	var rs runners
+	rs = append(rs, externalbad.Bad{}) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+	_ = rs
 }
 
 func acceptVariadic(...sealedpkg.Runner) {}
@@ -40,6 +54,20 @@ func CompositeLiteralBad() []sealedpkg.Runner {
 	return []sealedpkg.Runner{
 		externalbad.Bad{}, // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 	}
+}
+
+func NamedCompositeLiteralBad() runners {
+	return runners{
+		externalbad.Bad{}, // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+	}
+}
+
+type holder struct {
+	Runner sealedpkg.Runner
+}
+
+var structLiteralBad = holder{
+	Runner: externalbad.Bad{}, // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
 func PassBad(fn func(sealedpkg.Runner)) {

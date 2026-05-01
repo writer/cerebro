@@ -371,7 +371,6 @@ func (s *Service) hasOtherAssertedRelation(ctx context.Context, runtime *cerebro
 		return false, nil
 	}
 	claims, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
-		RuntimeID:  strings.TrimSpace(runtime.GetId()),
 		TenantID:   strings.TrimSpace(runtime.GetTenantId()),
 		SubjectURN: strings.TrimSpace(link.FromURN),
 		Predicate:  strings.TrimSpace(link.Relation),

@@ -27,6 +27,9 @@ func ParseURN(raw string) (URN, error) {
 		return "", fmt.Errorf("invalid cerebro urn %q", value)
 	}
 	parts := strings.Split(value, ":")
+	if len(parts) > 3 && parts[3] == "runtime" && (len(parts) < 7 || parts[5] == "") {
+		return "", fmt.Errorf("invalid cerebro urn %q", value)
+	}
 	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
 		return "", fmt.Errorf("invalid cerebro urn %q", value)
 	}
