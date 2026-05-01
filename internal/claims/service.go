@@ -465,7 +465,7 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 	if err := validateRuntimeURN(runtime, normalized.GetSubjectUrn(), "subject"); err != nil {
 		return nil, err
 	}
-	if err := validateEntityRef(runtime, normalized.GetSubjectRef(), "subject ref"); err != nil {
+	if err := validateEntityRef(runtime, normalized.GetSubjectUrn(), normalized.GetSubjectRef(), "subject"); err != nil {
 		return nil, err
 	}
 	if normalized.GetObjectUrn() != "" {
@@ -473,7 +473,7 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 			return nil, err
 		}
 	}
-	if err := validateEntityRef(runtime, normalized.GetObjectRef(), "object ref"); err != nil {
+	if err := validateEntityRef(runtime, normalized.GetObjectUrn(), normalized.GetObjectRef(), "object"); err != nil {
 		return nil, err
 	}
 	if normalized.GetPredicate() == "" {
@@ -525,7 +525,7 @@ func validateRuntimeURN(runtime *cerebrov1.SourceRuntime, urn string, field stri
 	return nil
 }
 
-func validateEntityRef(runtime *cerebrov1.SourceRuntime, ref *cerebrov1.EntityRef, field string) error {
+func validateEntityRef(runtime *cerebrov1.SourceRuntime, fieldURN string, ref *cerebrov1.EntityRef, field string) error {
 	if ref == nil {
 		return nil
 	}
@@ -533,7 +533,13 @@ func validateEntityRef(runtime *cerebrov1.SourceRuntime, ref *cerebrov1.EntityRe
 	if urn == "" {
 		return nil
 	}
-	return validateRuntimeURN(runtime, urn, field)
+	if err := validateRuntimeURN(runtime, urn, field+" ref"); err != nil {
+		return err
+	}
+	if normalizedFieldURN := strings.TrimSpace(fieldURN); normalizedFieldURN != "" && normalizedFieldURN != urn {
+		return fmt.Errorf("%w: claim %s ref urn must match claim %s urn", ErrInvalidRequest, field, field)
+	}
+	return nil
 }
 
 func normalizeEntityRef(ref *cerebrov1.EntityRef, fallbackURN string) *cerebrov1.EntityRef {

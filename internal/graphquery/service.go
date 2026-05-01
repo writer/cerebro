@@ -54,14 +54,15 @@ func (s *Service) GetEntityNeighborhood(ctx context.Context, request Neighborhoo
 }
 
 // validateCerebroURN rejects malformed root URN inputs so the API can surface
-// 400 InvalidArgument instead of 404 NotFound for caller mistakes.
+// 400 InvalidArgument instead of 404 NotFound for caller mistakes while still
+// allowing colon-delimited IDs such as embedded AWS ARNs.
 func validateCerebroURN(urn string) error {
 	parts := strings.Split(urn, ":")
 	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
 		return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", ErrInvalidRequest)
 	}
-	for _, part := range parts[2:] {
-		if strings.TrimSpace(part) == "" || strings.TrimSpace(part) != part {
+	for i, part := range parts[2:] {
+		if strings.TrimSpace(part) != part || (i < 3 && part == "") {
 			return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", ErrInvalidRequest)
 		}
 	}
