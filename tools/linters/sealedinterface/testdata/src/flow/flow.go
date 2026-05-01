@@ -106,6 +106,11 @@ var mapKeyLiteralBad = map[sealedpkg.Runner]string{
 	externalbad.Bad{}: "bad", // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func MapAssignmentKeyBad() {
+	values := map[sealedpkg.Runner]string{}
+	values[externalbad.Bad{}] = "bad" // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func PassBad(fn func(sealedpkg.Runner)) {
 	fn(externalbad.Bad{}) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }

@@ -45,7 +45,8 @@ test("source bridge is importable at runtime", async () => {
 
 test("admin sprawl findings account for posture admins", async () => {
   const source = await readFile(path.join(srcDir, "jira.ts"), "utf8");
-  assert.match(source, /const postureAdminCount = objectArray\(posture\.admins, "posture\.admins"\)[\s\S]*optionalString\(admin\.email\)/);
+  assert.match(source, /const postureAdminEmails = new Set\([\s\S]*optionalString\(admin\.email\)[\s\S]*email\.toLowerCase\(\)/);
+  assert.match(source, /const postureAdminCount = postureAdminEmails\.size;/);
   assert.match(source, /const adminCount = Math\.max\(relationCounts\.administers \?\? 0, postureAdminCount\);/);
 });
 

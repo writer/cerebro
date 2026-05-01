@@ -206,6 +206,7 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 						if index >= tuple.Len() {
 							break
 						}
+						inspectAssignmentTarget(pass, lhs, facts, sealedObjects, sealed, reported)
 						reportImportedSealedValueWithFactsAt(pass, node.Rhs[0], pass.TypesInfo.TypeOf(lhs), index, facts, sealedObjects, sealed, reported)
 						facts.record(pass, lhs, node.Rhs[0], index)
 					}
@@ -216,6 +217,7 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 				if index >= len(node.Lhs) {
 					break
 				}
+				inspectAssignmentTarget(pass, node.Lhs[index], facts, sealedObjects, sealed, reported)
 				reportImportedSealedValueWithFacts(pass, rhs, pass.TypesInfo.TypeOf(node.Lhs[index]), facts, sealedObjects, sealed, reported)
 				facts.record(pass, node.Lhs[index], rhs, -1)
 			}
@@ -230,6 +232,16 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 		}
 		return true
 	})
+}
+
+func inspectAssignmentTarget(pass *analysis.Pass, lhs ast.Expr, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	indexExpr, ok := lhs.(*ast.IndexExpr)
+	if !ok {
+		return
+	}
+	if m, ok := underlying(pass.TypesInfo.TypeOf(indexExpr.X)).(*types.Map); ok {
+		reportImportedSealedValueWithFacts(pass, indexExpr.Index, m.Key(), facts, sealedObjects, sealed, reported)
+	}
 }
 
 type flowFacts struct {
