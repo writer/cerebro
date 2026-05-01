@@ -36,6 +36,13 @@ func ReturnDirectTypeAssertBad() sealedpkg.Runner {
 	return any(externalbad.Bad{}).(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func ClosureCaptureTypeAssertBad() sealedpkg.Runner {
+	value := any(externalbad.Bad{})
+	return func() sealedpkg.Runner {
+		return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+	}()
+}
+
 func AssignTupleBad() {
 	var runner sealedpkg.Runner
 	var err error

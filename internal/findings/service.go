@@ -421,7 +421,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			continue
 		}
 		if err := s.finishCompletedRun(ctx, state.result.Run, state.eventsEvaluated, findingIDs(state.result.Findings)); err != nil {
-			return nil, err
+			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), err)
 		}
 	}
 	return result, nil
@@ -880,6 +880,15 @@ func (s *Service) markRuleEvaluationsFailed(ctx context.Context, states []*ruleE
 		return errors.Join(evaluationErr, cleanupErr)
 	}
 	return evaluationErr
+}
+
+func unfinishedRuleEvaluations(states []*ruleEvaluationState, first *ruleEvaluationState) []*ruleEvaluationState {
+	for index, state := range states {
+		if state == first {
+			return states[index:]
+		}
+	}
+	return nil
 }
 
 func findingIDs(findings []*ports.FindingRecord) []string {

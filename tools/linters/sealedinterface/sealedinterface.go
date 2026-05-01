@@ -158,7 +158,11 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
-	facts := newFlowFacts()
+	inspectFlowWithFacts(pass, body, results, nil, sealedObjects, sealed, reported)
+}
+
+func inspectFlowWithFacts(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple, inherited *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	facts := inherited.clone()
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.FuncLit:
@@ -169,7 +173,7 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 			if !ok {
 				return false
 			}
-			inspectFlow(pass, node.Body, sig.Results(), sealedObjects, sealed, reported)
+			inspectFlowWithFacts(pass, node.Body, sig.Results(), facts, sealedObjects, sealed, reported)
 			return false
 		case *ast.DeclStmt:
 			decl, ok := node.Decl.(*ast.GenDecl)
@@ -252,6 +256,17 @@ func newFlowFacts() *flowFacts {
 	return &flowFacts{concrete: map[*types.Var]types.Type{}}
 }
 
+func (f *flowFacts) clone() *flowFacts {
+	cloned := newFlowFacts()
+	if f == nil {
+		return cloned
+	}
+	for key, value := range f.concrete {
+		cloned.concrete[key] = value
+	}
+	return cloned
+}
+
 func (f *flowFacts) recordName(pass *analysis.Pass, name *ast.Ident, rhs ast.Expr, tupleIndex int) {
 	if f == nil || name == nil || name.Name == "_" {
 		return
@@ -287,6 +302,11 @@ func (f *flowFacts) recordObject(pass *analysis.Pass, obj *types.Var, rhs ast.Ex
 		actual = tuple.At(tupleIndex).Type()
 	}
 	if namedImplementation(actual) == nil {
+		if converted, ok := concreteFromConversion(pass, rhs); ok {
+			actual = converted
+		}
+	}
+	if namedImplementation(actual) == nil {
 		delete(f.concrete, obj)
 		return
 	}
@@ -313,15 +333,25 @@ func (f *flowFacts) concreteForExpr(pass *analysis.Pass, expr ast.Expr) (types.T
 		actual, ok := f.concrete[obj]
 		return actual, ok
 	}
-	if call, ok := expr.(*ast.CallExpr); ok && len(call.Args) == 1 {
-		if _, ok := pass.TypesInfo.TypeOf(call.Fun).(*types.Signature); !ok {
-			actual := pass.TypesInfo.TypeOf(call.Args[0])
-			if namedImplementation(actual) != nil {
-				return actual, true
-			}
-		}
+	if actual, ok := concreteFromConversion(pass, expr); ok {
+		return actual, true
 	}
 	actual := pass.TypesInfo.TypeOf(expr)
+	if namedImplementation(actual) == nil {
+		return nil, false
+	}
+	return actual, true
+}
+
+func concreteFromConversion(pass *analysis.Pass, expr ast.Expr) (types.Type, bool) {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok || len(call.Args) != 1 {
+		return nil, false
+	}
+	if _, ok := pass.TypesInfo.TypeOf(call.Fun).(*types.Signature); ok {
+		return nil, false
+	}
+	actual := pass.TypesInfo.TypeOf(call.Args[0])
 	if namedImplementation(actual) == nil {
 		return nil, false
 	}
@@ -365,7 +395,7 @@ func inspectExpressionCalls(pass *analysis.Pass, expr ast.Expr, facts *flowFacts
 			if !ok {
 				return false
 			}
-			inspectFlow(pass, node.Body, sig.Results(), sealedObjects, sealed, reported)
+			inspectFlowWithFacts(pass, node.Body, sig.Results(), facts, sealedObjects, sealed, reported)
 			return false
 		case *ast.CallExpr:
 			inspectCall(pass, node, facts, sealedObjects, sealed, reported)
