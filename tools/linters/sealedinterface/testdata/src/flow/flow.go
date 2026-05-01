@@ -48,6 +48,11 @@ func SendChannelBad(ch chan sealedpkg.Runner) {
 	ch <- externalbad.Bad{} // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func LocalVarBad() {
+	var runner sealedpkg.Runner = externalbad.Bad{} // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+	_ = runner
+}
+
 func acceptVariadic(...sealedpkg.Runner) {}
 
 func PassVariadicBad() {

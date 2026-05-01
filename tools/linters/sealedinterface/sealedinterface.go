@@ -148,14 +148,7 @@ func run(pass *analysis.Pass) (any, error) {
 					if !ok {
 						continue
 					}
-					var expected types.Type
-					if valueSpec.Type != nil {
-						expected = pass.TypesInfo.TypeOf(valueSpec.Type)
-					}
-					for _, value := range valueSpec.Values {
-						reportImportedSealedValue(pass, value, expected, sealedObjects, sealed, reported)
-						inspectExpressionCalls(pass, value, sealedObjects, sealed, reported)
-					}
+					inspectValueSpec(pass, valueSpec, sealedObjects, sealed, reported)
 				}
 			}
 		}
@@ -176,6 +169,19 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 				return false
 			}
 			inspectFlow(pass, node.Body, sig.Results(), sealedObjects, sealed, reported)
+			return false
+		case *ast.DeclStmt:
+			decl, ok := node.Decl.(*ast.GenDecl)
+			if !ok {
+				return true
+			}
+			for _, spec := range decl.Specs {
+				valueSpec, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				inspectValueSpec(pass, valueSpec, sealedObjects, sealed, reported)
+			}
 			return false
 		case *ast.ReturnStmt:
 			if len(node.Results) == 1 {
@@ -221,6 +227,26 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 		}
 		return true
 	})
+}
+
+func inspectValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	var expected types.Type
+	if valueSpec.Type != nil {
+		expected = pass.TypesInfo.TypeOf(valueSpec.Type)
+	}
+	if len(valueSpec.Values) == 1 && len(valueSpec.Names) > 1 {
+		if _, ok := pass.TypesInfo.TypeOf(valueSpec.Values[0]).(*types.Tuple); ok {
+			for index := range valueSpec.Names {
+				reportImportedSealedValueAt(pass, valueSpec.Values[0], expected, index, sealedObjects, sealed, reported)
+			}
+			inspectExpressionCalls(pass, valueSpec.Values[0], sealedObjects, sealed, reported)
+			return
+		}
+	}
+	for _, value := range valueSpec.Values {
+		reportImportedSealedValue(pass, value, expected, sealedObjects, sealed, reported)
+		inspectExpressionCalls(pass, value, sealedObjects, sealed, reported)
+	}
 }
 
 func inspectExpressionCalls(pass *analysis.Pass, expr ast.Expr, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {

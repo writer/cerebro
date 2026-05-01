@@ -70,6 +70,7 @@ type stubFindingStore struct {
 	runPutCount      int
 	failRunPutOn     int
 	failRunPutErr    error
+	failRunPutByCall map[int]error
 	evidence         map[string]*cerebrov1.FindingEvidence
 	evidenceList     ports.ListFindingEvidenceRequest
 }
@@ -306,6 +307,12 @@ func (s *stubFindingStore) PutFindingEvaluationRun(_ context.Context, run *cereb
 		return errors.New("finding evaluation run is required")
 	}
 	s.runPutCount++
+	if err, ok := s.failRunPutByCall[s.runPutCount]; ok {
+		if err != nil {
+			return err
+		}
+		return errors.New("put finding evaluation run failed")
+	}
 	if s.failRunPutOn != 0 && s.runPutCount == s.failRunPutOn {
 		if s.failRunPutErr != nil {
 			return s.failRunPutErr
@@ -1238,6 +1245,67 @@ func TestEvaluateSourceRuntimeRulesMarksStartedRunsFailedWhenLaterRunStartFails(
 		if run.GetFinishedAt() == nil {
 			t.Fatal("started run finished_at = nil, want populated")
 		}
+	}
+}
+
+func TestEvaluateSourceRuntimeRulesAttemptsAllStartedRunFailuresWhenCleanupFails(t *testing.T) {
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b", Name: "Rule B"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-c", Name: "Rule C"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{
+		failRunPutByCall: map[int]error{
+			3: errors.New("run start failed"),
+			4: errors.New("rule-a failure update failed"),
+		},
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		&stubReplayer{},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	if err == nil {
+		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want non-nil")
+	}
+	message := err.Error()
+	for _, want := range []string{"run start failed", "rule-a failure update failed"} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("EvaluateSourceRuntimeRules() error = %v, want to contain %q", err, want)
+		}
+	}
+	if got := store.runPutCount; got != 5 {
+		t.Fatalf("store.runPutCount = %d, want 5", got)
+	}
+	ruleBRun, ok := runForRule(store.runs, "rule-b")
+	if !ok {
+		t.Fatal("rule-b run missing")
+	}
+	if got := ruleBRun.GetStatus(); got != "failed" {
+		t.Fatalf("rule-b run status = %q, want failed", got)
+	}
+	if got := ruleBRun.GetError(); !strings.Contains(got, "run start failed") {
+		t.Fatalf("rule-b run error = %q, want run start failed", got)
 	}
 }
 
@@ -2505,6 +2573,15 @@ func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) boo
 		return false
 	}
 	return true
+}
+
+func runForRule(runs map[string]*cerebrov1.FindingEvaluationRun, ruleID string) (*cerebrov1.FindingEvaluationRun, bool) {
+	for _, run := range runs {
+		if strings.TrimSpace(run.GetRuleId()) == strings.TrimSpace(ruleID) {
+			return run, true
+		}
+	}
+	return nil, false
 }
 
 func findingEvaluationRunMatches(request ports.ListFindingEvaluationRunsRequest, run *cerebrov1.FindingEvaluationRun) bool {

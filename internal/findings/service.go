@@ -336,12 +336,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
 		if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 			evaluationErr := fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
-			for _, state := range states {
-				if failErr := s.markRuleEvaluationFailed(ctx, state, evaluationErr); failErr != nil {
-					return nil, errors.Join(evaluationErr, failErr)
-				}
-			}
-			return nil, evaluationErr
+			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
 		}
 		state := &ruleEvaluationState{
 			rule:        rule,
@@ -360,12 +355,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	})
 	if err != nil {
 		evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
-		for _, state := range states {
-			if failErr := s.markRuleEvaluationFailed(ctx, state, evaluationErr); failErr != nil {
-				return nil, failErr
-			}
-		}
-		return nil, evaluationErr
+		return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
 	}
 	result.EventsEvaluated = uint32(len(events))
 	for _, event := range events {
@@ -877,6 +867,19 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 		)
 	}
 	return nil
+}
+
+func (s *Service) markRuleEvaluationsFailed(ctx context.Context, states []*ruleEvaluationState, evaluationErr error) error {
+	var cleanupErr error
+	for _, state := range states {
+		if failErr := s.markRuleEvaluationFailed(ctx, state, evaluationErr); failErr != nil {
+			cleanupErr = errors.Join(cleanupErr, failErr)
+		}
+	}
+	if cleanupErr != nil {
+		return errors.Join(evaluationErr, cleanupErr)
+	}
+	return evaluationErr
 }
 
 func findingIDs(findings []*ports.FindingRecord) []string {

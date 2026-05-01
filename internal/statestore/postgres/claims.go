@@ -76,6 +76,7 @@ END $$`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_type_status_idx ON claims (runtime_id, claim_type, status)`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_object_value_idx ON claims (runtime_id, object_value)`,
 	`CREATE INDEX IF NOT EXISTS claims_runtime_source_event_idx ON claims (runtime_id, source_event_id)`,
+	`CREATE INDEX IF NOT EXISTS claims_tenant_relation_support_idx ON claims (tenant_id, subject_urn, predicate, object_urn, claim_type, status)`,
 }
 
 // UpsertClaim persists one normalized claim in the current-state store.

@@ -85,6 +85,14 @@ func TestClaimSchemaScopesPrimaryKeyByTenantAndRuntime(t *testing.T) {
 	}
 }
 
+func TestClaimSchemaIncludesTenantRelationSupportIndex(t *testing.T) {
+	joined := strings.Join(ensureClaimStatements, "\n")
+	want := "claims_tenant_relation_support_idx ON claims (tenant_id, subject_urn, predicate, object_urn, claim_type, status)"
+	if !strings.Contains(joined, want) {
+		t.Fatalf("claims schema missing tenant relation support index %q:\n%s", want, joined)
+	}
+}
+
 func TestClaimRecordFromJSONRestoresRefsAndTimes(t *testing.T) {
 	payload := `{"id":"claim_1","subject_urn":"urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123","subject_ref":{"urn":"urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123","entity_type":"ticket","label":"ENG-123"},"predicate":"assigned_to","object_urn":"urn:cerebro:writer:runtime:writer-jira:user:acct:42","object_ref":{"urn":"urn:cerebro:writer:runtime:writer-jira:user:acct:42","entity_type":"user","label":"Alice"},"claim_type":"relation","status":"asserted","observed_at":"2026-04-23T12:00:00Z","attributes":{"source":"jira"}}`
 	record, err := claimRecordFromJSON("writer-jira", "writer", payload)
