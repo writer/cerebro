@@ -366,7 +366,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			emitted, err := state.rule.Evaluate(ctx, runtime, event)
 			if err != nil {
 				if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("evaluate finding rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
-					return nil, failErr
+					return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 				}
 				continue
 			}
@@ -378,14 +378,14 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				record, err = s.reconcileLegacyFindingIdentity(ctx, record)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("reconcile finding identity for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
-						return nil, failErr
+						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
 				stored, err := s.store.UpsertFinding(ctx, record)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
-						return nil, failErr
+						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
@@ -393,14 +393,14 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				evidence, err := s.buildFindingEvidence(ctx, stored, state.result.Run)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)); failErr != nil {
-						return nil, failErr
+						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
 				if _, seen := state.evidenceIDs[evidence.GetId()]; !seen {
 					if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
 						if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)); failErr != nil {
-							return nil, failErr
+							return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 						}
 						break
 					}
@@ -409,7 +409,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				}
 				if err := s.projectFindingAnchor(ctx, stored); err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)); failErr != nil {
-						return nil, failErr
+						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}

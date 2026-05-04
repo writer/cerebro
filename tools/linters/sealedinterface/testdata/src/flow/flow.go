@@ -78,6 +78,18 @@ func SwitchTypeAssertBad(index int) sealedpkg.Runner {
 	return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func ReturnedSwitchTypeAssertSafe(index int) sealedpkg.Runner {
+	var value any
+	switch index {
+	case 1:
+		value = externalbad.Bad{}
+		return nil
+	default:
+		value = nil
+	}
+	return value.(sealedpkg.Runner)
+}
+
 func FallthroughSwitchTypeAssertBad(flag bool) sealedpkg.Runner {
 	var value any
 	switch {
@@ -118,6 +130,18 @@ func TypeSwitchDefaultVariableBad() sealedpkg.Runner {
 	default:
 		return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 	}
+}
+
+func ReturnedTypeSwitchTypeAssertSafe(input any) sealedpkg.Runner {
+	var value any
+	switch input.(type) {
+	case string:
+		value = externalbad.Bad{}
+		return nil
+	default:
+		value = nil
+	}
+	return value.(sealedpkg.Runner)
 }
 
 type typeAssertBox struct {

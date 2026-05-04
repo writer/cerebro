@@ -235,14 +235,17 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 				starts := append([]*flowFacts{facts}, fallthroughFacts...)
 				fallthroughFacts = nil
 				clauseFacts := make([]*flowFacts, 0, len(starts))
+				clauseBlock := &ast.BlockStmt{List: clause.Body}
 				for _, start := range starts {
-					clauseFacts = append(clauseFacts, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, start, sealedObjects, sealed, reported))
+					clauseFacts = append(clauseFacts, inspectFlowNodeWithFacts(pass, clauseBlock, results, start, sealedObjects, sealed, reported))
 				}
 				if caseFallsThrough(clause) {
 					fallthroughFacts = clauseFacts
 					continue
 				}
-				branches = append(branches, clauseFacts...)
+				if !stmtTerminates(clauseBlock) {
+					branches = append(branches, clauseFacts...)
+				}
 			}
 			if !hasDefault {
 				branches = append(branches, facts.clone())
@@ -268,7 +271,11 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 				} else {
 					seedTypeSwitchCaseFacts(pass, branchFacts, node.Assign, clause)
 				}
-				branches = append(branches, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, branchFacts, sealedObjects, sealed, reported))
+				clauseBlock := &ast.BlockStmt{List: clause.Body}
+				clauseFacts := inspectFlowNodeWithFacts(pass, clauseBlock, results, branchFacts, sealedObjects, sealed, reported)
+				if !stmtTerminates(clauseBlock) {
+					branches = append(branches, clauseFacts)
+				}
 			}
 			if !hasDefault {
 				branches = append(branches, facts.clone())
