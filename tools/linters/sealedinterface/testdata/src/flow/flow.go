@@ -43,6 +43,37 @@ func ClosureCaptureTypeAssertBad() sealedpkg.Runner {
 	}()
 }
 
+func BranchTypeAssertBad(flag bool) sealedpkg.Runner {
+	var value any
+	if flag {
+		value = externalbad.Bad{}
+	} else {
+		value = nil
+	}
+	return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func SwitchTypeAssertBad(index int) sealedpkg.Runner {
+	var value any
+	switch index {
+	case 1:
+		value = externalbad.Bad{}
+	default:
+		value = nil
+	}
+	return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+type typeAssertBox struct {
+	value any
+}
+
+func SelectorTypeAssertBad() sealedpkg.Runner {
+	var box typeAssertBox
+	box.value = externalbad.Bad{}
+	return box.value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func AssignTupleBad() {
 	var runner sealedpkg.Runner
 	var err error

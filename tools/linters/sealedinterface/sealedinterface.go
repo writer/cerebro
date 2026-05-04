@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"go/types"
 	"sort"
+	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -162,8 +163,15 @@ func inspectFlow(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple,
 }
 
 func inspectFlowWithFacts(pass *analysis.Pass, body *ast.BlockStmt, results *types.Tuple, inherited *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	inspectFlowNodeWithFacts(pass, body, results, inherited, sealedObjects, sealed, reported)
+}
+
+func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types.Tuple, inherited *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) *flowFacts {
 	facts := inherited.clone()
-	ast.Inspect(body, func(n ast.Node) bool {
+	if node == nil {
+		return facts
+	}
+	ast.Inspect(node, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.FuncLit:
 			if node.Body == nil {
@@ -187,6 +195,78 @@ func inspectFlowWithFacts(pass *analysis.Pass, body *ast.BlockStmt, results *typ
 				}
 				inspectValueSpec(pass, valueSpec, facts, sealedObjects, sealed, reported)
 			}
+			return false
+		case *ast.IfStmt:
+			facts = inspectFlowStmtWithFacts(pass, node.Init, results, facts, sealedObjects, sealed, reported)
+			inspectExpressionCalls(pass, node.Cond, facts, sealedObjects, sealed, reported)
+			thenFacts := inspectFlowNodeWithFacts(pass, node.Body, results, facts, sealedObjects, sealed, reported)
+			elseFacts := facts.clone()
+			if node.Else != nil {
+				elseFacts = inspectFlowNodeWithFacts(pass, node.Else, results, facts, sealedObjects, sealed, reported)
+			}
+			facts = mergeFlowFacts(thenFacts, elseFacts)
+			return false
+		case *ast.SwitchStmt:
+			facts = inspectFlowStmtWithFacts(pass, node.Init, results, facts, sealedObjects, sealed, reported)
+			inspectExpressionCalls(pass, node.Tag, facts, sealedObjects, sealed, reported)
+			branches := make([]*flowFacts, 0, len(node.Body.List)+1)
+			hasDefault := false
+			for _, stmt := range node.Body.List {
+				clause, ok := stmt.(*ast.CaseClause)
+				if !ok {
+					continue
+				}
+				if len(clause.List) == 0 {
+					hasDefault = true
+				}
+				for _, expr := range clause.List {
+					inspectExpressionCalls(pass, expr, facts, sealedObjects, sealed, reported)
+				}
+				branches = append(branches, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, facts, sealedObjects, sealed, reported))
+			}
+			if !hasDefault {
+				branches = append(branches, facts.clone())
+			}
+			facts = mergeFlowFacts(branches...)
+			return false
+		case *ast.TypeSwitchStmt:
+			facts = inspectFlowStmtWithFacts(pass, node.Init, results, facts, sealedObjects, sealed, reported)
+			facts = inspectFlowStmtWithFacts(pass, node.Assign, results, facts, sealedObjects, sealed, reported)
+			branches := make([]*flowFacts, 0, len(node.Body.List)+1)
+			hasDefault := false
+			for _, stmt := range node.Body.List {
+				clause, ok := stmt.(*ast.CaseClause)
+				if !ok {
+					continue
+				}
+				if len(clause.List) == 0 {
+					hasDefault = true
+				}
+				branches = append(branches, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, facts, sealedObjects, sealed, reported))
+			}
+			if !hasDefault {
+				branches = append(branches, facts.clone())
+			}
+			facts = mergeFlowFacts(branches...)
+			return false
+		case *ast.SelectStmt:
+			branches := make([]*flowFacts, 0, len(node.Body.List))
+			for _, stmt := range node.Body.List {
+				clause, ok := stmt.(*ast.CommClause)
+				if !ok {
+					continue
+				}
+				branchFacts := inspectFlowStmtWithFacts(pass, clause.Comm, results, facts, sealedObjects, sealed, reported)
+				branches = append(branches, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, branchFacts, sealedObjects, sealed, reported))
+			}
+			facts = mergeFlowFacts(branches...)
+			return false
+		case *ast.ForStmt:
+			facts = inspectFlowStmtWithFacts(pass, node.Init, results, facts, sealedObjects, sealed, reported)
+			inspectExpressionCalls(pass, node.Cond, facts, sealedObjects, sealed, reported)
+			bodyFacts := inspectFlowNodeWithFacts(pass, node.Body, results, facts, sealedObjects, sealed, reported)
+			bodyFacts = inspectFlowStmtWithFacts(pass, node.Post, results, bodyFacts, sealedObjects, sealed, reported)
+			facts = mergeFlowFacts(facts.clone(), bodyFacts)
 			return false
 		case *ast.ReturnStmt:
 			if len(node.Results) == 1 {
@@ -227,8 +307,12 @@ func inspectFlowWithFacts(pass *analysis.Pass, body *ast.BlockStmt, results *typ
 			}
 		case *ast.RangeStmt:
 			keyType, valueType := rangeTypes(pass.TypesInfo.TypeOf(node.X))
-			inspectRangeAssignmentTarget(pass, node.Key, keyType, facts, sealedObjects, sealed, reported)
-			inspectRangeAssignmentTarget(pass, node.Value, valueType, facts, sealedObjects, sealed, reported)
+			bodyFacts := facts.clone()
+			inspectRangeAssignmentTarget(pass, node.Key, keyType, bodyFacts, sealedObjects, sealed, reported)
+			inspectRangeAssignmentTarget(pass, node.Value, valueType, bodyFacts, sealedObjects, sealed, reported)
+			bodyFacts = inspectFlowNodeWithFacts(pass, node.Body, results, bodyFacts, sealedObjects, sealed, reported)
+			facts = mergeFlowFacts(facts.clone(), bodyFacts)
+			return false
 		case *ast.CallExpr:
 			inspectCall(pass, node, facts, sealedObjects, sealed, reported)
 		case *ast.CompositeLit:
@@ -240,6 +324,29 @@ func inspectFlowWithFacts(pass *analysis.Pass, body *ast.BlockStmt, results *typ
 		}
 		return true
 	})
+	return facts
+}
+
+func inspectFlowStmtWithFacts(pass *analysis.Pass, stmt ast.Stmt, results *types.Tuple, inherited *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) *flowFacts {
+	if stmt == nil {
+		return inherited.clone()
+	}
+	return inspectFlowNodeWithFacts(pass, stmt, results, inherited, sealedObjects, sealed, reported)
+}
+
+func mergeFlowFacts(branches ...*flowFacts) *flowFacts {
+	merged := newFlowFacts()
+	for _, branch := range branches {
+		if branch == nil {
+			continue
+		}
+		for slot, actuals := range branch.concrete {
+			for _, actual := range actuals {
+				merged.recordSlotActual(slot, actual)
+			}
+		}
+	}
+	return merged
 }
 
 func inspectRangeAssignmentTarget(pass *analysis.Pass, target ast.Expr, actual types.Type, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
@@ -276,12 +383,17 @@ func inspectAssignmentTarget(pass *analysis.Pass, lhs ast.Expr, facts *flowFacts
 	}
 }
 
+type flowSlot struct {
+	root *types.Var
+	path string
+}
+
 type flowFacts struct {
-	concrete map[*types.Var]types.Type
+	concrete map[flowSlot][]types.Type
 }
 
 func newFlowFacts() *flowFacts {
-	return &flowFacts{concrete: map[*types.Var]types.Type{}}
+	return &flowFacts{concrete: map[flowSlot][]types.Type{}}
 }
 
 func (f *flowFacts) clone() *flowFacts {
@@ -290,7 +402,7 @@ func (f *flowFacts) clone() *flowFacts {
 		return cloned
 	}
 	for key, value := range f.concrete {
-		cloned.concrete[key] = value
+		cloned.concrete[key] = append([]types.Type(nil), value...)
 	}
 	return cloned
 }
@@ -299,50 +411,40 @@ func (f *flowFacts) recordName(pass *analysis.Pass, name *ast.Ident, rhs ast.Exp
 	if f == nil || name == nil || name.Name == "_" {
 		return
 	}
-	obj, ok := pass.TypesInfo.Defs[name].(*types.Var)
-	if !ok || obj == nil {
-		obj, ok = pass.TypesInfo.Uses[name].(*types.Var)
-	}
-	if !ok || obj == nil {
+	slot, ok := flowSlotForIdent(pass, name)
+	if !ok {
 		return
 	}
-	f.recordObject(pass, obj, rhs, tupleIndex)
+	f.recordSlot(pass, slot, rhs, tupleIndex)
 }
 
 func (f *flowFacts) record(pass *analysis.Pass, lhs ast.Expr, rhs ast.Expr, tupleIndex int) {
 	if f == nil {
 		return
 	}
-	ident, ok := lhs.(*ast.Ident)
+	slot, ok := flowSlotForExpr(pass, lhs)
 	if !ok {
 		return
 	}
-	f.recordName(pass, ident, rhs, tupleIndex)
+	f.recordSlot(pass, slot, rhs, tupleIndex)
 }
 
 func (f *flowFacts) recordActual(pass *analysis.Pass, lhs ast.Expr, actual types.Type) {
 	if f == nil {
 		return
 	}
-	ident, ok := lhs.(*ast.Ident)
-	if !ok || ident.Name == "_" {
+	slot, ok := flowSlotForExpr(pass, lhs)
+	if !ok {
 		return
 	}
-	obj, ok := pass.TypesInfo.Defs[ident].(*types.Var)
-	if !ok || obj == nil {
-		obj, ok = pass.TypesInfo.Uses[ident].(*types.Var)
-	}
-	if !ok || obj == nil {
-		return
-	}
-	f.recordObjectActual(obj, actual)
+	f.recordSlotActual(slot, actual)
 }
 
-func (f *flowFacts) recordObject(pass *analysis.Pass, obj *types.Var, rhs ast.Expr, tupleIndex int) {
+func (f *flowFacts) recordSlot(pass *analysis.Pass, slot flowSlot, rhs ast.Expr, tupleIndex int) {
 	actual := pass.TypesInfo.TypeOf(rhs)
 	if tuple, ok := actual.(*types.Tuple); ok {
 		if tupleIndex < 0 || tupleIndex >= tuple.Len() {
-			delete(f.concrete, obj)
+			delete(f.concrete, slot)
 			return
 		}
 		actual = tuple.At(tupleIndex).Type()
@@ -353,24 +455,29 @@ func (f *flowFacts) recordObject(pass *analysis.Pass, obj *types.Var, rhs ast.Ex
 		}
 	}
 	if namedImplementation(actual) == nil {
-		delete(f.concrete, obj)
+		delete(f.concrete, slot)
 		return
 	}
-	f.recordObjectActual(obj, actual)
+	f.concrete[slot] = []types.Type{actual}
 }
 
-func (f *flowFacts) recordObjectActual(obj *types.Var, actual types.Type) {
-	if f == nil || obj == nil {
+func (f *flowFacts) recordSlotActual(slot flowSlot, actual types.Type) {
+	if f == nil || slot.root == nil {
 		return
 	}
 	if namedImplementation(actual) == nil {
-		delete(f.concrete, obj)
+		delete(f.concrete, slot)
 		return
 	}
-	f.concrete[obj] = actual
+	for _, existing := range f.concrete[slot] {
+		if types.Identical(existing, actual) {
+			return
+		}
+	}
+	f.concrete[slot] = append(f.concrete[slot], actual)
 }
 
-func (f *flowFacts) assertedConcrete(pass *analysis.Pass, expr ast.Expr) (types.Type, bool) {
+func (f *flowFacts) assertedConcretes(pass *analysis.Pass, expr ast.Expr) ([]types.Type, bool) {
 	if f == nil {
 		return nil, false
 	}
@@ -381,23 +488,24 @@ func (f *flowFacts) assertedConcrete(pass *analysis.Pass, expr ast.Expr) (types.
 	return f.concreteForExpr(pass, assertion.X)
 }
 
-func (f *flowFacts) concreteForExpr(pass *analysis.Pass, expr ast.Expr) (types.Type, bool) {
-	if ident, ok := expr.(*ast.Ident); ok {
-		obj, ok := pass.TypesInfo.Uses[ident].(*types.Var)
-		if !ok || obj == nil {
-			return nil, false
+func (f *flowFacts) concreteForExpr(pass *analysis.Pass, expr ast.Expr) ([]types.Type, bool) {
+	if slot, ok := flowSlotForExpr(pass, expr); ok {
+		actuals, ok := f.concrete[slot]
+		return actuals, ok
+	}
+	if call, ok := expr.(*ast.CallExpr); ok && len(call.Args) == 1 && !isFunctionCall(pass, call) {
+		if actuals, ok := f.concreteForExpr(pass, call.Args[0]); ok {
+			return actuals, true
 		}
-		actual, ok := f.concrete[obj]
-		return actual, ok
 	}
 	if actual, ok := concreteFromConversion(pass, expr); ok {
-		return actual, true
+		return []types.Type{actual}, true
 	}
 	actual := pass.TypesInfo.TypeOf(expr)
 	if namedImplementation(actual) == nil {
 		return nil, false
 	}
-	return actual, true
+	return []types.Type{actual}, true
 }
 
 func concreteFromConversion(pass *analysis.Pass, expr ast.Expr) (types.Type, bool) {
@@ -405,7 +513,7 @@ func concreteFromConversion(pass *analysis.Pass, expr ast.Expr) (types.Type, boo
 	if !ok || len(call.Args) != 1 {
 		return nil, false
 	}
-	if _, ok := pass.TypesInfo.TypeOf(call.Fun).(*types.Signature); ok {
+	if isFunctionCall(pass, call) {
 		return nil, false
 	}
 	actual := pass.TypesInfo.TypeOf(call.Args[0])
@@ -413,6 +521,65 @@ func concreteFromConversion(pass *analysis.Pass, expr ast.Expr) (types.Type, boo
 		return nil, false
 	}
 	return actual, true
+}
+
+func isFunctionCall(pass *analysis.Pass, call *ast.CallExpr) bool {
+	if call == nil {
+		return false
+	}
+	_, ok := pass.TypesInfo.TypeOf(call.Fun).(*types.Signature)
+	return ok
+}
+
+func flowSlotForExpr(pass *analysis.Pass, expr ast.Expr) (flowSlot, bool) {
+	switch node := expr.(type) {
+	case *ast.ParenExpr:
+		return flowSlotForExpr(pass, node.X)
+	case *ast.Ident:
+		return flowSlotForIdent(pass, node)
+	case *ast.SelectorExpr:
+		slot, ok := flowSlotForExpr(pass, node.X)
+		if !ok {
+			return flowSlot{}, false
+		}
+		selection := pass.TypesInfo.Selections[node]
+		if selection == nil {
+			return flowSlot{}, false
+		}
+		field, ok := selection.Obj().(*types.Var)
+		if !ok || field == nil {
+			return flowSlot{}, false
+		}
+		slot.path += "/" + flowFieldKey(field)
+		return slot, true
+	default:
+		return flowSlot{}, false
+	}
+}
+
+func flowSlotForIdent(pass *analysis.Pass, name *ast.Ident) (flowSlot, bool) {
+	if name == nil || name.Name == "_" {
+		return flowSlot{}, false
+	}
+	obj, ok := pass.TypesInfo.Defs[name].(*types.Var)
+	if !ok || obj == nil {
+		obj, ok = pass.TypesInfo.Uses[name].(*types.Var)
+	}
+	if !ok || obj == nil {
+		return flowSlot{}, false
+	}
+	return flowSlot{root: obj}, true
+}
+
+func flowFieldKey(field *types.Var) string {
+	if field == nil {
+		return ""
+	}
+	pkg := ""
+	if field.Pkg() != nil {
+		pkg = field.Pkg().Path()
+	}
+	return pkg + "." + field.Name() + "@" + strconv.Itoa(int(field.Pos()))
 }
 
 func inspectValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
@@ -442,6 +609,9 @@ func inspectValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec, facts *flow
 }
 
 func inspectExpressionCalls(pass *analysis.Pass, expr ast.Expr, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	if expr == nil {
+		return
+	}
 	ast.Inspect(expr, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.FuncLit:
@@ -596,8 +766,10 @@ func reportImportedSealedValueWithFacts(pass *analysis.Pass, expr ast.Expr, expe
 }
 
 func reportImportedSealedValueWithFactsAt(pass *analysis.Pass, expr ast.Expr, expected types.Type, tupleIndex int, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
-	if actual, ok := facts.assertedConcrete(pass, expr); ok {
-		reportImportedSealedActual(pass, expr, actual, expected, sealedObjects, sealed, reported)
+	if actuals, ok := facts.assertedConcretes(pass, expr); ok {
+		for _, actual := range actuals {
+			reportImportedSealedActual(pass, expr, actual, expected, sealedObjects, sealed, reported)
+		}
 		return
 	}
 	reportImportedSealedValueAt(pass, expr, expected, tupleIndex, sealedObjects, sealed, reported)
