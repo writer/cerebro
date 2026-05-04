@@ -253,7 +253,9 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 				if len(clause.List) == 0 {
 					hasDefault = true
 				}
-				branches = append(branches, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, facts, sealedObjects, sealed, reported))
+				branchFacts := facts.clone()
+				seedTypeSwitchCaseFacts(pass, branchFacts, node.Assign, clause)
+				branches = append(branches, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, branchFacts, sealedObjects, sealed, reported))
 			}
 			if !hasDefault {
 				branches = append(branches, facts.clone())
@@ -367,6 +369,92 @@ func caseFallsThrough(clause *ast.CaseClause) bool {
 	}
 	branch, ok := clause.Body[len(clause.Body)-1].(*ast.BranchStmt)
 	return ok && branch.Tok == token.FALLTHROUGH
+}
+
+func seedTypeSwitchCaseFacts(pass *analysis.Pass, facts *flowFacts, assign ast.Stmt, clause *ast.CaseClause) {
+	if facts == nil || clause == nil || len(clause.List) == 0 {
+		return
+	}
+	name, assertion := typeSwitchBinding(assign)
+	if name == nil || assertion == nil {
+		return
+	}
+	actuals, ok := facts.concreteForExpr(pass, assertion.X)
+	if !ok {
+		return
+	}
+	for _, slot := range typeSwitchCaseSlots(pass, name, clause) {
+		facts.clearSlot(slot)
+		for _, actual := range actuals {
+			if typeSwitchCaseMatches(pass, actual, clause.List) {
+				facts.recordSlotActual(slot, actual)
+			}
+		}
+	}
+}
+
+func typeSwitchBinding(assign ast.Stmt) (*ast.Ident, *ast.TypeAssertExpr) {
+	stmt, ok := assign.(*ast.AssignStmt)
+	if !ok || len(stmt.Lhs) != 1 || len(stmt.Rhs) != 1 {
+		return nil, nil
+	}
+	name, ok := stmt.Lhs[0].(*ast.Ident)
+	if !ok {
+		return nil, nil
+	}
+	assertion, ok := stmt.Rhs[0].(*ast.TypeAssertExpr)
+	if !ok {
+		return nil, nil
+	}
+	return name, assertion
+}
+
+func typeSwitchCaseSlots(pass *analysis.Pass, name *ast.Ident, clause *ast.CaseClause) []flowSlot {
+	slots := map[flowSlot]struct{}{}
+	if slot, ok := flowSlotForIdent(pass, name); ok {
+		slots[slot] = struct{}{}
+	}
+	ast.Inspect(&ast.BlockStmt{List: clause.Body}, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case nil:
+			return true
+		case *ast.FuncLit:
+			return false
+		case *ast.Ident:
+			if node.Name != name.Name {
+				return true
+			}
+			slot, ok := flowSlotForIdent(pass, node)
+			if ok {
+				slots[slot] = struct{}{}
+			}
+		}
+		return true
+	})
+	result := make([]flowSlot, 0, len(slots))
+	for slot := range slots {
+		result = append(result, slot)
+	}
+	return result
+}
+
+func typeSwitchCaseMatches(pass *analysis.Pass, actual types.Type, cases []ast.Expr) bool {
+	if actual == nil {
+		return false
+	}
+	for _, expr := range cases {
+		caseType := pass.TypesInfo.TypeOf(expr)
+		if caseType == nil {
+			continue
+		}
+		if types.AssignableTo(actual, caseType) {
+			return true
+		}
+		if iface, ok := underlying(caseType).(*types.Interface); ok && types.Implements(actual, iface) {
+			return true
+		}
+	}
+	return false
 }
 
 func inspectRangeAssignmentTarget(pass *analysis.Pass, target ast.Expr, actual types.Type, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {

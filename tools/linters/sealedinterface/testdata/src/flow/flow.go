@@ -80,6 +80,15 @@ func FallthroughSwitchTypeAssertBad(flag bool) sealedpkg.Runner {
 	}
 }
 
+func TypeSwitchCaseVariableBad() sealedpkg.Runner {
+	switch value := any(externalbad.Bad{}).(type) {
+	case sealedpkg.Runner:
+		return value // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+	default:
+		return nil
+	}
+}
+
 type typeAssertBox struct {
 	value any
 }
