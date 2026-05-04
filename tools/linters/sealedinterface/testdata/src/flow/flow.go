@@ -170,6 +170,18 @@ func RangeSliceTypeAssertBad() sealedpkg.Runner {
 	return nil
 }
 
+func ReslicedTypeAssertBad() sealedpkg.Runner {
+	values := []any{externalbad.Bad{}}
+	sub := values[0:1]
+	return sub[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func AppendResultTypeAssertBad() sealedpkg.Runner {
+	var values []any
+	values = append(values, externalbad.Bad{})
+	return values[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func DereferencedAliasTypeAssertBad() sealedpkg.Runner {
 	value := any(nil)
 	ptr := &value

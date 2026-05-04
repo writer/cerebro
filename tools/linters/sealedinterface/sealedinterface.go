@@ -2,6 +2,7 @@ package sealedinterface
 
 import (
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"go/types"
 	"sort"
@@ -674,6 +675,12 @@ func appendUniqueFlowSlot(slots []flowSlot, slot flowSlot) []flowSlot {
 }
 
 func (f *flowFacts) recordSlot(pass *analysis.Pass, slot flowSlot, rhs ast.Expr, tupleIndex int) {
+	if f.recordAppendResult(pass, slot, rhs) {
+		return
+	}
+	if f.recordSliceResult(pass, slot, rhs) {
+		return
+	}
 	f.clearSlot(slot)
 	if targets, ok := f.pointerTargetsForExpr(pass, rhs); ok {
 		f.aliases[slot] = targets
@@ -704,6 +711,58 @@ func (f *flowFacts) recordSlot(pass *analysis.Pass, slot flowSlot, rhs ast.Expr,
 		return
 	}
 	f.concrete[slot] = []types.Type{actual}
+}
+
+func (f *flowFacts) recordAppendResult(pass *analysis.Pass, dstSlot flowSlot, rhs ast.Expr) bool {
+	call, ok := rhs.(*ast.CallExpr)
+	if !ok || !isBuiltinCall(pass, call, "append") || len(call.Args) <= 1 {
+		return false
+	}
+	copied := f.childFactsForExpr(pass, call.Args[0], dstSlot)
+	f.clearSlot(dstSlot)
+	for slot, actuals := range copied {
+		f.concrete[slot] = actuals
+	}
+	if call.Ellipsis != token.NoPos && len(call.Args) == 2 {
+		for slot, actuals := range f.childFactsForExpr(pass, call.Args[1], dstSlot) {
+			for _, actual := range actuals {
+				f.recordSlotActual(slot, actual)
+			}
+		}
+		return true
+	}
+	for index, arg := range call.Args[1:] {
+		child := dstSlot
+		child.path += "/const:" + strconv.Itoa(index)
+		f.recordExprConcretes(pass, child, arg)
+	}
+	return true
+}
+
+func (f *flowFacts) recordSliceResult(pass *analysis.Pass, dstSlot flowSlot, rhs ast.Expr) bool {
+	slice, ok := rhs.(*ast.SliceExpr)
+	if !ok {
+		return false
+	}
+	copied := f.childFactsForSlice(pass, slice, dstSlot)
+	if len(copied) == 0 {
+		return false
+	}
+	f.clearSlot(dstSlot)
+	for slot, actuals := range copied {
+		f.concrete[slot] = actuals
+	}
+	return true
+}
+
+func (f *flowFacts) recordExprConcretes(pass *analysis.Pass, slot flowSlot, expr ast.Expr) bool {
+	if actuals, ok := f.concreteForExpr(pass, expr); ok {
+		for _, actual := range actuals {
+			f.recordSlotActual(slot, actual)
+		}
+		return true
+	}
+	return f.recordExprActual(pass, slot, expr)
 }
 
 func (f *flowFacts) recordSlotActual(slot flowSlot, actual types.Type) {
@@ -800,6 +859,91 @@ func (f *flowFacts) copyCompositeIndexed(pass *analysis.Pass, dstSlot flowSlot, 
 		f.recordExprActual(pass, child, compositeLiteralValue(elt))
 	}
 	return true
+}
+
+func (f *flowFacts) childFactsForExpr(pass *analysis.Pass, expr ast.Expr, dstSlot flowSlot) map[flowSlot][]types.Type {
+	srcSlot, ok := flowSlotForExpr(pass, expr)
+	if !ok {
+		return nil
+	}
+	return f.childFactsForSlot(srcSlot, dstSlot)
+}
+
+func (f *flowFacts) childFactsForSlice(pass *analysis.Pass, slice *ast.SliceExpr, dstSlot flowSlot) map[flowSlot][]types.Type {
+	srcSlot, ok := flowSlotForExpr(pass, slice.X)
+	if !ok {
+		return nil
+	}
+	low, lowOK := constInt(pass, slice.Low)
+	copied := map[flowSlot][]types.Type{}
+	for slot, actuals := range f.concrete {
+		if slot.root != srcSlot.root || !strings.HasPrefix(slot.path, srcSlot.path+"/") {
+			continue
+		}
+		suffix := strings.TrimPrefix(slot.path, srcSlot.path)
+		if lowOK {
+			var ok bool
+			suffix, ok = shiftedSliceSuffix(suffix, low)
+			if !ok {
+				continue
+			}
+		}
+		child := dstSlot
+		child.path += suffix
+		copied[child] = append([]types.Type(nil), actuals...)
+	}
+	return copied
+}
+
+func (f *flowFacts) childFactsForSlot(srcSlot flowSlot, dstSlot flowSlot) map[flowSlot][]types.Type {
+	copied := map[flowSlot][]types.Type{}
+	for slot, actuals := range f.concrete {
+		if slot.root != srcSlot.root || !strings.HasPrefix(slot.path, srcSlot.path+"/") {
+			continue
+		}
+		child := dstSlot
+		child.path += strings.TrimPrefix(slot.path, srcSlot.path)
+		copied[child] = append([]types.Type(nil), actuals...)
+	}
+	return copied
+}
+
+func shiftedSliceSuffix(suffix string, low int) (string, bool) {
+	trimmed := strings.TrimPrefix(suffix, "/")
+	if trimmed == "" || low == 0 {
+		return suffix, true
+	}
+	segment, rest, _ := strings.Cut(trimmed, "/")
+	if !strings.HasPrefix(segment, "const:") {
+		return suffix, true
+	}
+	index, err := strconv.Atoi(strings.TrimPrefix(segment, "const:"))
+	if err != nil {
+		return suffix, true
+	}
+	if index < low {
+		return "", false
+	}
+	shifted := "const:" + strconv.Itoa(index-low)
+	if rest != "" {
+		shifted += "/" + rest
+	}
+	return "/" + shifted, true
+}
+
+func constInt(pass *analysis.Pass, expr ast.Expr) (int, bool) {
+	if expr == nil {
+		return 0, true
+	}
+	value := pass.TypesInfo.Types[expr].Value
+	if value == nil {
+		return 0, false
+	}
+	asInt, ok := constant.Int64Val(value)
+	if !ok {
+		return 0, false
+	}
+	return int(asInt), true
 }
 
 func copiedDestinationSlot(dstSlot flowSlot, suffix string) flowSlot {
@@ -1033,6 +1177,18 @@ func isFunctionCall(pass *analysis.Pass, call *ast.CallExpr) bool {
 	return ok
 }
 
+func isBuiltinCall(pass *analysis.Pass, call *ast.CallExpr, name string) bool {
+	if call == nil {
+		return false
+	}
+	ident, ok := call.Fun.(*ast.Ident)
+	if !ok || ident.Name != name {
+		return false
+	}
+	_, ok = pass.TypesInfo.Uses[ident].(*types.Builtin)
+	return ok
+}
+
 func flowSlotForExpr(pass *analysis.Pass, expr ast.Expr) (flowSlot, bool) {
 	switch node := expr.(type) {
 	case *ast.ParenExpr:
@@ -1061,6 +1217,8 @@ func flowSlotForExpr(pass *analysis.Pass, expr ast.Expr) (flowSlot, bool) {
 		}
 		slot.path += "/" + indexFlowKey(pass, node.Index)
 		return slot, true
+	case *ast.SliceExpr:
+		return flowSlotForExpr(pass, node.X)
 	default:
 		return flowSlot{}, false
 	}
