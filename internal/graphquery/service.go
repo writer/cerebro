@@ -43,10 +43,10 @@ func (s *Service) GetEntityNeighborhood(ctx context.Context, request Neighborhoo
 	if s == nil || s.store == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	rootURN := strings.TrimSpace(request.RootURN)
-	if rootURN == "" {
+	if strings.TrimSpace(request.RootURN) == "" {
 		return nil, fmt.Errorf("%w: root urn is required", ErrInvalidRequest)
 	}
+	rootURN := request.RootURN
 	if err := validateCerebroURN(rootURN); err != nil {
 		return nil, err
 	}

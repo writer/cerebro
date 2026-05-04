@@ -282,9 +282,7 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 		case *ast.ForStmt:
 			facts = inspectFlowStmtWithFacts(pass, node.Init, results, facts, sealedObjects, sealed, reported)
 			inspectExpressionCalls(pass, node.Cond, facts, sealedObjects, sealed, reported)
-			bodyFacts := inspectFlowNodeWithFacts(pass, node.Body, results, facts, sealedObjects, sealed, reported)
-			bodyFacts = inspectFlowStmtWithFacts(pass, node.Post, results, bodyFacts, sealedObjects, sealed, reported)
-			facts = mergeFlowFacts(facts.clone(), bodyFacts)
+			facts = inspectLoopBodyWithFacts(pass, node.Body, node.Post, results, facts, sealedObjects, sealed, reported)
 			return false
 		case *ast.ReturnStmt:
 			if len(node.Results) == 1 {
@@ -351,6 +349,20 @@ func inspectFlowStmtWithFacts(pass *analysis.Pass, stmt ast.Stmt, results *types
 		return inherited.clone()
 	}
 	return inspectFlowNodeWithFacts(pass, stmt, results, inherited, sealedObjects, sealed, reported)
+}
+
+func inspectLoopBodyWithFacts(pass *analysis.Pass, body *ast.BlockStmt, post ast.Stmt, results *types.Tuple, inherited *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) *flowFacts {
+	facts := inherited.clone()
+	for iteration := 0; iteration < 4; iteration++ {
+		bodyFacts := inspectFlowNodeWithFacts(pass, body, results, facts, sealedObjects, sealed, reported)
+		bodyFacts = inspectFlowStmtWithFacts(pass, post, results, bodyFacts, sealedObjects, sealed, reported)
+		merged := mergeFlowFacts(inherited.clone(), bodyFacts)
+		if flowFactsEqual(facts, merged) {
+			return merged
+		}
+		facts = merged
+	}
+	return facts
 }
 
 func mergeFlowFacts(branches ...*flowFacts) *flowFacts {
@@ -682,6 +694,55 @@ func appendUniqueFlowSlot(slots []flowSlot, slot flowSlot) []flowSlot {
 		}
 	}
 	return append(slots, slot)
+}
+
+func flowFactsEqual(left *flowFacts, right *flowFacts) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	if len(left.concrete) != len(right.concrete) || len(left.aliases) != len(right.aliases) || len(left.lengths) != len(right.lengths) {
+		return false
+	}
+	for slot, actuals := range left.concrete {
+		if !typeSlicesEqual(actuals, right.concrete[slot]) {
+			return false
+		}
+	}
+	for slot, aliases := range left.aliases {
+		if !flowSlotSlicesEqual(aliases, right.aliases[slot]) {
+			return false
+		}
+	}
+	for slot, length := range left.lengths {
+		if right.lengths[slot] != length {
+			return false
+		}
+	}
+	return true
+}
+
+func typeSlicesEqual(left []types.Type, right []types.Type) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if !types.Identical(left[index], right[index]) {
+			return false
+		}
+	}
+	return true
+}
+
+func flowSlotSlicesEqual(left []flowSlot, right []flowSlot) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *flowFacts) recordSlot(pass *analysis.Pass, slot flowSlot, rhs ast.Expr, tupleIndex int) {

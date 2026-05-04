@@ -207,6 +207,14 @@ func AppendOffsetTypeAssertBad() sealedpkg.Runner {
 	return values[1].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func ForAppendSecondElementTypeAssertBad() sealedpkg.Runner {
+	var values []any
+	for i := 0; i < 2; i++ {
+		values = append(values, externalbad.Bad{})
+	}
+	return values[1].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func SliceAliasTypeAssertBad() sealedpkg.Runner {
 	values := []any{externalbad.Bad{}}
 	alias := values
