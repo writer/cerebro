@@ -589,6 +589,9 @@ func (f *flowFacts) assertedConcretes(pass *analysis.Pass, expr ast.Expr) ([]typ
 }
 
 func (f *flowFacts) concreteForExpr(pass *analysis.Pass, expr ast.Expr) ([]types.Type, bool) {
+	if f == nil {
+		return nil, false
+	}
 	if slot, ok := flowSlotForExpr(pass, expr); ok {
 		actuals, ok := f.concrete[slot]
 		return actuals, ok
@@ -905,6 +908,12 @@ func reportImportedSealedValueWithFacts(pass *analysis.Pass, expr ast.Expr, expe
 
 func reportImportedSealedValueWithFactsAt(pass *analysis.Pass, expr ast.Expr, expected types.Type, tupleIndex int, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
 	if actuals, ok := facts.assertedConcretes(pass, expr); ok {
+		for _, actual := range actuals {
+			reportImportedSealedActual(pass, expr, actual, expected, sealedObjects, sealed, reported)
+		}
+		return
+	}
+	if actuals, ok := facts.concreteForExpr(pass, expr); ok {
 		for _, actual := range actuals {
 			reportImportedSealedActual(pass, expr, actual, expected, sealedObjects, sealed, reported)
 		}

@@ -36,6 +36,11 @@ func ReturnDirectTypeAssertBad() sealedpkg.Runner {
 	return any(externalbad.Bad{}).(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func ReturnPlainInterfaceFactBad() sealedpkg.Runner {
+	var value interface{ Run() } = externalbad.Bad{}
+	return value // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func ClosureCaptureTypeAssertBad() sealedpkg.Runner {
 	value := any(externalbad.Bad{})
 	return func() sealedpkg.Runner {
