@@ -137,6 +137,18 @@ func MapIndexTypeAssertBad() sealedpkg.Runner {
 	return values["runner"].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func DeleteMapIndexTypeAssertSafe() {
+	values := map[string]any{"runner": externalbad.Bad{}}
+	delete(values, "runner")
+	_, _ = values["runner"].(sealedpkg.Runner)
+}
+
+func ClearMapIndexTypeAssertSafe() {
+	values := map[string]any{"runner": externalbad.Bad{}}
+	clear(values)
+	_, _ = values["runner"].(sealedpkg.Runner)
+}
+
 func CopySliceTypeAssertBad() sealedpkg.Runner {
 	src := []any{externalbad.Bad{}}
 	dst := make([]any, 1)

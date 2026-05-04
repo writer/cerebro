@@ -898,6 +898,29 @@ func (f *flowFacts) copyCompositeIndexed(pass *analysis.Pass, dstSlot flowSlot, 
 	return true
 }
 
+func (f *flowFacts) deleteIndexed(pass *analysis.Pass, container ast.Expr, index ast.Expr) {
+	if f == nil {
+		return
+	}
+	slot, ok := flowSlotForExpr(pass, container)
+	if !ok {
+		return
+	}
+	slot.path += "/" + indexFlowKey(pass, index)
+	f.clearSlot(slot)
+}
+
+func (f *flowFacts) clearContainer(pass *analysis.Pass, container ast.Expr) {
+	if f == nil {
+		return
+	}
+	slot, ok := flowSlotForExpr(pass, container)
+	if !ok {
+		return
+	}
+	f.clearSlot(slot)
+}
+
 func (f *flowFacts) childFactsForExpr(pass *analysis.Pass, expr ast.Expr, dstSlot flowSlot) map[flowSlot][]types.Type {
 	srcSlot, ok := flowSlotForExpr(pass, expr)
 	if !ok {
@@ -1453,6 +1476,16 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, facts *flowFacts, seal
 			case "copy":
 				if len(call.Args) == 2 {
 					facts.copyIndexed(pass, call.Args[0], call.Args[1])
+				}
+				return
+			case "delete":
+				if len(call.Args) == 2 {
+					facts.deleteIndexed(pass, call.Args[0], call.Args[1])
+				}
+				return
+			case "clear":
+				if len(call.Args) == 1 {
+					facts.clearContainer(pass, call.Args[0])
 				}
 				return
 			}

@@ -128,13 +128,18 @@ def build_jira_workspace_claims(
             bool_value(posture.get("approved_marketplace_apps_only"), True),
             **shared_options,
         ),
-        integration.attr(workspace_ref, "admin_count", str(len(admins)), **shared_options),
+        integration.attr(
+            workspace_ref,
+            "admin_count",
+            str(len({require_value(admin.get("email"), "admins[].email").casefold() for admin in admins})),
+            **shared_options,
+        ),
         integration.attr(workspace_ref, "project_count", str(len(projects)), **shared_options),
         integration.attr(workspace_ref, "installed_app_count", str(len(apps)), **shared_options),
     ]
 
     for admin in admins:
-        email = require_value(admin.get("email"), "admins[].email")
+        email = require_value(admin.get("email"), "admins[].email").casefold()
         label = optional_string(admin.get("display_name")) or email
         role = optional_string(admin.get("role")) or "site_admin"
         admin_ref = integration.ref("user", email, label)

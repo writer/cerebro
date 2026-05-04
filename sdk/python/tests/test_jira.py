@@ -131,6 +131,17 @@ class JiraPostureTests(unittest.TestCase):
 
         self.assertFalse(any(finding["id"] == "jira_workspace_admin_sprawl" for finding in findings))
 
+    def test_build_jira_workspace_claims_normalizes_admin_email_identity(self) -> None:
+        claims = build_jira_workspace_claims(
+            self.integration,
+            {"workspace_key": "writer", "admins": [{"email": "ADMIN@writer.com"}, {"email": "admin@writer.com"}]},
+        )
+
+        administers = [claim for claim in claims if claim.get("predicate") == "administers"]
+        self.assertEqual({claim["subject_urn"] for claim in administers}, {"urn:cerebro:writer:runtime:writer-jira:user:admin@writer.com"})
+        admin_count = [claim for claim in claims if claim.get("predicate") == "admin_count"]
+        self.assertEqual(admin_count[0]["object_value"], "1")
+
     def test_onboard_jira_workspace_posture_lists_all_submitted_claims(self) -> None:
         class FakeIntegration:
             claims = []
