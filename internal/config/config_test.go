@@ -15,6 +15,10 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_POSTGRES_DSN", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_KUZU_PATH", "")
+	t.Setenv("CEREBRO_NEO4J_URI", "")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
+	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -47,6 +51,10 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverKuzu)
 	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
+	t.Setenv("CEREBRO_NEO4J_URI", "")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
+	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -72,6 +80,115 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 }
 
+func clearDependencyEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("CEREBRO_HTTP_ADDR", "")
+	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
+	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
+	t.Setenv("CEREBRO_JETSTREAM_URL", "")
+	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "")
+	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
+	t.Setenv("CEREBRO_POSTGRES_DSN", "")
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
+	t.Setenv("CEREBRO_KUZU_PATH", "")
+	t.Setenv("CEREBRO_NEO4J_URI", "")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
+	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
+}
+
+func TestLoadFromNeo4jEnv(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
+	t.Setenv("CEREBRO_KUZU_PATH", "")
+	t.Setenv("CEREBRO_NEO4J_URI", "neo4j+s://example.databases.neo4j.io")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
+	t.Setenv("CEREBRO_NEO4J_DATABASE", "cerebro")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
+		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverNeo4j)
+	}
+	if cfg.GraphStore.Neo4jURI != "neo4j+s://example.databases.neo4j.io" {
+		t.Fatalf("GraphStore.Neo4jURI = %q", cfg.GraphStore.Neo4jURI)
+	}
+	if cfg.GraphStore.Neo4jUsername != "neo4j" {
+		t.Fatalf("GraphStore.Neo4jUsername = %q", cfg.GraphStore.Neo4jUsername)
+	}
+	if cfg.GraphStore.Neo4jPassword != "test-password" {
+		t.Fatal("GraphStore.Neo4jPassword was not loaded")
+	}
+	if cfg.GraphStore.Neo4jDatabase != "cerebro" {
+		t.Fatalf("GraphStore.Neo4jDatabase = %q", cfg.GraphStore.Neo4jDatabase)
+	}
+}
+
+func TestLoadInfersNeo4jDriverFromURI(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
+	t.Setenv("CEREBRO_KUZU_PATH", "")
+	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
+		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverNeo4j)
+	}
+}
+
+func TestLoadRejectsConflictingGraphStoreInference(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
+	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
+	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsMissingNeo4jURI(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
+	t.Setenv("CEREBRO_NEO4J_URI", "")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsMissingNeo4jUsername(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
+	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsMissingNeo4jPassword(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
+	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
 func TestLoadRejectsInvalidDuration(t *testing.T) {
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "not-a-duration")
 	if _, err := Load(); err == nil {
@@ -80,6 +197,7 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 }
 
 func TestLoadInfersDriversFromURLs(t *testing.T) {
+	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_SHUTDOWN_TIMEOUT", "")
 	t.Setenv("CEREBRO_APPEND_LOG_DRIVER", "")
 	t.Setenv("CEREBRO_JETSTREAM_URL", "nats://127.0.0.1:4222")

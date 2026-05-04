@@ -9,6 +9,7 @@ import (
 	appendlogjetstream "github.com/writer/cerebro/internal/appendlog/jetstream"
 	"github.com/writer/cerebro/internal/config"
 	graphstorekuzu "github.com/writer/cerebro/internal/graphstore/kuzu"
+	graphstoreneo4j "github.com/writer/cerebro/internal/graphstore/neo4j"
 	statestorepostgres "github.com/writer/cerebro/internal/statestore/postgres"
 )
 
@@ -68,6 +69,15 @@ func OpenDependencies(ctx context.Context, cfg config.Config) (Dependencies, fun
 		deps.GraphStore = graphStore
 		closers = append(closers, func(context.Context) error {
 			return graphStore.Close()
+		})
+	case config.GraphStoreDriverNeo4j:
+		graphStore, err := graphstoreneo4j.Open(cfg.GraphStore)
+		if err != nil {
+			return fail(fmt.Errorf("open graph store: %w", err))
+		}
+		deps.GraphStore = graphStore
+		closers = append(closers, func(closeCtx context.Context) error {
+			return graphStore.CloseContext(closeCtx)
 		})
 	default:
 		return fail(fmt.Errorf("unsupported graph store driver %q", cfg.GraphStore.Driver))
