@@ -122,6 +122,9 @@ func TestGraphStoreProductionEnvVarsUseApprovedBackendsOnly(t *testing.T) {
 		}
 		for _, marker := range forbiddenGraphBackendEnvMarkers {
 			if bytes.Contains(body, []byte(marker)) {
+				if allowedLegacyGraphBackendEnvRejection(root, path, marker, body) {
+					continue
+				}
 				t.Fatalf("%s contains forbidden graph backend env var marker %q", shortPath(root, path), marker)
 			}
 		}
@@ -129,6 +132,12 @@ func TestGraphStoreProductionEnvVarsUseApprovedBackendsOnly(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("scan graph store env vars: %v", err)
 	}
+}
+
+func allowedLegacyGraphBackendEnvRejection(root string, path string, marker string, body []byte) bool {
+	return marker == "CEREBRO_KUZU_" &&
+		shortPath(root, path) == filepath.Join("internal", "config", "config.go") &&
+		bytes.Contains(body, []byte("CEREBRO_KUZU_PATH is no longer supported"))
 }
 
 func TestGraphStoreDriverConstantsAreApproved(t *testing.T) {

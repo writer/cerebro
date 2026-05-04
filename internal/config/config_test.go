@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -18,6 +19,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
+	t.Setenv("CEREBRO_KUZU_PATH", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -53,6 +55,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "cerebro")
+	t.Setenv("CEREBRO_KUZU_PATH", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -92,6 +95,20 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
+	t.Setenv("CEREBRO_KUZU_PATH", "")
+}
+
+func TestLoadRejectsLegacyKuzuPath(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro.kuzu")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+	if !errors.Is(err, errLegacyKuzuPath) {
+		t.Fatalf("Load() error = %v, want errLegacyKuzuPath", err)
+	}
 }
 
 func TestLoadFromNeo4jEnv(t *testing.T) {

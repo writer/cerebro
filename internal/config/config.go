@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -16,6 +17,8 @@ const (
 	StateStoreDriverPostgres = "postgres"
 	GraphStoreDriverNeo4j    = "neo4j"
 )
+
+var errLegacyKuzuPath = errors.New("CEREBRO_KUZU_PATH is no longer supported")
 
 // Config is the minimal bootstrap configuration for the rewrite skeleton.
 type Config struct {
@@ -50,6 +53,9 @@ type GraphStoreConfig struct {
 
 // Load reads and validates process configuration.
 func Load() (Config, error) {
+	if strings.TrimSpace(os.Getenv("CEREBRO_KUZU_PATH")) != "" {
+		return Config{}, fmt.Errorf("%w; configure Neo4j with CEREBRO_NEO4J_URI, CEREBRO_NEO4J_USERNAME, and CEREBRO_NEO4J_PASSWORD", errLegacyKuzuPath)
+	}
 	cfg := Config{
 		HTTPAddr:        strings.TrimSpace(os.Getenv("CEREBRO_HTTP_ADDR")),
 		ShutdownTimeout: defaultShutdownTimeout,
