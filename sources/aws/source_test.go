@@ -166,14 +166,17 @@ func TestIAMRoleTrustEventTargetsSameRoleIdentifierAsIAMRoleEvent(t *testing.T) 
 	if err != nil {
 		t.Fatalf("iamRoleTrustEvent() error = %v", err)
 	}
-	roleID := roleEvent.Attributes["user_id"]
-	if got := trustEvent.Attributes["target_id"]; got != roleID {
-		t.Fatalf("trust target_id = %q, want role event user_id %q", got, roleID)
+	roleARN := "arn:aws:iam::123456789012:role/AdminRole"
+	if got := trustEvent.Attributes["target_id"]; got != roleARN {
+		t.Fatalf("trust target_id = %q, want role ARN %q", got, roleARN)
 	}
-	if got := trustEvent.Attributes["role_id"]; got != roleID {
-		t.Fatalf("trust role_id = %q, want role event user_id %q", got, roleID)
+	if got := trustEvent.Attributes["role_id"]; got != roleARN {
+		t.Fatalf("trust role_id = %q, want role ARN %q", got, roleARN)
 	}
-	if got := trustEvent.Attributes["target_arn"]; got != "arn:aws:iam::123456789012:role/AdminRole" {
+	if got := trustEvent.Attributes["role_unique_id"]; got != roleEvent.Attributes["user_id"] {
+		t.Fatalf("trust role_unique_id = %q, want role event user_id %q", got, roleEvent.Attributes["user_id"])
+	}
+	if got := trustEvent.Attributes["target_arn"]; got != roleARN {
 		t.Fatalf("trust target_arn = %q, want role ARN preserved", got)
 	}
 }

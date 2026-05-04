@@ -5,6 +5,6 @@
   "main": "./src/index.js",
   "exports": {
     ".": "./src/index.js",
-    "./jira": "./src/jira.ts"
+    "./jira": "./src/jira.js"
   }
 }

@@ -654,7 +654,8 @@ func iamRoleEvent(settings settings, role iamtypes.Role) (*primitives.Event, err
 func iamRoleTrustEvent(settings settings, trust iamRoleTrust) (*primitives.Event, error) {
 	roleName := awssdk.ToString(trust.Role.RoleName)
 	roleARN := awssdk.ToString(trust.Role.Arn)
-	roleID := firstNonEmpty(awssdk.ToString(trust.Role.RoleId), roleARN, roleName)
+	roleUniqueID := awssdk.ToString(trust.Role.RoleId)
+	roleID := firstNonEmpty(roleARN, roleUniqueID, roleName)
 	subjectType, subjectID := awsTrustPrincipal(trust.Principal)
 	attributes := map[string]string{
 		"domain":               settings.accountID,
@@ -668,6 +669,7 @@ func iamRoleTrustEvent(settings settings, trust iamRoleTrust) (*primitives.Event
 		"role_id":              roleID,
 		"role_name":            roleName,
 		"role_type":            "aws_iam_role",
+		"role_unique_id":       roleUniqueID,
 		"statement_sid":        trust.Statement.Sid,
 		"subject_id":           subjectID,
 		"subject_type":         subjectType,
