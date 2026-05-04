@@ -800,11 +800,7 @@ func (f *flowFacts) recordAppendResult(pass *analysis.Pass, dstSlot flowSlot, rh
 		f.concrete[slot] = actuals
 	}
 	if call.Ellipsis != token.NoPos && len(call.Args) == 2 {
-		for slot, actuals := range f.childFactsForExpr(pass, call.Args[1], dstSlot) {
-			for _, actual := range actuals {
-				f.recordSlotActual(slot, actual)
-			}
-		}
+		f.recordSpreadAppend(pass, dstSlot, call.Args[1], appendIndex)
 		return true
 	}
 	for index, arg := range call.Args[1:] {
@@ -814,6 +810,30 @@ func (f *flowFacts) recordAppendResult(pass *analysis.Pass, dstSlot flowSlot, rh
 	}
 	f.lengths[dstSlot] = appendIndex + len(call.Args) - 1
 	return true
+}
+
+func (f *flowFacts) recordSpreadAppend(pass *analysis.Pass, dstSlot flowSlot, arg ast.Expr, appendIndex int) {
+	if lit, ok := arg.(*ast.CompositeLit); ok {
+		switch underlying(pass.TypesInfo.TypeOf(lit)).(type) {
+		case *types.Slice, *types.Array:
+			for index, elt := range lit.Elts {
+				child := dstSlot
+				child.path += "/const:" + strconv.Itoa(appendIndex+index)
+				f.recordExprConcretes(pass, child, compositeLiteralValue(elt))
+			}
+			f.lengths[dstSlot] = appendIndex + len(lit.Elts)
+			return
+		}
+	}
+	for slot, actuals := range f.childFactsForExpr(pass, arg, dstSlot) {
+		shifted, ok := offsetSlotIndex(slot, appendIndex)
+		if !ok {
+			continue
+		}
+		for _, actual := range actuals {
+			f.recordSlotActual(shifted, actual)
+		}
+	}
 }
 
 func (f *flowFacts) recordSliceResult(pass *analysis.Pass, dstSlot flowSlot, rhs ast.Expr) bool {
@@ -909,11 +929,11 @@ func (f *flowFacts) copyIndexed(pass *analysis.Pass, dst ast.Expr, src ast.Expr)
 	if f == nil {
 		return
 	}
-	dstSlot, ok := flowSlotForExpr(pass, dst)
+	dstSlot, dstOffset, ok := sliceWindowSlot(pass, dst)
 	if !ok {
 		return
 	}
-	srcSlot, ok := flowSlotForExpr(pass, src)
+	srcSlot, srcOffset, ok := sliceWindowSlot(pass, src)
 	if !ok {
 		if !f.copyCompositeIndexed(pass, dstSlot, src) {
 			f.clearSlot(dstSlot)
@@ -926,18 +946,49 @@ func (f *flowFacts) copyIndexed(pass *analysis.Pass, dst ast.Expr, src ast.Expr)
 		if slot.root != srcSlot.root || !strings.HasPrefix(slot.path, srcSlot.path+"/") {
 			continue
 		}
-		overwritten := copiedDestinationSlot(dstSlot, strings.TrimPrefix(slot.path, srcSlot.path))
+		suffix := strings.TrimPrefix(slot.path, srcSlot.path)
+		if srcOffset != 0 {
+			var ok bool
+			suffix, ok = shiftedSliceSuffix(suffix, srcOffset)
+			if !ok {
+				continue
+			}
+		}
+		if dstOffset != 0 {
+			var ok bool
+			suffix, ok = offsetSliceSuffix(suffix, dstOffset)
+			if !ok {
+				continue
+			}
+		}
+		overwritten := copiedDestinationSlot(dstSlot, suffix)
 		if _, ok := cleared[overwritten]; !ok {
 			f.clearSlot(overwritten)
 			cleared[overwritten] = struct{}{}
 		}
 		child := dstSlot
-		child.path += strings.TrimPrefix(slot.path, srcSlot.path)
+		child.path += suffix
 		copied[child] = append([]types.Type(nil), actuals...)
 	}
 	for slot, actuals := range copied {
 		f.concrete[slot] = actuals
 	}
+}
+
+func sliceWindowSlot(pass *analysis.Pass, expr ast.Expr) (flowSlot, int, bool) {
+	if slice, ok := expr.(*ast.SliceExpr); ok {
+		slot, ok := flowSlotForExpr(pass, slice.X)
+		if !ok {
+			return flowSlot{}, 0, false
+		}
+		offset, ok := constInt(pass, slice.Low)
+		if !ok {
+			offset = 0
+		}
+		return slot, offset, true
+	}
+	slot, ok := flowSlotForExpr(pass, expr)
+	return slot, 0, ok
 }
 
 func (f *flowFacts) copyCompositeIndexed(pass *analysis.Pass, dstSlot flowSlot, src ast.Expr) bool {
@@ -1062,6 +1113,18 @@ func maxConstChildIndex(facts map[flowSlot][]types.Type) int {
 	return maxIndex
 }
 
+func offsetSlotIndex(slot flowSlot, offset int) (flowSlot, bool) {
+	if offset == 0 {
+		return slot, true
+	}
+	suffix, ok := offsetSliceSuffix(slot.path, offset)
+	if !ok {
+		return flowSlot{}, false
+	}
+	slot.path = suffix
+	return slot, true
+}
+
 func shiftedSliceSuffix(suffix string, low int) (string, bool) {
 	trimmed := strings.TrimPrefix(suffix, "/")
 	if trimmed == "" || low == 0 {
@@ -1079,6 +1142,26 @@ func shiftedSliceSuffix(suffix string, low int) (string, bool) {
 		return "", false
 	}
 	shifted := "const:" + strconv.Itoa(index-low)
+	if rest != "" {
+		shifted += "/" + rest
+	}
+	return "/" + shifted, true
+}
+
+func offsetSliceSuffix(suffix string, offset int) (string, bool) {
+	trimmed := strings.TrimPrefix(suffix, "/")
+	if trimmed == "" || offset == 0 {
+		return suffix, true
+	}
+	segment, rest, _ := strings.Cut(trimmed, "/")
+	if !strings.HasPrefix(segment, "const:") {
+		return suffix, true
+	}
+	index, err := strconv.Atoi(strings.TrimPrefix(segment, "const:"))
+	if err != nil {
+		return suffix, true
+	}
+	shifted := "const:" + strconv.Itoa(index+offset)
 	if rest != "" {
 		shifted += "/" + rest
 	}

@@ -169,6 +169,26 @@ func CopySliceCompositeLiteralBad() sealedpkg.Runner {
 	return dst[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func AppendSpreadCompositeLiteralBad() sealedpkg.Runner {
+	var values []any
+	values = append(values, []any{externalbad.Bad{}}...)
+	return values[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func CopySliceDestinationWindowBad() sealedpkg.Runner {
+	src := []any{externalbad.Bad{}}
+	dst := []any{nil, nil}
+	copy(dst[1:], src)
+	return dst[1].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func CopySliceSourceWindowBad() sealedpkg.Runner {
+	src := []any{nil, externalbad.Bad{}}
+	dst := []any{nil}
+	copy(dst, src[1:])
+	return dst[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func CopySliceClearsDestinationSafe() sealedpkg.Runner {
 	dst := []any{externalbad.Bad{}}
 	copy(dst, []any{nil})
