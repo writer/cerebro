@@ -852,7 +852,6 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 	if state == nil || state.result == nil || state.result.Run == nil {
 		return evaluationErr
 	}
-	state.failed = true
 	run := state.result.Run
 	run.Status = "failed"
 	run.EventsEvaluated = state.eventsEvaluated
@@ -866,6 +865,7 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 			fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err),
 		)
 	}
+	state.failed = true
 	return nil
 }
 

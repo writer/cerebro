@@ -208,6 +208,13 @@ func AppendSpreadCompositeLiteralBad() sealedpkg.Runner {
 	return values[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func AppendSlicedSpreadBad() sealedpkg.Runner {
+	src := []any{nil, externalbad.Bad{}}
+	var dst []any
+	dst = append(dst, src[1:]...)
+	return dst[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func CopySliceDestinationWindowBad() sealedpkg.Runner {
 	src := []any{externalbad.Bad{}}
 	dst := []any{nil, nil}

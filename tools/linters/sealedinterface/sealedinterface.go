@@ -857,7 +857,11 @@ func (f *flowFacts) recordSpreadAppend(pass *analysis.Pass, dstSlot flowSlot, ar
 			return
 		}
 	}
-	for slot, actuals := range f.childFactsForExpr(pass, arg, dstSlot) {
+	copied := f.childFactsForExpr(pass, arg, dstSlot)
+	if slice, ok := arg.(*ast.SliceExpr); ok {
+		copied = f.childFactsForSlice(pass, slice, dstSlot)
+	}
+	for slot, actuals := range copied {
 		shifted, ok := offsetSlotIndex(slot, appendIndex)
 		if !ok {
 			continue

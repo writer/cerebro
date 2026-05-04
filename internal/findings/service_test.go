@@ -936,6 +936,9 @@ func TestEvaluateSourceRuntimeFindingsCleansUpRemainingRunsWhenFailurePersistenc
 	for _, run := range store.runs {
 		runsByRule[run.GetRuleId()] = run
 	}
+	if got := runsByRule["a-failing-rule"].GetStatus(); got != "failed" {
+		t.Fatalf("a-failing-rule run status = %q, want failed", got)
+	}
 	if got := runsByRule["z-failing-rule"].GetStatus(); got != "failed" {
 		t.Fatalf("z-failing-rule run status = %q, want failed", got)
 	}
