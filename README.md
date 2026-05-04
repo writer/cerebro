@@ -16,7 +16,7 @@ Cerebro is Writer's original operations platform repository. The current `main` 
 - **Finding workflows** — built-in finding rules can evaluate source runtime events, persist evidence/evaluation runs, and drive finding lifecycle actions.
 - **Report runs** — report definitions can be listed and executed with durable run retrieval when a state store is configured.
 - **Workflow event replay** — knowledge decisions, actions, and outcomes can be written and replayed through append-log-backed projections.
-- **Graph operations** — Kuzu-backed graph counts, neighborhoods, path summaries, integrity checks, source ingest, runtime ingest, ingest run status, and dry-run rebuilds.
+- **Graph operations** — Neo4j/Aura-backed graph counts, neighborhoods, path summaries, integrity checks, source ingest, runtime ingest, and ingest run status, plus isolated dry-run rebuilds.
 - **Policy catalog** — JSON policy definitions under `policies/` for cloud, identity, GitHub, Kubernetes, SaaS, runtime, vulnerability, compliance, and business-operation checks.
 
 Cerebro has historical and forward-looking docs in `docs/`. For current runtime behavior, treat `cmd/cerebro`, `internal/config`, `internal/bootstrap`, `proto/cerebro/v1/bootstrap.proto`, and the Makefile as the source of truth.
@@ -37,7 +37,7 @@ CLI / JSON HTTP / Connect clients
               |
               +--> Optional append log: NATS JetStream
               +--> Optional state store: Postgres
-              +--> Optional graph store: Kuzu
+              +--> Optional graph store: Neo4j/Aura
 ```
 
 External dependency drivers are opt-in. With no external drivers configured, the server can start and serve lightweight routes such as `/health`, `/healthz`, and `/sources`. Durable runtime, claim, finding, report, replay, and graph operations require their corresponding stores.
@@ -51,7 +51,7 @@ External dependency drivers are opt-in. With no external drivers configured, the
 - Go 1.26+; this repo pins toolchain `go1.26.2`.
 - Optional: NATS JetStream for append-log-backed sync/replay.
 - Optional: Postgres for durable source runtime, claim, finding, evidence, evaluation, and report state.
-- Optional: Kuzu for graph projection/query operations.
+- Optional: Neo4j or AuraDB for graph projection/query operations.
 
 ### Build and verify
 
@@ -94,10 +94,13 @@ The bootstrap binary currently reads these environment variables:
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | JetStream subject prefix | `events` |
 | `CEREBRO_STATE_STORE_DRIVER` | state-store driver; supported value: `postgres` | unset |
 | `CEREBRO_POSTGRES_DSN` | Postgres DSN | unset |
-| `CEREBRO_GRAPH_STORE_DRIVER` | graph-store driver; supported value: `kuzu` | unset |
-| `CEREBRO_KUZU_PATH` | Kuzu database path | unset |
+| `CEREBRO_GRAPH_STORE_DRIVER` | graph-store driver; supported value: `neo4j` | unset |
+| `CEREBRO_NEO4J_URI` | Neo4j/Aura connection URI | unset |
+| `CEREBRO_NEO4J_USERNAME` | Neo4j/Aura username | unset |
+| `CEREBRO_NEO4J_PASSWORD` | Neo4j/Aura password | unset |
+| `CEREBRO_NEO4J_DATABASE` | optional Neo4j database name; empty uses the server default | unset |
 
-Driver selection is inferred when a driver-specific setting is present. For example, `CEREBRO_POSTGRES_DSN` selects the Postgres state store, and `CEREBRO_KUZU_PATH` selects the Kuzu graph store.
+Driver selection is inferred when a driver-specific setting is present. For example, `CEREBRO_POSTGRES_DSN` selects the Postgres state store, and `CEREBRO_NEO4J_URI` selects the Neo4j graph store.
 
 Example durable local configuration:
 
@@ -106,8 +109,10 @@ export CEREBRO_APPEND_LOG_DRIVER=jetstream
 export CEREBRO_JETSTREAM_URL=nats://127.0.0.1:4222
 export CEREBRO_STATE_STORE_DRIVER=postgres
 export CEREBRO_POSTGRES_DSN='postgres://127.0.0.1:5432/cerebro?sslmode=disable'
-export CEREBRO_GRAPH_STORE_DRIVER=kuzu
-export CEREBRO_KUZU_PATH=.cerebro/kuzu
+export CEREBRO_GRAPH_STORE_DRIVER=neo4j
+export CEREBRO_NEO4J_URI=bolt://127.0.0.1:7687
+export CEREBRO_NEO4J_USERNAME=neo4j
+export CEREBRO_NEO4J_PASSWORD='local-password'
 ```
 
 ---
@@ -121,7 +126,8 @@ export CEREBRO_KUZU_PATH=.cerebro/kuzu
 | `source-runtime sync` | Postgres state store + NATS JetStream append log |
 | Claim, finding, evidence, evaluation, and report run persistence | Postgres state store |
 | Workflow replay | NATS JetStream append log plus configured projection stores |
-| Graph query/ingest/rebuild operations | Kuzu graph store; runtime-backed graph operations also need Postgres and/or JetStream |
+| Graph query/ingest operations | Neo4j/Aura graph store; runtime-backed graph operations also need Postgres and/or JetStream |
+| Graph rebuild dry-runs | Postgres state store; replay mode also needs NATS JetStream append log |
 
 ---
 
@@ -274,7 +280,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 | CLI | Standard Go CLI under `cmd/cerebro` |
 | Append log | NATS JetStream |
 | State store | Postgres |
-| Graph store | Kuzu |
+| Graph store | Neo4j/Aura |
 | Source integrations | AWS, Azure, GCP, GitHub, Google Workspace, Okta, SDK |
 | Validation | `go test`, `golangci-lint`, Buf, custom structural linters, arch tests |
 

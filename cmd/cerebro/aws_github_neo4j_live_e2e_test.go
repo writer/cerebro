@@ -1,26 +1,22 @@
-//go:build cgo
-
 package main
 
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
-	configpkg "github.com/writer/cerebro/internal/config"
-	graphstorekuzu "github.com/writer/cerebro/internal/graphstore/kuzu"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
 )
 
-func TestAWSGitHubKuzuSharedIdentityLiveE2E(t *testing.T) {
-	if os.Getenv("CEREBRO_RUN_AWS_GITHUB_KUZU_E2E") != "1" {
-		t.Skip("set CEREBRO_RUN_AWS_GITHUB_KUZU_E2E=1 to run the live AWS/GitHub Kuzu e2e flow")
+func TestAWSGitHubNeo4jSharedIdentityLiveE2E(t *testing.T) {
+	if os.Getenv("CEREBRO_RUN_AWS_GITHUB_NEO4J_E2E") != "1" {
+		t.Skip("set CEREBRO_RUN_AWS_GITHUB_NEO4J_E2E=1 to run the live AWS/GitHub Neo4j e2e flow")
 	}
 	ctx := context.Background()
 	sharedEmail := requiredEnv(t, "CEREBRO_AWS_GITHUB_SHARED_EMAIL")
@@ -31,19 +27,7 @@ func TestAWSGitHubKuzuSharedIdentityLiveE2E(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Builtin() error = %v", err)
 	}
-	graphPath := filepath.Join(t.TempDir(), "graph")
-	store, err := graphstorekuzu.Open(configpkg.GraphStoreConfig{
-		Driver:   configpkg.GraphStoreDriverKuzu,
-		KuzuPath: graphPath,
-	})
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer func() {
-		if closeErr := store.Close(); closeErr != nil {
-			t.Fatalf("Close() error = %v", closeErr)
-		}
-	}()
+	store := openNeo4jLiveGraphStore(t, ctx)
 	projector := sourceprojection.New(nil, store)
 	sourceService := sourceops.New(registry)
 
@@ -111,7 +95,7 @@ func TestAWSGitHubKuzuSharedIdentityLiveE2E(t *testing.T) {
 	if !hasIdentityRelationFrom(neighborhood, identityURN, "aws.user") {
 		t.Fatalf("identity neighborhood missing aws.user relation: %#v", neighborhood.Relations)
 	}
-	t.Logf("validated live AWS/GitHub Kuzu identity path email=%s nodes=%d relations=%d", sharedEmail, counts.Nodes, counts.Relations)
+	t.Logf("validated live AWS/GitHub Neo4j identity path email=%s nodes=%d relations=%d", sharedEmail, counts.Nodes, counts.Relations)
 }
 
 func hasIdentityRelationFrom(neighborhood *ports.EntityNeighborhood, identityURN string, entityType string) bool {
@@ -138,7 +122,9 @@ func hasIdentityRelationFrom(neighborhood *ports.EntityNeighborhood, identityURN
 	return false
 }
 
-func assertIntegrityChecksPass(t *testing.T, store *graphstorekuzu.Store) {
+func assertIntegrityChecksPass(t *testing.T, store interface {
+	IntegrityChecks(context.Context) ([]graphstore.IntegrityCheck, error)
+}) {
 	t.Helper()
 	checks, err := store.IntegrityChecks(context.Background())
 	if err != nil {

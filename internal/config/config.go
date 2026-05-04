@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -14,8 +15,10 @@ const defaultJetStreamSubjectPrefix = "events"
 const (
 	AppendLogDriverJetStream = "jetstream"
 	StateStoreDriverPostgres = "postgres"
-	GraphStoreDriverKuzu     = "kuzu"
+	GraphStoreDriverNeo4j    = "neo4j"
 )
+
+var errLegacyKuzuPath = errors.New("CEREBRO_KUZU_PATH is no longer supported")
 
 // Config is the minimal bootstrap configuration for the rewrite skeleton.
 type Config struct {
@@ -41,12 +44,18 @@ type StateStoreConfig struct {
 
 // GraphStoreConfig selects and configures the graph projection store driver.
 type GraphStoreConfig struct {
-	Driver   string
-	KuzuPath string
+	Driver        string
+	Neo4jURI      string
+	Neo4jUsername string
+	Neo4jPassword string
+	Neo4jDatabase string
 }
 
 // Load reads and validates process configuration.
 func Load() (Config, error) {
+	if strings.TrimSpace(os.Getenv("CEREBRO_KUZU_PATH")) != "" {
+		return Config{}, fmt.Errorf("%w; configure Neo4j with CEREBRO_NEO4J_URI, CEREBRO_NEO4J_USERNAME, and CEREBRO_NEO4J_PASSWORD", errLegacyKuzuPath)
+	}
 	cfg := Config{
 		HTTPAddr:        strings.TrimSpace(os.Getenv("CEREBRO_HTTP_ADDR")),
 		ShutdownTimeout: defaultShutdownTimeout,
@@ -60,8 +69,11 @@ func Load() (Config, error) {
 			PostgresDSN: strings.TrimSpace(os.Getenv("CEREBRO_POSTGRES_DSN")),
 		},
 		GraphStore: GraphStoreConfig{
-			Driver:   strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_STORE_DRIVER")),
-			KuzuPath: strings.TrimSpace(os.Getenv("CEREBRO_KUZU_PATH")),
+			Driver:        strings.TrimSpace(os.Getenv("CEREBRO_GRAPH_STORE_DRIVER")),
+			Neo4jURI:      strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_URI")),
+			Neo4jUsername: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_USERNAME")),
+			Neo4jPassword: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_PASSWORD")),
+			Neo4jDatabase: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_DATABASE")),
 		},
 	}
 	if cfg.HTTPAddr == "" {
@@ -104,14 +116,20 @@ func Load() (Config, error) {
 	default:
 		return Config{}, fmt.Errorf("unsupported CEREBRO_STATE_STORE_DRIVER %q", cfg.StateStore.Driver)
 	}
-	if cfg.GraphStore.Driver == "" && cfg.GraphStore.KuzuPath != "" {
-		cfg.GraphStore.Driver = GraphStoreDriverKuzu
+	if cfg.GraphStore.Driver == "" && cfg.GraphStore.Neo4jURI != "" {
+		cfg.GraphStore.Driver = GraphStoreDriverNeo4j
 	}
 	switch cfg.GraphStore.Driver {
 	case "":
-	case GraphStoreDriverKuzu:
-		if cfg.GraphStore.KuzuPath == "" {
-			return Config{}, fmt.Errorf("CEREBRO_KUZU_PATH is required when CEREBRO_GRAPH_STORE_DRIVER=%q", GraphStoreDriverKuzu)
+	case GraphStoreDriverNeo4j:
+		if cfg.GraphStore.Neo4jURI == "" {
+			return Config{}, fmt.Errorf("CEREBRO_NEO4J_URI is required when CEREBRO_GRAPH_STORE_DRIVER=%q", GraphStoreDriverNeo4j)
+		}
+		if cfg.GraphStore.Neo4jUsername == "" {
+			return Config{}, fmt.Errorf("CEREBRO_NEO4J_USERNAME is required when CEREBRO_GRAPH_STORE_DRIVER=%q", GraphStoreDriverNeo4j)
+		}
+		if cfg.GraphStore.Neo4jPassword == "" {
+			return Config{}, fmt.Errorf("CEREBRO_NEO4J_PASSWORD is required when CEREBRO_GRAPH_STORE_DRIVER=%q", GraphStoreDriverNeo4j)
 		}
 	default:
 		return Config{}, fmt.Errorf("unsupported CEREBRO_GRAPH_STORE_DRIVER %q", cfg.GraphStore.Driver)
