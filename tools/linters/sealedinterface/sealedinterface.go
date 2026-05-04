@@ -531,6 +531,32 @@ func (f *flowFacts) recordChannelSend(pass *analysis.Pass, channel ast.Expr, val
 	f.recordSlotActual(slot, actual)
 }
 
+func (f *flowFacts) copyIndexed(pass *analysis.Pass, dst ast.Expr, src ast.Expr) {
+	if f == nil {
+		return
+	}
+	dstSlot, ok := flowSlotForExpr(pass, dst)
+	if !ok {
+		return
+	}
+	srcSlot, ok := flowSlotForExpr(pass, src)
+	if !ok {
+		return
+	}
+	copied := map[flowSlot][]types.Type{}
+	for slot, actuals := range f.concrete {
+		if slot.root != srcSlot.root || !strings.HasPrefix(slot.path, srcSlot.path+"/") {
+			continue
+		}
+		child := dstSlot
+		child.path += strings.TrimPrefix(slot.path, srcSlot.path)
+		copied[child] = append([]types.Type(nil), actuals...)
+	}
+	for slot, actuals := range copied {
+		f.concrete[slot] = actuals
+	}
+}
+
 func (f *flowFacts) clearSlot(slot flowSlot) {
 	if f == nil || slot.root == nil {
 		return
@@ -827,16 +853,26 @@ func inspectCall(pass *analysis.Pass, call *ast.CallExpr, facts *flowFacts, seal
 		reportImportedSealedValueWithFacts(pass, call.Args[0], target.Type(), facts, sealedObjects, sealed, reported)
 		return
 	}
-	if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == "append" && len(call.Args) > 1 {
-		if _, ok := pass.TypesInfo.Uses[ident].(*types.Builtin); !ok {
-			return
-		}
-		if slice, ok := underlying(pass.TypesInfo.TypeOf(call.Args[0])).(*types.Slice); ok {
-			for _, arg := range call.Args[1:] {
-				reportImportedSealedValueWithFacts(pass, arg, slice.Elem(), facts, sealedObjects, sealed, reported)
+	if ident, ok := call.Fun.(*ast.Ident); ok {
+		if _, ok := pass.TypesInfo.Uses[ident].(*types.Builtin); ok {
+			switch ident.Name {
+			case "append":
+				if len(call.Args) <= 1 {
+					return
+				}
+				if slice, ok := underlying(pass.TypesInfo.TypeOf(call.Args[0])).(*types.Slice); ok {
+					for _, arg := range call.Args[1:] {
+						reportImportedSealedValueWithFacts(pass, arg, slice.Elem(), facts, sealedObjects, sealed, reported)
+					}
+				}
+				return
+			case "copy":
+				if len(call.Args) == 2 {
+					facts.copyIndexed(pass, call.Args[0], call.Args[1])
+				}
+				return
 			}
 		}
-		return
 	}
 	sig, ok := pass.TypesInfo.TypeOf(call.Fun).(*types.Signature)
 	if !ok {

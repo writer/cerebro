@@ -106,6 +106,13 @@ func MapIndexTypeAssertBad() sealedpkg.Runner {
 	return values["runner"].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func CopySliceTypeAssertBad() sealedpkg.Runner {
+	src := []any{externalbad.Bad{}}
+	dst := make([]any, 1)
+	copy(dst, src)
+	return dst[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func AssignTupleBad() {
 	var runner sealedpkg.Runner
 	var err error
