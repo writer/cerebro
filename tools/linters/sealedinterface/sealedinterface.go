@@ -201,11 +201,19 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 			facts = inspectFlowStmtWithFacts(pass, node.Init, results, facts, sealedObjects, sealed, reported)
 			inspectExpressionCalls(pass, node.Cond, facts, sealedObjects, sealed, reported)
 			thenFacts := inspectFlowNodeWithFacts(pass, node.Body, results, facts, sealedObjects, sealed, reported)
-			elseFacts := facts.clone()
-			if node.Else != nil {
-				elseFacts = inspectFlowNodeWithFacts(pass, node.Else, results, facts, sealedObjects, sealed, reported)
+			branches := make([]*flowFacts, 0, 2)
+			if !stmtTerminates(node.Body) {
+				branches = append(branches, thenFacts)
 			}
-			facts = mergeFlowFacts(thenFacts, elseFacts)
+			if node.Else != nil {
+				elseFacts := inspectFlowNodeWithFacts(pass, node.Else, results, facts, sealedObjects, sealed, reported)
+				if !stmtTerminates(node.Else) {
+					branches = append(branches, elseFacts)
+				}
+			} else {
+				branches = append(branches, facts.clone())
+			}
+			facts = mergeFlowFacts(branches...)
 			return false
 		case *ast.SwitchStmt:
 			facts = inspectFlowStmtWithFacts(pass, node.Init, results, facts, sealedObjects, sealed, reported)
@@ -396,6 +404,23 @@ func caseFallsThrough(clause *ast.CaseClause) bool {
 	}
 	branch, ok := clause.Body[len(clause.Body)-1].(*ast.BranchStmt)
 	return ok && branch.Tok == token.FALLTHROUGH
+}
+
+func stmtTerminates(stmt ast.Stmt) bool {
+	switch stmt := stmt.(type) {
+	case nil:
+		return false
+	case *ast.BlockStmt:
+		if len(stmt.List) == 0 {
+			return false
+		}
+		return stmtTerminates(stmt.List[len(stmt.List)-1])
+	case *ast.ReturnStmt:
+		return true
+	case *ast.IfStmt:
+		return stmt.Else != nil && stmtTerminates(stmt.Body) && stmtTerminates(stmt.Else)
+	}
+	return false
 }
 
 func seedTypeSwitchCaseFacts(pass *analysis.Pass, facts *flowFacts, assign ast.Stmt, clause *ast.CaseClause) {

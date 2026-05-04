@@ -699,7 +699,7 @@ func validateEntityRef(runtime *cerebrov1.SourceRuntime, fieldURN string, ref *c
 func entityTypesMatch(urnType string, refType string) bool {
 	urnType = strings.TrimSpace(urnType)
 	refType = strings.TrimSpace(refType)
-	return urnType == refType || strings.ReplaceAll(refType, ".", "_") == urnType
+	return urnType == refType || strings.ReplaceAll(refType, ".", "_") == urnType || strings.HasPrefix(refType, urnType+".")
 }
 
 func entityTypeFromURN(urn string) string {

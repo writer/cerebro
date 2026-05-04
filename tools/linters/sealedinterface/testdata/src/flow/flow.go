@@ -58,6 +58,15 @@ func BranchTypeAssertBad(flag bool) sealedpkg.Runner {
 	return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func ReturnedBranchTypeAssertSafe(flag bool) sealedpkg.Runner {
+	var value any
+	if flag {
+		value = externalbad.Bad{}
+		return nil
+	}
+	return value.(sealedpkg.Runner)
+}
+
 func SwitchTypeAssertBad(index int) sealedpkg.Runner {
 	var value any
 	switch index {

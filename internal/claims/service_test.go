@@ -1683,6 +1683,37 @@ func TestWriteClaimsAllowsDottedEntityTypeForTenantScopedRef(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsAllowsCanonicalIdentifierEntityRefs(t *testing.T) {
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+			},
+		},
+		&stubClaimStore{},
+		nil,
+		nil,
+	)
+
+	for _, ref := range []*cerebrov1.EntityRef{
+		{Urn: "urn:cerebro:writer:identifier:email:alice@writer.com", EntityType: "identifier.email"},
+		{Urn: "urn:cerebro:writer:identity:login:alice", EntityType: "identity.login"},
+	} {
+		_, err := service.WriteClaims(context.Background(), WriteRequest{
+			RuntimeID: "writer-jira",
+			Claims: []*cerebrov1.Claim{{
+				SubjectRef:  ref,
+				Predicate:   "status",
+				ObjectValue: "active",
+				ClaimType:   claimTypeAttribute,
+			}},
+		})
+		if err != nil {
+			t.Fatalf("WriteClaims(%q) error = %v", ref.GetUrn(), err)
+		}
+	}
+}
+
 func TestWriteClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
