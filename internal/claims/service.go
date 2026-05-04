@@ -133,13 +133,18 @@ func New(runtimeStore ports.SourceRuntimeStore, store ports.ClaimStore, state po
 }
 
 // runtimeWriteLock serializes concurrent in-process WriteClaims executions for
-// the same runtime, including services constructed independently per request.
-func (s *Service) runtimeWriteLock(runtimeID string) func() {
-	lock := sharedRuntimeWriteLocks.acquire(runtimeID)
+// the same tenant when available, including services constructed independently
+// per request.
+func (s *Service) runtimeWriteLock(runtimeID string, runtime *cerebrov1.SourceRuntime) func() {
+	lockID := "runtime:" + runtimeID
+	if tenantID := strings.TrimSpace(runtime.GetTenantId()); tenantID != "" {
+		lockID = "tenant:" + tenantID
+	}
+	lock := sharedRuntimeWriteLocks.acquire(lockID)
 	lock.mu.Lock()
 	return func() {
 		lock.mu.Unlock()
-		sharedRuntimeWriteLocks.release(runtimeID, lock)
+		sharedRuntimeWriteLocks.release(lockID, lock)
 	}
 }
 
@@ -160,7 +165,7 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 	if lockRuntimeID == "" {
 		lockRuntimeID = runtimeID
 	}
-	unlock := s.runtimeWriteLock(lockRuntimeID)
+	unlock := s.runtimeWriteLock(lockRuntimeID, runtime)
 	defer unlock()
 	result := &WriteResult{}
 	upsertedEntities := make(map[string]struct{})

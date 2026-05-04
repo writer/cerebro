@@ -170,6 +170,68 @@ func (s *blockingClaimStore) ListClaims(_ context.Context, request ports.ListCla
 	return claims, nil
 }
 
+type upsertSignalClaimStore struct {
+	mu             sync.Mutex
+	claims         map[string]*ports.ClaimRecord
+	secondUpserted chan struct{}
+	secondOnce     sync.Once
+}
+
+func newUpsertSignalClaimStore(claims map[string]*ports.ClaimRecord) *upsertSignalClaimStore {
+	return &upsertSignalClaimStore{
+		claims:         claims,
+		secondUpserted: make(chan struct{}),
+	}
+}
+
+func (s *upsertSignalClaimStore) Ping(context.Context) error { return nil }
+
+func (s *upsertSignalClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
+	if claim.SourceEventID == "second" {
+		s.secondOnce.Do(func() { close(s.secondUpserted) })
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.claims == nil {
+		s.claims = make(map[string]*ports.ClaimRecord)
+	}
+	s.claims[claim.ID] = cloneClaimRecord(claim)
+	return cloneClaimRecord(claim), nil
+}
+
+func (s *upsertSignalClaimStore) ListClaims(_ context.Context, request ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	claims := make([]*ports.ClaimRecord, 0, len(s.claims))
+	for _, claim := range s.claims {
+		if claimMatches(request, claim) {
+			claims = append(claims, cloneClaimRecord(claim))
+		}
+	}
+	return claims, nil
+}
+
+type blockingDeleteProjection struct {
+	projectionRecorder
+	deleteEntered chan struct{}
+	allowDelete   chan struct{}
+	deleteOnce    sync.Once
+}
+
+func newBlockingDeleteProjection(linkKey string, link *ports.ProjectedLink) *blockingDeleteProjection {
+	return &blockingDeleteProjection{
+		projectionRecorder: projectionRecorder{links: map[string]*ports.ProjectedLink{linkKey: cloneProjectedLink(link)}},
+		deleteEntered:      make(chan struct{}),
+		allowDelete:        make(chan struct{}),
+	}
+}
+
+func (p *blockingDeleteProjection) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
+	p.deleteOnce.Do(func() { close(p.deleteEntered) })
+	<-p.allowDelete
+	return p.projectionRecorder.DeleteProjectedLink(ctx, link)
+}
+
 type runtimeRetractRaceClaimStore struct {
 	current *ports.ClaimRecord
 	other   *ports.ClaimRecord
@@ -508,6 +570,103 @@ func TestWriteClaimsReplaceExistingSerializesAcrossServiceInstances(t *testing.T
 	}
 	if err := <-secondDone; err != nil {
 		t.Fatalf("second WriteClaims() error = %v", err)
+	}
+}
+
+func TestWriteClaimsSerializesRelationDeletionAcrossTenantRuntimes(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+		},
+	}
+	store := newUpsertSignalClaimStore(map[string]*ports.ClaimRecord{
+		"claim-jira": {
+			ID:         "claim-jira",
+			RuntimeID:  "writer-jira",
+			TenantID:   "writer",
+			SubjectURN: issueURN,
+			Predicate:  "assigned_to",
+			ObjectURN:  assigneeURN,
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusAsserted,
+		},
+	})
+	projection := newBlockingDeleteProjection(linkKey, &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "jira",
+		FromURN:  issueURN,
+		Relation: "assigned_to",
+		ToURN:    assigneeURN,
+	})
+	firstService := New(runtimeStore, store, projection, projection)
+	secondService := New(runtimeStore, store, projection, projection)
+	ctx := context.Background()
+	firstDone := make(chan error, 1)
+	secondDone := make(chan error, 1)
+
+	go func() {
+		_, err := firstService.WriteClaims(ctx, WriteRequest{
+			RuntimeID: "writer-jira",
+			Claims: []*cerebrov1.Claim{{
+				Id:            "claim-jira",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusRetracted,
+				SourceEventId: "first",
+			}},
+		})
+		firstDone <- err
+	}()
+
+	select {
+	case <-projection.deleteEntered:
+	case err := <-firstDone:
+		t.Fatalf("first WriteClaims() completed before projected link delete: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("first WriteClaims() did not reach projected link delete")
+	}
+
+	go func() {
+		_, err := secondService.WriteClaims(ctx, WriteRequest{
+			RuntimeID: "writer-github",
+			Claims: []*cerebrov1.Claim{{
+				Id:            "claim-github",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				SourceEventId: "second",
+			}},
+		})
+		secondDone <- err
+	}()
+
+	select {
+	case <-store.secondUpserted:
+		t.Fatal("second runtime upserted while first runtime relation deletion was in flight")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(projection.allowDelete)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first WriteClaims() error = %v", err)
+	}
+	select {
+	case <-store.secondUpserted:
+	case <-time.After(time.Second):
+		t.Fatal("second WriteClaims() did not upsert after first write completed")
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[linkKey]; !ok {
+		t.Fatal("second runtime relation was deleted by first runtime retraction")
 	}
 }
 

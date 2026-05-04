@@ -182,6 +182,18 @@ func AppendResultTypeAssertBad() sealedpkg.Runner {
 	return values[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func AppendOffsetTypeAssertBad() sealedpkg.Runner {
+	values := []any{nil}
+	values = append(values, externalbad.Bad{})
+	return values[1].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func SliceAliasTypeAssertBad() sealedpkg.Runner {
+	values := []any{externalbad.Bad{}}
+	alias := values
+	return alias[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func DereferencedAliasTypeAssertBad() sealedpkg.Runner {
 	value := any(nil)
 	ptr := &value

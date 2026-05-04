@@ -369,6 +369,11 @@ func mergeFlowFacts(branches ...*flowFacts) *flowFacts {
 				merged.aliases[slot] = appendUniqueFlowSlot(merged.aliases[slot], target)
 			}
 		}
+		for slot, length := range branch.lengths {
+			if length > merged.lengths[slot] {
+				merged.lengths[slot] = length
+			}
+		}
 	}
 	return merged
 }
@@ -575,12 +580,14 @@ type flowSlot struct {
 type flowFacts struct {
 	concrete map[flowSlot][]types.Type
 	aliases  map[flowSlot][]flowSlot
+	lengths  map[flowSlot]int
 }
 
 func newFlowFacts() *flowFacts {
 	return &flowFacts{
 		concrete: map[flowSlot][]types.Type{},
 		aliases:  map[flowSlot][]flowSlot{},
+		lengths:  map[flowSlot]int{},
 	}
 }
 
@@ -594,6 +601,9 @@ func (f *flowFacts) clone() *flowFacts {
 	}
 	for key, value := range f.aliases {
 		cloned.aliases[key] = append([]flowSlot(nil), value...)
+	}
+	for key, value := range f.lengths {
+		cloned.lengths[key] = value
 	}
 	return cloned
 }
@@ -681,6 +691,9 @@ func (f *flowFacts) recordSlot(pass *analysis.Pass, slot flowSlot, rhs ast.Expr,
 	if f.recordSliceResult(pass, slot, rhs) {
 		return
 	}
+	if f.recordChildAliasResult(pass, slot, rhs) {
+		return
+	}
 	f.clearSlot(slot)
 	if targets, ok := f.pointerTargetsForExpr(pass, rhs); ok {
 		f.aliases[slot] = targets
@@ -718,7 +731,9 @@ func (f *flowFacts) recordAppendResult(pass *analysis.Pass, dstSlot flowSlot, rh
 	if !ok || !isBuiltinCall(pass, call, "append") || len(call.Args) <= 1 {
 		return false
 	}
+	srcSlot, hasSrcSlot := flowSlotForExpr(pass, call.Args[0])
 	copied := f.childFactsForExpr(pass, call.Args[0], dstSlot)
+	appendIndex := f.nextAppendIndex(srcSlot, hasSrcSlot, copied)
 	f.clearSlot(dstSlot)
 	for slot, actuals := range copied {
 		f.concrete[slot] = actuals
@@ -733,9 +748,10 @@ func (f *flowFacts) recordAppendResult(pass *analysis.Pass, dstSlot flowSlot, rh
 	}
 	for index, arg := range call.Args[1:] {
 		child := dstSlot
-		child.path += "/const:" + strconv.Itoa(index)
+		child.path += "/const:" + strconv.Itoa(appendIndex+index)
 		f.recordExprConcretes(pass, child, arg)
 	}
+	f.lengths[dstSlot] = appendIndex + len(call.Args) - 1
 	return true
 }
 
@@ -751,6 +767,27 @@ func (f *flowFacts) recordSliceResult(pass *analysis.Pass, dstSlot flowSlot, rhs
 	f.clearSlot(dstSlot)
 	for slot, actuals := range copied {
 		f.concrete[slot] = actuals
+	}
+	if length, ok := sliceLength(pass, slice); ok {
+		f.lengths[dstSlot] = length
+	}
+	return true
+}
+
+func (f *flowFacts) recordChildAliasResult(pass *analysis.Pass, dstSlot flowSlot, rhs ast.Expr) bool {
+	copied := f.childFactsForExpr(pass, rhs, dstSlot)
+	srcSlot, hasSrcSlot := flowSlotForExpr(pass, rhs)
+	if len(copied) == 0 && (!hasSrcSlot || f.lengths[srcSlot] == 0) {
+		return false
+	}
+	f.clearSlot(dstSlot)
+	for slot, actuals := range copied {
+		f.concrete[slot] = actuals
+	}
+	if hasSrcSlot {
+		if length, ok := f.lengths[srcSlot]; ok {
+			f.lengths[dstSlot] = length
+		}
 	}
 	return true
 }
@@ -908,6 +945,34 @@ func (f *flowFacts) childFactsForSlot(srcSlot flowSlot, dstSlot flowSlot) map[fl
 	return copied
 }
 
+func (f *flowFacts) nextAppendIndex(srcSlot flowSlot, hasSrcSlot bool, copied map[flowSlot][]types.Type) int {
+	if hasSrcSlot {
+		if length, ok := f.lengths[srcSlot]; ok {
+			return length
+		}
+	}
+	return maxConstChildIndex(copied) + 1
+}
+
+func maxConstChildIndex(facts map[flowSlot][]types.Type) int {
+	maxIndex := -1
+	for slot := range facts {
+		trimmed := strings.TrimPrefix(slot.path, "/")
+		segment, _, _ := strings.Cut(trimmed, "/")
+		if !strings.HasPrefix(segment, "const:") {
+			continue
+		}
+		index, err := strconv.Atoi(strings.TrimPrefix(segment, "const:"))
+		if err != nil {
+			continue
+		}
+		if index > maxIndex {
+			maxIndex = index
+		}
+	}
+	return maxIndex
+}
+
 func shiftedSliceSuffix(suffix string, low int) (string, bool) {
 	trimmed := strings.TrimPrefix(suffix, "/")
 	if trimmed == "" || low == 0 {
@@ -946,6 +1011,24 @@ func constInt(pass *analysis.Pass, expr ast.Expr) (int, bool) {
 	return int(asInt), true
 }
 
+func sliceLength(pass *analysis.Pass, slice *ast.SliceExpr) (int, bool) {
+	if slice.High == nil {
+		return 0, false
+	}
+	low, lowOK := constInt(pass, slice.Low)
+	if !lowOK {
+		return 0, false
+	}
+	high, highOK := constInt(pass, slice.High)
+	if !highOK {
+		return 0, false
+	}
+	if high < low {
+		return 0, false
+	}
+	return high - low, true
+}
+
 func copiedDestinationSlot(dstSlot flowSlot, suffix string) flowSlot {
 	child := dstSlot
 	suffix = strings.TrimPrefix(suffix, "/")
@@ -980,6 +1063,14 @@ func (f *flowFacts) clearSlot(slot flowSlot) {
 			delete(f.aliases, existing)
 		}
 	}
+	for existing := range f.lengths {
+		if existing.root != slot.root {
+			continue
+		}
+		if existing.path == slot.path || strings.HasPrefix(existing.path, childPrefix) {
+			delete(f.lengths, existing)
+		}
+	}
 }
 
 func (f *flowFacts) recordCompositeElements(pass *analysis.Pass, slot flowSlot, rhs ast.Expr) bool {
@@ -990,6 +1081,7 @@ func (f *flowFacts) recordCompositeElements(pass *analysis.Pass, slot flowSlot, 
 	recorded := false
 	switch typ := underlying(pass.TypesInfo.TypeOf(lit)).(type) {
 	case *types.Slice, *types.Array:
+		f.lengths[slot] = len(lit.Elts)
 		for index, elt := range lit.Elts {
 			value := compositeLiteralValue(elt)
 			child := slot
