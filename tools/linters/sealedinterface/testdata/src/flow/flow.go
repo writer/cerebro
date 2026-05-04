@@ -118,6 +118,13 @@ func MapAssignmentKeyBad() {
 	values[externalbad.Bad{}] = "bad" // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func RangeAssignBad(values []externalbad.Bad) {
+	var runner sealedpkg.Runner
+	for _, runner = range values { // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+	}
+	_ = runner
+}
+
 func PassBad(fn func(sealedpkg.Runner)) {
 	fn(externalbad.Bad{}) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }

@@ -225,6 +225,10 @@ func inspectFlowWithFacts(pass *analysis.Pass, body *ast.BlockStmt, results *typ
 				reportImportedSealedValueWithFacts(pass, rhs, pass.TypesInfo.TypeOf(node.Lhs[index]), facts, sealedObjects, sealed, reported)
 				facts.record(pass, node.Lhs[index], rhs, -1)
 			}
+		case *ast.RangeStmt:
+			keyType, valueType := rangeTypes(pass.TypesInfo.TypeOf(node.X))
+			inspectRangeAssignmentTarget(pass, node.Key, keyType, facts, sealedObjects, sealed, reported)
+			inspectRangeAssignmentTarget(pass, node.Value, valueType, facts, sealedObjects, sealed, reported)
 		case *ast.CallExpr:
 			inspectCall(pass, node, facts, sealedObjects, sealed, reported)
 		case *ast.CompositeLit:
@@ -236,6 +240,30 @@ func inspectFlowWithFacts(pass *analysis.Pass, body *ast.BlockStmt, results *typ
 		}
 		return true
 	})
+}
+
+func inspectRangeAssignmentTarget(pass *analysis.Pass, target ast.Expr, actual types.Type, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	if target == nil || actual == nil {
+		return
+	}
+	inspectAssignmentTarget(pass, target, facts, sealedObjects, sealed, reported)
+	reportImportedSealedActual(pass, target, actual, pass.TypesInfo.TypeOf(target), sealedObjects, sealed, reported)
+	facts.recordActual(pass, target, actual)
+}
+
+func rangeTypes(t types.Type) (types.Type, types.Type) {
+	switch typ := underlying(t).(type) {
+	case *types.Slice:
+		return types.Typ[types.Int], typ.Elem()
+	case *types.Array:
+		return types.Typ[types.Int], typ.Elem()
+	case *types.Map:
+		return typ.Key(), typ.Elem()
+	case *types.Chan:
+		return typ.Elem(), nil
+	default:
+		return nil, nil
+	}
 }
 
 func inspectAssignmentTarget(pass *analysis.Pass, lhs ast.Expr, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
@@ -292,6 +320,24 @@ func (f *flowFacts) record(pass *analysis.Pass, lhs ast.Expr, rhs ast.Expr, tupl
 	f.recordName(pass, ident, rhs, tupleIndex)
 }
 
+func (f *flowFacts) recordActual(pass *analysis.Pass, lhs ast.Expr, actual types.Type) {
+	if f == nil {
+		return
+	}
+	ident, ok := lhs.(*ast.Ident)
+	if !ok || ident.Name == "_" {
+		return
+	}
+	obj, ok := pass.TypesInfo.Defs[ident].(*types.Var)
+	if !ok || obj == nil {
+		obj, ok = pass.TypesInfo.Uses[ident].(*types.Var)
+	}
+	if !ok || obj == nil {
+		return
+	}
+	f.recordObjectActual(obj, actual)
+}
+
 func (f *flowFacts) recordObject(pass *analysis.Pass, obj *types.Var, rhs ast.Expr, tupleIndex int) {
 	actual := pass.TypesInfo.TypeOf(rhs)
 	if tuple, ok := actual.(*types.Tuple); ok {
@@ -305,6 +351,17 @@ func (f *flowFacts) recordObject(pass *analysis.Pass, obj *types.Var, rhs ast.Ex
 		if converted, ok := concreteFromConversion(pass, rhs); ok {
 			actual = converted
 		}
+	}
+	if namedImplementation(actual) == nil {
+		delete(f.concrete, obj)
+		return
+	}
+	f.recordObjectActual(obj, actual)
+}
+
+func (f *flowFacts) recordObjectActual(obj *types.Var, actual types.Type) {
+	if f == nil || obj == nil {
+		return
 	}
 	if namedImplementation(actual) == nil {
 		delete(f.concrete, obj)
