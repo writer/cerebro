@@ -1495,6 +1495,35 @@ func TestWriteClaimsRequiresAvailableDependencies(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsAllowsDottedEntityTypeForTenantScopedRef(t *testing.T) {
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta": {Id: "writer-okta", SourceId: "okta", TenantId: "writer"},
+			},
+		},
+		&stubClaimStore{},
+		nil,
+		nil,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-okta",
+		Claims: []*cerebrov1.Claim{{
+			SubjectRef: &cerebrov1.EntityRef{
+				Urn:        "urn:cerebro:writer:okta_resource:app:123",
+				EntityType: "okta.resource",
+			},
+			Predicate:   "status",
+			ObjectValue: "active",
+			ClaimType:   claimTypeAttribute,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+}
+
 func TestWriteClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{

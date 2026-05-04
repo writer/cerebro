@@ -102,6 +102,15 @@ func TypeSwitchShadowedCaseVariableSafe() sealedpkg.Runner {
 	}
 }
 
+func TypeSwitchDefaultVariableBad() sealedpkg.Runner {
+	switch value := any(externalbad.Bad{}).(type) {
+	case string:
+		return nil
+	default:
+		return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+	}
+}
+
 type typeAssertBox struct {
 	value any
 }

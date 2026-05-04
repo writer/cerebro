@@ -684,11 +684,17 @@ func validateEntityRef(runtime *cerebrov1.SourceRuntime, fieldURN string, ref *c
 		return fmt.Errorf("%w: claim %s ref urn must match claim %s urn", ErrInvalidRequest, field, field)
 	}
 	if refType := strings.TrimSpace(ref.GetEntityType()); refType != "" {
-		if urnType := entityTypeFromURN(urn); urnType != "" && urnType != refType {
+		if urnType := entityTypeFromURN(urn); urnType != "" && !entityTypesMatch(urnType, refType) {
 			return fmt.Errorf("%w: claim %s ref entity_type must match urn type %q", ErrInvalidRequest, field, urnType)
 		}
 	}
 	return nil
+}
+
+func entityTypesMatch(urnType string, refType string) bool {
+	urnType = strings.TrimSpace(urnType)
+	refType = strings.TrimSpace(refType)
+	return urnType == refType || strings.ReplaceAll(refType, ".", "_") == urnType
 }
 
 func entityTypeFromURN(urn string) string {

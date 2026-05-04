@@ -254,7 +254,11 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 					hasDefault = true
 				}
 				branchFacts := facts.clone()
-				seedTypeSwitchCaseFacts(pass, branchFacts, node.Assign, clause)
+				if len(clause.List) == 0 {
+					seedTypeSwitchDefaultFacts(pass, branchFacts, node.Assign, node.Body.List, clause)
+				} else {
+					seedTypeSwitchCaseFacts(pass, branchFacts, node.Assign, clause)
+				}
 				branches = append(branches, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, branchFacts, sealedObjects, sealed, reported))
 			}
 			if !hasDefault {
@@ -391,6 +395,41 @@ func seedTypeSwitchCaseFacts(pass *analysis.Pass, facts *flowFacts, assign ast.S
 			}
 		}
 	}
+}
+
+func seedTypeSwitchDefaultFacts(pass *analysis.Pass, facts *flowFacts, assign ast.Stmt, clauses []ast.Stmt, defaultClause *ast.CaseClause) {
+	if facts == nil || defaultClause == nil {
+		return
+	}
+	name, assertion := typeSwitchBinding(assign)
+	if name == nil || assertion == nil {
+		return
+	}
+	actuals, ok := facts.concreteForExpr(pass, assertion.X)
+	if !ok {
+		return
+	}
+	caseExprs := typeSwitchCaseExprs(clauses)
+	for _, slot := range typeSwitchCaseSlots(pass, name, defaultClause) {
+		facts.clearSlot(slot)
+		for _, actual := range actuals {
+			if !typeSwitchCaseMatches(pass, actual, caseExprs) {
+				facts.recordSlotActual(slot, actual)
+			}
+		}
+	}
+}
+
+func typeSwitchCaseExprs(clauses []ast.Stmt) []ast.Expr {
+	var exprs []ast.Expr
+	for _, stmt := range clauses {
+		clause, ok := stmt.(*ast.CaseClause)
+		if !ok {
+			continue
+		}
+		exprs = append(exprs, clause.List...)
+	}
+	return exprs
 }
 
 func typeSwitchBinding(assign ast.Stmt) (*ast.Ident, *ast.TypeAssertExpr) {
