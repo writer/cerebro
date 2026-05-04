@@ -1439,6 +1439,86 @@ func TestAuthMiddlewareEnforcesTenantOnMapBackedProtoFields(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareEnforcesTenantOnGraphRootURN(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:      "writer-key",
+				TenantID: "writer",
+			}},
+		},
+	}
+	app := New(cfg, Dependencies{GraphStore: &stubGraphStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/neighborhood?root_urn=urn:cerebro:other:github_user:alice", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer writer-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /platform/graph/neighborhood error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /platform/graph/neighborhood status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	neighborhoodReq := connect.NewRequest(&cerebrov1.GetEntityNeighborhoodRequest{
+		RootUrn: "urn:cerebro:other:github_user:alice",
+	})
+	neighborhoodReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.GetEntityNeighborhood(context.Background(), neighborhoodReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("GetEntityNeighborhood(other tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
+func TestAuthMiddlewareRejectsUnscopedGraphIngestRunListings(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:      "writer-key",
+				TenantID: "writer",
+			}},
+		},
+	}
+	app := New(cfg, Dependencies{GraphStore: &stubGraphStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/ingest-runs?status=failed", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer writer-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /platform/graph/ingest-runs error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /platform/graph/ingest-runs status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	listReq := connect.NewRequest(&cerebrov1.ListGraphIngestRunsRequest{
+		Status: graphstore.IngestRunStatusFailed,
+	})
+	listReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.ListGraphIngestRuns(context.Background(), listReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("ListGraphIngestRuns(unscoped) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	const rawDependencyError = "state store unavailable at postgres://user:pass@internal-db:5432/cerebro"
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{

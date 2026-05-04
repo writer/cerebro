@@ -142,6 +142,10 @@ func authorizeSourceConfigTenant(ctx context.Context, sourceConfig map[string]st
 	return authorizeTenantID(ctx, sourceConfig["tenant_id"])
 }
 
+func authorizeCerebroURNTenant(ctx context.Context, urn string) error {
+	return authorizeTenantID(ctx, tenantIDFromCerebroURN(urn))
+}
+
 func authorizeTenantID(ctx context.Context, tenantID string) error {
 	auth, ok := ctx.Value(authContextKey{}).(authContext)
 	if !ok {
@@ -153,9 +157,22 @@ func authorizeTenantID(ctx context.Context, tenantID string) error {
 	return nil
 }
 
+func tenantIDFromCerebroURN(urn string) string {
+	parts := strings.SplitN(strings.TrimSpace(urn), ":", 5)
+	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
+		return ""
+	}
+	return strings.TrimSpace(parts[2])
+}
+
 func hasAuthContext(ctx context.Context) bool {
 	_, ok := ctx.Value(authContextKey{}).(authContext)
 	return ok
+}
+
+func hasTenantScopedAuth(ctx context.Context) bool {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	return ok && strings.TrimSpace(auth.principal.TenantID) != ""
 }
 
 func tenantAllowed(cfg config.AuthConfig, principal authPrincipal, tenantID string) bool {
@@ -231,10 +248,15 @@ func collectProtoValueTenantIDs(field protoreflect.FieldDescriptor, value protor
 		collectProtoTenantIDs(value.Message(), seen, tenants)
 		return
 	}
-	if field.Name() != "tenant_id" || field.Kind() != protoreflect.StringKind {
+	if field.Kind() != protoreflect.StringKind {
 		return
 	}
-	appendTenantID(value.String(), seen, tenants)
+	switch field.Name() {
+	case "tenant_id":
+		appendTenantID(value.String(), seen, tenants)
+	case "root_urn":
+		appendTenantID(tenantIDFromCerebroURN(value.String()), seen, tenants)
+	}
 }
 
 func appendTenantID(rawTenantID string, seen map[string]struct{}, tenants *[]string) {

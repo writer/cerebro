@@ -208,6 +208,13 @@ func authorizeFindingIDTenant(ctx context.Context, store ports.FindingStore, fin
 	return authorizeTenantID(ctx, finding.TenantID)
 }
 
+func authorizeGraphIngestRunListScope(ctx context.Context, runtimeID string) error {
+	if !hasTenantScopedAuth(ctx) || strings.TrimSpace(runtimeID) != "" {
+		return nil
+	}
+	return errTenantForbidden
+}
+
 func (a *App) handleSources(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, a.sourceService().List())
 }
@@ -668,6 +675,10 @@ func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request
 		}
 	}
 	request.RootUrn = r.URL.Query().Get("root_urn")
+	if err := authorizeCerebroURNTenant(r.Context(), request.GetRootUrn()); err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
 	response, err := a.graphQueryService().GetEntityNeighborhood(r.Context(), graphquery.NeighborhoodRequest{
 		RootURN: request.GetRootUrn(),
 		Limit:   request.GetLimit(),
@@ -755,6 +766,10 @@ func (a *App) handleListGraphIngestRuns(w http.ResponseWriter, r *http.Request) 
 		}
 		request.RuntimeId = r.URL.Query().Get("runtime_id")
 		request.Status = r.URL.Query().Get("status")
+	}
+	if err := authorizeGraphIngestRunListScope(r.Context(), request.GetRuntimeId()); err != nil {
+		writeGraphIngestError(w, err)
+		return
 	}
 	if request.GetRuntimeId() != "" {
 		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntimeId(), false); err != nil {
@@ -1747,6 +1762,9 @@ func (s *bootstrapService) ReplayWorkflowEvents(ctx context.Context, req *connec
 }
 
 func (s *bootstrapService) GetEntityNeighborhood(ctx context.Context, req *connect.Request[cerebrov1.GetEntityNeighborhoodRequest]) (*connect.Response[cerebrov1.GetEntityNeighborhoodResponse], error) {
+	if err := authorizeCerebroURNTenant(ctx, req.Msg.GetRootUrn()); err != nil {
+		return nil, graphQueryConnectError(err)
+	}
 	response, err := graphquery.New(
 		graphQueryStore(s.deps.GraphStore),
 	).GetEntityNeighborhood(ctx, graphquery.NeighborhoodRequest{
@@ -1792,6 +1810,9 @@ func (s *bootstrapService) GetGraphIngestRun(ctx context.Context, req *connect.R
 }
 
 func (s *bootstrapService) ListGraphIngestRuns(ctx context.Context, req *connect.Request[cerebrov1.ListGraphIngestRunsRequest]) (*connect.Response[cerebrov1.ListGraphIngestRunsResponse], error) {
+	if err := authorizeGraphIngestRunListScope(ctx, req.Msg.GetRuntimeId()); err != nil {
+		return nil, graphIngestConnectError(err)
+	}
 	if req.Msg.GetRuntimeId() != "" {
 		if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntimeId(), false); err != nil {
 			return nil, graphIngestConnectError(err)
