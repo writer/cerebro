@@ -629,8 +629,8 @@ func (f *flowFacts) copyIndexed(pass *analysis.Pass, dst ast.Expr, src ast.Expr)
 	}
 	srcSlot, ok := flowSlotForExpr(pass, src)
 	if !ok {
-		for _, slot := range copiedDestinationSlots(pass, dstSlot, src) {
-			f.clearSlot(slot)
+		if !f.copyCompositeIndexed(pass, dstSlot, src) {
+			f.clearSlot(dstSlot)
 		}
 		return
 	}
@@ -654,23 +654,23 @@ func (f *flowFacts) copyIndexed(pass *analysis.Pass, dst ast.Expr, src ast.Expr)
 	}
 }
 
-func copiedDestinationSlots(pass *analysis.Pass, dstSlot flowSlot, src ast.Expr) []flowSlot {
+func (f *flowFacts) copyCompositeIndexed(pass *analysis.Pass, dstSlot flowSlot, src ast.Expr) bool {
 	lit, ok := src.(*ast.CompositeLit)
 	if !ok {
-		return nil
+		return false
 	}
 	switch underlying(pass.TypesInfo.TypeOf(lit)).(type) {
 	case *types.Slice, *types.Array:
 	default:
-		return nil
+		return false
 	}
-	slots := make([]flowSlot, 0, len(lit.Elts))
 	for index, elt := range lit.Elts {
 		child := dstSlot
 		child.path += "/" + compositeElementKey(pass, elt, index)
-		slots = append(slots, child)
+		f.clearSlot(child)
+		f.recordExprActual(pass, child, compositeLiteralValue(elt))
 	}
-	return slots
+	return true
 }
 
 func copiedDestinationSlot(dstSlot flowSlot, suffix string) flowSlot {

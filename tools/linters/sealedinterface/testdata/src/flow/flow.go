@@ -122,6 +122,12 @@ func CopySliceTypeAssertBad() sealedpkg.Runner {
 	return dst[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func CopySliceCompositeLiteralBad() sealedpkg.Runner {
+	dst := make([]any, 1)
+	copy(dst, []any{externalbad.Bad{}})
+	return dst[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func CopySliceClearsDestinationSafe() sealedpkg.Runner {
 	dst := []any{externalbad.Bad{}}
 	copy(dst, []any{nil})
