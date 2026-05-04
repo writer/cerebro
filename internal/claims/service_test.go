@@ -1160,6 +1160,80 @@ func TestWriteClaimsChangingExistingRelationDeletesOldProjectedLink(t *testing.T
 	}
 }
 
+func TestWriteClaimsReprojectsRelationAfterSameBatchRetarget(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	oldAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:old"
+	newAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:new"
+	oldKey := issueURN + "|assigned_to|" + oldAssigneeURN
+	newKey := issueURN + "|assigned_to|" + newAssigneeURN
+	projection := &projectionRecorder{}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			},
+		},
+		&stubClaimStore{},
+		projection,
+		projection,
+	)
+
+	result, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				Id:            "claim-assignee",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     oldAssigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-1",
+			},
+			{
+				Id:            "claim-assignee",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     newAssigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-2",
+			},
+			{
+				Id:            "claim-assignee",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     oldAssigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-3",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if got := result.RelationLinksProjected; got != 3 {
+		t.Fatalf("WriteClaims().RelationLinksProjected = %d, want 3", got)
+	}
+	link := projection.links[oldKey]
+	if link == nil {
+		t.Fatal("old projected link missing after final retarget")
+	}
+	if got := link.Attributes["source_event_id"]; got != "jira-event-3" {
+		t.Fatalf("projected link source_event_id = %q, want jira-event-3", got)
+	}
+	if _, ok := projection.links[newKey]; ok {
+		t.Fatal("new projected link remained after final retarget")
+	}
+	if _, ok := projection.deletedLinks[oldKey]; !ok {
+		t.Fatal("old projected link deletion not recorded after middle retarget")
+	}
+	if _, ok := projection.deletedLinks[newKey]; !ok {
+		t.Fatal("new projected link deletion not recorded after final retarget")
+	}
+}
+
 func TestWriteClaimsRejectsCrossTenantRetractedRelation(t *testing.T) {
 	issueURN := "urn:cerebro:other:runtime:other-jira:ticket:ENG-123"
 	assigneeURN := "urn:cerebro:other:runtime:other-jira:user:acct:42"

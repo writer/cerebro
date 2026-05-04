@@ -219,6 +219,9 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 		if err := s.deleteStaleRelation(ctx, runtime, claim, previousRelation); err != nil {
 			return nil, err
 		}
+		if previousKey := projectedLinkKey(previousRelation); previousKey != "" && previousKey != projectedLinkKey(relationLink(runtime, claim)) {
+			delete(upsertedLinks, previousKey)
+		}
 	}
 	if request.ReplaceExisting {
 		retracted, err := s.retractMissingClaims(ctx, runtime, normalizedClaims)
