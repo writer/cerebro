@@ -1,5 +1,3 @@
-//go:build cgo
-
 package main
 
 import (
@@ -15,10 +13,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	configpkg "github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/findings"
 	"github.com/writer/cerebro/internal/graphquery"
-	graphstorekuzu "github.com/writer/cerebro/internal/graphstore/kuzu"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
@@ -66,19 +62,7 @@ func TestGitHubDependabotFindingsEndToEndWithGHCLI(t *testing.T) {
 	if synthesizedOpenState {
 		synthesizeOpenDependabotEvents(t, events, liveAlertState)
 	}
-	graphPath := t.TempDir() + "/graph"
-	graphStore, err := graphstorekuzu.Open(configpkg.GraphStoreConfig{
-		Driver:   configpkg.GraphStoreDriverKuzu,
-		KuzuPath: graphPath,
-	})
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer func() {
-		if closeErr := graphStore.Close(); closeErr != nil {
-			t.Fatalf("Close() error = %v", closeErr)
-		}
-	}()
+	graphStore := openNeo4jLiveGraphStore(t, ctx)
 	projector := sourceprojection.New(nil, graphStore)
 	for _, event := range events {
 		if _, err := projector.Project(ctx, event); err != nil {
@@ -236,19 +220,7 @@ func TestGitHubAuditFindingsGraphPreviewWithGHCLI(t *testing.T) {
 
 	runtimeID := "live-github-audit"
 	events = cloneEventsForRuntime(events, runtimeID)
-	graphPath := t.TempDir() + "/graph"
-	graphStore, err := graphstorekuzu.Open(configpkg.GraphStoreConfig{
-		Driver:   configpkg.GraphStoreDriverKuzu,
-		KuzuPath: graphPath,
-	})
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer func() {
-		if closeErr := graphStore.Close(); closeErr != nil {
-			t.Fatalf("Close() error = %v", closeErr)
-		}
-	}()
+	graphStore := openNeo4jLiveGraphStore(t, ctx)
 	projector := sourceprojection.New(nil, graphStore)
 	for _, event := range events {
 		if _, err := projector.Project(ctx, event); err != nil {

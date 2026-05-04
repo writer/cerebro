@@ -3,8 +3,6 @@ package graphrebuild
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -12,9 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphstore"
-	graphstorekuzu "github.com/writer/cerebro/internal/graphstore/kuzu"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -185,9 +181,7 @@ type Service struct {
 	registry     *sourcecdk.Registry
 	runtimeStore ports.SourceRuntimeStore
 	replayer     ports.EventReplayer
-	openGraph    func(path string) (graphStore, error)
-	makeTempDir  func() (string, error)
-	removeAll    func(string) error
+	openGraph    func() (graphStore, error)
 }
 
 // New constructs a graph rebuild service.
@@ -196,20 +190,11 @@ func New(registry *sourcecdk.Registry, runtimeStore ports.SourceRuntimeStore, re
 		registry:     registry,
 		runtimeStore: runtimeStore,
 		replayer:     replayer,
-		openGraph: func(path string) (graphStore, error) {
-			return graphstorekuzu.Open(config.GraphStoreConfig{
-				Driver:   config.GraphStoreDriverKuzu,
-				KuzuPath: path,
-			})
-		},
-		makeTempDir: func() (string, error) {
-			return os.MkdirTemp("", "cerebro-graph-rebuild-")
-		},
-		removeAll: os.RemoveAll,
+		openGraph:    newMemoryGraphStore,
 	}
 }
 
-// RebuildDryRun projects bounded source or append-log events into a temporary local Kuzu graph.
+// RebuildDryRun projects bounded source or append-log events into a scratch graph.
 func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, err error) {
 	if s == nil || s.runtimeStore == nil {
 		return nil, fmt.Errorf("source runtime store is required")
@@ -241,16 +226,7 @@ func (s *Service) RebuildDryRun(ctx context.Context, req Request) (_ *Result, er
 	})
 
 	openStart := time.Now()
-	tempDir, err := s.makeTempDir()
-	if err != nil {
-		return nil, fmt.Errorf("create temp graph directory: %w", err)
-	}
-	defer func() {
-		if removeErr := s.removeAll(tempDir); removeErr != nil && err == nil {
-			err = fmt.Errorf("remove temp graph directory: %w", removeErr)
-		}
-	}()
-	graph, err := s.openGraph(filepath.Join(tempDir, "graph"))
+	graph, err := s.openGraph()
 	if err != nil {
 		return nil, err
 	}

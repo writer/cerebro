@@ -1,22 +1,14 @@
-//go:build cgo
-
 package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"testing"
 
-	kuzudb "github.com/kuzudb/go-kuzu"
-
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	configpkg "github.com/writer/cerebro/internal/config"
-	graphstorekuzu "github.com/writer/cerebro/internal/graphstore/kuzu"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
@@ -92,20 +84,7 @@ func TestGitHubLocalEndToEndWithGHCLI(t *testing.T) {
 		t.Fatalf("source payload author = %q, want %q", payload.Author, pull.User.Login)
 	}
 
-	graphPath := filepath.Join(t.TempDir(), "graph")
-	store, err := graphstorekuzu.Open(configpkg.GraphStoreConfig{
-		Driver:   configpkg.GraphStoreDriverKuzu,
-		KuzuPath: graphPath,
-	})
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	defer func() {
-		if closeErr := store.Close(); closeErr != nil {
-			t.Fatalf("Close() error = %v", closeErr)
-		}
-	}()
-
+	store := openNeo4jLiveGraphStore(t, ctx)
 	projector := sourceprojection.New(nil, store)
 	for _, event := range response.GetEvents() {
 		if _, err := projector.Project(ctx, event); err != nil {
@@ -113,33 +92,25 @@ func TestGitHubLocalEndToEndWithGHCLI(t *testing.T) {
 		}
 	}
 
-	db, err := sql.Open(kuzudb.Name, "kuzu://"+filepath.ToSlash(graphPath))
+	counts, err := store.Counts(ctx)
 	if err != nil {
-		t.Fatalf("sql.Open() error = %v", err)
+		t.Fatalf("Counts() error = %v", err)
 	}
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			t.Fatalf("db.Close() error = %v", closeErr)
-		}
-	}()
-
-	nodeCount := graphCount(t, db, "MATCH (entity:entity) RETURN COUNT(entity)")
-	authoredCount := graphCount(t, db, "MATCH (:entity)-[r:relation]->(:entity) WHERE r.relation = 'authored' RETURN COUNT(r)")
-	if nodeCount == 0 {
+	if counts.Nodes == 0 {
 		t.Fatal("projected graph node count = 0, want non-zero")
 	}
-	if authoredCount == 0 {
-		t.Fatal("projected authored link count = 0, want non-zero")
+	if counts.Relations == 0 {
+		t.Fatal("projected graph relation count = 0, want non-zero")
 	}
 
 	t.Logf(
-		"validated live github flow owner=%s repo=%s first_pr=%d events=%d graph_nodes=%d authored_links=%d",
+		"validated live github flow owner=%s repo=%s first_pr=%d events=%d graph_nodes=%d graph_relations=%d",
 		config["owner"],
 		config["repo"],
 		payload.Number,
 		len(response.GetEvents()),
-		nodeCount,
-		authoredCount,
+		counts.Nodes,
+		counts.Relations,
 	)
 }
 
@@ -154,13 +125,4 @@ func readGitHubPullWithGHCLI(ctx context.Context, owner string, repo string, num
 		return ghAPIPull{}, fmt.Errorf("decode github pull from gh cli: %w", err)
 	}
 	return pull, nil
-}
-
-func graphCount(t *testing.T, db *sql.DB, query string) int64 {
-	t.Helper()
-	var count int64
-	if err := db.QueryRowContext(context.Background(), query).Scan(&count); err != nil {
-		t.Fatalf("QueryRowContext(%q) error = %v", query, err)
-	}
-	return count
 }

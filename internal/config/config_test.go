@@ -14,7 +14,6 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
-	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
@@ -49,12 +48,11 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_JETSTREAM_SUBJECT_PREFIX", "cerebro.events")
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", StateStoreDriverPostgres)
 	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
-	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverKuzu)
-	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
-	t.Setenv("CEREBRO_NEO4J_URI", "")
-	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
-	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
-	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
+	t.Setenv("CEREBRO_NEO4J_URI", "neo4j+s://example.databases.neo4j.io")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
+	t.Setenv("CEREBRO_NEO4J_DATABASE", "cerebro")
 
 	cfg, err := Load()
 	if err != nil {
@@ -75,8 +73,8 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.StateStore.Driver != StateStoreDriverPostgres {
 		t.Fatalf("StateStore.Driver = %q, want %q", cfg.StateStore.Driver, StateStoreDriverPostgres)
 	}
-	if cfg.GraphStore.Driver != GraphStoreDriverKuzu {
-		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverKuzu)
+	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
+		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverNeo4j)
 	}
 }
 
@@ -90,7 +88,6 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
-	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
@@ -100,7 +97,6 @@ func clearDependencyEnv(t *testing.T) {
 func TestLoadFromNeo4jEnv(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverNeo4j)
-	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "neo4j+s://example.databases.neo4j.io")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
@@ -130,7 +126,6 @@ func TestLoadFromNeo4jEnv(t *testing.T) {
 func TestLoadInfersNeo4jDriverFromURI(t *testing.T) {
 	clearDependencyEnv(t)
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
-	t.Setenv("CEREBRO_KUZU_PATH", "")
 	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
 	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
@@ -141,18 +136,6 @@ func TestLoadInfersNeo4jDriverFromURI(t *testing.T) {
 	}
 	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
 		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverNeo4j)
-	}
-}
-
-func TestLoadRejectsConflictingGraphStoreInference(t *testing.T) {
-	clearDependencyEnv(t)
-	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
-	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
-	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
-	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
-	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
-	if _, err := Load(); err == nil {
-		t.Fatal("Load() error = nil, want non-nil")
 	}
 }
 
@@ -205,7 +188,9 @@ func TestLoadInfersDriversFromURLs(t *testing.T) {
 	t.Setenv("CEREBRO_STATE_STORE_DRIVER", "")
 	t.Setenv("CEREBRO_POSTGRES_DSN", "postgres://127.0.0.1:5432/cerebro?sslmode=disable")
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "")
-	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
+	t.Setenv("CEREBRO_NEO4J_URI", "bolt://127.0.0.1:7687")
+	t.Setenv("CEREBRO_NEO4J_USERNAME", "neo4j")
+	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
 
 	cfg, err := Load()
 	if err != nil {
@@ -220,8 +205,8 @@ func TestLoadInfersDriversFromURLs(t *testing.T) {
 	if cfg.StateStore.Driver != StateStoreDriverPostgres {
 		t.Fatalf("StateStore.Driver = %q, want %q", cfg.StateStore.Driver, StateStoreDriverPostgres)
 	}
-	if cfg.GraphStore.Driver != GraphStoreDriverKuzu {
-		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverKuzu)
+	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
+		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverNeo4j)
 	}
 }
 
@@ -248,9 +233,9 @@ func TestLoadRejectsMissingPostgresDSN(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsMissingKuzuPath(t *testing.T) {
-	t.Setenv("CEREBRO_KUZU_PATH", "")
-	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", GraphStoreDriverKuzu)
+func TestLoadRejectsKuzuDriver(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "kuzu")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
 	}
@@ -258,7 +243,6 @@ func TestLoadRejectsMissingKuzuPath(t *testing.T) {
 
 func TestLoadRejectsUnsupportedGraphStoreDriver(t *testing.T) {
 	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", "alternate")
-	t.Setenv("CEREBRO_KUZU_PATH", "/tmp/cerebro-kuzu")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want non-nil")
 	}

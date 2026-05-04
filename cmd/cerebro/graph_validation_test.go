@@ -1,19 +1,15 @@
-//go:build cgo
-
 package main
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	configpkg "github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphingest"
-	graphstorekuzu "github.com/writer/cerebro/internal/graphstore/kuzu"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -21,16 +17,9 @@ import (
 	"github.com/writer/cerebro/internal/sourceprojection"
 )
 
-func TestGraphKuzuCLIValidationFlow(t *testing.T) {
+func TestGraphIngestValidationFlow(t *testing.T) {
 	ctx := context.Background()
-	graphPath := filepath.Join(t.TempDir(), "graph")
-	store, err := graphstorekuzu.Open(configpkg.GraphStoreConfig{
-		Driver:   configpkg.GraphStoreDriverKuzu,
-		KuzuPath: graphPath,
-	})
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
+	store := newGraphTestStore()
 	source, err := validationFixtureSource()
 	if err != nil {
 		t.Fatalf("validationFixtureSource() error = %v", err)
@@ -88,38 +77,11 @@ func TestGraphKuzuCLIValidationFlow(t *testing.T) {
 			t.Fatalf("integrity check failed: %#v", check)
 		}
 	}
-	if err := store.Close(); err != nil {
-		t.Fatalf("Close() error = %v", err)
-	}
-
-	t.Setenv("CEREBRO_GRAPH_STORE_DRIVER", configpkg.GraphStoreDriverKuzu)
-	t.Setenv("CEREBRO_KUZU_PATH", graphPath)
-	for _, args := range [][]string{
-		{"counts"},
-		{"neighborhood", "root_urn=" + identityURN, "limit=10"},
-		{"paths", "limit=5"},
-		{"integrity"},
-	} {
-		if err := runGraph(args); err != nil {
-			t.Fatalf("runGraph(%v) error = %v", args, err)
-		}
-	}
 }
 
 func TestGraphRuntimeIngestRecordsStatus(t *testing.T) {
 	ctx := context.Background()
-	store, err := graphstorekuzu.Open(configpkg.GraphStoreConfig{
-		Driver:   configpkg.GraphStoreDriverKuzu,
-		KuzuPath: filepath.Join(t.TempDir(), "graph"),
-	})
-	if err != nil {
-		t.Fatalf("Open() error = %v", err)
-	}
-	t.Cleanup(func() {
-		if closeErr := store.Close(); closeErr != nil {
-			t.Fatalf("Close() error = %v", closeErr)
-		}
-	})
+	store := newGraphTestStore()
 	source, err := validationFixtureSourceWithID("validation")
 	if err != nil {
 		t.Fatalf("validationFixtureSourceWithID() error = %v", err)
@@ -156,7 +118,7 @@ func TestGraphRuntimeIngestRecordsStatus(t *testing.T) {
 	if result.Run.Status != "completed" || result.Ingest.EventsRead != 2 {
 		t.Fatalf("RunRuntime() = %#v, want completed two-event run", result)
 	}
-	completed, err := store.ListIngestRuns(ctx, graphstorekuzu.IngestRunFilter{RuntimeID: "writer-validation", Status: "completed", Limit: 10})
+	completed, err := store.ListIngestRuns(ctx, graphstore.IngestRunFilter{RuntimeID: "writer-validation", Status: "completed", Limit: 10})
 	if err != nil {
 		t.Fatalf("ListIngestRuns(completed) error = %v", err)
 	}

@@ -44,7 +44,7 @@ type Topology struct {
 	Intermediates int64 `json:"intermediates"`
 }
 
-// IngestCheckpoint records durable graph ingest progress in Kuzu.
+// IngestCheckpoint records durable graph ingest progress.
 type IngestCheckpoint struct {
 	ID               string `json:"id"`
 	SourceID         string `json:"source_id"`
