@@ -1,0 +1,22 @@
+{
+  "priorityPaths": [
+    "internal/api/",
+    "internal/auth/",
+    "internal/apiauth/",
+    "internal/agents/",
+    "internal/remediation/",
+    "internal/actionengine/",
+    "internal/providers/",
+    "internal/cli/"
+  ],
+  "ignorePaths": [
+    "vendor/**",
+    "docs/**",
+    "policies/**",
+    "api/openapi.yaml",
+    "api/spec_embed.go",
+    "**/*_test.go",
+    "cerebro",
+    "bin/**"
+  ]
+}
