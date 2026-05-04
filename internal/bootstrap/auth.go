@@ -130,27 +130,32 @@ func authorizeProtoTenant(ctx context.Context, cfg config.AuthConfig, message an
 }
 
 func authorizeHTTPRequestTenant(ctx context.Context, message proto.Message) error {
-	auth, ok := ctx.Value(authContextKey{}).(authContext)
-	if !ok {
-		return nil
-	}
 	for _, tenantID := range protoTenantIDs(message) {
-		if !tenantAllowed(auth.cfg, auth.principal, tenantID) {
-			return errTenantForbidden
+		if err := authorizeTenantID(ctx, tenantID); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 func authorizeSourceConfigTenant(ctx context.Context, sourceConfig map[string]string) error {
+	return authorizeTenantID(ctx, sourceConfig["tenant_id"])
+}
+
+func authorizeTenantID(ctx context.Context, tenantID string) error {
 	auth, ok := ctx.Value(authContextKey{}).(authContext)
 	if !ok {
 		return nil
 	}
-	if tenantID := strings.TrimSpace(sourceConfig["tenant_id"]); tenantID != "" && !tenantAllowed(auth.cfg, auth.principal, tenantID) {
+	if tenantID := strings.TrimSpace(tenantID); tenantID != "" && !tenantAllowed(auth.cfg, auth.principal, tenantID) {
 		return errTenantForbidden
 	}
 	return nil
+}
+
+func hasAuthContext(ctx context.Context) bool {
+	_, ok := ctx.Value(authContextKey{}).(authContext)
+	return ok
 }
 
 func tenantAllowed(cfg config.AuthConfig, principal authPrincipal, tenantID string) bool {
@@ -194,11 +199,31 @@ func collectProtoTenantIDs(message protoreflect.Message, seen map[string]struct{
 			}
 			continue
 		}
-		if field.IsMap() || !message.Has(field) {
+		if field.IsMap() {
+			mapping := value.Map()
+			mapping.Range(func(key protoreflect.MapKey, mapValue protoreflect.Value) bool {
+				collectProtoMapTenantIDs(field, key, mapValue, seen, tenants)
+				return true
+			})
+			continue
+		}
+		if !message.Has(field) {
 			continue
 		}
 		collectProtoValueTenantIDs(field, value, seen, tenants)
 	}
+}
+
+func collectProtoMapTenantIDs(field protoreflect.FieldDescriptor, key protoreflect.MapKey, value protoreflect.Value, seen map[string]struct{}, tenants *[]string) {
+	valueField := field.MapValue()
+	if valueField.Kind() == protoreflect.MessageKind || valueField.Kind() == protoreflect.GroupKind {
+		collectProtoTenantIDs(value.Message(), seen, tenants)
+		return
+	}
+	if field.MapKey().Kind() != protoreflect.StringKind || key.String() != "tenant_id" || valueField.Kind() != protoreflect.StringKind {
+		return
+	}
+	appendTenantID(value.String(), seen, tenants)
 }
 
 func collectProtoValueTenantIDs(field protoreflect.FieldDescriptor, value protoreflect.Value, seen map[string]struct{}, tenants *[]string) {
@@ -209,7 +234,11 @@ func collectProtoValueTenantIDs(field protoreflect.FieldDescriptor, value protor
 	if field.Name() != "tenant_id" || field.Kind() != protoreflect.StringKind {
 		return
 	}
-	tenantID := strings.TrimSpace(value.String())
+	appendTenantID(value.String(), seen, tenants)
+}
+
+func appendTenantID(rawTenantID string, seen map[string]struct{}, tenants *[]string) {
+	tenantID := strings.TrimSpace(rawTenantID)
 	if tenantID == "" {
 		return
 	}

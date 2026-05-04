@@ -1322,6 +1322,123 @@ func TestAuthMiddlewareEnforcesTenantOnHTTPProtoBodies(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareEnforcesTenantOnIDOnlyRoutes(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:      "writer-key",
+				TenantID: "writer",
+			}},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"other-runtime": {
+				Id:       "other-runtime",
+				SourceId: "okta",
+				TenantId: "other",
+			},
+		},
+		findings: map[string]*ports.FindingRecord{
+			"other-finding": {
+				ID:       "other-finding",
+				TenantID: "other",
+			},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for _, tt := range []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{name: "get runtime", method: http.MethodGet, path: "/source-runtimes/other-runtime"},
+		{name: "sync runtime", method: http.MethodPost, path: "/source-runtimes/other-runtime/sync"},
+		{name: "get finding", method: http.MethodGet, path: "/findings/other-finding"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest(tt.method, server.URL+tt.path, nil)
+			if err != nil {
+				t.Fatalf("NewRequest: %v", err)
+			}
+			req.Header.Set("Authorization", "Bearer writer-key")
+			resp, err := server.Client().Do(req)
+			if err != nil {
+				t.Fatalf("%s %s error = %v", tt.method, tt.path, err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("%s %s status = %d, want %d", tt.method, tt.path, resp.StatusCode, http.StatusForbidden)
+			}
+		})
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	getRuntimeReq := connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{Id: "other-runtime"})
+	getRuntimeReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.GetSourceRuntime(context.Background(), getRuntimeReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("GetSourceRuntime(other) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+	getFindingReq := connect.NewRequest(&cerebrov1.GetFindingRequest{Id: "other-finding"})
+	getFindingReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.GetFinding(context.Background(), getFindingReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("GetFinding(other) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
+func TestAuthMiddlewareEnforcesTenantOnMapBackedProtoFields(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:      "writer-key",
+				TenantID: "writer",
+			}},
+		},
+	}
+	app := New(cfg, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body, err := protojson.Marshal(&cerebrov1.RunReportRequest{
+		Parameters: map[string]string{"tenant_id": "other"},
+	})
+	if err != nil {
+		t.Fatalf("marshal report request: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/reports/finding-summary/runs", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer writer-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST /reports/finding-summary/runs error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("POST /reports/finding-summary/runs status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	runReq := connect.NewRequest(&cerebrov1.RunReportRequest{
+		Parameters: map[string]string{"tenant_id": "other"},
+	})
+	runReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.RunReport(context.Background(), runReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("RunReport(other tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	const rawDependencyError = "state store unavailable at postgres://user:pass@internal-db:5432/cerebro"
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
