@@ -1,14 +1,4 @@
 {
-  "priorityPaths": [
-    "internal/api/",
-    "internal/auth/",
-    "internal/apiauth/",
-    "internal/agents/",
-    "internal/remediation/",
-    "internal/actionengine/",
-    "internal/providers/",
-    "internal/cli/"
-  ],
   "ignorePaths": [
     "vendor/**",
     "docs/**",
