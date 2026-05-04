@@ -1362,6 +1362,58 @@ func TestEvaluateSourceRuntimeRulesMarksUnfinishedRunsFailedWhenCompletionFails(
 	}
 }
 
+func TestEvaluateSourceRuntimeRulesPreservesEarlierFailureWhenCompletionCleanupRuns(t *testing.T) {
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			triggerEventID:     "okta-audit-1",
+		},
+		&failingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b", Name: "Rule B"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+			err:                errors.New("rule-b exploded"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{
+		failRunPutByCall: map[int]error{
+			4: errors.New("run completion failed"),
+		},
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{newAuditEvent("okta-audit-1", "policy.rule.update", "SUCCESS")}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	if err == nil {
+		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want non-nil")
+	}
+	ruleBRun, ok := runForRule(store.runs, "rule-b")
+	if !ok {
+		t.Fatal("rule-b run missing")
+	}
+	if got := ruleBRun.GetStatus(); got != "failed" {
+		t.Fatalf("rule-b run status = %q, want failed", got)
+	}
+	if got := ruleBRun.GetError(); !strings.Contains(got, "rule-b exploded") {
+		t.Fatalf("rule-b run error = %q, want rule-b exploded", got)
+	}
+	if got := ruleBRun.GetError(); strings.Contains(got, "run completion failed") {
+		t.Fatalf("rule-b run error = %q, should preserve original rule failure", got)
+	}
+}
+
 func TestEvaluateSourceRuntimeRulesReturnsEvaluationAndRunFailureCauses(t *testing.T) {
 	registry, err := NewRegistry(&failingRule{
 		spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},

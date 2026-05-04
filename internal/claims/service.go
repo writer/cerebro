@@ -377,7 +377,6 @@ func (s *Service) hasOtherAssertedRelation(ctx context.Context, runtime *cerebro
 		Predicate:  strings.TrimSpace(link.Relation),
 		ObjectURN:  strings.TrimSpace(link.ToURN),
 		ClaimType:  claimTypeRelation,
-		Status:     claimStatusAsserted,
 	})
 	if err != nil {
 		return false, fmt.Errorf("list supporting claims for link %q: %w", projectedLinkKey(link), err)
@@ -387,6 +386,9 @@ func (s *Service) hasOtherAssertedRelation(ctx context.Context, runtime *cerebro
 			continue
 		}
 		if strings.TrimSpace(claim.ID) == claimID && strings.TrimSpace(claim.RuntimeID) == runtimeID {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(claim.Status), claimStatusAsserted) {
 			continue
 		}
 		return true, nil

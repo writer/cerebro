@@ -701,6 +701,78 @@ func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjected
 	}
 }
 
+func TestWriteClaimsKeepsLinkWhenOtherSupportHasCaseVariantAssertedStatus(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-jira": {
+				ID:         "claim-jira",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+			"claim-github": {
+				ID:         "claim-github",
+				RuntimeID:  "writer-github",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     "ASSERTED",
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "sdk",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{{
+			Id:         "claim-jira",
+			SubjectUrn: issueURN,
+			Predicate:  "assigned_to",
+			ObjectUrn:  assigneeURN,
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusRetracted,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[linkKey]; !ok {
+		t.Fatal("projected link was deleted even though another claim still asserts it with case-variant status")
+	}
+	if _, ok := projection.deletedLinks[linkKey]; ok {
+		t.Fatal("projected link deletion recorded even though another claim still asserts it with case-variant status")
+	}
+}
+
 func TestWriteClaimsReplaceExistingDeletesLinkWhenConcurrentRuntimeRetracts(t *testing.T) {
 	issueURN := "urn:cerebro:writer:ticket:ENG-123"
 	assigneeURN := "urn:cerebro:writer:user:acct:42"

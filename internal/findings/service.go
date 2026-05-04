@@ -872,6 +872,9 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 func (s *Service) markRuleEvaluationsFailed(ctx context.Context, states []*ruleEvaluationState, evaluationErr error) error {
 	var cleanupErr error
 	for _, state := range states {
+		if state != nil && state.failed {
+			continue
+		}
 		if failErr := s.markRuleEvaluationFailed(ctx, state, evaluationErr); failErr != nil {
 			cleanupErr = errors.Join(cleanupErr, failErr)
 		}
