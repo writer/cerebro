@@ -44,9 +44,9 @@ func TestOpenDependenciesRejectsIncompletePostgresConfig(t *testing.T) {
 	}
 }
 
-func TestOpenDependenciesRejectsIncompleteKuzuConfig(t *testing.T) {
+func TestOpenDependenciesRejectsIncompleteNeo4jConfig(t *testing.T) {
 	_, _, err := OpenDependencies(context.Background(), config.Config{
-		GraphStore: config.GraphStoreConfig{Driver: config.GraphStoreDriverKuzu},
+		GraphStore: config.GraphStoreConfig{Driver: config.GraphStoreDriverNeo4j},
 	})
 	if err == nil {
 		t.Fatal("OpenDependencies() error = nil, want non-nil")
