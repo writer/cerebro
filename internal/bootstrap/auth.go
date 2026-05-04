@@ -142,8 +142,27 @@ func authorizeSourceConfigTenant(ctx context.Context, sourceConfig map[string]st
 	return authorizeTenantID(ctx, sourceConfig["tenant_id"])
 }
 
+func authorizeKnowledgeTenant(ctx context.Context, metadata map[string]any, ids ...string) error {
+	if err := authorizeTenantID(ctx, tenantIDFromMetadata(metadata)); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := authorizeCerebroURNTenant(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func authorizeCerebroURNTenant(ctx context.Context, urn string) error {
 	return authorizeTenantID(ctx, tenantIDFromCerebroURN(urn))
+}
+
+func authorizeTenantScopeRequired(ctx context.Context, tenantID string) error {
+	if hasTenantScopedAuth(ctx) && strings.TrimSpace(tenantID) == "" {
+		return errTenantForbidden
+	}
+	return authorizeTenantID(ctx, tenantID)
 }
 
 func authorizeTenantID(ctx context.Context, tenantID string) error {
@@ -155,6 +174,21 @@ func authorizeTenantID(ctx context.Context, tenantID string) error {
 		return errTenantForbidden
 	}
 	return nil
+}
+
+func tenantIDFromMetadata(metadata map[string]any) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	value, ok := metadata["tenant_id"]
+	if !ok {
+		return ""
+	}
+	tenantID, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(tenantID)
 }
 
 func tenantIDFromCerebroURN(urn string) string {
@@ -234,6 +268,9 @@ func collectProtoTenantIDs(message protoreflect.Message, seen map[string]struct{
 func collectProtoMapTenantIDs(field protoreflect.FieldDescriptor, key protoreflect.MapKey, value protoreflect.Value, seen map[string]struct{}, tenants *[]string) {
 	valueField := field.MapValue()
 	if valueField.Kind() == protoreflect.MessageKind || valueField.Kind() == protoreflect.GroupKind {
+		if field.MapKey().Kind() == protoreflect.StringKind && key.String() == "tenant_id" {
+			appendTenantID(protoStringValue(value.Message()), seen, tenants)
+		}
 		collectProtoTenantIDs(value.Message(), seen, tenants)
 		return
 	}
@@ -254,9 +291,20 @@ func collectProtoValueTenantIDs(field protoreflect.FieldDescriptor, value protor
 	switch field.Name() {
 	case "tenant_id":
 		appendTenantID(value.String(), seen, tenants)
-	case "root_urn":
+	case "root_urn", "decision_id", "target_ids", "evidence_ids", "action_ids":
 		appendTenantID(tenantIDFromCerebroURN(value.String()), seen, tenants)
 	}
+}
+
+func protoStringValue(message protoreflect.Message) string {
+	if !message.IsValid() {
+		return ""
+	}
+	field := message.Descriptor().Fields().ByName("string_value")
+	if field == nil || field.Kind() != protoreflect.StringKind || !message.Has(field) {
+		return ""
+	}
+	return message.Get(field).String()
 }
 
 func appendTenantID(rawTenantID string, seen map[string]struct{}, tenants *[]string) {

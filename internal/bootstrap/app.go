@@ -215,6 +215,13 @@ func authorizeGraphIngestRunListScope(ctx context.Context, runtimeID string) err
 	return errTenantForbidden
 }
 
+func authorizeGlobalGraphHealthScope(ctx context.Context) error {
+	if !hasTenantScopedAuth(ctx) {
+		return nil
+	}
+	return errTenantForbidden
+}
+
 func (a *App) handleSources(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, a.sourceService().List())
 }
@@ -545,6 +552,10 @@ func (a *App) handleWriteDecision(w http.ResponseWriter, r *http.Request) {
 	if request.GetMetadata() != nil {
 		metadata = request.GetMetadata().AsMap()
 	}
+	if err := authorizeKnowledgeTenant(r.Context(), metadata, append(append([]string{}, request.GetTargetIds()...), append(request.GetEvidenceIds(), request.GetActionIds()...)...)...); err != nil {
+		writeKnowledgeError(w, err)
+		return
+	}
 	result, err := a.knowledgeService().WriteDecision(r.Context(), knowledge.DecisionWriteRequest{
 		ID:            request.GetId(),
 		DecisionType:  request.GetDecisionType(),
@@ -581,6 +592,10 @@ func (a *App) handleWriteAction(w http.ResponseWriter, r *http.Request) {
 	metadata := map[string]any{}
 	if request.GetMetadata() != nil {
 		metadata = request.GetMetadata().AsMap()
+	}
+	if err := authorizeKnowledgeTenant(r.Context(), metadata, append(append([]string{request.GetDecisionId()}, request.GetTargetIds()...), request.GetRecommendationId())...); err != nil {
+		writeKnowledgeError(w, err)
+		return
 	}
 	result, err := a.knowledgeService().WriteAction(r.Context(), knowledge.ActionWriteRequest{
 		ID:               request.GetId(),
@@ -620,6 +635,10 @@ func (a *App) handleWriteOutcome(w http.ResponseWriter, r *http.Request) {
 	if request.GetMetadata() != nil {
 		metadata = request.GetMetadata().AsMap()
 	}
+	if err := authorizeKnowledgeTenant(r.Context(), metadata, append([]string{request.GetDecisionId()}, request.GetTargetIds()...)...); err != nil {
+		writeKnowledgeError(w, err)
+		return
+	}
 	result, err := a.knowledgeService().WriteOutcome(r.Context(), knowledge.OutcomeWriteRequest{
 		ID:            request.GetId(),
 		DecisionID:    request.GetDecisionId(),
@@ -649,6 +668,10 @@ func (a *App) handleWriteOutcome(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleReplayWorkflowEvents(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.ReplayWorkflowEventsRequest{}
 	if err := readProtoJSON(r, request); err != nil {
+		writeWorkflowReplayError(w, err)
+		return
+	}
+	if err := authorizeTenantScopeRequired(r.Context(), request.GetTenantId()); err != nil {
 		writeWorkflowReplayError(w, err)
 		return
 	}
@@ -790,6 +813,10 @@ func (a *App) handleListGraphIngestRuns(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *App) handleCheckGraphIngestHealth(w http.ResponseWriter, r *http.Request) {
+	if err := authorizeGlobalGraphHealthScope(r.Context()); err != nil {
+		writeGraphIngestError(w, err)
+		return
+	}
 	request := &cerebrov1.CheckGraphIngestHealthRequest{}
 	if limit := r.URL.Query().Get("limit"); limit != "" {
 		body := []byte(`{"limit":` + limit + `}`)
@@ -1648,6 +1675,9 @@ func (s *bootstrapService) WriteDecision(ctx context.Context, req *connect.Reque
 	if req.Msg.GetMetadata() != nil {
 		metadata = req.Msg.GetMetadata().AsMap()
 	}
+	if err := authorizeKnowledgeTenant(ctx, metadata, append(append([]string{}, req.Msg.GetTargetIds()...), append(req.Msg.GetEvidenceIds(), req.Msg.GetActionIds()...)...)...); err != nil {
+		return nil, knowledgeConnectError(err)
+	}
 	result, err := knowledge.New(
 		graphQueryStore(s.deps.GraphStore),
 		sourceProjectionGraphStore(s.deps.GraphStore),
@@ -1681,6 +1711,9 @@ func (s *bootstrapService) WriteAction(ctx context.Context, req *connect.Request
 	metadata := map[string]any{}
 	if req.Msg.GetMetadata() != nil {
 		metadata = req.Msg.GetMetadata().AsMap()
+	}
+	if err := authorizeKnowledgeTenant(ctx, metadata, append(append([]string{req.Msg.GetDecisionId()}, req.Msg.GetTargetIds()...), req.Msg.GetRecommendationId())...); err != nil {
+		return nil, knowledgeConnectError(err)
 	}
 	result, err := knowledge.New(
 		graphQueryStore(s.deps.GraphStore),
@@ -1717,6 +1750,9 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 	if req.Msg.GetMetadata() != nil {
 		metadata = req.Msg.GetMetadata().AsMap()
 	}
+	if err := authorizeKnowledgeTenant(ctx, metadata, append([]string{req.Msg.GetDecisionId()}, req.Msg.GetTargetIds()...)...); err != nil {
+		return nil, knowledgeConnectError(err)
+	}
 	result, err := knowledge.New(
 		graphQueryStore(s.deps.GraphStore),
 		sourceProjectionGraphStore(s.deps.GraphStore),
@@ -1746,6 +1782,9 @@ func (s *bootstrapService) WriteOutcome(ctx context.Context, req *connect.Reques
 }
 
 func (s *bootstrapService) ReplayWorkflowEvents(ctx context.Context, req *connect.Request[cerebrov1.ReplayWorkflowEventsRequest]) (*connect.Response[cerebrov1.ReplayWorkflowEventsResponse], error) {
+	if err := authorizeTenantScopeRequired(ctx, req.Msg.GetTenantId()); err != nil {
+		return nil, workflowReplayConnectError(err)
+	}
 	result, err := workflowprojection.NewReplayer(
 		eventReplayer(s.deps.AppendLog),
 		sourceProjectionGraphStore(s.deps.GraphStore),
@@ -1830,6 +1869,9 @@ func (s *bootstrapService) ListGraphIngestRuns(ctx context.Context, req *connect
 }
 
 func (s *bootstrapService) CheckGraphIngestHealth(ctx context.Context, req *connect.Request[cerebrov1.CheckGraphIngestHealthRequest]) (*connect.Response[cerebrov1.CheckGraphIngestHealthResponse], error) {
+	if err := authorizeGlobalGraphHealthScope(ctx); err != nil {
+		return nil, graphIngestConnectError(err)
+	}
 	result, err := newGraphIngestService(s.deps, s.sources).Health(ctx, req.Msg.GetLimit())
 	if err != nil {
 		return nil, graphIngestConnectError(err)

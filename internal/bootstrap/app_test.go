@@ -15,6 +15,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -1516,6 +1517,143 @@ func TestAuthMiddlewareRejectsUnscopedGraphIngestRunListings(t *testing.T) {
 	listReq.Header().Set("Authorization", "Bearer writer-key")
 	if _, err := client.ListGraphIngestRuns(context.Background(), listReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("ListGraphIngestRuns(unscoped) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
+func TestAuthMiddlewareRequiresTenantScopeForGlobalWorkflowOperations(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:      "writer-key",
+				TenantID: "writer",
+			}},
+		},
+	}
+	app := New(cfg, Dependencies{AppendLog: &recordingAppendLog{}, GraphStore: &stubGraphStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	replayReq, err := http.NewRequest(http.MethodPost, server.URL+"/platform/workflow/replay", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("NewRequest replay: %v", err)
+	}
+	replayReq.Header.Set("Authorization", "Bearer writer-key")
+	replayReq.Header.Set("Content-Type", "application/json")
+	replayResp, err := server.Client().Do(replayReq)
+	if err != nil {
+		t.Fatalf("POST /platform/workflow/replay error = %v", err)
+	}
+	_ = replayResp.Body.Close()
+	if replayResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("POST /platform/workflow/replay status = %d, want %d", replayResp.StatusCode, http.StatusForbidden)
+	}
+
+	healthReq, err := http.NewRequest(http.MethodGet, server.URL+"/platform/graph/ingest-health", nil)
+	if err != nil {
+		t.Fatalf("NewRequest health: %v", err)
+	}
+	healthReq.Header.Set("Authorization", "Bearer writer-key")
+	healthResp, err := server.Client().Do(healthReq)
+	if err != nil {
+		t.Fatalf("GET /platform/graph/ingest-health error = %v", err)
+	}
+	_ = healthResp.Body.Close()
+	if healthResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /platform/graph/ingest-health status = %d, want %d", healthResp.StatusCode, http.StatusForbidden)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	connectReplayReq := connect.NewRequest(&cerebrov1.ReplayWorkflowEventsRequest{})
+	connectReplayReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.ReplayWorkflowEvents(context.Background(), connectReplayReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("ReplayWorkflowEvents(unscoped) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+	connectHealthReq := connect.NewRequest(&cerebrov1.CheckGraphIngestHealthRequest{})
+	connectHealthReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.CheckGraphIngestHealth(context.Background(), connectHealthReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("CheckGraphIngestHealth(scoped) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
+func TestAuthMiddlewareEnforcesTenantOnKnowledgeWrites(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:      "writer-key",
+				TenantID: "writer",
+			}},
+		},
+	}
+	app := New(cfg, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	decisionReq, err := http.NewRequest(
+		http.MethodPost,
+		server.URL+"/platform/knowledge/decisions",
+		strings.NewReader(`{"decisionType":"finding-triage","targetIds":["urn:cerebro:other:asset:app"]}`),
+	)
+	if err != nil {
+		t.Fatalf("NewRequest decision: %v", err)
+	}
+	decisionReq.Header.Set("Authorization", "Bearer writer-key")
+	decisionReq.Header.Set("Content-Type", "application/json")
+	decisionResp, err := server.Client().Do(decisionReq)
+	if err != nil {
+		t.Fatalf("POST /platform/knowledge/decisions error = %v", err)
+	}
+	_ = decisionResp.Body.Close()
+	if decisionResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("POST /platform/knowledge/decisions status = %d, want %d", decisionResp.StatusCode, http.StatusForbidden)
+	}
+
+	actionReq, err := http.NewRequest(
+		http.MethodPost,
+		server.URL+"/platform/knowledge/actions",
+		strings.NewReader(`{"title":"Fix finding","targetIds":["urn:cerebro:writer:asset:app"],"metadata":{"tenant_id":"other"}}`),
+	)
+	if err != nil {
+		t.Fatalf("NewRequest action: %v", err)
+	}
+	actionReq.Header.Set("Authorization", "Bearer writer-key")
+	actionReq.Header.Set("Content-Type", "application/json")
+	actionResp, err := server.Client().Do(actionReq)
+	if err != nil {
+		t.Fatalf("POST /platform/knowledge/actions error = %v", err)
+	}
+	_ = actionResp.Body.Close()
+	if actionResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("POST /platform/knowledge/actions status = %d, want %d", actionResp.StatusCode, http.StatusForbidden)
+	}
+
+	metadata, err := structpb.NewStruct(map[string]any{"tenant_id": "other"})
+	if err != nil {
+		t.Fatalf("NewStruct: %v", err)
+	}
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	connectActionReq := connect.NewRequest(&cerebrov1.WriteActionRequest{
+		Title:     "Fix finding",
+		TargetIds: []string{"urn:cerebro:writer:asset:app"},
+		Metadata:  metadata,
+	})
+	connectActionReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.WriteAction(context.Background(), connectActionReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("WriteAction(other metadata tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+	connectOutcomeReq := connect.NewRequest(&cerebrov1.WriteOutcomeRequest{
+		DecisionId:  "urn:cerebro:other:decision:decision-1",
+		OutcomeType: "finding-resolution",
+		Verdict:     "resolved",
+	})
+	connectOutcomeReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.WriteOutcome(context.Background(), connectOutcomeReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("WriteOutcome(other decision tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
 }
 
