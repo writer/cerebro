@@ -1231,6 +1231,97 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:       "test-key",
+				Principal: "ci",
+				TenantID:  "writer",
+			}},
+		},
+	}
+	app := New(cfg, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	healthResp, err := server.Client().Get(server.URL + "/health")
+	if err != nil {
+		t.Fatalf("GET /health error = %v", err)
+	}
+	_ = healthResp.Body.Close()
+	if healthResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /health status = %d, want %d", healthResp.StatusCode, http.StatusOK)
+	}
+
+	unauthResp, err := server.Client().Get(server.URL + "/sources")
+	if err != nil {
+		t.Fatalf("GET /sources without auth error = %v", err)
+	}
+	_ = unauthResp.Body.Close()
+	if unauthResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("GET /sources without auth status = %d, want %d", unauthResp.StatusCode, http.StatusUnauthorized)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/sources", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key")
+	authResp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /sources with auth error = %v", err)
+	}
+	_ = authResp.Body.Close()
+	if authResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /sources with auth status = %d, want %d", authResp.StatusCode, http.StatusOK)
+	}
+}
+
+func TestAuthMiddlewareEnforcesTenantOnHTTPProtoBodies(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:      "writer-key",
+				TenantID: "writer",
+			}},
+		},
+	}
+	registry, err := sourcecdk.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	app := New(cfg, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	body := strings.NewReader(`{"runtime":{"id":"runtime-1","sourceId":"github","tenantId":"other"}}`)
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/source-runtimes/runtime-1", body)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer writer-key")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("PUT /source-runtimes tenant mismatch error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("PUT /source-runtimes tenant mismatch status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+}
+
 func TestBootstrapHealthDegradesOnDependencyError(t *testing.T) {
 	const rawDependencyError = "state store unavailable at postgres://user:pass@internal-db:5432/cerebro"
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{

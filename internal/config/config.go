@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -27,6 +28,7 @@ type Config struct {
 	AppendLog       AppendLogConfig
 	StateStore      StateStoreConfig
 	GraphStore      GraphStoreConfig
+	Auth            AuthConfig
 }
 
 // AppendLogConfig selects and configures the append-log driver.
@@ -49,6 +51,20 @@ type GraphStoreConfig struct {
 	Neo4jUsername string
 	Neo4jPassword string
 	Neo4jDatabase string
+}
+
+// APIKey grants one bearer token access to the bootstrap API.
+type APIKey struct {
+	Key       string
+	Principal string
+	TenantID  string
+}
+
+// AuthConfig controls optional API authentication and tenant scoping.
+type AuthConfig struct {
+	Enabled        bool
+	APIKeys        []APIKey
+	AllowedTenants []string
 }
 
 // Load reads and validates process configuration.
@@ -75,7 +91,16 @@ func Load() (Config, error) {
 			Neo4jPassword: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_PASSWORD")),
 			Neo4jDatabase: strings.TrimSpace(os.Getenv("CEREBRO_NEO4J_DATABASE")),
 		},
+		Auth: AuthConfig{
+			APIKeys:        parseAPIKeys(os.Getenv("CEREBRO_API_KEYS")),
+			AllowedTenants: parseCSV(os.Getenv("CEREBRO_ALLOWED_TENANTS")),
+		},
 	}
+	authEnabled, err := parseBoolEnv("CEREBRO_API_AUTH_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Auth.Enabled = authEnabled
 	if cfg.HTTPAddr == "" {
 		cfg.HTTPAddr = defaultHTTPAddr
 	}
@@ -134,5 +159,60 @@ func Load() (Config, error) {
 	default:
 		return Config{}, fmt.Errorf("unsupported CEREBRO_GRAPH_STORE_DRIVER %q", cfg.GraphStore.Driver)
 	}
+	if cfg.Auth.Enabled && len(cfg.Auth.APIKeys) == 0 {
+		return Config{}, fmt.Errorf("CEREBRO_API_KEYS is required when CEREBRO_API_AUTH_ENABLED=true")
+	}
 	return cfg, nil
+}
+
+func parseBoolEnv(name string, defaultValue bool) (bool, error) {
+	raw, ok := os.LookupEnv(name)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return defaultValue, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "t", "true", "y", "yes", "on":
+		return true, nil
+	case "0", "f", "false", "n", "no", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s must be a boolean", name)
+	}
+}
+
+func parseCSV(raw string) []string {
+	seen := map[string]struct{}{}
+	var values []string
+	for _, item := range strings.Split(raw, ",") {
+		value := strings.TrimSpace(item)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	sort.Strings(values)
+	return values
+}
+
+func parseAPIKeys(raw string) []APIKey {
+	var keys []APIKey
+	for _, item := range strings.Split(raw, ",") {
+		parts := strings.Split(strings.TrimSpace(item), ":")
+		if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+			continue
+		}
+		key := APIKey{Key: strings.TrimSpace(parts[0])}
+		if len(parts) > 1 {
+			key.Principal = strings.TrimSpace(parts[1])
+		}
+		if len(parts) > 2 {
+			key.TenantID = strings.TrimSpace(parts[2])
+		}
+		keys = append(keys, key)
+	}
+	return keys
 }

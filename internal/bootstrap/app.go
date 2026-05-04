@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	apicontract "github.com/writer/cerebro/api"
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/gen/cerebro/v1/cerebrov1connect"
 	"github.com/writer/cerebro/internal/buildinfo"
@@ -49,6 +50,7 @@ type App struct {
 	deps    Dependencies
 	sources *sourcecdk.Registry
 	mux     *http.ServeMux
+	handler http.Handler
 	server  *http.Server
 }
 
@@ -71,12 +73,13 @@ var (
 func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App {
 	mux := http.NewServeMux()
 	service := &bootstrapService{deps: deps, sources: sources}
-	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service)
+	path, handler := cerebrov1connect.NewBootstrapServiceHandler(service, connect.WithInterceptors(authInterceptor(cfg.Auth)))
 	mux.Handle(path, handler)
 
 	app := &App{cfg: cfg, deps: deps, sources: sources, mux: mux}
 	mux.HandleFunc("/health", app.handleHealth)
 	mux.HandleFunc("/healthz", app.handleHealth)
+	mux.HandleFunc("GET /openapi.yaml", app.handleOpenAPI)
 	mux.HandleFunc("GET /reports", app.handleListReportDefinitions)
 	mux.HandleFunc("GET /finding-rules", app.handleListFindingRules)
 	mux.HandleFunc("POST /reports/{reportID}/runs", app.handleRunReport)
@@ -96,13 +99,19 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /sources/{sourceID}/read", app.handleReadSource)
 	mux.HandleFunc("POST /platform/knowledge/decisions", app.handleWriteDecision)
 	mux.HandleFunc("POST /platform/knowledge/actions", app.handleWriteAction)
-	mux.HandleFunc("POST /graph/actuate/recommendation", app.handleWriteAction)
-	mux.HandleFunc("POST /graph/write/outcome", app.handleWriteOutcome)
+	mux.HandleFunc("POST /platform/knowledge/actions/recommendation", app.handleWriteAction)
+	mux.HandleFunc("POST /graph/actuate/recommendation", deprecatedRoute(app.handleWriteAction))
+	mux.HandleFunc("POST /platform/knowledge/outcomes", app.handleWriteOutcome)
+	mux.HandleFunc("POST /graph/write/outcome", deprecatedRoute(app.handleWriteOutcome))
 	mux.HandleFunc("POST /platform/workflow/replay", app.handleReplayWorkflowEvents)
-	mux.HandleFunc("GET /graph/neighborhood", app.handleGetEntityNeighborhood)
-	mux.HandleFunc("GET /graph/ingest-health", app.handleCheckGraphIngestHealth)
-	mux.HandleFunc("GET /graph/ingest-runs", app.handleListGraphIngestRuns)
-	mux.HandleFunc("GET /graph/ingest-runs/{runID}", app.handleGetGraphIngestRun)
+	mux.HandleFunc("GET /platform/graph/neighborhood", app.handleGetEntityNeighborhood)
+	mux.HandleFunc("GET /graph/neighborhood", deprecatedRoute(app.handleGetEntityNeighborhood))
+	mux.HandleFunc("GET /platform/graph/ingest-health", app.handleCheckGraphIngestHealth)
+	mux.HandleFunc("GET /graph/ingest-health", deprecatedRoute(app.handleCheckGraphIngestHealth))
+	mux.HandleFunc("GET /platform/graph/ingest-runs", app.handleListGraphIngestRuns)
+	mux.HandleFunc("GET /graph/ingest-runs", deprecatedRoute(app.handleListGraphIngestRuns))
+	mux.HandleFunc("GET /platform/graph/ingest-runs/{runID}", app.handleGetGraphIngestRun)
+	mux.HandleFunc("GET /graph/ingest-runs/{runID}", deprecatedRoute(app.handleGetGraphIngestRun))
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
@@ -114,9 +123,10 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}/finding-evaluation-runs", app.handleListFindingEvaluationRuns)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/finding-rules/evaluate", app.handleEvaluateSourceRuntimeFindingRules)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/findings/evaluate", app.handleEvaluateSourceRuntimeFindings)
+	app.handler = authMiddleware(cfg.Auth, mux)
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           app.handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	return app
@@ -124,7 +134,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 
 // Handler returns the composed HTTP handler for embedding in tests or another server.
 func (a *App) Handler() http.Handler {
-	return a.mux
+	return a.handler
 }
 
 // ListenAndServe starts the bootstrap HTTP server.
@@ -143,6 +153,20 @@ func (a *App) Shutdown(ctx context.Context) error {
 func (a *App) handleHealth(w http.ResponseWriter, r *http.Request) {
 	response := healthResponse(r.Context(), a.deps)
 	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleOpenAPI(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(apicontract.OpenAPIYAML)
+}
+
+func deprecatedRoute(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Deprecation", "true")
+		w.Header().Set("Link", `<https://github.com/writer/cerebro/blob/main/README.md>; rel="deprecation"`)
+		next(w, r)
+	}
 }
 
 func (a *App) handleSources(w http.ResponseWriter, r *http.Request) {
@@ -328,6 +352,10 @@ func (a *App) handleRunReport(w http.ResponseWriter, r *http.Request) {
 		writeReportError(w, fmt.Errorf("%w: %w", reports.ErrInvalidRequest, err))
 		return
 	}
+	if err := authorizeSourceConfigTenant(r.Context(), config); err != nil {
+		writeReportError(w, err)
+		return
+	}
 	for key, value := range config {
 		request.Parameters[key] = value
 	}
@@ -356,6 +384,10 @@ func (a *App) handleCheckSource(w http.ResponseWriter, r *http.Request) {
 		writeSourceError(w, err)
 		return
 	}
+	if err := authorizeSourceConfigTenant(r.Context(), config); err != nil {
+		writeSourceError(w, err)
+		return
+	}
 	response, err := a.sourceService().Check(r.Context(), &cerebrov1.CheckSourceRequest{
 		SourceId: r.PathValue("sourceID"),
 		Config:   config,
@@ -373,6 +405,10 @@ func (a *App) handleDiscoverSource(w http.ResponseWriter, r *http.Request) {
 		writeSourceError(w, err)
 		return
 	}
+	if err := authorizeSourceConfigTenant(r.Context(), config); err != nil {
+		writeSourceError(w, err)
+		return
+	}
 	response, err := a.sourceService().Discover(r.Context(), &cerebrov1.DiscoverSourceRequest{
 		SourceId: r.PathValue("sourceID"),
 		Config:   config,
@@ -387,6 +423,10 @@ func (a *App) handleDiscoverSource(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleReadSource(w http.ResponseWriter, r *http.Request) {
 	config, err := sourceConfigFromRequest(r)
 	if err != nil {
+		writeSourceError(w, err)
+		return
+	}
+	if err := authorizeSourceConfigTenant(r.Context(), config); err != nil {
 		writeSourceError(w, err)
 		return
 	}
@@ -1734,6 +1774,8 @@ func sensitiveSourceConfigKey(key string) bool {
 func writeSourceError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, errTenantForbidden):
+		statusCode = http.StatusForbidden
 	case errors.Is(err, sourceops.ErrSourceNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceops.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
@@ -1745,6 +1787,8 @@ func writeSourceError(w http.ResponseWriter, err error) {
 func writeReportError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, errTenantForbidden):
+		statusCode = http.StatusForbidden
 	case errors.Is(err, reports.ErrReportNotFound), errors.Is(err, ports.ErrReportRunNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, reports.ErrRuntimeUnavailable):
@@ -1782,6 +1826,8 @@ func sourceConnectError(err error) error {
 func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, errTenantForbidden):
+		statusCode = http.StatusForbidden
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
@@ -1808,6 +1854,8 @@ func sourceRuntimeConnectError(err error) error {
 func writeClaimError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, errTenantForbidden):
+		statusCode = http.StatusForbidden
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, claims.ErrRuntimeUnavailable):
@@ -1922,6 +1970,8 @@ func workflowReplayConnectError(err error) error {
 func writeFindingError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, errTenantForbidden):
+		statusCode = http.StatusForbidden
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, findings.ErrRuleNotFound):
@@ -1947,6 +1997,8 @@ func writeFindingError(w http.ResponseWriter, err error) {
 func writeKnowledgeError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, errTenantForbidden):
+		statusCode = http.StatusForbidden
 	case errors.Is(err, ports.ErrGraphEntityNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, knowledge.ErrInvalidRequest):
@@ -1962,6 +2014,8 @@ func writeKnowledgeError(w http.ResponseWriter, err error) {
 func writeGraphQueryError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, errTenantForbidden):
+		statusCode = http.StatusForbidden
 	case errors.Is(err, ports.ErrGraphEntityNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, graphquery.ErrRuntimeUnavailable):
@@ -1975,6 +2029,8 @@ func writeGraphQueryError(w http.ResponseWriter, err error) {
 func writeGraphIngestError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, errTenantForbidden):
+		statusCode = http.StatusForbidden
 	case errors.Is(err, graphingest.ErrRunNotFound):
 		statusCode = http.StatusNotFound
 	case errors.Is(err, ports.ErrSourceRuntimeNotFound), errors.Is(err, sourceops.ErrSourceNotFound):
@@ -1990,6 +2046,8 @@ func writeGraphIngestError(w http.ResponseWriter, err error) {
 func writeWorkflowReplayError(w http.ResponseWriter, err error) {
 	statusCode := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, errTenantForbidden):
+		statusCode = http.StatusForbidden
 	case errors.Is(err, workflowprojection.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
 	case errors.Is(err, errInvalidHTTPRequest):
@@ -2006,7 +2064,7 @@ func timestampValue(value *timestamppb.Timestamp) time.Time {
 }
 func readProtoJSON(r *http.Request, message proto.Message) error {
 	if r.Body == nil {
-		return nil
+		return authorizeHTTPRequestTenant(r.Context(), message)
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxProtoJSONBodyBytes+1))
 	if err != nil {
@@ -2016,9 +2074,12 @@ func readProtoJSON(r *http.Request, message proto.Message) error {
 		return fmt.Errorf("%w: %w: %d bytes", errInvalidHTTPRequest, errProtoJSONBodyTooLarge, maxProtoJSONBodyBytes)
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
-		return nil
+		return authorizeHTTPRequestTenant(r.Context(), message)
 	}
-	return unmarshalHTTPProtoJSON(body, message)
+	if err := unmarshalHTTPProtoJSON(body, message); err != nil {
+		return err
+	}
+	return authorizeHTTPRequestTenant(r.Context(), message)
 }
 
 func unmarshalHTTPProtoJSON(body []byte, message proto.Message) error {
