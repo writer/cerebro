@@ -363,6 +363,11 @@ func mergeFlowFacts(branches ...*flowFacts) *flowFacts {
 				merged.recordSlotActual(slot, actual)
 			}
 		}
+		for slot, targets := range branch.aliases {
+			for _, target := range targets {
+				merged.aliases[slot] = appendUniqueFlowSlot(merged.aliases[slot], target)
+			}
+		}
 	}
 	return merged
 }
@@ -568,10 +573,14 @@ type flowSlot struct {
 
 type flowFacts struct {
 	concrete map[flowSlot][]types.Type
+	aliases  map[flowSlot][]flowSlot
 }
 
 func newFlowFacts() *flowFacts {
-	return &flowFacts{concrete: map[flowSlot][]types.Type{}}
+	return &flowFacts{
+		concrete: map[flowSlot][]types.Type{},
+		aliases:  map[flowSlot][]flowSlot{},
+	}
 }
 
 func (f *flowFacts) clone() *flowFacts {
@@ -581,6 +590,9 @@ func (f *flowFacts) clone() *flowFacts {
 	}
 	for key, value := range f.concrete {
 		cloned.concrete[key] = append([]types.Type(nil), value...)
+	}
+	for key, value := range f.aliases {
+		cloned.aliases[key] = append([]flowSlot(nil), value...)
 	}
 	return cloned
 }
@@ -600,22 +612,26 @@ func (f *flowFacts) record(pass *analysis.Pass, lhs ast.Expr, rhs ast.Expr, tupl
 	if f == nil {
 		return
 	}
-	slot, ok := flowSlotForExpr(pass, lhs)
-	if !ok {
+	slots := f.assignmentSlots(pass, lhs)
+	if len(slots) == 0 {
 		return
 	}
-	f.recordSlot(pass, slot, rhs, tupleIndex)
+	for _, slot := range slots {
+		f.recordSlot(pass, slot, rhs, tupleIndex)
+	}
 }
 
 func (f *flowFacts) recordActual(pass *analysis.Pass, lhs ast.Expr, actual types.Type) {
 	if f == nil {
 		return
 	}
-	slot, ok := flowSlotForExpr(pass, lhs)
-	if !ok {
+	slots := f.assignmentSlots(pass, lhs)
+	if len(slots) == 0 {
 		return
 	}
-	f.recordSlotActual(slot, actual)
+	for _, slot := range slots {
+		f.recordSlotActual(slot, actual)
+	}
 }
 
 func (f *flowFacts) rangeElementConcretes(pass *analysis.Pass, expr ast.Expr) ([]types.Type, bool) {
@@ -648,8 +664,21 @@ func appendUniqueType(typesList []types.Type, actual types.Type) []types.Type {
 	return append(typesList, actual)
 }
 
+func appendUniqueFlowSlot(slots []flowSlot, slot flowSlot) []flowSlot {
+	for _, existing := range slots {
+		if existing == slot {
+			return slots
+		}
+	}
+	return append(slots, slot)
+}
+
 func (f *flowFacts) recordSlot(pass *analysis.Pass, slot flowSlot, rhs ast.Expr, tupleIndex int) {
 	f.clearSlot(slot)
+	if targets, ok := f.pointerTargetsForExpr(pass, rhs); ok {
+		f.aliases[slot] = targets
+		return
+	}
 	actual := pass.TypesInfo.TypeOf(rhs)
 	if tuple, ok := actual.(*types.Tuple); ok {
 		if tupleIndex < 0 || tupleIndex >= tuple.Len() {
@@ -799,6 +828,14 @@ func (f *flowFacts) clearSlot(slot flowSlot) {
 			delete(f.concrete, existing)
 		}
 	}
+	for existing := range f.aliases {
+		if existing.root != slot.root {
+			continue
+		}
+		if existing.path == slot.path || strings.HasPrefix(existing.path, childPrefix) {
+			delete(f.aliases, existing)
+		}
+	}
 }
 
 func (f *flowFacts) recordCompositeElements(pass *analysis.Pass, slot flowSlot, rhs ast.Expr) bool {
@@ -880,6 +917,15 @@ func (f *flowFacts) concreteForExpr(pass *analysis.Pass, expr ast.Expr) ([]types
 	if f == nil {
 		return nil, false
 	}
+	if deref, ok := expr.(*ast.StarExpr); ok {
+		var actuals []types.Type
+		for _, slot := range f.dereferencedSlots(pass, deref.X) {
+			for _, actual := range f.concrete[slot] {
+				actuals = appendUniqueType(actuals, actual)
+			}
+		}
+		return actuals, len(actuals) > 0
+	}
 	if receive, ok := expr.(*ast.UnaryExpr); ok && receive.Op == token.ARROW {
 		if slot, ok := channelValueSlot(pass, receive.X); ok {
 			actuals, ok := f.concrete[slot]
@@ -903,6 +949,65 @@ func (f *flowFacts) concreteForExpr(pass *analysis.Pass, expr ast.Expr) ([]types
 		return nil, false
 	}
 	return []types.Type{actual}, true
+}
+
+func (f *flowFacts) assignmentSlots(pass *analysis.Pass, expr ast.Expr) []flowSlot {
+	switch node := expr.(type) {
+	case *ast.ParenExpr:
+		return f.assignmentSlots(pass, node.X)
+	case *ast.StarExpr:
+		return f.dereferencedSlots(pass, node.X)
+	default:
+		slot, ok := flowSlotForExpr(pass, expr)
+		if !ok {
+			return nil
+		}
+		return []flowSlot{slot}
+	}
+}
+
+func (f *flowFacts) dereferencedSlots(pass *analysis.Pass, expr ast.Expr) []flowSlot {
+	if f == nil {
+		return nil
+	}
+	if target, ok := directAddressTarget(pass, expr); ok {
+		return []flowSlot{target}
+	}
+	slot, ok := flowSlotForExpr(pass, expr)
+	if !ok {
+		return nil
+	}
+	return append([]flowSlot(nil), f.aliases[slot]...)
+}
+
+func (f *flowFacts) pointerTargetsForExpr(pass *analysis.Pass, expr ast.Expr) ([]flowSlot, bool) {
+	if f == nil {
+		return nil, false
+	}
+	if target, ok := directAddressTarget(pass, expr); ok {
+		return []flowSlot{target}, true
+	}
+	if slot, ok := flowSlotForExpr(pass, expr); ok {
+		targets, ok := f.aliases[slot]
+		if ok {
+			return append([]flowSlot(nil), targets...), true
+		}
+	}
+	return nil, false
+}
+
+func directAddressTarget(pass *analysis.Pass, expr ast.Expr) (flowSlot, bool) {
+	switch node := expr.(type) {
+	case *ast.ParenExpr:
+		return directAddressTarget(pass, node.X)
+	case *ast.UnaryExpr:
+		if node.Op != token.AND {
+			return flowSlot{}, false
+		}
+		return flowSlotForExpr(pass, node.X)
+	default:
+		return flowSlot{}, false
+	}
 }
 
 func concreteFromConversion(pass *analysis.Pass, expr ast.Expr) (types.Type, bool) {
