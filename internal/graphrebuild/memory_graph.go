@@ -73,12 +73,16 @@ func (s *memoryGraphStore) UpsertProjectedEntity(_ context.Context, entity *port
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	label := strings.TrimSpace(entity.Label)
+	if label == "" {
+		label = urn
+	}
 	s.entities[urn] = memoryEntity{
 		URN:        urn,
 		TenantID:   tenantID,
 		SourceID:   sourceID,
 		EntityType: entityType,
-		Label:      strings.TrimSpace(entity.Label),
+		Label:      label,
 	}
 	return nil
 }
