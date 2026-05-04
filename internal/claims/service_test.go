@@ -787,6 +787,12 @@ func TestWriteClaimsRetractingProjectedRuntimeRefreshesSurvivingLinkMetadata(t *
 	if got := link.Attributes["source_event_id"]; got != "github-event" {
 		t.Fatalf("projected link source_event_id = %q, want github-event", got)
 	}
+	if got := store.listRequest.Status; got != claimStatusAsserted {
+		t.Fatalf("supporting relation lookup status = %q, want %q", got, claimStatusAsserted)
+	}
+	if got := store.listRequest.Limit; got != supportingRelationClaimLookupLimit {
+		t.Fatalf("supporting relation lookup limit = %d, want %d", got, supportingRelationClaimLookupLimit)
+	}
 	if _, ok := projection.deletedLinks[linkKey]; ok {
 		t.Fatal("projected link deletion recorded even though another runtime still asserts it")
 	}
@@ -1723,7 +1729,7 @@ func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) boo
 	if request.ClaimType != "" && strings.TrimSpace(claim.ClaimType) != strings.TrimSpace(request.ClaimType) {
 		return false
 	}
-	if request.Status != "" && strings.TrimSpace(claim.Status) != strings.TrimSpace(request.Status) {
+	if request.Status != "" && !strings.EqualFold(strings.TrimSpace(claim.Status), strings.TrimSpace(request.Status)) {
 		return false
 	}
 	if request.SourceEventID != "" && strings.TrimSpace(claim.SourceEventID) != strings.TrimSpace(request.SourceEventID) {

@@ -26,6 +26,8 @@ const (
 	claimStatusRetracted    = "retracted"
 	claimStatusRefuted      = "refuted"
 	claimStatusSuperseded   = "superseded"
+
+	supportingRelationClaimLookupLimit uint32 = 2
 )
 
 var (
@@ -381,6 +383,8 @@ func (s *Service) supportingAssertedRelation(ctx context.Context, runtime *cereb
 		Predicate:  strings.TrimSpace(link.Relation),
 		ObjectURN:  strings.TrimSpace(link.ToURN),
 		ClaimType:  claimTypeRelation,
+		Status:     claimStatusAsserted,
+		Limit:      supportingRelationClaimLookupLimit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list supporting claims for link %q: %w", projectedLinkKey(link), err)

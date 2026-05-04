@@ -332,6 +332,7 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 			if ch, ok := underlying(pass.TypesInfo.TypeOf(node.Chan)).(*types.Chan); ok {
 				reportImportedSealedValueWithFacts(pass, node.Value, ch.Elem(), facts, sealedObjects, sealed, reported)
 			}
+			facts.recordChannelSend(pass, node.Chan, node.Value)
 		}
 		return true
 	})
@@ -471,6 +472,12 @@ func (f *flowFacts) recordSlot(pass *analysis.Pass, slot flowSlot, rhs ast.Expr,
 	if f.recordCompositeElements(pass, slot, rhs) {
 		return
 	}
+	if tupleIndex <= 0 {
+		if actuals, ok := f.concreteForExpr(pass, rhs); ok {
+			f.concrete[slot] = append([]types.Type(nil), actuals...)
+			return
+		}
+	}
 	if namedImplementation(actual) == nil {
 		if converted, ok := concreteFromConversion(pass, rhs); ok {
 			actual = converted
@@ -496,6 +503,32 @@ func (f *flowFacts) recordSlotActual(slot flowSlot, actual types.Type) {
 		}
 	}
 	f.concrete[slot] = append(f.concrete[slot], actual)
+}
+
+func (f *flowFacts) recordChannelSend(pass *analysis.Pass, channel ast.Expr, value ast.Expr) {
+	if f == nil {
+		return
+	}
+	slot, ok := channelValueSlot(pass, channel)
+	if !ok {
+		return
+	}
+	if actuals, ok := f.concreteForExpr(pass, value); ok {
+		for _, actual := range actuals {
+			f.recordSlotActual(slot, actual)
+		}
+		return
+	}
+	actual := pass.TypesInfo.TypeOf(value)
+	if namedImplementation(actual) == nil {
+		if converted, ok := concreteFromConversion(pass, value); ok {
+			actual = converted
+		}
+	}
+	if namedImplementation(actual) == nil {
+		return
+	}
+	f.recordSlotActual(slot, actual)
 }
 
 func (f *flowFacts) clearSlot(slot flowSlot) {
@@ -592,6 +625,12 @@ func (f *flowFacts) concreteForExpr(pass *analysis.Pass, expr ast.Expr) ([]types
 	if f == nil {
 		return nil, false
 	}
+	if receive, ok := expr.(*ast.UnaryExpr); ok && receive.Op == token.ARROW {
+		if slot, ok := channelValueSlot(pass, receive.X); ok {
+			actuals, ok := f.concrete[slot]
+			return actuals, ok
+		}
+	}
 	if slot, ok := flowSlotForExpr(pass, expr); ok {
 		actuals, ok := f.concrete[slot]
 		return actuals, ok
@@ -679,6 +718,15 @@ func flowSlotForIdent(pass *analysis.Pass, name *ast.Ident) (flowSlot, bool) {
 		return flowSlot{}, false
 	}
 	return flowSlot{root: obj}, true
+}
+
+func channelValueSlot(pass *analysis.Pass, expr ast.Expr) (flowSlot, bool) {
+	slot, ok := flowSlotForExpr(pass, expr)
+	if !ok {
+		return flowSlot{}, false
+	}
+	slot.path += "/<-"
+	return slot, true
 }
 
 func flowFieldKey(field *types.Var) string {

@@ -193,6 +193,14 @@ func (s *Store) ListClaims(ctx context.Context, request ports.ListClaimsRequest)
 		args = append(args, trimmed)
 		clauses = append(clauses, fmt.Sprintf("%s = $%d", column, len(args)))
 	}
+	addCaseFoldFilter := func(column string, value string) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return
+		}
+		args = append(args, trimmed)
+		clauses = append(clauses, fmt.Sprintf("LOWER(%s) = LOWER($%d)", column, len(args)))
+	}
 	addFilter("runtime_id", runtimeID)
 	addFilter("tenant_id", tenantID)
 	addFilter("id", request.ClaimID)
@@ -201,7 +209,7 @@ func (s *Store) ListClaims(ctx context.Context, request ports.ListClaimsRequest)
 	addFilter("object_urn", request.ObjectURN)
 	addFilter("object_value", request.ObjectValue)
 	addFilter("claim_type", request.ClaimType)
-	addFilter("status", request.Status)
+	addCaseFoldFilter("status", request.Status)
 	addFilter("source_event_id", request.SourceEventID)
 
 	query := `

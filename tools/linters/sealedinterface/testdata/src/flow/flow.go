@@ -137,6 +137,13 @@ func SendChannelBad(ch chan sealedpkg.Runner) {
 	ch <- externalbad.Bad{} // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func ReceiveChannelTypeAssertBad() sealedpkg.Runner {
+	ch := make(chan any, 1)
+	ch <- externalbad.Bad{}
+	value := <-ch
+	return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func LocalVarBad() {
 	var runner sealedpkg.Runner = externalbad.Bad{} // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 	_ = runner
