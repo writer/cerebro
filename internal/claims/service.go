@@ -201,13 +201,11 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 			}
 		}
 		if retracted := retractedRelation(runtime, claim); retracted != nil {
-			deleted, err := s.deleteRelationIfUnsupported(ctx, runtime, claim, retracted)
+			_, err := s.deleteRelationIfUnsupported(ctx, runtime, claim, retracted)
 			if err != nil {
 				return nil, err
 			}
-			if deleted {
-				delete(upsertedLinks, projectedLinkKey(retracted))
-			}
+			delete(upsertedLinks, projectedLinkKey(retracted))
 		}
 		if projected := projectedRelation(runtime, claim); projected != nil {
 			wrote, err := s.upsertLink(ctx, projected, upsertedLinks)

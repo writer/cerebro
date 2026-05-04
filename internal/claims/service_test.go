@@ -798,6 +798,108 @@ func TestWriteClaimsRetractingProjectedRuntimeRefreshesSurvivingLinkMetadata(t *
 	}
 }
 
+func TestWriteClaimsReassertsRelationAfterSupportedSameBatchRetraction(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-github": {
+				ID:            "claim-github",
+				RuntimeID:     "writer-github",
+				TenantID:      "writer",
+				SubjectURN:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectURN:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventID: "github-event",
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "github",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+				Attributes: map[string]string{
+					"claim_id":        "claim-github",
+					"source_event_id": "github-event",
+				},
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	result, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				Id:            "claim-jira-1",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-1",
+			},
+			{
+				Id:            "claim-jira-1",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusRetracted,
+				SourceEventId: "jira-event-2",
+			},
+			{
+				Id:            "claim-jira-2",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-3",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if got := result.RelationLinksProjected; got != 2 {
+		t.Fatalf("WriteClaims().RelationLinksProjected = %d, want 2", got)
+	}
+	link := projection.links[linkKey]
+	if link == nil {
+		t.Fatal("projected link missing after final asserted relation")
+	}
+	if got := link.SourceID; got != "jira" {
+		t.Fatalf("projected link source_id = %q, want jira", got)
+	}
+	if got := link.Attributes["claim_id"]; got != "claim-jira-2" {
+		t.Fatalf("projected link claim_id = %q, want claim-jira-2", got)
+	}
+	if got := link.Attributes["source_event_id"]; got != "jira-event-3" {
+		t.Fatalf("projected link source_event_id = %q, want jira-event-3", got)
+	}
+	if _, ok := projection.deletedLinks[linkKey]; ok {
+		t.Fatal("projected link deletion recorded even though another runtime still asserts it")
+	}
+}
+
 func TestWriteClaimsKeepsLinkWhenOtherSupportHasCaseVariantAssertedStatus(t *testing.T) {
 	issueURN := "urn:cerebro:writer:ticket:ENG-123"
 	assigneeURN := "urn:cerebro:writer:user:acct:42"

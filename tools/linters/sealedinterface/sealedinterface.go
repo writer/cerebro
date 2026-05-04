@@ -541,6 +541,7 @@ func (f *flowFacts) copyIndexed(pass *analysis.Pass, dst ast.Expr, src ast.Expr)
 	}
 	srcSlot, ok := flowSlotForExpr(pass, src)
 	if !ok {
+		f.clearSlot(dstSlot)
 		return
 	}
 	copied := map[flowSlot][]types.Type{}
@@ -552,6 +553,7 @@ func (f *flowFacts) copyIndexed(pass *analysis.Pass, dst ast.Expr, src ast.Expr)
 		child.path += strings.TrimPrefix(slot.path, srcSlot.path)
 		copied[child] = append([]types.Type(nil), actuals...)
 	}
+	f.clearSlot(dstSlot)
 	for slot, actuals := range copied {
 		f.concrete[slot] = actuals
 	}

@@ -113,6 +113,12 @@ func CopySliceTypeAssertBad() sealedpkg.Runner {
 	return dst[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func CopySliceClearsDestinationSafe() sealedpkg.Runner {
+	dst := []any{externalbad.Bad{}}
+	copy(dst, []any{nil})
+	return dst[0].(sealedpkg.Runner)
+}
+
 func AssignTupleBad() {
 	var runner sealedpkg.Runner
 	var err error
