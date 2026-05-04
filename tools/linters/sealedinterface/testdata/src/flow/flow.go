@@ -64,6 +64,17 @@ func SwitchTypeAssertBad(index int) sealedpkg.Runner {
 	return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func FallthroughSwitchTypeAssertBad(flag bool) sealedpkg.Runner {
+	var value any
+	switch {
+	case flag:
+		value = externalbad.Bad{}
+		fallthrough
+	default:
+		return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+	}
+}
+
 type typeAssertBox struct {
 	value any
 }
@@ -72,6 +83,22 @@ func SelectorTypeAssertBad() sealedpkg.Runner {
 	var box typeAssertBox
 	box.value = externalbad.Bad{}
 	return box.value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func CompositeIndexTypeAssertBad() sealedpkg.Runner {
+	values := []any{externalbad.Bad{}}
+	return values[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func AssignmentIndexTypeAssertBad() sealedpkg.Runner {
+	values := []any{nil}
+	values[0] = externalbad.Bad{}
+	return values[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func MapIndexTypeAssertBad() sealedpkg.Runner {
+	values := map[string]any{"runner": externalbad.Bad{}}
+	return values["runner"].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
 func AssignTupleBad() {

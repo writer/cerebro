@@ -671,7 +671,8 @@ func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjected
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
 			},
 		},
 		store,
@@ -695,6 +696,96 @@ func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjected
 	}
 	if _, ok := projection.links[linkKey]; !ok {
 		t.Fatal("projected link was deleted even though another runtime still asserts it")
+	}
+	if _, ok := projection.deletedLinks[linkKey]; ok {
+		t.Fatal("projected link deletion recorded even though another runtime still asserts it")
+	}
+}
+
+func TestWriteClaimsRetractingProjectedRuntimeRefreshesSurvivingLinkMetadata(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-jira": {
+				ID:            "claim-jira",
+				RuntimeID:     "writer-jira",
+				TenantID:      "writer",
+				SubjectURN:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectURN:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventID: "jira-event",
+			},
+			"claim-github": {
+				ID:            "claim-github",
+				RuntimeID:     "writer-github",
+				TenantID:      "writer",
+				SubjectURN:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectURN:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventID: "github-event",
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "jira",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+				Attributes: map[string]string{
+					"claim_id":        "claim-jira",
+					"source_event_id": "jira-event",
+				},
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{{
+			Id:            "claim-jira",
+			SubjectUrn:    issueURN,
+			Predicate:     "assigned_to",
+			ObjectUrn:     assigneeURN,
+			ClaimType:     claimTypeRelation,
+			Status:        claimStatusRetracted,
+			SourceEventId: "jira-retract",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	link := projection.links[linkKey]
+	if link == nil {
+		t.Fatal("projected link was deleted even though another runtime still asserts it")
+	}
+	if got := link.SourceID; got != "github" {
+		t.Fatalf("projected link source_id = %q, want github", got)
+	}
+	if got := link.Attributes["claim_id"]; got != "claim-github" {
+		t.Fatalf("projected link claim_id = %q, want claim-github", got)
+	}
+	if got := link.Attributes["source_event_id"]; got != "github-event" {
+		t.Fatalf("projected link source_event_id = %q, want github-event", got)
 	}
 	if _, ok := projection.deletedLinks[linkKey]; ok {
 		t.Fatal("projected link deletion recorded even though another runtime still asserts it")
@@ -743,7 +834,8 @@ func TestWriteClaimsKeepsLinkWhenOtherSupportHasCaseVariantAssertedStatus(t *tes
 	service := New(
 		&stubRuntimeStore{
 			runtimes: map[string]*cerebrov1.SourceRuntime{
-				"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
 			},
 		},
 		store,

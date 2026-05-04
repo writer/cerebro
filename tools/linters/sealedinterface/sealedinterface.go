@@ -211,6 +211,7 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 			inspectExpressionCalls(pass, node.Tag, facts, sealedObjects, sealed, reported)
 			branches := make([]*flowFacts, 0, len(node.Body.List)+1)
 			hasDefault := false
+			var fallthroughFacts []*flowFacts
 			for _, stmt := range node.Body.List {
 				clause, ok := stmt.(*ast.CaseClause)
 				if !ok {
@@ -222,7 +223,17 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 				for _, expr := range clause.List {
 					inspectExpressionCalls(pass, expr, facts, sealedObjects, sealed, reported)
 				}
-				branches = append(branches, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, facts, sealedObjects, sealed, reported))
+				starts := append([]*flowFacts{facts}, fallthroughFacts...)
+				fallthroughFacts = nil
+				clauseFacts := make([]*flowFacts, 0, len(starts))
+				for _, start := range starts {
+					clauseFacts = append(clauseFacts, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, start, sealedObjects, sealed, reported))
+				}
+				if caseFallsThrough(clause) {
+					fallthroughFacts = clauseFacts
+					continue
+				}
+				branches = append(branches, clauseFacts...)
 			}
 			if !hasDefault {
 				branches = append(branches, facts.clone())
@@ -349,6 +360,14 @@ func mergeFlowFacts(branches ...*flowFacts) *flowFacts {
 	return merged
 }
 
+func caseFallsThrough(clause *ast.CaseClause) bool {
+	if clause == nil || len(clause.Body) == 0 {
+		return false
+	}
+	branch, ok := clause.Body[len(clause.Body)-1].(*ast.BranchStmt)
+	return ok && branch.Tok == token.FALLTHROUGH
+}
+
 func inspectRangeAssignmentTarget(pass *analysis.Pass, target ast.Expr, actual types.Type, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
 	if target == nil || actual == nil {
 		return
@@ -441,13 +460,16 @@ func (f *flowFacts) recordActual(pass *analysis.Pass, lhs ast.Expr, actual types
 }
 
 func (f *flowFacts) recordSlot(pass *analysis.Pass, slot flowSlot, rhs ast.Expr, tupleIndex int) {
+	f.clearSlot(slot)
 	actual := pass.TypesInfo.TypeOf(rhs)
 	if tuple, ok := actual.(*types.Tuple); ok {
 		if tupleIndex < 0 || tupleIndex >= tuple.Len() {
-			delete(f.concrete, slot)
 			return
 		}
 		actual = tuple.At(tupleIndex).Type()
+	}
+	if f.recordCompositeElements(pass, slot, rhs) {
+		return
 	}
 	if namedImplementation(actual) == nil {
 		if converted, ok := concreteFromConversion(pass, rhs); ok {
@@ -455,7 +477,6 @@ func (f *flowFacts) recordSlot(pass *analysis.Pass, slot flowSlot, rhs ast.Expr,
 		}
 	}
 	if namedImplementation(actual) == nil {
-		delete(f.concrete, slot)
 		return
 	}
 	f.concrete[slot] = []types.Type{actual}
@@ -466,7 +487,7 @@ func (f *flowFacts) recordSlotActual(slot flowSlot, actual types.Type) {
 		return
 	}
 	if namedImplementation(actual) == nil {
-		delete(f.concrete, slot)
+		f.clearSlot(slot)
 		return
 	}
 	for _, existing := range f.concrete[slot] {
@@ -475,6 +496,85 @@ func (f *flowFacts) recordSlotActual(slot flowSlot, actual types.Type) {
 		}
 	}
 	f.concrete[slot] = append(f.concrete[slot], actual)
+}
+
+func (f *flowFacts) clearSlot(slot flowSlot) {
+	if f == nil || slot.root == nil {
+		return
+	}
+	childPrefix := slot.path + "/"
+	for existing := range f.concrete {
+		if existing.root != slot.root {
+			continue
+		}
+		if existing.path == slot.path || strings.HasPrefix(existing.path, childPrefix) {
+			delete(f.concrete, existing)
+		}
+	}
+}
+
+func (f *flowFacts) recordCompositeElements(pass *analysis.Pass, slot flowSlot, rhs ast.Expr) bool {
+	lit, ok := rhs.(*ast.CompositeLit)
+	if !ok {
+		return false
+	}
+	recorded := false
+	switch typ := underlying(pass.TypesInfo.TypeOf(lit)).(type) {
+	case *types.Slice, *types.Array:
+		for index, elt := range lit.Elts {
+			value := compositeLiteralValue(elt)
+			child := slot
+			child.path += "/" + compositeElementKey(pass, elt, index)
+			if f.recordExprActual(pass, child, value) {
+				recorded = true
+			}
+		}
+	case *types.Map:
+		for _, elt := range lit.Elts {
+			kv, ok := elt.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			child := slot
+			child.path += "/" + indexFlowKey(pass, kv.Key)
+			if f.recordExprActual(pass, child, kv.Value) {
+				recorded = true
+			}
+		}
+	case *types.Struct:
+		for index, elt := range lit.Elts {
+			value := compositeLiteralValue(elt)
+			var field *types.Var
+			if kv, ok := elt.(*ast.KeyValueExpr); ok {
+				field = structFieldForKey(typ, kv.Key)
+			} else if index < typ.NumFields() {
+				field = typ.Field(index)
+			}
+			if field == nil {
+				continue
+			}
+			child := slot
+			child.path += "/" + flowFieldKey(field)
+			if f.recordExprActual(pass, child, value) {
+				recorded = true
+			}
+		}
+	}
+	return recorded
+}
+
+func (f *flowFacts) recordExprActual(pass *analysis.Pass, slot flowSlot, expr ast.Expr) bool {
+	actual := pass.TypesInfo.TypeOf(expr)
+	if namedImplementation(actual) == nil {
+		if converted, ok := concreteFromConversion(pass, expr); ok {
+			actual = converted
+		}
+	}
+	if namedImplementation(actual) == nil {
+		return false
+	}
+	f.concrete[slot] = []types.Type{actual}
+	return true
 }
 
 func (f *flowFacts) assertedConcretes(pass *analysis.Pass, expr ast.Expr) ([]types.Type, bool) {
@@ -552,6 +652,13 @@ func flowSlotForExpr(pass *analysis.Pass, expr ast.Expr) (flowSlot, bool) {
 		}
 		slot.path += "/" + flowFieldKey(field)
 		return slot, true
+	case *ast.IndexExpr:
+		slot, ok := flowSlotForExpr(pass, node.X)
+		if !ok {
+			return flowSlot{}, false
+		}
+		slot.path += "/" + indexFlowKey(pass, node.Index)
+		return slot, true
 	default:
 		return flowSlot{}, false
 	}
@@ -580,6 +687,37 @@ func flowFieldKey(field *types.Var) string {
 		pkg = field.Pkg().Path()
 	}
 	return pkg + "." + field.Name() + "@" + strconv.Itoa(int(field.Pos()))
+}
+
+func compositeElementKey(pass *analysis.Pass, expr ast.Expr, index int) string {
+	if kv, ok := expr.(*ast.KeyValueExpr); ok {
+		return indexFlowKey(pass, kv.Key)
+	}
+	return "const:" + strconv.Itoa(index)
+}
+
+func indexFlowKey(pass *analysis.Pass, expr ast.Expr) string {
+	if expr == nil {
+		return "nil"
+	}
+	if value := pass.TypesInfo.Types[expr].Value; value != nil {
+		return "const:" + value.String()
+	}
+	if slot, ok := flowSlotForExpr(pass, expr); ok {
+		return "slot:" + flowSlotKey(slot)
+	}
+	return "expr:" + strconv.Itoa(int(expr.Pos()))
+}
+
+func flowSlotKey(slot flowSlot) string {
+	if slot.root == nil {
+		return slot.path
+	}
+	pkg := ""
+	if slot.root.Pkg() != nil {
+		pkg = slot.root.Pkg().Path()
+	}
+	return pkg + "." + slot.root.Name() + "@" + strconv.Itoa(int(slot.root.Pos())) + slot.path
 }
 
 func inspectValueSpec(pass *analysis.Pass, valueSpec *ast.ValueSpec, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {

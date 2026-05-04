@@ -315,11 +315,14 @@ func (s *Service) deleteRelationIfUnsupported(ctx context.Context, runtime *cere
 	if link == nil {
 		return false, nil
 	}
-	supported, err := s.hasOtherAssertedRelation(ctx, runtime, strings.TrimSpace(claim.GetId()), link)
+	support, err := s.supportingAssertedRelation(ctx, runtime, strings.TrimSpace(claim.GetId()), link)
 	if err != nil {
 		return false, err
 	}
-	if supported {
+	if support != nil {
+		if _, err := s.upsertLink(ctx, support, map[string]struct{}{}); err != nil {
+			return false, err
+		}
 		return false, nil
 	}
 	if err := s.deleteLink(ctx, link); err != nil {
@@ -356,19 +359,20 @@ func (s *Service) deleteStaleRelation(ctx context.Context, runtime *cerebrov1.So
 	if projectedLinkKey(previous) == projectedLinkKey(current) {
 		return nil
 	}
-	supported, err := s.hasOtherAssertedRelation(ctx, runtime, strings.TrimSpace(claim.GetId()), previous)
+	support, err := s.supportingAssertedRelation(ctx, runtime, strings.TrimSpace(claim.GetId()), previous)
 	if err != nil {
 		return err
 	}
-	if supported {
-		return nil
+	if support != nil {
+		_, err := s.upsertLink(ctx, support, map[string]struct{}{})
+		return err
 	}
 	return s.deleteLink(ctx, previous)
 }
 
-func (s *Service) hasOtherAssertedRelation(ctx context.Context, runtime *cerebrov1.SourceRuntime, claimID string, link *ports.ProjectedLink) (bool, error) {
+func (s *Service) supportingAssertedRelation(ctx context.Context, runtime *cerebrov1.SourceRuntime, claimID string, link *ports.ProjectedLink) (*ports.ProjectedLink, error) {
 	if link == nil {
-		return false, nil
+		return nil, nil
 	}
 	runtimeID := strings.TrimSpace(runtime.GetId())
 	claims, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
@@ -379,7 +383,7 @@ func (s *Service) hasOtherAssertedRelation(ctx context.Context, runtime *cerebro
 		ClaimType:  claimTypeRelation,
 	})
 	if err != nil {
-		return false, fmt.Errorf("list supporting claims for link %q: %w", projectedLinkKey(link), err)
+		return nil, fmt.Errorf("list supporting claims for link %q: %w", projectedLinkKey(link), err)
 	}
 	for _, claim := range claims {
 		if claim == nil {
@@ -391,9 +395,34 @@ func (s *Service) hasOtherAssertedRelation(ctx context.Context, runtime *cerebro
 		if !strings.EqualFold(strings.TrimSpace(claim.Status), claimStatusAsserted) {
 			continue
 		}
-		return true, nil
+		supportRuntime, err := s.runtimeForClaim(ctx, runtime, claim)
+		if err != nil {
+			return nil, err
+		}
+		return projectedRelation(supportRuntime, protoClaim(claim)), nil
 	}
-	return false, nil
+	return nil, nil
+}
+
+func (s *Service) runtimeForClaim(ctx context.Context, fallback *cerebrov1.SourceRuntime, claim *ports.ClaimRecord) (*cerebrov1.SourceRuntime, error) {
+	if claim == nil {
+		return fallback, nil
+	}
+	runtimeID := strings.TrimSpace(claim.RuntimeID)
+	if runtimeID == "" || runtimeID == strings.TrimSpace(fallback.GetId()) {
+		return fallback, nil
+	}
+	if s.runtimeStore == nil {
+		return nil, fmt.Errorf("load supporting runtime %q: runtime store unavailable", runtimeID)
+	}
+	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
+	if err != nil {
+		if errors.Is(err, ports.ErrSourceRuntimeNotFound) {
+			return fallback, nil
+		}
+		return nil, fmt.Errorf("load supporting runtime %q: %w", runtimeID, err)
+	}
+	return runtime, nil
 }
 
 func (s *Service) deleteLink(ctx context.Context, link *ports.ProjectedLink) error {
