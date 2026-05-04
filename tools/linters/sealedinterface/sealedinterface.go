@@ -918,7 +918,12 @@ func (f *flowFacts) clearContainer(pass *analysis.Pass, container ast.Expr) {
 	if !ok {
 		return
 	}
+	length, hadLength := f.lengths[slot]
+	_, isSlice := underlying(pass.TypesInfo.TypeOf(container)).(*types.Slice)
 	f.clearSlot(slot)
+	if isSlice && hadLength {
+		f.lengths[slot] = length
+	}
 }
 
 func (f *flowFacts) childFactsForExpr(pass *analysis.Pass, expr ast.Expr, dstSlot flowSlot) map[flowSlot][]types.Type {

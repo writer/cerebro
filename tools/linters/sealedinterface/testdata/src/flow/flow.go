@@ -149,6 +149,13 @@ func ClearMapIndexTypeAssertSafe() {
 	_, _ = values["runner"].(sealedpkg.Runner)
 }
 
+func ClearSliceAppendOffsetSafe() {
+	values := []any{nil, nil}
+	clear(values)
+	values = append(values, externalbad.Bad{})
+	_, _ = values[0].(sealedpkg.Runner)
+}
+
 func CopySliceTypeAssertBad() sealedpkg.Runner {
 	src := []any{externalbad.Bad{}}
 	dst := make([]any, 1)

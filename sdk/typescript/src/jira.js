@@ -8,6 +8,7 @@ export function buildJiraWorkspaceClaims(integration, posture) {
     const admins = objectArray(posture.admins, "posture.admins");
     const projects = objectArray(posture.projects, "posture.projects");
     const apps = objectArray(posture.apps, "posture.apps");
+    const adminEmails = new Set(admins.map((admin) => requireValue(admin.email, "posture.admins[].email").toLowerCase()));
     const claims = [
         integration.exists(workspaceRef, sharedOptions),
         integration.attr(workspaceRef, "platform", "jira", sharedOptions),
@@ -20,12 +21,12 @@ export function buildJiraWorkspaceClaims(integration, posture) {
         integration.attr(workspaceRef, "public_signup_enabled", boolValue(posture.publicSignupEnabled, false), sharedOptions),
         integration.attr(workspaceRef, "anonymous_access_enabled", boolValue(posture.anonymousAccessEnabled, false), sharedOptions),
         integration.attr(workspaceRef, "approved_marketplace_apps_only", boolValue(posture.approvedMarketplaceAppsOnly, true), sharedOptions),
-        integration.attr(workspaceRef, "admin_count", String(admins.length), sharedOptions),
+        integration.attr(workspaceRef, "admin_count", String(adminEmails.size), sharedOptions),
         integration.attr(workspaceRef, "project_count", String(projects.length), sharedOptions),
         integration.attr(workspaceRef, "installed_app_count", String(apps.length), sharedOptions),
     ];
     for (const admin of admins) {
-        const email = requireValue(admin.email, "posture.admins[].email");
+        const email = requireValue(admin.email, "posture.admins[].email").toLowerCase();
         const adminRef = integration.ref("user", email, optionalString(admin.displayName) || email);
         claims.push(integration.exists(adminRef, sharedOptions));
         claims.push(integration.rel(adminRef, "administers", workspaceRef, sharedOptions));
