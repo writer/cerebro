@@ -89,6 +89,19 @@ func TypeSwitchCaseVariableBad() sealedpkg.Runner {
 	}
 }
 
+func TypeSwitchShadowedCaseVariableSafe() sealedpkg.Runner {
+	switch value := any(externalbad.Bad{}).(type) {
+	case sealedpkg.Runner:
+		_ = value
+		{
+			var value sealedpkg.Runner
+			return value
+		}
+	default:
+		return nil
+	}
+}
+
 type typeAssertBox struct {
 	value any
 }
@@ -138,6 +151,14 @@ func CopySlicePreservesUntouchedDestinationBad() sealedpkg.Runner {
 	dst := []any{nil, externalbad.Bad{}}
 	copy(dst, []any{nil})
 	return dst[1].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
+func RangeSliceTypeAssertBad() sealedpkg.Runner {
+	values := []any{externalbad.Bad{}}
+	for _, value := range values {
+		return value.(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+	}
+	return nil
 }
 
 func AssignTupleBad() {

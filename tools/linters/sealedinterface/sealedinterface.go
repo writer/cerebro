@@ -322,7 +322,7 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 			keyType, valueType := rangeTypes(pass.TypesInfo.TypeOf(node.X))
 			bodyFacts := facts.clone()
 			inspectRangeAssignmentTarget(pass, node.Key, keyType, bodyFacts, sealedObjects, sealed, reported)
-			inspectRangeAssignmentTarget(pass, node.Value, valueType, bodyFacts, sealedObjects, sealed, reported)
+			inspectRangeValueTarget(pass, node.Value, node.X, valueType, bodyFacts, sealedObjects, sealed, reported)
 			bodyFacts = inspectFlowNodeWithFacts(pass, node.Body, results, bodyFacts, sealedObjects, sealed, reported)
 			facts = mergeFlowFacts(facts.clone(), bodyFacts)
 			return false
@@ -414,6 +414,7 @@ func typeSwitchCaseSlots(pass *analysis.Pass, name *ast.Ident, clause *ast.CaseC
 	if slot, ok := flowSlotForIdent(pass, name); ok {
 		slots[slot] = struct{}{}
 	}
+	shadowed := map[types.Object]struct{}{}
 	ast.Inspect(&ast.BlockStmt{List: clause.Body}, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case nil:
@@ -423,6 +424,15 @@ func typeSwitchCaseSlots(pass *analysis.Pass, name *ast.Ident, clause *ast.CaseC
 		case *ast.Ident:
 			if node.Name != name.Name {
 				return true
+			}
+			if obj := pass.TypesInfo.Defs[node]; obj != nil {
+				shadowed[obj] = struct{}{}
+				return true
+			}
+			if obj := pass.TypesInfo.Uses[node]; obj != nil {
+				if _, ok := shadowed[obj]; ok {
+					return true
+				}
 			}
 			slot, ok := flowSlotForIdent(pass, node)
 			if ok {
@@ -464,6 +474,27 @@ func inspectRangeAssignmentTarget(pass *analysis.Pass, target ast.Expr, actual t
 	inspectAssignmentTarget(pass, target, facts, sealedObjects, sealed, reported)
 	reportImportedSealedActual(pass, target, actual, pass.TypesInfo.TypeOf(target), sealedObjects, sealed, reported)
 	facts.recordActual(pass, target, actual)
+}
+
+func inspectRangeValueTarget(pass *analysis.Pass, target ast.Expr, rangeExpr ast.Expr, fallback types.Type, facts *flowFacts, sealedObjects []*types.TypeName, sealed map[*types.TypeName]*types.Interface, reported map[token.Pos]struct{}) {
+	if target == nil {
+		return
+	}
+	inspectAssignmentTarget(pass, target, facts, sealedObjects, sealed, reported)
+	slot, hasSlot := flowSlotForExpr(pass, target)
+	if actuals, ok := facts.rangeElementConcretes(pass, rangeExpr); ok {
+		if hasSlot {
+			facts.clearSlot(slot)
+		}
+		for _, actual := range actuals {
+			reportImportedSealedActual(pass, target, actual, pass.TypesInfo.TypeOf(target), sealedObjects, sealed, reported)
+			if hasSlot {
+				facts.recordSlotActual(slot, actual)
+			}
+		}
+		return
+	}
+	inspectRangeAssignmentTarget(pass, target, fallback, facts, sealedObjects, sealed, reported)
 }
 
 func rangeTypes(t types.Type) (types.Type, types.Type) {
@@ -546,6 +577,36 @@ func (f *flowFacts) recordActual(pass *analysis.Pass, lhs ast.Expr, actual types
 		return
 	}
 	f.recordSlotActual(slot, actual)
+}
+
+func (f *flowFacts) rangeElementConcretes(pass *analysis.Pass, expr ast.Expr) ([]types.Type, bool) {
+	if f == nil {
+		return nil, false
+	}
+	slot, ok := flowSlotForExpr(pass, expr)
+	if !ok {
+		return nil, false
+	}
+	prefix := slot.path + "/"
+	var actuals []types.Type
+	for existing, concrete := range f.concrete {
+		if existing.root != slot.root || !strings.HasPrefix(existing.path, prefix) {
+			continue
+		}
+		for _, actual := range concrete {
+			actuals = appendUniqueType(actuals, actual)
+		}
+	}
+	return actuals, len(actuals) > 0
+}
+
+func appendUniqueType(typesList []types.Type, actual types.Type) []types.Type {
+	for _, existing := range typesList {
+		if types.Identical(existing, actual) {
+			return typesList
+		}
+	}
+	return append(typesList, actual)
 }
 
 func (f *flowFacts) recordSlot(pass *analysis.Pass, slot flowSlot, rhs ast.Expr, tupleIndex int) {
