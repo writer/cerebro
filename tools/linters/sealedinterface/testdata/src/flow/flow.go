@@ -119,6 +119,12 @@ func CopySliceClearsDestinationSafe() sealedpkg.Runner {
 	return dst[0].(sealedpkg.Runner)
 }
 
+func CopySlicePreservesUntouchedDestinationBad() sealedpkg.Runner {
+	dst := []any{nil, externalbad.Bad{}}
+	copy(dst, []any{nil})
+	return dst[1].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func AssignTupleBad() {
 	var runner sealedpkg.Runner
 	var err error

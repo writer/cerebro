@@ -541,22 +541,61 @@ func (f *flowFacts) copyIndexed(pass *analysis.Pass, dst ast.Expr, src ast.Expr)
 	}
 	srcSlot, ok := flowSlotForExpr(pass, src)
 	if !ok {
-		f.clearSlot(dstSlot)
+		for _, slot := range copiedDestinationSlots(pass, dstSlot, src) {
+			f.clearSlot(slot)
+		}
 		return
 	}
 	copied := map[flowSlot][]types.Type{}
+	cleared := map[flowSlot]struct{}{}
 	for slot, actuals := range f.concrete {
 		if slot.root != srcSlot.root || !strings.HasPrefix(slot.path, srcSlot.path+"/") {
 			continue
+		}
+		overwritten := copiedDestinationSlot(dstSlot, strings.TrimPrefix(slot.path, srcSlot.path))
+		if _, ok := cleared[overwritten]; !ok {
+			f.clearSlot(overwritten)
+			cleared[overwritten] = struct{}{}
 		}
 		child := dstSlot
 		child.path += strings.TrimPrefix(slot.path, srcSlot.path)
 		copied[child] = append([]types.Type(nil), actuals...)
 	}
-	f.clearSlot(dstSlot)
 	for slot, actuals := range copied {
 		f.concrete[slot] = actuals
 	}
+}
+
+func copiedDestinationSlots(pass *analysis.Pass, dstSlot flowSlot, src ast.Expr) []flowSlot {
+	lit, ok := src.(*ast.CompositeLit)
+	if !ok {
+		return nil
+	}
+	switch underlying(pass.TypesInfo.TypeOf(lit)).(type) {
+	case *types.Slice, *types.Array:
+	default:
+		return nil
+	}
+	slots := make([]flowSlot, 0, len(lit.Elts))
+	for index, elt := range lit.Elts {
+		child := dstSlot
+		child.path += "/" + compositeElementKey(pass, elt, index)
+		slots = append(slots, child)
+	}
+	return slots
+}
+
+func copiedDestinationSlot(dstSlot flowSlot, suffix string) flowSlot {
+	child := dstSlot
+	suffix = strings.TrimPrefix(suffix, "/")
+	if suffix == "" {
+		return child
+	}
+	if slash := strings.IndexByte(suffix, '/'); slash >= 0 {
+		suffix = suffix[:slash]
+	}
+	child.path += "/" + suffix
+	return child
 }
 
 func (f *flowFacts) clearSlot(slot flowSlot) {
