@@ -303,7 +303,7 @@ func (s *Source) newFamilyEngine() (*sourcecdk.FamilyEngine[settings], error) {
 			List:  listServiceAccounts,
 			Event: serviceAccountEvent,
 			URN: func(settings settings, account serviceAccountRecord) (string, error) {
-				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account:%s", tenantID(settings), firstNonEmpty(account.UniqueID, account.Email)), nil
+				return fmt.Sprintf("urn:cerebro:%s:gcp_service_account:%s", tenantID(settings), firstNonEmpty(account.Email, account.UniqueID, account.Name)), nil
 			},
 		}),
 		gcpFamily(s, gcpFamilyOptions[serviceAccountKeyRecord]{

@@ -1,0 +1,326 @@
+package bootstrap
+
+import (
+	"context"
+	"crypto/subtle"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+
+	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+
+	"github.com/writer/cerebro/internal/config"
+)
+
+var errTenantForbidden = errors.New("tenant forbidden")
+
+type authContextKey struct{}
+
+type authPrincipal struct {
+	Name     string
+	TenantID string
+}
+
+type authContext struct {
+	cfg       config.AuthConfig
+	principal authPrincipal
+}
+
+func authMiddleware(cfg config.AuthConfig, next http.Handler) http.Handler {
+	if !cfg.Enabled {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isPublicPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		principal, ok := authenticateRequest(cfg, r)
+		if !ok {
+			writeAuthError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if tenantID := requestTenantHint(r); tenantID != "" && !tenantAllowed(cfg, principal, tenantID) {
+			writeAuthError(w, http.StatusForbidden, "tenant forbidden")
+			return
+		}
+		ctx := context.WithValue(r.Context(), authContextKey{}, authContext{cfg: cfg, principal: principal})
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func authInterceptor(cfg config.AuthConfig) connect.Interceptor {
+	return connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			if cfg.Enabled {
+				if err := authorizeProtoTenant(ctx, cfg, req.Any()); err != nil {
+					return nil, err
+				}
+			}
+			return next(ctx, req)
+		}
+	})
+}
+
+func isPublicPath(path string) bool {
+	switch path {
+	case "/health", "/healthz", "/openapi.yaml":
+		return true
+	default:
+		return false
+	}
+}
+
+func authenticateRequest(cfg config.AuthConfig, r *http.Request) (authPrincipal, bool) {
+	token := bearerToken(r.Header.Get("Authorization"))
+	if token == "" {
+		token = strings.TrimSpace(r.Header.Get("X-Cerebro-API-Key"))
+	}
+	if token == "" {
+		return authPrincipal{}, false
+	}
+	for _, key := range cfg.APIKeys {
+		if constantTimeEqual(token, key.Key) {
+			return authPrincipal{Name: key.Principal, TenantID: key.TenantID}, true
+		}
+	}
+	return authPrincipal{}, false
+}
+
+func bearerToken(header string) string {
+	parts := strings.Fields(strings.TrimSpace(header))
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return ""
+	}
+	return parts[1]
+}
+
+func constantTimeEqual(a string, b string) bool {
+	if a == "" || b == "" || len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func requestTenantHint(r *http.Request) string {
+	if tenantID := strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant")); tenantID != "" {
+		return tenantID
+	}
+	if tenantID := strings.TrimSpace(r.URL.Query().Get("tenant_id")); tenantID != "" {
+		return tenantID
+	}
+	return ""
+}
+
+func authorizeProtoTenant(ctx context.Context, cfg config.AuthConfig, message any) error {
+	protoMessage, ok := message.(proto.Message)
+	if !ok || protoMessage == nil {
+		return nil
+	}
+	auth, _ := ctx.Value(authContextKey{}).(authContext)
+	for _, tenantID := range protoTenantIDs(protoMessage) {
+		if !tenantAllowed(cfg, auth.principal, tenantID) {
+			return connect.NewError(connect.CodePermissionDenied, nil)
+		}
+	}
+	return nil
+}
+
+func authorizeHTTPRequestTenant(ctx context.Context, message proto.Message) error {
+	for _, tenantID := range protoTenantIDs(message) {
+		if err := authorizeTenantID(ctx, tenantID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func authorizeSourceConfigTenant(ctx context.Context, sourceConfig map[string]string) error {
+	return authorizeTenantID(ctx, sourceConfig["tenant_id"])
+}
+
+func authorizeKnowledgeTenant(ctx context.Context, metadata map[string]any, ids ...string) error {
+	if err := authorizeTenantID(ctx, tenantIDFromMetadata(metadata)); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := authorizeCerebroURNTenant(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func authorizeCerebroURNTenant(ctx context.Context, urn string) error {
+	return authorizeTenantID(ctx, tenantIDFromCerebroURN(urn))
+}
+
+func authorizeTenantScopeRequired(ctx context.Context, tenantID string) error {
+	if hasTenantScopedAuth(ctx) && strings.TrimSpace(tenantID) == "" {
+		return errTenantForbidden
+	}
+	return authorizeTenantID(ctx, tenantID)
+}
+
+func authorizeTenantID(ctx context.Context, tenantID string) error {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	if !ok {
+		return nil
+	}
+	if tenantID := strings.TrimSpace(tenantID); tenantID != "" && !tenantAllowed(auth.cfg, auth.principal, tenantID) {
+		return errTenantForbidden
+	}
+	return nil
+}
+
+func tenantIDFromMetadata(metadata map[string]any) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	value, ok := metadata["tenant_id"]
+	if !ok {
+		return ""
+	}
+	tenantID, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(tenantID)
+}
+
+func tenantIDFromCerebroURN(urn string) string {
+	parts := strings.SplitN(strings.TrimSpace(urn), ":", 5)
+	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
+		return ""
+	}
+	return strings.TrimSpace(parts[2])
+}
+
+func hasAuthContext(ctx context.Context) bool {
+	_, ok := ctx.Value(authContextKey{}).(authContext)
+	return ok
+}
+
+func hasTenantScopedAuth(ctx context.Context) bool {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	return ok && strings.TrimSpace(auth.principal.TenantID) != ""
+}
+
+func tenantAllowed(cfg config.AuthConfig, principal authPrincipal, tenantID string) bool {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return true
+	}
+	if principal.TenantID != "" {
+		return tenantID == principal.TenantID
+	}
+	if len(cfg.AllowedTenants) == 0 {
+		return true
+	}
+	for _, allowed := range cfg.AllowedTenants {
+		if tenantID == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func protoTenantIDs(message proto.Message) []string {
+	seen := map[string]struct{}{}
+	var tenants []string
+	collectProtoTenantIDs(message.ProtoReflect(), seen, &tenants)
+	return tenants
+}
+
+func collectProtoTenantIDs(message protoreflect.Message, seen map[string]struct{}, tenants *[]string) {
+	if !message.IsValid() {
+		return
+	}
+	fields := message.Descriptor().Fields()
+	for i := 0; i < fields.Len(); i++ {
+		field := fields.Get(i)
+		value := message.Get(field)
+		if field.IsList() {
+			list := value.List()
+			for j := 0; j < list.Len(); j++ {
+				collectProtoValueTenantIDs(field, list.Get(j), seen, tenants)
+			}
+			continue
+		}
+		if field.IsMap() {
+			mapping := value.Map()
+			mapping.Range(func(key protoreflect.MapKey, mapValue protoreflect.Value) bool {
+				collectProtoMapTenantIDs(field, key, mapValue, seen, tenants)
+				return true
+			})
+			continue
+		}
+		if !message.Has(field) {
+			continue
+		}
+		collectProtoValueTenantIDs(field, value, seen, tenants)
+	}
+}
+
+func collectProtoMapTenantIDs(field protoreflect.FieldDescriptor, key protoreflect.MapKey, value protoreflect.Value, seen map[string]struct{}, tenants *[]string) {
+	valueField := field.MapValue()
+	if valueField.Kind() == protoreflect.MessageKind || valueField.Kind() == protoreflect.GroupKind {
+		if field.MapKey().Kind() == protoreflect.StringKind && key.String() == "tenant_id" {
+			appendTenantID(protoStringValue(value.Message()), seen, tenants)
+		}
+		collectProtoTenantIDs(value.Message(), seen, tenants)
+		return
+	}
+	if field.MapKey().Kind() != protoreflect.StringKind || key.String() != "tenant_id" || valueField.Kind() != protoreflect.StringKind {
+		return
+	}
+	appendTenantID(value.String(), seen, tenants)
+}
+
+func collectProtoValueTenantIDs(field protoreflect.FieldDescriptor, value protoreflect.Value, seen map[string]struct{}, tenants *[]string) {
+	if field.Kind() == protoreflect.MessageKind || field.Kind() == protoreflect.GroupKind {
+		collectProtoTenantIDs(value.Message(), seen, tenants)
+		return
+	}
+	if field.Kind() != protoreflect.StringKind {
+		return
+	}
+	switch field.Name() {
+	case "tenant_id":
+		appendTenantID(value.String(), seen, tenants)
+	case "root_urn", "decision_id", "target_ids", "evidence_ids", "action_ids":
+		appendTenantID(tenantIDFromCerebroURN(value.String()), seen, tenants)
+	}
+}
+
+func protoStringValue(message protoreflect.Message) string {
+	if !message.IsValid() {
+		return ""
+	}
+	field := message.Descriptor().Fields().ByName("string_value")
+	if field == nil || field.Kind() != protoreflect.StringKind || !message.Has(field) {
+		return ""
+	}
+	return message.Get(field).String()
+}
+
+func appendTenantID(rawTenantID string, seen map[string]struct{}, tenants *[]string) {
+	tenantID := strings.TrimSpace(rawTenantID)
+	if tenantID == "" {
+		return
+	}
+	if _, ok := seen[tenantID]; ok {
+		return
+	}
+	seen[tenantID] = struct{}{}
+	*tenants = append(*tenants, tenantID)
+}
+
+func writeAuthError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}

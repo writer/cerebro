@@ -105,6 +105,16 @@ func TestReadLiveGCPServiceAccountPreview(t *testing.T) {
 	if got := pull.Events[0].Attributes["email"]; got != "sa@writer-prod.iam.gserviceaccount.com" {
 		t.Fatalf("email = %q, want service account email", got)
 	}
+	urns, err := source.Discover(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Discover(service_account) error = %v", err)
+	}
+	if len(urns) != 1 {
+		t.Fatalf("len(Discover(service_account)) = %d, want 1", len(urns))
+	}
+	if got := urns[0].String(); got != "urn:cerebro:writer-prod:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com" {
+		t.Fatalf("Discover(service_account) urn = %q, want email-based service account urn", got)
+	}
 }
 
 func TestReadLiveGCPRoleAndAuditPreview(t *testing.T) {

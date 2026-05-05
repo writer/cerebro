@@ -36,9 +36,10 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 }
 
 type stubClaimStore struct {
-	claims      map[string]*ports.ClaimRecord
-	listRequest ports.ListClaimsRequest
-	err         error
+	claims       map[string]*ports.ClaimRecord
+	listRequest  ports.ListClaimsRequest
+	listRequests []ports.ListClaimsRequest
+	err          error
 }
 
 func (s *stubClaimStore) Ping(context.Context) error { return nil }
@@ -56,6 +57,7 @@ func (s *stubClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord
 
 func (s *stubClaimStore) ListClaims(_ context.Context, request ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
 	s.listRequest = request
+	s.listRequests = append(s.listRequests, request)
 	claims := make([]*ports.ClaimRecord, 0, len(s.claims))
 	for _, claim := range s.claims {
 		if !claimMatches(request, claim) {
@@ -115,6 +117,146 @@ func (r *projectionRecorder) DeleteProjectedLink(_ context.Context, link *ports.
 	r.deletedLinks[key] = cloneProjectedLink(link)
 	delete(r.links, key)
 	return nil
+}
+
+type blockingClaimStore struct {
+	mu             sync.Mutex
+	claims         map[string]*ports.ClaimRecord
+	listEntered    chan struct{}
+	allowList      chan struct{}
+	secondUpserted chan struct{}
+	listOnce       sync.Once
+	secondOnce     sync.Once
+}
+
+func newBlockingClaimStore() *blockingClaimStore {
+	return &blockingClaimStore{
+		claims:         make(map[string]*ports.ClaimRecord),
+		listEntered:    make(chan struct{}),
+		allowList:      make(chan struct{}),
+		secondUpserted: make(chan struct{}),
+	}
+}
+
+func (s *blockingClaimStore) Ping(context.Context) error { return nil }
+
+func (s *blockingClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
+	if claim.SourceEventID == "second" {
+		s.secondOnce.Do(func() { close(s.secondUpserted) })
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.claims[claim.ID] = cloneClaimRecord(claim)
+	return cloneClaimRecord(claim), nil
+}
+
+func (s *blockingClaimStore) ListClaims(_ context.Context, request ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
+	block := false
+	s.listOnce.Do(func() {
+		block = true
+		close(s.listEntered)
+	})
+	if block {
+		<-s.allowList
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	claims := make([]*ports.ClaimRecord, 0, len(s.claims))
+	for _, claim := range s.claims {
+		if claimMatches(request, claim) {
+			claims = append(claims, cloneClaimRecord(claim))
+		}
+	}
+	return claims, nil
+}
+
+type upsertSignalClaimStore struct {
+	mu             sync.Mutex
+	claims         map[string]*ports.ClaimRecord
+	secondUpserted chan struct{}
+	secondOnce     sync.Once
+}
+
+func newUpsertSignalClaimStore(claims map[string]*ports.ClaimRecord) *upsertSignalClaimStore {
+	return &upsertSignalClaimStore{
+		claims:         claims,
+		secondUpserted: make(chan struct{}),
+	}
+}
+
+func (s *upsertSignalClaimStore) Ping(context.Context) error { return nil }
+
+func (s *upsertSignalClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
+	if claim.SourceEventID == "second" {
+		s.secondOnce.Do(func() { close(s.secondUpserted) })
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.claims == nil {
+		s.claims = make(map[string]*ports.ClaimRecord)
+	}
+	s.claims[claim.ID] = cloneClaimRecord(claim)
+	return cloneClaimRecord(claim), nil
+}
+
+func (s *upsertSignalClaimStore) ListClaims(_ context.Context, request ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	claims := make([]*ports.ClaimRecord, 0, len(s.claims))
+	for _, claim := range s.claims {
+		if claimMatches(request, claim) {
+			claims = append(claims, cloneClaimRecord(claim))
+		}
+	}
+	return claims, nil
+}
+
+type blockingDeleteProjection struct {
+	projectionRecorder
+	deleteEntered chan struct{}
+	allowDelete   chan struct{}
+	deleteOnce    sync.Once
+}
+
+func newBlockingDeleteProjection(linkKey string, link *ports.ProjectedLink) *blockingDeleteProjection {
+	return &blockingDeleteProjection{
+		projectionRecorder: projectionRecorder{links: map[string]*ports.ProjectedLink{linkKey: cloneProjectedLink(link)}},
+		deleteEntered:      make(chan struct{}),
+		allowDelete:        make(chan struct{}),
+	}
+}
+
+func (p *blockingDeleteProjection) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLink) error {
+	p.deleteOnce.Do(func() { close(p.deleteEntered) })
+	<-p.allowDelete
+	return p.projectionRecorder.DeleteProjectedLink(ctx, link)
+}
+
+type runtimeRetractRaceClaimStore struct {
+	current *ports.ClaimRecord
+	other   *ports.ClaimRecord
+}
+
+func (s *runtimeRetractRaceClaimStore) Ping(context.Context) error { return nil }
+
+func (s *runtimeRetractRaceClaimStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
+	if strings.TrimSpace(claim.RuntimeID) == "writer-jira" && strings.TrimSpace(claim.ID) == "claim-jira" {
+		s.current = cloneClaimRecord(claim)
+	}
+	return cloneClaimRecord(claim), nil
+}
+
+func (s *runtimeRetractRaceClaimStore) ListClaims(_ context.Context, request ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
+	if strings.TrimSpace(request.RuntimeID) == "writer-jira" {
+		if claimMatches(request, s.current) {
+			return []*ports.ClaimRecord{cloneClaimRecord(s.current)}, nil
+		}
+		return nil, nil
+	}
+	if strings.TrimSpace(s.current.Status) == claimStatusAsserted && claimMatches(request, s.other) {
+		return []*ports.ClaimRecord{cloneClaimRecord(s.other)}, nil
+	}
+	return nil, nil
 }
 
 func TestClaimRecordAllowsNilTimestamps(t *testing.T) {
@@ -329,10 +471,17 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	if got := result.ClaimsRetracted; got != 2 {
 		t.Fatalf("WriteClaims().ClaimsRetracted = %d, want 2", got)
 	}
-	if got := store.listRequest.RuntimeID; got != "writer-jira" {
+	var retractList ports.ListClaimsRequest
+	for _, request := range store.listRequests {
+		if request.RuntimeID == "writer-jira" && request.Status == claimStatusAsserted {
+			retractList = request
+			break
+		}
+	}
+	if got := retractList.RuntimeID; got != "writer-jira" {
 		t.Fatalf("retract list runtime_id = %q, want writer-jira", got)
 	}
-	if got := store.listRequest.Status; got != claimStatusAsserted {
+	if got := retractList.Status; got != claimStatusAsserted {
 		t.Fatalf("retract list status = %q, want %q", got, claimStatusAsserted)
 	}
 	retracted := store.claims[assigneeID]
@@ -350,6 +499,174 @@ func TestWriteClaimsReplaceExistingRetractsOmittedClaims(t *testing.T) {
 	}
 	if _, ok := projection.deletedLinks[issueURN+"|assigned_to|"+assigneeURN]; !ok {
 		t.Fatalf("deleted projected link missing for retracted relation")
+	}
+}
+
+func TestWriteClaimsReplaceExistingSerializesAcrossServiceInstances(t *testing.T) {
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+		},
+	}
+	store := newBlockingClaimStore()
+	firstService := New(runtimeStore, store, nil, nil)
+	secondService := New(runtimeStore, store, nil, nil)
+	ctx := context.Background()
+	firstDone := make(chan error, 1)
+	secondDone := make(chan error, 1)
+
+	go func() {
+		_, err := firstService.WriteClaims(ctx, WriteRequest{
+			RuntimeID:       "writer-jira",
+			ReplaceExisting: true,
+			Claims: []*cerebrov1.Claim{{
+				SubjectUrn:    "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-1",
+				Predicate:     "status",
+				ObjectValue:   "open",
+				ClaimType:     claimTypeAttribute,
+				SourceEventId: "first",
+			}},
+		})
+		firstDone <- err
+	}()
+
+	select {
+	case <-store.listEntered:
+	case err := <-firstDone:
+		t.Fatalf("first WriteClaims() completed before replace_existing list: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("first WriteClaims() did not reach replace_existing list")
+	}
+
+	go func() {
+		_, err := secondService.WriteClaims(ctx, WriteRequest{
+			RuntimeID:       "writer-jira",
+			ReplaceExisting: true,
+			Claims: []*cerebrov1.Claim{{
+				SubjectUrn:    "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-2",
+				Predicate:     "status",
+				ObjectValue:   "open",
+				ClaimType:     claimTypeAttribute,
+				SourceEventId: "second",
+			}},
+		})
+		secondDone <- err
+	}()
+
+	select {
+	case <-store.secondUpserted:
+		t.Fatal("second service upserted while first replace_existing write was still retracting")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(store.allowList)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first WriteClaims() error = %v", err)
+	}
+	select {
+	case <-store.secondUpserted:
+	case <-time.After(time.Second):
+		t.Fatal("second WriteClaims() did not upsert after first write completed")
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second WriteClaims() error = %v", err)
+	}
+}
+
+func TestWriteClaimsSerializesRelationDeletionAcrossTenantRuntimes(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	runtimeStore := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+			"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+		},
+	}
+	store := newUpsertSignalClaimStore(map[string]*ports.ClaimRecord{
+		"claim-jira": {
+			ID:         "claim-jira",
+			RuntimeID:  "writer-jira",
+			TenantID:   "writer",
+			SubjectURN: issueURN,
+			Predicate:  "assigned_to",
+			ObjectURN:  assigneeURN,
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusAsserted,
+		},
+	})
+	projection := newBlockingDeleteProjection(linkKey, &ports.ProjectedLink{
+		TenantID: "writer",
+		SourceID: "jira",
+		FromURN:  issueURN,
+		Relation: "assigned_to",
+		ToURN:    assigneeURN,
+	})
+	firstService := New(runtimeStore, store, projection, projection)
+	secondService := New(runtimeStore, store, projection, projection)
+	ctx := context.Background()
+	firstDone := make(chan error, 1)
+	secondDone := make(chan error, 1)
+
+	go func() {
+		_, err := firstService.WriteClaims(ctx, WriteRequest{
+			RuntimeID: "writer-jira",
+			Claims: []*cerebrov1.Claim{{
+				Id:            "claim-jira",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusRetracted,
+				SourceEventId: "first",
+			}},
+		})
+		firstDone <- err
+	}()
+
+	select {
+	case <-projection.deleteEntered:
+	case err := <-firstDone:
+		t.Fatalf("first WriteClaims() completed before projected link delete: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("first WriteClaims() did not reach projected link delete")
+	}
+
+	go func() {
+		_, err := secondService.WriteClaims(ctx, WriteRequest{
+			RuntimeID: "writer-github",
+			Claims: []*cerebrov1.Claim{{
+				Id:            "claim-github",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				SourceEventId: "second",
+			}},
+		})
+		secondDone <- err
+	}()
+
+	select {
+	case <-store.secondUpserted:
+		t.Fatal("second runtime upserted while first runtime relation deletion was in flight")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(projection.allowDelete)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first WriteClaims() error = %v", err)
+	}
+	select {
+	case <-store.secondUpserted:
+	case <-time.After(time.Second):
+		t.Fatal("second WriteClaims() did not upsert after first write completed")
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[linkKey]; !ok {
+		t.Fatal("second runtime relation was deleted by first runtime retraction")
 	}
 }
 
@@ -399,6 +716,491 @@ func TestWriteClaimsRetractedRelationDeletesProjectedLink(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsRetractingOneOfMultipleSupportingClaimsKeepsProjectedLink(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-a": {
+				ID:         "claim-a",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+			"claim-b": {
+				ID:         "claim-b",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "sdk",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{{
+			Id:         "claim-a",
+			SubjectUrn: issueURN,
+			Predicate:  "assigned_to",
+			ObjectUrn:  assigneeURN,
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusRetracted,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[linkKey]; !ok {
+		t.Fatal("projected link was deleted even though claim-b still asserts it")
+	}
+	if _, ok := projection.deletedLinks[linkKey]; ok {
+		t.Fatal("projected link deletion recorded even though another claim still asserts it")
+	}
+}
+
+func TestWriteClaimsRetractingOneOfMultipleRuntimeSupportingClaimsKeepsProjectedLink(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-jira": {
+				ID:         "claim-jira",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+			"claim-github": {
+				ID:         "claim-jira",
+				RuntimeID:  "writer-github",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "sdk",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{{
+			Id:         "claim-jira",
+			SubjectUrn: issueURN,
+			Predicate:  "assigned_to",
+			ObjectUrn:  assigneeURN,
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusRetracted,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[linkKey]; !ok {
+		t.Fatal("projected link was deleted even though another runtime still asserts it")
+	}
+	if _, ok := projection.deletedLinks[linkKey]; ok {
+		t.Fatal("projected link deletion recorded even though another runtime still asserts it")
+	}
+}
+
+func TestWriteClaimsRetractingProjectedRuntimeRefreshesSurvivingLinkMetadata(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-jira": {
+				ID:            "claim-jira",
+				RuntimeID:     "writer-jira",
+				TenantID:      "writer",
+				SubjectURN:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectURN:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventID: "jira-event",
+			},
+			"claim-github": {
+				ID:            "claim-github",
+				RuntimeID:     "writer-github",
+				TenantID:      "writer",
+				SubjectURN:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectURN:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventID: "github-event",
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "jira",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+				Attributes: map[string]string{
+					"claim_id":        "claim-jira",
+					"source_event_id": "jira-event",
+				},
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{{
+			Id:            "claim-jira",
+			SubjectUrn:    issueURN,
+			Predicate:     "assigned_to",
+			ObjectUrn:     assigneeURN,
+			ClaimType:     claimTypeRelation,
+			Status:        claimStatusRetracted,
+			SourceEventId: "jira-retract",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	link := projection.links[linkKey]
+	if link == nil {
+		t.Fatal("projected link was deleted even though another runtime still asserts it")
+	}
+	if got := link.SourceID; got != "github" {
+		t.Fatalf("projected link source_id = %q, want github", got)
+	}
+	if got := link.Attributes["claim_id"]; got != "claim-github" {
+		t.Fatalf("projected link claim_id = %q, want claim-github", got)
+	}
+	if got := link.Attributes["source_event_id"]; got != "github-event" {
+		t.Fatalf("projected link source_event_id = %q, want github-event", got)
+	}
+	if got := store.listRequest.Status; got != claimStatusAsserted {
+		t.Fatalf("supporting relation lookup status = %q, want %q", got, claimStatusAsserted)
+	}
+	if got := store.listRequest.Limit; got != supportingRelationClaimLookupLimit {
+		t.Fatalf("supporting relation lookup limit = %d, want %d", got, supportingRelationClaimLookupLimit)
+	}
+	if _, ok := projection.deletedLinks[linkKey]; ok {
+		t.Fatal("projected link deletion recorded even though another runtime still asserts it")
+	}
+}
+
+func TestWriteClaimsReassertsRelationAfterSupportedSameBatchRetraction(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-github": {
+				ID:            "claim-github",
+				RuntimeID:     "writer-github",
+				TenantID:      "writer",
+				SubjectURN:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectURN:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventID: "github-event",
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "github",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+				Attributes: map[string]string{
+					"claim_id":        "claim-github",
+					"source_event_id": "github-event",
+				},
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	result, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				Id:            "claim-jira-1",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-1",
+			},
+			{
+				Id:            "claim-jira-1",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusRetracted,
+				SourceEventId: "jira-event-2",
+			},
+			{
+				Id:            "claim-jira-2",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     assigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-3",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if got := result.RelationLinksProjected; got != 2 {
+		t.Fatalf("WriteClaims().RelationLinksProjected = %d, want 2", got)
+	}
+	link := projection.links[linkKey]
+	if link == nil {
+		t.Fatal("projected link missing after final asserted relation")
+	}
+	if got := link.SourceID; got != "jira" {
+		t.Fatalf("projected link source_id = %q, want jira", got)
+	}
+	if got := link.Attributes["claim_id"]; got != "claim-jira-2" {
+		t.Fatalf("projected link claim_id = %q, want claim-jira-2", got)
+	}
+	if got := link.Attributes["source_event_id"]; got != "jira-event-3" {
+		t.Fatalf("projected link source_event_id = %q, want jira-event-3", got)
+	}
+	if _, ok := projection.deletedLinks[linkKey]; ok {
+		t.Fatal("projected link deletion recorded even though another runtime still asserts it")
+	}
+}
+
+func TestWriteClaimsKeepsLinkWhenOtherSupportHasCaseVariantAssertedStatus(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-jira": {
+				ID:         "claim-jira",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+			"claim-github": {
+				ID:         "claim-github",
+				RuntimeID:  "writer-github",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				Predicate:  "assigned_to",
+				ObjectURN:  assigneeURN,
+				ClaimType:  claimTypeRelation,
+				Status:     "ASSERTED",
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "sdk",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira":   {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+				"writer-github": {Id: "writer-github", SourceId: "github", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{{
+			Id:         "claim-jira",
+			SubjectUrn: issueURN,
+			Predicate:  "assigned_to",
+			ObjectUrn:  assigneeURN,
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusRetracted,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[linkKey]; !ok {
+		t.Fatal("projected link was deleted even though another claim still asserts it with case-variant status")
+	}
+	if _, ok := projection.deletedLinks[linkKey]; ok {
+		t.Fatal("projected link deletion recorded even though another claim still asserts it with case-variant status")
+	}
+}
+
+func TestWriteClaimsReplaceExistingDeletesLinkWhenConcurrentRuntimeRetracts(t *testing.T) {
+	issueURN := "urn:cerebro:writer:ticket:ENG-123"
+	assigneeURN := "urn:cerebro:writer:user:acct:42"
+	linkKey := issueURN + "|assigned_to|" + assigneeURN
+	store := &runtimeRetractRaceClaimStore{
+		current: &ports.ClaimRecord{
+			ID:         "claim-jira",
+			RuntimeID:  "writer-jira",
+			TenantID:   "writer",
+			SubjectURN: issueURN,
+			Predicate:  "assigned_to",
+			ObjectURN:  assigneeURN,
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusAsserted,
+		},
+		other: &ports.ClaimRecord{
+			ID:         "claim-github",
+			RuntimeID:  "writer-github",
+			TenantID:   "writer",
+			SubjectURN: issueURN,
+			Predicate:  "assigned_to",
+			ObjectURN:  assigneeURN,
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusAsserted,
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			linkKey: {
+				TenantID: "writer",
+				SourceID: "sdk",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    assigneeURN,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID:       "writer-jira",
+		ReplaceExisting: true,
+		Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  issueURN,
+			Predicate:   "status",
+			ObjectValue: "done",
+			ClaimType:   claimTypeAttribute,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[linkKey]; ok {
+		t.Fatal("projected link remains after both supporting runtime claims were retracted")
+	}
+	if _, ok := projection.deletedLinks[linkKey]; !ok {
+		t.Fatal("projected link deletion not recorded after final support was retracted")
+	}
+}
+
 func TestWriteClaimsRefutedAndSupersededRelationsDeleteProjectedLink(t *testing.T) {
 	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
 	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
@@ -445,6 +1247,149 @@ func TestWriteClaimsRefutedAndSupersededRelationsDeleteProjectedLink(t *testing.
 				t.Fatalf("deleted projected link missing for %q relation", status)
 			}
 		})
+	}
+}
+
+func TestWriteClaimsChangingExistingRelationDeletesOldProjectedLink(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	oldAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:old"
+	newAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:new"
+	oldKey := issueURN + "|assigned_to|" + oldAssigneeURN
+	newKey := issueURN + "|assigned_to|" + newAssigneeURN
+	store := &stubClaimStore{
+		claims: map[string]*ports.ClaimRecord{
+			"claim-assignee": {
+				ID:         "claim-assignee",
+				RuntimeID:  "writer-jira",
+				TenantID:   "writer",
+				SubjectURN: issueURN,
+				SubjectRef: &cerebrov1.EntityRef{Urn: issueURN, EntityType: "ticket", Label: "ENG-123"},
+				Predicate:  "assigned_to",
+				ObjectURN:  oldAssigneeURN,
+				ObjectRef:  &cerebrov1.EntityRef{Urn: oldAssigneeURN, EntityType: "user", Label: "Old Assignee"},
+				ClaimType:  claimTypeRelation,
+				Status:     claimStatusAsserted,
+			},
+		},
+	}
+	projection := &projectionRecorder{
+		links: map[string]*ports.ProjectedLink{
+			oldKey: {
+				TenantID: "writer",
+				SourceID: "sdk",
+				FromURN:  issueURN,
+				Relation: "assigned_to",
+				ToURN:    oldAssigneeURN,
+			},
+		},
+	}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			},
+		},
+		store,
+		projection,
+		projection,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{{
+			Id:         "claim-assignee",
+			SubjectRef: &cerebrov1.EntityRef{Urn: issueURN, EntityType: "ticket", Label: "ENG-123"},
+			Predicate:  "assigned_to",
+			ObjectRef:  &cerebrov1.EntityRef{Urn: newAssigneeURN, EntityType: "user", Label: "New Assignee"},
+			ClaimType:  claimTypeRelation,
+			Status:     claimStatusAsserted,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if _, ok := projection.links[newKey]; !ok {
+		t.Fatal("new projected link missing")
+	}
+	if _, ok := projection.links[oldKey]; ok {
+		t.Fatal("old projected link remained after relation target changed")
+	}
+	if _, ok := projection.deletedLinks[oldKey]; !ok {
+		t.Fatal("old projected link was not deleted")
+	}
+}
+
+func TestWriteClaimsReprojectsRelationAfterSameBatchRetarget(t *testing.T) {
+	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	oldAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:old"
+	newAssigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:new"
+	oldKey := issueURN + "|assigned_to|" + oldAssigneeURN
+	newKey := issueURN + "|assigned_to|" + newAssigneeURN
+	projection := &projectionRecorder{}
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "sdk", TenantId: "writer"},
+			},
+		},
+		&stubClaimStore{},
+		projection,
+		projection,
+	)
+
+	result, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-jira",
+		Claims: []*cerebrov1.Claim{
+			{
+				Id:            "claim-assignee",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     oldAssigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-1",
+			},
+			{
+				Id:            "claim-assignee",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     newAssigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-2",
+			},
+			{
+				Id:            "claim-assignee",
+				SubjectUrn:    issueURN,
+				Predicate:     "assigned_to",
+				ObjectUrn:     oldAssigneeURN,
+				ClaimType:     claimTypeRelation,
+				Status:        claimStatusAsserted,
+				SourceEventId: "jira-event-3",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+	if got := result.RelationLinksProjected; got != 3 {
+		t.Fatalf("WriteClaims().RelationLinksProjected = %d, want 3", got)
+	}
+	link := projection.links[oldKey]
+	if link == nil {
+		t.Fatal("old projected link missing after final retarget")
+	}
+	if got := link.Attributes["source_event_id"]; got != "jira-event-3" {
+		t.Fatalf("projected link source_event_id = %q, want jira-event-3", got)
+	}
+	if _, ok := projection.links[newKey]; ok {
+		t.Fatal("new projected link remained after final retarget")
+	}
+	if _, ok := projection.deletedLinks[oldKey]; !ok {
+		t.Fatal("old projected link deletion not recorded after middle retarget")
+	}
+	if _, ok := projection.deletedLinks[newKey]; !ok {
+		t.Fatal("new projected link deletion not recorded after final retarget")
 	}
 }
 
@@ -563,6 +1508,79 @@ func TestWriteClaimsRejectsCrossTenantNonRelationEntityRefs(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsRejectsCrossTenantExplicitRefURNs(t *testing.T) {
+	writerIssueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
+	writerUserURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
+	otherIssueURN := "urn:cerebro:other:runtime:other-jira:ticket:ENG-123"
+	otherUserURN := "urn:cerebro:other:runtime:other-jira:user:acct:42"
+	for _, tt := range []struct {
+		name  string
+		claim *cerebrov1.Claim
+	}{
+		{
+			name: "foreign subject ref conflicts with local subject urn",
+			claim: &cerebrov1.Claim{
+				SubjectUrn: writerIssueURN,
+				SubjectRef: &cerebrov1.EntityRef{
+					Urn:        otherIssueURN,
+					EntityType: "ticket",
+				},
+				Predicate:   "status",
+				ObjectValue: "open",
+				ClaimType:   claimTypeAttribute,
+			},
+		},
+		{
+			name: "foreign object ref conflicts with local object urn",
+			claim: &cerebrov1.Claim{
+				SubjectUrn: writerIssueURN,
+				Predicate:  "assigned_to",
+				ObjectUrn:  writerUserURN,
+				ObjectRef: &cerebrov1.EntityRef{
+					Urn:        otherUserURN,
+					EntityType: "user",
+				},
+				ClaimType: claimTypeRelation,
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			projection := &projectionRecorder{}
+			store := &stubClaimStore{}
+			service := New(
+				&stubRuntimeStore{
+					runtimes: map[string]*cerebrov1.SourceRuntime{
+						"writer-jira": {
+							Id:       "writer-jira",
+							TenantId: "writer",
+							SourceId: "jira",
+						},
+					},
+				},
+				store,
+				projection,
+				projection,
+			)
+			_, err := service.WriteClaims(context.Background(), WriteRequest{
+				RuntimeID: "writer-jira",
+				Claims:    []*cerebrov1.Claim{tt.claim},
+			})
+			if !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("WriteClaims() error = %v, want ErrInvalidRequest", err)
+			}
+			if len(store.claims) != 0 {
+				t.Fatalf("persisted claims = %#v, want none", store.claims)
+			}
+			if len(projection.entities) != 0 {
+				t.Fatalf("projected entities = %#v, want none", projection.entities)
+			}
+			if len(projection.links) != 0 {
+				t.Fatalf("projected links = %#v, want none", projection.links)
+			}
+		})
+	}
+}
+
 func TestWriteClaimsReassertsRelationAfterSameBatchRetraction(t *testing.T) {
 	issueURN := "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123"
 	assigneeURN := "urn:cerebro:writer:runtime:writer-jira:user:acct:42"
@@ -636,6 +1654,66 @@ func TestWriteClaimsRequiresAvailableDependencies(t *testing.T) {
 	}
 }
 
+func TestWriteClaimsAllowsDottedEntityTypeForTenantScopedRef(t *testing.T) {
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-okta": {Id: "writer-okta", SourceId: "okta", TenantId: "writer"},
+			},
+		},
+		&stubClaimStore{},
+		nil,
+		nil,
+	)
+
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "writer-okta",
+		Claims: []*cerebrov1.Claim{{
+			SubjectRef: &cerebrov1.EntityRef{
+				Urn:        "urn:cerebro:writer:okta_resource:app:123",
+				EntityType: "okta.resource",
+			},
+			Predicate:   "status",
+			ObjectValue: "active",
+			ClaimType:   claimTypeAttribute,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("WriteClaims() error = %v", err)
+	}
+}
+
+func TestWriteClaimsAllowsCanonicalIdentifierEntityRefs(t *testing.T) {
+	service := New(
+		&stubRuntimeStore{
+			runtimes: map[string]*cerebrov1.SourceRuntime{
+				"writer-jira": {Id: "writer-jira", SourceId: "jira", TenantId: "writer"},
+			},
+		},
+		&stubClaimStore{},
+		nil,
+		nil,
+	)
+
+	for _, ref := range []*cerebrov1.EntityRef{
+		{Urn: "urn:cerebro:writer:identifier:email:alice@writer.com", EntityType: "identifier.email"},
+		{Urn: "urn:cerebro:writer:identity:login:alice", EntityType: "identity.login"},
+	} {
+		_, err := service.WriteClaims(context.Background(), WriteRequest{
+			RuntimeID: "writer-jira",
+			Claims: []*cerebrov1.Claim{{
+				SubjectRef:  ref,
+				Predicate:   "status",
+				ObjectValue: "active",
+				ClaimType:   claimTypeAttribute,
+			}},
+		})
+		if err != nil {
+			t.Fatalf("WriteClaims(%q) error = %v", ref.GetUrn(), err)
+		}
+	}
+}
+
 func TestWriteClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
 	service := New(
 		&stubRuntimeStore{
@@ -654,6 +1732,61 @@ func TestWriteClaimsValidationErrorsAreInvalidRequests(t *testing.T) {
 		{name: "missing runtime id", req: WriteRequest{}},
 		{name: "nil claim", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{nil}}},
 		{name: "missing subject", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{Predicate: "status"}}}},
+		{name: "cross runtime subject", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:runtime:other-jira:ticket:ENG-123",
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}}}},
+		{name: "cross runtime object", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+			Predicate:  "assigned_to",
+			ObjectUrn:  "urn:cerebro:writer:runtime:other-jira:user:acct:42",
+			ClaimType:  claimTypeRelation,
+		}}}},
+		{name: "malformed subject urn", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:",
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}}}},
+		{name: "trailing empty subject urn segment", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:",
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}}}},
+		{name: "empty runtime scoped subject entity type", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira::ENG-123",
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}}}},
+		{name: "empty runtime scoped object ref entity type", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+			Predicate:  "assigned_to",
+			ObjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:writer:runtime:writer-jira::acct:42", EntityType: "user"},
+			ClaimType:  claimTypeRelation,
+		}}}},
+		{name: "subject ref type conflicts with urn", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+			SubjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123", EntityType: "user"},
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}}}},
+		{name: "object ref type conflicts with urn", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+			Predicate:  "assigned_to",
+			ObjectRef:  &cerebrov1.EntityRef{Urn: "urn:cerebro:writer:runtime:writer-jira:user:acct:42", EntityType: "group"},
+			ClaimType:  claimTypeRelation,
+		}}}},
+		{name: "whitespace padded object urn segment", req: WriteRequest{RuntimeID: "writer-jira", Claims: []*cerebrov1.Claim{{
+			SubjectUrn: "urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123",
+			Predicate:  "assigned_to",
+			ObjectUrn:  "urn:cerebro:writer:runtime:writer-jira:user: acct:42",
+			ClaimType:  claimTypeRelation,
+		}}}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := service.WriteClaims(context.Background(), tt.req)
@@ -967,7 +2100,10 @@ func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) boo
 	if claim == nil {
 		return false
 	}
-	if strings.TrimSpace(claim.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+	if request.RuntimeID != "" && strings.TrimSpace(claim.RuntimeID) != strings.TrimSpace(request.RuntimeID) {
+		return false
+	}
+	if request.TenantID != "" && strings.TrimSpace(claim.TenantID) != strings.TrimSpace(request.TenantID) {
 		return false
 	}
 	if request.ClaimID != "" && strings.TrimSpace(claim.ID) != strings.TrimSpace(request.ClaimID) {
@@ -988,7 +2124,7 @@ func claimMatches(request ports.ListClaimsRequest, claim *ports.ClaimRecord) boo
 	if request.ClaimType != "" && strings.TrimSpace(claim.ClaimType) != strings.TrimSpace(request.ClaimType) {
 		return false
 	}
-	if request.Status != "" && strings.TrimSpace(claim.Status) != strings.TrimSpace(request.Status) {
+	if request.Status != "" && !strings.EqualFold(strings.TrimSpace(claim.Status), strings.TrimSpace(request.Status)) {
 		return false
 	}
 	if request.SourceEventID != "" && strings.TrimSpace(claim.SourceEventID) != strings.TrimSpace(request.SourceEventID) {
@@ -1002,6 +2138,34 @@ func timeFromProto(value *timestamppb.Timestamp) time.Time {
 		return time.Time{}
 	}
 	return value.AsTime().UTC()
+}
+
+func TestWriteClaimsMissingRuntimeDoesNotRetainRuntimeLock(t *testing.T) {
+	previous := sharedRuntimeWriteLocks
+	sharedRuntimeWriteLocks = newRuntimeLockSet()
+	defer func() {
+		sharedRuntimeWriteLocks = previous
+	}()
+
+	service := New(&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{}}, &stubClaimStore{}, nil, nil)
+	_, err := service.WriteClaims(context.Background(), WriteRequest{
+		RuntimeID: "missing-runtime",
+		Claims: []*cerebrov1.Claim{{
+			SubjectUrn:  "urn:cerebro:writer:runtime:missing-runtime:ticket:ENG-1",
+			Predicate:   "status",
+			ObjectValue: "open",
+			ClaimType:   claimTypeAttribute,
+		}},
+	})
+	if !errors.Is(err, ports.ErrSourceRuntimeNotFound) {
+		t.Fatalf("WriteClaims() error = %v, want %v", err, ports.ErrSourceRuntimeNotFound)
+	}
+
+	sharedRuntimeWriteLocks.guard.Lock()
+	defer sharedRuntimeWriteLocks.guard.Unlock()
+	if got := len(sharedRuntimeWriteLocks.locks); got != 0 {
+		t.Fatalf("runtime locks retained = %d, want 0", got)
+	}
 }
 
 func TestWriteClaimsSerializesPerRuntime(t *testing.T) {

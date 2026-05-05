@@ -76,7 +76,18 @@ func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 		"urn:other:writer:user:alice",
 		"urn:cerebro:writer:user",
 		"urn:cerebro::user:alice",
+		"urn:cerebro: writer:user:alice",
+		"urn:cerebro:writer: user:alice",
+		"urn:cerebro:writer:user: alice",
+		"urn:cerebro:writer:okta_resource:policyrule: pol-1",
+		"urn:cerebro:writer:runtime:writer-jira:ticket: ENG-123",
+		"urn:cerebro:writer:runtime:writer-jira::ENG-123",
+		"urn:cerebro:writer:user:alice:",
+		"urn:cerebro:writer:runtime:writer-jira:ticket:ENG-123:",
 		"   ",
+		" urn:cerebro:writer:user:alice",
+		"urn:cerebro:writer:user:alice ",
+		"\turn:cerebro:writer:user:alice",
 		"urn:cerebro: writer:user:alice",
 		"urn:cerebro:writer: user:alice",
 		"urn:cerebro:writer:user: alice",
@@ -89,5 +100,32 @@ func TestGetEntityNeighborhoodRejectsMalformedRootURN(t *testing.T) {
 	}
 	if store.rootURN != "" {
 		t.Fatalf("store should never see malformed urns; got %q", store.rootURN)
+	}
+}
+
+func TestGetEntityNeighborhoodAcceptsColonDelimitedRootURN(t *testing.T) {
+	for _, rootURN := range []string{
+		"urn:cerebro:writer:okta_resource:policyrule:pol-1",
+		"urn:cerebro:writer:aws_role:arn:aws:iam::123456789012:role/AdminRole",
+	} {
+		t.Run(rootURN, func(t *testing.T) {
+			store := &stubStore{
+				neighborhood: &ports.EntityNeighborhood{
+					Root: &ports.NeighborhoodNode{URN: rootURN, EntityType: "resource", Label: "root"},
+				},
+			}
+			service := New(store)
+
+			result, err := service.GetEntityNeighborhood(context.Background(), NeighborhoodRequest{RootURN: rootURN})
+			if err != nil {
+				t.Fatalf("GetEntityNeighborhood() error = %v", err)
+			}
+			if result.Root == nil || result.Root.URN != rootURN {
+				t.Fatalf("Root = %#v, want %q", result.Root, rootURN)
+			}
+			if store.rootURN != rootURN {
+				t.Fatalf("store root urn = %q, want %q", store.rootURN, rootURN)
+			}
+		})
 	}
 }

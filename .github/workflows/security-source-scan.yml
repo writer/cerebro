@@ -47,7 +47,7 @@ jobs:
           if [ "${#selected[@]}" -eq 0 ]; then
             exit 0
           fi
-          $(go env GOPATH)/bin/gosec -severity medium -confidence medium -exclude-generated -fmt=json -out "${report_path}" "${selected[@]}" || true
+          "$(go env GOPATH)/bin/gosec" -severity medium -confidence medium -exclude-generated -fmt=json -out "${report_path}" "${selected[@]}" || true
 
       - name: Fail on HIGH findings
         shell: bash

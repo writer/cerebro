@@ -89,6 +89,9 @@ The bootstrap binary currently reads these environment variables:
 | --- | --- | --- |
 | `CEREBRO_HTTP_ADDR` | HTTP listen address | `:8080` |
 | `CEREBRO_SHUTDOWN_TIMEOUT` | graceful shutdown timeout | `10s` |
+| `CEREBRO_API_AUTH_ENABLED` | require bearer/API-key auth for non-public routes | `false` |
+| `CEREBRO_API_KEYS` | comma-separated `key[:principal[:tenant_id]]` entries | unset |
+| `CEREBRO_ALLOWED_TENANTS` | optional tenant allowlist for unscoped API keys | unset |
 | `CEREBRO_APPEND_LOG_DRIVER` | append-log driver; supported value: `jetstream` | unset |
 | `CEREBRO_JETSTREAM_URL` | NATS URL for JetStream | unset |
 | `CEREBRO_JETSTREAM_SUBJECT_PREFIX` | JetStream subject prefix | `events` |
@@ -101,6 +104,8 @@ The bootstrap binary currently reads these environment variables:
 | `CEREBRO_NEO4J_DATABASE` | optional Neo4j database name; empty uses the server default | unset |
 
 Driver selection is inferred when a driver-specific setting is present. For example, `CEREBRO_POSTGRES_DSN` selects the Postgres state store, and `CEREBRO_NEO4J_URI` selects the Neo4j graph store.
+
+Enable `CEREBRO_API_AUTH_ENABLED=true` in shared or production deployments. API keys can be scoped to a tenant with `key:principal:tenant_id`; requests that provide a different `tenant_id` are rejected before service logic runs.
 
 Example durable local configuration:
 
@@ -260,7 +265,7 @@ Some files in `docs/` describe broader or historical architecture and may be ahe
 
 | Document | Notes |
 | --- | --- |
-| [API contracts](docs/API_CONTRACTS_AUTOGEN.md) | generated API contract reference |
+| [API contracts](docs/API_CONTRACTS_AUTOGEN.md) | current bootstrap HTTP and Connect contract reference |
 | [CloudEvents](docs/CLOUDEVENTS_AUTOGEN.md) | generated event contract reference |
 | [Graph ontology](docs/GRAPH_ONTOLOGY_AUTOGEN.md) | generated graph ontology reference |
 | [Graph report contracts](docs/GRAPH_REPORT_CONTRACTS_AUTOGEN.md) | generated graph/report contract reference |

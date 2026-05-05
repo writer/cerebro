@@ -128,13 +128,18 @@ def build_jira_workspace_claims(
             bool_value(posture.get("approved_marketplace_apps_only"), True),
             **shared_options,
         ),
-        integration.attr(workspace_ref, "admin_count", str(len(admins)), **shared_options),
+        integration.attr(
+            workspace_ref,
+            "admin_count",
+            str(len({require_value(admin.get("email"), "admins[].email").casefold() for admin in admins})),
+            **shared_options,
+        ),
         integration.attr(workspace_ref, "project_count", str(len(projects)), **shared_options),
         integration.attr(workspace_ref, "installed_app_count", str(len(apps)), **shared_options),
     ]
 
     for admin in admins:
-        email = require_value(admin.get("email"), "admins[].email")
+        email = require_value(admin.get("email"), "admins[].email").casefold()
         label = optional_string(admin.get("display_name")) or email
         role = optional_string(admin.get("role")) or "site_admin"
         admin_ref = integration.ref("user", email, label)
@@ -283,7 +288,13 @@ def build_jira_posture_findings(
     relation_counts = graph_summary.get("relation_counts_by_type", {})
     if not isinstance(relation_counts, dict):
         relation_counts = {}
-    admin_count = int(relation_counts.get("administers", 0))
+    posture_admin_emails = {
+        email.casefold()
+        for admin in object_list(posture.get("admins"), "admins")
+        if (email := optional_string(admin.get("email")))
+    }
+    posture_admin_count = len(posture_admin_emails)
+    admin_count = max(int(relation_counts.get("administers", 0)), posture_admin_count)
     if admin_count > 5:
         findings.append(
             finding(
@@ -367,7 +378,7 @@ def onboard_jira_workspace_posture(
     runtime_config: Dict[str, str] = {"workspace": workspace_key}
     integration.ensure_runtime(runtime_config)
     write_result = integration.write_claims(claims, {"replace_existing": True})
-    filters: Dict[str, Any] = {"limit": 100, "status": "asserted"}
+    filters: Dict[str, Any] = {"limit": len(claims), "status": "asserted"}
     if source_event_id:
         filters["source_event_id"] = source_event_id
     persisted = integration.list_claims(filters)

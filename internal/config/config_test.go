@@ -20,6 +20,9 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
 	t.Setenv("CEREBRO_KUZU_PATH", "")
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
+	t.Setenv("CEREBRO_API_KEYS", "")
+	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -40,6 +43,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.GraphStore.Driver != "" {
 		t.Fatalf("GraphStore.Driver = %q, want empty", cfg.GraphStore.Driver)
 	}
+	if cfg.Auth.Enabled {
+		t.Fatal("Auth.Enabled = true, want false")
+	}
 }
 
 func TestLoadFromEnv(t *testing.T) {
@@ -56,6 +62,9 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "test-password")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "cerebro")
 	t.Setenv("CEREBRO_KUZU_PATH", "")
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_API_KEYS", "token-1:ci:writer,token-2:ops:security")
+	t.Setenv("CEREBRO_ALLOWED_TENANTS", "security,writer,writer")
 
 	cfg, err := Load()
 	if err != nil {
@@ -79,6 +88,18 @@ func TestLoadFromEnv(t *testing.T) {
 	if cfg.GraphStore.Driver != GraphStoreDriverNeo4j {
 		t.Fatalf("GraphStore.Driver = %q, want %q", cfg.GraphStore.Driver, GraphStoreDriverNeo4j)
 	}
+	if !cfg.Auth.Enabled {
+		t.Fatal("Auth.Enabled = false, want true")
+	}
+	if len(cfg.Auth.APIKeys) != 2 {
+		t.Fatalf("Auth.APIKeys length = %d, want 2", len(cfg.Auth.APIKeys))
+	}
+	if cfg.Auth.APIKeys[0].Principal != "ci" || cfg.Auth.APIKeys[0].TenantID != "writer" {
+		t.Fatalf("Auth.APIKeys[0] = %#v", cfg.Auth.APIKeys[0])
+	}
+	if got := cfg.Auth.AllowedTenants; len(got) != 2 || got[0] != "security" || got[1] != "writer" {
+		t.Fatalf("Auth.AllowedTenants = %#v, want [security writer]", got)
+	}
 }
 
 func clearDependencyEnv(t *testing.T) {
@@ -96,6 +117,28 @@ func clearDependencyEnv(t *testing.T) {
 	t.Setenv("CEREBRO_NEO4J_PASSWORD", "")
 	t.Setenv("CEREBRO_NEO4J_DATABASE", "")
 	t.Setenv("CEREBRO_KUZU_PATH", "")
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "")
+	t.Setenv("CEREBRO_API_KEYS", "")
+	t.Setenv("CEREBRO_ALLOWED_TENANTS", "")
+}
+
+func TestLoadRejectsAuthEnabledWithoutKeys(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "true")
+	t.Setenv("CEREBRO_API_KEYS", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
+}
+
+func TestLoadRejectsInvalidAuthEnabledBool(t *testing.T) {
+	clearDependencyEnv(t)
+	t.Setenv("CEREBRO_API_AUTH_ENABLED", "maybe")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want non-nil")
+	}
 }
 
 func TestLoadRejectsLegacyKuzuPath(t *testing.T) {
