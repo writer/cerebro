@@ -1,7 +1,9 @@
 {
   "ignorePaths": [
     "vendor/**",
+    ".deepsec/.env*.local",
     ".deepsec/data/**",
+    ".deepsec/findings/**",
     "docs/**",
     "policies/**",
     "api/openapi.yaml",

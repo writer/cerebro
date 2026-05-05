@@ -59,6 +59,7 @@ data/cerebro/
   files/                 One JSON per scanned source file (gitignored)
   runs/                  Run metadata (gitignored)
   reports/               Generated markdown reports (gitignored)
+findings/                Exported markdown findings (gitignored)
 AGENTS.md                Pointer for coding agents
 .env.local               Tokens (gitignored)
 ```
