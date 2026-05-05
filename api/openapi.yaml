@@ -415,6 +415,21 @@ paths:
           required: true
           schema:
             type: string
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
       responses:
         '200':
           description: Vulnerability impact result.
@@ -422,6 +437,27 @@ paths:
     get:
       deprecated: true
       summary: Legacy alias for /platform/graph/impact/package
+      parameters:
+        - name: package
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
       responses:
         '200':
           description: Package exposure result.
@@ -429,6 +465,22 @@ paths:
     get:
       deprecated: true
       summary: Legacy alias for /platform/graph/impact/asset
+      parameters:
+        - name: urn
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
       responses:
         '200':
           description: Asset vulnerability result.
