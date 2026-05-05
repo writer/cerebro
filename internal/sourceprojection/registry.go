@@ -80,6 +80,9 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"gcp.service_account":                  gcpServiceAccountProjections,
 	"gcp.service_account_impersonation":    gcpServiceAccountImpersonationProjections,
 	"gcp.service_account_key":              gcpServiceAccountKeyProjections,
+	"gcp.container_analysis_vulnerability": gcpContainerVulnerabilityProjections,
+	"gcp.container_vulnerability":          gcpContainerVulnerabilityProjections,
+	"kandji.vulnerability":                 kandjiVulnerabilityProjections,
 	"okta.user":                            oktaUserProjections,
 	"okta.group":                           oktaGroupProjections,
 	"okta.group_membership":                oktaGroupMembershipProjections,
@@ -96,6 +99,7 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"kubernetes.workload":                  kubernetesWorkloadProjections,
 	"kubernetes.workload_identity_binding": kubernetesWorkloadIdentityBindingProjections,
 	"runtime.evidence":                     runtimeEvidenceProjections,
+	"sentinelone.vulnerability":            sentinelOneVulnerabilityProjections,
 }}
 
 // BuiltinRegistry returns the default source event projector registry.

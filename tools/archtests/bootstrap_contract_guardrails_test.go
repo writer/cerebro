@@ -42,7 +42,7 @@ func TestSourceCDKOwnsExternalHTTPClients(t *testing.T) {
 		}
 		if entry.IsDir() {
 			switch entry.Name() {
-			case ".git", "vendor", "gen":
+			case ".git", "vendor", "gen", "sdk":
 				return filepath.SkipDir
 			default:
 				return nil
