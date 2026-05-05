@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/writer/cerebro/internal/snowflake"
 	"github.com/writer/cerebro/internal/snowflake/tableops"
@@ -52,26 +53,30 @@ func (b *BaseProvider) syncTable(ctx context.Context, schema TableSchema, rows [
 		result.Rows = int64(len(prepared))
 	}
 
-	existingIDs, err := listProviderExistingIDs(ctx, sf, schema.Name)
+	existingRows, err := listProviderExistingRows(ctx, sf, schema.Name)
 	if err != nil {
 		return result, err
 	}
 
 	newIDs := providerRowIDSet(prepared)
+	cdcEvents := buildProviderCDCEvents(schema.Name, b.Name(), prepared, existingRows, newIDs)
 
 	// Atomic upsert via MERGE - no delete-before-insert window.
 	if err := mergeProviderRows(ctx, sf, schema.Name, prepared); err != nil {
 		return result, err
 	}
 
-	removedIDs := make(map[string]struct{}, len(existingIDs))
-	for id := range existingIDs {
+	removedIDs := make(map[string]struct{}, len(existingRows))
+	for id := range existingRows {
 		if _, exists := newIDs[id]; !exists {
 			removedIDs[id] = struct{}{}
 		}
 	}
 	if err := deleteProviderRowsByID(ctx, sf, schema.Name, removedIDs); err != nil {
 		return result, err
+	}
+	if err := sf.InsertCDCEvents(ctx, cdcEvents); err != nil {
+		return result, fmt.Errorf("insert provider cdc events: %w", err)
 	}
 
 	result.Rows = int64(len(prepared))
@@ -101,27 +106,34 @@ func ensureProviderTable(ctx context.Context, sf providerSnowflakeClient, table 
 	return err
 }
 
-func listProviderExistingIDs(ctx context.Context, sf providerSnowflakeClient, table string) (map[string]struct{}, error) {
+type providerExistingRow struct {
+	Hash string
+}
+
+func listProviderExistingRows(ctx context.Context, sf providerSnowflakeClient, table string) (map[string]providerExistingRow, error) {
 	if err := snowflake.ValidateTableName(table); err != nil {
 		return nil, fmt.Errorf("invalid table name %s: %w", table, err)
 	}
 
-	query := fmt.Sprintf("SELECT _CQ_ID FROM %s", table)
+	query := fmt.Sprintf("SELECT _CQ_ID, _CQ_HASH FROM %s", table)
 	result, err := sf.Query(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("list existing provider rows: %w", err)
 	}
 
-	ids := make(map[string]struct{}, len(result.Rows))
+	rows := make(map[string]providerExistingRow, len(result.Rows))
 	for _, row := range result.Rows {
 		value, _ := lookupProviderValue(row, "_cq_id")
 		id := strings.TrimSpace(providerStringValue(value))
 		if id == "" {
 			continue
 		}
-		ids[id] = struct{}{}
+		hashValue, _ := lookupProviderValue(row, "_cq_hash")
+		rows[id] = providerExistingRow{
+			Hash: strings.TrimSpace(providerStringValue(hashValue)),
+		}
 	}
-	return ids, nil
+	return rows, nil
 }
 
 func providerRowIDSet(rows []map[string]interface{}) map[string]struct{} {
@@ -199,6 +211,66 @@ func prepareProviderRows(schema TableSchema, rows []map[string]interface{}) ([]m
 		prepared = append(prepared, projected)
 	}
 	return prepared, skipped
+}
+
+func buildProviderCDCEvents(table, provider string, prepared []map[string]interface{}, existingRows map[string]providerExistingRow, newIDs map[string]struct{}) []snowflake.CDCEvent {
+	now := time.Now().UTC()
+	events := make([]snowflake.CDCEvent, 0, len(prepared))
+
+	for _, row := range prepared {
+		id := strings.TrimSpace(providerStringValue(row["_cq_id"]))
+		if id == "" {
+			continue
+		}
+		hash := strings.TrimSpace(providerStringValue(row["_cq_hash"]))
+		existing, existed := existingRows[id]
+		changeType := "added"
+		if existed {
+			if existing.Hash == hash {
+				continue
+			}
+			changeType = "modified"
+		}
+		events = append(events, snowflake.CDCEvent{
+			TableName:   table,
+			ResourceID:  id,
+			ChangeType:  changeType,
+			Provider:    provider,
+			AccountID:   firstProviderCDCValue(row, "account_id", "site_id", "tenant_id"),
+			Payload:     row,
+			PayloadHash: hash,
+			EventTime:   now,
+		})
+	}
+
+	for id, existing := range existingRows {
+		if _, exists := newIDs[id]; exists {
+			continue
+		}
+		events = append(events, snowflake.CDCEvent{
+			TableName:   table,
+			ResourceID:  id,
+			ChangeType:  "removed",
+			Provider:    provider,
+			PayloadHash: existing.Hash,
+			EventTime:   now,
+		})
+	}
+
+	return events
+}
+
+func firstProviderCDCValue(row map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		value, ok := lookupProviderValue(row, key)
+		if !ok {
+			continue
+		}
+		if text := strings.TrimSpace(providerStringValue(value)); text != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 func projectProviderRow(row map[string]interface{}, columns []ColumnSchema) map[string]interface{} {
