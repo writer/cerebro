@@ -112,8 +112,8 @@ func TestReadLiveGCPServiceAccountPreview(t *testing.T) {
 	if len(urns) != 1 {
 		t.Fatalf("len(Discover(service_account)) = %d, want 1", len(urns))
 	}
-	if got := urns[0].String(); got != "urn:cerebro:writer-prod:gcp_service_account:sa-1" {
-		t.Fatalf("Discover(service_account) urn = %q, want unique-id-based service account urn", got)
+	if got := urns[0].String(); got != "urn:cerebro:writer-prod:gcp_service_account:sa@writer-prod.iam.gserviceaccount.com" {
+		t.Fatalf("Discover(service_account) urn = %q, want email-based service account urn", got)
 	}
 }
 
