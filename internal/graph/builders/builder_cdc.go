@@ -1261,6 +1261,9 @@ func cdcNodeID(table string, payload map[string]any, fallback string) string {
 	case "sentinelone_applications":
 		return sentinelOneApplicationNodeID(firstNonEmpty(queryRowString(payload, "id"), fallback))
 	case "sentinelone_vulnerabilities":
+		if id := sentinelOneVulnerabilityNodeIDForRow(payload); id != "" {
+			return id
+		}
 		return sentinelOneVulnerabilityNodeID(firstNonEmpty(queryRowString(payload, "id"), fallback))
 	case "k8s_core_pods",
 		"k8s_core_namespaces",

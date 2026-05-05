@@ -242,9 +242,10 @@ func parseSentinelOneVulnerabilityNodes(rows []map[string]any) []*Node {
 			continue
 		}
 		cveID := strings.ToUpper(strings.TrimSpace(queryRowString(row, "cve_id")))
+		nodeID := sentinelOneVulnerabilityNodeIDForRow(row)
 		name := firstNonEmpty(cveID, queryRowString(row, "application_name"), id)
 		nodes = append(nodes, &Node{
-			ID:       sentinelOneVulnerabilityNodeID(id),
+			ID:       nodeID,
 			Kind:     NodeKindVulnerability,
 			Name:     name,
 			Provider: "sentinelone",
@@ -277,6 +278,7 @@ func (b *Builder) buildSentinelOneEdges(ctx context.Context) {
 	b.buildSentinelOneSiteAgentEdges(ctx)
 	b.buildSentinelOneAgentApplicationEdges(ctx)
 	b.buildSentinelOneAgentVulnerabilityEdges(ctx)
+	b.buildSentinelOneApplicationVulnerabilityEdges(ctx)
 	b.buildSentinelOneThreatEdges(ctx)
 	b.buildSentinelOneActivityEdges(ctx)
 }
@@ -366,7 +368,7 @@ func (b *Builder) buildSentinelOneAgentVulnerabilityEdges(ctx context.Context) {
 			continue
 		}
 		agentNodeID := sentinelOneAgentNodeID(agentID)
-		vulnNodeID := sentinelOneVulnerabilityNodeID(vulnID)
+		vulnNodeID := sentinelOneVulnerabilityNodeIDForRow(row)
 		risk := sentinelOneSeverityRisk(queryRowString(row, "severity"))
 		b.addEdgeIfMissing(&Edge{
 			ID:     agentNodeID + "->" + vulnNodeID + ":affected_by",
@@ -383,6 +385,60 @@ func (b *Builder) buildSentinelOneAgentVulnerabilityEdges(ctx context.Context) {
 				"severity":             queryRow(row, "severity"),
 				"status":               queryRow(row, "status"),
 				"relationship_context": "endpoint_vulnerability",
+			},
+		})
+	}
+}
+
+func (b *Builder) buildSentinelOneApplicationVulnerabilityEdges(ctx context.Context) {
+	appRows, err := b.queryIfExists(ctx, "sentinelone_applications", `SELECT id, agent_id, name, version FROM sentinelone_applications`)
+	if err != nil {
+		b.logger.Debug("sentinelone application vulnerability application query failed", "error", err)
+		return
+	}
+	vulnRows, err := b.queryIfExists(ctx, "sentinelone_vulnerabilities", `SELECT id, cve_id, agent_id, application_name, application_version, severity, status FROM sentinelone_vulnerabilities`)
+	if err != nil {
+		b.logger.Debug("sentinelone application vulnerability query failed", "error", err)
+		return
+	}
+	appIndex := make(map[string]string, len(appRows.Rows))
+	for _, row := range appRows.Rows {
+		appID := strings.TrimSpace(queryRowString(row, "id"))
+		if appID == "" {
+			continue
+		}
+		key := sentinelOneApplicationMatchKey(queryRowString(row, "agent_id"), queryRowString(row, "name"), queryRowString(row, "version"))
+		if key != "" {
+			appIndex[key] = appID
+		}
+	}
+	for _, row := range vulnRows.Rows {
+		key := sentinelOneApplicationMatchKey(queryRowString(row, "agent_id"), queryRowString(row, "application_name"), queryRowString(row, "application_version"))
+		appID := appIndex[key]
+		if appID == "" {
+			continue
+		}
+		appNodeID := sentinelOneApplicationNodeID(appID)
+		vulnNodeID := sentinelOneVulnerabilityNodeIDForRow(row)
+		if vulnNodeID == "" {
+			continue
+		}
+		risk := sentinelOneSeverityRisk(queryRowString(row, "severity"))
+		b.addEdgeIfMissing(&Edge{
+			ID:     appNodeID + "->" + vulnNodeID + ":affected_by",
+			Source: appNodeID,
+			Target: vulnNodeID,
+			Kind:   EdgeKindAffectedBy,
+			Effect: EdgeEffectAllow,
+			Risk:   risk,
+			Properties: map[string]any{
+				"source_table":         "sentinelone_vulnerabilities",
+				"cve_id":               queryRow(row, "cve_id"),
+				"application_name":     queryRow(row, "application_name"),
+				"application_version":  queryRow(row, "application_version"),
+				"severity":             queryRow(row, "severity"),
+				"status":               queryRow(row, "status"),
+				"relationship_context": "package_vulnerability",
 			},
 		})
 	}
@@ -501,6 +557,27 @@ func sentinelOneApplicationNodeID(id string) string {
 
 func sentinelOneVulnerabilityNodeID(id string) string {
 	return "sentinelone_vulnerability:" + strings.TrimSpace(id)
+}
+
+func sentinelOneVulnerabilityNodeIDForRow(row map[string]any) string {
+	if cveID := strings.TrimSpace(queryRowString(row, "cve_id")); cveID != "" {
+		return "vulnerability:" + slugifyKnowledgeKey(cveID)
+	}
+	id := strings.TrimSpace(queryRowString(row, "id"))
+	if id == "" {
+		return ""
+	}
+	return sentinelOneVulnerabilityNodeID(id)
+}
+
+func sentinelOneApplicationMatchKey(agentID, name, version string) string {
+	agentID = strings.ToLower(strings.TrimSpace(agentID))
+	name = strings.ToLower(strings.TrimSpace(name))
+	version = strings.ToLower(strings.TrimSpace(version))
+	if agentID == "" || name == "" || version == "" {
+		return ""
+	}
+	return agentID + "|" + name + "|" + version
 }
 
 func sentinelOneAgentRisk(row map[string]any) RiskLevel {

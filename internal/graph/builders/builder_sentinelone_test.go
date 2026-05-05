@@ -94,7 +94,7 @@ func TestBuilderBuildsSentinelOneGraph(t *testing.T) {
 	siteID := sentinelOneSiteNodeID("site-1")
 	agentID := sentinelOneAgentNodeID("agent-1")
 	appID := sentinelOneApplicationNodeID("agent-1|Chrome|1.2.3|Google")
-	vulnID := sentinelOneVulnerabilityNodeID("agent-1|CVE-2026-0001|Chrome|1.2.3")
+	vulnID := "vulnerability:cve-2026-0001"
 	threatID := sentinelOneThreatNodeID("threat-1")
 	activityID := sentinelOneActivityNodeID("activity-1")
 
@@ -124,6 +124,7 @@ func TestBuilderBuildsSentinelOneGraph(t *testing.T) {
 	assertEdgeExists(t, g, siteID, agentID, EdgeKindContains)
 	assertEdgeExists(t, g, agentID, appID, EdgeKindContainsPkg)
 	assertEdgeExists(t, g, agentID, vulnID, EdgeKindAffectedBy)
+	assertEdgeExists(t, g, appID, vulnID, EdgeKindAffectedBy)
 	assertEdgeExists(t, g, threatID, agentID, EdgeKindTargets)
 	assertEdgeExists(t, g, agentID, threatID, EdgeKindAffectedBy)
 	assertEdgeExists(t, g, activityID, agentID, EdgeKindTargets)
@@ -148,7 +149,7 @@ func TestSentinelOneCDCEventToNode(t *testing.T) {
 	if node == nil {
 		t.Fatal("expected SentinelOne vulnerability CDC node")
 	}
-	if node.ID != sentinelOneVulnerabilityNodeID("agent-1|CVE-2026-0001|Chrome|1.2.3") {
+	if node.ID != "vulnerability:cve-2026-0001" {
 		t.Fatalf("node ID = %q", node.ID)
 	}
 	if node.Kind != NodeKindVulnerability {
