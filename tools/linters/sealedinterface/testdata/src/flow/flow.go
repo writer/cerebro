@@ -227,6 +227,13 @@ func AppendSlicedSpreadBad() sealedpkg.Runner {
 	return dst[0].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
 }
 
+func AppendOpenEndedResliceBad() sealedpkg.Runner {
+	values := []any{nil, nil}
+	sub := values[1:]
+	sub = append(sub, externalbad.Bad{})
+	return sub[1].(sealedpkg.Runner) // want `externalbad.Bad crosses sealed interface sealedpkg.Runner`
+}
+
 func CopySliceDestinationWindowBad() sealedpkg.Runner {
 	src := []any{externalbad.Bad{}}
 	dst := []any{nil, nil}

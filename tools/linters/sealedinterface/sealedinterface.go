@@ -882,17 +882,40 @@ func (f *flowFacts) recordSliceResult(pass *analysis.Pass, dstSlot flowSlot, rhs
 		return false
 	}
 	copied := f.childFactsForSlice(pass, slice, dstSlot)
-	if len(copied) == 0 {
+	length, hasLength := f.sliceResultLength(pass, slice)
+	if len(copied) == 0 && !hasLength {
 		return false
 	}
 	f.clearSlot(dstSlot)
 	for slot, actuals := range copied {
 		f.concrete[slot] = actuals
 	}
-	if length, ok := sliceLength(pass, slice); ok {
+	if hasLength {
 		f.lengths[dstSlot] = length
 	}
 	return true
+}
+
+func (f *flowFacts) sliceResultLength(pass *analysis.Pass, slice *ast.SliceExpr) (int, bool) {
+	if length, ok := sliceLength(pass, slice); ok {
+		return length, true
+	}
+	if slice == nil || slice.High != nil {
+		return 0, false
+	}
+	srcSlot, ok := flowSlotForExpr(pass, slice.X)
+	if !ok {
+		return 0, false
+	}
+	srcLength, ok := f.lengths[srcSlot]
+	if !ok {
+		return 0, false
+	}
+	low, ok := constInt(pass, slice.Low)
+	if !ok || low < 0 || low > srcLength {
+		return 0, false
+	}
+	return srcLength - low, true
 }
 
 func (f *flowFacts) recordChildAliasResult(pass *analysis.Pass, dstSlot flowSlot, rhs ast.Expr) bool {
