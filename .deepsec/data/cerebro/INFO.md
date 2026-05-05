@@ -2,32 +2,29 @@
 
 ## What this codebase does
 
-Cerebro is Writer's original Go operations data platform for cloud/SaaS posture, operational signal ingestion, policy evaluation, findings lifecycle, graph analytics, AI-assisted investigation, remediation, ticketing, and reporting. It exposes a chi-based REST API under `internal/api`, a CLI under `internal/cli`, provider integrations under `internal/providers`, Snowflake/Postgres/SQLite persistence, NATS/job workers, and optional LLM/tool integrations.
+Cerebro is Writer's Go security operations platform for cloud/SaaS source ingestion, graph projection/query, finding evaluation, workflow knowledge, report generation, and a bootstrap HTTP/Connect API. The server entrypoint is `cmd/cerebro`; the request surface, auth middleware, and OpenAPI-backed handlers are in `internal/bootstrap`.
 
 ## Auth shape
 
-- `APIKeyAuth` in `internal/api/middleware.go` enforces `Authorization: Bearer <token>` or `X-API-Key`, rejects conflicting credentials, and populates user/credential context.
-- `RBACMiddleware` runs after API auth when `APIAuthEnabled` and `app.RBAC` are configured; route permission coverage is security-critical.
-- `isPublicEndpoint` intentionally bypasses auth for health/docs/public metadata; new unauthenticated routes should be scrutinized.
-- Tenant context flows through helpers like `GetTenantID`, `tenantGraph`, `tenantStore`, and cross-tenant handlers; missing tenant scoping is high impact.
-- Cross-tenant graph ingest/read paths use dedicated auth helpers such as `verifyCrossTenantIngestAuth`.
+- API auth is configured in `internal/config` and enforced by `authMiddleware`, `authConnectInterceptor`, and tenant helpers in `internal/bootstrap/auth.go`.
+- Tenant-scoped API keys must be checked against explicit `tenant_id` fields, tenant-bearing URNs, runtime/findings/report records loaded by ID, and graph ingest/workflow operations that otherwise default to global scope.
+- `/health`, `/healthz`, and `/openapi.yaml` are intentionally public; most `/platform/*`, `/source-runtimes/*`, `/findings/*`, `/reports/*`, and Connect RPC paths are protected when `CEREBRO_API_AUTH_ENABLED=true`.
 
 ## Threat model
 
-Highest impact attackers try to bypass API auth/RBAC, cross tenant boundaries in graph/findings/query endpoints, or mutate remediation/ticketing/provider configuration. They may also target provider sync and LLM/remote-tool paths to exfiltrate cloud/SaaS data or trigger unsafe actions. Findings that combine unauthenticated exposure, tenant confusion, query execution, or writeback/remediation are more important than generic input validation issues.
+Highest impact attackers try to bypass API auth, cross tenant boundaries via bare durable IDs or tenant-bearing URNs, enumerate graph/finding/report data, or trigger source sync and workflow writes for another tenant. Findings that combine tenant confusion with read/write access to graph projections, findings, source runtimes, report results, or workflow events are higher priority than generic validation nits.
 
 ## Project-specific patterns to flag
 
-- New chi routes in `internal/api/server_routes.go` or `server_handlers_*.go` that are public accidentally, bypass `APIKeyAuth`, or lack RBAC permission mapping.
-- Handlers using `{tenant}`, `tenant_id`, `organization`, graph snapshots, findings stores, or Snowflake queries without explicit tenant scoping.
-- Query, provider sync/test/configure, remediation, ticketing, agent, webhook, or writeback handlers that accept user-controlled identifiers and perform external actions.
-- LLM/tool execution paths in `internal/agents`, `internal/remediation`, and `internal/actionengine` where prompts, tool names, resource IDs, or remote execution inputs cross trust boundaries.
-- Credential and secret scanning paths in `internal/secretsource`, `internal/reposcan`, provider clients, and webhook integrations that log or persist sensitive values.
+- New handlers in `internal/bootstrap/app.go` that call services by ID without `authorize*Tenant` checks.
+- Proto/JSON request fields that carry tenant scope indirectly, especially maps, metadata, `root_urn`, `decision_id`, `target_ids`, `evidence_ids`, and `action_ids`.
+- Source runtime and graph ingest paths in `internal/sourceruntime`, `internal/graphingest`, `internal/graphstore`, and `internal/sourceprojection` where empty tenant IDs can become global or unrestricted.
+- Finding/report/claim list and get paths in `internal/findings`, `internal/reports`, and `internal/claims` that must preserve tenant/runtime scoping.
+- Source integrations under `sources/*` that emit events or entities with tenant IDs derived from provider configuration.
 
 ## Known false-positives
 
-- `/health`, `/ready`, `/status`, `/metrics`, `/openapi.yaml`, `/docs`, and `/.well-known/oauth-protected-resource` are intentionally public/operational endpoints.
-- Tests under `internal/**/**_test.go`, `internal/testutil`, and fixture-heavy provider tests often use fake credentials, mock tenants, and synthetic secrets.
-- Local SQLite/dev modes are intentional and should not be treated as production auth/storage bypasses by themselves.
-- Generated or contract-governed files such as `api/openapi.yaml`, `api/spec_embed.go`, and docs generated by `scripts/generate_*` should be correlated back to source handlers.
-- Vendored dependencies under `vendor/` should be ignored for project-owned vulnerability analysis.
+- Tests and fixtures under `**/*_test.go` and `sources/*/testdata/**` use synthetic credentials and tenants.
+- Generated or contract-governed files such as `api/openapi.yaml`, `api/spec_embed.go`, and `docs/*_AUTOGEN.md` should be correlated back to source handlers.
+- Static policy fixtures under `policies/**` are data inputs rather than executable code.
+- Local development paths, embedded fixture secrets, and redacted source runtime configs are intentional unless they flow into production logs or persisted plaintext secrets.
