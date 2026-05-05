@@ -1077,7 +1077,10 @@ func (r *RelationshipExtractor) extractGCPRelationships(ctx context.Context) (in
 	} else if ok {
 		for _, row := range result.Rows {
 			imageID := gcpArtifactImageID(toString(queryRow(row, "resource_uri")), "", "")
-			vulnID := normalizeRelationshipID(toString(queryRow(row, "_cq_id")))
+			vulnID := canonicalVulnerabilityRelationshipID(
+				toString(queryRow(row, "cve_id")),
+				toString(queryRow(row, "_cq_id")),
+			)
 			if imageID == "" || vulnID == "" {
 				continue
 			}

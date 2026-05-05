@@ -729,6 +729,15 @@ func TestGCPArtifactImageRelationshipHelpers(t *testing.T) {
 	}
 }
 
+func TestCanonicalVulnerabilityRelationshipID(t *testing.T) {
+	if got := canonicalVulnerabilityRelationshipID("CVE-2026-0001", "occ-1"); got != "vulnerability:cve-2026-0001" {
+		t.Fatalf("unexpected canonical vulnerability id: %s", got)
+	}
+	if got := canonicalVulnerabilityRelationshipID("", "occ-1"); got != "occ-1" {
+		t.Fatalf("unexpected fallback vulnerability id: %s", got)
+	}
+}
+
 func TestPersistRelationships_UsesRunSyncTimeForFreshWrites(t *testing.T) {
 	originalSchema := relationshipSchemaName
 	originalBatch := relationshipQueryBatch

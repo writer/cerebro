@@ -560,14 +560,7 @@ func sentinelOneVulnerabilityNodeID(id string) string {
 }
 
 func sentinelOneVulnerabilityNodeIDForRow(row map[string]any) string {
-	if cveID := strings.TrimSpace(queryRowString(row, "cve_id")); cveID != "" {
-		return "vulnerability:" + slugifyKnowledgeKey(cveID)
-	}
-	id := strings.TrimSpace(queryRowString(row, "id"))
-	if id == "" {
-		return ""
-	}
-	return sentinelOneVulnerabilityNodeID(id)
+	return vulnerabilityNodeIDWithFallback(queryRowString(row, "cve_id"), "sentinelone_vulnerability", queryRowString(row, "id"))
 }
 
 func sentinelOneApplicationMatchKey(agentID, name, version string) string {
@@ -594,18 +587,7 @@ func sentinelOneAgentRisk(row map[string]any) RiskLevel {
 }
 
 func sentinelOneApplicationRisk(row map[string]any) RiskLevel {
-	switch strings.ToLower(strings.TrimSpace(queryRowString(row, "risk_level"))) {
-	case "critical":
-		return RiskCritical
-	case "high":
-		return RiskHigh
-	case "medium":
-		return RiskMedium
-	case "low":
-		return RiskLow
-	default:
-		return RiskNone
-	}
+	return vulnerabilityRiskFromSeverity(queryRowString(row, "risk_level"))
 }
 
 func sentinelOneThreatRisk(row map[string]any) RiskLevel {
@@ -621,16 +603,5 @@ func sentinelOneThreatRisk(row map[string]any) RiskLevel {
 }
 
 func sentinelOneSeverityRisk(severity string) RiskLevel {
-	switch strings.ToLower(strings.TrimSpace(severity)) {
-	case "critical":
-		return RiskCritical
-	case "high":
-		return RiskHigh
-	case "medium":
-		return RiskMedium
-	case "low":
-		return RiskLow
-	default:
-		return RiskNone
-	}
+	return vulnerabilityRiskFromSeverity(severity)
 }

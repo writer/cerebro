@@ -1179,6 +1179,22 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 		}
 	case "github_dependabot_alerts":
 		return parseGitHubDependabotVulnerabilityNode(payload)
+	case "kandji_devices":
+		nodes := parseKandjiDeviceNodes([]map[string]any{payload})
+		if len(nodes) > 0 {
+			return nodes[0]
+		}
+	case "kandji_device_apps":
+		nodes := parseKandjiDeviceAppNodes([]map[string]any{payload})
+		if len(nodes) > 0 {
+			return nodes[0]
+		}
+	case "kandji_vulnerabilities":
+		return kandjiVulnerabilityNode(payload)
+	case "gcp_artifact_registry_images":
+		return gcpArtifactRegistryImageNode(payload)
+	case "gcp_container_vulnerabilities":
+		return gcpContainerVulnerabilityNode(payload)
 	case "k8s_core_pods",
 		"k8s_core_namespaces",
 		"k8s_core_service_accounts",
@@ -1217,6 +1233,10 @@ func cdcNodeID(table string, payload map[string]any, fallback string) string {
 			return id
 		}
 		return gcpFirewallNodeID(payload)
+	case "gcp_artifact_registry_images":
+		return firstNonEmpty(gcpArtifactRegistryImageNodeID(payload), fallback)
+	case "gcp_container_vulnerabilities":
+		return firstNonEmpty(gcpContainerVulnerabilityNodeIDForRow(payload), fallback)
 	case "gcp_compute_instances", "gcp_storage_buckets", "gcp_sql_instances", "gcp_cloudfunctions_functions", "gcp_cloudrun_services":
 		if id := strings.TrimSpace(fallback); id != "" {
 			return id
@@ -1276,6 +1296,12 @@ func cdcNodeID(table string, payload map[string]any, fallback string) string {
 		return githubRepositoryNodeID(firstNonEmpty(queryRowString(payload, "full_name"), queryRowString(payload, "repository"), fallback))
 	case "github_dependabot_alerts":
 		return firstNonEmpty(githubDependabotVulnerabilityNodeIDForRow(payload), fallback)
+	case "kandji_devices":
+		return kandjiDeviceNodeID(firstNonEmpty(queryRowString(payload, "device_id"), fallback))
+	case "kandji_device_apps":
+		return firstNonEmpty(kandjiPackageNodeID(queryRowString(payload, "device_id"), queryRowString(payload, "app_name"), queryRowString(payload, "version")), fallback)
+	case "kandji_vulnerabilities":
+		return firstNonEmpty(kandjiVulnerabilityNodeIDForRow(payload), fallback)
 	case "k8s_core_pods",
 		"k8s_core_namespaces",
 		"k8s_core_service_accounts",
