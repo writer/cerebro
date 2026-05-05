@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -106,6 +107,12 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("POST /platform/workflow/replay", app.handleReplayWorkflowEvents)
 	mux.HandleFunc("GET /platform/graph/neighborhood", app.handleGetEntityNeighborhood)
 	mux.HandleFunc("GET /graph/neighborhood", deprecatedRoute(app.handleGetEntityNeighborhood))
+	mux.HandleFunc("GET /platform/graph/impact/vulnerability/{id}", app.handleGetVulnerabilityImpact)
+	mux.HandleFunc("GET /graph/impact/vulnerability/{id}", deprecatedRoute(app.handleGetVulnerabilityImpact))
+	mux.HandleFunc("GET /platform/graph/impact/package", app.handleGetPackageImpact)
+	mux.HandleFunc("GET /graph/impact/package", deprecatedRoute(app.handleGetPackageImpact))
+	mux.HandleFunc("GET /platform/graph/impact/asset", app.handleGetAssetImpact)
+	mux.HandleFunc("GET /graph/impact/asset", deprecatedRoute(app.handleGetAssetImpact))
 	mux.HandleFunc("GET /platform/graph/ingest-health", app.handleCheckGraphIngestHealth)
 	mux.HandleFunc("GET /graph/ingest-health", deprecatedRoute(app.handleCheckGraphIngestHealth))
 	mux.HandleFunc("GET /platform/graph/ingest-runs", app.handleListGraphIngestRuns)
@@ -747,6 +754,65 @@ func (a *App) handleGetEntityNeighborhood(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, graphNeighborhoodResponse(response))
+}
+
+func (a *App) handleGetVulnerabilityImpact(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.URL.Query().Get("tenant_id")
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	a.handleGetGraphImpact(w, r, graphquery.ImpactRequest{
+		Kind:       graphquery.ImpactKindVulnerability,
+		TenantID:   tenantID,
+		Identifier: r.PathValue("id"),
+	})
+}
+
+func (a *App) handleGetPackageImpact(w http.ResponseWriter, r *http.Request) {
+	tenantID := r.URL.Query().Get("tenant_id")
+	if err := authorizeTenantID(r.Context(), tenantID); err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	a.handleGetGraphImpact(w, r, graphquery.ImpactRequest{
+		Kind:       graphquery.ImpactKindPackage,
+		TenantID:   tenantID,
+		Identifier: r.URL.Query().Get("package"),
+	})
+}
+
+func (a *App) handleGetAssetImpact(w http.ResponseWriter, r *http.Request) {
+	rootURN := r.URL.Query().Get("urn")
+	if err := authorizeCerebroURNTenant(r.Context(), rootURN); err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	a.handleGetGraphImpact(w, r, graphquery.ImpactRequest{
+		Kind:    graphquery.ImpactKindAsset,
+		RootURN: rootURN,
+	})
+}
+
+func (a *App) handleGetGraphImpact(w http.ResponseWriter, r *http.Request, request graphquery.ImpactRequest) {
+	limit, err := uint32QueryParam(r, "limit")
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	depth, err := uint32QueryParam(r, "depth")
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	request.Limit = limit
+	request.Depth = depth
+	result, err := a.graphQueryService().GetImpact(r.Context(), request)
+	if err != nil {
+		writeGraphQueryError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (a *App) handleRunGraphIngestRuntime(w http.ResponseWriter, r *http.Request) {
@@ -1947,6 +2013,32 @@ func writeProtoJSON(w http.ResponseWriter, statusCode int, message proto.Message
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_, _ = w.Write(payload)
+}
+
+func writeJSON(w http.ResponseWriter, statusCode int, value any) {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(payload)
+}
+
+func uint32QueryParam(r *http.Request, key string) (uint32, error) {
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseUint(value, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("%w: invalid %s", graphquery.ErrInvalidRequest, key)
+	}
+	if parsed == 0 {
+		return 0, fmt.Errorf("%w: %s must be at least 1", graphquery.ErrInvalidRequest, key)
+	}
+	return uint32(parsed), nil
 }
 
 func (a *App) sourceService() *sourceops.Service {

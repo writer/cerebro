@@ -302,6 +302,82 @@ paths:
       responses:
         '200':
           description: Neighborhood result.
+  /platform/graph/impact/vulnerability/{id}:
+    get:
+      summary: Query vulnerability impact graph
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Vulnerability impact result.
+  /platform/graph/impact/package:
+    get:
+      summary: Query package exposure graph
+      parameters:
+        - name: package
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Package exposure result.
+  /platform/graph/impact/asset:
+    get:
+      summary: Query asset vulnerability graph
+      parameters:
+        - name: urn
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Asset vulnerability result.
   /platform/graph/ingest-health:
     get:
       summary: Check graph ingest health
@@ -329,6 +405,85 @@ paths:
       responses:
         '200':
           description: Neighborhood result.
+  /graph/impact/vulnerability/{id}:
+    get:
+      deprecated: true
+      summary: Legacy alias for /platform/graph/impact/vulnerability/{id}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Vulnerability impact result.
+  /graph/impact/package:
+    get:
+      deprecated: true
+      summary: Legacy alias for /platform/graph/impact/package
+      parameters:
+        - name: package
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Package exposure result.
+  /graph/impact/asset:
+    get:
+      deprecated: true
+      summary: Legacy alias for /platform/graph/impact/asset
+      parameters:
+        - name: urn
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Asset vulnerability result.
   /graph/ingest-health:
     get:
       deprecated: true
