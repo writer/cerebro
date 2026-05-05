@@ -1393,6 +1393,74 @@ func TestAuthMiddlewareEnforcesTenantOnIDOnlyRoutes(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareRejectsBlankTenantSourceRuntimesForScopedKeys(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:      "writer-key",
+				TenantID: "writer",
+			}},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"blank-runtime": {
+				Id:       "blank-runtime",
+				SourceId: "github",
+			},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	putReq, err := http.NewRequest(http.MethodPut, server.URL+"/source-runtimes/new-runtime", strings.NewReader(`{"runtime":{"sourceId":"github"}}`))
+	if err != nil {
+		t.Fatalf("NewRequest put: %v", err)
+	}
+	putReq.Header.Set("Authorization", "Bearer writer-key")
+	putReq.Header.Set("Content-Type", "application/json")
+	putResp, err := server.Client().Do(putReq)
+	if err != nil {
+		t.Fatalf("PUT /source-runtimes blank tenant error = %v", err)
+	}
+	_ = putResp.Body.Close()
+	if putResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("PUT /source-runtimes blank tenant status = %d, want %d", putResp.StatusCode, http.StatusForbidden)
+	}
+
+	getReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes/blank-runtime", nil)
+	if err != nil {
+		t.Fatalf("NewRequest get: %v", err)
+	}
+	getReq.Header.Set("Authorization", "Bearer writer-key")
+	getResp, err := server.Client().Do(getReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes blank tenant error = %v", err)
+	}
+	_ = getResp.Body.Close()
+	if getResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /source-runtimes blank tenant status = %d, want %d", getResp.StatusCode, http.StatusForbidden)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	putRuntimeReq := connect.NewRequest(&cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{Id: "connect-new-runtime", SourceId: "github"},
+	})
+	putRuntimeReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.PutSourceRuntime(context.Background(), putRuntimeReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("PutSourceRuntime(blank tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+	getRuntimeReq := connect.NewRequest(&cerebrov1.GetSourceRuntimeRequest{Id: "blank-runtime"})
+	getRuntimeReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.GetSourceRuntime(context.Background(), getRuntimeReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("GetSourceRuntime(blank tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
 func TestAuthMiddlewareEnforcesTenantOnMapBackedProtoFields(t *testing.T) {
 	cfg := config.Config{
 		HTTPAddr:        "127.0.0.1:0",
@@ -1437,6 +1505,54 @@ func TestAuthMiddlewareEnforcesTenantOnMapBackedProtoFields(t *testing.T) {
 	runReq.Header().Set("Authorization", "Bearer writer-key")
 	if _, err := client.RunReport(context.Background(), runReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("RunReport(other tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
+func TestAuthMiddlewareEnforcesTenantOnReportRunLookups(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{
+				Key:      "writer-key",
+				TenantID: "writer",
+			}},
+		},
+	}
+	store := &stubRuntimeStore{
+		reportRuns: map[string]*cerebrov1.ReportRun{
+			"other-report-run": {
+				Id:         "other-report-run",
+				ReportId:   "finding-summary",
+				Parameters: map[string]string{"tenant_id": "other"},
+				Status:     "completed",
+			},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/report-runs/other-report-run", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer writer-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /report-runs/other-report-run error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /report-runs/other-report-run status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	getReq := connect.NewRequest(&cerebrov1.GetReportRunRequest{Id: "other-report-run"})
+	getReq.Header().Set("Authorization", "Bearer writer-key")
+	if _, err := client.GetReportRun(context.Background(), getReq); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("GetReportRun(other tenant) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
 	}
 }
 

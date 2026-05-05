@@ -187,7 +187,32 @@ func authorizeSourceRuntimeIDTenant(ctx context.Context, store ports.SourceRunti
 		}
 		return err
 	}
-	return authorizeTenantID(ctx, runtime.GetTenantId())
+	return authorizeTenantScopeRequired(ctx, runtime.GetTenantId())
+}
+
+func authorizePutSourceRuntimeTenant(ctx context.Context, store ports.SourceRuntimeStore, runtime *cerebrov1.SourceRuntime) error {
+	if !hasAuthContext(ctx) || runtime == nil {
+		return nil
+	}
+	id := strings.TrimSpace(runtime.GetId())
+	if id == "" {
+		return authorizeTenantScopeRequired(ctx, runtime.GetTenantId())
+	}
+	if store == nil {
+		return sourceruntime.ErrRuntimeUnavailable
+	}
+	existing, err := store.GetSourceRuntime(ctx, id)
+	switch {
+	case err == nil:
+		if err := authorizeTenantScopeRequired(ctx, existing.GetTenantId()); err != nil {
+			return err
+		}
+		return authorizeTenantID(ctx, runtime.GetTenantId())
+	case errors.Is(err, ports.ErrSourceRuntimeNotFound):
+		return authorizeTenantScopeRequired(ctx, runtime.GetTenantId())
+	default:
+		return err
+	}
 }
 
 func authorizeFindingIDTenant(ctx context.Context, store ports.FindingStore, findingID string) error {
@@ -206,6 +231,13 @@ func authorizeFindingIDTenant(ctx context.Context, store ports.FindingStore, fin
 		return err
 	}
 	return authorizeTenantID(ctx, finding.TenantID)
+}
+
+func authorizeReportRunTenant(ctx context.Context, run *cerebrov1.ReportRun) error {
+	if run == nil {
+		return nil
+	}
+	return authorizeTenantScopeRequired(ctx, run.GetParameters()["tenant_id"])
 }
 
 func authorizeGraphIngestRunListScope(ctx context.Context, runtimeID string) error {
@@ -465,6 +497,10 @@ func (a *App) handleGetReportRun(w http.ResponseWriter, r *http.Request) {
 		Id: r.PathValue("runID"),
 	})
 	if err != nil {
+		writeReportError(w, err)
+		return
+	}
+	if err := authorizeReportRunTenant(r.Context(), response.GetRun()); err != nil {
 		writeReportError(w, err)
 		return
 	}
@@ -843,7 +879,7 @@ func (a *App) handlePutSourceRuntime(w http.ResponseWriter, r *http.Request) {
 		request.Runtime = &cerebrov1.SourceRuntime{}
 	}
 	request.Runtime.Id = r.PathValue("runtimeID")
-	if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntime().GetId(), true); err != nil {
+	if err := authorizePutSourceRuntimeTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), request.GetRuntime()); err != nil {
 		writeSourceRuntimeError(w, err)
 		return
 	}
@@ -1239,6 +1275,9 @@ func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Reques
 	if err != nil {
 		return nil, reportConnectError(err)
 	}
+	if err := authorizeReportRunTenant(ctx, response.GetRun()); err != nil {
+		return nil, reportConnectError(err)
+	}
 	return connect.NewResponse(response), nil
 }
 
@@ -1271,7 +1310,7 @@ func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[
 }
 
 func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Request[cerebrov1.PutSourceRuntimeRequest]) (*connect.Response[cerebrov1.PutSourceRuntimeResponse], error) {
-	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntime().GetId(), true); err != nil {
+	if err := authorizePutSourceRuntimeTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntime()); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
 	response, err := sourceruntime.New(
