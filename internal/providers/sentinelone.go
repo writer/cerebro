@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -30,8 +31,24 @@ func (s *SentinelOneProvider) Configure(ctx context.Context, config map[string]i
 		return err
 	}
 
-	s.apiToken = s.GetConfigString("api_token")
-	s.baseURL = s.GetConfigString("base_url") // e.g., https://usea1-partners.sentinelone.net
+	s.apiToken = strings.TrimSpace(s.GetConfigString("api_token"))
+	if s.apiToken == "" {
+		return fmt.Errorf("sentinelone api_token is required")
+	}
+
+	s.baseURL = strings.TrimRight(strings.TrimSpace(s.GetConfigString("base_url")), "/")
+	if s.baseURL == "" {
+		return fmt.Errorf("sentinelone base_url is required")
+	}
+	parsed, err := url.Parse(s.baseURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+		return fmt.Errorf("sentinelone base_url must be an http(s) URL")
+	}
+
+	s.client = newProviderHTTPClientWithOptions(ProviderHTTPClientOptions{
+		Provider: "sentinelone",
+		Timeout:  30 * time.Second,
+	})
 
 	return nil
 }
@@ -80,6 +97,10 @@ func (s *SentinelOneProvider) Schema() []TableSchema {
 			Description: "SentinelOne threat detections",
 			Columns: []ColumnSchema{
 				{Name: "id", Type: "string", Required: true},
+				{Name: "threat_info", Type: "object"},
+				{Name: "agent_realtime_info", Type: "object"},
+				{Name: "agent_detection_info", Type: "object"},
+				{Name: "indicators", Type: "object"},
 				{Name: "agent_id", Type: "string"},
 				{Name: "agent_computer_name", Type: "string"},
 				{Name: "threat_name", Type: "string"},
@@ -157,9 +178,12 @@ func (s *SentinelOneProvider) Schema() []TableSchema {
 				{Name: "id", Type: "string", Required: true},
 				{Name: "cve_id", Type: "string"},
 				{Name: "agent_id", Type: "string"},
+				{Name: "site_id", Type: "string"},
+				{Name: "endpoint_name", Type: "string"},
 				{Name: "application_name", Type: "string"},
 				{Name: "application_version", Type: "string"},
 				{Name: "severity", Type: "string"},
+				{Name: "status", Type: "string"},
 				{Name: "cvss_score", Type: "float"},
 				{Name: "exploited_in_wild", Type: "boolean"},
 				{Name: "days_since_detection", Type: "integer"},
@@ -178,6 +202,36 @@ func (s *SentinelOneProvider) Sync(ctx context.Context, opts SyncOptions) (*Sync
 		StartedAt: start,
 	}
 
+	type syncPlan struct {
+		name string
+		fn   func(context.Context) (*TableResult, error)
+	}
+	plans := []syncPlan{
+		{name: "sentinelone_sites", fn: s.syncSites},
+		{name: "sentinelone_agents", fn: s.syncAgents},
+		{name: "sentinelone_threats", fn: func(ctx context.Context) (*TableResult, error) {
+			return s.syncThreats(ctx, opts.Since)
+		}},
+		{name: "sentinelone_activities", fn: func(ctx context.Context) (*TableResult, error) {
+			return s.syncActivities(ctx, opts.Since)
+		}},
+		{name: "sentinelone_applications", fn: s.syncApplications},
+		{name: "sentinelone_vulnerabilities", fn: s.syncVulnerabilities},
+	}
+
+	if len(opts.Tables) > 0 {
+		anySelected := false
+		for _, plan := range plans {
+			if tableRequested(opts.Tables, plan.name) {
+				anySelected = true
+				break
+			}
+		}
+		if !anySelected {
+			return result, fmt.Errorf("no matching SentinelOne tables in filter: %s", strings.Join(opts.Tables, ", "))
+		}
+	}
+
 	syncTable := func(name string, fn func(context.Context) (*TableResult, error)) {
 		table, err := fn(ctx)
 		if err != nil {
@@ -188,12 +242,12 @@ func (s *SentinelOneProvider) Sync(ctx context.Context, opts SyncOptions) (*Sync
 		result.TotalRows += table.Rows
 	}
 
-	syncTable("sites", s.syncSites)
-	syncTable("agents", s.syncAgents)
-	syncTable("threats", s.syncThreats)
-	syncTable("activities", s.syncActivities)
-	syncTable("applications", s.syncApplications)
-	syncTable("vulnerabilities", s.syncVulnerabilities)
+	for _, plan := range plans {
+		if !tableRequested(opts.Tables, plan.name) {
+			continue
+		}
+		syncTable(plan.name, plan.fn)
+	}
 
 	result.CompletedAt = time.Now()
 	result.Duration = result.CompletedAt.Sub(start)
@@ -277,16 +331,15 @@ func (s *SentinelOneProvider) syncAgents(ctx context.Context) (*TableResult, err
 	return s.syncTable(ctx, schema, rows)
 }
 
-func (s *SentinelOneProvider) syncThreats(ctx context.Context) (*TableResult, error) {
+func (s *SentinelOneProvider) syncThreats(ctx context.Context, since *time.Time) (*TableResult, error) {
 	schema, err := s.schemaFor("sentinelone_threats")
 	result := &TableResult{Name: "sentinelone_threats"}
 	if err != nil {
 		return result, err
 	}
 
-	// Get threats from last 30 days
-	createdAfter := time.Now().AddDate(0, 0, -30).Format(time.RFC3339)
-	path := fmt.Sprintf("/web/api/v2.1/threats?limit=1000&createdAt__gt=%s", createdAfter)
+	createdAfter := sentinelOneSince(since, 30).Format(time.RFC3339)
+	path := addQueryParams("/web/api/v2.1/threats?limit=1000", map[string]string{"createdAt__gt": createdAfter})
 
 	threats, err := s.listCollection(ctx, path, "")
 	if err != nil {
@@ -295,7 +348,7 @@ func (s *SentinelOneProvider) syncThreats(ctx context.Context) (*TableResult, er
 
 	rows := make([]map[string]interface{}, 0, len(threats))
 	for _, threat := range threats {
-		row := normalizeSentinelOneRow(threat)
+		row := normalizeSentinelOneThreat(threat)
 		ensureSentinelOneRowID(row, "agent_id", "file_sha256", "threat_name")
 		rows = append(rows, row)
 	}
@@ -303,16 +356,15 @@ func (s *SentinelOneProvider) syncThreats(ctx context.Context) (*TableResult, er
 	return s.syncTable(ctx, schema, rows)
 }
 
-func (s *SentinelOneProvider) syncActivities(ctx context.Context) (*TableResult, error) {
+func (s *SentinelOneProvider) syncActivities(ctx context.Context, since *time.Time) (*TableResult, error) {
 	schema, err := s.schemaFor("sentinelone_activities")
 	result := &TableResult{Name: "sentinelone_activities"}
 	if err != nil {
 		return result, err
 	}
 
-	// Get activities from last 7 days
-	createdAfter := time.Now().AddDate(0, 0, -7).Format(time.RFC3339)
-	path := fmt.Sprintf("/web/api/v2.1/activities?limit=1000&createdAt__gt=%s", createdAfter)
+	createdAfter := sentinelOneSince(since, 7).Format(time.RFC3339)
+	path := addQueryParams("/web/api/v2.1/activities?limit=1000", map[string]string{"createdAt__gt": createdAfter})
 
 	activities, err := s.listCollection(ctx, path, "")
 	if err != nil {
@@ -364,22 +416,29 @@ func (s *SentinelOneProvider) syncVulnerabilities(ctx context.Context) (*TableRe
 		return result, err
 	}
 
-	vulnerabilities, err := s.listCollection(ctx, "/web/api/v2.1/vulnerabilities?limit=1000", "")
+	sites, err := s.listCollection(ctx, "/web/api/v2.1/sites?limit=200", "sites")
 	if err != nil {
 		return result, err
 	}
 
-	rows := make([]map[string]interface{}, 0, len(vulnerabilities))
-	for _, vulnerability := range vulnerabilities {
-		row := normalizeSentinelOneRow(vulnerability)
-		if row["application_name"] == nil {
-			row["application_name"] = firstSentinelOneValue(row, "name", "app_name")
+	rows := make([]map[string]interface{}, 0)
+	for _, site := range sites {
+		siteID := strings.TrimSpace(providerStringValue(site["id"]))
+		if siteID == "" {
+			continue
 		}
-		if row["application_version"] == nil {
-			row["application_version"] = firstSentinelOneValue(row, "version", "app_version")
+
+		path := addQueryParams("/web/api/v2.1/application-management/risks?limit=1000", map[string]string{"siteIds": siteID})
+		vulnerabilities, err := s.listCollection(ctx, path, "")
+		if err != nil {
+			return result, err
 		}
-		ensureSentinelOneRowID(row, "agent_id", "cve_id", "application_name", "application_version")
-		rows = append(rows, row)
+
+		for _, vulnerability := range vulnerabilities {
+			row := normalizeSentinelOneVulnerability(vulnerability, siteID)
+			ensureSentinelOneRowID(row, "agent_id", "cve_id", "application_name", "application_version")
+			rows = append(rows, row)
+		}
 	}
 
 	return s.syncTable(ctx, schema, rows)
@@ -487,6 +546,99 @@ func normalizeSentinelOneRow(row map[string]interface{}) map[string]interface{} 
 		return map[string]interface{}{}
 	}
 	return normalized
+}
+
+func normalizeSentinelOneThreat(threat map[string]interface{}) map[string]interface{} {
+	row := normalizeSentinelOneRow(threat)
+	threatInfo := sentinelOneMapValue(row, "threat_info")
+	agentRealtime := sentinelOneMapValue(row, "agent_realtime_info")
+	agentDetection := sentinelOneMapValue(row, "agent_detection_info")
+	indicators := sentinelOneMapValue(row, "indicators")
+
+	fillSentinelOneValue(row, "id", threatInfo, "threat_id", "id")
+	fillSentinelOneValue(row, "agent_id", agentRealtime, "agent_id", "id")
+	fillSentinelOneValue(row, "agent_id", agentDetection, "agent_id", "id")
+	fillSentinelOneValue(row, "agent_computer_name", agentRealtime, "agent_computer_name", "computer_name")
+	fillSentinelOneValue(row, "agent_computer_name", agentDetection, "agent_computer_name", "computer_name")
+	fillSentinelOneValue(row, "threat_name", threatInfo, "threat_name", "name")
+	fillSentinelOneValue(row, "classification", threatInfo, "classification")
+	fillSentinelOneValue(row, "classification_source", threatInfo, "classification_source")
+	fillSentinelOneValue(row, "confidence_level", threatInfo, "confidence_level")
+	fillSentinelOneValue(row, "analyst_verdict", threatInfo, "analyst_verdict")
+	fillSentinelOneValue(row, "incident_status", threatInfo, "incident_status")
+	fillSentinelOneValue(row, "mitigation_status", threatInfo, "mitigation_status")
+	fillSentinelOneValue(row, "initiated_by", threatInfo, "initiated_by")
+	fillSentinelOneValue(row, "file_path", threatInfo, "file_path")
+	fillSentinelOneValue(row, "file_sha256", threatInfo, "sha256", "file_sha256")
+	fillSentinelOneValue(row, "file_sha1", threatInfo, "sha1", "file_sha1")
+	fillSentinelOneValue(row, "file_md5", threatInfo, "md5", "file_md5")
+	fillSentinelOneValue(row, "mitre_tactics", indicators, "mitre_tactics")
+	fillSentinelOneValue(row, "mitre_techniques", indicators, "mitre_techniques")
+	fillSentinelOneValue(row, "created_at", threatInfo, "created_at")
+	fillSentinelOneValue(row, "updated_at", threatInfo, "updated_at")
+
+	return row
+}
+
+func normalizeSentinelOneVulnerability(vulnerability map[string]interface{}, siteID string) map[string]interface{} {
+	row := normalizeSentinelOneRow(vulnerability)
+	if strings.TrimSpace(providerStringValue(row["site_id"])) == "" {
+		row["site_id"] = siteID
+	}
+	if row["agent_id"] == nil {
+		row["agent_id"] = firstSentinelOneValue(row, "endpoint_id")
+	}
+	if row["application_name"] == nil {
+		row["application_name"] = firstSentinelOneValue(row, "application", "name", "app_name")
+	}
+	if row["application_version"] == nil {
+		row["application_version"] = firstSentinelOneValue(row, "version", "app_version")
+	}
+	if row["cvss_score"] == nil {
+		row["cvss_score"] = firstSentinelOneValue(row, "base_score")
+	}
+	if row["days_since_detection"] == nil {
+		row["days_since_detection"] = firstSentinelOneValue(row, "days_detected")
+	}
+	if row["detected_at"] == nil {
+		row["detected_at"] = firstSentinelOneValue(row, "detection_date")
+	}
+	if row["remediation_action"] == nil {
+		row["remediation_action"] = firstSentinelOneValue(row, "reason", "last_scan_result")
+	}
+	return row
+}
+
+func sentinelOneSince(since *time.Time, defaultDays int) time.Time {
+	if since != nil && !since.IsZero() {
+		return since.UTC()
+	}
+	return time.Now().AddDate(0, 0, -defaultDays).UTC()
+}
+
+func sentinelOneMapValue(row map[string]interface{}, key string) map[string]interface{} {
+	value, ok := row[key]
+	if !ok || value == nil {
+		return nil
+	}
+	asMap, ok := value.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	return asMap
+}
+
+func fillSentinelOneValue(row map[string]interface{}, target string, source map[string]interface{}, keys ...string) {
+	if row == nil || source == nil {
+		return
+	}
+	if value, ok := row[target]; ok && value != nil && strings.TrimSpace(providerStringValue(value)) != "" {
+		return
+	}
+	value := firstSentinelOneValue(source, keys...)
+	if value != nil {
+		row[target] = value
+	}
 }
 
 func ensureSentinelOneRowID(row map[string]interface{}, fallbackKeys ...string) {

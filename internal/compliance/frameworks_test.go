@@ -243,6 +243,36 @@ func TestDSPMPolicyMappingsInFrameworks(t *testing.T) {
 	}
 }
 
+func TestSentinelOnePolicyMappingsInFrameworks(t *testing.T) {
+	tests := []struct {
+		policyID   string
+		frameworks []string
+	}{
+		{"endpoint-sentinelone-active", []string{"soc2-type2", "pci-dss-4.0", "hipaa-security"}},
+		{"sentinelone-vuln-medium", []string{"soc2-type2", "pci-dss-4.0", "hipaa-security"}},
+		{"sentinelone-malware", []string{"soc2-type2", "pci-dss-4.0", "hipaa-security"}},
+		{"sentinelone-ransomware", []string{"soc2-type2", "pci-dss-4.0", "hipaa-security"}},
+		{"sentinelone-command-control", []string{"soc2-type2", "pci-dss-4.0", "hipaa-security"}},
+	}
+
+	for _, tt := range tests {
+		controls := GetControlsForPolicy(tt.policyID)
+		if len(controls) == 0 {
+			t.Fatalf("expected %s to map to compliance controls", tt.policyID)
+		}
+
+		frameworks := make(map[string]bool, len(controls))
+		for _, control := range controls {
+			frameworks[control.Framework.ID] = true
+		}
+		for _, frameworkID := range tt.frameworks {
+			if !frameworks[frameworkID] {
+				t.Fatalf("expected %s to map to %s, got %+v", tt.policyID, frameworkID, frameworks)
+			}
+		}
+	}
+}
+
 func TestSeverityWeight(t *testing.T) {
 	tests := []struct {
 		severity ControlSeverity
