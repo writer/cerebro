@@ -27,11 +27,17 @@ func ParseURN(raw string) (URN, error) {
 		return "", fmt.Errorf("invalid cerebro urn %q", value)
 	}
 	parts := strings.Split(value, ":")
+	if len(parts) > 3 && parts[3] == "runtime" && (len(parts) < 7 || parts[5] == "") {
+		return "", fmt.Errorf("invalid cerebro urn %q", value)
+	}
 	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
 		return "", fmt.Errorf("invalid cerebro urn %q", value)
 	}
-	for _, part := range parts[2:] {
-		if strings.TrimSpace(part) == "" || strings.TrimSpace(part) != part {
+	if parts[len(parts)-1] == "" {
+		return "", fmt.Errorf("invalid cerebro urn %q", value)
+	}
+	for i, part := range parts[2:] {
+		if strings.TrimSpace(part) != part || (i < 3 && part == "") {
 			return "", fmt.Errorf("invalid cerebro urn %q", value)
 		}
 	}
@@ -92,7 +98,7 @@ type Registry struct {
 func NewRegistry(sources ...Source) (*Registry, error) {
 	indexed := make(map[string]Source, len(sources))
 	for _, source := range sources {
-		if isNilSource(source) {
+		if sourceIsNil(source) {
 			return nil, fmt.Errorf("source is required")
 		}
 		spec := source.Spec()
@@ -115,13 +121,13 @@ func NewRegistry(sources ...Source) (*Registry, error) {
 	return &Registry{sources: indexed}, nil
 }
 
-func isNilSource(source Source) bool {
+func sourceIsNil(source Source) bool {
 	if source == nil {
 		return true
 	}
 	value := reflect.ValueOf(source)
 	switch value.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
 		return value.IsNil()
 	default:
 		return false

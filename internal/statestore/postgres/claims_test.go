@@ -57,7 +57,7 @@ func TestUpsertClaimRejectsUnconfiguredStore(t *testing.T) {
 	}
 }
 
-func TestListClaimsRejectsMissingRuntimeID(t *testing.T) {
+func TestListClaimsRejectsUnscopedRequest(t *testing.T) {
 	store := &Store{}
 	if _, err := store.ListClaims(context.Background(), ports.ListClaimsRequest{}); err == nil {
 		t.Fatal("ListClaims() error = nil, want non-nil")
@@ -82,6 +82,14 @@ func TestClaimSchemaScopesPrimaryKeyByTenantAndRuntime(t *testing.T) {
 		!strings.Contains(migration, "ARRAY['id']") ||
 		!strings.Contains(migration, "DROP CONSTRAINT IF EXISTS") {
 		t.Fatalf("claims schema migration does not conditionally replace legacy id-only primary key:\n%s", migration)
+	}
+}
+
+func TestClaimSchemaIncludesTenantRelationSupportIndex(t *testing.T) {
+	joined := strings.Join(ensureClaimStatements, "\n")
+	want := "claims_tenant_relation_support_idx ON claims (tenant_id, subject_urn, predicate, object_urn, claim_type, status)"
+	if !strings.Contains(joined, want) {
+		t.Fatalf("claims schema missing tenant relation support index %q:\n%s", want, joined)
 	}
 }
 

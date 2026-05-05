@@ -88,6 +88,7 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
   const admins = objectArray(posture.admins, "posture.admins");
   const projects = objectArray(posture.projects, "posture.projects");
   const apps = objectArray(posture.apps, "posture.apps");
+  const adminEmails = new Set(admins.map((admin) => requireValue(admin.email, "posture.admins[].email").toLowerCase()));
 
   const claims: Claim[] = [
     integration.exists(workspaceRef, sharedOptions),
@@ -136,13 +137,13 @@ export function buildJiraWorkspaceClaims(integration: IntegrationClient, posture
       boolValue(posture.approvedMarketplaceAppsOnly, true),
       sharedOptions,
     ),
-    integration.attr(workspaceRef, "admin_count", String(admins.length), sharedOptions),
+    integration.attr(workspaceRef, "admin_count", String(adminEmails.size), sharedOptions),
     integration.attr(workspaceRef, "project_count", String(projects.length), sharedOptions),
     integration.attr(workspaceRef, "installed_app_count", String(apps.length), sharedOptions),
   ];
 
   for (const admin of admins) {
-    const email = requireValue(admin.email, "posture.admins[].email");
+    const email = requireValue(admin.email, "posture.admins[].email").toLowerCase();
     const adminRef = integration.ref("user", email, optionalString(admin.displayName) || email);
     claims.push(integration.exists(adminRef, sharedOptions));
     claims.push(integration.rel(adminRef, "administers", workspaceRef, sharedOptions));
@@ -288,7 +289,14 @@ export function buildJiraPostureFindings(
   }
 
   const relationCounts = asNumberRecord(graphSummary["relation_counts_by_type"]);
-  const adminCount = relationCounts.administers ?? 0;
+  const postureAdminEmails = new Set(
+    objectArray(posture.admins, "posture.admins")
+      .map((admin) => optionalString(admin.email))
+      .filter((email): email is string => email !== undefined)
+      .map((email) => email.toLowerCase()),
+  );
+  const postureAdminCount = postureAdminEmails.size;
+  const adminCount = Math.max(relationCounts.administers ?? 0, postureAdminCount);
   if (adminCount > 5) {
     findings.push(
       finding(
@@ -382,7 +390,7 @@ export async function onboardJiraWorkspacePosture(
   await integration.ensureRuntime(runtimeConfig);
   const writeResult = await integration.writeClaims(claims, { replace_existing: true });
   const persisted = await integration.listClaims({
-    limit: 100,
+    limit: claims.length,
     status: "asserted",
     ...(sourceEventId ? { source_event_id: sourceEventId } : {}),
   });

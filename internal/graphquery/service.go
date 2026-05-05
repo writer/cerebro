@@ -43,10 +43,10 @@ func (s *Service) GetEntityNeighborhood(ctx context.Context, request Neighborhoo
 	if s == nil || s.store == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	rootURN := strings.TrimSpace(request.RootURN)
-	if rootURN == "" {
+	if strings.TrimSpace(request.RootURN) == "" {
 		return nil, fmt.Errorf("%w: root urn is required", ErrInvalidRequest)
 	}
+	rootURN := request.RootURN
 	if err := validateCerebroURN(rootURN); err != nil {
 		return nil, err
 	}
@@ -54,17 +54,21 @@ func (s *Service) GetEntityNeighborhood(ctx context.Context, request Neighborhoo
 }
 
 // validateCerebroURN rejects malformed root URN inputs so the API can surface
-// 400 InvalidArgument instead of 404 NotFound for caller mistakes. It mirrors
-// the canonical root shape: required scheme prefix, non-empty tenant/entity/id
-// segments, and no whitespace-padded required segments.
+// 400 InvalidArgument instead of 404 NotFound for caller mistakes while still
+// allowing colon-delimited IDs such as embedded AWS ARNs.
 func validateCerebroURN(urn string) error {
 	parts := strings.Split(urn, ":")
 	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" {
 		return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", ErrInvalidRequest)
 	}
-	for i := 2; i < 5; i++ {
-		segment := parts[i]
-		if segment == "" || strings.TrimSpace(segment) != segment {
+	if parts[len(parts)-1] == "" {
+		return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", ErrInvalidRequest)
+	}
+	if len(parts) > 3 && parts[3] == "runtime" && (len(parts) < 7 || parts[5] == "") {
+		return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:runtime:<runtime_id>:<entity_type>:<id>", ErrInvalidRequest)
+	}
+	for i, part := range parts[2:] {
+		if strings.TrimSpace(part) != part || (i < 3 && part == "") {
 			return fmt.Errorf("%w: root urn must be of the form urn:cerebro:<tenant>:<entity_type>:<id>", ErrInvalidRequest)
 		}
 	}

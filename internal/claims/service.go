@@ -26,36 +26,58 @@ const (
 	claimStatusRetracted    = "retracted"
 	claimStatusRefuted      = "refuted"
 	claimStatusSuperseded   = "superseded"
+
+	supportingRelationClaimLookupLimit uint32 = 2
 )
 
 var (
 	// ErrRuntimeUnavailable indicates that the runtime or claim store boundary is unavailable.
 	ErrRuntimeUnavailable = errors.New("claim runtime is unavailable")
 	ErrInvalidRequest     = errors.New("invalid claim request")
+
+	sharedRuntimeWriteLocks = newRuntimeLockSet()
 )
 
-// runtimeWriteLocks serializes WriteClaims requests per runtime so that a
-// replace_existing snapshot cannot interleave with another write batch for
-// the same runtime and retract its freshly asserted rows. The locks live at
-// package scope so two concurrent requests that build separate
-// claims.Service instances (App.claimService and bootstrapService.WriteClaims
-// each call claims.New) still share the same mutex per runtime ID. This
-// protects in-process concurrency only; cross-process callers must rely on a
-// shared advisory lock when one is available.
-var (
-	runtimeWriteLocksGuard sync.Mutex
-	runtimeWriteLocks      = map[string]*sync.Mutex{}
-)
+type runtimeLockSet struct {
+	guard sync.Mutex
+	locks map[string]*runtimeLockEntry
+}
 
-func runtimeWriteLockFor(runtimeID string) *sync.Mutex {
-	runtimeWriteLocksGuard.Lock()
-	defer runtimeWriteLocksGuard.Unlock()
-	lock, ok := runtimeWriteLocks[runtimeID]
-	if !ok {
-		lock = &sync.Mutex{}
-		runtimeWriteLocks[runtimeID] = lock
+type runtimeLockEntry struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func newRuntimeLockSet() *runtimeLockSet {
+	return &runtimeLockSet{locks: make(map[string]*runtimeLockEntry)}
+}
+
+func (s *runtimeLockSet) acquire(runtimeID string) *runtimeLockEntry {
+	s.guard.Lock()
+	defer s.guard.Unlock()
+	if s.locks == nil {
+		s.locks = make(map[string]*runtimeLockEntry)
 	}
+	lock, ok := s.locks[runtimeID]
+	if !ok {
+		lock = &runtimeLockEntry{}
+		s.locks[runtimeID] = lock
+	}
+	lock.refs++
 	return lock
+}
+
+func (s *runtimeLockSet) release(runtimeID string, entry *runtimeLockEntry) {
+	s.guard.Lock()
+	defer s.guard.Unlock()
+	current, ok := s.locks[runtimeID]
+	if !ok || current != entry {
+		return
+	}
+	current.refs--
+	if current.refs <= 0 {
+		delete(s.locks, runtimeID)
+	}
 }
 
 // Service reads and writes runtime-scoped claims into the state store and optional projections.
@@ -110,6 +132,22 @@ func New(runtimeStore ports.SourceRuntimeStore, store ports.ClaimStore, state po
 	}
 }
 
+// runtimeWriteLock serializes concurrent in-process WriteClaims executions for
+// the same tenant when available, including services constructed independently
+// per request.
+func (s *Service) runtimeWriteLock(runtimeID string, runtime *cerebrov1.SourceRuntime) func() {
+	lockID := "runtime:" + runtimeID
+	if tenantID := strings.TrimSpace(runtime.GetTenantId()); tenantID != "" {
+		lockID = "tenant:" + tenantID
+	}
+	lock := sharedRuntimeWriteLocks.acquire(lockID)
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		sharedRuntimeWriteLocks.release(lockID, lock)
+	}
+}
+
 // WriteClaims persists one runtime-scoped claim batch.
 func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*WriteResult, error) {
 	if s == nil || s.runtimeStore == nil || s.store == nil {
@@ -123,9 +161,12 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 	if err != nil {
 		return nil, err
 	}
-	lock := runtimeWriteLockFor(runtimeID)
-	lock.Lock()
-	defer lock.Unlock()
+	lockRuntimeID := strings.TrimSpace(runtime.GetId())
+	if lockRuntimeID == "" {
+		lockRuntimeID = runtimeID
+	}
+	unlock := s.runtimeWriteLock(lockRuntimeID, runtime)
+	defer unlock()
 	result := &WriteResult{}
 	upsertedEntities := make(map[string]struct{})
 	upsertedLinks := make(map[string]struct{})
@@ -138,6 +179,10 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 		normalizedClaims = append(normalizedClaims, claim)
 	}
 	for _, claim := range normalizedClaims {
+		previousRelation, err := s.existingAssertedRelation(ctx, runtime, claim.GetId())
+		if err != nil {
+			return nil, err
+		}
 		if _, err := s.store.UpsertClaim(ctx, claimRecord(runtime, claim)); err != nil {
 			return nil, fmt.Errorf("persist claim %q: %w", claim.GetId(), err)
 		}
@@ -161,7 +206,8 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 			}
 		}
 		if retracted := retractedRelation(runtime, claim); retracted != nil {
-			if err := s.deleteLink(ctx, retracted); err != nil {
+			_, err := s.deleteRelationIfUnsupported(ctx, runtime, claim, retracted)
+			if err != nil {
 				return nil, err
 			}
 			delete(upsertedLinks, projectedLinkKey(retracted))
@@ -174,6 +220,12 @@ func (s *Service) WriteClaims(ctx context.Context, request WriteRequest) (*Write
 			if wrote {
 				result.RelationLinksProjected++
 			}
+		}
+		if err := s.deleteStaleRelation(ctx, runtime, claim, previousRelation); err != nil {
+			return nil, err
+		}
+		if previousKey := projectedLinkKey(previousRelation); previousKey != "" && previousKey != projectedLinkKey(relationLink(runtime, claim)) {
+			delete(upsertedLinks, previousKey)
 		}
 	}
 	if request.ReplaceExisting {
@@ -254,15 +306,133 @@ func (s *Service) retractMissingClaims(ctx context.Context, runtime *cerebrov1.S
 		if _, ok := incomingIDs[strings.TrimSpace(existingClaim.ID)]; ok {
 			continue
 		}
-		if err := s.deleteLink(ctx, projectedRelation(runtime, protoClaim(existingClaim))); err != nil {
-			return retracted, err
-		}
+		link := projectedRelation(runtime, protoClaim(existingClaim))
 		if _, err := s.store.UpsertClaim(ctx, retractedClaim(existingClaim, retractAt, snapshotEventID)); err != nil {
 			return retracted, fmt.Errorf("retract claim %q: %w", existingClaim.ID, err)
+		}
+		_, err := s.deleteRelationIfUnsupported(ctx, runtime, protoClaim(existingClaim), link)
+		if err != nil {
+			return retracted, err
 		}
 		retracted++
 	}
 	return retracted, nil
+}
+
+func (s *Service) deleteRelationIfUnsupported(ctx context.Context, runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim, link *ports.ProjectedLink) (bool, error) {
+	if link == nil {
+		return false, nil
+	}
+	support, err := s.supportingAssertedRelation(ctx, runtime, strings.TrimSpace(claim.GetId()), link)
+	if err != nil {
+		return false, err
+	}
+	if support != nil {
+		if _, err := s.upsertLink(ctx, support, map[string]struct{}{}); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if err := s.deleteLink(ctx, link); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Service) existingAssertedRelation(ctx context.Context, runtime *cerebrov1.SourceRuntime, claimID string) (*ports.ProjectedLink, error) {
+	claimID = strings.TrimSpace(claimID)
+	if claimID == "" {
+		return nil, nil
+	}
+	existing, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
+		RuntimeID: strings.TrimSpace(runtime.GetId()),
+		TenantID:  strings.TrimSpace(runtime.GetTenantId()),
+		ClaimID:   claimID,
+		Limit:     1,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("load existing claim %q: %w", claimID, err)
+	}
+	if len(existing) == 0 {
+		return nil, nil
+	}
+	return projectedRelation(runtime, protoClaim(existing[0])), nil
+}
+
+func (s *Service) deleteStaleRelation(ctx context.Context, runtime *cerebrov1.SourceRuntime, claim *cerebrov1.Claim, previous *ports.ProjectedLink) error {
+	if previous == nil {
+		return nil
+	}
+	current := relationLink(runtime, claim)
+	if projectedLinkKey(previous) == projectedLinkKey(current) {
+		return nil
+	}
+	support, err := s.supportingAssertedRelation(ctx, runtime, strings.TrimSpace(claim.GetId()), previous)
+	if err != nil {
+		return err
+	}
+	if support != nil {
+		_, err := s.upsertLink(ctx, support, map[string]struct{}{})
+		return err
+	}
+	return s.deleteLink(ctx, previous)
+}
+
+func (s *Service) supportingAssertedRelation(ctx context.Context, runtime *cerebrov1.SourceRuntime, claimID string, link *ports.ProjectedLink) (*ports.ProjectedLink, error) {
+	if link == nil {
+		return nil, nil
+	}
+	runtimeID := strings.TrimSpace(runtime.GetId())
+	claims, err := s.store.ListClaims(ctx, ports.ListClaimsRequest{
+		TenantID:   strings.TrimSpace(runtime.GetTenantId()),
+		SubjectURN: strings.TrimSpace(link.FromURN),
+		Predicate:  strings.TrimSpace(link.Relation),
+		ObjectURN:  strings.TrimSpace(link.ToURN),
+		ClaimType:  claimTypeRelation,
+		Status:     claimStatusAsserted,
+		Limit:      supportingRelationClaimLookupLimit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list supporting claims for link %q: %w", projectedLinkKey(link), err)
+	}
+	for _, claim := range claims {
+		if claim == nil {
+			continue
+		}
+		if strings.TrimSpace(claim.ID) == claimID && strings.TrimSpace(claim.RuntimeID) == runtimeID {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(claim.Status), claimStatusAsserted) {
+			continue
+		}
+		supportRuntime, err := s.runtimeForClaim(ctx, runtime, claim)
+		if err != nil {
+			return nil, err
+		}
+		return projectedRelation(supportRuntime, protoClaim(claim)), nil
+	}
+	return nil, nil
+}
+
+func (s *Service) runtimeForClaim(ctx context.Context, fallback *cerebrov1.SourceRuntime, claim *ports.ClaimRecord) (*cerebrov1.SourceRuntime, error) {
+	if claim == nil {
+		return fallback, nil
+	}
+	runtimeID := strings.TrimSpace(claim.RuntimeID)
+	if runtimeID == "" || runtimeID == strings.TrimSpace(fallback.GetId()) {
+		return fallback, nil
+	}
+	if s.runtimeStore == nil {
+		return nil, fmt.Errorf("load supporting runtime %q: runtime store unavailable", runtimeID)
+	}
+	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
+	if err != nil {
+		if errors.Is(err, ports.ErrSourceRuntimeNotFound) {
+			return fallback, nil
+		}
+		return nil, fmt.Errorf("load supporting runtime %q: %w", runtimeID, err)
+	}
+	return runtime, nil
 }
 
 func (s *Service) deleteLink(ctx context.Context, link *ports.ProjectedLink) error {
@@ -431,10 +601,16 @@ func normalizeClaim(claim *cerebrov1.Claim, runtime *cerebrov1.SourceRuntime) (*
 	if err := validateRuntimeURN(runtime, normalized.GetSubjectUrn(), "subject"); err != nil {
 		return nil, err
 	}
+	if err := validateEntityRef(runtime, normalized.GetSubjectUrn(), normalized.GetSubjectRef(), "subject"); err != nil {
+		return nil, err
+	}
 	if normalized.GetObjectUrn() != "" {
 		if err := validateRuntimeURN(runtime, normalized.GetObjectUrn(), "object"); err != nil {
 			return nil, err
 		}
+	}
+	if err := validateEntityRef(runtime, normalized.GetObjectUrn(), normalized.GetObjectRef(), "object"); err != nil {
+		return nil, err
 	}
 	if normalized.GetPredicate() == "" {
 		return nil, fmt.Errorf("%w: claim predicate is required", ErrInvalidRequest)
@@ -471,10 +647,70 @@ func validateRuntimeURN(runtime *cerebrov1.SourceRuntime, urn string, field stri
 		return nil
 	}
 	normalizedURN := strings.TrimSpace(urn)
-	if strings.HasPrefix(normalizedURN, "urn:cerebro:"+tenantID+":") {
+	parts := strings.Split(normalizedURN, ":")
+	if len(parts) < 5 || parts[0] != "urn" || parts[1] != "cerebro" || parts[len(parts)-1] == "" {
+		return fmt.Errorf("%w: claim %s urn is malformed", ErrInvalidRequest, field)
+	}
+	for i, part := range parts[2:] {
+		if strings.TrimSpace(part) != part || (i < 3 && part == "") {
+			return fmt.Errorf("%w: claim %s urn is malformed", ErrInvalidRequest, field)
+		}
+	}
+	if !strings.HasPrefix(normalizedURN, "urn:cerebro:"+tenantID+":") {
+		return fmt.Errorf("%w: claim %s urn must belong to tenant %q", ErrInvalidRequest, field, tenantID)
+	}
+	runtimeID := strings.TrimSpace(runtime.GetId())
+	if runtimeID == "" {
 		return nil
 	}
-	return fmt.Errorf("%w: claim %s urn must belong to tenant %q", ErrInvalidRequest, field, tenantID)
+	if len(parts) > 4 && parts[3] == "runtime" {
+		if len(parts) < 7 || parts[5] == "" {
+			return fmt.Errorf("%w: claim %s urn is malformed", ErrInvalidRequest, field)
+		}
+		if parts[4] != runtimeID {
+			return fmt.Errorf("%w: claim %s urn must belong to runtime %q", ErrInvalidRequest, field, runtimeID)
+		}
+	}
+	return nil
+}
+
+func validateEntityRef(runtime *cerebrov1.SourceRuntime, fieldURN string, ref *cerebrov1.EntityRef, field string) error {
+	if ref == nil {
+		return nil
+	}
+	urn := strings.TrimSpace(ref.GetUrn())
+	if urn == "" {
+		return nil
+	}
+	if err := validateRuntimeURN(runtime, urn, field+" ref"); err != nil {
+		return err
+	}
+	if normalizedFieldURN := strings.TrimSpace(fieldURN); normalizedFieldURN != "" && normalizedFieldURN != urn {
+		return fmt.Errorf("%w: claim %s ref urn must match claim %s urn", ErrInvalidRequest, field, field)
+	}
+	if refType := strings.TrimSpace(ref.GetEntityType()); refType != "" {
+		if urnType := entityTypeFromURN(urn); urnType != "" && !entityTypesMatch(urnType, refType) {
+			return fmt.Errorf("%w: claim %s ref entity_type must match urn type %q", ErrInvalidRequest, field, urnType)
+		}
+	}
+	return nil
+}
+
+func entityTypesMatch(urnType string, refType string) bool {
+	urnType = strings.TrimSpace(urnType)
+	refType = strings.TrimSpace(refType)
+	return urnType == refType || strings.ReplaceAll(refType, ".", "_") == urnType || strings.HasPrefix(refType, urnType+".")
+}
+
+func entityTypeFromURN(urn string) string {
+	parts := strings.Split(strings.TrimSpace(urn), ":")
+	if len(parts) > 5 && parts[3] == "runtime" {
+		return strings.TrimSpace(parts[5])
+	}
+	if len(parts) > 3 {
+		return strings.TrimSpace(parts[3])
+	}
+	return ""
 }
 
 func normalizeEntityRef(ref *cerebrov1.EntityRef, fallbackURN string) *cerebrov1.EntityRef {

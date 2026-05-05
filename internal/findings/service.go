@@ -335,15 +335,8 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	for _, rule := range rules {
 		run := newFindingEvaluationRun(runtimeID, rule.Spec().GetId(), normalizedLimit, startedAt)
 		if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
-			persistErr := fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
-			// Mark every previously persisted run failed so the durable run history
-			// does not leave them stuck in `running` when later persistence fails.
-			for _, prior := range states {
-				if failErr := s.markRuleEvaluationFailed(ctx, prior, persistErr); failErr != nil {
-					return nil, failErr
-				}
-			}
-			return nil, persistErr
+			evaluationErr := fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
 		}
 		state := &ruleEvaluationState{
 			rule:        rule,
@@ -362,12 +355,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 	})
 	if err != nil {
 		evaluationErr := fmt.Errorf("replay runtime %q events: %w", runtimeID, err)
-		for _, state := range states {
-			if failErr := s.markRuleEvaluationFailed(ctx, state, evaluationErr); failErr != nil {
-				return nil, failErr
-			}
-		}
-		return nil, evaluationErr
+		return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
 	}
 	result.EventsEvaluated = uint32(len(events))
 	for _, event := range events {
@@ -378,7 +366,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			emitted, err := state.rule.Evaluate(ctx, runtime, event)
 			if err != nil {
 				if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("evaluate finding rule %q for event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
-					return nil, failErr
+					return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 				}
 				continue
 			}
@@ -390,14 +378,14 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				record, err = s.reconcileLegacyFindingIdentity(ctx, record)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("reconcile finding identity for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
-						return nil, failErr
+						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
 				stored, err := s.store.UpsertFinding(ctx, record)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist finding for rule %q event %q: %w", state.result.Rule.GetId(), event.GetId(), err)); failErr != nil {
-						return nil, failErr
+						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
@@ -405,14 +393,14 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				evidence, err := s.buildFindingEvidence(ctx, stored, state.result.Run)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)); failErr != nil {
-						return nil, failErr
+						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
 				if _, seen := state.evidenceIDs[evidence.GetId()]; !seen {
 					if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
 						if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("persist evidence for finding %q: %w", stored.ID, err)); failErr != nil {
-							return nil, failErr
+							return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 						}
 						break
 					}
@@ -421,7 +409,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 				}
 				if err := s.projectFindingAnchor(ctx, stored); err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("project finding %q graph anchor: %w", stored.ID, err)); failErr != nil {
-						return nil, failErr
+						return nil, s.markRuleEvaluationsFailed(ctx, states, failErr)
 					}
 					break
 				}
@@ -433,7 +421,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			continue
 		}
 		if err := s.finishCompletedRun(ctx, state.result.Run, state.eventsEvaluated, findingIDs(state.result.Findings)); err != nil {
-			return nil, err
+			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), err)
 		}
 	}
 	return result, nil
@@ -864,7 +852,6 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 	if state == nil || state.result == nil || state.result.Run == nil {
 		return evaluationErr
 	}
-	state.failed = true
 	run := state.result.Run
 	run.Status = "failed"
 	run.EventsEvaluated = state.eventsEvaluated
@@ -873,7 +860,36 @@ func (s *Service) markRuleEvaluationFailed(ctx context.Context, state *ruleEvalu
 	run.Error = strings.TrimSpace(evaluationErr.Error())
 	run.FinishedAt = timestamppb.New(time.Now().UTC())
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
-		return fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+		return errors.Join(
+			evaluationErr,
+			fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err),
+		)
+	}
+	state.failed = true
+	return nil
+}
+
+func (s *Service) markRuleEvaluationsFailed(ctx context.Context, states []*ruleEvaluationState, evaluationErr error) error {
+	var cleanupErr error
+	for _, state := range states {
+		if state != nil && state.failed {
+			continue
+		}
+		if failErr := s.markRuleEvaluationFailed(ctx, state, evaluationErr); failErr != nil {
+			cleanupErr = errors.Join(cleanupErr, failErr)
+		}
+	}
+	if cleanupErr != nil {
+		return errors.Join(evaluationErr, cleanupErr)
+	}
+	return evaluationErr
+}
+
+func unfinishedRuleEvaluations(states []*ruleEvaluationState, first *ruleEvaluationState) []*ruleEvaluationState {
+	for index, state := range states {
+		if state == first {
+			return states[index:]
+		}
 	}
 	return nil
 }

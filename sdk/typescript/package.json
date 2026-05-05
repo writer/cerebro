@@ -2,9 +2,9 @@
   "name": "@writer/cerebro-sdk",
   "version": "0.1.0",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./src/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./jira": "./src/jira.ts"
+    ".": "./src/index.js",
+    "./jira": "./src/jira.js"
   }
 }
