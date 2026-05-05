@@ -113,6 +113,9 @@ func (s *Server) syncProvider(w http.ResponseWriter, r *http.Request) {
 		s.errorFromErr(w, err)
 		return
 	}
+	if result != nil && shouldApplyProviderGraphUpdate(name) {
+		result.GraphUpdate = serverSyncHandlerService{deps: s.app}.applySecurityGraphUpdateAfterSync(r.Context(), name, false)
+	}
 	s.json(w, http.StatusOK, result)
 }
 
@@ -156,4 +159,13 @@ func (s *Server) testProvider(w http.ResponseWriter, r *http.Request) {
 func includeIncompleteProviders(r *http.Request) bool {
 	include := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("include_incomplete")))
 	return include == "1" || include == "true" || include == "yes"
+}
+
+func shouldApplyProviderGraphUpdate(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "sentinelone", "github":
+		return true
+	default:
+		return false
+	}
 }

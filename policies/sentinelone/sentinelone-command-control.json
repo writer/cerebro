@@ -20,5 +20,33 @@
     "threat-detection",
     "mitre-ta0011"
   ],
-  "remediation": "Immediately isolate endpoint from network. Block C2 domains/IPs at perimeter. Conduct forensic investigation. Engage incident response procedures. Hunt for lateral movement."
+  "remediation": "Immediately isolate endpoint from network. Block C2 domains/IPs at perimeter. Conduct forensic investigation. Engage incident response procedures. Hunt for lateral movement.",
+  "frameworks": [
+    {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.2",
+        "CC7.3"
+      ]
+    },
+    {
+      "name": "PCI DSS v4.0",
+      "controls": [
+        "10.4.1"
+      ]
+    },
+    {
+      "name": "HIPAA Security Rule",
+      "controls": [
+        "164.312(b)"
+      ]
+    },
+    {
+      "name": "NIST 800-53 r5",
+      "controls": [
+        "SI-4",
+        "IR-4"
+      ]
+    }
+  ]
 }

@@ -369,7 +369,7 @@ var PCIDSS40 = Framework{
 			ID:          "6.3.1",
 			Title:       "Security vulnerabilities are identified and addressed",
 			Description: "Vulnerabilities must be identified through scanning and patching.",
-			PolicyIDs:   []string{"aws-ecr-scan-on-push", "aws-lambda-runtime-supported"},
+			PolicyIDs:   []string{"aws-ecr-scan-on-push", "aws-lambda-runtime-supported", "sentinelone-vuln-medium"},
 		},
 
 		// Requirement 7: Restrict Access
@@ -417,7 +417,7 @@ var PCIDSS40 = Framework{
 			ID:          "10.4.1",
 			Title:       "Audit logs are reviewed at least daily",
 			Description: "Logs must be monitored for suspicious activity.",
-			PolicyIDs:   []string{"aws-guardduty-disabled", "aws-cloudwatch-alarm-missing"},
+			PolicyIDs:   []string{"aws-guardduty-disabled", "aws-cloudwatch-alarm-missing", "sentinelone-malware", "sentinelone-ransomware", "sentinelone-command-control"},
 		},
 
 		// Requirement 11: Test Security Regularly
@@ -425,7 +425,7 @@ var PCIDSS40 = Framework{
 			ID:          "11.3.1",
 			Title:       "Vulnerabilities are identified via scanning",
 			Description: "Regular vulnerability scans must be performed.",
-			PolicyIDs:   []string{"aws-ecr-scan-on-push"},
+			PolicyIDs:   []string{"aws-ecr-scan-on-push", "endpoint-sentinelone-active", "sentinelone-vuln-medium"},
 		},
 
 		// Requirement 12: Security Policies
@@ -453,7 +453,7 @@ var HIPAA = Framework{
 			ID:          "164.308(a)(1)",
 			Title:       "Security Management Process - Risk Analysis",
 			Description: "Conduct accurate and thorough assessment of risks to ePHI.",
-			PolicyIDs:   []string{"aws-config-enabled-all-regions", "aws-guardduty-disabled"},
+			PolicyIDs:   []string{"aws-config-enabled-all-regions", "aws-guardduty-disabled", "endpoint-sentinelone-active", "sentinelone-vuln-medium"},
 		},
 		{
 			ID:          "164.308(a)(3)",
@@ -491,7 +491,7 @@ var HIPAA = Framework{
 			ID:          "164.312(b)",
 			Title:       "Audit Controls",
 			Description: "Implement mechanisms to record and examine access to ePHI.",
-			PolicyIDs:   []string{"aws-cloudtrail-enabled", "aws-s3-bucket-logging-enabled", "aws-vpc-flow-logs-enabled"},
+			PolicyIDs:   []string{"aws-cloudtrail-enabled", "aws-s3-bucket-logging-enabled", "aws-vpc-flow-logs-enabled", "sentinelone-malware", "sentinelone-ransomware", "sentinelone-command-control"},
 		},
 		{
 			ID:          "164.312(c)(1)",
@@ -567,19 +567,19 @@ var SOC2 = Framework{
 			ID:          "CC7.1",
 			Title:       "Detection and Monitoring",
 			Description: "The entity detects and monitors security events to identify anomalies.",
-			PolicyIDs:   []string{"aws-cloudtrail-enabled", "aws-guardduty-disabled", "aws-config-enabled-all-regions"},
+			PolicyIDs:   []string{"aws-cloudtrail-enabled", "aws-guardduty-disabled", "aws-config-enabled-all-regions", "endpoint-sentinelone-active", "sentinelone-vuln-medium"},
 		},
 		{
 			ID:          "CC7.2",
 			Title:       "Security Event Analysis",
 			Description: "The entity evaluates potential security events and incidents.",
-			PolicyIDs:   []string{"aws-cloudwatch-alarm-missing", "aws-vpc-flow-logs-enabled"},
+			PolicyIDs:   []string{"aws-cloudwatch-alarm-missing", "aws-vpc-flow-logs-enabled", "sentinelone-malware", "sentinelone-ransomware", "sentinelone-command-control"},
 		},
 		{
 			ID:          "CC7.3",
 			Title:       "Response to Identified Security Incidents",
 			Description: "The entity responds to identified security incidents.",
-			PolicyIDs:   []string{"aws-s3-bucket-logging-enabled"},
+			PolicyIDs:   []string{"aws-s3-bucket-logging-enabled", "sentinelone-malware", "sentinelone-ransomware", "sentinelone-command-control"},
 		},
 
 		// CC8: Change Management

@@ -373,7 +373,8 @@ var ResourceToTableMapping = map[string][]string{
 	"okta::system_log":       {"okta_system_logs"},
 
 	// SentinelOne
-	"sentinelone::threat": {"sentinelone_threats"},
+	"sentinelone::threat":        {"sentinelone_threats"},
+	"sentinelone::vulnerability": {"sentinelone_vulnerabilities"},
 
 	// GitLab
 	"gitlab::runner": {"gitlab_runners"},

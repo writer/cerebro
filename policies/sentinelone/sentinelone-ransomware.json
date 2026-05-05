@@ -25,6 +25,19 @@
   ],
   "frameworks": [
     {
+      "name": "SOC 2",
+      "controls": [
+        "CC7.2",
+        "CC7.3"
+      ]
+    },
+    {
+      "name": "HIPAA Security Rule",
+      "controls": [
+        "164.312(b)"
+      ]
+    },
+    {
       "name": "NIST 800-53 r5",
       "controls": [
         "SC-12",
@@ -33,8 +46,9 @@
       ]
     },
     {
-      "name": "PCI DSS v4.0.1",
+      "name": "PCI DSS v4.0",
       "controls": [
+        "10.4.1",
         "3.5",
         "4.2"
       ]

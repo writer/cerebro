@@ -356,6 +356,7 @@ func (b *Builder) rebuildEdges(ctx context.Context) error {
 	eg.Go(func() error { b.buildGCPEdges(ectx); return nil })
 	eg.Go(func() error { b.buildAzureEdges(ectx); return nil })
 	eg.Go(func() error { b.buildKubernetesEdges(ectx); return nil })
+	eg.Go(func() error { b.buildSentinelOneEdges(ectx); return nil })
 	eg.Go(func() error { b.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
 	if err := ctx.Err(); err != nil {
@@ -1141,6 +1142,43 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 				"role_type": roleType,
 			},
 		}
+	case "sentinelone_sites":
+		nodes := parseSentinelOneSiteNodes([]map[string]any{payload})
+		if len(nodes) > 0 {
+			return nodes[0]
+		}
+	case "sentinelone_agents":
+		nodes := parseSentinelOneAgentNodes([]map[string]any{payload})
+		if len(nodes) > 0 {
+			return nodes[0]
+		}
+	case "sentinelone_threats":
+		nodes := parseSentinelOneThreatNodes([]map[string]any{payload})
+		if len(nodes) > 0 {
+			return nodes[0]
+		}
+	case "sentinelone_activities":
+		nodes := parseSentinelOneActivityNodes([]map[string]any{payload})
+		if len(nodes) > 0 {
+			return nodes[0]
+		}
+	case "sentinelone_applications":
+		nodes := parseSentinelOneApplicationNodes([]map[string]any{payload})
+		if len(nodes) > 0 {
+			return nodes[0]
+		}
+	case "sentinelone_vulnerabilities":
+		nodes := parseSentinelOneVulnerabilityNodes([]map[string]any{payload})
+		if len(nodes) > 0 {
+			return nodes[0]
+		}
+	case "github_repositories":
+		nodes := parseGitHubRepositoryNodes([]map[string]any{payload})
+		if len(nodes) > 0 {
+			return nodes[0]
+		}
+	case "github_dependabot_alerts":
+		return parseGitHubDependabotVulnerabilityNode(payload)
 	case "k8s_core_pods",
 		"k8s_core_namespaces",
 		"k8s_core_service_accounts",
@@ -1219,6 +1257,25 @@ func cdcNodeID(table string, payload map[string]any, fallback string) string {
 			return ""
 		}
 		return "okta_admin_role:" + strings.ToLower(roleType)
+	case "sentinelone_sites":
+		return sentinelOneSiteNodeID(firstNonEmpty(queryRowString(payload, "id"), fallback))
+	case "sentinelone_agents":
+		return sentinelOneAgentNodeID(firstNonEmpty(queryRowString(payload, "id"), fallback))
+	case "sentinelone_threats":
+		return sentinelOneThreatNodeID(firstNonEmpty(queryRowString(payload, "id"), fallback))
+	case "sentinelone_activities":
+		return sentinelOneActivityNodeID(firstNonEmpty(queryRowString(payload, "id"), fallback))
+	case "sentinelone_applications":
+		return sentinelOneApplicationNodeID(firstNonEmpty(queryRowString(payload, "id"), fallback))
+	case "sentinelone_vulnerabilities":
+		if id := sentinelOneVulnerabilityNodeIDForRow(payload); id != "" {
+			return id
+		}
+		return sentinelOneVulnerabilityNodeID(firstNonEmpty(queryRowString(payload, "id"), fallback))
+	case "github_repositories":
+		return githubRepositoryNodeID(firstNonEmpty(queryRowString(payload, "full_name"), queryRowString(payload, "repository"), fallback))
+	case "github_dependabot_alerts":
+		return firstNonEmpty(githubDependabotVulnerabilityNodeIDForRow(payload), fallback)
 	case "k8s_core_pods",
 		"k8s_core_namespaces",
 		"k8s_core_service_accounts",

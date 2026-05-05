@@ -41,6 +41,9 @@ const (
 	EdgeKindResolvesTo     = graph.EdgeKindResolvesTo
 	EdgeKindServes         = graph.EdgeKindServes
 	EdgeKindTargets        = graph.EdgeKindTargets
+	EdgeKindContains       = graph.EdgeKindContains
+	EdgeKindContainsPkg    = graph.EdgeKindContainsPkg
+	EdgeKindAffectedBy     = graph.EdgeKindAffectedBy
 
 	NodeKindAPIEndpoint        = graph.NodeKindAPIEndpoint
 	NodeKindApplication        = graph.NodeKindApplication
@@ -71,6 +74,9 @@ const (
 	NodeKindSecret             = graph.NodeKindSecret
 	NodeKindService            = graph.NodeKindService
 	NodeKindServiceAccount     = graph.NodeKindServiceAccount
+	NodeKindPackage            = graph.NodeKindPackage
+	NodeKindVulnerability      = graph.NodeKindVulnerability
+	NodeKindIncident           = graph.NodeKindIncident
 	NodeKindUser               = graph.NodeKindUser
 	NodeKindFolder             = graph.NodeKindFolder
 	NodeKindVendor             = graph.NodeKindVendor

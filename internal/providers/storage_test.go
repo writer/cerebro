@@ -131,3 +131,46 @@ func TestEnsureProviderTable_SkipsExistingColumnsCaseInsensitive(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildProviderCDCEvents(t *testing.T) {
+	prepared := []map[string]interface{}{
+		{"_cq_id": "new-row", "_cq_hash": "hash-new", "site_id": "site-1", "id": "new-row"},
+		{"_cq_id": "changed-row", "_cq_hash": "hash-changed", "site_id": "site-1", "id": "changed-row"},
+		{"_cq_id": "same-row", "_cq_hash": "hash-same", "site_id": "site-1", "id": "same-row"},
+	}
+	existing := map[string]providerExistingRow{
+		"changed-row": {Hash: "hash-old"},
+		"same-row":    {Hash: "hash-same"},
+		"removed-row": {Hash: "hash-removed"},
+	}
+	newIDs := providerRowIDSet(prepared)
+
+	events := buildProviderCDCEvents("sentinelone_agents", "sentinelone", prepared, existing, newIDs)
+	if len(events) != 3 {
+		t.Fatalf("events = %d, want 3: %#v", len(events), events)
+	}
+
+	byResource := make(map[string]string, len(events))
+	for _, event := range events {
+		if event.Provider != "sentinelone" {
+			t.Fatalf("provider = %q, want sentinelone", event.Provider)
+		}
+		if event.TableName != "sentinelone_agents" {
+			t.Fatalf("table = %q, want sentinelone_agents", event.TableName)
+		}
+		byResource[event.ResourceID] = event.ChangeType
+	}
+
+	if byResource["new-row"] != "added" {
+		t.Fatalf("new-row change = %q, want added", byResource["new-row"])
+	}
+	if byResource["changed-row"] != "modified" {
+		t.Fatalf("changed-row change = %q, want modified", byResource["changed-row"])
+	}
+	if byResource["removed-row"] != "removed" {
+		t.Fatalf("removed-row change = %q, want removed", byResource["removed-row"])
+	}
+	if _, ok := byResource["same-row"]; ok {
+		t.Fatal("same-row should not emit a CDC event")
+	}
+}

@@ -42,13 +42,14 @@ type SyncOptions struct {
 }
 
 type SyncResult struct {
-	Provider    string        `json:"provider"`
-	StartedAt   time.Time     `json:"started_at"`
-	CompletedAt time.Time     `json:"completed_at"`
-	Duration    time.Duration `json:"duration"`
-	Tables      []TableResult `json:"tables"`
-	TotalRows   int64         `json:"total_rows"`
-	Errors      []string      `json:"errors,omitempty"`
+	Provider    string         `json:"provider"`
+	StartedAt   time.Time      `json:"started_at"`
+	CompletedAt time.Time      `json:"completed_at"`
+	Duration    time.Duration  `json:"duration"`
+	Tables      []TableResult  `json:"tables"`
+	TotalRows   int64          `json:"total_rows"`
+	Errors      []string       `json:"errors,omitempty"`
+	GraphUpdate map[string]any `json:"graph_update,omitempty"`
 }
 
 type TableResult struct {

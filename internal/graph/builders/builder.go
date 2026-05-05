@@ -137,6 +137,8 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	g.Go(func() error { working.buildOktaNodes(gctx); return nil })
 	g.Go(func() error { working.buildGoogleWorkspaceNodes(gctx); return nil })
 	g.Go(func() error { working.buildK8sNodes(gctx); return nil })
+	g.Go(func() error { working.buildSentinelOneNodes(gctx); return nil })
+	g.Go(func() error { working.buildGitHubNodes(gctx); return nil })
 	_ = g.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
@@ -159,6 +161,8 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	eg.Go(func() error { working.buildGCPEdges(ectx); return nil })
 	eg.Go(func() error { working.buildAzureEdges(ectx); return nil })
 	eg.Go(func() error { working.buildKubernetesEdges(ectx); return nil })
+	eg.Go(func() error { working.buildSentinelOneEdges(ectx); return nil })
+	eg.Go(func() error { working.buildGitHubEdges(ectx); return nil })
 	eg.Go(func() error { working.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
 	if err := ctx.Err(); err != nil {
