@@ -1172,6 +1172,13 @@ func cdcEventToNode(table string, event cdcEvent) *Node {
 		if len(nodes) > 0 {
 			return nodes[0]
 		}
+	case "github_repositories":
+		nodes := parseGitHubRepositoryNodes([]map[string]any{payload})
+		if len(nodes) > 0 {
+			return nodes[0]
+		}
+	case "github_dependabot_alerts":
+		return parseGitHubDependabotVulnerabilityNode(payload)
 	case "k8s_core_pods",
 		"k8s_core_namespaces",
 		"k8s_core_service_accounts",
@@ -1265,6 +1272,10 @@ func cdcNodeID(table string, payload map[string]any, fallback string) string {
 			return id
 		}
 		return sentinelOneVulnerabilityNodeID(firstNonEmpty(queryRowString(payload, "id"), fallback))
+	case "github_repositories":
+		return githubRepositoryNodeID(firstNonEmpty(queryRowString(payload, "full_name"), queryRowString(payload, "repository"), fallback))
+	case "github_dependabot_alerts":
+		return firstNonEmpty(githubDependabotVulnerabilityNodeIDForRow(payload), fallback)
 	case "k8s_core_pods",
 		"k8s_core_namespaces",
 		"k8s_core_service_accounts",
