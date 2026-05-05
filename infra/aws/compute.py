@@ -340,6 +340,12 @@ def _create_task_definition(
     region = aws.get_region().region
     caller = aws.get_caller_identity()
     secrets_prefix_arn = f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}"
+    secret_specs = []
+    for secret_key in secret_keys:
+        if isinstance(secret_key, dict):
+            secret_specs.append((secret_key["name"], secret_key["source"]))
+        else:
+            secret_specs.append((secret_key, secret_key))
     env_items = sorted(environment.items())
     env_values = [value for _, value in env_items]
 
@@ -366,7 +372,7 @@ def _create_task_definition(
                 },
             },
             "environment": env,
-            "secrets": [{"name": key, "valueFrom": f"{secrets_prefix_arn}/{key}"} for key in secret_keys],
+            "secrets": [{"name": name, "valueFrom": f"{secrets_prefix_arn}/{source}"} for name, source in secret_specs],
             "healthCheck": {
                 "command": ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"],
                 "interval": 30,

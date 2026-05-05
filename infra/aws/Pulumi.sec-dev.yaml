@@ -28,7 +28,7 @@ config:
   cerebro:natsMemory: 1024
   cerebro:jetstreamStreamName: CEREBRO_EVENTS
   cerebro:jetstreamSubjectPrefix: events
-  cerebro:apiAuthEnabled: false
+  cerebro:apiAuthEnabled: true
 
   cerebro:enableWaf: true
   cerebro:albInternal: true

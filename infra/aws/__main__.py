@@ -229,21 +229,26 @@ secret_keys = [
 ]
 if api_auth_enabled:
     secret_keys.append("CEREBRO_API_KEYS")
+    secret_keys.append({"name": "API_KEYS", "source": "CEREBRO_API_KEYS"})
 
 app_environment = {
     "CEREBRO_HTTP_ADDR": ":8080",
     "CEREBRO_SHUTDOWN_TIMEOUT": config.get("shutdownTimeout") or "10s",
     "CEREBRO_API_AUTH_ENABLED": str(api_auth_enabled).lower(),
+    "API_AUTH_ENABLED": str(api_auth_enabled).lower(),
     "CEREBRO_APPEND_LOG_DRIVER": "jetstream",
     "CEREBRO_JETSTREAM_URL": nats_stack["url"],
     "CEREBRO_JETSTREAM_SUBJECT_PREFIX": jetstream_subject_prefix,
     "CEREBRO_STATE_STORE_DRIVER": "postgres",
     "CEREBRO_GRAPH_STORE_DRIVER": "neo4j",
 }
+if not api_auth_enabled:
+    app_environment["ALLOW_INSECURE_API"] = "true"
 if neo4j_database:
     app_environment["CEREBRO_NEO4J_DATABASE"] = neo4j_database
 if allowed_tenants:
     app_environment["CEREBRO_ALLOWED_TENANTS"] = ",".join(allowed_tenants)
+    app_environment["ALLOWED_TENANTS"] = ",".join(allowed_tenants)
 
 runtime_dependencies = [
     postgres_stack["secret_version"],
