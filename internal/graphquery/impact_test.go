@@ -105,6 +105,43 @@ func TestGetImpactRequiresTenantForPackageAndVulnerability(t *testing.T) {
 	}
 }
 
+func TestGetImpactRejectsRawURNForPackageAndVulnerability(t *testing.T) {
+	_, err := New(&impactStubStore{}).GetImpact(context.Background(), ImpactRequest{
+		Kind:       ImpactKindPackage,
+		TenantID:   "writer",
+		Identifier: "urn:cerebro:other:package:canonical:pkg:npm/foo",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("GetImpact(raw package urn) error = %v, want %v", err, ErrInvalidRequest)
+	}
+	_, err = New(&impactStubStore{}).GetImpact(context.Background(), ImpactRequest{
+		Kind:       ImpactKindVulnerability,
+		TenantID:   "writer",
+		Identifier: "urn:cerebro:other:vulnerability:cve-2026-4242",
+	})
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("GetImpact(raw vulnerability urn) error = %v, want %v", err, ErrInvalidRequest)
+	}
+}
+
+func TestGetImpactPackageDoesNotFallbackToLegacyPURLIdentity(t *testing.T) {
+	store := &impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{
+		"urn:cerebro:writer:package:canonical:pkg:MAVEN/org.example/artifact": emptyNeighborhood("urn:cerebro:writer:package:canonical:pkg:MAVEN/org.example/artifact", "package"),
+	}}
+
+	_, err := New(store).GetImpact(context.Background(), ImpactRequest{
+		Kind:       ImpactKindPackage,
+		TenantID:   "writer",
+		Identifier: "pkg:MAVEN/org.example/artifact@1.2.3?classifier=sources",
+	})
+	if !errors.Is(err, ports.ErrGraphEntityNotFound) {
+		t.Fatalf("GetImpact() error = %v, want %v", err, ports.ErrGraphEntityNotFound)
+	}
+	if len(store.queries) != 1 {
+		t.Fatalf("queries = %#v, want no fallback lookup", store.queries)
+	}
+}
+
 func node(urn string, entityType string, label string) *ports.NeighborhoodNode {
 	return &ports.NeighborhoodNode{URN: urn, EntityType: entityType, Label: label}
 }

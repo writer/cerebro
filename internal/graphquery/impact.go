@@ -121,18 +121,25 @@ func (s *Service) collectImpactGraph(ctx context.Context, rootURN string, depth 
 }
 
 func impactRootURN(request ImpactRequest) (string, error) {
+	kind := normalizeImpactKind(request.Kind)
 	if rootURN := strings.TrimSpace(request.RootURN); rootURN != "" {
+		if kind != ImpactKindAsset {
+			return "", fmt.Errorf("%w: root urn is only supported for asset impact", ErrInvalidRequest)
+		}
 		return rootURN, nil
 	}
 	identifier := strings.TrimSpace(request.Identifier)
 	if strings.HasPrefix(identifier, "urn:cerebro:") {
-		return identifier, nil
+		if kind == ImpactKindAsset {
+			return identifier, nil
+		}
+		return "", fmt.Errorf("%w: raw urn identifiers are only supported for asset impact", ErrInvalidRequest)
 	}
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {
 		return "", fmt.Errorf("%w: tenant_id is required", ErrInvalidRequest)
 	}
-	switch normalizeImpactKind(request.Kind) {
+	switch kind {
 	case ImpactKindVulnerability:
 		if identifier == "" {
 			return "", fmt.Errorf("%w: vulnerability identifier is required", ErrInvalidRequest)
@@ -246,6 +253,11 @@ func canonicalPackageImpactIdentity(value string) string {
 		purl.Subpath = ""
 		return strings.TrimSpace(purl.ToString())
 	}
+	return trimPackageVersionSuffix(normalized)
+}
+
+func trimPackageVersionSuffix(value string) string {
+	normalized := strings.TrimSpace(value)
 	if index := strings.IndexAny(normalized, "?#"); index >= 0 {
 		normalized = normalized[:index]
 	}

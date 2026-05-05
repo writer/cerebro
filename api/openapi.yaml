@@ -409,6 +409,12 @@ paths:
     get:
       deprecated: true
       summary: Legacy alias for /platform/graph/impact/vulnerability/{id}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
       responses:
         '200':
           description: Vulnerability impact result.
