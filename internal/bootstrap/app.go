@@ -2035,6 +2035,9 @@ func uint32QueryParam(r *http.Request, key string) (uint32, error) {
 	if err != nil {
 		return 0, fmt.Errorf("%w: invalid %s", graphquery.ErrInvalidRequest, key)
 	}
+	if parsed == 0 {
+		return 0, fmt.Errorf("%w: %s must be at least 1", graphquery.ErrInvalidRequest, key)
+	}
 	return uint32(parsed), nil
 }
 

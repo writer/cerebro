@@ -148,6 +148,17 @@ func TestParseGraphImpactArgs(t *testing.T) {
 	}
 }
 
+func TestParseGraphImpactArgsRejectsExplicitZeroBounds(t *testing.T) {
+	for _, args := range [][]string{
+		{"cve-impact", "CVE-2026-4242", "tenant_id=writer", "limit=0"},
+		{"cve-impact", "CVE-2026-4242", "tenant_id=writer", "depth=0"},
+	} {
+		if _, err := parseGraphImpactArgs(args); err == nil {
+			t.Fatalf("parseGraphImpactArgs(%v) error = nil, want non-nil", args)
+		}
+	}
+}
+
 func TestParseGraphImpactArgsRequiresTenantForPackage(t *testing.T) {
 	if _, err := parseGraphImpactArgs([]string{"package-exposure", "pkg:npm/foo@1.2.3"}); err == nil {
 		t.Fatal("parseGraphImpactArgs() error = nil, want tenant requirement")

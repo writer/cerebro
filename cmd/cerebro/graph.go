@@ -454,11 +454,17 @@ func parseGraphImpactArgs(args []string) (graphquery.ImpactRequest, error) {
 			if err != nil {
 				return graphquery.ImpactRequest{}, fmt.Errorf("parse limit: %w", err)
 			}
+			if parsed == 0 {
+				return graphquery.ImpactRequest{}, fmt.Errorf("limit must be at least 1")
+			}
 			request.Limit = uint32(parsed)
 		case "depth":
 			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
 			if err != nil {
 				return graphquery.ImpactRequest{}, fmt.Errorf("parse depth: %w", err)
+			}
+			if parsed == 0 {
+				return graphquery.ImpactRequest{}, fmt.Errorf("depth must be at least 1")
 			}
 			request.Depth = uint32(parsed)
 		default:

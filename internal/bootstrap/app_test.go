@@ -1632,6 +1632,26 @@ func TestGraphPackageImpactEndpointReturnsCanonicalPackageRoot(t *testing.T) {
 	}
 }
 
+func TestGraphImpactEndpointRejectsExplicitZeroBounds(t *testing.T) {
+	app := New(config.Config{}, Dependencies{GraphStore: &stubGraphStore{}}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	for _, query := range []string{
+		"tenant_id=writer&package=pkg:npm/foo&limit=0",
+		"tenant_id=writer&package=pkg:npm/foo&depth=0",
+	} {
+		resp, err := server.Client().Get(server.URL + "/platform/graph/impact/package?" + query)
+		if err != nil {
+			t.Fatalf("GET /platform/graph/impact/package?%s error = %v", query, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("GET /platform/graph/impact/package?%s status = %d, want %d", query, resp.StatusCode, http.StatusBadRequest)
+		}
+	}
+}
+
 func TestAuthMiddlewareRejectsUnscopedGraphIngestRunListings(t *testing.T) {
 	cfg := config.Config{
 		HTTPAddr:        "127.0.0.1:0",
