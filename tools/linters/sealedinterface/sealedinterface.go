@@ -290,7 +290,11 @@ func inspectFlowNodeWithFacts(pass *analysis.Pass, node ast.Node, results *types
 					continue
 				}
 				branchFacts := inspectFlowStmtWithFacts(pass, clause.Comm, results, facts, sealedObjects, sealed, reported)
-				branches = append(branches, inspectFlowNodeWithFacts(pass, &ast.BlockStmt{List: clause.Body}, results, branchFacts, sealedObjects, sealed, reported))
+				clauseBlock := &ast.BlockStmt{List: clause.Body}
+				clauseFacts := inspectFlowNodeWithFacts(pass, clauseBlock, results, branchFacts, sealedObjects, sealed, reported)
+				if !stmtTerminates(clauseBlock) {
+					branches = append(branches, clauseFacts)
+				}
 			}
 			facts = mergeFlowFacts(branches...)
 			return false

@@ -144,6 +144,18 @@ func ReturnedTypeSwitchTypeAssertSafe(input any) sealedpkg.Runner {
 	return value.(sealedpkg.Runner)
 }
 
+func ReturnedSelectTypeAssertSafe(ch <-chan struct{}) sealedpkg.Runner {
+	var value any
+	select {
+	case <-ch:
+		value = externalbad.Bad{}
+		return nil
+	default:
+		value = nil
+	}
+	return value.(sealedpkg.Runner)
+}
+
 type typeAssertBox struct {
 	value any
 }
