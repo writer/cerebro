@@ -14,6 +14,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 jobs:
   resolve-tag:
@@ -102,7 +103,8 @@ jobs:
           docker buildx build --platform linux/amd64 \
             -f Dockerfile.runtime \
             -t "${IMAGE_BASE}:${RELEASE_TAG}-amd64" \
-            --provenance=false \
+            --provenance=mode=max \
+            --sbom=true \
             --push .
 
       - name: Build and push linux/arm64
@@ -116,7 +118,8 @@ jobs:
           docker buildx build --platform linux/arm64 \
             -f Dockerfile.runtime \
             -t "${IMAGE_BASE}:${RELEASE_TAG}-arm64" \
-            --provenance=false \
+            --provenance=mode=max \
+            --sbom=true \
             --push .
 
       - name: Create and push multi-arch manifests
@@ -134,3 +137,14 @@ jobs:
             "${IMAGE_BASE}:${RELEASE_TAG}-amd64" \
             "${IMAGE_BASE}:${RELEASE_TAG}-arm64"
           docker manifest push "${IMAGE_BASE}:latest"
+
+      - name: Keyless sign release images
+        shell: bash
+        env:
+          IMAGE_BASE: ghcr.io/${{ github.repository }}
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          set -euo pipefail
+          GOBIN="${RUNNER_TEMP}/cosign" go install github.com/sigstore/cosign/v2/cmd/cosign@v2.6.1
+          "${RUNNER_TEMP}/cosign/cosign" sign --yes "${IMAGE_BASE}:${RELEASE_TAG}"
+          "${RUNNER_TEMP}/cosign/cosign" sign --yes "${IMAGE_BASE}:latest"
