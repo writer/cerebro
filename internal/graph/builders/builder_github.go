@@ -261,10 +261,7 @@ func githubDependabotPackageNodeID(row map[string]any) string {
 
 func githubDependabotVulnerabilityNodeIDForRow(row map[string]any) string {
 	identifier := firstNonEmpty(strings.TrimSpace(queryRowString(row, "cve_id")), strings.TrimSpace(queryRowString(row, "ghsa_id")))
-	if identifier == "" {
-		return ""
-	}
-	return "vulnerability:" + slugifyKnowledgeKey(identifier)
+	return canonicalVulnerabilityNodeID(identifier)
 }
 
 func githubRepositoryRisk(row map[string]any) RiskLevel {
@@ -278,16 +275,5 @@ func githubRepositoryRisk(row map[string]any) RiskLevel {
 }
 
 func githubDependabotRisk(row map[string]any) RiskLevel {
-	switch strings.ToLower(strings.TrimSpace(queryRowString(row, "severity"))) {
-	case "critical":
-		return RiskCritical
-	case "high":
-		return RiskHigh
-	case "medium", "moderate":
-		return RiskMedium
-	case "low":
-		return RiskLow
-	default:
-		return RiskNone
-	}
+	return vulnerabilityRiskFromSeverity(queryRowString(row, "severity"))
 }

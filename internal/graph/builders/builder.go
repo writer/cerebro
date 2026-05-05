@@ -139,6 +139,7 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	g.Go(func() error { working.buildK8sNodes(gctx); return nil })
 	g.Go(func() error { working.buildSentinelOneNodes(gctx); return nil })
 	g.Go(func() error { working.buildGitHubNodes(gctx); return nil })
+	g.Go(func() error { working.buildKandjiNodes(gctx); return nil })
 	_ = g.Wait()
 	if err := ctx.Err(); err != nil {
 		return nil, GraphMutationSummary{}, err
@@ -163,6 +164,7 @@ func (b *Builder) BuildCandidate(ctx context.Context) (*Graph, GraphMutationSumm
 	eg.Go(func() error { working.buildKubernetesEdges(ectx); return nil })
 	eg.Go(func() error { working.buildSentinelOneEdges(ectx); return nil })
 	eg.Go(func() error { working.buildGitHubEdges(ectx); return nil })
+	eg.Go(func() error { working.buildKandjiEdges(ectx); return nil })
 	eg.Go(func() error { working.buildRelationshipEdges(ectx); return nil })
 	_ = eg.Wait()
 	if err := ctx.Err(); err != nil {
@@ -365,6 +367,8 @@ func (b *Builder) buildRelationshipEdges(ctx context.Context) {
 			kind = EdgeKindCanWrite
 		case "HAS_PERMISSION":
 			kind = EdgeKindCanAdmin
+		case "HAS_VULNERABILITY":
+			kind = EdgeKindAffectedBy
 		case "EXPOSED_TO":
 			kind = EdgeKindExposedTo
 			if targetID == "internet" || targetType == "network:internet" {
@@ -556,6 +560,10 @@ func nodeKindForResourceType(resourceType string) NodeKind {
 		return NodeKindBucket
 	case "aws:ec2:instance", "gcp:compute:instance":
 		return NodeKindInstance
+	case "gcp:artifactregistry:image", "gcp:artifactregistry:package":
+		return NodeKindPackage
+	case "gcp:container:vulnerability":
+		return NodeKindVulnerability
 	case "azure:compute:virtual_machine":
 		return NodeKindInstance
 	case "aws:lambda:function", "gcp:cloudfunctions:function":

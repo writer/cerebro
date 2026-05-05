@@ -163,7 +163,7 @@ func includeIncompleteProviders(r *http.Request) bool {
 
 func shouldApplyProviderGraphUpdate(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "sentinelone", "github":
+	case "sentinelone", "github", "kandji":
 		return true
 	default:
 		return false

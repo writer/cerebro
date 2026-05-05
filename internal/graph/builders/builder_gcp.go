@@ -252,6 +252,16 @@ func (b *Builder) buildGCPNodes(ctx context.Context) {
 				return nodes
 			},
 		},
+		{
+			table: "gcp_artifact_registry_images",
+			query: `SELECT _cq_id, project_id, name, uri, tags, image_size, upload_time, media_type, build_time, update_time, repository, registry_type, scanned, scan_status, vulnerabilities, has_vulnerabilities, has_openssl_vulnerability FROM gcp_artifact_registry_images`,
+			parse: parseGCPArtifactRegistryImageNodes,
+		},
+		{
+			table: "gcp_container_vulnerabilities",
+			query: `SELECT _cq_id, project_id, name, resource_uri, note_name, kind, create_time, update_time, severity, cvss_score, cvss_v3_score, effective_severity, fix_available, long_description, short_description, cve_id, package_issue FROM gcp_container_vulnerabilities`,
+			parse: parseGCPContainerVulnerabilityNodes,
+		},
 	}
 
 	b.runNodeQueries(ctx, queries)
@@ -269,6 +279,7 @@ func (b *Builder) buildGCPEdges(ctx context.Context) {
 
 	b.buildGCPServiceAccountEdges(ctx)
 	b.buildGCPFirewallEdges(ctx)
+	b.buildGCPContainerVulnerabilityEdges(ctx)
 }
 
 func (b *Builder) buildGCPEdgesFromMembers(ctx context.Context, policyProjects map[string]struct{}) int {
@@ -886,4 +897,182 @@ func (b *Builder) buildGCPFirewallEdges(ctx context.Context) {
 		}
 	}
 	b.logger.Debug("added GCP firewall exposure edges", "count", count)
+}
+
+func parseGCPArtifactRegistryImageNodes(rows []map[string]any) []*Node {
+	nodes := make([]*Node, 0, len(rows))
+	for _, row := range rows {
+		node := gcpArtifactRegistryImageNode(row)
+		if node != nil {
+			nodes = append(nodes, node)
+		}
+	}
+	return nodes
+}
+
+func gcpArtifactRegistryImageNode(row map[string]any) *Node {
+	id := gcpArtifactRegistryImageNodeID(row)
+	if id == "" {
+		return nil
+	}
+	name := firstNonEmpty(queryRowString(row, "uri"), queryRowString(row, "name"), id)
+	return &Node{
+		ID:       id,
+		Kind:     NodeKindPackage,
+		Name:     name,
+		Provider: "gcp",
+		Account:  queryRowString(row, "project_id"),
+		Risk:     gcpArtifactRegistryImageRisk(row),
+		Properties: map[string]any{
+			"source_table":                "gcp_artifact_registry_images",
+			"project_id":                  queryRow(row, "project_id"),
+			"name":                        queryRow(row, "name"),
+			"uri":                         queryRow(row, "uri"),
+			"tags":                        queryRow(row, "tags"),
+			"image_size":                  queryRow(row, "image_size"),
+			"upload_time":                 queryRow(row, "upload_time"),
+			"media_type":                  queryRow(row, "media_type"),
+			"build_time":                  queryRow(row, "build_time"),
+			"update_time":                 queryRow(row, "update_time"),
+			"repository":                  queryRow(row, "repository"),
+			"registry_type":               queryRow(row, "registry_type"),
+			"scanned":                     queryRow(row, "scanned"),
+			"scan_status":                 queryRow(row, "scan_status"),
+			"vulnerabilities":             queryRow(row, "vulnerabilities"),
+			"has_vulnerabilities":         queryRow(row, "has_vulnerabilities"),
+			"has_openssl_vulnerability":   queryRow(row, "has_openssl_vulnerability"),
+			"package_manager":             "gcp_artifact_registry",
+			"asset_support_entity_kind":   "container_image",
+			"artifact_registry_image_id":  id,
+			"artifact_registry_image_uri": queryRow(row, "uri"),
+		},
+	}
+}
+
+func parseGCPContainerVulnerabilityNodes(rows []map[string]any) []*Node {
+	nodes := make([]*Node, 0, len(rows))
+	for _, row := range rows {
+		node := gcpContainerVulnerabilityNode(row)
+		if node != nil {
+			nodes = append(nodes, node)
+		}
+	}
+	return nodes
+}
+
+func gcpContainerVulnerabilityNode(row map[string]any) *Node {
+	nodeID := gcpContainerVulnerabilityNodeIDForRow(row)
+	if nodeID == "" {
+		return nil
+	}
+	cveID := normalizedVulnerabilityIdentifier(queryRowString(row, "cve_id"))
+	severity := firstNonEmpty(queryRowString(row, "effective_severity"), queryRowString(row, "severity"))
+	return &Node{
+		ID:       nodeID,
+		Kind:     NodeKindVulnerability,
+		Name:     firstNonEmpty(cveID, queryRowString(row, "name"), nodeID),
+		Provider: "gcp",
+		Account:  queryRowString(row, "project_id"),
+		Risk:     vulnerabilityRiskFromSeverity(severity),
+		Properties: map[string]any{
+			"source_table":               "gcp_container_vulnerabilities",
+			"occurrence_id":              queryRow(row, "_cq_id"),
+			"project_id":                 queryRow(row, "project_id"),
+			"name":                       queryRow(row, "name"),
+			"resource_uri":               queryRow(row, "resource_uri"),
+			"note_name":                  queryRow(row, "note_name"),
+			"kind":                       queryRow(row, "kind"),
+			"create_time":                queryRow(row, "create_time"),
+			"update_time":                queryRow(row, "update_time"),
+			"severity":                   queryRow(row, "severity"),
+			"effective_severity":         queryRow(row, "effective_severity"),
+			"cvss_score":                 queryRow(row, "cvss_score"),
+			"cvss_v3_score":              queryRow(row, "cvss_v3_score"),
+			"fix_available":              queryRow(row, "fix_available"),
+			"long_description":           queryRow(row, "long_description"),
+			"short_description":          queryRow(row, "short_description"),
+			"cve_id":                     cveID,
+			"package_issue":              queryRow(row, "package_issue"),
+			"asset_support_finding":      "gcp_container_vulnerability",
+			"canonical_vulnerability_id": nodeID,
+		},
+	}
+}
+
+func (b *Builder) buildGCPContainerVulnerabilityEdges(ctx context.Context) {
+	rows, err := b.queryIfExists(ctx, "gcp_container_vulnerabilities", `SELECT _cq_id, project_id, name, resource_uri, severity, cvss_score, cvss_v3_score, effective_severity, fix_available, cve_id, package_issue FROM gcp_container_vulnerabilities`)
+	if err != nil {
+		b.logger.Debug("gcp container vulnerability edge query failed", "error", err)
+		return
+	}
+	for _, row := range rows.Rows {
+		imageID := strings.TrimSpace(queryRowString(row, "resource_uri"))
+		vulnID := gcpContainerVulnerabilityNodeIDForRow(row)
+		if imageID == "" || vulnID == "" {
+			continue
+		}
+		if _, ok := b.graph.GetNode(imageID); !ok {
+			b.graph.AddNode(gcpArtifactRegistryImageFallbackNode(row))
+		}
+		severity := firstNonEmpty(queryRowString(row, "effective_severity"), queryRowString(row, "severity"))
+		b.addEdgeIfMissing(&Edge{
+			ID:     imageID + "->" + vulnID + ":affected_by",
+			Source: imageID,
+			Target: vulnID,
+			Kind:   EdgeKindAffectedBy,
+			Effect: EdgeEffectAllow,
+			Risk:   vulnerabilityRiskFromSeverity(severity),
+			Properties: map[string]any{
+				"source_table":         "gcp_container_vulnerabilities",
+				"occurrence_id":        queryRow(row, "_cq_id"),
+				"project_id":           queryRow(row, "project_id"),
+				"cve_id":               queryRow(row, "cve_id"),
+				"severity":             queryRow(row, "severity"),
+				"effective_severity":   queryRow(row, "effective_severity"),
+				"cvss_score":           queryRow(row, "cvss_score"),
+				"cvss_v3_score":        queryRow(row, "cvss_v3_score"),
+				"fix_available":        queryRow(row, "fix_available"),
+				"package_issue":        queryRow(row, "package_issue"),
+				"relationship_context": "container_image_vulnerability",
+			},
+		})
+	}
+}
+
+func gcpArtifactRegistryImageFallbackNode(row map[string]any) *Node {
+	uri := strings.TrimSpace(queryRowString(row, "resource_uri"))
+	return &Node{
+		ID:       uri,
+		Kind:     NodeKindPackage,
+		Name:     uri,
+		Provider: "gcp",
+		Account:  queryRowString(row, "project_id"),
+		Risk:     vulnerabilityRiskFromSeverity(firstNonEmpty(queryRowString(row, "effective_severity"), queryRowString(row, "severity"))),
+		Properties: map[string]any{
+			"source_table":               "gcp_container_vulnerabilities",
+			"project_id":                 queryRow(row, "project_id"),
+			"uri":                        uri,
+			"package_manager":            "gcp_artifact_registry",
+			"asset_support_entity_kind":  "container_image",
+			"artifact_registry_image_id": uri,
+		},
+	}
+}
+
+func gcpArtifactRegistryImageNodeID(row map[string]any) string {
+	return firstNonEmpty(queryRowString(row, "uri"), queryRowString(row, "_cq_id"), queryRowString(row, "name"))
+}
+
+func gcpContainerVulnerabilityNodeIDForRow(row map[string]any) string {
+	return vulnerabilityNodeIDWithFallback(queryRowString(row, "cve_id"), "gcp_container_vulnerability", queryRowString(row, "_cq_id"))
+}
+
+func gcpArtifactRegistryImageRisk(row map[string]any) RiskLevel {
+	if toBool(queryRow(row, "has_openssl_vulnerability")) {
+		return RiskHigh
+	}
+	if toBool(queryRow(row, "has_vulnerabilities")) {
+		return RiskMedium
+	}
+	return RiskNone
 }

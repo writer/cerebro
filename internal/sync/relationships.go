@@ -969,6 +969,38 @@ func gcpArtifactPackageIDFromImage(imageName string) string {
 	return fmt.Sprintf("%s/packages/%s", repoID, imageRef)
 }
 
+func canonicalVulnerabilityRelationshipID(identifier, fallback string) string {
+	identifier = strings.TrimSpace(identifier)
+	if identifier != "" {
+		return "vulnerability:" + slugifyRelationshipIdentifier(identifier)
+	}
+	return normalizeRelationshipID(fallback)
+}
+
+func slugifyRelationshipIdentifier(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "unknown"
+	}
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			lastDash = false
+		case !lastDash:
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "unknown"
+	}
+	return out
+}
+
 func gcpSCCFindingID(cqID, name string) string {
 	if id := normalizeRelationshipID(cqID); id != "" {
 		return id
