@@ -79,6 +79,80 @@ func TestGetImpactVulnerabilityGroupsCanonicalPackageAssetsAndEvidence(t *testin
 	}
 }
 
+func TestGetImpactDepthDoesNotExpandPastRequestedHops(t *testing.T) {
+	rootURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	directURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
+	secondHopURN := "urn:cerebro:writer:sentinelone_agent:agent-42"
+	store := &impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{
+		rootURN: {
+			Root:      node(rootURN, "vulnerability", "CVE-2026-4242"),
+			Neighbors: []*ports.NeighborhoodNode{node(directURN, "package", "foo")},
+			Relations: []*ports.NeighborhoodRelation{rel(directURN, "affected_by", rootURN)},
+		},
+		directURN: {
+			Root:      node(directURN, "package", "foo"),
+			Neighbors: []*ports.NeighborhoodNode{node(secondHopURN, "sentinelone.agent", "agent-42")},
+			Relations: []*ports.NeighborhoodRelation{rel(secondHopURN, "has_package", directURN)},
+		},
+		secondHopURN: emptyNeighborhood(secondHopURN, "sentinelone.agent"),
+	}}
+
+	result, err := New(store).GetImpact(context.Background(), ImpactRequest{
+		Kind:       ImpactKindVulnerability,
+		TenantID:   "writer",
+		Identifier: "CVE-2026-4242",
+		Depth:      1,
+	})
+	if err != nil {
+		t.Fatalf("GetImpact() error = %v", err)
+	}
+	if len(store.queries) != 1 || store.queries[0] != rootURN {
+		t.Fatalf("queries = %#v, want only root lookup", store.queries)
+	}
+	if len(result.Packages) != 1 || result.Packages[0].URN != directURN {
+		t.Fatalf("Packages = %#v, want direct package only", result.Packages)
+	}
+	if len(result.Assets) != 0 {
+		t.Fatalf("Assets = %#v, want no second-hop asset", result.Assets)
+	}
+	if len(result.Relations) != 1 || result.Relations[0].FromURN != directURN {
+		t.Fatalf("Relations = %#v, want only direct relation", result.Relations)
+	}
+}
+
+func TestGetImpactLimitExcludesRelationsForDroppedNodes(t *testing.T) {
+	rootURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
+	packageURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
+	store := &impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{
+		rootURN: {
+			Root:      node(rootURN, "vulnerability", "CVE-2026-4242"),
+			Neighbors: []*ports.NeighborhoodNode{node(packageURN, "package", "foo")},
+			Relations: []*ports.NeighborhoodRelation{rel(packageURN, "affected_by", rootURN)},
+		},
+		packageURN: emptyNeighborhood(packageURN, "package"),
+	}}
+
+	result, err := New(store).GetImpact(context.Background(), ImpactRequest{
+		Kind:       ImpactKindVulnerability,
+		TenantID:   "writer",
+		Identifier: "CVE-2026-4242",
+		Depth:      1,
+		Limit:      1,
+	})
+	if err != nil {
+		t.Fatalf("GetImpact() error = %v", err)
+	}
+	if result.Root == nil || result.Root.URN != rootURN {
+		t.Fatalf("Root = %#v, want root node", result.Root)
+	}
+	if len(result.Packages) != 0 {
+		t.Fatalf("Packages = %#v, want dropped package excluded", result.Packages)
+	}
+	if len(result.Relations) != 0 {
+		t.Fatalf("Relations = %#v, want relations with dropped endpoints excluded", result.Relations)
+	}
+}
+
 func TestGetImpactPackageNormalizesVersionedPURL(t *testing.T) {
 	rootURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
 	store := &impactStubStore{neighborhoods: map[string]*ports.EntityNeighborhood{

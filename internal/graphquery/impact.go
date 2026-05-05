@@ -87,7 +87,7 @@ func (s *Service) collectImpactGraph(ctx context.Context, rootURN string, depth 
 	relations := map[string]*ports.NeighborhoodRelation{}
 	visited := map[string]bool{}
 	frontier := []string{rootURN}
-	for hop := 0; hop <= depth && len(frontier) > 0 && len(nodes) < limit; hop++ {
+	for hop := 0; hop < depth && len(frontier) > 0 && len(nodes) < limit; hop++ {
 		next := []string{}
 		for _, urn := range frontier {
 			if visited[urn] || len(nodes) >= limit {
@@ -117,7 +117,21 @@ func (s *Service) collectImpactGraph(ctx context.Context, rootURN string, depth 
 		}
 		frontier = next
 	}
-	return nodes, relations, nil
+	return nodes, filterImpactRelations(nodes, relations), nil
+}
+
+func filterImpactRelations(nodes map[string]*ports.NeighborhoodNode, relations map[string]*ports.NeighborhoodRelation) map[string]*ports.NeighborhoodRelation {
+	filtered := map[string]*ports.NeighborhoodRelation{}
+	for key, relation := range relations {
+		if relation == nil {
+			continue
+		}
+		if nodes[relation.FromURN] == nil || nodes[relation.ToURN] == nil {
+			continue
+		}
+		filtered[key] = relation
+	}
+	return filtered
 }
 
 func impactRootURN(request ImpactRequest) (string, error) {
