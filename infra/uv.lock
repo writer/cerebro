@@ -209,16 +209,16 @@ wheels = [
 
 [[package]]
 name = "pulumi-gcp"
-version = "9.13.0"
+version = "9.21.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "parver" },
     { name = "pulumi" },
     { name = "semver" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a3/de/ce99d58f8ab4ac9f916fec947c3f61dac649bea5d89fb4a906468af23f16/pulumi_gcp-9.13.0.tar.gz", hash = "sha256:52d6419446cfd84c206192d4d991a422606574939150dd88fb9ac6d0552c652a", size = 9531189, upload-time = "2026-02-25T14:26:10.26Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2a/a7/951171f65a0fa7359b2e441ce59dbbfd27ad4d5983ab5f56e3555436e010/pulumi_gcp-9.21.0.tar.gz", hash = "sha256:30841f00edfa8ee81857deefa448aa6aa5678ffdeda2d8e50012f50dcee83271", size = 9968199, upload-time = "2026-04-24T11:58:30.444Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/c7/ec4b53711a85dfefd831fe7de5d6f0c767ecb097b85cde0c14243e08e1fb/pulumi_gcp-9.13.0-py3-none-any.whl", hash = "sha256:e4ce7b1974f0746dead1a2d22bd2f4236021ef10731660aa25387efbce0efe62", size = 11734179, upload-time = "2026-02-25T14:26:07.742Z" },
+    { url = "https://files.pythonhosted.org/packages/33/e5/e35b5203379e504b9e70d0706331c8557a67cbf4bcf62a58291f3abac61a/pulumi_gcp-9.21.0-py3-none-any.whl", hash = "sha256:45399a6ea830ceaf8edff2b176501d244bff3590672b27ce7fdd1bc852a3d172", size = 12250639, upload-time = "2026-04-24T11:58:27.172Z" },
 ]
 
 [[package]]

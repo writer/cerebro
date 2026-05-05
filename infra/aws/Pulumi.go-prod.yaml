@@ -3,8 +3,7 @@ config:
   cerebro:environment: go-production
   cerebro:ecrBaseUri: 837279440628.dkr.ecr.us-east-1.amazonaws.com/cerebro
   cerebro:imageTag: v1.0.0
-  
-  # Use existing VPC (sec-prod account)
+
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-0bec76c1fba4b8ad2
   cerebro:vpcCidr: "10.20.0.0/16"
@@ -14,38 +13,42 @@ config:
   cerebro:publicSubnetIds:
     - subnet-0dee23b7f11d39069
     - subnet-06c3659db5372e941
-  
+
+  cerebro:apiCpu: 2048
+  cerebro:apiMemory: 4096
+  cerebro:apiMinInstances: 1
+  cerebro:apiMaxInstances: 1
+  cerebro:postgresInstanceClass: db.t4g.small
+  cerebro:postgresAllocatedStorage: 100
+  cerebro:postgresBackupRetentionDays: 14
+  cerebro:postgresDeletionProtection: true
+  cerebro:postgresMultiAz: true
+  cerebro:retainLegacyJobsTableForDeletionProtectionTransition: true
+  cerebro:natsCpu: 1024
+  cerebro:natsMemory: 2048
+  cerebro:jetstreamStreamName: CEREBRO_EVENTS
+  cerebro:jetstreamSubjectPrefix: events
+  cerebro:apiAuthEnabled: true
+  cerebro:allowedTenants:
+    - writer
+
   cerebro:enableTailscale: true
   cerebro:tailscaleAdvertiseRoutes:
     - "10.20.0.0/18"
     - "10.20.128.0/18"
-  cerebro:enableKandjiApiToken: true
-  cerebro:enableKandjiApiUrl: true
-  cerebro:enableSocketApiToken: true
-  cerebro:socketOrg: "writerinternal"
-  # Optional Socket provider override
-  # cerebro:socketApiUrl: "https://api.socket.dev/v0"
   cerebro:enableInfisicalSyncRole: true
-  cerebro:useExternalSecrets: true
   cerebro:infisicalAssumeRolePrincipalArn: "arn:aws:iam::381492033652:root"
   cerebro:enableAlbAccessLogs: true
   cerebro:enableAlbDeletionProtection: true
   cerebro:enableKmsLogEncryption: true
   cerebro:natGatewayPerAz: true
-  # cerebro:slackAlarmChannelId: "C09D3SK229H"
-  # cerebro:slackWorkspaceId: "E07UFCSGMTM"
 
-  # GCP WIF - populate cerebro:gcpWifAudience from GCP stack output:
-  #   cd infra/gcp && pulumi stack output wif_audience --stack gcp-prod
-  cerebro:gcpWifAudience: ""
-  cerebro:gcpImpersonateServiceAccount: "cerebro-scanner-prod@writer-iam.iam.gserviceaccount.com"
-
-  # S3 source ingestion
+  # IAM scope retained for internal S3 source runtimes. Runtime source configs
+  # provide bucket/prefix details to Cerebro; these entries grant task access.
   cerebro:s3Sources:
     - name: kolide
       bucket: writer-kolide-telemetry
       region: us-east-1
-      format: jsonl
       prefixes:
         - "audit_logs/"
         - "results/incident_response/"
@@ -55,6 +58,5 @@ config:
     - name: sentinelone
       bucket: writer-sentinelone-cloud-funnel
       region: us-east-1
-      format: jsonl
       prefixes:
         - "s1/cloud_funnel/"

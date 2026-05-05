@@ -336,6 +336,7 @@ tailscale status
             http_put_response_hop_limit=1,
         ),
         tags={"Name": f"{name}-tailscale"},
+        opts=pulumi.ResourceOptions(ignore_changes=["ami", "rootBlockDevice"]),
     )
 
     return {

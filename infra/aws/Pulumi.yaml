@@ -4,73 +4,109 @@ runtime:
   options:
     toolchain: uv
     virtualenv: ../.venv
-description: Infrastructure for Cerebro Security Platform (Go)
+description: Infrastructure for the Cerebro rewrite runtime
 
 config:
   cerebro:environment:
     type: string
-    description: Environment name override (derived from stack name if not set)
-
+    description: Environment name override (derived from stack name if unset)
   cerebro:domain:
     type: string
     default: ""
-    description: Custom domain for Cerebro API (optional)
-
+    description: Custom domain for Cerebro API
   cerebro:ecrBaseUri:
     type: string
-    description: ECR repository base URI (without tag), e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/cerebro
-
+    description: ECR repository base URI without tag
   cerebro:imageTag:
     type: string
     default: v1.0.0
-    description: Image tag used for both GHCR pull and ECR/ECS deployment
+    description: Container image tag deployed to ECS
 
-
-  cerebro:snowflakeDatabase:
-    type: string
-    default: CEREBRO
-    description: Snowflake database name
-
-  cerebro:snowflakeSchema:
-    type: string
-    default: RAW
-    description: Snowflake schema name
-
-  # ECS sizing
   cerebro:apiCpu:
     type: integer
     default: 1024
-    description: API task CPU units (1024 = 1 vCPU)
-
+    description: API task CPU units
   cerebro:apiMemory:
     type: integer
     default: 2048
     description: API task memory in MB
-
   cerebro:apiMinInstances:
     type: integer
-    default: 2
+    default: 1
     description: Minimum API instances
-
   cerebro:apiMaxInstances:
     type: integer
-    default: 10
-    description: Maximum API instances
+    default: 1
+    description: Maximum API instances; keep at 1 until source-runtime sync has distributed locking
 
-  # Optional integrations - set via: pulumi config set --secret cerebro:anthropicApiKey "..."
-  # These are NOT defined in schema so they're truly optional
+  cerebro:postgresInstanceClass:
+    type: string
+    default: db.t4g.micro
+    description: RDS Postgres instance class
+  cerebro:postgresAllocatedStorage:
+    type: integer
+    default: 20
+    description: RDS Postgres allocated storage in GB
+  cerebro:postgresBackupRetentionDays:
+    type: integer
+    default: 7
+    description: RDS Postgres backup retention in days
+  cerebro:postgresDeletionProtection:
+    type: boolean
+    default: false
+    description: Enable RDS deletion protection and final snapshot
+  cerebro:postgresMultiAz:
+    type: boolean
+    default: false
+    description: Deploy RDS Postgres in Multi-AZ mode
+  cerebro:retainLegacyJobsTableForDeletionProtectionTransition:
+    type: boolean
+    default: false
+    description: Temporarily retain the legacy DynamoDB jobs table while disabling its deletion protection
 
-  # Feature flags
+  cerebro:natsCpu:
+    type: integer
+    default: 512
+    description: NATS task CPU units
+  cerebro:natsMemory:
+    type: integer
+    default: 1024
+    description: NATS task memory in MB
+  cerebro:jetstreamSubjectPrefix:
+    type: string
+    default: events
+    description: JetStream subject prefix used by Cerebro
+  cerebro:jetstreamStreamName:
+    type: string
+    default: CEREBRO_EVENTS
+    description: JetStream stream name bootstrapped for Cerebro events
+  cerebro:neo4jDatabase:
+    type: string
+    default: ""
+    description: Optional Neo4j/Aura database name; empty uses the server default
+  cerebro:apiAuthEnabled:
+    type: boolean
+    default: false
+    description: Enable API key authentication for non-public routes
+  cerebro:allowedTenants:
+    type: array
+    items:
+      type: string
+    default: []
+    description: Optional tenant allowlist for unscoped API keys
+  cerebro:shutdownTimeout:
+    type: string
+    default: 10s
+    description: Graceful shutdown timeout parsed by the Go runtime
+
   cerebro:enableWaf:
     type: boolean
     default: true
     description: Enable AWS WAF
-
   cerebro:albInternal:
     type: boolean
     default: true
-    description: Deploy ALB as internal only
-
+    description: Deploy ALB as internal-only
   cerebro:logRetentionDays:
     type: integer
     default: 30

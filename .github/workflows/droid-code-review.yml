@@ -45,9 +45,11 @@ jobs:
             should_run=true
           fi
 
-          echo "has_infisical=$has_infisical" >> "$GITHUB_OUTPUT"
-          echo "has_factory_key=$has_factory_key" >> "$GITHUB_OUTPUT"
-          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          {
+            echo "has_infisical=$has_infisical"
+            echo "has_factory_key=$has_factory_key"
+            echo "should_run=$should_run"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         if: steps.auth_check.outputs.should_run == 'true'
@@ -60,7 +62,7 @@ jobs:
         if: steps.auth_check.outputs.should_run == 'true'
         run: |
           curl -fsSL https://app.factory.ai/cli | sh
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/droid" --version
 
       - name: Configure git identity
@@ -287,7 +289,7 @@ jobs:
             existing_comments.json
             prompt.txt
             comments.json
-            ${{ runner.home }}/.factory/logs/droid-log-single.log
-            ${{ runner.home }}/.factory/logs/console.log
+            ~/.factory/logs/droid-log-single.log
+            ~/.factory/logs/console.log
           if-no-files-found: ignore
           retention-days: 7

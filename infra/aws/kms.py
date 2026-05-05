@@ -15,8 +15,7 @@ def create_kms_key(name: str, description: str) -> dict:
     - Account root for admin access
     - ECS tasks for decryption (via Secrets Manager)
     - Secrets Manager service for encryption
-    - SQS service for encryption
-    - DynamoDB service for encryption
+    - Secrets Manager, RDS, EFS, and CloudWatch Logs service encryption
 
     Returns:
         dict with key, key_id, key_arn, and alias
@@ -60,9 +59,9 @@ def create_kms_key(name: str, description: str) -> dict:
                         },
                     },
                     {
-                        "Sid": "Allow SQS",
+                        "Sid": "Allow RDS",
                         "Effect": "Allow",
-                        "Principal": {"Service": "sqs.amazonaws.com"},
+                        "Principal": {"Service": "rds.amazonaws.com"},
                         "Action": [
                             "kms:Encrypt",
                             "kms:Decrypt",
@@ -73,15 +72,15 @@ def create_kms_key(name: str, description: str) -> dict:
                         "Resource": "*",
                         "Condition": {
                             "StringEquals": {
-                                "kms:ViaService": f"sqs.{region.region}.amazonaws.com",
+                                "kms:ViaService": f"rds.{region.region}.amazonaws.com",
                                 "kms:CallerAccount": caller.account_id,
                             },
                         },
                     },
                     {
-                        "Sid": "Allow DynamoDB",
+                        "Sid": "Allow EFS",
                         "Effect": "Allow",
-                        "Principal": {"Service": "dynamodb.amazonaws.com"},
+                        "Principal": {"Service": "elasticfilesystem.amazonaws.com"},
                         "Action": [
                             "kms:Encrypt",
                             "kms:Decrypt",
@@ -92,7 +91,7 @@ def create_kms_key(name: str, description: str) -> dict:
                         "Resource": "*",
                         "Condition": {
                             "StringEquals": {
-                                "kms:ViaService": f"dynamodb.{region.region}.amazonaws.com",
+                                "kms:ViaService": f"elasticfilesystem.{region.region}.amazonaws.com",
                                 "kms:CallerAccount": caller.account_id,
                             },
                         },

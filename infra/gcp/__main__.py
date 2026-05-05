@@ -7,7 +7,7 @@ Deploys:
 - Project IAM roles for scanner SA
 
 Security model:
-  AWS ECS task role OR worker task role -> WIF (attribute-conditioned) -> GCP SA
+  AWS ECS task role -> WIF (attribute-conditioned) -> GCP SA
   No service account keys; short-lived credentials only.
 """
 
@@ -59,7 +59,7 @@ wif_provider = gcp.iam.WorkloadIdentityPoolProvider(
     workload_identity_pool_id=wif_pool.workload_identity_pool_id,
     workload_identity_pool_provider_id=provider_id,
     display_name="Cerebro AWS Provider",
-    description="AWS provider restricted to Cerebro ECS task and worker roles",
+    description="AWS provider restricted to Cerebro ECS task roles",
     aws=gcp.iam.WorkloadIdentityPoolProviderAwsArgs(
         account_id=trusted_aws_account_id,
     ),

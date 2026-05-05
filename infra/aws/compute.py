@@ -1,5 +1,5 @@
 """
-AWS ECS Fargate compute for Cerebro Go application.
+AWS ECS Fargate compute for the Cerebro rewrite runtime.
 """
 
 import json
@@ -10,48 +10,40 @@ import pulumi_aws as aws
 
 def create_ecs_cluster(
     name: str,
-    vpc_id: pulumi.Output[str],
-    subnet_ids: list[pulumi.Output[str]],
-    security_group_id: pulumi.Output[str],
-    kms_key_id: pulumi.Output[str],
-    target_group_arn: pulumi.Output[str],
+    vpc_id: pulumi.Input[str],
+    subnet_ids: list[pulumi.Input[str]],
+    security_group_id: pulumi.Input[str],
+    kms_key_id: pulumi.Input[str],
+    target_group_arn: pulumi.Input[str],
     container_image: str,
     api_cpu: int = 1024,
     api_memory: int = 2048,
-    api_min_instances: int = 2,
-    api_max_instances: int = 10,
+    api_min_instances: int = 1,
+    api_max_instances: int = 1,
     log_retention_days: int = 30,
     environment: dict = None,
     secret_keys: list[str] = None,
     external_secrets_prefix: str = None,
-    job_queue_url: pulumi.Output[str] = None,
-    job_queue_arn: pulumi.Output[str] = None,
-    job_table_name: pulumi.Output[str] = None,
-    log_group_kms_key_id: pulumi.Output[str] = None,
+    log_group_kms_key_id: pulumi.Input[str] = None,
     s3_source_iam_configs: list[dict] = None,
+    efs_file_system_id: pulumi.Input[str] = None,
+    efs_access_point_id: pulumi.Input[str] = None,
+    efs_container_path: str = None,
+    depends_on: list[pulumi.Resource] = None,
     fargate_base: int = 1,
     fargate_weight: int = 1,
     fargate_spot_base: int = 0,
-    fargate_spot_weight: int = 2,
+    fargate_spot_weight: int = 0,
     enable_circuit_breaker: bool = True,
 ) -> dict:
-    """
-    Create ECS cluster with Fargate service for Go API.
-    """
-    # ECS Cluster
+    """Create ECS cluster with an API service."""
     cluster = aws.ecs.Cluster(
         f"{name}-cluster",
         name=f"{name}-cluster",
-        settings=[
-            aws.ecs.ClusterSettingArgs(
-                name="containerInsights",
-                value="enabled",
-            )
-        ],
+        settings=[aws.ecs.ClusterSettingArgs(name="containerInsights", value="enabled")],
         tags={"Name": f"{name}-cluster"},
     )
 
-    # Capacity providers for Fargate and Fargate Spot
     capacity_providers = aws.ecs.ClusterCapacityProviders(
         f"{name}-capacity-providers",
         cluster_name=cluster.name,
@@ -65,11 +57,9 @@ def create_ecs_cluster(
         ],
     )
 
-    # IAM roles
     execution_role = _create_execution_role(name, kms_key_id, external_secrets_prefix)
-    task_role = _create_task_role(name, kms_key_id, job_queue_arn, s3_source_iam_configs)
+    task_role = _create_task_role(name, s3_source_iam_configs, efs_file_system_id)
 
-    # CloudWatch log group with optional KMS encryption
     log_group = aws.cloudwatch.LogGroup(
         f"{name}-logs",
         name=f"/ecs/{name}",
@@ -78,7 +68,6 @@ def create_ecs_cluster(
         tags={"Name": f"{name}-logs"},
     )
 
-    # Task definition
     task_definition = _create_task_definition(
         name=name,
         container_image=container_image,
@@ -90,11 +79,11 @@ def create_ecs_cluster(
         environment=environment or {},
         secret_keys=secret_keys or [],
         external_secrets_prefix=external_secrets_prefix,
-        job_queue_url=job_queue_url,
-        job_table_name=job_table_name,
+        efs_file_system_id=efs_file_system_id,
+        efs_access_point_id=efs_access_point_id,
+        efs_container_path=efs_container_path,
     )
 
-    # Build capacity provider strategies
     capacity_provider_strategies = []
     if fargate_base > 0 or fargate_weight > 0:
         capacity_provider_strategies.append(
@@ -113,7 +102,12 @@ def create_ecs_cluster(
             )
         )
 
-    # ECS Service with capacity providers and circuit breaker
+    service_dependencies = [capacity_providers]
+    if depends_on:
+        service_dependencies.extend(depends_on)
+
+    uses_singleton_deployments = api_max_instances == 1
+
     api_service = aws.ecs.Service(
         f"{name}-service",
         name=f"{name}-api",
@@ -121,35 +115,30 @@ def create_ecs_cluster(
         task_definition=task_definition.arn,
         desired_count=api_min_instances,
         capacity_provider_strategies=capacity_provider_strategies if capacity_provider_strategies else None,
+        availability_zone_rebalancing="DISABLED" if uses_singleton_deployments else "ENABLED",
         network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
             subnets=subnet_ids,
             security_groups=[security_group_id],
             assign_public_ip=False,
         ),
-        load_balancers=[
-            aws.ecs.ServiceLoadBalancerArgs(
-                target_group_arn=target_group_arn,
-                container_name="cerebro",
-                container_port=8080,
-            )
-        ],
+        load_balancers=[aws.ecs.ServiceLoadBalancerArgs(
+            target_group_arn=target_group_arn,
+            container_name="cerebro",
+            container_port=8080,
+        )],
         health_check_grace_period_seconds=120,
-        deployment_maximum_percent=200,
-        deployment_minimum_healthy_percent=100,
+        deployment_maximum_percent=100 if uses_singleton_deployments else 200,
+        deployment_minimum_healthy_percent=0 if uses_singleton_deployments else 100,
         force_new_deployment=True,
         deployment_circuit_breaker=(
-            aws.ecs.ServiceDeploymentCircuitBreakerArgs(
-                enable=True,
-                rollback=True,
-            )
+            aws.ecs.ServiceDeploymentCircuitBreakerArgs(enable=True, rollback=True)
             if enable_circuit_breaker
             else None
         ),
         tags={"Name": f"{name}-service"},
-        opts=pulumi.ResourceOptions(depends_on=[capacity_providers]),
+        opts=pulumi.ResourceOptions(depends_on=service_dependencies),
     )
 
-    # Auto Scaling
     scaling_target = aws.appautoscaling.Target(
         f"{name}-scaling-target",
         service_namespace="ecs",
@@ -159,39 +148,22 @@ def create_ecs_cluster(
         max_capacity=api_max_instances,
     )
 
-    # CPU scaling policy
-    aws.appautoscaling.Policy(
-        f"{name}-cpu-scaling",
-        service_namespace="ecs",
-        resource_id=scaling_target.resource_id,
-        scalable_dimension="ecs:service:DesiredCount",
-        policy_type="TargetTrackingScaling",
-        target_tracking_scaling_policy_configuration=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationArgs(
-            target_value=70.0,
-            predefined_metric_specification=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationPredefinedMetricSpecificationArgs(
-                predefined_metric_type="ECSServiceAverageCPUUtilization",
+    if api_max_instances > api_min_instances:
+        aws.appautoscaling.Policy(
+            f"{name}-cpu-scaling",
+            service_namespace="ecs",
+            resource_id=scaling_target.resource_id,
+            scalable_dimension="ecs:service:DesiredCount",
+            policy_type="TargetTrackingScaling",
+            target_tracking_scaling_policy_configuration=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationArgs(
+                target_value=70.0,
+                predefined_metric_specification=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationPredefinedMetricSpecificationArgs(
+                    predefined_metric_type="ECSServiceAverageCPUUtilization",
+                ),
+                scale_in_cooldown=300,
+                scale_out_cooldown=60,
             ),
-            scale_in_cooldown=300,
-            scale_out_cooldown=60,
-        ),
-    )
-
-    # Memory scaling policy
-    aws.appautoscaling.Policy(
-        f"{name}-memory-scaling",
-        service_namespace="ecs",
-        resource_id=scaling_target.resource_id,
-        scalable_dimension="ecs:service:DesiredCount",
-        policy_type="TargetTrackingScaling",
-        target_tracking_scaling_policy_configuration=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationArgs(
-            target_value=80.0,
-            predefined_metric_specification=aws.appautoscaling.PolicyTargetTrackingScalingPolicyConfigurationPredefinedMetricSpecificationArgs(
-                predefined_metric_type="ECSServiceAverageMemoryUtilization",
-            ),
-            scale_in_cooldown=300,
-            scale_out_cooldown=60,
-        ),
-    )
+        )
 
     return {
         "cluster": cluster,
@@ -203,14 +175,9 @@ def create_ecs_cluster(
     }
 
 
-def _create_execution_role(
-    name: str,
-    kms_key_id: pulumi.Output[str],
-    external_secrets_prefix: str = None,
-) -> aws.iam.Role:
-    """Create IAM execution role for ECS."""
+def _create_execution_role(name: str, kms_key_id: pulumi.Input[str], external_secrets_prefix: str) -> aws.iam.Role:
     if not external_secrets_prefix:
-        raise ValueError("external_secrets_prefix is required for Infisical-managed secrets")
+        raise ValueError("external_secrets_prefix is required")
 
     role = aws.iam.Role(
         f"{name}-exec-role",
@@ -232,48 +199,38 @@ def _create_execution_role(
         policy_arn="arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
     )
 
-    # Get account/region for ARN construction
     caller = aws.get_caller_identity()
     region = aws.get_region()
+    secret_resources = [f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{external_secrets_prefix}/*"]
 
-    # External secrets mode: allow access to Infisical-synced secrets
-    secrets_resources = [
-        f"arn:aws:secretsmanager:{region.region}:{caller.account_id}:secret:{external_secrets_prefix}/*"
-    ]
-
-    if secrets_resources:
-        aws.iam.RolePolicy(
-            f"{name}-exec-secrets",
-            role=role.name,
-            policy=pulumi.Output.all(secrets_resources, kms_key_id).apply(
-                lambda args: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": ["secretsmanager:GetSecretValue"],
-                            "Resource": args[0],
-                        },
-                        {
-                            "Effect": "Allow",
-                            "Action": ["kms:Decrypt"],
-                            "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
-                        },
-                    ],
-                })
-            ),
-        )
+    aws.iam.RolePolicy(
+        f"{name}-exec-secrets",
+        role=role.name,
+        policy=pulumi.Output.all(secret_resources, kms_key_id).apply(lambda args: json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": ["secretsmanager:GetSecretValue"],
+                    "Resource": args[0],
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": ["kms:Decrypt"],
+                    "Resource": f"arn:aws:kms:*:*:key/{args[1]}",
+                },
+            ],
+        })),
+    )
 
     return role
 
 
 def _create_task_role(
     name: str,
-    kms_key_id: pulumi.Output[str],
-    job_queue_arn: pulumi.Output[str] = None,
     s3_source_iam_configs: list[dict] = None,
+    efs_file_system_id: pulumi.Input[str] = None,
 ) -> aws.iam.Role:
-    """Create IAM task role for application."""
     role = aws.iam.Role(
         f"{name}-task-role",
         name=f"{name}-task-role",
@@ -288,7 +245,6 @@ def _create_task_role(
         tags={"Name": f"{name}-task-role"},
     )
 
-    # CloudWatch metrics
     aws.iam.RolePolicy(
         f"{name}-task-cloudwatch",
         role=role.name,
@@ -302,7 +258,6 @@ def _create_task_role(
         }),
     )
 
-    # Cross-account assume-role for AWS inspections via cerebro-org-scan-role
     aws.iam.RolePolicy(
         f"{name}-task-assume-role",
         role=role.name,
@@ -310,35 +265,14 @@ def _create_task_role(
             "Version": "2012-10-17",
             "Statement": [{
                 "Effect": "Allow",
-                "Action": [
-                    "sts:AssumeRole",
-                    "sts:TagSession",
+                "Action": ["sts:AssumeRole", "sts:TagSession"],
+                "Resource": [
+                    "arn:aws:iam::*:role/cerebro-org-scan-role",
+                    "arn:aws:iam::*:role/cerebro-*-source-*",
                 ],
-                "Resource": "arn:aws:iam::*:role/cerebro-org-scan-role",
             }],
         }),
     )
-
-    # SQS permissions for sending jobs to queue (if queue ARN provided)
-    # Use `is not None` to avoid boolean evaluation of Pulumi Output
-    if job_queue_arn is not None:
-        aws.iam.RolePolicy(
-            f"{name}-task-sqs",
-            role=role.name,
-            policy=job_queue_arn.apply(
-                lambda arn: json.dumps({
-                    "Version": "2012-10-17",
-                    "Statement": [{
-                        "Effect": "Allow",
-                        "Action": [
-                            "sqs:SendMessage",
-                            "sqs:GetQueueAttributes",
-                        ],
-                        "Resource": arn,
-                    }],
-                })
-            ),
-        )
 
     if s3_source_iam_configs:
         bucket_arns = []
@@ -357,34 +291,29 @@ def _create_task_role(
                 role_arns.append(cfg["role_arn"])
 
         statements = [
-            {
-                "Sid": "ListS3SourceBuckets",
-                "Effect": "Allow",
-                "Action": ["s3:ListBucket"],
-                "Resource": bucket_arns,
-            },
-            {
-                "Sid": "ReadS3SourceObjects",
-                "Effect": "Allow",
-                "Action": ["s3:GetObject"],
-                "Resource": object_arns,
-            },
+            {"Sid": "ListS3SourceBuckets", "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": bucket_arns},
+            {"Sid": "ReadS3SourceObjects", "Effect": "Allow", "Action": ["s3:GetObject"], "Resource": object_arns},
         ]
         if role_arns:
-            statements.append({
-                "Sid": "AssumeS3SourceRoles",
-                "Effect": "Allow",
-                "Action": ["sts:AssumeRole"],
-                "Resource": role_arns,
-            })
-
+            statements.append({"Sid": "AssumeS3SourceRoles", "Effect": "Allow", "Action": ["sts:AssumeRole"], "Resource": role_arns})
         aws.iam.RolePolicy(
             f"{name}-task-s3-sources",
             role=role.name,
-            policy=json.dumps({
+            policy=json.dumps({"Version": "2012-10-17", "Statement": statements}),
+        )
+
+    if efs_file_system_id is not None:
+        aws.iam.RolePolicy(
+            f"{name}-task-efs",
+            role=role.name,
+            policy=pulumi.Output.all(efs_file_system_id).apply(lambda args: json.dumps({
                 "Version": "2012-10-17",
-                "Statement": statements,
-            }),
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Action": ["elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite"],
+                    "Resource": f"arn:aws:elasticfilesystem:*:*:file-system/{args[0]}",
+                }],
+            })),
         )
 
     return role
@@ -395,45 +324,31 @@ def _create_task_definition(
     container_image: str,
     cpu: int,
     memory: int,
-    execution_role_arn: pulumi.Output[str],
-    task_role_arn: pulumi.Output[str],
-    log_group_name: pulumi.Output[str],
+    execution_role_arn: pulumi.Input[str],
+    task_role_arn: pulumi.Input[str],
+    log_group_name: pulumi.Input[str],
     environment: dict,
     secret_keys: list[str],
-    external_secrets_prefix: str = None,
-    job_queue_url: pulumi.Output[str] = None,
-    job_table_name: pulumi.Output[str] = None,
+    external_secrets_prefix: str,
+    efs_file_system_id: pulumi.Input[str] = None,
+    efs_access_point_id: pulumi.Input[str] = None,
+    efs_container_path: str = None,
 ) -> aws.ecs.TaskDefinition:
-    """Create ECS task definition."""
-    region_obj = aws.get_region()
-    region = region_obj.region
-    caller = aws.get_caller_identity()
-
     if not external_secrets_prefix:
-        raise ValueError("external_secrets_prefix is required for Infisical-managed secrets")
+        raise ValueError("external_secrets_prefix is required")
 
-    # External secrets mode: each secret is a separate Secrets Manager secret
-    # synced by Infisical to {prefix}/{KEY}
-    secrets_list = [
-        {
-            "name": key,
-            "valueFrom": f"arn:aws:secretsmanager:{region}:{caller.account_id}:secret:{external_secrets_prefix}/{key}",
-        }
-        for key in secret_keys
-    ]
+    region = aws.get_region().region
+    env_items = sorted(environment.items())
+    env_values = [value for _, value in env_items]
 
-    # Build static environment vars
-    env_list = [{"name": k, "value": str(v)} for k, v in environment.items()]
-
-    # Build container definition with dynamic job queue values
-    def build_container_def(queue_url, table_name, log_group):
-        env = env_list.copy()
-        if queue_url:
-            env.append({"name": "JOB_QUEUE_URL", "value": queue_url})
-        if table_name:
-            env.append({"name": "JOB_TABLE_NAME", "value": table_name})
-        
-        return [{
+    def build_container_def(args):
+        log_group = args[0]
+        resolved_env_values = args[1:]
+        env = [
+            {"name": key, "value": str(value)}
+            for (key, _), value in zip(env_items, resolved_env_values)
+        ]
+        container = {
             "name": "cerebro",
             "image": container_image,
             "essential": True,
@@ -449,21 +364,34 @@ def _create_task_definition(
                 },
             },
             "environment": env,
-            "secrets": secrets_list,
+            "secrets": [{"name": key, "valueFrom": f"{external_secrets_prefix}/{key}"} for key in secret_keys],
             "healthCheck": {
-                "command": ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"],
+                "command": ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"],
                 "interval": 30,
                 "timeout": 5,
                 "retries": 3,
                 "startPeriod": 60,
             },
-        }]
+        }
+        if efs_container_path:
+            container["mountPoints"] = [{"sourceVolume": "cerebro-data", "containerPath": efs_container_path, "readOnly": False}]
+        return [container]
 
-    container_definitions = pulumi.Output.all(
-        job_queue_url or "",
-        job_table_name or "",
-        log_group_name,
-    ).apply(lambda args: json.dumps(build_container_def(args[0], args[1], args[2])))
+    container_definitions = pulumi.Output.all(log_group_name, *env_values).apply(lambda args: json.dumps(build_container_def(args)))
+
+    volumes = None
+    if efs_file_system_id is not None and efs_access_point_id is not None:
+        volumes = [aws.ecs.TaskDefinitionVolumeArgs(
+            name="cerebro-data",
+            efs_volume_configuration=aws.ecs.TaskDefinitionVolumeEfsVolumeConfigurationArgs(
+                file_system_id=efs_file_system_id,
+                transit_encryption="ENABLED",
+                authorization_config=aws.ecs.TaskDefinitionVolumeEfsVolumeConfigurationAuthorizationConfigArgs(
+                    access_point_id=efs_access_point_id,
+                    iam="ENABLED",
+                ),
+            ),
+        )]
 
     return aws.ecs.TaskDefinition(
         f"{name}-task",
@@ -479,5 +407,6 @@ def _create_task_definition(
         execution_role_arn=execution_role_arn,
         task_role_arn=task_role_arn,
         container_definitions=container_definitions,
+        volumes=volumes,
         tags={"Name": f"{name}-task"},
     )

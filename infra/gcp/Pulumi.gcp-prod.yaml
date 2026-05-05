@@ -7,7 +7,6 @@ config:
   cerebro:trustedAwsAccountId: "837279440628"
   cerebro:trustedAwsRoleArns:
     - "arn:aws:iam::837279440628:role/cerebro-go-production-task-role"
-    - "arn:aws:iam::837279440628:role/cerebro-go-production-worker-task-role"
   cerebro:scannerRoleProjects:
     - writer-iam
     - qordoba-devel
