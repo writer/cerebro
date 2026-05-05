@@ -27,6 +27,7 @@ const (
 	relationCanAdmin           = "can_admin"
 	relationCanImpersonate     = "can_impersonate"
 	relationCanReach           = "can_reach"
+	relationContains           = "contains"
 	relationHasClassification  = "has_classification"
 	relationHasEvidence        = "has_evidence"
 	relationMemberOf           = "member_of"
@@ -320,6 +321,7 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	packageName := strings.TrimSpace(attributes["package"])
 	ecosystem := strings.TrimSpace(attributes["ecosystem"])
 	advisoryID := firstNonEmpty(attributes["advisory_ghsa_id"], attributes["advisory_cve_id"])
+	vulnerabilityID := firstNonEmpty(canonicalVulnerabilityIdentifier(attributes), advisoryID)
 
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
@@ -368,7 +370,7 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 				"repository":         repository,
 				"severity":           strings.TrimSpace(attributes["severity"]),
 				"state":              strings.TrimSpace(attributes["state"]),
-				"vulnerability_id":   advisoryID,
+				"vulnerability_id":   vulnerabilityID,
 				"vulnerability_type": "dependabot",
 			},
 		})
@@ -411,6 +413,17 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		})
 		if alertURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, packageURN, relationAffects, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	vulnerabilityURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), attributes)
+	if vulnerabilityURN != "" {
+		evidenceAttributes := vulnerabilityEvidenceAttributes(event, attributes)
+		if alertURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), alertURN, vulnerabilityURN, relationAffectedBy, evidenceAttributes))
+		}
+		if packageURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, vulnerabilityURN, relationAffectedBy, evidenceAttributes))
 		}
 	}
 
