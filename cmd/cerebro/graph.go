@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/bootstrap"
 	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/graphingest"
+	"github.com/writer/cerebro/internal/graphquery"
 	"github.com/writer/cerebro/internal/graphrebuild"
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
@@ -38,6 +39,7 @@ type graphCountsStore interface {
 }
 
 type graphQueryStore interface {
+	Ping(context.Context) error
 	GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error)
 }
 
@@ -179,6 +181,8 @@ func runGraph(args []string) error {
 		return runGraphIngestRuns(args[1:])
 	case "counts", "neighborhood", "paths", "integrity":
 		return runGraphInspect(args)
+	case "cve-impact", "package-exposure", "asset-vulns":
+		return runGraphImpact(args)
 	case "inspect":
 		if len(args) < 2 {
 			return usageError(graphInspectUsage())
@@ -230,7 +234,7 @@ func runGraph(args []string) error {
 }
 
 func graphUsage() string {
-	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|integrity|ingest|ingest-runtime|ingest-run|ingest-runs|rebuild|inspect] ...", os.Args[0])
+	return fmt.Sprintf("usage: %s graph [counts|neighborhood|paths|integrity|cve-impact|package-exposure|asset-vulns|ingest|ingest-runtime|ingest-run|ingest-runs|rebuild|inspect] ...", os.Args[0])
 }
 
 func graphIngestUsage() string {
@@ -247,6 +251,10 @@ func graphIngestRunUsage() string {
 
 func graphInspectUsage() string {
 	return fmt.Sprintf("usage: %s graph [counts|neighborhood <urn>|paths|integrity] [limit=N]", os.Args[0])
+}
+
+func graphImpactUsage() string {
+	return fmt.Sprintf("usage: %s graph [cve-impact <CVE|GHSA>|package-exposure <package|purl>|asset-vulns <urn>] tenant_id=<tenant-id> [limit=N] [depth=N]", os.Args[0])
 }
 
 func runGraphInspect(args []string) error {
@@ -327,6 +335,28 @@ func runGraphInspect(args []string) error {
 	}
 }
 
+func runGraphImpact(args []string) error {
+	request, err := parseGraphImpactArgs(args)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	deps, closeDeps, err := openGraphDependencies(ctx)
+	if err != nil {
+		return err
+	}
+	defer logClose(closeDeps)
+	store, ok := deps.GraphStore.(graphQueryStore)
+	if !ok {
+		return fmt.Errorf("graph store does not support impact traversals")
+	}
+	result, err := graphquery.New(store).GetImpact(ctx, request)
+	if err != nil {
+		return err
+	}
+	return printJSON(result)
+}
+
 func runGraphIngestRun(args []string) error {
 	if len(args) != 1 || strings.TrimSpace(args[0]) == "" {
 		return usageError(graphIngestRunUsage())
@@ -391,6 +421,54 @@ func parseGraphNeighborhoodArgs(args []string) (string, int, error) {
 		return "", 0, err
 	}
 	return rootURN, limit, nil
+}
+
+func parseGraphImpactArgs(args []string) (graphquery.ImpactRequest, error) {
+	if len(args) < 2 || strings.TrimSpace(args[1]) == "" {
+		return graphquery.ImpactRequest{}, usageError(graphImpactUsage())
+	}
+	request := graphquery.ImpactRequest{
+		Identifier: strings.TrimSpace(args[1]),
+	}
+	switch strings.TrimSpace(args[0]) {
+	case "cve-impact":
+		request.Kind = graphquery.ImpactKindVulnerability
+	case "package-exposure":
+		request.Kind = graphquery.ImpactKindPackage
+	case "asset-vulns":
+		request.Kind = graphquery.ImpactKindAsset
+		request.RootURN = request.Identifier
+	default:
+		return graphquery.ImpactRequest{}, usageError(graphImpactUsage())
+	}
+	for _, arg := range args[2:] {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return graphquery.ImpactRequest{}, usageError(fmt.Sprintf("expected key=value argument, got %q", arg))
+		}
+		switch strings.TrimSpace(key) {
+		case "tenant_id":
+			request.TenantID = strings.TrimSpace(value)
+		case "limit":
+			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+			if err != nil {
+				return graphquery.ImpactRequest{}, fmt.Errorf("parse limit: %w", err)
+			}
+			request.Limit = uint32(parsed)
+		case "depth":
+			parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+			if err != nil {
+				return graphquery.ImpactRequest{}, fmt.Errorf("parse depth: %w", err)
+			}
+			request.Depth = uint32(parsed)
+		default:
+			return graphquery.ImpactRequest{}, usageError(fmt.Sprintf("unsupported graph impact argument %q", key))
+		}
+	}
+	if request.Kind != graphquery.ImpactKindAsset && strings.TrimSpace(request.TenantID) == "" {
+		return graphquery.ImpactRequest{}, usageError(graphImpactUsage())
+	}
+	return request, nil
 }
 
 func parseGraphLimitArgs(args []string, defaultLimit int, command string) (int, error) {

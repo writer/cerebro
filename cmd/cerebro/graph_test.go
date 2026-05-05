@@ -135,6 +135,35 @@ func TestParseGraphNeighborhoodArgs(t *testing.T) {
 	}
 }
 
+func TestParseGraphImpactArgs(t *testing.T) {
+	request, err := parseGraphImpactArgs([]string{"cve-impact", "CVE-2026-4242", "tenant_id=writer", "limit=25", "depth=3"})
+	if err != nil {
+		t.Fatalf("parseGraphImpactArgs() error = %v", err)
+	}
+	if request.Kind != "vulnerability" || request.Identifier != "CVE-2026-4242" || request.TenantID != "writer" {
+		t.Fatalf("request = %#v, want vulnerability request", request)
+	}
+	if request.Limit != 25 || request.Depth != 3 {
+		t.Fatalf("limit/depth = %d/%d, want 25/3", request.Limit, request.Depth)
+	}
+}
+
+func TestParseGraphImpactArgsRequiresTenantForPackage(t *testing.T) {
+	if _, err := parseGraphImpactArgs([]string{"package-exposure", "pkg:npm/foo@1.2.3"}); err == nil {
+		t.Fatal("parseGraphImpactArgs() error = nil, want tenant requirement")
+	}
+}
+
+func TestParseGraphImpactArgsAllowsAssetURNWithoutTenant(t *testing.T) {
+	request, err := parseGraphImpactArgs([]string{"asset-vulns", "urn:cerebro:writer:sentinelone_agent:agent-1"})
+	if err != nil {
+		t.Fatalf("parseGraphImpactArgs() error = %v", err)
+	}
+	if request.Kind != "asset" || request.RootURN != "urn:cerebro:writer:sentinelone_agent:agent-1" {
+		t.Fatalf("request = %#v, want asset root request", request)
+	}
+}
+
 func TestGraphIngestEventOverridesTenant(t *testing.T) {
 	original := &cerebrov1.EventEnvelope{
 		Id:       "evt-1",

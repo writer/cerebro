@@ -1596,6 +1596,42 @@ func TestAuthMiddlewareEnforcesTenantOnGraphRootURN(t *testing.T) {
 	}
 }
 
+func TestGraphPackageImpactEndpointReturnsCanonicalPackageRoot(t *testing.T) {
+	rootURN := "urn:cerebro:writer:package:canonical:pkg:npm/foo"
+	graph := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			rootURN: {
+				URN:        rootURN,
+				TenantID:   "writer",
+				SourceID:   "github",
+				EntityType: "package",
+				Label:      "foo",
+			},
+		},
+	}
+	app := New(config.Config{}, Dependencies{GraphStore: graph}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/platform/graph/impact/package?tenant_id=writer&package=pkg:npm/foo@1.2.3")
+	if err != nil {
+		t.Fatalf("GET /platform/graph/impact/package error = %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /platform/graph/impact/package status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		RootURN string `json:"root_urn"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.RootURN != rootURN {
+		t.Fatalf("root_urn = %q, want %q", body.RootURN, rootURN)
+	}
+}
+
 func TestAuthMiddlewareRejectsUnscopedGraphIngestRunListings(t *testing.T) {
 	cfg := config.Config{
 		HTTPAddr:        "127.0.0.1:0",
