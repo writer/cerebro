@@ -164,17 +164,18 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project() error = %v", err)
 	}
-	if result.EntitiesProjected != 6 {
-		t.Fatalf("Project().EntitiesProjected = %d, want 6", result.EntitiesProjected)
+	if result.EntitiesProjected != 7 {
+		t.Fatalf("Project().EntitiesProjected = %d, want 7", result.EntitiesProjected)
 	}
-	if result.LinksProjected != 6 {
-		t.Fatalf("Project().LinksProjected = %d, want 6", result.LinksProjected)
+	if result.LinksProjected != 8 {
+		t.Fatalf("Project().LinksProjected = %d, want 8", result.LinksProjected)
 	}
 
 	alertURN := "urn:cerebro:writer:github_dependabot_alert:writer/cerebro:7"
 	repoURN := "urn:cerebro:writer:github_repo:writer/cerebro"
 	advisoryURN := "urn:cerebro:writer:github_advisory:GHSA-xxxx-yyyy-zzzz"
 	packageURN := "urn:cerebro:writer:package:go:golang.org/x/crypto"
+	canonicalPackageURN := "urn:cerebro:writer:package:canonical:golang.org/x/crypto"
 	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2025-12345"
 	if _, ok := state.entities[alertURN]; !ok {
 		t.Fatalf("state entity %q missing", alertURN)
@@ -196,6 +197,12 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 	}
 	if _, ok := state.links[packageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]; !ok {
 		t.Fatal("package canonical vulnerability link missing")
+	}
+	if _, ok := state.links[packageURN+"|"+relationRepresents+"|"+canonicalPackageURN]; !ok {
+		t.Fatal("package canonical identity link missing")
+	}
+	if _, ok := state.links[canonicalPackageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]; !ok {
+		t.Fatal("canonical package vulnerability link missing")
 	}
 }
 

@@ -33,6 +33,7 @@ const (
 	relationMemberOf           = "member_of"
 	relationObservedOn         = "observed_on"
 	relationOwnedBy            = "owned_by"
+	relationRepresents         = "represents"
 	relationRepresentsIdentity = "represents_identity"
 	relationRunsAs             = "runs_as"
 	relationSupports           = "supports"
@@ -417,6 +418,7 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 	}
 
 	vulnerabilityURN := addCanonicalVulnerabilityEntity(entities, tenantID, event.GetSourceId(), attributes)
+	canonicalPackageURN := addCanonicalPackageEntity(entities, tenantID, event.GetSourceId(), attributes, ecosystem)
 	if vulnerabilityURN != "" {
 		evidenceAttributes := vulnerabilityEvidenceAttributes(event, attributes)
 		if alertURN != "" {
@@ -425,6 +427,12 @@ func githubDependabotAlertProjections(event *cerebrov1.EventEnvelope) ([]*ports.
 		if packageURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, vulnerabilityURN, relationAffectedBy, evidenceAttributes))
 		}
+		if canonicalPackageURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), canonicalPackageURN, vulnerabilityURN, relationAffectedBy, evidenceAttributes))
+		}
+	}
+	if packageURN != "" && canonicalPackageURN != "" {
+		addLink(links, projectedLink(tenantID, event.GetSourceId(), packageURN, canonicalPackageURN, relationRepresents, packageIdentityAttributes(event, attributes, ecosystem)))
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)

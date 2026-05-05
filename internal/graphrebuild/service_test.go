@@ -465,30 +465,30 @@ func TestRebuildDryRunProjectsDependabotAlertGraph(t *testing.T) {
 	if result.EventsRead != 1 {
 		t.Fatalf("EventsRead = %d, want 1", result.EventsRead)
 	}
-	if result.EntitiesProjected != 6 {
-		t.Fatalf("EntitiesProjected = %d, want 6", result.EntitiesProjected)
+	if result.EntitiesProjected != 7 {
+		t.Fatalf("EntitiesProjected = %d, want 7", result.EntitiesProjected)
 	}
-	if result.LinksProjected != 6 {
-		t.Fatalf("LinksProjected = %d, want 6", result.LinksProjected)
+	if result.LinksProjected != 8 {
+		t.Fatalf("LinksProjected = %d, want 8", result.LinksProjected)
 	}
-	if result.GraphNodes != 6 {
-		t.Fatalf("GraphNodes = %d, want 6", result.GraphNodes)
+	if result.GraphNodes != 7 {
+		t.Fatalf("GraphNodes = %d, want 7", result.GraphNodes)
 	}
-	if result.GraphLinks != 6 {
-		t.Fatalf("GraphLinks = %d, want 6", result.GraphLinks)
+	if result.GraphLinks != 8 {
+		t.Fatalf("GraphLinks = %d, want 8", result.GraphLinks)
 	}
 	if len(result.EventProjections) != 1 {
 		t.Fatalf("len(EventProjections) = %d, want 1", len(result.EventProjections))
 	}
-	assertEventProjection(t, result.EventProjections[0], "github-dependabot-alert-1", "github.dependabot_alert", 6, 6, 6, 6)
+	assertEventProjection(t, result.EventProjections[0], "github-dependabot-alert-1", "github.dependabot_alert", 7, 8, 7, 8)
 	if got := countValue(result.GraphEntityTypes, "github.dependabot_alert"); got != 1 {
 		t.Fatalf("graph entity type github.dependabot_alert = %d, want 1", got)
 	}
 	if got := countValue(result.GraphEntityTypes, "github.security_advisory"); got != 1 {
 		t.Fatalf("graph entity type github.security_advisory = %d, want 1", got)
 	}
-	if got := countValue(result.GraphEntityTypes, "package"); got != 1 {
-		t.Fatalf("graph entity type package = %d, want 1", got)
+	if got := countValue(result.GraphEntityTypes, "package"); got != 2 {
+		t.Fatalf("graph entity type package = %d, want 2", got)
 	}
 	if got := countValue(result.GraphEntityTypes, "vulnerability"); got != 1 {
 		t.Fatalf("graph entity type vulnerability = %d, want 1", got)
@@ -496,15 +496,19 @@ func TestRebuildDryRunProjectsDependabotAlertGraph(t *testing.T) {
 	if got := countValue(result.GraphRelationTypes, "belongs_to"); got != 2 {
 		t.Fatalf("graph relation type belongs_to = %d, want 2", got)
 	}
-	if got := countValue(result.GraphRelationTypes, "affected_by"); got != 3 {
-		t.Fatalf("graph relation type affected_by = %d, want 3", got)
+	if got := countValue(result.GraphRelationTypes, "affected_by"); got != 4 {
+		t.Fatalf("graph relation type affected_by = %d, want 4", got)
 	}
 	if got := countValue(result.GraphRelationTypes, "affects"); got != 1 {
 		t.Fatalf("graph relation type affects = %d, want 1", got)
 	}
+	if got := countValue(result.GraphRelationTypes, "represents"); got != 1 {
+		t.Fatalf("graph relation type represents = %d, want 1", got)
+	}
 	alertURN := "urn:cerebro:writer-dogfood:github_dependabot_alert:writer/cerebro:5"
 	advisoryURN := "urn:cerebro:writer-dogfood:github_advisory:GHSA-1234-5678-90ab"
 	packageURN := "urn:cerebro:writer-dogfood:package:gomod:golang.org/x/net"
+	canonicalPackageURN := "urn:cerebro:writer-dogfood:package:canonical:golang.org/x/net"
 	vulnerabilityURN := "urn:cerebro:writer-dogfood:vulnerability:ghsa-1234-5678-90ab"
 	if !containsEntityURN(result.PreviewEntities, alertURN) {
 		t.Fatalf("PreviewEntities missing Dependabot alert: %#v", result.PreviewEntities)
@@ -518,6 +522,9 @@ func TestRebuildDryRunProjectsDependabotAlertGraph(t *testing.T) {
 	if !containsEntityURN(result.PreviewEntities, vulnerabilityURN) {
 		t.Fatalf("PreviewEntities missing canonical vulnerability: %#v", result.PreviewEntities)
 	}
+	if !containsEntityURN(result.PreviewEntities, canonicalPackageURN) {
+		t.Fatalf("PreviewEntities missing canonical package: %#v", result.PreviewEntities)
+	}
 	if !containsLink(result.PreviewLinks, alertURN, "affected_by", advisoryURN) {
 		t.Fatalf("PreviewLinks missing advisory relation: %#v", result.PreviewLinks)
 	}
@@ -529,6 +536,12 @@ func TestRebuildDryRunProjectsDependabotAlertGraph(t *testing.T) {
 	}
 	if !containsLink(result.PreviewLinks, packageURN, "affected_by", vulnerabilityURN) {
 		t.Fatalf("PreviewLinks missing package vulnerability relation: %#v", result.PreviewLinks)
+	}
+	if !containsLink(result.PreviewLinks, packageURN, "represents", canonicalPackageURN) {
+		t.Fatalf("PreviewLinks missing package identity relation: %#v", result.PreviewLinks)
+	}
+	if !containsLink(result.PreviewLinks, canonicalPackageURN, "affected_by", vulnerabilityURN) {
+		t.Fatalf("PreviewLinks missing canonical package vulnerability relation: %#v", result.PreviewLinks)
 	}
 }
 
