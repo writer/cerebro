@@ -24,11 +24,11 @@ func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, v
 	resolved := make(map[string]string, len(values))
 	for key, value := range values {
 		resolved[key] = value
-		if preserveLiteralQueryValues && sourceconfig.LiteralEnvPrefixKey(key) {
-			continue
-		}
 		envName, ok := sourceconfig.SecretReferenceName(value)
 		if !ok {
+			continue
+		}
+		if preserveLiteralQueryValues && sourceconfig.LiteralEnvPrefixKey(key) && !sourceConfigEnvReferenceAllowed(sourceID, key, envName) {
 			continue
 		}
 		if envName == "" {

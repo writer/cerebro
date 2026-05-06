@@ -145,7 +145,7 @@ func runGraph(args []string) error {
 		if err != nil {
 			return err
 		}
-		options.SourceConfig, err = config.ResolveSourceRuntimeConfigSecretReferences(ctx, options.SourceID, options.SourceConfig)
+		options.SourceConfig, err = config.ResolveSourceConfigSecretReferences(ctx, options.SourceID, options.SourceConfig)
 		if err != nil {
 			return err
 		}

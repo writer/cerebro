@@ -989,6 +989,9 @@ func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
 			filter.TenantID = strings.TrimSpace(auth.principal.TenantID)
 		}
 	}
+	if filter.TenantID == "" {
+		filter.TenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
+	}
 	if filter.TenantID == "" && requiresTenantFilter(r.Context()) {
 		writeSourceRuntimeError(w, errTenantForbidden)
 		return

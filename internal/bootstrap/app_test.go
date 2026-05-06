@@ -1515,6 +1515,53 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 	}
 }
 
+func TestListSourceRuntimesUsesTenantHeaderWithAllowedTenantAuth(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled:        true,
+			APIKeys:        []config.APIKey{{Key: "allowed-key"}},
+			AllowedTenants: []string{"writer"},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with tenant header: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer allowed-key")
+	req.Header.Set("X-Cerebro-Tenant", "writer")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with tenant header error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with tenant header status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload map[string][]map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode source runtime list: %v", err)
+	}
+	if got := len(payload["runtimes"]); got != 1 {
+		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+}
+
 func TestListSourceRuntimesAllowsUnscopedAdminKeyWithoutTenantFilter(t *testing.T) {
 	cfg := config.Config{
 		HTTPAddr:        "127.0.0.1:0",

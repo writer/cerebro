@@ -70,6 +70,19 @@ func TestResolveSourceConfigSecretReferencesPreservesLiteralEnvQueryValues(t *te
 	}
 }
 
+func TestResolveSourceConfigSecretReferencesResolvesAllowedQueryEnvValues(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_GITHUB_PHRASE", "archived:false")
+	resolved, err := ResolveSourceConfigSecretReferences(context.Background(), "github", map[string]string{
+		"phrase": "env:CEREBRO_SOURCE_GITHUB_PHRASE",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSourceConfigSecretReferences() error = %v", err)
+	}
+	if got := resolved["phrase"]; got != "archived:false" {
+		t.Fatalf("resolved phrase = %q, want archived:false", got)
+	}
+}
+
 func TestResolveSourceRuntimeConfigSecretReferencesResolvesQuerySelectors(t *testing.T) {
 	t.Setenv("CEREBRO_SOURCE_GITHUB_PHRASE", "archived:false")
 	resolved, err := ResolveSourceRuntimeConfigSecretReferences(context.Background(), "github", map[string]string{
