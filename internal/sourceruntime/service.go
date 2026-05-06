@@ -2,8 +2,11 @@ package sourceruntime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"google.golang.org/protobuf/proto"
@@ -22,6 +25,8 @@ const (
 	defaultListLimit = 100
 	maxListLimit     = 500
 	redactedValue    = "[redacted]"
+
+	runtimeProgressConfigHashKey = "__cerebro_resolved_progress_config_hash"
 )
 
 var (
@@ -91,6 +96,7 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 		}
 		return nil, err
 	}
+	runtime.Config = configWithProgressHash(runtime.GetConfig(), resolvedConfig)
 	if existing != nil {
 		if err := validateRuntimeTenantUnchanged(existing, runtime); err != nil {
 			return nil, err
@@ -152,6 +158,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	if err != nil {
 		return nil, err
 	}
+	refreshRuntimeProgressConfig(runtime, runtimeConfig)
 	pageLimit, err := normalizePageLimit(req.GetPageLimit())
 	if err != nil {
 		return nil, err
@@ -210,9 +217,13 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 func (s *Service) resolveConfig(ctx context.Context, sourceID string, config map[string]string) (map[string]string, error) {
 	resolver := s.resolver
 	if resolver == nil {
-		return cloneConfig(config), nil
+		return userConfig(config), nil
 	}
-	return resolver(ctx, sourceID, config)
+	resolved, err := resolver(ctx, sourceID, userConfig(config))
+	if err != nil {
+		return nil, err
+	}
+	return userConfig(resolved), nil
 }
 
 func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
@@ -296,7 +307,8 @@ func mergeRuntime(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceR
 	}
 	resetProgress := existing.GetSourceId() != incoming.GetSourceId() ||
 		existing.GetTenantId() != incoming.GetTenantId() ||
-		!sameConfig(existing.GetConfig(), incoming.GetConfig())
+		!sameConfig(userConfig(existing.GetConfig()), userConfig(incoming.GetConfig())) ||
+		progressConfigHashChanged(existing.GetConfig(), incoming.GetConfig())
 	if !resetProgress {
 		incoming.Checkpoint = cloneCheckpoint(existing.GetCheckpoint())
 		incoming.NextCursor = cloneCursor(existing.GetNextCursor())
@@ -347,12 +359,93 @@ func sameConfig(left map[string]string, right map[string]string) bool {
 	return true
 }
 
-func cloneConfig(config map[string]string) map[string]string {
+func userConfig(config map[string]string) map[string]string {
 	cloned := make(map[string]string, len(config))
 	for key, value := range config {
+		if key == runtimeProgressConfigHashKey {
+			continue
+		}
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func withProgressConfigHash(config map[string]string, hash string) map[string]string {
+	cloned := userConfig(config)
+	cloned[runtimeProgressConfigHashKey] = hash
+	return cloned
+}
+
+func configWithProgressHash(rawConfig map[string]string, resolvedConfig map[string]string) map[string]string {
+	hash, ok := progressConfigHashForRuntime(rawConfig, resolvedConfig)
+	if !ok {
+		return userConfig(rawConfig)
+	}
+	return withProgressConfigHash(rawConfig, hash)
+}
+
+func refreshRuntimeProgressConfig(runtime *cerebrov1.SourceRuntime, resolvedConfig map[string]string) {
+	if runtime == nil {
+		return
+	}
+	hash, ok := progressConfigHashForRuntime(runtime.GetConfig(), resolvedConfig)
+	if !ok {
+		runtime.Config = userConfig(runtime.GetConfig())
+		return
+	}
+	if runtime.GetConfig()[runtimeProgressConfigHashKey] == hash {
+		return
+	}
+	runtime.Checkpoint = nil
+	runtime.NextCursor = nil
+	runtime.LastSyncedAt = nil
+	runtime.Config = withProgressConfigHash(runtime.GetConfig(), hash)
+}
+
+func progressConfigHashForRuntime(rawConfig map[string]string, resolvedConfig map[string]string) (string, bool) {
+	if !hasProgressConfigReferences(rawConfig) {
+		return "", false
+	}
+	return progressConfigHash(resolvedConfig), true
+}
+
+func hasProgressConfigReferences(config map[string]string) bool {
+	for key, value := range config {
+		if key == runtimeProgressConfigHashKey || sensitiveConfigKey(key) {
+			continue
+		}
+		if sourceconfig.IsSecretReference(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func progressConfigHashChanged(existing map[string]string, incoming map[string]string) bool {
+	incomingHash := incoming[runtimeProgressConfigHashKey]
+	if incomingHash == "" {
+		return false
+	}
+	return existing[runtimeProgressConfigHashKey] != incomingHash
+}
+
+func progressConfigHash(config map[string]string) string {
+	keys := make([]string, 0, len(config))
+	for key := range config {
+		if key == runtimeProgressConfigHashKey || sensitiveConfigKey(key) {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	hash := sha256.New()
+	for _, key := range keys {
+		hash.Write([]byte(strings.TrimSpace(key)))
+		hash.Write([]byte{0})
+		hash.Write([]byte(config[key]))
+		hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
@@ -362,6 +455,9 @@ func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
 	}
 	redacted := make(map[string]string, len(cloned.GetConfig()))
 	for key, value := range cloned.GetConfig() {
+		if key == runtimeProgressConfigHashKey {
+			continue
+		}
 		if sensitiveConfigKey(key) {
 			redacted[key] = redactedValue
 			continue

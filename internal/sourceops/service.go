@@ -11,6 +11,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 var (
@@ -21,11 +22,21 @@ var (
 // Service exposes typed source preview operations over a registry.
 type Service struct {
 	registry *sourcecdk.Registry
+	resolver sourceconfig.Resolver
 }
 
 // New constructs a source operations service.
 func New(registry *sourcecdk.Registry) *Service {
 	return &Service{registry: registry}
+}
+
+// WithConfigResolver configures source config secret resolution.
+func (s *Service) WithConfigResolver(resolver sourceconfig.Resolver) *Service {
+	if s == nil {
+		return nil
+	}
+	s.resolver = resolver
+	return s
 }
 
 // List returns the registered source catalog.
@@ -44,7 +55,11 @@ func (s *Service) Check(ctx context.Context, req *cerebrov1.CheckSourceRequest) 
 	if err != nil {
 		return nil, err
 	}
-	if err := source.Check(ctx, sourcecdk.NewConfig(req.GetConfig())); err != nil {
+	config, err := s.resolveConfig(ctx, req.GetSourceId(), req.GetConfig())
+	if err != nil {
+		return nil, err
+	}
+	if err := source.Check(ctx, sourcecdk.NewConfig(config)); err != nil {
 		return nil, sourceOperationError(err)
 	}
 	return &cerebrov1.CheckSourceResponse{
@@ -59,7 +74,11 @@ func (s *Service) Discover(ctx context.Context, req *cerebrov1.DiscoverSourceReq
 	if err != nil {
 		return nil, err
 	}
-	urns, err := source.Discover(ctx, sourcecdk.NewConfig(req.GetConfig()))
+	config, err := s.resolveConfig(ctx, req.GetSourceId(), req.GetConfig())
+	if err != nil {
+		return nil, err
+	}
+	urns, err := source.Discover(ctx, sourcecdk.NewConfig(config))
 	if err != nil {
 		return nil, sourceOperationError(err)
 	}
@@ -79,7 +98,11 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	pull, err := source.Read(ctx, sourcecdk.NewConfig(req.GetConfig()), req.GetCursor())
+	config, err := s.resolveConfig(ctx, req.GetSourceId(), req.GetConfig())
+	if err != nil {
+		return nil, err
+	}
+	pull, err := source.Read(ctx, sourcecdk.NewConfig(config), req.GetCursor())
 	if err != nil {
 		return nil, sourceOperationError(err)
 	}
@@ -96,11 +119,27 @@ func (s *Service) Read(ctx context.Context, req *cerebrov1.ReadSourceRequest) (*
 	}, nil
 }
 
+func (s *Service) resolveConfig(ctx context.Context, sourceID string, config map[string]string) (map[string]string, error) {
+	resolver := s.resolver
+	if resolver == nil {
+		return cloneConfig(config), nil
+	}
+	return resolver(ctx, sourceID, config)
+}
+
 func sourceOperationError(err error) error {
 	if errors.Is(err, sourcecdk.ErrInvalidConfig) {
 		return fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	return err
+}
+
+func cloneConfig(config map[string]string) map[string]string {
+	cloned := make(map[string]string, len(config))
+	for key, value := range config {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func (s *Service) lookup(sourceID string) (sourcecdk.Source, error) {

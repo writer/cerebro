@@ -253,6 +253,55 @@ func TestPutStoresSecretReferenceAfterResolvingForValidation(t *testing.T) {
 	if got := store.runtimes["writer-token"].GetConfig()["token"]; got != "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN" {
 		t.Fatalf("stored token = %q, want env reference", got)
 	}
+	if _, ok := store.runtimes["writer-token"].GetConfig()[runtimeProgressConfigHashKey]; ok {
+		t.Fatal("stored sensitive-only env config wrote progress hash")
+	}
+}
+
+func TestSyncResetsProgressWhenResolvedSelectorReferenceChanges(t *testing.T) {
+	source := &tokenSource{}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	oldHash := progressConfigHash(map[string]string{
+		"domain": "old.example.com",
+		"token":  "resolved-token",
+	})
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-token": {
+			Id:       "writer-token",
+			SourceId: "token_source",
+			Config: map[string]string{
+				"domain":                     "env:CEREBRO_SOURCE_TOKEN_SOURCE_DOMAIN",
+				"token":                      "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN",
+				runtimeProgressConfigHashKey: oldHash,
+			},
+			Checkpoint:   &cerebrov1.SourceCheckpoint{CursorOpaque: "old-cursor"},
+			NextCursor:   &cerebrov1.SourceCursor{Opaque: "old-cursor"},
+			LastSyncedAt: timestamppb.Now(),
+		},
+	}}
+	t.Setenv("CEREBRO_SOURCE_TOKEN_SOURCE_DOMAIN", "new.example.com")
+	t.Setenv("CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN", "resolved-token")
+	service := New(registry, store, &appendLog{}, nil).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
+
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-token"}); err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	stored := store.runtimes["writer-token"]
+	if stored.GetCheckpoint() != nil || stored.GetNextCursor() != nil {
+		t.Fatalf("stored cursor progress was preserved after selector change: checkpoint=%v cursor=%v", stored.GetCheckpoint(), stored.GetNextCursor())
+	}
+	if got := stored.GetConfig()[runtimeProgressConfigHashKey]; got == "" || got == oldHash {
+		t.Fatalf("stored progress hash = %q, want new non-empty hash", got)
+	}
+	if source.read != "resolved-token" {
+		t.Fatalf("source read token = %q, want resolved-token", source.read)
+	}
+	if _, ok := redactRuntime(stored).GetConfig()[runtimeProgressConfigHashKey]; ok {
+		t.Fatal("redacted runtime exposed internal progress hash")
+	}
 }
 
 func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {

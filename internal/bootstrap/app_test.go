@@ -29,6 +29,7 @@ import (
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -1255,6 +1256,44 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}
 }
 
+func TestBootstrapSourcePreviewEndpointsResolveEnvReferences(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	t.Setenv("CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN", "resolved-token")
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := sourceGet(t, server, "/sources/bootstrap_token/read", map[string]string{
+		"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN",
+	})
+	if err != nil {
+		t.Fatalf("GET /sources/bootstrap_token/read error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /sources/bootstrap_token/read status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if source.readToken != "resolved-token" {
+		t.Fatalf("HTTP read token = %q, want resolved-token", source.readToken)
+	}
+
+	source.readToken = ""
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	if _, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
+		SourceId: "bootstrap_token",
+		Config:   map[string]string{"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN"},
+	})); err != nil {
+		t.Fatalf("ReadSource() error = %v", err)
+	}
+	if source.readToken != "resolved-token" {
+		t.Fatalf("Connect read token = %q, want resolved-token", source.readToken)
+	}
+}
+
 func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -2202,6 +2241,48 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 	if len(runtimeStore.entities) == 0 || len(graphStore.entities) == 0 {
 		t.Fatalf("projected entities = state:%d graph:%d, want non-zero", len(runtimeStore.entities), len(graphStore.entities))
+	}
+}
+
+func TestConnectSourceRuntimeEndpointsResolveEnvReferences(t *testing.T) {
+	source := &bootstrapTokenSource{id: "runtime_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	t.Setenv("CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN", "resolved-token")
+	runtimeStore := &stubRuntimeStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  &recordingAppendLog{},
+		StateStore: runtimeStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	if _, err := client.PutSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-runtime-token",
+			SourceId: "runtime_token",
+			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN"},
+		},
+	})); err != nil {
+		t.Fatalf("PutSourceRuntime() error = %v", err)
+	}
+	if source.checkToken != "resolved-token" {
+		t.Fatalf("connect put check token = %q, want resolved-token", source.checkToken)
+	}
+	if got := runtimeStore.runtimes["writer-runtime-token"].GetConfig()["token"]; got != "env:CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN" {
+		t.Fatalf("stored token = %q, want env reference", got)
+	}
+
+	if _, err := client.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{
+		Id: "writer-runtime-token",
+	})); err != nil {
+		t.Fatalf("SyncSourceRuntime() error = %v", err)
+	}
+	if source.readToken != "resolved-token" {
+		t.Fatalf("connect sync read token = %q, want resolved-token", source.readToken)
 	}
 }
 
@@ -3988,6 +4069,30 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 		return nil, err
 	}
 	return sourcecdk.NewRegistry(source, okta, sdk)
+}
+
+type bootstrapTokenSource struct {
+	id         string
+	checkToken string
+	readToken  string
+}
+
+func (s *bootstrapTokenSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: s.id, Name: "Bootstrap token source"}
+}
+
+func (s *bootstrapTokenSource) Check(_ context.Context, config sourcecdk.Config) error {
+	s.checkToken, _ = config.Lookup("token")
+	return nil
+}
+
+func (s *bootstrapTokenSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *bootstrapTokenSource) Read(_ context.Context, config sourcecdk.Config, _ *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	s.readToken, _ = config.Lookup("token")
+	return sourcecdk.Pull{Events: []*primitives.Event{}}, nil
 }
 
 func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {

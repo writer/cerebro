@@ -1381,11 +1381,11 @@ func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Reques
 }
 
 func (s *bootstrapService) ListSources(_ context.Context, _ *connect.Request[cerebrov1.ListSourcesRequest]) (*connect.Response[cerebrov1.ListSourcesResponse], error) {
-	return connect.NewResponse(sourceops.New(s.sources).List()), nil
+	return connect.NewResponse(newSourceService(s.sources).List()), nil
 }
 
 func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request[cerebrov1.CheckSourceRequest]) (*connect.Response[cerebrov1.CheckSourceResponse], error) {
-	response, err := sourceops.New(s.sources).Check(ctx, req.Msg)
+	response, err := newSourceService(s.sources).Check(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -1393,7 +1393,7 @@ func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request
 }
 
 func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Request[cerebrov1.DiscoverSourceRequest]) (*connect.Response[cerebrov1.DiscoverSourceResponse], error) {
-	response, err := sourceops.New(s.sources).Discover(ctx, req.Msg)
+	response, err := newSourceService(s.sources).Discover(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -1401,7 +1401,7 @@ func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Requ
 }
 
 func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[cerebrov1.ReadSourceRequest]) (*connect.Response[cerebrov1.ReadSourceResponse], error) {
-	response, err := sourceops.New(s.sources).Read(ctx, req.Msg)
+	response, err := newSourceService(s.sources).Read(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -1412,12 +1412,7 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizePutSourceRuntimeTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntime()); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := sourceruntime.New(
-		s.sources,
-		sourceRuntimeStore(s.deps.StateStore),
-		s.deps.AppendLog,
-		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
-	).Put(ctx, req.Msg)
+	response, err := newRuntimeService(s.deps, s.sources).Put(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -1428,12 +1423,7 @@ func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := sourceruntime.New(
-		s.sources,
-		sourceRuntimeStore(s.deps.StateStore),
-		s.deps.AppendLog,
-		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
-	).Get(ctx, req.Msg)
+	response, err := newRuntimeService(s.deps, s.sources).Get(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -1444,12 +1434,7 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := sourceruntime.New(
-		s.sources,
-		sourceRuntimeStore(s.deps.StateStore),
-		s.deps.AppendLog,
-		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
-	).Sync(ctx, req.Msg)
+	response, err := newRuntimeService(s.deps, s.sources).Sync(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -2088,7 +2073,7 @@ func uint32QueryParam(r *http.Request, key string) (uint32, error) {
 }
 
 func (a *App) sourceService() *sourceops.Service {
-	return sourceops.New(a.sources)
+	return newSourceService(a.sources)
 }
 
 func (a *App) reportService() *reports.Service {
@@ -2100,11 +2085,19 @@ func (a *App) reportService() *reports.Service {
 }
 
 func (a *App) runtimeService() *sourceruntime.Service {
+	return newRuntimeService(a.deps, a.sources)
+}
+
+func newSourceService(sources *sourcecdk.Registry) *sourceops.Service {
+	return sourceops.New(sources).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
+}
+
+func newRuntimeService(deps Dependencies, sources *sourcecdk.Registry) *sourceruntime.Service {
 	return sourceruntime.New(
-		a.sources,
-		sourceRuntimeStore(a.deps.StateStore),
-		a.deps.AppendLog,
-		sourceProjector(a.deps.StateStore, a.deps.GraphStore),
+		sources,
+		sourceRuntimeStore(deps.StateStore),
+		deps.AppendLog,
+		sourceProjector(deps.StateStore, deps.GraphStore),
 	).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
 }
 

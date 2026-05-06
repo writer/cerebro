@@ -206,7 +206,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 		if err != nil {
 			runErr = err
 		}
-		result.Runs = append(result.Runs, iterationResult)
+		result.Runs = appendOrchestratorRun(result.Runs, iterationResult, options.RunForever)
 		if !options.RunForever && iteration >= options.Iterations {
 			break
 		}
@@ -220,6 +220,13 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 		}
 	}
 	return result, runErr
+}
+
+func appendOrchestratorRun(runs []*orchestratorIterationResult, run *orchestratorIterationResult, runForever bool) []*orchestratorIterationResult {
+	if !runForever {
+		return append(runs, run)
+	}
+	return []*orchestratorIterationResult{run}
 }
 
 func runOrchestratorIteration(
