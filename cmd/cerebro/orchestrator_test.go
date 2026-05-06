@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
 func TestAppendOrchestratorRunBoundsForeverHistory(t *testing.T) {
@@ -51,6 +53,31 @@ func TestOrchestratorShutdownSignalsIncludeSIGTERM(t *testing.T) {
 	}
 }
 
+func TestRunOrchestratorIterationStopsAfterSyncFailure(t *testing.T) {
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},
+	}
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		sourceruntime.New(nil, store, nil, nil),
+		nil,
+		nil,
+		orchestratorOptions{},
+		1,
+	)
+	if err == nil {
+		t.Fatal("runOrchestratorIteration() error = nil, want sync failure")
+	}
+	if got := len(result.Runtimes); got != 1 {
+		t.Fatalf("runtime result count = %d, want 1", got)
+	}
+	if result.Runtimes[0].FindingRules != "" || result.Runtimes[0].GraphIngest != "" {
+		t.Fatalf("downstream stages ran after sync failure: %#v", result.Runtimes[0])
+	}
+}
+
 func TestTouchOrchestratorRuntimePersistsRuntimeForScanRotation(t *testing.T) {
 	store := &touchRuntimeStore{}
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}
@@ -85,4 +112,26 @@ func (s *touchRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebro
 
 func (s *touchRuntimeStore) GetSourceRuntime(context.Context, string) (*cerebrov1.SourceRuntime, error) {
 	return nil, nil
+}
+
+type orchestratorRuntimeStore struct {
+	runtime *cerebrov1.SourceRuntime
+}
+
+func (s *orchestratorRuntimeStore) Ping(context.Context) error { return nil }
+
+func (s *orchestratorRuntimeStore) PutSourceRuntime(context.Context, *cerebrov1.SourceRuntime) error {
+	return nil
+}
+
+func (s *orchestratorRuntimeStore) GetSourceRuntime(context.Context, string) (*cerebrov1.SourceRuntime, error) {
+	return s.runtime, nil
+}
+
+func (s *orchestratorRuntimeStore) ListSourceRuntimes(context.Context, ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	return []*cerebrov1.SourceRuntime{s.runtime}, nil
+}
+
+func (s *orchestratorRuntimeStore) TouchSourceRuntime(context.Context, string) error {
+	return nil
 }

@@ -282,6 +282,8 @@ func runOrchestratorIteration(
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync", err)
 			runErr = err
+			result.Runtimes = append(result.Runtimes, runtimeResult)
+			continue
 		} else {
 			runtimeResult.Sync = "completed"
 		}
