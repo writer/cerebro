@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+)
 
 func TestAppendOrchestratorRunBoundsForeverHistory(t *testing.T) {
 	var runs []*orchestratorIterationResult
@@ -29,4 +34,31 @@ func TestShouldPrintOrchestratorResultSkipsNilStartupFailure(t *testing.T) {
 	if !shouldPrintOrchestratorResult(&orchestratorResult{}) {
 		t.Fatal("shouldPrintOrchestratorResult(non-nil) = false, want true")
 	}
+}
+
+func TestTouchOrchestratorRuntimePersistsRuntimeForScanRotation(t *testing.T) {
+	store := &touchRuntimeStore{}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}
+
+	if err := touchOrchestratorRuntime(context.Background(), store, runtime); err != nil {
+		t.Fatalf("touchOrchestratorRuntime() error = %v", err)
+	}
+	if store.putID != "runtime-1" {
+		t.Fatalf("touched runtime id = %q, want runtime-1", store.putID)
+	}
+}
+
+type touchRuntimeStore struct {
+	putID string
+}
+
+func (s *touchRuntimeStore) Ping(context.Context) error { return nil }
+
+func (s *touchRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
+	s.putID = runtime.GetId()
+	return nil
+}
+
+func (s *touchRuntimeStore) GetSourceRuntime(context.Context, string) (*cerebrov1.SourceRuntime, error) {
+	return nil, nil
 }

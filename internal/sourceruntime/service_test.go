@@ -304,6 +304,30 @@ func TestSyncResetsProgressWhenResolvedSelectorReferenceChanges(t *testing.T) {
 	}
 }
 
+func TestProgressConfigHashIncludesNonSecretKeySelectors(t *testing.T) {
+	rawConfig := map[string]string{
+		"lookup_key": "env:CEREBRO_SOURCE_TOKEN_SOURCE_LOOKUP_KEY",
+		"token":      "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN",
+	}
+	hashA, ok := progressConfigHashForRuntime(rawConfig, map[string]string{
+		"lookup_key": "team-a",
+		"token":      "resolved-token",
+	})
+	if !ok {
+		t.Fatal("progressConfigHashForRuntime() did not include env-backed lookup_key selector")
+	}
+	hashB, ok := progressConfigHashForRuntime(rawConfig, map[string]string{
+		"lookup_key": "team-b",
+		"token":      "resolved-token",
+	})
+	if !ok {
+		t.Fatal("progressConfigHashForRuntime() did not include changed env-backed lookup_key selector")
+	}
+	if hashA == hashB {
+		t.Fatal("progress config hash did not change when lookup_key changed")
+	}
+}
+
 func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {
 	service := New(nil, &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 		"writer-token": {Id: "writer-token", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "env:CEREBRO_TEST_TOKEN"}},

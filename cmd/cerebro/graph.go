@@ -220,7 +220,7 @@ func runGraph(args []string) error {
 				replayer = typed
 			}
 		}
-		service := graphrebuild.New(registry, sourceRuntimeStore(deps.StateStore), replayer)
+		service := graphrebuild.New(registry, sourceRuntimeStore(deps.StateStore), replayer).WithConfigPreparer(config.ResolveSourceConfigSecretReferences)
 		result, err := service.RebuildDryRun(ctx, graphrebuild.Request{
 			Mode:         mode,
 			RuntimeID:    runtimeID,

@@ -258,6 +258,13 @@ func runOrchestratorIteration(
 			SourceID:  strings.TrimSpace(runtime.GetSourceId()),
 			TenantID:  strings.TrimSpace(runtime.GetTenantId()),
 		}
+		if err := touchOrchestratorRuntime(ctx, lister, runtime); err != nil {
+			runtimeResult.Sync = "failed"
+			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "touch", err)
+			result.Runtimes = append(result.Runtimes, runtimeResult)
+			runErr = err
+			continue
+		}
 		if _, err := runtimeService.Sync(ctx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit}); err != nil {
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync", err)
@@ -282,6 +289,13 @@ func runOrchestratorIteration(
 		result.Runtimes = append(result.Runtimes, runtimeResult)
 	}
 	return result, runErr
+}
+
+func touchOrchestratorRuntime(ctx context.Context, store ports.SourceRuntimeStore, runtime *cerebrov1.SourceRuntime) error {
+	if store == nil || runtime == nil {
+		return nil
+	}
+	return store.PutSourceRuntime(ctx, runtime)
 }
 
 func appendRuntimeError(existing string, stage string, err error) string {
