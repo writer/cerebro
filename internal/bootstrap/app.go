@@ -61,8 +61,9 @@ type bootstrapService struct {
 }
 
 const (
-	maxProtoJSONBodyBytes = 1 << 20
-	healthCheckTimeout    = 2 * time.Second
+	maxProtoJSONBodyBytes              = 1 << 20
+	healthCheckTimeout                 = 2 * time.Second
+	sourceRuntimeProgressConfigHashKey = "__cerebro_resolved_progress_config_hash"
 )
 
 var (
@@ -2678,6 +2679,9 @@ func redactSourceRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRunt
 	redacted := proto.Clone(runtime).(*cerebrov1.SourceRuntime)
 	config := make(map[string]string, len(redacted.GetConfig()))
 	for key, value := range redacted.GetConfig() {
+		if key == sourceRuntimeProgressConfigHashKey {
+			continue
+		}
 		if sensitiveSourceConfigKey(key) {
 			config[key] = "[redacted]"
 			continue

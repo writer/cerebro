@@ -1622,6 +1622,26 @@ func TestListSourceRuntimesInvalidLimitReturnsBadRequest(t *testing.T) {
 	}
 }
 
+func TestRedactSourceRuntimeDropsInternalProgressHash(t *testing.T) {
+	runtime := redactSourceRuntime(&cerebrov1.SourceRuntime{
+		Id: "writer-github",
+		Config: map[string]string{
+			"token":                            "secret-token",
+			sourceRuntimeProgressConfigHashKey: "internal-hash",
+			"owner":                            "writer",
+		},
+	})
+	if _, ok := runtime.GetConfig()[sourceRuntimeProgressConfigHashKey]; ok {
+		t.Fatal("redacted runtime exposed internal progress hash")
+	}
+	if got := runtime.GetConfig()["token"]; got != "[redacted]" {
+		t.Fatalf("redacted token = %q, want [redacted]", got)
+	}
+	if got := runtime.GetConfig()["owner"]; got != "writer" {
+		t.Fatalf("redacted owner = %q, want writer", got)
+	}
+}
+
 func TestAuthMiddlewareRejectsBlankTenantSourceRuntimesForScopedKeys(t *testing.T) {
 	cfg := config.Config{
 		HTTPAddr:        "127.0.0.1:0",
