@@ -96,6 +96,9 @@ func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
 			if err != nil {
 				return orchestratorOptions{}, fmt.Errorf("parse limit: %w", err)
 			}
+			if parsed == 0 {
+				return orchestratorOptions{}, fmt.Errorf("limit must be at least 1")
+			}
 			options.Filter.Limit = uint32(parsed)
 		case "page_limit":
 			parsed, err := strconv.ParseUint(value, 10, 32)

@@ -209,6 +209,11 @@ func hasTenantScopedAuth(ctx context.Context) bool {
 	return ok && strings.TrimSpace(auth.principal.TenantID) != ""
 }
 
+func requiresTenantFilter(ctx context.Context) bool {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	return ok && strings.TrimSpace(auth.principal.TenantID) == "" && len(auth.cfg.AllowedTenants) > 0
+}
+
 func tenantAllowed(cfg config.AuthConfig, principal authPrincipal, tenantID string) bool {
 	tenantID = strings.TrimSpace(tenantID)
 	if tenantID == "" {

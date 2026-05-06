@@ -1515,6 +1515,51 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 	}
 }
 
+func TestListSourceRuntimesAllowsUnscopedAdminKeyWithoutTenantFilter(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{Key: "admin-key"}},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes", nil)
+	if err != nil {
+		t.Fatalf("NewRequest without tenant: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer admin-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes without tenant error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes without tenant status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload map[string][]map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode source runtime list: %v", err)
+	}
+	if got := len(payload["runtimes"]); got != 2 {
+		t.Fatalf("listed runtime count = %d, want 2", got)
+	}
+}
+
 func TestListSourceRuntimesInvalidLimitReturnsBadRequest(t *testing.T) {
 	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
 	server := httptest.NewServer(app.Handler())

@@ -222,6 +222,12 @@ func TestParseSourceRuntimeListArgs(t *testing.T) {
 	}
 }
 
+func TestParseSourceRuntimeListArgsRejectsZeroLimit(t *testing.T) {
+	if _, err := parseSourceRuntimeListArgs([]string{"limit=0"}); err == nil {
+		t.Fatal("parseSourceRuntimeListArgs(limit=0) error = nil, want error")
+	}
+}
+
 func TestParseOrchestratorOptions(t *testing.T) {
 	options, err := parseOrchestratorOptions([]string{"tenant_id=writer", "source_id=github", "limit=2", "page_limit=3", "event_limit=4", "graph_page_limit=5"})
 	if err != nil {

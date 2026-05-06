@@ -36,6 +36,12 @@ func TestShouldPrintOrchestratorResultSkipsNilStartupFailure(t *testing.T) {
 	}
 }
 
+func TestParseOrchestratorOptionsRejectsZeroLimit(t *testing.T) {
+	if _, err := parseOrchestratorOptions([]string{"limit=0"}); err == nil {
+		t.Fatal("parseOrchestratorOptions(limit=0) error = nil, want error")
+	}
+}
+
 func TestTouchOrchestratorRuntimePersistsRuntimeForScanRotation(t *testing.T) {
 	store := &touchRuntimeStore{}
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}

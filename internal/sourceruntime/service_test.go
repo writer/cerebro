@@ -328,6 +328,30 @@ func TestProgressConfigHashIncludesNonSecretKeySelectors(t *testing.T) {
 	}
 }
 
+func TestProgressConfigHashIgnoresAccessKeyIDCredentials(t *testing.T) {
+	rawConfig := map[string]string{
+		"access_key_id": "env:CEREBRO_SOURCE_AWS_ACCESS_KEY_ID",
+		"lookup_key":    "env:CEREBRO_SOURCE_AWS_LOOKUP_KEY",
+	}
+	hashA, ok := progressConfigHashForRuntime(rawConfig, map[string]string{
+		"access_key_id": "first",
+		"lookup_key":    "inventory",
+	})
+	if !ok {
+		t.Fatal("progressConfigHashForRuntime() did not include env-backed lookup_key selector")
+	}
+	hashB, ok := progressConfigHashForRuntime(rawConfig, map[string]string{
+		"access_key_id": "second",
+		"lookup_key":    "inventory",
+	})
+	if !ok {
+		t.Fatal("progressConfigHashForRuntime() did not include env-backed lookup_key selector after credential change")
+	}
+	if hashA != hashB {
+		t.Fatal("progress config hash changed when only access_key_id changed")
+	}
+}
+
 func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {
 	service := New(nil, &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
 		"writer-token": {Id: "writer-token", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "env:CEREBRO_TEST_TOKEN"}},

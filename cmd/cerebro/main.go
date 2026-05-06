@@ -393,6 +393,9 @@ func parseSourceRuntimeListArgs(args []string) (ports.SourceRuntimeFilter, error
 			if err != nil {
 				return ports.SourceRuntimeFilter{}, fmt.Errorf("parse limit: %w", err)
 			}
+			if parsed == 0 {
+				return ports.SourceRuntimeFilter{}, fmt.Errorf("limit must be at least 1")
+			}
 			filter.Limit = uint32(parsed)
 		default:
 			return ports.SourceRuntimeFilter{}, fmt.Errorf("unsupported source runtime list argument %q", key)

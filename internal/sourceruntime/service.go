@@ -411,7 +411,7 @@ func progressConfigHashForRuntime(rawConfig map[string]string, resolvedConfig ma
 
 func hasProgressConfigReferences(config map[string]string) bool {
 	for key, value := range config {
-		if key == runtimeProgressConfigHashKey || sourceconfig.SensitiveKey(key) {
+		if key == runtimeProgressConfigHashKey || progressHashSensitiveConfigKey(key) {
 			continue
 		}
 		if sourceconfig.IsSecretReference(value) {
@@ -432,7 +432,7 @@ func progressConfigHashChanged(existing map[string]string, incoming map[string]s
 func progressConfigHash(config map[string]string) string {
 	keys := make([]string, 0, len(config))
 	for key := range config {
-		if key == runtimeProgressConfigHashKey || sourceconfig.SensitiveKey(key) {
+		if key == runtimeProgressConfigHashKey || progressHashSensitiveConfigKey(key) {
 			continue
 		}
 		keys = append(keys, key)
@@ -446,6 +446,14 @@ func progressConfigHash(config map[string]string) string {
 		hash.Write([]byte{0})
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func progressHashSensitiveConfigKey(key string) bool {
+	if sourceconfig.SensitiveKey(key) {
+		return true
+	}
+	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(strings.ToLower(strings.TrimSpace(key)))
+	return compact == "accesskeyid"
 }
 
 func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
