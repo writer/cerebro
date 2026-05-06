@@ -12,3 +12,14 @@ func TestSensitiveKeyDetectsCommonSecretNames(t *testing.T) {
 		t.Fatal("SensitiveKey(owner) = true, want false")
 	}
 }
+
+func TestLiteralEnvPrefixKeyDetectsQueryLikeKeys(t *testing.T) {
+	for _, key := range []string{"filter", "phrase", "q", "search"} {
+		if !LiteralEnvPrefixKey(key) {
+			t.Fatalf("LiteralEnvPrefixKey(%q) = false, want true", key)
+		}
+	}
+	if LiteralEnvPrefixKey("token") {
+		t.Fatal("LiteralEnvPrefixKey(token) = true, want false")
+	}
+}

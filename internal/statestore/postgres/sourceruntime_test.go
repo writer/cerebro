@@ -28,3 +28,9 @@ func TestPutSourceRuntimeRejectsMissingSourceID(t *testing.T) {
 		t.Fatal("PutSourceRuntime() error = nil, want non-nil")
 	}
 }
+
+func TestSourceRuntimeListOrderRotatesRecentlyUpdatedRows(t *testing.T) {
+	if got := sourceRuntimeListOrderClause(); got != "updated_at ASC, id ASC" {
+		t.Fatalf("sourceRuntimeListOrderClause() = %q, want least recently updated first", got)
+	}
+}

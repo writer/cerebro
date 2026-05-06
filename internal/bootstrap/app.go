@@ -989,6 +989,10 @@ func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
 			filter.TenantID = strings.TrimSpace(auth.principal.TenantID)
 		}
 	}
+	if filter.TenantID == "" && hasAuthContext(r.Context()) {
+		writeSourceRuntimeError(w, errTenantForbidden)
+		return
+	}
 	if err := authorizeTenantID(r.Context(), filter.TenantID); err != nil {
 		writeSourceRuntimeError(w, err)
 		return

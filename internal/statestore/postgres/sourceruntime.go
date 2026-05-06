@@ -105,8 +105,8 @@ func (s *Store) ListSourceRuntimes(ctx context.Context, filter ports.SourceRunti
 SELECT runtime_json::text
 FROM source_runtimes
 WHERE %s
-ORDER BY updated_at DESC, id ASC
-LIMIT $%d`, strings.Join(clauses, " AND "), len(args))
+ORDER BY %s
+LIMIT $%d`, strings.Join(clauses, " AND "), sourceRuntimeListOrderClause(), len(args))
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list source runtimes: %w", err)
@@ -130,6 +130,10 @@ LIMIT $%d`, strings.Join(clauses, " AND "), len(args))
 		return nil, fmt.Errorf("iterate source runtimes: %w", err)
 	}
 	return runtimes, nil
+}
+
+func sourceRuntimeListOrderClause() string {
+	return "updated_at ASC, id ASC"
 }
 
 func (s *Store) ensureSourceRuntimeTable(ctx context.Context) error {

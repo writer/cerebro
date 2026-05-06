@@ -235,13 +235,13 @@ func TestPutStoresSecretReferenceAfterResolvingForValidation(t *testing.T) {
 	}
 	store := &runtimeStore{}
 	service := New(registry, store, nil, nil).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
-	t.Setenv("CEREBRO_TEST_TOKEN", "resolved-token")
+	t.Setenv("CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN", "resolved-token")
 
 	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
 			Id:       "writer-token",
 			SourceId: "token_source",
-			Config:   map[string]string{"token": "env:CEREBRO_TEST_TOKEN"},
+			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN"},
 		},
 	})
 	if err != nil {
@@ -250,7 +250,7 @@ func TestPutStoresSecretReferenceAfterResolvingForValidation(t *testing.T) {
 	if source.checked != "resolved-token" {
 		t.Fatalf("source checked token = %q, want resolved-token", source.checked)
 	}
-	if got := store.runtimes["writer-token"].GetConfig()["token"]; got != "env:CEREBRO_TEST_TOKEN" {
+	if got := store.runtimes["writer-token"].GetConfig()["token"]; got != "env:CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN" {
 		t.Fatalf("stored token = %q, want env reference", got)
 	}
 }

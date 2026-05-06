@@ -336,22 +336,13 @@ func parseSourceRuntimePutArgs(args []string) (*cerebrov1.SourceRuntime, error) 
 
 func sourceConfigValueFromArg(key string, value string) (string, error) {
 	sensitive := sensitiveCLIConfigKey(key)
-	if strings.HasPrefix(value, "env:") && !literalEnvPrefixCLIConfigKey(key) {
+	if strings.HasPrefix(value, "env:") && !sourceconfig.LiteralEnvPrefixKey(key) {
 		return value, nil
 	}
 	if sensitive && strings.TrimSpace(value) != "" {
 		return "", fmt.Errorf("source config %q is sensitive; pass env:VAR instead of a literal value", strings.TrimSpace(key))
 	}
 	return value, nil
-}
-
-func literalEnvPrefixCLIConfigKey(key string) bool {
-	switch strings.ToLower(strings.TrimSpace(key)) {
-	case "filter", "phrase", "q", "search":
-		return true
-	default:
-		return false
-	}
 }
 
 func sensitiveCLIConfigKey(key string) bool {
