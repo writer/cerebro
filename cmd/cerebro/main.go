@@ -221,12 +221,12 @@ func runSourceRuntime(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open source registry: %w", err)
 	}
-	service := sourceruntime.New(
+	service := configureSourceRuntimeCommandService(sourceruntime.New(
 		registry,
 		sourceRuntimeStore(deps.StateStore),
 		deps.AppendLog,
 		sourceProjector(deps.StateStore, deps.GraphStore),
-	)
+	))
 
 	switch args[0] {
 	case "put":
@@ -278,6 +278,10 @@ func runSourceRuntime(args []string) error {
 	default:
 		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync] ...", os.Args[0]))
 	}
+}
+
+func configureSourceRuntimeCommandService(service *sourceruntime.Service) *sourceruntime.Service {
+	return service.WithConfigResolver(appconfig.ResolveSourceConfigSecretReferences)
 }
 
 func parseSourceCommandArgs(args []string) (string, map[string]string, *cerebrov1.SourceCursor, error) {

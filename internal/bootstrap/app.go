@@ -2276,7 +2276,7 @@ func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, sourceruntime.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
+	case errors.Is(err, sourceruntime.ErrInvalidRequest), errors.Is(err, graphquery.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -88,6 +89,19 @@ func TestParseGraphIngestRuntimeArgsRequiresIntervalForSchedule(t *testing.T) {
 	_, err := parseGraphIngestRuntimeArgs([]string{"writer-github", "iterations=2"})
 	if err == nil {
 		t.Fatal("parseGraphIngestRuntimeArgs() error = nil, want non-nil")
+	}
+}
+
+func TestPrepareGraphRuntimeSourceConfigResolvesEnvReferences(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_OKTA_TOKEN", "resolved-token")
+	config, err := prepareGraphRuntimeSourceConfig(context.Background(), "okta", map[string]string{
+		"token": "env:CEREBRO_SOURCE_OKTA_TOKEN",
+	})
+	if err != nil {
+		t.Fatalf("prepareGraphRuntimeSourceConfig() error = %v", err)
+	}
+	if got := config["token"]; got != "resolved-token" {
+		t.Fatalf("config[token] = %q, want resolved-token", got)
 	}
 }
 

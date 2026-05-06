@@ -1476,6 +1476,21 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 	}
 }
 
+func TestListSourceRuntimesInvalidLimitReturnsBadRequest(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/source-runtimes?limit=bogus")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes invalid limit error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET /source-runtimes invalid limit status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
 func TestAuthMiddlewareRejectsBlankTenantSourceRuntimesForScopedKeys(t *testing.T) {
 	cfg := config.Config{
 		HTTPAddr:        "127.0.0.1:0",

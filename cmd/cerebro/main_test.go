@@ -1,10 +1,17 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/primitives"
+	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
 func TestRunRejectsUnsupportedCommand(t *testing.T) {
@@ -122,11 +129,87 @@ func TestParseSourceCommandArgsPreservesEnvReferencesForNonSensitiveValues(t *te
 	}
 }
 
+func TestConfigureSourceRuntimeCommandServiceResolvesEnvReferences(t *testing.T) {
+	source := &commandTokenSource{}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &commandRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-command-token": {
+			Id:       "writer-command-token",
+			SourceId: "command_token",
+			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_COMMAND_TOKEN_TOKEN"},
+		},
+	}}
+	t.Setenv("CEREBRO_SOURCE_COMMAND_TOKEN_TOKEN", "resolved-token")
+
+	service := configureSourceRuntimeCommandService(sourceruntime.New(registry, store, &commandAppendLog{}, nil))
+	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-command-token"}); err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if source.readToken != "resolved-token" {
+		t.Fatalf("source read token = %q, want resolved-token", source.readToken)
+	}
+}
+
 func TestParseSourceCommandArgsAllowsUnsetSensitiveEnvReference(t *testing.T) {
 	_, _, _, err := parseSourceCommandArgs([]string{"github", "token=env:CEREBRO_MISSING_TOKEN"})
 	if err != nil {
 		t.Fatalf("parseSourceCommandArgs() error = %v", err)
 	}
+}
+
+type commandTokenSource struct {
+	readToken string
+}
+
+func (s *commandTokenSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "command_token", Name: "Command token"}
+}
+
+func (s *commandTokenSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (s *commandTokenSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *commandTokenSource) Read(_ context.Context, config sourcecdk.Config, _ *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	s.readToken, _ = config.Lookup("token")
+	return sourcecdk.Pull{Events: []*primitives.Event{}}, nil
+}
+
+type commandRuntimeStore struct {
+	runtimes map[string]*cerebrov1.SourceRuntime
+}
+
+func (s *commandRuntimeStore) Ping(context.Context) error {
+	return nil
+}
+
+func (s *commandRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
+	s.runtimes[runtime.GetId()] = runtime
+	return nil
+}
+
+func (s *commandRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov1.SourceRuntime, error) {
+	runtime, ok := s.runtimes[id]
+	if !ok {
+		return nil, ports.ErrSourceRuntimeNotFound
+	}
+	return runtime, nil
+}
+
+type commandAppendLog struct{}
+
+func (l *commandAppendLog) Ping(context.Context) error {
+	return nil
+}
+
+func (l *commandAppendLog) Append(context.Context, *cerebrov1.EventEnvelope) error {
+	return nil
 }
 
 func TestParseSourceRuntimeListArgs(t *testing.T) {

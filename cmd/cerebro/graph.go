@@ -771,9 +771,7 @@ func runGraphIngestRuntime(ctx context.Context, deps bootstrap.Dependencies, opt
 	if projector == nil {
 		return nil, fmt.Errorf("projection graph store is required")
 	}
-	service := graphingest.New(registry, runtimeStore, projector, deps.GraphStore).WithConfigPreparer(func(ctx context.Context, sourceID string, config map[string]string) (map[string]string, error) {
-		return prepareSourceConfig(ctx, sourceID, "read", config)
-	})
+	service := graphingest.New(registry, runtimeStore, projector, deps.GraphStore).WithConfigPreparer(prepareGraphRuntimeSourceConfig)
 	result := &graphIngestRuntimeRunnerResult{
 		RuntimeID:  strings.TrimSpace(options.RuntimeID),
 		Iterations: options.Iterations,
@@ -910,6 +908,14 @@ func graphIngestCheckpointID(options graphIngestOptions) string {
 		hash = hash[:16]
 	}
 	return strings.TrimSpace(options.SourceID) + ":" + tenantID + ":" + hash
+}
+
+func prepareGraphRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+	prepared, err := prepareSourceConfig(ctx, sourceID, "read", values)
+	if err != nil {
+		return nil, err
+	}
+	return config.ResolveSourceConfigSecretReferences(ctx, sourceID, prepared)
 }
 
 func graphIngestRuntimeResultCapacity(options graphIngestRuntimeOptions) int {
