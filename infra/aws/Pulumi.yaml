@@ -14,6 +14,14 @@ config:
     type: string
     default: ""
     description: Custom domain for Cerebro API
+  cerebro:certificateDomain:
+    type: string
+    default: ""
+    description: ACM certificate domain to manage for Cerebro
+  cerebro:certificateImportArn:
+    type: string
+    default: ""
+    description: Existing ACM certificate ARN to import into Pulumi
   cerebro:ecrBaseUri:
     type: string
     description: ECR repository base URI without tag
@@ -84,6 +92,66 @@ config:
     type: string
     default: ""
     description: Optional Neo4j/Aura database name; empty uses the server default
+  cerebro:neo4jAuraEnabled:
+    type: boolean
+    default: false
+    description: Provision Neo4j Aura and runtime graph/API secrets
+  cerebro:neo4jAuraInstanceId:
+    type: string
+    default: ""
+    description: Existing Neo4j Aura instance ID to import
+  cerebro:neo4jAuraInstanceName:
+    type: string
+    default: ""
+    description: Neo4j Aura instance name
+  cerebro:neo4jAuraCloudProvider:
+    type: string
+    default: gcp
+    description: Neo4j Aura cloud provider
+  cerebro:neo4jAuraRegion:
+    type: string
+    default: us-central1
+    description: Neo4j Aura region
+  cerebro:neo4jAuraMemory:
+    type: string
+    default: 8GB
+    description: Neo4j Aura memory allocation
+  cerebro:neo4jAuraVersion:
+    type: string
+    default: "5"
+    description: Neo4j Aura major version
+  cerebro:neo4jAuraType:
+    type: string
+    default: professional-db
+    description: Neo4j Aura instance type
+  cerebro:neo4jAuraVectorOptimized:
+    type: boolean
+    default: true
+    description: Enable Neo4j Aura vector optimization
+  cerebro:neo4jAuraClientId:
+    type: string
+    default: ""
+    description: Neo4j Aura API client ID
+  cerebro:neo4jAuraClientSecret:
+    type: string
+    default: ""
+    description: Neo4j Aura API client secret
+  cerebro:neo4jAuraProjectId:
+    type: string
+    default: ""
+    description: Neo4j Aura project ID
+  cerebro:neo4jAuraPassword:
+    type: string
+    default: ""
+    description: Existing Neo4j Aura database password
+  cerebro:neo4jSecretImportArns:
+    type: object
+    default: {}
+    description: Existing AWS Secrets Manager secret ARNs to import by key
+  cerebro:apiKeys:
+    type: string
+    default: ""
+    description: Existing API key material for CEREBRO_API_KEYS
   cerebro:apiAuthEnabled:
     type: boolean
     default: false

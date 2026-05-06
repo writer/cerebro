@@ -14,6 +14,7 @@ def create_alb(
     subnet_ids: list[pulumi.Output[str]],
     security_group_id: pulumi.Output[str],
     certificate_domain: str = None,
+    certificate_arn: pulumi.Input[str] = None,
     internal: bool = True,
     health_check_path: str = "/health",
     container_port: int = 8080,
@@ -30,6 +31,7 @@ def create_alb(
         subnet_ids: Subnet IDs for ALB
         security_group_id: Security group ID
         certificate_domain: Domain for ACM certificate (optional)
+        certificate_arn: ACM certificate ARN to attach (optional)
         internal: Deploy as internal ALB
         health_check_path: Health check endpoint
         container_port: Container port for target group
@@ -177,18 +179,22 @@ def create_alb(
     )
 
     # HTTPS listener if certificate provided
-    if certificate_domain:
-        cert = aws.acm.get_certificate(
-            domain=certificate_domain,
-            statuses=["ISSUED"],
-        )
+    if certificate_domain or certificate_arn:
+        listener_certificate_arn = certificate_arn
+        if not listener_certificate_arn:
+            cert = aws.acm.get_certificate(
+                domain=certificate_domain,
+                statuses=["ISSUED"],
+            )
+            listener_certificate_arn = cert.arn
+
         listener = aws.lb.Listener(
             f"{name}-https-listener",
             load_balancer_arn=alb.arn,
             port=443,
             protocol="HTTPS",
             ssl_policy="ELBSecurityPolicy-TLS13-1-2-2021-06",
-            certificate_arn=cert.arn,
+            certificate_arn=listener_certificate_arn,
             default_actions=[
                 aws.lb.ListenerDefaultActionArgs(
                     type="forward",
@@ -199,7 +205,7 @@ def create_alb(
 
         # HTTP to HTTPS redirect
         aws.lb.Listener(
-            f"{name}-http-redirect",
+            f"{name}-http-listener",
             load_balancer_arn=alb.arn,
             port=80,
             protocol="HTTP",

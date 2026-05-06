@@ -10,6 +10,7 @@ Deploys a private ECS service backed by:
 import pulumi
 import pulumi_aws as aws
 
+import certificate as cert
 import compute
 import ecr
 import infisical
@@ -18,6 +19,7 @@ import legacy
 import load_balancer
 import monitoring
 import nats
+import neo4j
 import networking
 import postgres
 import tailscale as ts
@@ -49,6 +51,8 @@ def _config_bool(key: str, default: bool) -> bool:
 
 environment = _get_environment()
 domain = config.get("domain") or ""
+certificate_domain = config.get("certificateDomain") or ""
+certificate_import_arn = config.get("certificateImportArn") or ""
 ecr_base_uri = config.require("ecrBaseUri")
 image_tag = config.get("imageTag") or "v1.0.0"
 container_image = f"{ecr_base_uri}:{image_tag}"
@@ -104,6 +108,21 @@ jetstream_subject_prefix = config.get("jetstreamSubjectPrefix") or "events"
 jetstream_stream_name = config.get("jetstreamStreamName") or "CEREBRO_EVENTS"
 
 neo4j_database = config.get("neo4jDatabase")
+neo4j_aura_enabled = _config_bool("neo4jAuraEnabled", False)
+neo4j_aura_instance_id = config.get("neo4jAuraInstanceId") or ""
+neo4j_aura_instance_name = config.get("neo4jAuraInstanceName") or f"cerebro-graphdb-{environment}-writer"
+neo4j_aura_client_id = config.get_secret("neo4jAuraClientId")
+neo4j_aura_client_secret = config.get_secret("neo4jAuraClientSecret")
+neo4j_aura_project_id = config.get_secret("neo4jAuraProjectId")
+neo4j_aura_password = config.get_secret("neo4jAuraPassword")
+neo4j_aura_cloud_provider = config.get("neo4jAuraCloudProvider") or "gcp"
+neo4j_aura_region = config.get("neo4jAuraRegion") or "us-central1"
+neo4j_aura_memory = config.get("neo4jAuraMemory") or "8GB"
+neo4j_aura_version = config.get("neo4jAuraVersion") or "5"
+neo4j_aura_type = config.get("neo4jAuraType") or "professional-db"
+neo4j_aura_vector_optimized = _config_bool("neo4jAuraVectorOptimized", True)
+neo4j_secret_import_arns = config.get_object("neo4jSecretImportArns") or {}
+api_keys = config.get_secret("apiKeys")
 api_auth_enabled = _config_bool("apiAuthEnabled", is_production)
 allowed_tenants = config.get_object("allowedTenants") or []
 
@@ -200,9 +219,65 @@ nats_stack = nats.create_nats_service(
     subject_prefix=jetstream_subject_prefix,
 )
 
+neo4j_stack = None
+neo4j_secret_stack = None
+if neo4j_aura_enabled:
+    if not all([neo4j_aura_client_id, neo4j_aura_client_secret, neo4j_aura_project_id]):
+        raise ValueError("neo4jAuraClientId, neo4jAuraClientSecret, and neo4jAuraProjectId are required when neo4jAuraEnabled is true")
+
+    neo4j_instance = neo4j.create_aura_instance(
+        name=f"cerebro-{environment}",
+        client_id=neo4j_aura_client_id,
+        client_secret=neo4j_aura_client_secret,
+        project_id=neo4j_aura_project_id,
+        instance_name=neo4j_aura_instance_name,
+        cloud_provider=neo4j_aura_cloud_provider,
+        region=neo4j_aura_region,
+        memory=neo4j_aura_memory,
+        version=neo4j_aura_version,
+        instance_type=neo4j_aura_type,
+        vector_optimized=neo4j_aura_vector_optimized,
+        import_instance_id=neo4j_aura_instance_id,
+    )
+    neo4j_stack = {"instance": neo4j_instance}
+
+    if neo4j_aura_password is None:
+        neo4j_aura_password = neo4j_instance.password
+
+    neo4j_secret_stack = neo4j.create_runtime_secrets(
+        name=f"cerebro-{environment}",
+        external_secrets_prefix=external_secrets_prefix,
+        neo4j_uri=neo4j_instance.connection_url,
+        neo4j_password=neo4j_aura_password,
+        api_keys=api_keys,
+        kms_key_id=kms_key["key_arn"],
+        import_arns=neo4j_secret_import_arns,
+        tags={
+            "ManagedBy": "Pulumi",
+            "Environment": environment,
+            "Service": "cerebro",
+        },
+    )
+
 # =============================================================================
 # LOAD BALANCER
 # =============================================================================
+
+certificate_stack = None
+if certificate_domain:
+    certificate_stack = cert.create_certificate(
+        name=f"cerebro-{environment}",
+        domain=certificate_domain,
+        import_arn=certificate_import_arn,
+        tags={
+            "Environment": environment,
+            "Service": "cerebro",
+        },
+    )
+
+load_balancer_certificate_arn = None
+if certificate_stack and certificate_domain == domain:
+    load_balancer_certificate_arn = certificate_stack["certificate_arn"]
 
 alb_stack = load_balancer.create_alb(
     name=f"cerebro-{environment}",
@@ -210,6 +285,7 @@ alb_stack = load_balancer.create_alb(
     subnet_ids=vpc_stack["private_subnet_ids"] if alb_internal else vpc_stack["public_subnet_ids"],
     security_group_id=vpc_stack["alb_security_group_id"],
     certificate_domain=domain or None,
+    certificate_arn=load_balancer_certificate_arn,
     internal=alb_internal,
     health_check_path="/health",
     container_port=8080,
@@ -254,6 +330,8 @@ runtime_dependencies = [
     postgres_stack["secret_version"],
     nats_stack["service"],
 ]
+if neo4j_secret_stack:
+    runtime_dependencies.extend(neo4j_secret_stack["versions"])
 
 ecs_stack = compute.create_ecs_cluster(
     name=f"cerebro-{environment}",
@@ -356,9 +434,15 @@ pulumi.export("postgres_endpoint", postgres_stack["instance"].address)
 pulumi.export("postgres_secret_name", postgres_stack["secret"].name)
 pulumi.export("nats_url", nats_stack["url"])
 pulumi.export("jetstream_stream_name", nats_stack["stream_name"])
+if neo4j_stack:
+    pulumi.export("neo4j_instance_id", neo4j_stack["instance"].instance_id)
+    pulumi.export("neo4j_connection_url", neo4j_stack["instance"].connection_url)
 pulumi.export("ecr_repository_url", repository.repository_url)
 pulumi.export("ecr_repository_arn", repository.arn)
 
+if certificate_stack:
+    pulumi.export("certificate_arn", certificate_stack["certificate_arn"])
+    pulumi.export("certificate_validation_records", certificate_stack["validation_records"])
 if waf_stack:
     pulumi.export("waf_web_acl_arn", waf_stack["web_acl"].arn)
 if logs_kms_key:
