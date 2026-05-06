@@ -22,6 +22,7 @@ import (
 )
 
 const defaultOrchestratorIterations = 1
+const defaultSourceRuntimeLeaseTTL = 30 * time.Minute
 
 type orchestratorOptions struct {
 	Filter         ports.SourceRuntimeFilter `json:"filter"`
@@ -179,10 +180,11 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 	if !ok {
 		return nil, sourceruntime.ErrRuntimeUnavailable
 	}
-	toucher, ok := lister.(ports.SourceRuntimeTouchStore)
+	leaser, ok := lister.(ports.SourceRuntimeLeaseStore)
 	if !ok {
 		return nil, sourceruntime.ErrRuntimeUnavailable
 	}
+	leaseOwner := orchestratorLeaseOwner()
 	runtimeService := sourceruntime.New(
 		registry,
 		lister,
@@ -222,7 +224,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 	}
 	for {
 		iteration++
-		iterationResult, err := runOrchestratorIteration(ctx, lister, toucher, runtimeService, findingService, graphService, options, iteration)
+		iterationResult, err := runOrchestratorIteration(ctx, lister, leaser, leaseOwner, runtimeService, findingService, graphService, options, iteration)
 		if err != nil {
 			runErr = err
 		}
@@ -252,7 +254,8 @@ func appendOrchestratorRun(runs []*orchestratorIterationResult, run *orchestrato
 func runOrchestratorIteration(
 	ctx context.Context,
 	lister ports.SourceRuntimeListStore,
-	toucher ports.SourceRuntimeTouchStore,
+	leaser ports.SourceRuntimeLeaseStore,
+	leaseOwner string,
 	runtimeService *sourceruntime.Service,
 	findingService *findings.Service,
 	graphService *graphingest.Service,
@@ -266,22 +269,37 @@ func runOrchestratorIteration(
 	}
 	var runErr error
 	for _, runtime := range runtimes {
+		select {
+		case <-ctx.Done():
+			return result, ctx.Err()
+		default:
+		}
 		runtimeResult := &orchestratorRuntimeResult{
 			RuntimeID: strings.TrimSpace(runtime.GetId()),
 			SourceID:  strings.TrimSpace(runtime.GetSourceId()),
 			TenantID:  strings.TrimSpace(runtime.GetTenantId()),
 		}
-		if err := touchOrchestratorRuntime(ctx, toucher, runtime); err != nil {
+		acquired, err := acquireOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner)
+		if err != nil {
 			runtimeResult.Sync = "failed"
-			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "touch", err)
+			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "lease", err)
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			runErr = err
+			continue
+		}
+		if !acquired {
+			runtimeResult.Sync = "skipped"
+			result.Runtimes = append(result.Runtimes, runtimeResult)
 			continue
 		}
 		if _, err := runtimeService.Sync(ctx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit}); err != nil {
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync", err)
 			runErr = err
+			if releaseErr := releaseOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner); releaseErr != nil {
+				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "release_lease", releaseErr)
+				runErr = releaseErr
+			}
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			continue
 		} else {
@@ -301,16 +319,35 @@ func runOrchestratorIteration(
 		} else {
 			runtimeResult.GraphIngest = "completed"
 		}
+		if err := releaseOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner); err != nil {
+			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "release_lease", err)
+			runErr = err
+		}
 		result.Runtimes = append(result.Runtimes, runtimeResult)
 	}
 	return result, runErr
 }
 
-func touchOrchestratorRuntime(ctx context.Context, store ports.SourceRuntimeTouchStore, runtime *cerebrov1.SourceRuntime) error {
+func orchestratorLeaseOwner() string {
+	hostname, err := os.Hostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		hostname = "unknown-host"
+	}
+	return fmt.Sprintf("%s:%d:%d", hostname, os.Getpid(), time.Now().UnixNano())
+}
+
+func acquireOrchestratorRuntimeLease(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtime *cerebrov1.SourceRuntime, owner string) (bool, error) {
+	if store == nil || runtime == nil {
+		return true, nil
+	}
+	return store.AcquireSourceRuntimeLease(ctx, runtime.GetId(), owner, defaultSourceRuntimeLeaseTTL)
+}
+
+func releaseOrchestratorRuntimeLease(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtime *cerebrov1.SourceRuntime, owner string) error {
 	if store == nil || runtime == nil {
 		return nil
 	}
-	return store.TouchSourceRuntime(ctx, runtime.GetId())
+	return store.ReleaseSourceRuntimeLease(ctx, runtime.GetId(), owner)
 }
 
 func appendRuntimeError(existing string, stage string, err error) string {

@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
@@ -30,7 +31,8 @@ type SourceRuntimeListStore interface {
 	ListSourceRuntimes(context.Context, SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error)
 }
 
-// SourceRuntimeTouchStore advances source runtime scheduling metadata without replacing runtime state.
-type SourceRuntimeTouchStore interface {
-	TouchSourceRuntime(context.Context, string) error
+// SourceRuntimeLeaseStore leases source runtimes before orchestration work.
+type SourceRuntimeLeaseStore interface {
+	AcquireSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error)
+	ReleaseSourceRuntimeLease(context.Context, string, string) error
 }

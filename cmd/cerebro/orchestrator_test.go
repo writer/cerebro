@@ -5,6 +5,7 @@ import (
 	"os"
 	"syscall"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -55,12 +56,14 @@ func TestOrchestratorShutdownSignalsIncludeSIGTERM(t *testing.T) {
 
 func TestRunOrchestratorIterationStopsAfterSyncFailure(t *testing.T) {
 	store := &orchestratorRuntimeStore{
-		runtime: &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},
+		runtime:  &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},
+		acquired: true,
 	}
 	result, err := runOrchestratorIteration(
 		context.Background(),
 		store,
 		store,
+		"test-owner",
 		sourceruntime.New(nil, store, nil, nil),
 		nil,
 		nil,
@@ -76,46 +79,101 @@ func TestRunOrchestratorIterationStopsAfterSyncFailure(t *testing.T) {
 	if result.Runtimes[0].FindingRules != "" || result.Runtimes[0].GraphIngest != "" {
 		t.Fatalf("downstream stages ran after sync failure: %#v", result.Runtimes[0])
 	}
+	if store.leaseID != "runtime-1" || store.releaseID != "runtime-1" {
+		t.Fatalf("lease/release = %q/%q, want runtime-1/runtime-1", store.leaseID, store.releaseID)
+	}
 }
 
-func TestTouchOrchestratorRuntimePersistsRuntimeForScanRotation(t *testing.T) {
-	store := &touchRuntimeStore{}
+func TestAcquireOrchestratorRuntimeLeaseClaimsRuntime(t *testing.T) {
+	store := &leaseRuntimeStore{acquired: true}
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}
 
-	if err := touchOrchestratorRuntime(context.Background(), store, runtime); err != nil {
-		t.Fatalf("touchOrchestratorRuntime() error = %v", err)
+	acquired, err := acquireOrchestratorRuntimeLease(context.Background(), store, runtime, "owner-1")
+	if err != nil {
+		t.Fatalf("acquireOrchestratorRuntimeLease() error = %v", err)
 	}
-	if store.touchID != "runtime-1" {
-		t.Fatalf("touched runtime id = %q, want runtime-1", store.touchID)
+	if !acquired {
+		t.Fatal("acquireOrchestratorRuntimeLease() = false, want true")
 	}
-	if store.putID != "" {
-		t.Fatalf("PutSourceRuntime() touched stale runtime snapshot %q", store.putID)
+	if store.leaseID != "runtime-1" || store.leaseOwner != "owner-1" || store.leaseTTL != defaultSourceRuntimeLeaseTTL {
+		t.Fatalf("lease = (%q, %q, %s), want runtime-1 owner-1 %s", store.leaseID, store.leaseOwner, store.leaseTTL, defaultSourceRuntimeLeaseTTL)
 	}
 }
 
-type touchRuntimeStore struct {
-	touchID string
-	putID   string
+func TestRunOrchestratorIterationSkipsLockedRuntime(t *testing.T) {
+	store := &orchestratorRuntimeStore{
+		runtime:  &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},
+		acquired: false,
+	}
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(nil, store, nil, nil),
+		nil,
+		nil,
+		orchestratorOptions{},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v", err)
+	}
+	if got := result.Runtimes[0].Sync; got != "skipped" {
+		t.Fatalf("runtime sync status = %q, want skipped", got)
+	}
 }
 
-func (s *touchRuntimeStore) Ping(context.Context) error { return nil }
+func TestRunOrchestratorIterationStopsBeforeRuntimeWhenContextCanceled(t *testing.T) {
+	store := &orchestratorRuntimeStore{
+		runtime:  &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},
+		acquired: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
-func (s *touchRuntimeStore) TouchSourceRuntime(_ context.Context, runtimeID string) error {
-	s.touchID = runtimeID
+	result, err := runOrchestratorIteration(
+		ctx,
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(nil, store, nil, nil),
+		nil,
+		nil,
+		orchestratorOptions{},
+		1,
+	)
+	if err == nil {
+		t.Fatal("runOrchestratorIteration() error = nil, want context cancellation")
+	}
+	if got := len(result.Runtimes); got != 0 {
+		t.Fatalf("runtime result count = %d, want 0", got)
+	}
+}
+
+type leaseRuntimeStore struct {
+	leaseID    string
+	leaseOwner string
+	leaseTTL   time.Duration
+	acquired   bool
+}
+
+func (s *leaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
+	s.leaseID = runtimeID
+	s.leaseOwner = owner
+	s.leaseTTL = ttl
+	return s.acquired, nil
+}
+
+func (s *leaseRuntimeStore) ReleaseSourceRuntimeLease(context.Context, string, string) error {
 	return nil
-}
-
-func (s *touchRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
-	s.putID = runtime.GetId()
-	return nil
-}
-
-func (s *touchRuntimeStore) GetSourceRuntime(context.Context, string) (*cerebrov1.SourceRuntime, error) {
-	return nil, nil
 }
 
 type orchestratorRuntimeStore struct {
-	runtime *cerebrov1.SourceRuntime
+	runtime   *cerebrov1.SourceRuntime
+	acquired  bool
+	leaseID   string
+	releaseID string
 }
 
 func (s *orchestratorRuntimeStore) Ping(context.Context) error { return nil }
@@ -132,6 +190,12 @@ func (s *orchestratorRuntimeStore) ListSourceRuntimes(context.Context, ports.Sou
 	return []*cerebrov1.SourceRuntime{s.runtime}, nil
 }
 
-func (s *orchestratorRuntimeStore) TouchSourceRuntime(context.Context, string) error {
+func (s *orchestratorRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, _ string, _ time.Duration) (bool, error) {
+	s.leaseID = runtimeID
+	return s.acquired, nil
+}
+
+func (s *orchestratorRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, runtimeID string, _ string) error {
+	s.releaseID = runtimeID
 	return nil
 }

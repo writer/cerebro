@@ -208,6 +208,64 @@ func TestPrepareSourceRuntimeWithCLIHydratesGitHubRuntime(t *testing.T) {
 	}
 }
 
+func TestPrepareSourceConfigWithCLIResolvesEnvOwnerBeforeHydration(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
+	cli := &fakeGitHubLocalCLI{
+		token: "gh-token",
+		repo: githubLocalRepo{
+			Name: "cerebro",
+			Owner: githubLocalRepoOwner{
+				Login: "writer",
+			},
+		},
+	}
+
+	config, err := prepareSourceConfigWithCLI(context.Background(), githubSourceID, "read", map[string]string{
+		"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER",
+		"state": "all",
+	}, cli)
+	if err != nil {
+		t.Fatalf("prepareSourceConfigWithCLI() error = %v", err)
+	}
+	if got := config["owner"]; got != "writer" {
+		t.Fatalf("config[owner] = %q, want %q", got, "writer")
+	}
+	if got := config["repo"]; got != "cerebro" {
+		t.Fatalf("config[repo] = %q, want %q", got, "cerebro")
+	}
+}
+
+func TestPrepareSourceRuntimeWithCLIResolvesEnvOwnerBeforeHydration(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
+	cli := &fakeGitHubLocalCLI{
+		token: "gh-token",
+		repo: githubLocalRepo{
+			Name: "cerebro",
+			Owner: githubLocalRepoOwner{
+				Login: "writer",
+			},
+		},
+	}
+
+	runtime, err := prepareSourceRuntimeWithCLI(context.Background(), &cerebrov1.SourceRuntime{
+		Id:       "writer-github",
+		SourceId: githubSourceID,
+		Config: map[string]string{
+			"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER",
+			"state": "all",
+		},
+	}, cli)
+	if err != nil {
+		t.Fatalf("prepareSourceRuntimeWithCLI() error = %v", err)
+	}
+	if got := runtime.GetConfig()["owner"]; got != "env:CEREBRO_SOURCE_GITHUB_OWNER" {
+		t.Fatalf("runtime.Config[owner] = %q, want env reference preserved", got)
+	}
+	if got := runtime.GetConfig()["repo"]; got != "cerebro" {
+		t.Fatalf("runtime.Config[repo] = %q, want %q", got, "cerebro")
+	}
+}
+
 func TestPrepareSourceConfigWithCLIReturnsGHError(t *testing.T) {
 	cli := &fakeGitHubLocalCLI{
 		tokenErr: errors.New("gh unavailable"),

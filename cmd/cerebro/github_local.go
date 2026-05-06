@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	appconfig "github.com/writer/cerebro/internal/config"
 )
 
 const githubSourceID = "github"
@@ -73,6 +74,11 @@ func prepareSourceConfigWithCLI(ctx context.Context, sourceID string, command st
 	if strings.TrimSpace(sourceID) != githubSourceID {
 		return cloned, nil
 	}
+	resolved, err := appconfig.ResolveSourceConfigSecretReferences(ctx, sourceID, cloned)
+	if err != nil {
+		return nil, err
+	}
+	cloned = resolved
 	if cli == nil {
 		return cloned, fmt.Errorf("github local cli is required")
 	}
@@ -96,18 +102,32 @@ func prepareSourceRuntimeWithCLI(ctx context.Context, runtime *cerebrov1.SourceR
 	if cli == nil {
 		return nil, fmt.Errorf("github local cli is required")
 	}
+	resolvedConfig, err := appconfig.ResolveSourceRuntimeConfigSecretReferences(ctx, cloned.GetSourceId(), cloned.GetConfig())
+	if err != nil {
+		return nil, err
+	}
 	config, err := hydrateGitHubLocalConfig(
 		ctx,
-		cloned.GetConfig(),
+		resolvedConfig,
 		cli,
-		githubRuntimeRequiresRepo(cloned.GetConfig()),
-		githubRequiresToken(cloned.GetConfig()),
+		githubRuntimeRequiresRepo(resolvedConfig),
+		githubRequiresToken(resolvedConfig),
 	)
 	if err != nil {
 		return nil, err
 	}
-	cloned.Config = config
+	cloned.Config = mergeGitHubHydratedRuntimeConfig(cloned.GetConfig(), config)
 	return cloned, nil
+}
+
+func mergeGitHubHydratedRuntimeConfig(original map[string]string, hydrated map[string]string) map[string]string {
+	merged := cloneConfig(original)
+	for key, value := range hydrated {
+		if strings.TrimSpace(merged[key]) == "" {
+			merged[key] = value
+		}
+	}
+	return merged
 }
 
 func hydrateGitHubLocalConfig(ctx context.Context, config map[string]string, cli githubLocalCLI, requireRepo bool, requireToken bool) (map[string]string, error) {

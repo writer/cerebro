@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -18,7 +19,7 @@ var ensureSourceRuntimeStatements = []string{`CREATE TABLE IF NOT EXISTS source_
   runtime_json JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)`}
+)`, `ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_owner TEXT`, `ALTER TABLE source_runtimes ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ`}
 
 // PutSourceRuntime upserts one source runtime definition.
 func (s *Store) PutSourceRuntime(ctx context.Context, runtime *cerebrov1.SourceRuntime) error {
@@ -132,11 +133,51 @@ LIMIT $%d`, strings.Join(clauses, " AND "), sourceRuntimeListOrderClause(), len(
 	return runtimes, nil
 }
 
-// TouchSourceRuntime advances source runtime scheduling metadata without replacing runtime JSON.
-func (s *Store) TouchSourceRuntime(ctx context.Context, runtimeID string) error {
+// AcquireSourceRuntimeLease leases one source runtime without replacing runtime JSON.
+func (s *Store) AcquireSourceRuntimeLease(ctx context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
+	id := strings.TrimSpace(runtimeID)
+	if id == "" {
+		return false, errors.New("source runtime id is required")
+	}
+	leaseOwner := strings.TrimSpace(owner)
+	if leaseOwner == "" {
+		return false, errors.New("source runtime lease owner is required")
+	}
+	if ttl <= 0 {
+		return false, errors.New("source runtime lease ttl must be positive")
+	}
+	if s == nil || s.db == nil {
+		return false, errors.New("postgres is not configured")
+	}
+	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
+		return false, err
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE source_runtimes
+SET lease_owner = $2,
+    lease_expires_at = NOW() + $3::interval,
+    updated_at = NOW()
+WHERE id = $1
+  AND (lease_expires_at IS NULL OR lease_expires_at <= NOW() OR lease_owner = $2)`, id, leaseOwner, sourceRuntimeLeaseInterval(ttl))
+	if err != nil {
+		return false, fmt.Errorf("acquire source runtime lease %q: %w", id, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("acquire source runtime lease %q rows affected: %w", id, err)
+	}
+	return rows > 0, nil
+}
+
+// ReleaseSourceRuntimeLease releases a source runtime lease held by owner.
+func (s *Store) ReleaseSourceRuntimeLease(ctx context.Context, runtimeID string, owner string) error {
 	id := strings.TrimSpace(runtimeID)
 	if id == "" {
 		return errors.New("source runtime id is required")
+	}
+	leaseOwner := strings.TrimSpace(owner)
+	if leaseOwner == "" {
+		return errors.New("source runtime lease owner is required")
 	}
 	if s == nil || s.db == nil {
 		return errors.New("postgres is not configured")
@@ -144,18 +185,22 @@ func (s *Store) TouchSourceRuntime(ctx context.Context, runtimeID string) error 
 	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
 		return err
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE source_runtimes SET updated_at = NOW() WHERE id = $1`, id)
-	if err != nil {
-		return fmt.Errorf("touch source runtime %q: %w", id, err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("touch source runtime %q rows affected: %w", id, err)
-	}
-	if rows == 0 {
-		return fmt.Errorf("%w: %s", ports.ErrSourceRuntimeNotFound, id)
+	if _, err := s.db.ExecContext(ctx, `
+UPDATE source_runtimes
+SET lease_owner = NULL,
+    lease_expires_at = NULL
+WHERE id = $1 AND lease_owner = $2`, id, leaseOwner); err != nil {
+		return fmt.Errorf("release source runtime lease %q: %w", id, err)
 	}
 	return nil
+}
+
+func sourceRuntimeLeaseInterval(ttl time.Duration) string {
+	milliseconds := ttl.Milliseconds()
+	if milliseconds < 1 {
+		milliseconds = 1
+	}
+	return fmt.Sprintf("%d milliseconds", milliseconds)
 }
 
 func sourceRuntimeListOrderClause() string {

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 )
@@ -21,10 +22,24 @@ func TestGetSourceRuntimeRejectsMissingID(t *testing.T) {
 	}
 }
 
-func TestTouchSourceRuntimeRejectsMissingID(t *testing.T) {
+func TestAcquireSourceRuntimeLeaseRejectsMissingID(t *testing.T) {
 	store := &Store{}
-	if err := store.TouchSourceRuntime(context.Background(), " "); err == nil {
-		t.Fatal("TouchSourceRuntime() error = nil, want non-nil")
+	if _, err := store.AcquireSourceRuntimeLease(context.Background(), " ", "owner", time.Minute); err == nil {
+		t.Fatal("AcquireSourceRuntimeLease() error = nil, want non-nil")
+	}
+}
+
+func TestAcquireSourceRuntimeLeaseRejectsMissingOwner(t *testing.T) {
+	store := &Store{}
+	if _, err := store.AcquireSourceRuntimeLease(context.Background(), "runtime", " ", time.Minute); err == nil {
+		t.Fatal("AcquireSourceRuntimeLease() error = nil, want non-nil")
+	}
+}
+
+func TestAcquireSourceRuntimeLeaseRejectsNonPositiveTTL(t *testing.T) {
+	store := &Store{}
+	if _, err := store.AcquireSourceRuntimeLease(context.Background(), "runtime", "owner", 0); err == nil {
+		t.Fatal("AcquireSourceRuntimeLease() error = nil, want non-nil")
 	}
 }
 
