@@ -2098,7 +2098,7 @@ func newRuntimeService(deps Dependencies, sources *sourcecdk.Registry) *sourceru
 		sourceRuntimeStore(deps.StateStore),
 		deps.AppendLog,
 		sourceProjector(deps.StateStore, deps.GraphStore),
-	).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
+	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
 }
 
 func (a *App) claimService() *claims.Service {
@@ -2149,7 +2149,7 @@ func newGraphIngestService(deps Dependencies, sources *sourcecdk.Registry) *grap
 		sourceRuntimeStore(deps.StateStore),
 		sourceProjector(nil, deps.GraphStore),
 		deps.GraphStore,
-	).WithConfigPreparer(config.ResolveSourceConfigSecretReferences)
+	).WithConfigPreparer(config.ResolveSourceRuntimeConfigSecretReferences)
 }
 
 func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {

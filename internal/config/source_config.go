@@ -12,11 +12,19 @@ import (
 const sourceConfigEnvAllowlistEnv = "CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"
 
 func ResolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true)
+}
+
+func ResolveSourceRuntimeConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+	return resolveSourceConfigSecretReferences(ctx, sourceID, values, false)
+}
+
+func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string, preserveLiteralQueryValues bool) (map[string]string, error) {
 	_ = ctx
 	resolved := make(map[string]string, len(values))
 	for key, value := range values {
 		resolved[key] = value
-		if sourceconfig.LiteralEnvPrefixKey(key) {
+		if preserveLiteralQueryValues && sourceconfig.LiteralEnvPrefixKey(key) {
 			continue
 		}
 		envName, ok := sourceconfig.SecretReferenceName(value)

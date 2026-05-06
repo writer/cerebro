@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -63,7 +64,7 @@ func runOrchestrator(args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), orchestratorShutdownSignals()...)
 	defer stop()
 	result, runErr := runOrchestratorLoop(ctx, options)
 	if !shouldPrintOrchestratorResult(result) {
@@ -77,6 +78,10 @@ func runOrchestrator(args []string) error {
 
 func shouldPrintOrchestratorResult(result *orchestratorResult) bool {
 	return result != nil
+}
+
+func orchestratorShutdownSignals() []os.Signal {
+	return []os.Signal{os.Interrupt, syscall.SIGTERM}
 }
 
 func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
@@ -183,7 +188,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 		lister,
 		deps.AppendLog,
 		sourceProjector(deps.StateStore, deps.GraphStore),
-	).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
+	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
 	findingService := findings.New(
 		lister,
 		eventReplayer(deps.AppendLog),
@@ -197,7 +202,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 		lister,
 		sourceProjector(nil, deps.GraphStore),
 		deps.GraphStore,
-	).WithConfigPreparer(config.ResolveSourceConfigSecretReferences)
+	).WithConfigPreparer(config.ResolveSourceRuntimeConfigSecretReferences)
 	result := &orchestratorResult{
 		Iterations: options.Iterations,
 		RunForever: options.RunForever,

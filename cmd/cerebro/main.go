@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -261,7 +262,11 @@ func runSourceRuntime(args []string) error {
 		if err != nil {
 			return err
 		}
-		return printJSON(map[string]any{"runtimes": runtimes})
+		payload, err := sourceRuntimeListJSON(runtimes)
+		if err != nil {
+			return err
+		}
+		return printJSON(payload)
 	case "sync":
 		runtimeID, pageLimit, err := parseSourceRuntimeSyncArgs(args[1:])
 		if err != nil {
@@ -281,7 +286,7 @@ func runSourceRuntime(args []string) error {
 }
 
 func configureSourceRuntimeCommandService(service *sourceruntime.Service) *sourceruntime.Service {
-	return service.WithConfigResolver(appconfig.ResolveSourceConfigSecretReferences)
+	return service.WithConfigResolver(appconfig.ResolveSourceRuntimeConfigSecretReferences)
 }
 
 func parseSourceCommandArgs(args []string) (string, map[string]string, *cerebrov1.SourceCursor, error) {
@@ -402,6 +407,19 @@ func parseSourceRuntimeListArgs(args []string) (ports.SourceRuntimeFilter, error
 		}
 	}
 	return filter, nil
+}
+
+func sourceRuntimeListJSON(runtimes []*cerebrov1.SourceRuntime) (map[string][]json.RawMessage, error) {
+	items := make([]json.RawMessage, 0, len(runtimes))
+	marshaler := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}
+	for _, runtime := range runtimes {
+		payload, err := marshaler.Marshal(runtime)
+		if err != nil {
+			return nil, fmt.Errorf("marshal source runtime: %w", err)
+		}
+		items = append(items, json.RawMessage(payload))
+	}
+	return map[string][]json.RawMessage{"runtimes": items}, nil
 }
 
 func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {

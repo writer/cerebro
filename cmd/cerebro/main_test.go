@@ -12,6 +12,7 @@ import (
 	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestRunRejectsUnsupportedCommand(t *testing.T) {
@@ -225,6 +226,22 @@ func TestParseSourceRuntimeListArgs(t *testing.T) {
 func TestParseSourceRuntimeListArgsRejectsZeroLimit(t *testing.T) {
 	if _, err := parseSourceRuntimeListArgs([]string{"limit=0"}); err == nil {
 		t.Fatal("parseSourceRuntimeListArgs(limit=0) error = nil, want error")
+	}
+}
+
+func TestSourceRuntimeListJSONUsesProtoJSON(t *testing.T) {
+	payload, err := sourceRuntimeListJSON([]*cerebrov1.SourceRuntime{
+		{Id: "runtime-1", LastSyncedAt: timestamppb.Now()},
+	})
+	if err != nil {
+		t.Fatalf("sourceRuntimeListJSON() error = %v", err)
+	}
+	rendered := string(payload["runtimes"][0])
+	if !strings.Contains(rendered, `"last_synced_at":"`) {
+		t.Fatalf("runtime JSON = %s, want proto JSON timestamp string", rendered)
+	}
+	if strings.Contains(rendered, `"seconds"`) {
+		t.Fatalf("runtime JSON = %s, want no struct-style seconds field", rendered)
 	}
 }
 

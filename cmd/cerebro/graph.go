@@ -220,7 +220,7 @@ func runGraph(args []string) error {
 				replayer = typed
 			}
 		}
-		service := graphrebuild.New(registry, sourceRuntimeStore(deps.StateStore), replayer).WithConfigPreparer(config.ResolveSourceConfigSecretReferences)
+		service := graphrebuild.New(registry, sourceRuntimeStore(deps.StateStore), replayer).WithConfigPreparer(config.ResolveSourceRuntimeConfigSecretReferences)
 		result, err := service.RebuildDryRun(ctx, graphrebuild.Request{
 			Mode:         mode,
 			RuntimeID:    runtimeID,
@@ -915,7 +915,7 @@ func prepareGraphRuntimeSourceConfig(ctx context.Context, sourceID string, value
 	if err != nil {
 		return nil, err
 	}
-	return config.ResolveSourceConfigSecretReferences(ctx, sourceID, prepared)
+	return config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, prepared)
 }
 
 func graphIngestRuntimeResultCapacity(options graphIngestRuntimeOptions) int {

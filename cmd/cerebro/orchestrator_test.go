@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"syscall"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -39,6 +41,13 @@ func TestShouldPrintOrchestratorResultSkipsNilStartupFailure(t *testing.T) {
 func TestParseOrchestratorOptionsRejectsZeroLimit(t *testing.T) {
 	if _, err := parseOrchestratorOptions([]string{"limit=0"}); err == nil {
 		t.Fatal("parseOrchestratorOptions(limit=0) error = nil, want error")
+	}
+}
+
+func TestOrchestratorShutdownSignalsIncludeSIGTERM(t *testing.T) {
+	signals := orchestratorShutdownSignals()
+	if len(signals) != 2 || signals[0] != os.Interrupt || signals[1] != syscall.SIGTERM {
+		t.Fatalf("orchestratorShutdownSignals() = %#v, want interrupt and SIGTERM", signals)
 	}
 }
 

@@ -195,7 +195,7 @@ func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
 	store := &runtimeStore{}
-	service := New(registry, store, nil, nil).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
+	service := New(registry, store, nil, nil).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
 
 	putResp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
@@ -234,7 +234,7 @@ func TestPutStoresSecretReferenceAfterResolvingForValidation(t *testing.T) {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
 	store := &runtimeStore{}
-	service := New(registry, store, nil, nil).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
+	service := New(registry, store, nil, nil).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
 	t.Setenv("CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN", "resolved-token")
 
 	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
@@ -284,7 +284,7 @@ func TestSyncResetsProgressWhenResolvedSelectorReferenceChanges(t *testing.T) {
 	}}
 	t.Setenv("CEREBRO_SOURCE_TOKEN_SOURCE_DOMAIN", "new.example.com")
 	t.Setenv("CEREBRO_SOURCE_TOKEN_SOURCE_TOKEN", "resolved-token")
-	service := New(registry, store, &appendLog{}, nil).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
+	service := New(registry, store, &appendLog{}, nil).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
 
 	if _, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-token"}); err != nil {
 		t.Fatalf("Sync() error = %v", err)
