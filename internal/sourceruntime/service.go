@@ -12,12 +12,15 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 )
 
 const (
 	defaultPageLimit = 1
 	maxPageLimit     = 100
+	defaultListLimit = 100
+	maxListLimit     = 500
 	redactedValue    = "[redacted]"
 )
 
@@ -33,11 +36,21 @@ type Service struct {
 	store     ports.SourceRuntimeStore
 	appendLog ports.AppendLog
 	projector ports.SourceProjector
+	resolver  sourceconfig.Resolver
 }
 
 // New constructs a source runtime service.
 func New(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog, projector ports.SourceProjector) *Service {
 	return &Service{registry: registry, store: store, appendLog: appendLog, projector: projector}
+}
+
+// WithConfigResolver configures runtime source config secret resolution.
+func (s *Service) WithConfigResolver(resolver sourceconfig.Resolver) *Service {
+	if s == nil {
+		return nil
+	}
+	s.resolver = resolver
+	return s
 }
 
 // Put validates and stores a source runtime definition.
@@ -68,7 +81,11 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 	default:
 		return nil, err
 	}
-	if err := source.Check(ctx, sourcecdk.NewConfig(runtime.GetConfig())); err != nil {
+	resolvedConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetConfig())
+	if err != nil {
+		return nil, err
+	}
+	if err := source.Check(ctx, sourcecdk.NewConfig(resolvedConfig)); err != nil {
 		if errors.Is(err, sourcecdk.ErrInvalidConfig) {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 		}
@@ -95,6 +112,29 @@ func (s *Service) Get(ctx context.Context, req *cerebrov1.GetSourceRuntimeReques
 	return &cerebrov1.GetSourceRuntimeResponse{Runtime: redactRuntime(runtime)}, nil
 }
 
+// List returns stored source runtime definitions.
+func (s *Service) List(ctx context.Context, filter ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	lister, ok := s.store.(ports.SourceRuntimeListStore)
+	if !ok {
+		return nil, ErrRuntimeUnavailable
+	}
+	normalized, err := normalizeListFilter(filter)
+	if err != nil {
+		return nil, err
+	}
+	runtimes, err := lister.ListSourceRuntimes(ctx, normalized)
+	if err != nil {
+		return nil, err
+	}
+	for i, runtime := range runtimes {
+		runtimes[i] = redactRuntime(runtime)
+	}
+	return runtimes, nil
+}
+
 // Sync advances one stored source runtime and appends emitted events.
 func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequest) (*cerebrov1.SyncSourceRuntimeResponse, error) {
 	if s == nil || s.store == nil || s.appendLog == nil {
@@ -105,6 +145,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		return nil, err
 	}
 	source, err := s.lookupSource(runtime.GetSourceId())
+	if err != nil {
+		return nil, err
+	}
+	runtimeConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetConfig())
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +164,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		linksProjected    uint32
 	)
 	for i := uint32(0); i < pageLimit; i++ {
-		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtime.GetConfig()), cursor)
+		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtimeConfig), cursor)
 		if err != nil {
 			return nil, err
 		}
@@ -163,6 +207,14 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}, nil
 }
 
+func (s *Service) resolveConfig(ctx context.Context, sourceID string, config map[string]string) (map[string]string, error) {
+	resolver := s.resolver
+	if resolver == nil {
+		return cloneConfig(config), nil
+	}
+	return resolver(ctx, sourceID, config)
+}
+
 func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
 	id := strings.TrimSpace(sourceID)
 	if id == "" {
@@ -201,6 +253,21 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 		return 0, fmt.Errorf("%w: page_limit must be between 1 and %d", ErrInvalidRequest, maxPageLimit)
 	}
 	return pageLimit, nil
+}
+
+func normalizeListFilter(filter ports.SourceRuntimeFilter) (ports.SourceRuntimeFilter, error) {
+	normalized := ports.SourceRuntimeFilter{
+		TenantID: strings.TrimSpace(filter.TenantID),
+		SourceID: strings.TrimSpace(filter.SourceID),
+		Limit:    filter.Limit,
+	}
+	if normalized.Limit == 0 {
+		normalized.Limit = defaultListLimit
+	}
+	if normalized.Limit > maxListLimit {
+		return ports.SourceRuntimeFilter{}, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidRequest, maxListLimit)
+	}
+	return normalized, nil
 }
 
 func restoreRedactedConfig(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) {
@@ -278,6 +345,14 @@ func sameConfig(left map[string]string, right map[string]string) bool {
 		}
 	}
 	return true
+}
+
+func cloneConfig(config map[string]string) map[string]string {
+	cloned := make(map[string]string, len(config))
+	for key, value := range config {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {

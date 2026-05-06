@@ -75,7 +75,7 @@ func TestParseSourceArgsAllowNonSecretAccessKeyID(t *testing.T) {
 	}
 }
 
-func TestParseSourceCommandArgsResolvesEnvReferences(t *testing.T) {
+func TestParseSourceCommandArgsPreservesSensitiveEnvReferences(t *testing.T) {
 	t.Setenv("CEREBRO_TEST_TOKEN", "test-token")
 	sourceID, config, cursor, err := parseSourceCommandArgs([]string{
 		"github",
@@ -89,8 +89,8 @@ func TestParseSourceCommandArgsResolvesEnvReferences(t *testing.T) {
 	if sourceID != "github" {
 		t.Fatalf("sourceID = %q, want github", sourceID)
 	}
-	if got := config["token"]; got != "test-token" {
-		t.Fatalf("config[token] = %q, want env value", got)
+	if got := config["token"]; got != "env:CEREBRO_TEST_TOKEN" {
+		t.Fatalf("config[token] = %q, want env reference", got)
 	}
 	if got := config["lookup_key"]; got != "email" {
 		t.Fatalf("config[lookup_key] = %q, want email", got)
@@ -111,23 +111,40 @@ func TestParseSourceCommandArgsPreservesEnvPrefixForNonSensitiveValues(t *testin
 	}
 }
 
-func TestParseSourceCommandArgsResolvesEnvReferencesForNonSensitiveValues(t *testing.T) {
+func TestParseSourceCommandArgsPreservesEnvReferencesForNonSensitiveValues(t *testing.T) {
 	t.Setenv("CEREBRO_TEST_OKTA_DOMAIN", "writer.okta.com")
 	_, config, _, err := parseSourceCommandArgs([]string{"okta", "domain=env:CEREBRO_TEST_OKTA_DOMAIN"})
 	if err != nil {
 		t.Fatalf("parseSourceCommandArgs() error = %v", err)
 	}
-	if got := config["domain"]; got != "writer.okta.com" {
-		t.Fatalf("config[domain] = %q, want %q", got, "writer.okta.com")
+	if got := config["domain"]; got != "env:CEREBRO_TEST_OKTA_DOMAIN" {
+		t.Fatalf("config[domain] = %q, want env reference", got)
 	}
 }
 
-func TestParseSourceCommandArgsRejectsUnsetSensitiveEnvReference(t *testing.T) {
+func TestParseSourceCommandArgsAllowsUnsetSensitiveEnvReference(t *testing.T) {
 	_, _, _, err := parseSourceCommandArgs([]string{"github", "token=env:CEREBRO_MISSING_TOKEN"})
-	if err == nil {
-		t.Fatal("parseSourceCommandArgs() error = nil, want non-nil")
+	if err != nil {
+		t.Fatalf("parseSourceCommandArgs() error = %v", err)
 	}
-	if strings.Contains(fmt.Sprint(err), "token=env:") {
-		t.Fatalf("parseSourceCommandArgs() error leaked argument: %v", err)
+}
+
+func TestParseSourceRuntimeListArgs(t *testing.T) {
+	filter, err := parseSourceRuntimeListArgs([]string{"tenant_id=writer", "source_id=github", "limit=5"})
+	if err != nil {
+		t.Fatalf("parseSourceRuntimeListArgs() error = %v", err)
+	}
+	if filter.TenantID != "writer" || filter.SourceID != "github" || filter.Limit != 5 {
+		t.Fatalf("filter = %#v, want writer/github/5", filter)
+	}
+}
+
+func TestParseOrchestratorOptions(t *testing.T) {
+	options, err := parseOrchestratorOptions([]string{"tenant_id=writer", "source_id=github", "limit=2", "page_limit=3", "event_limit=4", "graph_page_limit=5"})
+	if err != nil {
+		t.Fatalf("parseOrchestratorOptions() error = %v", err)
+	}
+	if options.Filter.TenantID != "writer" || options.Filter.SourceID != "github" || options.Filter.Limit != 2 || options.PageLimit != 3 || options.EventLimit != 4 || options.GraphPageLimit != 5 {
+		t.Fatalf("options = %#v", options)
 	}
 }

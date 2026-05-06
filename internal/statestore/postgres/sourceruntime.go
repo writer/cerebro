@@ -78,6 +78,60 @@ func (s *Store) GetSourceRuntime(ctx context.Context, runtimeID string) (*cerebr
 	return runtime, nil
 }
 
+// ListSourceRuntimes loads persisted source runtime definitions.
+func (s *Store) ListSourceRuntimes(ctx context.Context, filter ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("postgres is not configured")
+	}
+	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
+		return nil, err
+	}
+	clauses := []string{"1=1"}
+	args := []any{}
+	if tenantID := strings.TrimSpace(filter.TenantID); tenantID != "" {
+		args = append(args, tenantID)
+		clauses = append(clauses, fmt.Sprintf("runtime_json->>'tenant_id' = $%d", len(args)))
+	}
+	if sourceID := strings.TrimSpace(filter.SourceID); sourceID != "" {
+		args = append(args, sourceID)
+		clauses = append(clauses, fmt.Sprintf("runtime_json->>'source_id' = $%d", len(args)))
+	}
+	limit := filter.Limit
+	if limit == 0 {
+		limit = 100
+	}
+	args = append(args, limit)
+	query := fmt.Sprintf(`
+SELECT runtime_json::text
+FROM source_runtimes
+WHERE %s
+ORDER BY updated_at DESC, id ASC
+LIMIT $%d`, strings.Join(clauses, " AND "), len(args))
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list source runtimes: %w", err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+	var runtimes []*cerebrov1.SourceRuntime
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			return nil, fmt.Errorf("scan source runtime: %w", err)
+		}
+		runtime := &cerebrov1.SourceRuntime{}
+		if err := protojson.Unmarshal([]byte(payload), runtime); err != nil {
+			return nil, fmt.Errorf("decode source runtime: %w", err)
+		}
+		runtimes = append(runtimes, runtime)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate source runtimes: %w", err)
+	}
+	return runtimes, nil
+}
+
 func (s *Store) ensureSourceRuntimeTable(ctx context.Context) error {
 	return s.ensureStatements(ctx, &s.sourceRuntimeTableReady, "source runtime", ensureSourceRuntimeStatements)
 }

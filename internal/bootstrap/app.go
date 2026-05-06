@@ -119,6 +119,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /graph/ingest-runs", deprecatedRoute(app.handleListGraphIngestRuns))
 	mux.HandleFunc("GET /platform/graph/ingest-runs/{runID}", app.handleGetGraphIngestRun)
 	mux.HandleFunc("GET /graph/ingest-runs/{runID}", deprecatedRoute(app.handleGetGraphIngestRun))
+	mux.HandleFunc("GET /source-runtimes", app.handleListSourceRuntimes)
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
@@ -970,6 +971,34 @@ func (a *App) handleGetSourceRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeProtoJSON(w, http.StatusOK, response)
+}
+
+func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
+	limit, err := uint32QueryParam(r, "limit")
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	filter := ports.SourceRuntimeFilter{
+		TenantID: strings.TrimSpace(r.URL.Query().Get("tenant_id")),
+		SourceID: strings.TrimSpace(r.URL.Query().Get("source_id")),
+		Limit:    limit,
+	}
+	if filter.TenantID == "" {
+		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok && strings.TrimSpace(auth.principal.TenantID) != "" {
+			filter.TenantID = strings.TrimSpace(auth.principal.TenantID)
+		}
+	}
+	if err := authorizeTenantID(r.Context(), filter.TenantID); err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	runtimes, err := a.runtimeService().List(r.Context(), filter)
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	writeSourceRuntimeListJSON(w, http.StatusOK, runtimes)
 }
 
 func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
@@ -2026,6 +2055,19 @@ func writeJSON(w http.ResponseWriter, statusCode int, value any) {
 	_, _ = w.Write(payload)
 }
 
+func writeSourceRuntimeListJSON(w http.ResponseWriter, statusCode int, runtimes []*cerebrov1.SourceRuntime) {
+	items := make([]json.RawMessage, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		payload, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(runtime)
+		if err != nil {
+			http.Error(w, "failed to encode response", http.StatusInternalServerError)
+			return
+		}
+		items = append(items, json.RawMessage(payload))
+	}
+	writeJSON(w, statusCode, map[string]any{"runtimes": items})
+}
+
 func uint32QueryParam(r *http.Request, key string) (uint32, error) {
 	value := strings.TrimSpace(r.URL.Query().Get(key))
 	if value == "" {
@@ -2059,7 +2101,7 @@ func (a *App) runtimeService() *sourceruntime.Service {
 		sourceRuntimeStore(a.deps.StateStore),
 		a.deps.AppendLog,
 		sourceProjector(a.deps.StateStore, a.deps.GraphStore),
-	)
+	).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
 }
 
 func (a *App) claimService() *claims.Service {
@@ -2110,7 +2152,7 @@ func newGraphIngestService(deps Dependencies, sources *sourcecdk.Registry) *grap
 		sourceRuntimeStore(deps.StateStore),
 		sourceProjector(nil, deps.GraphStore),
 		deps.GraphStore,
-	)
+	).WithConfigPreparer(config.ResolveSourceConfigSecretReferences)
 }
 
 func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {

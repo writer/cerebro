@@ -457,6 +457,29 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 	return proto.Clone(runtime).(*cerebrov1.SourceRuntime), nil
 }
 
+func (s *stubRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	var ids []string
+	for id := range s.runtimes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	var runtimes []*cerebrov1.SourceRuntime
+	for _, id := range ids {
+		runtime := s.runtimes[id]
+		if filter.TenantID != "" && runtime.GetTenantId() != filter.TenantID {
+			continue
+		}
+		if filter.SourceID != "" && runtime.GetSourceId() != filter.SourceID {
+			continue
+		}
+		runtimes = append(runtimes, proto.Clone(runtime).(*cerebrov1.SourceRuntime))
+	}
+	return runtimes, nil
+}
+
 func (s *stubRuntimeStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
 	if s.err != nil {
 		return s.err
@@ -1993,6 +2016,35 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 	if got := getRuntimePayload["tenant_id"]; got != "writer" {
 		t.Fatalf("get runtime tenant_id = %#v, want writer", got)
+	}
+
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes?tenant_id=writer")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes error = %v", err)
+	}
+	defer func() {
+		if closeErr := listResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close list runtime response body: %v", closeErr)
+		}
+	}()
+	var listPayload map[string]any
+	if err := json.NewDecoder(listResp.Body).Decode(&listPayload); err != nil {
+		t.Fatalf("decode list runtime response: %v", err)
+	}
+	listRuntimes, ok := listPayload["runtimes"].([]any)
+	if !ok || len(listRuntimes) != 1 {
+		t.Fatalf("list runtimes = %#v, want one runtime", listPayload["runtimes"])
+	}
+	listRuntimePayload, ok := listRuntimes[0].(map[string]any)
+	if !ok {
+		t.Fatalf("listed runtime = %#v, want object", listRuntimes[0])
+	}
+	listConfigPayload, ok := listRuntimePayload["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("listed runtime config = %#v, want object", listRuntimePayload["config"])
+	}
+	if got := listConfigPayload["token"]; got != "[redacted]" {
+		t.Fatalf("listed runtime token = %#v, want [redacted]", got)
 	}
 
 	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-users/sync?page_limit=1", nil)

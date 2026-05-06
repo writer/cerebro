@@ -3,6 +3,7 @@ package sourceruntime
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
@@ -47,6 +49,32 @@ func (s *runtimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov
 		return nil, ports.ErrSourceRuntimeNotFound
 	}
 	return proto.Clone(runtime).(*cerebrov1.SourceRuntime), nil
+}
+
+func (s *runtimeStore) ListSourceRuntimes(_ context.Context, filter ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	var ids []string
+	for id := range s.runtimes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	var runtimes []*cerebrov1.SourceRuntime
+	for _, id := range ids {
+		runtime := s.runtimes[id]
+		if filter.TenantID != "" && runtime.GetTenantId() != filter.TenantID {
+			continue
+		}
+		if filter.SourceID != "" && runtime.GetSourceId() != filter.SourceID {
+			continue
+		}
+		runtimes = append(runtimes, proto.Clone(runtime).(*cerebrov1.SourceRuntime))
+		if filter.Limit > 0 && uint32(len(runtimes)) >= filter.Limit {
+			break
+		}
+	}
+	return runtimes, nil
 }
 
 type appendLog struct {
@@ -129,13 +157,45 @@ func (s failingSource) Read(context.Context, sourcecdk.Config, *cerebrov1.Source
 	return sourcecdk.Pull{}, s.err
 }
 
+type tokenSource struct {
+	checked string
+	read    string
+}
+
+func (s *tokenSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "token_source"}
+}
+
+func (s *tokenSource) Check(_ context.Context, config sourcecdk.Config) error {
+	value, _ := config.Lookup("token")
+	s.checked = value
+	if value != "resolved-token" {
+		return sourcecdk.ErrInvalidConfig
+	}
+	return nil
+}
+
+func (s *tokenSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *tokenSource) Read(_ context.Context, config sourcecdk.Config, _ *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	value, _ := config.Lookup("token")
+	s.read = value
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{{
+		Id:       "token-event",
+		SourceId: "token_source",
+		Kind:     "token.event",
+	}}}, nil
+}
+
 func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
 		t.Fatalf("newFixtureRegistry() error = %v", err)
 	}
 	store := &runtimeStore{}
-	service := New(registry, store, nil, nil)
+	service := New(registry, store, nil, nil).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
 
 	putResp, err := service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
 		Runtime: &cerebrov1.SourceRuntime{
@@ -164,6 +224,52 @@ func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	}
 	if got := store.runtimes["writer-okta-users"].GetConfig()["token"]; got != "super-secret" {
 		t.Fatalf("stored runtime token = %q, want %q", got, "super-secret")
+	}
+}
+
+func TestPutStoresSecretReferenceAfterResolvingForValidation(t *testing.T) {
+	source := &tokenSource{}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{}
+	service := New(registry, store, nil, nil).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
+	t.Setenv("CEREBRO_TEST_TOKEN", "resolved-token")
+
+	_, err = service.Put(context.Background(), &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-token",
+			SourceId: "token_source",
+			Config:   map[string]string{"token": "env:CEREBRO_TEST_TOKEN"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if source.checked != "resolved-token" {
+		t.Fatalf("source checked token = %q, want resolved-token", source.checked)
+	}
+	if got := store.runtimes["writer-token"].GetConfig()["token"]; got != "env:CEREBRO_TEST_TOKEN" {
+		t.Fatalf("stored token = %q, want env reference", got)
+	}
+}
+
+func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {
+	service := New(nil, &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-token": {Id: "writer-token", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "env:CEREBRO_TEST_TOKEN"}},
+		"other-token":  {Id: "other-token", SourceId: "okta", TenantId: "other", Config: map[string]string{"token": "env:OTHER"}},
+	}}, nil, nil)
+
+	runtimes, err := service.List(context.Background(), ports.SourceRuntimeFilter{TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(runtimes) != 1 {
+		t.Fatalf("List() returned %d runtimes, want 1", len(runtimes))
+	}
+	if got := runtimes[0].GetConfig()["token"]; got != redactedValue {
+		t.Fatalf("listed token = %q, want %q", got, redactedValue)
 	}
 }
 
