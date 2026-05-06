@@ -166,6 +166,24 @@ config:
     type: string
     default: 10s
     description: Graceful shutdown timeout parsed by the Go runtime
+  cerebro:enableTailscale:
+    type: boolean
+    default: false
+    description: Enable a Tailscale subnet router for internal VPC access
+  cerebro:tailscaleAdvertiseRoutes:
+    type: array
+    items:
+      type: string
+    default: []
+    description: CIDR routes advertised by the Tailscale subnet router
+  cerebro:tailscaleHostname:
+    type: string
+    default: ""
+    description: Hostname for the Tailscale subnet router
+  cerebro:tailscaleAuthKeySecretName:
+    type: string
+    default: ""
+    description: Existing Secrets Manager secret name containing a Tailscale auth key
 
   cerebro:enableWaf:
     type: boolean
@@ -175,6 +193,12 @@ config:
     type: boolean
     default: true
     description: Deploy ALB as internal-only
+  cerebro:albIngressCidrs:
+    type: array
+    items:
+      type: string
+    default: []
+    description: CIDR ranges allowed to access the ALB; defaults to VPC CIDR for internal ALBs
   cerebro:logRetentionDays:
     type: integer
     default: 30

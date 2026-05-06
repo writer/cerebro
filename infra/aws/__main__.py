@@ -58,6 +58,7 @@ image_tag = config.get("imageTag") or "v1.0.0"
 container_image = f"{ecr_base_uri}:{image_tag}"
 
 alb_internal = _config_bool("albInternal", True)
+configured_alb_ingress_cidrs = config.get_object("albIngressCidrs") or None
 is_production = "prod" in environment.lower()
 
 api_cpu = _config_int("apiCpu", 1024)
@@ -166,22 +167,32 @@ if retain_legacy_jobs_table:
 
 if use_existing_vpc and existing_vpc_id:
     vpc_cidr = existing_vpc_cidr
+    alb_ingress_cidrs = (
+        configured_alb_ingress_cidrs
+        if configured_alb_ingress_cidrs is not None
+        else ([vpc_cidr] if alb_internal else None)
+    )
     vpc_stack = networking.use_existing_vpc(
         name=f"cerebro-{environment}",
         vpc_id=existing_vpc_id,
         public_subnet_ids=existing_public_subnet_ids,
         private_subnet_ids=existing_private_subnet_ids,
-        alb_ingress_cidrs=[vpc_cidr] if alb_internal else None,
+        alb_ingress_cidrs=alb_ingress_cidrs,
     )
 else:
     vpc_cidr = "10.0.0.0/16"
+    alb_ingress_cidrs = (
+        configured_alb_ingress_cidrs
+        if configured_alb_ingress_cidrs is not None
+        else ([vpc_cidr] if alb_internal else None)
+    )
     vpc_stack = networking.create_vpc(
         name=f"cerebro-{environment}",
         cidr_block=vpc_cidr,
         availability_zones=2,
         enable_nat_gateway=True,
         nat_gateway_per_az=nat_gateway_per_az,
-        alb_ingress_cidrs=[vpc_cidr] if alb_internal else None,
+        alb_ingress_cidrs=alb_ingress_cidrs,
         enable_flow_logs=True,
         flow_logs_retention_days=log_retention_days,
         flow_logs_kms_key_arn=logs_kms_key["key_arn"] if logs_kms_key else None,
@@ -384,10 +395,12 @@ if enable_waf:
 
 tailscale_stack = None
 if enable_tailscale:
-    tailscale_auth_key_secret_name = config.get("tailscaleAuthKeySecretName") or f"{external_secrets_prefix}/TAILSCALE_AUTH_KEY"
-    tailscale_auth_key_secret = aws.secretsmanager.get_secret(name=tailscale_auth_key_secret_name)
     if not tailscale_advertise_routes:
         raise ValueError("cerebro:tailscaleAdvertiseRoutes must be configured when enableTailscale is true")
+
+    tailscale_auth_key_secret_name = config.get("tailscaleAuthKeySecretName") or f"{external_secrets_prefix}/TAILSCALE_AUTH_KEY"
+    tailscale_auth_key_secret = aws.secretsmanager.get_secret(name=tailscale_auth_key_secret_name)
+
     tailscale_stack = ts.create_tailscale_subnet_router(
         name=f"cerebro-{environment}",
         vpc_id=vpc_stack["vpc_id"],

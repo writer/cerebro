@@ -34,11 +34,18 @@ config:
   cerebro:apiAuthEnabled: true
   cerebro:enableWaf: true
   cerebro:albInternal: true
+  cerebro:albIngressCidrs:
+    - "10.10.0.0/16"
+    - "100.64.0.0/10"
   cerebro:logRetentionDays: 14
   cerebro:natGatewayPerAz: false
   cerebro:enableAlbAccessLogs: false
   cerebro:enableAlbDeletionProtection: false
   cerebro:enableKmsLogEncryption: false
+  cerebro:enableTailscale: true
+  cerebro:tailscaleAdvertiseRoutes:
+    - "10.10.0.0/18"
+    - "10.10.128.0/18"
   cerebro:externalSecretsPrefix: cerebro-sec-dev
   cerebro:enableInfisicalSyncRole: true
   cerebro:infisicalAssumeRolePrincipalArn: "arn:aws:iam::381492033652:root"
