@@ -21,6 +21,13 @@ func TestGetSourceRuntimeRejectsMissingID(t *testing.T) {
 	}
 }
 
+func TestTouchSourceRuntimeRejectsMissingID(t *testing.T) {
+	store := &Store{}
+	if err := store.TouchSourceRuntime(context.Background(), " "); err == nil {
+		t.Fatal("TouchSourceRuntime() error = nil, want non-nil")
+	}
+}
+
 func TestPutSourceRuntimeRejectsMissingSourceID(t *testing.T) {
 	store := &Store{}
 	err := store.PutSourceRuntime(context.Background(), &cerebrov1.SourceRuntime{Id: "runtime"})

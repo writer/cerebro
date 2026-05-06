@@ -174,6 +174,10 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 	if !ok {
 		return nil, sourceruntime.ErrRuntimeUnavailable
 	}
+	toucher, ok := lister.(ports.SourceRuntimeTouchStore)
+	if !ok {
+		return nil, sourceruntime.ErrRuntimeUnavailable
+	}
 	runtimeService := sourceruntime.New(
 		registry,
 		lister,
@@ -213,7 +217,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 	}
 	for {
 		iteration++
-		iterationResult, err := runOrchestratorIteration(ctx, lister, runtimeService, findingService, graphService, options, iteration)
+		iterationResult, err := runOrchestratorIteration(ctx, lister, toucher, runtimeService, findingService, graphService, options, iteration)
 		if err != nil {
 			runErr = err
 		}
@@ -243,6 +247,7 @@ func appendOrchestratorRun(runs []*orchestratorIterationResult, run *orchestrato
 func runOrchestratorIteration(
 	ctx context.Context,
 	lister ports.SourceRuntimeListStore,
+	toucher ports.SourceRuntimeTouchStore,
 	runtimeService *sourceruntime.Service,
 	findingService *findings.Service,
 	graphService *graphingest.Service,
@@ -261,7 +266,7 @@ func runOrchestratorIteration(
 			SourceID:  strings.TrimSpace(runtime.GetSourceId()),
 			TenantID:  strings.TrimSpace(runtime.GetTenantId()),
 		}
-		if err := touchOrchestratorRuntime(ctx, lister, runtime); err != nil {
+		if err := touchOrchestratorRuntime(ctx, toucher, runtime); err != nil {
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "touch", err)
 			result.Runtimes = append(result.Runtimes, runtimeResult)
@@ -294,11 +299,11 @@ func runOrchestratorIteration(
 	return result, runErr
 }
 
-func touchOrchestratorRuntime(ctx context.Context, store ports.SourceRuntimeStore, runtime *cerebrov1.SourceRuntime) error {
+func touchOrchestratorRuntime(ctx context.Context, store ports.SourceRuntimeTouchStore, runtime *cerebrov1.SourceRuntime) error {
 	if store == nil || runtime == nil {
 		return nil
 	}
-	return store.PutSourceRuntime(ctx, runtime)
+	return store.TouchSourceRuntime(ctx, runtime.GetId())
 }
 
 func appendRuntimeError(existing string, stage string, err error) string {

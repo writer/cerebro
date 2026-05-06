@@ -49,16 +49,25 @@ func TestTouchOrchestratorRuntimePersistsRuntimeForScanRotation(t *testing.T) {
 	if err := touchOrchestratorRuntime(context.Background(), store, runtime); err != nil {
 		t.Fatalf("touchOrchestratorRuntime() error = %v", err)
 	}
-	if store.putID != "runtime-1" {
-		t.Fatalf("touched runtime id = %q, want runtime-1", store.putID)
+	if store.touchID != "runtime-1" {
+		t.Fatalf("touched runtime id = %q, want runtime-1", store.touchID)
+	}
+	if store.putID != "" {
+		t.Fatalf("PutSourceRuntime() touched stale runtime snapshot %q", store.putID)
 	}
 }
 
 type touchRuntimeStore struct {
-	putID string
+	touchID string
+	putID   string
 }
 
 func (s *touchRuntimeStore) Ping(context.Context) error { return nil }
+
+func (s *touchRuntimeStore) TouchSourceRuntime(_ context.Context, runtimeID string) error {
+	s.touchID = runtimeID
+	return nil
+}
 
 func (s *touchRuntimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.SourceRuntime) error {
 	s.putID = runtime.GetId()

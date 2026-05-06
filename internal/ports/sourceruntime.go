@@ -29,3 +29,8 @@ type SourceRuntimeListStore interface {
 	SourceRuntimeStore
 	ListSourceRuntimes(context.Context, SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error)
 }
+
+// SourceRuntimeTouchStore advances source runtime scheduling metadata without replacing runtime state.
+type SourceRuntimeTouchStore interface {
+	TouchSourceRuntime(context.Context, string) error
+}

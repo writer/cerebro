@@ -132,6 +132,32 @@ LIMIT $%d`, strings.Join(clauses, " AND "), sourceRuntimeListOrderClause(), len(
 	return runtimes, nil
 }
 
+// TouchSourceRuntime advances source runtime scheduling metadata without replacing runtime JSON.
+func (s *Store) TouchSourceRuntime(ctx context.Context, runtimeID string) error {
+	id := strings.TrimSpace(runtimeID)
+	if id == "" {
+		return errors.New("source runtime id is required")
+	}
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
+		return err
+	}
+	result, err := s.db.ExecContext(ctx, `UPDATE source_runtimes SET updated_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("touch source runtime %q: %w", id, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("touch source runtime %q rows affected: %w", id, err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: %s", ports.ErrSourceRuntimeNotFound, id)
+	}
+	return nil
+}
+
 func sourceRuntimeListOrderClause() string {
 	return "updated_at ASC, id ASC"
 }
