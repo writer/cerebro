@@ -66,10 +66,17 @@ func runOrchestrator(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	result, runErr := runOrchestratorLoop(ctx, options)
+	if !shouldPrintOrchestratorResult(result) {
+		return runErr
+	}
 	if err := printJSON(result); err != nil {
 		return err
 	}
 	return runErr
+}
+
+func shouldPrintOrchestratorResult(result *orchestratorResult) bool {
+	return result != nil
 }
 
 func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {

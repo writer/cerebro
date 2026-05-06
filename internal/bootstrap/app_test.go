@@ -1256,7 +1256,7 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}
 }
 
-func TestBootstrapSourcePreviewEndpointsResolveEnvReferences(t *testing.T) {
+func TestBootstrapSourcePreviewEndpointsDoNotResolveEnvReferences(t *testing.T) {
 	source := &bootstrapTokenSource{id: "bootstrap_token"}
 	registry, err := sourcecdk.NewRegistry(source)
 	if err != nil {
@@ -1277,8 +1277,8 @@ func TestBootstrapSourcePreviewEndpointsResolveEnvReferences(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /sources/bootstrap_token/read status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	if source.readToken != "resolved-token" {
-		t.Fatalf("HTTP read token = %q, want resolved-token", source.readToken)
+	if source.readToken != "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN" {
+		t.Fatalf("HTTP read token = %q, want literal env reference", source.readToken)
 	}
 
 	source.readToken = ""
@@ -1289,8 +1289,8 @@ func TestBootstrapSourcePreviewEndpointsResolveEnvReferences(t *testing.T) {
 	})); err != nil {
 		t.Fatalf("ReadSource() error = %v", err)
 	}
-	if source.readToken != "resolved-token" {
-		t.Fatalf("Connect read token = %q, want resolved-token", source.readToken)
+	if source.readToken != "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN" {
+		t.Fatalf("Connect read token = %q, want literal env reference", source.readToken)
 	}
 }
 

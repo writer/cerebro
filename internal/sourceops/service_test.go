@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
-	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	githubsource "github.com/writer/cerebro/sources/github"
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
@@ -82,35 +81,6 @@ func TestCheckDiscoverAndRead(t *testing.T) {
 	}
 }
 
-func TestReadResolvesSourceConfigReferences(t *testing.T) {
-	source := &resolverSource{}
-	registry, err := sourcecdk.NewRegistry(source)
-	if err != nil {
-		t.Fatalf("NewRegistry() error = %v", err)
-	}
-	service := New(registry).WithConfigResolver(func(_ context.Context, _ string, values map[string]string) (map[string]string, error) {
-		resolved := make(map[string]string, len(values))
-		for key, value := range values {
-			if value == "env:TOKEN" {
-				resolved[key] = "resolved-token"
-				continue
-			}
-			resolved[key] = value
-		}
-		return resolved, nil
-	})
-
-	if _, err := service.Read(context.Background(), &cerebrov1.ReadSourceRequest{
-		SourceId: "resolver_source",
-		Config:   map[string]string{"token": "env:TOKEN"},
-	}); err != nil {
-		t.Fatalf("Read() error = %v", err)
-	}
-	if source.readToken != "resolved-token" {
-		t.Fatalf("source read token = %q, want resolved-token", source.readToken)
-	}
-}
-
 func TestCheckDiscoverAndReadOkta(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -163,27 +133,6 @@ func TestCheckDiscoverAndReadOkta(t *testing.T) {
 	if !readResp.PreviewEvents[0].PayloadDecoded {
 		t.Fatal("Read(okta).PreviewEvents[0].PayloadDecoded = false, want true")
 	}
-}
-
-type resolverSource struct {
-	readToken string
-}
-
-func (s *resolverSource) Spec() *cerebrov1.SourceSpec {
-	return &cerebrov1.SourceSpec{Id: "resolver_source", Name: "Resolver source"}
-}
-
-func (s *resolverSource) Check(context.Context, sourcecdk.Config) error {
-	return nil
-}
-
-func (s *resolverSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
-	return nil, nil
-}
-
-func (s *resolverSource) Read(_ context.Context, config sourcecdk.Config, _ *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
-	s.readToken, _ = config.Lookup("token")
-	return sourcecdk.Pull{Events: []*primitives.Event{}}, nil
 }
 
 func TestCheckDiscoverAndReadGoogleWorkspace(t *testing.T) {

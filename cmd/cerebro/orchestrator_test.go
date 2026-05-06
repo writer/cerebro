@@ -21,3 +21,12 @@ func TestAppendOrchestratorRunPreservesFiniteHistory(t *testing.T) {
 		t.Fatalf("finite runs = %#v, want all iterations", runs)
 	}
 }
+
+func TestShouldPrintOrchestratorResultSkipsNilStartupFailure(t *testing.T) {
+	if shouldPrintOrchestratorResult(nil) {
+		t.Fatal("shouldPrintOrchestratorResult(nil) = true, want false")
+	}
+	if !shouldPrintOrchestratorResult(&orchestratorResult{}) {
+		t.Fatal("shouldPrintOrchestratorResult(non-nil) = false, want true")
+	}
+}

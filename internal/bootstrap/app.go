@@ -2089,7 +2089,7 @@ func (a *App) runtimeService() *sourceruntime.Service {
 }
 
 func newSourceService(sources *sourcecdk.Registry) *sourceops.Service {
-	return sourceops.New(sources).WithConfigResolver(config.ResolveSourceConfigSecretReferences)
+	return sourceops.New(sources)
 }
 
 func newRuntimeService(deps Dependencies, sources *sourcecdk.Registry) *sourceruntime.Service {
