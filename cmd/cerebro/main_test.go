@@ -231,3 +231,13 @@ func TestParseOrchestratorOptions(t *testing.T) {
 		t.Fatalf("options = %#v", options)
 	}
 }
+
+func TestParseOrchestratorOptionsNumericIterationsClearsForever(t *testing.T) {
+	options, err := parseOrchestratorOptions([]string{"iterations=forever", "iterations=1"})
+	if err != nil {
+		t.Fatalf("parseOrchestratorOptions() error = %v", err)
+	}
+	if options.RunForever || options.Iterations != 1 {
+		t.Fatalf("options = %#v, want finite single iteration", options)
+	}
+}

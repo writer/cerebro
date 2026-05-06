@@ -137,6 +137,7 @@ func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
 			if parsed == 0 {
 				return orchestratorOptions{}, fmt.Errorf("iterations must be at least 1 or forever")
 			}
+			options.RunForever = false
 			options.Iterations = uint32(parsed)
 		default:
 			return orchestratorOptions{}, fmt.Errorf("unsupported orchestrator argument %q", key)
