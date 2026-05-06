@@ -1,9 +1,9 @@
 config:
   aws:region: us-east-1
   cerebro:environment: sec-dev
-  # Active API domain; keep this on writer-security until the qordobadev cert is issued.
-  cerebro:domain: cerebro.dev.writer-security.com
-  # Pre-manage the next cutover certificate. It is attached only when it matches cerebro:domain.
+  # Active API domain.
+  cerebro:domain: cerebro.adm.dev.qordobadev.com
+  # Managed certificate for the active API domain.
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
