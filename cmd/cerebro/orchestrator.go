@@ -23,6 +23,7 @@ import (
 
 const defaultOrchestratorIterations = 1
 const defaultSourceRuntimeLeaseTTL = 30 * time.Minute
+const sourceRuntimeLeaseOverscanLimit = 100
 
 type orchestratorOptions struct {
 	Filter         ports.SourceRuntimeFilter `json:"filter"`
@@ -262,13 +263,18 @@ func runOrchestratorIteration(
 	options orchestratorOptions,
 	iteration uint32,
 ) (*orchestratorIterationResult, error) {
-	runtimes, err := lister.ListSourceRuntimes(ctx, options.Filter)
+	targetLimit := options.Filter.Limit
+	runtimes, err := lister.ListSourceRuntimes(ctx, orchestratorListFilter(options.Filter))
 	result := &orchestratorIterationResult{Iteration: iteration, StartedAt: time.Now().UTC()}
 	if err != nil {
 		return result, err
 	}
 	var runErr error
+	var acquiredCount uint32
 	for _, runtime := range runtimes {
+		if targetLimit > 0 && acquiredCount >= targetLimit {
+			break
+		}
 		select {
 		case <-ctx.Done():
 			return result, ctx.Err()
@@ -292,6 +298,7 @@ func runOrchestratorIteration(
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			continue
 		}
+		acquiredCount++
 		runtimeCtx, cancelRuntime := context.WithCancel(ctx)
 		stopLeaseRenewal := startOrchestratorRuntimeLeaseRenewal(ctx, leaser, runtime, leaseOwner, cancelRuntime)
 		if _, err := runtimeService.Sync(runtimeCtx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit}); err != nil {
@@ -338,6 +345,18 @@ func runOrchestratorIteration(
 		result.Runtimes = append(result.Runtimes, runtimeResult)
 	}
 	return result, runErr
+}
+
+func orchestratorListFilter(filter ports.SourceRuntimeFilter) ports.SourceRuntimeFilter {
+	if filter.Limit == 0 {
+		return filter
+	}
+	if ^uint32(0)-filter.Limit < sourceRuntimeLeaseOverscanLimit {
+		filter.Limit = ^uint32(0)
+		return filter
+	}
+	filter.Limit += sourceRuntimeLeaseOverscanLimit
+	return filter
 }
 
 func orchestratorLeaseOwner() string {

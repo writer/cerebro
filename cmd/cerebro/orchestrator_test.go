@@ -160,6 +160,45 @@ func TestRunOrchestratorIterationSkipsLockedRuntime(t *testing.T) {
 	}
 }
 
+func TestRunOrchestratorIterationContinuesPastLockedRuntimeWithLimit(t *testing.T) {
+	store := &orchestratorRuntimeStore{
+		runtimes: []*cerebrov1.SourceRuntime{
+			{Id: "locked-runtime", SourceId: "missing-source"},
+			{Id: "unlocked-runtime", SourceId: "missing-source"},
+		},
+		acquiredByID: map[string]bool{
+			"locked-runtime":   false,
+			"unlocked-runtime": true,
+		},
+	}
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(nil, store, nil, nil),
+		nil,
+		nil,
+		orchestratorOptions{Filter: ports.SourceRuntimeFilter{Limit: 1}},
+		1,
+	)
+	if err == nil {
+		t.Fatal("runOrchestratorIteration() error = nil, want unlocked runtime sync failure")
+	}
+	if store.listFilter.Limit != 1+sourceRuntimeLeaseOverscanLimit {
+		t.Fatalf("list limit = %d, want overscan limit", store.listFilter.Limit)
+	}
+	if got := len(result.Runtimes); got != 2 {
+		t.Fatalf("runtime result count = %d, want locked skip plus unlocked attempt", got)
+	}
+	if result.Runtimes[0].RuntimeID != "locked-runtime" || result.Runtimes[0].Sync != "skipped" {
+		t.Fatalf("first runtime result = %#v, want locked skip", result.Runtimes[0])
+	}
+	if result.Runtimes[1].RuntimeID != "unlocked-runtime" {
+		t.Fatalf("second runtime id = %q, want unlocked-runtime", result.Runtimes[1].RuntimeID)
+	}
+}
+
 func TestRunOrchestratorIterationStopsBeforeRuntimeWhenContextCanceled(t *testing.T) {
 	store := &orchestratorRuntimeStore{
 		runtime:  &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},
@@ -213,10 +252,13 @@ func (s *leaseRuntimeStore) ReleaseSourceRuntimeLease(ctx context.Context, _ str
 }
 
 type orchestratorRuntimeStore struct {
-	runtime   *cerebrov1.SourceRuntime
-	acquired  bool
-	leaseID   string
-	releaseID string
+	runtime      *cerebrov1.SourceRuntime
+	runtimes     []*cerebrov1.SourceRuntime
+	acquired     bool
+	acquiredByID map[string]bool
+	listFilter   ports.SourceRuntimeFilter
+	leaseID      string
+	releaseID    string
 }
 
 func (s *orchestratorRuntimeStore) Ping(context.Context) error { return nil }
@@ -225,16 +267,28 @@ func (s *orchestratorRuntimeStore) PutSourceRuntime(context.Context, *cerebrov1.
 	return nil
 }
 
-func (s *orchestratorRuntimeStore) GetSourceRuntime(context.Context, string) (*cerebrov1.SourceRuntime, error) {
+func (s *orchestratorRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov1.SourceRuntime, error) {
+	for _, runtime := range s.runtimes {
+		if runtime.GetId() == id {
+			return runtime, nil
+		}
+	}
 	return s.runtime, nil
 }
 
-func (s *orchestratorRuntimeStore) ListSourceRuntimes(context.Context, ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+func (s *orchestratorRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	s.listFilter = filter
+	if len(s.runtimes) > 0 {
+		return s.runtimes, nil
+	}
 	return []*cerebrov1.SourceRuntime{s.runtime}, nil
 }
 
 func (s *orchestratorRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, _ string, _ time.Duration) (bool, error) {
 	s.leaseID = runtimeID
+	if s.acquiredByID != nil {
+		return s.acquiredByID[runtimeID], nil
+	}
 	return s.acquired, nil
 }
 
