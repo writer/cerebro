@@ -2181,7 +2181,7 @@ func newGraphIngestService(deps Dependencies, sources *sourcecdk.Registry) *grap
 		sourceRuntimeStore(deps.StateStore),
 		sourceProjector(nil, deps.GraphStore),
 		deps.GraphStore,
-	).WithConfigPreparer(config.ResolveSourceRuntimeConfigSecretReferences)
+	).WithConfigPreparer(resolveRuntimeSourceConfig)
 }
 
 func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {

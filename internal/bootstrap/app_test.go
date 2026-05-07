@@ -286,6 +286,32 @@ func TestAuthorizeHTTPRequestTenantSkipsEnvTenantPlaceholders(t *testing.T) {
 	}
 }
 
+func TestGraphIngestRuntimeUsesRuntimeConfigAuthorization(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	})
+	store := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-github": {
+			Id:       "writer-github",
+			SourceId: "github",
+			TenantId: "writer",
+			Config:   map[string]string{"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER"},
+		},
+	}}
+	service := newGraphIngestService(Dependencies{StateStore: store, GraphStore: &stubGraphStore{}}, registry)
+
+	_, err = service.RunRuntime(ctx, graphingest.RuntimeRequest{RuntimeID: "writer-github"})
+	if !errors.Is(err, errTenantForbidden) {
+		t.Fatalf("RunRuntime() error = %v, want tenant forbidden", err)
+	}
+}
+
 func TestWriteKnowledgeErrorMapsInvalidRequestToBadRequest(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeKnowledgeError(recorder, knowledge.ErrInvalidRequest)
