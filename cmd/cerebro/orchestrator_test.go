@@ -120,6 +120,22 @@ func TestSourceRuntimeLeaseRenewalIntervalUsesHalfTTL(t *testing.T) {
 	}
 }
 
+func TestLeaseRenewalFailureCancelsRuntimeWork(t *testing.T) {
+	store := &leaseRuntimeStore{renewed: false}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}
+	workCtx, cancelWork := context.WithCancel(context.Background())
+	stopRenewal := startOrchestratorRuntimeLeaseRenewalWithTTL(context.Background(), store, runtime, "owner-1", cancelWork, time.Millisecond)
+
+	select {
+	case <-workCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("runtime work context was not canceled after lease renewal failed")
+	}
+	if err := stopRenewal(); err == nil {
+		t.Fatal("stopRenewal() error = nil, want lease lost error")
+	}
+}
+
 func TestRunOrchestratorIterationSkipsLockedRuntime(t *testing.T) {
 	store := &orchestratorRuntimeStore{
 		runtime:  &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},
@@ -177,6 +193,7 @@ type leaseRuntimeStore struct {
 	leaseTTL          time.Duration
 	releaseContextErr error
 	acquired          bool
+	renewed           bool
 }
 
 func (s *leaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
@@ -187,7 +204,7 @@ func (s *leaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtime
 }
 
 func (s *leaseRuntimeStore) RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
-	return true, nil
+	return s.renewed, nil
 }
 
 func (s *leaseRuntimeStore) ReleaseSourceRuntimeLease(ctx context.Context, _ string, _ string) error {

@@ -292,11 +292,13 @@ func runOrchestratorIteration(
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			continue
 		}
-		stopLeaseRenewal := startOrchestratorRuntimeLeaseRenewal(ctx, leaser, runtime, leaseOwner)
-		if _, err := runtimeService.Sync(ctx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit}); err != nil {
+		runtimeCtx, cancelRuntime := context.WithCancel(ctx)
+		stopLeaseRenewal := startOrchestratorRuntimeLeaseRenewal(ctx, leaser, runtime, leaseOwner, cancelRuntime)
+		if _, err := runtimeService.Sync(runtimeCtx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit}); err != nil {
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync", err)
 			runErr = err
+			cancelRuntime()
 			if renewalErr := stopLeaseRenewal(); renewalErr != nil {
 				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "renew_lease", renewalErr)
 				runErr = renewalErr
@@ -310,20 +312,21 @@ func runOrchestratorIteration(
 		} else {
 			runtimeResult.Sync = "completed"
 		}
-		if _, err := findingService.EvaluateSourceRuntimeRules(ctx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit}); err != nil {
+		if _, err := findingService.EvaluateSourceRuntimeRules(runtimeCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit}); err != nil {
 			runtimeResult.FindingRules = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "finding_rules", err)
 			runErr = err
 		} else {
 			runtimeResult.FindingRules = "completed"
 		}
-		if _, err := graphService.RunRuntime(ctx, graphingest.RuntimeRequest{RuntimeID: runtime.GetId(), PageLimit: options.GraphPageLimit, Trigger: "orchestrator"}); err != nil {
+		if _, err := graphService.RunRuntime(runtimeCtx, graphingest.RuntimeRequest{RuntimeID: runtime.GetId(), PageLimit: options.GraphPageLimit, Trigger: "orchestrator"}); err != nil {
 			runtimeResult.GraphIngest = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
 			runErr = err
 		} else {
 			runtimeResult.GraphIngest = "completed"
 		}
+		cancelRuntime()
 		if err := stopLeaseRenewal(); err != nil {
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "renew_lease", err)
 			runErr = err
@@ -352,14 +355,21 @@ func acquireOrchestratorRuntimeLease(ctx context.Context, store ports.SourceRunt
 	return store.AcquireSourceRuntimeLease(ctx, runtime.GetId(), owner, defaultSourceRuntimeLeaseTTL)
 }
 
-func startOrchestratorRuntimeLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtime *cerebrov1.SourceRuntime, owner string) func() error {
+func startOrchestratorRuntimeLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtime *cerebrov1.SourceRuntime, owner string, cancelWork context.CancelFunc) func() error {
+	return startOrchestratorRuntimeLeaseRenewalWithTTL(ctx, store, runtime, owner, cancelWork, defaultSourceRuntimeLeaseTTL)
+}
+
+func startOrchestratorRuntimeLeaseRenewalWithTTL(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtime *cerebrov1.SourceRuntime, owner string, cancelWork context.CancelFunc, ttl time.Duration) func() error {
 	if store == nil || runtime == nil {
 		return func() error { return nil }
+	}
+	if cancelWork == nil {
+		cancelWork = func() {}
 	}
 	renewCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() {
-		ticker := time.NewTicker(sourceRuntimeLeaseRenewalInterval(defaultSourceRuntimeLeaseTTL))
+		ticker := time.NewTicker(sourceRuntimeLeaseRenewalInterval(ttl))
 		defer ticker.Stop()
 		for {
 			select {
@@ -367,12 +377,14 @@ func startOrchestratorRuntimeLeaseRenewal(ctx context.Context, store ports.Sourc
 				done <- nil
 				return
 			case <-ticker.C:
-				renewed, err := store.RenewSourceRuntimeLease(renewCtx, runtime.GetId(), owner, defaultSourceRuntimeLeaseTTL)
+				renewed, err := store.RenewSourceRuntimeLease(renewCtx, runtime.GetId(), owner, ttl)
 				if err != nil {
+					cancelWork()
 					done <- err
 					return
 				}
 				if !renewed {
+					cancelWork()
 					done <- fmt.Errorf("source runtime lease lost: %s", runtime.GetId())
 					return
 				}
