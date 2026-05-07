@@ -2107,7 +2107,7 @@ func newRuntimeService(deps Dependencies, sources *sourcecdk.Registry) *sourceru
 }
 
 func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-	if err := authorizeRuntimeConfigEnvReferences(ctx, values); err != nil {
+	if err := authorizeRuntimeConfigEnvReferences(ctx, sourceID, values); err != nil {
 		return nil, err
 	}
 	resolved, err := config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, values)
@@ -2120,12 +2120,16 @@ func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map
 	return resolved, nil
 }
 
-func authorizeRuntimeConfigEnvReferences(ctx context.Context, values map[string]string) error {
+func authorizeRuntimeConfigEnvReferences(ctx context.Context, sourceID string, values map[string]string) error {
 	if !hasTenantScopedAuth(ctx) && !requiresTenantFilter(ctx) {
 		return nil
 	}
 	for key, value := range values {
-		if strings.TrimSpace(key) == "tenant_id" || !sourceconfig.IsSecretReference(value) {
+		envName, ok := sourceconfig.SecretReferenceName(value)
+		if strings.TrimSpace(key) == "tenant_id" || !ok {
+			continue
+		}
+		if sourceconfig.LiteralEnvPrefixKey(key) && !config.SourceConfigEnvReferenceAllowed(sourceID, key, envName) {
 			continue
 		}
 		return errTenantForbidden

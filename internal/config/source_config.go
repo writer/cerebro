@@ -28,13 +28,13 @@ func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, v
 		if !ok {
 			continue
 		}
-		if preserveLiteralQueryValues && sourceconfig.LiteralEnvPrefixKey(key) && !sourceConfigEnvReferenceAllowed(sourceID, key, envName) {
+		if preserveLiteralQueryValues && sourceconfig.LiteralEnvPrefixKey(key) && !SourceConfigEnvReferenceAllowed(sourceID, key, envName) {
 			continue
 		}
 		if envName == "" {
 			return nil, fmt.Errorf("source config %q has empty env reference", strings.TrimSpace(key))
 		}
-		if !sourceConfigEnvReferenceAllowed(sourceID, key, envName) {
+		if !SourceConfigEnvReferenceAllowed(sourceID, key, envName) {
 			return nil, fmt.Errorf("source config %q references disallowed environment variable %q; use %q or list it in %s", strings.TrimSpace(key), envName, sourceConfigEnvName(sourceID, key), sourceConfigEnvAllowlistEnv)
 		}
 		secret, ok := os.LookupEnv(envName)
@@ -49,7 +49,7 @@ func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, v
 	return resolved, nil
 }
 
-func sourceConfigEnvReferenceAllowed(sourceID string, key string, envName string) bool {
+func SourceConfigEnvReferenceAllowed(sourceID string, key string, envName string) bool {
 	trimmedEnvName := strings.TrimSpace(envName)
 	if trimmedEnvName == "" {
 		return false

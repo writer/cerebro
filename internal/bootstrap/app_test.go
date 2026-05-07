@@ -250,6 +250,23 @@ func TestResolveRuntimeSourceConfigRejectsTenantScopedEnvSelectors(t *testing.T)
 	}
 }
 
+func TestResolveRuntimeSourceConfigAllowsTenantScopedLiteralEnvQuerySelectors(t *testing.T) {
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	})
+
+	resolved, err := resolveRuntimeSourceConfig(ctx, "github", map[string]string{
+		"phrase": "env:prod",
+	})
+	if err != nil {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v", err)
+	}
+	if got := resolved["phrase"]; got != "env:prod" {
+		t.Fatalf("resolved phrase = %q, want env:prod", got)
+	}
+}
+
 func TestResolveRuntimeSourceConfigAllowsAdminEnvSelectors(t *testing.T) {
 	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
 	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
