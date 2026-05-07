@@ -268,6 +268,24 @@ func TestResolveRuntimeSourceConfigAllowsAdminEnvSelectors(t *testing.T) {
 	}
 }
 
+func TestAuthorizeHTTPRequestTenantSkipsEnvTenantPlaceholders(t *testing.T) {
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	})
+	err := authorizeHTTPRequestTenant(ctx, &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			TenantId: "writer",
+			Config: map[string]string{
+				"tenant_id": "env:CEREBRO_SOURCE_AZURE_TENANT_ID",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("authorizeHTTPRequestTenant() error = %v, want nil", err)
+	}
+}
+
 func TestWriteKnowledgeErrorMapsInvalidRequestToBadRequest(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeKnowledgeError(recorder, knowledge.ErrInvalidRequest)

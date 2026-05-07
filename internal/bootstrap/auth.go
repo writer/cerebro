@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 var errTenantForbidden = errors.New("tenant forbidden")
@@ -315,6 +316,9 @@ func protoStringValue(message protoreflect.Message) string {
 func appendTenantID(rawTenantID string, seen map[string]struct{}, tenants *[]string) {
 	tenantID := strings.TrimSpace(rawTenantID)
 	if tenantID == "" {
+		return
+	}
+	if sourceconfig.IsSecretReference(tenantID) {
 		return
 	}
 	if _, ok := seen[tenantID]; ok {
