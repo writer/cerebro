@@ -597,6 +597,9 @@ func (s *stubRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.So
 	var runtimes []*cerebrov1.SourceRuntime
 	for _, id := range ids {
 		runtime := s.runtimes[id]
+		if filter.RuntimeID != "" && runtime.GetId() != filter.RuntimeID {
+			continue
+		}
 		if filter.TenantID != "" && runtime.GetTenantId() != filter.TenantID {
 			continue
 		}
@@ -1639,6 +1642,69 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 	}
 	if got := len(payload["runtimes"]); got != 1 {
 		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+}
+
+func TestListSourceRuntimesAuthorizesRuntimeIDWithAllowedTenantAuth(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled:        true,
+			APIKeys:        []config.APIKey{{Key: "allowed-key"}},
+			AllowedTenants: []string{"writer"},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=writer-runtime", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with runtime_id: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer allowed-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with runtime_id error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with runtime_id status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload map[string][]map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode source runtime list: %v", err)
+	}
+	if got := len(payload["runtimes"]); got != 1 {
+		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+	if got := payload["runtimes"][0]["id"]; got != "writer-runtime" {
+		t.Fatalf("listed runtime id = %v, want writer-runtime", got)
+	}
+
+	forbiddenReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=other-runtime", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with forbidden runtime_id: %v", err)
+	}
+	forbiddenReq.Header.Set("Authorization", "Bearer allowed-key")
+	forbiddenResp, err := server.Client().Do(forbiddenReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with forbidden runtime_id error = %v", err)
+	}
+	_ = forbiddenResp.Body.Close()
+	if forbiddenResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /source-runtimes with forbidden runtime_id status = %d, want %d", forbiddenResp.StatusCode, http.StatusForbidden)
 	}
 }
 

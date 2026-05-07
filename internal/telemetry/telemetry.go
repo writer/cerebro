@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"os"
 	"time"
 )
 
@@ -132,7 +133,10 @@ func emit(kind string, span *Span, attributes Attributes) {
 		log.Printf("telemetry encode: %v", err)
 		return
 	}
-	log.Print(string(encoded))
+	encoded = append(encoded, '\n')
+	if _, err := os.Stdout.Write(encoded); err != nil {
+		log.Printf("telemetry write: %v", err)
+	}
 }
 
 func randomHex(bytes int) string {
