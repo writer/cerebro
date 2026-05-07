@@ -32,6 +32,11 @@ config:
   cerebro:jetstreamStreamName: CEREBRO_EVENTS
   cerebro:jetstreamSubjectPrefix: events
   cerebro:apiAuthEnabled: true
+  cerebro:sourceSecretKeys:
+    - OKTA_API_TOKEN
+    - OKTA_DOMAIN
+  cerebro:orchestratorEnabled: true
+  cerebro:orchestratorScheduleExpression: "rate(6 hours)"
   cerebro:enableWaf: true
   cerebro:albInternal: true
   cerebro:albIngressCidrs:
