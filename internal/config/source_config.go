@@ -16,7 +16,7 @@ func ResolveSourceConfigSecretReferences(ctx context.Context, sourceID string, v
 }
 
 func ResolveSourceRuntimeConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-	return resolveSourceConfigSecretReferences(ctx, sourceID, values, false)
+	return resolveSourceConfigSecretReferences(ctx, sourceID, values, true)
 }
 
 func resolveSourceConfigSecretReferences(ctx context.Context, sourceID string, values map[string]string, preserveLiteralQueryValues bool) (map[string]string, error) {
