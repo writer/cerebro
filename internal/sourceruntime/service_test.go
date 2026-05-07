@@ -328,6 +328,32 @@ func TestProgressConfigHashIncludesNonSecretKeySelectors(t *testing.T) {
 	}
 }
 
+func TestProgressConfigHashIgnoresPreservedLiteralEnvQuerySelectors(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{
+		Id:           "writer-github",
+		SourceId:     "github",
+		Config:       map[string]string{"phrase": "env:prod"},
+		Checkpoint:   &cerebrov1.SourceCheckpoint{CursorOpaque: "old-cursor"},
+		NextCursor:   &cerebrov1.SourceCursor{Opaque: "next"},
+		LastSyncedAt: timestamppb.New(time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC)),
+	}
+
+	refreshRuntimeProgressConfig(runtime, map[string]string{"phrase": "env:prod"})
+
+	if runtime.GetCheckpoint().GetCursorOpaque() != "old-cursor" {
+		t.Fatalf("checkpoint cursor = %q, want old-cursor", runtime.GetCheckpoint().GetCursorOpaque())
+	}
+	if runtime.GetNextCursor().GetOpaque() != "next" {
+		t.Fatalf("next cursor = %q, want next", runtime.GetNextCursor().GetOpaque())
+	}
+	if runtime.GetLastSyncedAt() == nil {
+		t.Fatal("last_synced_at = nil, want preserved timestamp")
+	}
+	if _, ok := runtime.GetConfig()[runtimeProgressConfigHashKey]; ok {
+		t.Fatal("literal env query selector wrote progress hash")
+	}
+}
+
 func TestProgressConfigHashIgnoresAccessKeyIDCredentials(t *testing.T) {
 	rawConfig := map[string]string{
 		"access_key_id": "env:CEREBRO_SOURCE_AWS_ACCESS_KEY_ID",

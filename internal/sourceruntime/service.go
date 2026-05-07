@@ -403,15 +403,18 @@ func refreshRuntimeProgressConfig(runtime *cerebrov1.SourceRuntime, resolvedConf
 }
 
 func progressConfigHashForRuntime(rawConfig map[string]string, resolvedConfig map[string]string) (string, bool) {
-	if !hasProgressConfigReferences(rawConfig) {
+	if !hasProgressConfigReferences(rawConfig, resolvedConfig) {
 		return "", false
 	}
 	return progressConfigHash(resolvedConfig), true
 }
 
-func hasProgressConfigReferences(config map[string]string) bool {
+func hasProgressConfigReferences(config map[string]string, resolvedConfig map[string]string) bool {
 	for key, value := range config {
 		if key == runtimeProgressConfigHashKey || progressHashSensitiveConfigKey(key) {
+			continue
+		}
+		if sourceconfig.LiteralEnvPrefixKey(key) && resolvedConfig[key] == value {
 			continue
 		}
 		if sourceconfig.IsSecretReference(value) {
