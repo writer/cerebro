@@ -1,0 +1,15 @@
+{
+  "ignorePaths": [
+    "vendor/**",
+    ".deepsec/.env*.local",
+    ".deepsec/data/**",
+    ".deepsec/findings/**",
+    "docs/**",
+    "policies/**",
+    "api/openapi.yaml",
+    "api/spec_embed.go",
+    "**/*_test.go",
+    "cerebro",
+    "bin/**"
+  ]
+}
