@@ -134,7 +134,7 @@ func emit(kind string, span *Span, attributes Attributes) {
 		return
 	}
 	encoded = append(encoded, '\n')
-	if _, err := os.Stdout.Write(encoded); err != nil {
+	if _, err := os.Stderr.Write(encoded); err != nil {
 		log.Printf("telemetry write: %v", err)
 	}
 }

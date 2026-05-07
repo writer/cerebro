@@ -9,11 +9,14 @@ import (
 	"testing"
 )
 
-func TestEventEmitsParseableJSONLine(t *testing.T) {
-	output := captureStdout(t, func() {
+func TestEventEmitsParseableJSONLineOnStderr(t *testing.T) {
+	stdout, stderr := captureOutput(t, func() {
 		Event(context.Background(), "test.event", Attrs(Field{Key: "value", Value: 42}))
 	})
-	line := strings.TrimSpace(output)
+	if stdout != "" {
+		t.Fatalf("stdout = %q, want empty", stdout)
+	}
+	line := strings.TrimSpace(stderr)
 	if !strings.HasPrefix(line, "{") {
 		t.Fatalf("telemetry line = %q, want JSON object without log prefix", line)
 	}
@@ -29,25 +32,39 @@ func TestEventEmitsParseableJSONLine(t *testing.T) {
 	}
 }
 
-func captureStdout(t *testing.T, fn func()) string {
+func captureOutput(t *testing.T, fn func()) (string, string) {
 	t.Helper()
 	oldStdout := os.Stdout
-	reader, writer, err := os.Pipe()
+	oldStderr := os.Stderr
+	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
+		t.Fatalf("os.Pipe stdout: %v", err)
 	}
-	os.Stdout = writer
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stderr: %v", err)
+	}
+	os.Stdout = stdoutWriter
+	os.Stderr = stderrWriter
 	defer func() {
 		os.Stdout = oldStdout
+		os.Stderr = oldStderr
 	}()
 
 	fn()
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close writer: %v", err)
+	if err := stdoutWriter.Close(); err != nil {
+		t.Fatalf("close stdout writer: %v", err)
 	}
-	output, err := io.ReadAll(reader)
+	if err := stderrWriter.Close(); err != nil {
+		t.Fatalf("close stderr writer: %v", err)
+	}
+	stdout, err := io.ReadAll(stdoutReader)
 	if err != nil {
 		t.Fatalf("read stdout: %v", err)
 	}
-	return string(output)
+	stderr, err := io.ReadAll(stderrReader)
+	if err != nil {
+		t.Fatalf("read stderr: %v", err)
+	}
+	return string(stdout), string(stderr)
 }
