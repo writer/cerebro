@@ -354,7 +354,7 @@ func TestProgressConfigHashIgnoresAccessKeyIDCredentials(t *testing.T) {
 
 func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {
 	service := New(nil, &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
-		"writer-token": {Id: "writer-token", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "env:CEREBRO_TEST_TOKEN"}},
+		"writer-token": {Id: "writer-token", SourceId: "github", TenantId: "writer", Config: map[string]string{"token": "env:CEREBRO_TEST_TOKEN", "lookup_key": "prod", "group_key": "eng"}},
 		"other-token":  {Id: "other-token", SourceId: "okta", TenantId: "other", Config: map[string]string{"token": "env:OTHER"}},
 	}}, nil, nil)
 
@@ -367,6 +367,12 @@ func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {
 	}
 	if got := runtimes[0].GetConfig()["token"]; got != redactedValue {
 		t.Fatalf("listed token = %q, want %q", got, redactedValue)
+	}
+	if got := runtimes[0].GetConfig()["lookup_key"]; got != "prod" {
+		t.Fatalf("listed lookup_key = %q, want prod", got)
+	}
+	if got := runtimes[0].GetConfig()["group_key"]; got != "eng" {
+		t.Fatalf("listed group_key = %q, want eng", got)
 	}
 }
 
@@ -381,6 +387,16 @@ func TestSensitiveConfigKeyCatchesCommonCamelCaseSecrets(t *testing.T) {
 		t.Run(key, func(t *testing.T) {
 			if !sensitiveConfigKey(key) {
 				t.Fatalf("sensitiveConfigKey(%q) = false, want true", key)
+			}
+		})
+	}
+}
+
+func TestSensitiveConfigKeyAllowsSelectorKeys(t *testing.T) {
+	for _, key := range []string{"lookup_key", "group_key"} {
+		t.Run(key, func(t *testing.T) {
+			if sensitiveConfigKey(key) {
+				t.Fatalf("sensitiveConfigKey(%q) = true, want false", key)
 			}
 		})
 	}

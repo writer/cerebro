@@ -477,18 +477,11 @@ func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
 }
 
 func sensitiveConfigKey(key string) bool {
-	value := strings.ToLower(strings.TrimSpace(key))
-	if value == "" {
-		return false
-	}
-	if strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password") {
+	if sourceconfig.SensitiveKey(key) {
 		return true
 	}
-	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
-	if strings.Contains(compact, "apikey") || strings.Contains(compact, "accesskey") || strings.Contains(compact, "privatekey") {
-		return true
-	}
-	return value == "key" || strings.HasSuffix(value, "_key")
+	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(strings.ToLower(strings.TrimSpace(key)))
+	return strings.Contains(compact, "accesskey")
 }
 
 func cloneRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
