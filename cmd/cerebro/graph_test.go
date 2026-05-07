@@ -105,6 +105,25 @@ func TestPrepareGraphRuntimeSourceConfigResolvesEnvReferences(t *testing.T) {
 	}
 }
 
+func TestPrepareGraphRuntimeSourceConfigDoesNotHydrateGitHubFromLocalCLI(t *testing.T) {
+	config, err := prepareGraphRuntimeSourceConfig(context.Background(), githubSourceID, map[string]string{
+		"family": "pull_request",
+		"owner":  "writer",
+	})
+	if err != nil {
+		t.Fatalf("prepareGraphRuntimeSourceConfig() error = %v", err)
+	}
+	if got := config["owner"]; got != "writer" {
+		t.Fatalf("config[owner] = %q, want writer", got)
+	}
+	if _, ok := config["repo"]; ok {
+		t.Fatalf("config[repo] was hydrated from local gh state: %#v", config)
+	}
+	if _, ok := config["token"]; ok {
+		t.Fatalf("config[token] was hydrated from local gh auth: %#v", config)
+	}
+}
+
 func TestParseGraphIngestRunsArgs(t *testing.T) {
 	options, err := parseGraphIngestRunsArgs([]string{
 		"runtime_id=writer-github",

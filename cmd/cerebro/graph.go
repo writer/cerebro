@@ -911,11 +911,7 @@ func graphIngestCheckpointID(options graphIngestOptions) string {
 }
 
 func prepareGraphRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
-	prepared, err := prepareSourceConfig(ctx, sourceID, "read", values)
-	if err != nil {
-		return nil, err
-	}
-	return config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, prepared)
+	return config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, values)
 }
 
 func graphIngestRuntimeResultCapacity(options graphIngestRuntimeOptions) int {

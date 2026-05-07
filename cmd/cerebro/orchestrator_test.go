@@ -100,6 +100,20 @@ func TestAcquireOrchestratorRuntimeLeaseClaimsRuntime(t *testing.T) {
 	}
 }
 
+func TestReleaseOrchestratorRuntimeLeaseIgnoresCancellation(t *testing.T) {
+	store := &leaseRuntimeStore{}
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := releaseOrchestratorRuntimeLease(ctx, store, runtime, "owner-1"); err != nil {
+		t.Fatalf("releaseOrchestratorRuntimeLease() error = %v", err)
+	}
+	if store.releaseContextErr != nil {
+		t.Fatalf("release context err = %v, want nil", store.releaseContextErr)
+	}
+}
+
 func TestRunOrchestratorIterationSkipsLockedRuntime(t *testing.T) {
 	store := &orchestratorRuntimeStore{
 		runtime:  &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},
@@ -152,10 +166,11 @@ func TestRunOrchestratorIterationStopsBeforeRuntimeWhenContextCanceled(t *testin
 }
 
 type leaseRuntimeStore struct {
-	leaseID    string
-	leaseOwner string
-	leaseTTL   time.Duration
-	acquired   bool
+	leaseID           string
+	leaseOwner        string
+	leaseTTL          time.Duration
+	releaseContextErr error
+	acquired          bool
 }
 
 func (s *leaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
@@ -165,7 +180,8 @@ func (s *leaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtime
 	return s.acquired, nil
 }
 
-func (s *leaseRuntimeStore) ReleaseSourceRuntimeLease(context.Context, string, string) error {
+func (s *leaseRuntimeStore) ReleaseSourceRuntimeLease(ctx context.Context, _ string, _ string) error {
+	s.releaseContextErr = ctx.Err()
 	return nil
 }
 

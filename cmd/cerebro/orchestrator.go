@@ -347,7 +347,7 @@ func releaseOrchestratorRuntimeLease(ctx context.Context, store ports.SourceRunt
 	if store == nil || runtime == nil {
 		return nil
 	}
-	return store.ReleaseSourceRuntimeLease(ctx, runtime.GetId(), owner)
+	return store.ReleaseSourceRuntimeLease(context.WithoutCancel(ctx), runtime.GetId(), owner)
 }
 
 func appendRuntimeError(existing string, stage string, err error) string {
