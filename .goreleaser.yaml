@@ -23,31 +23,12 @@ builds:
       - goos: windows
         goarch: arm64
     ldflags:
-      - -s -w -X github.com/writer/cerebro/internal/cli.Version={{.Version}} -X github.com/writer/cerebro/internal/cli.Commit={{.Commit}} -X github.com/writer/cerebro/internal/cli.BuildDate={{.Date}}
-
-  - id: policy-enhancer
-    main: ./cmd/policy-enhancer
-    binary: policy-enhancer
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-    ldflags:
-      - -s -w
+      - -s -w -X github.com/writer/cerebro/internal/buildinfo.Version={{.Version}} -X github.com/writer/cerebro/internal/buildinfo.Commit={{.Commit}} -X github.com/writer/cerebro/internal/buildinfo.BuildDate={{.Date}}
 
 archives:
   - id: binaries
     builds:
       - cerebro
-      - policy-enhancer
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
