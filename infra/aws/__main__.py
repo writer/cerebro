@@ -65,6 +65,11 @@ api_cpu = _config_int("apiCpu", 1024)
 api_memory = _config_int("apiMemory", 2048)
 api_min_instances = _config_int("apiMinInstances", 1)
 api_max_instances = _config_int("apiMaxInstances", 1)
+orchestrator_enabled = _config_bool("orchestratorEnabled", False)
+orchestrator_schedule_expression = config.get("orchestratorScheduleExpression") or "rate(1 hour)"
+orchestrator_cpu = _config_int("orchestratorCpu", api_cpu)
+orchestrator_memory = _config_int("orchestratorMemory", api_memory)
+orchestrator_command = config.get_object("orchestratorCommand") or ["orchestrator", "run"]
 
 if api_max_instances > 1:
     raise ValueError("Source runtime sync cursors are not cross-task locked yet; set cerebro:apiMaxInstances to 1.")
@@ -126,6 +131,7 @@ neo4j_secret_import_arns = config.get_object("neo4jSecretImportArns") or {}
 api_keys = config.get_secret("apiKeys")
 api_auth_enabled = _config_bool("apiAuthEnabled", is_production)
 allowed_tenants = config.get_object("allowedTenants") or []
+source_secret_keys = config.get_object("sourceSecretKeys") or []
 
 # Optional IAM grants for S3-backed sources. Source configuration now lives in
 # source runtimes, not process env; this only scopes task-role permissions.
@@ -317,6 +323,7 @@ secret_keys = [
 if api_auth_enabled:
     secret_keys.append("CEREBRO_API_KEYS")
     secret_keys.append({"name": "API_KEYS", "source": "CEREBRO_API_KEYS"})
+secret_keys.extend(source_secret_keys)
 
 app_environment = {
     "CEREBRO_HTTP_ADDR": ":8080",
@@ -363,6 +370,11 @@ ecs_stack = compute.create_ecs_cluster(
     log_group_kms_key_id=logs_kms_key["key_arn"] if logs_kms_key else None,
     s3_source_iam_configs=s3_source_iam_configs or None,
     depends_on=runtime_dependencies,
+    orchestrator_enabled=orchestrator_enabled,
+    orchestrator_schedule_expression=orchestrator_schedule_expression,
+    orchestrator_cpu=orchestrator_cpu,
+    orchestrator_memory=orchestrator_memory,
+    orchestrator_command=orchestrator_command,
 )
 
 # =============================================================================
@@ -439,6 +451,10 @@ repository = ecr.create_ecr_repository(
 pulumi.export("vpc_id", vpc_stack["vpc_id"])
 pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("ecs_service_name", ecs_stack["api_service"].name)
+if ecs_stack.get("orchestrator_task_definition"):
+    pulumi.export("orchestrator_task_definition_arn", ecs_stack["orchestrator_task_definition"].arn)
+if ecs_stack.get("orchestrator_rule"):
+    pulumi.export("orchestrator_schedule_rule_name", ecs_stack["orchestrator_rule"].name)
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
 pulumi.export("api_url", pulumi.Output.concat("https://", domain) if domain else pulumi.Output.concat("http://", alb_stack["alb"].dns_name))
 pulumi.export("kms_key_id", kms_key["key_id"])

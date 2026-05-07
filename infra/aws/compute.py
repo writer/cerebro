@@ -35,6 +35,11 @@ def create_ecs_cluster(
     fargate_spot_base: int = 0,
     fargate_spot_weight: int = 0,
     enable_circuit_breaker: bool = True,
+    orchestrator_enabled: bool = False,
+    orchestrator_schedule_expression: str = "rate(1 hour)",
+    orchestrator_cpu: int = 1024,
+    orchestrator_memory: int = 2048,
+    orchestrator_command: list[str] = None,
 ) -> dict:
     """Create ECS cluster with an API service."""
     cluster = aws.ecs.Cluster(
@@ -83,6 +88,60 @@ def create_ecs_cluster(
         efs_access_point_id=efs_access_point_id,
         efs_container_path=efs_container_path,
     )
+
+    orchestrator_task_definition = None
+    orchestrator_rule = None
+    orchestrator_target = None
+    orchestrator_events_role = None
+    if orchestrator_enabled:
+        orchestrator_task_definition = _create_task_definition(
+            name=f"{name}-orchestrator",
+            container_image=container_image,
+            cpu=orchestrator_cpu,
+            memory=orchestrator_memory,
+            execution_role_arn=execution_role.arn,
+            task_role_arn=task_role.arn,
+            log_group_name=log_group.name,
+            environment=environment or {},
+            secret_keys=secret_keys or [],
+            external_secrets_prefix=external_secrets_prefix,
+            efs_file_system_id=efs_file_system_id,
+            efs_access_point_id=efs_access_point_id,
+            efs_container_path=efs_container_path,
+            container_command=orchestrator_command or ["orchestrator", "run"],
+            expose_http=False,
+            enable_health_check=False,
+            log_stream_prefix="orchestrator",
+        )
+        orchestrator_events_role = _create_orchestrator_events_role(
+            name=name,
+            task_definition_arn=orchestrator_task_definition.arn,
+            execution_role_arn=execution_role.arn,
+            task_role_arn=task_role.arn,
+        )
+        orchestrator_rule = aws.cloudwatch.EventRule(
+            f"{name}-orchestrator-schedule",
+            name=f"{name}-orchestrator",
+            schedule_expression=orchestrator_schedule_expression,
+            tags={"Name": f"{name}-orchestrator"},
+        )
+        orchestrator_target = aws.cloudwatch.EventTarget(
+            f"{name}-orchestrator-target",
+            rule=orchestrator_rule.name,
+            arn=cluster.arn,
+            role_arn=orchestrator_events_role.arn,
+            ecs_target=aws.cloudwatch.EventTargetEcsTargetArgs(
+                task_definition_arn=orchestrator_task_definition.arn,
+                task_count=1,
+                launch_type="FARGATE",
+                network_configuration=aws.cloudwatch.EventTargetEcsTargetNetworkConfigurationArgs(
+                    subnets=subnet_ids,
+                    security_groups=[security_group_id],
+                    assign_public_ip=False,
+                ),
+            ),
+            opts=pulumi.ResourceOptions(depends_on=[capacity_providers]),
+        )
 
     capacity_provider_strategies = []
     if fargate_base > 0 or fargate_weight > 0:
@@ -170,6 +229,10 @@ def create_ecs_cluster(
         "capacity_providers": capacity_providers,
         "api_service": api_service,
         "task_definition": task_definition,
+        "orchestrator_task_definition": orchestrator_task_definition,
+        "orchestrator_rule": orchestrator_rule,
+        "orchestrator_target": orchestrator_target,
+        "orchestrator_events_role": orchestrator_events_role,
         "task_role": task_role,
         "log_group": log_group,
     }
@@ -319,6 +382,49 @@ def _create_task_role(
     return role
 
 
+def _create_orchestrator_events_role(
+    name: str,
+    task_definition_arn: pulumi.Input[str],
+    execution_role_arn: pulumi.Input[str],
+    task_role_arn: pulumi.Input[str],
+) -> aws.iam.Role:
+    role = aws.iam.Role(
+        f"{name}-orchestrator-events-role",
+        name=f"{name}-orchestrator-events-role",
+        assume_role_policy=json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Service": "events.amazonaws.com"},
+                "Action": "sts:AssumeRole",
+            }],
+        }),
+        tags={"Name": f"{name}-orchestrator-events-role"},
+    )
+
+    aws.iam.RolePolicy(
+        f"{name}-orchestrator-events-policy",
+        role=role.name,
+        policy=pulumi.Output.all(task_definition_arn, execution_role_arn, task_role_arn).apply(lambda args: json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": ["ecs:RunTask"],
+                    "Resource": args[0],
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": ["iam:PassRole"],
+                    "Resource": [args[1], args[2]],
+                },
+            ],
+        })),
+    )
+
+    return role
+
+
 def _create_task_definition(
     name: str,
     container_image: str,
@@ -333,6 +439,10 @@ def _create_task_definition(
     efs_file_system_id: pulumi.Input[str] = None,
     efs_access_point_id: pulumi.Input[str] = None,
     efs_container_path: str = None,
+    container_command: list[str] = None,
+    expose_http: bool = True,
+    enable_health_check: bool = True,
+    log_stream_prefix: str = "ecs",
 ) -> aws.ecs.TaskDefinition:
     if not external_secrets_prefix:
         raise ValueError("external_secrets_prefix is required")
@@ -362,25 +472,29 @@ def _create_task_definition(
             "essential": True,
             "user": "10001",
             "readonlyRootFilesystem": True,
-            "portMappings": [{"containerPort": 8080, "protocol": "tcp"}],
             "logConfiguration": {
                 "logDriver": "awslogs",
                 "options": {
                     "awslogs-group": log_group,
                     "awslogs-region": region,
-                    "awslogs-stream-prefix": "ecs",
+                    "awslogs-stream-prefix": log_stream_prefix,
                 },
             },
             "environment": env,
             "secrets": [{"name": name, "valueFrom": f"{secrets_prefix_arn}/{source}"} for name, source in secret_specs],
-            "healthCheck": {
+        }
+        if container_command:
+            container["command"] = container_command
+        if expose_http:
+            container["portMappings"] = [{"containerPort": 8080, "protocol": "tcp"}]
+        if enable_health_check:
+            container["healthCheck"] = {
                 "command": ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"],
                 "interval": 30,
                 "timeout": 5,
                 "retries": 3,
                 "startPeriod": 60,
-            },
-        }
+            }
         if efs_container_path:
             container["mountPoints"] = [{"sourceVolume": "cerebro-data", "containerPath": efs_container_path, "readOnly": False}]
         return [container]

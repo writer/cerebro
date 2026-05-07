@@ -162,10 +162,40 @@ config:
       type: string
     default: []
     description: Optional tenant allowlist for unscoped API keys
+  cerebro:sourceSecretKeys:
+    type: array
+    items:
+      type: string
+    default: []
+    description: "Additional ECS secret env vars sourced from {externalSecretsPrefix}/<key> for source runtime env: references"
   cerebro:shutdownTimeout:
     type: string
     default: 10s
     description: Graceful shutdown timeout parsed by the Go runtime
+  cerebro:orchestratorEnabled:
+    type: boolean
+    default: false
+    description: Enable an EventBridge-scheduled ECS task that runs Cerebro source sync, finding evaluation, and graph ingest
+  cerebro:orchestratorScheduleExpression:
+    type: string
+    default: "rate(1 hour)"
+    description: EventBridge schedule expression for the Cerebro orchestrator task
+  cerebro:orchestratorCpu:
+    type: integer
+    default: 1024
+    description: Orchestrator task CPU units
+  cerebro:orchestratorMemory:
+    type: integer
+    default: 2048
+    description: Orchestrator task memory in MB
+  cerebro:orchestratorCommand:
+    type: array
+    items:
+      type: string
+    default:
+      - orchestrator
+      - run
+    description: Command passed to the Cerebro container entrypoint for orchestrator runs
   cerebro:enableTailscale:
     type: boolean
     default: false
