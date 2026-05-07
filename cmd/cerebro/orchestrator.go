@@ -349,6 +349,7 @@ func runOrchestratorIteration(
 
 func orchestratorListFilter(filter ports.SourceRuntimeFilter) ports.SourceRuntimeFilter {
 	if filter.Limit == 0 {
+		filter.Limit = ^uint32(0)
 		return filter
 	}
 	if ^uint32(0)-filter.Limit < sourceRuntimeLeaseOverscanLimit {

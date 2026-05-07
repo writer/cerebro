@@ -32,6 +32,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -2106,6 +2107,9 @@ func newRuntimeService(deps Dependencies, sources *sourcecdk.Registry) *sourceru
 }
 
 func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+	if err := authorizeRuntimeConfigEnvReferences(ctx, values); err != nil {
+		return nil, err
+	}
 	resolved, err := config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, values)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
@@ -2114,6 +2118,19 @@ func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map
 		return nil, err
 	}
 	return resolved, nil
+}
+
+func authorizeRuntimeConfigEnvReferences(ctx context.Context, values map[string]string) error {
+	if !hasTenantScopedAuth(ctx) && !requiresTenantFilter(ctx) {
+		return nil
+	}
+	for key, value := range values {
+		if strings.TrimSpace(key) == "tenant_id" || !sourceconfig.IsSecretReference(value) {
+			continue
+		}
+		return errTenantForbidden
+	}
+	return nil
 }
 
 func (a *App) claimService() *claims.Service {

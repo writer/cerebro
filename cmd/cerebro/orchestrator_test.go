@@ -120,6 +120,12 @@ func TestSourceRuntimeLeaseRenewalIntervalUsesHalfTTL(t *testing.T) {
 	}
 }
 
+func TestOrchestratorListFilterRequestsAllByDefault(t *testing.T) {
+	if got := orchestratorListFilter(ports.SourceRuntimeFilter{}).Limit; got != ^uint32(0) {
+		t.Fatalf("orchestratorListFilter(default).Limit = %d, want max uint32", got)
+	}
+}
+
 func TestLeaseRenewalFailureCancelsRuntimeWork(t *testing.T) {
 	store := &leaseRuntimeStore{renewed: false}
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}

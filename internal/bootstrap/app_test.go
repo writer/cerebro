@@ -235,6 +235,39 @@ func TestResolveRuntimeSourceConfigAuthorizesResolvedTenantID(t *testing.T) {
 	}
 }
 
+func TestResolveRuntimeSourceConfigRejectsTenantScopedEnvSelectors(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	})
+
+	_, err := resolveRuntimeSourceConfig(ctx, "github", map[string]string{
+		"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER",
+	})
+	if !errors.Is(err, errTenantForbidden) {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v, want tenant forbidden", err)
+	}
+}
+
+func TestResolveRuntimeSourceConfigAllowsAdminEnvSelectors(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{},
+	})
+
+	resolved, err := resolveRuntimeSourceConfig(ctx, "github", map[string]string{
+		"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER",
+	})
+	if err != nil {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v", err)
+	}
+	if got := resolved["owner"]; got != "writer" {
+		t.Fatalf("resolved owner = %q, want writer", got)
+	}
+}
+
 func TestWriteKnowledgeErrorMapsInvalidRequestToBadRequest(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeKnowledgeError(recorder, knowledge.ErrInvalidRequest)
