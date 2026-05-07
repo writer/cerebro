@@ -202,6 +202,24 @@ func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	}
 }
 
+func TestResolveRuntimeSourceConfigClassifiesEnvErrorsAsInvalidRequest(t *testing.T) {
+	_, err := resolveRuntimeSourceConfig(context.Background(), "github", map[string]string{
+		"token": "env:AWS_SECRET_ACCESS_KEY",
+	})
+	if !errors.Is(err, sourceruntime.ErrInvalidRequest) {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v, want invalid request", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	writeSourceRuntimeError(recorder, err)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("HTTP status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+	if got := connect.CodeOf(sourceRuntimeConnectError(err)); got != connect.CodeInvalidArgument {
+		t.Fatalf("connect code = %s, want %s", got, connect.CodeInvalidArgument)
+	}
+}
+
 func TestWriteKnowledgeErrorMapsInvalidRequestToBadRequest(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeKnowledgeError(recorder, knowledge.ErrInvalidRequest)

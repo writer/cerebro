@@ -2102,7 +2102,15 @@ func newRuntimeService(deps Dependencies, sources *sourcecdk.Registry) *sourceru
 		sourceRuntimeStore(deps.StateStore),
 		deps.AppendLog,
 		sourceProjector(deps.StateStore, deps.GraphStore),
-	).WithConfigResolver(config.ResolveSourceRuntimeConfigSecretReferences)
+	).WithConfigResolver(resolveRuntimeSourceConfig)
+}
+
+func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+	resolved, err := config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, values)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
+	}
+	return resolved, nil
 }
 
 func (a *App) claimService() *claims.Service {
