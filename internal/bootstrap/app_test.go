@@ -220,6 +220,21 @@ func TestResolveRuntimeSourceConfigClassifiesEnvErrorsAsInvalidRequest(t *testin
 	}
 }
 
+func TestResolveRuntimeSourceConfigAuthorizesResolvedTenantID(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_AZURE_TENANT_ID", "other")
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	})
+
+	_, err := resolveRuntimeSourceConfig(ctx, "azure", map[string]string{
+		"tenant_id": "env:CEREBRO_SOURCE_AZURE_TENANT_ID",
+	})
+	if !errors.Is(err, errTenantForbidden) {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v, want tenant forbidden", err)
+	}
+}
+
 func TestWriteKnowledgeErrorMapsInvalidRequestToBadRequest(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeKnowledgeError(recorder, knowledge.ErrInvalidRequest)

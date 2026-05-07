@@ -2110,6 +2110,9 @@ func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
 	}
+	if err := authorizeSourceConfigTenant(ctx, resolved); err != nil {
+		return nil, err
+	}
 	return resolved, nil
 }
 
