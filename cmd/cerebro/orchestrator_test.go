@@ -112,6 +112,12 @@ func TestReleaseOrchestratorRuntimeLeaseIgnoresCancellation(t *testing.T) {
 	if store.releaseContextErr != nil {
 		t.Fatalf("release context err = %v, want nil", store.releaseContextErr)
 	}
+	if !store.releaseHasDeadline {
+		t.Fatal("release context has no deadline")
+	}
+	if time.Until(store.releaseDeadline) > sourceRuntimeLeaseReleaseTimeout {
+		t.Fatalf("release deadline = %s, want within %s", store.releaseDeadline, sourceRuntimeLeaseReleaseTimeout)
+	}
 }
 
 func TestSourceRuntimeLeaseRenewalIntervalUsesHalfTTL(t *testing.T) {
@@ -233,12 +239,14 @@ func TestRunOrchestratorIterationStopsBeforeRuntimeWhenContextCanceled(t *testin
 }
 
 type leaseRuntimeStore struct {
-	leaseID           string
-	leaseOwner        string
-	leaseTTL          time.Duration
-	releaseContextErr error
-	acquired          bool
-	renewed           bool
+	leaseID            string
+	leaseOwner         string
+	leaseTTL           time.Duration
+	releaseContextErr  error
+	releaseHasDeadline bool
+	releaseDeadline    time.Time
+	acquired           bool
+	renewed            bool
 }
 
 func (s *leaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
@@ -254,6 +262,7 @@ func (s *leaseRuntimeStore) RenewSourceRuntimeLease(context.Context, string, str
 
 func (s *leaseRuntimeStore) ReleaseSourceRuntimeLease(ctx context.Context, _ string, _ string) error {
 	s.releaseContextErr = ctx.Err()
+	s.releaseDeadline, s.releaseHasDeadline = ctx.Deadline()
 	return nil
 }
 

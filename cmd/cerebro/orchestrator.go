@@ -23,6 +23,7 @@ import (
 
 const defaultOrchestratorIterations = 1
 const defaultSourceRuntimeLeaseTTL = 30 * time.Minute
+const sourceRuntimeLeaseReleaseTimeout = 5 * time.Second
 const sourceRuntimeLeaseOverscanLimit = 100
 
 type orchestratorOptions struct {
@@ -429,7 +430,9 @@ func releaseOrchestratorRuntimeLease(ctx context.Context, store ports.SourceRunt
 	if store == nil || runtime == nil {
 		return nil
 	}
-	return store.ReleaseSourceRuntimeLease(context.WithoutCancel(ctx), runtime.GetId(), owner)
+	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sourceRuntimeLeaseReleaseTimeout)
+	defer cancel()
+	return store.ReleaseSourceRuntimeLease(releaseCtx, runtime.GetId(), owner)
 }
 
 func appendRuntimeError(existing string, stage string, err error) string {
