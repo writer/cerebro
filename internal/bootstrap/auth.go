@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/writer/cerebro/internal/config"
+	"github.com/writer/cerebro/internal/sourceconfig"
 )
 
 var errTenantForbidden = errors.New("tenant forbidden")
@@ -209,6 +210,11 @@ func hasTenantScopedAuth(ctx context.Context) bool {
 	return ok && strings.TrimSpace(auth.principal.TenantID) != ""
 }
 
+func requiresTenantFilter(ctx context.Context) bool {
+	auth, ok := ctx.Value(authContextKey{}).(authContext)
+	return ok && strings.TrimSpace(auth.principal.TenantID) == "" && len(auth.cfg.AllowedTenants) > 0
+}
+
 func tenantAllowed(cfg config.AuthConfig, principal authPrincipal, tenantID string) bool {
 	tenantID = strings.TrimSpace(tenantID)
 	if tenantID == "" {
@@ -310,6 +316,9 @@ func protoStringValue(message protoreflect.Message) string {
 func appendTenantID(rawTenantID string, seen map[string]struct{}, tenants *[]string) {
 	tenantID := strings.TrimSpace(rawTenantID)
 	if tenantID == "" {
+		return
+	}
+	if sourceconfig.IsSecretReference(tenantID) {
 		return
 	}
 	if _, ok := seen[tenantID]; ok {

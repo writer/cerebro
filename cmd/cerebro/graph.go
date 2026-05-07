@@ -145,6 +145,10 @@ func runGraph(args []string) error {
 		if err != nil {
 			return err
 		}
+		options.SourceConfig, err = config.ResolveSourceConfigSecretReferences(ctx, options.SourceID, options.SourceConfig)
+		if err != nil {
+			return err
+		}
 		registry, err := sourceregistry.Builtin()
 		if err != nil {
 			return fmt.Errorf("open source registry: %w", err)
@@ -216,7 +220,7 @@ func runGraph(args []string) error {
 				replayer = typed
 			}
 		}
-		service := graphrebuild.New(registry, sourceRuntimeStore(deps.StateStore), replayer)
+		service := graphrebuild.New(registry, sourceRuntimeStore(deps.StateStore), replayer).WithConfigPreparer(config.ResolveSourceRuntimeConfigSecretReferences)
 		result, err := service.RebuildDryRun(ctx, graphrebuild.Request{
 			Mode:         mode,
 			RuntimeID:    runtimeID,
@@ -767,9 +771,7 @@ func runGraphIngestRuntime(ctx context.Context, deps bootstrap.Dependencies, opt
 	if projector == nil {
 		return nil, fmt.Errorf("projection graph store is required")
 	}
-	service := graphingest.New(registry, runtimeStore, projector, deps.GraphStore).WithConfigPreparer(func(ctx context.Context, sourceID string, config map[string]string) (map[string]string, error) {
-		return prepareSourceConfig(ctx, sourceID, "read", config)
-	})
+	service := graphingest.New(registry, runtimeStore, projector, deps.GraphStore).WithConfigPreparer(prepareGraphRuntimeSourceConfig)
 	result := &graphIngestRuntimeRunnerResult{
 		RuntimeID:  strings.TrimSpace(options.RuntimeID),
 		Iterations: options.Iterations,
@@ -906,6 +908,10 @@ func graphIngestCheckpointID(options graphIngestOptions) string {
 		hash = hash[:16]
 	}
 	return strings.TrimSpace(options.SourceID) + ":" + tenantID + ":" + hash
+}
+
+func prepareGraphRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+	return config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, values)
 }
 
 func graphIngestRuntimeResultCapacity(options graphIngestRuntimeOptions) int {

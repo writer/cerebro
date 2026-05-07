@@ -41,9 +41,10 @@ func (s *runtimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov
 }
 
 type testSource struct {
-	spec  *cerebrov1.SourceSpec
-	pages [][]*cerebrov1.EventEnvelope
-	delay time.Duration
+	spec      *cerebrov1.SourceSpec
+	pages     [][]*cerebrov1.EventEnvelope
+	delay     time.Duration
+	readToken string
 }
 
 func (s *testSource) Spec() *cerebrov1.SourceSpec {
@@ -58,10 +59,11 @@ func (s *testSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.UR
 	return nil, nil
 }
 
-func (s *testSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+func (s *testSource) Read(_ context.Context, config sourcecdk.Config, cursor *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
 	if s.delay > 0 {
 		time.Sleep(s.delay)
 	}
+	s.readToken, _ = config.Lookup("token")
 	index := 0
 	if cursor != nil && cursor.GetOpaque() != "" {
 		parsed, err := strconv.Atoi(cursor.GetOpaque())
@@ -279,6 +281,42 @@ func TestRebuildDryRunProjectsRuntimeIntoTemporaryGraph(t *testing.T) {
 	}
 	if !containsLink(result.PreviewLinks, "urn:cerebro:writer-dogfood:github_user:octocat", "authored", "urn:cerebro:writer-dogfood:github_pull_request:writer/cerebro#418") {
 		t.Fatalf("PreviewLinks missing authored relation: %#v", result.PreviewLinks)
+	}
+}
+
+func TestRebuildDryRunResolvesRuntimeConfigReferences(t *testing.T) {
+	source := &testSource{
+		spec:  &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"},
+		pages: [][]*cerebrov1.EventEnvelope{{testEvent("github-audit-1", "github.audit", nil)}},
+	}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-github": {
+			Id:       "writer-github",
+			SourceId: "github",
+			Config:   map[string]string{"token": "env:TOKEN"},
+		},
+	}}
+	service := New(registry, store, nil).WithConfigPreparer(func(_ context.Context, _ string, values map[string]string) (map[string]string, error) {
+		resolved := make(map[string]string, len(values))
+		for key, value := range values {
+			if value == "env:TOKEN" {
+				resolved[key] = "resolved-token"
+				continue
+			}
+			resolved[key] = value
+		}
+		return resolved, nil
+	})
+
+	if _, err := service.RebuildDryRun(context.Background(), Request{RuntimeID: "writer-github"}); err != nil {
+		t.Fatalf("RebuildDryRun() error = %v", err)
+	}
+	if source.readToken != "resolved-token" {
+		t.Fatalf("source read token = %q, want resolved-token", source.readToken)
 	}
 }
 

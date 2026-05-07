@@ -63,6 +63,26 @@ paths:
       responses:
         '200':
           description: Source events and cursor.
+  /source-runtimes:
+    get:
+      summary: List source runtime configurations
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+        - name: source_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Source runtime list.
   /source-runtimes/{runtimeID}:
     put:
       summary: Store source runtime configuration

@@ -13,6 +13,7 @@ import (
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 )
@@ -182,6 +183,7 @@ type Service struct {
 	runtimeStore ports.SourceRuntimeStore
 	replayer     ports.EventReplayer
 	openGraph    func() (graphStore, error)
+	preparer     sourceconfig.Resolver
 }
 
 // New constructs a graph rebuild service.
@@ -192,6 +194,15 @@ func New(registry *sourcecdk.Registry, runtimeStore ports.SourceRuntimeStore, re
 		replayer:     replayer,
 		openGraph:    newMemoryGraphStore,
 	}
+}
+
+// WithConfigPreparer configures runtime source config preparation.
+func (s *Service) WithConfigPreparer(preparer sourceconfig.Resolver) *Service {
+	if s == nil {
+		return nil
+	}
+	s.preparer = preparer
+	return s
 }
 
 // RebuildDryRun projects bounded source or append-log events into a scratch graph.
@@ -493,9 +504,13 @@ func (s *Service) replayEvents(ctx context.Context, runtime *cerebrov1.SourceRun
 
 func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runtime *cerebrov1.SourceRuntime, pageLimit uint32, previewLimit int, process eventProcessor) (*readSummary, error) {
 	summary := &readSummary{EventKinds: make(map[string]uint32)}
+	config, err := s.prepareConfig(ctx, runtime)
+	if err != nil {
+		return nil, err
+	}
 	var cursor *cerebrov1.SourceCursor
 	for page := uint32(0); page < pageLimit; page++ {
-		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtime.GetConfig()), cursor)
+		pull, err := source.Read(ctx, sourcecdk.NewConfig(config), cursor)
 		if err != nil {
 			return nil, fmt.Errorf("read source page %d: %w", page+1, err)
 		}
@@ -545,6 +560,21 @@ func (s *Service) readEvents(ctx context.Context, source sourcecdk.Source, runti
 		cursor = proto.Clone(pull.NextCursor).(*cerebrov1.SourceCursor)
 	}
 	return summary, nil
+}
+
+func (s *Service) prepareConfig(ctx context.Context, runtime *cerebrov1.SourceRuntime) (map[string]string, error) {
+	if s == nil || s.preparer == nil {
+		return cloneConfig(runtime.GetConfig()), nil
+	}
+	return s.preparer(ctx, runtime.GetSourceId(), runtime.GetConfig())
+}
+
+func cloneConfig(config map[string]string) map[string]string {
+	cloned := make(map[string]string, len(config))
+	for key, value := range config {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 type projectSummary struct {

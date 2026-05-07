@@ -2,8 +2,11 @@ package sourceruntime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"google.golang.org/protobuf/proto"
@@ -12,13 +15,18 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 )
 
 const (
 	defaultPageLimit = 1
 	maxPageLimit     = 100
+	defaultListLimit = 100
+	maxListLimit     = 500
 	redactedValue    = "[redacted]"
+
+	runtimeProgressConfigHashKey = "__cerebro_resolved_progress_config_hash"
 )
 
 var (
@@ -33,11 +41,21 @@ type Service struct {
 	store     ports.SourceRuntimeStore
 	appendLog ports.AppendLog
 	projector ports.SourceProjector
+	resolver  sourceconfig.Resolver
 }
 
 // New constructs a source runtime service.
 func New(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog, projector ports.SourceProjector) *Service {
 	return &Service{registry: registry, store: store, appendLog: appendLog, projector: projector}
+}
+
+// WithConfigResolver configures runtime source config secret resolution.
+func (s *Service) WithConfigResolver(resolver sourceconfig.Resolver) *Service {
+	if s == nil {
+		return nil
+	}
+	s.resolver = resolver
+	return s
 }
 
 // Put validates and stores a source runtime definition.
@@ -68,12 +86,17 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 	default:
 		return nil, err
 	}
-	if err := source.Check(ctx, sourcecdk.NewConfig(runtime.GetConfig())); err != nil {
+	resolvedConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetConfig())
+	if err != nil {
+		return nil, err
+	}
+	if err := source.Check(ctx, sourcecdk.NewConfig(resolvedConfig)); err != nil {
 		if errors.Is(err, sourcecdk.ErrInvalidConfig) {
 			return nil, fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 		}
 		return nil, err
 	}
+	runtime.Config = configWithProgressHash(runtime.GetConfig(), resolvedConfig)
 	if existing != nil {
 		if err := validateRuntimeTenantUnchanged(existing, runtime); err != nil {
 			return nil, err
@@ -95,6 +118,29 @@ func (s *Service) Get(ctx context.Context, req *cerebrov1.GetSourceRuntimeReques
 	return &cerebrov1.GetSourceRuntimeResponse{Runtime: redactRuntime(runtime)}, nil
 }
 
+// List returns stored source runtime definitions.
+func (s *Service) List(ctx context.Context, filter ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	lister, ok := s.store.(ports.SourceRuntimeListStore)
+	if !ok {
+		return nil, ErrRuntimeUnavailable
+	}
+	normalized, err := normalizeListFilter(filter)
+	if err != nil {
+		return nil, err
+	}
+	runtimes, err := lister.ListSourceRuntimes(ctx, normalized)
+	if err != nil {
+		return nil, err
+	}
+	for i, runtime := range runtimes {
+		runtimes[i] = redactRuntime(runtime)
+	}
+	return runtimes, nil
+}
+
 // Sync advances one stored source runtime and appends emitted events.
 func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequest) (*cerebrov1.SyncSourceRuntimeResponse, error) {
 	if s == nil || s.store == nil || s.appendLog == nil {
@@ -108,6 +154,11 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	if err != nil {
 		return nil, err
 	}
+	runtimeConfig, err := s.resolveConfig(ctx, runtime.GetSourceId(), runtime.GetConfig())
+	if err != nil {
+		return nil, err
+	}
+	refreshRuntimeProgressConfig(runtime, runtimeConfig)
 	pageLimit, err := normalizePageLimit(req.GetPageLimit())
 	if err != nil {
 		return nil, err
@@ -120,7 +171,7 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		linksProjected    uint32
 	)
 	for i := uint32(0); i < pageLimit; i++ {
-		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtime.GetConfig()), cursor)
+		pull, err := source.Read(ctx, sourcecdk.NewConfig(runtimeConfig), cursor)
 		if err != nil {
 			return nil, err
 		}
@@ -163,6 +214,18 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	}, nil
 }
 
+func (s *Service) resolveConfig(ctx context.Context, sourceID string, config map[string]string) (map[string]string, error) {
+	resolver := s.resolver
+	if resolver == nil {
+		return userConfig(config), nil
+	}
+	resolved, err := resolver(ctx, sourceID, userConfig(config))
+	if err != nil {
+		return nil, err
+	}
+	return userConfig(resolved), nil
+}
+
 func (s *Service) lookupSource(sourceID string) (sourcecdk.Source, error) {
 	id := strings.TrimSpace(sourceID)
 	if id == "" {
@@ -203,6 +266,21 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 	return pageLimit, nil
 }
 
+func normalizeListFilter(filter ports.SourceRuntimeFilter) (ports.SourceRuntimeFilter, error) {
+	normalized := ports.SourceRuntimeFilter{
+		TenantID: strings.TrimSpace(filter.TenantID),
+		SourceID: strings.TrimSpace(filter.SourceID),
+		Limit:    filter.Limit,
+	}
+	if normalized.Limit == 0 {
+		normalized.Limit = defaultListLimit
+	}
+	if normalized.Limit > maxListLimit {
+		return ports.SourceRuntimeFilter{}, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidRequest, maxListLimit)
+	}
+	return normalized, nil
+}
+
 func restoreRedactedConfig(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceRuntime) {
 	if existing == nil || incoming == nil || len(incoming.GetConfig()) == 0 {
 		return
@@ -229,7 +307,8 @@ func mergeRuntime(existing *cerebrov1.SourceRuntime, incoming *cerebrov1.SourceR
 	}
 	resetProgress := existing.GetSourceId() != incoming.GetSourceId() ||
 		existing.GetTenantId() != incoming.GetTenantId() ||
-		!sameConfig(existing.GetConfig(), incoming.GetConfig())
+		!sameConfig(userConfig(existing.GetConfig()), userConfig(incoming.GetConfig())) ||
+		progressConfigHashChanged(existing.GetConfig(), incoming.GetConfig())
 	if !resetProgress {
 		incoming.Checkpoint = cloneCheckpoint(existing.GetCheckpoint())
 		incoming.NextCursor = cloneCursor(existing.GetNextCursor())
@@ -280,6 +359,106 @@ func sameConfig(left map[string]string, right map[string]string) bool {
 	return true
 }
 
+func userConfig(config map[string]string) map[string]string {
+	cloned := make(map[string]string, len(config))
+	for key, value := range config {
+		if key == runtimeProgressConfigHashKey {
+			continue
+		}
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func withProgressConfigHash(config map[string]string, hash string) map[string]string {
+	cloned := userConfig(config)
+	cloned[runtimeProgressConfigHashKey] = hash
+	return cloned
+}
+
+func configWithProgressHash(rawConfig map[string]string, resolvedConfig map[string]string) map[string]string {
+	hash, ok := progressConfigHashForRuntime(rawConfig, resolvedConfig)
+	if !ok {
+		return userConfig(rawConfig)
+	}
+	return withProgressConfigHash(rawConfig, hash)
+}
+
+func refreshRuntimeProgressConfig(runtime *cerebrov1.SourceRuntime, resolvedConfig map[string]string) {
+	if runtime == nil {
+		return
+	}
+	hash, ok := progressConfigHashForRuntime(runtime.GetConfig(), resolvedConfig)
+	if !ok {
+		runtime.Config = userConfig(runtime.GetConfig())
+		return
+	}
+	if runtime.GetConfig()[runtimeProgressConfigHashKey] == hash {
+		return
+	}
+	runtime.Checkpoint = nil
+	runtime.NextCursor = nil
+	runtime.LastSyncedAt = nil
+	runtime.Config = withProgressConfigHash(runtime.GetConfig(), hash)
+}
+
+func progressConfigHashForRuntime(rawConfig map[string]string, resolvedConfig map[string]string) (string, bool) {
+	if !hasProgressConfigReferences(rawConfig, resolvedConfig) {
+		return "", false
+	}
+	return progressConfigHash(resolvedConfig), true
+}
+
+func hasProgressConfigReferences(config map[string]string, resolvedConfig map[string]string) bool {
+	for key, value := range config {
+		if key == runtimeProgressConfigHashKey || progressHashSensitiveConfigKey(key) {
+			continue
+		}
+		if sourceconfig.LiteralEnvPrefixKey(key) && resolvedConfig[key] == value {
+			continue
+		}
+		if sourceconfig.IsSecretReference(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func progressConfigHashChanged(existing map[string]string, incoming map[string]string) bool {
+	incomingHash := incoming[runtimeProgressConfigHashKey]
+	if incomingHash == "" {
+		return false
+	}
+	return existing[runtimeProgressConfigHashKey] != incomingHash
+}
+
+func progressConfigHash(config map[string]string) string {
+	keys := make([]string, 0, len(config))
+	for key := range config {
+		if key == runtimeProgressConfigHashKey || progressHashSensitiveConfigKey(key) {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	hash := sha256.New()
+	for _, key := range keys {
+		hash.Write([]byte(strings.TrimSpace(key)))
+		hash.Write([]byte{0})
+		hash.Write([]byte(config[key]))
+		hash.Write([]byte{0})
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func progressHashSensitiveConfigKey(key string) bool {
+	if sourceconfig.SensitiveKey(key) {
+		return true
+	}
+	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(strings.ToLower(strings.TrimSpace(key)))
+	return compact == "accesskeyid"
+}
+
 func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
 	cloned := cloneRuntime(runtime)
 	if cloned == nil {
@@ -287,6 +466,9 @@ func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
 	}
 	redacted := make(map[string]string, len(cloned.GetConfig()))
 	for key, value := range cloned.GetConfig() {
+		if key == runtimeProgressConfigHashKey {
+			continue
+		}
 		if sensitiveConfigKey(key) {
 			redacted[key] = redactedValue
 			continue
@@ -298,18 +480,11 @@ func redactRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {
 }
 
 func sensitiveConfigKey(key string) bool {
-	value := strings.ToLower(strings.TrimSpace(key))
-	if value == "" {
-		return false
-	}
-	if strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password") {
+	if sourceconfig.SensitiveKey(key) {
 		return true
 	}
-	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
-	if strings.Contains(compact, "apikey") || strings.Contains(compact, "accesskey") || strings.Contains(compact, "privatekey") {
-		return true
-	}
-	return value == "key" || strings.HasSuffix(value, "_key")
+	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(strings.ToLower(strings.TrimSpace(key)))
+	return strings.Contains(compact, "accesskey") || strings.Contains(compact, "signingkey")
 }
 
 func cloneRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {

@@ -32,6 +32,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
@@ -61,8 +62,9 @@ type bootstrapService struct {
 }
 
 const (
-	maxProtoJSONBodyBytes = 1 << 20
-	healthCheckTimeout    = 2 * time.Second
+	maxProtoJSONBodyBytes              = 1 << 20
+	healthCheckTimeout                 = 2 * time.Second
+	sourceRuntimeProgressConfigHashKey = "__cerebro_resolved_progress_config_hash"
 )
 
 var (
@@ -119,6 +121,7 @@ func New(cfg config.Config, deps Dependencies, sources *sourcecdk.Registry) *App
 	mux.HandleFunc("GET /graph/ingest-runs", deprecatedRoute(app.handleListGraphIngestRuns))
 	mux.HandleFunc("GET /platform/graph/ingest-runs/{runID}", app.handleGetGraphIngestRun)
 	mux.HandleFunc("GET /graph/ingest-runs/{runID}", deprecatedRoute(app.handleGetGraphIngestRun))
+	mux.HandleFunc("GET /source-runtimes", app.handleListSourceRuntimes)
 	mux.HandleFunc("PUT /source-runtimes/{runtimeID}", app.handlePutSourceRuntime)
 	mux.HandleFunc("GET /source-runtimes/{runtimeID}", app.handleGetSourceRuntime)
 	mux.HandleFunc("POST /source-runtimes/{runtimeID}/sync", app.handleSyncSourceRuntime)
@@ -972,6 +975,41 @@ func (a *App) handleGetSourceRuntime(w http.ResponseWriter, r *http.Request) {
 	writeProtoJSON(w, http.StatusOK, response)
 }
 
+func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
+	limit, err := uint32QueryParam(r, "limit")
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	filter := ports.SourceRuntimeFilter{
+		TenantID: strings.TrimSpace(r.URL.Query().Get("tenant_id")),
+		SourceID: strings.TrimSpace(r.URL.Query().Get("source_id")),
+		Limit:    limit,
+	}
+	if filter.TenantID == "" {
+		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok && strings.TrimSpace(auth.principal.TenantID) != "" {
+			filter.TenantID = strings.TrimSpace(auth.principal.TenantID)
+		}
+	}
+	if filter.TenantID == "" {
+		filter.TenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
+	}
+	if filter.TenantID == "" && requiresTenantFilter(r.Context()) {
+		writeSourceRuntimeError(w, errTenantForbidden)
+		return
+	}
+	if err := authorizeTenantID(r.Context(), filter.TenantID); err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	runtimes, err := a.runtimeService().List(r.Context(), filter)
+	if err != nil {
+		writeSourceRuntimeError(w, err)
+		return
+	}
+	writeSourceRuntimeListJSON(w, http.StatusOK, runtimes)
+}
+
 func (a *App) handleSyncSourceRuntime(w http.ResponseWriter, r *http.Request) {
 	request := &cerebrov1.SyncSourceRuntimeRequest{}
 	if pageLimit := r.URL.Query().Get("page_limit"); pageLimit != "" {
@@ -1348,11 +1386,11 @@ func (s *bootstrapService) GetReportRun(ctx context.Context, req *connect.Reques
 }
 
 func (s *bootstrapService) ListSources(_ context.Context, _ *connect.Request[cerebrov1.ListSourcesRequest]) (*connect.Response[cerebrov1.ListSourcesResponse], error) {
-	return connect.NewResponse(sourceops.New(s.sources).List()), nil
+	return connect.NewResponse(newSourceService(s.sources).List()), nil
 }
 
 func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request[cerebrov1.CheckSourceRequest]) (*connect.Response[cerebrov1.CheckSourceResponse], error) {
-	response, err := sourceops.New(s.sources).Check(ctx, req.Msg)
+	response, err := newSourceService(s.sources).Check(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -1360,7 +1398,7 @@ func (s *bootstrapService) CheckSource(ctx context.Context, req *connect.Request
 }
 
 func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Request[cerebrov1.DiscoverSourceRequest]) (*connect.Response[cerebrov1.DiscoverSourceResponse], error) {
-	response, err := sourceops.New(s.sources).Discover(ctx, req.Msg)
+	response, err := newSourceService(s.sources).Discover(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -1368,7 +1406,7 @@ func (s *bootstrapService) DiscoverSource(ctx context.Context, req *connect.Requ
 }
 
 func (s *bootstrapService) ReadSource(ctx context.Context, req *connect.Request[cerebrov1.ReadSourceRequest]) (*connect.Response[cerebrov1.ReadSourceResponse], error) {
-	response, err := sourceops.New(s.sources).Read(ctx, req.Msg)
+	response, err := newSourceService(s.sources).Read(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceConnectError(err)
 	}
@@ -1379,12 +1417,7 @@ func (s *bootstrapService) PutSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizePutSourceRuntimeTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetRuntime()); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := sourceruntime.New(
-		s.sources,
-		sourceRuntimeStore(s.deps.StateStore),
-		s.deps.AppendLog,
-		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
-	).Put(ctx, req.Msg)
+	response, err := newRuntimeService(s.deps, s.sources).Put(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -1395,12 +1428,7 @@ func (s *bootstrapService) GetSourceRuntime(ctx context.Context, req *connect.Re
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := sourceruntime.New(
-		s.sources,
-		sourceRuntimeStore(s.deps.StateStore),
-		s.deps.AppendLog,
-		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
-	).Get(ctx, req.Msg)
+	response, err := newRuntimeService(s.deps, s.sources).Get(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -1411,12 +1439,7 @@ func (s *bootstrapService) SyncSourceRuntime(ctx context.Context, req *connect.R
 	if err := authorizeSourceRuntimeIDTenant(ctx, sourceRuntimeStore(s.deps.StateStore), req.Msg.GetId(), false); err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
-	response, err := sourceruntime.New(
-		s.sources,
-		sourceRuntimeStore(s.deps.StateStore),
-		s.deps.AppendLog,
-		sourceProjector(s.deps.StateStore, s.deps.GraphStore),
-	).Sync(ctx, req.Msg)
+	response, err := newRuntimeService(s.deps, s.sources).Sync(ctx, req.Msg)
 	if err != nil {
 		return nil, sourceRuntimeConnectError(err)
 	}
@@ -2026,6 +2049,19 @@ func writeJSON(w http.ResponseWriter, statusCode int, value any) {
 	_, _ = w.Write(payload)
 }
 
+func writeSourceRuntimeListJSON(w http.ResponseWriter, statusCode int, runtimes []*cerebrov1.SourceRuntime) {
+	items := make([]json.RawMessage, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		payload, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(runtime)
+		if err != nil {
+			http.Error(w, "failed to encode response", http.StatusInternalServerError)
+			return
+		}
+		items = append(items, json.RawMessage(payload))
+	}
+	writeJSON(w, statusCode, map[string]any{"runtimes": items})
+}
+
 func uint32QueryParam(r *http.Request, key string) (uint32, error) {
 	value := strings.TrimSpace(r.URL.Query().Get(key))
 	if value == "" {
@@ -2042,7 +2078,7 @@ func uint32QueryParam(r *http.Request, key string) (uint32, error) {
 }
 
 func (a *App) sourceService() *sourceops.Service {
-	return sourceops.New(a.sources)
+	return newSourceService(a.sources)
 }
 
 func (a *App) reportService() *reports.Service {
@@ -2054,12 +2090,51 @@ func (a *App) reportService() *reports.Service {
 }
 
 func (a *App) runtimeService() *sourceruntime.Service {
+	return newRuntimeService(a.deps, a.sources)
+}
+
+func newSourceService(sources *sourcecdk.Registry) *sourceops.Service {
+	return sourceops.New(sources)
+}
+
+func newRuntimeService(deps Dependencies, sources *sourcecdk.Registry) *sourceruntime.Service {
 	return sourceruntime.New(
-		a.sources,
-		sourceRuntimeStore(a.deps.StateStore),
-		a.deps.AppendLog,
-		sourceProjector(a.deps.StateStore, a.deps.GraphStore),
-	)
+		sources,
+		sourceRuntimeStore(deps.StateStore),
+		deps.AppendLog,
+		sourceProjector(deps.StateStore, deps.GraphStore),
+	).WithConfigResolver(resolveRuntimeSourceConfig)
+}
+
+func resolveRuntimeSourceConfig(ctx context.Context, sourceID string, values map[string]string) (map[string]string, error) {
+	if err := authorizeRuntimeConfigEnvReferences(ctx, sourceID, values); err != nil {
+		return nil, err
+	}
+	resolved, err := config.ResolveSourceRuntimeConfigSecretReferences(ctx, sourceID, values)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", sourceruntime.ErrInvalidRequest, err)
+	}
+	if err := authorizeSourceConfigTenant(ctx, resolved); err != nil {
+		return nil, err
+	}
+	return resolved, nil
+}
+
+func authorizeRuntimeConfigEnvReferences(ctx context.Context, sourceID string, values map[string]string) error {
+	if !hasTenantScopedAuth(ctx) && !requiresTenantFilter(ctx) {
+		return nil
+	}
+	for key, value := range values {
+		envName, ok := sourceconfig.SecretReferenceName(value)
+		if strings.TrimSpace(key) == "tenant_id" || !ok {
+			continue
+		}
+		if sourceconfig.LiteralEnvPrefixKey(key) && !config.SourceConfigEnvReferenceAllowed(sourceID, key, envName) {
+			continue
+		}
+		return errTenantForbidden
+	}
+	return nil
 }
 
 func (a *App) claimService() *claims.Service {
@@ -2110,7 +2185,7 @@ func newGraphIngestService(deps Dependencies, sources *sourcecdk.Registry) *grap
 		sourceRuntimeStore(deps.StateStore),
 		sourceProjector(nil, deps.GraphStore),
 		deps.GraphStore,
-	)
+	).WithConfigPreparer(resolveRuntimeSourceConfig)
 }
 
 func sourceConfigFromRequest(r *http.Request) (map[string]string, error) {
@@ -2230,7 +2305,7 @@ func writeSourceRuntimeError(w http.ResponseWriter, err error) {
 		statusCode = http.StatusNotFound
 	case errors.Is(err, sourceruntime.ErrRuntimeUnavailable):
 		statusCode = http.StatusServiceUnavailable
-	case errors.Is(err, sourceruntime.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
+	case errors.Is(err, sourceruntime.ErrInvalidRequest), errors.Is(err, graphquery.ErrInvalidRequest), errors.Is(err, errInvalidHTTPRequest):
 		statusCode = http.StatusBadRequest
 	}
 	http.Error(w, http.StatusText(statusCode), statusCode)
@@ -2636,6 +2711,9 @@ func redactSourceRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRunt
 	redacted := proto.Clone(runtime).(*cerebrov1.SourceRuntime)
 	config := make(map[string]string, len(redacted.GetConfig()))
 	for key, value := range redacted.GetConfig() {
+		if key == sourceRuntimeProgressConfigHashKey {
+			continue
+		}
 		if sensitiveSourceConfigKey(key) {
 			config[key] = "[redacted]"
 			continue

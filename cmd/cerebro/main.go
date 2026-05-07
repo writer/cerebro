@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -17,8 +18,9 @@ import (
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/bootstrap"
 	"github.com/writer/cerebro/internal/buildinfo"
-	"github.com/writer/cerebro/internal/config"
+	appconfig "github.com/writer/cerebro/internal/config"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
 	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceregistry"
@@ -53,6 +55,8 @@ func run(args []string) error {
 		return serve()
 	case "graph":
 		return runGraph(args[1:])
+	case "orchestrator":
+		return runOrchestrator(args[1:])
 	case "finding-rule":
 		return runFindingRule(args[1:])
 	case "source":
@@ -63,11 +67,11 @@ func run(args []string) error {
 		fmt.Printf("%s %s\n", buildinfo.ServiceName, buildinfo.Version)
 		return nil
 	}
-	return usageError(fmt.Sprintf("usage: %s [serve|version|graph|finding-rule|source|source-runtime]", os.Args[0]))
+	return usageError(fmt.Sprintf("usage: %s [serve|version|graph|orchestrator|finding-rule|source|source-runtime]", os.Args[0]))
 }
 
 func serve() error {
-	cfg, err := config.Load()
+	cfg, err := appconfig.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -136,6 +140,10 @@ func runSource(args []string) error {
 		if err != nil {
 			return err
 		}
+		config, err = appconfig.ResolveSourceConfigSecretReferences(ctx, sourceID, config)
+		if err != nil {
+			return err
+		}
 		response, err := service.Check(ctx, &cerebrov1.CheckSourceRequest{
 			SourceId: sourceID,
 			Config:   config,
@@ -150,6 +158,10 @@ func runSource(args []string) error {
 			return err
 		}
 		config, err = prepareSourceConfig(ctx, sourceID, "discover", config)
+		if err != nil {
+			return err
+		}
+		config, err = appconfig.ResolveSourceConfigSecretReferences(ctx, sourceID, config)
 		if err != nil {
 			return err
 		}
@@ -170,6 +182,10 @@ func runSource(args []string) error {
 		if err != nil {
 			return err
 		}
+		config, err = appconfig.ResolveSourceConfigSecretReferences(ctx, sourceID, config)
+		if err != nil {
+			return err
+		}
 		response, err := service.Read(ctx, &cerebrov1.ReadSourceRequest{
 			SourceId: sourceID,
 			Config:   config,
@@ -186,9 +202,9 @@ func runSource(args []string) error {
 
 func runSourceRuntime(args []string) error {
 	if len(args) == 0 {
-		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|sync] ...", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync] ...", os.Args[0]))
 	}
-	cfg, err := config.Load()
+	cfg, err := appconfig.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -206,12 +222,12 @@ func runSourceRuntime(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open source registry: %w", err)
 	}
-	service := sourceruntime.New(
+	service := configureSourceRuntimeCommandService(sourceruntime.New(
 		registry,
 		sourceRuntimeStore(deps.StateStore),
 		deps.AppendLog,
 		sourceProjector(deps.StateStore, deps.GraphStore),
-	)
+	))
 
 	switch args[0] {
 	case "put":
@@ -237,6 +253,20 @@ func runSourceRuntime(args []string) error {
 			return err
 		}
 		return printProto(response)
+	case "list":
+		filter, err := parseSourceRuntimeListArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		runtimes, err := service.List(ctx, filter)
+		if err != nil {
+			return err
+		}
+		payload, err := sourceRuntimeListJSON(runtimes)
+		if err != nil {
+			return err
+		}
+		return printJSON(payload)
 	case "sync":
 		runtimeID, pageLimit, err := parseSourceRuntimeSyncArgs(args[1:])
 		if err != nil {
@@ -251,8 +281,12 @@ func runSourceRuntime(args []string) error {
 		}
 		return printProto(response)
 	default:
-		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|sync] ...", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync] ...", os.Args[0]))
 	}
+}
+
+func configureSourceRuntimeCommandService(service *sourceruntime.Service) *sourceruntime.Service {
+	return service.WithConfigResolver(appconfig.ResolveSourceRuntimeConfigSecretReferences)
 }
 
 func parseSourceCommandArgs(args []string) (string, map[string]string, *cerebrov1.SourceCursor, error) {
@@ -311,8 +345,8 @@ func parseSourceRuntimePutArgs(args []string) (*cerebrov1.SourceRuntime, error) 
 
 func sourceConfigValueFromArg(key string, value string) (string, error) {
 	sensitive := sensitiveCLIConfigKey(key)
-	if strings.HasPrefix(value, "env:") && !literalEnvPrefixCLIConfigKey(key) {
-		return sourceConfigValueFromEnv(key, value)
+	if strings.HasPrefix(value, "env:") && !sourceconfig.LiteralEnvPrefixKey(key) {
+		return value, nil
 	}
 	if sensitive && strings.TrimSpace(value) != "" {
 		return "", fmt.Errorf("source config %q is sensitive; pass env:VAR instead of a literal value", strings.TrimSpace(key))
@@ -320,42 +354,8 @@ func sourceConfigValueFromArg(key string, value string) (string, error) {
 	return value, nil
 }
 
-func sourceConfigValueFromEnv(key string, value string) (string, error) {
-	envName := strings.TrimSpace(strings.TrimPrefix(value, "env:"))
-	if envName == "" {
-		return "", fmt.Errorf("source config %q env reference is missing a variable name", strings.TrimSpace(key))
-	}
-	resolved, ok := os.LookupEnv(envName)
-	if !ok {
-		return "", fmt.Errorf("source config %q references unset environment variable %q", strings.TrimSpace(key), envName)
-	}
-	if sensitiveCLIConfigKey(key) && strings.TrimSpace(resolved) == "" {
-		return "", fmt.Errorf("source config %q references empty environment variable %q", strings.TrimSpace(key), envName)
-	}
-	return resolved, nil
-}
-
-func literalEnvPrefixCLIConfigKey(key string) bool {
-	switch strings.ToLower(strings.TrimSpace(key)) {
-	case "filter", "phrase", "q", "search":
-		return true
-	default:
-		return false
-	}
-}
-
 func sensitiveCLIConfigKey(key string) bool {
-	value := strings.ToLower(strings.TrimSpace(key))
-	if value == "" {
-		return false
-	}
-	if strings.Contains(value, "token") || strings.Contains(value, "secret") || strings.Contains(value, "password") {
-		return true
-	}
-	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(value)
-	return compact == "key" ||
-		strings.Contains(compact, "apikey") ||
-		strings.Contains(compact, "privatekey")
+	return sourceconfig.SensitiveKey(key)
 }
 
 func parseSourceRuntimeSyncArgs(args []string) (string, uint32, error) {
@@ -379,6 +379,47 @@ func parseSourceRuntimeSyncArgs(args []string) (string, uint32, error) {
 		pageLimit = uint32(parsed)
 	}
 	return runtimeID, pageLimit, nil
+}
+
+func parseSourceRuntimeListArgs(args []string) (ports.SourceRuntimeFilter, error) {
+	var filter ports.SourceRuntimeFilter
+	for _, arg := range args {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return ports.SourceRuntimeFilter{}, fmt.Errorf("invalid source runtime list argument %q; want key=value", arg)
+		}
+		switch key {
+		case "tenant_id":
+			filter.TenantID = strings.TrimSpace(value)
+		case "source_id":
+			filter.SourceID = strings.TrimSpace(value)
+		case "limit":
+			parsed, err := strconv.ParseUint(value, 10, 32)
+			if err != nil {
+				return ports.SourceRuntimeFilter{}, fmt.Errorf("parse limit: %w", err)
+			}
+			if parsed == 0 {
+				return ports.SourceRuntimeFilter{}, fmt.Errorf("limit must be at least 1")
+			}
+			filter.Limit = uint32(parsed)
+		default:
+			return ports.SourceRuntimeFilter{}, fmt.Errorf("unsupported source runtime list argument %q", key)
+		}
+	}
+	return filter, nil
+}
+
+func sourceRuntimeListJSON(runtimes []*cerebrov1.SourceRuntime) (map[string][]json.RawMessage, error) {
+	items := make([]json.RawMessage, 0, len(runtimes))
+	marshaler := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}
+	for _, runtime := range runtimes {
+		payload, err := marshaler.Marshal(runtime)
+		if err != nil {
+			return nil, fmt.Errorf("marshal source runtime: %w", err)
+		}
+		items = append(items, json.RawMessage(payload))
+	}
+	return map[string][]json.RawMessage{"runtimes": items}, nil
 }
 
 func sourceRuntimeStore(store ports.StateStore) ports.SourceRuntimeStore {

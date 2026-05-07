@@ -29,6 +29,7 @@ import (
 	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/knowledge"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/primitives"
 	"github.com/writer/cerebro/internal/reports"
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceops"
@@ -198,6 +199,133 @@ func TestWriteSourceRuntimeErrorDoesNotExposeInternalMessage(t *testing.T) {
 	writeSourceRuntimeError(invalid, sourceruntime.ErrInvalidRequest)
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid runtime status = %d, want %d", invalid.Code, http.StatusBadRequest)
+	}
+}
+
+func TestResolveRuntimeSourceConfigClassifiesEnvErrorsAsInvalidRequest(t *testing.T) {
+	_, err := resolveRuntimeSourceConfig(context.Background(), "github", map[string]string{
+		"token": "env:AWS_SECRET_ACCESS_KEY",
+	})
+	if !errors.Is(err, sourceruntime.ErrInvalidRequest) {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v, want invalid request", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	writeSourceRuntimeError(recorder, err)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("HTTP status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+	if got := connect.CodeOf(sourceRuntimeConnectError(err)); got != connect.CodeInvalidArgument {
+		t.Fatalf("connect code = %s, want %s", got, connect.CodeInvalidArgument)
+	}
+}
+
+func TestResolveRuntimeSourceConfigAuthorizesResolvedTenantID(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_AZURE_TENANT_ID", "other")
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	})
+
+	_, err := resolveRuntimeSourceConfig(ctx, "azure", map[string]string{
+		"tenant_id": "env:CEREBRO_SOURCE_AZURE_TENANT_ID",
+	})
+	if !errors.Is(err, errTenantForbidden) {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v, want tenant forbidden", err)
+	}
+}
+
+func TestResolveRuntimeSourceConfigRejectsTenantScopedEnvSelectors(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	})
+
+	_, err := resolveRuntimeSourceConfig(ctx, "github", map[string]string{
+		"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER",
+	})
+	if !errors.Is(err, errTenantForbidden) {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v, want tenant forbidden", err)
+	}
+}
+
+func TestResolveRuntimeSourceConfigAllowsTenantScopedLiteralEnvQuerySelectors(t *testing.T) {
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	})
+
+	resolved, err := resolveRuntimeSourceConfig(ctx, "github", map[string]string{
+		"phrase": "env:prod",
+	})
+	if err != nil {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v", err)
+	}
+	if got := resolved["phrase"]; got != "env:prod" {
+		t.Fatalf("resolved phrase = %q, want env:prod", got)
+	}
+}
+
+func TestResolveRuntimeSourceConfigAllowsAdminEnvSelectors(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{},
+	})
+
+	resolved, err := resolveRuntimeSourceConfig(ctx, "github", map[string]string{
+		"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER",
+	})
+	if err != nil {
+		t.Fatalf("resolveRuntimeSourceConfig() error = %v", err)
+	}
+	if got := resolved["owner"]; got != "writer" {
+		t.Fatalf("resolved owner = %q, want writer", got)
+	}
+}
+
+func TestAuthorizeHTTPRequestTenantSkipsEnvTenantPlaceholders(t *testing.T) {
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	})
+	err := authorizeHTTPRequestTenant(ctx, &cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			TenantId: "writer",
+			Config: map[string]string{
+				"tenant_id": "env:CEREBRO_SOURCE_AZURE_TENANT_ID",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("authorizeHTTPRequestTenant() error = %v, want nil", err)
+	}
+}
+
+func TestGraphIngestRuntimeUsesRuntimeConfigAuthorization(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_GITHUB_OWNER", "writer")
+	registry, err := newFixtureRegistry()
+	if err != nil {
+		t.Fatalf("newFixtureRegistry() error = %v", err)
+	}
+	ctx := context.WithValue(context.Background(), authContextKey{}, authContext{
+		cfg:       config.AuthConfig{},
+		principal: authPrincipal{TenantID: "writer"},
+	})
+	store := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		"writer-github": {
+			Id:       "writer-github",
+			SourceId: "github",
+			TenantId: "writer",
+			Config:   map[string]string{"owner": "env:CEREBRO_SOURCE_GITHUB_OWNER"},
+		},
+	}}
+	service := newGraphIngestService(Dependencies{StateStore: store, GraphStore: &stubGraphStore{}}, registry)
+
+	_, err = service.RunRuntime(ctx, graphingest.RuntimeRequest{RuntimeID: "writer-github"})
+	if !errors.Is(err, errTenantForbidden) {
+		t.Fatalf("RunRuntime() error = %v, want tenant forbidden", err)
 	}
 }
 
@@ -455,6 +583,29 @@ func (s *stubRuntimeStore) GetSourceRuntime(_ context.Context, id string) (*cere
 		return nil, ports.ErrSourceRuntimeNotFound
 	}
 	return proto.Clone(runtime).(*cerebrov1.SourceRuntime), nil
+}
+
+func (s *stubRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.SourceRuntimeFilter) ([]*cerebrov1.SourceRuntime, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	var ids []string
+	for id := range s.runtimes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	var runtimes []*cerebrov1.SourceRuntime
+	for _, id := range ids {
+		runtime := s.runtimes[id]
+		if filter.TenantID != "" && runtime.GetTenantId() != filter.TenantID {
+			continue
+		}
+		if filter.SourceID != "" && runtime.GetSourceId() != filter.SourceID {
+			continue
+		}
+		runtimes = append(runtimes, proto.Clone(runtime).(*cerebrov1.SourceRuntime))
+	}
+	return runtimes, nil
 }
 
 func (s *stubRuntimeStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {
@@ -1232,6 +1383,44 @@ func TestBootstrapEndpoints(t *testing.T) {
 	}
 }
 
+func TestBootstrapSourcePreviewEndpointsDoNotResolveEnvReferences(t *testing.T) {
+	source := &bootstrapTokenSource{id: "bootstrap_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	t.Setenv("CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN", "resolved-token")
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := sourceGet(t, server, "/sources/bootstrap_token/read", map[string]string{
+		"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN",
+	})
+	if err != nil {
+		t.Fatalf("GET /sources/bootstrap_token/read error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /sources/bootstrap_token/read status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if source.readToken != "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN" {
+		t.Fatalf("HTTP read token = %q, want literal env reference", source.readToken)
+	}
+
+	source.readToken = ""
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	if _, err := client.ReadSource(context.Background(), connect.NewRequest(&cerebrov1.ReadSourceRequest{
+		SourceId: "bootstrap_token",
+		Config:   map[string]string{"token": "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN"},
+	})); err != nil {
+		t.Fatalf("ReadSource() error = %v", err)
+	}
+	if source.readToken != "env:CEREBRO_SOURCE_BOOTSTRAP_TOKEN_TOKEN" {
+		t.Fatalf("Connect read token = %q, want literal env reference", source.readToken)
+	}
+}
+
 func TestAuthMiddlewareProtectsNonPublicRoutes(t *testing.T) {
 	registry, err := newFixtureRegistry()
 	if err != nil {
@@ -1390,6 +1579,193 @@ func TestAuthMiddlewareEnforcesTenantOnIDOnlyRoutes(t *testing.T) {
 	getFindingReq.Header().Set("Authorization", "Bearer writer-key")
 	if _, err := client.GetFinding(context.Background(), getFindingReq); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Fatalf("GetFinding(other) code = %s, want %s (err: %v)", connect.CodeOf(err), connect.CodePermissionDenied, err)
+	}
+}
+
+func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled:        true,
+			APIKeys:        []config.APIKey{{Key: "allowed-key"}},
+			AllowedTenants: []string{"writer"},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes", nil)
+	if err != nil {
+		t.Fatalf("NewRequest without tenant: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer allowed-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes without tenant error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /source-runtimes without tenant status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+
+	scopedReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?tenant_id=writer", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with tenant: %v", err)
+	}
+	scopedReq.Header.Set("Authorization", "Bearer allowed-key")
+	scopedResp, err := server.Client().Do(scopedReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with tenant error = %v", err)
+	}
+	defer func() {
+		if closeErr := scopedResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close scoped response body: %v", closeErr)
+		}
+	}()
+	if scopedResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with tenant status = %d, want %d", scopedResp.StatusCode, http.StatusOK)
+	}
+	var payload map[string][]map[string]any
+	if err := json.NewDecoder(scopedResp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode source runtime list: %v", err)
+	}
+	if got := len(payload["runtimes"]); got != 1 {
+		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+}
+
+func TestListSourceRuntimesUsesTenantHeaderWithAllowedTenantAuth(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled:        true,
+			APIKeys:        []config.APIKey{{Key: "allowed-key"}},
+			AllowedTenants: []string{"writer"},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with tenant header: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer allowed-key")
+	req.Header.Set("X-Cerebro-Tenant", "writer")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with tenant header error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with tenant header status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload map[string][]map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode source runtime list: %v", err)
+	}
+	if got := len(payload["runtimes"]); got != 1 {
+		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+}
+
+func TestListSourceRuntimesAllowsUnscopedAdminKeyWithoutTenantFilter(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled: true,
+			APIKeys: []config.APIKey{{Key: "admin-key"}},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes", nil)
+	if err != nil {
+		t.Fatalf("NewRequest without tenant: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer admin-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes without tenant error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes without tenant status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload map[string][]map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode source runtime list: %v", err)
+	}
+	if got := len(payload["runtimes"]); got != 2 {
+		t.Fatalf("listed runtime count = %d, want 2", got)
+	}
+}
+
+func TestListSourceRuntimesInvalidLimitReturnsBadRequest(t *testing.T) {
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/source-runtimes?limit=bogus")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes invalid limit error = %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("GET /source-runtimes invalid limit status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestRedactSourceRuntimeDropsInternalProgressHash(t *testing.T) {
+	runtime := redactSourceRuntime(&cerebrov1.SourceRuntime{
+		Id: "writer-github",
+		Config: map[string]string{
+			"token":                            "secret-token",
+			sourceRuntimeProgressConfigHashKey: "internal-hash",
+			"owner":                            "writer",
+		},
+	})
+	if _, ok := runtime.GetConfig()[sourceRuntimeProgressConfigHashKey]; ok {
+		t.Fatal("redacted runtime exposed internal progress hash")
+	}
+	if got := runtime.GetConfig()["token"]; got != "[redacted]" {
+		t.Fatalf("redacted token = %q, want [redacted]", got)
+	}
+	if got := runtime.GetConfig()["owner"]; got != "writer" {
+		t.Fatalf("redacted owner = %q, want writer", got)
 	}
 }
 
@@ -1995,6 +2371,35 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 		t.Fatalf("get runtime tenant_id = %#v, want writer", got)
 	}
 
+	listResp, err := server.Client().Get(server.URL + "/source-runtimes?tenant_id=writer")
+	if err != nil {
+		t.Fatalf("GET /source-runtimes error = %v", err)
+	}
+	defer func() {
+		if closeErr := listResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close list runtime response body: %v", closeErr)
+		}
+	}()
+	var listPayload map[string]any
+	if err := json.NewDecoder(listResp.Body).Decode(&listPayload); err != nil {
+		t.Fatalf("decode list runtime response: %v", err)
+	}
+	listRuntimes, ok := listPayload["runtimes"].([]any)
+	if !ok || len(listRuntimes) != 1 {
+		t.Fatalf("list runtimes = %#v, want one runtime", listPayload["runtimes"])
+	}
+	listRuntimePayload, ok := listRuntimes[0].(map[string]any)
+	if !ok {
+		t.Fatalf("listed runtime = %#v, want object", listRuntimes[0])
+	}
+	listConfigPayload, ok := listRuntimePayload["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("listed runtime config = %#v, want object", listRuntimePayload["config"])
+	}
+	if got := listConfigPayload["token"]; got != "[redacted]" {
+		t.Fatalf("listed runtime token = %#v, want [redacted]", got)
+	}
+
 	syncReq, err := http.NewRequest(http.MethodPost, server.URL+"/source-runtimes/writer-okta-users/sync?page_limit=1", nil)
 	if err != nil {
 		t.Fatalf("new sync request: %v", err)
@@ -2075,6 +2480,48 @@ func TestSourceRuntimeEndpoints(t *testing.T) {
 	}
 	if len(runtimeStore.entities) == 0 || len(graphStore.entities) == 0 {
 		t.Fatalf("projected entities = state:%d graph:%d, want non-zero", len(runtimeStore.entities), len(graphStore.entities))
+	}
+}
+
+func TestConnectSourceRuntimeEndpointsResolveEnvReferences(t *testing.T) {
+	source := &bootstrapTokenSource{id: "runtime_token"}
+	registry, err := sourcecdk.NewRegistry(source)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	t.Setenv("CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN", "resolved-token")
+	runtimeStore := &stubRuntimeStore{}
+	app := New(config.Config{HTTPAddr: "127.0.0.1:0", ShutdownTimeout: time.Second}, Dependencies{
+		AppendLog:  &recordingAppendLog{},
+		StateStore: runtimeStore,
+	}, registry)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	client := cerebrov1connect.NewBootstrapServiceClient(server.Client(), server.URL)
+	if _, err := client.PutSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.PutSourceRuntimeRequest{
+		Runtime: &cerebrov1.SourceRuntime{
+			Id:       "writer-runtime-token",
+			SourceId: "runtime_token",
+			Config:   map[string]string{"token": "env:CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN"},
+		},
+	})); err != nil {
+		t.Fatalf("PutSourceRuntime() error = %v", err)
+	}
+	if source.checkToken != "resolved-token" {
+		t.Fatalf("connect put check token = %q, want resolved-token", source.checkToken)
+	}
+	if got := runtimeStore.runtimes["writer-runtime-token"].GetConfig()["token"]; got != "env:CEREBRO_SOURCE_RUNTIME_TOKEN_TOKEN" {
+		t.Fatalf("stored token = %q, want env reference", got)
+	}
+
+	if _, err := client.SyncSourceRuntime(context.Background(), connect.NewRequest(&cerebrov1.SyncSourceRuntimeRequest{
+		Id: "writer-runtime-token",
+	})); err != nil {
+		t.Fatalf("SyncSourceRuntime() error = %v", err)
+	}
+	if source.readToken != "resolved-token" {
+		t.Fatalf("connect sync read token = %q, want resolved-token", source.readToken)
 	}
 }
 
@@ -3861,6 +4308,30 @@ func newFixtureRegistry() (*sourcecdk.Registry, error) {
 		return nil, err
 	}
 	return sourcecdk.NewRegistry(source, okta, sdk)
+}
+
+type bootstrapTokenSource struct {
+	id         string
+	checkToken string
+	readToken  string
+}
+
+func (s *bootstrapTokenSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: s.id, Name: "Bootstrap token source"}
+}
+
+func (s *bootstrapTokenSource) Check(_ context.Context, config sourcecdk.Config) error {
+	s.checkToken, _ = config.Lookup("token")
+	return nil
+}
+
+func (s *bootstrapTokenSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (s *bootstrapTokenSource) Read(_ context.Context, config sourcecdk.Config, _ *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	s.readToken, _ = config.Lookup("token")
+	return sourcecdk.Pull{Events: []*primitives.Event{}}, nil
 }
 
 func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {
