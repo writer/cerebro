@@ -49,6 +49,48 @@ def _config_bool(key: str, default: bool) -> bool:
     return default if value is None else value
 
 
+def _env_ref(value) -> str:
+    text = str(value).strip()
+    if not text.startswith("env:"):
+        return ""
+    env_name = text.removeprefix("env:").strip()
+    if not env_name:
+        raise ValueError("source runtime env reference must include an environment variable name")
+    return env_name
+
+
+def _source_runtime_env_refs(source_runtimes: list[dict]) -> list[str]:
+    refs = set()
+    for runtime in source_runtimes:
+        if not isinstance(runtime, dict):
+            raise ValueError("sourceRuntimes entries must be objects")
+        runtime_id = str(runtime.get("id", "")).strip()
+        runtime_config = runtime.get("config") or {}
+        if not isinstance(runtime_config, dict):
+            raise ValueError(f"source runtime {runtime_id or '<unknown>'} config must be an object")
+        for value in runtime_config.values():
+            env_name = _env_ref(value)
+            if env_name:
+                refs.add(env_name)
+    return sorted(refs)
+
+
+def _secret_env_name(secret_key) -> str:
+    if isinstance(secret_key, dict):
+        return str(secret_key.get("name", "")).strip()
+    return str(secret_key).strip()
+
+
+def _append_missing_source_secrets(secret_keys: list, env_refs: list[str]) -> list:
+    result = list(secret_keys or [])
+    existing = {_secret_env_name(secret_key) for secret_key in result}
+    for env_name in env_refs:
+        if env_name not in existing:
+            result.append(env_name)
+            existing.add(env_name)
+    return result
+
+
 environment = _get_environment()
 domain = config.get("domain") or ""
 certificate_domain = config.get("certificateDomain") or ""
@@ -132,6 +174,9 @@ api_keys = config.get_secret("apiKeys")
 api_auth_enabled = _config_bool("apiAuthEnabled", is_production)
 allowed_tenants = config.get_object("allowedTenants") or []
 source_secret_keys = config.get_object("sourceSecretKeys") or []
+source_runtimes = config.get_object("sourceRuntimes") or []
+source_runtime_env_refs = _source_runtime_env_refs(source_runtimes)
+source_secret_keys = _append_missing_source_secrets(source_secret_keys, source_runtime_env_refs)
 
 # Optional IAM grants for S3-backed sources. Source configuration now lives in
 # source runtimes, not process env; this only scopes task-role permissions.
@@ -343,6 +388,8 @@ if neo4j_database:
 if allowed_tenants:
     app_environment["CEREBRO_ALLOWED_TENANTS"] = ",".join(allowed_tenants)
     app_environment["ALLOWED_TENANTS"] = ",".join(allowed_tenants)
+if source_runtime_env_refs:
+    app_environment["CEREBRO_SOURCE_CONFIG_ENV_ALLOWLIST"] = ",".join(source_runtime_env_refs)
 
 runtime_dependencies = [
     postgres_stack["secret_version"],
@@ -375,6 +422,7 @@ ecs_stack = compute.create_ecs_cluster(
     orchestrator_cpu=orchestrator_cpu,
     orchestrator_memory=orchestrator_memory,
     orchestrator_command=orchestrator_command,
+    source_runtimes=source_runtimes,
 )
 
 # =============================================================================

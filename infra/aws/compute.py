@@ -40,6 +40,7 @@ def create_ecs_cluster(
     orchestrator_cpu: int = 1024,
     orchestrator_memory: int = 2048,
     orchestrator_command: list[str] = None,
+    source_runtimes: list[dict] = None,
 ) -> dict:
     """Create ECS cluster with an API service."""
     cluster = aws.ecs.Cluster(
@@ -87,6 +88,7 @@ def create_ecs_cluster(
         efs_file_system_id=efs_file_system_id,
         efs_access_point_id=efs_access_point_id,
         efs_container_path=efs_container_path,
+        source_runtimes=source_runtimes or [],
     )
 
     orchestrator_task_definition = None
@@ -443,6 +445,7 @@ def _create_task_definition(
     expose_http: bool = True,
     enable_health_check: bool = True,
     log_stream_prefix: str = "ecs",
+    source_runtimes: list[dict] = None,
 ) -> aws.ecs.TaskDefinition:
     if not external_secrets_prefix:
         raise ValueError("external_secrets_prefix is required")
@@ -456,6 +459,7 @@ def _create_task_definition(
             secret_specs.append((secret_key["name"], secret_key["source"]))
         else:
             secret_specs.append((secret_key, secret_key))
+    source_runtime_commands = [_source_runtime_command(runtime) for runtime in (source_runtimes or [])]
     env_items = sorted(environment.items())
     env_values = [value for _, value in env_items]
 
@@ -466,6 +470,28 @@ def _create_task_definition(
             {"name": key, "value": str(value)}
             for (key, _), value in zip(env_items, resolved_env_values)
         ]
+        secret_env = [{"name": name, "valueFrom": f"{secrets_prefix_arn}/{source}"} for name, source in secret_specs]
+        log_options = {
+            "awslogs-group": log_group,
+            "awslogs-region": region,
+        }
+        bootstrap_containers = [
+            {
+                "name": f"source-runtime-bootstrap-{idx}",
+                "image": container_image,
+                "essential": False,
+                "user": "10001",
+                "readonlyRootFilesystem": True,
+                "command": command,
+                "environment": env,
+                "secrets": secret_env,
+                "logConfiguration": {
+                    "logDriver": "awslogs",
+                    "options": {**log_options, "awslogs-stream-prefix": "source-runtime-bootstrap"},
+                },
+            }
+            for idx, command in enumerate(source_runtime_commands)
+        ]
         container = {
             "name": "cerebro",
             "image": container_image,
@@ -474,15 +500,16 @@ def _create_task_definition(
             "readonlyRootFilesystem": True,
             "logConfiguration": {
                 "logDriver": "awslogs",
-                "options": {
-                    "awslogs-group": log_group,
-                    "awslogs-region": region,
-                    "awslogs-stream-prefix": log_stream_prefix,
-                },
+                "options": {**log_options, "awslogs-stream-prefix": log_stream_prefix},
             },
             "environment": env,
-            "secrets": [{"name": name, "valueFrom": f"{secrets_prefix_arn}/{source}"} for name, source in secret_specs],
+            "secrets": secret_env,
         }
+        if bootstrap_containers:
+            container["dependsOn"] = [
+                {"containerName": bootstrap["name"], "condition": "SUCCESS"}
+                for bootstrap in bootstrap_containers
+            ]
         if container_command:
             container["command"] = container_command
         if expose_http:
@@ -497,7 +524,7 @@ def _create_task_definition(
             }
         if efs_container_path:
             container["mountPoints"] = [{"sourceVolume": "cerebro-data", "containerPath": efs_container_path, "readOnly": False}]
-        return [container]
+        return [*bootstrap_containers, container]
 
     container_definitions = pulumi.Output.all(log_group_name, *env_values).apply(lambda args: json.dumps(build_container_def(args)))
 
@@ -531,4 +558,46 @@ def _create_task_definition(
         container_definitions=container_definitions,
         volumes=volumes,
         tags={"Name": f"{name}-task"},
+    )
+
+
+def _source_runtime_command(runtime: dict) -> list[str]:
+    runtime_id = _runtime_field(runtime, "id")
+    source_id = _runtime_field(runtime, "sourceId", "source_id")
+    if not runtime_id or not source_id:
+        raise ValueError("source runtime id and sourceId are required")
+    command = ["source-runtime", "put", runtime_id, source_id]
+    tenant_id = _runtime_field(runtime, "tenantId", "tenant_id")
+    if tenant_id:
+        command.append(f"tenant_id={tenant_id}")
+    runtime_config = runtime.get("config") or {}
+    if not isinstance(runtime_config, dict):
+        raise ValueError(f"source runtime {runtime_id} config must be an object")
+    for key in sorted(runtime_config):
+        value = str(runtime_config[key]).strip()
+        if _sensitive_source_config_key(key) and value and not value.startswith("env:"):
+            raise ValueError(f"source runtime {runtime_id} config {key} must use env:VAR")
+        command.append(f"{key}={value}")
+    return command
+
+
+def _runtime_field(runtime: dict, *keys: str) -> str:
+    for key in keys:
+        value = str(runtime.get(key, "")).strip()
+        if value:
+            return value
+    return ""
+
+
+def _sensitive_source_config_key(key: str) -> bool:
+    value = str(key).strip().lower()
+    compact = value.replace("_", "").replace("-", "").replace(".", "")
+    return (
+        "token" in value
+        or "secret" in value
+        or "password" in value
+        or "apikey" in compact
+        or "privatekey" in compact
+        or value == "key"
+        or compact == "key"
     )

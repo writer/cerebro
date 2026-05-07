@@ -168,6 +168,12 @@ config:
       type: string
     default: []
     description: "Additional ECS secret env vars sourced from {externalSecretsPrefix}/<key> for source runtime env: references"
+  cerebro:sourceRuntimes:
+    type: array
+    items:
+      type: object
+    default: []
+    description: Declarative source runtime definitions bootstrapped before the API container starts
   cerebro:shutdownTimeout:
     type: string
     default: 10s

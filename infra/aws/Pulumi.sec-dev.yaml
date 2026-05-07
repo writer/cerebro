@@ -37,6 +37,45 @@ config:
     - OKTA_DOMAIN
   cerebro:orchestratorEnabled: true
   cerebro:orchestratorScheduleExpression: "rate(6 hours)"
+  cerebro:orchestratorCommand:
+    - orchestrator
+    - run
+    - page_limit=100
+    - graph_page_limit=100
+    - event_limit=1000
+  cerebro:sourceRuntimes:
+    - id: writer-okta-audit
+      sourceId: okta
+      tenantId: writer
+      config:
+        domain: env:OKTA_DOMAIN
+        family: audit
+        per_page: "200"
+        token: env:OKTA_API_TOKEN
+    - id: writer-okta-user
+      sourceId: okta
+      tenantId: writer
+      config:
+        domain: env:OKTA_DOMAIN
+        family: user
+        per_page: "200"
+        token: env:OKTA_API_TOKEN
+    - id: writer-okta-group
+      sourceId: okta
+      tenantId: writer
+      config:
+        domain: env:OKTA_DOMAIN
+        family: group
+        per_page: "200"
+        token: env:OKTA_API_TOKEN
+    - id: writer-okta-application
+      sourceId: okta
+      tenantId: writer
+      config:
+        domain: env:OKTA_DOMAIN
+        family: application
+        per_page: "200"
+        token: env:OKTA_API_TOKEN
   cerebro:enableWaf: true
   cerebro:albInternal: true
   cerebro:albIngressCidrs:
