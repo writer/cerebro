@@ -982,9 +982,10 @@ func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter := ports.SourceRuntimeFilter{
-		TenantID: strings.TrimSpace(r.URL.Query().Get("tenant_id")),
-		SourceID: strings.TrimSpace(r.URL.Query().Get("source_id")),
-		Limit:    limit,
+		RuntimeID: strings.TrimSpace(r.URL.Query().Get("runtime_id")),
+		TenantID:  strings.TrimSpace(r.URL.Query().Get("tenant_id")),
+		SourceID:  strings.TrimSpace(r.URL.Query().Get("source_id")),
+		Limit:     limit,
 	}
 	if filter.TenantID == "" {
 		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok && strings.TrimSpace(auth.principal.TenantID) != "" {

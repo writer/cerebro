@@ -17,6 +17,7 @@ import (
 	"github.com/writer/cerebro/internal/sourcecdk"
 	"github.com/writer/cerebro/internal/sourceconfig"
 	"github.com/writer/cerebro/internal/sourceops"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const (
@@ -143,6 +144,19 @@ func (s *Service) List(ctx context.Context, filter ports.SourceRuntimeFilter) ([
 
 // Sync advances one stored source runtime and appends emitted events.
 func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequest) (*cerebrov1.SyncSourceRuntimeResponse, error) {
+	runtimeID := ""
+	if req != nil {
+		runtimeID = strings.TrimSpace(req.GetId())
+	}
+	ctx, span := telemetry.Start(ctx, "source_runtime.sync", telemetry.Attrs(
+		telemetry.Field{Key: "runtime_id", Value: runtimeID},
+		telemetry.Field{Key: "page_limit", Value: req.GetPageLimit()},
+	))
+	status := "failed"
+	spanAttributes := telemetry.Attrs()
+	defer func() {
+		telemetry.End(span, status, spanAttributes)
+	}()
 	if s == nil || s.store == nil || s.appendLog == nil {
 		return nil, ErrRuntimeUnavailable
 	}
@@ -158,6 +172,8 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	if err != nil {
 		return nil, err
 	}
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()})
 	refreshRuntimeProgressConfig(runtime, runtimeConfig)
 	pageLimit, err := normalizePageLimit(req.GetPageLimit())
 	if err != nil {
@@ -175,6 +191,16 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		if err != nil {
 			return nil, err
 		}
+		pageNumber := i + 1
+		eventsRead := uint32(len(pull.Events))
+		telemetry.Event(ctx, "source_runtime.page_read", telemetry.Attrs(
+			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+			telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+			telemetry.Field{Key: "page", Value: pageNumber},
+			telemetry.Field{Key: "events_read", Value: eventsRead},
+			telemetry.Field{Key: "has_next_cursor", Value: pull.NextCursor != nil},
+		))
 		if pull.Checkpoint != nil {
 			runtime.Checkpoint = cloneCheckpoint(pull.Checkpoint)
 		}
@@ -182,6 +208,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		pagesRead++
 		for _, event := range pull.Events {
 			syncedEvent := materializeEvent(runtime, event)
+			if syncedEvent.Attributes == nil {
+				syncedEvent.Attributes = make(map[string]string)
+			}
+			telemetry.InjectEventAttributes(ctx, syncedEvent.Attributes)
 			if err := s.appendLog.Append(ctx, syncedEvent); err != nil {
 				return nil, fmt.Errorf("append source event %q: %w", syncedEvent.GetId(), err)
 			}
@@ -199,11 +229,27 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
 			return nil, err
 		}
+		telemetry.Event(ctx, "source_runtime.page_committed", telemetry.Attrs(
+			telemetry.Field{Key: "runtime_id", Value: runtime.GetId()},
+			telemetry.Field{Key: "source_id", Value: runtime.GetSourceId()},
+			telemetry.Field{Key: "tenant_id", Value: runtime.GetTenantId()},
+			telemetry.Field{Key: "page", Value: pageNumber},
+			telemetry.Field{Key: "events_appended", Value: eventsAppended},
+			telemetry.Field{Key: "entities_projected", Value: entitiesProjected},
+			telemetry.Field{Key: "links_projected", Value: linksProjected},
+			telemetry.Field{Key: "has_next_cursor", Value: pull.NextCursor != nil},
+		))
 		if pull.NextCursor == nil {
 			break
 		}
 		cursor = cloneCursor(pull.NextCursor)
 	}
+	status = "completed"
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "pages_read", Value: pagesRead})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "events_appended", Value: eventsAppended})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "entities_projected", Value: entitiesProjected})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "links_projected", Value: linksProjected})
+	spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "has_next_cursor", Value: runtime.GetNextCursor() != nil})
 	return &cerebrov1.SyncSourceRuntimeResponse{
 		Runtime:           redactRuntime(runtime),
 		Source:            source.Spec(),
@@ -268,9 +314,10 @@ func normalizePageLimit(pageLimit uint32) (uint32, error) {
 
 func normalizeListFilter(filter ports.SourceRuntimeFilter) (ports.SourceRuntimeFilter, error) {
 	normalized := ports.SourceRuntimeFilter{
-		TenantID: strings.TrimSpace(filter.TenantID),
-		SourceID: strings.TrimSpace(filter.SourceID),
-		Limit:    filter.Limit,
+		RuntimeID: strings.TrimSpace(filter.RuntimeID),
+		TenantID:  strings.TrimSpace(filter.TenantID),
+		SourceID:  strings.TrimSpace(filter.SourceID),
+		Limit:     filter.Limit,
 	}
 	if normalized.Limit == 0 {
 		normalized.Limit = defaultListLimit

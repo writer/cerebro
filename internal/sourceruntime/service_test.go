@@ -63,6 +63,9 @@ func (s *runtimeStore) ListSourceRuntimes(_ context.Context, filter ports.Source
 	var runtimes []*cerebrov1.SourceRuntime
 	for _, id := range ids {
 		runtime := s.runtimes[id]
+		if filter.RuntimeID != "" && runtime.GetId() != filter.RuntimeID {
+			continue
+		}
 		if filter.TenantID != "" && runtime.GetTenantId() != filter.TenantID {
 			continue
 		}
@@ -400,6 +403,14 @@ func TestListRedactsSensitiveConfigAndFilters(t *testing.T) {
 	if got := runtimes[0].GetConfig()["group_key"]; got != "eng" {
 		t.Fatalf("listed group_key = %q, want eng", got)
 	}
+
+	runtimes, err = service.List(context.Background(), ports.SourceRuntimeFilter{RuntimeID: "other-token"})
+	if err != nil {
+		t.Fatalf("List(runtime_id) error = %v", err)
+	}
+	if len(runtimes) != 1 || runtimes[0].GetId() != "other-token" {
+		t.Fatalf("List(runtime_id) returned %#v, want other-token", runtimes)
+	}
 }
 
 func TestSensitiveConfigKeyCatchesCommonCamelCaseSecrets(t *testing.T) {
@@ -663,6 +674,12 @@ func TestSyncRuntimeAppendsEventsAndUpdatesProgress(t *testing.T) {
 	}
 	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
 		t.Fatalf("appended event source_runtime_id = %q, want %q", got, "writer-github")
+	}
+	if got := log.events[0].GetAttributes()["trace_id"]; got == "" {
+		t.Fatal("appended event trace_id is empty")
+	}
+	if got := log.events[0].GetAttributes()["span_id"]; got == "" {
+		t.Fatal("appended event span_id is empty")
 	}
 	runtime := store.runtimes["writer-github"]
 	if runtime.GetCheckpoint().GetCursorOpaque() != "2" {

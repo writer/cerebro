@@ -47,6 +47,16 @@ func TestParseOrchestratorOptionsRejectsZeroLimit(t *testing.T) {
 	}
 }
 
+func TestParseOrchestratorOptionsAcceptsRuntimeID(t *testing.T) {
+	options, err := parseOrchestratorOptions([]string{"runtime_id=writer-okta-audit"})
+	if err != nil {
+		t.Fatalf("parseOrchestratorOptions(runtime_id) error = %v", err)
+	}
+	if got := options.Filter.RuntimeID; got != "writer-okta-audit" {
+		t.Fatalf("runtime filter = %q, want writer-okta-audit", got)
+	}
+}
+
 func TestOrchestratorShutdownSignalsIncludeSIGTERM(t *testing.T) {
 	signals := orchestratorShutdownSignals()
 	if len(signals) != 2 || signals[0] != os.Interrupt || signals[1] != syscall.SIGTERM {
@@ -129,6 +139,13 @@ func TestSourceRuntimeLeaseRenewalIntervalUsesHalfTTL(t *testing.T) {
 func TestOrchestratorListFilterRequestsAllByDefault(t *testing.T) {
 	if got := orchestratorListFilter(ports.SourceRuntimeFilter{}).Limit; got != ^uint32(0) {
 		t.Fatalf("orchestratorListFilter(default).Limit = %d, want max uint32", got)
+	}
+}
+
+func TestOrchestratorListFilterPreservesRuntimeID(t *testing.T) {
+	filter := orchestratorListFilter(ports.SourceRuntimeFilter{RuntimeID: "writer-okta-audit", Limit: 1})
+	if got := filter.RuntimeID; got != "writer-okta-audit" {
+		t.Fatalf("orchestratorListFilter().RuntimeID = %q, want writer-okta-audit", got)
 	}
 }
 
