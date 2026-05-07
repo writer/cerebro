@@ -128,15 +128,13 @@ jobs:
           IMAGE_BASE: ghcr.io/${{ github.repository }}
         run: |
           set -euo pipefail
-          docker manifest create "${IMAGE_BASE}:${RELEASE_TAG}" \
+          docker buildx imagetools create -t "${IMAGE_BASE}:${RELEASE_TAG}" \
             "${IMAGE_BASE}:${RELEASE_TAG}-amd64" \
             "${IMAGE_BASE}:${RELEASE_TAG}-arm64"
-          docker manifest push "${IMAGE_BASE}:${RELEASE_TAG}"
 
-          docker manifest create "${IMAGE_BASE}:latest" \
+          docker buildx imagetools create -t "${IMAGE_BASE}:latest" \
             "${IMAGE_BASE}:${RELEASE_TAG}-amd64" \
             "${IMAGE_BASE}:${RELEASE_TAG}-arm64"
-          docker manifest push "${IMAGE_BASE}:latest"
 
       - name: Keyless sign release images
         shell: bash
