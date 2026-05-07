@@ -136,20 +136,11 @@ LIMIT $%d`, strings.Join(clauses, " AND "), sourceRuntimeListOrderClause(), len(
 // AcquireSourceRuntimeLease leases one source runtime without replacing runtime JSON.
 func (s *Store) AcquireSourceRuntimeLease(ctx context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
 	id := strings.TrimSpace(runtimeID)
-	if id == "" {
-		return false, errors.New("source runtime id is required")
+	leaseOwner, err := validateSourceRuntimeLeaseRequest(owner, ttl)
+	if err != nil {
+		return false, err
 	}
-	leaseOwner := strings.TrimSpace(owner)
-	if leaseOwner == "" {
-		return false, errors.New("source runtime lease owner is required")
-	}
-	if ttl <= 0 {
-		return false, errors.New("source runtime lease ttl must be positive")
-	}
-	if s == nil || s.db == nil {
-		return false, errors.New("postgres is not configured")
-	}
-	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
+	if err := s.prepareSourceRuntimeLease(ctx, id); err != nil {
 		return false, err
 	}
 	result, err := s.db.ExecContext(ctx, `
@@ -165,6 +156,32 @@ WHERE id = $1
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return false, fmt.Errorf("acquire source runtime lease %q rows affected: %w", id, err)
+	}
+	return rows > 0, nil
+}
+
+// RenewSourceRuntimeLease extends a source runtime lease held by owner.
+func (s *Store) RenewSourceRuntimeLease(ctx context.Context, runtimeID string, owner string, ttl time.Duration) (bool, error) {
+	id := strings.TrimSpace(runtimeID)
+	leaseOwner, err := validateSourceRuntimeLeaseRequest(owner, ttl)
+	if err != nil {
+		return false, err
+	}
+	if err := s.prepareSourceRuntimeLease(ctx, id); err != nil {
+		return false, err
+	}
+	result, err := s.db.ExecContext(ctx, `
+UPDATE source_runtimes
+SET lease_expires_at = NOW() + $3::interval
+WHERE id = $1
+  AND lease_owner = $2
+  AND lease_expires_at > NOW()`, id, leaseOwner, sourceRuntimeLeaseInterval(ttl))
+	if err != nil {
+		return false, fmt.Errorf("renew source runtime lease %q: %w", id, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("renew source runtime lease %q rows affected: %w", id, err)
 	}
 	return rows > 0, nil
 }
@@ -193,6 +210,27 @@ WHERE id = $1 AND lease_owner = $2`, id, leaseOwner); err != nil {
 		return fmt.Errorf("release source runtime lease %q: %w", id, err)
 	}
 	return nil
+}
+
+func validateSourceRuntimeLeaseRequest(owner string, ttl time.Duration) (string, error) {
+	leaseOwner := strings.TrimSpace(owner)
+	if leaseOwner == "" {
+		return "", errors.New("source runtime lease owner is required")
+	}
+	if ttl <= 0 {
+		return "", errors.New("source runtime lease ttl must be positive")
+	}
+	return leaseOwner, nil
+}
+
+func (s *Store) prepareSourceRuntimeLease(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("source runtime id is required")
+	}
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	return s.ensureSourceRuntimeTable(ctx)
 }
 
 func sourceRuntimeLeaseInterval(ttl time.Duration) string {

@@ -43,6 +43,13 @@ func TestAcquireSourceRuntimeLeaseRejectsNonPositiveTTL(t *testing.T) {
 	}
 }
 
+func TestRenewSourceRuntimeLeaseRejectsMissingOwner(t *testing.T) {
+	store := &Store{}
+	if _, err := store.RenewSourceRuntimeLease(context.Background(), "runtime", " ", time.Minute); err == nil {
+		t.Fatal("RenewSourceRuntimeLease() error = nil, want non-nil")
+	}
+}
+
 func TestPutSourceRuntimeRejectsMissingSourceID(t *testing.T) {
 	store := &Store{}
 	err := store.PutSourceRuntime(context.Background(), &cerebrov1.SourceRuntime{Id: "runtime"})

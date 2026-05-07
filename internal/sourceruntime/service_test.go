@@ -382,6 +382,7 @@ func TestSensitiveConfigKeyCatchesCommonCamelCaseSecrets(t *testing.T) {
 		"accessKeyId",
 		"clientSecret",
 		"privateKey",
+		"signing_key",
 		"sessionToken",
 	} {
 		t.Run(key, func(t *testing.T) {

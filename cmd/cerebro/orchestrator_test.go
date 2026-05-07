@@ -114,6 +114,12 @@ func TestReleaseOrchestratorRuntimeLeaseIgnoresCancellation(t *testing.T) {
 	}
 }
 
+func TestSourceRuntimeLeaseRenewalIntervalUsesHalfTTL(t *testing.T) {
+	if got := sourceRuntimeLeaseRenewalInterval(30 * time.Minute); got != 15*time.Minute {
+		t.Fatalf("sourceRuntimeLeaseRenewalInterval() = %s, want 15m", got)
+	}
+}
+
 func TestRunOrchestratorIterationSkipsLockedRuntime(t *testing.T) {
 	store := &orchestratorRuntimeStore{
 		runtime:  &cerebrov1.SourceRuntime{Id: "runtime-1", SourceId: "missing-source"},
@@ -180,6 +186,10 @@ func (s *leaseRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtime
 	return s.acquired, nil
 }
 
+func (s *leaseRuntimeStore) RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
+	return true, nil
+}
+
 func (s *leaseRuntimeStore) ReleaseSourceRuntimeLease(ctx context.Context, _ string, _ string) error {
 	s.releaseContextErr = ctx.Err()
 	return nil
@@ -209,6 +219,10 @@ func (s *orchestratorRuntimeStore) ListSourceRuntimes(context.Context, ports.Sou
 func (s *orchestratorRuntimeStore) AcquireSourceRuntimeLease(_ context.Context, runtimeID string, _ string, _ time.Duration) (bool, error) {
 	s.leaseID = runtimeID
 	return s.acquired, nil
+}
+
+func (s *orchestratorRuntimeStore) RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error) {
+	return true, nil
 }
 
 func (s *orchestratorRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, runtimeID string, _ string) error {

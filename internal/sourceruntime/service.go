@@ -481,7 +481,7 @@ func sensitiveConfigKey(key string) bool {
 		return true
 	}
 	compact := strings.NewReplacer("_", "", "-", "", ".", "").Replace(strings.ToLower(strings.TrimSpace(key)))
-	return strings.Contains(compact, "accesskey")
+	return strings.Contains(compact, "accesskey") || strings.Contains(compact, "signingkey")
 }
 
 func cloneRuntime(runtime *cerebrov1.SourceRuntime) *cerebrov1.SourceRuntime {

@@ -34,5 +34,6 @@ type SourceRuntimeListStore interface {
 // SourceRuntimeLeaseStore leases source runtimes before orchestration work.
 type SourceRuntimeLeaseStore interface {
 	AcquireSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error)
+	RenewSourceRuntimeLease(context.Context, string, string, time.Duration) (bool, error)
 	ReleaseSourceRuntimeLease(context.Context, string, string) error
 }

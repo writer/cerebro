@@ -292,10 +292,15 @@ func runOrchestratorIteration(
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			continue
 		}
+		stopLeaseRenewal := startOrchestratorRuntimeLeaseRenewal(ctx, leaser, runtime, leaseOwner)
 		if _, err := runtimeService.Sync(ctx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit}); err != nil {
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync", err)
 			runErr = err
+			if renewalErr := stopLeaseRenewal(); renewalErr != nil {
+				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "renew_lease", renewalErr)
+				runErr = renewalErr
+			}
 			if releaseErr := releaseOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner); releaseErr != nil {
 				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "release_lease", releaseErr)
 				runErr = releaseErr
@@ -319,6 +324,10 @@ func runOrchestratorIteration(
 		} else {
 			runtimeResult.GraphIngest = "completed"
 		}
+		if err := stopLeaseRenewal(); err != nil {
+			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "renew_lease", err)
+			runErr = err
+		}
 		if err := releaseOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner); err != nil {
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "release_lease", err)
 			runErr = err
@@ -341,6 +350,47 @@ func acquireOrchestratorRuntimeLease(ctx context.Context, store ports.SourceRunt
 		return true, nil
 	}
 	return store.AcquireSourceRuntimeLease(ctx, runtime.GetId(), owner, defaultSourceRuntimeLeaseTTL)
+}
+
+func startOrchestratorRuntimeLeaseRenewal(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtime *cerebrov1.SourceRuntime, owner string) func() error {
+	if store == nil || runtime == nil {
+		return func() error { return nil }
+	}
+	renewCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		ticker := time.NewTicker(sourceRuntimeLeaseRenewalInterval(defaultSourceRuntimeLeaseTTL))
+		defer ticker.Stop()
+		for {
+			select {
+			case <-renewCtx.Done():
+				done <- nil
+				return
+			case <-ticker.C:
+				renewed, err := store.RenewSourceRuntimeLease(renewCtx, runtime.GetId(), owner, defaultSourceRuntimeLeaseTTL)
+				if err != nil {
+					done <- err
+					return
+				}
+				if !renewed {
+					done <- fmt.Errorf("source runtime lease lost: %s", runtime.GetId())
+					return
+				}
+			}
+		}
+	}()
+	return func() error {
+		cancel()
+		return <-done
+	}
+}
+
+func sourceRuntimeLeaseRenewalInterval(ttl time.Duration) time.Duration {
+	interval := ttl / 2
+	if interval <= 0 {
+		return ttl
+	}
+	return interval
 }
 
 func releaseOrchestratorRuntimeLease(ctx context.Context, store ports.SourceRuntimeLeaseStore, runtime *cerebrov1.SourceRuntime, owner string) error {
