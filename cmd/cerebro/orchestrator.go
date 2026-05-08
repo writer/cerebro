@@ -169,7 +169,7 @@ func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
 	return options, nil
 }
 
-func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orchestratorResult, error) {
+func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (result *orchestratorResult, err error) {
 	ctx, span := telemetry.Start(ctx, "orchestrator.run", telemetry.Attrs(
 		telemetryField("runtime_id", options.Filter.RuntimeID),
 		telemetryField("tenant_id", options.Filter.TenantID),
@@ -184,6 +184,10 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 	status := "failed"
 	spanAttributes := telemetry.Attrs()
 	defer func() {
+		if err != nil {
+			status = "failed"
+			spanAttributes = withTelemetryField(spanAttributes, "error", err.Error())
+		}
 		telemetry.End(span, status, spanAttributes)
 	}()
 	cfg, err := config.Load()
@@ -232,7 +236,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 		sourceProjector(nil, deps.GraphStore),
 		deps.GraphStore,
 	).WithConfigPreparer(config.ResolveSourceRuntimeConfigSecretReferences)
-	result := &orchestratorResult{
+	result = &orchestratorResult{
 		Iterations: options.Iterations,
 		RunForever: options.RunForever,
 		Runs:       []*orchestratorIterationResult{},

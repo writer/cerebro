@@ -143,7 +143,7 @@ func (s *Service) List(ctx context.Context, filter ports.SourceRuntimeFilter) ([
 }
 
 // Sync advances one stored source runtime and appends emitted events.
-func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequest) (*cerebrov1.SyncSourceRuntimeResponse, error) {
+func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequest) (response *cerebrov1.SyncSourceRuntimeResponse, err error) {
 	runtimeID := ""
 	if req != nil {
 		runtimeID = strings.TrimSpace(req.GetId())
@@ -155,6 +155,10 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 	status := "failed"
 	spanAttributes := telemetry.Attrs()
 	defer func() {
+		if err != nil {
+			status = "failed"
+			spanAttributes = spanAttributes.WithField(telemetry.Field{Key: "error", Value: err.Error()})
+		}
 		telemetry.End(span, status, spanAttributes)
 	}()
 	if s == nil || s.store == nil || s.appendLog == nil {
