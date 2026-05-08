@@ -212,6 +212,9 @@ func (s *Service) Sync(ctx context.Context, req *cerebrov1.SyncSourceRuntimeRequ
 		pagesRead++
 		for _, event := range pull.Events {
 			syncedEvent := materializeEvent(runtime, event)
+			if syncedEvent == nil {
+				continue
+			}
 			if syncedEvent.Attributes == nil {
 				syncedEvent.Attributes = make(map[string]string)
 			}

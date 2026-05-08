@@ -140,6 +140,32 @@ func (emptyPageSource) Read(_ context.Context, _ sourcecdk.Config, cursor *cereb
 	}, nil
 }
 
+type nilEventSource struct{}
+
+func (nilEventSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "nil_event"}
+}
+
+func (nilEventSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (nilEventSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (nilEventSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{
+		nil,
+		{
+			Id:       "event-after-nil",
+			TenantId: "writer",
+			SourceId: "nil_event",
+			Kind:     "nil_event.event",
+		},
+	}}, nil
+}
+
 type failingSource struct {
 	err error
 }
@@ -734,6 +760,41 @@ func TestSyncRuntimeContinuesPastEmptyPagesWithCursor(t *testing.T) {
 	}
 	if got := store.runtimes["writer-empty-page"].GetNextCursor(); got != nil {
 		t.Fatalf("stored next cursor = %#v, want nil", got)
+	}
+}
+
+func TestSyncRuntimeSkipsNilEvents(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(nilEventSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-nil-event": {
+				Id:       "writer-nil-event",
+				SourceId: "nil_event",
+				TenantId: "writer",
+			},
+		},
+	}
+	log := &appendLog{}
+	service := New(registry, store, log, nil)
+
+	resp, err := service.Sync(context.Background(), &cerebrov1.SyncSourceRuntimeRequest{Id: "writer-nil-event"})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if resp.GetEventsAppended() != 1 {
+		t.Fatalf("Sync().EventsAppended = %d, want 1", resp.GetEventsAppended())
+	}
+	if len(log.events) != 1 {
+		t.Fatalf("len(appendLog.events) = %d, want 1", len(log.events))
+	}
+	if got := log.events[0].GetId(); got != "event-after-nil" {
+		t.Fatalf("appended event id = %q, want event-after-nil", got)
+	}
+	if got := log.events[0].GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-nil-event" {
+		t.Fatalf("appended event source_runtime_id = %q, want writer-nil-event", got)
 	}
 }
 

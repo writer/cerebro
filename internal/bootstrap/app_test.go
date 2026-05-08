@@ -1599,6 +1599,7 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 		runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
 			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+			"blank-runtime":  {Id: "blank-runtime", SourceId: "github"},
 		},
 	}
 	app := New(cfg, Dependencies{StateStore: store}, nil)
@@ -1659,6 +1660,7 @@ func TestListSourceRuntimesAuthorizesRuntimeIDWithAllowedTenantAuth(t *testing.T
 		runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
 			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+			"blank-runtime":  {Id: "blank-runtime", SourceId: "github"},
 		},
 	}
 	app := New(cfg, Dependencies{StateStore: store}, nil)
@@ -1691,6 +1693,34 @@ func TestListSourceRuntimesAuthorizesRuntimeIDWithAllowedTenantAuth(t *testing.T
 	}
 	if got := payload["runtimes"][0]["id"]; got != "writer-runtime" {
 		t.Fatalf("listed runtime id = %v, want writer-runtime", got)
+	}
+
+	blankReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=blank-runtime", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with blank runtime_id: %v", err)
+	}
+	blankReq.Header.Set("Authorization", "Bearer allowed-key")
+	blankResp, err := server.Client().Do(blankReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with blank runtime_id error = %v", err)
+	}
+	defer func() {
+		if closeErr := blankResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close blank response body: %v", closeErr)
+		}
+	}()
+	if blankResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with blank runtime_id status = %d, want %d", blankResp.StatusCode, http.StatusOK)
+	}
+	var blankPayload map[string][]map[string]any
+	if err := json.NewDecoder(blankResp.Body).Decode(&blankPayload); err != nil {
+		t.Fatalf("decode blank source runtime list: %v", err)
+	}
+	if got := len(blankPayload["runtimes"]); got != 1 {
+		t.Fatalf("blank runtime count = %d, want 1", got)
+	}
+	if got := blankPayload["runtimes"][0]["id"]; got != "blank-runtime" {
+		t.Fatalf("blank runtime id = %v, want blank-runtime", got)
 	}
 
 	forbiddenReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=other-runtime", nil)

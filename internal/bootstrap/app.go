@@ -1016,7 +1016,7 @@ func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
 		}
 		filter.TenantID = strings.TrimSpace(runtime.GetTenantId())
 	}
-	if filter.TenantID == "" && requiresTenantFilter(r.Context()) {
+	if filter.TenantID == "" && filter.RuntimeID == "" && requiresTenantFilter(r.Context()) {
 		writeSourceRuntimeError(w, errTenantForbidden)
 		return
 	}
