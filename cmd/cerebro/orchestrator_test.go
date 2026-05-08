@@ -2,13 +2,19 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"syscall"
 	"testing"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/findings"
+	"github.com/writer/cerebro/internal/graphingest"
+	"github.com/writer/cerebro/internal/graphstore"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/sourcecdk"
+	"github.com/writer/cerebro/internal/sourceprojection"
 	"github.com/writer/cerebro/internal/sourceruntime"
 )
 
@@ -91,6 +97,52 @@ func TestRunOrchestratorIterationStopsAfterSyncFailure(t *testing.T) {
 	}
 	if store.leaseID != "runtime-1" || store.releaseID != "runtime-1" {
 		t.Fatalf("lease/release = %q/%q, want runtime-1/runtime-1", store.leaseID, store.releaseID)
+	}
+}
+
+func TestRunOrchestratorIterationPreservesGraphCountersOnPartialFailure(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	ruleRegistry, err := findings.NewRegistry(orchestratorNoopRule{})
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := &failingCompletedIngestGraphStore{graphTestStore: newGraphTestStore()}
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry),
+		graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore),
+		orchestratorOptions{},
+		1,
+	)
+	if err == nil {
+		t.Fatal("runOrchestratorIteration() error = nil, want graph ingest completion failure")
+	}
+	if got := len(result.Runtimes); got != 1 {
+		t.Fatalf("runtime result count = %d, want 1", got)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.GraphIngest != "failed" {
+		t.Fatalf("graph ingest status = %q, want failed", runtimeResult.GraphIngest)
+	}
+	if runtimeResult.EntitiesProjected != 6 || runtimeResult.LinksProjected != 6 {
+		t.Fatalf("graph counters = %d/%d, want 6/6", runtimeResult.EntitiesProjected, runtimeResult.LinksProjected)
 	}
 }
 
@@ -331,4 +383,144 @@ func (s *orchestratorRuntimeStore) RenewSourceRuntimeLease(context.Context, stri
 func (s *orchestratorRuntimeStore) ReleaseSourceRuntimeLease(_ context.Context, runtimeID string, _ string) error {
 	s.releaseID = runtimeID
 	return nil
+}
+
+type orchestratorTestSource struct{}
+
+func (orchestratorTestSource) Spec() *cerebrov1.SourceSpec {
+	return &cerebrov1.SourceSpec{Id: "github", Name: "GitHub"}
+}
+
+func (orchestratorTestSource) Check(context.Context, sourcecdk.Config) error {
+	return nil
+}
+
+func (orchestratorTestSource) Discover(context.Context, sourcecdk.Config) ([]sourcecdk.URN, error) {
+	return nil, nil
+}
+
+func (orchestratorTestSource) Read(context.Context, sourcecdk.Config, *cerebrov1.SourceCursor) (sourcecdk.Pull, error) {
+	return sourcecdk.Pull{Events: []*cerebrov1.EventEnvelope{{
+		Id:       "github-pr-515",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.pull_request",
+		Attributes: map[string]string{
+			"author":      "alice",
+			"owner":       "writer",
+			"pull_number": "515",
+			"repository":  "writer/cerebro",
+			"state":       "open",
+		},
+	}}}, nil
+}
+
+type orchestratorNoopRule struct{}
+
+func (orchestratorNoopRule) Spec() *cerebrov1.RuleSpec {
+	return &cerebrov1.RuleSpec{Id: "noop-rule", Name: "Noop rule"}
+}
+
+func (orchestratorNoopRule) SupportsRuntime(*cerebrov1.SourceRuntime) bool {
+	return true
+}
+
+func (orchestratorNoopRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	return nil, nil
+}
+
+type orchestratorEventLog struct {
+	events []*cerebrov1.EventEnvelope
+}
+
+func (l *orchestratorEventLog) Ping(context.Context) error {
+	return nil
+}
+
+func (l *orchestratorEventLog) Append(_ context.Context, event *cerebrov1.EventEnvelope) error {
+	l.events = append(l.events, event)
+	return nil
+}
+
+func (l *orchestratorEventLog) Replay(context.Context, ports.ReplayRequest) ([]*cerebrov1.EventEnvelope, error) {
+	return nil, nil
+}
+
+type orchestratorFindingStore struct{}
+
+func (s *orchestratorFindingStore) Ping(context.Context) error { return nil }
+
+func (s *orchestratorFindingStore) UpsertFinding(_ context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
+	return finding, nil
+}
+
+func (s *orchestratorFindingStore) GetFinding(context.Context, string) (*ports.FindingRecord, error) {
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *orchestratorFindingStore) ListFindings(context.Context, ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
+	return nil, nil
+}
+
+func (s *orchestratorFindingStore) UpdateFindingStatus(context.Context, ports.FindingStatusUpdate) (*ports.FindingRecord, error) {
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *orchestratorFindingStore) UpdateFindingAssignee(context.Context, ports.FindingAssigneeUpdate) (*ports.FindingRecord, error) {
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *orchestratorFindingStore) UpdateFindingDueDate(context.Context, ports.FindingDueDateUpdate) (*ports.FindingRecord, error) {
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *orchestratorFindingStore) AddFindingNote(context.Context, ports.FindingNoteCreate) (*ports.FindingRecord, error) {
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *orchestratorFindingStore) LinkFindingTicket(context.Context, ports.FindingTicketLink) (*ports.FindingRecord, error) {
+	return nil, ports.ErrFindingNotFound
+}
+
+func (s *orchestratorFindingStore) PutFindingEvaluationRun(context.Context, *cerebrov1.FindingEvaluationRun) error {
+	return nil
+}
+
+func (s *orchestratorFindingStore) GetFindingEvaluationRun(context.Context, string) (*cerebrov1.FindingEvaluationRun, error) {
+	return nil, ports.ErrFindingEvaluationRunNotFound
+}
+
+func (s *orchestratorFindingStore) ListFindingEvaluationRuns(context.Context, ports.ListFindingEvaluationRunsRequest) ([]*cerebrov1.FindingEvaluationRun, error) {
+	return nil, nil
+}
+
+func (s *orchestratorFindingStore) PutFindingEvidence(context.Context, *cerebrov1.FindingEvidence) error {
+	return nil
+}
+
+func (s *orchestratorFindingStore) GetFindingEvidence(context.Context, string) (*cerebrov1.FindingEvidence, error) {
+	return nil, ports.ErrFindingEvidenceNotFound
+}
+
+func (s *orchestratorFindingStore) ListFindingEvidence(context.Context, ports.ListFindingEvidenceRequest) ([]*cerebrov1.FindingEvidence, error) {
+	return nil, nil
+}
+
+func (s *orchestratorFindingStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
+	return claim, nil
+}
+
+func (s *orchestratorFindingStore) ListClaims(context.Context, ports.ListClaimsRequest) ([]*ports.ClaimRecord, error) {
+	return nil, nil
+}
+
+type failingCompletedIngestGraphStore struct {
+	*graphTestStore
+}
+
+func (s *failingCompletedIngestGraphStore) PutIngestRun(ctx context.Context, run graphstore.IngestRun) error {
+	if run.Status == graphstore.IngestRunStatusCompleted {
+		return errors.New("run completion failed")
+	}
+	return s.graphTestStore.PutIngestRun(ctx, run)
 }

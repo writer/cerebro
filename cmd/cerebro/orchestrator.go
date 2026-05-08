@@ -410,6 +410,7 @@ func runOrchestratorIteration(
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_evaluations", runtimeResult.FindingEvaluations)
 		}
 		graphResult, err := graphService.RunRuntime(runtimeCtx, graphingest.RuntimeRequest{RuntimeID: runtime.GetId(), PageLimit: options.GraphPageLimit, Trigger: "orchestrator"})
+		runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
 		if err != nil {
 			runtimeResult.GraphIngest = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
@@ -417,12 +418,6 @@ func runOrchestratorIteration(
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_error", err.Error())
 		} else {
 			runtimeResult.GraphIngest = "completed"
-			if graphResult.Ingest != nil {
-				runtimeResult.EntitiesProjected = graphResult.Ingest.EntitiesProjected
-				runtimeResult.LinksProjected = graphResult.Ingest.LinksProjected
-				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "entities_projected", runtimeResult.EntitiesProjected)
-				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "links_projected", runtimeResult.LinksProjected)
-			}
 		}
 		cancelRuntime()
 		if err := stopLeaseRenewal(); err != nil {
@@ -452,6 +447,17 @@ func runOrchestratorIteration(
 	spanAttributes = withTelemetryField(spanAttributes, "runtimes_attempted", len(result.Runtimes))
 	spanAttributes = withTelemetryField(spanAttributes, "runtimes_acquired", acquiredCount)
 	return result, runErr
+}
+
+func applyGraphIngestCounters(runtimeResult *orchestratorRuntimeResult, graphResult *graphingest.RunResult, attrs telemetry.Attributes) telemetry.Attributes {
+	if runtimeResult == nil || graphResult == nil || graphResult.Ingest == nil {
+		return attrs
+	}
+	runtimeResult.EntitiesProjected = graphResult.Ingest.EntitiesProjected
+	runtimeResult.LinksProjected = graphResult.Ingest.LinksProjected
+	attrs = withTelemetryField(attrs, "entities_projected", runtimeResult.EntitiesProjected)
+	attrs = withTelemetryField(attrs, "links_projected", runtimeResult.LinksProjected)
+	return attrs
 }
 
 func orchestratorListFilter(filter ports.SourceRuntimeFilter) ports.SourceRuntimeFilter {
