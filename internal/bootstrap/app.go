@@ -995,12 +995,28 @@ func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
 	if filter.TenantID == "" {
 		filter.TenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
 	}
-	if filter.RuntimeID != "" {
-		if err := authorizeSourceRuntimeIDTenant(r.Context(), sourceRuntimeStore(a.deps.StateStore), filter.RuntimeID, true); err != nil {
+	if filter.TenantID == "" && filter.RuntimeID != "" && requiresTenantFilter(r.Context()) {
+		store := sourceRuntimeStore(a.deps.StateStore)
+		if store == nil {
+			writeSourceRuntimeError(w, sourceruntime.ErrRuntimeUnavailable)
+			return
+		}
+		runtime, err := store.GetSourceRuntime(r.Context(), filter.RuntimeID)
+		if errors.Is(err, ports.ErrSourceRuntimeNotFound) {
+			writeSourceRuntimeListJSON(w, http.StatusOK, nil)
+			return
+		}
+		if err != nil {
 			writeSourceRuntimeError(w, err)
 			return
 		}
-	} else if filter.TenantID == "" && requiresTenantFilter(r.Context()) {
+		if err := authorizeTenantID(r.Context(), runtime.GetTenantId()); err != nil {
+			writeSourceRuntimeListJSON(w, http.StatusOK, nil)
+			return
+		}
+		filter.TenantID = strings.TrimSpace(runtime.GetTenantId())
+	}
+	if filter.TenantID == "" && requiresTenantFilter(r.Context()) {
 		writeSourceRuntimeError(w, errTenantForbidden)
 		return
 	}

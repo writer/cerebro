@@ -1702,9 +1702,45 @@ func TestListSourceRuntimesAuthorizesRuntimeIDWithAllowedTenantAuth(t *testing.T
 	if err != nil {
 		t.Fatalf("GET /source-runtimes with forbidden runtime_id error = %v", err)
 	}
-	_ = forbiddenResp.Body.Close()
-	if forbiddenResp.StatusCode != http.StatusForbidden {
-		t.Fatalf("GET /source-runtimes with forbidden runtime_id status = %d, want %d", forbiddenResp.StatusCode, http.StatusForbidden)
+	defer func() {
+		if closeErr := forbiddenResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close forbidden response body: %v", closeErr)
+		}
+	}()
+	if forbiddenResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with forbidden runtime_id status = %d, want %d", forbiddenResp.StatusCode, http.StatusOK)
+	}
+	var forbiddenPayload map[string][]map[string]any
+	if err := json.NewDecoder(forbiddenResp.Body).Decode(&forbiddenPayload); err != nil {
+		t.Fatalf("decode forbidden source runtime list: %v", err)
+	}
+	if got := len(forbiddenPayload["runtimes"]); got != 0 {
+		t.Fatalf("forbidden runtime count = %d, want 0", got)
+	}
+
+	missingReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=missing-runtime", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with missing runtime_id: %v", err)
+	}
+	missingReq.Header.Set("Authorization", "Bearer allowed-key")
+	missingResp, err := server.Client().Do(missingReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with missing runtime_id error = %v", err)
+	}
+	defer func() {
+		if closeErr := missingResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close missing response body: %v", closeErr)
+		}
+	}()
+	if missingResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with missing runtime_id status = %d, want %d", missingResp.StatusCode, http.StatusOK)
+	}
+	var missingPayload map[string][]map[string]any
+	if err := json.NewDecoder(missingResp.Body).Decode(&missingPayload); err != nil {
+		t.Fatalf("decode missing source runtime list: %v", err)
+	}
+	if got := len(missingPayload["runtimes"]); got != 0 {
+		t.Fatalf("missing runtime count = %d, want 0", got)
 	}
 }
 
