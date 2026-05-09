@@ -1,0 +1,11 @@
+id: sentinelone
+name: SentinelOne
+description: SentinelOne EDR threat, agent, application, activity, site, group, and exclusion source.
+emitted_kinds:
+  - sentinelone.activity
+  - sentinelone.agent
+  - sentinelone.application_inventory
+  - sentinelone.exclusion
+  - sentinelone.group
+  - sentinelone.site
+  - sentinelone.threat

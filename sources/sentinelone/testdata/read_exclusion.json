@@ -1,0 +1,33 @@
+[
+  {
+    "id": "sentinelone-exclusion-sentinelone.example.test-exclusion-fixture-1",
+    "tenant_id": "sentinelone.example.test",
+    "source_id": "sentinelone",
+    "kind": "sentinelone.exclusion",
+    "occurred_at": "2026-04-22T00:00:00Z",
+    "schema_ref": "sentinelone/exclusion/v1",
+    "payload": {
+      "id": "exclusion-fixture-1",
+      "tenant_host": "sentinelone.example.test",
+      "type": "path",
+      "mode": "suppress_alerts",
+      "os_type": "macos",
+      "scope": "site",
+      "scope_name": "Production",
+      "value": "/Applications/Approved.app",
+      "raw": {}
+    },
+    "attributes": {
+      "exclusion_id": "exclusion-fixture-1",
+      "exclusion_type": "path",
+      "family": "exclusion",
+      "mode": "suppress_alerts",
+      "not_recommended": "false",
+      "os_type": "macos",
+      "scope": "site",
+      "scope_name": "Production",
+      "tenant_host": "sentinelone.example.test",
+      "value": "/Applications/Approved.app"
+    }
+  }
+]

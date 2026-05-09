@@ -1,0 +1,30 @@
+[
+  {
+    "id": "sentinelone-group-sentinelone.example.test-group-fixture-1",
+    "tenant_id": "sentinelone.example.test",
+    "source_id": "sentinelone",
+    "kind": "sentinelone.group",
+    "occurred_at": "2026-04-22T00:00:00Z",
+    "schema_ref": "sentinelone/group/v1",
+    "payload": {
+      "id": "group-fixture-1",
+      "tenant_host": "sentinelone.example.test",
+      "name": "Default Group",
+      "type": "static",
+      "is_default": true,
+      "site_id": "site-fixture-1",
+      "total_agents": 1,
+      "raw": {}
+    },
+    "attributes": {
+      "family": "group",
+      "group_id": "group-fixture-1",
+      "group_name": "Default Group",
+      "is_default": "true",
+      "site_id": "site-fixture-1",
+      "tenant_host": "sentinelone.example.test",
+      "total_agents": "1",
+      "type": "static"
+    }
+  }
+]
