@@ -67,6 +67,10 @@ paths:
     get:
       summary: List source runtime configurations
       parameters:
+        - name: runtime_id
+          in: query
+          schema:
+            type: string
         - name: tenant_id
           in: query
           schema:

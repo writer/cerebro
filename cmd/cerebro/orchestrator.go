@@ -19,6 +19,7 @@ import (
 	"github.com/writer/cerebro/internal/ports"
 	"github.com/writer/cerebro/internal/sourceregistry"
 	"github.com/writer/cerebro/internal/sourceruntime"
+	"github.com/writer/cerebro/internal/telemetry"
 )
 
 const defaultOrchestratorIterations = 1
@@ -50,18 +51,24 @@ type orchestratorIterationResult struct {
 }
 
 type orchestratorRuntimeResult struct {
-	RuntimeID    string `json:"runtime_id"`
-	SourceID     string `json:"source_id,omitempty"`
-	TenantID     string `json:"tenant_id,omitempty"`
-	Sync         string `json:"sync"`
-	FindingRules string `json:"finding_rules"`
-	GraphIngest  string `json:"graph_ingest"`
-	Error        string `json:"error,omitempty"`
+	RuntimeID          string `json:"runtime_id"`
+	SourceID           string `json:"source_id,omitempty"`
+	TenantID           string `json:"tenant_id,omitempty"`
+	Sync               string `json:"sync"`
+	PagesRead          uint32 `json:"pages_read,omitempty"`
+	EventsAppended     uint32 `json:"events_appended,omitempty"`
+	FindingRules       string `json:"finding_rules"`
+	EventsEvaluated    uint32 `json:"events_evaluated,omitempty"`
+	FindingEvaluations int    `json:"finding_evaluations,omitempty"`
+	GraphIngest        string `json:"graph_ingest"`
+	EntitiesProjected  uint32 `json:"entities_projected,omitempty"`
+	LinksProjected     uint32 `json:"links_projected,omitempty"`
+	Error              string `json:"error,omitempty"`
 }
 
 func runOrchestrator(args []string) error {
 	if len(args) == 0 || args[0] != "run" {
-		return usageError(fmt.Sprintf("usage: %s orchestrator run [tenant_id=<tenant-id>] [source_id=<source-id>] [limit=N] [page_limit=N] [event_limit=N] [graph_page_limit=N] [interval=30s] [iterations=N|forever]", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s orchestrator run [runtime_id=<runtime-id>] [tenant_id=<tenant-id>] [source_id=<source-id>] [limit=N] [page_limit=N] [event_limit=N] [graph_page_limit=N] [interval=30s] [iterations=N|forever]", os.Args[0]))
 	}
 	options, err := parseOrchestratorOptions(args[1:])
 	if err != nil {
@@ -95,6 +102,8 @@ func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
 			return orchestratorOptions{}, fmt.Errorf("invalid orchestrator argument %q; want key=value", arg)
 		}
 		switch key {
+		case "runtime_id":
+			options.Filter.RuntimeID = strings.TrimSpace(value)
 		case "tenant_id":
 			options.Filter.TenantID = strings.TrimSpace(value)
 		case "source_id":
@@ -160,7 +169,27 @@ func parseOrchestratorOptions(args []string) (orchestratorOptions, error) {
 	return options, nil
 }
 
-func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orchestratorResult, error) {
+func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (result *orchestratorResult, err error) {
+	ctx, span := telemetry.Start(ctx, "orchestrator.run", telemetry.Attrs(
+		telemetryField("runtime_id", options.Filter.RuntimeID),
+		telemetryField("tenant_id", options.Filter.TenantID),
+		telemetryField("source_id", options.Filter.SourceID),
+		telemetryField("limit", options.Filter.Limit),
+		telemetryField("page_limit", options.PageLimit),
+		telemetryField("event_limit", options.EventLimit),
+		telemetryField("graph_page_limit", options.GraphPageLimit),
+		telemetryField("iterations", options.Iterations),
+		telemetryField("run_forever", options.RunForever),
+	))
+	status := "failed"
+	spanAttributes := telemetry.Attrs()
+	defer func() {
+		if err != nil {
+			status = "failed"
+			spanAttributes = withTelemetryField(spanAttributes, "error", err.Error())
+		}
+		telemetry.End(span, status, spanAttributes)
+	}()
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
@@ -207,7 +236,7 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 		sourceProjector(nil, deps.GraphStore),
 		deps.GraphStore,
 	).WithConfigPreparer(config.ResolveSourceRuntimeConfigSecretReferences)
-	result := &orchestratorResult{
+	result = &orchestratorResult{
 		Iterations: options.Iterations,
 		RunForever: options.RunForever,
 		Runs:       []*orchestratorIterationResult{},
@@ -239,10 +268,17 @@ func runOrchestratorLoop(ctx context.Context, options orchestratorOptions) (*orc
 		}
 		select {
 		case <-ctx.Done():
+			spanAttributes = withTelemetryField(spanAttributes, "error", ctx.Err().Error())
 			return result, ctx.Err()
 		case <-ticker.C:
 		}
 	}
+	status = "completed"
+	if runErr != nil {
+		status = "failed"
+		spanAttributes = withTelemetryField(spanAttributes, "error", runErr.Error())
+	}
+	spanAttributes = withTelemetryField(spanAttributes, "iterations_completed", iteration)
 	return result, runErr
 }
 
@@ -264,12 +300,29 @@ func runOrchestratorIteration(
 	options orchestratorOptions,
 	iteration uint32,
 ) (*orchestratorIterationResult, error) {
+	ctx, span := telemetry.Start(ctx, "orchestrator.iteration", telemetry.Attrs(
+		telemetryField("iteration", iteration),
+		telemetryField("runtime_id", options.Filter.RuntimeID),
+		telemetryField("tenant_id", options.Filter.TenantID),
+		telemetryField("source_id", options.Filter.SourceID),
+		telemetryField("limit", options.Filter.Limit),
+	))
+	status := "failed"
+	spanAttributes := telemetry.Attrs()
+	defer func() {
+		telemetry.End(span, status, spanAttributes)
+	}()
 	targetLimit := options.Filter.Limit
 	runtimes, err := lister.ListSourceRuntimes(ctx, orchestratorListFilter(options.Filter))
 	result := &orchestratorIterationResult{Iteration: iteration, StartedAt: time.Now().UTC()}
 	if err != nil {
+		spanAttributes = withTelemetryField(spanAttributes, "error", err.Error())
 		return result, err
 	}
+	telemetry.Event(ctx, "orchestrator.runtimes_listed", telemetry.Attrs(
+		telemetryField("iteration", iteration),
+		telemetryField("runtime_count", len(runtimes)),
+	))
 	var runErr error
 	var acquiredCount uint32
 	for _, runtime := range runtimes {
@@ -278,9 +331,18 @@ func runOrchestratorIteration(
 		}
 		select {
 		case <-ctx.Done():
+			spanAttributes = withTelemetryField(spanAttributes, "error", ctx.Err().Error())
 			return result, ctx.Err()
 		default:
 		}
+		runtimeCtx, runtimeSpan := telemetry.Start(ctx, "orchestrator.runtime", telemetry.Attrs(
+			telemetryField("iteration", iteration),
+			telemetryField("runtime_id", runtime.GetId()),
+			telemetryField("source_id", runtime.GetSourceId()),
+			telemetryField("tenant_id", runtime.GetTenantId()),
+		))
+		runtimeStatus := "failed"
+		runtimeSpanAttrs := telemetry.Attrs()
 		runtimeResult := &orchestratorRuntimeResult{
 			RuntimeID: strings.TrimSpace(runtime.GetId()),
 			SourceID:  strings.TrimSpace(runtime.GetSourceId()),
@@ -292,45 +354,68 @@ func runOrchestratorIteration(
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "lease", err)
 			result.Runtimes = append(result.Runtimes, runtimeResult)
 			runErr = err
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error", err.Error())
+			telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
 			continue
 		}
 		if !acquired {
 			runtimeResult.Sync = "skipped"
 			result.Runtimes = append(result.Runtimes, runtimeResult)
+			runtimeStatus = "skipped"
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "reason", "lease_not_acquired")
+			telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
 			continue
 		}
 		acquiredCount++
-		runtimeCtx, cancelRuntime := context.WithCancel(ctx)
+		runtimeCtx, cancelRuntime := context.WithCancel(runtimeCtx)
 		stopLeaseRenewal := startOrchestratorRuntimeLeaseRenewal(ctx, leaser, runtime, leaseOwner, cancelRuntime)
-		if _, err := runtimeService.Sync(runtimeCtx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit}); err != nil {
+		syncResult, err := runtimeService.Sync(runtimeCtx, &cerebrov1.SyncSourceRuntimeRequest{Id: runtime.GetId(), PageLimit: options.PageLimit})
+		if err != nil {
 			runtimeResult.Sync = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "sync", err)
 			runErr = err
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error", err.Error())
 			cancelRuntime()
 			if renewalErr := stopLeaseRenewal(); renewalErr != nil {
 				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "renew_lease", renewalErr)
 				runErr = renewalErr
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "renew_lease_error", renewalErr.Error())
 			}
 			if releaseErr := releaseOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner); releaseErr != nil {
 				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "release_lease", releaseErr)
 				runErr = releaseErr
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "release_lease_error", releaseErr.Error())
 			}
 			result.Runtimes = append(result.Runtimes, runtimeResult)
+			telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
 			continue
 		} else {
 			runtimeResult.Sync = "completed"
+			runtimeResult.PagesRead = syncResult.GetPagesRead()
+			runtimeResult.EventsAppended = syncResult.GetEventsAppended()
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "pages_read", runtimeResult.PagesRead)
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_appended", runtimeResult.EventsAppended)
 		}
-		if _, err := findingService.EvaluateSourceRuntimeRules(runtimeCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit}); err != nil {
+		findingResult, err := findingService.EvaluateSourceRuntimeRules(runtimeCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit})
+		if err != nil {
 			runtimeResult.FindingRules = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "finding_rules", err)
 			runErr = err
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_error", err.Error())
 		} else {
 			runtimeResult.FindingRules = "completed"
+			runtimeResult.EventsEvaluated = findingResult.EventsEvaluated
+			runtimeResult.FindingEvaluations = len(findingResult.Evaluations)
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "events_evaluated", runtimeResult.EventsEvaluated)
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_evaluations", runtimeResult.FindingEvaluations)
 		}
-		if _, err := graphService.RunRuntime(runtimeCtx, graphingest.RuntimeRequest{RuntimeID: runtime.GetId(), PageLimit: options.GraphPageLimit, Trigger: "orchestrator"}); err != nil {
+		graphResult, err := graphService.RunRuntime(runtimeCtx, graphingest.RuntimeRequest{RuntimeID: runtime.GetId(), PageLimit: options.GraphPageLimit, Trigger: "orchestrator"})
+		runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
+		if err != nil {
 			runtimeResult.GraphIngest = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
 			runErr = err
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_error", err.Error())
 		} else {
 			runtimeResult.GraphIngest = "completed"
 		}
@@ -338,14 +423,41 @@ func runOrchestratorIteration(
 		if err := stopLeaseRenewal(); err != nil {
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "renew_lease", err)
 			runErr = err
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "renew_lease_error", err.Error())
 		}
 		if err := releaseOrchestratorRuntimeLease(ctx, leaser, runtime, leaseOwner); err != nil {
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "release_lease", err)
 			runErr = err
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "release_lease_error", err.Error())
 		}
 		result.Runtimes = append(result.Runtimes, runtimeResult)
+		if runtimeResult.Error == "" {
+			runtimeStatus = "completed"
+		}
+		if runtimeResult.Error != "" {
+			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "error", runtimeResult.Error)
+		}
+		telemetry.End(runtimeSpan, runtimeStatus, runtimeSpanAttrs)
 	}
+	status = "completed"
+	if runErr != nil {
+		status = "failed"
+		spanAttributes = withTelemetryField(spanAttributes, "error", runErr.Error())
+	}
+	spanAttributes = withTelemetryField(spanAttributes, "runtimes_attempted", len(result.Runtimes))
+	spanAttributes = withTelemetryField(spanAttributes, "runtimes_acquired", acquiredCount)
 	return result, runErr
+}
+
+func applyGraphIngestCounters(runtimeResult *orchestratorRuntimeResult, graphResult *graphingest.RunResult, attrs telemetry.Attributes) telemetry.Attributes {
+	if runtimeResult == nil || graphResult == nil || graphResult.Ingest == nil {
+		return attrs
+	}
+	runtimeResult.EntitiesProjected = graphResult.Ingest.EntitiesProjected
+	runtimeResult.LinksProjected = graphResult.Ingest.LinksProjected
+	attrs = withTelemetryField(attrs, "entities_projected", runtimeResult.EntitiesProjected)
+	attrs = withTelemetryField(attrs, "links_projected", runtimeResult.LinksProjected)
+	return attrs
 }
 
 func orchestratorListFilter(filter ports.SourceRuntimeFilter) ports.SourceRuntimeFilter {
@@ -441,6 +553,14 @@ func appendRuntimeError(existing string, stage string, err error) string {
 		return message
 	}
 	return existing + "; " + message
+}
+
+func telemetryField(key string, value any) telemetry.Field {
+	return telemetry.Field{Key: key, Value: value}
+}
+
+func withTelemetryField(attributes telemetry.Attributes, key string, value any) telemetry.Attributes {
+	return attributes.WithField(telemetryField(key, value))
 }
 
 func findingStore(store ports.StateStore) ports.FindingStore {

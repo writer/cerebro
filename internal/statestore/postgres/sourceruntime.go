@@ -89,6 +89,10 @@ func (s *Store) ListSourceRuntimes(ctx context.Context, filter ports.SourceRunti
 	}
 	clauses := []string{"1=1"}
 	args := []any{}
+	if runtimeID := strings.TrimSpace(filter.RuntimeID); runtimeID != "" {
+		args = append(args, runtimeID)
+		clauses = append(clauses, fmt.Sprintf("id = $%d", len(args)))
+	}
 	if tenantID := strings.TrimSpace(filter.TenantID); tenantID != "" {
 		args = append(args, tenantID)
 		clauses = append(clauses, fmt.Sprintf("runtime_json->>'tenant_id' = $%d", len(args)))

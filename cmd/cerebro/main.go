@@ -389,6 +389,8 @@ func parseSourceRuntimeListArgs(args []string) (ports.SourceRuntimeFilter, error
 			return ports.SourceRuntimeFilter{}, fmt.Errorf("invalid source runtime list argument %q; want key=value", arg)
 		}
 		switch key {
+		case "runtime_id":
+			filter.RuntimeID = strings.TrimSpace(value)
 		case "tenant_id":
 			filter.TenantID = strings.TrimSpace(value)
 		case "source_id":

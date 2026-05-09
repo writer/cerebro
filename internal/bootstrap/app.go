@@ -982,9 +982,10 @@ func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter := ports.SourceRuntimeFilter{
-		TenantID: strings.TrimSpace(r.URL.Query().Get("tenant_id")),
-		SourceID: strings.TrimSpace(r.URL.Query().Get("source_id")),
-		Limit:    limit,
+		RuntimeID: strings.TrimSpace(r.URL.Query().Get("runtime_id")),
+		TenantID:  strings.TrimSpace(r.URL.Query().Get("tenant_id")),
+		SourceID:  strings.TrimSpace(r.URL.Query().Get("source_id")),
+		Limit:     limit,
 	}
 	if filter.TenantID == "" {
 		if auth, ok := r.Context().Value(authContextKey{}).(authContext); ok && strings.TrimSpace(auth.principal.TenantID) != "" {
@@ -994,7 +995,28 @@ func (a *App) handleListSourceRuntimes(w http.ResponseWriter, r *http.Request) {
 	if filter.TenantID == "" {
 		filter.TenantID = strings.TrimSpace(r.Header.Get("X-Cerebro-Tenant"))
 	}
-	if filter.TenantID == "" && requiresTenantFilter(r.Context()) {
+	if filter.TenantID == "" && filter.RuntimeID != "" && requiresTenantFilter(r.Context()) {
+		store := sourceRuntimeStore(a.deps.StateStore)
+		if store == nil {
+			writeSourceRuntimeError(w, sourceruntime.ErrRuntimeUnavailable)
+			return
+		}
+		runtime, err := store.GetSourceRuntime(r.Context(), filter.RuntimeID)
+		if errors.Is(err, ports.ErrSourceRuntimeNotFound) {
+			writeSourceRuntimeListJSON(w, http.StatusOK, nil)
+			return
+		}
+		if err != nil {
+			writeSourceRuntimeError(w, err)
+			return
+		}
+		if err := authorizeTenantID(r.Context(), runtime.GetTenantId()); err != nil {
+			writeSourceRuntimeListJSON(w, http.StatusOK, nil)
+			return
+		}
+		filter.TenantID = strings.TrimSpace(runtime.GetTenantId())
+	}
+	if filter.TenantID == "" && filter.RuntimeID == "" && requiresTenantFilter(r.Context()) {
 		writeSourceRuntimeError(w, errTenantForbidden)
 		return
 	}

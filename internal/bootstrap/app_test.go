@@ -597,6 +597,9 @@ func (s *stubRuntimeStore) ListSourceRuntimes(_ context.Context, filter ports.So
 	var runtimes []*cerebrov1.SourceRuntime
 	for _, id := range ids {
 		runtime := s.runtimes[id]
+		if filter.RuntimeID != "" && runtime.GetId() != filter.RuntimeID {
+			continue
+		}
 		if filter.TenantID != "" && runtime.GetTenantId() != filter.TenantID {
 			continue
 		}
@@ -1596,6 +1599,7 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 		runtimes: map[string]*cerebrov1.SourceRuntime{
 			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
 			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+			"blank-runtime":  {Id: "blank-runtime", SourceId: "github"},
 		},
 	}
 	app := New(cfg, Dependencies{StateStore: store}, nil)
@@ -1639,6 +1643,134 @@ func TestListSourceRuntimesRequiresTenantFilterWithAllowedTenantAuth(t *testing.
 	}
 	if got := len(payload["runtimes"]); got != 1 {
 		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+}
+
+func TestListSourceRuntimesAuthorizesRuntimeIDWithAllowedTenantAuth(t *testing.T) {
+	cfg := config.Config{
+		HTTPAddr:        "127.0.0.1:0",
+		ShutdownTimeout: time.Second,
+		Auth: config.AuthConfig{
+			Enabled:        true,
+			APIKeys:        []config.APIKey{{Key: "allowed-key"}},
+			AllowedTenants: []string{"writer"},
+		},
+	}
+	store := &stubRuntimeStore{
+		runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-runtime": {Id: "writer-runtime", SourceId: "github", TenantId: "writer"},
+			"other-runtime":  {Id: "other-runtime", SourceId: "github", TenantId: "other"},
+			"blank-runtime":  {Id: "blank-runtime", SourceId: "github"},
+		},
+	}
+	app := New(cfg, Dependencies{StateStore: store}, nil)
+	server := httptest.NewServer(app.Handler())
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=writer-runtime", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with runtime_id: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer allowed-key")
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with runtime_id error = %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Fatalf("close response body: %v", closeErr)
+		}
+	}()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with runtime_id status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var payload map[string][]map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode source runtime list: %v", err)
+	}
+	if got := len(payload["runtimes"]); got != 1 {
+		t.Fatalf("listed runtime count = %d, want 1", got)
+	}
+	if got := payload["runtimes"][0]["id"]; got != "writer-runtime" {
+		t.Fatalf("listed runtime id = %v, want writer-runtime", got)
+	}
+
+	blankReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=blank-runtime", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with blank runtime_id: %v", err)
+	}
+	blankReq.Header.Set("Authorization", "Bearer allowed-key")
+	blankResp, err := server.Client().Do(blankReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with blank runtime_id error = %v", err)
+	}
+	defer func() {
+		if closeErr := blankResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close blank response body: %v", closeErr)
+		}
+	}()
+	if blankResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with blank runtime_id status = %d, want %d", blankResp.StatusCode, http.StatusOK)
+	}
+	var blankPayload map[string][]map[string]any
+	if err := json.NewDecoder(blankResp.Body).Decode(&blankPayload); err != nil {
+		t.Fatalf("decode blank source runtime list: %v", err)
+	}
+	if got := len(blankPayload["runtimes"]); got != 1 {
+		t.Fatalf("blank runtime count = %d, want 1", got)
+	}
+	if got := blankPayload["runtimes"][0]["id"]; got != "blank-runtime" {
+		t.Fatalf("blank runtime id = %v, want blank-runtime", got)
+	}
+
+	forbiddenReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=other-runtime", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with forbidden runtime_id: %v", err)
+	}
+	forbiddenReq.Header.Set("Authorization", "Bearer allowed-key")
+	forbiddenResp, err := server.Client().Do(forbiddenReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with forbidden runtime_id error = %v", err)
+	}
+	defer func() {
+		if closeErr := forbiddenResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close forbidden response body: %v", closeErr)
+		}
+	}()
+	if forbiddenResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with forbidden runtime_id status = %d, want %d", forbiddenResp.StatusCode, http.StatusOK)
+	}
+	var forbiddenPayload map[string][]map[string]any
+	if err := json.NewDecoder(forbiddenResp.Body).Decode(&forbiddenPayload); err != nil {
+		t.Fatalf("decode forbidden source runtime list: %v", err)
+	}
+	if got := len(forbiddenPayload["runtimes"]); got != 0 {
+		t.Fatalf("forbidden runtime count = %d, want 0", got)
+	}
+
+	missingReq, err := http.NewRequest(http.MethodGet, server.URL+"/source-runtimes?runtime_id=missing-runtime", nil)
+	if err != nil {
+		t.Fatalf("NewRequest with missing runtime_id: %v", err)
+	}
+	missingReq.Header.Set("Authorization", "Bearer allowed-key")
+	missingResp, err := server.Client().Do(missingReq)
+	if err != nil {
+		t.Fatalf("GET /source-runtimes with missing runtime_id error = %v", err)
+	}
+	defer func() {
+		if closeErr := missingResp.Body.Close(); closeErr != nil {
+			t.Fatalf("close missing response body: %v", closeErr)
+		}
+	}()
+	if missingResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /source-runtimes with missing runtime_id status = %d, want %d", missingResp.StatusCode, http.StatusOK)
+	}
+	var missingPayload map[string][]map[string]any
+	if err := json.NewDecoder(missingResp.Body).Decode(&missingPayload); err != nil {
+		t.Fatalf("decode missing source runtime list: %v", err)
+	}
+	if got := len(missingPayload["runtimes"]); got != 0 {
+		t.Fatalf("missing runtime count = %d, want 0", got)
 	}
 }
 
