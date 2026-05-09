@@ -340,6 +340,36 @@ func TestEvaluateSourceRuntimeRulesExcludesGraphRules(t *testing.T) {
 	}
 }
 
+// ListRules powers `GET /finding-rules` and the rule selection UI. Because all public
+// evaluation endpoints reject graph rules, advertising them in the catalog would surface
+// rule ids that no client can run. Graph rules execute exclusively from the orchestrator
+// hook and must be hidden from the public list.
+func TestListRulesHidesGraphRulesFromCatalog(t *testing.T) {
+	store := &stubFindingStore{}
+	eventRule := &stubRule{spec: &cerebrov1.RuleSpec{Id: "event-only-rule"}}
+	graphRule := &stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "graph-only-rule"}, sourceID: "okta"}
+	registry, err := NewRegistry(eventRule, graphRule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(&stubRuntimeStore{}, &stubReplayer{}, store, store, store, store, registry)
+	listed := service.ListRules().GetRules()
+	for _, spec := range listed {
+		if spec.GetId() == "graph-only-rule" {
+			t.Fatalf("ListRules() advertised graph-only-rule via public catalog; clients have no way to execute it")
+		}
+	}
+	var foundEvent bool
+	for _, spec := range listed {
+		if spec.GetId() == "event-only-rule" {
+			foundEvent = true
+		}
+	}
+	if !foundEvent {
+		t.Fatalf("ListRules() dropped event-only-rule along with graph rules; got %v", listed)
+	}
+}
+
 // When the caller asks for a graph rule by ID through the replay endpoint we must reject
 // rather than create a useless empty evaluation run.
 func TestEvaluateSourceRuntimeRulesRejectsExplicitGraphRuleID(t *testing.T) {

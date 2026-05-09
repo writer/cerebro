@@ -86,6 +86,30 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintIsStableAcrossRuns(t *testi
 	}
 }
 
+// The persisted runtime_id on graph-rule findings must be a stable synthetic value, not
+// the runtime that happened to trigger this evaluation, because the same fingerprint can
+// be emitted by either an okta or a github runtime and UpsertFinding would otherwise flip
+// the row between them every iteration.
+func TestDeprovisionedOktaActiveGitHubRuleFindingPinsRuntimeID(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	group := &deprovisionedOktaGroup{
+		oktaUserURN:   "urn:cerebro:writer:okta.user:alice@writer.com",
+		identityURN:   "urn:cerebro:writer:identity:email:alice@writer.com",
+		githubUserURN: "urn:cerebro:writer:github.user:alice",
+	}
+	oktaTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "writer-okta-inventory", SourceId: "okta", TenantId: "writer"}, "writer", group, deprovisionedOktaRuleFixedNow())
+	githubTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}, "writer", group, deprovisionedOktaRuleFixedNow())
+	if got := oktaTriggered.RuntimeID; !strings.HasPrefix(got, GraphRuleRuntimePrefix) {
+		t.Fatalf("RuntimeID = %q, want prefix %q (synthetic graph-rule runtime keeps the row stable across triggering runtimes)", got, GraphRuleRuntimePrefix)
+	}
+	if oktaTriggered.RuntimeID != githubTriggered.RuntimeID {
+		t.Fatalf("RuntimeID flipped across triggering runtimes (okta=%q github=%q); UpsertFinding would rebind the row each iteration", oktaTriggered.RuntimeID, githubTriggered.RuntimeID)
+	}
+	if got := oktaTriggered.Attributes["source_runtime_id"]; got != "writer-okta-inventory" {
+		t.Fatalf("attributes[source_runtime_id] = %q, want triggering runtime preserved for telemetry", got)
+	}
+}
+
 // Two okta runtimes (e.g. inventory + audit) project to the same okta.user node by
 // (tenant_id, user_id), so the same offender must collapse onto one tenant-scoped finding.
 // Including runtime_id in the fingerprint would split this into duplicates the moment a

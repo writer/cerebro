@@ -218,7 +218,7 @@ type deprovisionedOktaTarget struct {
 }
 
 func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.SourceRuntime, tenantID string, group *deprovisionedOktaGroup, now time.Time) *ports.FindingRecord {
-	runtimeID := strings.TrimSpace(runtime.GetId())
+	triggeringRuntimeID := strings.TrimSpace(runtime.GetId())
 	// The fingerprint deliberately omits runtime_id. The graph projects okta.user nodes by
 	// (tenant_id, user_id), so two okta runtimes touching the same user share one node and
 	// would produce the same fingerprint anyway; tracking runtime_id here would split a
@@ -230,6 +230,13 @@ func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.Sour
 		group.identityURN,
 		group.githubUserURN,
 	)
+	// The persisted runtime_id is a stable synthetic id per (tenant, rule), not the runtime
+	// that happened to trigger this evaluation. The rule's identity is tenant-scoped, so
+	// stamping the triggering runtime would cause UpsertFinding to flip the row between okta
+	// and github runtimes every iteration and make per-runtime list paths swap the finding
+	// in and out under each side. The triggering runtime is preserved in attributes for
+	// telemetry only.
+	persistedRuntimeID := graphRuleRuntimeID(r.definition.ID)
 	resourceURNs := []string{group.identityURN, group.oktaUserURN, group.githubUserURN}
 	targetURNs := make([]string, 0, len(group.targets))
 	targetLabels := make([]string, 0, len(group.targets))
@@ -266,7 +273,7 @@ func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.Sour
 		"target_urns":           strings.Join(targetURNs, ","),
 		"target_labels":         strings.Join(targetLabels, ","),
 		"target_entity_types":   strings.Join(sortedKeys(targetTypes), ","),
-		"source_runtime_id":     runtimeID,
+		"source_runtime_id":     triggeringRuntimeID,
 		"source_runtime_tenant": tenantID,
 	}
 	for key, value := range r.definition.AttributeMap() {
@@ -277,7 +284,7 @@ func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.Sour
 		ID:              fingerprint,
 		Fingerprint:     fingerprint,
 		TenantID:        tenantID,
-		RuntimeID:       runtimeID,
+		RuntimeID:       persistedRuntimeID,
 		RuleID:          r.definition.ID,
 		Title:           r.definition.Name,
 		Severity:        r.definition.Severity,

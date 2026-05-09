@@ -215,13 +215,28 @@ func (s *Service) WithAppendLog(appendLog ports.AppendLog) *Service {
 	return s
 }
 
-// ListRules returns the discoverable registered finding rule catalog.
+// ListRules returns the discoverable registered finding rule catalog. Graph rules are hidden
+// from the public catalog: every public evaluation handler (`EvaluateSourceRuntimeRules`,
+// `EvaluateSourceRuntime`) rejects them, so advertising their ids would let clients discover
+// rules they cannot run. Graph rules execute exclusively from the orchestrator hook.
 func (s *Service) ListRules() *cerebrov1.ListFindingRulesResponse {
 	if s == nil || s.rules == nil {
 		return &cerebrov1.ListFindingRulesResponse{}
 	}
+	specs := s.rules.List()
+	publicSpecs := make([]*cerebrov1.RuleSpec, 0, len(specs))
+	for _, spec := range specs {
+		rule, ok := s.rules.Get(spec.GetId())
+		if !ok {
+			continue
+		}
+		if _, isGraph := asGraphRule(rule); isGraph {
+			continue
+		}
+		publicSpecs = append(publicSpecs, spec)
+	}
 	return &cerebrov1.ListFindingRulesResponse{
-		Rules: s.rules.List(),
+		Rules: publicSpecs,
 	}
 }
 
