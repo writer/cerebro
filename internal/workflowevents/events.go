@@ -30,9 +30,13 @@ const (
 	EventAttributeOutcomeID    = "outcome_id"
 	EventAttributeFindingID    = "finding_id"
 	EventAttributeSourceEvent  = "source_event_id"
+	EventAttributeStatusSource = "status_source"
 )
 
-const FindingStatusReasonNoLongerEmitted = "No longer emitted by latest rule evaluation."
+const (
+	FindingStatusReasonNoLongerEmitted = "No longer emitted by latest rule evaluation."
+	FindingStatusSourceStaleEvaluation = "stale_rule_evaluation"
+)
 
 const (
 	SchemaKnowledgeDecisionRecorded = "urn:cerebro:events/workflow.knowledge.decision_recorded/v1"
@@ -65,9 +69,9 @@ type DecisionRecorded struct {
 }
 
 // FindingStatusPrunesGraph reports whether one status transition should remove ephemeral finding graph anchors.
-func FindingStatusPrunesGraph(status string, reason string) bool {
+func FindingStatusPrunesGraph(status string, source string) bool {
 	return strings.EqualFold(strings.TrimSpace(status), "resolved") &&
-		strings.EqualFold(strings.TrimSpace(reason), FindingStatusReasonNoLongerEmitted)
+		strings.EqualFold(strings.TrimSpace(source), FindingStatusSourceStaleEvaluation)
 }
 
 // ActionRecorded captures one durable workflow action event payload.
@@ -171,6 +175,7 @@ type FindingStatusChanged struct {
 	Finding     FindingSnapshot `json:"finding"`
 	Status      string          `json:"status"`
 	Reason      string          `json:"reason,omitempty"`
+	Source      string          `json:"source,omitempty"`
 	UpdatedAt   string          `json:"updated_at"`
 	DecisionID  string          `json:"decision_id,omitempty"`
 	OutcomeID   string          `json:"outcome_id,omitempty"`
@@ -237,6 +242,7 @@ func NewFindingStatusChangedEvent(payload FindingStatusChanged) (*cerebrov1.Even
 		EventAttributeFindingID:    payload.Finding.FindingID,
 		EventAttributeDecisionID:   payload.DecisionID,
 		EventAttributeOutcomeID:    payload.OutcomeID,
+		EventAttributeStatusSource: payload.Source,
 	})
 }
 

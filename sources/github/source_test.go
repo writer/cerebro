@@ -335,6 +335,30 @@ func TestAuditScopeKeepsOwnerBackedEntriesAtOrganizationScope(t *testing.T) {
 	}
 }
 
+func TestAuditAttributesForwardRulesetWeakeningMetadata(t *testing.T) {
+	attributes := auditAttributes(&gogithub.AuditEntry{
+		Action: gogithub.String("repository_ruleset.update"),
+	}, map[string]any{
+		"repo":                          "writer/cerebro",
+		"ruleset_enforcement":           "active",
+		"required_status_check_removed": true,
+		"bypass_actor_added":            true,
+		"changes": map[string]any{
+			"required_status_checks": "removed",
+		},
+	}, settings{owner: "writer"})
+
+	if got := attributes["required_status_check_removed"]; got != "true" {
+		t.Fatalf("required_status_check_removed = %q, want true", got)
+	}
+	if got := attributes["bypass_actor_added"]; got != "true" {
+		t.Fatalf("bypass_actor_added = %q, want true", got)
+	}
+	if got := attributes["changes"]; !strings.Contains(got, "required_status_checks") {
+		t.Fatalf("changes = %q, want encoded ruleset changes", got)
+	}
+}
+
 func TestCheckDiscoverAndReadLiveGitHubDependabotAlertPreview(t *testing.T) {
 	server := httptest.NewServer(newGitHubAPIHandler(t))
 	defer server.Close()

@@ -350,7 +350,7 @@ func (s *Service) projectFindingStatus(ctx context.Context, event *cerebrov1.Eve
 		return ports.ProjectionResult{}, err
 	}
 	result := ports.ProjectionResult{}
-	if workflowevents.FindingStatusPrunesGraph(payload.Finding.Status, payload.Reason) {
+	if workflowevents.FindingStatusPrunesGraph(payload.Finding.Status, payload.Source) {
 		return s.deleteFindingAnchor(ctx, payload.Finding)
 	}
 	if err := s.ensureFindingEntity(ctx, payload.Finding, &result); err != nil {

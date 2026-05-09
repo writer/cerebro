@@ -102,7 +102,7 @@ func (s *Service) projectFindingTicket(ctx context.Context, finding *ports.Findi
 	return s.recordAndProjectWorkflowEvent(ctx, event)
 }
 
-func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *ports.FindingRecord) error {
+func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *ports.FindingRecord, statusSource string) error {
 	if s == nil || s.graph == nil || finding == nil {
 		return nil
 	}
@@ -116,7 +116,7 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 	if status == findingStatusSuppressed {
 		decisionType = "finding-suppression"
 	}
-	pruneGraph := workflowevents.FindingStatusPrunesGraph(status, finding.StatusReason)
+	pruneGraph := workflowevents.FindingStatusPrunesGraph(status, statusSource)
 	decisionID := ""
 	outcomeID := ""
 	if !pruneGraph {
@@ -127,6 +127,7 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 		Finding:     findingWorkflowSnapshot(finding, tenantID, sourceID),
 		Status:      status,
 		Reason:      strings.TrimSpace(finding.StatusReason),
+		Source:      strings.TrimSpace(statusSource),
 		UpdatedAt:   finding.StatusUpdatedAt.UTC().Format(time.RFC3339Nano),
 		DecisionID:  decisionID,
 		OutcomeID:   outcomeID,

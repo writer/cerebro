@@ -63,6 +63,7 @@ func (s *recordingAppendLog) Append(_ context.Context, event *cerebrov1.EventEnv
 type stubFindingStore struct {
 	findings         map[string]*ports.FindingRecord
 	request          ports.ListFindingsRequest
+	listFindingsErr  error
 	claims           map[string]*ports.ClaimRecord
 	claimListRequest ports.ListClaimsRequest
 	runs             map[string]*cerebrov1.FindingEvaluationRun
@@ -102,6 +103,9 @@ func (s *stubFindingStore) GetFinding(_ context.Context, id string) (*ports.Find
 
 func (s *stubFindingStore) ListFindings(_ context.Context, request ports.ListFindingsRequest) ([]*ports.FindingRecord, error) {
 	s.request = request
+	if s.listFindingsErr != nil {
+		return nil, s.listFindingsErr
+	}
 	findings := []*ports.FindingRecord{}
 	for _, finding := range s.findings {
 		if !findingMatches(request, finding) {
@@ -927,6 +931,53 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 	}
 }
 
+func TestEvaluateSourceRuntimeMarksRunFailedWhenStaleCleanupFails(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec:               &cerebrov1.RuleSpec{Id: "routine-oauth-rule", Name: "Routine OAuth Rule"},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "different-event",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{listFindingsErr: errors.New("list stale candidates failed")}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:         "okta-oauth-grant",
+			TenantId:   "writer",
+			SourceId:   "okta",
+			Kind:       "okta.audit",
+			OccurredAt: timestamppb.New(time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	_, err = service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+		RuleID:    "routine-oauth-rule",
+	})
+	if err == nil {
+		t.Fatal("EvaluateSourceRuntime() error = nil, want stale cleanup error")
+	}
+	run, ok := runForRule(store.runs, "routine-oauth-rule")
+	if !ok {
+		t.Fatal("routine-oauth-rule run missing")
+	}
+	if got := run.GetStatus(); got != "failed" {
+		t.Fatalf("run status = %q, want failed", got)
+	}
+	if got := run.GetError(); !strings.Contains(got, "list stale candidates failed") {
+		t.Fatalf("run error = %q, want stale cleanup error", got)
+	}
+}
+
 func TestEvaluateSourceRuntimeFindingsRequiresAvailableDependencies(t *testing.T) {
 	service := New(nil, nil, nil, nil, nil, nil)
 	if _, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{RuntimeID: "writer-okta-audit"}); !errors.Is(err, ErrRuntimeUnavailable) {
@@ -1523,6 +1574,57 @@ func TestEvaluateSourceRuntimeRulesMarksUnfinishedRunsFailedWhenCompletionFails(
 	}
 }
 
+func TestEvaluateSourceRuntimeRulesMarksUnfinishedRunsFailedWhenStaleCleanupFails(t *testing.T) {
+	registry, err := NewRegistry(
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-a", Name: "Rule A"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+		&emittingRule{
+			spec:               &cerebrov1.RuleSpec{Id: "rule-b", Name: "Rule B"},
+			supportedSourceIDs: map[string]struct{}{"okta": {}},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &stubFindingStore{listFindingsErr: errors.New("stale cleanup unavailable")}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:         "okta-audit-1",
+			TenantId:   "writer",
+			SourceId:   "okta",
+			Kind:       "okta.audit",
+			OccurredAt: timestamppb.New(time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	)
+
+	_, err = service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "writer-okta-audit"})
+	if err == nil {
+		t.Fatal("EvaluateSourceRuntimeRules() error = nil, want stale cleanup error")
+	}
+	for _, ruleID := range []string{"rule-a", "rule-b"} {
+		run, ok := runForRule(store.runs, ruleID)
+		if !ok {
+			t.Fatalf("%s run missing", ruleID)
+		}
+		if got := run.GetStatus(); got != "failed" {
+			t.Fatalf("%s run status = %q, want failed", ruleID, got)
+		}
+		if got := run.GetError(); !strings.Contains(got, "stale cleanup unavailable") {
+			t.Fatalf("%s run error = %q, want stale cleanup unavailable", ruleID, got)
+		}
+	}
+}
+
 func TestEvaluateSourceRuntimeRulesPreservesEarlierFailureWhenCompletionCleanupRuns(t *testing.T) {
 	registry, err := NewRegistry(
 		&emittingRule{
@@ -2088,7 +2190,7 @@ func TestResolveFindingBridgesDecisionAndOutcomeWhenGraphConfigured(t *testing.T
 	}
 	appendLog := &recordingAppendLog{}
 	service := New(nil, nil, store, store, store, store).WithGraphStore(graphStore).WithGraphQueryStore(graphStore).WithAppendLog(appendLog)
-	finding, err := service.ResolveFinding(context.Background(), "finding-1", "verified remediation")
+	finding, err := service.ResolveFinding(context.Background(), "finding-1", workflowevents.FindingStatusReasonNoLongerEmitted)
 	if err != nil {
 		t.Fatalf("ResolveFinding() error = %v", err)
 	}

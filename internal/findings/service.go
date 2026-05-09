@@ -309,10 +309,11 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 			}
 		}
 	}
-	if err := s.finishCompletedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings)); err != nil {
-		return nil, err
-	}
 	if err := s.resolveStaleOpenFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), runtimeID, rule.Spec().GetId(), evaluatedEventIDs, emittedFindingIDs); err != nil {
+		evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", result.Rule.GetId(), err)
+		return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
+	}
+	if err := s.finishCompletedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings)); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -436,10 +437,11 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		if state.failed {
 			continue
 		}
-		if err := s.finishCompletedRun(ctx, state.result.Run, state.eventsEvaluated, findingIDs(state.result.Findings)); err != nil {
-			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), err)
-		}
 		if err := s.resolveStaleOpenFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), runtimeID, state.result.Rule.GetId(), evaluatedEventIDs, state.emittedFindingIDs); err != nil {
+			evaluationErr := fmt.Errorf("resolve stale findings for rule %q: %w", state.result.Rule.GetId(), err)
+			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), evaluationErr)
+		}
+		if err := s.finishCompletedRun(ctx, state.result.Run, state.eventsEvaluated, findingIDs(state.result.Findings)); err != nil {
 			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), err)
 		}
 	}
@@ -509,7 +511,7 @@ func (s *Service) resolveStaleOpenFindings(ctx context.Context, tenantID string,
 		if err != nil {
 			return fmt.Errorf("resolve stale finding %q: %w", strings.TrimSpace(finding.ID), err)
 		}
-		if err := s.recordFindingStatusWorkflow(ctx, updated); err != nil {
+		if err := s.recordFindingStatusWorkflow(ctx, updated, workflowevents.FindingStatusSourceStaleEvaluation); err != nil {
 			return fmt.Errorf("project stale finding %q resolution: %w", strings.TrimSpace(finding.ID), err)
 		}
 	}
@@ -842,7 +844,7 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 	if err != nil {
 		return nil, fmt.Errorf("update finding %q status to %q: %w", findingID, status, err)
 	}
-	if err := s.recordFindingStatusWorkflow(ctx, finding); err != nil {
+	if err := s.recordFindingStatusWorkflow(ctx, finding, ""); err != nil {
 		return nil, fmt.Errorf("record finding %q status workflow: %w", findingID, err)
 	}
 	return finding, nil
