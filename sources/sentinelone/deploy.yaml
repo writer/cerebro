@@ -1,0 +1,17 @@
+sourceId: sentinelone
+secretKeys:
+  - SENTINELONE_API_TOKEN
+  - SENTINELONE_BASE_URL
+runtimes:
+  - localId: threat
+    config:
+      base_url: env:SENTINELONE_BASE_URL
+      family: threat
+      per_page: "200"
+      token: env:SENTINELONE_API_TOKEN
+  - localId: agent
+    config:
+      base_url: env:SENTINELONE_BASE_URL
+      family: agent
+      per_page: "200"
+      token: env:SENTINELONE_API_TOKEN

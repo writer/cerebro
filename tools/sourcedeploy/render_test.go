@@ -1,0 +1,190 @@
+package sourcedeploy
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestRenderProjectsSecretsRuntimesAndSchedules(t *testing.T) {
+	t.Parallel()
+	manifests := []Manifest{
+		{
+			SourceID:   "okta",
+			SecretKeys: []string{"OKTA_API_TOKEN", "OKTA_DOMAIN"},
+			Runtimes: []RuntimeManifest{{
+				LocalID: "audit",
+				Config: map[string]string{
+					"domain":   "env:OKTA_DOMAIN",
+					"family":   "audit",
+					"per_page": "200",
+					"since":    "2026-05-01T00:00:00Z",
+					"token":    "env:OKTA_API_TOKEN",
+				},
+			}},
+			Schedules: []ScheduleManifest{{
+				LocalName:          "audit-live",
+				RuntimeLocalID:     "audit",
+				ScheduleExpression: "rate(10 minutes)",
+				TaskCount:          1,
+				Command: []string{
+					"orchestrator", "run",
+					"page_limit=20", "graph_page_limit=100", "event_limit=1000",
+				},
+			}},
+		},
+		{
+			SourceID:   "sentinelone",
+			SecretKeys: []string{"SENTINELONE_API_TOKEN", "SENTINELONE_BASE_URL"},
+			Runtimes: []RuntimeManifest{{
+				LocalID: "threat",
+				Config: map[string]string{
+					"base_url": "env:SENTINELONE_BASE_URL",
+					"family":   "threat",
+					"per_page": "200",
+					"token":    "env:SENTINELONE_API_TOKEN",
+				},
+			}},
+		},
+	}
+
+	frag, err := Render(manifests, RenderOptions{Environment: "sec-dev", TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	wantSecrets := []string{"OKTA_API_TOKEN", "OKTA_DOMAIN", "SENTINELONE_API_TOKEN", "SENTINELONE_BASE_URL"}
+	if !equalStrings(frag.SourceSecretKeys, wantSecrets) {
+		t.Fatalf("secret keys = %v, want %v", frag.SourceSecretKeys, wantSecrets)
+	}
+	if len(frag.SourceRuntimes) != 2 {
+		t.Fatalf("expected 2 rendered runtimes, got %d", len(frag.SourceRuntimes))
+	}
+	if frag.SourceRuntimes[0].ID != "writer-okta-audit" {
+		t.Fatalf("runtime[0].id = %q", frag.SourceRuntimes[0].ID)
+	}
+	if frag.SourceRuntimes[1].ID != "writer-sentinelone-threat" {
+		t.Fatalf("runtime[1].id = %q", frag.SourceRuntimes[1].ID)
+	}
+	if len(frag.OrchestratorSchedules) != 1 {
+		t.Fatalf("expected 1 schedule, got %d", len(frag.OrchestratorSchedules))
+	}
+	got := frag.OrchestratorSchedules[0]
+	if got.Name != "okta-audit-live" {
+		t.Fatalf("schedule.name = %q", got.Name)
+	}
+	wantCmd := []string{
+		"orchestrator", "run", "runtime_id=writer-okta-audit",
+		"page_limit=20", "graph_page_limit=100", "event_limit=1000",
+	}
+	if !equalStrings(got.Command, wantCmd) {
+		t.Fatalf("command = %v, want %v", got.Command, wantCmd)
+	}
+}
+
+func TestRenderAppliesEnvironmentOverlay(t *testing.T) {
+	t.Parallel()
+	manifests := []Manifest{{
+		SourceID: "okta",
+		Runtimes: []RuntimeManifest{{
+			LocalID: "audit",
+			Config:  map[string]string{"family": "audit"},
+		}},
+		Schedules: []ScheduleManifest{{
+			LocalName:          "live",
+			RuntimeLocalID:     "audit",
+			ScheduleExpression: "rate(10 minutes)",
+			Command:            []string{"orchestrator", "run"},
+		}},
+		Environments: map[string]EnvironmentOverrides{
+			"sec-dev": {
+				DisabledSchedules: []string{"live"},
+				ExtraRuntimes: []RuntimeManifest{{
+					LocalID: "audit-2026-04",
+					Config:  map[string]string{"family": "audit", "since": "2026-04-01T00:00:00Z"},
+				}},
+				ExtraSchedules: []ScheduleManifest{{
+					LocalName:          "audit-2026-04",
+					RuntimeLocalID:     "audit-2026-04",
+					ScheduleExpression: "rate(15 minutes)",
+					Command:            []string{"orchestrator", "run"},
+				}},
+				ExtraSecretKeys: []string{"BACKFILL_KEY"},
+			},
+		},
+	}}
+
+	frag, err := Render(manifests, RenderOptions{Environment: "sec-dev", TenantID: "writer"})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !equalStrings(frag.SourceSecretKeys, []string{"BACKFILL_KEY"}) {
+		t.Fatalf("secret keys = %v", frag.SourceSecretKeys)
+	}
+	if len(frag.SourceRuntimes) != 2 {
+		t.Fatalf("expected base+extra runtime, got %d", len(frag.SourceRuntimes))
+	}
+	if len(frag.OrchestratorSchedules) != 1 {
+		t.Fatalf("expected only the extra schedule, got %d", len(frag.OrchestratorSchedules))
+	}
+	if frag.OrchestratorSchedules[0].Name != "okta-audit-2026-04" {
+		t.Fatalf("schedule.name = %q", frag.OrchestratorSchedules[0].Name)
+	}
+}
+
+func TestRenderRejectsBadOptions(t *testing.T) {
+	t.Parallel()
+	cases := []RenderOptions{
+		{Environment: "sec-dev"},
+		{Environment: "sec-dev", TenantID: "Writer"},
+		{TenantID: "writer"},
+	}
+	for _, opt := range cases {
+		if _, err := Render(nil, opt); err == nil {
+			t.Fatalf("expected error for opts %#v", opt)
+		}
+	}
+}
+
+func TestFragmentMarshalsPulumiKeys(t *testing.T) {
+	t.Parallel()
+	frag := Fragment{
+		SourceSecretKeys: []string{"AAA"},
+		SourceRuntimes: []RenderedRuntime{{
+			ID: "writer-example-live", SourceID: "example", TenantID: "writer",
+			Config: map[string]string{"family": "live"},
+		}},
+		OrchestratorSchedules: []RenderedSchedule{{
+			Name: "example-live", ScheduleExpression: "rate(1 hour)", TaskCount: 1,
+			Command: []string{"orchestrator", "run", "runtime_id=writer-example-live"},
+		}},
+	}
+	data, err := frag.MarshalYAML()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"cerebro:sourceSecretKeys",
+		"cerebro:sourceRuntimes",
+		"cerebro:orchestratorSchedules",
+		"writer-example-live",
+		"family: live",
+		"runtime_id=writer-example-live",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected output to contain %q\n%s", want, got)
+		}
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
