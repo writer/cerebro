@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestRenderProjectsSecretsRuntimesAndSchedules(t *testing.T) {
+func TestRenderEmitsSecretsAndRuntimes(t *testing.T) {
 	t.Parallel()
 	manifests := []Manifest{
 		{
@@ -19,16 +19,6 @@ func TestRenderProjectsSecretsRuntimesAndSchedules(t *testing.T) {
 					"per_page": "200",
 					"since":    "2026-05-01T00:00:00Z",
 					"token":    "env:OKTA_API_TOKEN",
-				},
-			}},
-			Schedules: []ScheduleManifest{{
-				LocalName:          "audit-live",
-				RuntimeLocalID:     "audit",
-				ScheduleExpression: "rate(10 minutes)",
-				TaskCount:          1,
-				Command: []string{
-					"orchestrator", "run",
-					"page_limit=20", "graph_page_limit=100", "event_limit=1000",
 				},
 			}},
 		},
@@ -65,70 +55,6 @@ func TestRenderProjectsSecretsRuntimesAndSchedules(t *testing.T) {
 	if frag.SourceRuntimes[1].ID != "writer-sentinelone-threat" {
 		t.Fatalf("runtime[1].id = %q", frag.SourceRuntimes[1].ID)
 	}
-	if len(frag.OrchestratorSchedules) != 1 {
-		t.Fatalf("expected 1 schedule, got %d", len(frag.OrchestratorSchedules))
-	}
-	got := frag.OrchestratorSchedules[0]
-	if got.Name != "okta-audit-live" {
-		t.Fatalf("schedule.name = %q", got.Name)
-	}
-	wantCmd := []string{
-		"orchestrator", "run", "runtime_id=writer-okta-audit",
-		"page_limit=20", "graph_page_limit=100", "event_limit=1000",
-	}
-	if !equalStrings(got.Command, wantCmd) {
-		t.Fatalf("command = %v, want %v", got.Command, wantCmd)
-	}
-}
-
-func TestRenderAppliesEnvironmentOverlay(t *testing.T) {
-	t.Parallel()
-	manifests := []Manifest{{
-		SourceID: "okta",
-		Runtimes: []RuntimeManifest{{
-			LocalID: "audit",
-			Config:  map[string]string{"family": "audit"},
-		}},
-		Schedules: []ScheduleManifest{{
-			LocalName:          "live",
-			RuntimeLocalID:     "audit",
-			ScheduleExpression: "rate(10 minutes)",
-			Command:            []string{"orchestrator", "run"},
-		}},
-		Environments: map[string]EnvironmentOverrides{
-			"sec-dev": {
-				DisabledSchedules: []string{"live"},
-				ExtraRuntimes: []RuntimeManifest{{
-					LocalID: "audit-2026-04",
-					Config:  map[string]string{"family": "audit", "since": "2026-04-01T00:00:00Z"},
-				}},
-				ExtraSchedules: []ScheduleManifest{{
-					LocalName:          "audit-2026-04",
-					RuntimeLocalID:     "audit-2026-04",
-					ScheduleExpression: "rate(15 minutes)",
-					Command:            []string{"orchestrator", "run"},
-				}},
-				ExtraSecretKeys: []string{"BACKFILL_KEY"},
-			},
-		},
-	}}
-
-	frag, err := Render(manifests, RenderOptions{Environment: "sec-dev", TenantID: "writer"})
-	if err != nil {
-		t.Fatalf("Render: %v", err)
-	}
-	if !equalStrings(frag.SourceSecretKeys, []string{"BACKFILL_KEY"}) {
-		t.Fatalf("secret keys = %v", frag.SourceSecretKeys)
-	}
-	if len(frag.SourceRuntimes) != 2 {
-		t.Fatalf("expected base+extra runtime, got %d", len(frag.SourceRuntimes))
-	}
-	if len(frag.OrchestratorSchedules) != 1 {
-		t.Fatalf("expected only the extra schedule, got %d", len(frag.OrchestratorSchedules))
-	}
-	if frag.OrchestratorSchedules[0].Name != "okta-audit-2026-04" {
-		t.Fatalf("schedule.name = %q", frag.OrchestratorSchedules[0].Name)
-	}
 }
 
 func TestRenderRejectsBadOptions(t *testing.T) {
@@ -151,11 +77,7 @@ func TestFragmentMarshalsPulumiKeys(t *testing.T) {
 		SourceSecretKeys: []string{"AAA"},
 		SourceRuntimes: []RenderedRuntime{{
 			ID: "writer-example-live", SourceID: "example", TenantID: "writer",
-			Config: map[string]string{"family": "live"},
-		}},
-		OrchestratorSchedules: []RenderedSchedule{{
-			Name: "example-live", ScheduleExpression: "rate(1 hour)", TaskCount: 1,
-			Command: []string{"orchestrator", "run", "runtime_id=writer-example-live"},
+			Config: map[string]string{"family": "live", "per_page": "200"},
 		}},
 	}
 	data, err := frag.MarshalYAML()
@@ -166,14 +88,16 @@ func TestFragmentMarshalsPulumiKeys(t *testing.T) {
 	for _, want := range []string{
 		"cerebro:sourceSecretKeys",
 		"cerebro:sourceRuntimes",
-		"cerebro:orchestratorSchedules",
 		"writer-example-live",
 		"family: live",
-		"runtime_id=writer-example-live",
+		`per_page: "200"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected output to contain %q\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "cerebro:orchestratorSchedules") {
+		t.Fatalf("renderer must not emit cerebro:orchestratorSchedules; ops cadence belongs in WriterInternal\n%s", got)
 	}
 }
 
