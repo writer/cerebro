@@ -116,8 +116,13 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 	if status == findingStatusSuppressed {
 		decisionType = "finding-suppression"
 	}
-	decisionID := workflowevents.CanonicalWorkflowID(tenantID, "decision", findingStatusDecisionID(finding), decisionType, targetURNs, finding.StatusUpdatedAt)
-	outcomeID := workflowevents.CanonicalWorkflowID(tenantID, "outcome", findingStatusOutcomeID(finding), decisionType, append([]string{decisionID}, targetURNs...), finding.StatusUpdatedAt)
+	pruneGraph := workflowevents.FindingStatusPrunesGraph(status, finding.StatusReason)
+	decisionID := ""
+	outcomeID := ""
+	if !pruneGraph {
+		decisionID = workflowevents.CanonicalWorkflowID(tenantID, "decision", findingStatusDecisionID(finding), decisionType, targetURNs, finding.StatusUpdatedAt)
+		outcomeID = workflowevents.CanonicalWorkflowID(tenantID, "outcome", findingStatusOutcomeID(finding), decisionType, append([]string{decisionID}, targetURNs...), finding.StatusUpdatedAt)
+	}
 	statusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
 		Finding:     findingWorkflowSnapshot(finding, tenantID, sourceID),
 		Status:      status,
@@ -132,6 +137,9 @@ func (s *Service) recordFindingStatusWorkflow(ctx context.Context, finding *port
 	}
 	if err := s.recordAndProjectWorkflowEvent(ctx, statusEvent); err != nil {
 		return err
+	}
+	if pruneGraph {
+		return nil
 	}
 	if s.graphQuery == nil {
 		return nil

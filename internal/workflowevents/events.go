@@ -32,6 +32,8 @@ const (
 	EventAttributeSourceEvent  = "source_event_id"
 )
 
+const FindingStatusReasonNoLongerEmitted = "No longer emitted by latest rule evaluation."
+
 const (
 	SchemaKnowledgeDecisionRecorded = "urn:cerebro:events/workflow.knowledge.decision_recorded/v1"
 	SchemaKnowledgeActionRecorded   = "urn:cerebro:events/workflow.knowledge.action_recorded/v1"
@@ -60,6 +62,12 @@ type DecisionRecorded struct {
 	ValidTo       string         `json:"valid_to,omitempty"`
 	Confidence    float64        `json:"confidence,omitempty"`
 	Metadata      map[string]any `json:"metadata,omitempty"`
+}
+
+// FindingStatusPrunesGraph reports whether one status transition should remove ephemeral finding graph anchors.
+func FindingStatusPrunesGraph(status string, reason string) bool {
+	return strings.EqualFold(strings.TrimSpace(status), "resolved") &&
+		strings.EqualFold(strings.TrimSpace(reason), FindingStatusReasonNoLongerEmitted)
 }
 
 // ActionRecorded captures one durable workflow action event payload.
