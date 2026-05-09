@@ -279,6 +279,116 @@ paths:
       responses:
         '200':
           description: Report run.
+  /grc/dashboard:
+    get:
+      summary: GRC operator dashboard
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: GRC dashboard summary, priority findings, controls, evidence, and connector health.
+  /grc/findings:
+    get:
+      summary: GRC risk inbox findings
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: string
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: resource_urn
+          in: query
+          schema:
+            type: string
+        - name: policy_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: GRC-friendly finding list.
+  /grc/controls:
+    get:
+      summary: GRC control posture
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Control status grouped from mapped findings and evidence.
+  /grc/evidence:
+    get:
+      summary: GRC evidence library
+      parameters:
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/runtimeIDQuery'
+        - $ref: '#/components/parameters/sourceIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+        - name: finding_id
+          in: query
+          schema:
+            type: string
+        - name: run_id
+          in: query
+          schema:
+            type: string
+        - name: rule_id
+          in: query
+          schema:
+            type: string
+        - name: graph_root_urn
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Evidence items with finding context.
+  /grc/entities/{entityID}/impact:
+    get:
+      summary: GRC entity impact map
+      parameters:
+        - name: entityID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: root_urn
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/tenantIDQuery'
+        - $ref: '#/components/parameters/limitQuery'
+      responses:
+        '200':
+          description: Graph neighborhood and related findings for one entity.
+  /grc/audit-packets/{packetID}:
+    get:
+      summary: GRC audit packet for one finding
+      parameters:
+        - name: packetID
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Finding, evidence, controls, graph context, and recommended next action.
   /platform/knowledge/decisions:
     post:
       summary: Record platform decision
@@ -587,6 +697,27 @@ components:
       required: true
       schema:
         type: string
+    tenantIDQuery:
+      name: tenant_id
+      in: query
+      schema:
+        type: string
+    runtimeIDQuery:
+      name: runtime_id
+      in: query
+      schema:
+        type: string
+    sourceIDQuery:
+      name: source_id
+      in: query
+      schema:
+        type: string
+    limitQuery:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
   schemas:
     PutSourceRuntimeRequest:
       type: object
