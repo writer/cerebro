@@ -191,7 +191,12 @@ def create_ecs_cluster(
     if depends_on:
         service_dependencies.extend(depends_on)
 
-    uses_singleton_deployments = api_max_instances == 1
+    # Keep rollout capacity at 200/100 even for steady-state singleton services.
+    # With 100/0 ECS may terminate the only healthy target before scheduling the
+    # replacement, leaving the ALB at 503 and, in practice, the service stuck in
+    # SCALE_UP with requestedTaskCount=1/runningTaskCount=0. apiMaxInstances=1
+    # still constrains steady-state autoscaling; this only permits a brief
+    # old+new overlap during deployments.
 
     api_service = aws.ecs.Service(
         f"{name}-service",
@@ -200,7 +205,7 @@ def create_ecs_cluster(
         task_definition=api_task_definition.arn,
         desired_count=api_min_instances,
         capacity_provider_strategies=capacity_provider_strategies if capacity_provider_strategies else None,
-        availability_zone_rebalancing="DISABLED" if uses_singleton_deployments else "ENABLED",
+        availability_zone_rebalancing="DISABLED" if api_max_instances == 1 else "ENABLED",
         network_configuration=aws.ecs.ServiceNetworkConfigurationArgs(
             subnets=subnet_ids,
             security_groups=[security_group_id],
@@ -212,8 +217,8 @@ def create_ecs_cluster(
             container_port=8080,
         )],
         health_check_grace_period_seconds=120,
-        deployment_maximum_percent=100 if uses_singleton_deployments else 200,
-        deployment_minimum_healthy_percent=0 if uses_singleton_deployments else 100,
+        deployment_maximum_percent=200,
+        deployment_minimum_healthy_percent=100,
         force_new_deployment=True,
         deployment_circuit_breaker=(
             aws.ecs.ServiceDeploymentCircuitBreakerArgs(enable=True, rollback=True)
