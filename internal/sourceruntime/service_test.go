@@ -40,6 +40,22 @@ func (s *runtimeStore) PutSourceRuntime(_ context.Context, runtime *cerebrov1.So
 	return nil
 }
 
+func (s *runtimeStore) PutSourceRuntimes(_ context.Context, runtimes []*cerebrov1.SourceRuntime) error {
+	if s.err != nil {
+		return s.err
+	}
+	cloned := make(map[string]*cerebrov1.SourceRuntime, len(s.runtimes)+len(runtimes))
+	for id, runtime := range s.runtimes {
+		cloned[id] = proto.Clone(runtime).(*cerebrov1.SourceRuntime)
+	}
+	for _, runtime := range runtimes {
+		cloned[runtime.GetId()] = proto.Clone(runtime).(*cerebrov1.SourceRuntime)
+	}
+	s.putCount += len(runtimes)
+	s.runtimes = cloned
+	return nil
+}
+
 func (s *runtimeStore) GetSourceRuntime(_ context.Context, id string) (*cerebrov1.SourceRuntime, error) {
 	if s.err != nil {
 		return nil, s.err
@@ -253,6 +269,49 @@ func TestPutAndGetRuntimeRedactsSensitiveConfig(t *testing.T) {
 	}
 	if got := store.runtimes["writer-okta-users"].GetConfig()["token"]; got != "super-secret" {
 		t.Fatalf("stored runtime token = %q, want %q", got, "super-secret")
+	}
+}
+
+func TestPutRuntimesValidatesBatchBeforeWriting(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(emptyPageSource{}, failingSource{err: sourcecdk.ErrInvalidConfig})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{}
+	service := New(registry, store, nil, nil)
+
+	_, err = service.PutRuntimes(context.Background(), PutRuntimesRequest{Runtimes: []*cerebrov1.SourceRuntime{
+		{Id: "runtime-1", SourceId: "empty_page"},
+		{Id: "runtime-2", SourceId: "failing"},
+	}})
+	if err == nil {
+		t.Fatal("PutRuntimes() error = nil, want non-nil")
+	}
+	if store.putCount != 0 {
+		t.Fatalf("store.putCount = %d, want 0", store.putCount)
+	}
+	if len(store.runtimes) != 0 {
+		t.Fatalf("store.runtimes len = %d, want 0", len(store.runtimes))
+	}
+}
+
+func TestPutRuntimesRejectsDuplicateRuntimeIDs(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(emptyPageSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	store := &runtimeStore{}
+	service := New(registry, store, nil, nil)
+
+	_, err = service.PutRuntimes(context.Background(), PutRuntimesRequest{Runtimes: []*cerebrov1.SourceRuntime{
+		{Id: "runtime-1", SourceId: "empty_page"},
+		{Id: " runtime-1 ", SourceId: "empty_page"},
+	}})
+	if err == nil {
+		t.Fatal("PutRuntimes() error = nil, want non-nil")
+	}
+	if store.putCount != 0 {
+		t.Fatalf("store.putCount = %d, want 0", store.putCount)
 	}
 }
 

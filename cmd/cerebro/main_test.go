@@ -161,6 +161,71 @@ func TestParseSourceCommandArgsAllowsUnsetSensitiveEnvReference(t *testing.T) {
 	}
 }
 
+func TestParseSourceRuntimeBootstrapArgsReadsEnvDocument(t *testing.T) {
+	t.Setenv("CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON", `{
+		"runtimes": [
+			{
+				"id": " writer-okta-users ",
+				"source_id": " okta ",
+				"tenant_id": " writer ",
+				"config": {
+					"domain": "env:OKTA_DOMAIN",
+					"family": "user",
+					"token": "env:OKTA_API_TOKEN"
+				},
+				"next_cursor": {"opaque": "ignored"}
+			}
+		]
+	}`)
+	runtimes, err := parseSourceRuntimeBootstrapArgs([]string{"env=CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON"})
+	if err != nil {
+		t.Fatalf("parseSourceRuntimeBootstrapArgs() error = %v", err)
+	}
+	if len(runtimes) != 1 {
+		t.Fatalf("len(runtimes) = %d, want 1", len(runtimes))
+	}
+	runtime := runtimes[0]
+	if runtime.GetId() != "writer-okta-users" || runtime.GetSourceId() != "okta" || runtime.GetTenantId() != "writer" {
+		t.Fatalf("runtime identity = (%q, %q, %q)", runtime.GetId(), runtime.GetSourceId(), runtime.GetTenantId())
+	}
+	if got := runtime.GetConfig()["token"]; got != "env:OKTA_API_TOKEN" {
+		t.Fatalf("runtime.Config[token] = %q, want env ref", got)
+	}
+	if runtime.GetNextCursor() != nil {
+		t.Fatal("runtime.NextCursor present, want ignored bootstrap progress")
+	}
+}
+
+func TestParseSourceRuntimeBootstrapJSONAcceptsArray(t *testing.T) {
+	runtimes, err := parseSourceRuntimeBootstrapJSON(`[{"id":"runtime-1","sourceId":"github","config":{"owner":"writer","repo":"cerebro"}}]`)
+	if err != nil {
+		t.Fatalf("parseSourceRuntimeBootstrapJSON() error = %v", err)
+	}
+	if len(runtimes) != 1 || runtimes[0].GetSourceId() != "github" {
+		t.Fatalf("runtimes = %#v", runtimes)
+	}
+}
+
+func TestParseSourceRuntimeBootstrapRejectsLiteralSensitiveValues(t *testing.T) {
+	_, err := parseSourceRuntimeBootstrapJSON(`{"runtimes":[{"id":"runtime-1","source_id":"github","config":{"token":"test-token"}}]}`)
+	if err == nil {
+		t.Fatal("parseSourceRuntimeBootstrapJSON() error = nil, want non-nil")
+	}
+	if strings.Contains(fmt.Sprint(err), "test-token") {
+		t.Fatalf("parseSourceRuntimeBootstrapJSON() error leaked literal value: %v", err)
+	}
+}
+
+func TestParseSourceRuntimeBootstrapRejectsDuplicateRuntimeIDs(t *testing.T) {
+	_, err := parseSourceRuntimeBootstrapJSON(`{"runtimes":[{"id":"runtime-1","source_id":"github"},{"id":"runtime-1","source_id":"okta"}]}`)
+	if err == nil {
+		t.Fatal("parseSourceRuntimeBootstrapJSON() error = nil, want non-nil")
+	}
+	if !strings.Contains(fmt.Sprint(err), "duplicate runtime id") {
+		t.Fatalf("parseSourceRuntimeBootstrapJSON() error = %v, want duplicate runtime id", err)
+	}
+}
+
 type commandTokenSource struct {
 	readToken string
 }
