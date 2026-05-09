@@ -20,31 +20,6 @@ runtimes:
       domain: env:EXAMPLE_DOMAIN
       family: live
       token: env:EXAMPLE_API_TOKEN
-schedules:
-  - localName: live
-    runtimeLocalId: live
-    scheduleExpression: rate(10 minutes)
-    taskCount: 1
-    command:
-      - orchestrator
-      - run
-environments:
-  sec-dev:
-    extraSecretKeys:
-      - EXAMPLE_BACKFILL_KEY
-    extraRuntimes:
-      - localId: backfill
-        config:
-          domain: env:EXAMPLE_DOMAIN
-          family: live
-          since: "2026-01-01T00:00:00Z"
-          token: env:EXAMPLE_API_TOKEN
-    extraSchedules:
-      - localName: backfill
-        runtimeLocalId: backfill
-        scheduleExpression: rate(15 minutes)
-    disabledSchedules:
-      - live
 `)
 	manifest, err := Parse(data, "example.yaml")
 	if err != nil {
@@ -53,8 +28,8 @@ environments:
 	if manifest.SourceID != "example" {
 		t.Fatalf("sourceId mismatch: %q", manifest.SourceID)
 	}
-	if len(manifest.Environments) != 1 {
-		t.Fatalf("expected 1 environment override, got %d", len(manifest.Environments))
+	if len(manifest.Runtimes) != 1 {
+		t.Fatalf("expected 1 runtime, got %d", len(manifest.Runtimes))
 	}
 }
 
@@ -105,47 +80,11 @@ runtimes:
   - localId: live
     config: {family: a}
 `,
-		"schedule unknown runtime": `
-sourceId: example
-schedules:
-  - localName: live
-    runtimeLocalId: ghost
-    scheduleExpression: rate(1 hour)
-`,
-		"schedule pre-declares runtime_id": `
+		"non-kebab runtime localId": `
 sourceId: example
 runtimes:
-  - localId: live
+  - localId: Bad_ID
     config: {family: a}
-schedules:
-  - localName: live
-    runtimeLocalId: live
-    scheduleExpression: rate(1 hour)
-    command:
-      - orchestrator
-      - run
-      - runtime_id=writer-example-live
-`,
-		"overlay disables unknown runtime": `
-sourceId: example
-runtimes:
-  - localId: live
-    config: {family: a}
-environments:
-  sec-dev:
-    disabledRuntimes:
-      - phantom
-`,
-		"overlay extra collides": `
-sourceId: example
-runtimes:
-  - localId: live
-    config: {family: a}
-environments:
-  sec-dev:
-    extraRuntimes:
-      - localId: live
-        config: {family: a}
 `,
 	}
 	for name, body := range cases {

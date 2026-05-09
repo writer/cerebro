@@ -1,17 +1,23 @@
-// Package sourcedeploy declares the deploy manifest contract that lives next
-// to each source's catalog and the loader/renderer that turns those manifests
-// into infrastructure-ready Pulumi config blocks.
+// Package sourcedeploy declares the deploy contract that lives next to each
+// source's catalog and the loader/renderer that turns those manifests into
+// infrastructure-ready Pulumi config blocks.
 //
-// Each source under sources/<id>/ may provide a deploy.yaml describing the
-// secret keys it expects, the runtimes it ships, and the schedules it would
-// like the orchestrator to run. The synth tool walks every manifest, applies
-// per-environment overrides, and renders a single YAML fragment matching the
-// Pulumi config schema consumed by infra/aws/__main__.py in WriterInternal.
+// Scope of this package:
 //
-// Keeping the manifest source-resident has two benefits: (1) the team that
-// adds a new source owns its deployment story instead of pinging SRE, and
-// (2) the public OSS code base stays the source of truth — internal infra
-// merely renders, never re-invents.
+//   - In-scope (source-level contract): the secret env vars a source needs and
+//     the canonical runtime configurations it ships. These are properties of
+//     the source code itself; declaring them here keeps the OSS repo as the
+//     single source of truth for what each source requires.
+//
+//   - Out-of-scope (deployment cadence): orchestrator schedule rates, taskCount,
+//     and per-environment backfill instances. Those are operational decisions
+//     owned by the private infra repo (WriterInternal/cerebro) and do not
+//     belong in OSS.
+//
+// The synth tool walks every manifest and renders a single YAML fragment with
+// two keys (cerebro:sourceSecretKeys, cerebro:sourceRuntimes) that
+// WriterInternal merges into its Pulumi.<env>.yaml. Schedules are authored
+// alongside that merge step in the private repo.
 package sourcedeploy
 
 import (
@@ -33,22 +39,9 @@ var ErrSourceIDMismatch = errors.New("deploy manifest sourceId does not match so
 // Manifest is the declarative deploy contract that lives next to each
 // source's catalog. All fields are optional except SourceID.
 type Manifest struct {
-	SourceID     string                          `yaml:"sourceId"`
-	SecretKeys   []string                        `yaml:"secretKeys,omitempty"`
-	Runtimes     []RuntimeManifest               `yaml:"runtimes,omitempty"`
-	Schedules    []ScheduleManifest              `yaml:"schedules,omitempty"`
-	Environments map[string]EnvironmentOverrides `yaml:"environments,omitempty"`
-}
-
-// EnvironmentOverrides layer environment-specific tweaks on top of the base
-// manifest. Disabling lists are matched by localId / localName; additional
-// runtimes and schedules are appended verbatim and validated identically.
-type EnvironmentOverrides struct {
-	DisabledRuntimes  []string           `yaml:"disabledRuntimes,omitempty"`
-	DisabledSchedules []string           `yaml:"disabledSchedules,omitempty"`
-	ExtraRuntimes     []RuntimeManifest  `yaml:"extraRuntimes,omitempty"`
-	ExtraSchedules    []ScheduleManifest `yaml:"extraSchedules,omitempty"`
-	ExtraSecretKeys   []string           `yaml:"extraSecretKeys,omitempty"`
+	SourceID   string            `yaml:"sourceId"`
+	SecretKeys []string          `yaml:"secretKeys,omitempty"`
+	Runtimes   []RuntimeManifest `yaml:"runtimes,omitempty"`
 }
 
 // RuntimeManifest describes a logical runtime configuration. The fully
@@ -58,19 +51,6 @@ type RuntimeManifest struct {
 	LocalID string            `yaml:"localId"`
 	Family  string            `yaml:"family,omitempty"`
 	Config  map[string]string `yaml:"config"`
-}
-
-// ScheduleManifest describes a recurring orchestrator invocation that
-// targets a runtime defined in the same manifest. The fully qualified
-// schedule name is `<sourceId>-<localName>`; the rendered command is
-// the shared base plus a `runtime_id=` argument so the orchestrator
-// runs only that runtime.
-type ScheduleManifest struct {
-	LocalName          string   `yaml:"localName"`
-	RuntimeLocalID     string   `yaml:"runtimeLocalId"`
-	ScheduleExpression string   `yaml:"scheduleExpression"`
-	TaskCount          int      `yaml:"taskCount,omitempty"`
-	Command            []string `yaml:"command,omitempty"`
 }
 
 var (
@@ -142,20 +122,8 @@ func (m *Manifest) Validate() error {
 	if err := validateSecretKeys(m.SecretKeys); err != nil {
 		return err
 	}
-	runtimes, err := validateRuntimes(m.Runtimes)
-	if err != nil {
+	if _, err := validateRuntimes(m.Runtimes); err != nil {
 		return err
-	}
-	if err := validateSchedules(m.Schedules, runtimes); err != nil {
-		return err
-	}
-	for envName, overlay := range m.Environments {
-		if strings.TrimSpace(envName) == "" {
-			return fmt.Errorf("environments key must be non-empty")
-		}
-		if err := validateOverlay(envName, overlay, runtimes); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -178,64 +146,6 @@ func validateRuntimes(list []RuntimeManifest) (map[string]struct{}, error) {
 		}
 	}
 	return runtimes, nil
-}
-
-func validateSchedules(list []ScheduleManifest, runtimes map[string]struct{}) error {
-	scheduleNames := map[string]struct{}{}
-	for _, schedule := range list {
-		if !idPattern.MatchString(schedule.LocalName) {
-			return fmt.Errorf("schedule localName %q must be lowercase kebab-case", schedule.LocalName)
-		}
-		if _, dup := scheduleNames[schedule.LocalName]; dup {
-			return fmt.Errorf("schedule localName %q declared twice", schedule.LocalName)
-		}
-		scheduleNames[schedule.LocalName] = struct{}{}
-		if _, ok := runtimes[schedule.RuntimeLocalID]; !ok {
-			return fmt.Errorf(
-				"schedule %q references runtime localId %q that is not declared",
-				schedule.LocalName, schedule.RuntimeLocalID,
-			)
-		}
-		if strings.TrimSpace(schedule.ScheduleExpression) == "" {
-			return fmt.Errorf("schedule %q must set scheduleExpression", schedule.LocalName)
-		}
-		if schedule.TaskCount < 0 {
-			return fmt.Errorf("schedule %q taskCount must be >= 0", schedule.LocalName)
-		}
-		if err := validateScheduleCommand(schedule); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateOverlay(env string, overlay EnvironmentOverrides, baseRuntimes map[string]struct{}) error {
-	for _, id := range overlay.DisabledRuntimes {
-		if _, ok := baseRuntimes[id]; !ok {
-			return fmt.Errorf("environment %q disables runtime %q which is not declared", env, id)
-		}
-	}
-	combined := make(map[string]struct{}, len(baseRuntimes)+len(overlay.ExtraRuntimes))
-	for id := range baseRuntimes {
-		combined[id] = struct{}{}
-	}
-	extraRuntimes, err := validateRuntimes(overlay.ExtraRuntimes)
-	if err != nil {
-		return fmt.Errorf("environment %q: %w", env, err)
-	}
-	for id := range extraRuntimes {
-		if _, dup := combined[id]; dup {
-			return fmt.Errorf("environment %q extra runtime %q collides with base runtime", env, id)
-		}
-		combined[id] = struct{}{}
-	}
-	if err := validateSchedules(overlay.ExtraSchedules, combined); err != nil {
-		return fmt.Errorf("environment %q: %w", env, err)
-	}
-	if err := validateSecretKeys(overlay.ExtraSecretKeys); err != nil {
-		return fmt.Errorf("environment %q: %w", env, err)
-	}
-	return nil
 }
 
 func validateSecretKeys(keys []string) error {
@@ -268,21 +178,6 @@ func validateRuntimeConfig(runtime RuntimeManifest) error {
 					runtime.LocalID, k, v,
 				)
 			}
-		}
-	}
-	return nil
-}
-
-func validateScheduleCommand(schedule ScheduleManifest) error {
-	if len(schedule.Command) == 0 {
-		return nil
-	}
-	for _, part := range schedule.Command {
-		if strings.HasPrefix(part, "runtime_id=") {
-			return fmt.Errorf(
-				"schedule %q must not pre-declare runtime_id; it is composed at render time",
-				schedule.LocalName,
-			)
 		}
 	}
 	return nil
