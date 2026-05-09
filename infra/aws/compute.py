@@ -40,6 +40,8 @@ def create_ecs_cluster(
     orchestrator_cpu: int = 1024,
     orchestrator_memory: int = 2048,
     orchestrator_command: list[str] = None,
+    orchestrator_task_count: int = 1,
+    orchestrator_schedules: list[dict] = None,
     source_runtimes: list[dict] = None,
 ) -> dict:
     """Create ECS cluster with an API service."""
@@ -94,56 +96,78 @@ def create_ecs_cluster(
     orchestrator_task_definition = None
     orchestrator_rule = None
     orchestrator_target = None
+    orchestrator_rules = []
+    orchestrator_targets = []
+    orchestrator_task_definitions = []
     orchestrator_events_role = None
     if orchestrator_enabled:
-        orchestrator_task_definition = _create_task_definition(
-            name=f"{name}-orchestrator",
-            container_image=container_image,
-            cpu=orchestrator_cpu,
-            memory=orchestrator_memory,
-            execution_role_arn=execution_role.arn,
-            task_role_arn=task_role.arn,
-            log_group_name=log_group.name,
-            environment=environment or {},
-            secret_keys=secret_keys or [],
-            external_secrets_prefix=external_secrets_prefix,
-            efs_file_system_id=efs_file_system_id,
-            efs_access_point_id=efs_access_point_id,
-            efs_container_path=efs_container_path,
-            container_command=orchestrator_command or ["orchestrator", "run"],
-            expose_http=False,
-            enable_health_check=False,
-            log_stream_prefix="orchestrator",
+        schedules = _orchestrator_schedules(
+            orchestrator_schedule_expression,
+            orchestrator_command or ["orchestrator", "run"],
+            orchestrator_task_count,
+            orchestrator_schedules or [],
         )
+        for schedule in schedules:
+            schedule_suffix = schedule["suffix"]
+            task_definition_name = f"{name}-orchestrator" if schedule_suffix == "default" else f"{name}-orchestrator-{schedule_suffix}"
+            task_definition = _create_task_definition(
+                name=task_definition_name,
+                container_image=container_image,
+                cpu=orchestrator_cpu,
+                memory=orchestrator_memory,
+                execution_role_arn=execution_role.arn,
+                task_role_arn=task_role.arn,
+                log_group_name=log_group.name,
+                environment=environment or {},
+                secret_keys=secret_keys or [],
+                external_secrets_prefix=external_secrets_prefix,
+                efs_file_system_id=efs_file_system_id,
+                efs_access_point_id=efs_access_point_id,
+                efs_container_path=efs_container_path,
+                container_command=schedule["command"],
+                expose_http=False,
+                enable_health_check=False,
+                log_stream_prefix=f"orchestrator-{schedule_suffix}" if schedule_suffix != "default" else "orchestrator",
+            )
+            orchestrator_task_definitions.append(task_definition)
+        orchestrator_task_definition = orchestrator_task_definitions[0] if orchestrator_task_definitions else None
         orchestrator_events_role = _create_orchestrator_events_role(
             name=name,
-            task_definition_arn=orchestrator_task_definition.arn,
+            task_definition_arns=[task_definition.arn for task_definition in orchestrator_task_definitions],
             execution_role_arn=execution_role.arn,
             task_role_arn=task_role.arn,
         )
-        orchestrator_rule = aws.cloudwatch.EventRule(
-            f"{name}-orchestrator-schedule",
-            name=f"{name}-orchestrator",
-            schedule_expression=orchestrator_schedule_expression,
-            tags={"Name": f"{name}-orchestrator"},
-        )
-        orchestrator_target = aws.cloudwatch.EventTarget(
-            f"{name}-orchestrator-target",
-            rule=orchestrator_rule.name,
-            arn=cluster.arn,
-            role_arn=orchestrator_events_role.arn,
-            ecs_target=aws.cloudwatch.EventTargetEcsTargetArgs(
-                task_definition_arn=orchestrator_task_definition.arn,
-                task_count=1,
-                launch_type="FARGATE",
-                network_configuration=aws.cloudwatch.EventTargetEcsTargetNetworkConfigurationArgs(
-                    subnets=subnet_ids,
-                    security_groups=[security_group_id],
-                    assign_public_ip=False,
+        for schedule, task_definition in zip(schedules, orchestrator_task_definitions):
+            schedule_suffix = schedule["suffix"]
+            schedule_resource_prefix = f"{name}-orchestrator" if schedule_suffix == "default" else f"{name}-orchestrator-{schedule_suffix}"
+            rule = aws.cloudwatch.EventRule(
+                f"{schedule_resource_prefix}-schedule",
+                name=f"{name}-orchestrator" if schedule_suffix == "default" else schedule_resource_prefix,
+                schedule_expression=schedule["schedule_expression"],
+                tags={"Name": schedule_resource_prefix},
+            )
+            target = aws.cloudwatch.EventTarget(
+                f"{schedule_resource_prefix}-target",
+                rule=rule.name,
+                arn=cluster.arn,
+                role_arn=orchestrator_events_role.arn,
+                target_id=f"{schedule_suffix}-ecs"[:64],
+                ecs_target=aws.cloudwatch.EventTargetEcsTargetArgs(
+                    task_definition_arn=task_definition.arn,
+                    task_count=schedule["task_count"],
+                    launch_type="FARGATE",
+                    network_configuration=aws.cloudwatch.EventTargetEcsTargetNetworkConfigurationArgs(
+                        subnets=subnet_ids,
+                        security_groups=[security_group_id],
+                        assign_public_ip=False,
+                    ),
                 ),
-            ),
-            opts=pulumi.ResourceOptions(depends_on=[capacity_providers]),
-        )
+                opts=pulumi.ResourceOptions(depends_on=[capacity_providers]),
+            )
+            orchestrator_rules.append(rule)
+            orchestrator_targets.append(target)
+        orchestrator_rule = orchestrator_rules[0] if orchestrator_rules else None
+        orchestrator_target = orchestrator_targets[0] if orchestrator_targets else None
 
     capacity_provider_strategies = []
     if fargate_base > 0 or fargate_weight > 0:
@@ -232,8 +256,11 @@ def create_ecs_cluster(
         "api_service": api_service,
         "task_definition": task_definition,
         "orchestrator_task_definition": orchestrator_task_definition,
+        "orchestrator_task_definitions": orchestrator_task_definitions,
         "orchestrator_rule": orchestrator_rule,
+        "orchestrator_rules": orchestrator_rules,
         "orchestrator_target": orchestrator_target,
+        "orchestrator_targets": orchestrator_targets,
         "orchestrator_events_role": orchestrator_events_role,
         "task_role": task_role,
         "log_group": log_group,
@@ -386,7 +413,7 @@ def _create_task_role(
 
 def _create_orchestrator_events_role(
     name: str,
-    task_definition_arn: pulumi.Input[str],
+    task_definition_arns: list[pulumi.Input[str]],
     execution_role_arn: pulumi.Input[str],
     task_role_arn: pulumi.Input[str],
 ) -> aws.iam.Role:
@@ -407,24 +434,69 @@ def _create_orchestrator_events_role(
     aws.iam.RolePolicy(
         f"{name}-orchestrator-events-policy",
         role=role.name,
-        policy=pulumi.Output.all(task_definition_arn, execution_role_arn, task_role_arn).apply(lambda args: json.dumps({
+        policy=pulumi.Output.all(*task_definition_arns, execution_role_arn, task_role_arn).apply(lambda args: json.dumps({
             "Version": "2012-10-17",
             "Statement": [
                 {
                     "Effect": "Allow",
                     "Action": ["ecs:RunTask"],
-                    "Resource": args[0],
+                    "Resource": args[:-2],
                 },
                 {
                     "Effect": "Allow",
                     "Action": ["iam:PassRole"],
-                    "Resource": [args[1], args[2]],
+                    "Resource": [args[-2], args[-1]],
                 },
             ],
         })),
     )
 
     return role
+
+
+def _orchestrator_schedules(
+    schedule_expression: str,
+    command: list[str],
+    task_count: int,
+    configured_schedules: list[dict],
+) -> list[dict]:
+    if not configured_schedules:
+        return [{
+            "suffix": "default",
+            "schedule_expression": schedule_expression,
+            "command": command,
+            "task_count": max(1, int(task_count or 1)),
+        }]
+    schedules = []
+    seen = set()
+    for index, schedule in enumerate(configured_schedules):
+        suffix = _schedule_suffix(schedule.get("name") or f"schedule-{index + 1}")
+        if suffix in seen:
+            raise ValueError(f"duplicate orchestrator schedule name: {suffix}")
+        seen.add(suffix)
+        schedule_command = schedule.get("command") or command
+        if not isinstance(schedule_command, list) or not schedule_command:
+            raise ValueError(f"orchestrator schedule {suffix} command must be a non-empty array")
+        schedules.append({
+            "suffix": suffix,
+            "schedule_expression": schedule.get("scheduleExpression") or schedule.get("schedule_expression") or schedule_expression,
+            "command": [str(part) for part in schedule_command],
+            "task_count": max(1, int(schedule.get("taskCount") or schedule.get("task_count") or task_count or 1)),
+        })
+    return schedules
+
+
+def _schedule_suffix(value: str) -> str:
+    chars = []
+    for char in str(value).strip().lower():
+        if ("a" <= char <= "z") or ("0" <= char <= "9"):
+            chars.append(char)
+        elif chars and chars[-1] != "-":
+            chars.append("-")
+    suffix = "".join(chars).strip("-")
+    if not suffix:
+        raise ValueError("orchestrator schedule name must include at least one alphanumeric character")
+    return suffix
 
 
 def _create_task_definition(

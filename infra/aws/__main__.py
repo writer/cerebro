@@ -112,6 +112,8 @@ orchestrator_schedule_expression = config.get("orchestratorScheduleExpression") 
 orchestrator_cpu = _config_int("orchestratorCpu", api_cpu)
 orchestrator_memory = _config_int("orchestratorMemory", api_memory)
 orchestrator_command = config.get_object("orchestratorCommand") or ["orchestrator", "run"]
+orchestrator_task_count = _config_int("orchestratorTaskCount", 1)
+orchestrator_schedules = config.get_object("orchestratorSchedules") or []
 
 if api_max_instances > 1:
     raise ValueError("Source runtime sync cursors are not cross-task locked yet; set cerebro:apiMaxInstances to 1.")
@@ -422,6 +424,8 @@ ecs_stack = compute.create_ecs_cluster(
     orchestrator_cpu=orchestrator_cpu,
     orchestrator_memory=orchestrator_memory,
     orchestrator_command=orchestrator_command,
+    orchestrator_task_count=orchestrator_task_count,
+    orchestrator_schedules=orchestrator_schedules,
     source_runtimes=source_runtimes,
 )
 
@@ -435,6 +439,7 @@ monitoring_stack = monitoring.create_monitoring(
     target_group_arn_suffix=alb_stack["target_group"].arn_suffix,
     ecs_cluster_name=ecs_stack["cluster"].name,
     ecs_service_name=ecs_stack["api_service"].name,
+    log_group_name=ecs_stack["log_group"].name,
     log_retention_days=log_retention_days,
 )
 
@@ -501,8 +506,12 @@ pulumi.export("ecs_cluster_name", ecs_stack["cluster"].name)
 pulumi.export("ecs_service_name", ecs_stack["api_service"].name)
 if ecs_stack.get("orchestrator_task_definition"):
     pulumi.export("orchestrator_task_definition_arn", ecs_stack["orchestrator_task_definition"].arn)
+if ecs_stack.get("orchestrator_task_definitions"):
+    pulumi.export("orchestrator_task_definition_arns", [task.arn for task in ecs_stack["orchestrator_task_definitions"]])
 if ecs_stack.get("orchestrator_rule"):
     pulumi.export("orchestrator_schedule_rule_name", ecs_stack["orchestrator_rule"].name)
+if ecs_stack.get("orchestrator_rules"):
+    pulumi.export("orchestrator_schedule_rule_names", [rule.name for rule in ecs_stack["orchestrator_rules"]])
 pulumi.export("alb_dns_name", alb_stack["alb"].dns_name)
 pulumi.export("api_url", pulumi.Output.concat("https://", domain) if domain else pulumi.Output.concat("http://", alb_stack["alb"].dns_name))
 pulumi.export("kms_key_id", kms_key["key_id"])

@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 permissions:
@@ -26,7 +27,7 @@ jobs:
   publish-sec-dev:
     name: Publish to sec-dev ECR
     runs-on: ubuntu-24.04-arm
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     permissions:
       id-token: write
       contents: read
@@ -45,16 +46,35 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "Resolved image tag: ${tag}"
 
+      - name: Check GHCR image availability
+        id: ghcr-image
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ steps.image-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if docker manifest inspect "${GHCR_IMAGE}:${IMAGE_TAG}" >/dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "Found ${GHCR_IMAGE}:${IMAGE_TAG}"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping sec-dev ECR publish because ${GHCR_IMAGE}:${IMAGE_TAG} is not available in GHCR yet"
+          fi
+
       - name: Configure AWS credentials (sec-dev)
+        if: steps.ghcr-image.outputs.available == 'true'
         uses: WriterInternal/aws-git-roles@8c4b3fefd85de2b9e35bba19a7389780d5bd1ec2 # v2
         with:
           assume-role-arn: arn:aws:iam::${{ env.SEC_DEV_ACCOUNT_ID }}:role/writer-aws-deployment-role
 
       - name: Login to Amazon ECR
+        if: steps.ghcr-image.outputs.available == 'true'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@183a1442edf41672e66566b7fc560e297a290896 # v2
 
       - name: Pull from GHCR, retag, and push to ECR
+        if: steps.ghcr-image.outputs.available == 'true'
         shell: bash
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
