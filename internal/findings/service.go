@@ -1095,9 +1095,18 @@ func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.Findi
 	graphRootURNs := uniqueSortedStrings(finding.ResourceURNs)
 	eventIDs := uniqueSortedStrings(finding.EventIDs)
 	createdAt := time.Now().UTC()
+	// Evidence is keyed by the runtime that performed THIS evaluation, not by the runtime
+	// the finding happens to be pinned to. For event rules these are identical because the
+	// fingerprint includes runtime_id. For graph rules the finding's runtime_id is pinned to
+	// the first triggering runtime by UpsertFinding's ON CONFLICT clause, but every
+	// triggering runtime should still record its own evidence so that
+	// `/source-runtimes/{runtime}/finding-evidence?run_id=<runtime-run>` returns rows for
+	// the runtime that produced the run, otherwise the run shows up in evaluation listings
+	// without any matching evidence.
+	evidenceRuntimeID := strings.TrimSpace(run.GetRuntimeId())
 	return &cerebrov1.FindingEvidence{
-		Id:            findingEvidenceID(finding.RuntimeID, finding.ID, run.GetId(), eventIDs),
-		RuntimeId:     strings.TrimSpace(finding.RuntimeID),
+		Id:            findingEvidenceID(evidenceRuntimeID, finding.ID, run.GetId(), eventIDs),
+		RuntimeId:     evidenceRuntimeID,
 		RuleId:        strings.TrimSpace(finding.RuleID),
 		FindingId:     strings.TrimSpace(finding.ID),
 		RunId:         strings.TrimSpace(run.GetId()),

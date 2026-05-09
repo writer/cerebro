@@ -389,3 +389,121 @@ func TestEvaluateSourceRuntimeRulesRejectsExplicitGraphRuleID(t *testing.T) {
 		t.Fatalf("EvaluateSourceRuntimeRules() error = %v, want ErrRuleUnsupported (explicit graph rule id must be rejected by replay path)", err)
 	}
 }
+
+// multiSourceStubGraphRule matches every runtime whose source_id is in supportedSources, so a
+// single graph rule can be triggered by an okta evaluation and then by a github evaluation
+// (mirroring the deprovisioned-Okta-active-in-GitHub topology).
+type multiSourceStubGraphRule struct {
+	stubGraphRule
+	supportedSources []string
+}
+
+func (r *multiSourceStubGraphRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if r == nil || runtime == nil {
+		return false
+	}
+	for _, source := range r.supportedSources {
+		if runtime.GetSourceId() == source {
+			return true
+		}
+	}
+	return false
+}
+
+// Cross-runtime graph-rule reevaluations must keep the finding pinned to the first triggering
+// runtime (so runtime_id stays addressable through the real source-runtime APIs) AND record
+// each subsequent evaluation's evidence under the runtime that performed it (so
+// `/source-runtimes/{runtime}/finding-evidence?run_id=<runtime-run>` actually returns rows
+// for the runtime that produced the run, instead of leaving the run listed in evaluation
+// listings without any matching evidence rows).
+func TestEvaluateSourceRuntimeGraphRulesPinsFindingButRecordsEvidencePerRuntime(t *testing.T) {
+	oktaRuntime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	githubRuntime := &cerebrov1.SourceRuntime{Id: "runtime-github", SourceId: "github", TenantId: "writer"}
+	runtimeStore := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		oktaRuntime.GetId():   oktaRuntime,
+		githubRuntime.GetId(): githubRuntime,
+	}}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{
+		cypherRows: []ports.CypherRow{{Values: map[string]any{"label": "alice@writer.com"}}},
+	}
+	// The same fingerprint is emitted from both okta and github triggers; that's the contract
+	// graph rules establish (tenant-scoped offender). UpsertFinding's ON CONFLICT clause
+	// pins runtime_id on first insert; evidence ownership is taken from the run.
+	emitFinding := func(triggeringRuntimeID string) []*ports.FindingRecord {
+		return []*ports.FindingRecord{{
+			ID:           "finding-cross-runtime",
+			Fingerprint:  "fp-cross-runtime",
+			TenantID:     "writer",
+			RuntimeID:    triggeringRuntimeID,
+			RuleID:       "cross-runtime-graph-rule",
+			Title:        "Cross runtime graph finding",
+			Severity:     "CRITICAL",
+			Status:       findingStatusOpen,
+			Summary:      "graph rule fired",
+			ResourceURNs: []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
+		}}
+	}
+	rule := &multiSourceStubGraphRule{
+		stubGraphRule: stubGraphRule{
+			spec:  &cerebrov1.RuleSpec{Id: "cross-runtime-graph-rule"},
+			query: ports.CypherQueryRequest{Query: "MATCH (n) RETURN n LIMIT 1"},
+			emit:  emitFinding(oktaRuntime.GetId()),
+		},
+		supportedSources: []string{"okta", "github"},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(runtimeStore, &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+
+	oktaResult, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: oktaRuntime.GetId()})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules(okta) error = %v", err)
+	}
+	if got := len(oktaResult.Evaluations); got != 1 {
+		t.Fatalf("len(okta.Evaluations) = %d, want 1", got)
+	}
+	oktaEvaluation := oktaResult.Evaluations[0]
+	if got := len(oktaEvaluation.Evidence); got != 1 {
+		t.Fatalf("len(okta.Evidence) = %d, want 1", got)
+	}
+	if got := oktaEvaluation.Evidence[0].GetRuntimeId(); got != oktaRuntime.GetId() {
+		t.Fatalf("okta evidence RuntimeId = %q, want %q", got, oktaRuntime.GetId())
+	}
+	if got := oktaEvaluation.Evidence[0].GetRunId(); got != oktaEvaluation.Run.GetId() {
+		t.Fatalf("okta evidence RunId = %q, want %q (the okta run)", got, oktaEvaluation.Run.GetId())
+	}
+
+	rule.emit = emitFinding(githubRuntime.GetId())
+	githubResult, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: githubRuntime.GetId()})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules(github) error = %v", err)
+	}
+	if got := len(githubResult.Evaluations); got != 1 {
+		t.Fatalf("len(github.Evaluations) = %d, want 1", got)
+	}
+	githubEvaluation := githubResult.Evaluations[0]
+	if got := len(githubEvaluation.Findings); got != 1 {
+		t.Fatalf("len(github.Findings) = %d, want 1", got)
+	}
+	if got := githubEvaluation.Findings[0].RuntimeID; got != oktaRuntime.GetId() {
+		t.Fatalf("github reevaluation finding RuntimeID = %q, want %q (pinned to first observer)", got, oktaRuntime.GetId())
+	}
+	if got := len(githubEvaluation.Evidence); got != 1 {
+		t.Fatalf("len(github.Evidence) = %d, want 1", got)
+	}
+	if got := githubEvaluation.Evidence[0].GetRuntimeId(); got != githubRuntime.GetId() {
+		t.Fatalf("github evidence RuntimeId = %q, want %q (evidence is owned by the evaluating runtime so /source-runtimes/{github}/finding-evidence stays consistent with the run)", got, githubRuntime.GetId())
+	}
+	if got := githubEvaluation.Evidence[0].GetRunId(); got != githubEvaluation.Run.GetId() {
+		t.Fatalf("github evidence RunId = %q, want %q", got, githubEvaluation.Run.GetId())
+	}
+	if got := githubEvaluation.Run.GetRuntimeId(); got != githubRuntime.GetId() {
+		t.Fatalf("github Run RuntimeId = %q, want %q (run is recorded under the evaluating runtime)", got, githubRuntime.GetId())
+	}
+	if oktaEvaluation.Evidence[0].GetId() == githubEvaluation.Evidence[0].GetId() {
+		t.Fatalf("evidence ids collided across runtimes (%q); evidence id must be runtime-scoped so each runtime's listing is non-empty", oktaEvaluation.Evidence[0].GetId())
+	}
+}

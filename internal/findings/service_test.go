@@ -88,6 +88,12 @@ func (s *stubFindingStore) UpsertFinding(_ context.Context, finding *ports.Findi
 	cloned := cloneFinding(finding)
 	if existing, ok := s.findings[cloned.ID]; ok {
 		cloned = preserveFindingWorkflow(existing, cloned)
+		// Mirror the postgres ON CONFLICT clause (`runtime_id = findings.runtime_id`) so
+		// stub-store tests catch regressions in the runtime-pinning contract; without this
+		// the stub would silently let graph-rule findings flip between triggering runtimes.
+		if existingRuntimeID := strings.TrimSpace(existing.RuntimeID); existingRuntimeID != "" {
+			cloned.RuntimeID = existingRuntimeID
+		}
 	}
 	s.findings[cloned.ID] = cloned
 	return cloneFinding(cloned), nil
