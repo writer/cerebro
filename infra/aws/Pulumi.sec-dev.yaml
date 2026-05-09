@@ -31,6 +31,9 @@ config:
   cerebro:natsMemory: 1024
   cerebro:jetstreamStreamName: CEREBRO_EVENTS
   cerebro:jetstreamSubjectPrefix: events
+  cerebro:enableJetstreamLagProbe: true
+  cerebro:jetstreamLagProbeIntervalSeconds: 60
+  cerebro:jetstreamLagAlarmThreshold: 1000
   cerebro:apiAuthEnabled: true
   cerebro:sourceSecretKeys:
     - OKTA_API_TOKEN

@@ -22,6 +22,9 @@ def create_nats_service(
     memory: int = 1024,
     stream_name: str = "CEREBRO_EVENTS",
     subject_prefix: str = "events",
+    enable_lag_probe: bool = True,
+    lag_probe_interval_seconds: int = 60,
+    lag_probe_image: str = "python:3.12-alpine",
 ) -> dict:
     """Run a private NATS JetStream service backed by EFS."""
     namespace = aws.servicediscovery.PrivateDnsNamespace(
@@ -105,7 +108,7 @@ def create_nats_service(
             "awslogs-group": log_group_name,
             "awslogs-region": region,
         }
-        return json.dumps([
+        containers = [
             {
                 "name": "nats",
                 "image": "nats:2.10-alpine",
@@ -154,7 +157,26 @@ def create_nats_service(
                     "options": {**log_options, "awslogs-stream-prefix": "jetstream-bootstrap"},
                 },
             },
-        ])
+            {
+                "name": "jetstream-lag-probe",
+                "image": lag_probe_image,
+                "essential": False,
+                "dependsOn": [{"containerName": "nats", "condition": "HEALTHY"}],
+                "environment": [
+                    {"name": "NATS_MONITOR_URL", "value": "http://127.0.0.1:8222"},
+                    {"name": "SERVICE_NAME", "value": name},
+                    {"name": "STREAM_NAME", "value": stream_name},
+                    {"name": "PROBE_INTERVAL_SECONDS", "value": str(max(15, int(lag_probe_interval_seconds or 60)))},
+                    {"name": "METRIC_NAMESPACE", "value": f"Cerebro/{name}"},
+                ],
+                "command": ["python", "-u", "-c", _lag_probe_script()],
+                "logConfiguration": {
+                    "logDriver": "awslogs",
+                    "options": {**log_options, "awslogs-stream-prefix": "jetstream-lag-probe"},
+                },
+            } if enable_lag_probe else None,
+        ]
+        return json.dumps([container for container in containers if container is not None])
 
     container_definitions = log_group.name.apply(build_container_definitions)
 
@@ -215,6 +237,7 @@ def create_nats_service(
         "dns_name": dns_name,
         "url": pulumi.Output.concat("nats://", dns_name, ":4222"),
         "stream_name": stream_name,
+        "lag_probe_enabled": enable_lag_probe,
     }
 
 
@@ -238,6 +261,80 @@ def _execution_role(name: str) -> aws.iam.Role:
         policy_arn="arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
     )
     return role
+
+
+def _lag_probe_script() -> str:
+    return r"""
+import json
+import os
+import time
+import urllib.request
+
+monitor_url = os.environ.get("NATS_MONITOR_URL", "http://127.0.0.1:8222").rstrip("/")
+service_name = os.environ["SERVICE_NAME"]
+stream_name = os.environ["STREAM_NAME"]
+namespace = os.environ["METRIC_NAMESPACE"]
+interval = int(os.environ.get("PROBE_INTERVAL_SECONDS", "60"))
+
+def as_int(value):
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+def emit(metric_name, value, dimensions, unit="Count"):
+    payload = {
+        "_aws": {
+            "Timestamp": int(time.time() * 1000),
+            "CloudWatchMetrics": [{
+                "Namespace": namespace,
+                "Dimensions": [
+                    ["Service", "Stream"],
+                    ["Service", "Stream", "Consumer"],
+                ] if "Consumer" in dimensions else [["Service", "Stream"]],
+                "Metrics": [{"Name": metric_name, "Unit": unit}],
+            }],
+        },
+        metric_name: value,
+        **dimensions,
+    }
+    print(json.dumps(payload), flush=True)
+
+def stream_details(jsz):
+    for account in jsz.get("account_details") or []:
+        for stream in account.get("stream_detail") or []:
+            if stream.get("name") == stream_name:
+                yield stream
+    for stream in jsz.get("stream_detail") or []:
+        if stream.get("name") == stream_name:
+            yield stream
+
+while True:
+    try:
+        with urllib.request.urlopen(f"{monitor_url}/jsz?streams=true&consumers=true", timeout=10) as response:
+            jsz = json.loads(response.read().decode("utf-8"))
+        found_consumer = False
+        for stream in stream_details(jsz):
+            state = stream.get("state") or {}
+            emit("JetStreamStreamMessages", as_int(state.get("messages")), {"Service": service_name, "Stream": stream_name})
+            emit("JetStreamStreamBytes", as_int(state.get("bytes")), {"Service": service_name, "Stream": stream_name}, "Bytes")
+            last_seq = as_int(state.get("last_seq"))
+            for consumer in stream.get("consumer_detail") or []:
+                found_consumer = True
+                consumer_name = consumer.get("name") or consumer.get("stream_name") or "unknown"
+                ack_floor = consumer.get("ack_floor") or {}
+                lag = max(as_int(consumer.get("num_pending")), last_seq - as_int(ack_floor.get("stream_seq")))
+                emit(
+                    "JetStreamConsumerLag",
+                    max(0, lag),
+                    {"Service": service_name, "Stream": stream_name, "Consumer": consumer_name},
+                )
+        if not found_consumer:
+            emit("JetStreamConsumerLag", 0, {"Service": service_name, "Stream": stream_name, "Consumer": "_none"})
+    except Exception as exc:
+        print(json.dumps({"level": "warning", "message": "jetstream lag probe failed", "error": str(exc)}), flush=True)
+    time.sleep(interval)
+"""
 
 
 def _task_role(name: str, file_system_arn: pulumi.Input[str]) -> aws.iam.Role:

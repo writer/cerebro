@@ -156,6 +156,9 @@ nats_cpu = _config_int("natsCpu", 512)
 nats_memory = _config_int("natsMemory", 1024)
 jetstream_subject_prefix = config.get("jetstreamSubjectPrefix") or "events"
 jetstream_stream_name = config.get("jetstreamStreamName") or "CEREBRO_EVENTS"
+enable_jetstream_lag_probe = _config_bool("enableJetstreamLagProbe", True)
+jetstream_lag_probe_interval_seconds = _config_int("jetstreamLagProbeIntervalSeconds", 60)
+jetstream_lag_alarm_threshold = _config_int("jetstreamLagAlarmThreshold", 10000)
 
 neo4j_database = config.get("neo4jDatabase")
 neo4j_aura_enabled = _config_bool("neo4jAuraEnabled", False)
@@ -281,6 +284,8 @@ nats_stack = nats.create_nats_service(
     memory=nats_memory,
     stream_name=jetstream_stream_name,
     subject_prefix=jetstream_subject_prefix,
+    enable_lag_probe=enable_jetstream_lag_probe,
+    lag_probe_interval_seconds=jetstream_lag_probe_interval_seconds,
 )
 
 neo4j_stack = None
@@ -441,6 +446,8 @@ monitoring_stack = monitoring.create_monitoring(
     ecs_service_name=ecs_stack["api_service"].name,
     log_group_name=ecs_stack["log_group"].name,
     log_retention_days=log_retention_days,
+    jetstream_stream_name=jetstream_stream_name,
+    jetstream_lag_alarm_threshold=jetstream_lag_alarm_threshold,
 )
 
 waf_stack = None
@@ -520,6 +527,7 @@ pulumi.export("postgres_endpoint", postgres_stack["instance"].address)
 pulumi.export("postgres_secret_name", postgres_stack["secret"].name)
 pulumi.export("nats_url", nats_stack["url"])
 pulumi.export("jetstream_stream_name", nats_stack["stream_name"])
+pulumi.export("jetstream_lag_probe_enabled", nats_stack["lag_probe_enabled"])
 if neo4j_stack:
     pulumi.export("neo4j_instance_id", neo4j_stack["instance"].instance_id)
     pulumi.export("neo4j_connection_url", neo4j_stack["instance"].connection_url)

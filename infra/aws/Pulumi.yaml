@@ -88,6 +88,18 @@ config:
     type: string
     default: CEREBRO_EVENTS
     description: JetStream stream name bootstrapped for Cerebro events
+  cerebro:enableJetstreamLagProbe:
+    type: boolean
+    default: true
+    description: Emit JetStream stream depth and consumer lag metrics from the NATS ECS task
+  cerebro:jetstreamLagProbeIntervalSeconds:
+    type: integer
+    default: 60
+    description: Poll interval for the JetStream lag probe sidecar
+  cerebro:jetstreamLagAlarmThreshold:
+    type: integer
+    default: 10000
+    description: CloudWatch alarm threshold for aggregate JetStream consumer lag
   cerebro:neo4jDatabase:
     type: string
     default: ""

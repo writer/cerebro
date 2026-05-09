@@ -14,6 +14,8 @@ def create_monitoring(
     ecs_service_name: pulumi.Output[str],
     log_group_name: pulumi.Output[str] = None,
     log_retention_days: int = 30,
+    jetstream_stream_name: str = "CEREBRO_EVENTS",
+    jetstream_lag_alarm_threshold: int = 10000,
 ) -> dict:
     """
     Create CloudWatch dashboard and alarms.
@@ -127,15 +129,65 @@ def create_monitoring(
 
     # CloudWatch Dashboard
     telemetry_filters = {}
+    telemetry_namespace = f"Cerebro/{name}"
     if log_group_name is not None:
         telemetry_filters = _create_telemetry_metric_filters(name, log_group_name)
+        _custom_metric_alarm(
+            resource_name=f"{name}-source-runtime-failures-alarm",
+            alarm_name=f"{name}-source-runtime-sync-failures",
+            namespace=telemetry_namespace,
+            metric_name="SourceRuntimeSyncFailures",
+            threshold=0,
+            description="Source runtime sync failures detected",
+            alarm_topic_arn=alarm_topic.arn,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-orchestrator-failures-alarm",
+            alarm_name=f"{name}-orchestrator-runtime-failures",
+            namespace=telemetry_namespace,
+            metric_name="OrchestratorRuntimeFailures",
+            threshold=0,
+            description="Orchestrator runtime failures detected",
+            alarm_topic_arn=alarm_topic.arn,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-report-failures-alarm",
+            alarm_name=f"{name}-report-generation-failures",
+            namespace=telemetry_namespace,
+            metric_name="ReportGenerationFailures",
+            threshold=0,
+            description="Report generation failures detected",
+            alarm_topic_arn=alarm_topic.arn,
+        )
+        _custom_metric_alarm(
+            resource_name=f"{name}-graph-ingest-failures-alarm",
+            alarm_name=f"{name}-graph-ingest-failures",
+            namespace=telemetry_namespace,
+            metric_name="GraphIngestFailures",
+            threshold=0,
+            description="Graph ingestion failures detected",
+            alarm_topic_arn=alarm_topic.arn,
+        )
+
+    if jetstream_lag_alarm_threshold > 0:
+        _custom_metric_alarm(
+            resource_name=f"{name}-jetstream-lag-alarm",
+            alarm_name=f"{name}-jetstream-consumer-lag",
+            namespace=telemetry_namespace,
+            metric_name="JetStreamConsumerLag",
+            threshold=jetstream_lag_alarm_threshold,
+            description="JetStream consumer lag is above the autoscaling readiness threshold",
+            alarm_topic_arn=alarm_topic.arn,
+            statistic="Maximum",
+            dimensions={"Service": name, "Stream": jetstream_stream_name},
+        )
 
     dashboard = aws.cloudwatch.Dashboard(
         f"{name}-dashboard",
         dashboard_name=f"{name}-dashboard",
         dashboard_body=pulumi.Output.all(
             alb_arn_suffix, target_group_arn_suffix, ecs_cluster_name, ecs_service_name
-        ).apply(lambda args: _dashboard_body(name, *args)),
+        ).apply(lambda args: _dashboard_body(name, *args, jetstream_stream_name)),
     )
 
     return {
@@ -143,6 +195,35 @@ def create_monitoring(
         "dashboard": dashboard,
         "telemetry_filters": telemetry_filters,
     }
+
+
+def _custom_metric_alarm(
+    resource_name: str,
+    alarm_name: str,
+    namespace: str,
+    metric_name: str,
+    threshold: int,
+    description: str,
+    alarm_topic_arn: pulumi.Input[str],
+    statistic: str = "Sum",
+    dimensions: dict = None,
+) -> aws.cloudwatch.MetricAlarm:
+    return aws.cloudwatch.MetricAlarm(
+        resource_name,
+        name=alarm_name,
+        comparison_operator="GreaterThanThreshold",
+        evaluation_periods=1,
+        metric_name=metric_name,
+        namespace=namespace,
+        period=300,
+        statistic=statistic,
+        threshold=threshold,
+        treat_missing_data="notBreaching",
+        alarm_description=description,
+        alarm_actions=[alarm_topic_arn],
+        dimensions=dimensions,
+        tags={"Name": alarm_name},
+    )
 
 
 def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[str]) -> dict:
@@ -208,11 +289,47 @@ def _create_telemetry_metric_filters(name: str, log_group_name: pulumi.Output[st
                 default_value=0,
             ),
         ),
+        "report_failures": aws.cloudwatch.LogMetricFilter(
+            f"{name}-report-failures-filter",
+            name=f"{name}-report-failures",
+            log_group_name=log_group_name,
+            pattern='{ $.status = "failed" && $.name = "report.*" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="ReportGenerationFailures",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "graph_ingest_failures": aws.cloudwatch.LogMetricFilter(
+            f"{name}-graph-ingest-failures-filter",
+            name=f"{name}-graph-ingest-failures",
+            log_group_name=log_group_name,
+            pattern='{ $.status = "failed" && $.name = "graph.*" }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GraphIngestFailures",
+                namespace=namespace,
+                value="1",
+                default_value=0,
+            ),
+        ),
+        "graph_ingest_lag": aws.cloudwatch.LogMetricFilter(
+            f"{name}-graph-ingest-lag-filter",
+            name=f"{name}-graph-ingest-lag",
+            log_group_name=log_group_name,
+            pattern='{ $.graph_ingest_lag_seconds = * }',
+            metric_transformation=aws.cloudwatch.LogMetricFilterMetricTransformationArgs(
+                name="GraphIngestLagSeconds",
+                namespace=namespace,
+                value="$.graph_ingest_lag_seconds",
+                default_value=0,
+            ),
+        ),
     }
     return filters
 
 
-def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service: str) -> str:
+def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service: str, jetstream_stream_name: str) -> str:
     import json
     telemetry_namespace = f"Cerebro/{name}"
     return json.dumps({
@@ -313,6 +430,59 @@ def _dashboard_body(name: str, alb_arn: str, tg_arn: str, cluster: str, service:
                         [".", "OrchestratorRuntimeFailures", {"stat": "Sum"}],
                     ],
                     "period": 60,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 0, "y": 24, "width": 12, "height": 6,
+                "properties": {
+                    "title": "JetStream Consumer Lag",
+                    "metrics": [
+                        [telemetry_namespace, "JetStreamConsumerLag", "Service", name, "Stream", jetstream_stream_name, {"stat": "Maximum"}],
+                    ],
+                    "period": 60,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12, "y": 24, "width": 12, "height": 6,
+                "properties": {
+                    "title": "JetStream Stream Depth",
+                    "metrics": [
+                        [telemetry_namespace, "JetStreamStreamMessages", "Service", name, "Stream", jetstream_stream_name, {"stat": "Maximum"}],
+                        [".", "JetStreamStreamBytes", ".", ".", ".", ".", {"stat": "Maximum", "yAxis": "right"}],
+                    ],
+                    "period": 60,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 0, "y": 30, "width": 12, "height": 6,
+                "properties": {
+                    "title": "Runtime / Report Failures",
+                    "metrics": [
+                        [telemetry_namespace, "SourceRuntimeSyncFailures", {"stat": "Sum"}],
+                        [".", "OrchestratorRuntimeFailures", {"stat": "Sum"}],
+                        [".", "ReportGenerationFailures", {"stat": "Sum"}],
+                    ],
+                    "period": 300,
+                    "region": aws.get_region().region,
+                },
+            },
+            {
+                "type": "metric",
+                "x": 12, "y": 30, "width": 12, "height": 6,
+                "properties": {
+                    "title": "Graph Ingest Health",
+                    "metrics": [
+                        [telemetry_namespace, "GraphEntitiesProjected", {"stat": "Sum"}],
+                        [".", "GraphIngestFailures", {"stat": "Sum"}],
+                        [".", "GraphIngestLagSeconds", {"stat": "Maximum", "yAxis": "right"}],
+                    ],
+                    "period": 300,
                     "region": aws.get_region().region,
                 },
             },
