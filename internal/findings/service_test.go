@@ -898,7 +898,7 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 		store,
 		store,
 		registry,
-	).WithGraphStore(graph)
+	).WithGraphStore(graph).WithGraphQueryStore(graph)
 
 	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
 		RuntimeID: "writer-okta-audit",
@@ -919,6 +919,11 @@ func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
 	}
 	if len(graph.links) != 0 {
 		t.Fatalf("graph links = %#v, want stale links pruned", graph.links)
+	}
+	for urn, entity := range graph.entities {
+		if entity.EntityType == "decision" || entity.EntityType == "outcome" {
+			t.Fatalf("auto-pruned finding should not leave workflow entity %q: %#v", urn, entity)
+		}
 	}
 }
 

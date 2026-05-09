@@ -85,6 +85,45 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 	}
 }
 
+func TestProjectStampsRuntimeIDOnEntitiesAndLinks(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-pr-447",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.pull_request",
+		Attributes: map[string]string{
+			"author":                            "alice",
+			"owner":                             "writer",
+			"pull_number":                       "447",
+			"repository":                        "writer/cerebro",
+			ports.EventAttributeSourceRuntimeID: "writer-github",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	for urn, entity := range state.entities {
+		if got := entity.RuntimeID; got != "writer-github" {
+			t.Fatalf("state entity %q RuntimeID = %q, want writer-github", urn, got)
+		}
+		if got := entity.Attributes[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
+			t.Fatalf("state entity %q source_runtime_id = %q, want writer-github", urn, got)
+		}
+	}
+	for key, link := range graph.links {
+		if got := link.RuntimeID; got != "writer-github" {
+			t.Fatalf("graph link %q RuntimeID = %q, want writer-github", key, got)
+		}
+		if got := link.Attributes[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
+			t.Fatalf("graph link %q source_runtime_id = %q, want writer-github", key, got)
+		}
+	}
+}
+
 func TestProjectGitHubPullRequestWithoutOwnerDoesNotLinkEmptyOrg(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -1149,6 +1188,7 @@ func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity 
 		URN:        entity.URN,
 		TenantID:   entity.TenantID,
 		SourceID:   entity.SourceID,
+		RuntimeID:  entity.RuntimeID,
 		EntityType: entity.EntityType,
 		Label:      entity.Label,
 		Attributes: attributes,
@@ -1166,6 +1206,7 @@ func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
 	return &ports.ProjectedLink{
 		TenantID:   link.TenantID,
 		SourceID:   link.SourceID,
+		RuntimeID:  link.RuntimeID,
 		FromURN:    link.FromURN,
 		ToURN:      link.ToURN,
 		Relation:   link.Relation,

@@ -254,7 +254,7 @@ func (s *Service) projectFindingNote(ctx context.Context, event *cerebrov1.Event
 		return ports.ProjectionResult{}, err
 	}
 	result := ports.ProjectionResult{}
-	targetURNs, err := s.ensureFindingAnchor(ctx, payload.Finding, &result)
+	targetURNs, err := s.ensureFindingForWorkflow(ctx, payload.Finding, &result)
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
@@ -301,7 +301,7 @@ func (s *Service) projectFindingTicket(ctx context.Context, event *cerebrov1.Eve
 		return ports.ProjectionResult{}, err
 	}
 	result := ports.ProjectionResult{}
-	targetURNs, err := s.ensureFindingAnchor(ctx, payload.Finding, &result)
+	targetURNs, err := s.ensureFindingForWorkflow(ctx, payload.Finding, &result)
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
@@ -350,12 +350,23 @@ func (s *Service) projectFindingStatus(ctx context.Context, event *cerebrov1.Eve
 		return ports.ProjectionResult{}, err
 	}
 	result := ports.ProjectionResult{}
-	if !findingStatusProjectsToGraph(payload.Finding.Status) && findingStatusPrunesGraph(payload.Reason) {
+	if workflowevents.FindingStatusPrunesGraph(payload.Finding.Status, payload.Reason) {
 		return s.deleteFindingAnchor(ctx, payload.Finding)
 	}
-	if _, err := s.ensureFindingAnchor(ctx, payload.Finding, &result); err != nil {
+	if err := s.ensureFindingEntity(ctx, payload.Finding, &result); err != nil {
 		return ports.ProjectionResult{}, err
 	}
+	if findingStatusProjectsToGraph(payload.Finding.Status) {
+		if err := s.ensureFindingActiveLinks(ctx, payload.Finding, &result); err != nil {
+			return ports.ProjectionResult{}, err
+		}
+		return result, nil
+	}
+	deleted, err := s.deleteFindingActiveLinks(ctx, payload.Finding)
+	if err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	result.LinksDeleted += deleted
 	return result, nil
 }
 
@@ -367,7 +378,23 @@ func (s *Service) deleteFindingAnchor(ctx context.Context, finding workflowevent
 	if err := deleter.DeleteProjectedEntity(ctx, findingURN(strings.TrimSpace(finding.TenantID), strings.TrimSpace(finding.FindingID))); err != nil {
 		return ports.ProjectionResult{}, err
 	}
-	return ports.ProjectionResult{}, nil
+	result := ports.ProjectionResult{EntitiesDeleted: 1}
+	if cleaner, ok := s.graph.(ports.ProjectionCleaner); ok {
+		cleanup, err := cleaner.CleanupProjectedEntities(ctx, ports.ProjectionCleanupRequest{
+			TenantID:     strings.TrimSpace(finding.TenantID),
+			SourceID:     strings.TrimSpace(finding.SourceSystem),
+			FindingID:    strings.TrimSpace(finding.FindingID),
+			EntityTypes:  []string{annotationEntityType, ticketEntityType, evidenceEntityType, decisionEntityType, actionEntityType, outcomeEntityType},
+			OnlyIsolated: true,
+			Limit:        1000,
+		})
+		if err != nil {
+			return ports.ProjectionResult{}, err
+		}
+		result.EntitiesDeleted += cleanup.EntitiesDeleted
+		result.LinksDeleted += cleanup.LinksDeleted
+	}
+	return result, nil
 }
 
 func findingStatusProjectsToGraph(status string) bool {
@@ -375,11 +402,29 @@ func findingStatusProjectsToGraph(status string) bool {
 	return normalized == "" || normalized == "open"
 }
 
-func findingStatusPrunesGraph(reason string) bool {
-	return strings.Contains(strings.ToLower(strings.TrimSpace(reason)), "no longer emitted")
+func (s *Service) ensureFindingAnchor(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) ([]string, error) {
+	if err := s.ensureFindingEntity(ctx, finding, result); err != nil {
+		return nil, err
+	}
+	if err := s.ensureFindingActiveLinks(ctx, finding, result); err != nil {
+		return nil, err
+	}
+	return findingTargetURNs(finding), nil
 }
 
-func (s *Service) ensureFindingAnchor(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) ([]string, error) {
+func (s *Service) ensureFindingForWorkflow(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) ([]string, error) {
+	if err := s.ensureFindingEntity(ctx, finding, result); err != nil {
+		return nil, err
+	}
+	if findingStatusProjectsToGraph(finding.Status) {
+		if err := s.ensureFindingActiveLinks(ctx, finding, result); err != nil {
+			return nil, err
+		}
+	}
+	return findingTargetURNs(finding), nil
+}
+
+func (s *Service) ensureFindingEntity(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) error {
 	tenantID := strings.TrimSpace(finding.TenantID)
 	sourceID := strings.TrimSpace(finding.SourceSystem)
 	anchorURN := findingURN(tenantID, finding.FindingID)
@@ -391,8 +436,15 @@ func (s *Service) ensureFindingAnchor(ctx context.Context, finding workflowevent
 		Label:      graphEntityLabel(finding.Title),
 		Attributes: findingAnchorAttributes(finding),
 	}, result); err != nil {
-		return nil, err
+		return err
 	}
+	return nil
+}
+
+func (s *Service) ensureFindingActiveLinks(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) error {
+	tenantID := strings.TrimSpace(finding.TenantID)
+	sourceID := strings.TrimSpace(finding.SourceSystem)
+	anchorURN := findingURN(tenantID, finding.FindingID)
 	resourceURNs := normalizeIDs(finding.ResourceURNs)
 	for _, resourceURN := range resourceURNs {
 		if err := s.upsertLink(ctx, &ports.ProjectedLink{
@@ -403,10 +455,38 @@ func (s *Service) ensureFindingAnchor(ctx context.Context, finding workflowevent
 			Relation:   relationHasFinding,
 			Attributes: findingAnchorLinkAttributes(finding),
 		}, result); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return normalizeIDs(append(resourceURNs, anchorURN)), nil
+	return nil
+}
+
+func (s *Service) deleteFindingActiveLinks(ctx context.Context, finding workflowevents.FindingSnapshot) (uint32, error) {
+	deleter, ok := s.graph.(ports.ProjectionLinkDeleter)
+	if !ok {
+		return 0, nil
+	}
+	tenantID := strings.TrimSpace(finding.TenantID)
+	sourceID := strings.TrimSpace(finding.SourceSystem)
+	anchorURN := findingURN(tenantID, finding.FindingID)
+	var deleted uint32
+	for _, resourceURN := range normalizeIDs(finding.ResourceURNs) {
+		if err := deleter.DeleteProjectedLink(ctx, &ports.ProjectedLink{
+			TenantID: tenantID,
+			SourceID: sourceID,
+			FromURN:  resourceURN,
+			ToURN:    anchorURN,
+			Relation: relationHasFinding,
+		}); err != nil {
+			return deleted, err
+		}
+		deleted++
+	}
+	return deleted, nil
+}
+
+func findingTargetURNs(finding workflowevents.FindingSnapshot) []string {
+	return normalizeIDs(append(normalizeIDs(finding.ResourceURNs), findingURN(strings.TrimSpace(finding.TenantID), finding.FindingID)))
 }
 
 func (s *Service) upsertEntity(ctx context.Context, entity *ports.ProjectedEntity, result *ports.ProjectionResult) error {

@@ -73,6 +73,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
+	stampProjectionRuntime(event, entities, links)
 	for _, entity := range entities {
 		if s.state != nil {
 			if err := s.state.UpsertProjectedEntity(ctx, entity); err != nil {
@@ -101,6 +102,44 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		EntitiesProjected: uint32(len(entities)),
 		LinksProjected:    uint32(len(links)),
 	}, nil
+}
+
+func stampProjectionRuntime(event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) {
+	if event == nil {
+		return
+	}
+	runtimeID := strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])
+	if runtimeID == "" {
+		return
+	}
+	for _, entity := range entities {
+		if entity == nil {
+			continue
+		}
+		if strings.TrimSpace(entity.RuntimeID) == "" {
+			entity.RuntimeID = runtimeID
+		}
+		if entity.Attributes == nil {
+			entity.Attributes = map[string]string{}
+		}
+		if strings.TrimSpace(entity.Attributes[ports.EventAttributeSourceRuntimeID]) == "" {
+			entity.Attributes[ports.EventAttributeSourceRuntimeID] = runtimeID
+		}
+	}
+	for _, link := range links {
+		if link == nil {
+			continue
+		}
+		if strings.TrimSpace(link.RuntimeID) == "" {
+			link.RuntimeID = runtimeID
+		}
+		if link.Attributes == nil {
+			link.Attributes = map[string]string{}
+		}
+		if strings.TrimSpace(link.Attributes[ports.EventAttributeSourceRuntimeID]) == "" {
+			link.Attributes[ports.EventAttributeSourceRuntimeID] = runtimeID
+		}
+	}
 }
 
 func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {

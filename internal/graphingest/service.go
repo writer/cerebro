@@ -161,6 +161,7 @@ func (s *Service) RunRuntime(ctx context.Context, request RuntimeRequest) (*RunR
 	}
 	ingestRequest := sourceRequest{
 		SourceID:          strings.TrimSpace(runtime.GetSourceId()),
+		RuntimeID:         runtimeID,
 		SourceConfig:      runtimeConfig,
 		TenantID:          strings.TrimSpace(runtime.GetTenantId()),
 		PageLimit:         pageLimit,
@@ -299,6 +300,7 @@ func (s *Service) preparedConfig(ctx context.Context, runtime *cerebrov1.SourceR
 
 type sourceRequest struct {
 	SourceID          string
+	RuntimeID         string
 	SourceConfig      map[string]string
 	TenantID          string
 	PageLimit         uint32
@@ -341,7 +343,7 @@ func (s *Service) ingestSource(ctx context.Context, request sourceRequest) (*Ing
 		}
 		result.PagesRead++
 		for _, event := range response.GetEvents() {
-			projected, err := s.projector.Project(ctx, ingestEvent(event, request.TenantID))
+			projected, err := s.projector.Project(ctx, ingestEvent(event, request.TenantID, request.RuntimeID))
 			if err != nil {
 				return nil, fmt.Errorf("project source event %q: %w", event.GetId(), err)
 			}
@@ -572,13 +574,19 @@ func sensitiveConfigKey(key string) bool {
 	return normalized == "key"
 }
 
-func ingestEvent(event *cerebrov1.EventEnvelope, tenantID string) *cerebrov1.EventEnvelope {
+func ingestEvent(event *cerebrov1.EventEnvelope, tenantID string, runtimeID string) *cerebrov1.EventEnvelope {
 	if event == nil {
 		return nil
 	}
 	cloned := proto.Clone(event).(*cerebrov1.EventEnvelope)
 	if normalized := strings.TrimSpace(tenantID); normalized != "" {
 		cloned.TenantId = normalized
+	}
+	if normalized := strings.TrimSpace(runtimeID); normalized != "" {
+		if cloned.Attributes == nil {
+			cloned.Attributes = map[string]string{}
+		}
+		cloned.Attributes[ports.EventAttributeSourceRuntimeID] = normalized
 	}
 	return cloned
 }

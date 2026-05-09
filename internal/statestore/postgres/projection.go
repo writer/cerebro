@@ -15,33 +15,40 @@ var ensureProjectionStatements = []string{
   urn TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
   source_id TEXT NOT NULL,
+  runtime_id TEXT NOT NULL DEFAULT '',
   entity_type TEXT NOT NULL,
   label TEXT NOT NULL,
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`,
 	`CREATE INDEX IF NOT EXISTS entities_tenant_type_idx ON entities (tenant_id, entity_type)`,
+	`ALTER TABLE entities ADD COLUMN IF NOT EXISTS runtime_id TEXT NOT NULL DEFAULT ''`,
+	`CREATE INDEX IF NOT EXISTS entities_tenant_runtime_idx ON entities (tenant_id, runtime_id)`,
 	`CREATE TABLE IF NOT EXISTS entity_links (
   from_urn TEXT NOT NULL,
   relation TEXT NOT NULL,
   to_urn TEXT NOT NULL,
   tenant_id TEXT NOT NULL,
   source_id TEXT NOT NULL,
+  runtime_id TEXT NOT NULL DEFAULT '',
   attributes_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (from_urn, relation, to_urn)
 )`,
 	`CREATE INDEX IF NOT EXISTS entity_links_tenant_relation_idx ON entity_links (tenant_id, relation)`,
+	`ALTER TABLE entity_links ADD COLUMN IF NOT EXISTS runtime_id TEXT NOT NULL DEFAULT ''`,
+	`CREATE INDEX IF NOT EXISTS entity_links_tenant_runtime_idx ON entity_links (tenant_id, runtime_id)`,
 }
 
 func projectedEntityUpsertSQL() string {
 	return `
-INSERT INTO entities (urn, tenant_id, source_id, entity_type, label, attributes_json)
-VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+INSERT INTO entities (urn, tenant_id, source_id, runtime_id, entity_type, label, attributes_json)
+VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
 ON CONFLICT (urn)
 DO UPDATE SET
   tenant_id = EXCLUDED.tenant_id,
   source_id = EXCLUDED.source_id,
+  runtime_id = CASE WHEN EXCLUDED.runtime_id <> '' THEN EXCLUDED.runtime_id ELSE entities.runtime_id END,
   entity_type = EXCLUDED.entity_type,
   label = EXCLUDED.label,
   attributes_json = entities.attributes_json || EXCLUDED.attributes_json,
@@ -50,12 +57,13 @@ DO UPDATE SET
 
 func projectedLinkUpsertSQL() string {
 	return `
-INSERT INTO entity_links (from_urn, relation, to_urn, tenant_id, source_id, attributes_json)
-VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+INSERT INTO entity_links (from_urn, relation, to_urn, tenant_id, source_id, runtime_id, attributes_json)
+VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
 ON CONFLICT (from_urn, relation, to_urn)
 DO UPDATE SET
   tenant_id = EXCLUDED.tenant_id,
   source_id = EXCLUDED.source_id,
+  runtime_id = CASE WHEN EXCLUDED.runtime_id <> '' THEN EXCLUDED.runtime_id ELSE entity_links.runtime_id END,
   attributes_json = entity_links.attributes_json || EXCLUDED.attributes_json,
   updated_at = NOW()`
 }
@@ -101,7 +109,7 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 	if label == "" {
 		label = urn
 	}
-	if _, err := s.db.ExecContext(ctx, projectedEntityUpsertSQL(), urn, tenantID, sourceID, entityType, label, attributesJSON); err != nil {
+	if _, err := s.db.ExecContext(ctx, projectedEntityUpsertSQL(), urn, tenantID, sourceID, strings.TrimSpace(entity.RuntimeID), entityType, label, attributesJSON); err != nil {
 		return fmt.Errorf("upsert projected entity %q: %w", urn, err)
 	}
 	return nil
@@ -142,7 +150,7 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	if err != nil {
 		return fmt.Errorf("marshal projected link attributes: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, projectedLinkUpsertSQL(), fromURN, relation, toURN, tenantID, sourceID, attributesJSON); err != nil {
+	if _, err := s.db.ExecContext(ctx, projectedLinkUpsertSQL(), fromURN, relation, toURN, tenantID, sourceID, strings.TrimSpace(link.RuntimeID), attributesJSON); err != nil {
 		return fmt.Errorf("upsert projected link %q %q %q: %w", fromURN, relation, toURN, err)
 	}
 	return nil

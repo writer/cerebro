@@ -9,6 +9,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/graphstore"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 type stubRunStore struct {
@@ -82,6 +83,25 @@ func TestRuntimeCheckpointIDDistinguishesOriginalRuntimeIDs(t *testing.T) {
 	}
 	if !strings.HasPrefix(first, "runtime:") || !strings.HasPrefix(second, "runtime:") {
 		t.Fatalf("runtimeCheckpointID() = %q, %q; want runtime prefix", first, second)
+	}
+}
+
+func TestIngestEventStampsTenantAndRuntime(t *testing.T) {
+	event := ingestEvent(&cerebrov1.EventEnvelope{
+		Id:       "event-1",
+		TenantId: "old-tenant",
+		Attributes: map[string]string{
+			"existing": "value",
+		},
+	}, "writer", "writer-github")
+	if got := event.GetTenantId(); got != "writer" {
+		t.Fatalf("TenantId = %q, want writer", got)
+	}
+	if got := event.GetAttributes()[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
+		t.Fatalf("source_runtime_id = %q, want writer-github", got)
+	}
+	if got := event.GetAttributes()["existing"]; got != "value" {
+		t.Fatalf("existing attribute = %q, want value", got)
 	}
 }
 

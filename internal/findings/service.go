@@ -14,6 +14,7 @@ import (
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
+	"github.com/writer/cerebro/internal/workflowevents"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -502,7 +503,7 @@ func (s *Service) resolveStaleOpenFindings(ctx context.Context, tenantID string,
 		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
 			FindingID: strings.TrimSpace(finding.ID),
 			Status:    findingStatusResolved,
-			Reason:    "No longer emitted by latest rule evaluation.",
+			Reason:    workflowevents.FindingStatusReasonNoLongerEmitted,
 			UpdatedAt: time.Now().UTC(),
 		})
 		if err != nil {
