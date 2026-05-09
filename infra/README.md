@@ -1,108 +1,87 @@
 # Cerebro Infrastructure
 
-Pulumi infrastructure for deploying Cerebro on AWS.
+Pulumi infrastructure for Writer's internal Cerebro runtime.
 
-## Architecture
+## AWS runtime
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                              VPC                                 │
-│  ┌──────────────────────┐    ┌──────────────────────┐          │
-│  │   Public Subnets     │    │   Private Subnets    │          │
-│  │  ┌────────────────┐  │    │  ┌────────────────┐  │          │
-│  │  │      ALB       │──│────│──│   ECS Fargate  │  │          │
-│  │  └────────────────┘  │    │  │   (Cerebro)    │  │          │
-│  │         │            │    │  └────────────────┘  │          │
-│  │         │ WAF        │    │         │            │          │
-│  └─────────│────────────┘    └─────────│────────────┘          │
-│            │                           │                        │
-└────────────│───────────────────────────│────────────────────────┘
-             │                           │
-        Internet                    Snowflake
-                                   (External)
-```
+`infra/aws` deploys a private ECS Fargate API service and optional scheduled orchestrator tasks. The stack provisions or wires:
 
-## Components
+- ECR repository references and explicit image tags
+- VPC networking, security groups, private subnets, and internal ALB
+- ACM certificate attachment and WAF rules
+- ECS cluster, task definitions, service, task IAM, and EventBridge orchestrator schedules
+- RDS Postgres for state
+- NATS JetStream for the append log
+- Neo4j/Aura for graph projections
+- KMS keys, CloudWatch logs/alarms, ALB access logs, and optional Tailscale routing
+- Infisical/AWS Secrets Manager boundaries for runtime secrets
+- S3 source IAM scopes for configured source runtimes
 
-- **VPC**: Public/private subnets across 2 AZs, NAT gateway
-- **ECS Fargate**: Go API server with auto-scaling (2-10 instances)
-- **ALB**: Application Load Balancer with health checks
-- **WAF**: Rate limiting + AWS managed rules (SQLi, XSS, bad inputs)
-- **Secrets Manager**: Snowflake credentials, API keys
-- **CloudWatch**: Logs, metrics, dashboard, alarms
+## GCP runtime support
 
-## Prerequisites
+`infra/gcp` configures Workload Identity Federation so approved AWS ECS task roles can impersonate a GCP scanner service account without long-lived service account keys.
 
-1. AWS CLI configured with appropriate credentials
-2. Pulumi CLI installed (`brew install pulumi`)
-3. Python 3.11+
+## Stacks
 
-## Quick Start
+| Stack | Purpose |
+| --- | --- |
+| `sec-dev` | Security development runtime, including Okta source runtime schedules. |
+| `go-prod` | Production runtime. |
+| `gcp-dev` | Development GCP WIF/scanner IAM. |
+| `gcp-prod` | Production GCP WIF/scanner IAM. |
+
+## Install
 
 ```bash
-# Install dependencies
 cd infra
 uv sync
-
-# Create stack
-pulumi stack init production
-
-# Set required config
-pulumi config set cerebro:containerImage <ECR_IMAGE_URI>
-pulumi config set --secret cerebro:snowflakeConnectionString "user:pass@account/DB/SCHEMA"
-
-# Optional: AI agents
-pulumi config set --secret cerebro:anthropicApiKey "sk-ant-..."
-
-# Optional: Notifications
-pulumi config set --secret cerebro:slackWebhookUrl "https://hooks.slack.com/..."
-
-# Preview changes
-pulumi preview
-
-# Deploy
-pulumi up
 ```
 
-## Configuration
+## Preview
+
+```bash
+cd infra/aws
+uv run pulumi preview --stack sec-dev
+uv run pulumi preview --stack go-prod
+
+cd ../gcp
+uv run pulumi preview --stack gcp-dev
+uv run pulumi preview --stack gcp-prod
+```
+
+## Deploy
+
+Prefer the GitHub Actions workflow for reviewed deployments. For emergency/manual operations, use the same stack names locally after verifying credentials and Pulumi organization access.
+
+```bash
+cd infra/aws
+uv run pulumi up --stack sec-dev
+uv run pulumi up --stack go-prod
+```
+
+## Important config
 
 | Key | Required | Description |
-|-----|----------|-------------|
-| `containerImage` | Yes | ECR image URI |
-| `snowflakeConnectionString` | Yes | Snowflake connection string |
-| `environment` | No | Environment name (default: production) |
-| `domain` | No | Custom domain for HTTPS |
-| `apiCpu` | No | CPU units (default: 1024) |
-| `apiMemory` | No | Memory MB (default: 2048) |
-| `apiMinInstances` | No | Min instances (default: 2) |
-| `apiMaxInstances` | No | Max instances (default: 10) |
-| `enableWaf` | No | Enable WAF (default: true) |
-| `albInternal` | No | Internal ALB only (default: true) |
+| --- | --- | --- |
+| `cerebro:ecrBaseUri` | Yes | ECR repository base URI for the runtime image. |
+| `cerebro:imageTag` | Yes | Explicit runtime image tag. |
+| `cerebro:environment` | Yes | Runtime environment name. |
+| `cerebro:useExistingVpc` | Usually | Use pre-existing Writer VPC/subnets. |
+| `cerebro:apiMaxInstances` | Yes | Must remain `1` until runtime cursor locking supports multiple API tasks. |
+| `cerebro:sourceRuntimes` | Optional | Declarative source runtime definitions. |
+| `cerebro:orchestratorEnabled` | Optional | Enables scheduled ECS orchestrator tasks. |
+| `cerebro:apiKeys` | Shared envs | Pulumi-encrypted API key set. |
+| `cerebro:neo4jAura*` | Graph envs | Neo4j/Aura instance and credential settings. |
+| `cerebro:s3Sources` | S3-backed sources | IAM scope for S3 source runtimes. |
+| `cerebro:enableInfisicalSyncRole` | Shared envs | Allows Infisical-managed secret sync. |
+| `cerebro:enableTailscale` | Internal access | Enables Tailscale subnet routing. |
 
 ## Outputs
 
-After deployment, Pulumi exports:
+Common AWS outputs include `api_url`, `alb_dns_name`, `ecs_cluster_name`, `ecs_service_name`, `postgres_endpoint`, `postgres_secret_name`, `nats_url`, `jetstream_stream_name`, Neo4j/Aura connection outputs, ECR repository outputs, WAF ARN, and optional Tailscale/Infisical outputs.
 
-- `api_url` - API endpoint URL
-- `alb_dns_name` - ALB DNS name
-- `ecs_cluster_name` - ECS cluster name
-- `secrets_arn` - Secrets Manager ARN
+## Deployment boundaries
 
-## CI/CD
+Image promotion is intentionally explicit and reviewable. Update the stack's `cerebro:imageTag`; do not add automatic cross-repository deployment linkage.
 
-See `.github/workflows/infra-deploy.yml` for automated deployment.
-
-## Cost Estimate
-
-Approximate monthly cost (us-east-1):
-
-| Resource | Cost |
-|----------|------|
-| ECS Fargate (2x 1vCPU/2GB) | ~$60 |
-| ALB | ~$20 |
-| NAT Gateway | ~$35 |
-| WAF | ~$10 |
-| CloudWatch | ~$5 |
-| **Total** | **~$130/mo** |
-
-Note: Snowflake costs are separate and depend on usage.
+Keep stack files free of plaintext secrets. Use Pulumi encrypted values and external secret imports instead.

@@ -1,68 +1,43 @@
 # Contributing to Cerebro
 
-Thanks for contributing.
+This repository contains WriterInternal deployment infrastructure for Cerebro. Keep changes scoped to Pulumi infrastructure, stack configuration, CI workflows, and deployment documentation.
 
-## Development setup
-
-1. Install Go `1.25.x`.
-2. Clone the repository.
-   ```bash
-   git clone https://github.com/writer/cerebro.git
-   cd cerebro
-   ```
-3. Run:
+## Local setup
 
 ```bash
-make setup
+cd infra
+uv sync
 ```
 
-## Local mode (no Snowflake)
+## Validate infrastructure changes
 
-You can run Cerebro without Snowflake credentials for local development.
+For AWS changes:
 
 ```bash
-unset SNOWFLAKE_PRIVATE_KEY SNOWFLAKE_ACCOUNT SNOWFLAKE_USER
-export CEREBRO_DB_PATH=.cerebro/cerebro.db
-make serve
+cd infra/aws
+uv run pulumi preview --stack sec-dev
+uv run pulumi preview --stack go-prod
 ```
 
-In this mode, findings persist to local SQLite and some Snowflake-dependent features (for example, data-lake queries and security graph) are limited or disabled.
-
-## Code quality checks
-
-Before opening a PR, run:
+For GCP changes:
 
 ```bash
-go test ./...
-golangci-lint run ./...
-go vet ./...
-make policy-validate
+cd infra/gcp
+uv run pulumi preview --stack gcp-dev
+uv run pulumi preview --stack gcp-prod
 ```
 
-## Dependency and `vendor/` strategy
-
-This repository keeps `vendor/` committed for reproducible builds and OSS consumers in restricted environments.
-
-If you change dependencies:
+If cloud credentials are unavailable, at minimum run Python compilation from the repository root:
 
 ```bash
-go mod tidy
-go mod vendor
+python3 -m compileall -q infra/aws infra/gcp
 ```
 
-Make sure `go.mod`, `go.sum`, and `vendor/` are all committed together.
+## Boundaries
 
-## Security checks
-
-For source security scanning:
-
-```bash
-$(go env GOPATH)/bin/gosec -severity medium -confidence medium -exclude-generated ./...
-$(go env GOPATH)/bin/govulncheck ./...
-```
-
-For built artifact scanning:
-
-```bash
-make security-scan-built
-```
+- Do not add application source code here.
+- Do not add automatic repository-to-repository promotion workflows.
+- Keep runtime image promotion explicit through reviewed `cerebro:imageTag` changes.
+- Do not commit plaintext secrets.
+- Keep Pulumi secrets encrypted and runtime secrets in the approved secret systems.
+- Preserve the singleton API deployment limit until source runtime cursor locking is made cross-task safe.
