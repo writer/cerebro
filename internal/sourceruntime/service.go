@@ -45,6 +45,16 @@ type Service struct {
 	resolver  sourceconfig.Resolver
 }
 
+// PutRuntimesRequest contains source runtime definitions to validate and store together.
+type PutRuntimesRequest struct {
+	Runtimes []*cerebrov1.SourceRuntime
+}
+
+// PutRuntimesResponse contains stored source runtime definitions with sensitive config redacted.
+type PutRuntimesResponse struct {
+	Runtimes []*cerebrov1.SourceRuntime
+}
+
 // New constructs a source runtime service.
 func New(registry *sourcecdk.Registry, store ports.SourceRuntimeStore, appendLog ports.AppendLog, projector ports.SourceProjector) *Service {
 	return &Service{registry: registry, store: store, appendLog: appendLog, projector: projector}
@@ -67,7 +77,62 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 	if req == nil || req.GetRuntime() == nil {
 		return nil, fmt.Errorf("%w: source runtime is required", ErrInvalidRequest)
 	}
-	runtime := cloneRuntime(req.GetRuntime())
+	runtime, err := s.preparePutRuntime(ctx, req.GetRuntime())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
+		return nil, err
+	}
+	return &cerebrov1.PutSourceRuntimeResponse{Runtime: redactRuntime(runtime)}, nil
+}
+
+// PutRuntimes validates all runtimes, then stores them atomically when more than one runtime is provided.
+func (s *Service) PutRuntimes(ctx context.Context, req PutRuntimesRequest) (*PutRuntimesResponse, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	if len(req.Runtimes) == 0 {
+		return nil, fmt.Errorf("%w: at least one source runtime is required", ErrInvalidRequest)
+	}
+	seenRuntimeIDs := make(map[string]struct{}, len(req.Runtimes))
+	runtimes := make([]*cerebrov1.SourceRuntime, 0, len(req.Runtimes))
+	for index, runtime := range req.Runtimes {
+		prepared, err := s.preparePutRuntime(ctx, runtime)
+		if err != nil {
+			return nil, fmt.Errorf("source runtime %d: %w", index, err)
+		}
+		if _, ok := seenRuntimeIDs[prepared.GetId()]; ok {
+			return nil, fmt.Errorf("%w: duplicate source runtime id %q", ErrInvalidRequest, prepared.GetId())
+		}
+		seenRuntimeIDs[prepared.GetId()] = struct{}{}
+		runtimes = append(runtimes, prepared)
+	}
+	if len(runtimes) == 1 {
+		if err := s.store.PutSourceRuntime(ctx, runtimes[0]); err != nil {
+			return nil, err
+		}
+	} else {
+		batchStore, ok := s.store.(ports.SourceRuntimeBatchStore)
+		if !ok {
+			return nil, fmt.Errorf("%w: atomic source runtime batch store is unavailable", ErrRuntimeUnavailable)
+		}
+		if err := batchStore.PutSourceRuntimes(ctx, runtimes); err != nil {
+			return nil, err
+		}
+	}
+	redacted := make([]*cerebrov1.SourceRuntime, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		redacted = append(redacted, redactRuntime(runtime))
+	}
+	return &PutRuntimesResponse{Runtimes: redacted}, nil
+}
+
+func (s *Service) preparePutRuntime(ctx context.Context, input *cerebrov1.SourceRuntime) (*cerebrov1.SourceRuntime, error) {
+	if input == nil {
+		return nil, fmt.Errorf("%w: source runtime is required", ErrInvalidRequest)
+	}
+	runtime := cloneRuntime(input)
 	runtime.Id = strings.TrimSpace(runtime.GetId())
 	runtime.SourceId = strings.TrimSpace(runtime.GetSourceId())
 	runtime.TenantId = strings.TrimSpace(runtime.GetTenantId())
@@ -104,10 +169,7 @@ func (s *Service) Put(ctx context.Context, req *cerebrov1.PutSourceRuntimeReques
 		}
 		runtime = mergeRuntime(existing, runtime)
 	}
-	if err := s.store.PutSourceRuntime(ctx, runtime); err != nil {
-		return nil, err
-	}
-	return &cerebrov1.PutSourceRuntimeResponse{Runtime: redactRuntime(runtime)}, nil
+	return runtime, nil
 }
 
 // Get returns one stored source runtime definition.

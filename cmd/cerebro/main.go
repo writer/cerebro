@@ -202,7 +202,7 @@ func runSource(args []string) error {
 
 func runSourceRuntime(args []string) error {
 	if len(args) == 0 {
-		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync] ...", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync|bootstrap] ...", os.Args[0]))
 	}
 	cfg, err := appconfig.Load()
 	if err != nil {
@@ -230,6 +230,27 @@ func runSourceRuntime(args []string) error {
 	))
 
 	switch args[0] {
+	case "bootstrap":
+		runtimes, err := parseSourceRuntimeBootstrapArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		for index, runtime := range runtimes {
+			runtime, err = prepareSourceRuntime(ctx, runtime)
+			if err != nil {
+				return fmt.Errorf("source runtime bootstrap runtimes[%d]: %w", index, err)
+			}
+			runtimes[index] = runtime
+		}
+		response, err := service.PutRuntimes(ctx, sourceruntime.PutRuntimesRequest{Runtimes: runtimes})
+		if err != nil {
+			return err
+		}
+		payload, err := sourceRuntimeListJSON(response.Runtimes)
+		if err != nil {
+			return err
+		}
+		return printJSON(payload)
 	case "put":
 		runtime, err := parseSourceRuntimePutArgs(args[1:])
 		if err != nil {
@@ -281,7 +302,7 @@ func runSourceRuntime(args []string) error {
 		}
 		return printProto(response)
 	default:
-		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync] ...", os.Args[0]))
+		return usageError(fmt.Sprintf("usage: %s source-runtime [put|get|list|sync|bootstrap] ...", os.Args[0]))
 	}
 }
 
@@ -341,6 +362,94 @@ func parseSourceRuntimePutArgs(args []string) (*cerebrov1.SourceRuntime, error) 
 		runtime.Config[key] = resolved
 	}
 	return runtime, nil
+}
+
+func parseSourceRuntimeBootstrapArgs(args []string) ([]*cerebrov1.SourceRuntime, error) {
+	if len(args) != 1 {
+		return nil, usageError(fmt.Sprintf("usage: %s source-runtime bootstrap env=<env-var>", os.Args[0]))
+	}
+	key, value, ok := strings.Cut(args[0], "=")
+	envName := strings.TrimSpace(value)
+	if !ok || key != "env" || envName == "" {
+		return nil, usageError(fmt.Sprintf("usage: %s source-runtime bootstrap env=<env-var>", os.Args[0]))
+	}
+	payload, ok := os.LookupEnv(envName)
+	if !ok {
+		return nil, fmt.Errorf("source runtime bootstrap env %q is unset", envName)
+	}
+	return parseSourceRuntimeBootstrapJSON(payload)
+}
+
+func parseSourceRuntimeBootstrapJSON(payload string) ([]*cerebrov1.SourceRuntime, error) {
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return nil, fmt.Errorf("source runtime bootstrap payload is empty")
+	}
+	rawRuntimes, err := sourceRuntimeBootstrapRawMessages(payload)
+	if err != nil {
+		return nil, err
+	}
+	if len(rawRuntimes) == 0 {
+		return nil, fmt.Errorf("source runtime bootstrap payload must include at least one runtime")
+	}
+	runtimes := make([]*cerebrov1.SourceRuntime, 0, len(rawRuntimes))
+	seenRuntimeIDs := make(map[string]struct{}, len(rawRuntimes))
+	unmarshaler := protojson.UnmarshalOptions{DiscardUnknown: false}
+	for index, raw := range rawRuntimes {
+		var runtime cerebrov1.SourceRuntime
+		if err := unmarshaler.Unmarshal(raw, &runtime); err != nil {
+			return nil, fmt.Errorf("parse source runtime bootstrap runtimes[%d]: %w", index, err)
+		}
+		if err := normalizeBootstrapSourceRuntime(&runtime); err != nil {
+			return nil, fmt.Errorf("source runtime bootstrap runtimes[%d]: %w", index, err)
+		}
+		if _, ok := seenRuntimeIDs[runtime.GetId()]; ok {
+			return nil, fmt.Errorf("source runtime bootstrap runtimes[%d]: duplicate runtime id %q", index, runtime.GetId())
+		}
+		seenRuntimeIDs[runtime.GetId()] = struct{}{}
+		runtimes = append(runtimes, &runtime)
+	}
+	return runtimes, nil
+}
+
+func sourceRuntimeBootstrapRawMessages(payload string) ([]json.RawMessage, error) {
+	if strings.HasPrefix(payload, "[") {
+		var runtimes []json.RawMessage
+		if err := json.Unmarshal([]byte(payload), &runtimes); err != nil {
+			return nil, fmt.Errorf("parse source runtime bootstrap payload: %w", err)
+		}
+		return runtimes, nil
+	}
+	var document struct {
+		Runtimes []json.RawMessage `json:"runtimes"`
+	}
+	if err := json.Unmarshal([]byte(payload), &document); err != nil {
+		return nil, fmt.Errorf("parse source runtime bootstrap payload: %w", err)
+	}
+	return document.Runtimes, nil
+}
+
+func normalizeBootstrapSourceRuntime(runtime *cerebrov1.SourceRuntime) error {
+	runtime.Id = strings.TrimSpace(runtime.GetId())
+	runtime.SourceId = strings.TrimSpace(runtime.GetSourceId())
+	runtime.TenantId = strings.TrimSpace(runtime.GetTenantId())
+	runtime.Checkpoint = nil
+	runtime.NextCursor = nil
+	runtime.LastSyncedAt = nil
+	if runtime.GetId() == "" || runtime.GetSourceId() == "" {
+		return usageError(fmt.Sprintf("usage: %s source-runtime bootstrap env=<env-var>", os.Args[0]))
+	}
+	if runtime.Config == nil {
+		runtime.Config = make(map[string]string)
+	}
+	for key, value := range runtime.GetConfig() {
+		normalized, err := sourceConfigValueFromArg(key, value)
+		if err != nil {
+			return err
+		}
+		runtime.Config[key] = normalized
+	}
+	return nil
 }
 
 func sourceConfigValueFromArg(key string, value string) (string, error) {

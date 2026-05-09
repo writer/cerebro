@@ -23,6 +23,49 @@ var ensureSourceRuntimeStatements = []string{`CREATE TABLE IF NOT EXISTS source_
 
 // PutSourceRuntime upserts one source runtime definition.
 func (s *Store) PutSourceRuntime(ctx context.Context, runtime *cerebrov1.SourceRuntime) error {
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
+		return err
+	}
+	return putSourceRuntime(ctx, s.db, runtime)
+}
+
+// PutSourceRuntimes upserts source runtime definitions atomically.
+func (s *Store) PutSourceRuntimes(ctx context.Context, runtimes []*cerebrov1.SourceRuntime) error {
+	if len(runtimes) == 0 {
+		return errors.New("at least one source runtime is required")
+	}
+	if s == nil || s.db == nil {
+		return errors.New("postgres is not configured")
+	}
+	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin source runtime batch: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+	for _, runtime := range runtimes {
+		if err := putSourceRuntime(ctx, tx, runtime); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit source runtime batch: %w", err)
+	}
+	return nil
+}
+
+type sourceRuntimeExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func putSourceRuntime(ctx context.Context, executor sourceRuntimeExecutor, runtime *cerebrov1.SourceRuntime) error {
 	if runtime == nil {
 		return errors.New("source runtime is required")
 	}
@@ -33,17 +76,11 @@ func (s *Store) PutSourceRuntime(ctx context.Context, runtime *cerebrov1.SourceR
 	if strings.TrimSpace(runtime.GetSourceId()) == "" {
 		return errors.New("source id is required")
 	}
-	if s == nil || s.db == nil {
-		return errors.New("postgres is not configured")
-	}
-	if err := s.ensureSourceRuntimeTable(ctx); err != nil {
-		return err
-	}
 	payload, err := protojson.MarshalOptions{UseProtoNames: true}.Marshal(runtime)
 	if err != nil {
 		return fmt.Errorf("marshal source runtime: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := executor.ExecContext(ctx, `
 INSERT INTO source_runtimes (id, runtime_json)
 VALUES ($1, $2::jsonb)
 ON CONFLICT (id)

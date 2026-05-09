@@ -18,6 +18,12 @@ type SourceRuntimeStore interface {
 	GetSourceRuntime(context.Context, string) (*cerebrov1.SourceRuntime, error)
 }
 
+// SourceRuntimeBatchStore persists multiple source runtimes atomically.
+type SourceRuntimeBatchStore interface {
+	SourceRuntimeStore
+	PutSourceRuntimes(context.Context, []*cerebrov1.SourceRuntime) error
+}
+
 // SourceRuntimeFilter scopes persisted source runtime listing.
 type SourceRuntimeFilter struct {
 	RuntimeID string
