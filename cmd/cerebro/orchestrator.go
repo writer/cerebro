@@ -426,7 +426,6 @@ func runOrchestratorIteration(
 		}
 		graphResult, err := graphService.RunRuntime(runtimeCtx, graphingest.RuntimeRequest{RuntimeID: runtime.GetId(), PageLimit: options.GraphPageLimit, Trigger: "orchestrator"})
 		runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
-		graphIngestSucceeded := false
 		if err != nil {
 			runtimeResult.GraphIngest = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
@@ -434,9 +433,12 @@ func runOrchestratorIteration(
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_error", err.Error())
 		} else {
 			runtimeResult.GraphIngest = "completed"
-			graphIngestSucceeded = true
 		}
-		if graphIngestSucceeded {
+		// Run graph rules whenever the projection has updated the graph for this runtime, even
+		// if a trailing PutIngestRun(completed) write failed. The graph is already fresh and the
+		// rules are read-only, so deferring them until the next iteration would needlessly delay
+		// detection and stale-finding auto-resolution.
+		if graphResult != nil && graphResult.Ingest != nil {
 			graphRulesResult, err := findingService.EvaluateSourceRuntimeGraphRules(runtimeCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
 			runtimeSpanAttrs = applyGraphRuleCounters(runtimeResult, graphRulesResult, runtimeSpanAttrs)
 			if err != nil {

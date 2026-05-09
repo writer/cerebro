@@ -92,7 +92,7 @@ func TestRunOrchestratorIterationStopsAfterSyncFailure(t *testing.T) {
 	if got := len(result.Runtimes); got != 1 {
 		t.Fatalf("runtime result count = %d, want 1", got)
 	}
-	if result.Runtimes[0].FindingRules != "" || result.Runtimes[0].GraphIngest != "" {
+	if result.Runtimes[0].FindingRules != "" || result.Runtimes[0].GraphIngest != "" || result.Runtimes[0].GraphRules != "" {
 		t.Fatalf("downstream stages ran after sync failure: %#v", result.Runtimes[0])
 	}
 	if store.leaseID != "runtime-1" || store.releaseID != "runtime-1" {
@@ -231,7 +231,10 @@ func TestRunOrchestratorIterationRunsGraphRulesAfterIngest(t *testing.T) {
 	}
 }
 
-func TestRunOrchestratorIterationSkipsGraphRulesWhenIngestFails(t *testing.T) {
+func TestRunOrchestratorIterationRunsGraphRulesWhenOnlyRunRecordWriteFails(t *testing.T) {
+	// The projection updates the graph BEFORE the trailing PutIngestRun(completed) write, so a
+	// transient run-record write failure leaves the graph fresh and graph rules MUST still run.
+	// Otherwise new detections and stale auto-resolutions are delayed until the next iteration.
 	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
@@ -239,7 +242,7 @@ func TestRunOrchestratorIterationSkipsGraphRulesWhenIngestFails(t *testing.T) {
 	graphRule := &orchestratorGraphRule{
 		spec:     &cerebrov1.RuleSpec{Id: "orchestrator-graph-rule"},
 		sourceID: "github",
-		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"},
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n LIMIT 1"},
 	}
 	ruleRegistry, err := findings.NewRegistry(graphRule)
 	if err != nil {
@@ -270,7 +273,7 @@ func TestRunOrchestratorIterationSkipsGraphRulesWhenIngestFails(t *testing.T) {
 		1,
 	)
 	if err == nil {
-		t.Fatal("runOrchestratorIteration() error = nil, want graph ingest failure")
+		t.Fatal("runOrchestratorIteration() error = nil, want graph ingest run-record write failure")
 	}
 	if got := len(result.Runtimes); got != 1 {
 		t.Fatalf("runtime result count = %d, want 1", got)
@@ -279,11 +282,14 @@ func TestRunOrchestratorIterationSkipsGraphRulesWhenIngestFails(t *testing.T) {
 	if runtimeResult.GraphIngest != "failed" {
 		t.Fatalf("graph ingest status = %q, want failed", runtimeResult.GraphIngest)
 	}
-	if runtimeResult.GraphRules != "skipped" {
-		t.Fatalf("graph rules status = %q, want skipped (ingest failed)", runtimeResult.GraphRules)
+	if runtimeResult.EntitiesProjected == 0 || runtimeResult.LinksProjected == 0 {
+		t.Fatalf("expected projection counters to be populated despite run-record failure, got %#v", runtimeResult)
 	}
-	if graphRule.calls != 0 {
-		t.Fatalf("graph rule should not have been called, got %d calls", graphRule.calls)
+	if runtimeResult.GraphRules != "completed" {
+		t.Fatalf("graph rules status = %q, want completed (graph is fresh)", runtimeResult.GraphRules)
+	}
+	if graphRule.calls != 1 {
+		t.Fatalf("graph rule should have been called once after fresh projection, got %d calls", graphRule.calls)
 	}
 }
 

@@ -58,7 +58,7 @@ func newDeprovisionedOktaActiveGitHubRule() Rule {
 				"Delayed Okta lifecycle propagation immediately after a status change; window typically closes within one sync cycle.",
 			},
 			Runbook:           "Confirm the Okta identity is truly off-boarded, revoke or suspend the linked GitHub account, rotate any tokens it created, and document the gap that allowed continued access.",
-			FingerprintFields: []string{"identity_urn", "github_user_urn"},
+			FingerprintFields: []string{"runtime_id", "okta_user_urn", "identity_urn", "github_user_urn"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC6.2"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
@@ -93,7 +93,8 @@ func (r *deprovisionedOktaActiveGitHubRule) QueryFor(runtime *cerebrov1.SourceRu
 		return ports.CypherQueryRequest{}
 	}
 	tenantID := strings.TrimSpace(runtime.GetTenantId())
-	if tenantID == "" {
+	runtimeID := strings.TrimSpace(runtime.GetId())
+	if tenantID == "" || runtimeID == "" {
 		return ports.CypherQueryRequest{}
 	}
 	return ports.CypherQueryRequest{
@@ -101,9 +102,10 @@ func (r *deprovisionedOktaActiveGitHubRule) QueryFor(runtime *cerebrov1.SourceRu
        -[oi:RELATION {relation: 'represents_identity'}]->(id:Entity)
        <-[gi:RELATION {relation: 'represents_identity'}]-(g:Entity {entity_type: 'github.user', tenant_id: $tenant_id})
        -[acted:RELATION {relation: 'acted_on'}]->(target:Entity)
-WHERE toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"DEPROVISIONED"'
-   OR toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"SUSPENDED"'
-   OR toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"INACTIVE"'
+WHERE coalesce(o.attributes_json, '') CONTAINS $okta_runtime_marker
+  AND (toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"DEPROVISIONED"'
+       OR toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"SUSPENDED"'
+       OR toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"INACTIVE"')
 RETURN o.urn AS okta_user_urn,
        o.label AS okta_user_label,
        coalesce(o.attributes_json, '') AS okta_attributes_json,
@@ -117,8 +119,9 @@ RETURN o.urn AS okta_user_urn,
        coalesce(acted.attributes_json, '') AS acted_attributes_json
 LIMIT $row_limit`,
 		Params: map[string]any{
-			"tenant_id": tenantID,
-			"row_limit": int64(identityDeprovisionedOktaQueryRowLimit),
+			"tenant_id":           tenantID,
+			"okta_runtime_marker": fmt.Sprintf("%q:%q", "source_runtime_id", runtimeID),
+			"row_limit":           int64(identityDeprovisionedOktaQueryRowLimit),
 		},
 		RowLimit: identityDeprovisionedOktaQueryRowLimit,
 	}
@@ -201,9 +204,12 @@ type deprovisionedOktaTarget struct {
 }
 
 func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.SourceRuntime, tenantID string, group *deprovisionedOktaGroup, now time.Time) *ports.FindingRecord {
+	runtimeID := strings.TrimSpace(runtime.GetId())
 	fingerprint := hashFindingFingerprint(
 		r.definition.ID,
 		tenantID,
+		runtimeID,
+		group.oktaUserURN,
 		group.identityURN,
 		group.githubUserURN,
 	)
@@ -243,7 +249,7 @@ func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.Sour
 		"target_urns":           strings.Join(targetURNs, ","),
 		"target_labels":         strings.Join(targetLabels, ","),
 		"target_entity_types":   strings.Join(sortedKeys(targetTypes), ","),
-		"source_runtime_id":     strings.TrimSpace(runtime.GetId()),
+		"source_runtime_id":     runtimeID,
 		"source_runtime_tenant": tenantID,
 	}
 	for key, value := range r.definition.AttributeMap() {
@@ -254,7 +260,7 @@ func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.Sour
 		ID:              fingerprint,
 		Fingerprint:     fingerprint,
 		TenantID:        tenantID,
-		RuntimeID:       strings.TrimSpace(runtime.GetId()),
+		RuntimeID:       runtimeID,
 		RuleID:          r.definition.ID,
 		Title:           r.definition.Name,
 		Severity:        r.definition.Severity,

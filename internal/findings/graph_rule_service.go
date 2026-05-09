@@ -18,11 +18,12 @@ type EvaluateGraphRulesRequest struct {
 
 // GraphRuleEvaluationResult reports one graph rule's outputs inside a multi-rule pass.
 type GraphRuleEvaluationResult struct {
-	Rule     *cerebrov1.RuleSpec
-	Findings []*ports.FindingRecord
-	Run      *cerebrov1.FindingEvaluationRun
-	Evidence []*cerebrov1.FindingEvidence
-	RowsRead uint32
+	Rule      *cerebrov1.RuleSpec
+	Findings  []*ports.FindingRecord
+	Run       *cerebrov1.FindingEvaluationRun
+	Evidence  []*cerebrov1.FindingEvidence
+	RowsRead  uint32
+	Truncated bool
 }
 
 // EvaluateGraphRulesResult reports one multi-rule graph evaluation over one runtime.
@@ -99,10 +100,11 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		return result, s.finishFailedRun(ctx, run, 0, nil, evaluationErr)
 	}
 	result.RowsRead = uint32(len(rows))
+	result.Truncated = cypherRowsTruncated(queryRequest, len(rows))
 	emitted, err := rule.EvaluateRows(ctx, runtime, rows)
 	if err != nil {
 		evaluationErr := fmt.Errorf("evaluate graph rule %q rows: %w", spec.GetId(), err)
-		return result, s.finishFailedRun(ctx, run, result.RowsRead, nil, evaluationErr)
+		return result, s.finishFailedRun(ctx, run, 0, nil, evaluationErr)
 	}
 	evidenceIDs := map[string]struct{}{}
 	emittedFindingIDs := map[string]struct{}{}
@@ -113,41 +115,56 @@ func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.Sour
 		record, err = s.reconcileLegacyFindingIdentity(ctx, record)
 		if err != nil {
 			evaluationErr := fmt.Errorf("reconcile finding identity for graph rule %q: %w", spec.GetId(), err)
-			return result, s.finishFailedRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
 		}
 		stored, err := s.store.UpsertFinding(ctx, record)
 		if err != nil {
 			evaluationErr := fmt.Errorf("persist finding for graph rule %q: %w", spec.GetId(), err)
-			return result, s.finishFailedRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
 		}
 		result.Findings = append(result.Findings, stored)
 		emittedFindingIDs[strings.TrimSpace(stored.ID)] = struct{}{}
 		evidence, err := s.buildFindingEvidence(ctx, stored, run)
 		if err != nil {
 			evaluationErr := fmt.Errorf("build evidence for graph rule %q finding %q: %w", spec.GetId(), stored.ID, err)
-			return result, s.finishFailedRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
 		}
 		if _, seen := evidenceIDs[evidence.GetId()]; !seen {
 			if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
 				evaluationErr := fmt.Errorf("persist evidence for graph rule %q finding %q: %w", spec.GetId(), stored.ID, err)
-				return result, s.finishFailedRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+				return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
 			}
 			evidenceIDs[evidence.GetId()] = struct{}{}
 			result.Evidence = append(result.Evidence, evidence)
 		}
 		if err := s.projectFindingAnchor(ctx, stored); err != nil {
 			evaluationErr := fmt.Errorf("project graph rule %q finding %q anchor: %w", spec.GetId(), stored.ID, err)
-			return result, s.finishFailedRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
 		}
 	}
-	if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), emittedFindingIDs); err != nil {
-		evaluationErr := fmt.Errorf("resolve stale graph findings for rule %q: %w", spec.GetId(), err)
-		return result, s.finishFailedRun(ctx, run, result.RowsRead, findingIDs(result.Findings), evaluationErr)
+	if !result.Truncated {
+		if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), emittedFindingIDs); err != nil {
+			evaluationErr := fmt.Errorf("resolve stale graph findings for rule %q: %w", spec.GetId(), err)
+			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
+		}
 	}
-	if err := s.finishCompletedRun(ctx, run, result.RowsRead, findingIDs(result.Findings)); err != nil {
+	if err := s.finishCompletedRun(ctx, run, 0, findingIDs(result.Findings)); err != nil {
 		return result, err
 	}
 	return result, nil
+}
+
+// cypherRowsTruncated reports whether the cypher result hit the effective row cap. When the
+// rule asks for at most N rows and we got back exactly N, we cannot tell the graph apart from
+// a graph that had N+1 matching rows, so the rule may have missed offenders. Stale-finding
+// auto-resolution must not run in that case or we would close findings whose still-matching
+// row simply fell past the cutoff.
+func cypherRowsTruncated(request ports.CypherQueryRequest, rowsReturned int) bool {
+	cap := request.RowLimit
+	if cap <= 0 || cap > ports.MaxCypherQueryRows {
+		cap = ports.MaxCypherQueryRows
+	}
+	return rowsReturned >= cap
 }
 
 func (s *Service) selectGraphRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string) ([]GraphRule, error) {

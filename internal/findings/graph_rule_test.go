@@ -121,6 +121,9 @@ func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 	if got := evaluation.RowsRead; got != 1 {
 		t.Fatalf("RowsRead = %d, want 1", got)
 	}
+	if evaluation.Truncated {
+		t.Fatalf("Truncated = true, want false (rows below cap)")
+	}
 	if got := len(evaluation.Findings); got != 1 {
 		t.Fatalf("len(Findings) = %d, want 1", got)
 	}
@@ -130,8 +133,66 @@ func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
 	if got := evaluation.Run.GetStatus(); got != "completed" {
 		t.Fatalf("Run.Status = %q, want completed", got)
 	}
+	if got := evaluation.Run.GetEventsEvaluated(); got != 0 {
+		t.Fatalf("Run.EventsEvaluated = %d, want 0 (graph rules read graph rows, not events)", got)
+	}
 	if store.findings == nil || store.findings["finding-graph-1"] == nil {
 		t.Fatalf("finding store should contain persisted finding")
+	}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesTruncatedSkipsStaleResolution(t *testing.T) {
+	// When the cypher result hits the row cap we cannot tell a graph that has cap rows from a
+	// graph that has cap+1: an offender may have fallen past the cutoff. Auto-resolving open
+	// findings on that incomplete view would close still-active findings.
+	const rowLimit = 2
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	staleFinding := &ports.FindingRecord{
+		ID:          "finding-stale",
+		Fingerprint: "fp-stale",
+		TenantID:    "writer",
+		RuntimeID:   "runtime-okta",
+		RuleID:      "truncating-rule",
+		Status:      findingStatusOpen,
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{staleFinding.ID: cloneFinding(staleFinding)}}
+	graphStore := &stubGraphStore{
+		cypherRows: []ports.CypherRow{
+			{Values: map[string]any{"label": "row-1"}},
+			{Values: map[string]any{"label": "row-2"}},
+		},
+	}
+	rule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "truncating-rule"},
+		sourceID: "okta",
+		query: ports.CypherQueryRequest{
+			Query:    "MATCH (n) RETURN n LIMIT $row_limit",
+			Params:   map[string]any{"row_limit": int64(rowLimit)},
+			RowLimit: rowLimit,
+		},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", got)
+	}
+	evaluation := result.Evaluations[0]
+	if !evaluation.Truncated {
+		t.Fatalf("Truncated = false, want true (rows hit cap)")
+	}
+	persisted, ok := store.findings[staleFinding.ID]
+	if !ok {
+		t.Fatalf("stale finding %q missing after evaluation", staleFinding.ID)
+	}
+	if got := persisted.Status; got != findingStatusOpen {
+		t.Fatalf("stale finding status = %q, want still %q (truncated cypher view must not auto-resolve)", got, findingStatusOpen)
 	}
 }
 
