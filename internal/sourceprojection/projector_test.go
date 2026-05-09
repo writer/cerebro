@@ -206,6 +206,46 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 	}
 }
 
+func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-oauth-grant",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			"domain":               "writer.okta.com",
+			"event_type":           "app.oauth2.token.grant.access_token",
+			"actor_id":             "0oa-client",
+			"actor_type":           "PublicClientApp",
+			"actor_display_name":   "Production Client",
+			"resource_id":          "00u-user",
+			"resource_type":        "User",
+			"oauth_client_id":      "0oa-client",
+			"oauth_client_label":   "Production Client",
+			"oauth_client_type":    "PublicClientApp",
+			"oauth_event_category": "runtime_grant",
+			"grant_type":           "access_token",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+	userURN := "urn:cerebro:writer:okta_user:00u-user"
+	entity, ok := state.entities[clientURN]
+	if !ok {
+		t.Fatalf("OAuth client entity %q missing", clientURN)
+	}
+	if got := entity.Attributes["oauth_event_category"]; got != "runtime_grant" {
+		t.Fatalf("oauth_event_category = %q, want runtime_grant", got)
+	}
+	assertProjectedLink(t, state, clientURN, relationActedOn, userURN)
+	assertProjectedLink(t, state, clientURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
+}
+
 func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 	events := []struct {
 		id       string

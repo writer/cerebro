@@ -40,4 +40,22 @@ func TestRuntimeActiveThreatEvidenceRule(t *testing.T) {
 	if len(records) != 0 {
 		t.Fatalf("len(benign records) = %d, want 0", len(records))
 	}
+
+	inactive := &cerebrov1.EventEnvelope{Id: "runtime-evidence-inactive", TenantId: "writer", SourceId: "runtime", Kind: "runtime.evidence", Attributes: map[string]string{"confidence": "0.2", "evidence_type": "credential_use", "verdict": "inactive"}}
+	records, err = rule.Evaluate(context.Background(), runtime, inactive)
+	if err != nil {
+		t.Fatalf("Evaluate(inactive) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(inactive records) = %d, want 0", len(records))
+	}
+
+	activeRisky := &cerebrov1.EventEnvelope{Id: "runtime-evidence-active", TenantId: "writer", SourceId: "runtime", Kind: "runtime.evidence", Attributes: map[string]string{"confidence": "0.2", "evidence_type": "credential_use", "verdict": "active"}}
+	records, err = rule.Evaluate(context.Background(), runtime, activeRisky)
+	if err != nil {
+		t.Fatalf("Evaluate(active) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(active records) = %d, want 1", len(records))
+	}
 }

@@ -405,6 +405,27 @@ func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	return nil
 }
 
+// DeleteProjectedEntity removes one normalized entity and its graph relationships.
+func (s *Store) DeleteProjectedEntity(ctx context.Context, urn string) error {
+	normalizedURN := strings.TrimSpace(urn)
+	if normalizedURN == "" {
+		return errors.New("projected entity urn is required")
+	}
+	if err := s.requireConfigured(); err != nil {
+		return err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return err
+	}
+	_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		return consume(ctx, tx, `MATCH (e:Entity {urn: $urn}) DETACH DELETE e`, map[string]any{"urn": normalizedURN})
+	})
+	if err != nil {
+		return fmt.Errorf("delete projected entity %q: %w", normalizedURN, err)
+	}
+	return nil
+}
+
 // GetEntityNeighborhood returns one bounded root-centered graph neighborhood.
 func (s *Store) GetEntityNeighborhood(ctx context.Context, rootURN string, limit int) (*ports.EntityNeighborhood, error) {
 	normalizedRootURN := strings.TrimSpace(rootURN)

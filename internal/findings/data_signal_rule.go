@@ -77,9 +77,28 @@ func buildDataSensitiveAssetFinding(ctx context.Context, runtime *cerebrov1.Sour
 }
 
 func matchesDataSensitiveAssetRisk(attributes map[string]string) bool {
-	sensitive := findingAttributeBool(attributes, "crown_jewel", "contains_secrets", "contains_pii", "contains_phi") || containsAny(strings.ToLower(firstNonEmpty(attributes["data_classification"], attributes["data_sensitivity"], attributes["sensitivity"])), "secret", "sensitive", "confidential", "restricted")
+	sensitive := findingAttributeBool(attributes, "crown_jewel", "contains_secrets", "contains_pii", "contains_phi") || dataClassificationSensitive(firstNonEmpty(attributes["data_classification"], attributes["data_sensitivity"], attributes["sensitivity"]))
 	if !sensitive {
 		return false
 	}
 	return findingAttributeBool(attributes, "public", "internet_exposed", "external_exposure", "privileged_access", "is_admin")
+}
+
+func dataClassificationSensitive(value string) bool {
+	tokens := strings.FieldsFunc(strings.ToLower(strings.TrimSpace(value)), dataClassificationSeparator)
+	switch strings.Join(tokens, "_") {
+	case "", "public", "unrestricted", "not_sensitive", "non_sensitive", "no_sensitive_data":
+		return false
+	}
+	for _, token := range tokens {
+		switch token {
+		case "secret", "secrets", "sensitive", "confidential", "restricted":
+			return true
+		}
+	}
+	return false
+}
+
+func dataClassificationSeparator(r rune) bool {
+	return (r < 'a' || r > 'z') && (r < '0' || r > '9')
 }

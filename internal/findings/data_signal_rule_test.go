@@ -43,4 +43,22 @@ func TestDataSensitiveAssetRiskRule(t *testing.T) {
 	if len(records) != 0 {
 		t.Fatalf("len(internal records) = %d, want 0", len(records))
 	}
+
+	unrestricted := &cerebrov1.EventEnvelope{Id: "asset-unrestricted", TenantId: "writer", SourceId: "asset", Kind: "asset.data_sensitivity", Attributes: map[string]string{"data_classification": "unrestricted", "internet_exposed": "true", "resource_id": "public-docs", "resource_type": "bucket", "source_provider": "aws"}}
+	records, err = rule.Evaluate(context.Background(), runtime, unrestricted)
+	if err != nil {
+		t.Fatalf("Evaluate(unrestricted) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(unrestricted records) = %d, want 0", len(records))
+	}
+
+	notSensitive := &cerebrov1.EventEnvelope{Id: "asset-not-sensitive", TenantId: "writer", SourceId: "asset", Kind: "asset.data_sensitivity", Attributes: map[string]string{"data_classification": "not_sensitive", "public": "true", "resource_id": "public-docs", "resource_type": "bucket", "source_provider": "aws"}}
+	records, err = rule.Evaluate(context.Background(), runtime, notSensitive)
+	if err != nil {
+		t.Fatalf("Evaluate(notSensitive) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(notSensitive records) = %d, want 0", len(records))
+	}
 }

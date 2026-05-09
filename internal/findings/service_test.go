@@ -261,6 +261,16 @@ func (s *stubGraphStore) UpsertProjectedLink(_ context.Context, link *ports.Proj
 	return nil
 }
 
+func (s *stubGraphStore) DeleteProjectedEntity(_ context.Context, urn string) error {
+	delete(s.entities, urn)
+	for key, link := range s.links {
+		if link.FromURN == urn || link.ToURN == urn {
+			delete(s.links, key)
+		}
+	}
+	return nil
+}
+
 func (s *stubFindingStore) UpsertClaim(_ context.Context, claim *ports.ClaimRecord) (*ports.ClaimRecord, error) {
 	if claim == nil {
 		return nil, errors.New("claim is required")
@@ -818,6 +828,97 @@ func TestEvaluateSourceRuntimeFindingsProjectsRecordedFindingToGraph(t *testing.
 	}
 	if got := appendLog.events[0].GetKind(); got != workflowevents.EventKindFindingRecorded {
 		t.Fatalf("appendLog.events[0].Kind = %q, want %q", got, workflowevents.EventKindFindingRecorded)
+	}
+}
+
+func TestEvaluateSourceRuntimeResolvesAndPrunesStaleFindings(t *testing.T) {
+	registry, err := NewRegistry(&emittingRule{
+		spec: &cerebrov1.RuleSpec{
+			Id:   "routine-oauth-rule",
+			Name: "Routine OAuth Rule",
+		},
+		supportedSourceIDs: map[string]struct{}{"okta": {}},
+		triggerEventID:     "different-event",
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	staleFinding := &ports.FindingRecord{
+		ID:              "stale-oauth-finding",
+		Fingerprint:     "stale-oauth-finding",
+		TenantID:        "writer",
+		RuntimeID:       "writer-okta-audit",
+		RuleID:          "routine-oauth-rule",
+		Title:           "Routine OAuth Rule",
+		Severity:        "HIGH",
+		Status:          "open",
+		Summary:         "routine OAuth grant was previously emitted",
+		ResourceURNs:    []string{"urn:cerebro:writer:okta_application:0oa-client"},
+		EventIDs:        []string{"okta-oauth-grant"},
+		FirstObservedAt: time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
+		LastObservedAt:  time.Date(2026, 5, 7, 19, 54, 0, 0, time.UTC),
+	}
+	store := &stubFindingStore{findings: map[string]*ports.FindingRecord{staleFinding.ID: staleFinding}}
+	graph := &stubGraphStore{
+		entities: map[string]*ports.ProjectedEntity{
+			"urn:cerebro:writer:finding:stale-oauth-finding": {
+				URN:        "urn:cerebro:writer:finding:stale-oauth-finding",
+				TenantID:   "writer",
+				SourceID:   "writer-okta-audit",
+				EntityType: "finding",
+				Label:      "Routine OAuth Rule",
+			},
+		},
+		links: map[string]*ports.ProjectedLink{
+			"urn:cerebro:writer:okta_application:0oa-client|has_finding|urn:cerebro:writer:finding:stale-oauth-finding": {
+				TenantID: "writer",
+				SourceID: "writer-okta-audit",
+				FromURN:  "urn:cerebro:writer:okta_application:0oa-client",
+				ToURN:    "urn:cerebro:writer:finding:stale-oauth-finding",
+				Relation: "has_finding",
+			},
+		},
+	}
+	service := NewWithRegistry(
+		&stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+			"writer-okta-audit": {Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"},
+		}},
+		&stubReplayer{events: []*cerebrov1.EventEnvelope{{
+			Id:       "okta-oauth-grant",
+			TenantId: "writer",
+			SourceId: "okta",
+			Kind:     "okta.audit",
+			Attributes: map[string]string{
+				"event_type": "app.oauth2.token.grant.access_token",
+			},
+			OccurredAt: timestamppb.New(time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)),
+		}}},
+		store,
+		store,
+		store,
+		store,
+		registry,
+	).WithGraphStore(graph)
+
+	result, err := service.EvaluateSourceRuntime(context.Background(), EvaluateRequest{
+		RuntimeID: "writer-okta-audit",
+		RuleID:    "routine-oauth-rule",
+	})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntime() error = %v", err)
+	}
+	if got := len(result.Findings); got != 0 {
+		t.Fatalf("len(Findings) = %d, want 0", got)
+	}
+	resolved := store.findings["stale-oauth-finding"]
+	if got := resolved.Status; got != "resolved" {
+		t.Fatalf("stale finding status = %q, want resolved", got)
+	}
+	if _, ok := graph.entities["urn:cerebro:writer:finding:stale-oauth-finding"]; ok {
+		t.Fatal("stale finding graph entity should be pruned")
+	}
+	if len(graph.links) != 0 {
+		t.Fatalf("graph links = %#v, want stale links pruned", graph.links)
 	}
 }
 

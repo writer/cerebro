@@ -1013,7 +1013,7 @@ func auditEvent(settings settings, record auditRecord) (*primitives.Event, error
 		OccurredAt: timestamppb.New(occurredAt),
 		SchemaRef:  "okta/audit/v1",
 		Payload:    payload,
-		Attributes: auditAttributes(settings, record, actor, resourceID, resourceType),
+		Attributes: auditAttributes(settings, record, actor, targets, resourceID, resourceType),
 	}, nil
 }
 
@@ -1235,7 +1235,7 @@ func oktaPullFromRecordsWithCursor[T any](records []T, next string, build func(T
 	return pull, nil
 }
 
-func auditAttributes(settings settings, record auditRecord, actor identityPayload, resourceID string, resourceType string) map[string]string {
+func auditAttributes(settings settings, record auditRecord, actor identityPayload, targets []identityPayload, resourceID string, resourceType string) map[string]string {
 	attributes := map[string]string{
 		"domain":        settings.domain,
 		"event_type":    record.EventType,
@@ -1248,10 +1248,29 @@ func auditAttributes(settings settings, record auditRecord, actor identityPayloa
 	addAttribute(attributes, "actor_alternate_id", actor.AlternateID)
 	addAttribute(attributes, "actor_display_name", actor.DisplayName)
 	addAttribute(attributes, "client_ip", stringMap(record.Client, "ipAddress"))
+	addAttribute(attributes, "client_user_agent", stringMap(nestedMap(record.Client, "userAgent"), "rawUserAgent"))
+	addAttribute(attributes, "client_zone", stringMap(record.Client, "zone"))
 	addAttribute(attributes, "outcome_reason", stringMap(record.Outcome, "reason"))
 	addAttribute(attributes, "outcome_result", stringMap(record.Outcome, "result"))
 	addAttribute(attributes, "severity", record.Severity)
 	addAttribute(attributes, "transaction_id", stringMap(record.Transaction, "id"))
+	if len(targets) != 0 {
+		target := targets[0]
+		addAttribute(attributes, "target_id", target.ID)
+		addAttribute(attributes, "target_type", target.Type)
+		addAttribute(attributes, "target_alternate_id", target.AlternateID)
+		addAttribute(attributes, "target_display_name", target.DisplayName)
+	}
+	if category := oktaOAuthEventCategory(record.EventType); category != "" {
+		attributes["oauth_event_category"] = category
+		addAttribute(attributes, "grant_type", oktaOAuthGrantType(record.EventType))
+		if client := oktaOAuthClientIdentity(actor, targets); client != (identityPayload{}) {
+			addAttribute(attributes, "oauth_client_id", client.ID)
+			addAttribute(attributes, "oauth_client_type", client.Type)
+			addAttribute(attributes, "oauth_client_label", firstNonEmpty(client.DisplayName, client.AlternateID, client.ID))
+			addAttribute(attributes, "client_id", client.ID)
+		}
+	}
 	return attributes
 }
 
@@ -1363,6 +1382,68 @@ func adminRoleAttributes(settings settings, record adminRoleRecord) map[string]s
 	addAttribute(attributes, "status", record.Status)
 	addAttribute(attributes, "assignment_type", record.AssignmentType)
 	return attributes
+}
+
+func oktaOAuthEventCategory(eventType string) string {
+	action := strings.ToLower(strings.TrimSpace(eventType))
+	switch action {
+	case "app.oauth2.authorize.code", "app.oauth2.as.authorize.code":
+		return "runtime_grant"
+	}
+	if strings.HasPrefix(action, "app.oauth2.token.grant.") ||
+		strings.HasPrefix(action, "app.oauth2.as.token.grant.") {
+		return "runtime_grant"
+	}
+	if containsAny(action, "api_token", "client_secret", "client.secret", "domain_wide", "domain-wide") &&
+		containsAny(action, "create", "authorize", "grant", "add", "rotate", "generate") {
+		return "credential_change"
+	}
+	if containsAny(action, "oauth", "api_client", "client_access", "application") &&
+		containsAny(action, "create", "add") {
+		return "credential_change"
+	}
+	return ""
+}
+
+func oktaOAuthGrantType(eventType string) string {
+	action := strings.ToLower(strings.TrimSpace(eventType))
+	switch {
+	case strings.Contains(action, "authorize.code"):
+		return "authorization_code"
+	case strings.HasSuffix(action, ".access_token"):
+		return "access_token"
+	case strings.HasSuffix(action, ".id_token"):
+		return "id_token"
+	default:
+		return ""
+	}
+}
+
+func oktaOAuthClientIdentity(actor identityPayload, targets []identityPayload) identityPayload {
+	if oktaOAuthClientLike(actor) {
+		return actor
+	}
+	for _, target := range targets {
+		if oktaOAuthClientLike(target) {
+			return target
+		}
+	}
+	return identityPayload{}
+}
+
+func oktaOAuthClientLike(identity identityPayload) bool {
+	id := strings.TrimSpace(identity.ID)
+	kind := strings.ToLower(strings.TrimSpace(identity.Type))
+	return id != "" && (strings.Contains(kind, "clientapp") || strings.Contains(kind, "application") || strings.HasSuffix(kind, "app") || strings.HasPrefix(id, "0oa"))
+}
+
+func containsAny(value string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(value, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func userTimestamps(record userRecord) *userTimestampsPayload {
