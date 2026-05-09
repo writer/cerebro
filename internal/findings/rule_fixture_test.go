@@ -158,6 +158,46 @@ func TestSentinelOneRiskyExclusionFixture(t *testing.T) {
 	assertRuleFixture(t, newSentinelOneRiskyExclusionRule(), "testdata/rules/sentinelone-risky-exclusion.json")
 }
 
+func TestSentinelOneFindingFingerprintIncludesRuntime(t *testing.T) {
+	rule := newSentinelOneEndpointActiveInfectionRule()
+	event := ruleFixtureEvent{
+		ID:         "s1-threat-same-agent",
+		TenantID:   "writer",
+		SourceID:   "sentinelone",
+		Kind:       "sentinelone.threat",
+		OccurredAt: "2026-05-09T06:20:00Z",
+		SchemaRef:  "sentinelone/threat/v1",
+		Attributes: map[string]string{
+			"threat_id":         "threat-1",
+			"threat_name":       "Malware Sample",
+			"incident_status":   "unresolved",
+			"mitigation_status": "not_mitigated",
+			"is_infected":       "true",
+			"agent_id":          "agent-shared",
+			"computer_name":     "mac-shared",
+		},
+	}.proto(t)
+	runtimeA := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-threat-a", SourceId: "sentinelone", TenantId: "writer"}
+	runtimeB := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-threat-b", SourceId: "sentinelone", TenantId: "writer"}
+	first, err := rule.Evaluate(context.Background(), runtimeA, event)
+	if err != nil {
+		t.Fatalf("Evaluate(runtimeA) error = %v", err)
+	}
+	second, err := rule.Evaluate(context.Background(), runtimeB, event)
+	if err != nil {
+		t.Fatalf("Evaluate(runtimeB) error = %v", err)
+	}
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("finding counts = %d/%d, want 1/1", len(first), len(second))
+	}
+	if first[0].PolicyID != second[0].PolicyID {
+		t.Fatalf("PolicyID mismatch = %q/%q, want same agent policy", first[0].PolicyID, second[0].PolicyID)
+	}
+	if first[0].ID == second[0].ID {
+		t.Fatalf("finding IDs matched across runtimes: %q", first[0].ID)
+	}
+}
+
 func assertRuleFixture(t *testing.T, rule Rule, path string) {
 	t.Helper()
 	payload, err := os.ReadFile(path)

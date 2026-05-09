@@ -301,7 +301,7 @@ func buildSentinelOneFinding(ctx context.Context, runtime *cerebrov1.SourceRunti
 	if options.summary != nil {
 		summary = options.summary(attributes, projectedContext)
 	}
-	fingerprint := hashFindingFingerprint(options.definition.ID, event.GetTenantId(), policyID)
+	fingerprint := hashFindingFingerprint(options.definition.ID, event.GetTenantId(), runtime.GetId(), policyID)
 	return &ports.FindingRecord{
 		ID:                fingerprint,
 		Fingerprint:       fingerprint,
