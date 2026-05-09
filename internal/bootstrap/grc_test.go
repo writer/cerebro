@@ -90,7 +90,7 @@ func TestGRCDashboardAggregatesOperatorView(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /grc/dashboard error = %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /grc/dashboard status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
@@ -181,7 +181,7 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /grc/entities impact error = %v", err)
 	}
-	defer impactResp.Body.Close()
+	defer func() { _ = impactResp.Body.Close() }()
 	if impactResp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /grc/entities impact status = %d, want %d", impactResp.StatusCode, http.StatusOK)
 	}
@@ -200,7 +200,7 @@ func TestGRCEntityImpactAndAuditPacket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /grc/audit-packets error = %v", err)
 	}
-	defer packetResp.Body.Close()
+	defer func() { _ = packetResp.Body.Close() }()
 	if packetResp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /grc/audit-packets status = %d, want %d", packetResp.StatusCode, http.StatusOK)
 	}
