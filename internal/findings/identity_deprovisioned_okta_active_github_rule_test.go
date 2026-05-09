@@ -43,6 +43,31 @@ func TestDeprovisionedOktaActiveGitHubRuleQueryRequiresTenant(t *testing.T) {
 	}
 }
 
+// The rule's cypher joins okta.user lifecycle state with github.user acted_on edges, so the
+// finding can change after a fresh ingest from EITHER side. SupportsRuntime must accept both
+// or detections lag until the next time the other source happens to sync.
+func TestDeprovisionedOktaActiveGitHubRuleSupportsBothOktaAndGitHub(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	cases := map[string]struct {
+		runtime *cerebrov1.SourceRuntime
+		want    bool
+	}{
+		"okta runtime":     {&cerebrov1.SourceRuntime{SourceId: "okta"}, true},
+		"github runtime":   {&cerebrov1.SourceRuntime{SourceId: "github"}, true},
+		"OKTA upper case":  {&cerebrov1.SourceRuntime{SourceId: "OKTA"}, true},
+		"unrelated source": {&cerebrov1.SourceRuntime{SourceId: "aws"}, false},
+		"empty source":     {&cerebrov1.SourceRuntime{}, false},
+		"nil runtime":      {nil, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := rule.SupportsRuntime(tc.runtime); got != tc.want {
+				t.Fatalf("SupportsRuntime() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDeprovisionedOktaActiveGitHubRuleFingerprintIsStableAcrossRuns(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}

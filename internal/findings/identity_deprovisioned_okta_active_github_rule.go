@@ -75,11 +75,21 @@ func (r *deprovisionedOktaActiveGitHubRule) Spec() *cerebrov1.RuleSpec {
 	return proto.Clone(r.definition.RuleSpec()).(*cerebrov1.RuleSpec)
 }
 
+// SupportsRuntime accepts either an okta or a github source runtime: the rule's cypher join
+// reads okta.user lifecycle status AND github.user `acted_on` edges, so a fresh ingest from
+// either side could surface a new offender or invalidate an existing finding. Restricting the
+// rule to one source would leave detections delayed until the next pass on the other.
 func (r *deprovisionedOktaActiveGitHubRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
 	if r == nil || runtime == nil {
 		return false
 	}
-	return strings.EqualFold(strings.TrimSpace(runtime.GetSourceId()), r.definition.SourceID)
+	sourceID := strings.ToLower(strings.TrimSpace(runtime.GetSourceId()))
+	switch sourceID {
+	case "okta", "github":
+		return true
+	default:
+		return false
+	}
 }
 
 // Evaluate is the event-driven hook required by Rule. Graph rules emit no findings during the
