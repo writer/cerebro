@@ -507,3 +507,45 @@ func TestEvaluateSourceRuntimeGraphRulesPinsFindingButRecordsEvidencePerRuntime(
 		t.Fatalf("evidence ids collided across runtimes (%q); evidence id must be runtime-scoped so each runtime's listing is non-empty", oktaEvaluation.Evidence[0].GetId())
 	}
 }
+
+// Graph-rule runs evaluate cypher rows over the projected graph, not events from
+// the replay log, so the per-event `EventLimit` field is meaningless for them.
+// `newFindingEvaluationRun` normalizes 0 to the default replay cap (100), which
+// would make Get/ListFindingEvaluationRun advertise a fictional "100-event"
+// pass for every graph evaluation. We therefore use a dedicated constructor
+// that leaves EventLimit at the proto default (0), which the API surfaces as
+// "n/a for graph rule".
+func TestEvaluateSourceRuntimeGraphRulesPersistsRunWithoutEventLimit(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	runtimeStore := &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{
+		runtime.GetId(): runtime,
+	}}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{
+		cypherRows: []ports.CypherRow{{Values: map[string]any{"label": "alice@writer.com"}}},
+	}
+	rule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "graph-rule-no-event-limit"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n LIMIT 1"},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(runtimeStore, &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", got)
+	}
+	run := result.Evaluations[0].Run
+	if run == nil {
+		t.Fatal("Run is nil")
+	}
+	if got := run.GetEventLimit(); got != 0 {
+		t.Fatalf("Run.EventLimit = %d, want 0; graph runs have no event-limit input and must not advertise the replay default", got)
+	}
+}

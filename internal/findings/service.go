@@ -901,6 +901,23 @@ func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32,
 	}
 }
 
+// newGraphFindingEvaluationRun mints a run row for a graph-rule pass. Graph rules
+// evaluate cypher rows over the projected graph and never replay events, so the
+// per-event `EventLimit` does not apply. Persisting the default replay cap of 100
+// here would make Get/ListFindingEvaluationRun advertise misleading metadata for
+// graph runs (as if they were event replays capped at 100), so we leave EventLimit
+// at zero — the proto-default — for callers to interpret as "n/a for graph rule".
+func newGraphFindingEvaluationRun(runtimeID string, ruleID string, startedAt time.Time) *cerebrov1.FindingEvaluationRun {
+	normalizedStartedAt := startedAt.UTC()
+	return &cerebrov1.FindingEvaluationRun{
+		Id:        findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
+		RuntimeId: strings.TrimSpace(runtimeID),
+		RuleId:    strings.TrimSpace(ruleID),
+		Status:    "running",
+		StartedAt: timestamppb.New(normalizedStartedAt),
+	}
+}
+
 var findingEvaluationRunIDReplacer = strings.NewReplacer(" ", "-", "_", "-", "/", "-", ":", "-", ".", "-")
 
 func findingEvaluationRunID(runtimeID string, ruleID string, startedAt time.Time) string {

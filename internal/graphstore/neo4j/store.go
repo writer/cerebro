@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 
@@ -1130,9 +1131,40 @@ func mergeGraphAttributes(existing map[string]string, incoming map[string]string
 		merged[key] = value
 	}
 	for key, value := range incoming {
-		merged[key] = value
+		merged[key] = mergeAttributeValue(key, merged[key], value)
 	}
 	return merged
+}
+
+// mergeAttributeValue lets specific attribute keys override the default
+// last-write-wins merge. The `at` key carries the "most recent observed
+// action" timestamp (RFC3339 UTC) for relations like `acted_on`. Some sources
+// — notably GitHub audit logs — paginate newest-first, so a later batch may
+// replay older pages after newer ones have already landed. Last-write-wins
+// would let that older page silently overwrite the newer timestamp, which
+// would in turn cause the deprovisioned-Okta-active-in-GitHub rule to read
+// the edge as stale and auto-resolve a finding that should still be open.
+// We take chronological max instead so once the edge has seen a recent
+// action, no subsequent older event can pull the timestamp backward.
+func mergeAttributeValue(key, existing, incoming string) string {
+	if key != "at" {
+		return incoming
+	}
+	if strings.TrimSpace(existing) == "" {
+		return incoming
+	}
+	if strings.TrimSpace(incoming) == "" {
+		return existing
+	}
+	existingT, errExisting := time.Parse(time.RFC3339, existing)
+	incomingT, errIncoming := time.Parse(time.RFC3339, incoming)
+	if errExisting != nil || errIncoming != nil {
+		return incoming
+	}
+	if incomingT.Before(existingT) {
+		return existing
+	}
+	return incoming
 }
 
 func decodeGraphAttributes(payload string) (map[string]string, error) {

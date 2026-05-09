@@ -79,7 +79,7 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 
 func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time) (*GraphRuleEvaluationResult, error) {
 	spec := rule.Spec()
-	run := newFindingEvaluationRun(strings.TrimSpace(runtime.GetId()), spec.GetId(), 0, startedAt)
+	run := newGraphFindingEvaluationRun(strings.TrimSpace(runtime.GetId()), spec.GetId(), startedAt)
 	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
 		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
 	}
