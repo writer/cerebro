@@ -3,6 +3,7 @@ package findings
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
@@ -91,6 +92,49 @@ func TestIdentitySignalRulesDetectPrivilegedNoMFAUser(t *testing.T) {
 	}
 	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:google_workspace_user:1001")
 	assertFindingResourceURN(t, records[0].ResourceURNs, "urn:cerebro:writer:identifier:email:admin@writer.com")
+
+	unknownMFA := &cerebrov1.EventEnvelope{
+		Id:       "google-user-admin-unknown-mfa",
+		TenantId: "writer",
+		SourceId: "google_workspace",
+		Kind:     "google_workspace.user",
+		Attributes: map[string]string{
+			"domain":        "writer.com",
+			"email":         "admin@writer.com",
+			"is_admin":      "true",
+			"primary_email": "admin@writer.com",
+			"user_id":       "1001",
+		},
+	}
+	records, err = rules[identityPrivilegedAccountWithoutMFARuleID].Evaluate(context.Background(), runtime, unknownMFA)
+	if err != nil {
+		t.Fatalf("Evaluate(unknownMFA) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(unknownMFA records) = %d, want 0", len(records))
+	}
+
+	withMFA := &cerebrov1.EventEnvelope{
+		Id:       "google-user-admin-with-mfa",
+		TenantId: "writer",
+		SourceId: "google_workspace",
+		Kind:     "google_workspace.user",
+		Attributes: map[string]string{
+			"domain":        "writer.com",
+			"email":         "admin@writer.com",
+			"is_admin":      "true",
+			"mfa_enrolled":  "true",
+			"primary_email": "admin@writer.com",
+			"user_id":       "1001",
+		},
+	}
+	records, err = rules[identityPrivilegedAccountWithoutMFARuleID].Evaluate(context.Background(), runtime, withMFA)
+	if err != nil {
+		t.Fatalf("Evaluate(withMFA) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(withMFA records) = %d, want 0", len(records))
+	}
 }
 
 func TestIdentitySignalRulesDetectCloudRoleAssignments(t *testing.T) {
@@ -288,6 +332,141 @@ func TestIdentitySignalRulesDetectCloudCredentials(t *testing.T) {
 				t.Fatalf("len(records) = %d, want 1", len(records))
 			}
 			assertFindingResourceURN(t, records[0].ResourceURNs, tt.resourceURN)
+		})
+	}
+}
+
+func TestIdentitySignalRulesIgnoreInactiveCloudCredentials(t *testing.T) {
+	rules := identityRulesByID(t)
+	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "writer"}
+	event := &cerebrov1.EventEnvelope{
+		Id:       "aws-access-key-disabled",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.access_key",
+		Attributes: map[string]string{
+			"credential_id":   "AKIAEXAMPLE",
+			"credential_type": "aws_access_key",
+			"domain":          "123456789012",
+			"status":          "DISABLED",
+			"subject_id":      "admin@writer.com",
+			"subject_type":    "user",
+		},
+	}
+	records, err := rules[identityAPIOrOAuthCredentialCreatedRuleID].Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(disabled) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(disabled records) = %d, want 0", len(records))
+	}
+
+	event.Attributes["status"] = "ACTIVE"
+	records, err = rules[identityAPIOrOAuthCredentialCreatedRuleID].Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(active) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(active records) = %d, want 1", len(records))
+	}
+}
+
+func TestIdentitySignalRulesTreatRoutineOAuthGrantsAsTelemetry(t *testing.T) {
+	rules := identityRulesByID(t)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
+	for _, ruleID := range []string{
+		identityAPIOrOAuthCredentialCreatedRuleID,
+		identityControlTamperCredentialChangeRuleID,
+	} {
+		t.Run(ruleID, func(t *testing.T) {
+			for _, action := range []string{
+				"app.oauth2.authorize.code",
+				"app.oauth2.as.authorize.code",
+				"app.oauth2.token.grant.access_token",
+				"app.oauth2.as.token.grant.id_token",
+			} {
+				event := &cerebrov1.EventEnvelope{
+					Id:       strings.ReplaceAll(action, ".", "-"),
+					TenantId: "writer",
+					SourceId: "okta",
+					Kind:     "okta.audit",
+					Attributes: map[string]string{
+						"domain":               "writer.okta.com",
+						"event_type":           action,
+						"actor_id":             "0oa-client",
+						"actor_type":           "PublicClientApp",
+						"resource_id":          "00u-user",
+						"resource_type":        "User",
+						"outcome_result":       "SUCCESS",
+						"oauth_event_category": "runtime_grant",
+					},
+				}
+				records, err := rules[ruleID].Evaluate(context.Background(), runtime, event)
+				if err != nil {
+					t.Fatalf("Evaluate(%s) error = %v", action, err)
+				}
+				if len(records) != 0 {
+					t.Fatalf("Evaluate(%s) returned %d findings, want telemetry-only", action, len(records))
+				}
+			}
+		})
+	}
+}
+
+func TestIdentitySignalRulesStillDetectOAuthCredentialCreation(t *testing.T) {
+	rules := identityRulesByID(t)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
+	event := &cerebrov1.EventEnvelope{
+		Id:       "okta-api-token-create",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			"domain":        "writer.okta.com",
+			"event_type":    "system.api_token.create",
+			"actor_id":      "00u-admin",
+			"actor_type":    "User",
+			"resource_id":   "token-1",
+			"resource_type": "ApiToken",
+		},
+	}
+	records, err := rules[identityAPIOrOAuthCredentialCreatedRuleID].Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(records) = %d, want 1", len(records))
+	}
+}
+
+func TestIdentitySignalRulesIgnoreFailedSensitiveAuditEvents(t *testing.T) {
+	rules := identityRulesByID(t)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
+	for _, ruleID := range []string{
+		identityMFAFactorResetOrDisabledRuleID,
+		identityControlTamperCredentialChangeRuleID,
+	} {
+		t.Run(ruleID, func(t *testing.T) {
+			event := &cerebrov1.EventEnvelope{
+				Id:       "okta-failed-mfa-reset-" + ruleID,
+				TenantId: "writer",
+				SourceId: "okta",
+				Kind:     "okta.audit",
+				Attributes: map[string]string{
+					"domain":         "writer.okta.com",
+					"event_type":     "user.mfa.factor.reset",
+					"outcome_result": "FAILURE",
+					"resource_id":    "00u-user",
+					"resource_type":  "User",
+				},
+			}
+			records, err := rules[ruleID].Evaluate(context.Background(), runtime, event)
+			if err != nil {
+				t.Fatalf("Evaluate() error = %v", err)
+			}
+			if len(records) != 0 {
+				t.Fatalf("len(records) = %d, want 0", len(records))
+			}
 		})
 	}
 }

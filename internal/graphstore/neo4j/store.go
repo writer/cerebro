@@ -18,6 +18,7 @@ import (
 
 const defaultIngestRunListLimit = 25
 const maxAttributeMergeRetries = 5
+const defaultProjectionCleanupLimit = 1000
 
 var errConcurrentAttributeMerge = errors.New("concurrent attribute merge")
 
@@ -287,6 +288,7 @@ func (s *Store) UpsertProjectedEntity(ctx context.Context, entity *ports.Project
 		"urn":         urn,
 		"tenant_id":   tenantID,
 		"source_id":   sourceID,
+		"runtime_id":  strings.TrimSpace(entity.RuntimeID),
 		"entity_type": entityType,
 		"label":       label,
 	}
@@ -338,11 +340,12 @@ func (s *Store) UpsertProjectedLink(ctx context.Context, link *ports.ProjectedLi
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	params := map[string]any{
-		"from_urn":  fromURN,
-		"to_urn":    toURN,
-		"relation":  relation,
-		"tenant_id": tenantID,
-		"source_id": sourceID,
+		"from_urn":   fromURN,
+		"to_urn":     toURN,
+		"relation":   relation,
+		"tenant_id":  tenantID,
+		"source_id":  sourceID,
+		"runtime_id": strings.TrimSpace(link.RuntimeID),
 	}
 	for attempt := 0; attempt < maxAttributeMergeRetries; attempt++ {
 		_, err = s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
@@ -403,6 +406,94 @@ func (s *Store) DeleteProjectedLink(ctx context.Context, link *ports.ProjectedLi
 		return fmt.Errorf("delete projected link %q %q %q: %w", fromURN, relation, toURN, err)
 	}
 	return nil
+}
+
+// DeleteProjectedEntity removes one normalized entity and its graph relationships.
+func (s *Store) DeleteProjectedEntity(ctx context.Context, urn string) error {
+	normalizedURN := strings.TrimSpace(urn)
+	if normalizedURN == "" {
+		return errors.New("projected entity urn is required")
+	}
+	if err := s.requireConfigured(); err != nil {
+		return err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return err
+	}
+	_, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		return consume(ctx, tx, `MATCH (e:Entity {urn: $urn}) DETACH DELETE e`, map[string]any{"urn": normalizedURN})
+	})
+	if err != nil {
+		return fmt.Errorf("delete projected entity %q: %w", normalizedURN, err)
+	}
+	return nil
+}
+
+// CleanupProjectedEntities deletes scoped isolated projection entities.
+func (s *Store) CleanupProjectedEntities(ctx context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
+	if err := s.requireConfigured(); err != nil {
+		return ports.ProjectionCleanupResult{}, err
+	}
+	if err := s.ensureSchema(ctx); err != nil {
+		return ports.ProjectionCleanupResult{}, err
+	}
+	limit := int64(request.Limit)
+	if limit <= 0 {
+		limit = defaultProjectionCleanupLimit
+	}
+	tenantID := strings.TrimSpace(request.TenantID)
+	sourceID := strings.TrimSpace(request.SourceID)
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	findingID := strings.TrimSpace(request.FindingID)
+	entityTypes := normalizeCleanupEntityTypes(request.EntityTypes)
+	if tenantID == "" && sourceID == "" && runtimeID == "" && findingID == "" && len(entityTypes) == 0 {
+		return ports.ProjectionCleanupResult{}, errors.New("projection cleanup scope is required")
+	}
+	conditions := []string{}
+	params := map[string]any{
+		"limit":        limit,
+		"entity_types": entityTypes,
+	}
+	if tenantID != "" {
+		conditions = append(conditions, "e.tenant_id = $tenant_id")
+		params["tenant_id"] = tenantID
+	}
+	if sourceID != "" {
+		conditions = append(conditions, "e.source_id = $source_id")
+		params["source_id"] = sourceID
+	}
+	if runtimeID != "" {
+		conditions = append(conditions, "coalesce(e.runtime_id, '') = $runtime_id")
+		params["runtime_id"] = runtimeID
+	}
+	if findingID != "" {
+		conditions = append(conditions, "coalesce(e.attributes_json, '') CONTAINS $finding_id_fragment")
+		params["finding_id_fragment"] = fmt.Sprintf("%q:%q", "finding_id", findingID)
+	}
+	if len(entityTypes) != 0 {
+		conditions = append(conditions, "e.entity_type IN $entity_types")
+	}
+	if request.OnlyIsolated && findingID == "" {
+		conditions = append(conditions, "NOT (e)-[:RELATION]-()")
+	}
+	query := `MATCH (e:Entity)
+WHERE ` + strings.Join(conditions, " AND ") + `
+WITH e LIMIT $limit
+WITH collect(e) AS entities
+FOREACH (entity IN entities | DETACH DELETE entity)
+RETURN size(entities)`
+	var deleted int64
+	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		value, err := queryOneValue(ctx, tx, query, params)
+		if err != nil {
+			return nil, err
+		}
+		deleted = toInt64(value)
+		return nil, nil
+	}); err != nil {
+		return ports.ProjectionCleanupResult{}, fmt.Errorf("cleanup projected entities: %w", err)
+	}
+	return ports.ProjectionCleanupResult{EntitiesDeleted: uint32(deleted)}, nil
 }
 
 // GetEntityNeighborhood returns one bounded root-centered graph neighborhood.
@@ -715,6 +806,8 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"CREATE CONSTRAINT cerebro_entity_urn IF NOT EXISTS FOR (e:Entity) REQUIRE e.urn IS UNIQUE",
 		"CREATE CONSTRAINT cerebro_checkpoint_id IF NOT EXISTS FOR (c:IngestCheckpoint) REQUIRE c.id IS UNIQUE",
 		"CREATE CONSTRAINT cerebro_ingest_run_id IF NOT EXISTS FOR (r:IngestRun) REQUIRE r.id IS UNIQUE",
+		"CREATE INDEX cerebro_entity_tenant_runtime IF NOT EXISTS FOR (e:Entity) ON (e.tenant_id, e.runtime_id)",
+		"CREATE INDEX cerebro_relation_tenant_runtime IF NOT EXISTS FOR ()-[r:RELATION]-() ON (r.tenant_id, r.runtime_id)",
 	}
 	if _, err := s.write(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
 		for _, statement := range statements {
@@ -812,11 +905,29 @@ func validateProjectedLinkIdentity(link *ports.ProjectedLink) (fromURN string, t
 	return fromURN, toURN, relation, strings.TrimSpace(link.TenantID), strings.TrimSpace(link.SourceID), nil
 }
 
+func normalizeCleanupEntityTypes(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
+}
+
 func mergeEntityAndLoadAttributes(ctx context.Context, tx neo4jdriver.ManagedTransaction, params map[string]any) (string, int64, error) {
 	result, err := tx.Run(ctx, `MERGE (e:Entity {urn: $urn})
 ON CREATE SET e.attributes_json = '{}', e.attributes_version = 0
 SET e.tenant_id = $tenant_id,
     e.source_id = $source_id,
+    e.runtime_id = CASE WHEN $runtime_id <> '' THEN $runtime_id ELSE coalesce(e.runtime_id, '') END,
     e.entity_type = $entity_type,
     e.label = $label
 RETURN coalesce(e.attributes_json, '{}'), coalesce(e.attributes_version, 0)`, params)
@@ -856,7 +967,8 @@ SET src.relation_lock = coalesce(src.relation_lock, 0) + 1
 MERGE (src)-[r:RELATION {relation: $relation}]->(dst)
 ON CREATE SET r.attributes_json = '{}', r.attributes_version = 0
 SET r.tenant_id = $tenant_id,
-    r.source_id = $source_id
+    r.source_id = $source_id,
+    r.runtime_id = CASE WHEN $runtime_id <> '' THEN $runtime_id ELSE coalesce(r.runtime_id, '') END
 RETURN coalesce(r.attributes_json, '{}'), coalesce(r.attributes_version, 0)`, params)
 	if err != nil {
 		return "", 0, false, err

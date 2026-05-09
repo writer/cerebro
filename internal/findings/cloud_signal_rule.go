@@ -224,11 +224,28 @@ func cloudFindingSummary(attributes map[string]string, context findingProjection
 }
 
 func matchesCloudPublicExposure(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
-	return findingAttributeBool(attributes, "internet_exposed", "external_exposure", "public") || strings.Contains(identityAction(attributes), "public_network_ingress")
+	if findingAttributeBool(attributes, "internet_exposed", "external_exposure") {
+		return true
+	}
+	if containsAny(strings.ToLower(firstNonEmpty(attributes["exposure_type"], attributes["relationship"], attributes["event_type"])), "public_network_ingress", "public_ip", "internet_facing") {
+		return true
+	}
+	if containsAny(strings.ToLower(firstNonEmpty(attributes["exposed_to"], attributes["principal"], attributes["member"], attributes["source"])), "public_internet", "allusers", "all_users", "allauthenticatedusers", "all_authenticated_users", "internet") {
+		return true
+	}
+	return cloudCIDRIsPublicInternet(attributes["source_cidr"]) || cloudCIDRIsPublicInternet(attributes["cidr"])
 }
 
 func matchesCloudPrivilegePath(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
-	return strings.TrimSpace(attributes["path_type"]) != "" || strings.TrimSpace(attributes["relationship"]) != "" || strings.TrimSpace(attributes["target_id"]) != ""
+	pathType := strings.ToLower(strings.TrimSpace(attributes["path_type"]))
+	relationship := strings.ToLower(strings.TrimSpace(attributes["relationship"]))
+	if containsAny(pathType, "assume_role", "impersonation", "workload_identity", "app_role", "federated_identity") {
+		return true
+	}
+	return relationship == "can_assume" ||
+		relationship == "can_impersonate" ||
+		relationship == "can_admin" ||
+		relationship == "assigned_to"
 }
 
 func matchesCloudEffectiveAdminPermission(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
@@ -239,17 +256,45 @@ func matchesCloudEffectiveAdminPermission(_ *cerebrov1.EventEnvelope, attributes
 		return true
 	}
 	value := strings.ToLower(firstNonEmpty(attributes["permission"], attributes["actions"], attributes["role_name"], attributes["role_id"], attributes["privilege_level"]))
-	return containsAny(value,
-		"*",
+	return cloudPermissionGrantsAdmin(value)
+}
+
+func cloudCIDRIsPublicInternet(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	return normalized == "0.0.0.0/0" || normalized == "::/0" || normalized == "internet"
+}
+
+func cloudPermissionGrantsAdmin(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return false
+	}
+	if normalized == "*" || normalized == "*:*" || normalized == "*/*" {
+		return true
+	}
+	if containsAny(normalized,
 		"administratoraccess",
 		"owner",
 		"contributor",
-		"iam.serviceaccounts.actas",
-		"iam.serviceaccounts.getaccesstoken",
 		"iam.serviceaccounttokencreator",
 		"microsoft.authorization/roleassignments/write",
-		"secretsmanager",
-		"keyvault",
-		"kms",
-	)
+	) {
+		return true
+	}
+	for _, token := range strings.FieldsFunc(normalized, cloudPermissionTokenSeparator) {
+		switch token {
+		case "*", "*:*", "*/*", "iam.serviceaccounts.actas", "iam.serviceaccounts.getaccesstoken", "secretsmanager:*", "kms:*", "keyvault:*", "keyvault/*":
+			return true
+		}
+	}
+	return false
+}
+
+func cloudPermissionTokenSeparator(r rune) bool {
+	switch r {
+	case ',', ';', '\n', '\t', ' ':
+		return true
+	default:
+		return false
+	}
 }

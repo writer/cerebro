@@ -144,9 +144,18 @@ func githubDependabotAlertSummary(attributes map[string]string, primaryResourceL
 }
 
 func normalizeFindingSeverity(value string) string {
-	severity := strings.ToUpper(strings.TrimSpace(value))
-	if severity == "" {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "critical":
+		return "CRITICAL"
+	case "high":
+		return "HIGH"
+	case "medium", "moderate":
+		return "MEDIUM"
+	case "low":
+		return "LOW"
+	case "info", "informational":
+		return "INFO"
+	default:
 		return "MEDIUM"
 	}
-	return severity
 }

@@ -73,6 +73,7 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 	if err != nil {
 		return ports.ProjectionResult{}, err
 	}
+	stampProjectionRuntime(event, entities, links)
 	for _, entity := range entities {
 		if s.state != nil {
 			if err := s.state.UpsertProjectedEntity(ctx, entity); err != nil {
@@ -101,6 +102,44 @@ func (s *Service) Project(ctx context.Context, event *cerebrov1.EventEnvelope) (
 		EntitiesProjected: uint32(len(entities)),
 		LinksProjected:    uint32(len(links)),
 	}, nil
+}
+
+func stampProjectionRuntime(event *cerebrov1.EventEnvelope, entities []*ports.ProjectedEntity, links []*ports.ProjectedLink) {
+	if event == nil {
+		return
+	}
+	runtimeID := strings.TrimSpace(event.GetAttributes()[ports.EventAttributeSourceRuntimeID])
+	if runtimeID == "" {
+		return
+	}
+	for _, entity := range entities {
+		if entity == nil {
+			continue
+		}
+		if strings.TrimSpace(entity.RuntimeID) == "" {
+			entity.RuntimeID = runtimeID
+		}
+		if entity.Attributes == nil {
+			entity.Attributes = map[string]string{}
+		}
+		if strings.TrimSpace(entity.Attributes[ports.EventAttributeSourceRuntimeID]) == "" {
+			entity.Attributes[ports.EventAttributeSourceRuntimeID] = runtimeID
+		}
+	}
+	for _, link := range links {
+		if link == nil {
+			continue
+		}
+		if strings.TrimSpace(link.RuntimeID) == "" {
+			link.RuntimeID = runtimeID
+		}
+		if link.Attributes == nil {
+			link.Attributes = map[string]string{}
+		}
+		if strings.TrimSpace(link.Attributes[ports.EventAttributeSourceRuntimeID]) == "" {
+			link.Attributes[ports.EventAttributeSourceRuntimeID] = runtimeID
+		}
+	}
 }
 
 func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEntity, []*ports.ProjectedLink, error) {
@@ -505,6 +544,8 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	actorDisplayName := strings.TrimSpace(attributes["actor_display_name"])
 	resourceID := strings.TrimSpace(attributes["resource_id"])
 	resourceType := strings.TrimSpace(attributes["resource_type"])
+	oauthClientID := firstNonEmpty(attributes["oauth_client_id"], attributes["client_id"])
+	oauthClientLabel := firstNonEmpty(attributes["oauth_client_label"], attributes["actor_display_name"], oauthClientID)
 
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
@@ -540,6 +581,35 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		})
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	oauthClientURN := oktaApplicationURN(tenantID, oauthClientID)
+	if oauthClientURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        oauthClientURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "okta.application",
+			Label:      oauthClientLabel,
+			Attributes: map[string]string{
+				"app_id":               oauthClientID,
+				"client_id":            oauthClientID,
+				"oauth_client_type":    strings.TrimSpace(attributes["oauth_client_type"]),
+				"oauth_event_category": strings.TrimSpace(attributes["oauth_event_category"]),
+				"grant_type":           strings.TrimSpace(attributes["grant_type"]),
+			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), oauthClientURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+		if resourceURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), oauthClientURN, resourceURN, relationActedOn, map[string]string{
+				"event_id":             event.GetId(),
+				"event_type":           strings.TrimSpace(attributes["event_type"]),
+				"oauth_event_category": strings.TrimSpace(attributes["oauth_event_category"]),
+				"grant_type":           strings.TrimSpace(attributes["grant_type"]),
+			}))
 		}
 	}
 
@@ -714,6 +784,14 @@ func oktaUserURN(tenantID string, userID string) string {
 		return ""
 	}
 	return projectionURN(tenantID, "okta_user", value)
+}
+
+func oktaApplicationURN(tenantID string, appID string) string {
+	value := strings.TrimSpace(appID)
+	if value == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "okta_application", value)
 }
 
 func oktaActorURN(tenantID string, actorType string, actorID string) string {

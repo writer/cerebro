@@ -11,6 +11,7 @@ type ProjectedEntity struct {
 	URN        string
 	TenantID   string
 	SourceID   string
+	RuntimeID  string
 	EntityType string
 	Label      string
 	Attributes map[string]string
@@ -20,6 +21,7 @@ type ProjectedEntity struct {
 type ProjectedLink struct {
 	TenantID   string
 	SourceID   string
+	RuntimeID  string
 	FromURN    string
 	ToURN      string
 	Relation   string
@@ -30,6 +32,25 @@ type ProjectedLink struct {
 type ProjectionResult struct {
 	EntitiesProjected uint32
 	LinksProjected    uint32
+	EntitiesDeleted   uint32
+	LinksDeleted      uint32
+}
+
+// ProjectionCleanupRequest scopes opportunistic graph cleanup to one tenant/source/runtime boundary.
+type ProjectionCleanupRequest struct {
+	TenantID     string
+	SourceID     string
+	RuntimeID    string
+	FindingID    string
+	EntityTypes  []string
+	OnlyIsolated bool
+	Limit        uint32
+}
+
+// ProjectionCleanupResult reports graph objects removed by one cleanup pass.
+type ProjectionCleanupResult struct {
+	EntitiesDeleted uint32
+	LinksDeleted    uint32
 }
 
 // ProjectionStateStore persists normalized current-state entities and links.
@@ -49,6 +70,16 @@ type ProjectionGraphStore interface {
 // ProjectionLinkDeleter removes normalized links from projection stores that support deletion.
 type ProjectionLinkDeleter interface {
 	DeleteProjectedLink(context.Context, *ProjectedLink) error
+}
+
+// ProjectionEntityDeleter removes normalized entities from projection stores that support deletion.
+type ProjectionEntityDeleter interface {
+	DeleteProjectedEntity(context.Context, string) error
+}
+
+// ProjectionCleaner removes stale or orphaned projection artifacts in scoped batches.
+type ProjectionCleaner interface {
+	CleanupProjectedEntities(context.Context, ProjectionCleanupRequest) (ProjectionCleanupResult, error)
 }
 
 // SourceProjector materializes source events into current-state and graph stores.

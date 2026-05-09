@@ -331,6 +331,9 @@ func identityAction(attributes map[string]string) string {
 }
 
 func matchesIdentityAuthControlTampering(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+	if !identityOutcomeSuccessfulOrUnknown(attributes) {
+		return false
+	}
 	action := identityAction(attributes)
 	resourceType := strings.ToLower(firstNonEmpty(attributes["resource_type"], attributes["target_type"]))
 	return containsAny(action, "policy", "rule", "network_zone", "zone", "idp", "two_step", "2sv", "saml", "security_setting", "change_two_step") &&
@@ -344,27 +347,52 @@ func matchesIdentityAdminPrivilegeGranted(event *cerebrov1.EventEnvelope, attrib
 	if builtinIdentityCapabilities.KindHasCapability(event.GetKind(), identityCapabilityRoleAssignment) {
 		return identityPrivileged(attributes)
 	}
+	if !identityOutcomeSuccessfulOrUnknown(attributes) {
+		return false
+	}
 	action := identityAction(attributes)
 	return containsAny(action, "privilege.grant", "role.assignment", "assign_role", "grant_admin", "delegated_admin", "super_admin")
 }
 
 func matchesIdentityMFAFactorResetOrDisabled(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+	if !identityOutcomeSuccessfulOrUnknown(attributes) {
+		return false
+	}
 	action := identityAction(attributes)
 	return containsAny(action, "mfa", "factor", "two_step", "2sv", "verification") &&
 		containsAny(action, "reset", "disable", "deactivate", "unenroll", "change")
 }
 
 func matchesIdentityAPITokenOrOAuthCreated(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+	if !identityOutcomeSuccessfulOrUnknown(attributes) {
+		return false
+	}
 	action := identityAction(attributes)
 	if strings.TrimSpace(attributes["credential_id"]) != "" || strings.TrimSpace(attributes["credential_type"]) != "" {
+		return identityCredentialActiveOrUnknown(attributes)
+	}
+	if routineOAuthRuntimeGrant(action) {
+		return false
+	}
+	if containsAny(action, "api_token", "client_secret", "client.secret", "domain_wide", "domain-wide") {
+		return containsAny(action, "create", "authorize", "grant", "add", "rotate", "generate")
+	}
+	return containsAny(action, "oauth", "api_client", "client_access", "application") &&
+		containsAny(action, "create", "add")
+}
+
+func routineOAuthRuntimeGrant(action string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(action))
+	switch normalized {
+	case "app.oauth2.authorize.code", "app.oauth2.as.authorize.code":
 		return true
 	}
-	return containsAny(action, "api_token", "oauth", "api_client", "domain_wide", "client_access", "application") &&
-		containsAny(action, "create", "authorize", "grant", "add")
+	return strings.HasPrefix(normalized, "app.oauth2.token.grant.") ||
+		strings.HasPrefix(normalized, "app.oauth2.as.token.grant.")
 }
 
 func matchesIdentityPrivilegedWithoutMFA(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
-	return identityPrivileged(attributes) && !identityMFAEnabled(attributes)
+	return identityPrivileged(attributes) && identityMFAExplicitlyDisabled(attributes)
 }
 
 func matchesIdentityStalePrivilegedAccount(_ *cerebrov1.EventEnvelope, attributes map[string]string) bool {
@@ -388,6 +416,9 @@ func matchesIdentityExternalGroupMember(_ *cerebrov1.EventEnvelope, attributes m
 }
 
 func matchesIdentityControlTamperOrCredentialChange(event *cerebrov1.EventEnvelope, attributes map[string]string) bool {
+	if !identityOutcomeSuccessfulOrUnknown(attributes) {
+		return false
+	}
 	return matchesIdentityAuthControlTampering(event, attributes) ||
 		matchesIdentityMFAFactorResetOrDisabled(event, attributes) ||
 		matchesIdentityAPITokenOrOAuthCreated(event, attributes) ||
@@ -415,4 +446,38 @@ func identityPrivileged(attributes map[string]string) bool {
 
 func identityMFAEnabled(attributes map[string]string) bool {
 	return findingAttributeBool(attributes, "mfa_enrolled", "mfa_enforced", "is_enrolled_in_2sv", "is_enforced_in_2sv")
+}
+
+func identityMFAExplicitlyDisabled(attributes map[string]string) bool {
+	if identityMFAEnabled(attributes) {
+		return false
+	}
+	for _, key := range []string{"mfa_enrolled", "mfa_enforced", "is_enrolled_in_2sv", "is_enforced_in_2sv"} {
+		value := strings.ToLower(strings.TrimSpace(attributes[key]))
+		switch value {
+		case "0", "f", "false", "no", "n", "disabled", "unenrolled", "not_enrolled", "not enrolled":
+			return true
+		}
+	}
+	return false
+}
+
+func identityCredentialActiveOrUnknown(attributes map[string]string) bool {
+	status := strings.ToLower(firstNonEmpty(attributes["credential_status"], attributes["status"], attributes["state"], attributes["lifecycle_status"]))
+	switch status {
+	case "inactive", "disabled", "deleted", "revoked", "expired", "deactivated", "suspended":
+		return false
+	default:
+		return true
+	}
+}
+
+func identityOutcomeSuccessfulOrUnknown(attributes map[string]string) bool {
+	outcome := strings.ToLower(firstNonEmpty(attributes["outcome_result"], attributes["result"], attributes["outcome"]))
+	switch outcome {
+	case "", "success", "succeeded", "allow", "allowed":
+		return true
+	default:
+		return false
+	}
 }

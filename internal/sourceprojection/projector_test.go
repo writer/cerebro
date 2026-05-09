@@ -85,6 +85,45 @@ func TestProjectGitHubPullRequest(t *testing.T) {
 	}
 }
 
+func TestProjectStampsRuntimeIDOnEntitiesAndLinks(t *testing.T) {
+	state := &projectionRecorder{}
+	graph := &projectionRecorder{}
+	service := New(state, graph)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-pr-447",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.pull_request",
+		Attributes: map[string]string{
+			"author":                            "alice",
+			"owner":                             "writer",
+			"pull_number":                       "447",
+			"repository":                        "writer/cerebro",
+			ports.EventAttributeSourceRuntimeID: "writer-github",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	for urn, entity := range state.entities {
+		if got := entity.RuntimeID; got != "writer-github" {
+			t.Fatalf("state entity %q RuntimeID = %q, want writer-github", urn, got)
+		}
+		if got := entity.Attributes[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
+			t.Fatalf("state entity %q source_runtime_id = %q, want writer-github", urn, got)
+		}
+	}
+	for key, link := range graph.links {
+		if got := link.RuntimeID; got != "writer-github" {
+			t.Fatalf("graph link %q RuntimeID = %q, want writer-github", key, got)
+		}
+		if got := link.Attributes[ports.EventAttributeSourceRuntimeID]; got != "writer-github" {
+			t.Fatalf("graph link %q source_runtime_id = %q, want writer-github", key, got)
+		}
+	}
+}
+
 func TestProjectGitHubPullRequestWithoutOwnerDoesNotLinkEmptyOrg(t *testing.T) {
 	state := &projectionRecorder{}
 	service := New(state, nil)
@@ -204,6 +243,46 @@ func TestProjectGitHubDependabotAlert(t *testing.T) {
 	if _, ok := state.links[canonicalPackageURN+"|"+relationAffectedBy+"|"+vulnerabilityURN]; !ok {
 		t.Fatal("canonical package vulnerability link missing")
 	}
+}
+
+func TestProjectOktaOAuthGrantAsApplicationTelemetry(t *testing.T) {
+	state := &projectionRecorder{}
+	service := New(state, nil)
+
+	_, err := service.Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "okta-oauth-grant",
+		TenantId: "writer",
+		SourceId: "okta",
+		Kind:     "okta.audit",
+		Attributes: map[string]string{
+			"domain":               "writer.okta.com",
+			"event_type":           "app.oauth2.token.grant.access_token",
+			"actor_id":             "0oa-client",
+			"actor_type":           "PublicClientApp",
+			"actor_display_name":   "Production Client",
+			"resource_id":          "00u-user",
+			"resource_type":        "User",
+			"oauth_client_id":      "0oa-client",
+			"oauth_client_label":   "Production Client",
+			"oauth_client_type":    "PublicClientApp",
+			"oauth_event_category": "runtime_grant",
+			"grant_type":           "access_token",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	clientURN := "urn:cerebro:writer:okta_application:0oa-client"
+	userURN := "urn:cerebro:writer:okta_user:00u-user"
+	entity, ok := state.entities[clientURN]
+	if !ok {
+		t.Fatalf("OAuth client entity %q missing", clientURN)
+	}
+	if got := entity.Attributes["oauth_event_category"]; got != "runtime_grant" {
+		t.Fatalf("oauth_event_category = %q, want runtime_grant", got)
+	}
+	assertProjectedLink(t, state, clientURN, relationActedOn, userURN)
+	assertProjectedLink(t, state, clientURN, relationBelongsTo, "urn:cerebro:writer:okta_org:writer.okta.com")
 }
 
 func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
@@ -1109,6 +1188,7 @@ func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity 
 		URN:        entity.URN,
 		TenantID:   entity.TenantID,
 		SourceID:   entity.SourceID,
+		RuntimeID:  entity.RuntimeID,
 		EntityType: entity.EntityType,
 		Label:      entity.Label,
 		Attributes: attributes,
@@ -1126,6 +1206,7 @@ func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
 	return &ports.ProjectedLink{
 		TenantID:   link.TenantID,
 		SourceID:   link.SourceID,
+		RuntimeID:  link.RuntimeID,
 		FromURN:    link.FromURN,
 		ToURN:      link.ToURN,
 		Relation:   link.Relation,

@@ -31,6 +31,71 @@ func (r *projectionRecorder) UpsertProjectedLink(_ context.Context, link *ports.
 	return nil
 }
 
+func (r *projectionRecorder) DeleteProjectedEntity(_ context.Context, urn string) error {
+	delete(r.entities, urn)
+	for key, link := range r.links {
+		if link.FromURN == urn || link.ToURN == urn {
+			delete(r.links, key)
+		}
+	}
+	return nil
+}
+
+func (r *projectionRecorder) DeleteProjectedLink(_ context.Context, link *ports.ProjectedLink) error {
+	if link == nil {
+		return nil
+	}
+	delete(r.links, link.FromURN+"|"+link.Relation+"|"+link.ToURN)
+	return nil
+}
+
+func (r *projectionRecorder) CleanupProjectedEntities(_ context.Context, request ports.ProjectionCleanupRequest) (ports.ProjectionCleanupResult, error) {
+	allowed := map[string]struct{}{}
+	for _, entityType := range request.EntityTypes {
+		allowed[entityType] = struct{}{}
+	}
+	result := ports.ProjectionCleanupResult{}
+	for urn, entity := range r.entities {
+		if entity == nil {
+			continue
+		}
+		if request.TenantID != "" && entity.TenantID != request.TenantID {
+			continue
+		}
+		if request.SourceID != "" && entity.SourceID != request.SourceID {
+			continue
+		}
+		if request.FindingID != "" && entity.Attributes["finding_id"] != request.FindingID {
+			continue
+		}
+		if len(allowed) != 0 {
+			if _, ok := allowed[entity.EntityType]; !ok {
+				continue
+			}
+		}
+		if request.OnlyIsolated && request.FindingID == "" && projectionEntityHasLinks(r.links, urn) {
+			continue
+		}
+		delete(r.entities, urn)
+		for key, link := range r.links {
+			if link.FromURN == urn || link.ToURN == urn {
+				delete(r.links, key)
+			}
+		}
+		result.EntitiesDeleted++
+	}
+	return result, nil
+}
+
+func projectionEntityHasLinks(links map[string]*ports.ProjectedLink, urn string) bool {
+	for _, link := range links {
+		if link.FromURN == urn || link.ToURN == urn {
+			return true
+		}
+	}
+	return false
+}
+
 func TestProjectKnowledgeWorkflowEvents(t *testing.T) {
 	graph := &projectionRecorder{}
 	service := New(graph)
@@ -211,6 +276,51 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; !ok {
 		t.Fatal("resource finding link missing")
 	}
+
+	finding.Status = "resolved"
+	manualStatusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
+		Finding:     finding,
+		Status:      "resolved",
+		Reason:      "verified remediation",
+		UpdatedAt:   "2026-04-27T12:45:00Z",
+		OutcomeType: "finding-resolution",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingStatusChangedEvent(manual) error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), manualStatusEvent); err != nil {
+		t.Fatalf("Project(manual status) error = %v", err)
+	}
+	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; !ok {
+		t.Fatal("manually resolved finding anchor should remain for workflow history")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; ok {
+		t.Fatal("manually resolved finding should not keep active has_finding link")
+	}
+
+	finding.Status = "resolved"
+	statusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
+		Finding:     finding,
+		Status:      "resolved",
+		Reason:      workflowevents.FindingStatusReasonNoLongerEmitted,
+		UpdatedAt:   "2026-04-27T13:00:00Z",
+		OutcomeType: "finding-resolution",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingStatusChangedEvent() error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), statusEvent); err != nil {
+		t.Fatalf("Project(status) error = %v", err)
+	}
+	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; ok {
+		t.Fatal("resolved finding anchor should be pruned from graph")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; ok {
+		t.Fatal("resolved finding has_finding link should be pruned from graph")
+	}
+	if _, ok := graph.entities[annotationURN]; ok {
+		t.Fatal("isolated finding note annotation should be pruned from graph")
+	}
 }
 
 func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity {
@@ -222,6 +332,7 @@ func cloneProjectedEntity(entity *ports.ProjectedEntity) *ports.ProjectedEntity 
 		URN:        entity.URN,
 		TenantID:   entity.TenantID,
 		SourceID:   entity.SourceID,
+		RuntimeID:  entity.RuntimeID,
 		EntityType: entity.EntityType,
 		Label:      entity.Label,
 		Attributes: attributes,
@@ -236,6 +347,7 @@ func cloneProjectedLink(link *ports.ProjectedLink) *ports.ProjectedLink {
 	return &ports.ProjectedLink{
 		TenantID:   link.TenantID,
 		SourceID:   link.SourceID,
+		RuntimeID:  link.RuntimeID,
 		FromURN:    link.FromURN,
 		ToURN:      link.ToURN,
 		Relation:   link.Relation,

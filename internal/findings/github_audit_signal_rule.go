@@ -537,6 +537,14 @@ var githubOrgAuthControlModifiedConfig = githubAuditSignalConfig{
 		"org.saml_enabled",
 		"org.update_saml_provider_settings",
 	),
+	predicate: githubOrgAuthControlWeakening,
+	severity: func(attributes map[string]string) string {
+		action := strings.TrimSpace(attributes["action"])
+		if action == "org.update_saml_provider_settings" {
+			return "HIGH"
+		}
+		return "CRITICAL"
+	},
 	summary: func(attributes map[string]string) string {
 		return fmt.Sprintf("%s modified GitHub organization authentication control %s for %s", githubAuditActor(attributes), strings.TrimSpace(attributes["action"]), githubAuditTarget(attributes))
 	},
@@ -553,6 +561,7 @@ var githubOrgIPAllowListModifiedConfig = githubAuditSignalConfig{
 		"ip_allow_list_entry.destroy",
 		"ip_allow_list_entry.update",
 	),
+	predicate: githubIPAllowListWeakeningOrExpansion,
 	severity: func(attributes map[string]string) string {
 		if strings.Contains(strings.TrimSpace(attributes["action"]), "disable") || strings.Contains(strings.TrimSpace(attributes["action"]), "destroy") {
 			return "HIGH"
@@ -601,6 +610,7 @@ var githubProtectedBranchPolicyOverrideConfig = githubAuditSignalConfig{
 var githubRepositoryRulesetModifiedConfig = githubAuditSignalConfig{
 	definition: githubRepositoryRulesetModifiedDefinition,
 	actions:    githubAuditActionSet("repository_ruleset.destroy", "repository_ruleset.update"),
+	predicate:  githubRepositoryRulesetWeakening,
 	summary: func(attributes map[string]string) string {
 		return fmt.Sprintf("%s modified GitHub repository ruleset %s for %s", githubAuditActor(attributes), firstNonEmpty(attributes["ruleset_name"], attributes["ruleset_id"], "unknown ruleset"), githubAuditTarget(attributes))
 	},
@@ -608,7 +618,13 @@ var githubRepositoryRulesetModifiedConfig = githubAuditSignalConfig{
 
 var githubCriticalResourceDeletedConfig = githubAuditSignalConfig{
 	definition: githubCriticalResourceDeletedDefinition,
-	actions:    githubAuditActionSet("codespaces.delete", "environment.delete", "project.delete", "repo.destroy"),
+	actions:    githubAuditActionSet("environment.delete", "repo.destroy"),
+	severity: func(attributes map[string]string) string {
+		if strings.TrimSpace(attributes["action"]) == "environment.delete" {
+			return "MEDIUM"
+		}
+		return "HIGH"
+	},
 	summary: func(attributes map[string]string) string {
 		return fmt.Sprintf("%s deleted GitHub resource %s for %s", githubAuditActor(attributes), strings.TrimSpace(attributes["action"]), githubAuditTarget(attributes))
 	},
@@ -865,6 +881,41 @@ func githubAuditActionSet(actions ...string) map[string]struct{} {
 		}
 	}
 	return set
+}
+
+func githubOrgAuthControlWeakening(attributes map[string]string) bool {
+	switch strings.TrimSpace(attributes["action"]) {
+	case "org.disable_oauth_app_restrictions", "org.disable_two_factor_requirement", "org.saml_disabled", "org.update_saml_provider_settings":
+		return true
+	default:
+		return false
+	}
+}
+
+func githubIPAllowListWeakeningOrExpansion(attributes map[string]string) bool {
+	action := strings.TrimSpace(attributes["action"])
+	return strings.Contains(action, "disable") ||
+		strings.Contains(action, "destroy") ||
+		strings.Contains(action, "update") ||
+		action == "ip_allow_list_entry.create"
+}
+
+func githubRepositoryRulesetWeakening(attributes map[string]string) bool {
+	action := strings.TrimSpace(attributes["action"])
+	if action == "repository_ruleset.destroy" {
+		return true
+	}
+	if action != "repository_ruleset.update" {
+		return false
+	}
+	if containsAny(strings.ToLower(firstNonEmpty(attributes["operation_type"], attributes["change_type"], attributes["changes"])), "disable", "remove", "delete", "downgrade", "bypass") {
+		return true
+	}
+	enforcement := strings.ToLower(firstNonEmpty(attributes["new_enforcement"], attributes["enforcement"], attributes["ruleset_enforcement"]))
+	if enforcement == "disabled" || enforcement == "evaluate" {
+		return true
+	}
+	return findingAttributeBool(attributes, "bypass_actor_added", "required_review_removed", "required_status_check_removed", "force_pushes_allowed", "deletions_allowed")
 }
 
 func keysOfStringMap(values map[string]string) []string {
