@@ -1,0 +1,61 @@
+{
+  "rule_id": "sentinelone-protection-control-tampering",
+  "runtime": {
+    "id": "writer-sentinelone-activity",
+    "source_id": "sentinelone",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "s1-activity-1",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.activity",
+      "occurred_at": "2026-05-09T07:10:00Z",
+      "schema_ref": "sentinelone/activity/v1",
+      "attributes": {
+        "activity_id": "activity-1",
+        "activity_type": "42",
+        "agent_id": "agent-99",
+        "primary_description": "Policy updated to disable protection for agent"
+      }
+    },
+    {
+      "id": "s1-activity-2",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.activity",
+      "occurred_at": "2026-05-09T07:15:00Z",
+      "schema_ref": "sentinelone/activity/v1",
+      "attributes": {
+        "activity_id": "activity-2",
+        "activity_type": "19",
+        "agent_id": "agent-100",
+        "primary_description": "Threat with confidence level suspicious detected"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "sentinelone-protection-control-tampering",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "SentinelOne protection control changed on agent-99: Policy updated to disable protection for agent",
+      "policy_id": "agent-99",
+      "event_ids": ["s1-activity-1"],
+      "attributes": {
+        "action": "protection_control_tampering",
+        "source_runtime_id": "writer-sentinelone-activity",
+        "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-99",
+        "activity_id": "activity-1",
+        "agent_id": "agent-99"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "s1-activity-2",
+      "reason": "ordinary threat activity is evidence, not a control-change finding"
+    }
+  ]
+}

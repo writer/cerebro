@@ -134,16 +134,24 @@ func TestGitHubPrivateRepositoryForkingEnabledFixture(t *testing.T) {
 	assertRuleFixture(t, newGitHubPrivateRepositoryForkingEnabledRule(), "testdata/rules/github-private-repository-forking-enabled.json")
 }
 
-func TestSentinelOneUnresolvedThreatFixture(t *testing.T) {
-	assertRuleFixture(t, newSentinelOneUnresolvedThreatRule(), "testdata/rules/sentinelone-unresolved-threat.json")
+func TestSentinelOneEndpointActiveInfectionFixture(t *testing.T) {
+	assertRuleFixture(t, newSentinelOneEndpointActiveInfectionRule(), "testdata/rules/sentinelone-endpoint-active-infection.json")
 }
 
-func TestSentinelOneMaliciousOrFilelessThreatFixture(t *testing.T) {
-	assertRuleFixture(t, newSentinelOneMaliciousOrFilelessThreatRule(), "testdata/rules/sentinelone-malicious-or-fileless-threat.json")
+func TestSentinelOneMitigationFailedFixture(t *testing.T) {
+	assertRuleFixture(t, newSentinelOneMitigationFailedRule(), "testdata/rules/sentinelone-mitigation-failed.json")
 }
 
-func TestSentinelOneInfectedEndpointFixture(t *testing.T) {
-	assertRuleFixture(t, newSentinelOneInfectedEndpointRule(), "testdata/rules/sentinelone-infected-endpoint.json")
+func TestSentinelOneAgentStaleFixture(t *testing.T) {
+	assertRuleFixture(t, newSentinelOneAgentStaleRule(), "testdata/rules/sentinelone-agent-stale.json")
+}
+
+func TestSentinelOneAgentDetectOnlyModeFixture(t *testing.T) {
+	assertRuleFixture(t, newSentinelOneAgentDetectOnlyModeRule(), "testdata/rules/sentinelone-agent-detect-only-mode.json")
+}
+
+func TestSentinelOneProtectionControlTamperingFixture(t *testing.T) {
+	assertRuleFixture(t, newSentinelOneProtectionControlTamperingRule(), "testdata/rules/sentinelone-protection-control-tampering.json")
 }
 
 func TestSentinelOneRiskyExclusionFixture(t *testing.T) {

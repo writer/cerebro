@@ -59,11 +59,13 @@ func builtinRulePacks() []RulePack {
 		{
 			ID:          "sentinelone",
 			Name:        "SentinelOne",
-			Description: "SentinelOne endpoint threat and exclusion findings.",
+			Description: "SentinelOne endpoint posture, response, and protection-control findings.",
 			Rules: []Rule{
-				newSentinelOneUnresolvedThreatRule(),
-				newSentinelOneMaliciousOrFilelessThreatRule(),
-				newSentinelOneInfectedEndpointRule(),
+				newSentinelOneEndpointActiveInfectionRule(),
+				newSentinelOneMitigationFailedRule(),
+				newSentinelOneAgentStaleRule(),
+				newSentinelOneAgentDetectOnlyModeRule(),
+				newSentinelOneProtectionControlTamperingRule(),
 				newSentinelOneRiskyExclusionRule(),
 			},
 		},
