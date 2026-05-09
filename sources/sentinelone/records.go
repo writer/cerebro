@@ -1,6 +1,7 @@
 package sentinelone
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -44,6 +45,42 @@ func (b *flexibleBool) UnmarshalJSON(raw []byte) error {
 		}
 	}
 	return fmt.Errorf("invalid bool value %s", string(raw))
+}
+
+type flexibleString string
+
+func (s *flexibleString) UnmarshalJSON(raw []byte) error {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "null" {
+		*s = ""
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		*s = flexibleString(text)
+		return nil
+	}
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return err
+	}
+	switch typed := value.(type) {
+	case nil:
+		*s = ""
+	case bool:
+		*s = flexibleString(fmt.Sprint(typed))
+	case json.Number:
+		*s = flexibleString(typed.String())
+	default:
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, raw); err != nil {
+			return err
+		}
+		*s = flexibleString(compact.String())
+	}
+	return nil
 }
 
 // threatRecord captures the high-value fields returned by /web/api/v2.1/threats.
@@ -326,27 +363,27 @@ func (r *groupRecord) rawBytes() json.RawMessage  { return r.raw }
 
 // exclusionRecord captures fields from /web/api/v2.1/exclusions.
 type exclusionRecord struct {
-	ID                string       `json:"id"`
-	Type              string       `json:"type"`
-	Mode              string       `json:"mode"`
-	Source            string       `json:"source"`
-	OSType            string       `json:"osType"`
-	PathExclusionType string       `json:"pathExclusionType"`
-	IncludeChildren   flexibleBool `json:"includeChildren"`
-	IncludeParents    flexibleBool `json:"includeParents"`
-	Imported          flexibleBool `json:"imported"`
-	NotRecommended    flexibleBool `json:"notRecommended"`
-	Description       string       `json:"description"`
-	ApplicationName   string       `json:"applicationName"`
-	UserID            string       `json:"userId"`
-	UserName          string       `json:"userName"`
-	Scope             string       `json:"scope"`
-	ScopeName         string       `json:"scopeName"`
-	ScopePath         string       `json:"scopePath"`
-	Value             string       `json:"value"`
-	Actions           []string     `json:"actions"`
-	CreatedAt         string       `json:"createdAt"`
-	UpdatedAt         string       `json:"updatedAt"`
+	ID                string         `json:"id"`
+	Type              string         `json:"type"`
+	Mode              string         `json:"mode"`
+	Source            string         `json:"source"`
+	OSType            string         `json:"osType"`
+	PathExclusionType string         `json:"pathExclusionType"`
+	IncludeChildren   flexibleBool   `json:"includeChildren"`
+	IncludeParents    flexibleBool   `json:"includeParents"`
+	Imported          flexibleBool   `json:"imported"`
+	NotRecommended    flexibleBool   `json:"notRecommended"`
+	Description       string         `json:"description"`
+	ApplicationName   string         `json:"applicationName"`
+	UserID            string         `json:"userId"`
+	UserName          string         `json:"userName"`
+	Scope             flexibleString `json:"scope"`
+	ScopeName         flexibleString `json:"scopeName"`
+	ScopePath         flexibleString `json:"scopePath"`
+	Value             flexibleString `json:"value"`
+	Actions           []string       `json:"actions"`
+	CreatedAt         string         `json:"createdAt"`
+	UpdatedAt         string         `json:"updatedAt"`
 	raw               json.RawMessage
 }
 
@@ -934,10 +971,10 @@ func exclusionEvent(s settings, record exclusionRecord) (*primitives.Event, erro
 		ApplicationName:   record.ApplicationName,
 		UserID:            record.UserID,
 		UserName:          record.UserName,
-		Scope:             record.Scope,
-		ScopeName:         record.ScopeName,
-		ScopePath:         record.ScopePath,
-		Value:             record.Value,
+		Scope:             string(record.Scope),
+		ScopeName:         string(record.ScopeName),
+		ScopePath:         string(record.ScopePath),
+		Value:             string(record.Value),
 		Actions:           record.Actions,
 		CreatedAt:         record.CreatedAt,
 		UpdatedAt:         record.UpdatedAt,
@@ -956,10 +993,10 @@ func exclusionEvent(s settings, record exclusionRecord) (*primitives.Event, erro
 	addAttribute(attrs, "source", record.Source)
 	addAttribute(attrs, "os_type", record.OSType)
 	addAttribute(attrs, "path_exclusion_type", record.PathExclusionType)
-	addAttribute(attrs, "scope", record.Scope)
-	addAttribute(attrs, "scope_name", record.ScopeName)
-	addAttribute(attrs, "scope_path", record.ScopePath)
-	addAttribute(attrs, "value", record.Value)
+	addAttribute(attrs, "scope", string(record.Scope))
+	addAttribute(attrs, "scope_name", string(record.ScopeName))
+	addAttribute(attrs, "scope_path", string(record.ScopePath))
+	addAttribute(attrs, "value", string(record.Value))
 	addAttribute(attrs, "not_recommended", boolString(bool(record.NotRecommended)))
 	addAttribute(attrs, "include_children", boolString(bool(record.IncludeChildren)))
 	addAttribute(attrs, "include_parents", boolString(bool(record.IncludeParents)))
