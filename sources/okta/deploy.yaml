@@ -1,0 +1,111 @@
+sourceId: okta
+secretKeys:
+  - OKTA_API_TOKEN
+  - OKTA_DOMAIN
+runtimes:
+  - localId: audit
+    config:
+      domain: env:OKTA_DOMAIN
+      family: audit
+      per_page: "200"
+      since: "2026-05-01T00:00:00Z"
+      token: env:OKTA_API_TOKEN
+  - localId: user
+    config:
+      domain: env:OKTA_DOMAIN
+      family: user
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: group
+    config:
+      domain: env:OKTA_DOMAIN
+      family: group
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+  - localId: application
+    config:
+      domain: env:OKTA_DOMAIN
+      family: application
+      per_page: "200"
+      token: env:OKTA_API_TOKEN
+schedules:
+  - localName: audit-live
+    runtimeLocalId: audit
+    scheduleExpression: rate(10 minutes)
+    taskCount: 1
+    command:
+      - orchestrator
+      - run
+      - page_limit=20
+      - graph_page_limit=100
+      - event_limit=1000
+  - localName: user-inventory
+    runtimeLocalId: user
+    scheduleExpression: rate(30 minutes)
+    taskCount: 1
+    command:
+      - orchestrator
+      - run
+      - page_limit=100
+      - graph_page_limit=100
+      - event_limit=1000
+  - localName: group-inventory
+    runtimeLocalId: group
+    scheduleExpression: rate(30 minutes)
+    taskCount: 1
+    command:
+      - orchestrator
+      - run
+      - page_limit=100
+      - graph_page_limit=100
+      - event_limit=1000
+  - localName: application-inventory
+    runtimeLocalId: application
+    scheduleExpression: rate(30 minutes)
+    taskCount: 1
+    command:
+      - orchestrator
+      - run
+      - page_limit=100
+      - graph_page_limit=100
+      - event_limit=1000
+environments:
+  sec-dev:
+    extraRuntimes:
+      - localId: audit-2026-04
+        config:
+          domain: env:OKTA_DOMAIN
+          family: audit
+          per_page: "200"
+          since: "2026-04-01T00:00:00Z"
+          until: "2026-05-01T00:00:00Z"
+          token: env:OKTA_API_TOKEN
+      - localId: audit-2026-q1
+        config:
+          domain: env:OKTA_DOMAIN
+          family: audit
+          per_page: "200"
+          since: "2026-01-01T00:00:00Z"
+          until: "2026-04-01T00:00:00Z"
+          token: env:OKTA_API_TOKEN
+    extraSchedules:
+      - localName: audit-april-backfill
+        runtimeLocalId: audit-2026-04
+        scheduleExpression: rate(15 minutes)
+        taskCount: 1
+        command:
+          - orchestrator
+          - run
+          - page_limit=20
+          - graph_page_limit=100
+          - event_limit=1000
+      - localName: audit-q1-backfill
+        runtimeLocalId: audit-2026-q1
+        scheduleExpression: rate(15 minutes)
+        taskCount: 1
+        command:
+          - orchestrator
+          - run
+          - page_limit=20
+          - graph_page_limit=100
+          - event_limit=1000
