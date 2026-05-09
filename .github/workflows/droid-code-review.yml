@@ -27,29 +27,33 @@ jobs:
           INFISICAL_IDENTITY_ID: ${{ secrets.INFISICAL_IDENTITY_ID }}
           INFISICAL_PROJECT_SLUG: ${{ secrets.INFISICAL_PROJECT_SLUG }}
           INFISICAL_ENV_SLUG: ${{ secrets.INFISICAL_ENV_SLUG }}
-          FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
         run: |
           has_infisical=false
-          has_factory_key=false
 
           if [ -n "$INFISICAL_IDENTITY_ID" ] && [ -n "$INFISICAL_PROJECT_SLUG" ] && [ -n "$INFISICAL_ENV_SLUG" ]; then
             has_infisical=true
           fi
 
-          if [ -n "$FACTORY_API_KEY" ]; then
-            has_factory_key=true
-          fi
-
           should_run=false
-          if [ "$has_infisical" = "true" ] || [ "$has_factory_key" = "true" ]; then
+          if [ "$has_infisical" = "true" ]; then
             should_run=true
           fi
 
           {
             echo "has_infisical=$has_infisical"
-            echo "has_factory_key=$has_factory_key"
             echo "should_run=$should_run"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Fetch secrets from Infisical
+        if: steps.auth_check.outputs.should_run == 'true'
+        uses: Infisical/secrets-action@8802effbe453d0576cd923567dcc2c97a1f54058 # v1.0.15
+        with:
+          method: "oidc"
+          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
+          oidc-audience: "https://github.com/WriterInternal"
+          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
+          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
+          export-type: env
 
       - name: Checkout repository
         if: steps.auth_check.outputs.should_run == 'true'
@@ -57,11 +61,18 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
       - name: Install Droid CLI
         if: steps.auth_check.outputs.should_run == 'true'
+        env:
+          DROID_INSTALL_SHA256: 6e7905f5f41513e629bb8061d567896f240cd43f64c360345c20276a8bbb7e56
         run: |
-          curl -fsSL https://app.factory.ai/cli | sh
+          set -euo pipefail
+          installer="${RUNNER_TEMP}/droid-install.sh"
+          curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL https://app.factory.ai/cli -o "${installer}"
+          printf '%s  %s\n' "${DROID_INSTALL_SHA256}" "${installer}" | shasum -a 256 -c -
+          sh "${installer}"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/droid" --version
 
@@ -75,11 +86,13 @@ jobs:
         if: steps.auth_check.outputs.should_run == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
 
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          git diff origin/${{ github.event.pull_request.base.ref }}...${{ github.event.pull_request.head.sha }} > diff.txt
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: bearer ${GITHUB_TOKEN}" fetch --no-tags origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          git diff "origin/${BASE_REF}...${HEAD_SHA}" > diff.txt
 
           fetch_paginated() {
             local url="$1"
@@ -115,38 +128,23 @@ jobs:
           jq '[.[] | {filename: .filename, patch: .patch}]' files_all.json > files.json
           rm -f files_all.json
 
-      - name: Fetch secrets from Infisical
-        if: steps.auth_check.outputs.has_infisical == 'true'
-        uses: Infisical/secrets-action@8802effbe453d0576cd923567dcc2c97a1f54058 # v1.0.15
-        with:
-          method: "oidc"
-          identity-id: ${{ secrets.INFISICAL_IDENTITY_ID }}
-          oidc-audience: "https://github.com/WriterInternal"
-          project-slug: ${{ secrets.INFISICAL_PROJECT_SLUG }}
-          env-slug: ${{ secrets.INFISICAL_ENV_SLUG }}
-          export-type: env
-
       - name: Ensure Factory API key is available
         if: steps.auth_check.outputs.should_run == 'true'
-        env:
-          FACTORY_API_KEY_FALLBACK: ${{ secrets.FACTORY_API_KEY }}
         run: |
           set -euo pipefail
 
-          EFFECTIVE_FACTORY_API_KEY="${FACTORY_API_KEY:-${FACTORY_API_KEY_FALLBACK:-}}"
-          if [ -z "$EFFECTIVE_FACTORY_API_KEY" ]; then
-            echo "FACTORY_API_KEY is required from Infisical or GitHub secrets."
+          if [ -z "${FACTORY_API_KEY:-}" ]; then
+            echo "FACTORY_API_KEY is required from Infisical."
             exit 1
           fi
 
-          echo "FACTORY_API_KEY=$EFFECTIVE_FACTORY_API_KEY" >> "$GITHUB_ENV"
-          echo "::add-mask::$EFFECTIVE_FACTORY_API_KEY"
+          echo "FACTORY_API_KEY=$FACTORY_API_KEY" >> "$GITHUB_ENV"
+          echo "::add-mask::$FACTORY_API_KEY"
 
       - name: Perform automated code review
         if: steps.auth_check.outputs.should_run == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           cat > prompt.txt <<'EOF'
           You are an automated code review system. Review the PR diff and identify clear issues that need to be fixed.
 
@@ -207,13 +205,14 @@ jobs:
           EOF
 
           echo "Running code review analysis..."
-          if ! droid exec --auto high -f prompt.txt; then
-            echo "droid exec failed; defaulting to empty review"
-          fi
+          droid exec --auto high -f prompt.txt
 
           if [ ! -s comments.json ]; then
-            echo "[]" > comments.json
+            echo "::error::Droid review did not produce comments.json"
+            exit 1
           fi
+
+          jq -e 'type == "array" and all(.[]; type == "object" and has("path") and has("position") and has("body"))' comments.json >/dev/null
 
           echo "=== Review Results ==="
           cat comments.json
@@ -236,8 +235,8 @@ jobs:
             try {
               comments = JSON.parse(raw);
             } catch (error) {
-              core.warning(`Failed to parse comments.json: ${error.message}`);
-              comments = [];
+              core.setFailed(`Failed to parse comments.json: ${error.message}`);
+              return;
             }
 
             if (!Array.isArray(comments) || comments.length === 0) {
@@ -259,7 +258,7 @@ jobs:
                   repo: context.repo.repo,
                   pull_number: prNumber,
                   event: 'COMMENT',
-                  body: '✅ No issues found in the current changes.'
+                  body: 'No issues found in the current changes.'
                 });
               }
               return;
