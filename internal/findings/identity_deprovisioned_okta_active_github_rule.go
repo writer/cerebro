@@ -2,6 +2,7 @@ package findings
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -19,6 +20,13 @@ const (
 	identityDeprovisionedOktaActiveGitHubRuleID = "identity-okta-deprovisioned-active-in-github"
 	identityDeprovisionedOktaActiveGitHubKind   = "finding.identity_okta_deprovisioned_active_in_github"
 	identityDeprovisionedOktaQueryRowLimit      = 500
+	// identityDeprovisionedOktaRecencyWindow scopes "still active in GitHub" to
+	// recent activity. acted_on edges carry an `at` attribute populated from the
+	// audit event's OccurredAt; rows whose latest `at` is older than this window,
+	// or that pre-date the at-stamping projector change and have no `at` at all,
+	// are treated as stale history rather than current access. This prevents a
+	// single pre-offboarding action from holding the finding open indefinitely.
+	identityDeprovisionedOktaRecencyWindow = 30 * 24 * time.Hour
 )
 
 // deprovisionedOktaActiveGitHubRule fires when an Okta user whose lifecycle status is
@@ -159,6 +167,18 @@ func (r *deprovisionedOktaActiveGitHubRule) EvaluateRows(_ context.Context, runt
 		if oktaUserURN == "" || identityURN == "" || githubUserURN == "" {
 			continue
 		}
+		targetURN := cypherRowString(row, "target_urn")
+		if targetURN == "" {
+			continue
+		}
+		// `acted_on` edges projected before the at-stamp change have no `at`,
+		// and any edge whose latest action is older than the recency window is
+		// stale history. Either way, this row is not evidence of current GitHub
+		// access for the deprovisioned identity, so drop it before it can pin
+		// the group open.
+		if !actedOnEdgeIsRecent(cypherRowString(row, "acted_attributes_json"), now, identityDeprovisionedOktaRecencyWindow) {
+			continue
+		}
 		key := oktaUserURN + "\x00" + identityURN + "\x00" + githubUserURN
 		group, ok := groups[key]
 		if !ok {
@@ -175,10 +195,6 @@ func (r *deprovisionedOktaActiveGitHubRule) EvaluateRows(_ context.Context, runt
 			groups[key] = group
 			keys = append(keys, key)
 		}
-		targetURN := cypherRowString(row, "target_urn")
-		if targetURN == "" {
-			continue
-		}
 		if _, exists := group.targets[targetURN]; exists {
 			continue
 		}
@@ -192,12 +208,38 @@ func (r *deprovisionedOktaActiveGitHubRule) EvaluateRows(_ context.Context, runt
 	findings := make([]*ports.FindingRecord, 0, len(keys))
 	for _, key := range keys {
 		group := groups[key]
-		if group == nil {
+		if group == nil || len(group.targets) == 0 {
 			continue
 		}
 		findings = append(findings, r.buildFinding(runtime, tenantID, group, now))
 	}
 	return findings, nil
+}
+
+// actedOnEdgeIsRecent decides whether a github acted_on edge represents activity
+// inside the recency window. The edge attributes are JSON-encoded by the projector
+// (see githubAuditProjections); when the latest action was at least `window` ago
+// the user has not exercised access recently and the edge should not, on its own,
+// keep a deprovisioned-Okta finding open. Edges projected before the at-stamp
+// change have no `at` at all and are treated identically to stale history.
+func actedOnEdgeIsRecent(attributesJSON string, now time.Time, window time.Duration) bool {
+	trimmed := strings.TrimSpace(attributesJSON)
+	if trimmed == "" {
+		return false
+	}
+	var attrs map[string]string
+	if err := json.Unmarshal([]byte(trimmed), &attrs); err != nil {
+		return false
+	}
+	raw := strings.TrimSpace(attrs["at"])
+	if raw == "" {
+		return false
+	}
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return false
+	}
+	return now.UTC().Sub(parsed.UTC()) <= window
 }
 
 type deprovisionedOktaGroup struct {

@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -412,6 +415,81 @@ func TestProjectGitHubAuditSOTASignalsToGraph(t *testing.T) {
 				t.Fatalf("graph acted_on link missing for %s -> %s: %#v", actorURN, tt.resource, graph.links)
 			}
 		})
+	}
+}
+
+// TestProjectGitHubAuditStampsAtOnActedOn pins the contract that the projector
+// writes the audit event's OccurredAt onto the github acted_on edge. The
+// deprovisioned-Okta-active-in-GitHub rule treats the absence of `at` as
+// "stale or pre-fix history" and refuses to fire on it, so dropping this stamp
+// would cause real, current GitHub activity to look indistinguishable from
+// pre-offboarding history and the rule would silently stop emitting findings.
+func TestProjectGitHubAuditStampsAtOnActedOn(t *testing.T) {
+	graph := &projectionRecorder{}
+	occurred := time.Date(2025, time.March, 4, 10, 30, 0, 0, time.UTC)
+	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "github-audit-acted-on-at",
+		TenantId:   "writer",
+		SourceId:   "github",
+		Kind:       "github.audit",
+		OccurredAt: timestamppb.New(occurred),
+		Attributes: map[string]string{
+			"actor":         "alice",
+			"action":        "git.clone",
+			"org":           "writer",
+			"repo":          "writer/cerebro",
+			"resource_id":   "writer/cerebro",
+			"resource_type": "repository",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	resourceURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	link, ok := graph.links[actorURN+"|"+relationActedOn+"|"+resourceURN]
+	if !ok {
+		t.Fatalf("acted_on link missing for %s -> %s: %#v", actorURN, resourceURN, graph.links)
+	}
+	if got, want := link.Attributes["at"], occurred.Format(time.RFC3339); got != want {
+		t.Fatalf("acted_on attributes[at] = %q, want %q (recency window in deprovisioned-okta rule depends on this stamp)", got, want)
+	}
+	if got, want := link.Attributes["action"], "git.clone"; got != want {
+		t.Fatalf("acted_on attributes[action] = %q, want %q (preserving existing payload alongside `at`)", got, want)
+	}
+}
+
+// TestProjectGitHubAuditOmitsAtWhenOccurredAtMissing covers the legacy contract:
+// historical events backfilled without OccurredAt must not pollute the edge with
+// a placeholder timestamp. The rule reads a missing `at` as "I cannot prove this
+// is recent" and skips it; emitting a synthetic `at` would defeat that.
+func TestProjectGitHubAuditOmitsAtWhenOccurredAtMissing(t *testing.T) {
+	graph := &projectionRecorder{}
+	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:       "github-audit-acted-on-no-at",
+		TenantId: "writer",
+		SourceId: "github",
+		Kind:     "github.audit",
+		Attributes: map[string]string{
+			"actor":         "alice",
+			"action":        "git.clone",
+			"org":           "writer",
+			"repo":          "writer/cerebro",
+			"resource_id":   "writer/cerebro",
+			"resource_type": "repository",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	resourceURN := "urn:cerebro:writer:github_repo:writer/cerebro"
+	link, ok := graph.links[actorURN+"|"+relationActedOn+"|"+resourceURN]
+	if !ok {
+		t.Fatalf("acted_on link missing for %s -> %s: %#v", actorURN, resourceURN, graph.links)
+	}
+	if got, exists := link.Attributes["at"]; exists {
+		t.Fatalf("acted_on attributes[at] = %q present without event OccurredAt; rule must be able to distinguish recent vs unstamped edges", got)
 	}
 }
 

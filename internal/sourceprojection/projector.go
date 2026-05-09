@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
@@ -315,10 +316,20 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			},
 		})
 		if resourceURN != "" {
-			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, map[string]string{
+			// `at` carries the audit event's OccurredAt timestamp so graph rules can tell
+			// recent GitHub activity from stale historical edges. mergeGraphAttributes is
+			// latest-wins, so under the normal in-order ingestion path this field always
+			// reflects the most recent action that touched the edge. The
+			// deprovisioned-Okta-active-in-GitHub rule uses this to avoid reporting users as
+			// "still active" purely from pre-offboarding history.
+			actedAttrs := map[string]string{
 				"action":   strings.TrimSpace(attributes["action"]),
 				"event_id": event.GetId(),
-			}))
+			}
+			if occurredAt := event.GetOccurredAt(); occurredAt != nil && occurredAt.IsValid() {
+				actedAttrs["at"] = occurredAt.AsTime().UTC().Format(time.RFC3339)
+			}
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, actedAttrs))
 		}
 		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actor)
 		if !sameIdentifier(actor, actorExternalNameID) {

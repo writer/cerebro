@@ -1,11 +1,14 @@
 package findings
 
 import (
+	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
 )
 
 func deprovisionedOktaRuleFixedNow() time.Time {
@@ -159,5 +162,134 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintSeparatesOktaUsers(t *testi
 	b := rule.buildFinding(runtime, "writer", groupTwo, deprovisionedOktaRuleFixedNow())
 	if a.ID == b.ID {
 		t.Fatalf("two distinct deprovisioned okta users collapsed onto the same finding (id=%q); fingerprint must include okta_user_urn", a.ID)
+	}
+}
+
+func deprovisionedOktaRuleActedAttrs(at time.Time) string {
+	payload := map[string]string{
+		"action":   "git.clone",
+		"event_id": "github-audit-evt",
+	}
+	if !at.IsZero() {
+		payload["at"] = at.UTC().Format(time.RFC3339)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
+}
+
+func deprovisionedOktaRuleRow(actedAttributesJSON string) ports.CypherRow {
+	return ports.CypherRow{Values: map[string]any{
+		"okta_user_urn":         "urn:cerebro:writer:okta.user:alice@writer.com",
+		"okta_user_label":       "Alice",
+		"okta_attributes_json":  `{"status":"DEPROVISIONED"}`,
+		"identity_urn":          "urn:cerebro:writer:identity:email:alice@writer.com",
+		"identity_label":        "alice@writer.com",
+		"github_user_urn":       "urn:cerebro:writer:github.user:alice",
+		"github_user_label":     "alice",
+		"target_urn":            "urn:cerebro:writer:github_repo:writer/cerebro",
+		"target_entity_type":    "github_repo",
+		"target_label":          "writer/cerebro",
+		"acted_attributes_json": actedAttributesJSON,
+	}}
+}
+
+// Recent acted_on edges are the only source of truth that a deprovisioned identity is
+// "still active" right now. Without this, the rule could only ever say "this user has
+// touched github at some point in history", which is true forever once a single edge
+// exists and would keep findings open indefinitely.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsEmitsForRecentActedOn(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 1 (recent acted_on must trigger)", len(findings))
+	}
+}
+
+// An edge whose latest action is older than the recency window is stale history,
+// not current access. The previous behavior treated it as proof of activity and
+// kept the finding open even after the GitHub account was suspended; this regression
+// test pins the new contract: stale-only groups produce no finding so the
+// deprovisioning surface auto-resolves once activity stops.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsStaleActedOn(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	staleAt := time.Now().UTC().Add(-(identityDeprovisionedOktaRecencyWindow + 24*time.Hour))
+	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(staleAt))
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings for stale acted_on edge, want 0; rule must require recent activity", len(findings))
+	}
+}
+
+// Acted_on edges projected before the at-stamp change have no `at` attribute at all.
+// We refuse to fire on those rather than papering over them with a synthetic timestamp:
+// the rule cannot prove the activity is recent, so it must not claim "still active".
+// Once the projector backfills, rows reappear with `at` and the rule re-emits naturally.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsUnstampedActedOn(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	row := deprovisionedOktaRuleRow(`{"action":"git.clone","event_id":"legacy"}`)
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings for legacy acted_on edge without `at`, want 0", len(findings))
+	}
+}
+
+// A user can have many acted_on edges where some are recent and some are stale (e.g.
+// touched repo A last week, repo B two years ago). We must still emit the finding,
+// but only attribute it to the recent target(s); reporting the stale target would
+// mislead the responder into thinking the user is still pulling from a repo they
+// haven't touched in years.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsKeepsRecentDropsStaleWithinSameGroup(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	recentRow := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-2 * time.Hour)))
+	staleAt := time.Now().UTC().Add(-(identityDeprovisionedOktaRecencyWindow + 7*24*time.Hour))
+	staleRow := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(staleAt))
+	staleRow.Values["target_urn"] = "urn:cerebro:writer:github_repo:writer/legacy"
+	staleRow.Values["target_label"] = "writer/legacy"
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{recentRow, staleRow})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 1 (group has at least one recent target)", len(findings))
+	}
+	finding := findings[0]
+	if got := finding.Attributes["target_count"]; got != "1" {
+		t.Fatalf("target_count = %q, want 1; stale-only target must not be reported", got)
+	}
+	if got := finding.Attributes["target_urns"]; got != "urn:cerebro:writer:github_repo:writer/cerebro" {
+		t.Fatalf("target_urns = %q, want only the recent target", got)
+	}
+}
+
+// A malformed `at` (not RFC3339) is treated the same as a missing one: we cannot
+// prove recency, so we do not fire. This guards against future projector bugs that
+// might write a non-conforming string and silently keep a finding open.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsMalformedAt(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	row := deprovisionedOktaRuleRow(`{"action":"git.clone","event_id":"weird","at":"yesterday"}`)
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings with unparseable `at`, want 0", len(findings))
 	}
 }
