@@ -76,8 +76,10 @@ func FindingStatusPrunesGraph(status string, source string) bool {
 }
 
 // LegacyFindingStatusPrunesGraph preserves replay behavior for stale-resolution events emitted before status source existed.
-func LegacyFindingStatusPrunesGraph(status string, source string, reason string) bool {
+func LegacyFindingStatusPrunesGraph(status string, source string, reason string, decisionID string, outcomeID string) bool {
 	return strings.TrimSpace(source) == "" &&
+		strings.TrimSpace(decisionID) == "" &&
+		strings.TrimSpace(outcomeID) == "" &&
 		strings.EqualFold(strings.TrimSpace(status), "resolved") &&
 		strings.EqualFold(strings.TrimSpace(reason), FindingStatusReasonNoLongerEmitted)
 }
