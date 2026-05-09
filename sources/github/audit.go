@@ -250,13 +250,22 @@ func auditAttributes(entry *gogithub.AuditEntry, raw map[string]any, settings se
 
 var auditAdditionalAttributeKeys = []string{
 	"branch",
+	"bypass_actor_added",
+	"change_type",
+	"changes",
+	"deletions_allowed",
+	"enforcement",
+	"force_pushes_allowed",
 	"hook_id",
 	"integration",
 	"name",
+	"new_enforcement",
 	"number",
 	"permission",
 	"previous_visibility",
 	"repository_public",
+	"required_review_removed",
+	"required_status_check_removed",
 	"ruleset_enforcement",
 	"ruleset_id",
 	"ruleset_name",
@@ -329,6 +338,12 @@ func rawScalarString(raw map[string]any, key string) string {
 		return strconv.Itoa(typed)
 	case int64:
 		return strconv.FormatInt(typed, 10)
+	case map[string]any, []any:
+		encoded, err := json.Marshal(typed)
+		if err != nil {
+			return ""
+		}
+		return string(encoded)
 	default:
 		return ""
 	}

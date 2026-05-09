@@ -54,6 +54,20 @@ func TestGitHubRepositoryRulesetModifiedRequiresWeakeningSignal(t *testing.T) {
 		t.Fatalf("len(active update records) = %d, want 0", len(records))
 	}
 
+	event = githubAuditEvent("github-ruleset-check-removed", map[string]string{
+		"action":                        "repository_ruleset.update",
+		"enforcement":                   "active",
+		"required_status_check_removed": "true",
+		"repo":                          "writer/cerebro",
+	})
+	records, err = rule.Evaluate(context.Background(), runtime, event)
+	if err != nil {
+		t.Fatalf("Evaluate(required status check removed) error = %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("len(required status check removed records) = %d, want 1", len(records))
+	}
+
 	event = githubAuditEvent("github-ruleset-disabled", map[string]string{
 		"action":      "repository_ruleset.update",
 		"enforcement": "disabled",

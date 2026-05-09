@@ -281,7 +281,7 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	manualStatusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
 		Finding:     finding,
 		Status:      "resolved",
-		Reason:      "verified remediation",
+		Reason:      workflowevents.FindingStatusReasonNoLongerEmitted,
 		UpdatedAt:   "2026-04-27T12:45:00Z",
 		OutcomeType: "finding-resolution",
 	})
@@ -303,6 +303,7 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		Finding:     finding,
 		Status:      "resolved",
 		Reason:      workflowevents.FindingStatusReasonNoLongerEmitted,
+		Source:      workflowevents.FindingStatusSourceStaleEvaluation,
 		UpdatedAt:   "2026-04-27T13:00:00Z",
 		OutcomeType: "finding-resolution",
 	})
