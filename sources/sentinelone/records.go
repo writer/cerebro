@@ -17,6 +17,30 @@ type rawCarrier interface {
 	rawBytes() json.RawMessage
 }
 
+type flexibleBool bool
+
+func (b *flexibleBool) UnmarshalJSON(raw []byte) error {
+	var value bool
+	if err := json.Unmarshal(raw, &value); err == nil {
+		*b = flexibleBool(value)
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		switch strings.ToLower(strings.TrimSpace(text)) {
+		case "", "0", "false", "n", "no":
+			*b = false
+			return nil
+		case "1", "true", "y", "yes":
+			*b = true
+			return nil
+		default:
+			return fmt.Errorf("invalid bool string %q", text)
+		}
+	}
+	return fmt.Errorf("invalid bool value %s", string(raw))
+}
+
 // threatRecord captures the high-value fields returned by /web/api/v2.1/threats.
 type threatRecord struct {
 	ID                 string                   `json:"id"`
@@ -297,27 +321,27 @@ func (r *groupRecord) rawBytes() json.RawMessage  { return r.raw }
 
 // exclusionRecord captures fields from /web/api/v2.1/exclusions.
 type exclusionRecord struct {
-	ID                string   `json:"id"`
-	Type              string   `json:"type"`
-	Mode              string   `json:"mode"`
-	Source            string   `json:"source"`
-	OSType            string   `json:"osType"`
-	PathExclusionType string   `json:"pathExclusionType"`
-	IncludeChildren   bool     `json:"includeChildren"`
-	IncludeParents    bool     `json:"includeParents"`
-	Imported          bool     `json:"imported"`
-	NotRecommended    bool     `json:"notRecommended"`
-	Description       string   `json:"description"`
-	ApplicationName   string   `json:"applicationName"`
-	UserID            string   `json:"userId"`
-	UserName          string   `json:"userName"`
-	Scope             string   `json:"scope"`
-	ScopeName         string   `json:"scopeName"`
-	ScopePath         string   `json:"scopePath"`
-	Value             string   `json:"value"`
-	Actions           []string `json:"actions"`
-	CreatedAt         string   `json:"createdAt"`
-	UpdatedAt         string   `json:"updatedAt"`
+	ID                string       `json:"id"`
+	Type              string       `json:"type"`
+	Mode              string       `json:"mode"`
+	Source            string       `json:"source"`
+	OSType            string       `json:"osType"`
+	PathExclusionType string       `json:"pathExclusionType"`
+	IncludeChildren   flexibleBool `json:"includeChildren"`
+	IncludeParents    flexibleBool `json:"includeParents"`
+	Imported          flexibleBool `json:"imported"`
+	NotRecommended    flexibleBool `json:"notRecommended"`
+	Description       string       `json:"description"`
+	ApplicationName   string       `json:"applicationName"`
+	UserID            string       `json:"userId"`
+	UserName          string       `json:"userName"`
+	Scope             string       `json:"scope"`
+	ScopeName         string       `json:"scopeName"`
+	ScopePath         string       `json:"scopePath"`
+	Value             string       `json:"value"`
+	Actions           []string     `json:"actions"`
+	CreatedAt         string       `json:"createdAt"`
+	UpdatedAt         string       `json:"updatedAt"`
 	raw               json.RawMessage
 }
 
@@ -897,10 +921,10 @@ func exclusionEvent(s settings, record exclusionRecord) (*primitives.Event, erro
 		Source:            record.Source,
 		OSType:            record.OSType,
 		PathExclusionType: record.PathExclusionType,
-		IncludeChildren:   record.IncludeChildren,
-		IncludeParents:    record.IncludeParents,
-		Imported:          record.Imported,
-		NotRecommended:    record.NotRecommended,
+		IncludeChildren:   bool(record.IncludeChildren),
+		IncludeParents:    bool(record.IncludeParents),
+		Imported:          bool(record.Imported),
+		NotRecommended:    bool(record.NotRecommended),
 		Description:       record.Description,
 		ApplicationName:   record.ApplicationName,
 		UserID:            record.UserID,
@@ -931,10 +955,10 @@ func exclusionEvent(s settings, record exclusionRecord) (*primitives.Event, erro
 	addAttribute(attrs, "scope_name", record.ScopeName)
 	addAttribute(attrs, "scope_path", record.ScopePath)
 	addAttribute(attrs, "value", record.Value)
-	addAttribute(attrs, "not_recommended", boolString(record.NotRecommended))
-	addAttribute(attrs, "include_children", boolString(record.IncludeChildren))
-	addAttribute(attrs, "include_parents", boolString(record.IncludeParents))
-	addAttribute(attrs, "imported", boolString(record.Imported))
+	addAttribute(attrs, "not_recommended", boolString(bool(record.NotRecommended)))
+	addAttribute(attrs, "include_children", boolString(bool(record.IncludeChildren)))
+	addAttribute(attrs, "include_parents", boolString(bool(record.IncludeParents)))
+	addAttribute(attrs, "imported", boolString(bool(record.Imported)))
 	if len(record.Actions) != 0 {
 		attrs["actions"] = strings.Join(record.Actions, ",")
 	}
