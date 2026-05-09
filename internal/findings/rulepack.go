@@ -57,6 +57,17 @@ func builtinRulePacks() []RulePack {
 			Rules:       []Rule{newRuntimeActiveThreatEvidenceRule()},
 		},
 		{
+			ID:          "sentinelone",
+			Name:        "SentinelOne",
+			Description: "SentinelOne endpoint threat and exclusion findings.",
+			Rules: []Rule{
+				newSentinelOneUnresolvedThreatRule(),
+				newSentinelOneMaliciousOrFilelessThreatRule(),
+				newSentinelOneInfectedEndpointRule(),
+				newSentinelOneRiskyExclusionRule(),
+			},
+		},
+		{
 			ID:          "data",
 			Name:        "Data",
 			Description: "Sensitive data and crown-jewel findings.",

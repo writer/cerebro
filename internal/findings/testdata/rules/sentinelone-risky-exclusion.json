@@ -1,0 +1,69 @@
+{
+  "rule_id": "sentinelone-risky-exclusion",
+  "runtime": {
+    "id": "writer-sentinelone-exclusion",
+    "source_id": "sentinelone",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "s1-exclusion-1",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.exclusion",
+      "occurred_at": "2026-05-09T06:30:00Z",
+      "schema_ref": "sentinelone/exclusion/v1",
+      "attributes": {
+        "exclusion_id": "exclusion-1",
+        "exclusion_type": "path",
+        "mode": "suppress",
+        "source": "user",
+        "os_type": "macos",
+        "path_exclusion_type": "file",
+        "scope": "site",
+        "scope_name": "writer",
+        "value": "/Applications/Approved.app",
+        "not_recommended": "true"
+      }
+    },
+    {
+      "id": "s1-exclusion-2",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.exclusion",
+      "occurred_at": "2026-05-09T06:35:00Z",
+      "schema_ref": "sentinelone/exclusion/v1",
+      "attributes": {
+        "exclusion_id": "exclusion-2",
+        "exclusion_type": "path",
+        "mode": "suppress",
+        "value": "/Applications/Approved.app",
+        "not_recommended": "false"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "sentinelone-risky-exclusion",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "SentinelOne exclusion /Applications/Approved.app is not recommended",
+      "policy_id": "exclusion-1",
+      "event_ids": ["s1-exclusion-1"],
+      "attributes": {
+        "action": "risky_exclusion",
+        "source_runtime_id": "writer-sentinelone-exclusion",
+        "primary_resource_urn": "urn:cerebro:writer:sentinelone_exclusion:exclusion-1",
+        "exclusion_id": "exclusion-1",
+        "not_recommended": "true",
+        "mode": "suppress"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "s1-exclusion-2",
+      "reason": "approved non-broad exclusion"
+    }
+  ]
+}

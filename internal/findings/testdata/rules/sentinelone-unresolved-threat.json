@@ -1,0 +1,71 @@
+{
+  "rule_id": "sentinelone-unresolved-threat",
+  "runtime": {
+    "id": "writer-sentinelone-threat",
+    "source_id": "sentinelone",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "s1-threat-1",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.threat",
+      "occurred_at": "2026-05-09T06:00:00Z",
+      "schema_ref": "sentinelone/threat/v1",
+      "attributes": {
+        "threat_id": "threat-1",
+        "threat_name": "EICAR Test",
+        "classification": "Malware",
+        "confidence_level": "suspicious",
+        "incident_status": "unresolved",
+        "mitigation_status": "not_mitigated",
+        "analyst_verdict": "undefined",
+        "agent_id": "agent-1",
+        "agent_uuid": "uuid-1",
+        "computer_name": "mac-1",
+        "site_id": "site-1",
+        "group_id": "group-1"
+      }
+    },
+    {
+      "id": "s1-threat-2",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.threat",
+      "occurred_at": "2026-05-09T06:05:00Z",
+      "schema_ref": "sentinelone/threat/v1",
+      "attributes": {
+        "threat_id": "threat-2",
+        "classification": "Malware",
+        "incident_status": "resolved",
+        "mitigation_status": "mitigated",
+        "agent_id": "agent-2"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "sentinelone-unresolved-threat",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "SentinelOne threat EICAR Test remains unresolved/not_mitigated on mac-1",
+      "policy_id": "threat-1",
+      "event_ids": ["s1-threat-1"],
+      "attributes": {
+        "action": "unresolved_not_mitigated",
+        "source_runtime_id": "writer-sentinelone-threat",
+        "primary_resource_urn": "urn:cerebro:writer:sentinelone_threat:threat-1",
+        "threat_id": "threat-1",
+        "incident_status": "unresolved",
+        "mitigation_status": "not_mitigated"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "s1-threat-2",
+      "reason": "resolved and mitigated"
+    }
+  ]
+}

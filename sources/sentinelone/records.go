@@ -924,11 +924,20 @@ func exclusionEvent(s settings, record exclusionRecord) (*primitives.Event, erro
 	}
 	addAttribute(attrs, "exclusion_type", record.Type)
 	addAttribute(attrs, "mode", record.Mode)
+	addAttribute(attrs, "source", record.Source)
 	addAttribute(attrs, "os_type", record.OSType)
+	addAttribute(attrs, "path_exclusion_type", record.PathExclusionType)
 	addAttribute(attrs, "scope", record.Scope)
 	addAttribute(attrs, "scope_name", record.ScopeName)
+	addAttribute(attrs, "scope_path", record.ScopePath)
 	addAttribute(attrs, "value", record.Value)
 	addAttribute(attrs, "not_recommended", boolString(record.NotRecommended))
+	addAttribute(attrs, "include_children", boolString(record.IncludeChildren))
+	addAttribute(attrs, "include_parents", boolString(record.IncludeParents))
+	addAttribute(attrs, "imported", boolString(record.Imported))
+	if len(record.Actions) != 0 {
+		attrs["actions"] = strings.Join(record.Actions, ",")
+	}
 	return &primitives.Event{
 		Id:         eventID("sentinelone-exclusion", s, record.ID),
 		TenantId:   s.host,

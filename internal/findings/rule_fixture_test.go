@@ -134,6 +134,22 @@ func TestGitHubPrivateRepositoryForkingEnabledFixture(t *testing.T) {
 	assertRuleFixture(t, newGitHubPrivateRepositoryForkingEnabledRule(), "testdata/rules/github-private-repository-forking-enabled.json")
 }
 
+func TestSentinelOneUnresolvedThreatFixture(t *testing.T) {
+	assertRuleFixture(t, newSentinelOneUnresolvedThreatRule(), "testdata/rules/sentinelone-unresolved-threat.json")
+}
+
+func TestSentinelOneMaliciousOrFilelessThreatFixture(t *testing.T) {
+	assertRuleFixture(t, newSentinelOneMaliciousOrFilelessThreatRule(), "testdata/rules/sentinelone-malicious-or-fileless-threat.json")
+}
+
+func TestSentinelOneInfectedEndpointFixture(t *testing.T) {
+	assertRuleFixture(t, newSentinelOneInfectedEndpointRule(), "testdata/rules/sentinelone-infected-endpoint.json")
+}
+
+func TestSentinelOneRiskyExclusionFixture(t *testing.T) {
+	assertRuleFixture(t, newSentinelOneRiskyExclusionRule(), "testdata/rules/sentinelone-risky-exclusion.json")
+}
+
 func assertRuleFixture(t *testing.T, rule Rule, path string) {
 	t.Helper()
 	payload, err := os.ReadFile(path)
