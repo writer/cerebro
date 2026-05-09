@@ -117,8 +117,8 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	if _, ok := registry.Get(runtimeActiveThreatEvidenceRuleID); !ok {
 		t.Fatalf("registry missing %q", runtimeActiveThreatEvidenceRuleID)
 	}
-	if _, ok := registry.Get(sentinelOneUnresolvedThreatRuleID); !ok {
-		t.Fatalf("registry missing %q", sentinelOneUnresolvedThreatRuleID)
+	if _, ok := registry.Get(sentinelOneEndpointActiveInfectionRuleID); !ok {
+		t.Fatalf("registry missing %q", sentinelOneEndpointActiveInfectionRuleID)
 	}
 	if _, ok := registry.Get(dataSensitiveAssetRiskRuleID); !ok {
 		t.Fatalf("registry missing %q", dataSensitiveAssetRiskRuleID)

@@ -1,0 +1,64 @@
+{
+  "rule_id": "sentinelone-agent-stale",
+  "runtime": {
+    "id": "writer-sentinelone-agent",
+    "source_id": "sentinelone",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "s1-agent-1",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.agent",
+      "occurred_at": "2026-05-09T06:50:00Z",
+      "schema_ref": "sentinelone/agent/v1",
+      "attributes": {
+        "agent_id": "agent-stale",
+        "computer_name": "mac-stale",
+        "last_active_date": "2024-01-01T00:00:00Z",
+        "is_decommissioned": "false",
+        "is_uninstalled": "false",
+        "is_pending_uninstall": "false"
+      }
+    },
+    {
+      "id": "s1-agent-2",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.agent",
+      "occurred_at": "2026-05-09T06:55:00Z",
+      "schema_ref": "sentinelone/agent/v1",
+      "attributes": {
+        "agent_id": "agent-future",
+        "computer_name": "mac-future",
+        "last_active_date": "2099-01-01T00:00:00Z",
+        "is_decommissioned": "false",
+        "is_uninstalled": "false"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "sentinelone-agent-stale",
+      "severity": "MEDIUM",
+      "status": "open",
+      "summary": "SentinelOne agent mac-stale has not checked in since 2024-01-01T00:00:00Z",
+      "policy_id": "agent-stale",
+      "event_ids": ["s1-agent-1"],
+      "attributes": {
+        "action": "agent_stale",
+        "source_runtime_id": "writer-sentinelone-agent",
+        "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-stale",
+        "agent_id": "agent-stale",
+        "last_active_date": "2024-01-01T00:00:00Z"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "s1-agent-2",
+      "reason": "agent checked in recently"
+    }
+  ]
+}

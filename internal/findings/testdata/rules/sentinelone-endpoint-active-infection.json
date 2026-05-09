@@ -1,5 +1,5 @@
 {
-  "rule_id": "sentinelone-infected-endpoint",
+  "rule_id": "sentinelone-endpoint-active-infection",
   "runtime": {
     "id": "writer-sentinelone-threat",
     "source_id": "sentinelone",
@@ -20,6 +20,7 @@
         "incident_status": "unresolved",
         "mitigation_status": "not_mitigated",
         "is_infected": "true",
+        "active_threats": "3",
         "agent_id": "agent-3",
         "agent_uuid": "uuid-3",
         "computer_name": "mac-3"
@@ -34,23 +35,27 @@
       "schema_ref": "sentinelone/threat/v1",
       "attributes": {
         "threat_id": "threat-6",
+        "threat_name": "Suspicious Sample",
         "classification": "Malware",
+        "incident_status": "unresolved",
+        "mitigation_status": "not_mitigated",
         "is_infected": "false",
         "active_threats": "0",
-        "agent_id": "agent-4"
+        "agent_id": "agent-4",
+        "computer_name": "mac-4"
       }
     }
   ],
   "expected_findings": [
     {
-      "rule_id": "sentinelone-infected-endpoint",
+      "rule_id": "sentinelone-endpoint-active-infection",
       "severity": "CRITICAL",
       "status": "open",
-      "summary": "SentinelOne reports infected endpoint mac-3 for threat Malware Sample",
-      "policy_id": "agent-3:uuid-3:threat-5",
+      "summary": "SentinelOne endpoint mac-3 has active infection evidence from Malware Sample",
+      "policy_id": "agent-3",
       "event_ids": ["s1-threat-5"],
       "attributes": {
-        "action": "infected_endpoint",
+        "action": "endpoint_active_infection",
         "source_runtime_id": "writer-sentinelone-threat",
         "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-3",
         "agent_id": "agent-3",
@@ -62,7 +67,7 @@
   "expected_no_match": [
     {
       "event_id": "s1-threat-6",
-      "reason": "endpoint is not infected"
+      "reason": "threat exists but endpoint has no active infection state"
     }
   ]
 }

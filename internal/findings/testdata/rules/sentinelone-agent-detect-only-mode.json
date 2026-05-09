@@ -1,0 +1,63 @@
+{
+  "rule_id": "sentinelone-agent-detect-only-mode",
+  "runtime": {
+    "id": "writer-sentinelone-agent",
+    "source_id": "sentinelone",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "s1-agent-3",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.agent",
+      "occurred_at": "2026-05-09T07:00:00Z",
+      "schema_ref": "sentinelone/agent/v1",
+      "attributes": {
+        "agent_id": "agent-detect",
+        "computer_name": "mac-detect",
+        "mitigation_mode": "detect",
+        "is_decommissioned": "false",
+        "is_uninstalled": "false"
+      }
+    },
+    {
+      "id": "s1-agent-4",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.agent",
+      "occurred_at": "2026-05-09T07:05:00Z",
+      "schema_ref": "sentinelone/agent/v1",
+      "attributes": {
+        "agent_id": "agent-protect",
+        "computer_name": "mac-protect",
+        "mitigation_mode": "protect",
+        "is_decommissioned": "false",
+        "is_uninstalled": "false"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "sentinelone-agent-detect-only-mode",
+      "severity": "HIGH",
+      "status": "open",
+      "summary": "SentinelOne agent mac-detect is in detect mitigation mode",
+      "policy_id": "agent-detect",
+      "event_ids": ["s1-agent-3"],
+      "attributes": {
+        "action": "agent_detect_only_mode",
+        "source_runtime_id": "writer-sentinelone-agent",
+        "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-detect",
+        "agent_id": "agent-detect",
+        "mitigation_mode": "detect"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "s1-agent-4",
+      "reason": "agent is in protect mode"
+    }
+  ]
+}

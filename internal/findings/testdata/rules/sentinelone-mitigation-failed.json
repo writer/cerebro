@@ -1,0 +1,67 @@
+{
+  "rule_id": "sentinelone-mitigation-failed",
+  "runtime": {
+    "id": "writer-sentinelone-threat",
+    "source_id": "sentinelone",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "s1-threat-7",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.threat",
+      "occurred_at": "2026-05-09T06:40:00Z",
+      "schema_ref": "sentinelone/threat/v1",
+      "attributes": {
+        "threat_id": "threat-7",
+        "threat_name": "Ransomware Sample",
+        "classification": "Malware",
+        "incident_status": "unresolved",
+        "mitigation_status": "failed",
+        "agent_id": "agent-7",
+        "computer_name": "win-7"
+      }
+    },
+    {
+      "id": "s1-threat-8",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.threat",
+      "occurred_at": "2026-05-09T06:45:00Z",
+      "schema_ref": "sentinelone/threat/v1",
+      "attributes": {
+        "threat_id": "threat-8",
+        "threat_name": "Resolved Sample",
+        "classification": "Malware",
+        "incident_status": "resolved",
+        "mitigation_status": "mitigated",
+        "agent_id": "agent-8",
+        "computer_name": "win-8"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "sentinelone-mitigation-failed",
+      "severity": "CRITICAL",
+      "status": "open",
+      "summary": "SentinelOne mitigation failed for Ransomware Sample on win-7",
+      "policy_id": "agent-7",
+      "event_ids": ["s1-threat-7"],
+      "attributes": {
+        "action": "mitigation_failed",
+        "source_runtime_id": "writer-sentinelone-threat",
+        "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-7",
+        "agent_id": "agent-7",
+        "mitigation_status": "failed"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "s1-threat-8",
+      "reason": "mitigation succeeded"
+    }
+  ]
+}
