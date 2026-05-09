@@ -56,6 +56,7 @@ var ensureFindingStatements = []string{
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_reason TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_rule_idx ON findings (runtime_id, rule_id)`,
+	`CREATE INDEX IF NOT EXISTS findings_tenant_rule_idx ON findings (tenant_id, rule_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_policy_idx ON findings (runtime_id, policy_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_check_idx ON findings (runtime_id, check_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_due_at_idx ON findings (runtime_id, due_at)`,
@@ -295,15 +296,20 @@ func normalizeFindingObservationWindow(firstObservedAt time.Time, lastObservedAt
 	return firstObservedAt, lastObservedAt
 }
 
-// ListFindings loads persisted findings for one tenant/runtime scope.
+// ListFindings loads persisted findings filtered by tenant plus at least one of runtime_id
+// or rule_id. Graph rules need a tenant+rule scope (the projected graph has no per-runtime
+// partition for shared entities like okta.user), while replay-driven callers stay on the
+// indexed (runtime_id, ...) path. Requiring at least one of the two prevents a caller from
+// accidentally issuing a tenant-wide table scan.
 func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequest) (_ []*ports.FindingRecord, err error) {
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {
 		return nil, errors.New("finding tenant id is required")
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
-	if runtimeID == "" {
-		return nil, errors.New("finding runtime id is required")
+	ruleID := strings.TrimSpace(request.RuleID)
+	if runtimeID == "" && ruleID == "" {
+		return nil, errors.New("finding runtime id or rule id is required")
 	}
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
@@ -317,7 +323,7 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query findings for tenant %q runtime %q: %w", tenantID, runtimeID, err)
+		return nil, fmt.Errorf("query findings for tenant %q runtime %q rule %q: %w", tenantID, runtimeID, ruleID, err)
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && err == nil {
@@ -772,11 +778,16 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 		return "", nil, errors.New("finding tenant id is required")
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
-	if runtimeID == "" {
-		return "", nil, errors.New("finding runtime id is required")
+	ruleID := strings.TrimSpace(request.RuleID)
+	if runtimeID == "" && ruleID == "" {
+		return "", nil, errors.New("finding runtime id or rule id is required")
 	}
-	clauses := []string{"tenant_id = $1", "runtime_id = $2"}
-	args := []any{tenantID, runtimeID}
+	clauses := []string{"tenant_id = $1"}
+	args := []any{tenantID}
+	if runtimeID != "" {
+		args = append(args, runtimeID)
+		clauses = append(clauses, fmt.Sprintf("runtime_id = $%d", len(args)))
+	}
 	addFindingFilter(&clauses, &args, "id", request.FindingID)
 	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
 	addFindingFilter(&clauses, &args, "severity", request.Severity)
