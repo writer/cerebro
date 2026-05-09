@@ -12,6 +12,9 @@ import (
 )
 
 const (
+	sentinelOneRetiredUnresolvedThreatRuleID    = "sentinelone-unresolved-threat"
+	sentinelOneRetiredMaliciousOrFilelessRuleID = "sentinelone-malicious-or-fileless-threat"
+	sentinelOneRetiredInfectedEndpointRuleID    = "sentinelone-infected-endpoint"
 	sentinelOneEndpointActiveInfectionRuleID    = "sentinelone-endpoint-active-infection"
 	sentinelOneMitigationFailedRuleID           = "sentinelone-mitigation-failed"
 	sentinelOneAgentStaleRuleID                 = "sentinelone-agent-stale"
@@ -202,6 +205,29 @@ func newSentinelOneRiskyExclusionRule() Rule {
 		summary:            sentinelOneRiskyExclusionSummary,
 		policyID: func(attributes map[string]string) string {
 			return firstNonEmpty(attributes["exclusion_id"], attributes["value"])
+		},
+	})
+}
+
+func newRetiredSentinelOneRule(id string, name string, outputKind string) Rule {
+	definition := sentinelOneRuleDefinition(
+		id,
+		name,
+		"Retired SentinelOne threat-mirror rule retained temporarily so stale open findings are resolved after rule redesign.",
+		[]string{sentinelOneThreatEntityType},
+		outputKind,
+		"INFO",
+		[]string{"sentinelone", "retired", "cleanup"},
+		nil,
+		nil,
+		nil,
+	)
+	return newEventRule(eventRuleConfig{
+		definition: definition,
+		sourceID:   "sentinelone",
+		match:      func(*cerebrov1.EventEnvelope) bool { return false },
+		build: func(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) (*ports.FindingRecord, error) {
+			return nil, nil
 		},
 	})
 }

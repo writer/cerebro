@@ -67,6 +67,9 @@ func builtinRulePacks() []RulePack {
 				newSentinelOneAgentDetectOnlyModeRule(),
 				newSentinelOneProtectionControlTamperingRule(),
 				newSentinelOneRiskyExclusionRule(),
+				newRetiredSentinelOneRule(sentinelOneRetiredUnresolvedThreatRuleID, "Retired SentinelOne Unresolved Threat", "finding.sentinelone_unresolved_threat"),
+				newRetiredSentinelOneRule(sentinelOneRetiredMaliciousOrFilelessRuleID, "Retired SentinelOne Malicious Or Fileless Threat", "finding.sentinelone_malicious_or_fileless_threat"),
+				newRetiredSentinelOneRule(sentinelOneRetiredInfectedEndpointRuleID, "Retired SentinelOne Infected Endpoint", "finding.sentinelone_infected_endpoint"),
 			},
 		},
 		{
