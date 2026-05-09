@@ -198,6 +198,40 @@ func TestSentinelOneFindingFingerprintIncludesRuntime(t *testing.T) {
 	}
 }
 
+func TestRetiredSentinelOneRulesDoNotEmitFindings(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-sentinelone-threat", SourceId: "sentinelone", TenantId: "writer"}
+	event := ruleFixtureEvent{
+		ID:         "s1-threat-retired",
+		TenantID:   "writer",
+		SourceID:   "sentinelone",
+		Kind:       "sentinelone.threat",
+		OccurredAt: "2026-05-09T06:20:00Z",
+		SchemaRef:  "sentinelone/threat/v1",
+		Attributes: map[string]string{
+			"threat_id":         "threat-retired",
+			"threat_name":       "Malware Sample",
+			"incident_status":   "unresolved",
+			"mitigation_status": "not_mitigated",
+			"is_infected":       "true",
+			"agent_id":          "agent-retired",
+		},
+	}.proto(t)
+	rules := []Rule{
+		newRetiredSentinelOneRule(sentinelOneRetiredUnresolvedThreatRuleID, "Retired SentinelOne Unresolved Threat", "finding.sentinelone_unresolved_threat"),
+		newRetiredSentinelOneRule(sentinelOneRetiredMaliciousOrFilelessRuleID, "Retired SentinelOne Malicious Or Fileless Threat", "finding.sentinelone_malicious_or_fileless_threat"),
+		newRetiredSentinelOneRule(sentinelOneRetiredInfectedEndpointRuleID, "Retired SentinelOne Infected Endpoint", "finding.sentinelone_infected_endpoint"),
+	}
+	for _, rule := range rules {
+		records, err := rule.Evaluate(context.Background(), runtime, event)
+		if err != nil {
+			t.Fatalf("Evaluate(%q) error = %v", rule.Spec().GetId(), err)
+		}
+		if len(records) != 0 {
+			t.Fatalf("Evaluate(%q) returned %d findings, want none", rule.Spec().GetId(), len(records))
+		}
+	}
+}
+
 func assertRuleFixture(t *testing.T, rule Rule, path string) {
 	t.Helper()
 	payload, err := os.ReadFile(path)
