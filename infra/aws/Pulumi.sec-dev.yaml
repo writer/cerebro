@@ -7,7 +7,7 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.3
+  cerebro:imageTag: v2.1.4
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-06bac7242cd09af4d
   cerebro:vpcCidr: "10.10.0.0/16"
@@ -109,6 +109,46 @@ config:
         - page_limit=100
         - graph_page_limit=100
         - event_limit=1000
+    - name: sentinelone-threat-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-sentinelone-threat
+        - page_limit=10
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: sentinelone-agent-inventory
+      scheduleExpression: rate(30 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-sentinelone-agent
+        - page_limit=10
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: sentinelone-exclusion-inventory
+      scheduleExpression: rate(1 hour)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-sentinelone-exclusion
+        - page_limit=5
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: sentinelone-activity-live
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-sentinelone-activity
+        - page_limit=10
+        - graph_page_limit=100
+        - event_limit=1000
   cerebro:sourceRuntimes:
     - id: writer-okta-audit
       sourceId: okta
@@ -169,7 +209,8 @@ config:
       config:
         base_url: env:SENTINELONE_BASE_URL
         family: threat
-        per_page: "200"
+        per_page: "50"
+        since: "2026-04-01T00:00:00Z"
         token: env:SENTINELONE_API_TOKEN
     - id: writer-sentinelone-agent
       sourceId: sentinelone
@@ -178,6 +219,23 @@ config:
         base_url: env:SENTINELONE_BASE_URL
         family: agent
         per_page: "200"
+        token: env:SENTINELONE_API_TOKEN
+    - id: writer-sentinelone-exclusion
+      sourceId: sentinelone
+      tenantId: writer
+      config:
+        base_url: env:SENTINELONE_BASE_URL
+        family: exclusion
+        per_page: "200"
+        token: env:SENTINELONE_API_TOKEN
+    - id: writer-sentinelone-activity
+      sourceId: sentinelone
+      tenantId: writer
+      config:
+        base_url: env:SENTINELONE_BASE_URL
+        family: activity
+        per_page: "200"
+        since: "2026-05-01T00:00:00Z"
         token: env:SENTINELONE_API_TOKEN
   cerebro:enableWaf: true
   cerebro:albInternal: true
