@@ -146,6 +146,58 @@ func TestRunOrchestratorIterationPreservesGraphCountersOnPartialFailure(t *testi
 	}
 }
 
+func TestRunOrchestratorIterationSkipsUnavailableFindingRules(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	ruleRegistry, err := findings.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := newGraphTestStore()
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry),
+		graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore),
+		orchestratorOptions{},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v, want nil", err)
+	}
+	if got := len(result.Runtimes); got != 1 {
+		t.Fatalf("runtime result count = %d, want 1", got)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.Sync != "completed" {
+		t.Fatalf("sync status = %q, want completed", runtimeResult.Sync)
+	}
+	if runtimeResult.FindingRules != "skipped" {
+		t.Fatalf("finding rules status = %q, want skipped", runtimeResult.FindingRules)
+	}
+	if runtimeResult.GraphIngest != "completed" {
+		t.Fatalf("graph ingest status = %q, want completed", runtimeResult.GraphIngest)
+	}
+	if runtimeResult.Error != "" {
+		t.Fatalf("runtime error = %q, want empty", runtimeResult.Error)
+	}
+}
+
 func TestAcquireOrchestratorRuntimeLeaseClaimsRuntime(t *testing.T) {
 	store := &leaseRuntimeStore{acquired: true}
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-1"}

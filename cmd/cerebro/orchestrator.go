@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -398,10 +399,15 @@ func runOrchestratorIteration(
 		}
 		findingResult, err := findingService.EvaluateSourceRuntimeRules(runtimeCtx, findings.EvaluateRulesRequest{RuntimeID: runtime.GetId(), EventLimit: options.EventLimit})
 		if err != nil {
-			runtimeResult.FindingRules = "failed"
-			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "finding_rules", err)
-			runErr = err
-			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_error", err.Error())
+			if errors.Is(err, findings.ErrRuleUnavailable) {
+				runtimeResult.FindingRules = "skipped"
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_skip_reason", err.Error())
+			} else {
+				runtimeResult.FindingRules = "failed"
+				runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "finding_rules", err)
+				runErr = err
+				runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "finding_rules_error", err.Error())
+			}
 		} else {
 			runtimeResult.FindingRules = "completed"
 			runtimeResult.EventsEvaluated = findingResult.EventsEvaluated
