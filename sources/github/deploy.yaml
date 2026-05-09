@@ -1,0 +1,10 @@
+sourceId: github
+secretKeys:
+  - GITHUB_TOKEN
+runtimes:
+  - localId: audit
+    config:
+      family: audit
+      owner: writer
+      per_page: "100"
+      token: env:GITHUB_TOKEN
