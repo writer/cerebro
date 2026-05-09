@@ -78,13 +78,41 @@ func buildRuntimeActiveThreatFinding(ctx context.Context, runtime *cerebrov1.Sou
 
 func matchesRuntimeActiveThreat(attributes map[string]string) bool {
 	verdict := strings.ToLower(strings.TrimSpace(attributes["verdict"]))
-	if containsAny(verdict, "malicious", "exploited", "confirmed", "active") {
+	evidenceType := strings.ToLower(strings.TrimSpace(attributes["evidence_type"]))
+	if runtimeThreatVerdictConfirmed(verdict) {
 		return true
 	}
-	evidenceType := strings.ToLower(strings.TrimSpace(attributes["evidence_type"]))
-	if !containsAny(evidenceType, "exploit", "secret_access", "credential_use", "token_exchange", "suspicious_process") {
+	if !runtimeRiskyEvidenceType(evidenceType) {
 		return false
+	}
+	if runtimeThreatVerdictActive(verdict) {
+		return true
 	}
 	confidence, err := strconv.ParseFloat(strings.TrimSpace(attributes["confidence"]), 64)
 	return err == nil && confidence >= 0.7
+}
+
+func runtimeThreatVerdictConfirmed(verdict string) bool {
+	return runtimeVerdictHasToken(verdict, "malicious", "exploited", "confirmed")
+}
+
+func runtimeThreatVerdictActive(verdict string) bool {
+	return runtimeVerdictHasToken(verdict, "active")
+}
+
+func runtimeVerdictHasToken(verdict string, tokens ...string) bool {
+	for _, token := range strings.FieldsFunc(verdict, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	}) {
+		for _, candidate := range tokens {
+			if token == candidate {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func runtimeRiskyEvidenceType(evidenceType string) bool {
+	return containsAny(evidenceType, "exploit", "secret_access", "credential_use", "token_exchange", "suspicious_process")
 }

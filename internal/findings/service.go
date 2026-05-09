@@ -261,7 +261,12 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 		Run:     run,
 	}
 	evidenceIDs := map[string]struct{}{}
+	evaluatedEventIDs := map[string]struct{}{}
+	emittedFindingIDs := map[string]struct{}{}
 	for _, event := range events {
+		if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
+			evaluatedEventIDs[eventID] = struct{}{}
+		}
 		emitted, err := rule.Evaluate(ctx, runtime, event)
 		if err != nil {
 			evaluationErr := fmt.Errorf("evaluate finding rule %q for event %q: %w", result.Rule.GetId(), event.GetId(), err)
@@ -283,6 +288,7 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 				return nil, s.finishFailedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings), evaluationErr)
 			}
 			result.Findings = append(result.Findings, stored)
+			emittedFindingIDs[strings.TrimSpace(stored.ID)] = struct{}{}
 			evidence, err := s.buildFindingEvidence(ctx, stored, run)
 			if err != nil {
 				evaluationErr := fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)
@@ -303,6 +309,9 @@ func (s *Service) EvaluateSourceRuntime(ctx context.Context, request EvaluateReq
 		}
 	}
 	if err := s.finishCompletedRun(ctx, run, result.EventsEvaluated, findingIDs(result.Findings)); err != nil {
+		return nil, err
+	}
+	if err := s.resolveStaleOpenFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), runtimeID, rule.Spec().GetId(), evaluatedEventIDs, emittedFindingIDs); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -339,8 +348,9 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
 		}
 		state := &ruleEvaluationState{
-			rule:        rule,
-			evidenceIDs: map[string]struct{}{},
+			rule:              rule,
+			evidenceIDs:       map[string]struct{}{},
+			emittedFindingIDs: map[string]struct{}{},
 			result: &RuleEvaluationResult{
 				Rule: rule.Spec(),
 				Run:  run,
@@ -358,7 +368,11 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 		return nil, s.markRuleEvaluationsFailed(ctx, states, evaluationErr)
 	}
 	result.EventsEvaluated = uint32(len(events))
+	evaluatedEventIDs := map[string]struct{}{}
 	for _, event := range events {
+		if eventID := strings.TrimSpace(event.GetId()); eventID != "" {
+			evaluatedEventIDs[eventID] = struct{}{}
+		}
 		for _, state := range states {
 			if state.failed {
 				continue
@@ -390,6 +404,7 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 					break
 				}
 				state.result.Findings = append(state.result.Findings, stored)
+				state.emittedFindingIDs[strings.TrimSpace(stored.ID)] = struct{}{}
 				evidence, err := s.buildFindingEvidence(ctx, stored, state.result.Run)
 				if err != nil {
 					if failErr := s.markRuleEvaluationFailed(ctx, state, fmt.Errorf("build evidence for finding %q: %w", stored.ID, err)); failErr != nil {
@@ -421,6 +436,9 @@ func (s *Service) EvaluateSourceRuntimeRules(ctx context.Context, request Evalua
 			continue
 		}
 		if err := s.finishCompletedRun(ctx, state.result.Run, state.eventsEvaluated, findingIDs(state.result.Findings)); err != nil {
+			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), err)
+		}
+		if err := s.resolveStaleOpenFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), runtimeID, state.result.Rule.GetId(), evaluatedEventIDs, state.emittedFindingIDs); err != nil {
 			return nil, s.markRuleEvaluationsFailed(ctx, unfinishedRuleEvaluations(states, state), err)
 		}
 	}
@@ -456,6 +474,57 @@ func (s *Service) ListFindings(ctx context.Context, request ListRequest) (*ListR
 		return nil, fmt.Errorf("list findings for tenant %q runtime %q: %w", strings.TrimSpace(runtime.GetTenantId()), runtimeID, err)
 	}
 	return &ListResult{Findings: findings}, nil
+}
+
+func (s *Service) resolveStaleOpenFindings(ctx context.Context, tenantID string, runtimeID string, ruleID string, evaluatedEventIDs map[string]struct{}, emittedFindingIDs map[string]struct{}) error {
+	if len(evaluatedEventIDs) == 0 {
+		return nil
+	}
+	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID:  strings.TrimSpace(tenantID),
+		RuntimeID: strings.TrimSpace(runtimeID),
+		RuleID:    strings.TrimSpace(ruleID),
+		Status:    findingStatusOpen,
+	})
+	if err != nil {
+		return fmt.Errorf("list stale candidates for rule %q: %w", strings.TrimSpace(ruleID), err)
+	}
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		if _, emitted := emittedFindingIDs[strings.TrimSpace(finding.ID)]; emitted {
+			continue
+		}
+		if !findingReferencesEvaluatedEvent(finding, evaluatedEventIDs) {
+			continue
+		}
+		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+			FindingID: strings.TrimSpace(finding.ID),
+			Status:    findingStatusResolved,
+			Reason:    "No longer emitted by latest rule evaluation.",
+			UpdatedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			return fmt.Errorf("resolve stale finding %q: %w", strings.TrimSpace(finding.ID), err)
+		}
+		if err := s.recordFindingStatusWorkflow(ctx, updated); err != nil {
+			return fmt.Errorf("project stale finding %q resolution: %w", strings.TrimSpace(finding.ID), err)
+		}
+	}
+	return nil
+}
+
+func findingReferencesEvaluatedEvent(finding *ports.FindingRecord, evaluatedEventIDs map[string]struct{}) bool {
+	if finding == nil {
+		return false
+	}
+	for _, eventID := range finding.EventIDs {
+		if _, ok := evaluatedEventIDs[strings.TrimSpace(eventID)]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // GetFinding loads one persisted finding by durable identifier.
@@ -679,11 +748,12 @@ func (s *Service) GetEvidence(ctx context.Context, id string) (*cerebrov1.Findin
 }
 
 type ruleEvaluationState struct {
-	rule            Rule
-	result          *RuleEvaluationResult
-	eventsEvaluated uint32
-	evidenceIDs     map[string]struct{}
-	failed          bool
+	rule              Rule
+	result            *RuleEvaluationResult
+	eventsEvaluated   uint32
+	evidenceIDs       map[string]struct{}
+	emittedFindingIDs map[string]struct{}
+	failed            bool
 }
 
 func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (Rule, error) {

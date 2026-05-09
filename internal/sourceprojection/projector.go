@@ -505,6 +505,8 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 	actorDisplayName := strings.TrimSpace(attributes["actor_display_name"])
 	resourceID := strings.TrimSpace(attributes["resource_id"])
 	resourceType := strings.TrimSpace(attributes["resource_type"])
+	oauthClientID := firstNonEmpty(attributes["oauth_client_id"], attributes["client_id"])
+	oauthClientLabel := firstNonEmpty(attributes["oauth_client_label"], attributes["actor_display_name"], oauthClientID)
 
 	entities := map[string]*ports.ProjectedEntity{}
 	links := map[string]*ports.ProjectedLink{}
@@ -540,6 +542,35 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 		})
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), resourceURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+	}
+
+	oauthClientURN := oktaApplicationURN(tenantID, oauthClientID)
+	if oauthClientURN != "" {
+		addEntity(entities, &ports.ProjectedEntity{
+			URN:        oauthClientURN,
+			TenantID:   tenantID,
+			SourceID:   event.GetSourceId(),
+			EntityType: "okta.application",
+			Label:      oauthClientLabel,
+			Attributes: map[string]string{
+				"app_id":               oauthClientID,
+				"client_id":            oauthClientID,
+				"oauth_client_type":    strings.TrimSpace(attributes["oauth_client_type"]),
+				"oauth_event_category": strings.TrimSpace(attributes["oauth_event_category"]),
+				"grant_type":           strings.TrimSpace(attributes["grant_type"]),
+			},
+		})
+		if orgURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), oauthClientURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
+		}
+		if resourceURN != "" {
+			addLink(links, projectedLink(tenantID, event.GetSourceId(), oauthClientURN, resourceURN, relationActedOn, map[string]string{
+				"event_id":             event.GetId(),
+				"event_type":           strings.TrimSpace(attributes["event_type"]),
+				"oauth_event_category": strings.TrimSpace(attributes["oauth_event_category"]),
+				"grant_type":           strings.TrimSpace(attributes["grant_type"]),
+			}))
 		}
 	}
 
@@ -714,6 +745,14 @@ func oktaUserURN(tenantID string, userID string) string {
 		return ""
 	}
 	return projectionURN(tenantID, "okta_user", value)
+}
+
+func oktaApplicationURN(tenantID string, appID string) string {
+	value := strings.TrimSpace(appID)
+	if value == "" {
+		return ""
+	}
+	return projectionURN(tenantID, "okta_application", value)
 }
 
 func oktaActorURN(tenantID string, actorType string, actorID string) string {

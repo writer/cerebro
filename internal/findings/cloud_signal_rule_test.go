@@ -158,6 +158,49 @@ func TestCloudSignalRulesDetectPrivilegePaths(t *testing.T) {
 	}
 }
 
+func TestCloudSignalRulesIgnoreLowContextCloudSignals(t *testing.T) {
+	rules := cloudRulesByID(t)
+	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "writer"}
+
+	publicTagOnly := &cerebrov1.EventEnvelope{
+		Id:       "aws-public-tag-only",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.resource_exposure",
+		Attributes: map[string]string{
+			"family":        "resource_exposure",
+			"public":        "true",
+			"resource_id":   "arn:aws:s3:::docs",
+			"resource_type": "bucket",
+		},
+	}
+	records, err := rules[cloudPublicResourceExposureRuleID].Evaluate(context.Background(), runtime, publicTagOnly)
+	if err != nil {
+		t.Fatalf("Evaluate(publicTagOnly) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(publicTagOnly records) = %d, want 0", len(records))
+	}
+
+	targetOnly := &cerebrov1.EventEnvelope{
+		Id:       "aws-target-only",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.iam_role_trust",
+		Attributes: map[string]string{
+			"family":    "iam_role_trust",
+			"target_id": "arn:aws:iam::123456789012:role/ReadOnlyRole",
+		},
+	}
+	records, err = rules[cloudPrivilegePathGrantedRuleID].Evaluate(context.Background(), runtime, targetOnly)
+	if err != nil {
+		t.Fatalf("Evaluate(targetOnly) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(targetOnly records) = %d, want 0", len(records))
+	}
+}
+
 func TestCloudSignalRulesDetectEffectiveAdminPermissions(t *testing.T) {
 	rules := cloudRulesByID(t)
 	runtime := &cerebrov1.SourceRuntime{Id: "aws-runtime", SourceId: "aws", TenantId: "writer"}
@@ -207,6 +250,29 @@ func TestCloudSignalRulesDetectEffectiveAdminPermissions(t *testing.T) {
 	}
 	if len(records) != 0 {
 		t.Fatalf("len(viewer records) = %d, want 0", len(records))
+	}
+
+	wildcardRead := &cerebrov1.EventEnvelope{
+		Id:       "aws-effective-wildcard-read",
+		TenantId: "writer",
+		SourceId: "aws",
+		Kind:     "aws.effective_permission",
+		Attributes: map[string]string{
+			"actions":       "s3:GetObject*",
+			"domain":        "123456789012",
+			"effect":        "allow",
+			"resource_id":   "arn:aws:s3:::reports",
+			"resource_type": "bucket",
+			"subject_id":    "reader@writer.com",
+			"subject_type":  "user",
+		},
+	}
+	records, err = rules[cloudEffectiveAdminPermissionRuleID].Evaluate(context.Background(), runtime, wildcardRead)
+	if err != nil {
+		t.Fatalf("Evaluate(wildcardRead) error = %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("len(wildcardRead records) = %d, want 0", len(records))
 	}
 }
 

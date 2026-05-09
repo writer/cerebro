@@ -51,6 +51,11 @@ type ProjectionLinkDeleter interface {
 	DeleteProjectedLink(context.Context, *ProjectedLink) error
 }
 
+// ProjectionEntityDeleter removes normalized entities from projection stores that support deletion.
+type ProjectionEntityDeleter interface {
+	DeleteProjectedEntity(context.Context, string) error
+}
+
 // SourceProjector materializes source events into current-state and graph stores.
 type SourceProjector interface {
 	Project(context.Context, *cerebrov1.EventEnvelope) (ProjectionResult, error)

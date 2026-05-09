@@ -31,6 +31,16 @@ func (r *projectionRecorder) UpsertProjectedLink(_ context.Context, link *ports.
 	return nil
 }
 
+func (r *projectionRecorder) DeleteProjectedEntity(_ context.Context, urn string) error {
+	delete(r.entities, urn)
+	for key, link := range r.links {
+		if link.FromURN == urn || link.ToURN == urn {
+			delete(r.links, key)
+		}
+	}
+	return nil
+}
+
 func TestProjectKnowledgeWorkflowEvents(t *testing.T) {
 	graph := &projectionRecorder{}
 	service := New(graph)
@@ -210,6 +220,27 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 	}
 	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; !ok {
 		t.Fatal("resource finding link missing")
+	}
+
+	finding.Status = "resolved"
+	statusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
+		Finding:     finding,
+		Status:      "resolved",
+		Reason:      "No longer emitted by latest rule evaluation.",
+		UpdatedAt:   "2026-04-27T13:00:00Z",
+		OutcomeType: "finding-resolution",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingStatusChangedEvent() error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), statusEvent); err != nil {
+		t.Fatalf("Project(status) error = %v", err)
+	}
+	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; ok {
+		t.Fatal("resolved finding anchor should be pruned from graph")
+	}
+	if _, ok := graph.links["urn:cerebro:writer:okta_resource:policyrule:pol-1|has_finding|urn:cerebro:writer:finding:finding-1"]; ok {
+		t.Fatal("resolved finding has_finding link should be pruned from graph")
 	}
 }
 

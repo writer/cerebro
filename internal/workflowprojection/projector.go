@@ -239,6 +239,9 @@ func (s *Service) projectFindingRecorded(ctx context.Context, event *cerebrov1.E
 		return ports.ProjectionResult{}, err
 	}
 	result := ports.ProjectionResult{}
+	if !findingStatusProjectsToGraph(payload.Finding.Status) {
+		return result, nil
+	}
 	if _, err := s.ensureFindingAnchor(ctx, payload.Finding, &result); err != nil {
 		return ports.ProjectionResult{}, err
 	}
@@ -347,10 +350,33 @@ func (s *Service) projectFindingStatus(ctx context.Context, event *cerebrov1.Eve
 		return ports.ProjectionResult{}, err
 	}
 	result := ports.ProjectionResult{}
+	if !findingStatusProjectsToGraph(payload.Finding.Status) && findingStatusPrunesGraph(payload.Reason) {
+		return s.deleteFindingAnchor(ctx, payload.Finding)
+	}
 	if _, err := s.ensureFindingAnchor(ctx, payload.Finding, &result); err != nil {
 		return ports.ProjectionResult{}, err
 	}
 	return result, nil
+}
+
+func (s *Service) deleteFindingAnchor(ctx context.Context, finding workflowevents.FindingSnapshot) (ports.ProjectionResult, error) {
+	deleter, ok := s.graph.(ports.ProjectionEntityDeleter)
+	if !ok {
+		return ports.ProjectionResult{}, nil
+	}
+	if err := deleter.DeleteProjectedEntity(ctx, findingURN(strings.TrimSpace(finding.TenantID), strings.TrimSpace(finding.FindingID))); err != nil {
+		return ports.ProjectionResult{}, err
+	}
+	return ports.ProjectionResult{}, nil
+}
+
+func findingStatusProjectsToGraph(status string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	return normalized == "" || normalized == "open"
+}
+
+func findingStatusPrunesGraph(reason string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(reason)), "no longer emitted")
 }
 
 func (s *Service) ensureFindingAnchor(ctx context.Context, finding workflowevents.FindingSnapshot, result *ports.ProjectionResult) ([]string, error) {

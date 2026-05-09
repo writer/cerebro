@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/sourcecdk"
@@ -243,6 +244,56 @@ func TestCheckDiscoverAndReadLiveOktaAuditPreview(t *testing.T) {
 	if second.Checkpoint == nil || second.Checkpoint.CursorOpaque != "evt-2" {
 		t.Fatalf("second.Checkpoint = %#v, want evt-2", second.Checkpoint)
 	}
+}
+
+func TestAuditEventNormalizesOAuthRuntimeGrantTelemetry(t *testing.T) {
+	published := mustParseTime(t, "2026-05-07T19:54:46Z")
+	event, err := auditEvent(settings{domain: "writer.okta.com"}, auditRecord{
+		UUID:      "evt-oauth",
+		Published: published,
+		EventType: "app.oauth2.token.grant.access_token",
+		Actor: map[string]any{
+			"id":          "0oa-client",
+			"type":        "PublicClientApp",
+			"displayName": "Production Client",
+		},
+		Client: map[string]any{
+			"ipAddress": "203.0.113.10",
+			"userAgent": map[string]any{"rawUserAgent": "OktaAuth/1.0"},
+		},
+		Outcome: map[string]any{"result": "SUCCESS"},
+		Target: []map[string]any{{
+			"id":          "00u-user",
+			"type":        "User",
+			"alternateId": "user@writer.com",
+		}},
+		raw: json.RawMessage(`{"uuid":"evt-oauth"}`),
+	})
+	if err != nil {
+		t.Fatalf("auditEvent() error = %v", err)
+	}
+	attrs := event.Attributes
+	for key, want := range map[string]string{
+		"oauth_event_category": "runtime_grant",
+		"grant_type":           "access_token",
+		"oauth_client_id":      "0oa-client",
+		"client_id":            "0oa-client",
+		"target_id":            "00u-user",
+		"client_user_agent":    "OktaAuth/1.0",
+	} {
+		if got := attrs[key]; got != want {
+			t.Fatalf("attribute %s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func mustParseTime(t *testing.T, value string) time.Time {
+	t.Helper()
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		t.Fatalf("parse time %q: %v", value, err)
+	}
+	return parsed
 }
 
 func TestCheckDiscoverAndReadLiveOktaUserPreview(t *testing.T) {
