@@ -7,7 +7,7 @@ config:
   cerebro:certificateDomain: cerebro.adm.dev.qordobadev.com
   cerebro:certificateImportArn: arn:aws:acm:us-east-1:944130631940:certificate/09143d7f-c377-4de4-9127-d8cb5c642ba3
   cerebro:ecrBaseUri: 944130631940.dkr.ecr.us-east-1.amazonaws.com/cerebro
-  cerebro:imageTag: v2.1.0
+  cerebro:imageTag: v2.1.2
   cerebro:useExistingVpc: true
   cerebro:vpcId: vpc-06bac7242cd09af4d
   cerebro:vpcCidr: "10.10.0.0/16"
@@ -35,6 +35,8 @@ config:
   cerebro:sourceSecretKeys:
     - OKTA_API_TOKEN
     - OKTA_DOMAIN
+    - SENTINELONE_API_TOKEN
+    - SENTINELONE_BASE_URL
   cerebro:orchestratorEnabled: true
   cerebro:orchestratorScheduleExpression: "rate(6 hours)"
   cerebro:orchestratorCommand:
@@ -158,6 +160,22 @@ config:
         family: application
         per_page: "200"
         token: env:OKTA_API_TOKEN
+    - id: writer-sentinelone-threat
+      sourceId: sentinelone
+      tenantId: writer
+      config:
+        base_url: env:SENTINELONE_BASE_URL
+        family: threat
+        per_page: "200"
+        token: env:SENTINELONE_API_TOKEN
+    - id: writer-sentinelone-agent
+      sourceId: sentinelone
+      tenantId: writer
+      config:
+        base_url: env:SENTINELONE_BASE_URL
+        family: agent
+        per_page: "200"
+        token: env:SENTINELONE_API_TOKEN
   cerebro:enableWaf: true
   cerebro:albInternal: true
   cerebro:albIngressCidrs:
