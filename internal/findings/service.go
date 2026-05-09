@@ -844,7 +844,7 @@ func (s *Service) updateFindingStatus(ctx context.Context, id string, status str
 	if err != nil {
 		return nil, fmt.Errorf("update finding %q status to %q: %w", findingID, status, err)
 	}
-	if err := s.recordFindingStatusWorkflow(ctx, finding, ""); err != nil {
+	if err := s.recordFindingStatusWorkflow(ctx, finding, workflowevents.FindingStatusSourceManual); err != nil {
 		return nil, fmt.Errorf("record finding %q status workflow: %w", findingID, err)
 	}
 	return finding, nil

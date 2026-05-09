@@ -282,6 +282,7 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		Finding:     finding,
 		Status:      "resolved",
 		Reason:      workflowevents.FindingStatusReasonNoLongerEmitted,
+		Source:      workflowevents.FindingStatusSourceManual,
 		UpdatedAt:   "2026-04-27T12:45:00Z",
 		OutcomeType: "finding-resolution",
 	})
@@ -298,6 +299,51 @@ func TestProjectFindingWorkflowEvents(t *testing.T) {
 		t.Fatal("manually resolved finding should not keep active has_finding link")
 	}
 
+	if _, err := service.Project(context.Background(), recordedEvent); err != nil {
+		t.Fatalf("Project(recorded legacy manual reset) error = %v", err)
+	}
+	legacyManualStatusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
+		Finding:     finding,
+		Status:      "resolved",
+		Reason:      workflowevents.FindingStatusReasonNoLongerEmitted,
+		DecisionID:  "urn:cerebro:writer:decision:finding-resolution",
+		OutcomeID:   "urn:cerebro:writer:outcome:finding-resolution",
+		UpdatedAt:   "2026-04-27T12:48:00Z",
+		OutcomeType: "finding-resolution",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingStatusChangedEvent(legacy manual) error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), legacyManualStatusEvent); err != nil {
+		t.Fatalf("Project(legacy manual status) error = %v", err)
+	}
+	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; !ok {
+		t.Fatal("legacy manual finding status with workflow IDs should keep finding anchor")
+	}
+
+	if _, err := service.Project(context.Background(), recordedEvent); err != nil {
+		t.Fatalf("Project(recorded legacy reset) error = %v", err)
+	}
+	legacyStatusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
+		Finding:     finding,
+		Status:      "resolved",
+		Reason:      workflowevents.FindingStatusReasonNoLongerEmitted,
+		UpdatedAt:   "2026-04-27T12:50:00Z",
+		OutcomeType: "finding-resolution",
+	})
+	if err != nil {
+		t.Fatalf("NewFindingStatusChangedEvent(legacy) error = %v", err)
+	}
+	if _, err := service.Project(context.Background(), legacyStatusEvent); err != nil {
+		t.Fatalf("Project(legacy status) error = %v", err)
+	}
+	if _, ok := graph.entities["urn:cerebro:writer:finding:finding-1"]; ok {
+		t.Fatal("legacy stale finding status should prune finding anchor")
+	}
+
+	if _, err := service.Project(context.Background(), recordedEvent); err != nil {
+		t.Fatalf("Project(recorded stale reset) error = %v", err)
+	}
 	finding.Status = "resolved"
 	statusEvent, err := workflowevents.NewFindingStatusChangedEvent(workflowevents.FindingStatusChanged{
 		Finding:     finding,
