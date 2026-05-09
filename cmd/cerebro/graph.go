@@ -41,6 +41,7 @@ type graphCountsStore interface {
 type graphQueryStore interface {
 	Ping(context.Context) error
 	GetEntityNeighborhood(context.Context, string, int) (*ports.EntityNeighborhood, error)
+	ExecuteReadCypher(context.Context, ports.CypherQueryRequest) ([]ports.CypherRow, error)
 }
 
 type graphPathStore interface {

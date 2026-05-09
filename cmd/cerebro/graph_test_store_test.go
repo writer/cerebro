@@ -12,11 +12,14 @@ import (
 )
 
 type graphTestStore struct {
-	mu          sync.Mutex
-	entities    map[string]*ports.ProjectedEntity
-	links       map[string]*ports.ProjectedLink
-	checkpoints map[string]graphstore.IngestCheckpoint
-	runs        map[string]graphstore.IngestRun
+	mu                sync.Mutex
+	entities          map[string]*ports.ProjectedEntity
+	links             map[string]*ports.ProjectedLink
+	checkpoints       map[string]graphstore.IngestCheckpoint
+	runs              map[string]graphstore.IngestRun
+	cypherRows        []ports.CypherRow
+	cypherErr         error
+	lastCypherRequest ports.CypherQueryRequest
 }
 
 func newGraphTestStore() *graphTestStore {
@@ -192,6 +195,24 @@ func (s *graphTestStore) GetIngestRun(_ context.Context, id string) (graphstore.
 	defer s.mu.Unlock()
 	run, ok := s.runs[id]
 	return run, ok, nil
+}
+
+func (s *graphTestStore) ExecuteReadCypher(_ context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cypherErr != nil {
+		return nil, s.cypherErr
+	}
+	s.lastCypherRequest = request
+	rows := make([]ports.CypherRow, 0, len(s.cypherRows))
+	for _, row := range s.cypherRows {
+		clone := ports.CypherRow{Values: make(map[string]any, len(row.Values))}
+		for k, v := range row.Values {
+			clone.Values[k] = v
+		}
+		rows = append(rows, clone)
+	}
+	return rows, nil
 }
 
 func (s *graphTestStore) ListIngestRuns(_ context.Context, filter graphstore.IngestRunFilter) ([]graphstore.IngestRun, error) {

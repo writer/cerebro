@@ -200,8 +200,10 @@ func (s *stubFindingStore) LinkFindingTicket(_ context.Context, request ports.Fi
 }
 
 type stubGraphStore struct {
-	entities map[string]*ports.ProjectedEntity
-	links    map[string]*ports.ProjectedLink
+	entities   map[string]*ports.ProjectedEntity
+	links      map[string]*ports.ProjectedLink
+	cypherRows []ports.CypherRow
+	cypherErr  error
 }
 
 func (s *stubGraphStore) Ping(context.Context) error { return nil }
@@ -218,6 +220,13 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 			Label:      entity.Label,
 		},
 	}, nil
+}
+
+func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	if s.cypherErr != nil {
+		return nil, s.cypherErr
+	}
+	return s.cypherRows, nil
 }
 
 func (s *stubGraphStore) UpsertProjectedEntity(_ context.Context, entity *ports.ProjectedEntity) error {

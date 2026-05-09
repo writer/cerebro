@@ -52,19 +52,23 @@ type orchestratorIterationResult struct {
 }
 
 type orchestratorRuntimeResult struct {
-	RuntimeID          string `json:"runtime_id"`
-	SourceID           string `json:"source_id,omitempty"`
-	TenantID           string `json:"tenant_id,omitempty"`
-	Sync               string `json:"sync"`
-	PagesRead          uint32 `json:"pages_read,omitempty"`
-	EventsAppended     uint32 `json:"events_appended,omitempty"`
-	FindingRules       string `json:"finding_rules"`
-	EventsEvaluated    uint32 `json:"events_evaluated,omitempty"`
-	FindingEvaluations int    `json:"finding_evaluations,omitempty"`
-	GraphIngest        string `json:"graph_ingest"`
-	EntitiesProjected  uint32 `json:"entities_projected,omitempty"`
-	LinksProjected     uint32 `json:"links_projected,omitempty"`
-	Error              string `json:"error,omitempty"`
+	RuntimeID            string `json:"runtime_id"`
+	SourceID             string `json:"source_id,omitempty"`
+	TenantID             string `json:"tenant_id,omitempty"`
+	Sync                 string `json:"sync"`
+	PagesRead            uint32 `json:"pages_read,omitempty"`
+	EventsAppended       uint32 `json:"events_appended,omitempty"`
+	FindingRules         string `json:"finding_rules"`
+	EventsEvaluated      uint32 `json:"events_evaluated,omitempty"`
+	FindingEvaluations   int    `json:"finding_evaluations,omitempty"`
+	GraphIngest          string `json:"graph_ingest"`
+	EntitiesProjected    uint32 `json:"entities_projected,omitempty"`
+	LinksProjected       uint32 `json:"links_projected,omitempty"`
+	GraphRules           string `json:"graph_rules"`
+	GraphRuleEvaluations int    `json:"graph_rule_evaluations,omitempty"`
+	GraphRuleFindings    int    `json:"graph_rule_findings,omitempty"`
+	GraphRuleRowsRead    uint32 `json:"graph_rule_rows_read,omitempty"`
+	Error                string `json:"error,omitempty"`
 }
 
 func runOrchestrator(args []string) error {
@@ -422,6 +426,7 @@ func runOrchestratorIteration(
 		}
 		graphResult, err := graphService.RunRuntime(runtimeCtx, graphingest.RuntimeRequest{RuntimeID: runtime.GetId(), PageLimit: options.GraphPageLimit, Trigger: "orchestrator"})
 		runtimeSpanAttrs = applyGraphIngestCounters(runtimeResult, graphResult, runtimeSpanAttrs)
+		graphIngestSucceeded := false
 		if err != nil {
 			runtimeResult.GraphIngest = "failed"
 			runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_ingest", err)
@@ -429,6 +434,26 @@ func runOrchestratorIteration(
 			runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_ingest_error", err.Error())
 		} else {
 			runtimeResult.GraphIngest = "completed"
+			graphIngestSucceeded = true
+		}
+		if graphIngestSucceeded {
+			graphRulesResult, err := findingService.EvaluateSourceRuntimeGraphRules(runtimeCtx, findings.EvaluateGraphRulesRequest{RuntimeID: runtime.GetId()})
+			runtimeSpanAttrs = applyGraphRuleCounters(runtimeResult, graphRulesResult, runtimeSpanAttrs)
+			if err != nil {
+				if errors.Is(err, findings.ErrGraphRuntimeUnavailable) || errors.Is(err, findings.ErrRuntimeUnavailable) {
+					runtimeResult.GraphRules = "skipped"
+					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_skip_reason", err.Error())
+				} else {
+					runtimeResult.GraphRules = "failed"
+					runtimeResult.Error = appendRuntimeError(runtimeResult.Error, "graph_rules", err)
+					runErr = err
+					runtimeSpanAttrs = withTelemetryField(runtimeSpanAttrs, "graph_rules_error", err.Error())
+				}
+			} else {
+				runtimeResult.GraphRules = "completed"
+			}
+		} else {
+			runtimeResult.GraphRules = "skipped"
 		}
 		cancelRuntime()
 		if err := stopLeaseRenewal(); err != nil {
@@ -468,6 +493,28 @@ func applyGraphIngestCounters(runtimeResult *orchestratorRuntimeResult, graphRes
 	runtimeResult.LinksProjected = graphResult.Ingest.LinksProjected
 	attrs = withTelemetryField(attrs, "entities_projected", runtimeResult.EntitiesProjected)
 	attrs = withTelemetryField(attrs, "links_projected", runtimeResult.LinksProjected)
+	return attrs
+}
+
+func applyGraphRuleCounters(runtimeResult *orchestratorRuntimeResult, graphRulesResult *findings.EvaluateGraphRulesResult, attrs telemetry.Attributes) telemetry.Attributes {
+	if runtimeResult == nil || graphRulesResult == nil {
+		return attrs
+	}
+	runtimeResult.GraphRuleEvaluations = len(graphRulesResult.Evaluations)
+	var totalFindings int
+	var totalRows uint32
+	for _, evaluation := range graphRulesResult.Evaluations {
+		if evaluation == nil {
+			continue
+		}
+		totalFindings += len(evaluation.Findings)
+		totalRows += evaluation.RowsRead
+	}
+	runtimeResult.GraphRuleFindings = totalFindings
+	runtimeResult.GraphRuleRowsRead = totalRows
+	attrs = withTelemetryField(attrs, "graph_rule_evaluations", runtimeResult.GraphRuleEvaluations)
+	attrs = withTelemetryField(attrs, "graph_rule_findings", runtimeResult.GraphRuleFindings)
+	attrs = withTelemetryField(attrs, "graph_rule_rows_read", runtimeResult.GraphRuleRowsRead)
 	return attrs
 }
 

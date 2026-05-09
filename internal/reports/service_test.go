@@ -129,6 +129,10 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 	return cloneNeighborhood(neighborhood), nil
 }
 
+func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	return nil, nil
+}
+
 type stubReportStore struct {
 	run *cerebrov1.ReportRun
 }

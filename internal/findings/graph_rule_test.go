@@ -1,0 +1,207 @@
+package findings
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
+)
+
+type stubGraphRule struct {
+	spec     *cerebrov1.RuleSpec
+	sourceID string
+	query    ports.CypherQueryRequest
+	rows     []ports.CypherRow
+	emit     []*ports.FindingRecord
+	emitErr  error
+}
+
+func (r *stubGraphRule) Spec() *cerebrov1.RuleSpec {
+	if r == nil {
+		return nil
+	}
+	return r.spec
+}
+
+func (r *stubGraphRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	if r == nil || runtime == nil {
+		return false
+	}
+	return runtime.GetSourceId() == r.sourceID
+}
+
+func (r *stubGraphRule) Evaluate(_ context.Context, _ *cerebrov1.SourceRuntime, _ *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	return nil, nil
+}
+
+func (r *stubGraphRule) QueryFor(_ *cerebrov1.SourceRuntime) ports.CypherQueryRequest {
+	if r == nil {
+		return ports.CypherQueryRequest{}
+	}
+	return r.query
+}
+
+func (r *stubGraphRule) EvaluateRows(_ context.Context, _ *cerebrov1.SourceRuntime, rows []ports.CypherRow) ([]*ports.FindingRecord, error) {
+	if r == nil {
+		return nil, nil
+	}
+	if r.emitErr != nil {
+		return nil, r.emitErr
+	}
+	r.rows = append(r.rows, rows...)
+	return r.emit, nil
+}
+
+func TestAsGraphRuleNarrows(t *testing.T) {
+	if _, ok := asGraphRule(nil); ok {
+		t.Fatalf("asGraphRule(nil) should be false")
+	}
+	regular := &stubRule{spec: &cerebrov1.RuleSpec{Id: "regular"}}
+	if _, ok := asGraphRule(regular); ok {
+		t.Fatalf("asGraphRule(regular) should be false")
+	}
+	graph := &stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "graph"}}
+	if _, ok := asGraphRule(graph); !ok {
+		t.Fatalf("asGraphRule(graph) should be true")
+	}
+}
+
+func newGraphRuleStubRuntimeStore(runtime *cerebrov1.SourceRuntime) *stubRuntimeStore {
+	return &stubRuntimeStore{runtimes: map[string]*cerebrov1.SourceRuntime{runtime.GetId(): runtime}}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesEmitsAndPersistsFindings(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{
+		cypherRows: []ports.CypherRow{
+			{Values: map[string]any{"label": "alice@writer.com"}},
+		},
+	}
+	rule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "test-graph-rule"},
+		sourceID: "okta",
+		query: ports.CypherQueryRequest{
+			Query:  "MATCH (n) RETURN n LIMIT 1",
+			Params: map[string]any{"tenant_id": "writer"},
+		},
+		emit: []*ports.FindingRecord{
+			{
+				ID:           "finding-graph-1",
+				Fingerprint:  "fp-graph-1",
+				TenantID:     "writer",
+				RuntimeID:    "runtime-okta",
+				RuleID:       "test-graph-rule",
+				Title:        "Test graph finding",
+				Severity:     "CRITICAL",
+				Status:       findingStatusOpen,
+				Summary:      "graph rule fired",
+				ResourceURNs: []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
+			},
+		},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", got)
+	}
+	evaluation := result.Evaluations[0]
+	if got := evaluation.Rule.GetId(); got != "test-graph-rule" {
+		t.Fatalf("Rule.Id = %q, want %q", got, "test-graph-rule")
+	}
+	if got := evaluation.RowsRead; got != 1 {
+		t.Fatalf("RowsRead = %d, want 1", got)
+	}
+	if got := len(evaluation.Findings); got != 1 {
+		t.Fatalf("len(Findings) = %d, want 1", got)
+	}
+	if got := evaluation.Findings[0].ID; got != "finding-graph-1" {
+		t.Fatalf("Findings[0].ID = %q, want %q", got, "finding-graph-1")
+	}
+	if got := evaluation.Run.GetStatus(); got != "completed" {
+		t.Fatalf("Run.Status = %q, want completed", got)
+	}
+	if store.findings == nil || store.findings["finding-graph-1"] == nil {
+		t.Fatalf("finding store should contain persisted finding")
+	}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesRequiresGraphQuery(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	registry, err := NewRegistry(&stubGraphRule{spec: &cerebrov1.RuleSpec{Id: "graph-rule"}, sourceID: "okta"})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry)
+	if _, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"}); !errors.Is(err, ErrRuntimeUnavailable) {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v, want ErrRuntimeUnavailable", err)
+	}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesPropagatesCypherFailure(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{cypherErr: errors.New("boom")}
+	rule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "graph-rule"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"},
+	}
+	registry, err := NewRegistry(rule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
+	if err == nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() expected error")
+	}
+	if result == nil || len(result.Evaluations) != 1 {
+		t.Fatalf("partial result expected with one evaluation, got %#v", result)
+	}
+	evaluation := result.Evaluations[0]
+	if got := evaluation.Run.GetStatus(); got != "failed" {
+		t.Fatalf("Run.Status = %q, want failed", got)
+	}
+}
+
+func TestEvaluateSourceRuntimeGraphRulesSelectsByRuleID(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{}
+	emitting := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "selected"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"},
+	}
+	other := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "other"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"},
+	}
+	registry, err := NewRegistry(emitting, other)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta", RuleIDs: []string{"selected"}})
+	if err != nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() error = %v", err)
+	}
+	if got := len(result.Evaluations); got != 1 {
+		t.Fatalf("len(Evaluations) = %d, want 1", got)
+	}
+	if got := result.Evaluations[0].Rule.GetId(); got != "selected" {
+		t.Fatalf("Rule.Id = %q, want selected", got)
+	}
+}

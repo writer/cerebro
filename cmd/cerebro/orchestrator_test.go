@@ -146,6 +146,147 @@ func TestRunOrchestratorIterationPreservesGraphCountersOnPartialFailure(t *testi
 	}
 }
 
+func TestRunOrchestratorIterationRunsGraphRulesAfterIngest(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	graphRule := &orchestratorGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "orchestrator-graph-rule", Name: "Orchestrator graph rule"},
+		sourceID: "github",
+		query: ports.CypherQueryRequest{
+			Query:  "MATCH (n) RETURN n LIMIT 1",
+			Params: map[string]any{"tenant_id": "writer"},
+		},
+		emit: []*ports.FindingRecord{
+			{
+				ID:           "finding-graph-orchestrator-1",
+				Fingerprint:  "fp-graph-orchestrator-1",
+				TenantID:     "writer",
+				RuntimeID:    "runtime-1",
+				RuleID:       "orchestrator-graph-rule",
+				Title:        "Graph rule fired in orchestrator",
+				Severity:     "CRITICAL",
+				Status:       "open",
+				Summary:      "graph rule emitted via orchestrator",
+				ResourceURNs: []string{"urn:cerebro:writer:identity:email:alice@writer.com"},
+			},
+		},
+	}
+	ruleRegistry, err := findings.NewRegistry(graphRule)
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := newGraphTestStore()
+	graphStore.cypherRows = []ports.CypherRow{
+		{Values: map[string]any{"label": "alice@writer.com"}},
+	}
+	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithGraphQueryStore(graphStore)
+	graphService := graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore)
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findingService,
+		graphService,
+		orchestratorOptions{},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("runOrchestratorIteration() error = %v, want nil", err)
+	}
+	if got := len(result.Runtimes); got != 1 {
+		t.Fatalf("runtime result count = %d, want 1", got)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.GraphIngest != "completed" {
+		t.Fatalf("graph ingest status = %q, want completed", runtimeResult.GraphIngest)
+	}
+	if runtimeResult.GraphRules != "completed" {
+		t.Fatalf("graph rules status = %q, want completed", runtimeResult.GraphRules)
+	}
+	if runtimeResult.GraphRuleEvaluations != 1 {
+		t.Fatalf("graph rule evaluations = %d, want 1", runtimeResult.GraphRuleEvaluations)
+	}
+	if runtimeResult.GraphRuleFindings != 1 {
+		t.Fatalf("graph rule findings = %d, want 1", runtimeResult.GraphRuleFindings)
+	}
+	if runtimeResult.GraphRuleRowsRead != 1 {
+		t.Fatalf("graph rule rows read = %d, want 1", runtimeResult.GraphRuleRowsRead)
+	}
+	if runtimeResult.Error != "" {
+		t.Fatalf("runtime error = %q, want empty", runtimeResult.Error)
+	}
+}
+
+func TestRunOrchestratorIterationSkipsGraphRulesWhenIngestFails(t *testing.T) {
+	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	graphRule := &orchestratorGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "orchestrator-graph-rule"},
+		sourceID: "github",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"},
+	}
+	ruleRegistry, err := findings.NewRegistry(graphRule)
+	if err != nil {
+		t.Fatalf("NewRegistry() finding rule error = %v", err)
+	}
+	store := &orchestratorRuntimeStore{
+		runtime: &cerebrov1.SourceRuntime{
+			Id:       "runtime-1",
+			SourceId: "github",
+			TenantId: "writer",
+		},
+		acquired: true,
+	}
+	eventLog := &orchestratorEventLog{}
+	findingStore := &orchestratorFindingStore{}
+	graphStore := &failingCompletedIngestGraphStore{graphTestStore: newGraphTestStore()}
+	findingService := findings.NewWithRegistry(store, eventLog, findingStore, findingStore, findingStore, findingStore, ruleRegistry).WithGraphQueryStore(graphStore)
+	graphService := graphingest.New(registry, store, sourceprojection.New(nil, graphStore), graphStore)
+	result, err := runOrchestratorIteration(
+		context.Background(),
+		store,
+		store,
+		"test-owner",
+		sourceruntime.New(registry, store, eventLog, nil),
+		findingService,
+		graphService,
+		orchestratorOptions{},
+		1,
+	)
+	if err == nil {
+		t.Fatal("runOrchestratorIteration() error = nil, want graph ingest failure")
+	}
+	if got := len(result.Runtimes); got != 1 {
+		t.Fatalf("runtime result count = %d, want 1", got)
+	}
+	runtimeResult := result.Runtimes[0]
+	if runtimeResult.GraphIngest != "failed" {
+		t.Fatalf("graph ingest status = %q, want failed", runtimeResult.GraphIngest)
+	}
+	if runtimeResult.GraphRules != "skipped" {
+		t.Fatalf("graph rules status = %q, want skipped (ingest failed)", runtimeResult.GraphRules)
+	}
+	if graphRule.calls != 0 {
+		t.Fatalf("graph rule should not have been called, got %d calls", graphRule.calls)
+	}
+}
+
 func TestRunOrchestratorIterationSkipsUnavailableFindingRules(t *testing.T) {
 	registry, err := sourcecdk.NewRegistry(orchestratorTestSource{})
 	if err != nil {
@@ -479,6 +620,35 @@ func (orchestratorNoopRule) SupportsRuntime(*cerebrov1.SourceRuntime) bool {
 
 func (orchestratorNoopRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
 	return nil, nil
+}
+
+type orchestratorGraphRule struct {
+	spec     *cerebrov1.RuleSpec
+	sourceID string
+	query    ports.CypherQueryRequest
+	emit     []*ports.FindingRecord
+	calls    int
+}
+
+func (r *orchestratorGraphRule) Spec() *cerebrov1.RuleSpec {
+	return r.spec
+}
+
+func (r *orchestratorGraphRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
+	return runtime != nil && runtime.GetSourceId() == r.sourceID
+}
+
+func (r *orchestratorGraphRule) Evaluate(context.Context, *cerebrov1.SourceRuntime, *cerebrov1.EventEnvelope) ([]*ports.FindingRecord, error) {
+	return nil, nil
+}
+
+func (r *orchestratorGraphRule) QueryFor(*cerebrov1.SourceRuntime) ports.CypherQueryRequest {
+	return r.query
+}
+
+func (r *orchestratorGraphRule) EvaluateRows(_ context.Context, _ *cerebrov1.SourceRuntime, _ []ports.CypherRow) ([]*ports.FindingRecord, error) {
+	r.calls++
+	return r.emit, nil
 }
 
 type orchestratorEventLog struct {

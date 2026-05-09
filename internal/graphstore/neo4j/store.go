@@ -548,6 +548,55 @@ ORDER BY neighbor.urn, r.relation LIMIT $limit`, map[string]any{"root_urn": norm
 	return neighborhood, nil
 }
 
+// ExecuteReadCypher runs one bounded read-only Cypher query and returns its rows.
+//
+// The store enforces a row cap to keep graph rules from accidentally pulling unbounded result
+// sets that would stall the orchestrator; callers may request a smaller cap via RowLimit but
+// the absolute upper bound is ports.MaxCypherQueryRows.
+func (s *Store) ExecuteReadCypher(ctx context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	query := strings.TrimSpace(request.Query)
+	if query == "" {
+		return nil, errors.New("cypher query is required")
+	}
+	if err := s.requireConfigured(); err != nil {
+		return nil, err
+	}
+	rowLimit := request.RowLimit
+	if rowLimit <= 0 || rowLimit > ports.MaxCypherQueryRows {
+		rowLimit = ports.MaxCypherQueryRows
+	}
+	var rows []ports.CypherRow
+	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		rows = nil
+		result, err := tx.Run(ctx, query, request.Params)
+		if err != nil {
+			return nil, err
+		}
+		keys, err := result.Keys()
+		if err != nil {
+			return nil, err
+		}
+		for result.Next(ctx) {
+			if len(rows) >= rowLimit {
+				break
+			}
+			record := result.Record()
+			values := make(map[string]any, len(keys))
+			for i, key := range keys {
+				if i >= len(record.Values) {
+					break
+				}
+				values[key] = record.Values[i]
+			}
+			rows = append(rows, ports.CypherRow{Values: values})
+		}
+		return nil, result.Err()
+	}); err != nil {
+		return nil, fmt.Errorf("execute read cypher: %w", err)
+	}
+	return rows, nil
+}
+
 // GetIngestCheckpoint returns one persisted graph ingest checkpoint.
 func (s *Store) GetIngestCheckpoint(ctx context.Context, id string) (IngestCheckpoint, bool, error) {
 	normalizedID := strings.TrimSpace(id)

@@ -1023,6 +1023,13 @@ func (s *stubGraphStore) GetEntityNeighborhood(_ context.Context, rootURN string
 	return cloneNeighborhood(s.neighborhood), nil
 }
 
+func (s *stubGraphStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return nil, nil
+}
+
 func (s *stubGraphStore) GetIngestCheckpoint(_ context.Context, id string) (graphstore.IngestCheckpoint, bool, error) {
 	if s.err != nil {
 		return graphstore.IngestCheckpoint{}, false, s.err

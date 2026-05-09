@@ -22,6 +22,10 @@ func (s *stubStore) GetEntityNeighborhood(_ context.Context, rootURN string, lim
 	return s.neighborhood, nil
 }
 
+func (s *stubStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	return nil, nil
+}
+
 func TestGetEntityNeighborhoodNormalizesLimit(t *testing.T) {
 	store := &stubStore{
 		neighborhood: &ports.EntityNeighborhood{
