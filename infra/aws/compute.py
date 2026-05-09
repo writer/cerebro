@@ -76,7 +76,7 @@ def create_ecs_cluster(
         tags={"Name": f"{name}-logs"},
     )
 
-    task_definition = _create_task_definition(
+    api_task_definition = _create_task_definition(
         name=name,
         container_image=container_image,
         cpu=api_cpu,
@@ -197,7 +197,7 @@ def create_ecs_cluster(
         f"{name}-service",
         name=f"{name}-api",
         cluster=cluster.id,
-        task_definition=task_definition.arn,
+        task_definition=api_task_definition.arn,
         desired_count=api_min_instances,
         capacity_provider_strategies=capacity_provider_strategies if capacity_provider_strategies else None,
         availability_zone_rebalancing="DISABLED" if uses_singleton_deployments else "ENABLED",
@@ -254,7 +254,7 @@ def create_ecs_cluster(
         "cluster": cluster,
         "capacity_providers": capacity_providers,
         "api_service": api_service,
-        "task_definition": task_definition,
+        "task_definition": api_task_definition,
         "orchestrator_task_definition": orchestrator_task_definition,
         "orchestrator_task_definitions": orchestrator_task_definitions,
         "orchestrator_rule": orchestrator_rule,
