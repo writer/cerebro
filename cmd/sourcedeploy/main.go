@@ -2,10 +2,10 @@
 // cerebro source ingestion in a given environment.
 //
 // Each source under sources/<id>/ may declare a deploy.yaml manifest. This
-// tool walks the tree, applies environment overrides, and emits a YAML
-// fragment with three keys (cerebro:sourceSecretKeys, cerebro:sourceRuntimes,
-// cerebro:orchestratorSchedules) suitable for inclusion in
-// infra/aws/Pulumi.<env>.yaml in the WriterInternal/cerebro repository.
+// tool walks the tree and emits a YAML fragment with cerebro:sourceSecretKeys
+// and cerebro:sourceRuntimes suitable for inclusion in infra/aws/Pulumi.<env>.yaml
+// in the WriterInternal/cerebro repository. Orchestrator schedules remain
+// private infra cadence and are intentionally not rendered here.
 package main
 
 import (
