@@ -242,8 +242,44 @@ func deprovisionedOktaRuleActedAttrs(at time.Time) string {
 	return string(encoded)
 }
 
+// deprovisionedOktaRuleEmailIdentityAttrs mirrors the represents_identity edge
+// payload that identifierEvidenceAttributes emits when the projector resolves
+// an identifier as an email (match_type=exact_email at confidence=0.95). The
+// rule rejects any other match_type, so test rows must use this shape to land
+// in the email-only acceptance branch.
+func deprovisionedOktaRuleEmailIdentityAttrs(at time.Time) string {
+	return deprovisionedOktaRuleIdentityAttrs("email", "alice@writer.com", "exact_email", "0.95", at)
+}
+
+// deprovisionedOktaRuleLoginIdentityAttrs mirrors the represents_identity edge
+// payload that identifierEvidenceAttributes emits for raw GitHub usernames
+// (match_type=login at confidence=0.60). A username collision must not produce
+// a CRITICAL finding even when both `at` stamps are recent, so this fixture
+// exists specifically to drive the login-rejection regression tests.
+func deprovisionedOktaRuleLoginIdentityAttrs(at time.Time) string {
+	return deprovisionedOktaRuleIdentityAttrs("login", "alice", "login", "0.60", at)
+}
+
+func deprovisionedOktaRuleIdentityAttrs(identifierType, identifierValue, matchType, confidence string, at time.Time) string {
+	payload := map[string]string{
+		"confidence":       confidence,
+		"evidence_type":    "shared_identifier",
+		"identifier_type":  identifierType,
+		"identifier_value": identifierValue,
+		"match_type":       matchType,
+	}
+	if !at.IsZero() {
+		payload["at"] = at.UTC().Format(time.RFC3339)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
+}
+
 func deprovisionedOktaRuleRow(actedAttributesJSON string) ports.CypherRow {
-	recent := deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour))
+	recentEmail := deprovisionedOktaRuleEmailIdentityAttrs(time.Now().UTC().Add(-1 * time.Hour))
 	return ports.CypherRow{Values: map[string]any{
 		"okta_user_urn":                   "urn:cerebro:writer:okta.user:alice@writer.com",
 		"okta_user_label":                 "Alice",
@@ -256,8 +292,8 @@ func deprovisionedOktaRuleRow(actedAttributesJSON string) ports.CypherRow {
 		"target_entity_type":              "github_repo",
 		"target_label":                    "writer/cerebro",
 		"acted_attributes_json":           actedAttributesJSON,
-		"okta_identity_attributes_json":   recent,
-		"github_identity_attributes_json": recent,
+		"okta_identity_attributes_json":   recentEmail,
+		"github_identity_attributes_json": recentEmail,
 	}}
 }
 
@@ -414,5 +450,82 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsUnstampedIdentifierEd
 	}
 	if len(findings) != 0 {
 		t.Fatalf("EvaluateRows() returned %d findings for legacy identifier edges without `at`, want 0", len(findings))
+	}
+}
+
+// The projector emits a represents_identity edge for every identifier value,
+// including raw GitHub usernames where match_type=login is stamped at
+// confidence=0.60. Two unrelated people who happen to share a username
+// (e.g. okta login "alice" vs github login "alice") would otherwise satisfy
+// the rule's cypher join through the shared identity:login node and produce
+// a CRITICAL false positive against an unrelated GitHub account. The rule
+// must require the identifier match on BOTH sides to be email-based
+// (exact_email/extracted_email), even when both edges are recent.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsRejectsLoginOnlyMatch(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	loginAttrs := deprovisionedOktaRuleLoginIdentityAttrs(time.Now().UTC().Add(-1 * time.Hour))
+	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
+	row.Values["identity_urn"] = "urn:cerebro:writer:identity:login:alice"
+	row.Values["identity_label"] = "alice"
+	row.Values["okta_identity_attributes_json"] = loginAttrs
+	row.Values["github_identity_attributes_json"] = loginAttrs
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings for login-only identifier match, want 0; username collision must not produce a CRITICAL finding", len(findings))
+	}
+}
+
+// Asymmetric variant: one side is a high-confidence email match, the other a
+// login. That is still not enough — the join only proves account ownership
+// when both endpoints anchor on a shared email, so a single login leg breaks
+// the proof and the rule must refuse to fire.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsRejectsLoginOnOktaSide(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
+	row.Values["okta_identity_attributes_json"] = deprovisionedOktaRuleLoginIdentityAttrs(time.Now().UTC().Add(-1 * time.Hour))
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings when okta-side identifier match is login-only, want 0; both sides must anchor on an email", len(findings))
+	}
+}
+
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsRejectsLoginOnGitHubSide(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
+	row.Values["github_identity_attributes_json"] = deprovisionedOktaRuleLoginIdentityAttrs(time.Now().UTC().Add(-1 * time.Hour))
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings when github-side identifier match is login-only, want 0; both sides must anchor on an email", len(findings))
+	}
+}
+
+// A GitHub-side extracted_email match (e.g. derived from a noreply email) is a
+// 0.85-confidence email signal — strong enough that the rule should treat it
+// like exact_email and emit. This pins the contract that the email gate covers
+// both email match types, not just exact_email, so the projector's existing
+// extracted_email path does not silently lose findings.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsAcceptsExtractedEmailMatch(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
+	row.Values["github_identity_attributes_json"] = deprovisionedOktaRuleIdentityAttrs("email", "alice@writer.com", "extracted_email", "0.85", time.Now().UTC().Add(-1*time.Hour))
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings for extracted_email match, want 1; extracted_email is a high-confidence email signal", len(findings))
 	}
 }

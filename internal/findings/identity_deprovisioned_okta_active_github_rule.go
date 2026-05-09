@@ -214,10 +214,24 @@ func (r *deprovisionedOktaActiveGitHubRule) EvaluateRows(_ context.Context, runt
 		// rule); rows whose okta-side OR github-side identifier link has not
 		// been re-observed inside the recency window are treated as stale and
 		// dropped, mirroring the acted_on check.
-		if !edgeIsRecent(cypherRowString(row, "okta_identity_attributes_json"), now, identityDeprovisionedOktaRecencyWindow) {
+		oktaIdentityJSON := cypherRowString(row, "okta_identity_attributes_json")
+		githubIdentityJSON := cypherRowString(row, "github_identity_attributes_json")
+		if !edgeIsRecent(oktaIdentityJSON, now, identityDeprovisionedOktaRecencyWindow) {
 			continue
 		}
-		if !edgeIsRecent(cypherRowString(row, "github_identity_attributes_json"), now, identityDeprovisionedOktaRecencyWindow) {
+		if !edgeIsRecent(githubIdentityJSON, now, identityDeprovisionedOktaRecencyWindow) {
+			continue
+		}
+		// Reject login-only identity matches on either side. The projector
+		// emits a represents_identity edge for every identifier value, including
+		// raw GitHub usernames where identifierEvidenceAttributes assigns
+		// match_type=login at confidence=0.60. Two unrelated people who happen
+		// to share a username (e.g. okta login "alice" vs github login "alice")
+		// would otherwise satisfy the join through the shared identity:login
+		// node and produce a CRITICAL false positive. Require the match on both
+		// sides to be email-based (exact_email or extracted_email, both 0.85+),
+		// which is what guarantees the accounts belong to the same person.
+		if !identifierMatchIsEmail(oktaIdentityJSON) || !identifierMatchIsEmail(githubIdentityJSON) {
 			continue
 		}
 		// Group on the Okta/GitHub account pair only. The cypher join can walk
@@ -266,6 +280,41 @@ func (r *deprovisionedOktaActiveGitHubRule) EvaluateRows(_ context.Context, runt
 		findings = append(findings, r.buildFinding(runtime, tenantID, group, now))
 	}
 	return findings, nil
+}
+
+// identifierMatchIsEmail decides whether a represents_identity edge proves
+// account ownership rather than just a coincidental identifier overlap.
+//
+// The projector (see identifierEvidenceAttributes) emits a represents_identity
+// edge for every identifier value it observes, including raw GitHub usernames
+// where match_type=login is stamped at confidence=0.60. That signal is enough
+// to surface the link in the graph, but it is not enough to fuse two accounts:
+// two unrelated people can both pick the username "alice", and a login-walked
+// join `(okta.user)-[oi]->(identity:login:alice)<-[gi]-(github.user)` would
+// then satisfy this rule's cypher and emit a CRITICAL finding against an
+// unrelated GitHub account.
+//
+// Email-based matches (exact_email at 0.95, extracted_email at 0.85) are the
+// only identifier signals we accept here: they require the projector to have
+// observed a real email address on each side, which in practice does not
+// collide across people the way usernames do. Empty/malformed JSON, missing
+// match_type, and any non-email value (including login) all return false so
+// the rule refuses to fire on weak identity evidence.
+func identifierMatchIsEmail(attributesJSON string) bool {
+	trimmed := strings.TrimSpace(attributesJSON)
+	if trimmed == "" {
+		return false
+	}
+	var attrs map[string]string
+	if err := json.Unmarshal([]byte(trimmed), &attrs); err != nil {
+		return false
+	}
+	switch strings.TrimSpace(attrs["match_type"]) {
+	case "exact_email", "extracted_email":
+		return true
+	default:
+		return false
+	}
 }
 
 // edgeIsRecent decides whether a graph edge has been re-observed inside the
