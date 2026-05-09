@@ -536,7 +536,7 @@ def _create_task_definition(
             secret_specs.append((secret_key["name"], secret_key["source"]))
         else:
             secret_specs.append((secret_key, secret_key))
-    source_runtime_commands = [_source_runtime_command(runtime) for runtime in (source_runtimes or [])]
+    source_runtime_bootstrap_payload = _source_runtime_bootstrap_payload(source_runtimes or [])
     env_items = sorted(environment.items())
     env_values = [value for _, value in env_items]
 
@@ -552,23 +552,35 @@ def _create_task_definition(
             "awslogs-group": log_group,
             "awslogs-region": region,
         }
-        bootstrap_containers = [
-            {
-                "name": f"source-runtime-bootstrap-{idx}",
-                "image": container_image,
-                "essential": False,
-                "user": "10001",
-                "readonlyRootFilesystem": True,
-                "command": command,
-                "environment": env,
-                "secrets": secret_env,
-                "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {**log_options, "awslogs-stream-prefix": "source-runtime-bootstrap"},
+        bootstrap_containers = []
+        if source_runtime_bootstrap_payload:
+            bootstrap_env = [
+                *env,
+                {
+                    "name": "CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON",
+                    "value": source_runtime_bootstrap_payload,
                 },
-            }
-            for idx, command in enumerate(source_runtime_commands)
-        ]
+            ]
+            bootstrap_containers.append(
+                {
+                    "name": "source-runtime-bootstrap",
+                    "image": container_image,
+                    "essential": False,
+                    "user": "10001",
+                    "readonlyRootFilesystem": True,
+                    "command": [
+                        "source-runtime",
+                        "bootstrap",
+                        "env=CEREBRO_SOURCE_RUNTIME_BOOTSTRAP_JSON",
+                    ],
+                    "environment": bootstrap_env,
+                    "secrets": secret_env,
+                    "logConfiguration": {
+                        "logDriver": "awslogs",
+                        "options": {**log_options, "awslogs-stream-prefix": "source-runtime-bootstrap"},
+                    },
+                }
+            )
         container = {
             "name": "cerebro",
             "image": container_image,
@@ -638,24 +650,38 @@ def _create_task_definition(
     )
 
 
-def _source_runtime_command(runtime: dict) -> list[str]:
+def _source_runtime_bootstrap_payload(source_runtimes: list[dict]) -> str:
+    specs = [_source_runtime_spec(runtime) for runtime in source_runtimes]
+    if not specs:
+        return ""
+    return json.dumps({"runtimes": specs}, sort_keys=True, separators=(",", ":"))
+
+
+def _source_runtime_spec(runtime: dict) -> dict:
     runtime_id = _runtime_field(runtime, "id")
     source_id = _runtime_field(runtime, "sourceId", "source_id")
     if not runtime_id or not source_id:
         raise ValueError("source runtime id and sourceId are required")
-    command = ["source-runtime", "put", runtime_id, source_id]
+    spec = {
+        "id": runtime_id,
+        "source_id": source_id,
+        "config": {},
+    }
     tenant_id = _runtime_field(runtime, "tenantId", "tenant_id")
     if tenant_id:
-        command.append(f"tenant_id={tenant_id}")
+        spec["tenant_id"] = tenant_id
     runtime_config = runtime.get("config") or {}
     if not isinstance(runtime_config, dict):
         raise ValueError(f"source runtime {runtime_id} config must be an object")
     for key in sorted(runtime_config):
+        config_key = str(key).strip()
+        if not config_key:
+            raise ValueError(f"source runtime {runtime_id} config key must be non-empty")
         value = str(runtime_config[key]).strip()
-        if _sensitive_source_config_key(key) and value and not value.startswith("env:"):
+        if _sensitive_source_config_key(config_key) and value and not value.startswith("env:"):
             raise ValueError(f"source runtime {runtime_id} config {key} must use env:VAR")
-        command.append(f"{key}={value}")
-    return command
+        spec["config"][config_key] = value
+    return spec
 
 
 def _runtime_field(runtime: dict, *keys: str) -> str:
