@@ -71,14 +71,23 @@ func TestDeprovisionedOktaActiveGitHubRuleSupportsBothOktaAndGitHub(t *testing.T
 	}
 }
 
+func deprovisionedOktaRuleGroupWithIdentities(identityURNs ...string) *deprovisionedOktaGroup {
+	identities := map[string]struct{}{}
+	for _, urn := range identityURNs {
+		identities[urn] = struct{}{}
+	}
+	return &deprovisionedOktaGroup{
+		oktaUserURN:    "urn:cerebro:writer:okta.user:alice@writer.com",
+		githubUserURN:  "urn:cerebro:writer:github.user:alice",
+		identityURNs:   identities,
+		identityLabels: map[string]struct{}{},
+	}
+}
+
 func TestDeprovisionedOktaActiveGitHubRuleFingerprintIsStableAcrossRuns(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
 	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
-	group := &deprovisionedOktaGroup{
-		oktaUserURN:   "urn:cerebro:writer:okta.user:alice@writer.com",
-		identityURN:   "urn:cerebro:writer:identity:email:alice@writer.com",
-		githubUserURN: "urn:cerebro:writer:github.user:alice",
-	}
+	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:email:alice@writer.com")
 	first := rule.buildFinding(runtime, "writer", group, deprovisionedOktaRuleFixedNow())
 	second := rule.buildFinding(runtime, "writer", group, deprovisionedOktaRuleFixedNow())
 	if first.ID != second.ID {
@@ -97,11 +106,7 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintIsStableAcrossRuns(t *testi
 // the rule's contract: stamp the real triggering runtime, never a synthetic value.
 func TestDeprovisionedOktaActiveGitHubRuleFindingStampsTriggeringRuntimeID(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
-	group := &deprovisionedOktaGroup{
-		oktaUserURN:   "urn:cerebro:writer:okta.user:alice@writer.com",
-		identityURN:   "urn:cerebro:writer:identity:email:alice@writer.com",
-		githubUserURN: "urn:cerebro:writer:github.user:alice",
-	}
+	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:email:alice@writer.com")
 	oktaTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "writer-okta-inventory", SourceId: "okta", TenantId: "writer"}, "writer", group, deprovisionedOktaRuleFixedNow())
 	githubTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}, "writer", group, deprovisionedOktaRuleFixedNow())
 	if got := oktaTriggered.RuntimeID; got != "writer-okta-inventory" {
@@ -128,15 +133,11 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintCollapsesAcrossOktaRuntimes
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
 	runtimeA := &cerebrov1.SourceRuntime{Id: "writer-okta-inventory", SourceId: "okta", TenantId: "writer"}
 	runtimeB := &cerebrov1.SourceRuntime{Id: "writer-okta-audit", SourceId: "okta", TenantId: "writer"}
-	group := &deprovisionedOktaGroup{
-		oktaUserURN:   "urn:cerebro:writer:okta.user:alice@writer.com",
-		identityURN:   "urn:cerebro:writer:identity:email:alice@writer.com",
-		githubUserURN: "urn:cerebro:writer:github.user:alice",
-	}
+	group := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:email:alice@writer.com")
 	a := rule.buildFinding(runtimeA, "writer", group, deprovisionedOktaRuleFixedNow())
 	b := rule.buildFinding(runtimeB, "writer", group, deprovisionedOktaRuleFixedNow())
 	if a.ID != b.ID {
-		t.Fatalf("findings split across okta runtimes for the same offender (a=%q b=%q); rule is tenant-scoped and must produce one finding per (tenant, okta_user, identity, github_user)", a.ID, b.ID)
+		t.Fatalf("findings split across okta runtimes for the same offender (a=%q b=%q); rule is tenant-scoped and must produce one finding per (tenant, okta_user, github_user)", a.ID, b.ID)
 	}
 	if a.Fingerprint != b.Fingerprint {
 		t.Fatalf("fingerprints split across okta runtimes: %q vs %q", a.Fingerprint, b.Fingerprint)
@@ -149,19 +150,71 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintSeparatesOktaUsers(t *testi
 	identityURN := "urn:cerebro:writer:identity:email:shared@writer.com"
 	githubURN := "urn:cerebro:writer:github.user:shared"
 	groupOne := &deprovisionedOktaGroup{
-		oktaUserURN:   "urn:cerebro:writer:okta.user:alice@writer.com",
-		identityURN:   identityURN,
-		githubUserURN: githubURN,
+		oktaUserURN:    "urn:cerebro:writer:okta.user:alice@writer.com",
+		githubUserURN:  githubURN,
+		identityURNs:   map[string]struct{}{identityURN: {}},
+		identityLabels: map[string]struct{}{},
 	}
 	groupTwo := &deprovisionedOktaGroup{
-		oktaUserURN:   "urn:cerebro:writer:okta.user:bob@writer.com",
-		identityURN:   identityURN,
-		githubUserURN: githubURN,
+		oktaUserURN:    "urn:cerebro:writer:okta.user:bob@writer.com",
+		githubUserURN:  githubURN,
+		identityURNs:   map[string]struct{}{identityURN: {}},
+		identityLabels: map[string]struct{}{},
 	}
 	a := rule.buildFinding(runtime, "writer", groupOne, deprovisionedOktaRuleFixedNow())
 	b := rule.buildFinding(runtime, "writer", groupTwo, deprovisionedOktaRuleFixedNow())
 	if a.ID == b.ID {
 		t.Fatalf("two distinct deprovisioned okta users collapsed onto the same finding (id=%q); fingerprint must include okta_user_urn", a.ID)
+	}
+}
+
+// The graph projector links the same Okta/GitHub account pair to multiple `identity`
+// nodes when okta.user has distinct email and login attributes, or when github.audit
+// links both `actor` and `external_identity_nameid`. The rule's cypher join then
+// emits one row per identity node, but those rows describe the same offboarding gap.
+// This test pins that the rule collapses them onto a single CRITICAL finding rather
+// than emitting one per identity node.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsCollapsesDuplicateIdentitiesPerAccountPair(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	emailRow := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
+	loginRow := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
+	loginRow.Values["identity_urn"] = "urn:cerebro:writer:identity:login:alice"
+	loginRow.Values["identity_label"] = "alice"
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{emailRow, loginRow})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if got := len(findings); got != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 1; same Okta/GitHub pair must collapse across identity nodes (got: %#v)", got, findings)
+	}
+	finding := findings[0]
+	if got, want := finding.Attributes["identity_urns"], "urn:cerebro:writer:identity:email:alice@writer.com,urn:cerebro:writer:identity:login:alice"; got != want {
+		t.Fatalf("identity_urns = %q, want %q (full set must be retained as telemetry)", got, want)
+	}
+}
+
+// The fingerprint must be invariant to which identity node the cypher walked
+// through, otherwise reprocessing the same offboarding gap from a different
+// identity ordering would create a fresh CRITICAL finding instead of
+// reopening the existing one. This pins the contract on buildFinding directly.
+func TestDeprovisionedOktaActiveGitHubRuleFingerprintIgnoresIdentityNode(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	emailGroup := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:email:alice@writer.com")
+	loginGroup := deprovisionedOktaRuleGroupWithIdentities("urn:cerebro:writer:identity:login:alice")
+	bothGroup := deprovisionedOktaRuleGroupWithIdentities(
+		"urn:cerebro:writer:identity:email:alice@writer.com",
+		"urn:cerebro:writer:identity:login:alice",
+	)
+	emailFinding := rule.buildFinding(runtime, "writer", emailGroup, deprovisionedOktaRuleFixedNow())
+	loginFinding := rule.buildFinding(runtime, "writer", loginGroup, deprovisionedOktaRuleFixedNow())
+	bothFinding := rule.buildFinding(runtime, "writer", bothGroup, deprovisionedOktaRuleFixedNow())
+	if emailFinding.Fingerprint != loginFinding.Fingerprint {
+		t.Fatalf("fingerprint changes with identity node (email=%q login=%q); same Okta/GitHub pair must produce one fingerprint regardless of which identity node was traversed", emailFinding.Fingerprint, loginFinding.Fingerprint)
+	}
+	if emailFinding.Fingerprint != bothFinding.Fingerprint {
+		t.Fatalf("fingerprint changes when both identity nodes match (single=%q both=%q); the set of matched identities is telemetry, not identity", emailFinding.Fingerprint, bothFinding.Fingerprint)
 	}
 }
 

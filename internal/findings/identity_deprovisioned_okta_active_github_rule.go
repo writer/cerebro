@@ -65,8 +65,14 @@ func newDeprovisionedOktaActiveGitHubRule() Rule {
 				"Service or break-glass account intentionally retained in GitHub during an off-boarding grace window with documented exception.",
 				"Delayed Okta lifecycle propagation immediately after a status change; window typically closes within one sync cycle.",
 			},
-			Runbook:           "Confirm the Okta identity is truly off-boarded, revoke or suspend the linked GitHub account, rotate any tokens it created, and document the gap that allowed continued access.",
-			FingerprintFields: []string{"okta_user_urn", "identity_urn", "github_user_urn"},
+			Runbook: "Confirm the Okta identity is truly off-boarded, revoke or suspend the linked GitHub account, rotate any tokens it created, and document the gap that allowed continued access.",
+			// The fingerprint is (okta_user, github_user) only. The graph projector attaches the same
+			// account pair to multiple `identity` nodes when okta.user has distinct email and login,
+			// or when github.audit links both `actor` and `external_identity_nameid`; including
+			// identity_urn in the fingerprint would split one offboarding gap into two CRITICAL
+			// findings that differ only by which identity node the join walked through. The full
+			// list of matched identity URNs is preserved in the finding attributes for telemetry.
+			FingerprintFields: []string{"okta_user_urn", "github_user_urn"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC6.2"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
@@ -179,21 +185,32 @@ func (r *deprovisionedOktaActiveGitHubRule) EvaluateRows(_ context.Context, runt
 		if !actedOnEdgeIsRecent(cypherRowString(row, "acted_attributes_json"), now, identityDeprovisionedOktaRecencyWindow) {
 			continue
 		}
-		key := oktaUserURN + "\x00" + identityURN + "\x00" + githubUserURN
+		// Group on the Okta/GitHub account pair only. The cypher join can walk
+		// through multiple `identity` nodes for the same pair (okta.user links
+		// both email and login when they differ; github.audit links both `actor`
+		// and `external_identity_nameid`), so keying on identityURN here would
+		// split one offboarding gap into duplicate findings. The full set of
+		// identity URNs matched for this pair is preserved on the group so we
+		// can surface it as telemetry on the finding.
+		key := oktaUserURN + "\x00" + githubUserURN
 		group, ok := groups[key]
 		if !ok {
 			group = &deprovisionedOktaGroup{
 				oktaUserURN:        oktaUserURN,
 				oktaUserLabel:      cypherRowString(row, "okta_user_label"),
 				oktaAttributesJSON: cypherRowString(row, "okta_attributes_json"),
-				identityURN:        identityURN,
-				identityLabel:      cypherRowString(row, "identity_label"),
 				githubUserURN:      githubUserURN,
 				githubUserLabel:    cypherRowString(row, "github_user_label"),
+				identityURNs:       map[string]struct{}{},
+				identityLabels:     map[string]struct{}{},
 				targets:            map[string]deprovisionedOktaTarget{},
 			}
 			groups[key] = group
 			keys = append(keys, key)
+		}
+		group.identityURNs[identityURN] = struct{}{}
+		if label := cypherRowString(row, "identity_label"); label != "" {
+			group.identityLabels[label] = struct{}{}
 		}
 		if _, exists := group.targets[targetURN]; exists {
 			continue
@@ -246,10 +263,10 @@ type deprovisionedOktaGroup struct {
 	oktaUserURN        string
 	oktaUserLabel      string
 	oktaAttributesJSON string
-	identityURN        string
-	identityLabel      string
 	githubUserURN      string
 	githubUserLabel    string
+	identityURNs       map[string]struct{}
+	identityLabels     map[string]struct{}
 	targets            map[string]deprovisionedOktaTarget
 }
 
@@ -261,22 +278,31 @@ type deprovisionedOktaTarget struct {
 
 func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.SourceRuntime, tenantID string, group *deprovisionedOktaGroup, now time.Time) *ports.FindingRecord {
 	triggeringRuntimeID := strings.TrimSpace(runtime.GetId())
-	// The fingerprint deliberately omits runtime_id. The graph projects okta.user nodes by
-	// (tenant_id, user_id), so two okta runtimes touching the same user share one node and
-	// would produce the same fingerprint anyway; tracking runtime_id here would split a
-	// single tenant-scoped finding into duplicates the moment another okta runtime synced.
-	// The same fingerprint can also be emitted by either an okta or a github ingest, so the
-	// store must not rebind runtime_id on conflict; that pinning is enforced by Postgres'
-	// UpsertFinding (`runtime_id = findings.runtime_id`) so the row stays addressable through
-	// real source-runtime APIs even when both sides trigger the rule.
+	// The fingerprint is keyed on (rule, tenant, okta_user, github_user) only.
+	//
+	//   * runtime_id is omitted because the graph projects okta.user nodes by
+	//     (tenant_id, user_id), so two okta runtimes touching the same user share
+	//     one node and would produce the same fingerprint anyway; including
+	//     runtime_id would split a single tenant-scoped finding into duplicates
+	//     the moment another okta runtime synced. The same fingerprint can be
+	//     emitted by either an okta or a github trigger, so Postgres'
+	//     UpsertFinding (`runtime_id = findings.runtime_id`) pins runtime_id to
+	//     the first observer and keeps the row addressable through runtime APIs.
+	//   * identity_urn is omitted because the projector links the same Okta/GitHub
+	//     account pair to multiple `identity` nodes (email + login when they
+	//     differ on okta.user, actor + external_identity_nameid on github.audit).
+	//     Including identity_urn would split one offboarding gap into two
+	//     CRITICAL findings for the same account pair.
 	fingerprint := hashFindingFingerprint(
 		r.definition.ID,
 		tenantID,
 		group.oktaUserURN,
-		group.identityURN,
 		group.githubUserURN,
 	)
-	resourceURNs := []string{group.identityURN, group.oktaUserURN, group.githubUserURN}
+	identityURNs := sortedKeys(group.identityURNs)
+	identityLabels := sortedKeys(group.identityLabels)
+	resourceURNs := []string{group.oktaUserURN, group.githubUserURN}
+	resourceURNs = append(resourceURNs, identityURNs...)
 	targetURNs := make([]string, 0, len(group.targets))
 	targetLabels := make([]string, 0, len(group.targets))
 	targetTypes := make(map[string]struct{}, len(group.targets))
@@ -292,17 +318,17 @@ func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.Sour
 	sort.Strings(targetURNs)
 	sort.Strings(targetLabels)
 	resourceURNs = append(resourceURNs, targetURNs...)
-	identityLabel := firstNonEmpty(group.identityLabel, group.oktaUserLabel, group.githubUserLabel, "identity")
+	primaryIdentityLabel := firstNonEmpty(append(append([]string{}, identityLabels...), group.oktaUserLabel, group.githubUserLabel, "identity")...)
 	summary := fmt.Sprintf(
 		"Deprovisioned Okta identity %s remains active in GitHub as %s and has acted on %d resource(s)",
-		identityLabel,
+		primaryIdentityLabel,
 		firstNonEmpty(group.githubUserLabel, group.githubUserURN),
 		len(targetURNs),
 	)
 	attributes := map[string]string{
-		"primary_resource_urn":  group.identityURN,
-		"identity_urn":          group.identityURN,
-		"identity_label":        group.identityLabel,
+		"primary_resource_urn":  group.oktaUserURN,
+		"identity_urns":         strings.Join(identityURNs, ","),
+		"identity_labels":       strings.Join(identityLabels, ","),
 		"okta_user_urn":         group.oktaUserURN,
 		"okta_user_label":       group.oktaUserLabel,
 		"okta_status":           extractOktaStatus(group.oktaAttributesJSON),
