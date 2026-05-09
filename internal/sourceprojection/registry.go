@@ -99,6 +99,13 @@ var builtinRegistry = &Registry{projectors: map[string]ProjectFunc{
 	"kubernetes.workload":                  kubernetesWorkloadProjections,
 	"kubernetes.workload_identity_binding": kubernetesWorkloadIdentityBindingProjections,
 	"runtime.evidence":                     runtimeEvidenceProjections,
+	"sentinelone.activity":                 sentinelOneActivityProjections,
+	"sentinelone.agent":                    sentinelOneAgentProjections,
+	"sentinelone.application_inventory":    sentinelOneApplicationInventoryProjections,
+	"sentinelone.exclusion":                sentinelOneExclusionProjections,
+	"sentinelone.group":                    sentinelOneGroupProjections,
+	"sentinelone.site":                     sentinelOneSiteProjections,
+	"sentinelone.threat":                   sentinelOneThreatProjections,
 	"sentinelone.vulnerability":            sentinelOneVulnerabilityProjections,
 }}
 

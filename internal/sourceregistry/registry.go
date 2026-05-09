@@ -11,6 +11,7 @@ import (
 	googleworkspacesource "github.com/writer/cerebro/sources/googleworkspace"
 	oktasource "github.com/writer/cerebro/sources/okta"
 	sdksource "github.com/writer/cerebro/sources/sdk"
+	sentineloneSource "github.com/writer/cerebro/sources/sentinelone"
 )
 
 type builtinSourceLoader struct {
@@ -59,6 +60,12 @@ var builtinSourceLoaders = []builtinSourceLoader{
 		name: "sdk",
 		load: func() (sourcecdk.Source, error) {
 			return sdksource.New()
+		},
+	},
+	{
+		name: "sentinelone",
+		load: func() (sourcecdk.Source, error) {
+			return sentineloneSource.New()
 		},
 	},
 }

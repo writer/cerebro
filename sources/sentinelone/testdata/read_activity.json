@@ -1,0 +1,30 @@
+[
+  {
+    "id": "sentinelone-activity-sentinelone.example.test-activity-fixture-1",
+    "tenant_id": "sentinelone.example.test",
+    "source_id": "sentinelone",
+    "kind": "sentinelone.activity",
+    "occurred_at": "2026-04-23T00:30:00Z",
+    "schema_ref": "sentinelone/activity/v1",
+    "payload": {
+      "id": "activity-fixture-1",
+      "tenant_host": "sentinelone.example.test",
+      "activity_type": 27,
+      "primary_description": "User user@example.test logged into the management console",
+      "agent_id": "agent-fixture-1",
+      "site_id": "site-fixture-1",
+      "group_id": "group-fixture-1",
+      "raw": {}
+    },
+    "attributes": {
+      "activity_id": "activity-fixture-1",
+      "activity_type": "27",
+      "agent_id": "agent-fixture-1",
+      "family": "activity",
+      "group_id": "group-fixture-1",
+      "primary_description": "User user@example.test logged into the management console",
+      "site_id": "site-fixture-1",
+      "tenant_host": "sentinelone.example.test"
+    }
+  }
+]

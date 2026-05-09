@@ -1,0 +1,28 @@
+[
+  {
+    "id": "sentinelone-site-sentinelone.example.test-site-fixture-1",
+    "tenant_id": "sentinelone.example.test",
+    "source_id": "sentinelone",
+    "kind": "sentinelone.site",
+    "occurred_at": "2026-04-22T00:00:00Z",
+    "schema_ref": "sentinelone/site/v1",
+    "payload": {
+      "id": "site-fixture-1",
+      "tenant_host": "sentinelone.example.test",
+      "name": "Production",
+      "state": "active",
+      "site_type": "Paid",
+      "is_default": true,
+      "raw": {}
+    },
+    "attributes": {
+      "family": "site",
+      "is_default": "true",
+      "site_id": "site-fixture-1",
+      "site_name": "Production",
+      "site_type": "Paid",
+      "state": "active",
+      "tenant_host": "sentinelone.example.test"
+    }
+  }
+]

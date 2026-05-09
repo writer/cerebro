@@ -1,0 +1,61 @@
+[
+  {
+    "id": "sentinelone-threat-sentinelone.example.test-threat-fixture-1",
+    "tenant_id": "sentinelone.example.test",
+    "source_id": "sentinelone",
+    "kind": "sentinelone.threat",
+    "occurred_at": "2026-04-23T01:00:00Z",
+    "schema_ref": "sentinelone/threat/v1",
+    "payload": {
+      "id": "threat-fixture-1",
+      "tenant_host": "sentinelone.example.test",
+      "threat_info": {
+        "analyst_verdict": "true_positive",
+        "classification": "Malware",
+        "classification_source": "Engine",
+        "confidence_level": "malicious",
+        "incident_status": "unresolved",
+        "mitigation_status": "not_mitigated"
+      },
+      "agent_detection": {
+        "uuid": "agent-uuid-1",
+        "site_id": "site-fixture-1",
+        "group_id": "group-fixture-1"
+      },
+      "agent_realtime": {
+        "agent_id": "agent-fixture-1",
+        "computer_name": "host-fixture-1",
+        "is_active": true,
+        "is_decommissioned": false,
+        "is_infected": true,
+        "active_threats": 1
+      },
+      "indicators": {
+        "categories": ["Malware"],
+        "mitre_tactics": ["Execution"]
+      },
+      "raw": {}
+    },
+    "attributes": {
+      "agent_id": "agent-fixture-1",
+      "agent_uuid": "agent-uuid-1",
+      "analyst_verdict": "true_positive",
+      "classification": "Malware",
+      "classification_source": "Engine",
+      "computer_name": "host-fixture-1",
+      "confidence_level": "malicious",
+      "family": "threat",
+      "indicator_categories": "Malware",
+      "incident_status": "unresolved",
+      "is_active": "true",
+      "is_decommissioned": "false",
+      "is_infected": "true",
+      "is_fileless": "false",
+      "mitigation_status": "not_mitigated",
+      "mitre_tactics": "Execution",
+      "site_id": "site-fixture-1",
+      "tenant_host": "sentinelone.example.test",
+      "threat_id": "threat-fixture-1"
+    }
+  }
+]
