@@ -343,7 +343,12 @@ func runOrchestratorIteration(
 			telemetryField("tenant_id", runtime.GetTenantId()),
 		))
 		runtimeStatus := "failed"
-		runtimeSpanAttrs := telemetry.Attrs()
+		runtimeSpanAttrs := telemetry.Attrs(
+			telemetryField("iteration", iteration),
+			telemetryField("runtime_id", runtime.GetId()),
+			telemetryField("source_id", runtime.GetSourceId()),
+			telemetryField("tenant_id", runtime.GetTenantId()),
+		)
 		runtimeResult := &orchestratorRuntimeResult{
 			RuntimeID: strings.TrimSpace(runtime.GetId()),
 			SourceID:  strings.TrimSpace(runtime.GetSourceId()),

@@ -88,8 +88,8 @@ func TestRegistryForRuntimeFiltersSupportedRules(t *testing.T) {
 
 func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	packs := builtinRulePacks()
-	if got := len(packs); got != 5 {
-		t.Fatalf("len(builtinRulePacks()) = %d, want 5", got)
+	if got := len(packs); got != 6 {
+		t.Fatalf("len(builtinRulePacks()) = %d, want 6", got)
 	}
 	rules := flattenRulePacks(packs)
 	if got := len(rules); got < 10 {
@@ -116,6 +116,9 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	}
 	if _, ok := registry.Get(runtimeActiveThreatEvidenceRuleID); !ok {
 		t.Fatalf("registry missing %q", runtimeActiveThreatEvidenceRuleID)
+	}
+	if _, ok := registry.Get(sentinelOneUnresolvedThreatRuleID); !ok {
+		t.Fatalf("registry missing %q", sentinelOneUnresolvedThreatRuleID)
 	}
 	if _, ok := registry.Get(dataSensitiveAssetRiskRuleID); !ok {
 		t.Fatalf("registry missing %q", dataSensitiveAssetRiskRuleID)

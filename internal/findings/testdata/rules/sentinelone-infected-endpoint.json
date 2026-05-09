@@ -1,0 +1,68 @@
+{
+  "rule_id": "sentinelone-infected-endpoint",
+  "runtime": {
+    "id": "writer-sentinelone-threat",
+    "source_id": "sentinelone",
+    "tenant_id": "writer"
+  },
+  "events": [
+    {
+      "id": "s1-threat-5",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.threat",
+      "occurred_at": "2026-05-09T06:20:00Z",
+      "schema_ref": "sentinelone/threat/v1",
+      "attributes": {
+        "threat_id": "threat-5",
+        "threat_name": "Malware Sample",
+        "classification": "Malware",
+        "incident_status": "unresolved",
+        "mitigation_status": "not_mitigated",
+        "is_infected": "true",
+        "agent_id": "agent-3",
+        "agent_uuid": "uuid-3",
+        "computer_name": "mac-3"
+      }
+    },
+    {
+      "id": "s1-threat-6",
+      "tenant_id": "writer",
+      "source_id": "sentinelone",
+      "kind": "sentinelone.threat",
+      "occurred_at": "2026-05-09T06:25:00Z",
+      "schema_ref": "sentinelone/threat/v1",
+      "attributes": {
+        "threat_id": "threat-6",
+        "classification": "Malware",
+        "is_infected": "false",
+        "active_threats": "0",
+        "agent_id": "agent-4"
+      }
+    }
+  ],
+  "expected_findings": [
+    {
+      "rule_id": "sentinelone-infected-endpoint",
+      "severity": "CRITICAL",
+      "status": "open",
+      "summary": "SentinelOne reports infected endpoint mac-3 for threat Malware Sample",
+      "policy_id": "agent-3:uuid-3:threat-5",
+      "event_ids": ["s1-threat-5"],
+      "attributes": {
+        "action": "infected_endpoint",
+        "source_runtime_id": "writer-sentinelone-threat",
+        "primary_resource_urn": "urn:cerebro:writer:sentinelone_agent:agent-3",
+        "agent_id": "agent-3",
+        "threat_id": "threat-5",
+        "is_infected": "true"
+      }
+    }
+  ],
+  "expected_no_match": [
+    {
+      "event_id": "s1-threat-6",
+      "reason": "endpoint is not infected"
+    }
+  ]
+}
