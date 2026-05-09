@@ -175,6 +175,57 @@ func TestEvaluateSourceRuntimeGraphRulesPropagatesCypherFailure(t *testing.T) {
 	}
 }
 
+func TestEvaluateSourceRuntimeGraphRulesContinuesAfterRuleFailure(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphStore := &stubGraphStore{
+		cypherRows: []ports.CypherRow{
+			{Values: map[string]any{"label": "alice@writer.com"}},
+		},
+	}
+	failing := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "failing-rule"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"},
+		emitErr:  errors.New("evaluate failure"),
+	}
+	healthy := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "healthy-rule"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"},
+	}
+	registry, err := NewRegistry(failing, healthy)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry).WithGraphQueryStore(graphStore)
+	result, err := service.EvaluateSourceRuntimeGraphRules(context.Background(), EvaluateGraphRulesRequest{RuntimeID: "runtime-okta"})
+	if err == nil {
+		t.Fatalf("EvaluateSourceRuntimeGraphRules() expected error from failing rule")
+	}
+	if result == nil {
+		t.Fatalf("result = nil, want partial result with both rule evaluations")
+	}
+	if got := len(result.Evaluations); got != 2 {
+		t.Fatalf("len(Evaluations) = %d, want 2 (both rules should run)", got)
+	}
+	var failingRun, healthyRun *cerebrov1.FindingEvaluationRun
+	for _, evaluation := range result.Evaluations {
+		switch evaluation.Rule.GetId() {
+		case "failing-rule":
+			failingRun = evaluation.Run
+		case "healthy-rule":
+			healthyRun = evaluation.Run
+		}
+	}
+	if failingRun == nil || failingRun.GetStatus() != "failed" {
+		t.Fatalf("failing rule run status = %v, want failed", failingRun)
+	}
+	if healthyRun == nil || healthyRun.GetStatus() != "completed" {
+		t.Fatalf("healthy rule run status = %v, want completed (failures of one rule must not abort others)", healthyRun)
+	}
+}
+
 func TestEvaluateSourceRuntimeGraphRulesSelectsByRuleID(t *testing.T) {
 	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
 	store := &stubFindingStore{}

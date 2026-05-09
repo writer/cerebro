@@ -63,16 +63,17 @@ func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request E
 		Runtime:     runtime,
 		Evaluations: make([]*GraphRuleEvaluationResult, 0, len(candidates)),
 	}
+	var firstErr error
 	for _, rule := range candidates {
 		evaluation, err := s.evaluateGraphRule(ctx, runtime, rule, startedAt)
 		if evaluation != nil {
 			result.Evaluations = append(result.Evaluations, evaluation)
 		}
-		if err != nil {
-			return result, err
+		if err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
-	return result, nil
+	return result, firstErr
 }
 
 func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time) (*GraphRuleEvaluationResult, error) {
