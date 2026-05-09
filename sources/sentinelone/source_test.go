@@ -623,7 +623,7 @@ func newTestAPIHandler(t *testing.T) http.Handler {
 	}
 	sites := []map[string]any{{"id": "S-1", "name": "Production", "state": "active", "isDefault": true}}
 	groups := []map[string]any{{"id": "G-1", "name": "Default Group", "type": "static", "isDefault": true, "siteId": "S-1", "totalAgents": 2}}
-	exclusions := []map[string]any{{"id": "X-1", "type": "path", "mode": "suppress_alerts", "osType": "macos", "scope": "site", "scopeName": "Production", "value": "/Applications/Approved.app", "notRecommended": "true"}}
+	exclusions := []map[string]any{{"id": "X-1", "type": "path", "mode": "suppress_alerts", "osType": "macos", "scope": "site", "scopeName": "Production", "value": "/Applications/Approved.app", "notRecommended": "NONE", "includeChildren": "true"}}
 	activities := []map[string]any{{"id": "Y-1", "activityType": 27, "primaryDescription": "User user@example.test logged in", "agentId": "A-1", "siteId": "S-1", "groupId": "G-1", "createdAt": "2026-04-23T00:30:00Z"}}
 	apps := []map[string]any{
 		{"name": "Example App", "publisher": "Example Inc", "version": "1.0.0", "installedDate": "2026-04-20T00:00:00Z", "size": 12345},

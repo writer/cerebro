@@ -20,6 +20,10 @@ type rawCarrier interface {
 type flexibleBool bool
 
 func (b *flexibleBool) UnmarshalJSON(raw []byte) error {
+	if strings.TrimSpace(string(raw)) == "null" {
+		*b = false
+		return nil
+	}
 	var value bool
 	if err := json.Unmarshal(raw, &value); err == nil {
 		*b = flexibleBool(value)
@@ -28,14 +32,15 @@ func (b *flexibleBool) UnmarshalJSON(raw []byte) error {
 	var text string
 	if err := json.Unmarshal(raw, &text); err == nil {
 		switch strings.ToLower(strings.TrimSpace(text)) {
-		case "", "0", "false", "n", "no":
+		case "", "0", "false", "n", "no", "none", "null":
 			*b = false
 			return nil
 		case "1", "true", "y", "yes":
 			*b = true
 			return nil
 		default:
-			return fmt.Errorf("invalid bool string %q", text)
+			*b = false
+			return nil
 		}
 	}
 	return fmt.Errorf("invalid bool value %s", string(raw))
