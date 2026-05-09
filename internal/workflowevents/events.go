@@ -35,6 +35,7 @@ const (
 
 const (
 	FindingStatusReasonNoLongerEmitted = "No longer emitted by latest rule evaluation."
+	FindingStatusSourceManual          = "manual"
 	FindingStatusSourceStaleEvaluation = "stale_rule_evaluation"
 )
 
@@ -72,6 +73,13 @@ type DecisionRecorded struct {
 func FindingStatusPrunesGraph(status string, source string) bool {
 	return strings.EqualFold(strings.TrimSpace(status), "resolved") &&
 		strings.EqualFold(strings.TrimSpace(source), FindingStatusSourceStaleEvaluation)
+}
+
+// LegacyFindingStatusPrunesGraph preserves replay behavior for stale-resolution events emitted before status source existed.
+func LegacyFindingStatusPrunesGraph(status string, source string, reason string) bool {
+	return strings.TrimSpace(source) == "" &&
+		strings.EqualFold(strings.TrimSpace(status), "resolved") &&
+		strings.EqualFold(strings.TrimSpace(reason), FindingStatusReasonNoLongerEmitted)
 }
 
 // ActionRecorded captures one durable workflow action event payload.
