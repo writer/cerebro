@@ -15,6 +15,7 @@ import (
 // not own runtimes (e.g. push-only SDK adapters, infrastructure scanners
 // driven by the orchestrator default command) are exempt by being absent.
 var requireDeployManifest = map[string]struct{}{
+	"github":      {},
 	"okta":        {},
 	"sentinelone": {},
 }
