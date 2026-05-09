@@ -769,9 +769,12 @@ func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (R
 		if !rule.SupportsRuntime(runtime) {
 			return nil, fmt.Errorf("%w: %s", ErrRuleUnsupported, trimmedRuleID)
 		}
+		if _, isGraph := asGraphRule(rule); isGraph {
+			return nil, fmt.Errorf("%w: %s is a graph rule and cannot be evaluated via event replay", ErrRuleUnsupported, trimmedRuleID)
+		}
 		return rule, nil
 	}
-	applicable := s.rules.ForRuntime(runtime)
+	applicable := filterEventDrivenRules(s.rules.ForRuntime(runtime))
 	switch len(applicable) {
 	case 0:
 		return nil, fmt.Errorf("%w: %s", ErrRuleUnavailable, strings.TrimSpace(runtime.GetId()))
@@ -784,7 +787,7 @@ func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (R
 
 func (s *Service) selectRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string) ([]Rule, error) {
 	if len(ruleIDs) == 0 {
-		applicable := s.rules.ForRuntime(runtime)
+		applicable := filterEventDrivenRules(s.rules.ForRuntime(runtime))
 		if len(applicable) == 0 {
 			return nil, fmt.Errorf("%w: %s", ErrRuleUnavailable, strings.TrimSpace(runtime.GetId()))
 		}
@@ -807,6 +810,9 @@ func (s *Service) selectRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string
 		if !rule.SupportsRuntime(runtime) {
 			return nil, fmt.Errorf("%w: %s", ErrRuleUnsupported, trimmedID)
 		}
+		if _, isGraph := asGraphRule(rule); isGraph {
+			return nil, fmt.Errorf("%w: %s is a graph rule and cannot be evaluated via event replay", ErrRuleUnsupported, trimmedID)
+		}
 		seen[trimmedID] = struct{}{}
 		selected = append(selected, rule)
 	}
@@ -814,6 +820,24 @@ func (s *Service) selectRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string
 		return nil, fmt.Errorf("%w for runtime %q", ErrRuleSelectionRequired, strings.TrimSpace(runtime.GetId()))
 	}
 	return selected, nil
+}
+
+// filterEventDrivenRules excludes graph rules from a rule slice. Graph rules implement Rule
+// only to satisfy the registry contract; their Evaluate() is a no-op because they need a
+// graph cypher query that the event-replay path cannot supply. Including them in the replay
+// pass produces empty completed evaluation runs and duplicates the run record per rule.
+func filterEventDrivenRules(rules []Rule) []Rule {
+	if len(rules) == 0 {
+		return rules
+	}
+	out := make([]Rule, 0, len(rules))
+	for _, rule := range rules {
+		if _, isGraph := asGraphRule(rule); isGraph {
+			continue
+		}
+		out = append(out, rule)
+	}
+	return out
 }
 
 func normalizeEventLimit(limit uint32) uint32 {

@@ -211,12 +211,18 @@ func (s *Service) selectGraphRules(runtime *cerebrov1.SourceRuntime, ruleIDs []s
 // source rows are no longer present in the latest evaluation. Without this, dormant findings
 // would never auto-resolve when an offending principal is finally deprovisioned in both
 // systems or the relationship is removed.
-func (s *Service) resolveStaleGraphFindings(ctx context.Context, tenantID string, runtimeID string, ruleID string, emittedFindingIDs map[string]struct{}) error {
+//
+// The scope is intentionally (tenant, rule) rather than (tenant, runtime, rule). Graph rules
+// query a tenant-wide view (the projected graph upserts by tenant+entity, not by runtime),
+// so an emit set computed from any okta runtime in the tenant covers every offender that the
+// rule would report. Scoping by runtime here would close a finding that runtime A emitted as
+// soon as runtime B syncs and finishes its own evaluation (because runtime B's emit set
+// doesn't include runtime A's finding under the runtime-keyed query).
+func (s *Service) resolveStaleGraphFindings(ctx context.Context, tenantID string, _ string, ruleID string, emittedFindingIDs map[string]struct{}) error {
 	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
-		TenantID:  strings.TrimSpace(tenantID),
-		RuntimeID: strings.TrimSpace(runtimeID),
-		RuleID:    strings.TrimSpace(ruleID),
-		Status:    findingStatusOpen,
+		TenantID: strings.TrimSpace(tenantID),
+		RuleID:   strings.TrimSpace(ruleID),
+		Status:   findingStatusOpen,
 	})
 	if err != nil {
 		return fmt.Errorf("list stale graph candidates for rule %q: %w", strings.TrimSpace(ruleID), err)

@@ -317,3 +317,45 @@ func TestEvaluateSourceRuntimeGraphRulesSelectsByRuleID(t *testing.T) {
 		t.Fatalf("Rule.Id = %q, want selected", got)
 	}
 }
+
+// Graph rules satisfy Rule only to fit the registry contract; their Evaluate() is a no-op
+// because they need a cypher boundary the replay path doesn't supply. Letting the event
+// replay path pick them up creates empty completed evaluation runs and duplicates run
+// records per orchestrator iteration. The replay path must filter them out instead.
+func TestEvaluateSourceRuntimeRulesExcludesGraphRules(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphRule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "okta-graph-only"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"},
+	}
+	registry, err := NewRegistry(graphRule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry)
+	if _, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "runtime-okta"}); !errors.Is(err, ErrRuleUnavailable) {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v, want ErrRuleUnavailable (graph rule should not be picked up by replay path)", err)
+	}
+}
+
+// When the caller asks for a graph rule by ID through the replay endpoint we must reject
+// rather than create a useless empty evaluation run.
+func TestEvaluateSourceRuntimeRulesRejectsExplicitGraphRuleID(t *testing.T) {
+	runtime := &cerebrov1.SourceRuntime{Id: "runtime-okta", SourceId: "okta", TenantId: "writer"}
+	store := &stubFindingStore{}
+	graphRule := &stubGraphRule{
+		spec:     &cerebrov1.RuleSpec{Id: "okta-graph-only"},
+		sourceID: "okta",
+		query:    ports.CypherQueryRequest{Query: "MATCH (n) RETURN n"},
+	}
+	registry, err := NewRegistry(graphRule)
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	service := NewWithRegistry(newGraphRuleStubRuntimeStore(runtime), &stubReplayer{}, store, store, store, store, registry)
+	if _, err := service.EvaluateSourceRuntimeRules(context.Background(), EvaluateRulesRequest{RuntimeID: "runtime-okta", RuleIDs: []string{"okta-graph-only"}}); !errors.Is(err, ErrRuleUnsupported) {
+		t.Fatalf("EvaluateSourceRuntimeRules() error = %v, want ErrRuleUnsupported (explicit graph rule id must be rejected by replay path)", err)
+	}
+}

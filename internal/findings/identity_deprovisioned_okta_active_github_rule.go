@@ -58,7 +58,7 @@ func newDeprovisionedOktaActiveGitHubRule() Rule {
 				"Delayed Okta lifecycle propagation immediately after a status change; window typically closes within one sync cycle.",
 			},
 			Runbook:           "Confirm the Okta identity is truly off-boarded, revoke or suspend the linked GitHub account, rotate any tokens it created, and document the gap that allowed continued access.",
-			FingerprintFields: []string{"runtime_id", "okta_user_urn", "identity_urn", "github_user_urn"},
+			FingerprintFields: []string{"okta_user_urn", "identity_urn", "github_user_urn"},
 			ControlRefs: []ports.FindingControlRef{
 				{FrameworkName: "SOC 2", ControlID: "CC6.2"},
 				{FrameworkName: "ISO 27001:2022", ControlID: "A.5.18"},
@@ -88,13 +88,19 @@ func (r *deprovisionedOktaActiveGitHubRule) Evaluate(_ context.Context, _ *cereb
 	return nil, nil
 }
 
+// QueryFor scopes the cypher to the runtime's tenant only. The graph deliberately upserts
+// every okta.user node by `(tenant_id, user_id)` so inventory and audit runtimes share one
+// node with merged attributes; runtime_id on okta.user is therefore not a stable partition
+// (the latest event wins via mergeGraphAttributes) and using it as a predicate would alias
+// inventory-derived `status` onto the audit runtime that touched the node last. The rule is
+// fundamentally tenant-scoped: the answer to "is this deprovisioned okta identity still
+// active in github?" is the same for any okta runtime in the tenant.
 func (r *deprovisionedOktaActiveGitHubRule) QueryFor(runtime *cerebrov1.SourceRuntime) ports.CypherQueryRequest {
 	if runtime == nil {
 		return ports.CypherQueryRequest{}
 	}
 	tenantID := strings.TrimSpace(runtime.GetTenantId())
-	runtimeID := strings.TrimSpace(runtime.GetId())
-	if tenantID == "" || runtimeID == "" {
+	if tenantID == "" {
 		return ports.CypherQueryRequest{}
 	}
 	return ports.CypherQueryRequest{
@@ -102,10 +108,9 @@ func (r *deprovisionedOktaActiveGitHubRule) QueryFor(runtime *cerebrov1.SourceRu
        -[oi:RELATION {relation: 'represents_identity'}]->(id:Entity)
        <-[gi:RELATION {relation: 'represents_identity'}]-(g:Entity {entity_type: 'github.user', tenant_id: $tenant_id})
        -[acted:RELATION {relation: 'acted_on'}]->(target:Entity)
-WHERE coalesce(o.attributes_json, '') CONTAINS $okta_runtime_marker
-  AND (toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"DEPROVISIONED"'
-       OR toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"SUSPENDED"'
-       OR toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"INACTIVE"')
+WHERE toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"DEPROVISIONED"'
+   OR toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"SUSPENDED"'
+   OR toUpper(coalesce(o.attributes_json, '')) CONTAINS '"STATUS":"INACTIVE"'
 RETURN o.urn AS okta_user_urn,
        o.label AS okta_user_label,
        coalesce(o.attributes_json, '') AS okta_attributes_json,
@@ -119,9 +124,8 @@ RETURN o.urn AS okta_user_urn,
        coalesce(acted.attributes_json, '') AS acted_attributes_json
 LIMIT $row_limit`,
 		Params: map[string]any{
-			"tenant_id":           tenantID,
-			"okta_runtime_marker": fmt.Sprintf("%q:%q", "source_runtime_id", runtimeID),
-			"row_limit":           int64(identityDeprovisionedOktaQueryRowLimit),
+			"tenant_id": tenantID,
+			"row_limit": int64(identityDeprovisionedOktaQueryRowLimit),
 		},
 		RowLimit: identityDeprovisionedOktaQueryRowLimit,
 	}
@@ -205,10 +209,13 @@ type deprovisionedOktaTarget struct {
 
 func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.SourceRuntime, tenantID string, group *deprovisionedOktaGroup, now time.Time) *ports.FindingRecord {
 	runtimeID := strings.TrimSpace(runtime.GetId())
+	// The fingerprint deliberately omits runtime_id. The graph projects okta.user nodes by
+	// (tenant_id, user_id), so two okta runtimes touching the same user share one node and
+	// would produce the same fingerprint anyway; tracking runtime_id here would split a
+	// single tenant-scoped finding into duplicates the moment another okta runtime synced.
 	fingerprint := hashFindingFingerprint(
 		r.definition.ID,
 		tenantID,
-		runtimeID,
 		group.oktaUserURN,
 		group.identityURN,
 		group.githubUserURN,
