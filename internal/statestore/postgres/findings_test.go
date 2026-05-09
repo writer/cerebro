@@ -136,6 +136,22 @@ func TestLinkFindingTicketRejectsEmptyURL(t *testing.T) {
 	}
 }
 
+// runtime_id must be pinned on conflict so the same fingerprint stays addressable on the
+// originally-observed runtime instead of flipping. Event-rule fingerprints already include
+// runtime_id (so the clause is a no-op for them); graph-rule fingerprints are tenant-scoped
+// and the same offender can be emitted by multiple triggering runtimes (okta inventory or
+// github audit for the deprovisioned-Okta-active-in-GitHub rule), so without this pin every
+// reevaluation would rebind runtime_id and per-runtime list/evidence/report/GRC paths would
+// swap the finding in and out under each side.
+func TestUpsertFindingStatementPreservesRuntimeIDOnConflict(t *testing.T) {
+	if !strings.Contains(upsertFindingStatement, "runtime_id = findings.runtime_id") {
+		t.Fatalf("upsertFindingStatement does not preserve runtime_id on conflict; graph-rule findings would flip between triggering runtimes:\n%s", upsertFindingStatement)
+	}
+	if strings.Contains(upsertFindingStatement, "runtime_id = EXCLUDED.runtime_id") {
+		t.Fatalf("upsertFindingStatement still rebinds runtime_id from EXCLUDED on conflict; this would break graph-rule pinning:\n%s", upsertFindingStatement)
+	}
+}
+
 func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
 	query, args, err := findingListQuery(ports.ListFindingsRequest{
 		TenantID: "writer",

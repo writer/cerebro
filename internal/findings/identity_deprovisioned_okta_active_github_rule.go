@@ -223,6 +223,10 @@ func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.Sour
 	// (tenant_id, user_id), so two okta runtimes touching the same user share one node and
 	// would produce the same fingerprint anyway; tracking runtime_id here would split a
 	// single tenant-scoped finding into duplicates the moment another okta runtime synced.
+	// The same fingerprint can also be emitted by either an okta or a github ingest, so the
+	// store must not rebind runtime_id on conflict; that pinning is enforced by Postgres'
+	// UpsertFinding (`runtime_id = findings.runtime_id`) so the row stays addressable through
+	// real source-runtime APIs even when both sides trigger the rule.
 	fingerprint := hashFindingFingerprint(
 		r.definition.ID,
 		tenantID,
@@ -230,13 +234,6 @@ func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.Sour
 		group.identityURN,
 		group.githubUserURN,
 	)
-	// The persisted runtime_id is a stable synthetic id per (tenant, rule), not the runtime
-	// that happened to trigger this evaluation. The rule's identity is tenant-scoped, so
-	// stamping the triggering runtime would cause UpsertFinding to flip the row between okta
-	// and github runtimes every iteration and make per-runtime list paths swap the finding
-	// in and out under each side. The triggering runtime is preserved in attributes for
-	// telemetry only.
-	persistedRuntimeID := graphRuleRuntimeID(r.definition.ID)
 	resourceURNs := []string{group.identityURN, group.oktaUserURN, group.githubUserURN}
 	targetURNs := make([]string, 0, len(group.targets))
 	targetLabels := make([]string, 0, len(group.targets))
@@ -284,7 +281,7 @@ func (r *deprovisionedOktaActiveGitHubRule) buildFinding(runtime *cerebrov1.Sour
 		ID:              fingerprint,
 		Fingerprint:     fingerprint,
 		TenantID:        tenantID,
-		RuntimeID:       persistedRuntimeID,
+		RuntimeID:       triggeringRuntimeID,
 		RuleID:          r.definition.ID,
 		Title:           r.definition.Name,
 		Severity:        r.definition.Severity,

@@ -70,6 +70,76 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_tickets_gin_idx ON findings USING GIN (tickets_json)`,
 }
 
+// upsertFindingStatement persists one finding row, preserving runtime_id on conflict.
+//
+// runtime_id is intentionally pinned on first insert. Event-rule fingerprints already include
+// runtime_id, so the same id can never collide across runtimes for them and this clause is a
+// no-op. Graph-rule fingerprints are deliberately tenant-scoped (they omit runtime_id) so the
+// same offender can be emitted by multiple triggering runtimes (e.g. okta inventory and
+// github audit for the deprovisioned-Okta-active-in-GitHub rule); preserving the original
+// runtime keeps the row addressable through the real runtime-scoped read paths
+// (Service.ListFindings, ListEvidence, reports, GRC) instead of flipping it between sources
+// every iteration.
+const upsertFindingStatement = `
+INSERT INTO findings (
+  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, attributes_json,
+  policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+ON CONFLICT (id)
+DO UPDATE SET
+  fingerprint = EXCLUDED.fingerprint,
+  tenant_id = EXCLUDED.tenant_id,
+  runtime_id = findings.runtime_id,
+  rule_id = EXCLUDED.rule_id,
+  title = EXCLUDED.title,
+  severity = EXCLUDED.severity,
+  status = CASE
+    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status
+    ELSE EXCLUDED.status
+  END,
+  summary = EXCLUDED.summary,
+  resource_urns_json = EXCLUDED.resource_urns_json,
+  event_ids_json = EXCLUDED.event_ids_json,
+  observed_policy_ids_json = EXCLUDED.observed_policy_ids_json,
+  control_refs_json = EXCLUDED.control_refs_json,
+  notes_json = CASE
+    WHEN jsonb_array_length(EXCLUDED.notes_json) = 0 THEN findings.notes_json
+    ELSE EXCLUDED.notes_json
+  END,
+  tickets_json = CASE
+    WHEN jsonb_array_length(EXCLUDED.tickets_json) = 0 THEN findings.tickets_json
+    ELSE EXCLUDED.tickets_json
+  END,
+  attributes_json = EXCLUDED.attributes_json,
+  policy_id = EXCLUDED.policy_id,
+  policy_name = EXCLUDED.policy_name,
+  check_id = EXCLUDED.check_id,
+  check_name = EXCLUDED.check_name,
+  assignee = CASE
+    WHEN findings.assignee <> '' AND EXCLUDED.assignee = '' THEN findings.assignee
+    ELSE EXCLUDED.assignee
+  END,
+  due_at = COALESCE(EXCLUDED.due_at, findings.due_at),
+  status_reason = CASE
+    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_reason
+    ELSE EXCLUDED.status_reason
+  END,
+  status_updated_at = CASE
+    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_updated_at
+    ELSE EXCLUDED.status_updated_at
+  END,
+  first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
+  last_observed_at = GREATEST(findings.last_observed_at, EXCLUDED.last_observed_at),
+  updated_at = NOW()
+RETURNING
+  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at`
+
 // UpsertFinding persists one normalized finding in the current-state store.
 func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
 	if finding == nil {
@@ -161,65 +231,7 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	}
 	firstObservedAt, lastObservedAt := normalizeFindingObservationWindow(finding.FirstObservedAt, finding.LastObservedAt, time.Now().UTC())
 	var stored findingRow
-	if err := s.db.QueryRowContext(ctx, `
-INSERT INTO findings (
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, attributes_json,
-  policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at
-)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
-ON CONFLICT (id)
-DO UPDATE SET
-  fingerprint = EXCLUDED.fingerprint,
-  tenant_id = EXCLUDED.tenant_id,
-  runtime_id = EXCLUDED.runtime_id,
-  rule_id = EXCLUDED.rule_id,
-  title = EXCLUDED.title,
-  severity = EXCLUDED.severity,
-  status = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status
-    ELSE EXCLUDED.status
-  END,
-  summary = EXCLUDED.summary,
-  resource_urns_json = EXCLUDED.resource_urns_json,
-  event_ids_json = EXCLUDED.event_ids_json,
-  observed_policy_ids_json = EXCLUDED.observed_policy_ids_json,
-  control_refs_json = EXCLUDED.control_refs_json,
-  notes_json = CASE
-    WHEN jsonb_array_length(EXCLUDED.notes_json) = 0 THEN findings.notes_json
-    ELSE EXCLUDED.notes_json
-  END,
-  tickets_json = CASE
-    WHEN jsonb_array_length(EXCLUDED.tickets_json) = 0 THEN findings.tickets_json
-    ELSE EXCLUDED.tickets_json
-  END,
-  attributes_json = EXCLUDED.attributes_json,
-  policy_id = EXCLUDED.policy_id,
-  policy_name = EXCLUDED.policy_name,
-  check_id = EXCLUDED.check_id,
-  check_name = EXCLUDED.check_name,
-  assignee = CASE
-    WHEN findings.assignee <> '' AND EXCLUDED.assignee = '' THEN findings.assignee
-    ELSE EXCLUDED.assignee
-  END,
-  due_at = COALESCE(EXCLUDED.due_at, findings.due_at),
-  status_reason = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_reason
-    ELSE EXCLUDED.status_reason
-  END,
-  status_updated_at = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_updated_at
-    ELSE EXCLUDED.status_updated_at
-  END,
-  first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
-  last_observed_at = GREATEST(findings.last_observed_at, EXCLUDED.last_observed_at),
-  updated_at = NOW()
-RETURNING
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`,
+	if err := s.db.QueryRowContext(ctx, upsertFindingStatement,
 		id,
 		fingerprint,
 		tenantID,

@@ -86,11 +86,13 @@ func TestDeprovisionedOktaActiveGitHubRuleFingerprintIsStableAcrossRuns(t *testi
 	}
 }
 
-// The persisted runtime_id on graph-rule findings must be a stable synthetic value, not
-// the runtime that happened to trigger this evaluation, because the same fingerprint can
-// be emitted by either an okta or a github runtime and UpsertFinding would otherwise flip
-// the row between them every iteration.
-func TestDeprovisionedOktaActiveGitHubRuleFindingPinsRuntimeID(t *testing.T) {
+// The rule stamps the triggering runtime onto the persisted record so the finding stays
+// addressable through the real runtime-scoped read paths (Service.ListFindings, ListEvidence,
+// reports, GRC). The store pins runtime_id on first insert via UpsertFinding's ON CONFLICT
+// clause, so the row does not flip when both Okta and GitHub triggers reevaluate the same
+// offender; that behavior is exercised in the postgres store tests. Here we just assert
+// the rule's contract: stamp the real triggering runtime, never a synthetic value.
+func TestDeprovisionedOktaActiveGitHubRuleFindingStampsTriggeringRuntimeID(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
 	group := &deprovisionedOktaGroup{
 		oktaUserURN:   "urn:cerebro:writer:okta.user:alice@writer.com",
@@ -99,11 +101,16 @@ func TestDeprovisionedOktaActiveGitHubRuleFindingPinsRuntimeID(t *testing.T) {
 	}
 	oktaTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "writer-okta-inventory", SourceId: "okta", TenantId: "writer"}, "writer", group, deprovisionedOktaRuleFixedNow())
 	githubTriggered := rule.buildFinding(&cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}, "writer", group, deprovisionedOktaRuleFixedNow())
-	if got := oktaTriggered.RuntimeID; !strings.HasPrefix(got, GraphRuleRuntimePrefix) {
-		t.Fatalf("RuntimeID = %q, want prefix %q (synthetic graph-rule runtime keeps the row stable across triggering runtimes)", got, GraphRuleRuntimePrefix)
+	if got := oktaTriggered.RuntimeID; got != "writer-okta-inventory" {
+		t.Fatalf("okta-triggered RuntimeID = %q, want real triggering runtime; synthetic ids would make the finding unreachable through runtime-scoped APIs", got)
 	}
-	if oktaTriggered.RuntimeID != githubTriggered.RuntimeID {
-		t.Fatalf("RuntimeID flipped across triggering runtimes (okta=%q github=%q); UpsertFinding would rebind the row each iteration", oktaTriggered.RuntimeID, githubTriggered.RuntimeID)
+	if got := githubTriggered.RuntimeID; got != "writer-github-audit" {
+		t.Fatalf("github-triggered RuntimeID = %q, want real triggering runtime", got)
+	}
+	// Both triggers MUST share the same fingerprint; pinning to first-observed happens at
+	// the store layer so subsequent triggers keep the original runtime instead of flipping.
+	if oktaTriggered.Fingerprint != githubTriggered.Fingerprint {
+		t.Fatalf("fingerprints differ across triggering runtimes (okta=%q github=%q); same offender must produce same id so the store can pin runtime", oktaTriggered.Fingerprint, githubTriggered.Fingerprint)
 	}
 	if got := oktaTriggered.Attributes["source_runtime_id"]; got != "writer-okta-inventory" {
 		t.Fatalf("attributes[source_runtime_id] = %q, want triggering runtime preserved for telemetry", got)
