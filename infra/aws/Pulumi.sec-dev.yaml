@@ -36,6 +36,7 @@ config:
   cerebro:jetstreamLagAlarmThreshold: 1000
   cerebro:apiAuthEnabled: true
   cerebro:sourceSecretKeys:
+    - GITHUB_TOKEN
     - OKTA_API_TOKEN
     - OKTA_DOMAIN
     - SENTINELONE_API_TOKEN
@@ -149,7 +150,43 @@ config:
         - page_limit=10
         - graph_page_limit=100
         - event_limit=1000
+    - name: github-audit-writer
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-github-audit
+        - page_limit=10
+        - graph_page_limit=100
+        - event_limit=1000
+    - name: github-audit-writerinternal
+      scheduleExpression: rate(15 minutes)
+      taskCount: 1
+      command:
+        - orchestrator
+        - run
+        - runtime_id=writer-github-audit-writerinternal
+        - page_limit=10
+        - graph_page_limit=100
+        - event_limit=1000
   cerebro:sourceRuntimes:
+    - id: writer-github-audit
+      sourceId: github
+      tenantId: writer
+      config:
+        family: audit
+        owner: writer
+        per_page: "100"
+        token: env:GITHUB_TOKEN
+    - id: writer-github-audit-writerinternal
+      sourceId: github
+      tenantId: writer
+      config:
+        family: audit
+        owner: WriterInternal
+        per_page: "100"
+        token: env:GITHUB_TOKEN
     - id: writer-okta-audit
       sourceId: okta
       tenantId: writer
