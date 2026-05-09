@@ -51,16 +51,25 @@ func TestDeprovisionedOktaActiveGitHubRuleQueryRequiresTenant(t *testing.T) {
 // or detections lag until the next time the other source happens to sync.
 func TestDeprovisionedOktaActiveGitHubRuleSupportsBothOktaAndGitHub(t *testing.T) {
 	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	withFamily := func(sourceID, family string) *cerebrov1.SourceRuntime {
+		return &cerebrov1.SourceRuntime{SourceId: sourceID, Config: map[string]string{"family": family}}
+	}
 	cases := map[string]struct {
 		runtime *cerebrov1.SourceRuntime
 		want    bool
 	}{
-		"okta runtime":     {&cerebrov1.SourceRuntime{SourceId: "okta"}, true},
-		"github runtime":   {&cerebrov1.SourceRuntime{SourceId: "github"}, true},
-		"OKTA upper case":  {&cerebrov1.SourceRuntime{SourceId: "OKTA"}, true},
-		"unrelated source": {&cerebrov1.SourceRuntime{SourceId: "aws"}, false},
-		"empty source":     {&cerebrov1.SourceRuntime{}, false},
-		"nil runtime":      {nil, false},
+		"okta user runtime":             {withFamily("okta", "user"), true},
+		"github audit runtime":          {withFamily("github", "audit"), true},
+		"OKTA user upper case":          {withFamily("OKTA", "USER"), true},
+		"okta audit runtime":            {withFamily("okta", "audit"), false},
+		"okta group runtime":            {withFamily("okta", "group_membership"), false},
+		"github pull-request runtime":   {withFamily("github", "pull_request"), false},
+		"github dependabot runtime":     {withFamily("github", "dependabot_alert"), false},
+		"okta runtime missing family":   {&cerebrov1.SourceRuntime{SourceId: "okta"}, false},
+		"github runtime missing family": {&cerebrov1.SourceRuntime{SourceId: "github"}, false},
+		"unrelated source":              {withFamily("aws", "iam_user"), false},
+		"empty source":                  {&cerebrov1.SourceRuntime{}, false},
+		"nil runtime":                   {nil, false},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -234,18 +243,21 @@ func deprovisionedOktaRuleActedAttrs(at time.Time) string {
 }
 
 func deprovisionedOktaRuleRow(actedAttributesJSON string) ports.CypherRow {
+	recent := deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour))
 	return ports.CypherRow{Values: map[string]any{
-		"okta_user_urn":         "urn:cerebro:writer:okta.user:alice@writer.com",
-		"okta_user_label":       "Alice",
-		"okta_attributes_json":  `{"status":"DEPROVISIONED"}`,
-		"identity_urn":          "urn:cerebro:writer:identity:email:alice@writer.com",
-		"identity_label":        "alice@writer.com",
-		"github_user_urn":       "urn:cerebro:writer:github.user:alice",
-		"github_user_label":     "alice",
-		"target_urn":            "urn:cerebro:writer:github_repo:writer/cerebro",
-		"target_entity_type":    "github_repo",
-		"target_label":          "writer/cerebro",
-		"acted_attributes_json": actedAttributesJSON,
+		"okta_user_urn":                   "urn:cerebro:writer:okta.user:alice@writer.com",
+		"okta_user_label":                 "Alice",
+		"okta_attributes_json":            `{"status":"DEPROVISIONED"}`,
+		"identity_urn":                    "urn:cerebro:writer:identity:email:alice@writer.com",
+		"identity_label":                  "alice@writer.com",
+		"github_user_urn":                 "urn:cerebro:writer:github.user:alice",
+		"github_user_label":               "alice",
+		"target_urn":                      "urn:cerebro:writer:github_repo:writer/cerebro",
+		"target_entity_type":              "github_repo",
+		"target_label":                    "writer/cerebro",
+		"acted_attributes_json":           actedAttributesJSON,
+		"okta_identity_attributes_json":   recent,
+		"github_identity_attributes_json": recent,
 	}}
 }
 
@@ -344,5 +356,63 @@ func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsMalformedAt(t *testin
 	}
 	if len(findings) != 0 {
 		t.Fatalf("EvaluateRows() returned %d findings with unparseable `at`, want 0", len(findings))
+	}
+}
+
+// represents_identity edges are upsert-only: when an Okta email/login (or a
+// GitHub external_identity_nameid) is renamed, the old identity node stays
+// linked to both accounts in the graph. The cypher `(o)-[oi]->(id)<-[gi]-(g)`
+// would otherwise keep matching through the stale identity node forever and
+// the rule would emit (or fail to auto-resolve) findings for accounts whose
+// current identifiers no longer overlap. We require BOTH the okta-side and
+// github-side identifier links to have been re-asserted within the recency
+// window before treating the join as evidence.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsStaleOktaIdentifierEdge(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	staleAt := time.Now().UTC().Add(-(identityDeprovisionedOktaRecencyWindow + 24*time.Hour))
+	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
+	row.Values["okta_identity_attributes_json"] = deprovisionedOktaRuleActedAttrs(staleAt)
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings with stale okta represents_identity edge, want 0; rename-stale joins must not keep findings open", len(findings))
+	}
+}
+
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsStaleGitHubIdentifierEdge(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	staleAt := time.Now().UTC().Add(-(identityDeprovisionedOktaRecencyWindow + 24*time.Hour))
+	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
+	row.Values["github_identity_attributes_json"] = deprovisionedOktaRuleActedAttrs(staleAt)
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings with stale github represents_identity edge, want 0", len(findings))
+	}
+}
+
+// represents_identity edges projected before the at-stamp change have no `at`
+// at all. We refuse to fire on those for the same reason as missing-at acted_on
+// edges: we cannot prove the identifier link is current, so we cannot honestly
+// claim the deprovisioned account is "still active". Once the projector
+// backfills, these rows reappear with `at` and the rule re-emits naturally.
+func TestDeprovisionedOktaActiveGitHubRuleEvaluateRowsSkipsUnstampedIdentifierEdges(t *testing.T) {
+	rule := newDeprovisionedOktaActiveGitHubRule().(*deprovisionedOktaActiveGitHubRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-okta-prod", SourceId: "okta", TenantId: "writer"}
+	row := deprovisionedOktaRuleRow(deprovisionedOktaRuleActedAttrs(time.Now().UTC().Add(-1 * time.Hour)))
+	row.Values["okta_identity_attributes_json"] = `{"identifier_type":"email","identifier_value":"alice@writer.com"}`
+	row.Values["github_identity_attributes_json"] = `{"identifier_type":"login","identifier_value":"alice"}`
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("EvaluateRows() returned %d findings for legacy identifier edges without `at`, want 0", len(findings))
 	}
 }

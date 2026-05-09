@@ -89,18 +89,29 @@ func (r *deprovisionedOktaActiveGitHubRule) Spec() *cerebrov1.RuleSpec {
 	return proto.Clone(r.definition.RuleSpec()).(*cerebrov1.RuleSpec)
 }
 
-// SupportsRuntime accepts either an okta or a github source runtime: the rule's cypher join
-// reads okta.user lifecycle status AND github.user `acted_on` edges, so a fresh ingest from
-// either side could surface a new offender or invalidate an existing finding. Restricting the
-// rule to one source would leave detections delayed until the next pass on the other.
+// SupportsRuntime narrows graph-rule triggers to the runtime families whose ingest can
+// actually change the inputs of this rule's cypher: okta family=user (lifecycle status
+// on okta.user nodes) and github family=audit (acted_on edges from github.user).
+//
+// Source runtimes within a single source_id are family-scoped (e.g. github.audit,
+// github.pull_request, github.dependabot_alert; okta.user, okta.audit, okta.group_membership)
+// and only the families above touch the data this rule reads. Accepting every runtime
+// in the family would let, say, a github.pull_request ingest be the first trigger that
+// observes an existing offender — buildFinding would then stamp that pull-request runtime
+// onto the persisted record and Postgres' UpsertFinding ON CONFLICT would pin it there,
+// hiding the finding from `/source-runtimes/{github-audit}/findings` even though the audit
+// runtime is what produced the data and is what an investigator would inspect.
 func (r *deprovisionedOktaActiveGitHubRule) SupportsRuntime(runtime *cerebrov1.SourceRuntime) bool {
 	if r == nil || runtime == nil {
 		return false
 	}
 	sourceID := strings.ToLower(strings.TrimSpace(runtime.GetSourceId()))
+	family := strings.ToLower(strings.TrimSpace(runtime.GetConfig()["family"]))
 	switch sourceID {
-	case "okta", "github":
-		return true
+	case "okta":
+		return family == "user"
+	case "github":
+		return family == "audit"
 	default:
 		return false
 	}
@@ -128,6 +139,11 @@ func (r *deprovisionedOktaActiveGitHubRule) QueryFor(runtime *cerebrov1.SourceRu
 		return ports.CypherQueryRequest{}
 	}
 	return ports.CypherQueryRequest{
+		// The cypher returns one row per (okta_user, identity, github_user, target);
+		// EvaluateRows applies the recency filter and grouping. We deliberately do
+		// not push the recency check into Cypher so we can keep the filter in one
+		// place and have unit-test coverage on it (the represents_identity attrs
+		// JSON is opaque on the Neo4j side).
 		Query: `MATCH (o:Entity {entity_type: 'okta.user', tenant_id: $tenant_id})
        -[oi:RELATION {relation: 'represents_identity'}]->(id:Entity)
        <-[gi:RELATION {relation: 'represents_identity'}]-(g:Entity {entity_type: 'github.user', tenant_id: $tenant_id})
@@ -145,7 +161,9 @@ RETURN o.urn AS okta_user_urn,
        target.urn AS target_urn,
        target.entity_type AS target_entity_type,
        target.label AS target_label,
-       coalesce(acted.attributes_json, '') AS acted_attributes_json
+       coalesce(acted.attributes_json, '') AS acted_attributes_json,
+       coalesce(oi.attributes_json, '') AS okta_identity_attributes_json,
+       coalesce(gi.attributes_json, '') AS github_identity_attributes_json
 LIMIT $row_limit`,
 		Params: map[string]any{
 			"tenant_id": tenantID,
@@ -182,7 +200,24 @@ func (r *deprovisionedOktaActiveGitHubRule) EvaluateRows(_ context.Context, runt
 		// stale history. Either way, this row is not evidence of current GitHub
 		// access for the deprovisioned identity, so drop it before it can pin
 		// the group open.
-		if !actedOnEdgeIsRecent(cypherRowString(row, "acted_attributes_json"), now, identityDeprovisionedOktaRecencyWindow) {
+		if !edgeIsRecent(cypherRowString(row, "acted_attributes_json"), now, identityDeprovisionedOktaRecencyWindow) {
+			continue
+		}
+		// represents_identity edges are upsert-only — graph ingest never retracts
+		// them when an Okta email/login or GitHub external_identity_nameid is
+		// renamed. After a rename, both the okta.user and the github.user remain
+		// linked to the stale identity node, and a join through that node would
+		// keep emitting (or reopening) findings even though the current Okta and
+		// GitHub identifiers no longer match. Each represents_identity edge
+		// therefore carries an `at` attribute that the latest source event
+		// re-asserted (chronological max under the neo4j store's mergeAttribute
+		// rule); rows whose okta-side OR github-side identifier link has not
+		// been re-observed inside the recency window are treated as stale and
+		// dropped, mirroring the acted_on check.
+		if !edgeIsRecent(cypherRowString(row, "okta_identity_attributes_json"), now, identityDeprovisionedOktaRecencyWindow) {
+			continue
+		}
+		if !edgeIsRecent(cypherRowString(row, "github_identity_attributes_json"), now, identityDeprovisionedOktaRecencyWindow) {
 			continue
 		}
 		// Group on the Okta/GitHub account pair only. The cypher join can walk
@@ -233,13 +268,19 @@ func (r *deprovisionedOktaActiveGitHubRule) EvaluateRows(_ context.Context, runt
 	return findings, nil
 }
 
-// actedOnEdgeIsRecent decides whether a github acted_on edge represents activity
-// inside the recency window. The edge attributes are JSON-encoded by the projector
-// (see githubAuditProjections); when the latest action was at least `window` ago
-// the user has not exercised access recently and the edge should not, on its own,
-// keep a deprovisioned-Okta finding open. Edges projected before the at-stamp
-// change have no `at` at all and are treated identically to stale history.
-func actedOnEdgeIsRecent(attributesJSON string, now time.Time, window time.Duration) bool {
+// edgeIsRecent decides whether a graph edge has been re-observed inside the
+// recency window. Edge attributes are JSON-encoded by the projector and carry
+// an `at` attribute (RFC3339 UTC) populated from each source event's OccurredAt;
+// the neo4j store's mergeAttributeValue keeps the chronological max so the field
+// reflects the latest re-assertion of the edge regardless of ingestion order.
+//
+// Edges projected before the at-stamping change have no `at` at all and are
+// treated identically to stale: we cannot prove recency, so we refuse to fire
+// on them. The same helper is used for both `acted_on` (current GitHub access)
+// and `represents_identity` (current identifier link); the rule must require
+// all three relations along the path to be recent so a pre-rename identifier
+// graph cannot keep emitting findings indefinitely.
+func edgeIsRecent(attributesJSON string, now time.Time, window time.Duration) bool {
 	trimmed := strings.TrimSpace(attributesJSON)
 	if trimmed == "" {
 		return false

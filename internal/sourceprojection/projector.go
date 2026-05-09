@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
 	"github.com/writer/cerebro/internal/ports"
 )
@@ -221,7 +223,7 @@ func githubPullRequestProjections(event *cerebrov1.EventEnvelope) ([]*ports.Proj
 		if prURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), authorURN, prURN, relationAuthored, map[string]string{"event_id": event.GetId()}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), authorURN, author)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), authorURN, author, event.GetOccurredAt())
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -331,12 +333,12 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 			}
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), actorURN, resourceURN, relationActedOn, actedAttrs))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actor)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actor, event.GetOccurredAt())
 		if !sameIdentifier(actor, actorExternalNameID) {
-			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalNameID)
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalNameID, event.GetOccurredAt())
 		}
 		if !sameIdentifier(actor, actorExternalUsername) && !sameIdentifier(actorExternalNameID, actorExternalUsername) {
-			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalUsername)
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorExternalUsername, event.GetOccurredAt())
 		}
 	}
 
@@ -353,7 +355,7 @@ func githubAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedE
 		if resourceURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), targetURN, resourceURN, relationTargeted, map[string]string{"event_id": event.GetId()}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), targetURN, targetUser)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), targetURN, targetUser, event.GetOccurredAt())
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -532,9 +534,9 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), userURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, event.GetOccurredAt())
 		if !sameIdentifier(email, login) {
-			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, login)
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, login, event.GetOccurredAt())
 		}
 	}
 
@@ -647,7 +649,7 @@ func oktaAuditProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnt
 				"event_type": strings.TrimSpace(attributes["event_type"]),
 			}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorAlternateID)
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), actorURN, actorAlternateID, event.GetOccurredAt())
 	}
 
 	projectedEntities, projectedLinks := entitiesAndLinks(entities, links)
@@ -712,12 +714,12 @@ func addLink(links map[string]*ports.ProjectedLink, link *ports.ProjectedLink) {
 	links[key] = link
 }
 
-func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, eventID string, fromURN string, value string) {
+func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[string]*ports.ProjectedLink, tenantID string, sourceID string, eventID string, fromURN string, value string, occurredAt *timestamppb.Timestamp) {
 	identifierURN, identifierType, label := identifierURN(tenantID, value)
 	if identifierURN == "" {
 		return
 	}
-	evidenceAttributes := identifierEvidenceAttributes(value, identifierType, label, eventID)
+	evidenceAttributes := identifierEvidenceAttributes(value, identifierType, label, eventID, occurredAt)
 	canonicalIdentityURN, canonicalIdentityType := canonicalIdentityURN(tenantID, value)
 	if canonicalIdentityURN != "" {
 		addEntity(entities, &ports.ProjectedEntity{
@@ -744,7 +746,7 @@ func addIdentifierLink(entities map[string]*ports.ProjectedEntity, links map[str
 	}
 }
 
-func identifierEvidenceAttributes(rawValue string, identifierType string, normalizedValue string, eventID string) map[string]string {
+func identifierEvidenceAttributes(rawValue string, identifierType string, normalizedValue string, eventID string, occurredAt *timestamppb.Timestamp) map[string]string {
 	matchType := "login"
 	confidence := "0.60"
 	value := strings.TrimSpace(rawValue)
@@ -766,6 +768,17 @@ func identifierEvidenceAttributes(rawValue string, identifierType string, normal
 	}
 	if normalizedEventID := strings.TrimSpace(eventID); normalizedEventID != "" {
 		attributes["source_event_id"] = normalizedEventID
+	}
+	// `at` carries the most recent OccurredAt that re-asserted this identifier
+	// link. Source projection is upsert-only and never retracts old edges, so an
+	// Okta email/login or GitHub external_identity_nameid that has been renamed
+	// would otherwise leave the stale represents_identity edge intact forever
+	// and let identity-aware graph rules keep matching through it. The
+	// chronological-max merge for `at` (see neo4j store mergeAttributeValue)
+	// means rules can scope joins to recently re-observed links and the stale
+	// edge naturally ages out of the window once it stops being refreshed.
+	if occurredAt != nil && occurredAt.IsValid() {
+		attributes["at"] = occurredAt.AsTime().UTC().Format(time.RFC3339)
 	}
 	return attributes
 }

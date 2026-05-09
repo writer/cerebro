@@ -459,6 +459,43 @@ func TestProjectGitHubAuditStampsAtOnActedOn(t *testing.T) {
 	}
 }
 
+// represents_identity edges must also carry the OccurredAt as `at` so identity-
+// aware rules can age out stale identifier links left behind by upsert-only
+// graph ingest. The deprovisioned-Okta-active-in-GitHub rule joins through both
+// the okta-side and github-side represents_identity edges; if either lacks `at`,
+// the rule cannot prove the identifier link is current and refuses to fire.
+func TestProjectGitHubAuditStampsAtOnRepresentsIdentity(t *testing.T) {
+	graph := &projectionRecorder{}
+	occurred := time.Date(2025, time.March, 4, 11, 15, 0, 0, time.UTC)
+	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "github-audit-represents-identity-at",
+		TenantId:   "writer",
+		SourceId:   "github",
+		Kind:       "github.audit",
+		OccurredAt: timestamppb.New(occurred),
+		Attributes: map[string]string{
+			"actor":         "alice",
+			"action":        "git.clone",
+			"org":           "writer",
+			"repo":          "writer/cerebro",
+			"resource_id":   "writer/cerebro",
+			"resource_type": "repository",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	actorURN := "urn:cerebro:writer:github_user:alice"
+	identityURN := "urn:cerebro:writer:identity:login:alice"
+	link, ok := graph.links[actorURN+"|"+relationRepresentsIdentity+"|"+identityURN]
+	if !ok {
+		t.Fatalf("represents_identity link missing for %s -> %s: %#v", actorURN, identityURN, graph.links)
+	}
+	if got, want := link.Attributes["at"], occurred.Format(time.RFC3339); got != want {
+		t.Fatalf("represents_identity attributes[at] = %q, want %q (rename-stale join filter depends on this)", got, want)
+	}
+}
+
 // TestProjectGitHubAuditOmitsAtWhenOccurredAtMissing covers the legacy contract:
 // historical events backfilled without OccurredAt must not pollute the edge with
 // a placeholder timestamp. The rule reads a missing `at` as "I cannot prove this
