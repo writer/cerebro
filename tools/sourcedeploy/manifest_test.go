@@ -66,6 +66,49 @@ runtimes:
   - localId: live
     config: {family: a}
 `,
+		"non-env-var secret key": `
+sourceId: example
+secretKeys:
+  - BAD-SECRET
+runtimes:
+  - localId: live
+    config: {family: a}
+`,
+		"unknown top-level field": `
+sourceId: example
+schedules: []
+runtimes:
+  - localId: live
+    config: {family: a}
+`,
+		"unknown runtime field": `
+sourceId: example
+runtimes:
+  - localId: live
+    family: audit
+    config: {family: a}
+`,
+		"undeclared env ref": `
+sourceId: example
+secretKeys:
+  - EXAMPLE_API_TOKEN
+runtimes:
+  - localId: live
+    config:
+      domain: env:EXAMPLE_DOMAIN
+      family: a
+      token: env:EXAMPLE_API_TOKEN
+`,
+		"invalid env ref": `
+sourceId: example
+secretKeys:
+  - EXAMPLE_API_TOKEN
+runtimes:
+  - localId: live
+    config:
+      family: a
+      token: env:example_api_token
+`,
 		"runtime config empty": `
 sourceId: example
 runtimes:
@@ -128,12 +171,37 @@ func TestDiscoverWalksSourcesRoot(t *testing.T) {
 	}
 }
 
+func TestDiscoverAllowsCatalogIDDifferentFromDirectory(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	dir := filepath.Join(root, "googleworkspace")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "catalog.yaml"), []byte("id: google_workspace\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(catalog): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "deploy.yaml"), []byte("sourceId: google_workspace\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(deploy): %v", err)
+	}
+	manifests, err := Discover(root)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if len(manifests) != 1 || manifests[0].SourceID != "google_workspace" {
+		t.Fatalf("Discover() = %#v, want google_workspace", manifests)
+	}
+}
+
 func TestDiscoverRejectsMisplacedSource(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	dir := filepath.Join(root, "alpha")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "catalog.yaml"), []byte("id: alpha\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(catalog): %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "deploy.yaml"), []byte("sourceId: beta\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)

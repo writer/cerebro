@@ -21,6 +21,7 @@
 package sourcedeploy
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -33,8 +34,8 @@ import (
 )
 
 // ErrSourceIDMismatch is returned by Discover when a deploy manifest declares
-// a sourceId that does not match the directory name it lives under.
-var ErrSourceIDMismatch = errors.New("deploy manifest sourceId does not match sources directory")
+// a sourceId that does not match the source catalog ID it lives next to.
+var ErrSourceIDMismatch = errors.New("deploy manifest sourceId does not match source catalog")
 
 // Manifest is the declarative deploy contract that lives next to each
 // source's catalog. All fields are optional except SourceID.
@@ -49,13 +50,14 @@ type Manifest struct {
 // `<tenant>-<sourceId>-<localId>`.
 type RuntimeManifest struct {
 	LocalID string            `yaml:"localId"`
-	Family  string            `yaml:"family,omitempty"`
 	Config  map[string]string `yaml:"config"`
 }
 
 var (
-	idPattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*[a-z0-9]$`)
-	envRefRegex = regexp.MustCompile(`^env:[A-Z][A-Z0-9_]*$`)
+	sourceIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*[a-z0-9]$`)
+	idPattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*[a-z0-9]$`)
+	envVarRegex     = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+	envRefRegex     = regexp.MustCompile(`^env:[A-Z][A-Z0-9_]*$`)
 )
 
 // Load reads a single manifest file from disk.
@@ -70,7 +72,9 @@ func Load(path string) (*Manifest, error) {
 // Parse decodes a manifest from raw bytes and runs validation.
 func Parse(data []byte, label string) (*Manifest, error) {
 	var manifest Manifest
-	if err := yaml.Unmarshal(data, &manifest); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&manifest); err != nil {
 		return nil, fmt.Errorf("decode deploy manifest %s: %w", label, err)
 	}
 	if err := manifest.Validate(); err != nil {
@@ -100,10 +104,14 @@ func Discover(sourcesRoot string) ([]Manifest, error) {
 		if err != nil {
 			return nil, err
 		}
-		if manifest.SourceID != entry.Name() {
+		catalogID, err := sourceCatalogID(sourcesRoot, entry.Name())
+		if err != nil {
+			return nil, err
+		}
+		if manifest.SourceID != catalogID {
 			return nil, fmt.Errorf(
-				"%w: %s declares sourceId %q but lives under sources/%s",
-				ErrSourceIDMismatch, path, manifest.SourceID, entry.Name(),
+				"%w: %s declares sourceId %q but catalog declares %q",
+				ErrSourceIDMismatch, path, manifest.SourceID, catalogID,
 			)
 		}
 		manifests = append(manifests, *manifest)
@@ -114,22 +122,46 @@ func Discover(sourcesRoot string) ([]Manifest, error) {
 	return manifests, nil
 }
 
+type sourceCatalog struct {
+	ID string `yaml:"id"`
+}
+
+func sourceCatalogID(sourcesRoot string, sourceDir string) (string, error) {
+	path := filepath.Join(sourcesRoot, sourceDir, "catalog.yaml")
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return sourceDir, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read source catalog %s: %w", path, err)
+	}
+	var catalog sourceCatalog
+	if err := yaml.Unmarshal(data, &catalog); err != nil {
+		return "", fmt.Errorf("decode source catalog %s: %w", path, err)
+	}
+	if strings.TrimSpace(catalog.ID) == "" {
+		return sourceDir, nil
+	}
+	return strings.TrimSpace(catalog.ID), nil
+}
+
 // Validate enforces structural rules the renderer relies on.
 func (m *Manifest) Validate() error {
-	if !idPattern.MatchString(m.SourceID) {
-		return fmt.Errorf("sourceId %q must be lowercase kebab-case", m.SourceID)
+	if !sourceIDPattern.MatchString(m.SourceID) {
+		return fmt.Errorf("sourceId %q must be lowercase kebab/snake-case", m.SourceID)
 	}
 	if err := validateSecretKeys(m.SecretKeys); err != nil {
 		return err
 	}
-	if _, err := validateRuntimes(m.Runtimes); err != nil {
+	if _, err := validateRuntimes(m.Runtimes, m.SecretKeys); err != nil {
 		return err
 	}
 	return nil
 }
 
-func validateRuntimes(list []RuntimeManifest) (map[string]struct{}, error) {
+func validateRuntimes(list []RuntimeManifest, secretKeys []string) (map[string]struct{}, error) {
 	runtimes := map[string]struct{}{}
+	declaredSecrets := stringSet(secretKeys)
 	for _, runtime := range list {
 		if !idPattern.MatchString(runtime.LocalID) {
 			return nil, fmt.Errorf("runtime localId %q must be lowercase kebab-case", runtime.LocalID)
@@ -141,7 +173,7 @@ func validateRuntimes(list []RuntimeManifest) (map[string]struct{}, error) {
 		if len(runtime.Config) == 0 {
 			return nil, fmt.Errorf("runtime %q must declare at least one config entry", runtime.LocalID)
 		}
-		if err := validateRuntimeConfig(runtime); err != nil {
+		if err := validateRuntimeConfig(runtime, declaredSecrets); err != nil {
 			return nil, err
 		}
 	}
@@ -155,7 +187,7 @@ func validateSecretKeys(keys []string) error {
 		if trimmed == "" {
 			return fmt.Errorf("secretKeys entries must be non-empty")
 		}
-		if trimmed != strings.ToUpper(trimmed) {
+		if !envVarRegex.MatchString(trimmed) {
 			return fmt.Errorf("secretKeys entry %q must be SCREAMING_SNAKE_CASE", key)
 		}
 		if _, dup := seen[trimmed]; dup {
@@ -166,13 +198,23 @@ func validateSecretKeys(keys []string) error {
 	return nil
 }
 
-func validateRuntimeConfig(runtime RuntimeManifest) error {
+func validateRuntimeConfig(runtime RuntimeManifest, declaredSecrets map[string]struct{}) error {
 	for k, v := range runtime.Config {
 		if strings.TrimSpace(k) == "" {
 			return fmt.Errorf("runtime %q config has an empty key", runtime.LocalID)
 		}
+		trimmedValue := strings.TrimSpace(v)
+		if strings.HasPrefix(trimmedValue, "env:") {
+			if !envRefRegex.MatchString(trimmedValue) {
+				return fmt.Errorf("runtime %q config %q has invalid env reference %q", runtime.LocalID, k, v)
+			}
+			secretKey := strings.TrimPrefix(trimmedValue, "env:")
+			if _, ok := declaredSecrets[secretKey]; !ok {
+				return fmt.Errorf("runtime %q config %q references undeclared secretKey %q", runtime.LocalID, k, secretKey)
+			}
+		}
 		if isSensitiveConfigKey(k) {
-			if !envRefRegex.MatchString(strings.TrimSpace(v)) {
+			if !envRefRegex.MatchString(trimmedValue) {
 				return fmt.Errorf(
 					"runtime %q config %q is sensitive and must use env:VAR (got %q)",
 					runtime.LocalID, k, v,
@@ -200,4 +242,12 @@ func isSensitiveConfigKey(key string) bool {
 		return true
 	}
 	return false
+}
+
+func stringSet(values []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		out[strings.TrimSpace(value)] = struct{}{}
+	}
+	return out
 }
