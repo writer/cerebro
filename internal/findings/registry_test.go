@@ -123,4 +123,15 @@ func TestBuiltinRulePacksFlattenIntoCatalog(t *testing.T) {
 	if _, ok := registry.Get(dataSensitiveAssetRiskRuleID); !ok {
 		t.Fatalf("registry missing %q", dataSensitiveAssetRiskRuleID)
 	}
+	// Graph rules must be in the catalog so the orchestrator's
+	// graph-rule evaluator picks them up when okta-user / github-audit
+	// runtimes complete a sync. A rule that ships in code but never
+	// registers is a silent regression: the cypher never runs and no
+	// finding is emitted, with no observable error.
+	if _, ok := registry.Get(identityDeprovisionedOktaActiveGitHubRuleID); !ok {
+		t.Fatalf("registry missing %q", identityDeprovisionedOktaActiveGitHubRuleID)
+	}
+	if _, ok := registry.Get(identityGitHubActiveWithoutOktaLinkRuleID); !ok {
+		t.Fatalf("registry missing %q", identityGitHubActiveWithoutOktaLinkRuleID)
+	}
 }

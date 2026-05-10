@@ -43,6 +43,7 @@ func builtinRulePacks() []RulePack {
 			Rules: append([]Rule{
 				newOktaPolicyRuleLifecycleTamperingRule(),
 				newDeprovisionedOktaActiveGitHubRule(),
+				newGitHubActiveWithoutOktaLinkRule(),
 			}, newIdentitySignalRules()...),
 		},
 		{
