@@ -135,11 +135,12 @@ func (r *githubActiveWithoutOktaLinkRule) Evaluate(_ context.Context, _ *cerebro
 // the answer to "is this GitHub identity bridged to any Okta user?" is the
 // same for any github runtime in the tenant.
 //
-// The cypher OPTIONAL MATCHes a candidate bridge to any okta.user in the
-// same tenant and returns the bridge edges' attributes alongside the github
-// user; EvaluateRows then applies the bridge-recency check in Go. The
-// match-type filter (email-only) used by the deprovisioned-okta-active rule
-// is intentionally NOT applied here: this rule asks "is there *any* fresh
+// The cypher returns ONE row per github user. Both the acted_on targets and
+// the candidate represents_identity bridges are collapsed into list-typed
+// columns via collect(). EvaluateRows then applies the bridge-recency check
+// and the acted_on recency filter on the per-row lists. The match-type
+// filter (email-only) used by the deprovisioned-okta-active rule is
+// intentionally NOT applied here: this rule asks "is there *any* fresh
 // identity bridge?" and surfacing a github user that only shares a username
 // with an okta user is safer to suppress than a coincidental username
 // collision is to report as HIGH. A tighter rule would risk flooding the
@@ -153,6 +154,15 @@ func (r *githubActiveWithoutOktaLinkRule) Evaluate(_ context.Context, _ *cerebro
 // projector therefore stamps every represents_identity edge with an `at`
 // attribute, and EvaluateRows rejects bridges whose `at` is outside the
 // recency window so a stale bridge cannot mask current shadow access.
+//
+// One-row-per-github-user is also a hard requirement for the row limit: a
+// naive (g, target) × candidate-bridge fan-out can consume the entire
+// $row_limit budget on a single prolific account or a user with multiple
+// historical email/login renames, pushing every other shadow github user
+// out of the result set so their findings silently never emit. The graph
+// store does not page truncated reads, only flags them, so collapsing the
+// fan-out at the cypher layer is the only safe way to keep the rule
+// scaling beyond the few-hundred-account regime.
 func (r *githubActiveWithoutOktaLinkRule) QueryFor(runtime *cerebrov1.SourceRuntime) ports.CypherQueryRequest {
 	if runtime == nil {
 		return ports.CypherQueryRequest{}
@@ -162,26 +172,35 @@ func (r *githubActiveWithoutOktaLinkRule) QueryFor(runtime *cerebrov1.SourceRunt
 		return ports.CypherQueryRequest{}
 	}
 	return ports.CypherQueryRequest{
-		// The cypher returns one row per (github_user, target,
-		// optional candidate okta bridge). EvaluateRows applies the
-		// recency filter on both acted_on and the bridge edges, the
-		// bot-account filter, and the per-github-user grouping; we
-		// deliberately do not push the recency check into Cypher so
-		// the filter lives in one place that has unit-test coverage
-		// (the attributes_json fields are opaque on Neo4j).
+		// One row per github user. `targets` carries the collapsed
+		// list of acted_on targets (with the per-edge attributes
+		// JSON for the recency check), and `bridges` carries the
+		// collapsed list of candidate represents_identity bridges,
+		// each preserving the pairing between the github-side and
+		// okta-side edge attributes. EvaluateRows iterates both
+		// lists; we deliberately keep the recency check in Go so
+		// the at-attribute parser lives in one place with unit-test
+		// coverage (the attributes_json values are opaque on Neo4j
+		// pre-5.x without apoc).
 		Query: `MATCH (g:Entity {entity_type: 'github.user', tenant_id: $tenant_id})
-       -[acted:RELATION {relation: 'acted_on'}]->(target:Entity)
+      -[acted:RELATION {relation: 'acted_on'}]->(target:Entity)
+WITH g, collect(DISTINCT {
+       urn: target.urn,
+       entity_type: coalesce(target.entity_type, ''),
+       label: coalesce(target.label, ''),
+       acted_attributes_json: coalesce(acted.attributes_json, '')
+     }) AS targets
 OPTIONAL MATCH (g)-[gi:RELATION {relation: 'represents_identity'}]->(:Entity)
               <-[oi:RELATION {relation: 'represents_identity'}]-(:Entity {entity_type: 'okta.user', tenant_id: $tenant_id})
+WITH g, targets, collect({
+       github_identity_attributes_json: coalesce(gi.attributes_json, ''),
+       okta_identity_attributes_json:   coalesce(oi.attributes_json, '')
+     }) AS bridges
 RETURN g.urn AS github_user_urn,
        g.label AS github_user_label,
        coalesce(g.attributes_json, '') AS github_attributes_json,
-       target.urn AS target_urn,
-       target.entity_type AS target_entity_type,
-       target.label AS target_label,
-       coalesce(acted.attributes_json, '') AS acted_attributes_json,
-       coalesce(gi.attributes_json, '') AS github_identity_attributes_json,
-       coalesce(oi.attributes_json, '') AS okta_identity_attributes_json
+       targets,
+       bridges
 LIMIT $row_limit`,
 		Params: map[string]any{
 			"tenant_id": tenantID,
@@ -217,15 +236,12 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		if isGitHubBotLogin(githubUserLabel) {
 			continue
 		}
-		// Each row may carry an OPTIONAL MATCH bridge that proves this
-		// github user IS linked to an okta user. We have to evaluate
-		// the bridge BEFORE deciding whether the row's target counts,
-		// because a fresh bridge on any row for this github user
-		// suppresses the entire group regardless of which target row
-		// happened to be observed first. Otherwise a row with no
-		// bridge and a fresh acted_on could create the group, the
-		// group would emit, and a later row carrying the actual fresh
-		// bridge would arrive too late to suppress.
+		// The cypher emits one row per github user; rows for the same
+		// user across multiple ExecuteReadCypher calls are an unusual
+		// case (it can happen if the Go-side caller composes more than
+		// one read), but we still merge defensively into the same
+		// group so the recency contract holds regardless of arrival
+		// shape.
 		group, ok := groups[githubUserURN]
 		if !ok {
 			group = &githubActiveWithoutOktaGroup{
@@ -245,37 +261,47 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		// longer matches. The projector therefore stamps every
 		// represents_identity edge with an `at` attribute that the latest
 		// source event re-asserted (chronological max under the neo4j
-		// store's mergeAttribute rule); rows whose okta-side AND github-side
-		// identifier link have both been re-observed inside the recency
-		// window are evidence of a current bridge, and we suppress the
-		// group on them. A row with no bridge at all (OPTIONAL MATCH miss)
-		// has empty attributes JSON on both sides and the recency check
-		// returns false, so it cannot suppress.
-		githubIdentityJSON := cypherRowString(row, "github_identity_attributes_json")
-		oktaIdentityJSON := cypherRowString(row, "okta_identity_attributes_json")
-		if edgeIsRecent(githubIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) &&
-			edgeIsRecent(oktaIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) {
-			group.hasFreshBridge = true
+		// store's mergeAttribute rule); a bridge whose okta-side AND
+		// github-side identifier link have BOTH been re-observed inside
+		// the recency window is evidence of a current bridge, and we
+		// suppress the group on it.
+		//
+		// We must check the pairing on the SAME bridge candidate: a
+		// fresh github-side edge on bridge A combined with a fresh
+		// okta-side edge on bridge B (a different identity node) is two
+		// stale renamed bridges, not one current bridge.
+		for _, bridge := range cypherRowList(row, "bridges") {
+			githubIdentityJSON := cypherListMapString(bridge, "github_identity_attributes_json")
+			oktaIdentityJSON := cypherListMapString(bridge, "okta_identity_attributes_json")
+			if edgeIsRecent(githubIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) &&
+				edgeIsRecent(oktaIdentityJSON, now, identityGitHubActiveWithoutOktaRecencyWindow) {
+				group.hasFreshBridge = true
+				break
+			}
 		}
 		// `acted_on` edges projected before the at-stamp change have no
 		// `at`, and any edge whose latest action is older than the recency
-		// window is stale history. Either way, this row is not evidence of
-		// current GitHub access for the unlinked identity, so do not record
-		// it as a target.
-		if !edgeIsRecent(cypherRowString(row, "acted_attributes_json"), now, identityGitHubActiveWithoutOktaRecencyWindow) {
-			continue
-		}
-		targetURN := cypherRowString(row, "target_urn")
-		if targetURN == "" {
-			continue
-		}
-		if _, exists := group.targets[targetURN]; exists {
-			continue
-		}
-		group.targets[targetURN] = githubActiveWithoutOktaTarget{
-			urn:        targetURN,
-			entityType: cypherRowString(row, "target_entity_type"),
-			label:      cypherRowString(row, "target_label"),
+		// window is stale history. Either way, that target is not evidence
+		// of current GitHub access for the unlinked identity, so we skip
+		// it. The targets list is collected from cypher; iterating it here
+		// gives one O(n) pass with the same semantics as the previous
+		// row-per-target form.
+		for _, target := range cypherRowList(row, "targets") {
+			if !edgeIsRecent(cypherListMapString(target, "acted_attributes_json"), now, identityGitHubActiveWithoutOktaRecencyWindow) {
+				continue
+			}
+			targetURN := strings.TrimSpace(cypherListMapString(target, "urn"))
+			if targetURN == "" {
+				continue
+			}
+			if _, exists := group.targets[targetURN]; exists {
+				continue
+			}
+			group.targets[targetURN] = githubActiveWithoutOktaTarget{
+				urn:        targetURN,
+				entityType: cypherListMapString(target, "entity_type"),
+				label:      cypherListMapString(target, "label"),
+			}
 		}
 	}
 	sort.Strings(keys)
@@ -296,6 +322,47 @@ func (r *githubActiveWithoutOktaLinkRule) EvaluateRows(_ context.Context, runtim
 		findings = append(findings, r.buildFinding(runtime, tenantID, group, now))
 	}
 	return findings, nil
+}
+
+// cypherRowList extracts a list-typed cypher result column. The Neo4j Go
+// driver returns `collect(...)` results as `[]any` whose elements are
+// scalars, maps, or nested lists depending on the projected expression.
+// Returns nil for missing or non-list columns so callers can range over the
+// result safely without nil checks.
+func cypherRowList(row ports.CypherRow, key string) []any {
+	if row.Values == nil {
+		return nil
+	}
+	value, ok := row.Values[key]
+	if !ok || value == nil {
+		return nil
+	}
+	if list, ok := value.([]any); ok {
+		return list
+	}
+	return nil
+}
+
+// cypherListMapString reads a string field from a map literal element of a
+// collected cypher list. Map literal projections (`collect({a: ..., b: ...})`)
+// come back as `map[string]any` from the Neo4j Go driver. The trim mirrors
+// cypherRowString so empty / whitespace-only attributes_json values feed
+// edgeIsRecent the way the row-shaped path used to.
+func cypherListMapString(item any, key string) string {
+	m, ok := item.(map[string]any)
+	if !ok {
+		return ""
+	}
+	value, ok := m[key]
+	if !ok || value == nil {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", typed))
+	}
 }
 
 // isGitHubBotLogin recognises the subset of GitHub login conventions that

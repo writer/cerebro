@@ -49,6 +49,22 @@ func TestGitHubActiveWithoutOktaLinkRuleQueryScopesByTenant(t *testing.T) {
 	if !strings.Contains(request.Query, "okta.user") {
 		t.Fatalf("Query missing okta.user entity type predicate in the bridge OPTIONAL MATCH:\n%s", request.Query)
 	}
+	// Both target and bridge fan-outs MUST be collapsed via collect()
+	// before LIMIT $row_limit clamps the result set. Without the
+	// collapse, a single prolific shadow account or a user with several
+	// renamed identity bridges can consume the entire row budget and
+	// push every other shadow github user out of the result set; the
+	// graph store does not page truncated reads, so the dropped users
+	// would silently never produce findings.
+	if !strings.Contains(request.Query, "collect(") {
+		t.Fatalf("Query missing collect() aggregation; targets and bridges must be collapsed before LIMIT or one prolific user can starve the rest. Query:\n%s", request.Query)
+	}
+	if !strings.Contains(request.Query, "AS targets") {
+		t.Fatalf("Query missing `AS targets` projection (collapsed target list); EvaluateRows iterates the per-row targets list:\n%s", request.Query)
+	}
+	if !strings.Contains(request.Query, "AS bridges") {
+		t.Fatalf("Query missing `AS bridges` projection (collapsed bridge list); EvaluateRows iterates the per-row bridges list:\n%s", request.Query)
+	}
 	if request.RowLimit != identityGitHubActiveWithoutOktaQueryRowLimit {
 		t.Fatalf("RowLimit = %d, want %d", request.RowLimit, identityGitHubActiveWithoutOktaQueryRowLimit)
 	}
@@ -235,27 +251,76 @@ func githubActiveWithoutOktaRuleActedAttrs(at time.Time) string {
 	return string(encoded)
 }
 
+// githubActiveWithoutOktaRuleRow builds the simple single-target single-bridge
+// row used by most tests. The cypher returns one row per github user with
+// `targets` and `bridges` as collected lists; this helper wraps the single
+// scalar values into one-element lists so existing test scenarios (single
+// target, no/single bridge) still exercise the production decode path.
 func githubActiveWithoutOktaRuleRow(actedAttributesJSON, githubUserURN, githubUserLabel, targetURN string) ports.CypherRow {
 	return githubActiveWithoutOktaRuleRowWithBridge(actedAttributesJSON, githubUserURN, githubUserLabel, targetURN, "", "")
 }
 
 // githubActiveWithoutOktaRuleRowWithBridge is the full row builder; tests
 // that exercise the bridge-recency contract use it to inject the
-// represents_identity edge attributes_json on each side. The default
-// helper above passes empty strings on both sides which is exactly what
-// the cypher's OPTIONAL MATCH miss surfaces in production via coalesce(),
-// so existing "no bridge" tests still hit the production code path.
+// represents_identity edge attributes_json on each side. Empty bridge JSON
+// on both sides reproduces the single-element list cypher emits when the
+// OPTIONAL MATCH misses (every coalesce(...) returns ”).
 func githubActiveWithoutOktaRuleRowWithBridge(actedAttributesJSON, githubUserURN, githubUserLabel, targetURN, githubIdentityJSON, oktaIdentityJSON string) ports.CypherRow {
+	return githubActiveWithoutOktaRuleRowFull(
+		githubUserURN,
+		githubUserLabel,
+		[]githubActiveWithoutOktaTestTarget{{
+			urn:                 targetURN,
+			entityType:          "github.repo",
+			label:               "writer/cerebro",
+			actedAttributesJSON: actedAttributesJSON,
+		}},
+		[]githubActiveWithoutOktaTestBridge{{
+			githubIdentityAttributesJSON: githubIdentityJSON,
+			oktaIdentityAttributesJSON:   oktaIdentityJSON,
+		}},
+	)
+}
+
+type githubActiveWithoutOktaTestTarget struct {
+	urn                 string
+	entityType          string
+	label               string
+	actedAttributesJSON string
+}
+
+type githubActiveWithoutOktaTestBridge struct {
+	githubIdentityAttributesJSON string
+	oktaIdentityAttributesJSON   string
+}
+
+// githubActiveWithoutOktaRuleRowFull mirrors what the production cypher
+// returns: one row per github user, with `targets` and `bridges` as
+// `[]any` whose elements are `map[string]any` (the Neo4j Go driver shape
+// for collected map literals).
+func githubActiveWithoutOktaRuleRowFull(githubUserURN, githubUserLabel string, targets []githubActiveWithoutOktaTestTarget, bridges []githubActiveWithoutOktaTestBridge) ports.CypherRow {
+	targetList := make([]any, 0, len(targets))
+	for _, target := range targets {
+		targetList = append(targetList, map[string]any{
+			"urn":                   target.urn,
+			"entity_type":           target.entityType,
+			"label":                 target.label,
+			"acted_attributes_json": target.actedAttributesJSON,
+		})
+	}
+	bridgeList := make([]any, 0, len(bridges))
+	for _, bridge := range bridges {
+		bridgeList = append(bridgeList, map[string]any{
+			"github_identity_attributes_json": bridge.githubIdentityAttributesJSON,
+			"okta_identity_attributes_json":   bridge.oktaIdentityAttributesJSON,
+		})
+	}
 	return ports.CypherRow{Values: map[string]any{
-		"github_user_urn":                 githubUserURN,
-		"github_user_label":               githubUserLabel,
-		"github_attributes_json":          `{"login":"` + githubUserLabel + `"}`,
-		"target_urn":                      targetURN,
-		"target_entity_type":              "github.repo",
-		"target_label":                    "writer/cerebro",
-		"acted_attributes_json":           actedAttributesJSON,
-		"github_identity_attributes_json": githubIdentityJSON,
-		"okta_identity_attributes_json":   oktaIdentityJSON,
+		"github_user_urn":        githubUserURN,
+		"github_user_label":      githubUserLabel,
+		"github_attributes_json": `{"login":"` + githubUserLabel + `"}`,
+		"targets":                targetList,
+		"bridges":                bridgeList,
 	}}
 }
 
@@ -677,6 +742,155 @@ func TestGitHubActiveWithoutOktaLinkRuleFreshBridgeArrivesAfterNoBridgeRow(t *te
 			}
 			if len(findings) != 0 {
 				t.Fatalf("EvaluateRows() returned %d findings, want 0 for %q; ANY fresh bridge across rows for the same github user must suppress regardless of arrival order", len(findings), name)
+			}
+		})
+	}
+}
+
+// The cypher emits ONE row per github user with the targets list collected
+// inside it. EvaluateRows must scan the per-row targets list so a single
+// shadow account that has touched many resources still produces ONE finding
+// with the full target list as telemetry. The list-shaped fan-out is what
+// makes the 500-row LIMIT scale to 500 distinct shadow users instead of
+// being consumed by one prolific account's targets and bridges.
+func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsConsumesTargetsList(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	freshAt := time.Now().UTC().Add(-1 * time.Hour)
+	row := githubActiveWithoutOktaRuleRowFull(
+		"urn:cerebro:writer:github.user:alice",
+		"alice",
+		[]githubActiveWithoutOktaTestTarget{
+			{urn: "urn:cerebro:writer:github_repo:writer/cerebro", entityType: "github.repo", label: "writer/cerebro", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt)},
+			{urn: "urn:cerebro:writer:github_repo:writer/palmyra", entityType: "github.repo", label: "writer/palmyra", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt)},
+			{urn: "urn:cerebro:writer:github_repo:writer/some-other-repo", entityType: "github.repo", label: "writer/some-other-repo", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt)},
+		},
+		nil,
+	)
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if got := len(findings); got != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 1; one row per github user with N targets must collapse to ONE finding", got)
+	}
+	finding := findings[0]
+	if got, want := finding.Attributes["target_count"], "3"; got != want {
+		t.Fatalf("target_count = %q, want %q", got, want)
+	}
+	if got, want := finding.Attributes["target_urns"], "urn:cerebro:writer:github_repo:writer/cerebro,urn:cerebro:writer:github_repo:writer/palmyra,urn:cerebro:writer:github_repo:writer/some-other-repo"; got != want {
+		t.Fatalf("target_urns = %q, want %q (full target list must be retained as telemetry)", got, want)
+	}
+}
+
+// Per-target acted_on recency is enforced inside the targets list scan: a
+// row whose targets list mixes fresh and stale entries must only retain
+// the fresh ones. Stale targets are not evidence of current access and
+// must not pin the finding open.
+func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsFiltersStaleTargetsInList(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	now := time.Now().UTC()
+	row := githubActiveWithoutOktaRuleRowFull(
+		"urn:cerebro:writer:github.user:alice",
+		"alice",
+		[]githubActiveWithoutOktaTestTarget{
+			{urn: "urn:cerebro:writer:github_repo:writer/fresh", entityType: "github.repo", label: "writer/fresh", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(now.Add(-1 * time.Hour))},
+			{urn: "urn:cerebro:writer:github_repo:writer/stale", entityType: "github.repo", label: "writer/stale", actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(now.Add(-90 * 24 * time.Hour))},
+			{urn: "urn:cerebro:writer:github_repo:writer/missing-at", entityType: "github.repo", label: "writer/missing-at", actedAttributesJSON: `{"action":"git.clone"}`},
+		},
+		nil,
+	)
+	findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+	if err != nil {
+		t.Fatalf("EvaluateRows() error = %v", err)
+	}
+	if got := len(findings); got != 1 {
+		t.Fatalf("EvaluateRows() returned %d findings, want 1", got)
+	}
+	finding := findings[0]
+	if got, want := finding.Attributes["target_count"], "1"; got != want {
+		t.Fatalf("target_count = %q, want %q (only the fresh target should remain)", got, want)
+	}
+	if got, want := finding.Attributes["target_urns"], "urn:cerebro:writer:github_repo:writer/fresh"; got != want {
+		t.Fatalf("target_urns = %q, want %q", got, want)
+	}
+}
+
+// The bridges list can carry multiple candidate bridges (e.g. one per
+// historical email/login). Suppression must trip on ANY bridge whose
+// github-side AND okta-side identifier edges have BOTH been re-asserted
+// inside the recency window; stale bridges in the list must not contribute
+// proof, and a fresh github-side edge on bridge A combined with a fresh
+// okta-side edge on bridge B (different identity nodes) is two stale
+// renamed bridges, NOT one current bridge.
+func TestGitHubActiveWithoutOktaLinkRuleEvaluateRowsBridgesListPairing(t *testing.T) {
+	rule := newGitHubActiveWithoutOktaLinkRule().(*githubActiveWithoutOktaLinkRule)
+	runtime := &cerebrov1.SourceRuntime{Id: "writer-github-audit", SourceId: "github", TenantId: "writer"}
+	now := time.Now().UTC()
+	freshAt := now.Add(-1 * time.Hour)
+	staleAt := now.Add(-90 * 24 * time.Hour)
+	cases := map[string]struct {
+		bridges      []githubActiveWithoutOktaTestBridge
+		wantSuppress bool
+	}{
+		"only stale bridges in list": {
+			bridges: []githubActiveWithoutOktaTestBridge{
+				{githubActiveWithoutOktaRuleBridgeAttrs(staleAt), githubActiveWithoutOktaRuleBridgeAttrs(staleAt)},
+				{githubActiveWithoutOktaRuleBridgeAttrs(staleAt), githubActiveWithoutOktaRuleBridgeAttrs(staleAt)},
+			},
+			wantSuppress: false,
+		},
+		"one fresh-both-sides bridge among stale": {
+			bridges: []githubActiveWithoutOktaTestBridge{
+				{githubActiveWithoutOktaRuleBridgeAttrs(staleAt), githubActiveWithoutOktaRuleBridgeAttrs(staleAt)},
+				{githubActiveWithoutOktaRuleBridgeAttrs(freshAt), githubActiveWithoutOktaRuleBridgeAttrs(freshAt)},
+				{githubActiveWithoutOktaRuleBridgeAttrs(staleAt), githubActiveWithoutOktaRuleBridgeAttrs(staleAt)},
+			},
+			wantSuppress: true,
+		},
+		"only one-sided fresh bridges in list": {
+			bridges: []githubActiveWithoutOktaTestBridge{
+				{githubActiveWithoutOktaRuleBridgeAttrs(freshAt), githubActiveWithoutOktaRuleBridgeAttrs(staleAt)},
+				{githubActiveWithoutOktaRuleBridgeAttrs(staleAt), githubActiveWithoutOktaRuleBridgeAttrs(freshAt)},
+			},
+			wantSuppress: false,
+		},
+		"empty bridges list (OPTIONAL MATCH miss)": {
+			bridges:      nil,
+			wantSuppress: false,
+		},
+		"single OPTIONAL MATCH miss element (cypher coalesce)": {
+			bridges: []githubActiveWithoutOktaTestBridge{
+				{"", ""},
+			},
+			wantSuppress: false,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			row := githubActiveWithoutOktaRuleRowFull(
+				"urn:cerebro:writer:github.user:alice",
+				"alice",
+				[]githubActiveWithoutOktaTestTarget{{
+					urn:                 "urn:cerebro:writer:github_repo:writer/cerebro",
+					entityType:          "github.repo",
+					label:               "writer/cerebro",
+					actedAttributesJSON: githubActiveWithoutOktaRuleActedAttrs(freshAt),
+				}},
+				tc.bridges,
+			)
+			findings, err := rule.EvaluateRows(context.Background(), runtime, []ports.CypherRow{row})
+			if err != nil {
+				t.Fatalf("EvaluateRows() error = %v", err)
+			}
+			gotN := len(findings)
+			wantN := 1
+			if tc.wantSuppress {
+				wantN = 0
+			}
+			if gotN != wantN {
+				t.Fatalf("EvaluateRows() returned %d findings, want %d for %q", gotN, wantN, name)
 			}
 		})
 	}
