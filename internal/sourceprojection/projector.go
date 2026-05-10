@@ -534,9 +534,24 @@ func oktaUserProjections(event *cerebrov1.EventEnvelope) ([]*ports.ProjectedEnti
 		if orgURN != "" {
 			addLink(links, projectedLink(tenantID, event.GetSourceId(), userURN, orgURN, relationBelongsTo, map[string]string{"event_id": event.GetId()}))
 		}
-		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, event.GetOccurredAt())
+		// observedAt is the time this projection ran, not the event's
+		// OccurredAt. okta.user events derive OccurredAt from profile-history
+		// fields (LastUpdated/Created/Activated/StatusChanged/LastLogin/
+		// PasswordChanged) in sources/okta/source.go's userOccurredAt, so any
+		// user whose profile has been static for longer than the graph-rule
+		// recency window would have its represents_identity edges restamped
+		// with an already-stale `at` on every fresh sync. Identity-aware rules
+		// (e.g. the deprovisioned-Okta-active-in-GitHub graph rule) treat
+		// stale-`at` rows as evidence the identifier link is no longer
+		// asserted and drop them, which silently swallows offboarding gaps for
+		// long-static accounts. Stamping with the projection's own clock
+		// instead means any current inventory link is always recent, while
+		// edges that stop being re-asserted (e.g. a renamed email) still age
+		// out naturally because subsequent syncs no longer refresh them.
+		observedAt := timestamppb.New(time.Now().UTC())
+		addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, email, observedAt)
 		if !sameIdentifier(email, login) {
-			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, login, event.GetOccurredAt())
+			addIdentifierLink(entities, links, tenantID, event.GetSourceId(), event.GetId(), userURN, login, observedAt)
 		}
 	}
 

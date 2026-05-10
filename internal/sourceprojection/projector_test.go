@@ -496,6 +496,61 @@ func TestProjectGitHubAuditStampsAtOnRepresentsIdentity(t *testing.T) {
 	}
 }
 
+// okta.user inventory events derive OccurredAt from profile-history fields
+// (LastUpdated/Created/Activated/StatusChanged/LastLogin/PasswordChanged), so
+// for any user whose profile has been static for longer than the graph-rule
+// recency window the event arrives with an OccurredAt that is already older
+// than that window. Stamping the represents_identity edge with that history
+// timestamp makes a fresh inventory sync look stale to identity-aware rules
+// and silently drops unchanged-but-deprovisioned offenders. The projector
+// therefore stamps okta.user represents_identity edges with the projection's
+// own clock, so any current inventory link is always recent regardless of
+// when the user's profile was last edited.
+func TestProjectOktaUserStampsObservationTimeOnRepresentsIdentity(t *testing.T) {
+	graph := &projectionRecorder{}
+	historicalProfileEdit := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
+	before := time.Now().UTC()
+	_, err := New(nil, graph).Project(context.Background(), &cerebrov1.EventEnvelope{
+		Id:         "okta-user-stale-profile",
+		TenantId:   "writer",
+		SourceId:   "okta",
+		Kind:       "okta.user",
+		OccurredAt: timestamppb.New(historicalProfileEdit),
+		Attributes: map[string]string{
+			"domain":  "writer.okta.com",
+			"email":   "alice@writer.com",
+			"login":   "alice@writer.com",
+			"status":  "DEPROVISIONED",
+			"user_id": "00u1",
+		},
+	})
+	after := time.Now().UTC()
+	if err != nil {
+		t.Fatalf("Project() error = %v", err)
+	}
+	userURN := "urn:cerebro:writer:okta_user:00u1"
+	identityURN := "urn:cerebro:writer:identity:email:alice@writer.com"
+	link, ok := graph.links[userURN+"|"+relationRepresentsIdentity+"|"+identityURN]
+	if !ok {
+		t.Fatalf("represents_identity link missing for %s -> %s: %#v", userURN, identityURN, graph.links)
+	}
+	raw, present := link.Attributes["at"]
+	if !present || raw == "" {
+		t.Fatalf("represents_identity attributes[at] missing; rule needs observation time to age out renamed identifier links")
+	}
+	stamped, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		t.Fatalf("represents_identity attributes[at] = %q is not RFC3339: %v", raw, err)
+	}
+	if stamped.Equal(historicalProfileEdit) {
+		t.Fatalf("represents_identity attributes[at] = %q matches the historical profile timestamp; sources/okta sets event.OccurredAt from profile fields, so the projector must stamp observation time instead to keep unchanged-but-deprovisioned users in the recency window", raw)
+	}
+	// Allow a small clock-skew margin around the projection call.
+	if stamped.Before(before.Add(-time.Second)) || stamped.After(after.Add(time.Second)) {
+		t.Fatalf("represents_identity attributes[at] = %v not within projection window [%v, %v]; expected observation-time stamp", stamped, before, after)
+	}
+}
+
 // TestProjectGitHubAuditOmitsAtWhenOccurredAtMissing covers the legacy contract:
 // historical events backfilled without OccurredAt must not pollute the edge with
 // a placeholder timestamp. The rule reads a missing `at` as "I cannot prove this
