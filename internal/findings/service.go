@@ -215,13 +215,28 @@ func (s *Service) WithAppendLog(appendLog ports.AppendLog) *Service {
 	return s
 }
 
-// ListRules returns the discoverable registered finding rule catalog.
+// ListRules returns the discoverable registered finding rule catalog. Graph rules are hidden
+// from the public catalog: every public evaluation handler (`EvaluateSourceRuntimeRules`,
+// `EvaluateSourceRuntime`) rejects them, so advertising their ids would let clients discover
+// rules they cannot run. Graph rules execute exclusively from the orchestrator hook.
 func (s *Service) ListRules() *cerebrov1.ListFindingRulesResponse {
 	if s == nil || s.rules == nil {
 		return &cerebrov1.ListFindingRulesResponse{}
 	}
+	specs := s.rules.List()
+	publicSpecs := make([]*cerebrov1.RuleSpec, 0, len(specs))
+	for _, spec := range specs {
+		rule, ok := s.rules.Get(spec.GetId())
+		if !ok {
+			continue
+		}
+		if _, isGraph := asGraphRule(rule); isGraph {
+			continue
+		}
+		publicSpecs = append(publicSpecs, spec)
+	}
 	return &cerebrov1.ListFindingRulesResponse{
-		Rules: s.rules.List(),
+		Rules: publicSpecs,
 	}
 }
 
@@ -769,9 +784,12 @@ func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (R
 		if !rule.SupportsRuntime(runtime) {
 			return nil, fmt.Errorf("%w: %s", ErrRuleUnsupported, trimmedRuleID)
 		}
+		if _, isGraph := asGraphRule(rule); isGraph {
+			return nil, fmt.Errorf("%w: %s is a graph rule and cannot be evaluated via event replay", ErrRuleUnsupported, trimmedRuleID)
+		}
 		return rule, nil
 	}
-	applicable := s.rules.ForRuntime(runtime)
+	applicable := filterEventDrivenRules(s.rules.ForRuntime(runtime))
 	switch len(applicable) {
 	case 0:
 		return nil, fmt.Errorf("%w: %s", ErrRuleUnavailable, strings.TrimSpace(runtime.GetId()))
@@ -784,7 +802,7 @@ func (s *Service) selectRule(runtime *cerebrov1.SourceRuntime, ruleID string) (R
 
 func (s *Service) selectRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string) ([]Rule, error) {
 	if len(ruleIDs) == 0 {
-		applicable := s.rules.ForRuntime(runtime)
+		applicable := filterEventDrivenRules(s.rules.ForRuntime(runtime))
 		if len(applicable) == 0 {
 			return nil, fmt.Errorf("%w: %s", ErrRuleUnavailable, strings.TrimSpace(runtime.GetId()))
 		}
@@ -807,6 +825,9 @@ func (s *Service) selectRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string
 		if !rule.SupportsRuntime(runtime) {
 			return nil, fmt.Errorf("%w: %s", ErrRuleUnsupported, trimmedID)
 		}
+		if _, isGraph := asGraphRule(rule); isGraph {
+			return nil, fmt.Errorf("%w: %s is a graph rule and cannot be evaluated via event replay", ErrRuleUnsupported, trimmedID)
+		}
 		seen[trimmedID] = struct{}{}
 		selected = append(selected, rule)
 	}
@@ -814,6 +835,24 @@ func (s *Service) selectRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string
 		return nil, fmt.Errorf("%w for runtime %q", ErrRuleSelectionRequired, strings.TrimSpace(runtime.GetId()))
 	}
 	return selected, nil
+}
+
+// filterEventDrivenRules excludes graph rules from a rule slice. Graph rules implement Rule
+// only to satisfy the registry contract; their Evaluate() is a no-op because they need a
+// graph cypher query that the event-replay path cannot supply. Including them in the replay
+// pass produces empty completed evaluation runs and duplicates the run record per rule.
+func filterEventDrivenRules(rules []Rule) []Rule {
+	if len(rules) == 0 {
+		return rules
+	}
+	out := make([]Rule, 0, len(rules))
+	for _, rule := range rules {
+		if _, isGraph := asGraphRule(rule); isGraph {
+			continue
+		}
+		out = append(out, rule)
+	}
+	return out
 }
 
 func normalizeEventLimit(limit uint32) uint32 {
@@ -859,6 +898,23 @@ func newFindingEvaluationRun(runtimeID string, ruleID string, eventLimit uint32,
 		Status:     "running",
 		EventLimit: normalizeEventLimit(eventLimit),
 		StartedAt:  timestamppb.New(normalizedStartedAt),
+	}
+}
+
+// newGraphFindingEvaluationRun mints a run row for a graph-rule pass. Graph rules
+// evaluate cypher rows over the projected graph and never replay events, so the
+// per-event `EventLimit` does not apply. Persisting the default replay cap of 100
+// here would make Get/ListFindingEvaluationRun advertise misleading metadata for
+// graph runs (as if they were event replays capped at 100), so we leave EventLimit
+// at zero — the proto-default — for callers to interpret as "n/a for graph rule".
+func newGraphFindingEvaluationRun(runtimeID string, ruleID string, startedAt time.Time) *cerebrov1.FindingEvaluationRun {
+	normalizedStartedAt := startedAt.UTC()
+	return &cerebrov1.FindingEvaluationRun{
+		Id:        findingEvaluationRunID(runtimeID, ruleID, normalizedStartedAt),
+		RuntimeId: strings.TrimSpace(runtimeID),
+		RuleId:    strings.TrimSpace(ruleID),
+		Status:    "running",
+		StartedAt: timestamppb.New(normalizedStartedAt),
 	}
 }
 
@@ -1056,9 +1112,18 @@ func (s *Service) buildFindingEvidence(ctx context.Context, finding *ports.Findi
 	graphRootURNs := uniqueSortedStrings(finding.ResourceURNs)
 	eventIDs := uniqueSortedStrings(finding.EventIDs)
 	createdAt := time.Now().UTC()
+	// Evidence is keyed by the runtime that performed THIS evaluation, not by the runtime
+	// the finding happens to be pinned to. For event rules these are identical because the
+	// fingerprint includes runtime_id. For graph rules the finding's runtime_id is pinned to
+	// the first triggering runtime by UpsertFinding's ON CONFLICT clause, but every
+	// triggering runtime should still record its own evidence so that
+	// `/source-runtimes/{runtime}/finding-evidence?run_id=<runtime-run>` returns rows for
+	// the runtime that produced the run, otherwise the run shows up in evaluation listings
+	// without any matching evidence.
+	evidenceRuntimeID := strings.TrimSpace(run.GetRuntimeId())
 	return &cerebrov1.FindingEvidence{
-		Id:            findingEvidenceID(finding.RuntimeID, finding.ID, run.GetId(), eventIDs),
-		RuntimeId:     strings.TrimSpace(finding.RuntimeID),
+		Id:            findingEvidenceID(evidenceRuntimeID, finding.ID, run.GetId(), eventIDs),
+		RuntimeId:     evidenceRuntimeID,
 		RuleId:        strings.TrimSpace(finding.RuleID),
 		FindingId:     strings.TrimSpace(finding.ID),
 		RunId:         strings.TrimSpace(run.GetId()),

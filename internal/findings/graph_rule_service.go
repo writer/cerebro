@@ -1,0 +1,251 @@
+package findings
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	cerebrov1 "github.com/writer/cerebro/gen/cerebro/v1"
+	"github.com/writer/cerebro/internal/ports"
+)
+
+// EvaluateGraphRulesRequest scopes one graph-rule evaluation pass over one runtime.
+type EvaluateGraphRulesRequest struct {
+	RuntimeID string
+	RuleIDs   []string
+}
+
+// GraphRuleEvaluationResult reports one graph rule's outputs inside a multi-rule pass.
+type GraphRuleEvaluationResult struct {
+	Rule      *cerebrov1.RuleSpec
+	Findings  []*ports.FindingRecord
+	Run       *cerebrov1.FindingEvaluationRun
+	Evidence  []*cerebrov1.FindingEvidence
+	RowsRead  uint32
+	Truncated bool
+}
+
+// EvaluateGraphRulesResult reports one multi-rule graph evaluation over one runtime.
+type EvaluateGraphRulesResult struct {
+	Runtime     *cerebrov1.SourceRuntime
+	Evaluations []*GraphRuleEvaluationResult
+}
+
+// ErrGraphRuntimeUnavailable indicates that the graph query boundary is not configured.
+var ErrGraphRuntimeUnavailable = fmt.Errorf("%w: graph query boundary is not configured", ErrRuntimeUnavailable)
+
+// EvaluateSourceRuntimeGraphRules runs every registered GraphRule that supports one runtime.
+//
+// Each rule is evaluated in its own bounded read transaction; failures of one rule do not
+// abort the others. The orchestrator should call this after the graph projection has been
+// updated for the runtime so the rule sees the freshest world model.
+func (s *Service) EvaluateSourceRuntimeGraphRules(ctx context.Context, request EvaluateGraphRulesRequest) (*EvaluateGraphRulesResult, error) {
+	if s == nil || s.runtimeStore == nil || s.store == nil || s.runStore == nil || s.evidenceStore == nil || s.rules == nil {
+		return nil, ErrRuntimeUnavailable
+	}
+	if s.graphQuery == nil {
+		return nil, ErrGraphRuntimeUnavailable
+	}
+	runtimeID := strings.TrimSpace(request.RuntimeID)
+	if runtimeID == "" {
+		return nil, fmt.Errorf("%w: source runtime id is required", ErrInvalidRequest)
+	}
+	runtime, err := s.runtimeStore.GetSourceRuntime(ctx, runtimeID)
+	if err != nil {
+		return nil, err
+	}
+	candidates, err := s.selectGraphRules(runtime, request.RuleIDs)
+	if err != nil {
+		return nil, err
+	}
+	startedAt := time.Now().UTC()
+	result := &EvaluateGraphRulesResult{
+		Runtime:     runtime,
+		Evaluations: make([]*GraphRuleEvaluationResult, 0, len(candidates)),
+	}
+	var firstErr error
+	for _, rule := range candidates {
+		evaluation, err := s.evaluateGraphRule(ctx, runtime, rule, startedAt)
+		if evaluation != nil {
+			result.Evaluations = append(result.Evaluations, evaluation)
+		}
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return result, firstErr
+}
+
+func (s *Service) evaluateGraphRule(ctx context.Context, runtime *cerebrov1.SourceRuntime, rule GraphRule, startedAt time.Time) (*GraphRuleEvaluationResult, error) {
+	spec := rule.Spec()
+	run := newGraphFindingEvaluationRun(strings.TrimSpace(runtime.GetId()), spec.GetId(), startedAt)
+	if err := s.runStore.PutFindingEvaluationRun(ctx, run); err != nil {
+		return nil, fmt.Errorf("persist finding evaluation run %q: %w", run.GetId(), err)
+	}
+	result := &GraphRuleEvaluationResult{
+		Rule: spec,
+		Run:  run,
+	}
+	queryRequest := rule.QueryFor(runtime)
+	if strings.TrimSpace(queryRequest.Query) == "" {
+		if err := s.finishCompletedRun(ctx, run, 0, nil); err != nil {
+			return result, err
+		}
+		return result, nil
+	}
+	rows, err := s.graphQuery.ExecuteReadCypher(ctx, queryRequest)
+	if err != nil {
+		evaluationErr := fmt.Errorf("execute graph rule %q cypher: %w", spec.GetId(), err)
+		return result, s.finishFailedRun(ctx, run, 0, nil, evaluationErr)
+	}
+	result.RowsRead = uint32(len(rows))
+	result.Truncated = cypherRowsTruncated(queryRequest, len(rows))
+	emitted, err := rule.EvaluateRows(ctx, runtime, rows)
+	if err != nil {
+		evaluationErr := fmt.Errorf("evaluate graph rule %q rows: %w", spec.GetId(), err)
+		return result, s.finishFailedRun(ctx, run, 0, nil, evaluationErr)
+	}
+	evidenceIDs := map[string]struct{}{}
+	emittedFindingIDs := map[string]struct{}{}
+	for _, record := range emitted {
+		if record == nil {
+			continue
+		}
+		record, err = s.reconcileLegacyFindingIdentity(ctx, record)
+		if err != nil {
+			evaluationErr := fmt.Errorf("reconcile finding identity for graph rule %q: %w", spec.GetId(), err)
+			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
+		}
+		stored, err := s.store.UpsertFinding(ctx, record)
+		if err != nil {
+			evaluationErr := fmt.Errorf("persist finding for graph rule %q: %w", spec.GetId(), err)
+			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
+		}
+		result.Findings = append(result.Findings, stored)
+		emittedFindingIDs[strings.TrimSpace(stored.ID)] = struct{}{}
+		evidence, err := s.buildFindingEvidence(ctx, stored, run)
+		if err != nil {
+			evaluationErr := fmt.Errorf("build evidence for graph rule %q finding %q: %w", spec.GetId(), stored.ID, err)
+			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
+		}
+		if _, seen := evidenceIDs[evidence.GetId()]; !seen {
+			if err := s.evidenceStore.PutFindingEvidence(ctx, evidence); err != nil {
+				evaluationErr := fmt.Errorf("persist evidence for graph rule %q finding %q: %w", spec.GetId(), stored.ID, err)
+				return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
+			}
+			evidenceIDs[evidence.GetId()] = struct{}{}
+			result.Evidence = append(result.Evidence, evidence)
+		}
+		if err := s.projectFindingAnchor(ctx, stored); err != nil {
+			evaluationErr := fmt.Errorf("project graph rule %q finding %q anchor: %w", spec.GetId(), stored.ID, err)
+			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
+		}
+	}
+	if !result.Truncated {
+		if err := s.resolveStaleGraphFindings(ctx, strings.TrimSpace(runtime.GetTenantId()), strings.TrimSpace(runtime.GetId()), spec.GetId(), emittedFindingIDs); err != nil {
+			evaluationErr := fmt.Errorf("resolve stale graph findings for rule %q: %w", spec.GetId(), err)
+			return result, s.finishFailedRun(ctx, run, 0, findingIDs(result.Findings), evaluationErr)
+		}
+	}
+	if err := s.finishCompletedRun(ctx, run, 0, findingIDs(result.Findings)); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+// cypherRowsTruncated reports whether the cypher result hit the effective row cap. When the
+// rule asks for at most N rows and we got back exactly N, we cannot tell the graph apart from
+// a graph that had N+1 matching rows, so the rule may have missed offenders. Stale-finding
+// auto-resolution must not run in that case or we would close findings whose still-matching
+// row simply fell past the cutoff.
+func cypherRowsTruncated(request ports.CypherQueryRequest, rowsReturned int) bool {
+	cap := request.RowLimit
+	if cap <= 0 || cap > ports.MaxCypherQueryRows {
+		cap = ports.MaxCypherQueryRows
+	}
+	return rowsReturned >= cap
+}
+
+func (s *Service) selectGraphRules(runtime *cerebrov1.SourceRuntime, ruleIDs []string) ([]GraphRule, error) {
+	if len(ruleIDs) == 0 {
+		var graphRules []GraphRule
+		for _, rule := range s.rules.ForRuntime(runtime) {
+			if graphRule, ok := asGraphRule(rule); ok {
+				graphRules = append(graphRules, graphRule)
+			}
+		}
+		return graphRules, nil
+	}
+	graphRules := make([]GraphRule, 0, len(ruleIDs))
+	seen := make(map[string]struct{}, len(ruleIDs))
+	for _, rawID := range ruleIDs {
+		trimmedID := strings.TrimSpace(rawID)
+		if trimmedID == "" {
+			continue
+		}
+		if _, ok := seen[trimmedID]; ok {
+			continue
+		}
+		rule, ok := s.rules.Get(trimmedID)
+		if !ok {
+			return nil, fmt.Errorf("%w: %s", ErrRuleNotFound, trimmedID)
+		}
+		graphRule, ok := asGraphRule(rule)
+		if !ok {
+			return nil, fmt.Errorf("%w: %s is not a graph rule", ErrRuleUnsupported, trimmedID)
+		}
+		if !rule.SupportsRuntime(runtime) {
+			return nil, fmt.Errorf("%w: %s", ErrRuleUnsupported, trimmedID)
+		}
+		seen[trimmedID] = struct{}{}
+		graphRules = append(graphRules, graphRule)
+	}
+	if len(graphRules) == 0 {
+		return nil, fmt.Errorf("%w for runtime %q", ErrRuleSelectionRequired, strings.TrimSpace(runtime.GetId()))
+	}
+	return graphRules, nil
+}
+
+// resolveStaleGraphFindings closes any open finding emitted previously by one graph rule whose
+// source rows are no longer present in the latest evaluation. Without this, dormant findings
+// would never auto-resolve when an offending principal is finally deprovisioned in both
+// systems or the relationship is removed.
+//
+// The scope is intentionally (tenant, rule) rather than (tenant, runtime, rule). Graph rules
+// query a tenant-wide view (the projected graph upserts by tenant+entity, not by runtime),
+// so an emit set computed from any okta runtime in the tenant covers every offender that the
+// rule would report. Scoping by runtime here would close a finding that runtime A emitted as
+// soon as runtime B syncs and finishes its own evaluation (because runtime B's emit set
+// doesn't include runtime A's finding under the runtime-keyed query).
+func (s *Service) resolveStaleGraphFindings(ctx context.Context, tenantID string, _ string, ruleID string, emittedFindingIDs map[string]struct{}) error {
+	findings, err := s.store.ListFindings(ctx, ports.ListFindingsRequest{
+		TenantID: strings.TrimSpace(tenantID),
+		RuleID:   strings.TrimSpace(ruleID),
+		Status:   findingStatusOpen,
+	})
+	if err != nil {
+		return fmt.Errorf("list stale graph candidates for rule %q: %w", strings.TrimSpace(ruleID), err)
+	}
+	for _, finding := range findings {
+		if finding == nil {
+			continue
+		}
+		if _, emitted := emittedFindingIDs[strings.TrimSpace(finding.ID)]; emitted {
+			continue
+		}
+		updated, err := s.store.UpdateFindingStatus(ctx, ports.FindingStatusUpdate{
+			FindingID: strings.TrimSpace(finding.ID),
+			Status:    findingStatusResolved,
+			Reason:    "graph_rule_no_longer_matches",
+			UpdatedAt: time.Now().UTC(),
+		})
+		if err != nil {
+			return fmt.Errorf("resolve stale graph finding %q: %w", strings.TrimSpace(finding.ID), err)
+		}
+		if err := s.recordFindingStatusWorkflow(ctx, updated, "graph_rule_evaluation"); err != nil {
+			return fmt.Errorf("project stale graph finding %q resolution: %w", strings.TrimSpace(finding.ID), err)
+		}
+	}
+	return nil
+}

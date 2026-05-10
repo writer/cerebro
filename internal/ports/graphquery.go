@@ -30,8 +30,24 @@ type EntityNeighborhood struct {
 	Relations []*NeighborhoodRelation `json:"relations"`
 }
 
-// GraphQueryStore exposes bounded graph neighborhood reads.
+// CypherRow is one row returned by a read-only Cypher query.
+type CypherRow struct {
+	Values map[string]any
+}
+
+// CypherQueryRequest scopes one read-only graph query call.
+type CypherQueryRequest struct {
+	Query    string
+	Params   map[string]any
+	RowLimit int
+}
+
+// MaxCypherQueryRows caps the number of rows the graph store will return for one read query.
+const MaxCypherQueryRows = 3000
+
+// GraphQueryStore exposes bounded graph neighborhood reads and read-only Cypher.
 type GraphQueryStore interface {
 	GraphStore
 	GetEntityNeighborhood(context.Context, string, int) (*EntityNeighborhood, error)
+	ExecuteReadCypher(context.Context, CypherQueryRequest) ([]CypherRow, error)
 }

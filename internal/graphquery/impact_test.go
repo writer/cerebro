@@ -24,6 +24,10 @@ func (s *impactStubStore) GetEntityNeighborhood(_ context.Context, rootURN strin
 	return neighborhood, nil
 }
 
+func (s *impactStubStore) ExecuteReadCypher(_ context.Context, _ ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	return nil, nil
+}
+
 func TestGetImpactVulnerabilityGroupsCanonicalPackageAssetsAndEvidence(t *testing.T) {
 	vulnerabilityURN := "urn:cerebro:writer:vulnerability:cve-2026-4242"
 	canonicalPackageURN := "urn:cerebro:writer:package:canonical:golang.org/x/crypto"

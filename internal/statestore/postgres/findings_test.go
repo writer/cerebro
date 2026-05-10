@@ -82,7 +82,10 @@ func TestListFindingsRejectsMissingTenantID(t *testing.T) {
 	}
 }
 
-func TestListFindingsRejectsMissingRuntimeID(t *testing.T) {
+// ListFindings now requires either runtime_id or rule_id (graph rules query the tenant by
+// rule because the projected graph has no per-runtime partition for shared entities like
+// okta.user). Sending tenant alone would scan the table.
+func TestListFindingsRejectsMissingRuntimeAndRule(t *testing.T) {
 	store := &Store{}
 	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{TenantID: "writer"}); err == nil {
 		t.Fatal("ListFindings() error = nil, want non-nil")
@@ -93,6 +96,22 @@ func TestListFindingsRejectsUnconfiguredStore(t *testing.T) {
 	store := &Store{}
 	if _, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{TenantID: "writer", RuntimeID: "writer-okta-audit"}); err == nil {
 		t.Fatal("ListFindings() error = nil, want non-nil")
+	}
+}
+
+// Graph rules call ListFindings with tenant + rule (no runtime) so the contract must accept
+// that combination; only an unconfigured Store should fail at this point.
+func TestListFindingsAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
+	store := &Store{}
+	_, err := store.ListFindings(context.Background(), ports.ListFindingsRequest{
+		TenantID: "writer",
+		RuleID:   "identity-okta-deprovisioned-active-in-github",
+	})
+	if err == nil {
+		t.Fatal("ListFindings() error = nil, want unconfigured store error")
+	}
+	if got := err.Error(); strings.Contains(got, "runtime id") || strings.Contains(got, "rule id is required") {
+		t.Fatalf("ListFindings() rejected tenant+rule combination: %v", err)
 	}
 }
 
@@ -114,6 +133,51 @@ func TestLinkFindingTicketRejectsEmptyURL(t *testing.T) {
 	store := &Store{}
 	if _, err := store.LinkFindingTicket(context.Background(), ports.FindingTicketLink{FindingID: "finding-1"}); err == nil {
 		t.Fatal("LinkFindingTicket() error = nil, want non-nil")
+	}
+}
+
+// runtime_id must be pinned on conflict so the same fingerprint stays addressable on the
+// originally-observed runtime instead of flipping. Event-rule fingerprints already include
+// runtime_id (so the clause is a no-op for them); graph-rule fingerprints are tenant-scoped
+// and the same offender can be emitted by multiple triggering runtimes (okta inventory or
+// github audit for the deprovisioned-Okta-active-in-GitHub rule), so without this pin every
+// reevaluation would rebind runtime_id and per-runtime list/evidence/report/GRC paths would
+// swap the finding in and out under each side.
+func TestUpsertFindingStatementPreservesRuntimeIDOnConflict(t *testing.T) {
+	if !strings.Contains(upsertFindingStatement, "runtime_id = findings.runtime_id") {
+		t.Fatalf("upsertFindingStatement does not preserve runtime_id on conflict; graph-rule findings would flip between triggering runtimes:\n%s", upsertFindingStatement)
+	}
+	if strings.Contains(upsertFindingStatement, "runtime_id = EXCLUDED.runtime_id") {
+		t.Fatalf("upsertFindingStatement still rebinds runtime_id from EXCLUDED on conflict; this would break graph-rule pinning:\n%s", upsertFindingStatement)
+	}
+}
+
+func TestFindingListQueryAcceptsTenantAndRuleWithoutRuntime(t *testing.T) {
+	query, args, err := findingListQuery(ports.ListFindingsRequest{
+		TenantID: "writer",
+		RuleID:   "identity-okta-deprovisioned-active-in-github",
+		Status:   "open",
+	})
+	if err != nil {
+		t.Fatalf("findingListQuery() error = %v", err)
+	}
+	if !strings.Contains(query, "tenant_id = $1") {
+		t.Fatalf("findingListQuery() missing tenant clause: %s", query)
+	}
+	if strings.Contains(query, "runtime_id = ") {
+		t.Fatalf("findingListQuery() injected runtime_id clause for tenant+rule scope: %s", query)
+	}
+	if !strings.Contains(query, "rule_id = $2") {
+		t.Fatalf("findingListQuery() did not slot rule_id at $2 when runtime is omitted: %s", query)
+	}
+	if !strings.Contains(query, "status = $3") {
+		t.Fatalf("findingListQuery() did not slot status at $3 when runtime is omitted: %s", query)
+	}
+	if got := len(args); got != 3 {
+		t.Fatalf("len(findingListQuery().args) = %d, want 3", got)
+	}
+	if got := args[1]; got != "identity-okta-deprovisioned-active-in-github" {
+		t.Fatalf("findingListQuery().args[1] = %#v, want rule id", got)
 	}
 }
 

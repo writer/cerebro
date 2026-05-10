@@ -283,6 +283,92 @@ func freePort(t *testing.T) int {
 	return listener.Addr().(*net.TCPAddr).Port
 }
 
+// Some sources (notably GitHub audit) page newest-first and replay each batch
+// sequentially, so an older batch can be merged after a newer one. Last-write-wins
+// would let that older batch overwrite the newer `at` timestamp on a relation,
+// and the deprovisioned-Okta-active-in-GitHub rule's recency check would then read
+// an actively-used edge as stale. mergeGraphAttributes must therefore keep the
+// chronological max for `at`.
+func TestMergeGraphAttributesKeepsLatestAtAcrossOutOfOrderUpserts(t *testing.T) {
+	older := time.Date(2025, time.March, 1, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	newer := time.Date(2025, time.March, 5, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
+
+	cases := []struct {
+		name     string
+		existing map[string]string
+		incoming map[string]string
+		wantAt   string
+	}{
+		{
+			name:     "older incoming after newer existing keeps newer",
+			existing: map[string]string{"at": newer, "action": "git.clone"},
+			incoming: map[string]string{"at": older, "action": "git.fetch"},
+			wantAt:   newer,
+		},
+		{
+			name:     "newer incoming after older existing wins",
+			existing: map[string]string{"at": older, "action": "git.clone"},
+			incoming: map[string]string{"at": newer, "action": "git.push"},
+			wantAt:   newer,
+		},
+		{
+			name:     "missing existing at takes incoming",
+			existing: map[string]string{"action": "git.clone"},
+			incoming: map[string]string{"at": newer, "action": "git.push"},
+			wantAt:   newer,
+		},
+		{
+			name:     "missing incoming at preserves existing",
+			existing: map[string]string{"at": newer, "action": "git.clone"},
+			incoming: map[string]string{"action": "git.push"},
+			wantAt:   newer,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			merged := mergeGraphAttributes(tc.existing, tc.incoming)
+			if got := merged["at"]; got != tc.wantAt {
+				t.Fatalf("merged at = %q, want %q (rule recency check depends on chronological max)", got, tc.wantAt)
+			}
+		})
+	}
+}
+
+// Non-`at` keys must keep the default last-write-wins semantics so the special-
+// case in mergeAttributeValue does not silently change merge behavior elsewhere.
+func TestMergeGraphAttributesKeepsLastWriteWinsForOtherKeys(t *testing.T) {
+	merged := mergeGraphAttributes(
+		map[string]string{"action": "git.clone", "actor": "alice"},
+		map[string]string{"action": "git.push"},
+	)
+	if got, want := merged["action"], "git.push"; got != want {
+		t.Fatalf("merged action = %q, want %q (non-`at` keys must remain last-write-wins)", got, want)
+	}
+	if got, want := merged["actor"], "alice"; got != want {
+		t.Fatalf("merged actor = %q, want %q (existing keys not in incoming must survive)", got, want)
+	}
+}
+
+// If either side carries an unparseable `at` (e.g. a future projector bug or a
+// downgrade from a different format), fall back to last-write-wins so we never
+// crash or silently freeze the timestamp at a malformed value.
+func TestMergeGraphAttributesFallsBackToLastWriteWinsWhenAtUnparseable(t *testing.T) {
+	merged := mergeGraphAttributes(
+		map[string]string{"at": "yesterday"},
+		map[string]string{"at": "2025-03-05T09:00:00Z"},
+	)
+	if got, want := merged["at"], "2025-03-05T09:00:00Z"; got != want {
+		t.Fatalf("merged at = %q, want %q (unparseable existing falls back to incoming)", got, want)
+	}
+	merged = mergeGraphAttributes(
+		map[string]string{"at": "2025-03-05T09:00:00Z"},
+		map[string]string{"at": "tomorrow"},
+	)
+	if got, want := merged["at"], "tomorrow"; got != want {
+		t.Fatalf("merged at = %q, want %q (unparseable incoming wins to avoid freezing)", got, want)
+	}
+}
+
 func waitForStore(t *testing.T, ctx context.Context, cfg config.GraphStoreConfig) *Store {
 	t.Helper()
 	deadline := time.Now().Add(90 * time.Second)

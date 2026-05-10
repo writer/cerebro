@@ -56,6 +56,7 @@ var ensureFindingStatements = []string{
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_reason TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE findings ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMPTZ`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_rule_idx ON findings (runtime_id, rule_id)`,
+	`CREATE INDEX IF NOT EXISTS findings_tenant_rule_idx ON findings (tenant_id, rule_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_policy_idx ON findings (runtime_id, policy_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_check_idx ON findings (runtime_id, check_id)`,
 	`CREATE INDEX IF NOT EXISTS findings_runtime_due_at_idx ON findings (runtime_id, due_at)`,
@@ -68,6 +69,76 @@ var ensureFindingStatements = []string{
 	`CREATE INDEX IF NOT EXISTS findings_notes_gin_idx ON findings USING GIN (notes_json)`,
 	`CREATE INDEX IF NOT EXISTS findings_tickets_gin_idx ON findings USING GIN (tickets_json)`,
 }
+
+// upsertFindingStatement persists one finding row, preserving runtime_id on conflict.
+//
+// runtime_id is intentionally pinned on first insert. Event-rule fingerprints already include
+// runtime_id, so the same id can never collide across runtimes for them and this clause is a
+// no-op. Graph-rule fingerprints are deliberately tenant-scoped (they omit runtime_id) so the
+// same offender can be emitted by multiple triggering runtimes (e.g. okta inventory and
+// github audit for the deprovisioned-Okta-active-in-GitHub rule); preserving the original
+// runtime keeps the row addressable through the real runtime-scoped read paths
+// (Service.ListFindings, ListEvidence, reports, GRC) instead of flipping it between sources
+// every iteration.
+const upsertFindingStatement = `
+INSERT INTO findings (
+  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, attributes_json,
+  policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+ON CONFLICT (id)
+DO UPDATE SET
+  fingerprint = EXCLUDED.fingerprint,
+  tenant_id = EXCLUDED.tenant_id,
+  runtime_id = findings.runtime_id,
+  rule_id = EXCLUDED.rule_id,
+  title = EXCLUDED.title,
+  severity = EXCLUDED.severity,
+  status = CASE
+    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status
+    ELSE EXCLUDED.status
+  END,
+  summary = EXCLUDED.summary,
+  resource_urns_json = EXCLUDED.resource_urns_json,
+  event_ids_json = EXCLUDED.event_ids_json,
+  observed_policy_ids_json = EXCLUDED.observed_policy_ids_json,
+  control_refs_json = EXCLUDED.control_refs_json,
+  notes_json = CASE
+    WHEN jsonb_array_length(EXCLUDED.notes_json) = 0 THEN findings.notes_json
+    ELSE EXCLUDED.notes_json
+  END,
+  tickets_json = CASE
+    WHEN jsonb_array_length(EXCLUDED.tickets_json) = 0 THEN findings.tickets_json
+    ELSE EXCLUDED.tickets_json
+  END,
+  attributes_json = EXCLUDED.attributes_json,
+  policy_id = EXCLUDED.policy_id,
+  policy_name = EXCLUDED.policy_name,
+  check_id = EXCLUDED.check_id,
+  check_name = EXCLUDED.check_name,
+  assignee = CASE
+    WHEN findings.assignee <> '' AND EXCLUDED.assignee = '' THEN findings.assignee
+    ELSE EXCLUDED.assignee
+  END,
+  due_at = COALESCE(EXCLUDED.due_at, findings.due_at),
+  status_reason = CASE
+    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_reason
+    ELSE EXCLUDED.status_reason
+  END,
+  status_updated_at = CASE
+    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_updated_at
+    ELSE EXCLUDED.status_updated_at
+  END,
+  first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
+  last_observed_at = GREATEST(findings.last_observed_at, EXCLUDED.last_observed_at),
+  updated_at = NOW()
+RETURNING
+  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
+  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
+  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
+  status_updated_at, first_observed_at, last_observed_at`
 
 // UpsertFinding persists one normalized finding in the current-state store.
 func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord) (*ports.FindingRecord, error) {
@@ -160,65 +231,7 @@ func (s *Store) UpsertFinding(ctx context.Context, finding *ports.FindingRecord)
 	}
 	firstObservedAt, lastObservedAt := normalizeFindingObservationWindow(finding.FirstObservedAt, finding.LastObservedAt, time.Now().UTC())
 	var stored findingRow
-	if err := s.db.QueryRowContext(ctx, `
-INSERT INTO findings (
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json, event_ids_json, observed_policy_ids_json, control_refs_json, notes_json, tickets_json, attributes_json,
-  policy_id, policy_name, check_id, check_name, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at
-)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
-ON CONFLICT (id)
-DO UPDATE SET
-  fingerprint = EXCLUDED.fingerprint,
-  tenant_id = EXCLUDED.tenant_id,
-  runtime_id = EXCLUDED.runtime_id,
-  rule_id = EXCLUDED.rule_id,
-  title = EXCLUDED.title,
-  severity = EXCLUDED.severity,
-  status = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status
-    ELSE EXCLUDED.status
-  END,
-  summary = EXCLUDED.summary,
-  resource_urns_json = EXCLUDED.resource_urns_json,
-  event_ids_json = EXCLUDED.event_ids_json,
-  observed_policy_ids_json = EXCLUDED.observed_policy_ids_json,
-  control_refs_json = EXCLUDED.control_refs_json,
-  notes_json = CASE
-    WHEN jsonb_array_length(EXCLUDED.notes_json) = 0 THEN findings.notes_json
-    ELSE EXCLUDED.notes_json
-  END,
-  tickets_json = CASE
-    WHEN jsonb_array_length(EXCLUDED.tickets_json) = 0 THEN findings.tickets_json
-    ELSE EXCLUDED.tickets_json
-  END,
-  attributes_json = EXCLUDED.attributes_json,
-  policy_id = EXCLUDED.policy_id,
-  policy_name = EXCLUDED.policy_name,
-  check_id = EXCLUDED.check_id,
-  check_name = EXCLUDED.check_name,
-  assignee = CASE
-    WHEN findings.assignee <> '' AND EXCLUDED.assignee = '' THEN findings.assignee
-    ELSE EXCLUDED.assignee
-  END,
-  due_at = COALESCE(EXCLUDED.due_at, findings.due_at),
-  status_reason = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_reason
-    ELSE EXCLUDED.status_reason
-  END,
-  status_updated_at = CASE
-    WHEN findings.status IN ('resolved', 'suppressed') AND EXCLUDED.status = 'open' THEN findings.status_updated_at
-    ELSE EXCLUDED.status_updated_at
-  END,
-  first_observed_at = LEAST(findings.first_observed_at, EXCLUDED.first_observed_at),
-  last_observed_at = GREATEST(findings.last_observed_at, EXCLUDED.last_observed_at),
-  updated_at = NOW()
-RETURNING
-  id, fingerprint, tenant_id, runtime_id, rule_id, title, severity, status, summary,
-  resource_urns_json::text, event_ids_json::text, observed_policy_ids_json::text, control_refs_json::text,
-  notes_json::text, tickets_json::text, policy_id, policy_name, check_id, check_name, attributes_json::text, assignee, due_at, status_reason,
-  status_updated_at, first_observed_at, last_observed_at`,
+	if err := s.db.QueryRowContext(ctx, upsertFindingStatement,
 		id,
 		fingerprint,
 		tenantID,
@@ -295,15 +308,20 @@ func normalizeFindingObservationWindow(firstObservedAt time.Time, lastObservedAt
 	return firstObservedAt, lastObservedAt
 }
 
-// ListFindings loads persisted findings for one tenant/runtime scope.
+// ListFindings loads persisted findings filtered by tenant plus at least one of runtime_id
+// or rule_id. Graph rules need a tenant+rule scope (the projected graph has no per-runtime
+// partition for shared entities like okta.user), while replay-driven callers stay on the
+// indexed (runtime_id, ...) path. Requiring at least one of the two prevents a caller from
+// accidentally issuing a tenant-wide table scan.
 func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequest) (_ []*ports.FindingRecord, err error) {
 	tenantID := strings.TrimSpace(request.TenantID)
 	if tenantID == "" {
 		return nil, errors.New("finding tenant id is required")
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
-	if runtimeID == "" {
-		return nil, errors.New("finding runtime id is required")
+	ruleID := strings.TrimSpace(request.RuleID)
+	if runtimeID == "" && ruleID == "" {
+		return nil, errors.New("finding runtime id or rule id is required")
 	}
 	if s == nil || s.db == nil {
 		return nil, errors.New("postgres is not configured")
@@ -317,7 +335,7 @@ func (s *Store) ListFindings(ctx context.Context, request ports.ListFindingsRequ
 	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query findings for tenant %q runtime %q: %w", tenantID, runtimeID, err)
+		return nil, fmt.Errorf("query findings for tenant %q runtime %q rule %q: %w", tenantID, runtimeID, ruleID, err)
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && err == nil {
@@ -772,11 +790,16 @@ func findingListQuery(request ports.ListFindingsRequest) (string, []any, error) 
 		return "", nil, errors.New("finding tenant id is required")
 	}
 	runtimeID := strings.TrimSpace(request.RuntimeID)
-	if runtimeID == "" {
-		return "", nil, errors.New("finding runtime id is required")
+	ruleID := strings.TrimSpace(request.RuleID)
+	if runtimeID == "" && ruleID == "" {
+		return "", nil, errors.New("finding runtime id or rule id is required")
 	}
-	clauses := []string{"tenant_id = $1", "runtime_id = $2"}
-	args := []any{tenantID, runtimeID}
+	clauses := []string{"tenant_id = $1"}
+	args := []any{tenantID}
+	if runtimeID != "" {
+		args = append(args, runtimeID)
+		clauses = append(clauses, fmt.Sprintf("runtime_id = $%d", len(args)))
+	}
 	addFindingFilter(&clauses, &args, "id", request.FindingID)
 	addFindingFilter(&clauses, &args, "rule_id", request.RuleID)
 	addFindingFilter(&clauses, &args, "severity", request.Severity)

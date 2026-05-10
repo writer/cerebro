@@ -42,6 +42,7 @@ func builtinRulePacks() []RulePack {
 			Description: "Identity platform control-plane findings.",
 			Rules: append([]Rule{
 				newOktaPolicyRuleLifecycleTamperingRule(),
+				newDeprovisionedOktaActiveGitHubRule(),
 			}, newIdentitySignalRules()...),
 		},
 		{

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	neo4jdriver "github.com/neo4j/neo4j-go-driver/v5/neo4j"
 
@@ -548,6 +549,55 @@ ORDER BY neighbor.urn, r.relation LIMIT $limit`, map[string]any{"root_urn": norm
 	return neighborhood, nil
 }
 
+// ExecuteReadCypher runs one bounded read-only Cypher query and returns its rows.
+//
+// The store enforces a row cap to keep graph rules from accidentally pulling unbounded result
+// sets that would stall the orchestrator; callers may request a smaller cap via RowLimit but
+// the absolute upper bound is ports.MaxCypherQueryRows.
+func (s *Store) ExecuteReadCypher(ctx context.Context, request ports.CypherQueryRequest) ([]ports.CypherRow, error) {
+	query := strings.TrimSpace(request.Query)
+	if query == "" {
+		return nil, errors.New("cypher query is required")
+	}
+	if err := s.requireConfigured(); err != nil {
+		return nil, err
+	}
+	rowLimit := request.RowLimit
+	if rowLimit <= 0 || rowLimit > ports.MaxCypherQueryRows {
+		rowLimit = ports.MaxCypherQueryRows
+	}
+	var rows []ports.CypherRow
+	if _, err := s.read(ctx, func(tx neo4jdriver.ManagedTransaction) (any, error) {
+		rows = nil
+		result, err := tx.Run(ctx, query, request.Params)
+		if err != nil {
+			return nil, err
+		}
+		keys, err := result.Keys()
+		if err != nil {
+			return nil, err
+		}
+		for result.Next(ctx) {
+			if len(rows) >= rowLimit {
+				break
+			}
+			record := result.Record()
+			values := make(map[string]any, len(keys))
+			for i, key := range keys {
+				if i >= len(record.Values) {
+					break
+				}
+				values[key] = record.Values[i]
+			}
+			rows = append(rows, ports.CypherRow{Values: values})
+		}
+		return nil, result.Err()
+	}); err != nil {
+		return nil, fmt.Errorf("execute read cypher: %w", err)
+	}
+	return rows, nil
+}
+
 // GetIngestCheckpoint returns one persisted graph ingest checkpoint.
 func (s *Store) GetIngestCheckpoint(ctx context.Context, id string) (IngestCheckpoint, bool, error) {
 	normalizedID := strings.TrimSpace(id)
@@ -1081,9 +1131,40 @@ func mergeGraphAttributes(existing map[string]string, incoming map[string]string
 		merged[key] = value
 	}
 	for key, value := range incoming {
-		merged[key] = value
+		merged[key] = mergeAttributeValue(key, merged[key], value)
 	}
 	return merged
+}
+
+// mergeAttributeValue lets specific attribute keys override the default
+// last-write-wins merge. The `at` key carries the "most recent observed
+// action" timestamp (RFC3339 UTC) for relations like `acted_on`. Some sources
+// — notably GitHub audit logs — paginate newest-first, so a later batch may
+// replay older pages after newer ones have already landed. Last-write-wins
+// would let that older page silently overwrite the newer timestamp, which
+// would in turn cause the deprovisioned-Okta-active-in-GitHub rule to read
+// the edge as stale and auto-resolve a finding that should still be open.
+// We take chronological max instead so once the edge has seen a recent
+// action, no subsequent older event can pull the timestamp backward.
+func mergeAttributeValue(key, existing, incoming string) string {
+	if key != "at" {
+		return incoming
+	}
+	if strings.TrimSpace(existing) == "" {
+		return incoming
+	}
+	if strings.TrimSpace(incoming) == "" {
+		return existing
+	}
+	existingT, errExisting := time.Parse(time.RFC3339, existing)
+	incomingT, errIncoming := time.Parse(time.RFC3339, incoming)
+	if errExisting != nil || errIncoming != nil {
+		return incoming
+	}
+	if incomingT.Before(existingT) {
+		return existing
+	}
+	return incoming
 }
 
 func decodeGraphAttributes(payload string) (map[string]string, error) {
